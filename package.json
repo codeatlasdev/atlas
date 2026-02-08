@@ -1,0 +1,33 @@
+{
+  "name": "@codeatlasdev/atlas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal Developer Platform — CLI + Control Panel + SDK",
+  "type": "module",
+  "workspaces": ["panel/api", "packages/*"],
+  "bin": {
+    "atlas": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "dev:panel": "bun run --watch panel/api/src/index.ts",
+    "build": "bun run build.ts",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "db:generate": "cd panel/api && bunx drizzle-kit generate",
+    "db:migrate": "cd panel/api && bunx drizzle-kit migrate",
+    "db:studio": "cd panel/api && bunx drizzle-kit studio"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "citty": "^0.1.6",
+    "consola": "^3.4.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

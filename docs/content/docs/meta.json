@@ -1,0 +1,16 @@
+{
+  "title": "Docs",
+  "pages": [
+    "---Introduction---",
+    "index",
+    "---Getting Started---",
+    "getting-started/installation",
+    "getting-started/quick-start",
+    "---CLI---",
+    "...cli",
+    "---Control Panel---",
+    "...control-panel",
+    "---Architecture---",
+    "...architecture"
+  ]
+}

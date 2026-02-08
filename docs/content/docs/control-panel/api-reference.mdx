@@ -1,0 +1,136 @@
+---
+title: API Reference
+description: Control Panel API endpoints
+icon: FileCode
+---
+
+The Control Panel exposes a REST API. All endpoints require JWT authentication unless noted.
+
+## Authentication
+
+### GitHub OAuth
+
+```
+GET /auth/github
+```
+
+Redirects to GitHub for OAuth authorization. After authorization, returns a JWT token.
+
+```
+GET /auth/github/callback?code=xxx&state=xxx
+```
+
+Exchanges the OAuth code for a JWT. If `state` contains a redirect URL, redirects there with the token.
+
+## Deployments
+
+### Trigger Deploy
+
+```
+POST /deploys/project/:id
+```
+
+Triggers a full deploy pipeline: `kubectl set image` → rollout → DNS automation.
+
+**Response:** Deploy status with real-time progress.
+
+## Logs
+
+### Stream Logs
+
+```
+GET /logs/project/:id?service=xxx&tail=100&follow=true
+```
+
+Streams logs via **Server-Sent Events (SSE)**. Connect with an `EventSource` or any SSE client.
+
+## Secrets
+
+### List Keys
+
+```
+GET /secrets/project/:id
+```
+
+Returns secret key names (values are hidden).
+
+### Set Secrets
+
+```
+PUT /secrets/project/:id
+```
+
+**Body:**
+```json
+{
+  "secrets": {
+    "DATABASE_URL": "postgres://...",
+    "REDIS_URL": "redis://..."
+  }
+}
+```
+
+Encrypts values with AES-256-GCM and syncs to Kubernetes.
+
+### Pull Decrypted
+
+```
+GET /secrets/project/:id/values
+```
+
+Returns decrypted secret values. Requires `admin` or `dev` role.
+
+### Delete Key
+
+```
+DELETE /secrets/project/:id/:key
+```
+
+Removes a specific key from both the database and the Kubernetes Secret.
+
+## Servers
+
+### Add Server
+
+```
+POST /servers
+```
+
+**Body:**
+```json
+{
+  "name": "production",
+  "host": "root@your-server.com",
+  "provision": true
+}
+```
+
+Registers a server. If `provision: true`, installs K3s + full stack via SSH.
+
+### List Servers
+
+```
+GET /servers
+```
+
+Returns all servers with status and resource info.
+
+## Organization
+
+### Update Settings
+
+```
+PATCH /org/settings
+```
+
+**Body:**
+```json
+{
+  "cloudflareToken": "xxx",
+  "githubAppId": "123",
+  "githubClientId": "xxx",
+  "githubClientSecret": "xxx"
+}
+```
+
+Configures Cloudflare and GitHub App credentials. Secrets are encrypted before storage.

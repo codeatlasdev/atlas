@@ -1,0 +1,89 @@
+---
+title: Introduction
+description: What is Atlas and why it exists
+---
+
+Atlas is an open-source **Internal Developer Platform (IDP)** that turns any Linux server into a production-ready cluster. Developers write code — Atlas handles the rest.
+
+## The Problem
+
+Deploying applications shouldn't require expertise in Kubernetes, DNS, SSL certificates, Docker, or CI/CD pipelines. Yet most teams spend weeks configuring infrastructure before shipping a single feature.
+
+Platforms like Heroku and Vercel solved this — but at a cost. You're locked into their infrastructure, their pricing, their limits.
+
+## The Solution
+
+Atlas gives you the same developer experience on **your own servers**. Any VPS — Hetzner, DigitalOcean, AWS, bare metal — becomes a fully managed platform with one command.
+
+```bash
+atlas deploy   # that's it
+```
+
+**What the developer never touches:**
+
+- Kubernetes manifests
+- Dockerfiles
+- DNS records
+- SSL certificates
+- Secrets management
+- Server provisioning
+- CI/CD pipelines
+
+## How It Works
+
+Atlas reads an `atlas.yaml` in your project root:
+
+```yaml
+name: myapp
+services:
+  api:
+    type: api
+    port: 3001
+    domain: api.myapp.com
+  web:
+    type: web
+    domain: myapp.com
+
+infra:
+  postgres: true
+  redis: true
+```
+
+From this single file, Atlas:
+
+1. **Builds** Docker images for each service
+2. **Pushes** to your container registry
+3. **Deploys** to your Kubernetes cluster
+4. **Configures DNS** automatically via Cloudflare
+5. **Provisions HTTPS** via Let's Encrypt
+6. **Manages secrets** encrypted at rest
+
+## Architecture
+
+```
+Developer
+    │
+    ├── atlas deploy
+    ├── atlas logs
+    ├── atlas env set
+    │
+    ▼
+Control Panel API  ←── the brain
+    │
+    ├──► Server 1 (K3s + Traefik + your app)
+    ├──► Server 2
+    └──► Server N
+           │
+           ▼
+       Cloudflare (DNS + Proxy)
+```
+
+The **Control Panel** is the central brain. The CLI and future Web UI are just clients. Every action flows through the Panel API.
+
+## Next Steps
+
+<Cards>
+  <Card title="Installation" href="/docs/getting-started/installation" />
+  <Card title="Quick Start" href="/docs/getting-started/quick-start" />
+  <Card title="CLI Commands" href="/docs/cli" />
+</Cards>

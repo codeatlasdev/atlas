@@ -1,0 +1,45 @@
+---
+title: Installation
+description: Install Atlas CLI on your machine
+---
+
+## Quick Install
+
+```bash
+curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
+```
+
+This downloads the latest binary for your platform and installs it to `~/.atlas/bin`.
+
+Supported platforms:
+- Linux x64
+- Linux ARM64
+- macOS x64 (Intel)
+- macOS ARM64 (Apple Silicon)
+
+After installation, verify it works:
+
+```bash
+atlas --help
+```
+
+## Build from Source
+
+Requires [Bun](https://bun.sh) v1.0+.
+
+```bash
+git clone https://github.com/codeatlasdev/atlas.git
+cd atlas
+bun install
+bun run build
+```
+
+The binary will be at `dist/atlas`.
+
+## Update
+
+Run the install script again to get the latest version:
+
+```bash
+curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
+```

@@ -1,0 +1,4 @@
+{
+  "title": "Control Panel",
+  "pages": ["index", "api-reference", "self-hosting"]
+}

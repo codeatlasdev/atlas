@@ -1,0 +1,40 @@
+---
+title: CLI Overview
+description: All Atlas CLI commands at a glance
+icon: Terminal
+---
+
+The Atlas CLI is the primary interface for interacting with your infrastructure.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `atlas login` | Authenticate with GitHub |
+| `atlas deploy` | Build, push, and deploy to cluster |
+| `atlas status` | Cluster overview |
+| `atlas logs [service] -f` | Stream logs in real-time |
+| `atlas env list\|set\|pull` | Manage secrets |
+| `atlas exec [service]` | Shell into a container |
+| `atlas restart [service\|all]` | Rolling restart |
+| `atlas scale [service] -r N` | Scale replicas |
+| `atlas preview start\|stop\|list` | Ephemeral preview environments |
+| `atlas db migrate\|psql\|backup` | Database management |
+
+## Panel Commands
+
+| Command | Description |
+|---------|-------------|
+| `atlas panel setup` | Connect CLI to Control Panel |
+| `atlas panel status` | Show servers and projects |
+| `atlas panel config` | Configure GitHub App, Cloudflare |
+| `atlas panel server add` | Add and provision a server |
+| `atlas panel server list` | List servers with status |
+
+## Global Flags
+
+All commands support:
+
+```bash
+--help    # Show help for any command
+```

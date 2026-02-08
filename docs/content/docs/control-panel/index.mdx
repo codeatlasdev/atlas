@@ -1,0 +1,49 @@
+---
+title: Control Panel
+description: The central API that powers Atlas
+icon: Server
+---
+
+The Control Panel is the brain of Atlas. Every action — deploy, DNS, secrets, logs, provisioning — flows through this API.
+
+## What It Does
+
+- **Deploys** applications via `kubectl set image` + rollout
+- **Manages DNS** automatically via Cloudflare API
+- **Encrypts secrets** with AES-256-GCM and syncs to Kubernetes
+- **Streams logs** via SSE from `kubectl logs`
+- **Provisions servers** with K3s + full monitoring stack
+- **Authenticates** users via GitHub OAuth + JWT
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Runtime | Bun |
+| Framework | Elysia |
+| Database | PostgreSQL |
+| ORM | Drizzle |
+| Auth | JWT (HMAC-SHA256) + GitHub OAuth |
+| Encryption | AES-256-GCM via Web Crypto API |
+
+## Database Schema
+
+The Panel uses 9 tables with 4 enums:
+
+- `organizations` — multi-tenant, stores Cloudflare + GitHub App credentials
+- `users` — linked to org, with role (admin/dev/viewer)
+- `servers` — SSH host, status, provisioning state
+- `projects` — name, domain, linked to org + server
+- `services` — individual services within a project
+- `deploys` — deploy history with status tracking
+- `secrets` — encrypted key-value pairs per project
+
+## RBAC
+
+Three roles with hierarchical permissions:
+
+| Role | Permissions |
+|------|------------|
+| `admin` | Everything |
+| `dev` | Deploy, secrets, logs |
+| `viewer` | Read-only |

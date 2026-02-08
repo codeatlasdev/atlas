@@ -1,0 +1,43 @@
+---
+title: atlas logs
+description: Stream application logs in real-time
+icon: ScrollText
+---
+
+Stream logs from your running services.
+
+## Usage
+
+```bash
+atlas logs [service] -f
+```
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `-f, --follow` | Stream logs continuously |
+| `--tail N` | Number of recent lines (default: 100) |
+| `--service NAME` | Target a specific service |
+
+## Examples
+
+```bash
+# Stream all logs
+atlas logs -f
+
+# Last 50 lines from the API service
+atlas logs api --tail 50
+
+# Follow logs from a specific service
+atlas logs worker -f
+```
+
+## How It Works
+
+Logs are streamed via **Server-Sent Events (SSE)** from the Control Panel API:
+
+1. CLI calls `GET /logs/project/:id?service=X`
+2. Panel SSHs into the server
+3. Runs `kubectl logs` with the appropriate flags
+4. Streams output back to the CLI in real-time

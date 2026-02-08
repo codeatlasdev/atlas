@@ -1,0 +1,34 @@
+---
+title: atlas login
+description: Authenticate with GitHub OAuth
+icon: LogIn
+---
+
+Authenticate the CLI with your Atlas Control Panel via GitHub OAuth.
+
+## Usage
+
+```bash
+atlas login
+```
+
+## What Happens
+
+1. Opens your browser to GitHub's OAuth authorization page
+2. After you authorize, GitHub redirects to a local callback server
+3. The CLI exchanges the code for a JWT token
+4. Token is stored locally in `~/.atlas/config.json`
+
+## Token Storage
+
+Credentials are saved at:
+
+```
+~/.atlas/config.json
+```
+
+The token is a JWT with 30-day expiry, signed with HMAC-SHA256.
+
+## Re-authentication
+
+Run `atlas login` again to refresh your token. The old token is overwritten.

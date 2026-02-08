@@ -1,0 +1,85 @@
+---
+title: Quick Start
+description: Go from zero to production in 5 minutes
+---
+
+This guide takes you from a fresh install to a live application.
+
+## Prerequisites
+
+- Atlas CLI [installed](/docs/getting-started/installation)
+- A VPS with SSH access (any provider — Hetzner, DigitalOcean, AWS, etc.)
+- A domain with Cloudflare DNS
+
+## 1. Authenticate
+
+```bash
+atlas login
+```
+
+This opens your browser for GitHub OAuth. After authenticating, the CLI stores your token locally.
+
+## 2. Set Up the Control Panel
+
+The Control Panel is the brain of Atlas. It manages deployments, DNS, secrets, and servers.
+
+```bash
+atlas panel setup
+```
+
+Follow the prompts to connect to your Panel API.
+
+## 3. Configure Integrations
+
+```bash
+atlas panel config
+```
+
+This interactive menu lets you configure:
+- **GitHub App** — for container registry access (automatic via Manifest flow)
+- **Cloudflare** — for DNS automation
+
+## 4. Provision a Server
+
+Point Atlas at any fresh Linux server:
+
+```bash
+atlas panel server add --host root@your-server.com --name production
+```
+
+Atlas will SSH into the server and install:
+
+| Component | Purpose |
+|-----------|---------|
+| K3s | Lightweight Kubernetes |
+| Traefik v3 | Ingress + HTTPS redirect |
+| cert-manager | Let's Encrypt certificates |
+| Prometheus + Grafana | Metrics + dashboards |
+| Loki + Alloy | Centralized logs |
+| ArgoCD | GitOps deployment |
+
+## 5. Deploy
+
+Navigate to your project and deploy:
+
+```bash
+cd your-project
+atlas deploy
+```
+
+Atlas will:
+1. Build a Docker image
+2. Push to GitHub Container Registry
+3. Deploy to your cluster
+4. Configure DNS via Cloudflare
+5. Provision HTTPS via Let's Encrypt
+
+Your app is live. 🎉
+
+## What's Next
+
+<Cards>
+  <Card title="CLI Commands" href="/docs/cli" />
+  <Card title="Control Panel" href="/docs/control-panel" />
+  <Card title="Architecture" href="/docs/architecture" />
+</Cards>

@@ -1,0 +1,45 @@
+---
+title: atlas deploy
+description: Build, push, and deploy your application
+icon: Rocket
+---
+
+Deploy your application to the cluster with a single command.
+
+## Usage
+
+```bash
+atlas deploy
+```
+
+## What Happens
+
+1. **Build** — Creates a Docker image from your project
+2. **Push** — Uploads to GitHub Container Registry (GHCR)
+3. **Deploy** — Triggers the Control Panel API to update the cluster
+4. **DNS** — Configures Cloudflare DNS records automatically
+5. **HTTPS** — cert-manager provisions Let's Encrypt certificates
+
+## Options
+
+```bash
+atlas deploy --host root@server    # Legacy: deploy via SSH directly
+```
+
+## How It Works
+
+When you run `atlas deploy`, the CLI:
+
+1. Reads your `atlas.yaml` to determine services
+2. Builds Docker images for each service
+3. Pushes images to `ghcr.io/your-org/your-project`
+4. Calls `POST /deploys/project/:id` on the Control Panel
+5. The Panel SSHs into the server and runs `kubectl set image`
+6. Waits for rollout to complete
+7. Creates/updates DNS records via Cloudflare API
+
+## Requirements
+
+- `atlas.yaml` in your project root
+- Authenticated via `atlas login`
+- Control Panel configured via `atlas panel setup`

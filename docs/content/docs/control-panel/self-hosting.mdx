@@ -1,0 +1,81 @@
+---
+title: Self-Hosting
+description: Deploy the Control Panel to your own cluster
+icon: HardDrive
+---
+
+The Control Panel runs on your own infrastructure — no external dependencies.
+
+## Requirements
+
+- A server with K3s installed (via `atlas infra setup`)
+- PostgreSQL (included in the K8s manifests)
+- Domain pointing to your server via Cloudflare
+
+## Deploy
+
+The Panel is deployed as a Kubernetes Deployment with a PostgreSQL StatefulSet.
+
+### 1. Build the image
+
+```bash
+cd panel/api
+docker build -t ghcr.io/your-org/atlas/panel:latest .
+docker push ghcr.io/your-org/atlas/panel:latest
+```
+
+### 2. Create secrets
+
+```bash
+kubectl -n atlas create secret generic atlas-secrets \
+  --from-literal=DATABASE_URL="postgresql://atlas:your-password@postgres:5432/atlas" \
+  --from-literal=JWT_SECRET="your-jwt-secret" \
+  --from-literal=ENCRYPTION_KEY="your-32-byte-hex-key" \
+  --from-literal=POSTGRES_PASSWORD="your-password"
+```
+
+### 3. Apply manifests
+
+```bash
+kubectl apply -f panel/k8s/all.yaml
+```
+
+This creates:
+- `atlas` namespace
+- PostgreSQL StatefulSet with persistent volume
+- Panel Deployment
+- Service + Ingress with TLS
+
+### 4. Run migrations
+
+```bash
+kubectl -n atlas exec deploy/panel -- bunx drizzle-kit push
+```
+
+### 5. Seed the database
+
+```bash
+kubectl -n atlas exec deploy/panel -- bun run src/seed.ts
+```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Secret for signing JWT tokens |
+| `ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM |
+| `PORT` | API port (default: 3100) |
+
+## Architecture
+
+```
+atlas namespace
+├── postgres (StatefulSet)
+│   └── PVC: 10Gi
+├── panel (Deployment)
+│   └── Port: 3100
+├── service/panel
+└── ingress (Traefik + cert-manager)
+    └── TLS via Let's Encrypt
+```

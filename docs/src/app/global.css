@@ -1,0 +1,8 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+:root {
+  --color-fd-primary: #6366f1;
+  --color-fd-primary-foreground: #fff;
+}

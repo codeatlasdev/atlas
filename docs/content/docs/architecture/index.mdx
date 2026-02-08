@@ -1,0 +1,89 @@
+---
+title: Architecture
+description: How Atlas is built and how the pieces fit together
+icon: Blocks
+---
+
+## Overview
+
+Atlas follows a **hub-and-spoke** architecture. The Control Panel is the hub — CLI and Web UI are spokes.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                     Developer                       │
+│                                                     │
+│   atlas deploy  ──────►  Control Panel API          │
+│   atlas logs              (the brain)               │
+│   atlas env set               │                     │
+│   atlas login                 │                     │
+└───────────────────────────────┼─────────────────────┘
+                                │
+                 ┌──────────────┼──────────────┐
+                 ▼              ▼              ▼
+           ┌──────────┐  ┌──────────┐  ┌──────────┐
+           │ Server 1 │  │ Server 2 │  │ Server N │
+           │   K3s    │  │   K3s    │  │   K3s    │
+           │ Traefik  │  │ Traefik  │  │ Traefik  │
+           │ Your App │  │ Your App │  │ Your App │
+           └──────────┘  └──────────┘  └──────────┘
+                 │              │              │
+                 └──────────────┼──────────────┘
+                                │
+                         ┌──────┴──────┐
+                         │ Cloudflare  │
+                         │ DNS + Proxy │
+                         └─────────────┘
+```
+
+## Server Stack
+
+Each server provisioned by Atlas includes:
+
+| Layer | Component | Purpose |
+|-------|-----------|---------|
+| Orchestration | K3s | Lightweight Kubernetes |
+| Ingress | Traefik v3 | HTTP routing + HTTPS redirect |
+| Certificates | cert-manager | Let's Encrypt automation |
+| Metrics | Prometheus + Grafana | Monitoring dashboards |
+| Logs | Loki + Alloy | Centralized log aggregation |
+| GitOps | ArgoCD | Continuous deployment |
+
+## Deploy Pipeline
+
+```
+atlas deploy
+    │
+    ├── 1. Build Docker image
+    ├── 2. Push to GHCR
+    ├── 3. POST /deploys/project/:id
+    │       │
+    │       ├── 4. SSH → kubectl set image
+    │       ├── 5. kubectl rollout status
+    │       ├── 6. Cloudflare → ensureDNS
+    │       └── 7. Return success
+    │
+    └── ✓ Live
+```
+
+## Security Model
+
+| Layer | Mechanism |
+|-------|-----------|
+| Authentication | GitHub OAuth → JWT (HMAC-SHA256, 30-day expiry) |
+| Authorization | RBAC with 3 roles: admin, dev, viewer |
+| Secrets | AES-256-GCM encryption at rest |
+| Transport | HTTPS everywhere (Traefik + cert-manager) |
+| DNS | Cloudflare proxy (DDoS protection, SSL termination) |
+| K8s access | SSH tunnel (no exposed API server) |
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| CLI | Bun + citty + @clack/prompts |
+| Panel API | Elysia + Drizzle ORM + PostgreSQL |
+| Encryption | AES-256-GCM via Web Crypto API |
+| Container Runtime | K3s |
+| Ingress | Traefik v3 |
+| DNS | Cloudflare API |
+| Registry | GitHub Container Registry |

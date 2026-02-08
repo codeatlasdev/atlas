@@ -1,0 +1,55 @@
+---
+title: atlas panel
+description: Manage the Control Panel
+icon: LayoutDashboard
+---
+
+The `atlas panel` commands manage your Control Panel — the central API that orchestrates everything.
+
+## Setup
+
+Connect the CLI to your Control Panel:
+
+```bash
+atlas panel setup
+```
+
+You'll be prompted for the Panel API URL (e.g., `https://panel.yourdomain.com`).
+
+## Status
+
+View servers and projects managed by the Panel:
+
+```bash
+atlas panel status
+```
+
+## Config
+
+Interactive configuration for integrations:
+
+```bash
+atlas panel config
+```
+
+Options:
+- **GitHub App** — Creates a GitHub App via the Manifest flow (opens browser, automatic)
+- **Cloudflare** — Set your Cloudflare API token for DNS automation
+
+## Server Management
+
+### Add a server
+
+```bash
+atlas panel server add --host root@your-server.com --name production
+```
+
+This registers the server with the Panel and optionally provisions it with the full stack (K3s, Traefik, cert-manager, monitoring).
+
+### List servers
+
+```bash
+atlas panel server list
+```
+
+Shows all registered servers with their status, resources, and health.

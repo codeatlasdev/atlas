@@ -1,15 +1,17 @@
 <div align="center">
 
-# ⚡ Atlas
+<img src="assets/logo.svg" alt="Atlas" width="80" />
+
+# Atlas
 
 **Your own Heroku. Any server. One command. Everything running.**
 
 An open-source Internal Developer Platform that turns any Linux server into a production-ready cluster. Developers write code — Atlas handles the rest.
 
-[![Release](https://img.shields.io/github/v/release/codeatlasdev/atlas?style=flat-square&color=6366f1&labelColor=1a1a2e)](https://github.com/codeatlasdev/atlas/releases)
+[![Release](https://img.shields.io/github/v/release/codeatlasdev/atlas?style=flat-square&color=325CEB&labelColor=1a1a2e)](https://github.com/codeatlasdev/atlas/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square&labelColor=1a1a2e)](LICENSE)
 
-[Install](#install) · [Quick Start](#quick-start) · [How It Works](#how-it-works) · [Commands](#commands) · [Roadmap](#roadmap)
+[Documentation](https://atlas.codeatlas.com.br) · [Install](#install) · [Quick Start](#quick-start) · [Roadmap](#roadmap)
 
 </div>
 
@@ -31,8 +33,6 @@ cd atlas && bun install && bun run build
 ## What is Atlas?
 
 Atlas is an IDP (Internal Developer Platform) for teams that want the Heroku/Vercel experience on their own infrastructure. Point it at any VPS — Hetzner, DigitalOcean, AWS, bare metal — and Atlas provisions a full production stack automatically.
-
-**The developer experience:**
 
 ```bash
 atlas deploy     # that's it. DNS, HTTPS, scaling — all automatic.
@@ -69,19 +69,14 @@ Atlas reads an `atlas.yaml` in your project root and handles everything:
 
 ```yaml
 name: myapp
-org: myorg
-domain: myapp.com
-
 services:
-  server:
+  api:
     type: api
     port: 3001
     domain: api.myapp.com
   web:
     type: web
     domain: myapp.com
-  worker:
-    type: worker
 
 infra:
   postgres: true
@@ -128,7 +123,6 @@ One command turns a fresh Linux server into a production cluster:
               │ Server 1 │  │ Server 2 │  │ Server N │
               │   K3s    │  │   K3s    │  │   K3s    │
               │ Traefik  │  │ Traefik  │  │ Traefik  │
-              │ cert-mgr │  │ cert-mgr │  │ cert-mgr │
               │ Your App │  │ Your App │  │ Your App │
               └──────────┘  └──────────┘  └──────────┘
                     │              │              │
@@ -139,8 +133,6 @@ One command turns a fresh Linux server into a production cluster:
                             │ DNS + Proxy │
                             └─────────────┘
 ```
-
-The **Control Panel** is the central brain. The CLI and future Web UI are just clients. Every action flows through the Panel API — deploy, DNS, secrets, logs, provisioning.
 
 ## Commands
 
@@ -168,20 +160,6 @@ atlas panel server add          Add and provision a server
 atlas panel server list         List servers with status
 ```
 
-## Control Panel API
-
-The Panel API powers everything. It's an Elysia server with PostgreSQL, deployed to your own cluster.
-
-| Route | Description |
-|-------|-------------|
-| `POST /deploys/project/:id` | Trigger deploy (kubectl + DNS) |
-| `GET /logs/project/:id` | Stream logs via SSE |
-| `PUT /secrets/project/:id` | Set secrets (AES-256-GCM encrypted) |
-| `GET /secrets/project/:id/values` | Pull decrypted secrets |
-| `POST /servers` | Add server (with optional provisioning) |
-| `PATCH /org/settings` | Configure Cloudflare, GitHub App |
-| `GET /auth/github` | OAuth login flow |
-
 ## Tech Stack
 
 | Layer | Technology |
@@ -197,6 +175,7 @@ The Panel API powers everything. It's an Elysia server with PostgreSQL, deployed
 | Monitoring | Prometheus + Grafana |
 | Logs | Loki + Alloy |
 | Registry | GitHub Container Registry |
+| Docs | Fumadocs + Next.js |
 
 ## Roadmap
 
@@ -206,11 +185,16 @@ The Panel API powers everything. It's an Elysia server with PostgreSQL, deployed
 - [x] **Secrets management** — encrypted at rest + K8s sync
 - [x] **Server provisioner** — K3s + full monitoring stack
 - [x] **Logs streaming** — SSE via kubectl
+- [x] **Documentation** — Fumadocs site
 - [ ] **@atlas/env** — Type-safe environment variables from `atlas.yaml`
 - [ ] **atlas dev** — Local development (reads atlas.yaml → docker-compose)
 - [ ] **SDK packages** — @atlas/db, @atlas/cache, @atlas/log
 - [ ] **Web UI** — Control Panel dashboard
 - [ ] **atlas create** — Full project scaffolding + first deploy
+
+## Documentation
+
+Full documentation at **[atlas.codeatlas.com.br](https://atlas.codeatlas.com.br)**
 
 ## Development
 
@@ -229,6 +213,9 @@ bun run dev -- deploy
 cd panel && docker compose up -d    # PostgreSQL
 cd panel/api && bun run src/seed.ts # Create org + admin
 bun run dev:panel                   # Start API on :3100
+
+# Run docs
+cd docs && bun install && bun run dev
 ```
 
 ## License

@@ -1,4 +1,5 @@
 import { HomeLayout } from 'fumadocs-ui/layouts/home';
+import { Logo } from '@/components/logo';
 import type { ReactNode } from 'react';
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -7,7 +8,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       nav={{
         title: (
           <span className="flex items-center gap-2 font-bold">
-            <span className="text-lg">⚡</span> Atlas
+            <Logo size={22} /> Atlas
           </span>
         ),
       }}

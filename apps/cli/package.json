@@ -1,0 +1,31 @@
+{
+	"name": "cli",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"bin": { "atlas": "./src/index.ts" },
+	"scripts": {
+		"dev": "bun run src/index.ts",
+		"build": "bun run build.ts",
+		"check-types": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@atlas/api": "workspace:*",
+		"@atlas/cloudflare": "workspace:*",
+		"@atlas/provisioner": "workspace:*",
+		"@atlas/ssh": "workspace:*",
+		"@opentui/core": "catalog:",
+		"@orpc/client": "catalog:",
+		"@orpc/server": "catalog:",
+		"@clack/prompts": "catalog:",
+		"citty": "catalog:",
+		"consola": "catalog:",
+		"picocolors": "catalog:",
+		"yaml": "catalog:"
+	},
+	"devDependencies": {
+		"@atlas/config": "workspace:*",
+		"@types/bun": "catalog:",
+		"typescript": "catalog:"
+	}
+}

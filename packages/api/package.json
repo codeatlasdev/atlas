@@ -1,0 +1,15 @@
+{
+	"name": "@atlas/api",
+	"private": true,
+	"type": "module",
+	"exports": { ".": "./src/index.ts" },
+	"dependencies": {
+		"@orpc/server": "catalog:",
+		"@orpc/zod": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@atlas/config": "workspace:*",
+		"typescript": "catalog:"
+	}
+}

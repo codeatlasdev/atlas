@@ -23,13 +23,6 @@ An open-source Internal Developer Platform that turns any Linux server into a pr
 curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
 ```
 
-Or build from source:
-
-```bash
-git clone https://github.com/codeatlasdev/atlas.git
-cd atlas && bun install && bun run build
-```
-
 ## What is Atlas?
 
 Atlas is an IDP (Internal Developer Platform) for teams that want the Heroku/Vercel experience on their own infrastructure. Point it at any VPS — Hetzner, DigitalOcean, AWS, bare metal — and Atlas provisions a full production stack automatically.
@@ -38,136 +31,48 @@ Atlas is an IDP (Internal Developer Platform) for teams that want the Heroku/Ver
 atlas deploy     # that's it. DNS, HTTPS, scaling — all automatic.
 ```
 
-**What the developer never touches:**
-- Kubernetes manifests
-- Dockerfiles
-- DNS records
-- SSL certificates
-- Secrets management
-- Server provisioning
-- CI/CD pipelines
-
 ## Quick Start
 
 ```bash
-# 1. Authenticate
-atlas login
-
-# 2. Provision a server (any VPS, any provider)
-atlas infra setup --host root@your-server.com --domain myapp.com
-
-# 3. Deploy
-cd your-project
-atlas deploy
-
-# 4. Done — your app is live at https://myapp.com
+atlas login                          # Authenticate with GitHub
+atlas infra setup --host root@vps    # Provision a server
+cd your-project && atlas deploy      # Deploy — done
 ```
-
-## How It Works
-
-Atlas reads an `atlas.yaml` in your project root and handles everything:
-
-```yaml
-name: myapp
-services:
-  api:
-    type: api
-    port: 3001
-    domain: api.myapp.com
-  web:
-    type: web
-    domain: myapp.com
-
-infra:
-  postgres: true
-  redis: true
-```
-
-From this single file, Atlas:
-
-1. **Builds** Docker images for each service
-2. **Pushes** to your container registry (GHCR)
-3. **Deploys** to your Kubernetes cluster via the Control Panel
-4. **Configures DNS** automatically via Cloudflare
-5. **Provisions HTTPS** via Let's Encrypt
-6. **Manages secrets** encrypted at rest, synced to the cluster
-
-## What `atlas infra setup` installs
-
-One command turns a fresh Linux server into a production cluster:
-
-| Component | Purpose |
-|-----------|---------|
-| **K3s** | Lightweight Kubernetes |
-| **Traefik v3** | Ingress + automatic HTTPS redirect |
-| **cert-manager** | Let's Encrypt certificates |
-| **Prometheus + Grafana** | Metrics + dashboards |
-| **Loki + Alloy** | Centralized logs |
-| **ArgoCD** | GitOps continuous deployment |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Developer                            │
-│                                                             │
-│   atlas deploy  ─────────►  Control Panel API               │
-│   atlas logs                (the brain)                     │
-│   atlas env set                  │                          │
-│   atlas login                    │                          │
-└──────────────────────────────────┼──────────────────────────┘
-                                   │
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼              ▼
-              ┌──────────┐  ┌──────────┐  ┌──────────┐
-              │ Server 1 │  │ Server 2 │  │ Server N │
-              │   K3s    │  │   K3s    │  │   K3s    │
-              │ Traefik  │  │ Traefik  │  │ Traefik  │
-              │ Your App │  │ Your App │  │ Your App │
-              └──────────┘  └──────────┘  └──────────┘
-                    │              │              │
-                    └──────────────┼──────────────┘
-                                   │
-                            ┌──────┴──────┐
-                            │ Cloudflare  │
-                            │ DNS + Proxy │
-                            └─────────────┘
-```
-
-## Commands
-
-```
-atlas login                     Authenticate with GitHub
-atlas infra setup               Provision a fresh server
-atlas deploy                    Build → push → deploy to cluster
-atlas status                    Cluster overview
-atlas logs [service] -f         Stream logs in real-time
-atlas env list|set|pull         Manage secrets
-atlas exec [service]            Shell into a container
-atlas restart [service|all]     Rolling restart
-atlas scale [service] -r N      Scale replicas
-atlas preview start|stop|list   Ephemeral preview environments
-atlas db migrate|psql|backup    Database management
-```
-
-### Control Panel
-
-```
-atlas panel setup               Connect CLI to Control Panel
-atlas panel status              Show servers and projects
-atlas panel config              Configure GitHub App, Cloudflare (interactive)
-atlas panel server add          Add and provision a server
-atlas panel server list         List servers with status
+atlas/
+├── apps/
+│   ├── cli/              CLI (OpenTUI + citty)
+│   ├── panel/            Control Panel API (Elysia + oRPC)
+│   └── docs/             Documentation (Fumadocs)
+├── packages/
+│   ├── api/              oRPC router definitions (shared types)
+│   ├── auth/             JWT auth (sign/verify/guard)
+│   ├── cloudflare/       Cloudflare API client (DNS + Tunnels)
+│   ├── config/           Shared tsconfig
+│   ├── crypto/           AES-256-GCM encryption
+│   ├── db/               Drizzle ORM schema + migrations
+│   ├── env/              Type-safe environment variables (zod)
+│   ├── kubernetes/       kubectl abstraction via SSH
+│   ├── provisioner/      Server provisioning phases
+│   └── ssh/              SSH client with ControlMaster
+├── turbo.json
+└── package.json
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| CLI | Bun + citty + @clack/prompts |
-| Panel API | Elysia + Drizzle ORM + PostgreSQL |
-| Encryption | AES-256-GCM via Web Crypto API |
+| Monorepo | Bun + Turborepo |
+| CLI | citty + OpenTUI |
+| Panel API | Elysia + oRPC |
+| Database | Drizzle ORM + PostgreSQL |
 | Auth | JWT (HMAC-SHA256) + GitHub OAuth |
+| Encryption | AES-256-GCM via Web Crypto API |
+| Env | Zod-validated type-safe env |
 | Container Runtime | K3s (lightweight Kubernetes) |
 | Ingress | Traefik v3 |
 | Certificates | cert-manager + Let's Encrypt |
@@ -175,47 +80,44 @@ atlas panel server list         List servers with status
 | Monitoring | Prometheus + Grafana |
 | Logs | Loki + Alloy |
 | Registry | GitHub Container Registry |
-| Docs | Fumadocs + Next.js |
+| Lint | Biome |
+| Git Hooks | lefthook |
 
-## Roadmap
+## Commands
 
-- [x] **Control Panel API** — deploy, DNS, secrets, logs, provisioning
-- [x] **CLI** — deploy, panel, login, env commands
-- [x] **DNS automation** — Cloudflare integration
-- [x] **Secrets management** — encrypted at rest + K8s sync
-- [x] **Server provisioner** — K3s + full monitoring stack
-- [x] **Logs streaming** — SSE via kubectl
-- [x] **Documentation** — Fumadocs site
-- [ ] **@atlas/env** — Type-safe environment variables from `atlas.yaml`
-- [ ] **atlas dev** — Local development (reads atlas.yaml → docker-compose)
-- [ ] **SDK packages** — @atlas/db, @atlas/cache, @atlas/log
-- [ ] **Web UI** — Control Panel dashboard
-- [ ] **atlas create** — Full project scaffolding + first deploy
-
-## Documentation
-
-Full documentation at **[atlas.codeatlas.com.br](https://atlas.codeatlas.com.br)**
+```
+atlas login                     Authenticate with GitHub
+atlas infra setup               Provision a fresh server
+atlas deploy                    Build → push → deploy to cluster
+atlas status                    Cluster overview (TUI dashboard)
+atlas logs [service] -f         Stream logs in real-time
+atlas env list|set|pull         Manage secrets
+atlas exec [service]            Shell into a container
+atlas restart [service|all]     Rolling restart
+atlas scale [service] -r N      Scale replicas
+atlas preview start|stop|list   Ephemeral preview environments
+atlas db migrate|psql|backup    Database management
+atlas panel setup|status|config Control Panel management
+```
 
 ## Development
 
 ```bash
-# Clone
 git clone https://github.com/codeatlasdev/atlas.git
-cd atlas
+cd atlas && bun install
 
-# Install dependencies
-bun install
+# Run everything
+bun run dev
 
-# Run CLI in dev mode
-bun run dev -- deploy
+# Or individually
+bun run dev:cli                 # CLI in dev mode
+bun run dev:panel               # Panel API on :3100
+bun run dev:docs                # Docs site
 
-# Run Control Panel API
-cd panel && docker compose up -d    # PostgreSQL
-cd panel/api && bun run src/seed.ts # Create org + admin
-bun run dev:panel                   # Start API on :3100
-
-# Run docs
-cd docs && bun install && bun run dev
+# Database
+bun run db:start                # Start PostgreSQL (Docker)
+bun run db:push                 # Push schema
+bun run db:studio               # Drizzle Studio
 ```
 
 ## License

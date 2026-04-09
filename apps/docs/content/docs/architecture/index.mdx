@@ -59,14 +59,12 @@ Each server provisioned by Atlas includes:
 ## Deploy pipeline
 
 ```mermaid
-graph LR
-    A[atlas deploy] --> B[Build images]
+graph TD
+    A[atlas deploy] --> B[Build]
     B --> C[Push to GHCR]
-    C --> D[Panel API]
-    D --> E[runtime.deploy]
-    E --> F[runtime.rolloutStatus]
-    F --> G[Cloudflare DNS]
-    G --> H[✓ Live]
+    C --> D[Deploy to cluster]
+    D --> E[Configure DNS]
+    E --> F[✓ Live]
 ```
 
 The `runtime` abstraction means the same deploy flow works for both K3s and Swarm.

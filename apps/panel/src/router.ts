@@ -136,17 +136,19 @@ const serversProcedures = {
 				})
 				.returning();
 
+			if (!server) throw new ORPCError("INTERNAL_SERVER_ERROR");
+
 			await db.insert(auditLog).values({
 				orgId: context.auth.orgId,
 				userId: context.auth.userId,
 				action: "server.create",
 				resourceType: "server",
-				resourceId: server!.id,
+				resourceId: server.id,
 			});
 
 			if (input.provision && input.domain) {
 				provisionServer({
-					serverId: server!.id,
+					serverId: server.id,
 					host: input.host,
 					domain: input.domain,
 					runtime: input.runtime,
@@ -154,7 +156,7 @@ const serversProcedures = {
 				}).catch(console.error);
 			}
 
-			return server!;
+			return server;
 		}),
 	delete: authed
 		.use(({ context, next }) => {
@@ -223,7 +225,8 @@ const projectsProcedures = {
 					atlasYaml: input.atlasYaml,
 				})
 				.returning();
-			return project!;
+			if (!project) throw new ORPCError("INTERNAL_SERVER_ERROR");
+			return project;
 		}),
 };
 
@@ -275,17 +278,19 @@ const deploysProcedures = {
 				})
 				.returning();
 
+			if (!deploy) throw new ORPCError("INTERNAL_SERVER_ERROR");
+
 			await db.insert(auditLog).values({
 				orgId: context.auth.orgId,
 				userId: context.auth.userId,
 				action: "deploy.trigger",
 				resourceType: "deploy",
-				resourceId: deploy!.id,
+				resourceId: deploy.id,
 				meta: { project: project.slug, tag: input.tag },
 			});
 
-			executeDeploy(deploy!.id).catch(console.error);
-			return deploy!;
+			executeDeploy(deploy.id).catch(console.error);
+			return deploy;
 		}),
 	get: authed
 		.input((await import("zod")).z.object({ id: (await import("zod")).z.number() }))
@@ -330,11 +335,11 @@ const secretsProcedures = {
 					.where(and(eq(secrets.projectId, input.projectId), eq(secrets.key, key)))
 					.limit(1);
 
-				if (existing.length > 0) {
+				if (existing.length > 0 && existing[0]) {
 					await db
 						.update(secrets)
 						.set({ valueEnc, updatedAt: new Date() })
-						.where(eq(secrets.id, existing[0]!.id));
+						.where(eq(secrets.id, existing[0].id));
 				} else {
 					await db.insert(secrets).values({ projectId: input.projectId, key, valueEnc });
 				}

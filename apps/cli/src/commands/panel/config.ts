@@ -63,7 +63,7 @@ async function configureGitHubApp(panel: PanelClient) {
 			name: `Atlas (${org.githubOrg})`,
 			url: panelUrl,
 			hook_attributes: { url: `${panelUrl}/webhooks/github`, active: false },
-			redirect_url: `REDIRECT_PLACEHOLDER`,
+			redirect_url: "REDIRECT_PLACEHOLDER",
 			callback_urls: [`${panelUrl}/auth/github/callback`],
 			public: false,
 			default_permissions: { members: "read", emails: "read" },
@@ -131,7 +131,7 @@ async function configureGitHubApp(panel: PanelClient) {
 		});
 
 		const setupUrl = `http://localhost:${server.port}/`;
-		spinner.stop(`Opening browser...`);
+		spinner.stop("Opening browser...");
 		Bun.spawn(["xdg-open", setupUrl], { stdout: "ignore", stderr: "ignore" });
 		spinner.start("Waiting for GitHub App creation...");
 	});

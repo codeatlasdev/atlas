@@ -114,7 +114,8 @@ export async function handleGitHubCallback(code: string) {
 			})
 			.where(eq(users.githubId, ghUser.id))
 			.returning();
-		user = updated!;
+		if (!updated) throw new Error("Failed to update user");
+		user = updated;
 	} else {
 		// First user in org becomes admin
 		const orgUsers = await db.select().from(users).where(eq(users.orgId, matchedOrg.id)).limit(1);
@@ -131,7 +132,8 @@ export async function handleGitHubCallback(code: string) {
 				orgId: matchedOrg.id,
 			})
 			.returning();
-		user = created!;
+		if (!created) throw new Error("Failed to create user");
+		user = created;
 	}
 
 	return { user, org: matchedOrg };

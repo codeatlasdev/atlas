@@ -13,6 +13,7 @@ export async function Mermaid({ chart }: { chart: string }) {
 		return (
 			<div
 				style={{ maxWidth: "100%", overflowX: "auto" }}
+				// biome-ignore lint/security/noDangerouslySetInnerHtml: mermaid SVG is generated server-side
 				dangerouslySetInnerHTML={{ __html: svg }}
 			/>
 		);

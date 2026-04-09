@@ -90,8 +90,8 @@ export class CloudflareClient {
 			`/zones/${zone.id}/dns_records?name=${hostname}&type=${type}`,
 		);
 
-		if (existing.length > 0) {
-			const record = existing[0]!;
+		if (existing.length > 0 && existing[0]) {
+			const record = existing[0];
 			if (record.content === target) return { action: "exists", recordId: record.id };
 			const updated = await this.req<DNSRecord>(`/zones/${zone.id}/dns_records/${record.id}`, {
 				method: "PATCH",

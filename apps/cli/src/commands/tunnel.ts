@@ -55,7 +55,7 @@ export default defineCommand({
 			if (!entry) entry = entries.find(([, s]) => s.port);
 			if (entry) {
 				serviceName = entry[0];
-				port = entry[1].port!;
+				port = entry[1].port ?? 0;
 			}
 		}
 

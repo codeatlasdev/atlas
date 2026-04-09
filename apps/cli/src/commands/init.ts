@@ -49,7 +49,7 @@ export default app
 						name: `@${orgPrefix}/${name}`,
 						version: "0.0.1",
 						scripts: {
-							dev: `vite --port 3010`,
+							dev: "vite --port 3010",
 							build: "vite build",
 							preview: "vite preview",
 						},

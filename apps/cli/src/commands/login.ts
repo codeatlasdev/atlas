@@ -95,7 +95,7 @@ export default defineCommand({
 				});
 
 				const authUrl = `${config.panelUrl}/auth/github?cli_port=${server.port}`;
-				log.stop(`Opening browser...`);
+				log.stop("Opening browser...");
 				Bun.spawn(["xdg-open", authUrl], { stdout: "ignore", stderr: "ignore" });
 				log.start("Waiting for GitHub authorization...");
 			});

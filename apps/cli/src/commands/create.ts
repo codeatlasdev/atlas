@@ -88,8 +88,10 @@ export default defineCommand({
 				health: "/health",
 				domain: `api.${domain}`,
 			};
-			project.infra!.postgres = true;
-			project.infra!.redis = true;
+			if (project.infra) {
+				project.infra.postgres = true;
+				project.infra.redis = true;
+			}
 
 			// package.json
 			await Bun.write(
@@ -162,7 +164,7 @@ CMD ["bun", "src/index.ts"]
 			}
 		}
 
-		project.infra!.tunnel = true;
+		if (project.infra) project.infra.tunnel = true;
 		await saveProject(project, dir);
 		log.stop("Project scaffolded");
 

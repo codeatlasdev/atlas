@@ -113,7 +113,7 @@ const backup = defineCommand({
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 		const outFile = args.output || `backup-${timestamp}.sql`;
 
-		console.log(`→ Creating backup...`);
+		console.log("→ Creating backup...");
 		const result = await ssh(
 			host,
 			`export KUBECONFIG=/etc/rancher/k3s/k3s.yaml

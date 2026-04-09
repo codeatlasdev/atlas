@@ -33,7 +33,11 @@ export async function executeDeploy(deployId: number): Promise<void> {
 	}
 
 	const project = deploy.project;
-	const server = deploy.project.server!;
+	const server = deploy.project.server;
+	if (!server) {
+		await updateStatus(deployId, "failed", { error: "No server assigned" });
+		return;
+	}
 
 	if (!server.host) {
 		await updateStatus(deployId, "failed", { error: "Server has no host" });
@@ -59,7 +63,7 @@ export async function executeDeploy(deployId: number): Promise<void> {
 		const meta = deploy.meta as { services?: string[] } | null;
 		let serviceEntries = Object.entries(config.services);
 		if (meta?.services?.length) {
-			serviceEntries = serviceEntries.filter(([name]) => meta.services!.includes(name));
+			serviceEntries = serviceEntries.filter(([name]) => meta.services?.includes(name));
 		}
 
 		// Migrations
@@ -101,7 +105,7 @@ export async function executeDeploy(deployId: number): Promise<void> {
 			const cf = new CloudflareClient(cfToken, org.cloudflareAccountId);
 			const domainsToSetup = serviceEntries
 				.filter(([, svc]) => svc.domain)
-				.map(([, svc]) => svc.domain!);
+				.map(([, svc]) => svc.domain as string);
 
 			if (config.domain && !domainsToSetup.includes(config.domain)) {
 				domainsToSetup.push(config.domain);

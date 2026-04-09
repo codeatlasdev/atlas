@@ -67,12 +67,12 @@ export function Divider() {
 // ── Updatable text helper ──
 
 export function MutableText(initial: string, color = theme.text) {
-	const node = Text({ content: initial, fg: color });
+	const node = Text({ content: initial, fg: color }) as Renderable & Record<string, unknown>;
 	return {
 		node,
 		update(content: string, fg?: string) {
-			(node as any).content = content;
-			if (fg) (node as any).fg = fg;
+			node.content = content;
+			if (fg) node.fg = fg;
 		},
 	};
 }

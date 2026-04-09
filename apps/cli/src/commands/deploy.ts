@@ -2,9 +2,9 @@ import { ssh } from "@atlas/ssh";
 import { Box, Text, createCliRenderer } from "@opentui/core";
 import { $ } from "bun";
 import { defineCommand } from "citty";
-import { loadConfig } from "../lib/config";
+import { type AtlasConfig, loadConfig } from "../lib/config";
 import { createPanelClient, findProjectBySlug, waitForDeploy } from "../lib/panel";
-import { loadProject } from "../lib/project";
+import { type ProjectConfig, type ServiceConfig, loadProject } from "../lib/project";
 import { Divider, Header, MutableText, StatusLine, createSpinner, theme } from "../ui";
 
 export default defineCommand({
@@ -85,14 +85,16 @@ export default defineCommand({
 			const icon = state === "done" ? "✓" : state === "failed" ? "✗" : "◆";
 			const color =
 				state === "done" ? theme.success : state === "failed" ? theme.error : theme.primary;
-			stepTexts[i]!.update(`  ${icon} ${allSteps[i]}`, color);
+			stepTexts[i]?.update(`  ${icon} ${allSteps[i]}`, color);
 			renderer.requestRender();
 		};
 
 		try {
 			// Build
 			for (let i = 0; i < services.length; i++) {
-				const [name, svc] = services[i]!;
+				const entry = services[i];
+				if (!entry) continue;
+				const [name, svc] = entry;
 				setStep(i, "running");
 				const buildArgs = [
 					"docker",
@@ -187,12 +189,12 @@ export default defineCommand({
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function runPipeline(
-	services: [string, any][],
+	services: [string, ServiceConfig][],
 	registry: string,
 	tag: string,
-	project: any,
-	config: any,
-	args: any,
+	project: ProjectConfig,
+	config: AtlasConfig,
+	args: { host?: string; service?: string },
 	log: ReturnType<typeof createSpinner>,
 ) {
 	for (const [name, svc] of services) {

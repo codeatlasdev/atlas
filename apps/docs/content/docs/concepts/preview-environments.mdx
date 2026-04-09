@@ -1,0 +1,61 @@
+---
+title: Preview Environments
+description: Ephemeral environments per branch.
+---
+
+```bash
+atlas preview start
+```
+
+Creates an isolated environment from your current branch with its own URL:
+
+```
+https://feature-x.preview.myapp.com
+```
+
+## How it works
+
+Atlas builds your images, pushes them, and deploys to an isolated environment:
+
+- **K3s:** Separate Kubernetes namespace (`preview-feature-x`)
+- **Swarm:** Separate Docker stack (`preview-feature-x`)
+
+Each preview gets its own Traefik routing and HTTPS certificate.
+
+## Commands
+
+### Start a preview
+
+```bash
+atlas preview start              # Uses current branch name
+atlas preview start --name demo  # Custom name
+```
+
+### Stop a preview
+
+```bash
+atlas preview stop --name feature-x
+```
+
+Tears down the namespace/stack and cleans up DNS records.
+
+### List active previews
+
+```bash
+atlas preview list
+```
+
+```
+🔮 Active Previews
+
+  ● feature-x    2h  → https://feature-x.preview.myapp.com
+  ● fix-auth     30m → https://fix-auth.preview.myapp.com
+```
+
+## DNS
+
+Preview URLs follow the pattern `{name}.preview.{domain}`. Atlas creates a wildcard DNS record (`*.preview.myapp.com`) pointing to your server, so new previews don't need individual DNS entries.
+
+## Cleanup
+
+Previews are ephemeral. Stop them when you're done, or they'll keep running until you do. Automatic expiration is on the roadmap.

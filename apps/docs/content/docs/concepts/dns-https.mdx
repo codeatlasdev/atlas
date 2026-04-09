@@ -1,0 +1,48 @@
+---
+title: DNS & HTTPS
+description: How Atlas automates DNS records and TLS certificates.
+---
+
+Atlas manages DNS and HTTPS automatically. You set a domain in `atlas.yaml`, Atlas does the rest.
+
+## DNS via Cloudflare
+
+Atlas uses the Cloudflare API to create and manage DNS records. When you deploy a service with a `domain` field:
+
+1. Atlas finds the Cloudflare zone for your root domain
+2. Creates (or updates) an A/CNAME record pointing to your server
+3. Enables Cloudflare proxy by default (DDoS protection, CDN)
+
+The operation is **idempotent** — running `atlas deploy` multiple times won't create duplicate records.
+
+### Cloudflare Tunnels
+
+For servers without a public IP, Atlas supports Cloudflare Tunnels:
+
+```bash
+atlas infra setup --host root@vps --tunnel
+```
+
+This installs the `cloudflare-tunnel-ingress-controller` and routes traffic through Cloudflare's network instead of exposing your server directly.
+
+## HTTPS
+
+TLS certificates are provisioned automatically. The mechanism depends on your runtime:
+
+| Runtime | HTTPS Provider | How |
+|---------|---------------|-----|
+| K3s | cert-manager | ClusterIssuer with Let's Encrypt HTTP-01 |
+| Swarm | Traefik ACME | Built-in ACME resolver with HTTP challenge |
+
+Both approaches:
+- Issue certificates from Let's Encrypt
+- Auto-renew before expiration
+- Redirect HTTP → HTTPS automatically
+
+No manual certificate management. No `certbot`. No cron jobs.
+
+## Requirements
+
+- A domain managed by Cloudflare (free plan works)
+- Cloudflare API token (set via `atlas login` or `atlas panel config`)
+- Server reachable on ports 80 and 443 (or use Tunnels)

@@ -1,17 +1,17 @@
 ---
 title: atlas infra
-description: Server provisioning and runtime management
+description: Server provisioning and runtime management.
 ---
 
 ## atlas infra setup
 
-Provision a fresh server with your chosen container runtime.
+Provision a fresh server with your chosen runtime.
 
 ```bash
 atlas infra setup --host root@your-vps
 ```
 
-**Interactive mode** prompts for host, domain, and runtime. **CI mode** uses flags:
+Interactive mode prompts for host, domain, and runtime. CI mode uses flags:
 
 ```bash
 atlas infra setup \
@@ -54,9 +54,9 @@ atlas infra migrate --to swarm
 atlas infra migrate --to k3s
 ```
 
-The CLI shows a full migration plan with tradeoffs, risks, and affected services before asking for confirmation.
+Shows a migration plan with tradeoffs, risks, and affected services before asking for confirmation.
 
-After migration, re-deploy your services:
+After migration, re-deploy:
 
 ```bash
 atlas deploy

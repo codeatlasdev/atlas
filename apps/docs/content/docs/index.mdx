@@ -1,35 +1,19 @@
 ---
 title: Introduction
-description: Ship to your own servers. No vendor lock-in. Just atlas deploy.
+description: You write code. Atlas handles infrastructure.
 ---
 
-Atlas is an open-source **Internal Developer Platform** that turns any Linux server into a production-ready cluster. You write code — Atlas handles the rest.
+You write code. Atlas handles infrastructure.
 
-## The problem
-
-Deploying apps shouldn't require a PhD in Kubernetes. DNS, SSL, Docker, CI/CD, monitoring — it's a lot of moving parts just to get something live.
-
-Managed platforms solved this, but at a cost: vendor lock-in, unpredictable pricing, and zero control over your infrastructure.
-
-## The fix
-
-Atlas gives you the managed-platform experience on **your own servers**. Any VPS — Hetzner, DigitalOcean, AWS, bare metal — becomes a fully managed platform.
+Point it at any VPS — Hetzner, DigitalOcean, AWS, bare metal — and get DNS, HTTPS, secrets, monitoring, and deploys. One command.
 
 ```bash
-atlas deploy   # that's it. DNS, HTTPS, scaling — automatic.
+atlas deploy
 ```
 
-**What you never touch again:**
+## What Atlas does
 
-- Container orchestration — pick K3s or Docker Swarm, Atlas handles both
-- DNS records and SSL certificates
-- Secrets management (AES-256-GCM encrypted)
-- Server provisioning
-- Monitoring, logs, and alerting
-
-## How it works
-
-Define your services in `atlas.yaml`:
+You define your stack in `atlas.yaml`:
 
 ```yaml
 name: myapp
@@ -50,13 +34,24 @@ infra:
 Atlas reads this and:
 
 1. **Builds** Docker images for each service
-2. **Pushes** to your container registry (GHCR)
-3. **Deploys** to your cluster (K3s or Swarm)
+2. **Pushes** to GitHub Container Registry
+3. **Deploys** to your cluster (K3s or Docker Swarm — you pick)
 4. **Configures DNS** via Cloudflare
 5. **Provisions HTTPS** via Let's Encrypt
-6. **Syncs secrets** encrypted at rest
+6. **Syncs secrets** encrypted with AES-256-GCM
 
-## Architecture at a glance
+No Terraform. No Helm charts. No 200-line CI/CD pipelines.
+
+## What you get
+
+- **Two runtimes** — K3s (Kubernetes) or Docker Swarm. Switch anytime.
+- **Automatic DNS & HTTPS** — Cloudflare + Let's Encrypt. Zero config.
+- **Encrypted secrets** — AES-256-GCM at rest. Synced to your cluster.
+- **Preview environments** — One branch = one URL.
+- **Built-in monitoring** — Prometheus, Grafana, Loki. Pre-configured.
+- **20+ CLI commands** — Deploy, scale, logs, exec, restart, env, db, preview.
+
+## Architecture
 
 ```mermaid
 graph LR
@@ -65,7 +60,7 @@ graph LR
     Server --- CF[Cloudflare DNS + Proxy]
 ```
 
-The **Control Panel** is the brain. The CLI talks to it. Every action — deploy, scale, restart — flows through the Panel API.
+The **Control Panel** is the brain. The CLI talks to it. Every action — deploy, scale, restart — flows through the Panel API to your servers via SSH.
 
 ## Next steps
 
@@ -73,4 +68,5 @@ The **Control Panel** is the brain. The CLI talks to it. Every action — deploy
   <Card title="Install Atlas" href="/docs/getting-started/installation" />
   <Card title="Quick Start" href="/docs/getting-started/quick-start" />
   <Card title="Choose a Runtime" href="/docs/concepts/runtimes" />
+  <Card title="Project Config" href="/docs/getting-started/project-config" />
 </Cards>

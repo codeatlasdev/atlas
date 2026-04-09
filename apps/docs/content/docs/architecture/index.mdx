@@ -1,39 +1,29 @@
 ---
 title: Architecture
-description: How Atlas is built and how the pieces connect
+description: How Atlas is built and how the pieces connect.
 icon: Blocks
 ---
 
 ## Overview
 
-Atlas follows a **hub-and-spoke** model. The Control Panel is the hub — CLI and Web UI are spokes.
+Atlas follows a **hub-and-spoke** model. The Control Panel is the hub — the CLI is the spoke.
 
 ```mermaid
 graph TB
-    subgraph Developer
-        CLI[Atlas CLI]
-    end
+    CLI[Atlas CLI] -->|deploy, logs, scale| Panel[Control Panel API]
 
-    CLI -->|deploy, logs, scale| Panel[Control Panel API]
+    Panel -->|SSH| S1[Server 1]
+    Panel -->|SSH| S2[Server 2]
+    Panel -->|SSH| SN[Server N]
 
-    subgraph Servers
-        S1[Server 1<br/>K3s or Swarm]
-        S2[Server 2]
-        SN[Server N]
-    end
-
-    Panel -->|SSH| S1
-    Panel -->|SSH| S2
-    Panel -->|SSH| SN
-
-    S1 --- CF[Cloudflare<br/>DNS + Proxy]
+    S1 --- CF[Cloudflare DNS + Proxy]
     S2 --- CF
     SN --- CF
 ```
 
 ## Server stack
 
-Each server provisioned by Atlas includes:
+Each provisioned server includes:
 
 ### Docker Swarm
 
@@ -41,25 +31,25 @@ Each server provisioned by Atlas includes:
 |-----------|---------|
 | Docker + Swarm | Container orchestration |
 | Traefik v3 | Ingress + ACME HTTPS |
-| Prometheus + Grafana | Metrics dashboards |
-| Loki + Promtail | Log aggregation |
+| Prometheus + Grafana | Metrics |
+| Loki + Promtail | Logs |
 | cAdvisor + Node Exporter | Container + host metrics |
 
-### K3s (Kubernetes)
+### K3s
 
 | Component | Purpose |
 |-----------|---------|
 | K3s | Lightweight Kubernetes |
-| Traefik v3 (Helm) | Ingress + HTTPS redirect |
-| cert-manager | Let's Encrypt automation |
-| Prometheus + Grafana (Helm) | Metrics dashboards |
-| Loki + Alloy (Helm) | Log aggregation |
-| ArgoCD | GitOps deployment |
+| Traefik v3 (Helm) | Ingress |
+| cert-manager | Let's Encrypt |
+| Prometheus + Grafana (Helm) | Metrics |
+| Loki + Alloy (Helm) | Logs |
+| ArgoCD | GitOps |
 
 ## Deploy pipeline
 
 ```mermaid
-graph TD
+graph LR
     A[atlas deploy] --> B[Build]
     B --> C[Push to GHCR]
     C --> D[Deploy to cluster]
@@ -67,9 +57,9 @@ graph TD
     E --> F[✓ Live]
 ```
 
-The `runtime` abstraction means the same deploy flow works for both K3s and Swarm.
+Same flow for both runtimes. The `@atlas/runtime` package abstracts the differences.
 
-## Security model
+## Security
 
 | Layer | Mechanism |
 |-------|-----------|
@@ -79,19 +69,17 @@ The `runtime` abstraction means the same deploy flow works for both K3s and Swar
 | Transport | HTTPS everywhere (Traefik) |
 | DNS | Cloudflare proxy (DDoS protection) |
 | Cluster access | SSH tunnel (no exposed API server) |
-| Join tokens | Encrypted via `@atlas/crypto` |
 
 ## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
 | Monorepo | Bun + Turborepo |
-| CLI | citty + OpenTUI + @clack/prompts |
+| CLI | citty + OpenTUI |
 | Panel API | Elysia + oRPC |
 | Database | Drizzle ORM + PostgreSQL |
 | Encryption | AES-256-GCM (Web Crypto API) |
-| Runtime | K3s or Docker Swarm (`@atlas/runtime`) |
+| Runtime | K3s or Docker Swarm |
 | Ingress | Traefik v3 |
 | DNS | Cloudflare API |
 | Registry | GitHub Container Registry |
-| Lint | Biome |

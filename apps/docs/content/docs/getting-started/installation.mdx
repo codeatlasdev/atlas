@@ -1,21 +1,17 @@
 ---
 title: Installation
-description: Get Atlas running in 30 seconds
+description: Get Atlas running in 30 seconds.
 ---
-
-## One-liner
 
 ```bash
 curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
 ```
 
-Downloads the latest binary for your platform and drops it in `~/.atlas/bin`.
+That's it. Downloads the latest binary for your platform and drops it in `~/.atlas/bin`.
 
-**Supported platforms:**
-- Linux x64 / ARM64
-- macOS Intel / Apple Silicon
+**Supported platforms:** Linux x64/ARM64, macOS Intel/Apple Silicon.
 
-Verify:
+Verify it works:
 
 ```bash
 atlas --help
@@ -33,7 +29,7 @@ bun run apps/cli/src/index.ts --help
 
 ## Update
 
-Re-run the install script:
+Re-run the install script. It overwrites the old binary.
 
 ```bash
 curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash

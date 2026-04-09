@@ -1,25 +1,22 @@
 ---
 title: Self-Hosting
-description: Deploy the Control Panel to your own cluster
+description: Deploy the Control Panel to your own cluster.
 icon: HardDrive
 ---
 
-The Control Panel runs on your own infrastructure — no external dependencies.
+The Panel runs on your infrastructure. No external dependencies.
 
 ## Requirements
 
 - A server with K3s installed (via `atlas infra setup`)
-- PostgreSQL (included in the K8s manifests)
 - Domain pointing to your server via Cloudflare
 
-## Deploy
+## Steps
 
-The Panel is deployed as a Kubernetes Deployment with a PostgreSQL StatefulSet.
-
-### 1. Build the image
+### 1. Build and push the image
 
 ```bash
-cd panel/api
+cd apps/panel
 docker build -t ghcr.io/your-org/atlas/panel:latest .
 docker push ghcr.io/your-org/atlas/panel:latest
 ```
@@ -29,22 +26,18 @@ docker push ghcr.io/your-org/atlas/panel:latest
 ```bash
 kubectl -n atlas create secret generic atlas-secrets \
   --from-literal=DATABASE_URL="postgresql://atlas:your-password@postgres:5432/atlas" \
-  --from-literal=JWT_SECRET="your-jwt-secret" \
-  --from-literal=ENCRYPTION_KEY="your-32-byte-hex-key" \
+  --from-literal=JWT_SECRET="your-jwt-secret-min-32-chars" \
+  --from-literal=ENCRYPTION_KEY="your-encryption-key-min-32-chars" \
   --from-literal=POSTGRES_PASSWORD="your-password"
 ```
 
 ### 3. Apply manifests
 
 ```bash
-kubectl apply -f panel/k8s/all.yaml
+kubectl apply -f apps/panel/k8s/all.yaml
 ```
 
-This creates:
-- `atlas` namespace
-- PostgreSQL StatefulSet with persistent volume
-- Panel Deployment
-- Service + Ingress with TLS
+Creates: `atlas` namespace, PostgreSQL StatefulSet, Panel Deployment, Service + Ingress with TLS.
 
 ### 4. Run migrations
 
@@ -58,25 +51,27 @@ kubectl -n atlas exec deploy/panel -- bunx drizzle-kit push
 kubectl -n atlas exec deploy/panel -- bun run src/seed.ts
 ```
 
-## Environment Variables
+## Environment variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Secret for signing JWT tokens |
-| `ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM |
-| `PORT` | API port (default: 3100) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | ✓ | PostgreSQL connection string |
+| `JWT_SECRET` | ✓ | HMAC-SHA256 signing key (min 32 chars) |
+| `ENCRYPTION_KEY` | ✓ | AES-256-GCM key (min 32 chars) |
+| `PORT` | | API port (default: 3100) |
+| `PANEL_URL` | | Public URL for CORS |
+| `GITHUB_CLIENT_ID` | | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | | GitHub OAuth client secret |
 
 ## Architecture
 
 ```mermaid
 graph TB
     subgraph atlas namespace
-        PG[(PostgreSQL<br/>StatefulSet + PVC)]
-        Panel[Panel API<br/>Deployment :3100]
-        Svc[Service]
-        Ing[Ingress<br/>Traefik + TLS]
+        PG[(PostgreSQL)]
+        Panel[Panel API :3100]
+        Ing[Ingress — Traefik + TLS]
     end
 
-    Ing --> Svc --> Panel --> PG
+    Ing --> Panel --> PG
 ```

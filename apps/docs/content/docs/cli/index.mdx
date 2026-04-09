@@ -1,40 +1,55 @@
 ---
 title: CLI Overview
-description: Every command at a glance
+description: Every command at a glance.
 icon: Terminal
 ---
 
-## Core commands
+## Core
 
 | Command | What it does |
 |---------|-------------|
 | `atlas login` | Authenticate with GitHub |
-| `atlas infra setup` | Provision a server (K3s or Swarm) |
-| `atlas infra migrate` | Switch runtimes (K3s ↔ Swarm) |
 | `atlas deploy` | Build → push → deploy |
 | `atlas status` | Cluster overview (TUI dashboard) |
-| `atlas logs [service] -f` | Stream logs in real-time |
-| `atlas exec [service]` | Shell into a running container |
+| `atlas logs [service] -f` | Stream logs |
+| `atlas exec [service]` | Shell into a container |
 | `atlas restart [service\|all]` | Rolling restart |
 | `atlas scale [service] -r N` | Scale replicas |
+
+## Infrastructure
+
+| Command | What it does |
+|---------|-------------|
+| `atlas infra setup` | Provision a server (K3s or Swarm) |
+| `atlas infra migrate` | Switch runtimes (K3s ↔ Swarm) |
+
+## Secrets & Data
+
+| Command | What it does |
+|---------|-------------|
 | `atlas env list\|set\|pull` | Manage encrypted secrets |
-| `atlas preview start\|stop\|list` | Ephemeral preview environments |
 | `atlas db migrate\|psql\|backup` | Database management |
 
-## Panel commands
+## Environments
+
+| Command | What it does |
+|---------|-------------|
+| `atlas preview start\|stop\|list` | Ephemeral preview environments |
+
+## Panel
 
 | Command | What it does |
 |---------|-------------|
 | `atlas panel setup` | Connect CLI to Control Panel |
 | `atlas panel status` | Show servers and projects |
 | `atlas panel config` | Configure GitHub App, Cloudflare |
-| `atlas panel server add` | Add and provision a server |
+| `atlas panel server add\|list` | Manage servers |
 
 ## CI mode
 
 Every command supports `--yes` (or `-y`) for non-interactive use:
 
 ```bash
-atlas infra setup --host root@vps --domain myapp.com --runtime swarm --yes
 atlas deploy --yes
+atlas infra setup --host root@vps --domain myapp.com --runtime swarm --yes
 ```

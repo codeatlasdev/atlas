@@ -1,8 +1,99 @@
 @import "tailwindcss";
-@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/dusk.css";
 @import "fumadocs-ui/css/preset.css";
 
+/* ── Deep Space palette (dark override) ── */
+.dark {
+	--color-fd-background: #0a0a0f;
+	--color-fd-foreground: #e2e8f0;
+	--color-fd-card: #12121a;
+	--color-fd-card-foreground: #e2e8f0;
+	--color-fd-popover: #12121a;
+	--color-fd-popover-foreground: #cbd5e1;
+	--color-fd-muted: #1a1a2e;
+	--color-fd-muted-foreground: #64748b;
+	--color-fd-primary: #818cf8;
+	--color-fd-primary-foreground: #0a0a0f;
+	--color-fd-secondary: #1a1a2e;
+	--color-fd-secondary-foreground: #e2e8f0;
+	--color-fd-accent: rgba(129, 140, 248, 0.06);
+	--color-fd-accent-foreground: #e2e8f0;
+	--color-fd-border: rgba(129, 140, 248, 0.08);
+	--color-fd-ring: #818cf8;
+}
+
 :root {
-	--color-fd-primary: #325ceb;
+	--color-fd-primary: #6366f1;
 	--color-fd-primary-foreground: #fff;
+}
+
+/* ── Keyframes ── */
+@keyframes fade-in-up {
+	from {
+		opacity: 0;
+		transform: translateY(24px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes terminal-cursor {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+}
+
+@keyframes glow-pulse {
+	0%,
+	100% {
+		box-shadow: 0 0 20px rgba(129, 140, 248, 0.08);
+	}
+	50% {
+		box-shadow: 0 0 40px rgba(129, 140, 248, 0.16);
+	}
+}
+
+/* ── Animation utilities ── */
+.animate-fade-in-up {
+	animation: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-delay-100 {
+	animation-delay: 100ms;
+}
+.animate-delay-200 {
+	animation-delay: 200ms;
+}
+.animate-delay-300 {
+	animation-delay: 300ms;
+}
+.animate-delay-400 {
+	animation-delay: 400ms;
+}
+.animate-delay-500 {
+	animation-delay: 500ms;
+}
+
+/* ── Noise overlay (global, subtle) ── */
+body::before {
+	content: "";
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	pointer-events: none;
+	opacity: 0.03;
+	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	background-repeat: repeat;
+	background-size: 256px 256px;
+}
+
+/* ── Dot pattern utility ── */
+.bg-dot-pattern {
+	background-image: radial-gradient(rgba(129, 140, 248, 0.07) 1px, transparent 1px);
+	background-size: 24px 24px;
 }

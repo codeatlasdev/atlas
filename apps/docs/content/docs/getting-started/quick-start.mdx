@@ -1,13 +1,9 @@
 ---
 title: Quick Start
-description: Zero to production in 5 minutes
+description: Zero to production in 5 minutes.
 ---
 
-## Prerequisites
-
-- Atlas CLI [installed](/docs/getting-started/installation)
-- A VPS with SSH access (any provider)
-- A domain on Cloudflare
+Three commands. That's it.
 
 ## 1. Authenticate
 
@@ -15,7 +11,7 @@ description: Zero to production in 5 minutes
 atlas login
 ```
 
-Opens GitHub OAuth in your browser. Token stored locally.
+Opens GitHub OAuth in your browser. Token stored locally at `~/.atlas/config.json`.
 
 ## 2. Provision a server
 
@@ -23,7 +19,7 @@ Opens GitHub OAuth in your browser. Token stored locally.
 atlas infra setup --host root@your-vps
 ```
 
-You'll be asked to choose a runtime:
+You'll pick a runtime:
 
 ```
 ? Container runtime
@@ -44,9 +40,9 @@ cd your-project
 atlas deploy
 ```
 
-Atlas builds, pushes, deploys, configures DNS, and provisions HTTPS. Your app is live. 🎉
+Builds, pushes, deploys, configures DNS, provisions HTTPS. Your app is live.
 
-## 4. Explore
+## What's next
 
 ```bash
 atlas status              # TUI dashboard
@@ -55,10 +51,9 @@ atlas env set DB_URL=...  # Manage secrets
 atlas preview start       # Preview environment per branch
 ```
 
-## What's next
-
 <Cards>
+  <Card title="Project Config" href="/docs/getting-started/project-config" />
   <Card title="Runtimes" href="/docs/concepts/runtimes" />
   <Card title="CLI Reference" href="/docs/cli" />
-  <Card title="Architecture" href="/docs/architecture" />
+  <Card title="How Deploys Work" href="/docs/concepts/how-deploys-work" />
 </Cards>

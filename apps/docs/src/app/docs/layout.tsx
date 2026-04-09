@@ -8,11 +8,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 		<DocsLayout
 			tree={source.getPageTree()}
 			nav={{
-				title: (
-					<span className="flex items-center gap-2 font-bold">
-						<Logo size={22} /> Atlas
-					</span>
-				),
+				title: <Logo size={22} />,
 			}}
 			links={[
 				{

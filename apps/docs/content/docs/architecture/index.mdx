@@ -1,12 +1,12 @@
 ---
 title: Architecture
-description: How Atlas is built and how the pieces fit together
+description: How Atlas is built and how the pieces connect
 icon: Blocks
 ---
 
 ## Overview
 
-Atlas follows a **hub-and-spoke** architecture. The Control Panel is the hub — CLI and Web UI are spokes.
+Atlas follows a **hub-and-spoke** model. The Control Panel is the hub — CLI and Web UI are spokes.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -15,16 +15,14 @@ Atlas follows a **hub-and-spoke** architecture. The Control Panel is the hub —
 │   atlas deploy  ──────►  Control Panel API          │
 │   atlas logs              (the brain)               │
 │   atlas env set               │                     │
-│   atlas login                 │                     │
 └───────────────────────────────┼─────────────────────┘
                                 │
                  ┌──────────────┼──────────────┐
                  ▼              ▼              ▼
            ┌──────────┐  ┌──────────┐  ┌──────────┐
            │ Server 1 │  │ Server 2 │  │ Server N │
-           │   K3s    │  │   K3s    │  │   K3s    │
-           │ Traefik  │  │ Traefik  │  │ Traefik  │
-           │ Your App │  │ Your App │  │ Your App │
+           │ K3s or   │  │ K3s or   │  │ K3s or   │
+           │ Swarm    │  │ Swarm    │  │ Swarm    │
            └──────────┘  └──────────┘  └──────────┘
                  │              │              │
                  └──────────────┼──────────────┘
@@ -35,55 +33,73 @@ Atlas follows a **hub-and-spoke** architecture. The Control Panel is the hub —
                          └─────────────┘
 ```
 
-## Server Stack
+## Server stack
 
 Each server provisioned by Atlas includes:
 
-| Layer | Component | Purpose |
-|-------|-----------|---------|
-| Orchestration | K3s | Lightweight Kubernetes |
-| Ingress | Traefik v3 | HTTP routing + HTTPS redirect |
-| Certificates | cert-manager | Let's Encrypt automation |
-| Metrics | Prometheus + Grafana | Monitoring dashboards |
-| Logs | Loki + Alloy | Centralized log aggregation |
-| GitOps | ArgoCD | Continuous deployment |
+### Docker Swarm
 
-## Deploy Pipeline
+| Component | Purpose |
+|-----------|---------|
+| Docker + Swarm | Container orchestration |
+| Traefik v3 | Ingress + ACME HTTPS |
+| Prometheus + Grafana | Metrics dashboards |
+| Loki + Promtail | Log aggregation |
+| cAdvisor + Node Exporter | Container + host metrics |
+
+### K3s (Kubernetes)
+
+| Component | Purpose |
+|-----------|---------|
+| K3s | Lightweight Kubernetes |
+| Traefik v3 (Helm) | Ingress + HTTPS redirect |
+| cert-manager | Let's Encrypt automation |
+| Prometheus + Grafana (Helm) | Metrics dashboards |
+| Loki + Alloy (Helm) | Log aggregation |
+| ArgoCD | GitOps deployment |
+
+## Deploy pipeline
 
 ```
 atlas deploy
     │
-    ├── 1. Build Docker image
+    ├── 1. Build Docker images
     ├── 2. Push to GHCR
-    ├── 3. POST /deploys/project/:id
+    ├── 3. Trigger deploy via Panel API
     │       │
-    │       ├── 4. SSH → kubectl set image
-    │       ├── 5. kubectl rollout status
-    │       ├── 6. Cloudflare → ensureDNS
+    │       ├── 4. runtime.deploy() — update service image
+    │       ├── 5. runtime.rolloutStatus() — wait for convergence
+    │       ├── 6. Cloudflare → ensureDNS()
     │       └── 7. Return success
     │
     └── ✓ Live
 ```
 
-## Security Model
+The `runtime` abstraction means the same deploy flow works for both K3s and Swarm.
+
+## Security model
 
 | Layer | Mechanism |
 |-------|-----------|
-| Authentication | GitHub OAuth → JWT (HMAC-SHA256, 30-day expiry) |
-| Authorization | RBAC with 3 roles: admin, dev, viewer |
+| Auth | GitHub OAuth → JWT (HMAC-SHA256, 30-day expiry) |
+| Authorization | RBAC: admin, dev, viewer |
 | Secrets | AES-256-GCM encryption at rest |
-| Transport | HTTPS everywhere (Traefik + cert-manager) |
-| DNS | Cloudflare proxy (DDoS protection, SSL termination) |
-| K8s access | SSH tunnel (no exposed API server) |
+| Transport | HTTPS everywhere (Traefik) |
+| DNS | Cloudflare proxy (DDoS protection) |
+| Cluster access | SSH tunnel (no exposed API server) |
+| Join tokens | Encrypted via `@atlas/crypto` |
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
-| CLI | Bun + citty + @clack/prompts |
-| Panel API | Elysia + Drizzle ORM + PostgreSQL |
-| Encryption | AES-256-GCM via Web Crypto API |
-| Container Runtime | K3s |
+| Monorepo | Bun + Turborepo |
+| CLI | citty + OpenTUI + @clack/prompts |
+| Panel API | Elysia + oRPC |
+| Database | Drizzle ORM + PostgreSQL |
+| Encryption | AES-256-GCM (Web Crypto API) |
+| Runtime | K3s or Docker Swarm (`@atlas/runtime`) |
 | Ingress | Traefik v3 |
 | DNS | Cloudflare API |
 | Registry | GitHub Container Registry |
+| Lint | Biome |

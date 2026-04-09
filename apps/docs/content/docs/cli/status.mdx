@@ -1,0 +1,24 @@
+---
+title: atlas status
+description: TUI dashboard for your cluster
+---
+
+```bash
+atlas status
+```
+
+Shows a real-time TUI dashboard with:
+
+- **Runtime** — K3s version or Docker Swarm
+- **Nodes** — cluster nodes with status
+- **Application services** — running pods/containers with health
+- **Infrastructure** — Traefik, monitoring, ArgoCD status
+- **Memory** — current usage
+
+Press `q` to exit.
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--host` | Override SSH host |

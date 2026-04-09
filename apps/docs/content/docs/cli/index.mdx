@@ -1,40 +1,40 @@
 ---
 title: CLI Overview
-description: All Atlas CLI commands at a glance
+description: Every command at a glance
 icon: Terminal
 ---
 
-The Atlas CLI is the primary interface for interacting with your infrastructure.
+## Core commands
 
-## Commands
-
-| Command | Description |
+| Command | What it does |
 |---------|-------------|
 | `atlas login` | Authenticate with GitHub |
-| `atlas deploy` | Build, push, and deploy to cluster |
-| `atlas status` | Cluster overview |
+| `atlas infra setup` | Provision a server (K3s or Swarm) |
+| `atlas infra migrate` | Switch runtimes (K3s ↔ Swarm) |
+| `atlas deploy` | Build → push → deploy |
+| `atlas status` | Cluster overview (TUI dashboard) |
 | `atlas logs [service] -f` | Stream logs in real-time |
-| `atlas env list\|set\|pull` | Manage secrets |
-| `atlas exec [service]` | Shell into a container |
+| `atlas exec [service]` | Shell into a running container |
 | `atlas restart [service\|all]` | Rolling restart |
 | `atlas scale [service] -r N` | Scale replicas |
+| `atlas env list\|set\|pull` | Manage encrypted secrets |
 | `atlas preview start\|stop\|list` | Ephemeral preview environments |
 | `atlas db migrate\|psql\|backup` | Database management |
 
-## Panel Commands
+## Panel commands
 
-| Command | Description |
+| Command | What it does |
 |---------|-------------|
 | `atlas panel setup` | Connect CLI to Control Panel |
 | `atlas panel status` | Show servers and projects |
 | `atlas panel config` | Configure GitHub App, Cloudflare |
 | `atlas panel server add` | Add and provision a server |
-| `atlas panel server list` | List servers with status |
 
-## Global Flags
+## CI mode
 
-All commands support:
+Every command supports `--yes` (or `-y`) for non-interactive use:
 
 ```bash
---help    # Show help for any command
+atlas infra setup --host root@vps --domain myapp.com --runtime swarm --yes
+atlas deploy --yes
 ```

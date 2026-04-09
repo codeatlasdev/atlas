@@ -1,0 +1,84 @@
+---
+title: Runtimes
+description: K3s vs Docker Swarm — pick the right tool for your setup
+---
+
+Atlas supports two container runtimes. You choose during `atlas infra setup` and can switch anytime with `atlas infra migrate`.
+
+## At a glance
+
+| | Docker Swarm | K3s (Kubernetes) |
+|---|---|---|
+| **RAM overhead** | ~100MB | ~512MB |
+| **Setup time** | ~2 min | ~5 min |
+| **Best for** | Small teams, 1-2GB RAM servers | Larger teams, 2GB+ RAM |
+| **Docker Compose** | ✓ Native | ✗ |
+| **Helm charts** | ✗ | ✓ |
+| **ArgoCD (GitOps)** | ✗ | ✓ |
+| **Auto-scaling (HPA)** | ✗ | ✓ |
+| **cert-manager** | ✗ (Traefik ACME) | ✓ |
+| **Rolling updates** | ✓ | ✓ |
+| **Multi-node** | ✓ | ✓ |
+| **Secrets** | ✓ | ✓ |
+| **Preview envs** | ✓ | ✓ |
+| **Monitoring** | ✓ | ✓ |
+
+## Docker Swarm
+
+The lightweight option. Swarm is built into Docker — no extra binaries, minimal overhead. Atlas deploys services via `docker stack deploy` and manages HTTPS through Traefik's built-in ACME resolver.
+
+**Choose Swarm when:**
+- Your server has 1-2GB RAM
+- You want the simplest possible setup
+- You don't need Helm charts or GitOps
+
+**What you get:**
+- Traefik v3 with automatic Let's Encrypt
+- Prometheus + Grafana + Loki (optional)
+- Overlay networking for multi-node
+- Docker Compose-native deployments
+
+## K3s (Kubernetes)
+
+The full-featured option. K3s is a lightweight Kubernetes distribution that gives you the entire K8s ecosystem in a single binary.
+
+**Choose K3s when:**
+- Your server has 2GB+ RAM
+- You want Helm charts, ArgoCD, or HPA
+- You need the Kubernetes ecosystem
+
+**What you get:**
+- Everything Swarm has, plus:
+- cert-manager for TLS
+- ArgoCD for GitOps
+- HPA for auto-scaling
+- Full `kubectl` access
+
+## Switching runtimes
+
+Already running? No problem:
+
+```bash
+atlas infra migrate --to swarm   # K3s → Swarm
+atlas infra migrate --to k3s     # Swarm → K3s
+```
+
+The CLI shows you:
+- What you'll gain and lose
+- Running services that need re-deploy
+- Risks (downtime, volumes)
+
+After migration, re-deploy your services:
+
+```bash
+atlas deploy
+```
+
+## Multi-node
+
+Both runtimes support adding worker nodes:
+
+- **Swarm**: `docker swarm join` with encrypted token
+- **K3s**: K3s agent with node token
+
+When you add a server through the Panel, Atlas automatically joins it to the existing cluster.

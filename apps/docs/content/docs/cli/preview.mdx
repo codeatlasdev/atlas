@@ -1,0 +1,45 @@
+---
+title: atlas preview
+description: Ephemeral environments per branch
+---
+
+## Start a preview
+
+```bash
+atlas preview start
+```
+
+Creates an isolated environment from your current branch with its own URL:
+
+```
+https://feature-x.preview.myapp.com
+```
+
+Atlas builds your images, pushes them, and deploys to an isolated stack (Swarm) or namespace (K3s) with Traefik routing and HTTPS.
+
+## Stop a preview
+
+```bash
+atlas preview stop --name feature-x
+```
+
+## List active previews
+
+```bash
+atlas preview list
+```
+
+```
+🔮 Active Previews
+
+  ● feature-x              2h  → https://feature-x.preview.myapp.com
+  ● fix-auth               30m → https://fix-auth.preview.myapp.com
+```
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Preview name (defaults to branch name) |
+| `--host` | Override SSH host |
+| `--yes` | Non-interactive mode |

@@ -1,0 +1,67 @@
+---
+title: atlas infra
+description: Server provisioning and runtime management
+---
+
+## atlas infra setup
+
+Provision a fresh server with your chosen container runtime.
+
+```bash
+atlas infra setup --host root@your-vps
+```
+
+**Interactive mode** prompts for host, domain, and runtime. **CI mode** uses flags:
+
+```bash
+atlas infra setup \
+  --host root@1.2.3.4 \
+  --domain myapp.com \
+  --runtime swarm \
+  --yes
+```
+
+### What gets installed
+
+| Component | Swarm | K3s |
+|-----------|-------|-----|
+| Container runtime | Docker + Swarm | K3s |
+| Ingress | Traefik v3 | Traefik v3 (Helm) |
+| HTTPS | Traefik ACME | cert-manager |
+| Monitoring | Prometheus + Grafana + Loki | Prometheus + Grafana + Loki (Helm) |
+| GitOps | — | ArgoCD |
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--host` | SSH host (e.g., `root@1.2.3.4`) |
+| `--domain` | Base domain (e.g., `myapp.com`) |
+| `--runtime` | `k3s` or `swarm` |
+| `--skip-monitoring` | Skip Prometheus/Grafana/Loki |
+| `--skip-argocd` | Skip ArgoCD (K3s only) |
+| `--tunnel` | Enable Cloudflare Tunnel |
+| `--yes` | Non-interactive mode |
+
+---
+
+## atlas infra migrate
+
+Switch between K3s and Docker Swarm.
+
+```bash
+atlas infra migrate --to swarm
+atlas infra migrate --to k3s
+```
+
+The CLI shows a full migration plan with tradeoffs, risks, and affected services before asking for confirmation.
+
+After migration, re-deploy your services:
+
+```bash
+atlas deploy
+```
+
+<Callout type="warn">
+  Persistent volumes are NOT migrated automatically. Back up your data first.
+</Callout>

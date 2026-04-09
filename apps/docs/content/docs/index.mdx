@@ -1,37 +1,35 @@
 ---
 title: Introduction
-description: What is Atlas and why it exists
+description: Ship to your own servers. No vendor lock-in. Just atlas deploy.
 ---
 
-Atlas is an open-source **Internal Developer Platform (IDP)** that turns any Linux server into a production-ready cluster. Developers write code — Atlas handles the rest.
+Atlas is an open-source **Internal Developer Platform** that turns any Linux server into a production-ready cluster. You write code — Atlas handles the rest.
 
-## The Problem
+## The problem
 
-Deploying applications shouldn't require expertise in Kubernetes, DNS, SSL certificates, Docker, or CI/CD pipelines. Yet most teams spend weeks configuring infrastructure before shipping a single feature.
+Deploying apps shouldn't require a PhD in Kubernetes. DNS, SSL, Docker, CI/CD, monitoring — it's a lot of moving parts just to get something live.
 
-Platforms like Heroku and Vercel solved this — but at a cost. You're locked into their infrastructure, their pricing, their limits.
+Managed platforms solved this, but at a cost: vendor lock-in, unpredictable pricing, and zero control over your infrastructure.
 
-## The Solution
+## The fix
 
-Atlas gives you the same developer experience on **your own servers**. Any VPS — Hetzner, DigitalOcean, AWS, bare metal — becomes a fully managed platform with one command.
+Atlas gives you the managed-platform experience on **your own servers**. Any VPS — Hetzner, DigitalOcean, AWS, bare metal — becomes a fully managed platform.
 
 ```bash
-atlas deploy   # that's it
+atlas deploy   # that's it. DNS, HTTPS, scaling — automatic.
 ```
 
-**What the developer never touches:**
+**What you never touch again:**
 
-- Kubernetes manifests
-- Dockerfiles
-- DNS records
-- SSL certificates
-- Secrets management
+- Container orchestration — pick K3s or Docker Swarm, Atlas handles both
+- DNS records and SSL certificates
+- Secrets management (AES-256-GCM encrypted)
 - Server provisioning
-- CI/CD pipelines
+- Monitoring, logs, and alerting
 
-## How It Works
+## How it works
 
-Atlas reads an `atlas.yaml` in your project root:
+Define your services in `atlas.yaml`:
 
 ```yaml
 name: myapp
@@ -49,41 +47,30 @@ infra:
   redis: true
 ```
 
-From this single file, Atlas:
+Atlas reads this and:
 
 1. **Builds** Docker images for each service
-2. **Pushes** to your container registry
-3. **Deploys** to your Kubernetes cluster
-4. **Configures DNS** automatically via Cloudflare
+2. **Pushes** to your container registry (GHCR)
+3. **Deploys** to your cluster (K3s or Swarm)
+4. **Configures DNS** via Cloudflare
 5. **Provisions HTTPS** via Let's Encrypt
-6. **Manages secrets** encrypted at rest
+6. **Syncs secrets** encrypted at rest
 
-## Architecture
+## Architecture at a glance
 
 ```
-Developer
-    │
-    ├── atlas deploy
-    ├── atlas logs
-    ├── atlas env set
-    │
-    ▼
-Control Panel API  ←── the brain
-    │
-    ├──► Server 1 (K3s + Traefik + your app)
-    ├──► Server 2
-    └──► Server N
-           │
-           ▼
-       Cloudflare (DNS + Proxy)
+You → atlas deploy → Control Panel API → Your Servers
+                                              │
+                                         Cloudflare
+                                        (DNS + Proxy)
 ```
 
-The **Control Panel** is the central brain. The CLI and future Web UI are just clients. Every action flows through the Panel API.
+The **Control Panel** is the brain. The CLI talks to it. Every action — deploy, scale, restart — flows through the Panel API.
 
-## Next Steps
+## Next steps
 
 <Cards>
-  <Card title="Installation" href="/docs/getting-started/installation" />
+  <Card title="Install Atlas" href="/docs/getting-started/installation" />
   <Card title="Quick Start" href="/docs/getting-started/quick-start" />
-  <Card title="CLI Commands" href="/docs/cli" />
+  <Card title="Choose a Runtime" href="/docs/concepts/runtimes" />
 </Cards>

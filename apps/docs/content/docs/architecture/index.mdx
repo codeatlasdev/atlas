@@ -8,29 +8,27 @@ icon: Blocks
 
 Atlas follows a **hub-and-spoke** model. The Control Panel is the hub — CLI and Web UI are spokes.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                     Developer                       │
-│                                                     │
-│   atlas deploy  ──────►  Control Panel API          │
-│   atlas logs              (the brain)               │
-│   atlas env set               │                     │
-└───────────────────────────────┼─────────────────────┘
-                                │
-                 ┌──────────────┼──────────────┐
-                 ▼              ▼              ▼
-           ┌──────────┐  ┌──────────┐  ┌──────────┐
-           │ Server 1 │  │ Server 2 │  │ Server N │
-           │ K3s or   │  │ K3s or   │  │ K3s or   │
-           │ Swarm    │  │ Swarm    │  │ Swarm    │
-           └──────────┘  └──────────┘  └──────────┘
-                 │              │              │
-                 └──────────────┼──────────────┘
-                                │
-                         ┌──────┴──────┐
-                         │ Cloudflare  │
-                         │ DNS + Proxy │
-                         └─────────────┘
+```mermaid
+graph TB
+    subgraph Developer
+        CLI[Atlas CLI]
+    end
+
+    CLI -->|deploy, logs, scale| Panel[Control Panel API]
+
+    subgraph Servers
+        S1[Server 1<br/>K3s or Swarm]
+        S2[Server 2]
+        SN[Server N]
+    end
+
+    Panel -->|SSH| S1
+    Panel -->|SSH| S2
+    Panel -->|SSH| SN
+
+    S1 --- CF[Cloudflare<br/>DNS + Proxy]
+    S2 --- CF
+    SN --- CF
 ```
 
 ## Server stack
@@ -60,19 +58,15 @@ Each server provisioned by Atlas includes:
 
 ## Deploy pipeline
 
-```
-atlas deploy
-    │
-    ├── 1. Build Docker images
-    ├── 2. Push to GHCR
-    ├── 3. Trigger deploy via Panel API
-    │       │
-    │       ├── 4. runtime.deploy() — update service image
-    │       ├── 5. runtime.rolloutStatus() — wait for convergence
-    │       ├── 6. Cloudflare → ensureDNS()
-    │       └── 7. Return success
-    │
-    └── ✓ Live
+```mermaid
+graph LR
+    A[atlas deploy] --> B[Build images]
+    B --> C[Push to GHCR]
+    C --> D[Panel API]
+    D --> E[runtime.deploy]
+    E --> F[runtime.rolloutStatus]
+    F --> G[Cloudflare DNS]
+    G --> H[✓ Live]
 ```
 
 The `runtime` abstraction means the same deploy flow works for both K3s and Swarm.

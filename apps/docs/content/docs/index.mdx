@@ -58,11 +58,11 @@ Atlas reads this and:
 
 ## Architecture at a glance
 
-```
-You → atlas deploy → Control Panel API → Your Servers
-                                              │
-                                         Cloudflare
-                                        (DNS + Proxy)
+```mermaid
+graph LR
+    Dev[You] -->|atlas deploy| Panel[Control Panel API]
+    Panel -->|SSH| Server[Your Servers]
+    Server --- CF[Cloudflare DNS + Proxy]
 ```
 
 The **Control Panel** is the brain. The CLI talks to it. Every action — deploy, scale, restart — flows through the Panel API.

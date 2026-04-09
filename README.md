@@ -89,25 +89,23 @@ atlas panel setup|status|config Control Panel
 
 ## Architecture
 
-```
-atlas/
-├── apps/
-│   ├── cli/              CLI (OpenTUI + citty)
-│   ├── panel/            Control Panel API (Elysia + oRPC)
-│   └── docs/             Documentation (Fumadocs)
-├── packages/
-│   ├── api/              oRPC router definitions
-│   ├── auth/             JWT auth (sign/verify/guard)
-│   ├── cloudflare/       Cloudflare API (DNS + Tunnels)
-│   ├── config/           Shared tsconfig
-│   ├── crypto/           AES-256-GCM encryption
-│   ├── db/               Drizzle ORM + PostgreSQL
-│   ├── env/              Type-safe env (zod)
-│   ├── provisioner/      Server provisioning (K3s + Swarm)
-│   ├── runtime/          Container runtime abstraction
-│   └── ssh/              SSH client (ControlMaster)
-├── turbo.json
-└── package.json
+```mermaid
+graph TB
+    subgraph Developer
+        CLI[Atlas CLI]
+    end
+
+    subgraph Cloud
+        CF[Cloudflare DNS + Proxy]
+    end
+
+    CLI -->|deploy, logs, scale| Panel[Control Panel API]
+    Panel -->|SSH| S1[Server 1<br/>K3s or Swarm]
+    Panel -->|SSH| S2[Server 2]
+    Panel -->|SSH| SN[Server N]
+    S1 --- CF
+    S2 --- CF
+    SN --- CF
 ```
 
 ## Tech Stack

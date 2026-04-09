@@ -69,13 +69,14 @@ kubectl -n atlas exec deploy/panel -- bun run src/seed.ts
 
 ## Architecture
 
-```
-atlas namespace
-├── postgres (StatefulSet)
-│   └── PVC: 10Gi
-├── panel (Deployment)
-│   └── Port: 3100
-├── service/panel
-└── ingress (Traefik + cert-manager)
-    └── TLS via Let's Encrypt
+```mermaid
+graph TB
+    subgraph atlas namespace
+        PG[(PostgreSQL<br/>StatefulSet + PVC)]
+        Panel[Panel API<br/>Deployment :3100]
+        Svc[Service]
+        Ing[Ingress<br/>Traefik + TLS]
+    end
+
+    Ing --> Svc --> Panel --> PG
 ```

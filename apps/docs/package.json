@@ -10,6 +10,7 @@
 		"postinstall": "fumadocs-mdx"
 	},
 	"dependencies": {
+		"beautiful-mermaid": "^1.1.3",
 		"fumadocs-core": "16.5.1",
 		"fumadocs-mdx": "14.2.6",
 		"fumadocs-ui": "16.5.1",

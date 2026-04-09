@@ -22,6 +22,7 @@
         "@atlas/api": "workspace:*",
         "@atlas/cloudflare": "workspace:*",
         "@atlas/provisioner": "workspace:*",
+        "@atlas/runtime": "workspace:*",
         "@atlas/ssh": "workspace:*",
         "@clack/prompts": "catalog:",
         "@opentui/core": "catalog:",
@@ -74,6 +75,7 @@
         "@atlas/env": "workspace:*",
         "@atlas/kubernetes": "workspace:*",
         "@atlas/provisioner": "workspace:*",
+        "@atlas/runtime": "workspace:*",
         "@atlas/ssh": "workspace:*",
         "@elysiajs/cors": "catalog:",
         "@orpc/server": "catalog:",
@@ -150,7 +152,7 @@
     "packages/kubernetes": {
       "name": "@atlas/kubernetes",
       "dependencies": {
-        "@atlas/ssh": "workspace:*",
+        "@atlas/runtime": "workspace:*",
       },
       "devDependencies": {
         "@atlas/config": "workspace:*",
@@ -160,8 +162,22 @@
     },
     "packages/provisioner": {
       "name": "@atlas/provisioner",
+      "dependencies": {
+        "@atlas/runtime": "workspace:*",
+      },
       "devDependencies": {
         "@atlas/config": "workspace:*",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/runtime": {
+      "name": "@atlas/runtime",
+      "dependencies": {
+        "@atlas/ssh": "workspace:*",
+      },
+      "devDependencies": {
+        "@atlas/config": "workspace:*",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -213,6 +229,8 @@
     "@atlas/kubernetes": ["@atlas/kubernetes@workspace:packages/kubernetes"],
 
     "@atlas/provisioner": ["@atlas/provisioner@workspace:packages/provisioner"],
+
+    "@atlas/runtime": ["@atlas/runtime@workspace:packages/runtime"],
 
     "@atlas/ssh": ["@atlas/ssh@workspace:packages/ssh"],
 

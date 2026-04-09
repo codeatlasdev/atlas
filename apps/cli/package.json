@@ -13,6 +13,7 @@
 		"@atlas/api": "workspace:*",
 		"@atlas/cloudflare": "workspace:*",
 		"@atlas/provisioner": "workspace:*",
+		"@atlas/runtime": "workspace:*",
 		"@atlas/ssh": "workspace:*",
 		"@opentui/core": "catalog:",
 		"@orpc/client": "catalog:",

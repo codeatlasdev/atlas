@@ -1,4 +1,4 @@
-import { defineCommand } from "citty"
+import { defineCommand } from "citty";
 
 export default defineCommand({
 	meta: { name: "panel", description: "Control Panel management" },
@@ -8,4 +8,4 @@ export default defineCommand({
 		config: () => import("./config").then((m) => m.default),
 		server: () => import("./server").then((m) => m.default),
 	},
-})
+});

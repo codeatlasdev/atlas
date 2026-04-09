@@ -1,16 +1,16 @@
-import { os } from "@orpc/server"
-import { z } from "zod"
-import type { AuthContext } from "@atlas/auth"
+import type { AuthContext } from "@atlas/auth";
+import { os } from "@orpc/server";
+import { z } from "zod";
 
 // ── Base with auth context ──
 
-const authed = os.$context<{ auth: AuthContext }>()
+const authed = os.$context<{ auth: AuthContext }>();
 
 // ── Org ──
 
 const org = {
 	get: authed.handler(async ({ context }) => {
-		return context // placeholder — implemented in panel
+		return context; // placeholder — implemented in panel
 	}),
 	updateSettings: authed
 		.input(
@@ -24,18 +24,32 @@ const org = {
 			}),
 		)
 		.handler(async ({ input, context }) => {
-			return { ok: true } as const
+			return { ok: true } as const;
 		}),
-}
+};
 
 // ── Servers ──
 
 const servers = {
 	list: authed.handler(async () => {
-		return [] as { id: number; name: string; host: string; ip: string | null; status: string }[]
+		return [] as {
+			id: number;
+			name: string;
+			host: string;
+			ip: string | null;
+			runtime: string;
+			status: string;
+		}[];
 	}),
 	get: authed.input(z.object({ id: z.number() })).handler(async ({ input }) => {
-		return null as { id: number; name: string; host: string; ip: string | null; status: string } | null
+		return null as {
+			id: number;
+			name: string;
+			host: string;
+			ip: string | null;
+			runtime: string;
+			status: string;
+		} | null;
 	}),
 	create: authed
 		.input(
@@ -43,12 +57,13 @@ const servers = {
 				name: z.string(),
 				host: z.string(),
 				ip: z.string().optional(),
+				runtime: z.enum(["k3s", "swarm"]).default("k3s"),
 				provision: z.boolean().optional(),
 				domain: z.string().optional(),
 			}),
 		)
 		.handler(async ({ input }) => {
-			return {} as { id: number; name: string; host: string; status: string }
+			return {} as { id: number; name: string; host: string; runtime: string; status: string };
 		}),
 	update: authed
 		.input(
@@ -60,21 +75,21 @@ const servers = {
 			}),
 		)
 		.handler(async ({ input }) => {
-			return {} as { id: number }
+			return {} as { id: number };
 		}),
 	delete: authed.input(z.object({ id: z.number() })).handler(async () => {
-		return { ok: true } as const
+		return { ok: true } as const;
 	}),
-}
+};
 
 // ── Projects ──
 
 const projects = {
 	list: authed.handler(async () => {
-		return [] as { id: number; name: string; slug: string; domain: string | null }[]
+		return [] as { id: number; name: string; slug: string; domain: string | null }[];
 	}),
 	get: authed.input(z.object({ id: z.number() })).handler(async ({ input }) => {
-		return null as unknown
+		return null as unknown;
 	}),
 	create: authed
 		.input(
@@ -87,7 +102,7 @@ const projects = {
 			}),
 		)
 		.handler(async ({ input }) => {
-			return {} as { id: number; name: string; slug: string }
+			return {} as { id: number; name: string; slug: string };
 		}),
 	update: authed
 		.input(
@@ -99,15 +114,15 @@ const projects = {
 			}),
 		)
 		.handler(async ({ input }) => {
-			return {} as { id: number }
+			return {} as { id: number };
 		}),
-}
+};
 
 // ── Deploys ──
 
 const deploys = {
 	listByProject: authed.input(z.object({ projectId: z.number() })).handler(async () => {
-		return [] as { id: number; tag: string; status: string; startedAt: string }[]
+		return [] as { id: number; tag: string; status: string; startedAt: string }[];
 	}),
 	trigger: authed
 		.input(
@@ -118,18 +133,18 @@ const deploys = {
 			}),
 		)
 		.handler(async ({ input }) => {
-			return {} as { id: number; status: string; tag: string }
+			return {} as { id: number; status: string; tag: string };
 		}),
 	get: authed.input(z.object({ id: z.number() })).handler(async ({ input }) => {
-		return null as { id: number; status: string; tag: string; finishedAt: string | null } | null
+		return null as { id: number; status: string; tag: string; finishedAt: string | null } | null;
 	}),
-}
+};
 
 // ── Secrets ──
 
 const secrets = {
 	listKeys: authed.input(z.object({ projectId: z.number() })).handler(async () => {
-		return [] as { key: string; updatedAt: string }[]
+		return [] as { key: string; updatedAt: string }[];
 	}),
 	set: authed
 		.input(
@@ -139,17 +154,17 @@ const secrets = {
 			}),
 		)
 		.handler(async ({ input }) => {
-			return { ok: true, keys: [] as string[], synced: false }
+			return { ok: true, keys: [] as string[], synced: false };
 		}),
 	delete: authed
 		.input(z.object({ projectId: z.number(), key: z.string() }))
 		.handler(async ({ input }) => {
-			return { ok: true, deleted: input.key, synced: false }
+			return { ok: true, deleted: input.key, synced: false };
 		}),
 	pullValues: authed.input(z.object({ projectId: z.number() })).handler(async () => {
-		return {} as Record<string, string>
+		return {} as Record<string, string>;
 	}),
-}
+};
 
 // ── Router ──
 
@@ -159,6 +174,6 @@ export const router = os.router({
 	projects,
 	deploys,
 	secrets,
-})
+});
 
-export type Router = typeof router
+export type Router = typeof router;

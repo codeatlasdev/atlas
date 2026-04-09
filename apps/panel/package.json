@@ -19,6 +19,7 @@
 		"@atlas/env": "workspace:*",
 		"@atlas/kubernetes": "workspace:*",
 		"@atlas/provisioner": "workspace:*",
+		"@atlas/runtime": "workspace:*",
 		"@atlas/ssh": "workspace:*",
 		"@elysiajs/cors": "catalog:",
 		"@orpc/server": "catalog:",

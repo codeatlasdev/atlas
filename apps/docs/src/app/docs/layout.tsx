@@ -1,28 +1,28 @@
-import { source } from '@/lib/source';
-import { DocsLayout } from 'fumadocs-ui/layouts/docs';
-import { Logo } from '@/components/logo';
-import type { ReactNode } from 'react';
+import { Logo } from "@/components/logo";
+import { source } from "@/lib/source";
+import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import type { ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
-  return (
-    <DocsLayout
-      tree={source.getPageTree()}
-      nav={{
-        title: (
-          <span className="flex items-center gap-2 font-bold">
-            <Logo size={22} /> Atlas
-          </span>
-        ),
-      }}
-      links={[
-        {
-          text: 'GitHub',
-          url: 'https://github.com/codeatlasdev/atlas',
-          external: true,
-        },
-      ]}
-    >
-      {children}
-    </DocsLayout>
-  );
+	return (
+		<DocsLayout
+			tree={source.getPageTree()}
+			nav={{
+				title: (
+					<span className="flex items-center gap-2 font-bold">
+						<Logo size={22} /> Atlas
+					</span>
+				),
+			}}
+			links={[
+				{
+					text: "GitHub",
+					url: "https://github.com/codeatlasdev/atlas",
+					external: true,
+				},
+			]}
+		>
+			{children}
+		</DocsLayout>
+	);
 }

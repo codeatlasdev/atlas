@@ -1,20 +1,25 @@
-import { defineCommand } from "citty"
-import { mkdir } from "node:fs/promises"
-import { join, basename } from "node:path"
-import * as p from "@clack/prompts"
-import pc from "picocolors"
-import { loadProject } from "../lib/project"
+import { mkdir } from "node:fs/promises";
+import { basename, join } from "node:path";
+import * as p from "@clack/prompts";
+import { defineCommand } from "citty";
+import pc from "picocolors";
+import { loadProject } from "../lib/project";
 
 const templates: Record<string, { description: string; files: Record<string, string> }> = {
 	api: {
 		description: "Elysia API service",
 		files: {
-			"package.json": (name: string, orgPrefix: string) => JSON.stringify({
-				name: `@${orgPrefix}/${name}`,
-				version: "0.0.1",
-				scripts: { dev: "bun --watch src/index.ts" },
-				dependencies: { elysia: "latest" },
-			}, null, 2),
+			"package.json": (name: string, orgPrefix: string) =>
+				JSON.stringify(
+					{
+						name: `@${orgPrefix}/${name}`,
+						version: "0.0.1",
+						scripts: { dev: "bun --watch src/index.ts" },
+						dependencies: { elysia: "latest" },
+					},
+					null,
+					2,
+				),
 			"src/index.ts": (name: string) => `import { Elysia } from "elysia"
 
 const app = new Elysia({ prefix: "/${name}" })
@@ -23,34 +28,44 @@ const app = new Elysia({ prefix: "/${name}" })
 
 export default app
 `,
-			"tsconfig.json": () => JSON.stringify({
-				extends: "../../../tsconfig.json",
-				compilerOptions: { outDir: "dist" },
-				include: ["src"],
-			}, null, 2),
+			"tsconfig.json": () =>
+				JSON.stringify(
+					{
+						extends: "../../../tsconfig.json",
+						compilerOptions: { outDir: "dist" },
+						include: ["src"],
+					},
+					null,
+					2,
+				),
 		},
 	},
 	web: {
 		description: "Vite + React SPA",
 		files: {
-			"package.json": (name: string, orgPrefix: string) => JSON.stringify({
-				name: `@${orgPrefix}/${name}`,
-				version: "0.0.1",
-				scripts: {
-					dev: `vite --port 3010`,
-					build: "vite build",
-					preview: "vite preview",
-				},
-				dependencies: {
-					react: "latest",
-					"react-dom": "latest",
-					"@tanstack/react-router": "latest",
-				},
-				devDependencies: {
-					vite: "latest",
-					"@vitejs/plugin-react": "latest",
-				},
-			}, null, 2),
+			"package.json": (name: string, orgPrefix: string) =>
+				JSON.stringify(
+					{
+						name: `@${orgPrefix}/${name}`,
+						version: "0.0.1",
+						scripts: {
+							dev: `vite --port 3010`,
+							build: "vite build",
+							preview: "vite preview",
+						},
+						dependencies: {
+							react: "latest",
+							"react-dom": "latest",
+							"@tanstack/react-router": "latest",
+						},
+						devDependencies: {
+							vite: "latest",
+							"@vitejs/plugin-react": "latest",
+						},
+					},
+					null,
+					2,
+				),
 			"index.html": (name: string) => `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -83,12 +98,17 @@ export default defineConfig({
 	worker: {
 		description: "BullMQ worker",
 		files: {
-			"package.json": (name: string, orgPrefix: string) => JSON.stringify({
-				name: `@${orgPrefix}/${name}-worker`,
-				version: "0.0.1",
-				scripts: { dev: "bun --watch src/index.ts" },
-				dependencies: { bullmq: "latest" },
-			}, null, 2),
+			"package.json": (name: string, orgPrefix: string) =>
+				JSON.stringify(
+					{
+						name: `@${orgPrefix}/${name}-worker`,
+						version: "0.0.1",
+						scripts: { dev: "bun --watch src/index.ts" },
+						dependencies: { bullmq: "latest" },
+					},
+					null,
+					2,
+				),
 			"src/index.ts": (name: string) => `import { Worker } from "bullmq"
 
 const worker = new Worker(
@@ -106,7 +126,7 @@ console.log(\`Worker "${name}" started\`)
 `,
 		},
 	},
-}
+};
 
 export default defineCommand({
 	meta: { name: "init", description: "Scaffold a new service" },
@@ -123,16 +143,16 @@ export default defineCommand({
 		yes: { type: "boolean", alias: "y", default: false },
 	},
 	async run({ args }) {
-		const auto = args.yes
+		const auto = args.yes;
 
-		if (!auto) p.intro(pc.bgBlue(pc.black(" atlas init ")))
+		if (!auto) p.intro(pc.bgBlue(pc.black(" atlas init ")));
 
 		// Get project info for dynamic prefix
-		const project = await loadProject()
-		const orgPrefix = project?.org || basename(process.cwd())
+		const project = await loadProject();
+		const orgPrefix = project?.org || basename(process.cwd());
 
 		// Resolve type
-		let type = args.type as string
+		let type = args.type as string;
 		if (!type && !auto) {
 			const selected = await p.select({
 				message: "Service type",
@@ -140,53 +160,67 @@ export default defineCommand({
 					value: key,
 					label: `${key} — ${val.description}`,
 				})),
-			})
-			if (p.isCancel(selected)) return p.cancel("Cancelled")
-			type = selected as string
+			});
+			if (p.isCancel(selected)) return p.cancel("Cancelled");
+			type = selected as string;
 		}
 		if (!type || !templates[type]) {
-			console.error(`Unknown type: ${type}. Options: ${Object.keys(templates).join(", ")}`)
-			return
+			console.error(`Unknown type: ${type}. Options: ${Object.keys(templates).join(", ")}`);
+			return;
 		}
 
 		// Resolve name
-		let name = args.name as string
+		let name = args.name as string;
 		if (!name && !auto) {
 			const input = await p.text({
 				message: "Service name",
 				placeholder: "my-service",
-				validate: (v) => (!v ? "Name is required" : /[^a-z0-9-]/.test(v) ? "Use lowercase + hyphens only" : undefined),
-			})
-			if (p.isCancel(input)) return p.cancel("Cancelled")
-			name = input as string
+				validate: (v) =>
+					!v
+						? "Name is required"
+						: /[^a-z0-9-]/.test(v)
+							? "Use lowercase + hyphens only"
+							: undefined,
+			});
+			if (p.isCancel(input)) return p.cancel("Cancelled");
+			name = input as string;
 		}
-		if (!name) { console.error("--name is required"); return }
+		if (!name) {
+			console.error("--name is required");
+			return;
+		}
 
 		// Determine output directory
 		const baseDirs: Record<string, string> = {
 			api: `apps/${name}`,
 			web: `apps/web/${name}`,
 			worker: `apps/workers/${name}`,
-		}
-		const dir = baseDirs[type]
+		};
+		const dir = baseDirs[type];
 
 		// Create files
-		const template = templates[type]
+		const template = templates[type];
 		for (const [filePath, generator] of Object.entries(template.files)) {
-			const fullPath = join(dir, filePath)
-			await mkdir(join(dir, filePath.includes("/") ? filePath.split("/").slice(0, -1).join("/") : ""), { recursive: true })
-			const content = typeof generator === 'function' 
-				? generator.length > 1 ? generator(name, orgPrefix) : generator(name)
-				: generator
-			await Bun.write(fullPath, content)
-			console.log(`  ${pc.green("+")} ${fullPath}`)
+			const fullPath = join(dir, filePath);
+			await mkdir(
+				join(dir, filePath.includes("/") ? filePath.split("/").slice(0, -1).join("/") : ""),
+				{ recursive: true },
+			);
+			const content =
+				typeof generator === "function"
+					? generator.length > 1
+						? generator(name, orgPrefix)
+						: generator(name)
+					: generator;
+			await Bun.write(fullPath, content);
+			console.log(`  ${pc.green("+")} ${fullPath}`);
 		}
 
 		if (!auto) {
-			p.note(`cd ${dir}\nbun install\nbun run dev`, "Next steps")
-			p.outro(pc.green(`${name} created!`))
+			p.note(`cd ${dir}\nbun install\nbun run dev`, "Next steps");
+			p.outro(pc.green(`${name} created!`));
 		} else {
-			console.log(`✓ ${name} created at ${dir}`)
+			console.log(`✓ ${name} created at ${dir}`);
 		}
 	},
-})
+});

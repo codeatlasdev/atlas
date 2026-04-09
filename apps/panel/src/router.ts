@@ -1,30 +1,30 @@
-import { os, ORPCError } from "@orpc/server"
-import { eq, and, desc } from "drizzle-orm"
-import { parse } from "yaml"
-import { db } from "@atlas/db"
+import { type AuthContext, assertRole, requireAuth } from "@atlas/auth";
+import { CloudflareClient } from "@atlas/cloudflare";
+import { decrypt, encrypt } from "@atlas/crypto";
+import { db } from "@atlas/db";
 import {
-	organizations,
-	servers,
-	projects,
+	auditLog,
 	deploys,
 	domains,
+	organizations,
+	projects,
 	secrets,
-	auditLog,
+	servers,
 	users,
-} from "@atlas/db/schema"
-import { requireAuth, assertRole, type AuthContext } from "@atlas/auth"
-import { encrypt, decrypt } from "@atlas/crypto"
-import { KubernetesService } from "@atlas/kubernetes"
-import { CloudflareClient } from "@atlas/cloudflare"
-import { provisionServer } from "./services/provisioner"
-import { executeDeploy } from "./services/deployer"
+} from "@atlas/db/schema";
+import { createRuntime } from "@atlas/runtime";
+import { os, ORPCError } from "@orpc/server";
+import { and, desc, eq } from "drizzle-orm";
+import { parse } from "yaml";
+import { executeDeploy } from "./services/deployer";
+import { provisionServer } from "./services/provisioner";
 
 // ── Auth middleware ──
 
 const authed = os.$context<{ request: Request }>().use(async ({ context, next }) => {
-	const auth = await requireAuth(context.request.headers.get("authorization") ?? undefined)
-	return next({ context: { auth } })
-})
+	const auth = await requireAuth(context.request.headers.get("authorization") ?? undefined);
+	return next({ context: { auth } });
+});
 
 // ── Org ──
 
@@ -32,8 +32,8 @@ const org = {
 	get: authed.handler(async ({ context }) => {
 		const o = await db.query.organizations.findFirst({
 			where: eq(organizations.id, context.auth.orgId),
-		})
-		if (!o) throw new ORPCError("NOT_FOUND")
+		});
+		if (!o) throw new ORPCError("NOT_FOUND");
 		return {
 			id: o.id,
 			name: o.name,
@@ -43,12 +43,12 @@ const org = {
 			cloudflareAccountId: o.cloudflareAccountId,
 			githubAppConfigured: !!o.githubClientId,
 			githubAppId: o.githubAppId,
-		}
+		};
 	}),
 	updateSettings: authed
 		.use(({ context, next }) => {
-			assertRole(context.auth, "admin")
-			return next({})
+			assertRole(context.auth, "admin");
+			return next({});
 		})
 		.input(
 			(await import("zod")).z.object({
@@ -61,20 +61,22 @@ const org = {
 			}),
 		)
 		.handler(async ({ input, context }) => {
-			const updates: Record<string, unknown> = {}
+			const updates: Record<string, unknown> = {};
 
 			if (input.cloudflareToken && input.cloudflareAccountId) {
-				const cf = new CloudflareClient(input.cloudflareToken, input.cloudflareAccountId)
-				if (!(await cf.verify())) throw new ORPCError("BAD_REQUEST", { message: "Invalid Cloudflare token" })
-				updates.cloudflareTokenEnc = await encrypt(input.cloudflareToken)
-				updates.cloudflareAccountId = input.cloudflareAccountId
+				const cf = new CloudflareClient(input.cloudflareToken, input.cloudflareAccountId);
+				if (!(await cf.verify()))
+					throw new ORPCError("BAD_REQUEST", { message: "Invalid Cloudflare token" });
+				updates.cloudflareTokenEnc = await encrypt(input.cloudflareToken);
+				updates.cloudflareAccountId = input.cloudflareAccountId;
 			}
-			if (input.githubToken) updates.githubTokenEnc = await encrypt(input.githubToken)
-			if (input.githubAppId) updates.githubAppId = input.githubAppId
-			if (input.githubClientId) updates.githubClientId = input.githubClientId
-			if (input.githubClientSecret) updates.githubClientSecretEnc = await encrypt(input.githubClientSecret)
+			if (input.githubToken) updates.githubTokenEnc = await encrypt(input.githubToken);
+			if (input.githubAppId) updates.githubAppId = input.githubAppId;
+			if (input.githubClientId) updates.githubClientId = input.githubClientId;
+			if (input.githubClientSecret)
+				updates.githubClientSecretEnc = await encrypt(input.githubClientSecret);
 
-			await db.update(organizations).set(updates).where(eq(organizations.id, context.auth.orgId))
+			await db.update(organizations).set(updates).where(eq(organizations.id, context.auth.orgId));
 
 			await db.insert(auditLog).values({
 				orgId: context.auth.orgId,
@@ -83,17 +85,17 @@ const org = {
 				resourceType: "organization",
 				resourceId: context.auth.orgId,
 				meta: { fields: Object.keys(updates) },
-			})
+			});
 
-			return { ok: true as const }
+			return { ok: true as const };
 		}),
-}
+};
 
 // ── Servers ──
 
 const serversProcedures = {
 	list: authed.handler(async ({ context }) => {
-		return db.select().from(servers).where(eq(servers.orgId, context.auth.orgId))
+		return db.select().from(servers).where(eq(servers.orgId, context.auth.orgId));
 	}),
 	get: authed
 		.input((await import("zod")).z.object({ id: (await import("zod")).z.number() }))
@@ -102,20 +104,21 @@ const serversProcedures = {
 				.select()
 				.from(servers)
 				.where(and(eq(servers.id, input.id), eq(servers.orgId, context.auth.orgId)))
-				.limit(1)
-			if (!server) throw new ORPCError("NOT_FOUND")
-			return server
+				.limit(1);
+			if (!server) throw new ORPCError("NOT_FOUND");
+			return server;
 		}),
 	create: authed
 		.use(({ context, next }) => {
-			assertRole(context.auth, "admin")
-			return next({})
+			assertRole(context.auth, "admin");
+			return next({});
 		})
 		.input(
 			(await import("zod")).z.object({
 				name: (await import("zod")).z.string(),
 				host: (await import("zod")).z.string(),
 				ip: (await import("zod")).z.string().optional(),
+				runtime: (await import("zod")).z.enum(["k3s", "swarm"]).default("k3s"),
 				provision: (await import("zod")).z.boolean().optional(),
 				domain: (await import("zod")).z.string().optional(),
 			}),
@@ -127,10 +130,11 @@ const serversProcedures = {
 					name: input.name,
 					host: input.host,
 					ip: input.ip,
+					runtime: input.runtime,
 					status: input.provision ? "provisioning" : "offline",
 					orgId: context.auth.orgId,
 				})
-				.returning()
+				.returning();
 
 			await db.insert(auditLog).values({
 				orgId: context.auth.orgId,
@@ -138,34 +142,35 @@ const serversProcedures = {
 				action: "server.create",
 				resourceType: "server",
 				resourceId: server!.id,
-			})
+			});
 
 			if (input.provision && input.domain) {
 				provisionServer({
 					serverId: server!.id,
 					host: input.host,
 					domain: input.domain,
+					runtime: input.runtime,
 					orgId: context.auth.orgId,
-				}).catch(console.error)
+				}).catch(console.error);
 			}
 
-			return server!
+			return server!;
 		}),
 	delete: authed
 		.use(({ context, next }) => {
-			assertRole(context.auth, "admin")
-			return next({})
+			assertRole(context.auth, "admin");
+			return next({});
 		})
 		.input((await import("zod")).z.object({ id: (await import("zod")).z.number() }))
 		.handler(async ({ input, context }) => {
 			const [deleted] = await db
 				.delete(servers)
 				.where(and(eq(servers.id, input.id), eq(servers.orgId, context.auth.orgId)))
-				.returning()
-			if (!deleted) throw new ORPCError("NOT_FOUND")
-			return { ok: true as const }
+				.returning();
+			if (!deleted) throw new ORPCError("NOT_FOUND");
+			return { ok: true as const };
 		}),
-}
+};
 
 // ── Projects ──
 
@@ -174,7 +179,7 @@ const projectsProcedures = {
 		return db.query.projects.findMany({
 			where: eq(projects.orgId, context.auth.orgId),
 			with: { server: true, domains: true },
-		})
+		});
 	}),
 	get: authed
 		.input((await import("zod")).z.object({ id: (await import("zod")).z.number() }))
@@ -186,14 +191,14 @@ const projectsProcedures = {
 					domains: true,
 					deploys: { limit: 10, orderBy: (d, { desc }) => [desc(d.startedAt)] },
 				},
-			})
-			if (!project) throw new ORPCError("NOT_FOUND")
-			return project
+			});
+			if (!project) throw new ORPCError("NOT_FOUND");
+			return project;
 		}),
 	create: authed
 		.use(({ context, next }) => {
-			assertRole(context.auth, "admin")
-			return next({})
+			assertRole(context.auth, "admin");
+			return next({});
 		})
 		.input(
 			(await import("zod")).z.object({
@@ -205,7 +210,7 @@ const projectsProcedures = {
 			}),
 		)
 		.handler(async ({ input, context }) => {
-			const slug = input.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")
+			const slug = input.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 			const [project] = await db
 				.insert(projects)
 				.values({
@@ -217,10 +222,10 @@ const projectsProcedures = {
 					domain: input.domain,
 					atlasYaml: input.atlasYaml,
 				})
-				.returning()
-			return project!
+				.returning();
+			return project!;
 		}),
-}
+};
 
 // ── Deploys ──
 
@@ -230,19 +235,19 @@ const deploysProcedures = {
 		.handler(async ({ input, context }) => {
 			const project = await db.query.projects.findFirst({
 				where: and(eq(projects.id, input.projectId), eq(projects.orgId, context.auth.orgId)),
-			})
-			if (!project) return []
+			});
+			if (!project) return [];
 			return db
 				.select()
 				.from(deploys)
 				.where(eq(deploys.projectId, project.id))
 				.orderBy(desc(deploys.startedAt))
-				.limit(50)
+				.limit(50);
 		}),
 	trigger: authed
 		.use(({ context, next }) => {
-			assertRole(context.auth, "admin", "dev")
-			return next({})
+			assertRole(context.auth, "admin", "dev");
+			return next({});
 		})
 		.input(
 			(await import("zod")).z.object({
@@ -255,9 +260,9 @@ const deploysProcedures = {
 			const project = await db.query.projects.findFirst({
 				where: and(eq(projects.id, input.projectId), eq(projects.orgId, context.auth.orgId)),
 				with: { server: true },
-			})
-			if (!project) throw new ORPCError("NOT_FOUND")
-			if (!project.server) throw new ORPCError("BAD_REQUEST", { message: "No server assigned" })
+			});
+			if (!project) throw new ORPCError("NOT_FOUND");
+			if (!project.server) throw new ORPCError("BAD_REQUEST", { message: "No server assigned" });
 
 			const [deploy] = await db
 				.insert(deploys)
@@ -268,7 +273,7 @@ const deploysProcedures = {
 					status: "pending",
 					meta: input.services ? { services: input.services } : undefined,
 				})
-				.returning()
+				.returning();
 
 			await db.insert(auditLog).values({
 				orgId: context.auth.orgId,
@@ -277,23 +282,23 @@ const deploysProcedures = {
 				resourceType: "deploy",
 				resourceId: deploy!.id,
 				meta: { project: project.slug, tag: input.tag },
-			})
+			});
 
-			executeDeploy(deploy!.id).catch(console.error)
-			return deploy!
+			executeDeploy(deploy!.id).catch(console.error);
+			return deploy!;
 		}),
 	get: authed
 		.input((await import("zod")).z.object({ id: (await import("zod")).z.number() }))
 		.handler(async ({ input, context }) => {
-			const [deploy] = await db.select().from(deploys).where(eq(deploys.id, input.id)).limit(1)
-			if (!deploy) throw new ORPCError("NOT_FOUND")
+			const [deploy] = await db.select().from(deploys).where(eq(deploys.id, input.id)).limit(1);
+			if (!deploy) throw new ORPCError("NOT_FOUND");
 			const project = await db.query.projects.findFirst({
 				where: and(eq(projects.id, deploy.projectId), eq(projects.orgId, context.auth.orgId)),
-			})
-			if (!project) throw new ORPCError("NOT_FOUND")
-			return deploy
+			});
+			if (!project) throw new ORPCError("NOT_FOUND");
+			return deploy;
 		}),
-}
+};
 
 // ── Secrets ──
 
@@ -304,28 +309,34 @@ const secretsProcedures = {
 			return db
 				.select({ key: secrets.key, updatedAt: secrets.updatedAt })
 				.from(secrets)
-				.where(eq(secrets.projectId, input.projectId))
+				.where(eq(secrets.projectId, input.projectId));
 		}),
 	set: authed
 		.input(
 			(await import("zod")).z.object({
 				projectId: (await import("zod")).z.number(),
-				secrets: (await import("zod")).z.record((await import("zod")).z.string(), (await import("zod")).z.string()),
+				secrets: (await import("zod")).z.record(
+					(await import("zod")).z.string(),
+					(await import("zod")).z.string(),
+				),
 			}),
 		)
 		.handler(async ({ input, context }) => {
 			for (const [key, value] of Object.entries(input.secrets)) {
-				const valueEnc = await encrypt(value)
+				const valueEnc = await encrypt(value);
 				const existing = await db
 					.select()
 					.from(secrets)
 					.where(and(eq(secrets.projectId, input.projectId), eq(secrets.key, key)))
-					.limit(1)
+					.limit(1);
 
 				if (existing.length > 0) {
-					await db.update(secrets).set({ valueEnc, updatedAt: new Date() }).where(eq(secrets.id, existing[0]!.id))
+					await db
+						.update(secrets)
+						.set({ valueEnc, updatedAt: new Date() })
+						.where(eq(secrets.id, existing[0]!.id));
 				} else {
-					await db.insert(secrets).values({ projectId: input.projectId, key, valueEnc })
+					await db.insert(secrets).values({ projectId: input.projectId, key, valueEnc });
 				}
 			}
 
@@ -333,17 +344,17 @@ const secretsProcedures = {
 			const project = await db.query.projects.findFirst({
 				where: eq(projects.id, input.projectId),
 				with: { server: true },
-			})
-			let synced = false
+			});
+			let synced = false;
 			if (project?.server?.host) {
-				const rows = await db.select().from(secrets).where(eq(secrets.projectId, input.projectId))
-				const data: Record<string, string> = {}
-				for (const row of rows) data[row.key] = await decrypt(row.valueEnc)
-				const kube = new KubernetesService(project.server.host)
-				synced = await kube.syncSecret(project.slug, `${project.slug}-secrets`, data)
+				const rows = await db.select().from(secrets).where(eq(secrets.projectId, input.projectId));
+				const data: Record<string, string> = {};
+				for (const row of rows) data[row.key] = await decrypt(row.valueEnc);
+				const runtime = createRuntime(project.server.runtime, project.server.host);
+				synced = await runtime.syncSecrets(project.slug, `${project.slug}-secrets`, data);
 			}
 
-			return { ok: true as const, keys: Object.keys(input.secrets), synced }
+			return { ok: true as const, keys: Object.keys(input.secrets), synced };
 		}),
 	delete: authed
 		.input(
@@ -355,29 +366,29 @@ const secretsProcedures = {
 		.handler(async ({ input, context }) => {
 			await db
 				.delete(secrets)
-				.where(and(eq(secrets.projectId, input.projectId), eq(secrets.key, input.key)))
+				.where(and(eq(secrets.projectId, input.projectId), eq(secrets.key, input.key)));
 
 			const project = await db.query.projects.findFirst({
 				where: eq(projects.id, input.projectId),
 				with: { server: true },
-			})
-			let synced = false
+			});
+			let synced = false;
 			if (project?.server?.host) {
-				const kube = new KubernetesService(project.server.host)
-				synced = await kube.deleteSecretKey(project.slug, `${project.slug}-secrets`, input.key)
+				const runtime = createRuntime(project.server.runtime, project.server.host);
+				synced = await runtime.deleteSecretKey(project.slug, `${project.slug}-secrets`, input.key);
 			}
 
-			return { ok: true as const, deleted: input.key, synced }
+			return { ok: true as const, deleted: input.key, synced };
 		}),
 	pullValues: authed
 		.input((await import("zod")).z.object({ projectId: (await import("zod")).z.number() }))
 		.handler(async ({ input }) => {
-			const rows = await db.select().from(secrets).where(eq(secrets.projectId, input.projectId))
-			const result: Record<string, string> = {}
-			for (const row of rows) result[row.key] = await decrypt(row.valueEnc)
-			return result
+			const rows = await db.select().from(secrets).where(eq(secrets.projectId, input.projectId));
+			const result: Record<string, string> = {};
+			for (const row of rows) result[row.key] = await decrypt(row.valueEnc);
+			return result;
 		}),
-}
+};
 
 // ── Router ──
 
@@ -387,6 +398,6 @@ export const router = {
 	projects: projectsProcedures,
 	deploys: deploysProcedures,
 	secrets: secretsProcedures,
-}
+};
 
-export type AppRouter = typeof router
+export type AppRouter = typeof router;

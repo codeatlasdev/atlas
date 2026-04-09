@@ -1,5 +1,5 @@
-import { defineCommand } from "citty"
-import { loadConfig } from "../lib/config"
+import { defineCommand } from "citty";
+import { loadConfig } from "../lib/config";
 
 const targets: Record<string, (domain: string) => string> = {
 	app: (d) => `https://backoffice.${d}`,
@@ -9,7 +9,7 @@ const targets: Record<string, (domain: string) => string> = {
 	backoffice: (d) => `https://backoffice.${d}`,
 	finances: (d) => `https://finances.${d}`,
 	bi: (d) => `https://bi.${d}`,
-}
+};
 
 export default defineCommand({
 	meta: { name: "open", description: "Open a service URL in the browser" },
@@ -21,24 +21,24 @@ export default defineCommand({
 		},
 	},
 	async run({ args }) {
-		const config = await loadConfig()
-		const domain = config.domain
+		const config = await loadConfig();
+		const domain = config.domain;
 		if (!domain) {
-			console.error("No domain configured. Run: atlas infra setup")
-			return
+			console.error("No domain configured. Run: atlas infra setup");
+			return;
 		}
-		const target = (args.target as string) || "app"
+		const target = (args.target as string) || "app";
 
-		const urlFn = targets[target]
+		const urlFn = targets[target];
 		if (!urlFn) {
-			console.error(`Unknown target: ${target}. Options: ${Object.keys(targets).join(", ")}`)
-			return
+			console.error(`Unknown target: ${target}. Options: ${Object.keys(targets).join(", ")}`);
+			return;
 		}
 
-		const url = urlFn(domain)
-		console.log(`→ Opening ${url}`)
+		const url = urlFn(domain);
+		console.log(`→ Opening ${url}`);
 
-		const cmd = process.platform === "darwin" ? "open" : "xdg-open"
-		Bun.spawn([cmd, url], { stdout: "ignore", stderr: "ignore" })
+		const cmd = process.platform === "darwin" ? "open" : "xdg-open";
+		Bun.spawn([cmd, url], { stdout: "ignore", stderr: "ignore" });
 	},
-})
+});

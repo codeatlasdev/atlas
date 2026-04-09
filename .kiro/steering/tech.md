@@ -42,8 +42,9 @@ Fonte de verdade para versões e convenções técnicas.
 | `@atlas/crypto` | AES-256-GCM encryption |
 | `@atlas/db` | Drizzle schema + migrations |
 | `@atlas/env` | Zod-validated env vars |
-| `@atlas/kubernetes` | kubectl abstraction via SSH |
-| `@atlas/provisioner` | Server provisioning phases |
+| `@atlas/kubernetes` | ⚠️ Deprecated — re-exports @atlas/runtime |
+| `@atlas/provisioner` | Server provisioning phases (K3s + Swarm) |
+| `@atlas/runtime` | Container runtime abstraction (K3s + Swarm) |
 | `@atlas/ssh` | SSH client com ControlMaster |
 
 ## Convenções

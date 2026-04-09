@@ -35,7 +35,7 @@ atlas deploy     # that's it. DNS, HTTPS, scaling — all automatic.
 
 ```bash
 atlas login                          # Authenticate with GitHub
-atlas infra setup --host root@vps    # Provision a server
+atlas infra setup --host root@vps    # Provision a server (choose K3s or Swarm)
 cd your-project && atlas deploy      # Deploy — done
 ```
 
@@ -55,8 +55,9 @@ atlas/
 │   ├── crypto/           AES-256-GCM encryption
 │   ├── db/               Drizzle ORM schema + migrations
 │   ├── env/              Type-safe environment variables (zod)
-│   ├── kubernetes/       kubectl abstraction via SSH
-│   ├── provisioner/      Server provisioning phases
+│   ├── kubernetes/       ⚠️ Deprecated — re-exports @atlas/runtime
+│   ├── provisioner/      Server provisioning phases (K3s + Swarm)
+│   ├── runtime/          Container runtime abstraction (K3s + Swarm)
 │   └── ssh/              SSH client with ControlMaster
 ├── turbo.json
 └── package.json
@@ -73,9 +74,9 @@ atlas/
 | Auth | JWT (HMAC-SHA256) + GitHub OAuth |
 | Encryption | AES-256-GCM via Web Crypto API |
 | Env | Zod-validated type-safe env |
-| Container Runtime | K3s (lightweight Kubernetes) |
+| Container Runtime | K3s or Docker Swarm (user choice) |
 | Ingress | Traefik v3 |
-| Certificates | cert-manager + Let's Encrypt |
+| Certificates | cert-manager (K3s) / ACME (Swarm) + Let's Encrypt |
 | DNS | Cloudflare API |
 | Monitoring | Prometheus + Grafana |
 | Logs | Loki + Alloy |
@@ -87,7 +88,8 @@ atlas/
 
 ```
 atlas login                     Authenticate with GitHub
-atlas infra setup               Provision a fresh server
+atlas infra setup               Provision a fresh server (K3s or Swarm)
+atlas infra migrate             Migrate between runtimes (K3s ↔ Swarm)
 atlas deploy                    Build → push → deploy to cluster
 atlas status                    Cluster overview (TUI dashboard)
 atlas logs [service] -f         Stream logs in real-time

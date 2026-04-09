@@ -1,4 +1,4 @@
-import { defineCommand } from "citty"
+import { defineCommand } from "citty";
 
 export default defineCommand({
 	meta: {
@@ -7,5 +7,6 @@ export default defineCommand({
 	},
 	subCommands: {
 		setup: () => import("./infra/setup").then((m) => m.default),
+		migrate: () => import("./infra/migrate").then((m) => m.default),
 	},
-})
+});

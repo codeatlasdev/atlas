@@ -3,5 +3,6 @@
 	"private": true,
 	"type": "module",
 	"exports": { ".": "./src/index.ts" },
+	"dependencies": { "@atlas/runtime": "workspace:*" },
 	"devDependencies": { "@atlas/config": "workspace:*", "typescript": "catalog:" }
 }

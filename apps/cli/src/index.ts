@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { defineCommand, runMain } from "citty"
-import { version } from "../package.json"
+import { defineCommand, runMain } from "citty";
+import { version } from "../package.json";
 
 const main = defineCommand({
 	meta: {
@@ -27,6 +27,6 @@ const main = defineCommand({
 		open: () => import("./commands/open").then((m) => m.default),
 		panel: () => import("./commands/panel").then((m) => m.default),
 	},
-})
+});
 
-runMain(main)
+runMain(main);

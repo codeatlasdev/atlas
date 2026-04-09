@@ -1,12 +1,12 @@
-import { db } from "@atlas/db"
-import { organizations, users } from "@atlas/db/schema"
-import { signToken } from "@atlas/auth"
+import { signToken } from "@atlas/auth";
+import { db } from "@atlas/db";
+import { organizations, users } from "@atlas/db/schema";
 
-const ORG_NAME = process.env.SEED_ORG_NAME ?? "MyOrg"
-const ORG_SLUG = process.env.SEED_ORG_SLUG ?? ORG_NAME.toLowerCase().replace(/\s+/g, "-")
-const GITHUB_ORG = process.env.SEED_GITHUB_ORG ?? ORG_SLUG
-const ADMIN_USERNAME = process.env.SEED_ADMIN_USERNAME ?? "admin"
-const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? ""
+const ORG_NAME = process.env.SEED_ORG_NAME ?? "MyOrg";
+const ORG_SLUG = process.env.SEED_ORG_SLUG ?? ORG_NAME.toLowerCase().replace(/\s+/g, "-");
+const GITHUB_ORG = process.env.SEED_GITHUB_ORG ?? ORG_SLUG;
+const ADMIN_USERNAME = process.env.SEED_ADMIN_USERNAME ?? "admin";
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "";
 
 const [org] = await db
 	.insert(organizations)
@@ -16,10 +16,10 @@ const [org] = await db
 		githubOrg: GITHUB_ORG,
 	})
 	.onConflictDoNothing()
-	.returning()
+	.returning();
 
 if (org) {
-	console.log(`✅ Organization created: ${org.name} (id: ${org.id})`)
+	console.log(`✅ Organization created: ${org.name} (id: ${org.id})`);
 
 	const [admin] = await db
 		.insert(users)
@@ -31,22 +31,22 @@ if (org) {
 			orgId: org.id,
 		})
 		.onConflictDoNothing()
-		.returning()
+		.returning();
 
 	if (admin) {
-		console.log(`✅ Admin user created: ${admin.githubUsername} (id: ${admin.id})`)
+		console.log(`✅ Admin user created: ${admin.githubUsername} (id: ${admin.id})`);
 
 		const token = await signToken({
 			sub: String(admin.id),
 			org: String(org.id),
 			role: admin.role,
 			username: admin.githubUsername,
-		})
+		});
 
-		console.log(`\n🔑 Dev token (use in Authorization header):\nBearer ${token}\n`)
+		console.log(`\n🔑 Dev token (use in Authorization header):\nBearer ${token}\n`);
 	}
 } else {
-	console.log("ℹ Organization already exists")
+	console.log("ℹ Organization already exists");
 }
 
-process.exit(0)
+process.exit(0);

@@ -40,7 +40,8 @@
 		"db:stop": "turbo -F @atlas/db db:stop",
 		"db:down": "turbo -F @atlas/db db:down",
 		"check": "biome check .",
-		"fix": "biome check --fix ."
+		"fix": "biome check --fix .",
+		"ncu": "ncu -u && for dir in apps/* packages/*; do [ -f \"$dir/package.json\" ] && (cd \"$dir\" && ncu -u); done && bun install"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

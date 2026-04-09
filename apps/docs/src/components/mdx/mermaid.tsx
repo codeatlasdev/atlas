@@ -1,5 +1,5 @@
-import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { renderMermaidSVG } from "beautiful-mermaid";
+import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 
 export async function Mermaid({ chart }: { chart: string }) {
 	try {

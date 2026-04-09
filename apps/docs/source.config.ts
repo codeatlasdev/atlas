@@ -1,9 +1,10 @@
 import { remarkMdxMermaid } from "fumadocs-core/mdx-plugins";
-import { defineConfig, defineDocs, frontmatterSchema, metaSchema } from "fumadocs-mdx/config";
+import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
+import { defineConfig, defineDocs } from "fumadocs-mdx/config";
 
 export const docs = defineDocs({
 	dir: "content/docs",
-	docs: { schema: frontmatterSchema },
+	docs: { schema: pageSchema },
 	meta: { schema: metaSchema },
 });
 

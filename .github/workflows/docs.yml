@@ -24,11 +24,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
 
-      - name: Install and build
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build docs
         working-directory: apps/docs
-        run: |
-          bun install
-          bun run build
+        run: bun run build
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

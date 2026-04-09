@@ -3,9 +3,9 @@ import { z } from "zod";
 function createEnv<T extends z.ZodRawShape>(schema: T): z.infer<z.ZodObject<T>> {
 	const parsed = z.object(schema).safeParse(process.env);
 	if (!parsed.success) {
-		const formatted = parsed.error.flatten().fieldErrors;
-		const msg = Object.entries(formatted)
-			.map(([k, v]) => `  ${k}: ${(v as string[]).join(", ")}`)
+		const tree = z.treeifyError(parsed.error);
+		const msg = Object.entries(tree.properties ?? {})
+			.map(([k, v]) => `  ${k}: ${v.errors.join(", ")}`)
 			.join("\n");
 		throw new Error(`❌ Invalid environment variables:\n${msg}`);
 	}

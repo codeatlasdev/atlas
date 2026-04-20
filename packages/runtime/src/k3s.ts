@@ -17,10 +17,61 @@ export class K3sRuntime implements RuntimeService {
 	}
 
 	async deploy(stack: string, service: string, image: string) {
+		// Ensure namespace exists
+		await this.kubectl(`create ns ${stack} 2>/dev/null || true`);
+
+		// Try to update existing deployment
 		const { ok } = await this.kubectl(
 			`-n ${stack} set image deployment/${service} ${service}=${image}`,
 		);
-		return ok;
+		if (ok) return true;
+
+		// Deployment doesn't exist — create it
+		const port = this.inferPort(service);
+		const yaml = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${service}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${service}
+  template:
+    metadata:
+      labels:
+        app: ${service}
+    spec:
+      imagePullSecrets:
+        - name: ghcr-auth
+      containers:
+        - name: ${service}
+          image: ${image}
+          ports:
+            - containerPort: ${port}
+          envFrom:
+            - secretRef:
+                name: ${stack}-secrets
+                optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${service}
+spec:
+  selector:
+    app: ${service}
+  ports:
+    - port: ${port}
+      targetPort: ${port}`;
+
+		const result = await this.applyManifest(stack, yaml);
+		return result.ok;
+	}
+
+	private inferPort(service: string): number {
+		if (service.includes("web") || service.includes("frontend")) return 3000;
+		return 3001;
 	}
 
 	async rolloutStatus(stack: string, service: string, timeoutSec = 120) {

@@ -15,10 +15,18 @@ export class SwarmRuntime implements RuntimeService {
 	}
 
 	async deploy(stack: string, service: string, image: string) {
+		// Try to update existing service
 		const { ok } = await this.run(
 			`docker service update --image ${image} ${this.svc(stack, service)}`,
 		);
-		return ok;
+		if (ok) return true;
+
+		// Service doesn't exist — create it
+		const port = service.includes("web") || service.includes("frontend") ? 3000 : 3001;
+		const { ok: created } = await this.run(
+			`docker service create --name ${this.svc(stack, service)} --network atlas-proxy --replicas 1 --label "com.docker.stack.namespace=${stack}" --label "traefik.enable=true" --label "traefik.http.routers.${service}.rule=PathPrefix(\`/\`)" --with-registry-auth ${image}`,
+		);
+		return created;
 	}
 
 	async rolloutStatus(stack: string, service: string, timeoutSec = 120) {

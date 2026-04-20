@@ -5,7 +5,8 @@ import { join } from "node:path";
 export interface AtlasConfig {
 	host?: string;
 	domain?: string;
-	runtime?: "k3s" | "swarm";
+	runtime?: "k3s" | "swarm" | "firecracker";
+	serverArch?: string;
 	githubRepo?: string;
 	githubToken?: string;
 	githubUser?: string;

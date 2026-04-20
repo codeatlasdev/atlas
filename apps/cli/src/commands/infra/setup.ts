@@ -19,6 +19,14 @@ const RUNTIME_TRADEOFFS: Record<RuntimeType, { pros: string[]; cons: string[] }>
 		pros: ["Full Kubernetes ecosystem", "Helm charts, ArgoCD, HPA", "cert-manager for TLS"],
 		cons: ["~512MB RAM overhead", "More complex", "Requires 2GB+ RAM"],
 	},
+	firecracker: {
+		pros: [
+			"~5MB per VM (hardware-level isolation)",
+			"~125ms boot time",
+			"No Docker in production",
+		],
+		cons: ["Requires bare metal with KVM", "Experimental", "No Helm/ArgoCD"],
+	},
 };
 
 export default defineCommand({
@@ -29,7 +37,7 @@ export default defineCommand({
 	args: {
 		host: { type: "string", description: "SSH host (e.g., root@1.2.3.4 or ssh alias)" },
 		domain: { type: "string", description: "Base domain (e.g., myapp.com)" },
-		runtime: { type: "string", description: "Container runtime: k3s or swarm" },
+		runtime: { type: "string", description: "Container runtime: k3s, swarm, or firecracker" },
 		"skip-monitoring": { type: "boolean", default: false },
 		"skip-argocd": { type: "boolean", default: false },
 		tunnel: { type: "boolean", default: false },
@@ -71,7 +79,7 @@ export default defineCommand({
 
 		// ── Runtime selection ──
 		let runtime: RuntimeType;
-		if (args.runtime === "k3s" || args.runtime === "swarm") {
+		if (args.runtime === "k3s" || args.runtime === "swarm" || args.runtime === "firecracker") {
 			runtime = args.runtime;
 		} else if (auto) {
 			runtime = (config.runtime as RuntimeType) || "k3s";
@@ -89,6 +97,11 @@ export default defineCommand({
 						label: `K3s / Kubernetes ${pc.dim("(full-featured)")}`,
 						hint: "~512MB overhead, Helm, ArgoCD, HPA, best for 2GB+ RAM",
 					},
+					{
+						value: "firecracker",
+						label: `Firecracker ${pc.dim("(microVMs)")}`,
+						hint: "~5MB per VM, hardware isolation, requires bare metal with KVM",
+					},
 				],
 			});
 			if (p.isCancel(selected)) return p.cancel("Cancelled");
@@ -96,12 +109,13 @@ export default defineCommand({
 
 			// Show tradeoffs
 			const info = RUNTIME_TRADEOFFS[runtime];
+			const runtimeLabel = runtime === "swarm" ? "Docker Swarm" : runtime === "k3s" ? "K3s" : "Firecracker";
 			p.note(
 				[
 					...info.pros.map((t) => `  ${pc.green("✓")} ${t}`),
 					...info.cons.map((t) => `  ${pc.yellow("✗")} ${t}`),
 				].join("\n"),
-				`${runtime === "swarm" ? "Docker Swarm" : "K3s"} tradeoffs`,
+				`${runtimeLabel} tradeoffs`,
 			);
 		}
 
@@ -129,6 +143,10 @@ export default defineCommand({
 		);
 		log.stop(info.stdout.trim());
 
+		// Detect server architecture for cross-platform builds
+		const archResult = await ssh(host as string, "uname -m");
+		const serverArch = archResult.stdout.trim();
+
 		if (!auto) {
 			const proceed = await p.confirm({
 				message: `Setup ${pc.bold(host as string)} with ${pc.bold(runtime)} and domain ${pc.bold(domain as string)}?`,
@@ -136,7 +154,7 @@ export default defineCommand({
 			if (p.isCancel(proceed) || !proceed) return p.cancel("Cancelled");
 		}
 
-		await saveConfig({ host: host as string, domain: domain as string, runtime });
+		await saveConfig({ host: host as string, domain: domain as string, runtime, serverArch });
 
 		// ── Tunnel ──
 		const tunnel = args.tunnel
@@ -199,6 +217,12 @@ export default defineCommand({
 			notes.push(
 				`${pc.bold("Grafana")}: https://grafana.${domain} (admin/${grafanaPass.stdout.trim()})`,
 			);
+		}
+
+		if (runtime === "firecracker") {
+			notes.push("", `${pc.bold("Runtime")}: Firecracker microVMs`);
+			notes.push(`${pc.bold("VMM socket")}: /var/run/atlas-vmm.sock`);
+			notes.push(`${pc.bold("Base rootfs")}: /opt/atlas/firecracker/rootfs/base.ext4`);
 		}
 
 		p.note(notes.filter(Boolean).join("\n"), "Setup complete");

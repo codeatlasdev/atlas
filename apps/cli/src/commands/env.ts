@@ -2,6 +2,7 @@ import { ssh } from "@atlas/ssh";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { loadConfig } from "../lib/config";
+import { resolveNamespace } from "../lib/project";
 
 const list = defineCommand({
 	meta: { name: "list", description: "List environment variables" },
@@ -10,7 +11,7 @@ const list = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");
@@ -51,7 +52,7 @@ const set = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");
@@ -71,6 +72,7 @@ const set = defineCommand({
 		const result = await ssh(
 			host,
 			`export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl -n ${ns} get secret ${ns}-secrets &>/dev/null || kubectl -n ${ns} create secret generic ${ns}-secrets
 kubectl -n ${ns} get secret ${ns}-secrets -o json | \
   jq --arg k "${key}" --arg v "$(echo -n '${value}' | base64)" '.data[$k] = $v' | \
   kubectl apply -f -`,
@@ -92,7 +94,7 @@ const pull = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");

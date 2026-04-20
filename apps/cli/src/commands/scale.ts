@@ -2,6 +2,7 @@ import { ssh } from "@atlas/ssh";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { loadConfig } from "../lib/config";
+import { resolveNamespace } from "../lib/project";
 
 export default defineCommand({
 	meta: { name: "scale", description: "Scale a service" },
@@ -19,7 +20,7 @@ export default defineCommand({
 		}
 
 		const runtime = config.runtime || "k3s";
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const service = args.service as string;
 		const replicas = args.replicas as string;
 

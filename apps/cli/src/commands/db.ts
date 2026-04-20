@@ -2,6 +2,7 @@ import { ssh } from "@atlas/ssh";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { loadConfig } from "../lib/config";
+import { resolveNamespace } from "../lib/project";
 
 const migrate = defineCommand({
 	meta: { name: "migrate", description: "Run database migrations" },
@@ -10,7 +11,7 @@ const migrate = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");
@@ -38,7 +39,7 @@ const studio = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");
@@ -73,7 +74,7 @@ const psql = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");
@@ -103,7 +104,7 @@ const backup = defineCommand({
 	},
 	async run({ args }) {
 		const config = await loadConfig();
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const host = args.host || config.host;
 		if (!host) {
 			console.error("No host. Run: atlas infra setup");

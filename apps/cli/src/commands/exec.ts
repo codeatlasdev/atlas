@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import { loadConfig } from "../lib/config";
+import { resolveNamespace } from "../lib/project";
 
 export default defineCommand({
 	meta: {
@@ -20,7 +21,7 @@ export default defineCommand({
 		}
 
 		const runtime = config.runtime || "k3s";
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 		const service = args.service || "server";
 		const command = args.command || "sh";
 

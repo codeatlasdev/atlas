@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import { loadConfig } from "../lib/config";
+import { resolveNamespace } from "../lib/project";
 
 export default defineCommand({
 	meta: {
@@ -24,7 +25,7 @@ export default defineCommand({
 		const service = args.service || "server";
 		const follow = args.follow ? "-f" : "";
 		const tail = args.tail || "100";
-		const ns = config.domain ? config.domain.split(".")[0] : "app";
+		const ns = await resolveNamespace(config.domain);
 
 		let cmd: string;
 		if (runtime === "swarm") {

@@ -53,7 +53,7 @@ export function Header(title: string, subtitle?: string) {
 	return box;
 }
 
-export function StatusLine(label: string, value: string, color = theme.text) {
+export function StatusLine(label: string, value: string, color: string = theme.text) {
 	const row = Box({ flexDirection: "row", gap: 1 });
 	row.add(Text({ content: `  ${label}`, fg: theme.muted }));
 	row.add(Text({ content: value, fg: color }));
@@ -66,7 +66,7 @@ export function Divider() {
 
 // ── Updatable text helper ──
 
-export function MutableText(initial: string, color = theme.text) {
+export function MutableText(initial: string, color: string = theme.text) {
 	const node = Text({ content: initial, fg: color }) as Renderable & Record<string, unknown>;
 	return {
 		node,

@@ -6,6 +6,7 @@
 	"bin": { "atlas": "./src/index.ts" },
 	"scripts": {
 		"build": "bun run build.ts",
+		"test": "bun test",
 		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {

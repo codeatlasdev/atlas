@@ -3,7 +3,9 @@ import { z } from "zod";
 function createEnv<T extends z.ZodRawShape>(schema: T): z.infer<z.ZodObject<T>> {
 	const parsed = z.object(schema).safeParse(process.env);
 	if (!parsed.success) {
-		const tree = z.treeifyError(parsed.error);
+		const tree = z.treeifyError(parsed.error) as {
+			properties?: Record<string, { errors: string[] }>;
+		};
 		const msg = Object.entries(tree.properties ?? {})
 			.map(([k, v]) => `  ${k}: ${v.errors.join(", ")}`)
 			.join("\n");

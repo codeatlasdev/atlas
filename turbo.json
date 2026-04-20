@@ -11,6 +11,10 @@
 			"dependsOn": ["^check-types"],
 			"inputs": ["**/*.ts", "**/*.tsx", "tsconfig.json"]
 		},
+		"test": {
+			"inputs": ["src/**/*.ts"],
+			"outputs": []
+		},
 		"dev": {
 			"cache": false,
 			"persistent": true

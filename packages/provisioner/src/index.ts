@@ -1,11 +1,8 @@
-import type { RuntimeType } from "@atlas/runtime";
+import type { ProvisionPhase, RuntimeType } from "@atlas/api/types";
 import { getK3sPhases, phase01System } from "./k3s";
 import { getSwarmPhases } from "./swarm";
 
-export interface ProvisionPhase {
-	name: string;
-	script: string;
-}
+export type { ProvisionPhase } from "@atlas/api/types";
 
 export interface ProvisionOptions {
 	runtime: RuntimeType;
@@ -17,6 +14,10 @@ export interface ProvisionOptions {
 
 export function getProvisionPhases(opts: ProvisionOptions): ProvisionPhase[] {
 	if (opts.runtime === "swarm") return getSwarmPhases(opts);
+	if (opts.runtime === "firecracker") {
+		const { getFirecrackerPhases } = require("@atlas/firecracker");
+		return getFirecrackerPhases(opts) as ProvisionPhase[];
+	}
 	return getK3sPhases(opts);
 }
 

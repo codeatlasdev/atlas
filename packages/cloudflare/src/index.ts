@@ -165,11 +165,21 @@ export class CloudflareClient {
 
 	async verify(): Promise<boolean> {
 		try {
+			// Try API token verification first
 			const res = await fetch(`${API}/user/tokens/verify`, {
 				headers: { Authorization: `Bearer ${this.token}` },
 			});
 			const data = (await res.json()) as CFResponse<{ status: string }>;
-			return data.success && data.result.status === "active";
+			if (data.success && data.result?.status === "active") return true;
+		} catch {}
+
+		try {
+			// Fallback: OAuth tokens (e.g. from wrangler) don't support /tokens/verify
+			const res = await fetch(`${API}/user`, {
+				headers: { Authorization: `Bearer ${this.token}` },
+			});
+			const data = (await res.json()) as CFResponse<{ id: string }>;
+			return data.success && !!data.result?.id;
 		} catch {
 			return false;
 		}

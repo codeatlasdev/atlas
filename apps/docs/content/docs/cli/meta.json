@@ -1,4 +1,23 @@
 {
 	"title": "CLI",
-	"pages": ["index", "infra", "deploy", "login", "env", "logs", "status", "preview", "panel"]
+	"pages": [
+		"index",
+		"login",
+		"whoami",
+		"create",
+		"init",
+		"deploy",
+		"status",
+		"logs",
+		"exec",
+		"restart",
+		"scale",
+		"open",
+		"infra",
+		"tunnel",
+		"env",
+		"db",
+		"preview",
+		"panel"
+	]
 }

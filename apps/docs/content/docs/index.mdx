@@ -1,22 +1,62 @@
 ---
 title: Introduction
-description: You write code. Atlas handles infrastructure.
+description: Open-source platform that turns any Linux server into a production-ready cluster.
 ---
 
-You write code. Atlas handles infrastructure.
+Atlas deploys your applications to any VPS. You define services in `atlas.yaml`, run `atlas deploy`, and Atlas handles the rest: container builds, image registry, DNS records, TLS certificates, secrets encryption, and monitoring.
 
-Point it at any VPS — Hetzner, DigitalOcean, AWS, bare metal — and get DNS, HTTPS, secrets, monitoring, and deploys. One command.
+## What Atlas does
 
 ```bash
 atlas deploy
 ```
 
-## What Atlas does
+1. Builds Docker images for each service
+2. Pushes to GitHub Container Registry
+3. Deploys to your cluster via SSH
+4. Configures DNS records via Cloudflare
+5. Provisions TLS certificates via Let's Encrypt
+6. Syncs secrets encrypted with AES-256-GCM
 
-You define your stack in `atlas.yaml`:
+## Runtimes
+
+You choose the container runtime during server provisioning. Atlas supports three:
+
+| | K3s | Docker Swarm | Firecracker |
+|---|---|---|---|
+| Type | Lightweight Kubernetes | Docker-native orchestration | microVM isolation |
+| RAM overhead | ~512MB | ~100MB | ~5MB per VM |
+| Best for | Teams needing Helm, ArgoCD, HPA | Small teams, 1-2GB RAM servers | Bare metal with KVM, security-first |
+| Setup time | ~5 min | ~2 min | ~3 min |
+
+Switch between runtimes at any time with `atlas infra migrate`.
+
+## Architecture
+
+Atlas follows a hub-and-spoke model. The Control Panel is the central API. The CLI communicates with it. Every action flows through the Panel to your servers via SSH.
+
+```mermaid
+graph TB
+    CLI[Atlas CLI] -->|oRPC| Panel[Control Panel API]
+    Panel -->|SSH| S1[Server 1]
+    Panel -->|SSH| S2[Server 2]
+    Panel -->|SSH| SN[Server N]
+    S1 --- CF[Cloudflare DNS + Proxy]
+    S2 --- CF
+    SN --- CF
+```
+
+For single-server setups, the CLI can also deploy directly via SSH without the Panel.
+
+## Project configuration
+
+Every project has an `atlas.yaml` at the root:
 
 ```yaml
 name: myapp
+org: my-org
+domain: myapp.com
+
 services:
   api:
     type: api
@@ -31,42 +71,13 @@ infra:
   redis: true
 ```
 
-Atlas reads this and:
-
-1. **Builds** Docker images for each service
-2. **Pushes** to GitHub Container Registry
-3. **Deploys** to your cluster (K3s or Docker Swarm — you pick)
-4. **Configures DNS** via Cloudflare
-5. **Provisions HTTPS** via Let's Encrypt
-6. **Syncs secrets** encrypted with AES-256-GCM
-
-No Terraform. No Helm charts. No 200-line CI/CD pipelines.
-
-## What you get
-
-- **Two runtimes** — K3s (Kubernetes) or Docker Swarm. Switch anytime.
-- **Automatic DNS & HTTPS** — Cloudflare + Let's Encrypt. Zero config.
-- **Encrypted secrets** — AES-256-GCM at rest. Synced to your cluster.
-- **Preview environments** — One branch = one URL.
-- **Built-in monitoring** — Prometheus, Grafana, Loki. Pre-configured.
-- **20+ CLI commands** — Deploy, scale, logs, exec, restart, env, db, preview.
-
-## Architecture
-
-```mermaid
-graph LR
-    Dev[You] -->|atlas deploy| Panel[Control Panel API]
-    Panel -->|SSH| Server[Your Servers]
-    Server --- CF[Cloudflare DNS + Proxy]
-```
-
-The **Control Panel** is the brain. The CLI talks to it. Every action — deploy, scale, restart — flows through the Panel API to your servers via SSH.
+Atlas reads this file to determine what to build, where to deploy, and how to configure networking.
 
 ## Next steps
 
 <Cards>
-  <Card title="Install Atlas" href="/docs/getting-started/installation" />
+  <Card title="Installation" href="/docs/getting-started/installation" />
   <Card title="Quick Start" href="/docs/getting-started/quick-start" />
-  <Card title="Choose a Runtime" href="/docs/concepts/runtimes" />
+  <Card title="Runtimes" href="/docs/concepts/runtimes" />
   <Card title="Project Config" href="/docs/getting-started/project-config" />
 </Cards>

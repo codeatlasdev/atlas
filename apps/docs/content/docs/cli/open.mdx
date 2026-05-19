@@ -1,0 +1,33 @@
+---
+title: atlas open
+description: Open a service URL in the browser.
+icon: ExternalLink
+---
+
+## Usage
+
+```bash
+atlas open [target]
+```
+
+## Description
+
+Opens the URL of a service or infrastructure component in your default browser.
+
+## Targets
+
+| Target | URL |
+|--------|-----|
+| (default) | Primary service domain from atlas.yaml |
+| `api` | API service domain |
+| `grafana` | `grafana.{domain}` |
+| `argocd` | `argocd.{domain}` |
+| `prometheus` | `prometheus.{domain}` |
+
+## Examples
+
+```bash
+atlas open            # Open primary domain
+atlas open api        # Open API service
+atlas open grafana    # Open Grafana dashboard
+```

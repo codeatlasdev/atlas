@@ -1,0 +1,38 @@
+---
+title: atlas scale
+description: Scale service replicas.
+icon: Maximize
+---
+
+## Usage
+
+```bash
+atlas scale [service] [options]
+```
+
+## Description
+
+Changes the number of running replicas for a service.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--replicas, -r` | Target replica count |
+| `--host` | SSH host (defaults to config) |
+| `--yes, -y` | Non-interactive mode |
+
+## Examples
+
+```bash
+atlas scale api -r 3            # Scale API to 3 replicas
+atlas scale worker --replicas 2 # Scale worker to 2
+```
+
+## Runtime behavior
+
+| Runtime | Method |
+|---------|--------|
+| K3s | `kubectl scale deployment/{service} --replicas={n}` |
+| Swarm | `docker service scale {stack}_{service}={n}` |
+| Firecracker | `POST /vms/{stack}/{service}/scale` via VMM socket |

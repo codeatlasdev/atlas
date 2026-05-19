@@ -1,0 +1,38 @@
+---
+title: atlas restart
+description: Rolling restart of services.
+icon: RefreshCw
+---
+
+## Usage
+
+```bash
+atlas restart [service|all] [options]
+```
+
+## Description
+
+Performs a rolling restart of one or all services. Containers are restarted without downtime using the runtime's native rolling update mechanism.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--host` | SSH host (defaults to config) |
+| `--yes, -y` | Non-interactive mode |
+
+## Examples
+
+```bash
+atlas restart api       # Restart API service
+atlas restart all       # Restart all services
+atlas restart worker --host root@server
+```
+
+## Runtime behavior
+
+| Runtime | Method |
+|---------|--------|
+| K3s | `kubectl rollout restart deployment/{service}` |
+| Swarm | `docker service update --force {stack}_{service}` |
+| Firecracker | Stop and restart VM via VMM socket |

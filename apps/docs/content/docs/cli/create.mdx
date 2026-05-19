@@ -1,0 +1,38 @@
+---
+title: atlas create
+description: Scaffold a new Atlas project.
+icon: FolderPlus
+---
+
+## Usage
+
+```bash
+atlas create [options]
+```
+
+## Description
+
+Scaffolds a new project with `atlas.yaml`, Dockerfile, CI workflow, and `.gitignore`. Interactive prompts guide you through project name, organization, services, and infrastructure choices.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Project name |
+| `--yes, -y` | Non-interactive mode (uses defaults) |
+
+## Generated files
+
+| File | Purpose |
+|------|---------|
+| `atlas.yaml` | Project configuration |
+| `Dockerfile` | Multi-stage build for the primary service |
+| `.github/workflows/deploy.yml` | CI/CD workflow for GitHub Actions |
+| `.gitignore` | Standard ignores for the detected stack |
+
+## Examples
+
+```bash
+atlas create                # Interactive scaffolding
+atlas create --name myapp   # Skip name prompt
+```

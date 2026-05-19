@@ -1,72 +1,84 @@
 ---
 title: Runtimes
-description: K3s vs Docker Swarm — pick the right tool for your setup
+description: K3s, Docker Swarm, and Firecracker compared.
 ---
 
-Atlas supports two container runtimes. You choose during `atlas infra setup` and can switch anytime with `atlas infra migrate`.
+Atlas supports three container runtimes. You choose during `atlas infra setup` and can switch at any time with `atlas infra migrate`.
 
-## At a glance
+## Comparison
 
-| | Docker Swarm | K3s (Kubernetes) |
-|---|---|---|
-| **RAM overhead** | ~100MB | ~512MB |
-| **Setup time** | ~2 min | ~5 min |
-| **Best for** | Small teams, 1-2GB RAM servers | Larger teams, 2GB+ RAM |
-| **Docker Compose** | ✓ Native | ✗ |
-| **Helm charts** | ✗ | ✓ |
-| **ArgoCD (GitOps)** | ✗ | ✓ |
-| **Auto-scaling (HPA)** | ✗ | ✓ |
-| **cert-manager** | ✗ (Traefik ACME) | ✓ |
-| **Rolling updates** | ✓ | ✓ |
-| **Multi-node** | ✓ | ✓ |
-| **Secrets** | ✓ | ✓ |
-| **Preview envs** | ✓ | ✓ |
-| **Monitoring** | ✓ | ✓ |
+| | K3s | Docker Swarm | Firecracker |
+|---|---|---|---|
+| RAM overhead | ~512MB | ~100MB | ~5MB per VM |
+| Setup time | ~5 min | ~2 min | ~3 min |
+| Best for | 2GB+ RAM, Kubernetes ecosystem | 1-2GB RAM, simplicity | Bare metal with KVM, isolation |
+| Ingress | Traefik v3 (Helm) | Traefik v3 (Docker) | Traefik v3 (binary) |
+| TLS | cert-manager + Let's Encrypt | Traefik ACME | Traefik ACME |
+| Monitoring | Prometheus + Grafana + Loki (Helm) | Prometheus + Grafana + Loki (Docker) | node-exporter (binary) |
+| Helm charts | Yes | No | No |
+| ArgoCD | Yes | No | No |
+| Auto-scaling (HPA) | Yes | No | No |
+| Docker Compose native | No | Yes | No |
+| Hardware isolation | No | No | Yes |
+| Multi-node | Yes | Yes | No |
+
+## K3s
+
+Lightweight Kubernetes distribution. Gives you the full K8s ecosystem in a single binary.
+
+What gets installed:
+- K3s with `--disable traefik` (Atlas installs Traefik via Helm for more control)
+- Helm 3
+- Traefik v3 with HTTP-to-HTTPS redirect
+- cert-manager with Let's Encrypt ClusterIssuer
+- Prometheus + Grafana (kube-prometheus-stack)
+- Loki + Alloy for log aggregation
+- ArgoCD for GitOps (optional, skip with `--skip-argocd`)
+
+Choose K3s when you need Helm charts, GitOps workflows, horizontal pod autoscaling, or `kubectl` access.
 
 ## Docker Swarm
 
-The lightweight option. Swarm is built into Docker — no extra binaries, minimal overhead. Atlas deploys services via `docker stack deploy` and manages HTTPS through Traefik's built-in ACME resolver.
+Built into Docker. No extra binaries, minimal resource usage.
 
-**Choose Swarm when:**
-- Your server has 1-2GB RAM
-- You want the simplest possible setup
-- You don't need Helm charts or GitOps
+What gets installed:
+- Docker Engine + Swarm mode
+- Overlay network (`atlas-proxy`)
+- Traefik v3 with ACME resolver
+- Prometheus + Grafana + Loki + Promtail + cAdvisor + node-exporter (as Docker services)
 
-**What you get:**
-- Traefik v3 with automatic Let's Encrypt
-- Prometheus + Grafana + Loki (optional)
-- Overlay networking for multi-node
-- Docker Compose-native deployments
+Choose Swarm when your server has limited RAM, you want Docker Compose-native deployments, or you prefer the simplest possible setup.
 
-## K3s (Kubernetes)
+## Firecracker
 
-The full-featured option. K3s is a lightweight Kubernetes distribution that gives you the entire K8s ecosystem in a single binary.
+MicroVM-based isolation. Each service runs in its own lightweight VM with a dedicated Linux kernel. Boot time is approximately 125ms per VM.
 
-**Choose K3s when:**
-- Your server has 2GB+ RAM
-- You want Helm charts, ArgoCD, or HPA
-- You need the Kubernetes ecosystem
+What gets installed:
+- Firecracker binary (v1.15.1)
+- Linux kernel image (vmlinux.bin)
+- Base rootfs (Debian bookworm-slim with Node.js 22)
+- atlas-vmm daemon (manages VM lifecycle via Unix socket)
+- Traefik v3 as a systemd service (no Docker required)
+- node-exporter for host metrics
 
-**What you get:**
-- Everything Swarm has, plus:
-- cert-manager for TLS
-- ArgoCD for GitOps
-- HPA for auto-scaling
-- Full `kubectl` access
+Requirements:
+- Bare metal server (not a VPS) with KVM support (`/dev/kvm`)
+- CPU with hardware virtualization (VT-x or AMD-V)
+
+Choose Firecracker when you need hardware-level isolation without the overhead of full VMs, or when running untrusted workloads.
+
+<Callout type="warn">
+  Firecracker is experimental. It requires bare metal with KVM and does not support Helm, ArgoCD, or multi-node clusters.
+</Callout>
 
 ## Switching runtimes
-
-Already running? No problem:
 
 ```bash
 atlas infra migrate --to swarm   # K3s → Swarm
 atlas infra migrate --to k3s     # Swarm → K3s
 ```
 
-The CLI shows you:
-- What you'll gain and lose
-- Running services that need re-deploy
-- Risks (downtime, volumes)
+The CLI displays what you gain and lose, lists running services that need re-deployment, and warns about potential data loss from non-migrated volumes.
 
 After migration, re-deploy your services:
 
@@ -74,11 +86,9 @@ After migration, re-deploy your services:
 atlas deploy
 ```
 
-## Multi-node
+## Multi-node clusters
 
-Both runtimes support adding worker nodes:
+K3s and Swarm support adding worker nodes. When you register a new server through the Panel, Atlas automatically joins it to the existing cluster using the stored join token.
 
-- **Swarm**: `docker swarm join` with encrypted token
-- **K3s**: K3s agent with node token
-
-When you add a server through the Panel, Atlas automatically joins it to the existing cluster.
+- K3s: K3s agent with node token from `/var/lib/rancher/k3s/server/node-token`
+- Swarm: `docker swarm join` with encrypted worker token

@@ -1,136 +1,116 @@
 ---
 title: API Reference
-description: Control Panel API endpoints
+description: Control Panel API procedures and endpoints.
 icon: FileCode
 ---
 
-The Control Panel exposes a REST API. All endpoints require JWT authentication unless noted.
+The Panel API uses oRPC for type-safe remote procedure calls. All procedures are mounted at `/rpc/*` and require JWT authentication via the `Authorization: Bearer {token}` header.
 
-## Authentication
+## Client setup
 
-### GitHub OAuth
+The CLI uses `@orpc/client` with `RPCLink`:
 
-```
-GET /auth/github
-```
+```typescript
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
 
-Redirects to GitHub for OAuth authorization. After authorization, returns a JWT token.
+const link = new RPCLink({
+  url: "https://panel.yourdomain.com/rpc",
+  headers: () => ({
+    Authorization: `Bearer ${token}`,
+  }),
+});
 
-```
-GET /auth/github/callback?code=xxx&state=xxx
-```
-
-Exchanges the OAuth code for a JWT. If `state` contains a redirect URL, redirects there with the token.
-
-## Deployments
-
-### Trigger Deploy
-
-```
-POST /deploys/project/:id
+const client = createORPCClient(link);
 ```
 
-Triggers a full deploy pipeline: `kubectl set image` → rollout → DNS automation.
+## Procedures
 
-**Response:** Deploy status with real-time progress.
+### org
 
-## Logs
+| Procedure | Input | Output | Role |
+|-----------|-------|--------|------|
+| `org.get` | none | Organization info (id, name, slug, configured flags) | any |
+| `org.updateSettings` | cloudflareToken?, cloudflareAccountId?, githubToken?, githubAppId?, githubClientId?, githubClientSecret? | `{ ok: true }` | admin |
 
-### Stream Logs
+### servers
 
-```
-GET /logs/project/:id?service=xxx&tail=100&follow=true
-```
+| Procedure | Input | Output | Role |
+|-----------|-------|--------|------|
+| `servers.list` | none | Array of servers (id, name, host, ip, runtime, status) | any |
+| `servers.get` | `{ id }` | Server object | any |
+| `servers.create` | `{ name, host, ip?, runtime?, provision?, domain? }` | Created server | admin |
+| `servers.delete` | `{ id }` | `{ ok: true }` | admin |
 
-Streams logs via **Server-Sent Events (SSE)**. Connect with an `EventSource` or any SSE client.
+### projects
 
-## Secrets
+| Procedure | Input | Output | Role |
+|-----------|-------|--------|------|
+| `projects.list` | none | Array of projects with server and domains | any |
+| `projects.get` | `{ id }` | Project with server, domains, and last 10 deploys | any |
+| `projects.create` | `{ name, serverId?, githubRepo?, domain?, atlasYaml? }` | Created project | admin |
 
-### List Keys
+### deploys
 
-```
-GET /secrets/project/:id
-```
+| Procedure | Input | Output | Role |
+|-----------|-------|--------|------|
+| `deploys.listByProject` | `{ projectId }` | Array of deploys (last 50) | any |
+| `deploys.trigger` | `{ projectId, tag, services? }` | Created deploy (starts async pipeline) | admin, dev |
+| `deploys.get` | `{ id }` | Deploy object with status | any |
 
-Returns secret key names (values are hidden).
+### secrets
 
-### Set Secrets
+| Procedure | Input | Output | Role |
+|-----------|-------|--------|------|
+| `secrets.listKeys` | `{ projectId }` | Array of `{ key, updatedAt }` | any |
+| `secrets.set` | `{ projectId, secrets: Record<string, string> }` | `{ ok, keys, synced }` | any |
+| `secrets.delete` | `{ projectId, key }` | `{ ok, deleted, synced }` | any |
+| `secrets.pullValues` | `{ projectId }` | `Record<string, string>` (decrypted) | any |
 
-```
-PUT /secrets/project/:id
-```
+## Custom routes
 
-**Body:**
-```json
-{
-  "secrets": {
-    "DATABASE_URL": "postgres://...",
-    "REDIS_URL": "redis://..."
-  }
-}
-```
+These routes use standard HTTP outside of oRPC:
 
-Encrypts values with AES-256-GCM and syncs to Kubernetes.
-
-### Pull Decrypted
-
-```
-GET /secrets/project/:id/values
-```
-
-Returns decrypted secret values. Requires `admin` or `dev` role.
-
-### Delete Key
+### Authentication
 
 ```
-DELETE /secrets/project/:id/:key
+GET /auth/github?cli_port={port}
 ```
 
-Removes a specific key from both the database and the Kubernetes Secret.
-
-## Servers
-
-### Add Server
+Initiates GitHub OAuth. The `cli_port` parameter tells the callback where to redirect the token.
 
 ```
-POST /servers
+GET /auth/github/callback?code={code}&state={state}
 ```
 
-**Body:**
-```json
-{
-  "name": "production",
-  "host": "root@your-server.com",
-  "provision": true
-}
-```
-
-Registers a server. If `provision: true`, installs K3s + full stack via SSH.
-
-### List Servers
+Exchanges the OAuth code for a JWT. If state starts with `cli:`, redirects the token to the CLI's local server at `http://localhost:{port}/callback?token=...`.
 
 ```
-GET /servers
+POST /auth/token
+Content-Type: application/json
+
+{ "code": "github_oauth_code" }
 ```
 
-Returns all servers with status and resource info.
+Programmatic token exchange. Returns `{ token, user }`.
 
-## Organization
-
-### Update Settings
+### Log streaming
 
 ```
-PATCH /org/settings
+GET /logs/project/:projectId?service={name}&tail={n}&follow={bool}
+Authorization: Bearer {token}
 ```
 
-**Body:**
-```json
-{
-  "cloudflareToken": "xxx",
-  "githubAppId": "123",
-  "githubClientId": "xxx",
-  "githubClientSecret": "xxx"
-}
+Returns a Server-Sent Events stream. Each event contains one log line:
+
+```
+data: 2024-01-15T10:30:00Z [api] Request received GET /health
 ```
 
-Configures Cloudflare and GitHub App credentials. Secrets are encrypted before storage.
+### Health check
+
+```
+GET /health
+```
+
+Returns `{ "status": "ok", "version": "0.1.0" }`. No authentication required.

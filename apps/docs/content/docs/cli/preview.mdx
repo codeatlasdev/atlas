@@ -1,45 +1,64 @@
 ---
 title: atlas preview
-description: Ephemeral environments per branch
+description: Manage ephemeral preview environments.
+icon: GitBranch
 ---
 
-## Start a preview
+## Usage
 
 ```bash
-atlas preview start
+atlas preview <subcommand> [options]
 ```
 
-Creates an isolated environment from your current branch with its own URL:
+## Description
 
-```
-https://feature-x.preview.myapp.com
-```
+Create, list, and destroy ephemeral environments tied to git branches. Each preview gets an isolated namespace (K3s), stack (Swarm), or VM set (Firecracker) with its own URL.
 
-Atlas builds your images, pushes them, and deploys to an isolated stack (Swarm) or namespace (K3s) with Traefik routing and HTTPS.
+## Subcommands
 
-## Stop a preview
+### start
 
 ```bash
-atlas preview stop --name feature-x
+atlas preview start [options]
 ```
 
-## List active previews
+Creates a preview environment from the current branch.
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Preview name (defaults to branch name) |
+| `--host` | SSH host |
+| `--yes, -y` | Non-interactive mode |
+
+### stop
+
+```bash
+atlas preview stop --name <name>
+```
+
+Destroys the preview environment and cleans up resources.
+
+### list
 
 ```bash
 atlas preview list
 ```
 
+Shows active preview environments with age and URL.
+
+## Examples
+
+```bash
+atlas preview start                  # Preview from current branch
+atlas preview start --name demo      # Custom name
+atlas preview stop --name feature-x  # Destroy preview
+atlas preview list                   # List all active
 ```
-🔮 Active Previews
 
-  ● feature-x              2h  → https://feature-x.preview.myapp.com
-  ● fix-auth               30m → https://fix-auth.preview.myapp.com
+## URL pattern
+
+```
+https://{name}.preview.{domain}
 ```
 
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--name` | Preview name (defaults to branch name) |
-| `--host` | Override SSH host |
-| `--yes` | Non-interactive mode |
+A wildcard DNS record (`*.preview.{domain}`) is created during the first preview start.

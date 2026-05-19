@@ -1,0 +1,39 @@
+---
+title: atlas exec
+description: Shell into a running container.
+icon: TerminalSquare
+---
+
+## Usage
+
+```bash
+atlas exec [service] [options]
+```
+
+## Description
+
+Opens an interactive shell session inside a running container. Connects via SSH to the server and attaches to the target container.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--service` | Target service name (can also be positional) |
+| `--host` | SSH host (defaults to config) |
+| `--command, -c` | Command to run (default: `/bin/sh`) |
+
+## Examples
+
+```bash
+atlas exec api                  # Shell into API container
+atlas exec worker -c "ls /app"  # Run a command
+atlas exec --host root@server api
+```
+
+## Runtime behavior
+
+| Runtime | Method |
+|---------|--------|
+| K3s | `kubectl exec -it deployment/{service} -- {command}` |
+| Swarm | `docker exec -it $(docker ps -q -f name={stack}_{service}) {command}` |
+| Firecracker | `POST /vms/{stack}/{service}/exec` via VMM socket |

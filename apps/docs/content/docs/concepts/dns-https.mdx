@@ -1,48 +1,57 @@
 ---
 title: DNS & HTTPS
-description: How Atlas automates DNS records and TLS certificates.
+description: Automatic DNS records via Cloudflare and TLS certificates via Let's Encrypt.
 ---
 
-Atlas manages DNS and HTTPS automatically. You set a domain in `atlas.yaml`, Atlas does the rest.
+Atlas manages DNS and HTTPS automatically. You set a `domain` field in `atlas.yaml`, and Atlas configures everything on deploy.
 
 ## DNS via Cloudflare
 
-Atlas uses the Cloudflare API to create and manage DNS records. When you deploy a service with a `domain` field:
+Atlas uses the Cloudflare API to manage DNS records. When you deploy a service with a `domain` field:
 
-1. Atlas finds the Cloudflare zone for your root domain
-2. Creates (or updates) an A/CNAME record pointing to your server
-3. Enables Cloudflare proxy by default (DDoS protection, CDN)
+1. Atlas resolves the Cloudflare zone for your root domain
+2. Creates or updates an A record pointing to your server IP
+3. Enables Cloudflare proxy by default (CDN, DDoS protection)
 
-The operation is **idempotent** — running `atlas deploy` multiple times won't create duplicate records.
+The operation is idempotent. Running `atlas deploy` multiple times does not create duplicate records. If the record already points to the correct IP, Atlas skips the update.
 
-### Cloudflare Tunnels
+## Cloudflare Tunnels
 
-For servers without a public IP, Atlas supports Cloudflare Tunnels:
+For servers without a public IP (or when you want to avoid exposing ports 80/443), Atlas supports Cloudflare Tunnels:
 
 ```bash
-atlas infra setup --host root@vps --tunnel
+atlas infra setup --host root@vps --tunnel --cf-token $TOKEN --cf-account $ACCOUNT
 ```
 
-This installs the `cloudflare-tunnel-ingress-controller` and routes traffic through Cloudflare's network instead of exposing your server directly.
+The tunnel implementation varies by runtime:
+
+| Runtime | Tunnel method |
+|---------|--------------|
+| K3s | `cloudflare-tunnel-ingress-controller` Helm chart |
+| Swarm | Not yet supported |
+| Firecracker | Traefik file provider with tunnel CNAME |
+
+Traffic routes through Cloudflare's network instead of hitting your server directly.
 
 ## HTTPS
 
-TLS certificates are provisioned automatically. The mechanism depends on your runtime:
+TLS certificates are provisioned automatically after DNS is configured:
 
-| Runtime | HTTPS Provider | How |
-|---------|---------------|-----|
-| K3s | cert-manager | ClusterIssuer with Let's Encrypt HTTP-01 |
-| Swarm | Traefik ACME | Built-in ACME resolver with HTTP challenge |
+| Runtime | Provider | Mechanism |
+|---------|----------|-----------|
+| K3s | cert-manager | ClusterIssuer with Let's Encrypt HTTP-01 challenge |
+| Swarm | Traefik | Built-in ACME resolver with HTTP challenge |
+| Firecracker | Traefik | Built-in ACME resolver (systemd service) |
 
-Both approaches:
+All runtimes:
 - Issue certificates from Let's Encrypt
 - Auto-renew before expiration
-- Redirect HTTP → HTTPS automatically
+- Redirect HTTP to HTTPS
 
-No manual certificate management. No `certbot`. No cron jobs.
+No manual certificate management is required.
 
 ## Requirements
 
-- A domain managed by Cloudflare (free plan works)
-- Cloudflare API token (set via `atlas login` or `atlas panel config`)
-- Server reachable on ports 80 and 443 (or use Tunnels)
+- A domain with DNS managed by Cloudflare (free plan is sufficient)
+- A Cloudflare API token with Zone:DNS:Edit permission (set via `atlas login` or `atlas panel config`)
+- Server reachable on ports 80 and 443 (unless using Tunnels)

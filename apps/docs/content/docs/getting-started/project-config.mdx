@@ -1,9 +1,9 @@
 ---
 title: Project Configuration
-description: The atlas.yaml reference.
+description: Complete reference for atlas.yaml.
 ---
 
-Every Atlas project has an `atlas.yaml` at the root. This file defines your services, domains, and infrastructure.
+Every Atlas project has an `atlas.yaml` file at the repository root. This file defines your services, domains, and infrastructure requirements.
 
 ## Minimal example
 
@@ -22,25 +22,33 @@ services:
 name: myapp
 org: my-org
 domain: myapp.com
+platform: linux/amd64
 
 services:
   api:
     type: api
-    dockerfile: ./Dockerfile
+    dockerfile: ./apps/api/Dockerfile
+    target: production
     port: 3001
     replicas: 2
     domain: api.myapp.com
     health: /health
-    buildArg:
-      NODE_ENV: production
+    buildArg: NODE_ENV=production
 
   web:
     type: web
+    dockerfile: ./apps/web/Dockerfile
+    port: 3000
     domain: myapp.com
 
   worker:
     type: worker
     dockerfile: ./worker.Dockerfile
+
+  migrate:
+    type: worker
+    dockerfile: ./Dockerfile
+    target: migrate
 
 infra:
   postgres: true
@@ -48,43 +56,44 @@ infra:
   tunnel: true
 ```
 
-## Reference
-
-### Top-level fields
+## Top-level fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | ✓ | Project name. Used for namespaces and image tags. |
-| `org` | string | | GitHub organization. Inferred from git remote if omitted. |
-| `domain` | string | | Base domain for the project. |
+| `name` | string | Yes | Project name. Used as namespace, image tag prefix, and secret name. |
+| `org` | string | No | GitHub organization. Inferred from git remote if omitted. |
+| `domain` | string | No | Base domain for the project. |
+| `platform` | string | No | Docker build platform (e.g., `linux/amd64`, `linux/arm64`). Auto-detected from server architecture if omitted. |
 
-### Service fields
+## Service fields
 
-Each key under `services` is a service name.
+Each key under `services` defines a service name.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `type` | `api` \| `web` \| `worker` | ✓ | Service type. Determines deploy behavior. |
-| `dockerfile` | string | `./Dockerfile` | Path to Dockerfile. |
+| `type` | string | Required | One of `api`, `web`, or `worker`. |
+| `dockerfile` | string | `./Dockerfile` | Path to the Dockerfile. |
 | `target` | string | | Docker build target stage. |
+| `buildArg` | string | | Docker build argument (format: `KEY=VALUE`). |
 | `port` | number | | Port the service listens on. Required for `api` and `web`. |
-| `replicas` | number | `1` | Number of replicas. |
-| `domain` | string | | Public domain for this service. Triggers DNS + HTTPS setup. |
+| `replicas` | number | `1` | Number of replicas to run. |
 | `health` | string | | Health check endpoint path. |
-| `buildArg` | object | | Docker build arguments. |
+| `domain` | string | | Public hostname. Triggers DNS record creation and TLS provisioning. |
 
-### Service types
+## Service types
 
-| Type | What it does |
-|------|-------------|
-| `api` | Backend service. Gets Traefik routing, health checks, DNS. |
-| `web` | Frontend service. Same as `api` but semantically different. |
-| `worker` | Background worker. No ingress, no domain. Just runs. |
+| Type | Behavior |
+|------|----------|
+| `api` | Backend service. Gets Traefik routing, DNS record, TLS certificate. |
+| `web` | Frontend service. Same networking as `api`. |
+| `worker` | Background process. No ingress, no domain, no external routing. |
 
-### Infrastructure fields
+A service named `migrate` is treated specially: Atlas runs it as a one-shot job before deploying other services.
+
+## Infrastructure fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `infra.postgres` | boolean | `false` | Deploy a PostgreSQL instance. |
-| `infra.redis` | boolean | `false` | Deploy a Redis instance. |
-| `infra.tunnel` | boolean | `false` | Use Cloudflare Tunnel instead of direct IP. |
+| `infra.postgres` | boolean | `false` | Deploy a PostgreSQL instance in the cluster. |
+| `infra.redis` | boolean | `false` | Deploy a Redis instance in the cluster. |
+| `infra.tunnel` | boolean | `false` | Route traffic through a Cloudflare Tunnel instead of direct IP exposure. |

@@ -1,15 +1,28 @@
 ---
 title: Self-Hosting
-description: Deploy the Control Panel to your own cluster.
+description: Deploy the Control Panel to your own infrastructure.
 icon: HardDrive
 ---
 
-The Panel runs on your infrastructure. No external dependencies.
+The Panel runs on your infrastructure. No external dependencies beyond PostgreSQL and a domain.
 
 ## Requirements
 
-- A server with K3s installed (via `atlas infra setup`)
-- Domain pointing to your server via Cloudflare
+- A server provisioned with K3s (via `atlas infra setup`)
+- A domain pointing to your server via Cloudflare
+- Docker for building the Panel image
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph atlas namespace
+        PG[(PostgreSQL)]
+        Panel[Panel API :3100]
+        Ing[Traefik Ingress + TLS]
+    end
+    Ing --> Panel --> PG
+```
 
 ## Steps
 
@@ -21,14 +34,14 @@ docker build -t ghcr.io/your-org/atlas/panel:latest .
 docker push ghcr.io/your-org/atlas/panel:latest
 ```
 
-### 2. Create secrets
+### 2. Create Kubernetes secrets
 
 ```bash
 kubectl -n atlas create secret generic atlas-secrets \
-  --from-literal=DATABASE_URL="postgresql://atlas:your-password@postgres:5432/atlas" \
-  --from-literal=JWT_SECRET="your-jwt-secret-min-32-chars" \
-  --from-literal=ENCRYPTION_KEY="your-encryption-key-min-32-chars" \
-  --from-literal=POSTGRES_PASSWORD="your-password"
+  --from-literal=DATABASE_URL="postgresql://atlas:YOUR_PASSWORD@postgres:5432/atlas_panel" \
+  --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+  --from-literal=POSTGRES_PASSWORD="YOUR_PASSWORD"
 ```
 
 ### 3. Apply manifests
@@ -37,7 +50,7 @@ kubectl -n atlas create secret generic atlas-secrets \
 kubectl apply -f apps/panel/k8s/all.yaml
 ```
 
-Creates: `atlas` namespace, PostgreSQL StatefulSet, Panel Deployment, Service + Ingress with TLS.
+This creates the `atlas` namespace, a PostgreSQL StatefulSet, the Panel Deployment, a ClusterIP Service, and a Traefik Ingress with TLS.
 
 ### 4. Run migrations
 
@@ -51,27 +64,29 @@ kubectl -n atlas exec deploy/panel -- bunx drizzle-kit push
 kubectl -n atlas exec deploy/panel -- bun run src/seed.ts
 ```
 
+Creates the initial organization record.
+
 ## Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | ✓ | PostgreSQL connection string |
-| `JWT_SECRET` | ✓ | HMAC-SHA256 signing key (min 32 chars) |
-| `ENCRYPTION_KEY` | ✓ | AES-256-GCM key (min 32 chars) |
-| `PORT` | | API port (default: 3100) |
-| `PANEL_URL` | | Public URL for CORS |
-| `GITHUB_CLIENT_ID` | | GitHub OAuth client ID |
-| `GITHUB_CLIENT_SECRET` | | GitHub OAuth client secret |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | HMAC-SHA256 signing key (min 32 characters) |
+| `ENCRYPTION_KEY` | Yes | AES-256-GCM encryption key (min 32 characters) |
+| `PORT` | No | API port (default: 3100) |
+| `PANEL_URL` | No | Public URL for CORS configuration |
+| `GITHUB_CLIENT_ID` | No | GitHub OAuth client ID (fallback if not in DB) |
+| `GITHUB_CLIENT_SECRET` | No | GitHub OAuth client secret (fallback if not in DB) |
+| `NODE_ENV` | No | `development` or `production` (default: development) |
 
-## Architecture
+## Verify
 
-```mermaid
-graph TB
-    subgraph atlas namespace
-        PG[(PostgreSQL)]
-        Panel[Panel API :3100]
-        Ing[Ingress — Traefik + TLS]
-    end
+```bash
+curl https://panel.yourdomain.com/health
+```
 
-    Ing --> Panel --> PG
+Expected response:
+
+```json
+{"status": "ok", "version": "0.1.0"}
 ```

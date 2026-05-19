@@ -1,10 +1,8 @@
 ---
 title: atlas login
-description: Authenticate with GitHub OAuth
+description: Authenticate with GitHub OAuth and configure registry access.
 icon: LogIn
 ---
-
-Authenticate the CLI with your Atlas Control Panel via GitHub OAuth.
 
 ## Usage
 
@@ -12,23 +10,52 @@ Authenticate the CLI with your Atlas Control Panel via GitHub OAuth.
 atlas login
 ```
 
-## What Happens
+## Description
 
-1. Opens your browser to GitHub's OAuth authorization page
-2. After you authorize, GitHub redirects to a local callback server
-3. The CLI exchanges the code for a JWT token
-4. Token is stored locally in `~/.atlas/config.json`
+Authenticates the CLI with your Atlas Control Panel via GitHub OAuth. Also configures GHCR access for image pushes and optionally sets up Cloudflare credentials for DNS automation.
 
-## Token Storage
+## Authentication flows
 
-Credentials are saved at:
+### Panel OAuth (default)
 
-```
-~/.atlas/config.json
-```
+When `panelUrl` is configured in `~/.atlas/config.json`:
 
-The token is a JWT with 30-day expiry, signed with HMAC-SHA256.
+1. CLI starts a local HTTP server on a random port
+2. Opens your browser to `{panelUrl}/auth/github?cli_port={port}`
+3. GitHub OAuth authorization completes
+4. Panel redirects the token to the CLI's local server
+5. JWT is stored in `~/.atlas/config.json`
+
+### Legacy flow
+
+When no Panel is configured, the CLI uses the `gh` CLI or a manual Personal Access Token:
+
+1. Checks for existing `gh auth` session with `write:packages` scope
+2. If missing, launches `gh auth login` or prompts for a PAT
+3. Logs into GHCR with `docker login ghcr.io`
+4. Updates the cluster pull secret on the configured server
+
+## Cloudflare authentication
+
+After GitHub auth, the CLI attempts to configure Cloudflare credentials:
+
+1. Checks `CLOUDFLARE_API_TOKEN` environment variable
+2. Checks `wrangler auth token` output
+3. Falls back to manual prompt
+
+If a valid token is found, the CLI auto-detects your Cloudflare account ID and stores both in config.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--token` | GitHub PAT (skips OAuth flow) |
+| `--yes, -y` | Non-interactive mode |
+
+## Token storage
+
+Credentials are saved at `~/.atlas/config.json`. The Panel token is a JWT with 30-day expiry signed with HMAC-SHA256.
 
 ## Re-authentication
 
-Run `atlas login` again to refresh your token. The old token is overwritten.
+Run `atlas login` again to refresh your token. The previous token is overwritten.

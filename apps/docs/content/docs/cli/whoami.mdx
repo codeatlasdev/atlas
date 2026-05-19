@@ -1,0 +1,26 @@
+---
+title: atlas whoami
+description: Show current authentication status.
+icon: User
+---
+
+## Usage
+
+```bash
+atlas whoami
+```
+
+## Description
+
+Displays the current authenticated user, organization, role, and Panel URL. Reads from `~/.atlas/config.json`.
+
+## Output
+
+```
+User:  matheusdejesus
+Org:   codeatlas
+Role:  admin
+Panel: https://panel.codeatlas.com.br
+```
+
+If not authenticated, prints an error and suggests running `atlas login`.

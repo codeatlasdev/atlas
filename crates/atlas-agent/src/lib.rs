@@ -10,4 +10,4 @@ pub use activity::{ActivityDetector, ActivityState};
 pub use adapter::{AgentAdapter, AuthStatus, LaunchConfig, PermissionMode, PromptDelivery};
 pub use lifecycle::LifecycleManager;
 pub use session::AgentSession;
-pub use techlead::TechLeadAgent;
+pub use techlead::{tech_lead_launch_config, tech_lead_steering};

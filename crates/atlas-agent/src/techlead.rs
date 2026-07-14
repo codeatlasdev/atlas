@@ -1,54 +1,59 @@
-#![allow(unused)]
+//! Tech Lead agent configuration.
+//!
+//! The Tech Lead is NOT a special agent implementation — it's a regular
+//! agent session (Kiro, Claude Code, etc) with a specific steering/config
+//! that gives it the Tech Lead role + access to Atlas MCP tools.
+//!
+//! This module provides the steering file content and launch config
+//! for spawning a Tech Lead session.
 
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TechLeadAgent {
-    pub provider: String,
-    pub model: String,
-    pub system_prompt: String,
-}
+use crate::adapter::LaunchConfig;
+use crate::adapter::PermissionMode;
 
-impl TechLeadAgent {
-    pub fn new() -> Self {
-        Self {
-            provider: "claude".to_string(),
-            model: "claude-sonnet-4-20250514".to_string(),
-            system_prompt: TECH_LEAD_PROMPT.to_string(),
-        }
-    }
-}
-
-impl Default for TechLeadAgent {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub const TECH_LEAD_PROMPT: &str = r#"
-You are the Tech Lead of this project. You manage a team of AI coding agents.
+/// Generate the steering/system prompt for the Tech Lead agent.
+/// This gets written to a temporary .kiro/agents/ config or passed as context.
+pub fn tech_lead_steering() -> &'static str {
+    r#"You are the Tech Lead of this project. You manage a team of AI coding agents.
 
 Your responsibilities:
 1. Analyze the project's kanban board and understand priorities
 2. Break down complex tasks into actionable work items
-3. Delegate tasks to coding agents (Kiro, Claude Code, etc)
+3. Delegate tasks to coding agents by creating tasks and assigning them
 4. Monitor progress and report results to the user
-5. Ensure code quality by reviewing agent outputs
+5. Review code quality from agent outputs
+6. Make architectural decisions when needed
 
-You have access to these tools:
-- tasks.list: View all tasks in the kanban
-- tasks.create: Create new tasks
-- tasks.update_status: Move tasks between columns
-- tasks.assign: Assign a task to an agent
-- agent.spawn: Start a new coding agent with a prompt
-- agent.list: See running agents
-- agent.stop: Stop an agent
+You have MCP tools from the Atlas daemon that let you:
+- View and manage the kanban board (tasks)
+- See running agents and their status
+- Start and stop coding agents
+- Check server status and deploy
 
 When the user asks you to work on something:
-1. First check existing tasks
-2. Create tasks if needed
-3. Delegate to appropriate agents
-4. Report back what you've set in motion
+1. Check existing tasks on the kanban
+2. Break down work into clear, atomic tasks
+3. Create tasks with appropriate priority
+4. Delegate to coding agents (each gets their own isolated session)
+5. Report back what you've set in motion
 
-Be concise, proactive, and keep the user informed.
-"#;
+Be concise, direct, and proactive. Lead the team."#
+}
+
+/// Build the LaunchConfig for a Tech Lead session.
+pub fn tech_lead_launch_config(project_path: PathBuf) -> LaunchConfig {
+    let prompt = format!(
+        "You are the Tech Lead for this project at {}. \
+         Review the current state and ask me what I'd like to work on.",
+        project_path.display()
+    );
+
+    LaunchConfig {
+        prompt,
+        cwd: project_path,
+        permission: PermissionMode::Autonomous,
+        env: HashMap::new(),
+    }
+}

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use atlas_agent_kiro::KiroAdapter;
 use atlas_agent::{LaunchConfig, PermissionMode};
+use atlas_agent::techlead::tech_lead_steering;
+use atlas_agent_kiro::KiroAdapter;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -17,30 +18,19 @@ struct ChatParams {
 }
 
 /// The Tech Lead "chat" spawns a Kiro agent session via ACP.
-/// If a Tech Lead session already exists, it sends the prompt to that session.
-/// Returns the session_id so the app can subscribe to agent.event notifications.
-///
-/// IMPORTANT: The initial prompt is NOT sent during spawn.
-/// The app must:
-/// 1. Receive the session_id from this response
-/// 2. Call agent.subscribe to start receiving events
-/// 3. Call agent.prompt to send the first message
-///
-/// This ensures no events are missed between spawn and subscribe.
+/// On first spawn, passes the Tech Lead steering context + MCP server config.
+/// On subsequent messages, just sends the prompt to the existing session.
 pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
     let p: ChatParams = serde_json::from_value(params)
         .map_err(|e| atlas_core::AtlasError::InvalidInput(e.to_string()))?;
 
     let lm = state.lifecycle_manager.lock().await;
 
-    // Find existing Tech Lead session (active, kiro adapter)
+    // Find existing active Tech Lead session
     let existing = lm
         .list()
         .iter()
-        .find(|s| {
-            s.is_active()
-                && (s.adapter_name == "kiro" || s.adapter_name == "kiro-techlead")
-        })
+        .find(|s| s.is_active() && s.adapter_name == "kiro")
         .map(|s| s.id.clone());
 
     let is_acp = existing
@@ -51,7 +41,7 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
     drop(lm);
 
     if let Some(session_id) = existing {
-        // Send message to existing session
+        // Existing session — just send the message
         let lm = state.lifecycle_manager.lock().await;
         lm.send_prompt(&session_id, &p.message, &state.pty_manager)
             .await?;
@@ -65,17 +55,17 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             "action": "message_sent",
         }))
     } else {
-        // Spawn new Tech Lead session via ACP — WITHOUT initial prompt
+        // New session — spawn with Tech Lead identity
         let adapter = KiroAdapter::new();
         let config = LaunchConfig {
-            prompt: String::new(), // Empty — don't send prompt during spawn
+            prompt: String::new(), // Prompt sent separately after subscribe
             cwd: p.project_path.clone().into(),
             permission: PermissionMode::Autonomous,
             env: Default::default(),
         };
 
         let client_handler = Arc::new(DaemonClientHandler::new(
-            p.project_path.into(),
+            p.project_path.clone().into(),
             Arc::clone(&state.pty_manager),
         ));
 
@@ -87,17 +77,24 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         state
             .hooks
-            .on_session_started(&session_id, "kiro-techlead", &p.message)
+            .on_session_started(&session_id, "kiro", &p.message)
             .await;
 
-        // Return session_id + the user's message so Swift can:
-        // 1. subscribe to events
-        // 2. then send the prompt via agent.prompt
+        // Build the initial prompt with Tech Lead identity + user's message
+        let steering = tech_lead_steering();
+        let initial_prompt = format!(
+            "{steering}\n\n---\n\n\
+             Project: {project}\n\n\
+             User's request: {message}",
+            project = p.project_path,
+            message = p.message
+        );
+
         Ok(json!({
             "session_id": session_id,
             "protocol": "acp",
             "action": "spawned",
-            "pending_message": p.message,
+            "initial_prompt": initial_prompt,
         }))
     }
 }

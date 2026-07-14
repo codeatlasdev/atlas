@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Agent Activity Session Model
 
-@Observable
+@MainActor @Observable
 final class AgentActivitySession {
     let sessionId: String
     let adapterName: String
@@ -14,8 +14,8 @@ final class AgentActivitySession {
     var elapsedSeconds: Int = 0
     var pendingPermission: PermissionRequest?
     private var startTime = Date()
-    private var timer: Timer?
     private var lastMessageId: String?
+    private var timerTask: Task<Void, Never>?
 
     init(sessionId: String, adapterName: String) {
         self.sessionId = sessionId
@@ -26,9 +26,10 @@ final class AgentActivitySession {
     func apply(event: AgentEvent) {
         switch event.event {
         case .textChunk(let chunk):
-            if chunk.isContinuation, let last = items.last,
-               case .message(let existing) = last.kind {
-                last.kind = .message(text: existing + chunk.text)
+            if chunk.isContinuation, lastMessageId == chunk.messageId,
+               let existing = items.last(where: { if case .message = $0.kind { return true }; return false }),
+               case .message(let text) = existing.kind {
+                existing.kind = .message(text: text + chunk.text)
             } else {
                 items.append(ActivityItem(
                     id: "msg-\(chunk.messageId)-\(items.count)",
@@ -133,9 +134,12 @@ final class AgentActivitySession {
     }
 
     private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.elapsedSeconds = Int(Date().timeIntervalSince(self.startTime))
+        timerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { break }
+                self.elapsedSeconds = Int(Date().timeIntervalSince(self.startTime))
+            }
         }
     }
 
@@ -149,8 +153,8 @@ final class AgentActivitySession {
         }
     }
 
-    deinit {
-        timer?.invalidate()
+    func stopTimer() {
+        timerTask?.cancel()
     }
 }
 

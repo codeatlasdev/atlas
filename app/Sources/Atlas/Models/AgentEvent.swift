@@ -181,7 +181,8 @@ enum ToolContent: Codable {
     case terminal(TerminalContent)
 
     enum CodingKeys: String, CodingKey {
-        case type_, value
+        case type_ = "type"
+        case value
     }
 
     init(from decoder: Decoder) throws {

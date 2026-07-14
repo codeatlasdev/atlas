@@ -130,6 +130,8 @@ pub struct AcpTransport {
     atlas_session_id: String,
     /// Reader task handle.
     reader_handle: tokio::task::JoinHandle<()>,
+    /// Writer task handle.
+    writer_handle: tokio::task::JoinHandle<()>,
     /// Child process.
     child: Arc<Mutex<Child>>,
 }
@@ -174,7 +176,7 @@ impl AcpTransport {
 
         // Writer task: sends JSON-RPC messages to child's stdin
         let mut stdin = stdin;
-        tokio::spawn(async move {
+        let writer_handle = tokio::spawn(async move {
             while let Some(msg) = writer_rx.recv().await {
                 if stdin.write_all(msg.as_bytes()).await.is_err() {
                     break;
@@ -238,23 +240,87 @@ impl AcpTransport {
                             )
                             .await;
 
-                            let resp_json = match response {
-                                Ok(result) => serde_json::json!({
-                                    "jsonrpc": "2.0",
-                                    "id": id,
-                                    "result": result,
-                                }),
-                                Err(err) => serde_json::json!({
-                                    "jsonrpc": "2.0",
-                                    "id": id,
-                                    "error": { "code": -1, "message": err },
-                                }),
-                            };
+                            match response {
+                                Ok(result) => {
+                                    let resp_json = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "result": result,
+                                    });
+                                    let mut out =
+                                        serde_json::to_string(&resp_json).unwrap_or_default();
+                                    out.push('\n');
+                                    let _ = reader_writer_tx.send(out);
+                                }
+                                Err(ref e) if e == "__PERMISSION_DEFERRED__" => {
+                                    // Permission request — emit as event, hold response pending
+                                    // The UI will call respond_permission() which sends the response
+                                    if let Some(params) = msg.params.as_ref() {
+                                        let options = params
+                                            .get("options")
+                                            .and_then(|v| v.as_array())
+                                            .map(|arr| {
+                                                arr.iter()
+                                                    .filter_map(|o| {
+                                                        Some(PermissionOption {
+                                                            option_id: o.get("optionId")?.as_str()?.to_string(),
+                                                            name: o.get("name")?.as_str()?.to_string(),
+                                                            kind: match o.get("kind")?.as_str()? {
+                                                                "allow_once" => PermissionKind::AllowOnce,
+                                                                "allow_session" => PermissionKind::AllowSession,
+                                                                "allow_always" => PermissionKind::AllowAlways,
+                                                                "reject_once" => PermissionKind::RejectOnce,
+                                                                "reject_always" => PermissionKind::RejectAlways,
+                                                                _ => PermissionKind::AllowOnce,
+                                                            },
+                                                        })
+                                                    })
+                                                    .collect()
+                                            })
+                                            .unwrap_or_default();
 
-                            let mut out =
-                                serde_json::to_string(&resp_json).unwrap_or_default();
-                            out.push('\n');
-                            let _ = reader_writer_tx.send(out);
+                                        let tool_call = params.get("toolCall");
+                                        let tool_call_id = tool_call
+                                            .and_then(|t| t.get("toolCallId"))
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+
+                                        let event = AgentEvent {
+                                            session_id: atlas_sid.clone(),
+                                            event: AgentEventKind::PermissionRequest(PermissionRequest {
+                                                request_id: id,
+                                                tool_call_id,
+                                                tool_name: params
+                                                    .get("toolName")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("unknown")
+                                                    .to_string(),
+                                                description: params
+                                                    .get("description")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("Agent requests permission")
+                                                    .to_string(),
+                                                options,
+                                            }),
+                                            timestamp_ms: now_ms(),
+                                        };
+                                        let _ = reader_event_tx.send(event);
+                                    }
+                                    // Don't respond — respond_permission() will handle it
+                                }
+                                Err(err) => {
+                                    let resp_json = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "error": { "code": -1, "message": err },
+                                    });
+                                    let mut out =
+                                        serde_json::to_string(&resp_json).unwrap_or_default();
+                                    out.push('\n');
+                                    let _ = reader_writer_tx.send(out);
+                                }
+                            }
                             continue;
                         }
 
@@ -277,6 +343,12 @@ impl AcpTransport {
             }
 
             info!("ACP reader task exited");
+
+            // Drain pending requests so callers don't wait until timeout
+            let mut p = reader_pending.lock().await;
+            for (_, tx) in p.drain() {
+                let _ = tx.send(Err("transport closed".to_string()));
+            }
         });
 
         Ok(Self {
@@ -287,6 +359,7 @@ impl AcpTransport {
             session_id: Arc::new(Mutex::new(None)),
             atlas_session_id: config.atlas_session_id,
             reader_handle,
+            writer_handle,
             child: Arc::new(Mutex::new(child)),
         })
     }
@@ -468,6 +541,13 @@ impl AcpTransport {
 impl Drop for AcpTransport {
     fn drop(&mut self) {
         self.reader_handle.abort();
+        self.writer_handle.abort();
+        // Kill child process synchronously to prevent zombies
+        let child = Arc::clone(&self.child);
+        tokio::spawn(async move {
+            let mut c = child.lock().await;
+            let _ = c.kill().await;
+        });
     }
 }
 
@@ -527,6 +607,13 @@ async fn handle_client_request(
                 .ok_or("missing data")?;
             handler.terminal_input(terminal_id, data).await?;
             Ok(serde_json::json!({ "success": true }))
+        }
+        // Permission requests are NOT handled here — they're sent as
+        // normal JSON-RPC requests from agent→client, but we need to
+        // hold the response pending until the user responds via UI.
+        // Return a special marker error so the caller knows to defer.
+        "session/request_permission" => {
+            Err("__PERMISSION_DEFERRED__".to_string())
         }
         _ => {
             warn!(method = method, "unhandled agent→client request");

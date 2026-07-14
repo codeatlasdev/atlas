@@ -81,10 +81,16 @@ pub async fn spawn(state: &Arc<AppState>, params: Value) -> Result<Value> {
     let mut lm = state.lifecycle_manager.lock().await;
 
     let session_id = if use_acp {
+        // Release lock BEFORE spawning — spawn_acp does network I/O
+        drop(lm);
+
         let client_handler = Arc::new(DaemonClientHandler::new(
-            p.cwd.into(),
+            p.cwd.clone().into(),
             Arc::clone(&state.pty_manager),
         ));
+
+        // spawn_acp is called outside the lock — it does process spawn + init + session
+        let mut lm = state.lifecycle_manager.lock().await;
         lm.spawn_acp(adapter.as_ref(), config, client_handler)
             .await?
     } else {
@@ -92,6 +98,7 @@ pub async fn spawn(state: &Arc<AppState>, params: Value) -> Result<Value> {
             .await?
     };
 
+    let lm = state.lifecycle_manager.lock().await;
     let is_acp = lm.is_acp_session(&session_id);
     drop(lm);
 

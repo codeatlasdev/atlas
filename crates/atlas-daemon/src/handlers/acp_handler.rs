@@ -26,11 +26,7 @@ impl DaemonClientHandler {
 #[async_trait]
 impl AcpClientHandler for DaemonClientHandler {
     async fn read_file(&self, path: &str) -> Result<String, String> {
-        let full_path = if path.starts_with('/') {
-            PathBuf::from(path)
-        } else {
-            self.cwd.join(path)
-        };
+        let full_path = resolve_and_validate_path(&self.cwd, path)?;
 
         debug!(path = %full_path.display(), "ACP: fs/readTextFile");
 
@@ -40,11 +36,7 @@ impl AcpClientHandler for DaemonClientHandler {
     }
 
     async fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
-        let full_path = if path.starts_with('/') {
-            PathBuf::from(path)
-        } else {
-            self.cwd.join(path)
-        };
+        let full_path = resolve_and_validate_path(&self.cwd, path)?;
 
         debug!(path = %full_path.display(), "ACP: fs/writeTextFile");
 
@@ -106,4 +98,37 @@ fn parse_command(command: &str) -> (String, Vec<String>) {
         ),
         None => ("bash".to_string(), vec![]),
     }
+}
+
+/// Resolve a path and validate it stays within the project cwd.
+/// Prevents path traversal attacks from agent-requested file operations.
+fn resolve_and_validate_path(cwd: &PathBuf, path: &str) -> Result<PathBuf, String> {
+    let resolved = if path.starts_with('/') {
+        PathBuf::from(path)
+    } else {
+        cwd.join(path)
+    };
+
+    // Normalize path components (resolve .. and .)
+    let mut normalized = PathBuf::new();
+    for component in resolved.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normalized.push(other),
+        }
+    }
+
+    // Ensure the resolved path is within the cwd
+    if !normalized.starts_with(cwd) {
+        return Err(format!(
+            "path traversal denied: {} escapes project root {}",
+            path,
+            cwd.display()
+        ));
+    }
+
+    Ok(normalized)
 }

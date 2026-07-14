@@ -231,14 +231,26 @@ final class AppState {
         daemon.onNotification("agent.event", id: "techlead-acp") { [weak self] payload in
             guard let self else { return }
 
-            // Parse the event from JSON
-            guard let eventData = try? JSONSerialization.data(withJSONObject: payload),
-                  let event = try? JSONDecoder().decode(AgentEvent.self, from: eventData) else {
+            // Parse the event from params dict
+            guard let eventData = try? JSONSerialization.data(withJSONObject: payload.params) else {
+                #if DEBUG
+                print("[Atlas] agent.event: failed to serialize params")
+                #endif
                 return
             }
 
-            DispatchQueue.main.async {
-                self.handleAgentEvent(event)
+            do {
+                let event = try JSONDecoder().decode(AgentEvent.self, from: eventData)
+                DispatchQueue.main.async {
+                    self.handleAgentEvent(event)
+                }
+            } catch {
+                #if DEBUG
+                print("[Atlas] agent.event decode error: \(error)")
+                if let str = String(data: eventData, encoding: .utf8) {
+                    print("[Atlas] raw JSON: \(str.prefix(300))")
+                }
+                #endif
             }
         }
     }

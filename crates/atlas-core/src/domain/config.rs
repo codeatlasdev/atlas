@@ -22,13 +22,8 @@ impl Default for AppConfig {
 }
 
 fn dirs_path() -> PathBuf {
-    dirs_fallback()
-        .join("atlas")
-}
-
-fn dirs_fallback() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("/tmp"))
-        .join(".local/share")
+        .join(".atlas")
 }

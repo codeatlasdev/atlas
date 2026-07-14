@@ -6,6 +6,11 @@ use std::str::FromStr;
 use atlas_core::AtlasError;
 
 pub async fn create_pool(db_path: &Path) -> atlas_core::Result<SqlitePool> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AtlasError::Database(format!("failed to create db directory: {e}")))?;
+    }
+
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     let options = SqliteConnectOptions::from_str(&db_url)

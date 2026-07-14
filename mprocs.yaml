@@ -1,0 +1,17 @@
+procs:
+  daemon:
+    shell: "cargo watch -q -c -x 'run --bin atlas-daemon'"
+    stop: "SIGTERM"
+    autostart: true
+    env:
+      RUST_LOG: "atlas=debug"
+
+  check:
+    shell: "cargo watch -q -c -x 'clippy --all-targets'"
+    stop: "SIGTERM"
+    autostart: true
+
+  app:
+    shell: "cd app && swift build 2>&1 && echo '✓ App built — open in Xcode: cd app && open Package.swift' || echo '✗ Build failed'"
+    autostart: true
+    stop: "SIGTERM"

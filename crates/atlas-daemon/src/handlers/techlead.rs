@@ -24,17 +24,17 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
     let lm = state.lifecycle_manager.lock().await;
 
-    // Check if a Tech Lead session already exists
+    // Find any existing Tech Lead session (by adapter name containing "techlead")
     let existing = lm
         .list()
         .iter()
-        .find(|s| s.adapter_name == "kiro" && s.id.starts_with("techlead-"))
-        .map(|s| s.id.clone());
+        .find(|s| s.adapter_name == "kiro" || s.adapter_name == "kiro-techlead")
+        .map(|s| (s.id.clone(), s.terminal_session_id.clone()));
 
     drop(lm);
 
-    if let Some(session_id) = existing {
-        // Send message to existing Tech Lead session
+    if let Some((session_id, terminal_id)) = existing {
+        // Send message to existing Tech Lead session via terminal write
         let lm = state.lifecycle_manager.lock().await;
         lm.send_prompt(&session_id, &p.message, &state.pty_manager)
             .await?;
@@ -44,6 +44,7 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         Ok(json!({
             "session_id": session_id,
+            "terminal_session_id": terminal_id,
             "action": "message_sent",
         }))
     } else {
@@ -53,6 +54,11 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         let mut lm = state.lifecycle_manager.lock().await;
         let session_id = lm.spawn(&adapter, config, &state.pty_manager).await?;
+
+        // Get the terminal_session_id immediately after spawn
+        let terminal_id = lm
+            .get(&session_id)
+            .and_then(|s| s.terminal_session_id.clone());
         drop(lm);
 
         state
@@ -62,8 +68,8 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         Ok(json!({
             "session_id": session_id,
+            "terminal_session_id": terminal_id,
             "action": "spawned",
-            "message": "Tech Lead session started. Connected to Kiro CLI.",
         }))
     }
 }

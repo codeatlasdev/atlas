@@ -191,21 +191,24 @@ final class AppState {
             if let dict = response as? [String: Any] {
                 let action = dict["action"] as? String ?? ""
                 let sessionId = dict["session_id"] as? String
+                let terminalId = dict["terminal_session_id"] as? String
 
-                if action == "spawned", let sid = sessionId {
+                if let sid = sessionId {
                     techLeadSessionId = sid
-                    await refreshAgentSessions()
-                    if let agent = agentSessions.first(where: { $0.id == sid }) {
-                        techLeadTerminalId = agent.terminalSessionId
-                        subscribeToTechLeadOutput()
-                    }
+                }
+
+                if let tid = terminalId, techLeadTerminalId == nil {
+                    techLeadTerminalId = tid
+                    subscribeToTechLeadOutput()
+                }
+
+                if action == "spawned" {
                     techLeadMessages.append(ChatMessage(
                         role: .system,
                         content: "⚡ Tech Lead session started."
                     ))
                 }
-                // Keep isTechLeadTyping = true — it gets set to false
-                // when we receive actual output from the terminal
+                // Keep isTechLeadTyping = true — set to false when output arrives
             }
         } catch {
             techLeadMessages.append(ChatMessage(

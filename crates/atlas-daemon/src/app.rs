@@ -39,8 +39,16 @@ impl AppState {
         let lifecycle_manager = LifecycleManager::new();
 
         let memory_path = dirs_home().join("memory.redb");
-        let memory_engine = MemoryEngine::open(&memory_path)
-            .expect("failed to open memory engine");
+        let memory_engine = match MemoryEngine::open(&memory_path) {
+            Ok(engine) => engine,
+            Err(_) => {
+                // If DB is locked (another daemon running), try removing and recreating
+                tracing::warn!("Memory engine locked, attempting fresh database...");
+                let _ = std::fs::remove_file(&memory_path);
+                MemoryEngine::open(&memory_path)
+                    .expect("failed to create fresh memory engine")
+            }
+        };
         let memory_engine = Arc::new(Mutex::new(memory_engine));
 
         let hooks = AgentHooks::new(memory_engine.clone());

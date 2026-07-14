@@ -49,16 +49,17 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
     } else {
         // Spawn new Tech Lead session — prompt empty (sent after subscribe)
         let adapter = KiroAdapter::new();
+        let project_path = p.project_path.clone();
         let config = LaunchConfig {
             prompt: String::new(), // Empty — Swift sends after subscribing
-            cwd: p.project_path.clone().into(),
+            cwd: p.project_path.into(),
             permission: PermissionMode::Autonomous,
             env: Default::default(),
             agent_name: Some("atlas-techlead".to_string()),
         };
 
         let client_handler = Arc::new(DaemonClientHandler::new(
-            p.project_path.into(),
+            project_path.clone().into(),
             Arc::clone(&state.pty_manager),
         ));
 
@@ -78,7 +79,10 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             "session_id": session_id,
             "protocol": "acp",
             "action": "spawned",
-            "pending_prompt": p.message,
+            "pending_prompt": format!(
+                "Projeto: {}\n\n{}",
+                project_path, p.message
+            ),
         }))
     }
 }

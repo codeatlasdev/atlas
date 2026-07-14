@@ -21,6 +21,13 @@ struct SessionBoardView: View {
             SessionInspectorSheet(session: session)
                 .frame(minWidth: 700, minHeight: 500)
         }
+        .task {
+            // Periodic refresh every 5 seconds
+            while !Task.isCancelled {
+                await appState.refreshAgentSessions()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
     }
 
     // MARK: - Header
@@ -82,12 +89,6 @@ struct SessionBoardView: View {
                             title: "Needs You",
                             color: DS.status.warning,
                             sessions: needsYouSessions,
-                            onSelect: { selectedSession = $0 }
-                        )
-                        BoardColumn(
-                            title: "In Review",
-                            color: DS.accent.primary,
-                            sessions: reviewSessions,
                             onSelect: { selectedSession = $0 }
                         )
                         BoardColumn(
@@ -426,10 +427,20 @@ struct SpawnWorkerSheet: View {
     }
 
     private func spawnWorker() {
+        guard let project = appState.currentProject else { return }
         isSpawning = true
         Task {
-            // TODO: Call daemon to spawn worker session
-            try? await Task.sleep(for: .milliseconds(500))
+            do {
+                let _ = try await appState.daemon.send(method: "agent.spawn", params: [
+                    "adapter": selectedAdapter,
+                    "prompt": taskPrompt,
+                    "cwd": project.path,
+                    "permission": "autonomous"
+                ])
+                await appState.refreshAgentSessions()
+            } catch {
+                // TODO: show error
+            }
             dismiss()
         }
     }

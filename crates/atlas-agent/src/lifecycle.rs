@@ -149,6 +149,7 @@ impl LifecycleManager {
         }
 
         let mut session = AgentSession::new(session_id.clone(), adapter.name().to_string());
+        session.agent_name = config.agent_name.clone();
         session.activity_state = ActivityState::Active;
         self.sessions.insert(session_id.clone(), session);
 

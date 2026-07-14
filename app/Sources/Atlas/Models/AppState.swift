@@ -213,9 +213,9 @@ final class AppState {
                         content: "⚡ Tech Lead session started."
                     ))
 
-                    // For new sessions: send the initial prompt (with steering) AFTER subscribing
+                    // Send prompt AFTER subscribing (to not miss events)
                     if let sid = sessionId, protocol_ == "acp" {
-                        let prompt = dict["initial_prompt"] as? String ?? message
+                        let prompt = dict["pending_prompt"] as? String ?? message
                         let _ = try? await daemon.send(method: "agent.prompt", params: [
                             "session_id": sid,
                             "prompt": prompt

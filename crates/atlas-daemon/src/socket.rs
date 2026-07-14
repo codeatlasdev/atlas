@@ -206,7 +206,7 @@ async fn start_agent_subscription(
     };
     drop(lm);
 
-    let sid = session_id.to_string();
+    let _sid = session_id.to_string();
     let conn = Arc::clone(conn_state);
 
     let handle = tokio::spawn(async move {

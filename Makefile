@@ -28,11 +28,15 @@ test: ## Run all tests
 
 # ─── App ──────────────────────────────────────────────────
 
-app: ## Generate Xcode project and open in Xcode
-	cd app && xcodegen generate && open Atlas.xcodeproj
+app: ## Build daemon + generate Xcode project + open in Xcode
+	cargo build --bin atlas-daemon
+	cd app && xcodegen generate -q && open Atlas.xcodeproj
+
+dev-app: app ## Alias for app (build daemon + open Xcode)
 
 app-build: ## Build SwiftUI app via xcodebuild
-	cd app && xcodegen generate && xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Debug build
+	cargo build --bin atlas-daemon
+	cd app && xcodegen generate -q && xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Debug build -quiet
 
 app-generate: ## Regenerate Xcode project from project.yml
 	cd app && xcodegen generate

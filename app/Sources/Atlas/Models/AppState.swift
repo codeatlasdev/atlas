@@ -260,6 +260,15 @@ final class AppState {
     // MARK: - Connection
 
     func connect() async {
+        // Wait for daemon socket to appear (max 5 seconds)
+        let socketPath = ("~/.atlas/atlas.sock" as NSString).expandingTildeInPath
+        for _ in 0..<50 {
+            if FileManager.default.fileExists(atPath: socketPath) {
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
         do {
             try await daemon.connect()
             isConnected = true

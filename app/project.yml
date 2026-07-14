@@ -38,6 +38,21 @@ targets:
         SWIFT_STRICT_CONCURRENCY: targeted
     dependencies:
       - package: SwiftTerm
+    preBuildScripts:
+      - name: Build Daemon
+        script: |
+          cd "${SRCROOT}/.."
+          cargo build --bin atlas-daemon 2>/dev/null || true
+        basedOnDependencyAnalysis: false
+    postCompileScripts:
+      - name: Copy Daemon Binary
+        script: |
+          DAEMON_SRC="${SRCROOT}/../target/debug/atlas-daemon"
+          DAEMON_DST="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/atlas-daemon"
+          if [ -f "$DAEMON_SRC" ]; then
+            cp "$DAEMON_SRC" "$DAEMON_DST"
+          fi
+        basedOnDependencyAnalysis: false
     info:
       path: Support/Info.plist
       properties:

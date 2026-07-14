@@ -3,6 +3,13 @@ import SwiftUI
 @main
 struct AtlasApp: App {
     @State private var appState = AppState()
+    @State private var daemonManager = DaemonManager()
+
+    #if DEBUG
+    init() {
+        Bundle(path: "/Applications/InjectionIII.app/Contents/Resources/iOSInjection.bundle")?.load()
+    }
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -10,6 +17,12 @@ struct AtlasApp: App {
                 .environment(appState)
                 .frame(minWidth: 900, minHeight: 600)
                 .background(AtlasColors.backgroundDeep)
+                .onAppear {
+                    daemonManager.start()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    daemonManager.stop()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))

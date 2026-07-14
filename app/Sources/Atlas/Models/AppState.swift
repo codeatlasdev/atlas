@@ -19,6 +19,8 @@ final class AppState {
 
     var techLeadMessages: [ChatMessage] = []
     var isTechLeadTyping: Bool = false
+    var techLeadCurrentActivity: String = ""
+    var isTechLeadStreaming: Bool = false
     var techLeadSessionId: String?
     var techLeadTerminalId: String?
     private var isSubscribedToAgentEvents = false
@@ -271,6 +273,8 @@ final class AppState {
         switch event.event {
         case .textChunk(let chunk):
             isTechLeadTyping = false
+            isTechLeadStreaming = true
+            techLeadCurrentActivity = ""
             // Append to last assistant message or create new
             if let lastIndex = techLeadMessages.indices.last,
                techLeadMessages[lastIndex].role == .assistant {
@@ -288,18 +292,23 @@ final class AppState {
 
         case .thinkingChunk:
             isTechLeadTyping = true
+            isTechLeadStreaming = false
+            techLeadCurrentActivity = "Pensando..."
 
         case .toolCallStart(let tc):
             isTechLeadTyping = true
-            // Could show in UI: "Reading src/main.rs..."
+            isTechLeadStreaming = false
+            techLeadCurrentActivity = tc.title.isEmpty ? tc.toolName : tc.title
 
         case .toolCallUpdate(let update):
             if update.status == "completed" || update.status == "failed" {
-                // Tool done
+                techLeadCurrentActivity = ""
             }
 
         case .turnEnd:
             isTechLeadTyping = false
+            isTechLeadStreaming = false
+            techLeadCurrentActivity = ""
 
         default:
             break

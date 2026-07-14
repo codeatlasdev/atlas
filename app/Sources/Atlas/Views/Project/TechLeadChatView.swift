@@ -74,22 +74,35 @@ struct TechLeadChatView: View {
                     if appState.techLeadMessages.isEmpty {
                         emptyState
                     } else {
-                        ForEach(appState.techLeadMessages) { message in
-                            TechLeadBubble(message: message)
+                        ForEach(Array(appState.techLeadMessages.enumerated()), id: \.element.id) { index, message in
+                            let isLast = index == appState.techLeadMessages.count - 1
+                            let isStreamingThis = isLast && message.role == .assistant && appState.isTechLeadStreaming
+                            TechLeadBubble(message: message, isStreaming: isStreamingThis)
                                 .id(message.id)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                         }
 
                         if appState.isTechLeadTyping {
                             typingIndicator
+                                .id("typing-indicator")
+                                .transition(.opacity)
                         }
                     }
                 }
                 .padding(DS.spacing.xl)
+                .animation(.easeOut(duration: 0.15), value: appState.techLeadMessages.count)
             }
-            .onChange(of: appState.techLeadMessages.count) {
+            .onChange(of: appState.techLeadMessages.last?.content ?? "") { _, _ in
                 if let last = appState.techLeadMessages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: appState.isTechLeadTyping) { _, isTyping in
+                if isTyping {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo("typing-indicator", anchor: .bottom)
                     }
                 }
             }
@@ -120,27 +133,35 @@ struct TechLeadChatView: View {
     }
 
     private var typingIndicator: some View {
-        HStack {
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(DS.accent.primary.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                        .animation(
-                            .easeInOut(duration: 0.6)
-                                .repeatForever()
-                                .delay(Double(i) * 0.2),
-                            value: appState.isTechLeadTyping
-                        )
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(DS.bg.elevated)
-            .clipShape(RoundedRectangle(cornerRadius: DS.radius.lg, style: .continuous))
+        HStack(spacing: DS.spacing.sm) {
+            // Animated gradient bar
+            RoundedRectangle(cornerRadius: 2)
+                .fill(DS.accent.primary.opacity(0.6))
+                .frame(width: 3, height: 16)
+
+            Text(appState.techLeadCurrentActivity.isEmpty
+                 ? "Pensando..."
+                 : appState.techLeadCurrentActivity)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(DS.text.secondary)
+
             Spacer()
+
+            // Pulse dot
+            Circle()
+                .fill(DS.accent.primary)
+                .frame(width: 6, height: 6)
+                .opacity(pulseOpacity)
+                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulseOpacity)
+                .onAppear { pulseOpacity = 0.3 }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(DS.bg.elevated.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: DS.radius.md))
     }
+
+    @State private var pulseOpacity: Double = 1.0
 
     // MARK: - Input Bar
 
@@ -201,6 +222,9 @@ struct TechLeadChatView: View {
 
 struct TechLeadBubble: View {
     let message: ChatMessage
+    var isStreaming: Bool = false
+
+    @State private var cursorVisible = true
 
     var body: some View {
         HStack {
@@ -209,7 +233,17 @@ struct TechLeadBubble: View {
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: DS.spacing.xs) {
                 Group {
                     if message.role == .assistant {
-                        MarkdownText(text: message.content)
+                        HStack(alignment: .bottom, spacing: 0) {
+                            MarkdownText(text: message.content)
+                            if isStreaming {
+                                Text("▊")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(DS.accent.primary)
+                                    .opacity(cursorVisible ? 1 : 0)
+                                    .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: cursorVisible)
+                                    .onAppear { cursorVisible = false }
+                            }
+                        }
                     } else {
                         Text(message.content)
                             .font(.system(size: 13))

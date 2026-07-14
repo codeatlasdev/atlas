@@ -8,6 +8,10 @@ members = [
     "crates/atlas-server",
     "crates/atlas-daemon",
     "crates/atlas-cli",
+    "crates/atlas-terminal",
+    "crates/atlas-agent",
+    "crates/atlas-plugin",
+    "crates/atlas-agent-kiro",
 ]
 
 [workspace.package]
@@ -31,3 +35,6 @@ anyhow = "1.0"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
+portable-pty = "0.9"
+toml = "0.8"
+which = "7"

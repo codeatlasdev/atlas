@@ -55,6 +55,17 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "services.restart" => handlers::services::restart(state, req.params).await,
         "sessions.list" => handlers::sessions::list(state).await,
         "ai.chat" => handlers::ai::chat(state, req.params).await,
+        "terminal.create" => handlers::terminal::create(state, req.params).await,
+        "terminal.attach" => handlers::terminal::attach(state, req.params).await,
+        "terminal.input" => handlers::terminal::input(state, req.params).await,
+        "terminal.resize" => handlers::terminal::resize(state, req.params).await,
+        "terminal.kill" => handlers::terminal::kill(state, req.params).await,
+        "terminal.list" => handlers::terminal::list(state, req.params).await,
+        "agent.spawn" => handlers::agents::spawn(state, req.params).await,
+        "agent.list" => handlers::agents::list(state, req.params).await,
+        "agent.status" => handlers::agents::status(state, req.params).await,
+        "agent.stop" => handlers::agents::stop(state, req.params).await,
+        "agent.prompt" => handlers::agents::prompt(state, req.params).await,
         _ => Err(atlas_core::AtlasError::InvalidInput(format!(
             "unknown method: {}",
             req.method

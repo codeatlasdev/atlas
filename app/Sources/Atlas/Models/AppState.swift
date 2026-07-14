@@ -25,6 +25,9 @@ final class AppState {
             await refreshAgentSessions()
         } catch {
             isConnected = false
+            // Retry after delay if daemon not available yet
+            try? await Task.sleep(for: .seconds(3))
+            await connect()
         }
     }
 

@@ -1,21 +1,17 @@
 import Foundation
-import Network
 
 @Observable
-final class DaemonClient {
-    private(set) var connectionState: NWConnection.State = .setup
-    private var connection: NWConnection?
+final class DaemonClient: @unchecked Sendable {
+    private(set) var isConnected = false
+    private var fileDescriptor: Int32 = -1
     private var pendingRequests: [String: CheckedContinuation<Any, Error>] = [:]
     private let socketPath: String
     private var requestCounter: Int = 0
-    private var buffer = Data()
+    private var readTask: Task<Void, Never>?
 
     /// Notification handlers keyed by method name
     private var notificationHandlers: [String: (NotificationPayload) -> Void] = [:]
-
-    var isConnected: Bool {
-        connectionState == .ready
-    }
+    private let lock = NSLock()
 
     init(socketPath: String = "~/.atlas/atlas.sock") {
         self.socketPath = (socketPath as NSString).expandingTildeInPath
@@ -24,48 +20,68 @@ final class DaemonClient {
     // MARK: - Connection
 
     func connect() async throws {
-        let endpoint = NWEndpoint.unix(path: socketPath)
-        let parameters = NWParameters()
-        parameters.defaultProtocolStack.transportProtocol = NWProtocolTCP.Options()
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw DaemonError.connectionFailed("Failed to create socket: \(String(cString: strerror(errno)))")
+        }
 
-        let conn = NWConnection(to: endpoint, using: parameters)
-        connection = conn
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
 
-        return try await withCheckedThrowingContinuation { continuation in
-            conn.stateUpdateHandler = { [weak self] state in
-                self?.connectionState = state
-                switch state {
-                case .ready:
-                    continuation.resume()
-                    self?.startReceiving()
-                case .failed(let error):
-                    continuation.resume(throwing: DaemonError.connectionFailed(error.localizedDescription))
-                case .cancelled:
-                    break
-                default:
-                    break
+        let pathBytes = socketPath.utf8CString
+        guard pathBytes.count <= MemoryLayout.size(ofValue: addr.sun_path) else {
+            close(fd)
+            throw DaemonError.connectionFailed("Socket path too long")
+        }
+
+        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: pathBytes.count) { dest in
+                for i in 0..<pathBytes.count {
+                    dest[i] = pathBytes[i]
                 }
             }
-            conn.start(queue: .global(qos: .userInitiated))
         }
+
+        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                Darwin.connect(fd, sockPtr, addrLen)
+            }
+        }
+
+        guard result == 0 else {
+            close(fd)
+            throw DaemonError.connectionFailed("Connect failed: \(String(cString: strerror(errno)))")
+        }
+
+        fileDescriptor = fd
+        isConnected = true
+        startReadLoop()
     }
 
     func disconnect() {
-        connection?.cancel()
-        connection = nil
-        connectionState = .cancelled
+        readTask?.cancel()
+        readTask = nil
+        if fileDescriptor >= 0 {
+            close(fileDescriptor)
+            fileDescriptor = -1
+        }
+        isConnected = false
+
+        lock.lock()
         for (_, continuation) in pendingRequests {
             continuation.resume(throwing: DaemonError.disconnected)
         }
         pendingRequests.removeAll()
         notificationHandlers.removeAll()
+        lock.unlock()
     }
 
     // MARK: - RPC
 
     @discardableResult
     func send(method: String, params: [String: Any] = [:]) async throws -> Any {
-        guard let connection, connectionState == .ready else {
+        guard fileDescriptor >= 0, isConnected else {
             throw DaemonError.notConnected
         }
 
@@ -79,89 +95,95 @@ final class DaemonClient {
 
         let data = try JSONSerialization.data(withJSONObject: payload)
         var frame = data
-        frame.append(0x0A)
+        frame.append(0x0A) // newline
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.send(content: frame, completion: .contentProcessed { error in
-                if let error {
-                    continuation.resume(throwing: DaemonError.sendFailed(error.localizedDescription))
-                } else {
-                    continuation.resume()
-                }
-            })
+        let fd = fileDescriptor
+        let writeResult = frame.withUnsafeBytes { ptr in
+            Darwin.write(fd, ptr.baseAddress!, ptr.count)
+        }
+
+        guard writeResult == frame.count else {
+            throw DaemonError.sendFailed("Write failed: \(String(cString: strerror(errno)))")
         }
 
         return try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
             pendingRequests[id] = continuation
+            lock.unlock()
         }
     }
 
     // MARK: - Notifications
 
-    /// Register a handler for server-push notifications (e.g. "terminal.output")
     func onNotification(_ method: String, handler: @escaping (NotificationPayload) -> Void) {
+        lock.lock()
         notificationHandlers[method] = handler
+        lock.unlock()
     }
 
-    /// Remove notification handler
     func removeNotificationHandler(_ method: String) {
+        lock.lock()
         notificationHandlers.removeValue(forKey: method)
+        lock.unlock()
     }
 
-    // MARK: - Receive Loop
+    // MARK: - Read Loop
 
-    private func startReceiving() {
-        receiveLoop()
-    }
+    private func startReadLoop() {
+        let fd = fileDescriptor
 
-    private func receiveLoop() {
-        guard let connection else { return }
+        readTask = Task.detached { [weak self] in
+            var buffer = Data()
+            let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
+            defer { readBuf.deallocate() }
 
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] content, _, isComplete, error in
-            guard let self else { return }
+            while !Task.isCancelled {
+                let bytesRead = Darwin.read(fd, readBuf, 65536)
 
-            if let data = content {
-                self.buffer.append(data)
-                self.processBuffer()
-            }
-
-            if isComplete || error != nil {
-                self.connectionState = .cancelled
-                return
-            }
-
-            self.receiveLoop()
-        }
-    }
-
-    private func processBuffer() {
-        while let newlineIndex = buffer.firstIndex(of: 0x0A) {
-            let lineData = buffer[buffer.startIndex..<newlineIndex]
-            buffer.removeSubrange(buffer.startIndex...newlineIndex)
-
-            guard let json = try? JSONSerialization.jsonObject(with: Data(lineData)) as? [String: Any] else {
-                continue
-            }
-
-            if let id = json["id"] as? String {
-                // Response to a pending request
-                if let continuation = pendingRequests.removeValue(forKey: id) {
-                    if let error = json["error"] as? [String: Any],
-                       let message = error["message"] as? String {
-                        continuation.resume(throwing: DaemonError.rpcError(message))
-                    } else if let result = json["result"] {
-                        continuation.resume(returning: result)
-                    } else {
-                        continuation.resume(returning: NSNull())
+                if bytesRead <= 0 {
+                    await MainActor.run {
+                        self?.isConnected = false
                     }
+                    break
                 }
-            } else if let method = json["method"] as? String {
-                // Server-push notification (no id)
-                let params = json["params"] as? [String: Any] ?? [:]
-                let payload = NotificationPayload(method: method, params: params)
 
-                if let handler = notificationHandlers[method] {
-                    handler(payload)
+                buffer.append(readBuf, count: bytesRead)
+
+                // Process complete lines
+                while let newlineIndex = buffer.firstIndex(of: 0x0A) {
+                    let lineData = buffer[buffer.startIndex..<newlineIndex]
+                    buffer.removeSubrange(buffer.startIndex...newlineIndex)
+
+                    guard let self,
+                          let json = try? JSONSerialization.jsonObject(with: Data(lineData)) as? [String: Any] else {
+                        continue
+                    }
+
+                    if let id = json["id"] as? String {
+                        self.lock.lock()
+                        let continuation = self.pendingRequests.removeValue(forKey: id)
+                        self.lock.unlock()
+
+                        if let continuation {
+                            if let error = json["error"] as? [String: Any],
+                               let message = error["message"] as? String {
+                                continuation.resume(throwing: DaemonError.rpcError(message))
+                            } else if let result = json["result"] {
+                                continuation.resume(returning: result)
+                            } else {
+                                continuation.resume(returning: NSNull())
+                            }
+                        }
+                    } else if let method = json["method"] as? String {
+                        let params = json["params"] as? [String: Any] ?? [:]
+                        let payload = NotificationPayload(method: method, params: params)
+
+                        self.lock.lock()
+                        let handler = self.notificationHandlers[method]
+                        self.lock.unlock()
+
+                        handler?(payload)
+                    }
                 }
             }
         }

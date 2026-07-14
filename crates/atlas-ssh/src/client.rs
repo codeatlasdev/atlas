@@ -1,53 +1,57 @@
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::process::Command;
 
-use atlas_core::ports::ssh::{CommandOutput, SshPort};
+use atlas_core::ports::ssh::CommandOutput;
 use atlas_core::{AtlasError, Result};
 
-use crate::session::ManagedSession;
-
+/// SSH client that wraps the system `ssh` binary.
+/// Uses ~/.ssh/config for host aliases, keys, and options.
+#[derive(Debug, Clone)]
 pub struct SshClient {
-    session: Arc<Mutex<Option<ManagedSession>>>,
-    key_path: Option<std::path::PathBuf>,
+    host: String,
 }
 
 impl SshClient {
-    pub fn new(key_path: Option<std::path::PathBuf>) -> Self {
+    pub fn new(host: &str) -> Self {
         Self {
-            session: Arc::new(Mutex::new(None)),
-            key_path,
+            host: host.to_string(),
         }
     }
-}
 
-#[async_trait]
-impl SshPort for SshClient {
-    async fn connect(&self, host: &str, port: u16, user: &str) -> Result<()> {
-        let managed = ManagedSession::connect(host, port, user, self.key_path.as_deref()).await?;
-        let mut session = self.session.lock().await;
-        *session = Some(managed);
-        Ok(())
+    pub fn host(&self) -> &str {
+        &self.host
     }
 
-    async fn disconnect(&self) -> Result<()> {
-        let mut session = self.session.lock().await;
-        if let Some(s) = session.take() {
-            s.close().await?;
+    /// Execute a command on the remote host via system ssh.
+    /// Uses spawn_blocking to avoid blocking the tokio runtime.
+    pub async fn exec(&self, command: &str) -> Result<CommandOutput> {
+        let host = self.host.clone();
+        let cmd = command.to_string();
+
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new("ssh")
+                .args(["-o", "StrictHostKeyChecking=accept-new"])
+                .args(["-o", "ConnectTimeout=10"])
+                .args(["-o", "BatchMode=yes"])
+                .arg(&host)
+                .arg(&cmd)
+                .output()
+        })
+        .await
+        .map_err(|e| AtlasError::Ssh(format!("task join error: {e}")))?
+        .map_err(|e| AtlasError::Ssh(format!("ssh command failed: {e}")))?;
+
+        Ok(CommandOutput {
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            exit_code: output.status.code().unwrap_or(-1),
+        })
+    }
+
+    /// Quick connectivity check — runs `echo ok` and verifies output.
+    pub async fn is_reachable(&self) -> bool {
+        match self.exec("echo ok").await {
+            Ok(output) => output.exit_code == 0 && output.stdout.trim() == "ok",
+            Err(_) => false,
         }
-        Ok(())
-    }
-
-    async fn execute(&self, command: &str) -> Result<CommandOutput> {
-        let session = self.session.lock().await;
-        let s = session
-            .as_ref()
-            .ok_or_else(|| AtlasError::Ssh("not connected".to_string()))?;
-        s.execute(command).await
-    }
-
-    async fn is_connected(&self) -> bool {
-        let session = self.session.lock().await;
-        session.is_some()
     }
 }

@@ -9,7 +9,7 @@ const RELATIONSHIPS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("
 
 pub fn add_entity(db: &Database, entity: &Entity) -> atlas_core::Result<()> {
     let bytes = serde_json::to_vec(entity)
-        .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+        .map_err(atlas_core::AtlasError::Serialization)?;
 
     let txn = db.begin_write()
         .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
@@ -27,7 +27,7 @@ pub fn add_entity(db: &Database, entity: &Entity) -> atlas_core::Result<()> {
 
 pub fn add_relationship(db: &Database, rel: &Relationship) -> atlas_core::Result<()> {
     let bytes = serde_json::to_vec(rel)
-        .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+        .map_err(atlas_core::AtlasError::Serialization)?;
 
     let txn = db.begin_write()
         .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
@@ -52,7 +52,7 @@ pub fn get_entity(db: &Database, id: &str) -> atlas_core::Result<Option<Entity>>
     match table.get(id) {
         Ok(Some(value)) => {
             let entity: Entity = serde_json::from_slice(value.value())
-                .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+                .map_err(atlas_core::AtlasError::Serialization)?;
             Ok(Some(entity))
         }
         Ok(None) => Ok(None),
@@ -81,7 +81,7 @@ pub fn get_neighbors(db: &Database, entity_id: &str) -> atlas_core::Result<Vec<(
             .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
         let bytes = entry.1.value();
         let rel: Relationship = serde_json::from_slice(bytes)
-            .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+            .map_err(atlas_core::AtlasError::Serialization)?;
 
         let neighbor_id = if rel.source == entity_id {
             Some(&rel.target)
@@ -94,7 +94,7 @@ pub fn get_neighbors(db: &Database, entity_id: &str) -> atlas_core::Result<Vec<(
         if let Some(nid) = neighbor_id {
             if let Ok(Some(value)) = ent_table.get(nid.as_str()) {
                 let entity: Entity = serde_json::from_slice(value.value())
-                    .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+                    .map_err(atlas_core::AtlasError::Serialization)?;
                 results.push((rel, entity));
             }
         }
@@ -122,7 +122,7 @@ pub fn bfs(db: &Database, start: &str, max_depth: u32) -> atlas_core::Result<Vec
         let entry = entry
             .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
         let rel: Relationship = serde_json::from_slice(entry.1.value())
-            .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+            .map_err(atlas_core::AtlasError::Serialization)?;
         all_rels.push(rel);
     }
 

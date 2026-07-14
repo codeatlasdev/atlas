@@ -6,7 +6,7 @@ const MEMORIES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("memor
 
 pub fn store(db: &Database, memory: &Memory) -> atlas_core::Result<()> {
     let bytes = serde_json::to_vec(memory)
-        .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+        .map_err(atlas_core::AtlasError::Serialization)?;
 
     let txn = db.begin_write()
         .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
@@ -31,7 +31,7 @@ pub fn get(db: &Database, id: &str) -> atlas_core::Result<Option<Memory>> {
     match table.get(id) {
         Ok(Some(value)) => {
             let memory: Memory = serde_json::from_slice(value.value())
-                .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+                .map_err(atlas_core::AtlasError::Serialization)?;
             Ok(Some(memory))
         }
         Ok(None) => Ok(None),
@@ -54,7 +54,7 @@ pub fn list_all(db: &Database) -> atlas_core::Result<Vec<Memory>> {
             .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
         let bytes = entry.1.value();
         let memory: Memory = serde_json::from_slice(bytes)
-            .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+            .map_err(atlas_core::AtlasError::Serialization)?;
         memories.push(memory);
     }
 

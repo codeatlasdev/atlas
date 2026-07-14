@@ -6,6 +6,86 @@ pub type EntityId = String;
 pub type SessionId = String;
 pub type Timestamp = i64; // Unix millis
 
+// ─── Builder impls ─────────────────────────────────────────────────────
+
+impl Event {
+    pub fn new(event_type: EventType) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            event_type,
+            session_id: None,
+            agent_name: None,
+            data: serde_json::Value::Null,
+        }
+    }
+
+    pub fn with_session(mut self, id: &str) -> Self {
+        self.session_id = Some(id.to_string());
+        self
+    }
+
+    pub fn with_agent(mut self, name: &str) -> Self {
+        self.agent_name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_data(mut self, data: serde_json::Value) -> Self {
+        self.data = data;
+        self
+    }
+}
+
+impl Memory {
+    pub fn new_experience(content: String, source: MemorySource) -> Self {
+        Self::new_with_type(content, MemoryType::Experience, source)
+    }
+
+    pub fn new_fact(content: String, source: MemorySource) -> Self {
+        Self::new_with_type(content, MemoryType::Fact, source)
+    }
+
+    pub fn new_decision(content: String, source: MemorySource) -> Self {
+        Self::new_with_type(content, MemoryType::Decision, source)
+    }
+
+    fn new_with_type(content: String, memory_type: MemoryType, source: MemorySource) -> Self {
+        let now = chrono::Utc::now().timestamp_millis();
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            content,
+            memory_type,
+            source,
+            embedding: None,
+            metadata: HashMap::new(),
+            valid_from: now,
+            valid_until: None,
+            created_at: now,
+            heat: 1.0,
+            access_count: 0,
+            last_accessed: now,
+        }
+    }
+}
+
+impl MemorySource {
+    pub fn agent(session_id: &str, name: &str) -> Self {
+        Self {
+            session_id: Some(session_id.to_string()),
+            agent_name: Some(name.to_string()),
+            project_path: None,
+        }
+    }
+
+    pub fn system() -> Self {
+        Self {
+            session_id: None,
+            agent_name: None,
+            project_path: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Memory {
     pub id: MemoryId,

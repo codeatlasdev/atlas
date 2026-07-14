@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use atlas_agent::AgentHooks;
 use atlas_ai::AiRouter;
 use atlas_agent::LifecycleManager;
 use atlas_db::repos::{SqliteConfigRepo, SqliteServerRepo, SqliteSessionRepo, SqliteTaskRepo};
 use atlas_memory::MemoryEngine;
+use atlas_server::ServerManager;
 use atlas_terminal::PtyManager;
 use tokio::sync::Mutex;
 
@@ -17,6 +19,8 @@ pub struct AppState {
     pub pty_manager: Arc<PtyManager>,
     pub lifecycle_manager: Arc<Mutex<LifecycleManager>>,
     pub memory_engine: Arc<Mutex<MemoryEngine>>,
+    pub server_manager: Arc<ServerManager>,
+    pub hooks: AgentHooks,
 }
 
 impl AppState {
@@ -28,6 +32,9 @@ impl AppState {
         let memory_path = dirs_home().join("memory.redb");
         let memory_engine = MemoryEngine::open(&memory_path)
             .expect("failed to open memory engine");
+        let memory_engine = Arc::new(Mutex::new(memory_engine));
+
+        let hooks = AgentHooks::new(memory_engine.clone());
 
         Arc::new(Self {
             server_repo: Arc::new(SqliteServerRepo::new(pool.clone())),
@@ -37,7 +44,9 @@ impl AppState {
             ai_router: Arc::new(ai_router),
             pty_manager: Arc::new(pty_manager),
             lifecycle_manager: Arc::new(Mutex::new(lifecycle_manager)),
-            memory_engine: Arc::new(Mutex::new(memory_engine)),
+            memory_engine,
+            server_manager: Arc::new(ServerManager::new()),
+            hooks,
         })
     }
 }

@@ -38,6 +38,9 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
         let lm = state.lifecycle_manager.lock().await;
         lm.send_prompt(&session_id, &p.message, &state.pty_manager)
             .await?;
+        drop(lm);
+
+        state.hooks.on_prompt_sent(&session_id, &p.message).await;
 
         Ok(json!({
             "session_id": session_id,
@@ -50,9 +53,12 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         let mut lm = state.lifecycle_manager.lock().await;
         let session_id = lm.spawn(&adapter, config, &state.pty_manager).await?;
+        drop(lm);
 
-        // Override the session ID to be identifiable as tech lead
-        // (The lifecycle manager already created it, we just track it)
+        state
+            .hooks
+            .on_session_started(&session_id, "kiro-techlead", &p.message)
+            .await;
 
         Ok(json!({
             "session_id": session_id,

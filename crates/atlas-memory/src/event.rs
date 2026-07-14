@@ -6,7 +6,7 @@ const EVENTS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("events"
 
 pub fn append(db: &Database, event: &Event) -> atlas_core::Result<()> {
     let bytes = serde_json::to_vec(event)
-        .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+        .map_err(atlas_core::AtlasError::Serialization)?;
 
     let txn = db.begin_write()
         .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
@@ -37,7 +37,7 @@ pub fn list_since(db: &Database, since: Timestamp) -> atlas_core::Result<Vec<Eve
             .map_err(|e| atlas_core::AtlasError::Database(e.to_string()))?;
         let bytes = entry.1.value();
         let event: Event = serde_json::from_slice(bytes)
-            .map_err(|e| atlas_core::AtlasError::Serialization(e))?;
+            .map_err(atlas_core::AtlasError::Serialization)?;
         if event.timestamp >= since {
             events.push(event);
         }

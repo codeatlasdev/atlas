@@ -57,14 +57,23 @@ pub async fn spawn(state: &Arc<AppState>, params: Value) -> Result<Value> {
     };
 
     let config = LaunchConfig {
-        prompt: p.prompt,
+        prompt: p.prompt.clone(),
         cwd: p.cwd.into(),
         permission: parse_permission(&p.permission),
         env: p.env,
     };
 
+    let adapter_name = p.adapter.clone();
+    let prompt_text = p.prompt;
+
     let mut lm = state.lifecycle_manager.lock().await;
     let session_id = lm.spawn(adapter.as_ref(), config, &state.pty_manager).await?;
+    drop(lm);
+
+    state
+        .hooks
+        .on_session_started(&session_id, &adapter_name, &prompt_text)
+        .await;
 
     Ok(json!({ "session_id": session_id }))
 }
@@ -109,7 +118,17 @@ pub async fn stop(state: &Arc<AppState>, params: Value) -> Result<Value> {
         .map_err(|e| atlas_core::AtlasError::InvalidInput(e.to_string()))?;
 
     let mut lm = state.lifecycle_manager.lock().await;
+    let adapter_name = lm
+        .get(&p.session_id)
+        .map(|s| s.adapter_name.clone())
+        .unwrap_or_default();
     lm.stop(&p.session_id, &state.pty_manager).await?;
+    drop(lm);
+
+    state
+        .hooks
+        .on_session_ended(&p.session_id, &adapter_name, 0)
+        .await;
 
     Ok(json!({ "ok": true }))
 }
@@ -121,6 +140,9 @@ pub async fn prompt(state: &Arc<AppState>, params: Value) -> Result<Value> {
     let lm = state.lifecycle_manager.lock().await;
     lm.send_prompt(&p.session_id, &p.prompt, &state.pty_manager)
         .await?;
+    drop(lm);
+
+    state.hooks.on_prompt_sent(&p.session_id, &p.prompt).await;
 
     Ok(json!({ "ok": true }))
 }

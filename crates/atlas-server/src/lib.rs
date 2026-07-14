@@ -3,4 +3,4 @@ pub mod deploy;
 pub mod manager;
 pub mod systemd;
 
-pub use manager::ServerManagerImpl;
+pub use manager::ServerManager;

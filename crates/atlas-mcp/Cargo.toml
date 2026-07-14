@@ -1,12 +1,17 @@
 [package]
-name = "atlas-server"
+name = "atlas-mcp"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "atlas-mcp-server"
+path = "src/main.rs"
+
 [dependencies]
-atlas-core = { path = "../atlas-core" }
-atlas-ssh = { path = "../atlas-ssh" }
 tokio = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

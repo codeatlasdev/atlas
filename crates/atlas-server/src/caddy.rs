@@ -1,20 +1,26 @@
-use atlas_core::ports::ssh::SshPort;
 use atlas_core::Result;
+use atlas_ssh::SshClient;
 
 #[allow(dead_code)]
-pub async fn reload_caddy(ssh: &dyn SshPort) -> Result<()> {
-    ssh.execute("sudo systemctl reload caddy").await?;
+pub async fn reload_caddy(ssh: &SshClient) -> Result<()> {
+    let output = ssh.exec("systemctl reload caddy").await?;
+    if output.exit_code != 0 {
+        return Err(atlas_core::AtlasError::ServerManagement(format!(
+            "caddy reload failed: {}",
+            output.stderr
+        )));
+    }
     Ok(())
 }
 
 #[allow(dead_code)]
-pub async fn validate_config(ssh: &dyn SshPort) -> Result<String> {
-    let output = ssh.execute("caddy validate --config /etc/caddy/Caddyfile").await?;
+pub async fn validate_config(ssh: &SshClient) -> Result<String> {
+    let output = ssh.exec("caddy validate --config /etc/caddy/Caddyfile").await?;
     Ok(output.stdout)
 }
 
 #[allow(dead_code)]
-pub async fn get_config(ssh: &dyn SshPort) -> Result<String> {
-    let output = ssh.execute("cat /etc/caddy/Caddyfile").await?;
+pub async fn get_config(ssh: &SshClient) -> Result<String> {
+    let output = ssh.exec("cat /etc/caddy/Caddyfile").await?;
     Ok(output.stdout)
 }

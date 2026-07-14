@@ -9,7 +9,7 @@ pub fn valid_at(memories: &[Memory], timestamp: Timestamp) -> Vec<&Memory> {
         .iter()
         .filter(|m| {
             m.valid_from <= timestamp
-                && m.valid_until.map_or(true, |until| until > timestamp)
+                && m.valid_until.is_none_or(|until| until > timestamp)
         })
         .collect()
 }

@@ -60,8 +60,11 @@ async fn handle_request(raw: &str, bridge: &DaemonBridge) -> JsonRpcResponse {
 
     match req.method.as_str() {
         "initialize" => handle_initialize(id),
-        "initialized" => JsonRpcResponse::success(id, json!({})),
-        "notifications/initialized" => JsonRpcResponse::success(id, json!({})),
+        "initialized" | "notifications/initialized" => {
+            // Notifications don't get responses per JSON-RPC spec
+            // But some clients expect acknowledgment, return empty
+            JsonRpcResponse::success(id, json!({}))
+        }
         "tools/list" => handle_tools_list(id),
         "tools/call" => handle_tools_call(id, req.params, bridge).await,
         "ping" => JsonRpcResponse::success(id, json!({})),

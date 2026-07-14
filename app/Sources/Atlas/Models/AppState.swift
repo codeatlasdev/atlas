@@ -199,21 +199,24 @@ final class AppState {
                     }
                     techLeadMessages.append(ChatMessage(
                         role: .system,
-                        content: "⚡ Tech Lead session started. Kiro is processing..."
+                        content: "⚡ Tech Lead session started."
                     ))
-                } else if action == "message_sent" {
-                    // Message sent to existing session, output will come via terminal
                 }
+                // Keep isTechLeadTyping = true — it gets set to false
+                // when we receive actual output from the terminal
             }
         } catch {
             techLeadMessages.append(ChatMessage(
                 role: .system,
                 content: "Error: \(error.localizedDescription)"
             ))
+            isTechLeadTyping = false
         }
-
-        isTechLeadTyping = false
     }
+
+    /// Accumulated buffer for streaming output (debounced)
+    private var outputBuffer = ""
+    private var outputFlushTask: Task<Void, Never>?
 
     func subscribeToTechLeadOutput() {
         guard let terminalId = techLeadTerminalId else { return }
@@ -231,30 +234,60 @@ final class AppState {
                   let data = payload.data(forKey: "data"),
                   let text = String(data: data, encoding: .utf8) else { return }
 
-            let cleanText = text.replacingOccurrences(
-                of: "\\x1B\\[[0-9;]*[A-Za-z]",
-                with: "",
-                options: .regularExpression
-            )
-
-            let trimmed = cleanText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
+            // Strip ANSI escape sequences (comprehensive)
+            let clean = self.stripAnsi(text)
+            guard !clean.isEmpty else { return }
 
             DispatchQueue.main.async {
-                if let last = self.techLeadMessages.last, last.role == .assistant {
-                    self.techLeadMessages[self.techLeadMessages.count - 1] = ChatMessage(
-                        role: .assistant,
-                        content: last.content + trimmed
-                    )
-                } else {
-                    self.techLeadMessages.append(ChatMessage(
-                        role: .assistant,
-                        content: trimmed
-                    ))
-                }
+                self.outputBuffer += clean
                 self.isTechLeadTyping = false
+                self.scheduleFlush()
             }
         }
+    }
+
+    /// Debounce: flush accumulated output every 300ms into a chat message
+    private func scheduleFlush() {
+        outputFlushTask?.cancel()
+        outputFlushTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            flushOutputBuffer()
+        }
+    }
+
+    @MainActor
+    private func flushOutputBuffer() {
+        let text = outputBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        outputBuffer = ""
+
+        // If last message is assistant, append to it (streaming continuation)
+        if let lastIndex = techLeadMessages.indices.last,
+           techLeadMessages[lastIndex].role == .assistant {
+            let existing = techLeadMessages[lastIndex].content
+            techLeadMessages[lastIndex] = ChatMessage(
+                role: .assistant,
+                content: existing + text
+            )
+        } else {
+            // New assistant message
+            techLeadMessages.append(ChatMessage(
+                role: .assistant,
+                content: text
+            ))
+        }
+    }
+
+    /// Strip all ANSI escape sequences from terminal output
+    private func stripAnsi(_ text: String) -> String {
+        // Covers: CSI sequences, OSC sequences, simple escapes
+        text.replacingOccurrences(
+            of: "\\x1B(?:\\[[0-9;?]*[A-Za-z]|\\].*?(?:\\x07|\\x1B\\\\)|[()][0-9A-Za-z]|[>=<])",
+            with: "",
+            options: .regularExpression
+        )
+        .replacingOccurrences(of: "\r", with: "")
     }
 
     // MARK: - Connection

@@ -156,7 +156,7 @@ impl AcpTransport {
             .current_dir(&config.cwd)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null());
+            .stderr(std::process::Stdio::piped());
 
         for (k, v) in &config.env {
             cmd.env(k, v);
@@ -168,6 +168,28 @@ impl AcpTransport {
 
         let stdin = child.stdin.take().ok_or("no stdin on child")?;
         let stdout = child.stdout.take().ok_or("no stdout on child")?;
+        let stderr = child.stderr.take();
+
+        // Log stderr in background for diagnostics
+        if let Some(stderr) = stderr {
+            tokio::spawn(async move {
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            let trimmed = line.trim();
+                            if !trimmed.is_empty() {
+                                debug!(target: "acp_stderr", "{}", trimmed);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
 
         let (writer_tx, mut writer_rx) = mpsc::unbounded_channel::<String>();
         let (event_tx, _) = broadcast::channel::<AgentEvent>(512);
@@ -374,6 +396,16 @@ impl AcpTransport {
         self.event_tx.clone()
     }
 
+    /// Clone the writer channel (for sending messages from other tasks).
+    pub fn writer_tx_clone(&self) -> mpsc::UnboundedSender<String> {
+        self.writer_tx.clone()
+    }
+
+    /// Get the next request ID.
+    pub fn next_request_id(&self) -> u64 {
+        self.next_id.fetch_add(1, Ordering::Relaxed)
+    }
+
     /// Send a JSON-RPC request and wait for response.
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -483,7 +515,7 @@ impl AcpTransport {
             "session/prompt",
             serde_json::json!({
                 "sessionId": session_id,
-                "content": [{ "type": "text", "text": text }]
+                "prompt": [{ "type": "text", "text": text }]
             }),
         )
         .await

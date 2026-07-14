@@ -83,11 +83,24 @@ impl LifecycleManager {
 
         let session_id = uuid::Uuid::new_v4().to_string();
 
+        let mut args = vec!["acp".to_string()];
+        // Pass permission flags to the ACP process
+        let perm_flags = adapter.permission_flags(&config.permission);
+        args.extend(perm_flags);
+
+        // Ensure PATH includes common dev tool locations
+        let mut env = config.env.clone();
+        if !env.contains_key("PATH") {
+            if let Ok(path) = std::env::var("PATH") {
+                env.insert("PATH".to_string(), path);
+            }
+        }
+
         let spawn_config = AcpSpawnConfig {
             binary,
-            args: vec!["acp".to_string()],
+            args,
             cwd: config.cwd.clone(),
-            env: config.env.clone(),
+            env,
             atlas_session_id: session_id.clone(),
         };
 
@@ -114,12 +127,20 @@ impl LifecycleManager {
             "agent session spawned (ACP)"
         );
 
-        // Send initial prompt if provided
+        // Send initial prompt if provided (fire-and-forget — results come as events)
         if !config.prompt.is_empty() {
-            transport
-                .prompt(&config.prompt)
-                .await
-                .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+            let req = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": transport.next_request_id(),
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": acp_session_id,
+                    "prompt": [{"type": "text", "text": config.prompt}]
+                }
+            });
+            let mut line = serde_json::to_string(&req).unwrap_or_default();
+            line.push('\n');
+            let _ = transport.writer_tx_clone().send(line);
         }
 
         let mut session = AgentSession::new(session_id.clone(), adapter.name().to_string());

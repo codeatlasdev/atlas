@@ -8,6 +8,8 @@ final class AppState {
     var currentProject: ProjectInfo?
     var recentProjects: [ProjectInfo] = []
     var selectedTab: SidebarTab = .kanban
+    var needsProjectSetup: Bool = false
+    var projectDetection: ProjectDetectionResult?
 
     // MARK: - Kanban
 
@@ -17,6 +19,8 @@ final class AppState {
 
     var techLeadMessages: [ChatMessage] = []
     var isTechLeadTyping: Bool = false
+    var techLeadSessionId: String?
+    var techLeadTerminalId: String?
 
     // MARK: - Existing State
 
@@ -43,10 +47,22 @@ final class AppState {
         addToRecentProjects(project)
         selectedTab = .kanban
 
+        // Check if atlas.yaml exists — show setup wizard if not
+        let yamlPath = (path as NSString).appendingPathComponent("atlas.yaml")
+        if FileManager.default.fileExists(atPath: yamlPath) {
+            needsProjectSetup = false
+        } else {
+            needsProjectSetup = true
+        }
+
         NSSound(named: .init("Morse"))?.play()
 
         Task {
             await refreshTasks()
+            // Re-attach to Tech Lead terminal if session already exists
+            if techLeadSessionId != nil, techLeadTerminalId != nil {
+                subscribeToTechLeadOutput()
+            }
         }
     }
 
@@ -158,21 +174,87 @@ final class AppState {
     // MARK: - Tech Lead
 
     func sendToTechLead(message: String) async {
+        guard let project = currentProject else { return }
+
         let userMsg = ChatMessage(role: .user, content: message)
         techLeadMessages.append(userMsg)
         isTechLeadTyping = true
 
         do {
-            let response = try await daemon.send(method: "ai.chat", params: ["message": message])
-            if let content = response as? [String: Any],
-               let text = content["content"] as? String {
-                techLeadMessages.append(ChatMessage(role: .assistant, content: text))
+            let response = try await daemon.send(method: "techlead.chat", params: [
+                "message": message,
+                "project_path": project.path
+            ])
+
+            if let dict = response as? [String: Any] {
+                let action = dict["action"] as? String ?? ""
+                let sessionId = dict["session_id"] as? String
+
+                if action == "spawned", let sid = sessionId {
+                    techLeadSessionId = sid
+                    await refreshAgentSessions()
+                    if let agent = agentSessions.first(where: { $0.id == sid }) {
+                        techLeadTerminalId = agent.terminalSessionId
+                        subscribeToTechLeadOutput()
+                    }
+                    techLeadMessages.append(ChatMessage(
+                        role: .system,
+                        content: "⚡ Tech Lead session started. Kiro is processing..."
+                    ))
+                } else if action == "message_sent" {
+                    // Message sent to existing session, output will come via terminal
+                }
             }
         } catch {
-            techLeadMessages.append(ChatMessage(role: .system, content: "Connection error: \(error.localizedDescription)"))
+            techLeadMessages.append(ChatMessage(
+                role: .system,
+                content: "Error: \(error.localizedDescription)"
+            ))
         }
 
         isTechLeadTyping = false
+    }
+
+    func subscribeToTechLeadOutput() {
+        guard let terminalId = techLeadTerminalId else { return }
+
+        Task {
+            let _ = try? await daemon.send(method: "terminal.attach", params: [
+                "session_id": terminalId
+            ])
+        }
+
+        daemon.onNotification("terminal.output") { [weak self] payload in
+            guard let self,
+                  let sid = payload.string(forKey: "session_id"),
+                  sid == self.techLeadTerminalId,
+                  let data = payload.data(forKey: "data"),
+                  let text = String(data: data, encoding: .utf8) else { return }
+
+            let cleanText = text.replacingOccurrences(
+                of: "\\x1B\\[[0-9;]*[A-Za-z]",
+                with: "",
+                options: .regularExpression
+            )
+
+            let trimmed = cleanText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+
+            DispatchQueue.main.async {
+                if let last = self.techLeadMessages.last, last.role == .assistant {
+                    self.techLeadMessages[self.techLeadMessages.count - 1] = ChatMessage(
+                        role: .assistant,
+                        content: last.content + trimmed
+                    )
+                } else {
+                    self.techLeadMessages.append(ChatMessage(
+                        role: .assistant,
+                        content: trimmed
+                    ))
+                }
+                self.isTechLeadTyping = false
+            }
+        }
     }
 
     // MARK: - Connection

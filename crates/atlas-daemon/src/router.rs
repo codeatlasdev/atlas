@@ -76,6 +76,8 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "tasks.assign" => handlers::tasks::assign(state, req.params).await,
         "tasks.delete" => handlers::tasks::delete(state, req.params).await,
         "project.load" => handlers::project::load(state, req.params).await,
+        "project.detect" => handlers::project::detect(state, req.params).await,
+        "project.generate_yaml" => handlers::project::generate_yaml(state, req.params).await,
         "project.services.start" => handlers::project::services_start(state, req.params).await,
         "project.services.stop" => handlers::project::services_stop(state, req.params).await,
         "techlead.chat" => handlers::techlead::chat(state, req.params).await,

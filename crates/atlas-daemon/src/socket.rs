@@ -202,9 +202,12 @@ async fn start_agent_subscription(
 ) {
     let lm = state.lifecycle_manager.lock().await;
     let Some(mut rx) = lm.subscribe_events(session_id) else {
+        tracing::warn!(session_id = session_id, "agent.subscribe: session not found or not ACP");
         return;
     };
     drop(lm);
+
+    tracing::info!(session_id = session_id, "agent.subscribe: subscription active");
 
     let _sid = session_id.to_string();
     let conn = Arc::clone(conn_state);

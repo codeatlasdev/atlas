@@ -185,10 +185,26 @@ impl LifecycleManager {
             .get(id)
             .ok_or_else(|| AtlasError::NotFound(format!("ACP session {id}")))?;
 
-        acp.transport
-            .prompt(prompt)
-            .await
+        // Fire-and-forget: send the prompt request but don't wait for turn end.
+        // The response (turn end) will be processed by the reader task and
+        // emitted as a TurnEnd event via the broadcast channel.
+        let session_id = acp.acp_session_id.clone();
+        let req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": acp.transport.next_request_id(),
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{"type": "text", "text": prompt}]
+            }
+        });
+        let mut line = serde_json::to_string(&req)
             .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+        line.push('\n');
+        acp.transport
+            .writer_tx_clone()
+            .send(line)
+            .map_err(|_| AtlasError::Io(std::io::Error::other("writer closed")))?;
 
         Ok(())
     }

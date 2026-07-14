@@ -181,6 +181,10 @@ final class AppState {
     func sendToTechLead(message: String) async {
         guard let project = currentProject else { return }
 
+        #if DEBUG
+        print("[Atlas] sendToTechLead project_path=\(project.path)")
+        #endif
+
         let userMsg = ChatMessage(role: .user, content: message)
         techLeadMessages.append(userMsg)
         isTechLeadTyping = true

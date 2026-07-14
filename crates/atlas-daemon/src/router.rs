@@ -60,6 +60,7 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "terminal.input" => handlers::terminal::input(state, req.params).await,
         "terminal.resize" => handlers::terminal::resize(state, req.params).await,
         "terminal.kill" => handlers::terminal::kill(state, req.params).await,
+        "terminal.detach" => Ok(serde_json::json!({ "ok": true })),
         "terminal.list" => handlers::terminal::list(state, req.params).await,
         "agent.spawn" => handlers::agents::spawn(state, req.params).await,
         "agent.list" => handlers::agents::list(state, req.params).await,

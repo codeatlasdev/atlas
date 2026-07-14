@@ -21,6 +21,8 @@ use crate::session::PtySession;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionConfig {
     pub shell: String,
+    #[serde(default)]
+    pub args: Vec<String>,
     pub rows: u16,
     pub cols: u16,
     pub cwd: PathBuf,
@@ -71,6 +73,9 @@ impl PtyManager {
             .map_err(|e| AtlasError::Io(std::io::Error::other(e.to_string())))?;
 
         let mut cmd = CommandBuilder::new(&config.shell);
+        for arg in &config.args {
+            cmd.arg(arg);
+        }
         cmd.cwd(&config.cwd);
         for (k, v) in &config.env {
             cmd.env(k, v);

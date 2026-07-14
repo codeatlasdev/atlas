@@ -8,6 +8,10 @@ final class DaemonClient {
     private var pendingRequests: [String: CheckedContinuation<Any, Error>] = [:]
     private let socketPath: String
     private var requestCounter: Int = 0
+    private var buffer = Data()
+
+    /// Notification handlers keyed by method name
+    private var notificationHandlers: [String: (NotificationPayload) -> Void] = [:]
 
     var isConnected: Bool {
         connectionState == .ready
@@ -16,6 +20,8 @@ final class DaemonClient {
     init(socketPath: String = "~/.atlas/atlas.sock") {
         self.socketPath = (socketPath as NSString).expandingTildeInPath
     }
+
+    // MARK: - Connection
 
     func connect() async throws {
         let endpoint = NWEndpoint.unix(path: socketPath)
@@ -48,12 +54,14 @@ final class DaemonClient {
         connection?.cancel()
         connection = nil
         connectionState = .cancelled
-        // Fail any pending requests
         for (_, continuation) in pendingRequests {
             continuation.resume(throwing: DaemonError.disconnected)
         }
         pendingRequests.removeAll()
+        notificationHandlers.removeAll()
     }
+
+    // MARK: - RPC
 
     @discardableResult
     func send(method: String, params: [String: Any] = [:]) async throws -> Any {
@@ -64,18 +72,14 @@ final class DaemonClient {
         requestCounter += 1
         let id = "req-\(requestCounter)"
 
-        var payload: [String: Any] = [
-            "method": method,
-            "id": id,
-        ]
+        var payload: [String: Any] = ["method": method, "id": id]
         if !params.isEmpty {
             payload["params"] = params
         }
 
         let data = try JSONSerialization.data(withJSONObject: payload)
-        // Newline-delimited JSON protocol
         var frame = data
-        frame.append(0x0A) // '\n'
+        frame.append(0x0A)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: frame, completion: .contentProcessed { error in
@@ -92,6 +96,20 @@ final class DaemonClient {
         }
     }
 
+    // MARK: - Notifications
+
+    /// Register a handler for server-push notifications (e.g. "terminal.output")
+    func onNotification(_ method: String, handler: @escaping (NotificationPayload) -> Void) {
+        notificationHandlers[method] = handler
+    }
+
+    /// Remove notification handler
+    func removeNotificationHandler(_ method: String) {
+        notificationHandlers.removeValue(forKey: method)
+    }
+
+    // MARK: - Receive Loop
+
     private func startReceiving() {
         receiveLoop()
     }
@@ -103,7 +121,8 @@ final class DaemonClient {
             guard let self else { return }
 
             if let data = content {
-                self.handleReceived(data: data)
+                self.buffer.append(data)
+                self.processBuffer()
             }
 
             if isComplete || error != nil {
@@ -115,26 +134,53 @@ final class DaemonClient {
         }
     }
 
-    private func handleReceived(data: Data) {
-        // Split by newlines for ndjson
-        let lines = data.split(separator: 0x0A)
-        for line in lines {
-            guard let json = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else {
+    private func processBuffer() {
+        while let newlineIndex = buffer.firstIndex(of: 0x0A) {
+            let lineData = buffer[buffer.startIndex..<newlineIndex]
+            buffer.removeSubrange(buffer.startIndex...newlineIndex)
+
+            guard let json = try? JSONSerialization.jsonObject(with: Data(lineData)) as? [String: Any] else {
                 continue
             }
-            guard let id = json["id"] as? String else { continue }
 
-            if let continuation = pendingRequests.removeValue(forKey: id) {
-                if let error = json["error"] as? [String: Any],
-                   let message = error["message"] as? String {
-                    continuation.resume(throwing: DaemonError.rpcError(message))
-                } else if let result = json["result"] {
-                    continuation.resume(returning: result)
-                } else {
-                    continuation.resume(returning: NSNull())
+            if let id = json["id"] as? String {
+                // Response to a pending request
+                if let continuation = pendingRequests.removeValue(forKey: id) {
+                    if let error = json["error"] as? [String: Any],
+                       let message = error["message"] as? String {
+                        continuation.resume(throwing: DaemonError.rpcError(message))
+                    } else if let result = json["result"] {
+                        continuation.resume(returning: result)
+                    } else {
+                        continuation.resume(returning: NSNull())
+                    }
+                }
+            } else if let method = json["method"] as? String {
+                // Server-push notification (no id)
+                let params = json["params"] as? [String: Any] ?? [:]
+                let payload = NotificationPayload(method: method, params: params)
+
+                if let handler = notificationHandlers[method] {
+                    handler(payload)
                 }
             }
         }
+    }
+}
+
+// MARK: - Types
+
+struct NotificationPayload {
+    let method: String
+    let params: [String: Any]
+
+    func string(forKey key: String) -> String? {
+        params[key] as? String
+    }
+
+    func data(forKey key: String) -> Data? {
+        guard let base64 = params[key] as? String else { return nil }
+        return Data(base64Encoded: base64)
     }
 }
 

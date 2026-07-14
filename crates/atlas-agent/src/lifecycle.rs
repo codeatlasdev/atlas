@@ -29,10 +29,14 @@ impl LifecycleManager {
         pty_manager: &PtyManager,
     ) -> Result<String> {
         let cmd_parts = adapter.launch_command(&config);
-        let shell = cmd_parts.join(" ");
+        let (shell, args) = match cmd_parts.split_first() {
+            Some((first, rest)) => (first.clone(), rest.to_vec()),
+            None => return Err(AtlasError::InvalidInput("empty launch command".to_string())),
+        };
 
         let pty_config = SessionConfig {
             shell,
+            args,
             rows: 24,
             cols: 80,
             cwd: config.cwd.clone(),

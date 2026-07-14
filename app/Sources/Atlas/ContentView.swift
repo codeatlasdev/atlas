@@ -3,15 +3,19 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppState.self) private var appState
     @State private var selectedDestination: SidebarDestination?
+    @State private var showSpawnAgent = false
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(selection: $selectedDestination)
+            SidebarView(selection: $selectedDestination, showSpawnAgent: $showSpawnAgent)
         } detail: {
             detailView
         }
         .task {
             await appState.connect()
+        }
+        .sheet(isPresented: $showSpawnAgent) {
+            SpawnAgentView()
         }
     }
 
@@ -24,13 +28,19 @@ struct ContentView: View {
             } else {
                 ContentUnavailableView("Server not found", systemImage: "server.rack")
             }
+        case .agent(let id):
+            if let session = appState.agentSessions.first(where: { $0.id == id }) {
+                AgentSessionView(session: session)
+            } else {
+                ContentUnavailableView("Session not found", systemImage: "cpu")
+            }
         case .chat:
             ChatView()
         case nil:
             ContentUnavailableView(
-                "Select an item",
-                systemImage: "sidebar.left",
-                description: Text("Choose a server or start an AI chat session")
+                "Atlas",
+                systemImage: "cpu",
+                description: Text("Select an agent session, server, or start a chat")
             )
         }
     }
@@ -38,5 +48,6 @@ struct ContentView: View {
 
 enum SidebarDestination: Hashable {
     case server(UUID)
+    case agent(String)
     case chat
 }

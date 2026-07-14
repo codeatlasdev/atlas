@@ -12,6 +12,8 @@ type Result<T> = atlas_core::Result<T>;
 #[derive(Deserialize)]
 struct CreateParams {
     shell: String,
+    #[serde(default)]
+    args: Vec<String>,
     rows: u16,
     cols: u16,
     cwd: String,
@@ -43,6 +45,7 @@ pub async fn create(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
     let config = SessionConfig {
         shell: p.shell,
+        args: p.args,
         rows: p.rows,
         cols: p.cols,
         cwd: p.cwd.into(),

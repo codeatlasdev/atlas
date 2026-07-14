@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct SystemdService: Codable, Identifiable, Hashable {
     let id: UUID
@@ -38,13 +39,13 @@ enum ServiceState: String, Codable, Hashable {
         }
     }
 
-    var tint: AtlasColor {
+    var tintColor: Color {
         switch self {
-        case .running: .statusOnline
-        case .stopped: .statusOffline
-        case .failed: .statusError
-        case .restarting: .accent
-        case .unknown: .textSecondary
+        case .running: AtlasColors.statusSuccess
+        case .stopped: AtlasColors.textTertiary
+        case .failed: AtlasColors.statusError
+        case .restarting: AtlasColors.accentPrimary
+        case .unknown: AtlasColors.textSecondary
         }
     }
 }

@@ -6,29 +6,28 @@ struct ServiceRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: service.state.systemImage)
-                .foregroundStyle(service.state.tint)
+                .foregroundStyle(service.state.tintColor)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(service.name)
                     .atlasFont(.body)
+                    .atlasForeground(.primary)
                 Text(service.unitName)
                     .atlasFont(.caption)
-                    .foregroundStyle(.textSecondary)
+                    .atlasForeground(.secondary)
             }
 
             Spacer()
 
-            Text(service.enabled ? "enabled" : "disabled")
-                .atlasFont(.caption)
-                .foregroundStyle(.textSecondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.atlas(.surface), in: RoundedRectangle(cornerRadius: 4))
+            StatusBadge(
+                label: service.enabled ? "enabled" : "disabled",
+                color: service.enabled ? AtlasColors.statusSuccess : AtlasColors.textTertiary,
+                showDot: false
+            )
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color.clear)
         .contentShape(Rectangle())
     }
 }

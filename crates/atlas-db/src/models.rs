@@ -39,3 +39,19 @@ pub struct ConfigRow {
     pub value: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, FromRow)]
+pub struct TaskRow {
+    pub id: String,
+    pub project_path: String,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub priority: String,
+    pub assigned_agent: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub labels: String,
+    pub branch: Option<String>,
+    pub pr_url: Option<String>,
+}

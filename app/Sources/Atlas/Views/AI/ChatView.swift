@@ -9,26 +9,34 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageList
-            Divider()
+            Divider().opacity(0.4)
             inputBar
         }
-        .navigationTitle("AI Chat")
     }
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(appState.messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
+                    if appState.messages.isEmpty {
+                        EmptyStateView(
+                            icon: "bubble.left.and.bubble.right",
+                            title: "Tech Lead",
+                            description: "Chat with your AI agent for architecture decisions, code review, and technical guidance."
+                        )
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        ForEach(appState.messages) { message in
+                            MessageBubble(message: message)
+                                .id(message.id)
+                        }
                     }
                 }
-                .padding(16)
+                .padding(20)
             }
             .onChange(of: appState.messages.count) {
                 if let last = appState.messages.last {
-                    withAnimation {
+                    withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
@@ -37,7 +45,7 @@ struct ChatView: View {
     }
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             TextField("Ask anything...", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
@@ -48,15 +56,19 @@ struct ChatView: View {
                 sendMessage()
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
-                    .imageScale(.large)
+                    .font(.system(size: 22))
             }
             .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || isSending)
             .buttonStyle(.plain)
             .foregroundStyle(
-                inputText.trimmingCharacters(in: .whitespaces).isEmpty ? .atlas(.textSecondary) : .atlas(.accent)
+                inputText.trimmingCharacters(in: .whitespaces).isEmpty
+                    ? AtlasColors.textTertiary
+                    : AtlasColors.accentPrimary
             )
         }
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
     }
 
     private func sendMessage() {

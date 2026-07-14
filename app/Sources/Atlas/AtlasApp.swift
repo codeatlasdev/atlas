@@ -8,11 +8,13 @@ struct AtlasApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.titleBar)
-        .defaultSize(width: 1000, height: 700)
+        .windowToolbarStyle(.unified(showsTitle: false))
+        .defaultSize(width: 1200, height: 780)
 
-        MenuBarExtra("Atlas", systemImage: "server.rack") {
+        MenuBarExtra("Atlas", systemImage: "atom") {
             MenuBarView()
                 .environment(appState)
         }
@@ -28,16 +30,23 @@ struct MenuBarView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        VStack {
-            Label(
-                appState.isConnected ? "Connected" : "Disconnected",
-                systemImage: appState.isConnected ? "circle.fill" : "circle"
-            )
-            .foregroundStyle(appState.isConnected ? .green : .secondary)
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(appState.isConnected ? AtlasColors.statusSuccess : AtlasColors.statusError)
+                    .frame(width: 7, height: 7)
+                Text(appState.isConnected ? "Daemon Connected" : "Disconnected")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .padding(.vertical, 4)
 
             Divider()
 
-            Text("\(appState.servers.count) servers")
+            Label("\(appState.servers.count) Servers", systemImage: "server.rack")
+                .font(.system(size: 12))
+
+            Label("\(appState.agentSessions.count) Agents", systemImage: "cpu")
+                .font(.system(size: 12))
 
             Divider()
 
@@ -46,6 +55,6 @@ struct MenuBarView: View {
             }
             .keyboardShortcut("q")
         }
-        .padding(8)
+        .padding(10)
     }
 }

@@ -1,6 +1,9 @@
 pub mod agents;
 pub mod ai;
+pub mod project;
 pub mod servers;
 pub mod services;
 pub mod sessions;
+pub mod tasks;
+pub mod techlead;
 pub mod terminal;

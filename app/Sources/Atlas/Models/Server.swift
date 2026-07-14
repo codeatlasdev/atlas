@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct Server: Codable, Identifiable, Hashable {
     let id: UUID
@@ -36,12 +37,12 @@ enum ServerStatus: String, Codable, Hashable {
         }
     }
 
-    var tint: AtlasColor {
+    var tintColor: Color {
         switch self {
-        case .online: .statusOnline
-        case .offline: .statusOffline
-        case .unreachable: .statusError
-        case .unknown: .textSecondary
+        case .online: AtlasColors.statusSuccess
+        case .offline: AtlasColors.textTertiary
+        case .unreachable: AtlasColors.statusError
+        case .unknown: AtlasColors.textSecondary
         }
     }
 }

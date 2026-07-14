@@ -12,9 +12,8 @@ struct ServerDetailView: View {
                 serverInfo
                 servicesSection
             }
-            .padding(20)
+            .padding(24)
         }
-        .navigationTitle(server.name)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -30,48 +29,68 @@ struct ServerDetailView: View {
     }
 
     private var serverInfo: some View {
-        GroupBox("Connection") {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Connection")
+                .atlasFont(.headline)
+                .atlasForeground(.primary)
+
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 GridRow {
-                    Text("Host").foregroundStyle(.textSecondary)
-                    Text(server.host).atlasFont(.mono)
+                    Text("Host")
+                        .atlasForeground(.secondary)
+                    Text(server.host)
+                        .atlasFont(.mono)
+                        .atlasForeground(.primary)
                 }
                 GridRow {
-                    Text("User").foregroundStyle(.textSecondary)
-                    Text(server.user).atlasFont(.mono)
+                    Text("User")
+                        .atlasForeground(.secondary)
+                    Text(server.user)
+                        .atlasFont(.mono)
+                        .atlasForeground(.primary)
                 }
                 GridRow {
-                    Text("Port").foregroundStyle(.textSecondary)
-                    Text("\(server.port)").atlasFont(.mono)
+                    Text("Port")
+                        .atlasForeground(.secondary)
+                    Text("\(server.port)")
+                        .atlasFont(.mono)
+                        .atlasForeground(.primary)
                 }
                 GridRow {
-                    Text("Status").foregroundStyle(.textSecondary)
+                    Text("Status")
+                        .atlasForeground(.secondary)
                     Label(server.status.label, systemImage: server.status.systemImage)
-                        .foregroundStyle(server.status.tint)
+                        .foregroundStyle(server.status.tintColor)
                 }
             }
-            .padding(8)
+            .atlasFont(.body)
+            .padding(12)
         }
+        .cardStyle()
     }
 
     private var servicesSection: some View {
-        GroupBox("Services") {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Services")
+                .atlasFont(.headline)
+                .atlasForeground(.primary)
+
             if services.isEmpty {
-                ContentUnavailableView(
-                    "No services",
-                    systemImage: "gear",
-                    description: Text("No systemd services found")
+                EmptyStateView(
+                    icon: "gear",
+                    title: "No Services",
+                    description: "No systemd services found on this server."
                 )
-                .frame(maxWidth: .infinity, minHeight: 100)
+                .frame(minHeight: 150)
             } else {
-                LazyVStack(spacing: 4) {
+                LazyVStack(spacing: 8) {
                     ForEach(services) { service in
                         ServiceRow(service: service)
                     }
                 }
-                .padding(4)
             }
         }
+        .cardStyle()
     }
 
     private func loadServices() async {

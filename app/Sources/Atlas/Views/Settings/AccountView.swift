@@ -10,14 +10,14 @@ struct AccountView: View {
                     HStack {
                         Image(systemName: "person.crop.circle.fill")
                             .font(.title)
-                            .foregroundStyle(.atlas(.accent))
+                            .foregroundStyle(AtlasColors.accentPrimary)
 
                         VStack(alignment: .leading) {
                             Text(authService.userEmail ?? "Connected")
                                 .atlasFont(.body)
                             Text("Signed in with Google")
                                 .atlasFont(.caption)
-                                .foregroundStyle(.textSecondary)
+                                .atlasForeground(.secondary)
                         }
 
                         Spacer()
@@ -30,7 +30,7 @@ struct AccountView: View {
                     VStack(spacing: 12) {
                         Text("Sign in to sync your servers and settings across devices.")
                             .atlasFont(.body)
-                            .foregroundStyle(.textSecondary)
+                            .atlasForeground(.secondary)
 
                         Button("Sign in with Google") {
                             Task {

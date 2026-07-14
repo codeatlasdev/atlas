@@ -28,12 +28,18 @@ pub async fn create_pool(db_path: &Path) -> atlas_core::Result<SqlitePool> {
 }
 
 pub async fn run_migrations(pool: &SqlitePool) -> atlas_core::Result<()> {
-    let migration_sql = include_str!("../migrations/001_initial.sql");
+    let migration_001 = include_str!("../migrations/001_initial.sql");
+    let migration_002 = include_str!("../migrations/002_kanban.sql");
 
-    sqlx::raw_sql(migration_sql)
+    sqlx::raw_sql(migration_001)
         .execute(pool)
         .await
-        .map_err(|e| AtlasError::Database(format!("migration failed: {e}")))?;
+        .map_err(|e| AtlasError::Database(format!("migration 001 failed: {e}")))?;
+
+    sqlx::raw_sql(migration_002)
+        .execute(pool)
+        .await
+        .map_err(|e| AtlasError::Database(format!("migration 002 failed: {e}")))?;
 
     tracing::info!("database migrations applied successfully");
     Ok(())

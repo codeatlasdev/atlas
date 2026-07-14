@@ -10,36 +10,37 @@ struct AgentSessionView: View {
             // Header
             HStack {
                 Image(systemName: "cpu")
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(AtlasColors.accentPrimary)
                 Text(session.adapter)
-                    .font(.headline)
+                    .atlasFont(.headline)
+                    .atlasForeground(.primary)
                 Spacer()
                 statusBadge
                 Button("Stop", systemImage: "stop.fill") {
                     Task { await appState.stopAgent(sessionId: session.id) }
                 }
                 .buttonStyle(.bordered)
-                .tint(.red)
+                .tint(AtlasColors.statusError)
             }
-            .padding()
+            .padding(16)
 
-            Divider()
+            Divider().opacity(0.4)
 
             // Terminal
             if let terminalId = session.terminalSessionId {
                 TerminalTabView(sessionId: terminalId)
             } else {
-                ContentUnavailableView(
-                    "No terminal",
-                    systemImage: "terminal",
-                    description: Text("This agent session has no terminal attached")
+                EmptyStateView(
+                    icon: "terminal",
+                    title: "No Terminal",
+                    description: "This agent session has no terminal attached."
                 )
             }
 
-            Divider()
+            Divider().opacity(0.4)
 
             // Prompt input
-            HStack {
+            HStack(spacing: 10) {
                 TextField("Send a follow-up prompt...", text: $promptText)
                     .textFieldStyle(.plain)
                     .onSubmit { sendPrompt() }
@@ -51,31 +52,22 @@ struct AgentSessionView: View {
                 .disabled(promptText.isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
             }
-            .padding()
+            .padding(14)
+            .background(.ultraThinMaterial)
         }
     }
 
     private var statusBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-            Text(session.activityState)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.fill.tertiary, in: Capsule())
+        StatusBadge(label: session.activityState, color: statusColor)
     }
 
     private var statusColor: Color {
         switch session.activityState {
-        case "Active": .green
-        case "Idle": .blue
-        case "WaitingInput": .orange
-        case "Blocked": .red
-        default: .gray
+        case "Active": AtlasColors.statusSuccess
+        case "Idle": AtlasColors.statusInfo
+        case "WaitingInput": AtlasColors.statusWarning
+        case "Blocked": AtlasColors.statusError
+        default: AtlasColors.textTertiary
         }
     }
 

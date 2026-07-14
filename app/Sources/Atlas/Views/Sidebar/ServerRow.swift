@@ -4,21 +4,21 @@ struct ServerRow: View {
     let server: Server
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: server.status.systemImage)
-                .foregroundStyle(server.status.tint)
-                .imageScale(.small)
+        HStack(spacing: 10) {
+            Circle()
+                .fill(server.status.tintColor)
+                .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.name)
-                    .atlasFont(.body)
-                    .lineLimit(1)
+                    .font(.system(size: 13, weight: .medium))
+                    .atlasForeground(.primary)
                 Text("\(server.user)@\(server.host)")
                     .atlasFont(.caption)
-                    .foregroundStyle(.textSecondary)
-                    .lineLimit(1)
+                    .atlasForeground(.tertiary)
             }
+
+            Spacer()
         }
-        .padding(.vertical, 2)
     }
 }

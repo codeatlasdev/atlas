@@ -67,6 +67,15 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "agent.status" => handlers::agents::status(state, req.params).await,
         "agent.stop" => handlers::agents::stop(state, req.params).await,
         "agent.prompt" => handlers::agents::prompt(state, req.params).await,
+        "tasks.list" => handlers::tasks::list(state, req.params).await,
+        "tasks.create" => handlers::tasks::create(state, req.params).await,
+        "tasks.update_status" => handlers::tasks::update_status(state, req.params).await,
+        "tasks.assign" => handlers::tasks::assign(state, req.params).await,
+        "tasks.delete" => handlers::tasks::delete(state, req.params).await,
+        "project.load" => handlers::project::load(state, req.params).await,
+        "project.services.start" => handlers::project::services_start(state, req.params).await,
+        "project.services.stop" => handlers::project::services_stop(state, req.params).await,
+        "techlead.chat" => handlers::techlead::chat(state, req.params).await,
         _ => Err(atlas_core::AtlasError::InvalidInput(format!(
             "unknown method: {}",
             req.method

@@ -95,16 +95,41 @@ final class AppState {
     // MARK: - Kanban
 
     func refreshTasks() async {
-        guard currentProject != nil else { return }
-        // Load from daemon or generate sample tasks for now
-        if tasks.isEmpty {
-            tasks = TaskItem.samples
+        guard let project = currentProject else { return }
+        do {
+            let result = try await daemon.send(method: "tasks.list", params: [
+                "project_path": project.path
+            ])
+            if let array = result as? [[String: Any]] {
+                tasks = array.compactMap { dict -> TaskItem? in
+                    guard let id = dict["id"] as? String,
+                          let title = dict["title"] as? String else { return nil }
+                    return TaskItem(
+                        id: UUID(uuidString: id) ?? UUID(),
+                        title: title,
+                        description: dict["description"] as? String ?? "",
+                        status: TaskStatus.from(dict["status"] as? String ?? "todo"),
+                        priority: TaskPriority.from(dict["priority"] as? String ?? "medium"),
+                        assignedAgent: dict["assigned_agent"] as? String,
+                        labels: (dict["labels"] as? [String]) ?? []
+                    )
+                }
+            }
+        } catch {
+            // If daemon unavailable, keep existing tasks
         }
     }
 
     func moveTask(_ task: TaskItem, to status: TaskStatus) {
         guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
         tasks[index].status = status
+
+        Task {
+            try? await daemon.send(method: "tasks.update_status", params: [
+                "id": task.id.uuidString,
+                "status": status.rawValue
+            ])
+        }
     }
 
     func createTask(title: String, description: String, priority: TaskPriority) {
@@ -118,6 +143,16 @@ final class AppState {
             labels: []
         )
         tasks.append(task)
+
+        guard let project = currentProject else { return }
+        Task {
+            try? await daemon.send(method: "tasks.create", params: [
+                "project_path": project.path,
+                "title": title,
+                "description": description,
+                "priority": priority.rawValue
+            ])
+        }
     }
 
     // MARK: - Tech Lead
@@ -299,6 +334,17 @@ enum TaskStatus: String, CaseIterable, Hashable {
     case review = "Review"
     case done = "Done"
 
+    static func from(_ string: String) -> Self {
+        switch string.lowercased() {
+        case "backlog": .backlog
+        case "todo": .todo
+        case "in_progress", "inprogress", "in progress": .inProgress
+        case "review": .review
+        case "done": .done
+        default: .todo
+        }
+    }
+
     var color: Color {
         switch self {
         case .backlog: AtlasColors.textTertiary
@@ -315,6 +361,16 @@ enum TaskPriority: String, CaseIterable, Hashable {
     case medium = "Medium"
     case high = "High"
     case critical = "Critical"
+
+    static func from(_ string: String) -> Self {
+        switch string.lowercased() {
+        case "low": .low
+        case "medium": .medium
+        case "high": .high
+        case "critical": .critical
+        default: .medium
+        }
+    }
 
     var color: Color {
         switch self {

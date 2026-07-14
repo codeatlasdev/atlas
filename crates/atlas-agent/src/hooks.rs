@@ -69,8 +69,11 @@ impl AgentHooks {
 
 fn truncate(s: &str, max: usize) -> &str {
     if s.len() <= max {
-        s
-    } else {
-        &s[..max]
+        return s;
     }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
 }

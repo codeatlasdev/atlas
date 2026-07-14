@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use atlas_agent::AgentHooks;
 use atlas_ai::AiRouter;
+use atlas_ai::providers::{claude::ClaudeProvider, openai::OpenAiProvider, ollama::OllamaProvider};
 use atlas_agent::LifecycleManager;
 use atlas_db::repos::{SqliteConfigRepo, SqliteServerRepo, SqliteSessionRepo, SqliteTaskRepo};
 use atlas_memory::MemoryEngine;
@@ -25,7 +26,15 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(pool: sqlx::SqlitePool) -> Arc<Self> {
-        let ai_router = AiRouter::new();
+        let mut ai_router = AiRouter::new();
+        if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+            ai_router.register("claude", Arc::new(ClaudeProvider::new(key)));
+        }
+        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+            ai_router.register("openai", Arc::new(OpenAiProvider::new(key)));
+        }
+        ai_router.register("ollama", Arc::new(OllamaProvider::new(None)));
+
         let pty_manager = PtyManager::new();
         let lifecycle_manager = LifecycleManager::new();
 

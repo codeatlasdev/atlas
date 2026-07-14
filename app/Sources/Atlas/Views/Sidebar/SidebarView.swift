@@ -17,17 +17,27 @@ enum SidebarDestination: Hashable {
 
 struct ServerListView: View {
     @Environment(AppState.self) private var appState
+    @State private var selectedServer: Server?
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(appState.servers) { server in
                     ServerCardView(server: server)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedServer = server
+                        }
                 }
             }
             .padding(24)
         }
         .background(AtlasColors.backgroundDeep)
+        .sheet(item: $selectedServer) { server in
+            ServerDetailView(server: server)
+                .environment(appState)
+                .frame(minWidth: 600, minHeight: 400)
+        }
     }
 }
 
@@ -65,12 +75,17 @@ struct ServerCardView: View {
 struct AgentListView: View {
     @Environment(AppState.self) private var appState
     @Binding var showSpawnAgent: Bool
+    @State private var selectedAgent: AgentSessionInfo?
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(appState.agentSessions) { session in
                     AgentCardView(session: session)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedAgent = session
+                        }
                 }
             }
             .padding(24)
@@ -82,6 +97,11 @@ struct AgentListView: View {
                     Label("New Agent", systemImage: "plus")
                 }
             }
+        }
+        .sheet(item: $selectedAgent) { agent in
+            AgentSessionView(session: agent)
+                .environment(appState)
+                .frame(minWidth: 700, minHeight: 500)
         }
     }
 }

@@ -224,7 +224,7 @@ final class AppState {
             ])
         }
 
-        daemon.onNotification("terminal.output") { [weak self] payload in
+        daemon.onNotification("terminal.output", id: "techlead-output") { [weak self] payload in
             guard let self,
                   let sid = payload.string(forKey: "session_id"),
                   sid == self.techLeadTerminalId,

@@ -33,10 +33,17 @@ struct TerminalRepresentable: NSViewRepresentable {
         let sessionId: String
         let client: DaemonClient
         weak var terminalView: TerminalView?
+        private var handlerId: String?
 
         init(sessionId: String, client: DaemonClient) {
             self.sessionId = sessionId
             self.client = client
+        }
+
+        deinit {
+            if let handlerId {
+                client.removeNotificationHandler("terminal.output", id: handlerId)
+            }
         }
 
         /// Attach to daemon session: get scrollback + subscribe to output
@@ -57,8 +64,10 @@ struct TerminalRepresentable: NSViewRepresentable {
                     }
                 }
 
-                // 2. Register for terminal.output notifications
-                client.onNotification("terminal.output") { [weak self] payload in
+                // 2. Register for terminal.output notifications with unique ID
+                let hid = "terminal-\(sessionId)"
+                self.handlerId = hid
+                client.onNotification("terminal.output", id: hid) { [weak self] payload in
                     guard let self,
                           let sid = payload.string(forKey: "session_id"),
                           sid == self.sessionId,

@@ -9,8 +9,8 @@ final class DaemonClient: @unchecked Sendable {
     private var requestCounter: Int = 0
     private var readTask: Task<Void, Never>?
 
-    /// Notification handlers keyed by method name
-    private var notificationHandlers: [String: (NotificationPayload) -> Void] = [:]
+    /// Notification handlers keyed by method name (supports multiple handlers per method)
+    private var notificationHandlers: [String: [(id: String, handler: (NotificationPayload) -> Void)]] = [:]
     private let lock = NSLock()
 
     init(socketPath: String = "~/.atlas/atlas.sock") {
@@ -115,9 +115,23 @@ final class DaemonClient: @unchecked Sendable {
 
     // MARK: - Notifications
 
-    func onNotification(_ method: String, handler: @escaping (NotificationPayload) -> Void) {
+    /// Register a notification handler. Returns an ID that can be used to remove it.
+    @discardableResult
+    func onNotification(_ method: String, id: String = UUID().uuidString, handler: @escaping (NotificationPayload) -> Void) -> String {
         lock.lock()
-        notificationHandlers[method] = handler
+        var handlers = notificationHandlers[method] ?? []
+        handlers.append((id: id, handler: handler))
+        notificationHandlers[method] = handlers
+        lock.unlock()
+        return id
+    }
+
+    func removeNotificationHandler(_ method: String, id: String) {
+        lock.lock()
+        notificationHandlers[method]?.removeAll { $0.id == id }
+        if notificationHandlers[method]?.isEmpty == true {
+            notificationHandlers.removeValue(forKey: method)
+        }
         lock.unlock()
     }
 
@@ -179,10 +193,14 @@ final class DaemonClient: @unchecked Sendable {
                         let payload = NotificationPayload(method: method, params: params)
 
                         self.lock.lock()
-                        let handler = self.notificationHandlers[method]
+                        let handlers = self.notificationHandlers[method]?.map(\.handler)
                         self.lock.unlock()
 
-                        handler?(payload)
+                        if let handlers {
+                            for handler in handlers {
+                                handler(payload)
+                            }
+                        }
                     }
                 }
             }

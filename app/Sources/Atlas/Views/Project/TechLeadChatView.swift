@@ -9,40 +9,39 @@ struct TechLeadChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             chatHeader
-            Divider().background(AtlasColors.border)
+            SoftDivider()
             messageList
-            Divider().background(AtlasColors.border)
+            SoftDivider()
             inputBar
         }
-        .background(AtlasColors.backgroundDeep)
+        .background(DS.bg.base)
     }
 
     // MARK: - Header
 
     private var chatHeader: some View {
         HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(AtlasColors.neonPurple.opacity(0.2))
-                    .frame(width: 32, height: 32)
-
-                Image(systemName: "brain.head.profile")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(AtlasColors.neonPurple)
-            }
+            Circle()
+                .fill(DS.accent.subtle)
+                .frame(width: 32, height: 32)
+                .overlay {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(DS.accent.primary)
+                }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Tech Lead")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AtlasColors.textPrimary)
+                    .foregroundStyle(DS.text.primary)
 
-                HStack(spacing: 4) {
+                HStack(spacing: DS.spacing.xs) {
                     Circle()
-                        .fill(appState.isTechLeadTyping ? AtlasColors.neonAmber : AtlasColors.neonGreen)
+                        .fill(appState.isTechLeadTyping ? DS.status.warning : DS.status.success)
                         .frame(width: 6, height: 6)
                     Text(appState.isTechLeadTyping ? "Typing..." : "Online")
                         .font(.system(size: 11))
-                        .foregroundStyle(AtlasColors.textTertiary)
+                        .foregroundStyle(DS.text.tertiary)
                 }
             }
 
@@ -53,17 +52,17 @@ struct TechLeadChatView: View {
             } label: {
                 Image(systemName: "terminal")
                     .font(.system(size: 13))
-                    .foregroundStyle(AtlasColors.textSecondary)
+                    .foregroundStyle(DS.text.secondary)
                     .padding(6)
-                    .background(AtlasColors.backgroundGlass)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .background(DS.bg.hover)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.radius.sm))
             }
             .buttonStyle(.plain)
             .help("View Terminal")
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(AtlasColors.backgroundSurface.opacity(0.5))
+        .padding(.horizontal, DS.spacing.xl)
+        .padding(.vertical, DS.spacing.md)
+        .background(DS.bg.elevated.opacity(0.5))
     }
 
     // MARK: - Messages
@@ -71,7 +70,7 @@ struct TechLeadChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 16) {
+                LazyVStack(spacing: DS.spacing.lg) {
                     if appState.techLeadMessages.isEmpty {
                         emptyState
                     } else {
@@ -85,7 +84,7 @@ struct TechLeadChatView: View {
                         }
                     }
                 }
-                .padding(20)
+                .padding(DS.spacing.xl)
             }
             .onChange(of: appState.techLeadMessages.count) {
                 if let last = appState.techLeadMessages.last {
@@ -98,20 +97,20 @@ struct TechLeadChatView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: DS.spacing.lg) {
             Spacer(minLength: 80)
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 40, weight: .light))
-                .foregroundStyle(AtlasColors.textTertiary)
+                .foregroundStyle(DS.text.tertiary)
                 .symbolRenderingMode(.hierarchical)
 
             VStack(spacing: 6) {
                 Text("Tech Lead AI")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AtlasColors.textPrimary)
+                    .foregroundStyle(DS.text.primary)
                 Text("Architecture decisions, code review, and technical guidance.")
-                    .atlasFont(.body)
-                    .foregroundStyle(AtlasColors.textSecondary)
+                    .font(.atlasBody)
+                    .foregroundStyle(DS.text.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
             }
@@ -123,9 +122,9 @@ struct TechLeadChatView: View {
     private var typingIndicator: some View {
         HStack {
             HStack(spacing: 4) {
-                ForEach(0..<3) { i in
+                ForEach(0..<3, id: \.self) { i in
                     Circle()
-                        .fill(AtlasColors.neonPurple.opacity(0.6))
+                        .fill(DS.accent.primary.opacity(0.6))
                         .frame(width: 6, height: 6)
                         .animation(
                             .easeInOut(duration: 0.6)
@@ -137,8 +136,8 @@ struct TechLeadChatView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(AtlasColors.backgroundElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(DS.bg.elevated)
+            .clipShape(RoundedRectangle(cornerRadius: DS.radius.lg, style: .continuous))
             Spacer()
         }
     }
@@ -149,9 +148,10 @@ struct TechLeadChatView: View {
         HStack(spacing: 10) {
             TextField("Ask the Tech Lead...", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
+                .font(.atlasBody)
                 .lineLimit(1...5)
                 .focused($inputFocused)
-                .foregroundStyle(AtlasColors.textPrimary)
+                .foregroundStyle(DS.text.primary)
                 .onSubmit { sendMessage() }
 
             Button {
@@ -161,22 +161,16 @@ struct TechLeadChatView: View {
                     .font(.system(size: 24))
                     .foregroundStyle(
                         inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? AtlasColors.textTertiary
-                            : AtlasColors.neonCyan
-                    )
-                    .shadow(
-                        color: inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? .clear
-                            : AtlasColors.neonCyan.opacity(0.3),
-                        radius: 6
+                            ? DS.text.tertiary
+                            : DS.accent.primary
                     )
             }
             .buttonStyle(.plain)
             .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || isSending)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(AtlasColors.backgroundSurface.opacity(0.5))
+        .padding(.horizontal, DS.spacing.lg)
+        .padding(.vertical, DS.spacing.md)
+        .background(DS.bg.elevated.opacity(0.5))
     }
 
     private func sendMessage() {
@@ -194,7 +188,7 @@ struct TechLeadChatView: View {
     }
 }
 
-// MARK: - Tech Lead Bubble
+// MARK: - Bubble
 
 struct TechLeadBubble: View {
     let message: ChatMessage
@@ -203,24 +197,26 @@ struct TechLeadBubble: View {
         HStack {
             if message.role == .user { Spacer(minLength: 60) }
 
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: DS.spacing.xs) {
                 Text(message.content)
                     .font(.system(size: 13))
-                    .foregroundStyle(AtlasColors.textPrimary)
+                    .foregroundStyle(DS.text.primary)
                     .textSelection(.enabled)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay {
-                        if message.role == .assistant {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(AtlasColors.neonPurple.opacity(0.2), lineWidth: 0.5)
-                        }
-                    }
+                    .background(bubbleBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                message.role == .assistant ? DS.border.subtle : .clear,
+                                lineWidth: 0.5
+                            )
+                    )
 
                 Text(message.timestamp, style: .time)
                     .font(.system(size: 10))
-                    .foregroundStyle(AtlasColors.textTertiary)
+                    .foregroundStyle(DS.text.tertiary)
             }
 
             if message.role != .user { Spacer(minLength: 60) }
@@ -229,9 +225,9 @@ struct TechLeadBubble: View {
 
     private var bubbleBackground: Color {
         switch message.role {
-        case .user: AtlasColors.neonCyan.opacity(0.12)
-        case .assistant: AtlasColors.backgroundElevated
-        case .system: AtlasColors.neonRed.opacity(0.1)
+        case .user: DS.accent.subtle
+        case .assistant: DS.bg.elevated
+        case .system: DS.status.error.opacity(0.1)
         }
     }
 }

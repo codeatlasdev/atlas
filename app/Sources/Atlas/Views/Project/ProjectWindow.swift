@@ -13,10 +13,10 @@ struct ProjectWindow: View {
         } detail: {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(AtlasColors.backgroundDeep)
+                .background(DS.bg.base)
         }
         .navigationSplitViewStyle(.balanced)
-        .background(AtlasColors.backgroundDeep)
+        .background(DS.bg.base)
         .sheet(isPresented: $showSpawnAgent) {
             SpawnAgentView()
         }
@@ -26,12 +26,10 @@ struct ProjectWindow: View {
 
     private var projectSidebar: some View {
         VStack(spacing: 0) {
-            // Project header
             projectHeader
 
-            Divider().background(AtlasColors.border)
+            SoftDivider()
 
-            // Tabs
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(SidebarTab.allCases, id: \.self) { tab in
@@ -40,50 +38,43 @@ struct ProjectWindow: View {
                             isSelected: appState.selectedTab == tab,
                             badge: badgeCount(for: tab)
                         ) {
-                            withAnimation(.spring(duration: 0.3)) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
                                 appState.selectedTab = tab
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
+                .padding(.horizontal, DS.spacing.md)
+                .padding(.top, DS.spacing.md)
             }
 
             Spacer()
 
-            // Daemon status
             daemonStatusBar
         }
-        .background(AtlasColors.backgroundSurface)
+        .background(.ultraThinMaterial)
     }
 
     private var projectHeader: some View {
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [AtlasColors.neonCyan, AtlasColors.neonPurple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            RoundedRectangle(cornerRadius: DS.radius.md, style: .continuous)
+                .fill(DS.accent.subtle)
                 .frame(width: 30, height: 30)
                 .overlay {
                     Image(systemName: "folder.fill")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(DS.accent.primary)
                 }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(appState.currentProject?.name ?? "Project")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(AtlasColors.textPrimary)
+                    .foregroundStyle(DS.text.primary)
                     .lineLimit(1)
 
                 Text("atlas workspace")
                     .font(.system(size: 10))
-                    .foregroundStyle(AtlasColors.textTertiary)
+                    .foregroundStyle(DS.text.tertiary)
             }
 
             Spacer()
@@ -93,38 +84,32 @@ struct ProjectWindow: View {
             } label: {
                 Image(systemName: "xmark.circle")
                     .font(.system(size: 14))
-                    .foregroundStyle(AtlasColors.textTertiary)
+                    .foregroundStyle(DS.text.tertiary)
             }
             .buttonStyle(.plain)
             .help("Close Project")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.vertical, DS.spacing.md)
     }
 
     private var daemonStatusBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: DS.spacing.sm) {
             Circle()
-                .fill(appState.isConnected ? AtlasColors.neonGreen : AtlasColors.neonRed)
+                .fill(appState.isConnected ? DS.status.success : DS.status.error)
                 .frame(width: 7, height: 7)
-                .shadow(
-                    color: (appState.isConnected ? AtlasColors.neonGreen : AtlasColors.neonRed).opacity(0.5),
-                    radius: 3
-                )
 
             Text(appState.isConnected ? "Daemon connected" : "Disconnected")
                 .font(.system(size: 11))
-                .foregroundStyle(AtlasColors.textSecondary)
+                .foregroundStyle(DS.text.secondary)
 
             Spacer()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(AtlasColors.backgroundElevated.opacity(0.5))
+        .background(DS.bg.elevated.opacity(0.5))
         .overlay(alignment: .top) {
-            Rectangle()
-                .fill(AtlasColors.border)
-                .frame(height: 0.5)
+            SoftDivider()
         }
     }
 
@@ -180,7 +165,7 @@ struct ProjectWindow: View {
     }
 }
 
-// MARK: - Project Sidebar Item
+// MARK: - Sidebar Item
 
 struct ProjectSidebarItem: View {
     let tab: SidebarTab
@@ -195,38 +180,32 @@ struct ProjectSidebarItem: View {
             HStack(spacing: 10) {
                 Image(systemName: tab.icon)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isSelected ? AtlasColors.neonCyan : AtlasColors.textSecondary)
+                    .foregroundStyle(isSelected ? DS.accent.primary : DS.text.secondary)
                     .frame(width: 20)
 
                 Text(tab.rawValue)
                     .font(.system(size: 13, weight: isSelected ? .medium : .regular))
-                    .foregroundStyle(isSelected ? AtlasColors.textPrimary : AtlasColors.textSecondary)
+                    .foregroundStyle(isSelected ? DS.text.primary : DS.text.secondary)
 
                 Spacer()
 
                 if badge > 0 {
                     CountBadge(
                         count: badge,
-                        color: isSelected ? AtlasColors.neonCyan : AtlasColors.textTertiary
+                        color: isSelected ? DS.accent.primary : DS.text.tertiary
                     )
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .background(
+                RoundedRectangle(cornerRadius: DS.radius.md, style: .continuous)
                     .fill(
                         isSelected
-                            ? AtlasColors.neonCyan.opacity(0.1)
-                            : (isHovered ? AtlasColors.sidebarHover : .clear)
+                            ? DS.accent.subtle
+                            : (isHovered ? DS.bg.hover : .clear)
                     )
-            }
-            .overlay {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(AtlasColors.neonCyan.opacity(0.2), lineWidth: 0.5)
-                }
-            }
+            )
         }
         .buttonStyle(.plain)
         .onHover { hovering in

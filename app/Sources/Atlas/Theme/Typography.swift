@@ -1,21 +1,25 @@
 import SwiftUI
 
+extension Font {
+    static let atlasDisplay = Font.system(size: 28, weight: .bold, design: .default)
+    static let atlasTitle = Font.system(size: 20, weight: .semibold, design: .default)
+    static let atlasHeadline = Font.system(size: 15, weight: .semibold, design: .default)
+    static let atlasBody = Font.system(size: 13, weight: .regular, design: .default)
+    static let atlasCaption = Font.system(size: 11, weight: .regular, design: .default)
+    static let atlasMono = Font.system(size: 12, weight: .regular, design: .monospaced)
+}
+
 enum AtlasTypography {
-    case display
-    case title
-    case headline
-    case body
-    case caption
-    case mono
+    case display, title, headline, body, caption, mono
 
     var font: Font {
         switch self {
-        case .display: .system(size: 36, weight: .bold, design: .default)
-        case .title: .system(size: 24, weight: .semibold, design: .default)
-        case .headline: .system(size: 17, weight: .semibold, design: .default)
-        case .body: .system(size: 14, weight: .regular, design: .default)
-        case .caption: .system(size: 12, weight: .regular, design: .default)
-        case .mono: .system(size: 13, weight: .regular, design: .monospaced)
+        case .display: .atlasDisplay
+        case .title: .atlasTitle
+        case .headline: .atlasHeadline
+        case .body: .atlasBody
+        case .caption: .atlasCaption
+        case .mono: .atlasMono
         }
     }
 

@@ -2,159 +2,114 @@ import SwiftUI
 
 struct WelcomeView: View {
     @Environment(AppState.self) private var appState
-    @State private var logoGlow = false
+    @State private var hoveredProject: String?
 
     var body: some View {
         ZStack {
-            backgroundGradient
+            DS.bg.base.ignoresSafeArea()
             content
         }
         .frame(minWidth: 700, minHeight: 500)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                logoGlow = true
-            }
-        }
-    }
-
-    private var backgroundGradient: some View {
-        ZStack {
-            AtlasColors.backgroundDeep
-            RadialGradient(
-                colors: [AtlasColors.neonPurple.opacity(0.08), .clear],
-                center: .top,
-                startRadius: 0,
-                endRadius: 600
-            )
-            RadialGradient(
-                colors: [AtlasColors.neonCyan.opacity(0.05), .clear],
-                center: .bottomLeading,
-                startRadius: 0,
-                endRadius: 400
-            )
-        }
-        .ignoresSafeArea()
     }
 
     private var content: some View {
         HStack(spacing: 0) {
             leftPanel
-            Divider().background(AtlasColors.border)
+            SoftDivider()
+                .frame(width: 0.5)
+                .frame(maxHeight: .infinity)
             rightPanel
         }
     }
 
-    // MARK: - Left Panel (Branding + Actions)
+    // MARK: - Left Panel
 
     private var leftPanel: some View {
-        VStack(spacing: 32) {
+        VStack(spacing: DS.spacing.xxxl) {
             Spacer()
 
             // Logo
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [AtlasColors.neonCyan.opacity(0.2), .clear],
-                            center: .center,
-                            startRadius: 20,
-                            endRadius: logoGlow ? 60 : 40
-                        )
-                    )
-                    .frame(width: 120, height: 120)
-
-                Image(systemName: "atom")
-                    .font(.system(size: 52, weight: .thin))
-                    .foregroundStyle(AtlasColors.gradientPrimary)
-                    .shadow(color: AtlasColors.neonCyan.opacity(0.5), radius: logoGlow ? 15 : 8)
-            }
+            Image(systemName: "cpu")
+                .font(.system(size: 48, weight: .thin))
+                .foregroundStyle(DS.accent.primary)
 
             // Title
-            VStack(spacing: 8) {
+            VStack(spacing: DS.spacing.sm) {
                 Text("Atlas")
-                    .font(.system(size: 42, weight: .bold, design: .default))
-                    .foregroundStyle(AtlasColors.gradientPrimary)
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(DS.text.primary)
 
                 Text("Developer Platform")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(AtlasColors.textSecondary)
+                    .font(.atlasBody)
+                    .foregroundStyle(DS.text.secondary)
             }
 
-            // Action Buttons
-            VStack(spacing: 12) {
-                Button {
+            // Actions
+            VStack(spacing: DS.spacing.md) {
+                AtlasButton("Open Project", icon: "folder.badge.plus") {
                     appState.openProjectPicker()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder.badge.plus")
-                        Text("Open Project")
-                    }
-                    .frame(width: 200)
                 }
-                .buttonStyle(GradientButtonStyle())
                 .keyboardShortcut("o", modifiers: .command)
 
-                Button {
+                AtlasButton("Clone Repository", icon: "arrow.down.circle", style: .secondary) {
                     // Clone repo flow
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.down.circle")
-                        Text("Clone Repository")
-                    }
-                    .frame(width: 200)
                 }
-                .buttonStyle(NeonButtonStyle(color: AtlasColors.neonPurple.opacity(0.6)))
             }
 
             Spacer()
 
-            // Version
             Text("v0.1.0")
-                .atlasFont(.caption)
-                .foregroundStyle(AtlasColors.textTertiary)
-                .padding(.bottom, 20)
+                .font(.atlasCaption)
+                .foregroundStyle(DS.text.tertiary)
+                .padding(.bottom, DS.spacing.xl)
         }
-        .frame(width: 320)
-        .padding(.horizontal, 40)
+        .frame(width: 300)
+        .padding(.horizontal, DS.spacing.xxxl)
     }
 
-    // MARK: - Right Panel (Recent Projects)
+    // MARK: - Right Panel
 
     private var rightPanel: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: DS.spacing.lg) {
             Text("Recent Projects")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(AtlasColors.textSecondary)
-                .padding(.top, 24)
-                .padding(.horizontal, 24)
+                .foregroundStyle(DS.text.secondary)
+                .padding(.top, DS.spacing.xxl)
+                .padding(.horizontal, DS.spacing.xxl)
 
             if appState.recentProjects.isEmpty {
                 Spacer()
-                VStack(spacing: 12) {
+                VStack(spacing: DS.spacing.md) {
                     Image(systemName: "folder")
                         .font(.system(size: 32, weight: .light))
-                        .foregroundStyle(AtlasColors.textTertiary)
+                        .foregroundStyle(DS.text.tertiary)
                     Text("No recent projects")
-                        .atlasFont(.body)
-                        .foregroundStyle(AtlasColors.textTertiary)
+                        .font(.atlasBody)
+                        .foregroundStyle(DS.text.tertiary)
                 }
                 .frame(maxWidth: .infinity)
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 4) {
+                    LazyVStack(spacing: DS.spacing.xs) {
                         ForEach(appState.recentProjects) { project in
-                            RecentProjectRow(project: project) {
+                            RecentProjectRow(
+                                project: project,
+                                isHovered: hoveredProject == project.id
+                            ) {
                                 appState.openProject(path: project.path)
+                            }
+                            .onHover { hovering in
+                                hoveredProject = hovering ? project.id : nil
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, DS.spacing.lg)
                 }
             }
         }
         .frame(maxWidth: .infinity)
-        .background(AtlasColors.backgroundSurface.opacity(0.3))
+        .background(DS.bg.elevated.opacity(0.3))
     }
 }
 
@@ -162,29 +117,29 @@ struct WelcomeView: View {
 
 struct RecentProjectRow: View {
     let project: ProjectInfo
+    let isHovered: Bool
     let action: () -> Void
-    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(AtlasColors.neonPurple.opacity(0.2))
+            HStack(spacing: DS.spacing.md) {
+                RoundedRectangle(cornerRadius: DS.radius.sm, style: .continuous)
+                    .fill(DS.accent.subtle)
                     .frame(width: 32, height: 32)
                     .overlay {
                         Image(systemName: "folder.fill")
                             .font(.system(size: 14))
-                            .foregroundStyle(AtlasColors.neonPurple)
+                            .foregroundStyle(DS.accent.primary)
                     }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(project.name)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(AtlasColors.textPrimary)
+                        .foregroundStyle(DS.text.primary)
 
                     Text(project.path)
                         .font(.system(size: 11))
-                        .foregroundStyle(AtlasColors.textTertiary)
+                        .foregroundStyle(DS.text.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -193,20 +148,15 @@ struct RecentProjectRow: View {
 
                 Text(project.lastOpened, style: .relative)
                     .font(.system(size: 11))
-                    .foregroundStyle(AtlasColors.textTertiary)
+                    .foregroundStyle(DS.text.tertiary)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? AtlasColors.sidebarHover : .clear)
-            }
+            .padding(.vertical, DS.spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DS.radius.md, style: .continuous)
+                    .fill(isHovered ? DS.bg.hover : .clear)
+            )
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovered = hovering
-            }
-        }
     }
 }

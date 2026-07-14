@@ -8,10 +8,10 @@ struct KanbanView: View {
     var body: some View {
         VStack(spacing: 0) {
             kanbanHeader
-            Divider().background(AtlasColors.border)
+            SoftDivider()
             kanbanBoard
         }
-        .background(AtlasColors.backgroundDeep)
+        .background(DS.bg.base)
         .sheet(isPresented: $showCreateTask) {
             CreateTaskSheet()
         }
@@ -22,36 +22,29 @@ struct KanbanView: View {
     private var kanbanHeader: some View {
         HStack {
             Text("Kanban Board")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(AtlasColors.textPrimary)
+                .font(.atlasTitle)
+                .foregroundStyle(DS.text.primary)
 
             Spacer()
 
             Text("\(appState.tasks.count) tasks")
-                .atlasFont(.caption)
-                .foregroundStyle(AtlasColors.textTertiary)
+                .font(.atlasCaption)
+                .foregroundStyle(DS.text.tertiary)
 
-            Button {
+            AtlasButton("New Task", icon: "plus") {
                 showCreateTask = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "plus")
-                    Text("New Task")
-                }
-                .font(.system(size: 12, weight: .medium))
             }
-            .buttonStyle(NeonButtonStyle(color: AtlasColors.neonCyan))
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, DS.spacing.xxl)
         .padding(.vertical, 14)
-        .background(AtlasColors.backgroundSurface.opacity(0.5))
+        .background(DS.bg.elevated.opacity(0.5))
     }
 
     // MARK: - Board
 
     private var kanbanBoard: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: DS.spacing.lg) {
                 ForEach(TaskStatus.allCases, id: \.self) { status in
                     KanbanColumn(
                         status: status,
@@ -60,12 +53,12 @@ struct KanbanView: View {
                     )
                 }
             }
-            .padding(20)
+            .padding(DS.spacing.xl)
         }
     }
 }
 
-// MARK: - Kanban Column
+// MARK: - Column
 
 struct KanbanColumn: View {
     @Environment(AppState.self) private var appState
@@ -75,19 +68,19 @@ struct KanbanColumn: View {
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: DS.spacing.md) {
             columnHeader
             taskList
         }
         .frame(width: 260)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AtlasColors.backgroundSurface.opacity(isTargeted ? 0.8 : 0.4))
-        }
+        .background(
+            RoundedRectangle(cornerRadius: DS.radius.lg, style: .continuous)
+                .fill(DS.bg.elevated.opacity(isTargeted ? 0.8 : 0.4))
+        )
         .overlay {
             if isTargeted {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(status.color.opacity(0.5), lineWidth: 1)
+                RoundedRectangle(cornerRadius: DS.radius.lg, style: .continuous)
+                    .strokeBorder(DS.accent.primary.opacity(0.3), lineWidth: 1)
             }
         }
         .dropDestination(for: String.self) { items, _ in
@@ -97,7 +90,6 @@ struct KanbanColumn: View {
                 TaskItem(id: uuid, title: "", description: "", status: .backlog, priority: .low, assignedAgent: nil, labels: []),
                 to: status
             )
-            // Find and move the actual task
             if let task = appState.tasks.first(where: { $0.id.uuidString == taskId }) {
                 appState.moveTask(task, to: status)
             }
@@ -110,36 +102,33 @@ struct KanbanColumn: View {
     }
 
     private var columnHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: DS.spacing.sm) {
             Circle()
                 .fill(status.color)
                 .frame(width: 8, height: 8)
-                .shadow(color: status.color.opacity(0.5), radius: 3)
 
             Text(status.rawValue)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(AtlasColors.textPrimary)
+                .foregroundStyle(DS.text.primary)
 
             Spacer()
 
             Text("\(tasks.count)")
                 .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(AtlasColors.textTertiary)
+                .foregroundStyle(DS.text.tertiary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background {
-                    Capsule()
-                        .fill(AtlasColors.backgroundGlass)
-                }
+                .background(DS.bg.hover)
+                .clipShape(Capsule())
         }
         .padding(.horizontal, 14)
         .padding(.top, 14)
-        .padding(.bottom, 4)
+        .padding(.bottom, DS.spacing.xs)
     }
 
     private var taskList: some View {
         ScrollView {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: DS.spacing.sm) {
                 ForEach(tasks) { task in
                     KanbanCard(task: task)
                         .draggable(task.id.uuidString)
@@ -151,57 +140,41 @@ struct KanbanColumn: View {
     }
 }
 
-// MARK: - Kanban Card
+// MARK: - Card
 
 struct KanbanCard: View {
     let task: TaskItem
     @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Title
+        VStack(alignment: .leading, spacing: DS.spacing.sm) {
             Text(task.title)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AtlasColors.textPrimary)
+                .foregroundStyle(DS.text.primary)
                 .lineLimit(2)
 
-            // Description
             if !task.description.isEmpty {
                 Text(task.description)
                     .font(.system(size: 11))
-                    .foregroundStyle(AtlasColors.textTertiary)
+                    .foregroundStyle(DS.text.tertiary)
                     .lineLimit(2)
             }
 
-            // Footer: priority + agent + labels
             HStack(spacing: 6) {
-                // Priority
-                Text(task.priority.rawValue)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(task.priority.color)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background {
-                        Capsule()
-                            .fill(task.priority.color.opacity(0.15))
-                    }
+                Badge(text: task.priority.rawValue, color: task.priority.color, size: .small)
 
-                // Labels
                 ForEach(task.labels.prefix(2), id: \.self) { label in
                     Text(label)
                         .font(.system(size: 10))
-                        .foregroundStyle(AtlasColors.textSecondary)
+                        .foregroundStyle(DS.text.secondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background {
-                            Capsule()
-                                .fill(AtlasColors.backgroundGlass)
-                        }
+                        .background(DS.bg.hover)
+                        .clipShape(Capsule())
                 }
 
                 Spacer()
 
-                // Agent
                 if let agent = task.assignedAgent {
                     HStack(spacing: 3) {
                         Image(systemName: "cpu")
@@ -209,25 +182,19 @@ struct KanbanCard: View {
                         Text(agent)
                             .font(.system(size: 10))
                     }
-                    .foregroundStyle(AtlasColors.neonCyan)
+                    .foregroundStyle(DS.accent.primary)
                 }
             }
         }
-        .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(AtlasColors.backgroundElevated)
-        }
-        .overlay {
+        .padding(DS.spacing.md)
+        .background(DS.bg.elevated)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(
-                    isHovered ? AtlasColors.neonCyan.opacity(0.3) : AtlasColors.border,
+                    isHovered ? DS.accent.primary.opacity(0.2) : DS.border.subtle,
                     lineWidth: 0.5
                 )
-        }
-        .shadow(
-            color: isHovered ? AtlasColors.neonCyan.opacity(0.1) : .clear,
-            radius: 8, x: 0, y: 2
         )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -247,24 +214,34 @@ struct CreateTaskSheet: View {
     @State private var priority: TaskPriority = .medium
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: DS.spacing.xl) {
             Text("New Task")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(AtlasColors.textPrimary)
+                .font(.atlasTitle)
+                .foregroundStyle(DS.text.primary)
 
-            VStack(spacing: 12) {
+            VStack(spacing: DS.spacing.md) {
                 TextField("Task title", text: $title)
                     .textFieldStyle(.plain)
+                    .font(.atlasBody)
                     .padding(10)
-                    .background(AtlasColors.backgroundElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(DS.bg.elevated2)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.radius.md))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.radius.md)
+                            .strokeBorder(DS.border.medium, lineWidth: 0.5)
+                    )
 
                 TextField("Description (optional)", text: $description, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .font(.atlasBody)
                     .lineLimit(3...5)
                     .padding(10)
-                    .background(AtlasColors.backgroundElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(DS.bg.elevated2)
+                    .clipShape(RoundedRectangle(cornerRadius: DS.radius.md))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.radius.md)
+                            .strokeBorder(DS.border.medium, lineWidth: 0.5)
+                    )
 
                 Picker("Priority", selection: $priority) {
                     ForEach(TaskPriority.allCases, id: \.self) { p in
@@ -276,21 +253,22 @@ struct CreateTaskSheet: View {
 
             HStack {
                 Button("Cancel") { dismiss() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.text.secondary)
                     .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
-                Button("Create") {
+                AtlasButton("Create") {
                     appState.createTask(title: title, description: description, priority: priority)
                     dismiss()
                 }
-                .buttonStyle(GradientButtonStyle())
                 .disabled(title.isEmpty)
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
+        .padding(DS.spacing.xxl)
         .frame(width: 400)
-        .background(AtlasColors.backgroundSurface)
+        .background(DS.bg.elevated)
     }
 }

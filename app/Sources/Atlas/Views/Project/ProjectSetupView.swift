@@ -226,7 +226,7 @@ struct ProjectSetupView: View {
                     detectionCard(icon: "cube", label: "Framework", value: detection.framework ?? "None")
                     detectionCard(icon: "shippingbox", label: "Package Manager", value: detection.packageManager ?? "None")
                     detectionCard(icon: "arrow.triangle.branch", label: "Monorepo", value: detection.monorepo ? "Yes" : "No")
-                    detectionCard(icon: "rocket", label: "Deploy Strategy", value: detection.deployStrategy ?? "systemd")
+                    detectionCard(icon: "paperplane.fill", label: "Deploy Strategy", value: detection.deployStrategy ?? "systemd")
                     detectionCard(icon: "list.bullet", label: "Scripts Found", value: "\(detection.scripts.count)")
                 }
 

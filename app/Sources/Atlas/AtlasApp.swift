@@ -7,7 +7,7 @@ struct AtlasApp: App {
 
     #if DEBUG
     init() {
-        Bundle(path: "/Applications/InjectionIII.app/Contents/Resources/iOSInjection.bundle")?.load()
+        Bundle(path: "/Applications/InjectionIII.app/Contents/Resources/macOSInjection.bundle")?.load()
     }
     #endif
 

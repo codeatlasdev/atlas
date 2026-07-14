@@ -55,7 +55,9 @@ final class AppState {
             needsProjectSetup = true
         }
 
-        NSSound(named: .init("Morse"))?.play()
+        if let sound = NSSound(named: .init("Morse")), !sound.isPlaying {
+            sound.play()
+        }
 
         Task {
             await refreshTasks()
@@ -421,7 +423,7 @@ enum SidebarTab: String, CaseIterable, Hashable {
         case .techLead: "brain.head.profile"
         case .agents: "cpu"
         case .servers: "server.rack"
-        case .deploy: "rocket"
+        case .deploy: "paperplane.fill"
         }
     }
 }

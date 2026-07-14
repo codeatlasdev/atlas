@@ -148,7 +148,7 @@ struct ProjectWindow: View {
             }
         case .deploy:
             EmptyStateView(
-                icon: "rocket",
+                icon: "paperplane.fill",
                 title: "Deploy",
                 description: "Deploy your services to production with one click."
             )

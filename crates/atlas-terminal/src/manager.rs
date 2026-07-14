@@ -93,6 +93,12 @@ impl PtyManager {
         let scrollback = Arc::new(StdMutex::new(RingBuffer::new()));
         let alive = Arc::new(AtomicBool::new(true));
 
+        // Take writer ONCE at creation time (reusable for all future writes)
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e.to_string())))?;
+
         // Spawn read loop
         let reader = pair
             .master
@@ -127,6 +133,7 @@ impl PtyManager {
         let session = PtySession {
             id: session_id.clone(),
             master: pair.master,
+            writer,
             child,
             broadcast,
             scrollback,
@@ -166,13 +173,8 @@ impl PtyManager {
             .get_mut(session_id)
             .ok_or_else(|| AtlasError::NotFound(format!("session {session_id}")))?;
 
-        let mut writer = session
-            .master
-            .take_writer()
-            .map_err(|e| AtlasError::Io(std::io::Error::other(e.to_string())))?;
-
-        writer
-            .write_all(data)
+        session
+            .write_input(data)
             .map_err(AtlasError::Io)?;
 
         Ok(())

@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use portable_pty::{Child, MasterPty, PtySize};
@@ -12,6 +13,7 @@ use crate::scrollback::RingBuffer;
 pub struct PtySession {
     pub(crate) id: String,
     pub(crate) master: Box<dyn MasterPty + Send>,
+    pub(crate) writer: Box<dyn Write + Send>,
     pub(crate) child: Box<dyn Child + Send + Sync>,
     pub(crate) broadcast: Arc<SessionBroadcast>,
     pub(crate) scrollback: Arc<Mutex<RingBuffer>>,
@@ -37,5 +39,11 @@ impl PtySession {
 
     pub fn subscribe(&self) -> broadcast::Receiver<Vec<u8>> {
         self.broadcast.subscribe()
+    }
+
+    pub fn write_input(&mut self, data: &[u8]) -> std::io::Result<()> {
+        self.writer.write_all(data)?;
+        self.writer.flush()?;
+        Ok(())
     }
 }

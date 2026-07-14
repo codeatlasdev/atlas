@@ -197,7 +197,8 @@ struct ProjectSidebarItem: View {
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: DS.radius.md, style: .continuous)
                     .fill(
@@ -208,6 +209,7 @@ struct ProjectSidebarItem: View {
             )
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering

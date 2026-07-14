@@ -148,29 +148,38 @@ struct TechLeadChatView: View {
         HStack(spacing: 10) {
             TextField("Ask the Tech Lead...", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.atlasBody)
+                .font(.system(size: 13))
                 .lineLimit(1...5)
                 .focused($inputFocused)
                 .foregroundStyle(DS.text.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(DS.bg.elevated)
+                .clipShape(RoundedRectangle(cornerRadius: DS.radius.lg))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.radius.lg)
+                        .stroke(inputFocused ? DS.border.focus : DS.border.subtle, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
                 .onSubmit { sendMessage() }
 
             Button {
                 sendMessage()
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 26))
                     .foregroundStyle(
                         inputText.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? DS.text.tertiary
+                            ? DS.text.disabled
                             : DS.accent.primary
                     )
             }
             .buttonStyle(.plain)
             .disabled(inputText.trimmingCharacters(in: .whitespaces).isEmpty || isSending)
+            .contentShape(Circle())
         }
         .padding(.horizontal, DS.spacing.lg)
         .padding(.vertical, DS.spacing.md)
-        .background(DS.bg.elevated.opacity(0.5))
     }
 
     private func sendMessage() {
@@ -198,21 +207,27 @@ struct TechLeadBubble: View {
             if message.role == .user { Spacer(minLength: 60) }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: DS.spacing.xs) {
-                Text(message.content)
-                    .font(.system(size: 13))
-                    .foregroundStyle(DS.text.primary)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(bubbleBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(
-                                message.role == .assistant ? DS.border.subtle : .clear,
-                                lineWidth: 0.5
-                            )
-                    )
+                Group {
+                    if message.role == .assistant {
+                        MarkdownText(text: message.content)
+                    } else {
+                        Text(message.content)
+                            .font(.system(size: 13))
+                            .foregroundStyle(DS.text.primary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(bubbleBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            message.role == .assistant ? DS.border.subtle : .clear,
+                            lineWidth: 0.5
+                        )
+                )
 
                 Text(message.timestamp, style: .time)
                     .font(.system(size: 10))

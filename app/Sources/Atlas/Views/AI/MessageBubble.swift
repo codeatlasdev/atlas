@@ -9,15 +9,16 @@ struct MessageBubble: View {
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
-                    .atlasFont(.body)
-                    .atlasForeground(.primary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(AtlasColors.textPrimary)
                     .textSelection(.enabled)
-                    .padding(12)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
                     .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 Text(message.timestamp, style: .time)
-                    .atlasFont(.caption)
-                    .atlasForeground(.tertiary)
+                    .font(.system(size: 10))
+                    .foregroundStyle(AtlasColors.textTertiary)
             }
 
             if message.role != .user { Spacer(minLength: 60) }
@@ -26,9 +27,9 @@ struct MessageBubble: View {
 
     private var bubbleBackground: Color {
         switch message.role {
-        case .user: AtlasColors.accentPrimary.opacity(0.15)
-        case .assistant: AtlasColors.backgroundSurface
-        case .system: AtlasColors.statusError.opacity(0.1)
+        case .user: AtlasColors.neonCyan.opacity(0.12)
+        case .assistant: AtlasColors.backgroundElevated
+        case .system: AtlasColors.neonRed.opacity(0.1)
         }
     }
 }

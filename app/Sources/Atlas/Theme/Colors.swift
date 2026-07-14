@@ -1,47 +1,95 @@
 import SwiftUI
-import AppKit
-
-// MARK: - Design System Colors
 
 enum AtlasColors {
 
-    // MARK: Backgrounds (3 levels)
+    // MARK: - Backgrounds
 
-    static let backgroundBase = Color(nsColor: .windowBackgroundColor)
-    static let backgroundSurface = Color(nsColor: .controlBackgroundColor)
-    static let backgroundElevated = Color(nsColor: .underPageBackgroundColor)
+    static let backgroundDeep = Color(hex: "0A0A0F")
+    static let backgroundSurface = Color(hex: "12121A")
+    static let backgroundElevated = Color(hex: "1A1A2E")
+    static let backgroundGlass = Color.white.opacity(0.05)
 
-    // MARK: Text
+    // MARK: - Neon Accents
 
-    static let textPrimary = Color(nsColor: .labelColor)
-    static let textSecondary = Color(nsColor: .secondaryLabelColor)
-    static let textTertiary = Color(nsColor: .tertiaryLabelColor)
+    static let neonCyan = Color(hex: "00D4FF")
+    static let neonPurple = Color(hex: "A855F7")
+    static let neonPink = Color(hex: "EC4899")
+    static let neonGreen = Color(hex: "10B981")
+    static let neonAmber = Color(hex: "F59E0B")
+    static let neonRed = Color(hex: "EF4444")
 
-    // MARK: Accent
+    // MARK: - Text
 
-    static let accentPrimary = Color(red: 0.35, green: 0.34, blue: 0.84) // Indigo/violet
-    static let accentSecondary = Color(red: 0.25, green: 0.52, blue: 0.96) // Blue
+    static let textPrimary = Color.white
+    static let textSecondary = Color.white.opacity(0.7)
+    static let textTertiary = Color.white.opacity(0.4)
 
-    // MARK: Status
+    // MARK: - Status (backwards compat)
 
-    static let statusSuccess = Color(red: 0.20, green: 0.78, blue: 0.35)
-    static let statusWarning = Color(red: 0.95, green: 0.65, blue: 0.12)
-    static let statusError = Color(red: 0.92, green: 0.26, blue: 0.24)
-    static let statusInfo = Color(red: 0.25, green: 0.52, blue: 0.96)
+    static let statusSuccess = neonGreen
+    static let statusWarning = neonAmber
+    static let statusError = neonRed
+    static let statusInfo = neonCyan
 
-    // MARK: Borders & Separators
+    // MARK: - Accent (backwards compat)
 
-    static let border = Color(nsColor: .separatorColor)
-    static let borderSubtle = Color(nsColor: .quaternaryLabelColor)
+    static let accentPrimary = neonPurple
+    static let accentSecondary = neonCyan
 
-    // MARK: Sidebar
+    // MARK: - Borders
 
-    static let sidebarBackground = Color(nsColor: .controlBackgroundColor).opacity(0.5)
-    static let sidebarHover = Color(nsColor: .labelColor).opacity(0.06)
-    static let sidebarSelected = Color(red: 0.35, green: 0.34, blue: 0.84).opacity(0.15)
+    static let border = Color.white.opacity(0.1)
+    static let borderSubtle = Color.white.opacity(0.05)
+
+    // MARK: - Sidebar
+
+    static let sidebarBackground = backgroundSurface
+    static let sidebarHover = Color.white.opacity(0.06)
+    static let sidebarSelected = neonPurple.opacity(0.15)
+
+    // MARK: - Gradients
+
+    static let gradientPrimary = LinearGradient(
+        colors: [neonCyan, neonPurple],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
+    static let gradientAccent = LinearGradient(
+        colors: [neonPurple, neonPink],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
+    static let gradientFull = LinearGradient(
+        colors: [neonCyan, neonPurple, neonPink],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
+
+    static let gradientRadialBackground = RadialGradient(
+        colors: [neonPurple.opacity(0.15), backgroundDeep],
+        center: .center,
+        startRadius: 0,
+        endRadius: 500
+    )
 }
 
-// MARK: - View Extensions
+// MARK: - Color hex init
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: .init(charactersIn: "#"))
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let r = Double((int >> 16) & 0xFF) / 255.0
+        let g = Double((int >> 8) & 0xFF) / 255.0
+        let b = Double(int & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
+    }
+}
+
+// MARK: - View Extensions (backwards compat)
 
 extension View {
     func atlasBackground(_ level: AtlasBackgroundLevel = .base) -> some View {
@@ -58,7 +106,7 @@ enum AtlasBackgroundLevel {
 
     var color: Color {
         switch self {
-        case .base: AtlasColors.backgroundBase
+        case .base: AtlasColors.backgroundDeep
         case .surface: AtlasColors.backgroundSurface
         case .elevated: AtlasColors.backgroundElevated
         }

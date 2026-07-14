@@ -9,8 +9,9 @@ struct AtlasApp: App {
             ContentView()
                 .environment(appState)
                 .frame(minWidth: 900, minHeight: 600)
+                .background(AtlasColors.backgroundDeep)
         }
-        .windowStyle(.titleBar)
+        .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1200, height: 780)
 
@@ -22,6 +23,7 @@ struct AtlasApp: App {
         Settings {
             SettingsView()
                 .environment(appState)
+                .preferredColorScheme(.dark)
         }
     }
 }
@@ -33,7 +35,7 @@ struct MenuBarView: View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(appState.isConnected ? AtlasColors.statusSuccess : AtlasColors.statusError)
+                    .fill(appState.isConnected ? AtlasColors.neonGreen : AtlasColors.neonRed)
                     .frame(width: 7, height: 7)
                 Text(appState.isConnected ? "Daemon Connected" : "Disconnected")
                     .font(.system(size: 12, weight: .medium))
@@ -41,6 +43,12 @@ struct MenuBarView: View {
             .padding(.vertical, 4)
 
             Divider()
+
+            if let project = appState.currentProject {
+                Label(project.name, systemImage: "folder.fill")
+                    .font(.system(size: 12))
+                Divider()
+            }
 
             Label("\(appState.servers.count) Servers", systemImage: "server.rack")
                 .font(.system(size: 12))

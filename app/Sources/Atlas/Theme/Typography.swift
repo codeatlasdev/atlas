@@ -10,20 +10,20 @@ enum AtlasTypography {
 
     var font: Font {
         switch self {
-        case .display: .system(size: 32, weight: .bold, design: .default)
-        case .title: .system(size: 20, weight: .semibold, design: .default)
-        case .headline: .system(size: 15, weight: .semibold, design: .default)
-        case .body: .system(size: 13, weight: .regular, design: .default)
-        case .caption: .system(size: 11, weight: .regular, design: .default)
-        case .mono: .system(size: 12, weight: .regular, design: .monospaced)
+        case .display: .system(size: 36, weight: .bold, design: .default)
+        case .title: .system(size: 24, weight: .semibold, design: .default)
+        case .headline: .system(size: 17, weight: .semibold, design: .default)
+        case .body: .system(size: 14, weight: .regular, design: .default)
+        case .caption: .system(size: 12, weight: .regular, design: .default)
+        case .mono: .system(size: 13, weight: .regular, design: .monospaced)
         }
     }
 
     var lineSpacing: CGFloat {
         switch self {
-        case .display: 4
-        case .title: 3
-        case .headline: 2
+        case .display: 6
+        case .title: 4
+        case .headline: 3
         case .body: 2
         case .caption: 1
         case .mono: 2

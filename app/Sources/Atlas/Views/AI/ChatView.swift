@@ -9,9 +9,10 @@ struct ChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageList
-            Divider().opacity(0.4)
+            Divider().background(AtlasColors.border)
             inputBar
         }
+        .background(AtlasColors.backgroundDeep)
     }
 
     private var messageList: some View {
@@ -50,6 +51,7 @@ struct ChatView: View {
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
                 .focused($inputFocused)
+                .foregroundStyle(AtlasColors.textPrimary)
                 .onSubmit { sendMessage() }
 
             Button {
@@ -63,12 +65,12 @@ struct ChatView: View {
             .foregroundStyle(
                 inputText.trimmingCharacters(in: .whitespaces).isEmpty
                     ? AtlasColors.textTertiary
-                    : AtlasColors.accentPrimary
+                    : AtlasColors.neonCyan
             )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
+        .background(AtlasColors.backgroundSurface.opacity(0.5))
     }
 
     private func sendMessage() {

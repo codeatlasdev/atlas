@@ -18,7 +18,7 @@ struct EmptyStateView: View {
 
             VStack(spacing: 8) {
                 Text(title)
-                    .atlasFont(.title)
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(AtlasColors.textPrimary)
 
                 Text(description)
@@ -36,19 +36,13 @@ struct EmptyStateView: View {
                         Text(actionLabel)
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background {
-                        Capsule(style: .continuous)
-                            .fill(AtlasColors.accentPrimary)
-                    }
-                    .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NeonButtonStyle(color: AtlasColors.neonCyan))
             }
 
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AtlasColors.backgroundDeep)
     }
 }

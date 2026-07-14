@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use atlas_core::Result;
 
 use crate::app::AppState;
+use crate::handlers::acp_handler::DaemonClientHandler;
 
 #[derive(Deserialize)]
 struct ChatParams {
@@ -15,26 +16,34 @@ struct ChatParams {
     project_path: String,
 }
 
-/// The Tech Lead "chat" spawns a Kiro agent session with the Tech Lead config.
-/// If a Tech Lead session already exists for this project, it sends the message
-/// to that existing session (via terminal write).
+/// The Tech Lead "chat" spawns a Kiro agent session via ACP.
+/// If a Tech Lead session already exists, it sends the prompt to that session.
+/// Returns the session_id so the app can subscribe to agent.event notifications.
 pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
     let p: ChatParams = serde_json::from_value(params)
         .map_err(|e| atlas_core::AtlasError::InvalidInput(e.to_string()))?;
 
     let lm = state.lifecycle_manager.lock().await;
 
-    // Find any existing Tech Lead session (by adapter name containing "techlead")
+    // Find existing Tech Lead session (active, kiro adapter)
     let existing = lm
         .list()
         .iter()
-        .find(|s| s.adapter_name == "kiro" || s.adapter_name == "kiro-techlead")
-        .map(|s| (s.id.clone(), s.terminal_session_id.clone()));
+        .find(|s| {
+            s.is_active()
+                && (s.adapter_name == "kiro" || s.adapter_name == "kiro-techlead")
+        })
+        .map(|s| s.id.clone());
+
+    let is_acp = existing
+        .as_ref()
+        .map(|id| lm.is_acp_session(id))
+        .unwrap_or(false);
 
     drop(lm);
 
-    if let Some((session_id, terminal_id)) = existing {
-        // Send message to existing Tech Lead session via terminal write
+    if let Some(session_id) = existing {
+        // Send message to existing session
         let lm = state.lifecycle_manager.lock().await;
         lm.send_prompt(&session_id, &p.message, &state.pty_manager)
             .await?;
@@ -44,21 +53,23 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         Ok(json!({
             "session_id": session_id,
-            "terminal_session_id": terminal_id,
+            "protocol": if is_acp { "acp" } else { "pty" },
             "action": "message_sent",
         }))
     } else {
-        // Spawn new Tech Lead session
+        // Spawn new Tech Lead session via ACP
         let adapter = KiroAdapter::new();
-        let config = tech_lead_launch_config(p.project_path.into());
+        let config = tech_lead_launch_config(p.project_path.clone().into());
+
+        let client_handler = Arc::new(DaemonClientHandler::new(
+            p.project_path.into(),
+            Arc::clone(&state.pty_manager),
+        ));
 
         let mut lm = state.lifecycle_manager.lock().await;
-        let session_id = lm.spawn(&adapter, config, &state.pty_manager).await?;
-
-        // Get the terminal_session_id immediately after spawn
-        let terminal_id = lm
-            .get(&session_id)
-            .and_then(|s| s.terminal_session_id.clone());
+        let session_id = lm
+            .spawn_acp(&adapter, config, client_handler)
+            .await?;
         drop(lm);
 
         state
@@ -68,7 +79,7 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
 
         Ok(json!({
             "session_id": session_id,
-            "terminal_session_id": terminal_id,
+            "protocol": "acp",
             "action": "spawned",
         }))
     }

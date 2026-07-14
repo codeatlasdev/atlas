@@ -191,15 +191,17 @@ final class AppState {
             if let dict = response as? [String: Any] {
                 let action = dict["action"] as? String ?? ""
                 let sessionId = dict["session_id"] as? String
-                let terminalId = dict["terminal_session_id"] as? String
+                let protocol_ = dict["protocol"] as? String ?? "pty"
 
                 if let sid = sessionId {
                     techLeadSessionId = sid
-                }
 
-                if let tid = terminalId, techLeadTerminalId == nil {
-                    techLeadTerminalId = tid
-                    subscribeToTechLeadOutput()
+                    if protocol_ == "acp" {
+                        subscribeToAgentEvents(sessionId: sid)
+                    } else if let tid = dict["terminal_session_id"] as? String {
+                        techLeadTerminalId = tid
+                        subscribeToTechLeadOutput()
+                    }
                 }
 
                 if action == "spawned" {
@@ -208,7 +210,6 @@ final class AppState {
                         content: "⚡ Tech Lead session started."
                     ))
                 }
-                // Keep isTechLeadTyping = true — set to false when output arrives
             }
         } catch {
             techLeadMessages.append(ChatMessage(
@@ -216,6 +217,69 @@ final class AppState {
                 content: "Error: \(error.localizedDescription)"
             ))
             isTechLeadTyping = false
+        }
+    }
+
+    /// Subscribe to structured ACP agent events for the Tech Lead session
+    func subscribeToAgentEvents(sessionId: String) {
+        Task {
+            let _ = try? await daemon.send(method: "agent.subscribe", params: [
+                "session_id": sessionId
+            ])
+        }
+
+        daemon.onNotification("agent.event", id: "techlead-acp") { [weak self] payload in
+            guard let self else { return }
+
+            // Parse the event from JSON
+            guard let eventData = try? JSONSerialization.data(withJSONObject: payload),
+                  let event = try? JSONDecoder().decode(AgentEvent.self, from: eventData) else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.handleAgentEvent(event)
+            }
+        }
+    }
+
+    @MainActor
+    private func handleAgentEvent(_ event: AgentEvent) {
+        switch event.event {
+        case .textChunk(let chunk):
+            isTechLeadTyping = false
+            // Append to last assistant message or create new
+            if let lastIndex = techLeadMessages.indices.last,
+               techLeadMessages[lastIndex].role == .assistant {
+                let existing = techLeadMessages[lastIndex].content
+                techLeadMessages[lastIndex] = ChatMessage(
+                    role: .assistant,
+                    content: existing + chunk.text
+                )
+            } else {
+                techLeadMessages.append(ChatMessage(
+                    role: .assistant,
+                    content: chunk.text
+                ))
+            }
+
+        case .thinkingChunk:
+            isTechLeadTyping = true
+
+        case .toolCallStart(let tc):
+            isTechLeadTyping = true
+            // Could show in UI: "Reading src/main.rs..."
+
+        case .toolCallUpdate(let update):
+            if update.status == "completed" || update.status == "failed" {
+                // Tool done
+            }
+
+        case .turnEnd:
+            isTechLeadTyping = false
+
+        default:
+            break
         }
     }
 

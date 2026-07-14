@@ -15,7 +15,7 @@ check: ## Watch for errors and clippy warnings
 
 build: ## Build everything (Rust + Swift)
 	cargo build
-	cd app && swift build
+	cd app && xcodegen generate -q && xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Debug build -quiet
 
 build-release: ## Build optimized binaries
 	cargo build --release
@@ -24,18 +24,18 @@ build-release: ## Build optimized binaries
 
 test: ## Run all tests
 	cargo test
-	cd app && swift test
+	cd app && xcodegen generate -q && xcodebuild -project Atlas.xcodeproj -scheme AtlasTests test -quiet
 
 # ─── App ──────────────────────────────────────────────────
 
-app: ## Open SwiftUI app in Xcode
-	cd app && open Package.swift
+app: ## Generate Xcode project and open in Xcode
+	cd app && xcodegen generate && open Atlas.xcodeproj
 
-app-build: ## Build SwiftUI app
-	cd app && swift build
+app-build: ## Build SwiftUI app via xcodebuild
+	cd app && xcodegen generate && xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Debug build
 
-app-run: ## Run SwiftUI app from terminal
-	cd app && swift build && .build/debug/Atlas
+app-generate: ## Regenerate Xcode project from project.yml
+	cd app && xcodegen generate
 
 # ─── CLI ──────────────────────────────────────────────────
 

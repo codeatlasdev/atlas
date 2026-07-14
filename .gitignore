@@ -1,7 +1,10 @@
 /target
 app/.build/
+app/Atlas.xcodeproj/
+app/.swiftpm/
 .env
 *.db
 *.db-shm
 *.db-wal
 .DS_Store
+xcuserdata/

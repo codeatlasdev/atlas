@@ -25,6 +25,8 @@ struct ConnectionState {
     outbound_tx: mpsc::UnboundedSender<String>,
     /// Terminal subscriptions: session_id → abort handle
     subscriptions: HashMap<String, tokio::task::JoinHandle<()>>,
+    /// Agent event subscriptions: session_id → abort handle
+    agent_subscriptions: HashMap<String, tokio::task::JoinHandle<()>>,
 }
 
 pub async fn serve(socket_path: &Path, state: Arc<AppState>) -> anyhow::Result<()> {
@@ -62,6 +64,7 @@ pub async fn serve(socket_path: &Path, state: Arc<AppState>) -> anyhow::Result<(
             let conn_state = Arc::new(Mutex::new(ConnectionState {
                 outbound_tx: outbound_tx.clone(),
                 subscriptions: HashMap::new(),
+                agent_subscriptions: HashMap::new(),
             }));
 
             let mut line = String::new();
@@ -90,6 +93,21 @@ pub async fn serve(socket_path: &Path, state: Arc<AppState>) -> anyhow::Result<(
                                 if let Ok(p) = serde_json::from_value::<DetachParams>(req.params) {
                                     stop_terminal_subscription(&conn_state, &p.session_id).await;
                                 }
+                            } else if req.method == "agent.subscribe" {
+                                if let Some(ref result) = response.result {
+                                    if let Some(sid) = result.get("session_id").and_then(|v| v.as_str()) {
+                                        start_agent_subscription(
+                                            &state,
+                                            &conn_state,
+                                            sid,
+                                        )
+                                        .await;
+                                    }
+                                }
+                            } else if req.method == "agent.unsubscribe" {
+                                if let Ok(p) = serde_json::from_value::<DetachParams>(req.params) {
+                                    stop_agent_subscription(&conn_state, &p.session_id).await;
+                                }
                             }
                         }
 
@@ -105,6 +123,9 @@ pub async fn serve(socket_path: &Path, state: Arc<AppState>) -> anyhow::Result<(
             // Cleanup: abort all subscriptions
             let mut cs = conn_state.lock().await;
             for (_, handle) in cs.subscriptions.drain() {
+                handle.abort();
+            }
+            for (_, handle) in cs.agent_subscriptions.drain() {
                 handle.abort();
             }
             drop(cs);
@@ -170,6 +191,60 @@ async fn stop_terminal_subscription(
 ) {
     let mut cs = conn_state.lock().await;
     if let Some(handle) = cs.subscriptions.remove(session_id) {
+        handle.abort();
+    }
+}
+
+async fn start_agent_subscription(
+    state: &Arc<AppState>,
+    conn_state: &Arc<Mutex<ConnectionState>>,
+    session_id: &str,
+) {
+    let lm = state.lifecycle_manager.lock().await;
+    let Some(mut rx) = lm.subscribe_events(session_id) else {
+        return;
+    };
+    drop(lm);
+
+    let sid = session_id.to_string();
+    let conn = Arc::clone(conn_state);
+
+    let handle = tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let notification = Notification {
+                        method: "agent.event".to_string(),
+                        params: serde_json::to_value(&event).unwrap_or_default(),
+                    };
+                    let mut msg = serde_json::to_string(&notification).unwrap_or_default();
+                    msg.push('\n');
+
+                    let cs = conn.lock().await;
+                    if cs.outbound_tx.send(msg).is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::debug!(lagged = n, "agent event subscriber lagged");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+
+    let mut cs = conn_state.lock().await;
+    if let Some(old) = cs.agent_subscriptions.insert(session_id.to_string(), handle) {
+        old.abort();
+    }
+}
+
+async fn stop_agent_subscription(
+    conn_state: &Arc<Mutex<ConnectionState>>,
+    session_id: &str,
+) {
+    let mut cs = conn_state.lock().await;
+    if let Some(handle) = cs.agent_subscriptions.remove(session_id) {
         handle.abort();
     }
 }

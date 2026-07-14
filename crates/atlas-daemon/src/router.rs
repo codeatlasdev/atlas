@@ -70,6 +70,15 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "agent.status" => handlers::agents::status(state, req.params).await,
         "agent.stop" => handlers::agents::stop(state, req.params).await,
         "agent.prompt" => handlers::agents::prompt(state, req.params).await,
+        "agent.cancel" => handlers::agents::cancel(state, req.params).await,
+        "agent.permission" => handlers::agents::permission_respond(state, req.params).await,
+        "agent.subscribe" => {
+            // Returns session_id — socket.rs intercepts and starts event subscription
+            let p: serde_json::Value = req.params;
+            let sid = p.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+            Ok(serde_json::json!({ "session_id": sid, "ok": true }))
+        }
+        "agent.unsubscribe" => Ok(serde_json::json!({ "ok": true })),
         "tasks.list" => handlers::tasks::list(state, req.params).await,
         "tasks.create" => handlers::tasks::create(state, req.params).await,
         "tasks.update_status" => handlers::tasks::update_status(state, req.params).await,

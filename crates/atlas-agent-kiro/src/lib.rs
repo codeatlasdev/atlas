@@ -82,7 +82,7 @@ impl AgentAdapter for KiroAdapter {
     }
 
     fn prompt_delivery(&self) -> PromptDelivery {
-        PromptDelivery::InCommand
+        PromptDelivery::Acp
     }
 
     fn activity_detector(&self) -> Option<Box<dyn ActivityDetector>> {

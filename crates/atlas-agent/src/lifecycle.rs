@@ -1,27 +1,40 @@
 #![allow(unused)]
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use atlas_core::{AtlasError, Result};
 use atlas_terminal::{PtyManager, SessionConfig};
+use tokio::sync::broadcast;
 use tracing::info;
 
+use crate::acp::{AcpClientHandler, AcpSpawnConfig, AcpTransport, AgentEvent};
 use crate::activity::ActivityState;
-use crate::adapter::{AgentAdapter, LaunchConfig};
+use crate::adapter::{AgentAdapter, LaunchConfig, PromptDelivery};
 use crate::session::AgentSession;
+
+/// Tracks ACP transport state for a session.
+pub struct AcpSessionState {
+    pub transport: AcpTransport,
+    pub acp_session_id: String,
+}
 
 pub struct LifecycleManager {
     sessions: HashMap<String, AgentSession>,
+    /// ACP transports keyed by Atlas session ID.
+    acp_sessions: HashMap<String, AcpSessionState>,
 }
 
 impl LifecycleManager {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
+            acp_sessions: HashMap::new(),
         }
     }
 
+    /// Spawn an agent via PTY (legacy path — for agents without ACP support).
     pub async fn spawn(
         &mut self,
         adapter: &dyn AgentAdapter,
@@ -51,9 +64,147 @@ impl LifecycleManager {
         session.activity_state = ActivityState::Active;
 
         self.sessions.insert(session_id.clone(), session);
-        info!(session_id = %session_id, adapter = adapter.name(), "agent session spawned");
+        info!(session_id = %session_id, adapter = adapter.name(), "agent session spawned (PTY)");
 
         Ok(session_id)
+    }
+
+    /// Spawn an agent via ACP protocol (structured, bidirectional).
+    pub async fn spawn_acp(
+        &mut self,
+        adapter: &dyn AgentAdapter,
+        config: LaunchConfig,
+        client_handler: Arc<dyn AcpClientHandler>,
+    ) -> Result<String> {
+        let binary = adapter
+            .resolve_binary()
+            .await
+            .ok_or_else(|| AtlasError::NotFound(format!("{} binary not found", adapter.name())))?;
+
+        let session_id = uuid::Uuid::new_v4().to_string();
+
+        let spawn_config = AcpSpawnConfig {
+            binary,
+            args: vec!["acp".to_string()],
+            cwd: config.cwd.clone(),
+            env: config.env.clone(),
+            atlas_session_id: session_id.clone(),
+        };
+
+        let transport = AcpTransport::spawn(spawn_config, client_handler)
+            .await
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+
+        // Initialize ACP connection
+        transport
+            .initialize("atlas", env!("CARGO_PKG_VERSION"))
+            .await
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+
+        // Create ACP session
+        let acp_session_id = transport
+            .new_session(config.cwd.to_str().unwrap_or("/tmp"))
+            .await
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+
+        info!(
+            session_id = %session_id,
+            acp_session_id = %acp_session_id,
+            adapter = adapter.name(),
+            "agent session spawned (ACP)"
+        );
+
+        // Send initial prompt if provided
+        if !config.prompt.is_empty() {
+            transport
+                .prompt(&config.prompt)
+                .await
+                .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+        }
+
+        let mut session = AgentSession::new(session_id.clone(), adapter.name().to_string());
+        session.activity_state = ActivityState::Active;
+        self.sessions.insert(session_id.clone(), session);
+
+        self.acp_sessions.insert(
+            session_id.clone(),
+            AcpSessionState {
+                transport,
+                acp_session_id,
+            },
+        );
+
+        Ok(session_id)
+    }
+
+    /// Check if a session is running via ACP.
+    pub fn is_acp_session(&self, id: &str) -> bool {
+        self.acp_sessions.contains_key(id)
+    }
+
+    /// Get a reference to the ACP transport for a session.
+    pub fn get_acp_transport(&self, id: &str) -> Option<&AcpTransport> {
+        self.acp_sessions.get(id).map(|s| &s.transport)
+    }
+
+    /// Subscribe to AgentEvents for an ACP session.
+    pub fn subscribe_events(&self, id: &str) -> Option<broadcast::Receiver<AgentEvent>> {
+        self.acp_sessions.get(id).map(|s| s.transport.subscribe())
+    }
+
+    /// Get the event sender for an ACP session (for wiring into notifications).
+    pub fn event_sender(&self, id: &str) -> Option<broadcast::Sender<AgentEvent>> {
+        self.acp_sessions.get(id).map(|s| s.transport.event_sender())
+    }
+
+    /// Send a prompt to an ACP session.
+    pub async fn send_prompt_acp(&self, id: &str, prompt: &str) -> Result<()> {
+        let acp = self
+            .acp_sessions
+            .get(id)
+            .ok_or_else(|| AtlasError::NotFound(format!("ACP session {id}")))?;
+
+        acp.transport
+            .prompt(prompt)
+            .await
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+
+        Ok(())
+    }
+
+    /// Cancel the current operation in an ACP session.
+    pub async fn cancel_acp(&self, id: &str) -> Result<()> {
+        let acp = self
+            .acp_sessions
+            .get(id)
+            .ok_or_else(|| AtlasError::NotFound(format!("ACP session {id}")))?;
+
+        acp.transport
+            .cancel()
+            .await
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+
+        Ok(())
+    }
+
+    /// Respond to a permission request in an ACP session.
+    pub async fn respond_permission(
+        &self,
+        id: &str,
+        request_id: u64,
+        option_id: &str,
+    ) -> Result<()> {
+        let acp = self
+            .acp_sessions
+            .get(id)
+            .ok_or_else(|| AtlasError::NotFound(format!("ACP session {id}")))?;
+
+        acp.transport
+            .respond_permission(request_id, option_id)
+            .await
+            .map_err(|e| AtlasError::Io(std::io::Error::other(e)))?;
+
+        Ok(())
     }
 
     pub fn list(&self) -> Vec<&AgentSession> {
@@ -70,6 +221,12 @@ impl LifecycleManager {
             .get_mut(id)
             .ok_or_else(|| AtlasError::NotFound(format!("agent session {id}")))?;
 
+        // Kill ACP transport if exists
+        if let Some(acp) = self.acp_sessions.remove(id) {
+            acp.transport.kill().await;
+        }
+
+        // Kill PTY session if exists
         if let Some(ref terminal_id) = session.terminal_session_id {
             pty_manager.kill_session(terminal_id).await?;
         }
@@ -80,12 +237,19 @@ impl LifecycleManager {
         Ok(())
     }
 
+    /// Send prompt via PTY (legacy path).
     pub async fn send_prompt(
         &self,
         id: &str,
         prompt: &str,
         pty_manager: &PtyManager,
     ) -> Result<()> {
+        // If it's an ACP session, use ACP path
+        if self.is_acp_session(id) {
+            return self.send_prompt_acp(id, prompt).await;
+        }
+
+        // Otherwise, PTY path
         let session = self
             .sessions
             .get(id)

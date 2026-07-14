@@ -165,6 +165,7 @@ name = "atlas-daemon"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "atlas-agent",
  "atlas-agent-kiro",
  "atlas-ai",

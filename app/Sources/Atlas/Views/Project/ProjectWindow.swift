@@ -118,22 +118,10 @@ struct ProjectWindow: View {
     @ViewBuilder
     private var detailContent: some View {
         switch appState.selectedTab {
-        case .kanban:
-            KanbanView()
+        case .sessions:
+            SessionBoardView()
         case .techLead:
             TechLeadChatView()
-        case .agents:
-            if appState.agentSessions.isEmpty {
-                EmptyStateView(
-                    icon: "cpu",
-                    title: "No Active Agents",
-                    description: "Spawn an AI agent to start coding autonomously.",
-                    actionLabel: "New Agent",
-                    action: { showSpawnAgent = true }
-                )
-            } else {
-                AgentListView(showSpawnAgent: $showSpawnAgent)
-            }
         case .servers:
             if appState.servers.isEmpty {
                 EmptyStateView(
@@ -157,9 +145,8 @@ struct ProjectWindow: View {
 
     private func badgeCount(for tab: SidebarTab) -> Int {
         switch tab {
-        case .agents: appState.agentSessions.count
+        case .sessions: appState.agentSessions.count
         case .servers: appState.servers.count
-        case .kanban: appState.tasks.filter { $0.status == .inProgress }.count
         default: 0
         }
     }

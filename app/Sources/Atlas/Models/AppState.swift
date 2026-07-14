@@ -7,7 +7,7 @@ final class AppState {
 
     var currentProject: ProjectInfo?
     var recentProjects: [ProjectInfo] = []
-    var selectedTab: SidebarTab = .kanban
+    var selectedTab: SidebarTab = .sessions
     var needsProjectSetup: Bool = false
     var projectDetection: ProjectDetectionResult?
 
@@ -48,7 +48,7 @@ final class AppState {
         let project = ProjectInfo(name: name, path: path, lastOpened: .now)
         currentProject = project
         addToRecentProjects(project)
-        selectedTab = .kanban
+        selectedTab = .sessions
 
         // Check if atlas.yaml exists — show setup wizard if not
         let yamlPath = (path as NSString).appendingPathComponent("atlas.yaml")
@@ -448,6 +448,7 @@ final class AppState {
                         id: id,
                         adapter: adapter,
                         terminalSessionId: dict["terminal_session_id"] as? String,
+                        protocol: dict["protocol"] as? String,
                         activityState: state,
                         startedAt: dict["started_at"] as? String
                     )
@@ -510,17 +511,15 @@ final class AppState {
 // MARK: - Supporting Types
 
 enum SidebarTab: String, CaseIterable, Hashable {
-    case kanban = "Kanban"
+    case sessions = "Sessions"
     case techLead = "Tech Lead"
-    case agents = "Agents"
     case servers = "Servers"
     case deploy = "Deploy"
 
     var icon: String {
         switch self {
-        case .kanban: "rectangle.3.group"
+        case .sessions: "square.grid.3x3.topleft.filled"
         case .techLead: "brain.head.profile"
-        case .agents: "cpu"
         case .servers: "server.rack"
         case .deploy: "paperplane.fill"
         }
@@ -613,6 +612,7 @@ struct AgentSessionInfo: Identifiable, Hashable {
     let id: String
     let adapter: String
     let terminalSessionId: String?
+    let `protocol`: String?
     let activityState: String
     let startedAt: String?
 }

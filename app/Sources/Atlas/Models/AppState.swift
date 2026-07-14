@@ -197,7 +197,8 @@ final class AppState {
                     techLeadSessionId = sid
 
                     if protocol_ == "acp" {
-                        subscribeToAgentEvents(sessionId: sid)
+                        // Subscribe SYNCHRONOUSLY before any events can be missed
+                        await subscribeToAgentEvents(sessionId: sid)
                     } else if let tid = dict["terminal_session_id"] as? String {
                         techLeadTerminalId = tid
                         subscribeToTechLeadOutput()
@@ -209,6 +210,15 @@ final class AppState {
                         role: .system,
                         content: "⚡ Tech Lead session started."
                     ))
+
+                    // For new sessions: send the prompt AFTER subscribing
+                    // This ensures we don't miss any events
+                    if let sid = sessionId, protocol_ == "acp" {
+                        let _ = try? await daemon.send(method: "agent.prompt", params: [
+                            "session_id": sid,
+                            "prompt": message
+                        ])
+                    }
                 }
             }
         } catch {
@@ -221,20 +231,14 @@ final class AppState {
     }
 
     /// Subscribe to structured ACP agent events for the Tech Lead session
-    func subscribeToAgentEvents(sessionId: String) {
-        Task {
-            let _ = try? await daemon.send(method: "agent.subscribe", params: [
-                "session_id": sessionId
-            ])
-        }
-
+    func subscribeToAgentEvents(sessionId: String) async {
+        // Register notification handler FIRST
         daemon.onNotification("agent.event", id: "techlead-acp") { [weak self] payload in
             guard let self else { return }
 
-            // Parse the event from params dict
             guard let eventData = try? JSONSerialization.data(withJSONObject: payload.params) else {
                 #if DEBUG
-                print("[Atlas] agent.event: failed to serialize params")
+                print("[Atlas] agent.event: can't serialize params")
                 #endif
                 return
             }
@@ -248,11 +252,16 @@ final class AppState {
                 #if DEBUG
                 print("[Atlas] agent.event decode error: \(error)")
                 if let str = String(data: eventData, encoding: .utf8) {
-                    print("[Atlas] raw JSON: \(str.prefix(300))")
+                    print("[Atlas] raw: \(str.prefix(200))")
                 }
                 #endif
             }
         }
+
+        // Subscribe RPC — await to ensure daemon starts broadcasting before we return
+        let _ = try? await daemon.send(method: "agent.subscribe", params: [
+            "session_id": sessionId
+        ])
     }
 
     @MainActor

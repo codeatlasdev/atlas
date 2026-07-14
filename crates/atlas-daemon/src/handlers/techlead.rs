@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use atlas_agent::techlead::tech_lead_launch_config;
 use atlas_agent_kiro::KiroAdapter;
+use atlas_agent::{LaunchConfig, PermissionMode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -19,6 +19,14 @@ struct ChatParams {
 /// The Tech Lead "chat" spawns a Kiro agent session via ACP.
 /// If a Tech Lead session already exists, it sends the prompt to that session.
 /// Returns the session_id so the app can subscribe to agent.event notifications.
+///
+/// IMPORTANT: The initial prompt is NOT sent during spawn.
+/// The app must:
+/// 1. Receive the session_id from this response
+/// 2. Call agent.subscribe to start receiving events
+/// 3. Call agent.prompt to send the first message
+///
+/// This ensures no events are missed between spawn and subscribe.
 pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
     let p: ChatParams = serde_json::from_value(params)
         .map_err(|e| atlas_core::AtlasError::InvalidInput(e.to_string()))?;
@@ -57,9 +65,14 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             "action": "message_sent",
         }))
     } else {
-        // Spawn new Tech Lead session via ACP
+        // Spawn new Tech Lead session via ACP — WITHOUT initial prompt
         let adapter = KiroAdapter::new();
-        let config = tech_lead_launch_config(p.project_path.clone().into());
+        let config = LaunchConfig {
+            prompt: String::new(), // Empty — don't send prompt during spawn
+            cwd: p.project_path.clone().into(),
+            permission: PermissionMode::Autonomous,
+            env: Default::default(),
+        };
 
         let client_handler = Arc::new(DaemonClientHandler::new(
             p.project_path.into(),
@@ -77,10 +90,14 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             .on_session_started(&session_id, "kiro-techlead", &p.message)
             .await;
 
+        // Return session_id + the user's message so Swift can:
+        // 1. subscribe to events
+        // 2. then send the prompt via agent.prompt
         Ok(json!({
             "session_id": session_id,
             "protocol": "acp",
             "action": "spawned",
+            "pending_message": p.message,
         }))
     }
 }

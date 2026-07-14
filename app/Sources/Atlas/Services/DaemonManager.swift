@@ -52,9 +52,26 @@ final class DaemonManager {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: path)
-        // Pass through PATH so daemon can find kiro-cli etc
+        // Build proper PATH: merge system + user paths so daemon finds kiro-cli etc
         var env = ProcessInfo.processInfo.environment
         env["RUST_LOG"] = env["RUST_LOG"] ?? "atlas=info"
+        // Xcode strips PATH to /usr/bin:/bin:/usr/sbin:/sbin
+        // Restore common dev tool paths
+        let userHome = NSHomeDirectory()
+        let extraPaths = [
+            "\(userHome)/.local/bin",
+            "\(userHome)/.cargo/bin",
+            "\(userHome)/.bun/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "\(userHome)/.nix-profile/bin",
+            "\(userHome)/go/bin",
+        ]
+        let currentPath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let fullPath = (extraPaths + currentPath.split(separator: ":").map(String.init))
+            .filter { FileManager.default.fileExists(atPath: $0) }
+            .joined(separator: ":")
+        env["PATH"] = fullPath
         proc.environment = env
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice

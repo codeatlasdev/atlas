@@ -84,6 +84,11 @@ impl LifecycleManager {
         let session_id = uuid::Uuid::new_v4().to_string();
 
         let mut args = vec!["acp".to_string()];
+        // Pass --agent flag if specified
+        if let Some(ref agent_name) = config.agent_name {
+            args.push("--agent".to_string());
+            args.push(agent_name.clone());
+        }
         // Pass permission flags to the ACP process
         let perm_flags = adapter.permission_flags(&config.permission);
         args.extend(perm_flags);

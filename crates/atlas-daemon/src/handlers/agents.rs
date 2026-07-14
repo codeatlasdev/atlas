@@ -72,6 +72,7 @@ pub async fn spawn(state: &Arc<AppState>, params: Value) -> Result<Value> {
         cwd: p.cwd.clone().into(),
         permission: parse_permission(&p.permission),
         env: p.env,
+        agent_name: None,
     };
 
     let adapter_name = p.adapter.clone();

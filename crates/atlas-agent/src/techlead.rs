@@ -60,5 +60,6 @@ pub fn tech_lead_launch_config(project_path: PathBuf) -> LaunchConfig {
         cwd: project_path,
         permission: PermissionMode::Autonomous,
         env: HashMap::new(),
+        agent_name: Some("atlas-techlead".to_string()),
     }
 }

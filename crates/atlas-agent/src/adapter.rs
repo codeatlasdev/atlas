@@ -36,6 +36,9 @@ pub struct LaunchConfig {
     pub permission: PermissionMode,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Kiro agent config name (e.g., "atlas-techlead"). Passed as --agent flag.
+    #[serde(default)]
+    pub agent_name: Option<String>,
 }
 
 #[async_trait]

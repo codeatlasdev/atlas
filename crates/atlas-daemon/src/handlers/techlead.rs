@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use atlas_agent::{LaunchConfig, PermissionMode};
-use atlas_agent::techlead::tech_lead_steering;
 use atlas_agent_kiro::KiroAdapter;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -55,13 +54,14 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             "action": "message_sent",
         }))
     } else {
-        // New session — spawn with Tech Lead identity
+        // New session — spawn with Tech Lead agent config
         let adapter = KiroAdapter::new();
         let config = LaunchConfig {
-            prompt: String::new(), // Prompt sent separately after subscribe
+            prompt: String::new(),
             cwd: p.project_path.clone().into(),
             permission: PermissionMode::Autonomous,
             env: Default::default(),
+            agent_name: Some("atlas-techlead".to_string()),
         };
 
         let client_handler = Arc::new(DaemonClientHandler::new(
@@ -80,21 +80,14 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             .on_session_started(&session_id, "kiro", &p.message)
             .await;
 
-        // Build the initial prompt with Tech Lead identity + user's message
-        let steering = tech_lead_steering();
-        let initial_prompt = format!(
-            "{steering}\n\n---\n\n\
-             Project: {project}\n\n\
-             User's request: {message}",
-            project = p.project_path,
-            message = p.message
-        );
-
+        // The initial prompt is just the user's message.
+        // The Tech Lead personality/steering comes from the Kiro agent config
+        // (~/.kiro/agents/atlas-techlead.json → prompts/atlas-techlead.md)
         Ok(json!({
             "session_id": session_id,
             "protocol": "acp",
             "action": "spawned",
-            "initial_prompt": initial_prompt,
+            "initial_prompt": p.message,
         }))
     }
 }

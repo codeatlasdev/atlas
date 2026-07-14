@@ -12,6 +12,7 @@ members = [
     "crates/atlas-agent",
     "crates/atlas-plugin",
     "crates/atlas-agent-kiro",
+    "crates/atlas-memory",
 ]
 
 [workspace.package]
@@ -39,3 +40,4 @@ portable-pty = "0.9"
 toml = "0.8"
 serde_yaml = "0.9"
 which = "7"
+redb = "2.6"

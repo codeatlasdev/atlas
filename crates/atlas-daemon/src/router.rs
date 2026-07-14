@@ -76,6 +76,11 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "project.services.start" => handlers::project::services_start(state, req.params).await,
         "project.services.stop" => handlers::project::services_stop(state, req.params).await,
         "techlead.chat" => handlers::techlead::chat(state, req.params).await,
+        "memory.store" => handlers::memory::store(state, req.params).await,
+        "memory.search" => handlers::memory::search(state, req.params).await,
+        "memory.events" => handlers::memory::events(state, req.params).await,
+        "memory.graph.entities" => handlers::memory::graph_entities(state, req.params).await,
+        "memory.graph.relate" => handlers::memory::graph_relate(state, req.params).await,
         _ => Err(atlas_core::AtlasError::InvalidInput(format!(
             "unknown method: {}",
             req.method

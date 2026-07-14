@@ -18,6 +18,7 @@ atlas-terminal = { path = "../atlas-terminal" }
 atlas-agent = { path = "../atlas-agent" }
 atlas-agent-kiro = { path = "../atlas-agent-kiro" }
 atlas-plugin = { path = "../atlas-plugin" }
+atlas-memory = { path = "../atlas-memory" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

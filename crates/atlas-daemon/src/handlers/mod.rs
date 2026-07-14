@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod ai;
+pub mod memory;
 pub mod project;
 pub mod servers;
 pub mod services;

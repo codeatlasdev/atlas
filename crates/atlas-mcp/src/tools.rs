@@ -214,7 +214,26 @@ pub fn map_tool_to_daemon(tool_name: &str, arguments: Value) -> Option<(&'static
         "tasks_list" => Some(("tasks.list", arguments)),
         "tasks_create" => Some(("tasks.create", arguments)),
         "tasks_update" => Some(("tasks.update_status", arguments)),
-        "agent_spawn" => Some(("agent.spawn", arguments)),
+        "agent_spawn" => {
+            // MCP tool params: {project_path, task, provider}
+            // Daemon expects: {adapter, prompt, cwd, permission}
+            let cwd = arguments.get("project_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("/tmp");
+            let prompt = arguments.get("task")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let adapter = arguments.get("provider")
+                .and_then(|v| v.as_str())
+                .unwrap_or("kiro");
+
+            Some(("agent.spawn", json!({
+                "adapter": adapter,
+                "prompt": prompt,
+                "cwd": cwd,
+                "permission": "autonomous"
+            })))
+        }
         "agent_list" => Some(("agent.list", arguments)),
         "agent_stop" => Some(("agent.stop", arguments)),
         "memory_search" => Some(("memory.search", arguments)),

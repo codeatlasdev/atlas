@@ -21,6 +21,7 @@ final class AppState {
     var isTechLeadTyping: Bool = false
     var techLeadSessionId: String?
     var techLeadTerminalId: String?
+    private var isSubscribedToAgentEvents = false
 
     // MARK: - Existing State
 
@@ -196,10 +197,9 @@ final class AppState {
                 if let sid = sessionId {
                     techLeadSessionId = sid
 
-                    if protocol_ == "acp" {
-                        // Subscribe SYNCHRONOUSLY before any events can be missed
+                    if protocol_ == "acp" && !isSubscribedToAgentEvents {
                         await subscribeToAgentEvents(sessionId: sid)
-                    } else if let tid = dict["terminal_session_id"] as? String {
+                    } else if protocol_ != "acp", let tid = dict["terminal_session_id"] as? String {
                         techLeadTerminalId = tid
                         subscribeToTechLeadOutput()
                     }
@@ -233,6 +233,8 @@ final class AppState {
     /// Subscribe to structured ACP agent events for the Tech Lead session
     func subscribeToAgentEvents(sessionId: String) async {
         // Register notification handler FIRST
+        isSubscribedToAgentEvents = true
+
         daemon.onNotification("agent.event", id: "techlead-acp") { [weak self] payload in
             guard let self else { return }
 

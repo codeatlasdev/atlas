@@ -11,6 +11,8 @@ pub struct AgentSession {
     pub adapter_name: String,
     /// Kiro agent config name (e.g., "atlas-techlead", "default")
     pub agent_name: Option<String>,
+    /// Human-readable title for the session board
+    pub title: Option<String>,
     pub terminal_session_id: Option<String>,
     pub activity_state: ActivityState,
     pub started_at: DateTime<Utc>,
@@ -23,6 +25,7 @@ impl AgentSession {
             id,
             adapter_name,
             agent_name: None,
+            title: None,
             terminal_session_id: None,
             activity_state: ActivityState::Idle,
             started_at: Utc::now(),

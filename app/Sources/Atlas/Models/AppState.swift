@@ -451,6 +451,7 @@ final class AppState {
                     return AgentSessionInfo(
                         id: id,
                         adapter: adapter,
+                        title: dict["title"] as? String,
                         terminalSessionId: dict["terminal_session_id"] as? String,
                         protocol: dict["protocol"] as? String,
                         activityState: state,
@@ -615,6 +616,7 @@ import SwiftUI
 struct AgentSessionInfo: Identifiable, Hashable {
     let id: String
     let adapter: String
+    let title: String?
     let terminalSessionId: String?
     let `protocol`: String?
     let activityState: String

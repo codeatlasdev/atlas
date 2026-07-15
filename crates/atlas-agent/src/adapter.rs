@@ -39,6 +39,9 @@ pub struct LaunchConfig {
     /// Kiro agent config name (e.g., "atlas-techlead"). Passed as --agent flag.
     #[serde(default)]
     pub agent_name: Option<String>,
+    /// Human-readable title for the session board.
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 #[async_trait]

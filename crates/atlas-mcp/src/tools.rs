@@ -87,6 +87,10 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                         "type": "string",
                         "description": "Task description for the agent"
                     },
+                    "title": {
+                        "type": "string",
+                        "description": "Short title for the session board (e.g. 'Monetization Research')"
+                    },
                     "provider": {
                         "type": "string",
                         "description": "AI provider to use",
@@ -119,6 +123,20 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                     "agent_id": {
                         "type": "string",
                         "description": "Agent ID to stop"
+                    }
+                },
+                "required": ["agent_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "agent_output".to_string(),
+            description: "Get the latest output/response from a worker agent. Use to check what a worker has produced.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "Agent session ID to query"
                     }
                 },
                 "required": ["agent_id"]
@@ -215,8 +233,8 @@ pub fn map_tool_to_daemon(tool_name: &str, arguments: Value) -> Option<(&'static
         "tasks_create" => Some(("tasks.create", arguments)),
         "tasks_update" => Some(("tasks.update_status", arguments)),
         "agent_spawn" => {
-            // MCP tool params: {project_path, task, provider}
-            // Daemon expects: {adapter, prompt, cwd, permission}
+            // MCP tool params: {project_path, task, title, provider}
+            // Daemon expects: {adapter, prompt, cwd, permission, title}
             let cwd = arguments.get("project_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("/tmp");
@@ -226,16 +244,29 @@ pub fn map_tool_to_daemon(tool_name: &str, arguments: Value) -> Option<(&'static
             let adapter = arguments.get("provider")
                 .and_then(|v| v.as_str())
                 .unwrap_or("kiro");
+            let title = arguments.get("title")
+                .and_then(|v| v.as_str());
 
-            Some(("agent.spawn", json!({
+            let mut params = json!({
                 "adapter": adapter,
                 "prompt": prompt,
                 "cwd": cwd,
                 "permission": "autonomous"
-            })))
+            });
+            if let Some(t) = title {
+                params["title"] = json!(t);
+            }
+
+            Some(("agent.spawn", params))
         }
         "agent_list" => Some(("agent.list", arguments)),
         "agent_stop" => Some(("agent.stop", arguments)),
+        "agent_output" => {
+            let agent_id = arguments.get("agent_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            Some(("agent.output", json!({"session_id": agent_id})))
+        }
         "memory_search" => Some(("memory.search", arguments)),
         "memory_store" => Some(("memory.store", arguments)),
         "servers_status" => {

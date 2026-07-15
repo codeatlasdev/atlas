@@ -218,7 +218,7 @@ struct SessionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.spacing.sm) {
-            // Top row: status + agent name
+            // Top row: status + title/agent name
             HStack(spacing: DS.spacing.sm) {
                 // Status indicator
                 if session.activityState == "Active" {
@@ -237,21 +237,23 @@ struct SessionCard: View {
                         .frame(width: 7, height: 7)
                 }
 
-                Text(session.adapter)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.text.secondary)
-                    .textCase(.lowercase)
+                Text(session.title ?? session.adapter)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DS.text.primary)
+                    .lineLimit(1)
 
                 Spacer()
 
-                // Protocol badge
-                Text(session.protocol ?? "pty")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(DS.text.tertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(DS.bg.hover)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                // Adapter badge (small)
+                if session.title != nil {
+                    Text(session.adapter)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(DS.text.tertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(DS.bg.hover)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
             }
 
             // Session ID (mono)
@@ -446,10 +448,12 @@ struct SpawnWorkerSheet: View {
     }
 }
 
-// MARK: - Session Inspector Sheet (placeholder)
+// MARK: - Session Inspector Sheet
 
 struct SessionInspectorSheet: View {
+    @Environment(AppState.self) private var appState
     let session: AgentSessionInfo
+    @State private var activitySession: AgentActivitySession?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -459,13 +463,15 @@ struct SessionInspectorSheet: View {
                     .fill(session.activityState == "Active" ? DS.status.success : DS.text.tertiary)
                     .frame(width: 8, height: 8)
 
-                Text(session.adapter)
+                Text(session.title ?? session.adapter)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DS.text.primary)
 
-                Text("session/\(session.id.prefix(8))")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(DS.text.tertiary)
+                if session.title != nil {
+                    Text(session.adapter)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(DS.text.tertiary)
+                }
 
                 Spacer()
 
@@ -477,13 +483,70 @@ struct SessionInspectorSheet: View {
 
             SoftDivider()
 
-            // TODO: Tabs (Terminal | PR | Reviews | Browser)
-            Text("Terminal / Inspector coming soon")
-                .font(.atlasBody)
-                .foregroundStyle(DS.text.tertiary)
+            // Activity Feed — subscribe and show real events
+            if let activity = activitySession {
+                AgentActivityView(
+                    session: activity,
+                    onSendMessage: { msg in
+                        Task {
+                            let _ = try? await appState.daemon.send(
+                                method: "agent.prompt",
+                                params: ["session_id": session.id, "prompt": msg]
+                            )
+                        }
+                    },
+                    onPermissionRespond: { reqId, optionId in
+                        Task {
+                            let _ = try? await appState.daemon.send(
+                                method: "agent.permission",
+                                params: [
+                                    "session_id": session.id,
+                                    "request_id": "\(reqId)",
+                                    "option_id": optionId
+                                ]
+                            )
+                        }
+                    }
+                )
+            } else {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Connecting to session...")
+                        .font(.atlasCaption)
+                        .foregroundStyle(DS.text.tertiary)
+                    Spacer()
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(DS.bg.base)
+            }
         }
         .background(DS.bg.elevated)
+        .task {
+            // Create activity session and subscribe
+            let activity = await AgentActivitySession(
+                sessionId: session.id,
+                adapterName: session.title ?? session.adapter
+            )
+            activitySession = activity
+
+            // Subscribe to events
+            let _ = try? await appState.daemon.send(
+                method: "agent.subscribe",
+                params: ["session_id": session.id]
+            )
+
+            // Listen for events
+            appState.daemon.onNotification("agent.event", id: "inspector-\(session.id)") { payload in
+                guard let eventData = try? JSONSerialization.data(withJSONObject: payload.params),
+                      let event = try? JSONDecoder().decode(AgentEvent.self, from: eventData),
+                      event.sessionId == session.id else { return }
+
+                DispatchQueue.main.async {
+                    activity.apply(event: event)
+                }
+            }
+        }
     }
 }

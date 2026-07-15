@@ -22,6 +22,9 @@ struct SpawnParams {
     /// Force PTY mode even if adapter supports ACP.
     #[serde(default)]
     force_pty: bool,
+    /// Human-readable title for the session board.
+    #[serde(default)]
+    title: Option<String>,
 }
 
 fn default_permission() -> String {
@@ -73,6 +76,7 @@ pub async fn spawn(state: &Arc<AppState>, params: Value) -> Result<Value> {
         permission: parse_permission(&p.permission),
         env: p.env,
         agent_name: None,
+        title: p.title,
     };
 
     let adapter_name = p.adapter.clone();
@@ -124,6 +128,8 @@ pub async fn list(state: &Arc<AppState>, _params: Value) -> Result<Value> {
             json!({
                 "id": s.id,
                 "adapter": s.adapter_name,
+                "title": s.title,
+                "agent_name": s.agent_name,
                 "terminal_session_id": s.terminal_session_id,
                 "protocol": if is_acp { "acp" } else { "pty" },
                 "activity_state": format!("{:?}", s.activity_state),
@@ -189,6 +195,29 @@ pub async fn prompt(state: &Arc<AppState>, params: Value) -> Result<Value> {
     state.hooks.on_prompt_sent(&p.session_id, &p.prompt).await;
 
     Ok(json!({ "ok": true }))
+}
+
+/// Get the latest output from a worker agent session.
+pub async fn output(state: &Arc<AppState>, params: Value) -> Result<Value> {
+    let p: SessionIdParams = serde_json::from_value(params)
+        .map_err(|e| atlas_core::AtlasError::InvalidInput(e.to_string()))?;
+
+    let lm = state.lifecycle_manager.lock().await;
+    let session = lm.get(&p.session_id).ok_or_else(|| {
+        atlas_core::AtlasError::NotFound(format!("session {}", p.session_id))
+    })?;
+
+    let info = json!({
+        "id": session.id,
+        "title": session.title,
+        "activity_state": format!("{:?}", session.activity_state),
+    });
+    drop(lm);
+
+    Ok(json!({
+        "session": info,
+        "output": "Session is running via ACP. Use agent.subscribe for real-time events."
+    }))
 }
 
 /// Cancel the current ACP operation.

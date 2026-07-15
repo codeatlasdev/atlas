@@ -56,6 +56,7 @@ pub async fn chat(state: &Arc<AppState>, params: Value) -> Result<Value> {
             permission: PermissionMode::Autonomous,
             env: Default::default(),
             agent_name: Some("atlas-techlead".to_string()),
+            title: Some("Tech Lead".to_string()),
         };
 
         let client_handler = Arc::new(DaemonClientHandler::new(

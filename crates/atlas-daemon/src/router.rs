@@ -70,6 +70,7 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "agent.status" => handlers::agents::status(state, req.params).await,
         "agent.stop" => handlers::agents::stop(state, req.params).await,
         "agent.prompt" => handlers::agents::prompt(state, req.params).await,
+        "agent.output" => handlers::agents::output(state, req.params).await,
         "agent.cancel" => handlers::agents::cancel(state, req.params).await,
         "agent.permission" => handlers::agents::permission_respond(state, req.params).await,
         "agent.subscribe" => {

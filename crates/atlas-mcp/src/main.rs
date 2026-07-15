@@ -38,38 +38,54 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        let response = handle_request(trimmed, &bridge).await;
-        let mut out = serde_json::to_string(&response)?;
-        out.push('\n');
-        writer.write_all(out.as_bytes()).await?;
-        writer.flush().await?;
+        let req: JsonRpcRequest = match serde_json::from_str(trimmed) {
+            Ok(r) => r,
+            Err(e) => {
+                let resp = JsonRpcResponse::error(None, -32700, format!("parse error: {e}"));
+                write_response(&mut writer, &resp).await?;
+                continue;
+            }
+        };
+
+        let id = req.id.clone();
+        let is_notification = id.is_none();
+
+        let response = match req.method.as_str() {
+            "initialize" => Some(handle_initialize(id)),
+            "initialized" | "notifications/initialized" => None,
+            "tools/list" => Some(handle_tools_list(id)),
+            "tools/call" => Some(handle_tools_call(id, req.params, &bridge).await),
+            "ping" => Some(JsonRpcResponse::success(id, json!({}))),
+            _ => {
+                if is_notification {
+                    None
+                } else {
+                    Some(JsonRpcResponse::error(
+                        id,
+                        -32601,
+                        format!("method not found: {}", req.method),
+                    ))
+                }
+            }
+        };
+
+        if let Some(resp) = response {
+            write_response(&mut writer, &resp).await?;
+        }
     }
 
     Ok(())
 }
 
-async fn handle_request(raw: &str, bridge: &DaemonBridge) -> JsonRpcResponse {
-    let req: JsonRpcRequest = match serde_json::from_str(raw) {
-        Ok(r) => r,
-        Err(e) => {
-            return JsonRpcResponse::error(None, -32700, format!("parse error: {e}"));
-        }
-    };
-
-    let id = req.id.clone();
-
-    match req.method.as_str() {
-        "initialize" => handle_initialize(id),
-        "initialized" | "notifications/initialized" => {
-            // Notifications don't get responses per JSON-RPC spec
-            // But some clients expect acknowledgment, return empty
-            JsonRpcResponse::success(id, json!({}))
-        }
-        "tools/list" => handle_tools_list(id),
-        "tools/call" => handle_tools_call(id, req.params, bridge).await,
-        "ping" => JsonRpcResponse::success(id, json!({})),
-        _ => JsonRpcResponse::error(id, -32601, format!("method not found: {}", req.method)),
-    }
+async fn write_response(
+    writer: &mut BufWriter<tokio::io::Stdout>,
+    resp: &JsonRpcResponse,
+) -> Result<()> {
+    let mut out = serde_json::to_string(resp)?;
+    out.push('\n');
+    writer.write_all(out.as_bytes()).await?;
+    writer.flush().await?;
+    Ok(())
 }
 
 fn handle_initialize(id: Option<Value>) -> JsonRpcResponse {
@@ -107,10 +123,7 @@ async fn handle_tools_call(
         }
     };
 
-    let arguments = params
-        .get("arguments")
-        .cloned()
-        .unwrap_or(json!({}));
+    let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 
     let Some((daemon_method, daemon_params)) = tools::map_tool_to_daemon(&tool_name, arguments)
     else {

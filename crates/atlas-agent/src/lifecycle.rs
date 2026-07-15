@@ -259,6 +259,30 @@ impl LifecycleManager {
         self.sessions.get(id)
     }
 
+    pub fn get_mut(&mut self, id: &str) -> Option<&mut AgentSession> {
+        self.sessions.get_mut(id)
+    }
+
+    /// Iterate over ACP sessions (for reaper).
+    pub fn acp_sessions_iter(&self) -> impl Iterator<Item = (&String, &AcpSessionState)> {
+        self.acp_sessions.iter()
+    }
+
+    /// Remove a dead ACP session (transport cleanup).
+    pub fn remove_acp_session(&mut self, id: &str) {
+        self.acp_sessions.remove(id);
+    }
+
+    /// Garbage-collect sessions that ended before the cutoff time.
+    pub fn gc_ended_sessions(&mut self, cutoff: chrono::DateTime<chrono::Utc>) {
+        self.sessions.retain(|_, s| {
+            match s.ended_at {
+                Some(ended) => ended > cutoff, // keep if ended recently
+                None => true, // keep active sessions
+            }
+        });
+    }
+
     pub async fn stop(&mut self, id: &str, pty_manager: &PtyManager) -> Result<()> {
         let session = self
             .sessions

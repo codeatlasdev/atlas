@@ -366,6 +366,13 @@ impl AcpTransport {
 
             info!("ACP reader task exited");
 
+            // Emit session terminated event so subscribers know
+            let _ = reader_event_tx.send(AgentEvent {
+                session_id: atlas_sid.clone(),
+                event: AgentEventKind::SessionStatus(SessionStatus::Terminated),
+                timestamp_ms: now_ms(),
+            });
+
             // Drain pending requests so callers don't wait until timeout
             let mut p = reader_pending.lock().await;
             for (_, tx) in p.drain() {

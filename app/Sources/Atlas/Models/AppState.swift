@@ -414,6 +414,7 @@ final class AppState {
             await refreshAgentSessions()
         } catch {
             isConnected = false
+            isSubscribedToAgentEvents = false
             try? await Task.sleep(for: .seconds(3))
             await connect()
         }
@@ -422,6 +423,8 @@ final class AppState {
     func disconnect() {
         daemon.disconnect()
         isConnected = false
+        isSubscribedToAgentEvents = false
+        techLeadSessionId = nil
     }
 
     // MARK: - Servers

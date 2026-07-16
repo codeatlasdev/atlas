@@ -106,6 +106,9 @@ final class DaemonClient: @unchecked Sendable {
         }
 
         guard writeResult == frame.count else {
+            // Socket is dead — trigger disconnect + reconnect
+            isConnected = false
+            onDisconnect?()
             throw DaemonError.sendFailed("Write failed: \(String(cString: strerror(errno)))")
         }
 

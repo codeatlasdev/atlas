@@ -511,10 +511,7 @@ struct MessageBlock: View {
     let text: String
 
     var body: some View {
-        Text(text)
-            .font(.atlasBody)
-            .foregroundStyle(DS.text.primary)
-            .textSelection(.enabled)
+        MarkdownText(text: text)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -414,6 +414,7 @@ final class AppState {
             guard let self else { return }
             self.isConnected = false
             self.isSubscribedToAgentEvents = false
+            self.activitySessions.removeAll() // Force re-subscribe on reconnect
             // Auto-reconnect after brief delay
             Task {
                 try? await Task.sleep(for: .seconds(2))
@@ -490,6 +491,7 @@ final class AppState {
 
     // MARK: - Agent Sessions
 
+    @MainActor
     func refreshAgentSessions() async {
         do {
             let response = try await daemon.send(method: "agent.list")
@@ -508,6 +510,17 @@ final class AppState {
                         startedAt: dict["started_at"] as? String
                     )
                 }
+
+                // Sync cached activity sessions with real state
+                for session in agentSessions {
+                    if session.activityState.contains("Exited") || session.activityState == "Idle" {
+                        activitySessions[session.id]?.isWorking = false
+                    }
+                }
+
+                // Remove activity sessions for sessions that no longer exist
+                let activeIds = Set(agentSessions.map(\.id))
+                activitySessions = activitySessions.filter { activeIds.contains($0.key) }
             }
         } catch {}
     }

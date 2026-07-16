@@ -22,6 +22,7 @@ pub struct AppState {
     pub memory_engine: Arc<Mutex<MemoryEngine>>,
     pub server_manager: Arc<ServerManager>,
     pub hooks: AgentHooks,
+    pub blackboard: Arc<Mutex<crate::handlers::blackboard::Blackboard>>,
 }
 
 impl AppState {
@@ -64,6 +65,7 @@ impl AppState {
             memory_engine,
             server_manager: Arc::new(ServerManager::new()),
             hooks,
+            blackboard: Arc::new(Mutex::new(crate::handlers::blackboard::Blackboard::new())),
         })
     }
 }

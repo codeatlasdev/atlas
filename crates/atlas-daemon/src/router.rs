@@ -96,6 +96,8 @@ pub async fn dispatch(state: &Arc<AppState>, raw: &str) -> Response {
         "memory.events" => handlers::memory::events(state, req.params).await,
         "memory.graph.entities" => handlers::memory::graph_entities(state, req.params).await,
         "memory.graph.relate" => handlers::memory::graph_relate(state, req.params).await,
+        "blackboard.write" => handlers::blackboard::write_entry(state, req.params).await,
+        "blackboard.read" => handlers::blackboard::read_entries(state, req.params).await,
         _ => Err(atlas_core::AtlasError::InvalidInput(format!(
             "unknown method: {}",
             req.method

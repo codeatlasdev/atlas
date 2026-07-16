@@ -1,6 +1,7 @@
 pub mod acp_handler;
 pub mod agents;
 pub mod ai;
+pub mod blackboard;
 pub mod memory;
 pub mod project;
 pub mod servers;

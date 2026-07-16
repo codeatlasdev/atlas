@@ -189,6 +189,62 @@ pub fn all_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "blackboard_write".to_string(),
+            description: "Write a finding, decision, question, or progress update to the shared project blackboard. Other agents can read what you write.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "description": "Path to the project directory"
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "Entry type",
+                        "enum": ["finding", "question", "decision", "progress", "request", "answer"]
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to share with other agents"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tags for filtering (e.g. ['monetization', 'pricing'])"
+                    }
+                },
+                "required": ["project_path", "type", "content"]
+            }),
+        },
+        ToolDefinition {
+            name: "blackboard_read".to_string(),
+            description: "Read entries from the shared project blackboard. See what other agents have written — their findings, progress, questions, etc.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "description": "Path to the project directory"
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "Filter by entry type",
+                        "enum": ["finding", "question", "decision", "progress", "request", "answer"]
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by tags"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max entries to return (default 20)"
+                    }
+                },
+                "required": ["project_path"]
+            }),
+        },
+        ToolDefinition {
             name: "servers_status".to_string(),
             description: "Check status of managed servers".to_string(),
             input_schema: json!({
@@ -269,6 +325,26 @@ pub fn map_tool_to_daemon(tool_name: &str, arguments: Value) -> Option<(&'static
         }
         "memory_search" => Some(("memory.search", arguments)),
         "memory_store" => Some(("memory.store", arguments)),
+        "blackboard_write" => {
+            let project_path = arguments.get("project_path").and_then(|v| v.as_str()).unwrap_or("");
+            let entry_type = arguments.get("type").and_then(|v| v.as_str()).unwrap_or("finding");
+            let content = arguments.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let tags: Vec<String> = arguments.get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            Some(("blackboard.write", json!({
+                "project_path": project_path,
+                "author": "agent",
+                "type": entry_type,
+                "content": content,
+                "tags": tags
+            })))
+        }
+        "blackboard_read" => {
+            Some(("blackboard.read", arguments))
+        }
         "servers_status" => {
             if arguments.get("server_id").is_some() {
                 Some(("servers.status", arguments))

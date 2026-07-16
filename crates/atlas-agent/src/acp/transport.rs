@@ -440,7 +440,12 @@ impl AcpTransport {
         match tokio::time::timeout(std::time::Duration::from_secs(300), rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("response channel dropped".to_string()),
-            Err(_) => Err("request timed out (300s)".to_string()),
+            Err(_) => {
+                // Clean up timed-out entry from pending map
+                let mut p = self.pending.lock().await;
+                p.remove(&id);
+                Err("request timed out (300s)".to_string())
+            }
         }
     }
 
@@ -568,6 +573,11 @@ impl AcpTransport {
     pub async fn is_alive(&self) -> bool {
         let mut child = self.child.lock().await;
         matches!(child.try_wait(), Ok(None))
+    }
+
+    /// Get a clone of the child process handle (for external health checks).
+    pub fn child_handle(&self) -> Arc<Mutex<Child>> {
+        Arc::clone(&self.child)
     }
 
     /// Kill the agent process.

@@ -38,33 +38,42 @@ async fn main() -> Result<()> {
 
 /// Check all ACP sessions and mark dead ones as ended.
 async fn reap_dead_sessions(state: &std::sync::Arc<app::AppState>) {
-    let mut lm = state.lifecycle_manager.lock().await;
+    // Phase 1: Collect child process handles (brief lock)
+    let checks: Vec<(String, Arc<tokio::sync::Mutex<tokio::process::Child>>)> = {
+        let lm = state.lifecycle_manager.lock().await;
+        lm.acp_sessions_iter()
+            .map(|(id, s)| (id.clone(), s.transport.child_handle()))
+            .collect()
+    };
+    // Lock released — other operations can proceed during health checks
 
-    // Collect dead session IDs
+    // Phase 2: Check liveness WITHOUT holding lifecycle lock
     let mut dead_ids = Vec::new();
-    for (id, acp_state) in lm.acp_sessions_iter() {
-        if !acp_state.transport.is_alive().await {
-            dead_ids.push(id.clone());
+    for (id, child) in checks {
+        let mut c = child.lock().await;
+        // try_wait: Ok(None) = still running, Ok(Some) = exited, Err = error
+        if !matches!(c.try_wait(), Ok(None)) {
+            dead_ids.push(id);
         }
     }
 
-    // Mark dead sessions
-    for id in &dead_ids {
-        if let Some(session) = lm.get_mut(id) {
-            if session.is_active() {
-                tracing::info!(session_id = %id, "reaper: session process died, marking ended");
-                session.activity_state = atlas_agent::ActivityState::Exited(1);
-                session.mark_ended();
+    // Phase 3: Re-acquire lock and mutate only if there are dead sessions
+    if !dead_ids.is_empty() {
+        let mut lm = state.lifecycle_manager.lock().await;
+        for id in &dead_ids {
+            if let Some(session) = lm.get_mut(id) {
+                if session.is_active() {
+                    tracing::info!(session_id = %id, "reaper: process died, marking ended");
+                    session.activity_state = atlas_agent::ActivityState::Exited(1);
+                    session.mark_ended();
+                }
             }
+            lm.remove_acp_session(id);
         }
     }
 
-    // Remove dead ACP transports
-    for id in dead_ids {
-        lm.remove_acp_session(&id);
-    }
-
-    // GC: remove sessions ended more than 5 minutes ago
+    // Phase 4: GC old sessions (brief lock)
     let cutoff = chrono::Utc::now() - chrono::Duration::minutes(5);
+    let mut lm = state.lifecycle_manager.lock().await;
     lm.gc_ended_sessions(cutoff);
 }

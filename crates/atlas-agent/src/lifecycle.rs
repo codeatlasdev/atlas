@@ -275,12 +275,14 @@ impl LifecycleManager {
 
     /// Garbage-collect sessions that ended before the cutoff time.
     pub fn gc_ended_sessions(&mut self, cutoff: chrono::DateTime<chrono::Utc>) {
-        self.sessions.retain(|_, s| {
-            match s.ended_at {
-                Some(ended) => ended > cutoff, // keep if ended recently
-                None => true, // keep active sessions
-            }
-        });
+        let removed: Vec<String> = self.sessions.iter()
+            .filter(|(_, s)| s.ended_at.map_or(false, |e| e <= cutoff))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &removed {
+            self.sessions.remove(id);
+            self.acp_sessions.remove(id);
+        }
     }
 
     pub async fn stop(&mut self, id: &str, pty_manager: &PtyManager) -> Result<()> {

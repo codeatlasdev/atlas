@@ -9,6 +9,9 @@ final class DaemonClient: @unchecked Sendable {
     private var requestCounter: Int = 0
     private var readTask: Task<Void, Never>?
 
+    /// Called when connection drops unexpectedly (for auto-reconnect)
+    var onDisconnect: (() -> Void)?
+
     /// Notification handlers keyed by method name (supports multiple handlers per method)
     private var notificationHandlers: [String: [(id: String, handler: (NotificationPayload) -> Void)]] = [:]
     private let lock = NSLock()
@@ -157,6 +160,7 @@ final class DaemonClient: @unchecked Sendable {
                 if bytesRead <= 0 {
                     await MainActor.run {
                         self?.isConnected = false
+                        self?.onDisconnect?()
                     }
                     break
                 }

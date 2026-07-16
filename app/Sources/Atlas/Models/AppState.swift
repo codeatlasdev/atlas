@@ -31,6 +31,8 @@ final class AppState {
     var selectedServer: Server?
     var sessions: [Session] = []
     var agentSessions: [AgentSessionInfo] = []
+    /// Cached activity sessions — persist events across inspector open/close
+    var activitySessions: [String: AgentActivitySession] = [:]
     var isConnected: Bool = false
     var messages: [ChatMessage] = []
 
@@ -407,6 +409,18 @@ final class AppState {
             try? await Task.sleep(for: .milliseconds(100))
         }
 
+        // Setup auto-reconnect callback
+        daemon.onDisconnect = { [weak self] in
+            guard let self else { return }
+            self.isConnected = false
+            self.isSubscribedToAgentEvents = false
+            // Auto-reconnect after brief delay
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                await self.connect()
+            }
+        }
+
         do {
             try await daemon.connect()
             isConnected = true
@@ -425,6 +439,39 @@ final class AppState {
         isConnected = false
         isSubscribedToAgentEvents = false
         techLeadSessionId = nil
+        activitySessions.removeAll()
+    }
+
+    /// Ensure a session is subscribed to events (idempotent — only subscribes once)
+    @MainActor
+    func ensureSessionSubscribed(_ session: AgentSessionInfo) async {
+        // Already subscribed?
+        if activitySessions[session.id] != nil { return }
+
+        // Create activity session
+        let activity = AgentActivitySession(
+            sessionId: session.id,
+            adapterName: session.title ?? session.adapter
+        )
+        activitySessions[session.id] = activity
+
+        // Subscribe to daemon events
+        let _ = try? await daemon.send(
+            method: "agent.subscribe",
+            params: ["session_id": session.id]
+        )
+
+        // Register notification handler
+        daemon.onNotification("agent.event", id: "session-\(session.id)") { [weak self] payload in
+            guard let self else { return }
+            guard let eventData = try? JSONSerialization.data(withJSONObject: payload.params),
+                  let event = try? JSONDecoder().decode(AgentEvent.self, from: eventData),
+                  event.sessionId == session.id else { return }
+
+            DispatchQueue.main.async {
+                activity.apply(event: event)
+            }
+        }
     }
 
     // MARK: - Servers

@@ -453,7 +453,6 @@ struct SpawnWorkerSheet: View {
 struct SessionInspectorSheet: View {
     @Environment(AppState.self) private var appState
     let session: AgentSessionInfo
-    @State private var activitySession: AgentActivitySession?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -483,8 +482,8 @@ struct SessionInspectorSheet: View {
 
             SoftDivider()
 
-            // Activity Feed — subscribe and show real events
-            if let activity = activitySession {
+            // Activity Feed — uses cached session from AppState
+            if let activity = appState.activitySessions[session.id] {
                 AgentActivityView(
                     session: activity,
                     onSendMessage: { msg in
@@ -524,29 +523,7 @@ struct SessionInspectorSheet: View {
         }
         .background(DS.bg.elevated)
         .task {
-            // Create activity session and subscribe
-            let activity = await AgentActivitySession(
-                sessionId: session.id,
-                adapterName: session.title ?? session.adapter
-            )
-            activitySession = activity
-
-            // Subscribe to events
-            let _ = try? await appState.daemon.send(
-                method: "agent.subscribe",
-                params: ["session_id": session.id]
-            )
-
-            // Listen for events
-            appState.daemon.onNotification("agent.event", id: "inspector-\(session.id)") { payload in
-                guard let eventData = try? JSONSerialization.data(withJSONObject: payload.params),
-                      let event = try? JSONDecoder().decode(AgentEvent.self, from: eventData),
-                      event.sessionId == session.id else { return }
-
-                DispatchQueue.main.async {
-                    activity.apply(event: event)
-                }
-            }
+            await appState.ensureSessionSubscribed(session)
         }
     }
 }

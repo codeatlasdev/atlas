@@ -40,7 +40,7 @@ struct SessionBoardView: View {
                     .foregroundStyle(DS.text.primary)
 
                 Text("Agents flowing from work → review → merge")
-                    .font(.system(size: 11))
+                    .font(.atlasCaption)
                     .foregroundStyle(DS.text.tertiary)
             }
 
@@ -114,7 +114,7 @@ struct SessionBoardView: View {
 
             VStack(spacing: 6) {
                 Text("No Active Sessions")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.atlasHeadline)
                     .foregroundStyle(DS.text.primary)
                 Text("Spawn a worker agent to start coding in parallel.")
                     .font(.system(size: 13))
@@ -263,14 +263,14 @@ struct SessionCard: View {
 
             // Activity state text
             Text(activityLabel)
-                .font(.system(size: 11))
+                .font(.atlasCaption)
                 .foregroundStyle(statusColor)
         }
         .padding(DS.spacing.md)
         .background(DS.bg.elevated)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: DS.radius.lg, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: DS.radius.lg, style: .continuous)
                 .strokeBorder(
                     isHovered ? DS.accent.primary.opacity(0.3) : DS.border.subtle,
                     lineWidth: 0.5
@@ -419,7 +419,7 @@ struct SpawnWorkerSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: DS.radius.md))
                 }
                 .buttonStyle(.plain)
-                .disabled(taskPrompt.isEmpty || isSpawning)
+                .disabled(taskPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSpawning)
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
@@ -452,6 +452,7 @@ struct SpawnWorkerSheet: View {
 
 struct SessionInspectorSheet: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
     let session: AgentSessionInfo
 
     var body: some View {
@@ -475,8 +476,17 @@ struct SessionInspectorSheet: View {
                 Spacer()
 
                 Text(session.activityState)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.atlasCaption)
+                    .fontWeight(.medium)
                     .foregroundStyle(DS.text.secondary)
+
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(DS.text.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close inspector")
             }
             .padding(DS.spacing.lg)
 

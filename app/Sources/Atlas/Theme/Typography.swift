@@ -4,9 +4,13 @@ extension Font {
     static let atlasDisplay = Font.system(size: 28, weight: .bold, design: .default)
     static let atlasTitle = Font.system(size: 20, weight: .semibold, design: .default)
     static let atlasHeadline = Font.system(size: 15, weight: .semibold, design: .default)
+    static let atlasSubheadline = Font.system(size: 14, weight: .medium, design: .default)
     static let atlasBody = Font.system(size: 13, weight: .regular, design: .default)
+    static let atlasSmall = Font.system(size: 12, weight: .regular, design: .default)
     static let atlasCaption = Font.system(size: 11, weight: .regular, design: .default)
+    static let atlasMicro = Font.system(size: 10, weight: .regular, design: .default)
     static let atlasMono = Font.system(size: 12, weight: .regular, design: .monospaced)
+    static let atlasMonoSmall = Font.system(size: 10, weight: .regular, design: .monospaced)
 }
 
 enum AtlasTypography {

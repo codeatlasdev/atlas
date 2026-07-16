@@ -254,9 +254,9 @@ struct TechLeadBubble: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(bubbleBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: DS.radius.xl, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: DS.radius.xl, style: .continuous)
                         .strokeBorder(
                             message.role == .assistant ? DS.border.subtle : .clear,
                             lineWidth: 0.5

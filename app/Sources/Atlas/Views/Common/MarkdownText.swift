@@ -28,13 +28,13 @@ struct MarkdownText: View {
                 options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
             ) {
                 Text(attributed)
-                    .font(.system(size: 13))
+                    .font(.atlasBody)
                     .foregroundStyle(DS.text.primary)
                     .textSelection(.enabled)
                     .tint(DS.accent.primary)
             } else {
                 Text(content)
-                    .font(.system(size: 13))
+                    .font(.atlasBody)
                     .foregroundStyle(DS.text.primary)
                     .textSelection(.enabled)
             }
@@ -73,6 +73,7 @@ struct MarkdownText: View {
                     .textSelection(.enabled)
                     .padding(DS.spacing.md)
             }
+            .frame(maxHeight: 400)
         }
         .background(DS.bg.base)
         .clipShape(RoundedRectangle(cornerRadius: DS.radius.md))

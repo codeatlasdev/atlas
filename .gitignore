@@ -12,3 +12,4 @@ xcuserdata/
 # Turbo cache
 .turbo/
 *.tsbuildinfo
+dist/

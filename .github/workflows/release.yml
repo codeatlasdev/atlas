@@ -11,9 +11,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Run tests before releasing
+  test:
+    name: Test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        run: cargo test -p atlas-tui -p atlas-cli
+
+      - name: Clippy
+        run: cargo clippy -p atlas-tui -p atlas-cli -- -D warnings
+
   # Build Rust binaries for each platform
   build:
     name: Build (${{ matrix.target }})
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,10 +58,20 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build
-        run: |
-          cargo build --release --target ${{ matrix.target }} -p atlas-cli
-          cargo build --release --target ${{ matrix.target }} -p atlas-daemon
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build CLI
+        run: cargo build --release --target ${{ matrix.target }} -p atlas-cli
+
+      - name: Build Daemon
+        run: cargo build --release --target ${{ matrix.target }} -p atlas-daemon
 
       - name: Package
         run: |
@@ -43,6 +79,7 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/atlas dist/
           cp target/${{ matrix.target }}/release/atlas-daemon dist/
+          chmod +x dist/atlas dist/atlas-daemon
           cd dist
           tar czf atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz atlas atlas-daemon
           shasum -a 256 atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz > atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz.sha256
@@ -78,15 +115,13 @@ jobs:
           ATLAS_VERSION=${GITHUB_REF_NAME#v}
           mkdir -p universal
 
-          # Extract both
           cd arm64 && tar xzf *.tar.gz && cd ..
           cd x86_64 && tar xzf *.tar.gz && cd ..
 
-          # Lipo
           lipo -create arm64/atlas x86_64/atlas -output universal/atlas
           lipo -create arm64/atlas-daemon x86_64/atlas-daemon -output universal/atlas-daemon
+          chmod +x universal/atlas universal/atlas-daemon
 
-          # Package
           cd universal
           tar czf atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz atlas atlas-daemon
           shasum -a 256 atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz > atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz.sha256
@@ -97,7 +132,7 @@ jobs:
           name: atlas-universal-apple-darwin
           path: universal/*.tar.gz*
 
-  # Generate manifest and publish release
+  # Publish GitHub Release
   publish:
     name: Publish Release
     needs: [build, universal]
@@ -114,30 +149,30 @@ jobs:
         run: |
           ATLAS_VERSION=${GITHUB_REF_NAME#v}
           python3 scripts/generate-manifest.py "$ATLAS_VERSION" artifacts/ > manifest.json
+          cat manifest.json
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Atlas v${{ github.ref_name }}
+          name: Atlas ${{ github.ref_name }}
+          generate_release_notes: true
           body: |
-            ## Atlas ${{ github.ref_name }}
-
-            ### Install
+            ## Install
 
             ```bash
             # macOS (Homebrew)
-            brew tap codeatlas/tap && brew install atlas
+            brew tap codeatlasdev/tap && brew install atlas
 
             # Shell installer
-            curl -fsSL https://atlas.dev/install.sh | sh
+            curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 
             # Self-update (if already installed)
             atlas self-update
             ```
 
-            ### Checksums
+            ## What's Changed
 
-            See `.sha256` files for verification.
+            See auto-generated changelog below.
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.sha256
@@ -151,11 +186,15 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
+      - name: Extract version
+        id: version
+        run: echo "number=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
       - name: Update Homebrew formula
         uses: mislav/bump-homebrew-formula-action@v3
         with:
           formula-name: atlas
           homebrew-tap: codeatlasdev/homebrew-tap
-          download-url: https://github.com/codeatlasdev/atlas/releases/download/${{ github.ref_name }}/atlas-${{ github.ref_name }}-universal-apple-darwin.tar.gz
+          download-url: https://github.com/codeatlasdev/atlas/releases/download/${{ github.ref_name }}/atlas-${{ steps.version.outputs.number }}-universal-apple-darwin.tar.gz
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

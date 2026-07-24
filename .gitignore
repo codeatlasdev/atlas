@@ -8,3 +8,7 @@ app/.swiftpm/
 *.db-wal
 .DS_Store
 xcuserdata/
+
+# Turbo cache
+.turbo/
+*.tsbuildinfo

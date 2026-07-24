@@ -41,7 +41,7 @@ brew install atlas
 
 **Shell installer**:
 ```bash
-curl -fsSL https://atlas.dev/install.sh | sh
+curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 ```
 
 **From source** (requires Rust 1.87+):

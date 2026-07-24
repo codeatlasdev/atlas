@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::env;
 use std::path::PathBuf;
 
-const MANIFEST_URL: &str = "https://releases.atlas.dev/manifest.json";
+const MANIFEST_URL: &str = "https://releases.atlas.codeatlas.com.br/manifest.json";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Deserialize)]
@@ -172,7 +172,7 @@ async fn fetch_manifest(channel: &str) -> Result<UpdateManifest> {
     let url = if channel == "stable" {
         MANIFEST_URL.to_string()
     } else {
-        format!("https://releases.atlas.dev/{channel}/manifest.json")
+        format!("https://releases.atlas.codeatlas.com.br/{channel}/manifest.json")
     };
 
     let client = reqwest::Client::builder()

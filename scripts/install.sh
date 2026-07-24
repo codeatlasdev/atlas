@@ -1,6 +1,6 @@
 #!/bin/sh
 # Atlas CLI installer
-# Usage: curl -fsSL https://atlas.dev/install.sh | sh
+# Usage: curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 set -e
 
 ATLAS_REPO="codeatlasdev/atlas"
@@ -179,7 +179,7 @@ EOF
 main() {
     printf "\n"
     printf "  ${BOLD}Atlas CLI Installer${RESET}\n"
-    printf "  ${DIM}https://atlas.dev${RESET}\n"
+    printf "  ${DIM}https://atlas.codeatlas.com.br${RESET}\n"
     printf "\n"
 
     detect_platform

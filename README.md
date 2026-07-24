@@ -35,7 +35,7 @@ That's it. Atlas reads your project config, starts services in dependency order,
 
 **Homebrew** (recommended):
 ```bash
-brew tap codeatlas/tap
+brew tap codeatlasdev/tap
 brew install atlas
 ```
 

@@ -1,0 +1,54 @@
+---
+title: Architecture Overview
+description: How Atlas is built
+---
+
+Atlas is a Rust workspace with 14 crates following hexagonal architecture.
+
+## Design Principles
+
+- **Single binary** — `atlas` does everything
+- **Config-driven** — `atlas.yaml` is the source of truth
+- **TEA pattern** — Elm Architecture for testable UI state
+- **Async-first** — tokio throughout, channels for communication
+- **Zero runtime deps** — native binary, instant startup
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│           atlas (CLI binary)                 │
+│  ┌─────────────┐  ┌──────────────────────┐  │
+│  │ atlas-tui   │  │ daemon client        │  │
+│  │ (standalone)│  │ (JSON-RPC → socket)  │  │
+│  └─────────────┘  └──────────────────────┘  │
+└─────────────────────────────────────────────┘
+         │                        │
+         │ (atlas dev)            │ (atlas server/deploy/ai)
+         ▼                        ▼
+┌──────────────┐        ┌──────────────────────┐
+│  atlas-tui   │        │   atlas-daemon       │
+│  config/     │        │   (Unix socket)      │
+│  runtime/    │        │   ┌────────────────┐ │
+│  theme/      │        │   │ atlas-server   │ │
+│  event/      │        │   │ atlas-ai       │ │
+│  tui/        │        │   │ atlas-agent    │ │
+│              │        │   │ atlas-terminal │ │
+└──────────────┘        │   │ atlas-memory   │ │
+                        │   └────────────────┘ │
+                        └──────────────────────┘
+```
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Rust (edition 2024, 1.87+) |
+| TUI | ratatui 0.30 + crossterm 0.28 |
+| Async | tokio (full features) |
+| Config | serde_yaml |
+| Desktop | SwiftUI (macOS 14+) |
+| IPC | Unix Domain Socket + JSON-RPC |
+| Database | SQLite WAL (sqlx) |
+| AI | reqwest → Claude/GPT/Ollama |
+| Memory | redb (embedded key-value) |

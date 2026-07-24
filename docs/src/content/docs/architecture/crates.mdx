@@ -1,0 +1,55 @@
+---
+title: Crate Map
+description: All 14 Rust crates in the workspace
+---
+
+## Workspace Structure
+
+```
+crates/
+├── atlas-core        # Domain types, traits, zero dependencies
+├── atlas-tui         # TUI application (ratatui + crossterm)
+├── atlas-cli         # Binary: `atlas` command
+├── atlas-daemon      # Background daemon (socket server)
+├── atlas-db          # SQLite persistence (sqlx)
+├── atlas-ssh         # SSH client wrapper
+├── atlas-ai          # AI provider abstraction
+├── atlas-server      # Remote server management
+├── atlas-agent       # AI agent lifecycle (ACP protocol)
+├── atlas-agent-kiro  # Kiro adapter for agent system
+├── atlas-terminal    # PTY session management
+├── atlas-memory      # Knowledge base (vector + graph)
+├── atlas-plugin      # Plugin system (TOML manifests)
+└── atlas-mcp         # MCP bridge binary
+```
+
+## Dependency Graph
+
+```
+atlas-core (leaf — no dependencies)
+  ↑
+atlas-db, atlas-ssh, atlas-ai, atlas-terminal, atlas-memory
+  ↑
+atlas-server (core + ssh)
+atlas-agent (core + terminal + memory)
+  ↑
+atlas-plugin, atlas-agent-kiro (agent)
+  ↑
+atlas-daemon (depends on everything)
+atlas-cli (core + tui — thin client)
+atlas-mcp (standalone bridge via socket)
+```
+
+## atlas-tui (3,348 LOC, 74 tests)
+
+The TUI crate is self-contained:
+
+```
+atlas-tui/
+├── config/    # atlas.yaml parser + merge
+├── runtime/   # Process lifecycle, health, tunnel, docker, logs
+├── theme/     # Semantic color tokens
+├── event/     # Async event loop
+├── tui/       # TEA state machine, views, widgets
+└── headless/  # --headless mode
+```

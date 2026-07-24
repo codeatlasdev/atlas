@@ -1,0 +1,80 @@
+---
+title: Configuration
+description: atlas.yaml reference
+---
+
+## Full Example
+
+```yaml
+name: myapp
+
+tunnel:
+  enabled: true
+  local_port: 54320
+  remote_host: localhost
+  remote_port: 5432
+  ssh_host: prod-db
+  keepalive_interval: 15
+  keepalive_max: 3
+  reconnect_cooldown: 30
+
+services:
+  redis:
+    command: docker compose up -d redis
+    port: 6379
+    critical: true
+
+  api:
+    command: bun run dev:api
+    port: 3000
+    health: http://localhost:3000/health
+    depends_on: [redis]
+
+  web:
+    command: bun run dev:web
+    port: 3001
+    depends_on: [api]
+
+  worker:
+    command: bun run dev:worker
+    depends_on: [redis]
+
+infra:
+  compose_file: docker-compose.yml
+```
+
+## Local Overrides
+
+Create `atlas.local.yaml` (gitignored) to override per-developer:
+
+```yaml
+tunnel:
+  enabled: false
+
+services:
+  web:
+    port: 3002
+```
+
+## Service Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `command` | string | required | Shell command to run |
+| `port` | number | - | Port to monitor (health check) |
+| `health` | string | - | HTTP health endpoint URL |
+| `critical` | bool | false | Blocks other services if failed |
+| `depends_on` | list | [] | Start after these services |
+| `enabled` | bool | true | Set false to skip |
+
+## Tunnel Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | true | Enable SSH tunnel |
+| `local_port` | number | 54320 | Local port to bind |
+| `remote_host` | string | localhost | Remote host |
+| `remote_port` | number | 5432 | Remote port |
+| `ssh_host` | string | required | SSH config host name |
+| `keepalive_interval` | number | 15 | Seconds between keepalives |
+| `reconnect_cooldown` | number | 30 | Seconds before retry |

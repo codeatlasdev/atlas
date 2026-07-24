@@ -1,0 +1,48 @@
+---
+title: Quick Start
+description: Get up and running in 60 seconds
+---
+
+## 1. Create `atlas.yaml`
+
+In your project root:
+
+```yaml
+name: myapp
+
+services:
+  api:
+    command: bun run dev:api
+    port: 3000
+    health: http://localhost:3000/health
+
+  web:
+    command: bun run dev:web
+    port: 3001
+    depends_on: [api]
+
+  worker:
+    command: bun run dev:worker
+    depends_on: [api]
+```
+
+## 2. Start
+
+```bash
+atlas dev
+```
+
+Atlas reads your config, starts services in dependency order, monitors health, and shows a TUI dashboard.
+
+## 3. Navigate
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch between service tabs |
+| `j/k` | Scroll logs |
+| `?` | Show all shortcuts |
+| `q` | Quit (stops all services) |
+
+## 4. Copy Logs for AI
+
+When something breaks, press `P` to copy logs formatted for AI assistants — paste directly into Claude, ChatGPT, or any LLM.

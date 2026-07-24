@@ -1,0 +1,40 @@
+---
+title: TUI Overview
+description: The Atlas terminal user interface
+---
+
+The Atlas TUI is a full terminal application — not a script. It provides:
+
+- **Real-time service status** with colored indicators
+- **Aggregated log viewer** with per-service filtering
+- **Tab navigation** between services
+- **Health monitoring** (HTTP, TCP port, process liveness)
+- **Toast notifications** with animated spinners
+- **Command palette** with fuzzy search
+- **Mouse support** (click tabs, scroll)
+- **Responsive layout** (adapts to terminal size)
+
+## Layout
+
+```
+┌─────────────────────────────────────────────────┐
+│ All  Server  Web  Worker  Calc                  │  ← Tabs
+│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│
+│                              │ ● All operational │
+│  [srv] listening on :3000    │                   │
+│  [web] compiled in 1.2s     │  ● server   :3000 │  ← Sidebar
+│  [wrk] processing jobs      │  ● web      :3001 │
+│                              │  ● worker   —    │
+│                              │                   │
+├─────────────────────────────────────────────────┤
+│ ? Help  q Quit  r Restart  : Command  tab Next  │  ← Footer
+└─────────────────────────────────────────────────┘
+```
+
+## Starting
+
+```bash
+atlas dev                    # Start TUI
+atlas dev --dir ./project    # Specify directory
+atlas dev --headless         # No TUI, logs to stdout
+```

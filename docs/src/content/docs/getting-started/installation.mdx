@@ -1,0 +1,38 @@
+---
+title: Installation
+description: How to install Atlas on macOS
+---
+
+## Homebrew (recommended)
+
+```bash
+brew tap codeatlasdev/tap
+brew install atlas
+```
+
+## Shell Installer
+
+```bash
+curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
+```
+
+This detects your platform (macOS arm64/x86_64), downloads the binary, installs to `~/.atlas/bin/`, and adds it to your PATH.
+
+## From Source
+
+Requires Rust 1.87+:
+
+```bash
+git clone https://github.com/codeatlasdev/atlas
+cd atlas
+cargo build --release
+cp target/release/atlas /usr/local/bin/
+```
+
+## Verify
+
+```bash
+atlas --help
+```
+
+You should see the Atlas CLI with available commands.

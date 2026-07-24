@@ -1,0 +1,42 @@
+---
+title: CLI Commands
+description: All atlas CLI commands
+---
+
+```bash
+atlas <command> [options]
+```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `dev` | Start the development TUI |
+| `self-update` | Update Atlas to latest version |
+| `server` | Remote server management |
+| `service` | Remote service management |
+| `deploy` | Deploy to production |
+| `ai` | AI chat |
+| `ping` | Check daemon connection |
+
+## atlas dev
+
+```bash
+atlas dev [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--dir, -d <path>` | Project directory (default: `.`) |
+| `--headless` | Run without TUI |
+
+## atlas self-update
+
+```bash
+atlas self-update [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--check` | Only check, don't install |
+| `--channel <name>` | Update channel (stable/beta) |

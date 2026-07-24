@@ -1,0 +1,33 @@
+---
+title: Environment
+description: Environment variables and paths
+---
+
+## Paths
+
+| Path | Purpose |
+|------|--------|
+| `~/.atlas/` | Atlas home directory |
+| `~/.atlas/atlas.sock` | Daemon Unix socket |
+| `~/.atlas/atlas.db` | SQLite database |
+| `~/.atlas/bin/` | CLI binary (shell installer) |
+| `~/.atlas/logs/` | Daemon logs |
+| `.logs/` | Project-level service logs |
+| `.logs/.tui.lock` | TUI singleton lock |
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ATLAS_INSTALL_DIR` | `~/.atlas/bin` | Custom install directory |
+| `ATLAS_CHANNEL` | `stable` | Update channel |
+
+## Config File Resolution
+
+Atlas searches for `atlas.yaml` starting from the current directory, walking up to the filesystem root. The first directory containing `atlas.yaml` becomes the project root.
+
+```bash
+# These are equivalent:
+cd ~/projects/myapp && atlas dev
+atlas dev --dir ~/projects/myapp
+```

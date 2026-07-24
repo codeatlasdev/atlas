@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build Rust binaries for each platform
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p atlas-cli
+          cargo build --release --target ${{ matrix.target }} -p atlas-daemon
+
+      - name: Package
+        run: |
+          ATLAS_VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/atlas dist/
+          cp target/${{ matrix.target }}/release/atlas-daemon dist/
+          cd dist
+          tar czf atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz atlas atlas-daemon
+          shasum -a 256 atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz > atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-${{ matrix.target }}
+          path: dist/*.tar.gz*
+
+  # Create universal binary (macOS)
+  universal:
+    name: Universal Binary (macOS)
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: atlas-aarch64-apple-darwin
+          path: arm64/
+
+      - name: Download x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: atlas-x86_64-apple-darwin
+          path: x86_64/
+
+      - name: Create universal binary
+        run: |
+          ATLAS_VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p universal
+
+          # Extract both
+          cd arm64 && tar xzf *.tar.gz && cd ..
+          cd x86_64 && tar xzf *.tar.gz && cd ..
+
+          # Lipo
+          lipo -create arm64/atlas x86_64/atlas -output universal/atlas
+          lipo -create arm64/atlas-daemon x86_64/atlas-daemon -output universal/atlas-daemon
+
+          # Package
+          cd universal
+          tar czf atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz atlas atlas-daemon
+          shasum -a 256 atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz > atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz.sha256
+
+      - name: Upload universal
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-universal-apple-darwin
+          path: universal/*.tar.gz*
+
+  # Generate manifest and publish release
+  publish:
+    name: Publish Release
+    needs: [build, universal]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate manifest
+        run: |
+          ATLAS_VERSION=${GITHUB_REF_NAME#v}
+          python3 scripts/generate-manifest.py "$ATLAS_VERSION" artifacts/ > manifest.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Atlas v${{ github.ref_name }}
+          body: |
+            ## Atlas ${{ github.ref_name }}
+
+            ### Install
+
+            ```bash
+            # macOS (Homebrew)
+            brew tap codeatlas/tap && brew install atlas
+
+            # Shell installer
+            curl -fsSL https://atlas.dev/install.sh | sh
+
+            # Self-update (if already installed)
+            atlas self-update
+            ```
+
+            ### Checksums
+
+            See `.sha256` files for verification.
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.sha256
+            manifest.json
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+
+  # Update Homebrew tap
+  homebrew:
+    name: Update Homebrew
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: atlas
+          homebrew-tap: codeatlasdev/homebrew-tap
+          download-url: https://github.com/codeatlasdev/atlas/releases/download/${{ github.ref_name }}/atlas-${{ github.ref_name }}-universal-apple-darwin.tar.gz
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

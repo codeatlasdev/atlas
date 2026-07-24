@@ -14,3 +14,11 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
+reqwest = { workspace = true }
+semver = { workspace = true }
+sha2 = "0.10"
+hex = "0.4"
+self-replace = "1.5"
+flate2 = "1.0"
+tar = "0.4"
+atlas-tui = { path = "../atlas-tui" }

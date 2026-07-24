@@ -1,0 +1,27 @@
+[package]
+name = "atlas-tui"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "atlas_tui"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+ratatui = "0.30"
+crossterm = "0.28"
+nix = { version = "0.30", features = ["signal", "process", "fs"] }
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.14"
+insta = "1.41"

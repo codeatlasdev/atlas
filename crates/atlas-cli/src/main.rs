@@ -15,6 +15,16 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Start the development environment TUI
+    Dev {
+        /// Project root directory (defaults to current directory)
+        #[arg(short, long, default_value = ".")]
+        dir: String,
+        /// Run without TUI (headless mode for CI/scripts)
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Server management
     #[command(subcommand)]
     Server(commands::server::ServerCommands),
@@ -41,6 +51,16 @@ enum Commands {
 
     /// Check daemon connection
     Ping,
+
+    /// Update atlas to the latest version
+    SelfUpdate {
+        /// Only check for updates without installing
+        #[arg(long)]
+        check: bool,
+        /// Update channel (stable, beta, nightly)
+        #[arg(long)]
+        channel: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -81,10 +101,28 @@ enum AgentCommands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // `atlas dev` is standalone — doesn't need the daemon
+    if let Commands::Dev { dir, headless } = &cli.command {
+        let root = std::fs::canonicalize(shellexpand(dir))
+            .unwrap_or_else(|_| std::path::PathBuf::from(dir));
+        if *headless {
+            return atlas_tui::run_headless(&root).await;
+        }
+        return atlas_tui::run(&root).await;
+    }
+
+    // `atlas self-update` is standalone — doesn't need the daemon
+    if let Commands::SelfUpdate { check, channel } = &cli.command {
+        return commands::self_update::handle(*check, channel.clone()).await;
+    }
+
+    // All other commands connect to the daemon
     let socket_path = shellexpand(&cli.socket);
     let mut client = client::DaemonClient::connect(&socket_path).await?;
 
     match cli.command {
+        Commands::Dev { .. } => unreachable!(),
+        Commands::SelfUpdate { .. } => unreachable!(),
         Commands::Server(cmd) => commands::server::handle(&mut client, cmd).await?,
         Commands::Service(cmd) => commands::service::handle(&mut client, cmd).await?,
         Commands::Deploy(cmd) => commands::deploy::handle(&mut client, cmd).await?,

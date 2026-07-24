@@ -1,0 +1,33 @@
+[package]
+name = "atlas-daemon"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "atlas-daemon"
+path = "src/main.rs"
+
+[dependencies]
+atlas-core = { path = "../atlas-core" }
+atlas-db = { path = "../atlas-db" }
+atlas-ssh = { path = "../atlas-ssh" }
+atlas-ai = { path = "../atlas-ai" }
+atlas-server = { path = "../atlas-server" }
+atlas-terminal = { path = "../atlas-terminal" }
+atlas-agent = { path = "../atlas-agent" }
+atlas-agent-kiro = { path = "../atlas-agent-kiro" }
+atlas-plugin = { path = "../atlas-plugin" }
+atlas-memory = { path = "../atlas-memory" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+serde_yaml = { workspace = true }
+base64 = "0.22"

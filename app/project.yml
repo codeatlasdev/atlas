@@ -1,0 +1,87 @@
+name: Atlas
+options:
+  bundleIdPrefix: dev.codeatlas
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: YES
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    from: "1.14.0"
+
+targets:
+  Atlas:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Atlas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.codeatlas.atlas
+        PRODUCT_NAME: Atlas
+        INFOPLIST_FILE: Support/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Support/Atlas.entitlements
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+        SWIFT_STRICT_CONCURRENCY: targeted
+    dependencies:
+      - package: SwiftTerm
+    preBuildScripts:
+      - name: Build Daemon
+        script: |
+          cd "${SRCROOT}/.."
+          cargo build --bin atlas-daemon 2>/dev/null || true
+        basedOnDependencyAnalysis: false
+    postCompileScripts:
+      - name: Copy Daemon Binary
+        script: |
+          DAEMON_SRC="${SRCROOT}/../target/debug/atlas-daemon"
+          DAEMON_DST="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/atlas-daemon"
+          if [ -f "$DAEMON_SRC" ]; then
+            cp "$DAEMON_SRC" "$DAEMON_DST"
+          fi
+        basedOnDependencyAnalysis: false
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleName: Atlas
+        CFBundleDisplayName: Atlas
+        CFBundleIdentifier: dev.codeatlas.atlas
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.0"
+        CFBundlePackageType: APPL
+        CFBundleExecutable: Atlas
+        LSMinimumSystemVersion: "14.0"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSMainStoryboardFile: ""
+        NSHighResolutionCapable: true
+        NSSupportsAutomaticTermination: true
+        NSSupportsSuddenTermination: false
+    entitlements:
+      path: Support/Atlas.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.network.client: true
+
+  AtlasTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/AtlasTests
+    dependencies:
+      - target: Atlas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.codeatlas.atlas.tests

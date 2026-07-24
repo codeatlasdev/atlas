@@ -1,15 +1,25 @@
-/target
-app/.build/
-app/Atlas.xcodeproj/
-app/.swiftpm/
-.env
-*.db
-*.db-shm
-*.db-wal
-.DS_Store
-xcuserdata/
+# Rust
+target/
+dist/
 
-# Turbo cache
+# macOS
+.DS_Store
+*.dSYM/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+*.icns.iconset/
+
+# Turbo / Node (legacy, kept for apps/docs)
+node_modules/
 .turbo/
 *.tsbuildinfo
-dist/
+
+# Atlas runtime
+.atlas/
+.logs/

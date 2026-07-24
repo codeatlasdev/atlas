@@ -1,6 +1,0 @@
-#!/usr/bin/env bun
-// Dev wrapper — run the Atlas CLI from the monorepo root.
-// Usage: ./atlas status --demo
-//        ./atlas deploy --dry-run
-
-import("./apps/cli/src/index.ts");

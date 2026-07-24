@@ -1,7 +1,0 @@
-{
-	"name": "@atlas/cloudflare",
-	"private": true,
-	"type": "module",
-	"exports": { ".": "./src/index.ts" },
-	"devDependencies": { "@atlas/config": "workspace:*", "typescript": "catalog:" }
-}

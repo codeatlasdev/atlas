@@ -1,8 +1,0 @@
-{
-	"name": "@atlas/auth",
-	"private": true,
-	"type": "module",
-	"exports": { ".": "./src/index.ts" },
-	"scripts": { "test": "bun test", "check-types": "tsc --noEmit" },
-	"devDependencies": { "@atlas/config": "workspace:*", "typescript": "catalog:" }
-}

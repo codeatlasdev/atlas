@@ -1,0 +1,743 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07A8B5A4B33C308A4750CA29 /* Server.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18D9659A2CB56ED1EB68058B /* Server.swift */; };
+		0AAF8EEA58074547751EEC43 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */; };
+		0C1B31D7024FE221E53A957D /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FE774A1AF1958FCC24A3BF /* MarkdownText.swift */; };
+		0FF260F5AC50A45743409856 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D6451B73D76B33356F3382 /* AuthService.swift */; };
+		1755FF08D30FDABEA4B95C5A /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B1C755E462AA2C208FBF8D /* Session.swift */; };
+		28E3A0755FCAA67831EB0362 /* TechLeadChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD472CFF40CD17986138205F /* TechLeadChatView.swift */; };
+		2B11CF22CA004CC91DFF3CCE /* ServerRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B19D5FACC49439752A5CA0 /* ServerRow.swift */; };
+		2CD7135F1B71C47E1375C230 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160187EA0FE1F861316FD975 /* DaemonClient.swift */; };
+		2FDDAE103A4E922E03B34145 /* ProjectSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB718E9F06B860F64D3F9306 /* ProjectSetupView.swift */; };
+		2FE932119C9DBCD0758DCD6B /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 266892DD5064C7A67F4945FB /* WelcomeView.swift */; };
+		377B5E77CAB41E8467E40B8D /* HotReload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C997BACACAC45D73A86DA67 /* HotReload.swift */; };
+		46D90CDACD09C82C5927F4BA /* KanbanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C135289DD71B963FFAD0108E /* KanbanView.swift */; };
+		5237A4BC9B9EBDC5C044574F /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864E29ECE16CE6AD6AE8F2D3 /* MessageBubble.swift */; };
+		5AA9E34CB0DEEF466805CB65 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73A74E53FA8FF62A39A80BA /* Colors.swift */; };
+		61CD0C94FB3208D288083215 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434E57C4EFDCD474E84C0007 /* AppState.swift */; };
+		63181865FF56DE691B02506E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 099641DBAF25D4053239E00E /* SidebarView.swift */; };
+		6F3EE940D70BF82A329F5FD4 /* DaemonManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B552CADE4DC95DD22BFC1BD8 /* DaemonManager.swift */; };
+		800FFB15C01A14DAC6BF0368 /* SpawnAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E919D8080B71A61839FB20B /* SpawnAgentView.swift */; };
+		80D31D7B21BFDB14F091D64E /* ActivityComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B197E7F1CA9FEE1D3A41E8 /* ActivityComponents.swift */; };
+		8642E1AB27DCD1A8898D5881 /* AtlasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83222E05B63415277A063361 /* AtlasTests.swift */; };
+		8A4E7AA87ACB27382FD10E07 /* TerminalTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 130D59CB57AAC531E99AAAEA /* TerminalTabView.swift */; };
+		8E5681DF988184046BC6F1FD /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39CB0D1B0CCA4A5B029F7A37 /* ServerListView.swift */; };
+		93CCBC70E4AE8CE8695EF8DC /* ServiceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB20542C920D82E57F7DA3A1 /* ServiceRow.swift */; };
+		9AEF2A3D5DA6BF77CFEA712B /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B209071411AE2843DFECAE2 /* AccountView.swift */; };
+		A4B3CB8D05AA5616E618F85C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26C112347957CE09C3465B84 /* ContentView.swift */; };
+		A6156D9EEBF886D480EFA8BE /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 261E105AB20238A17A2B77A0 /* ChatView.swift */; };
+		AA1B7B0016EFF7CCCA01AA08 /* AgentEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6CBD3AB47BC9D2B8CC965D /* AgentEvent.swift */; };
+		AA1D162575C21EE3B9480B45 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2DFF60A715EDFCD11F420D2 /* EmptyStateView.swift */; };
+		B0BC41B4C85B9E6E8B22C2C8 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842301ADA4D6AC16E765C595 /* Typography.swift */; };
+		B2DB460325A7CE364BF555A4 /* ProjectWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A5FCBC42A3C4985E73AFD5 /* ProjectWindow.swift */; };
+		B913B44826350B41375500A8 /* AgentSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B09F8F5CF737984BA98320A /* AgentSessionView.swift */; };
+		C986DD7F2699514FE959A040 /* AgentActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D324989FA4AB653ECA5107AE /* AgentActivityView.swift */; };
+		E701FA91E59DC609DBEA1319 /* SessionBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5A0E34B0F2AAC62D397FDA3 /* SessionBoardView.swift */; };
+		E9D8DEEE0257B31EE904D726 /* ServerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967E8BC0345A50FB038DDB5A /* ServerDetailView.swift */; };
+		EBB093F0A828FF7284641849 /* Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF1E68C5ADF2D18029B92E7F /* Service.swift */; };
+		EF395CD3107C0D03A19AF67E /* Styles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F0AA0FA2401DD53A9A6B8D /* Styles.swift */; };
+		F6B578970F3C7AA767C25E9F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA37D8694CDF78BD18D16F3 /* SettingsView.swift */; };
+		FD842B2004A0D63AFD239E13 /* AtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBC7F9FC78858F60C1FA1DEA /* AtlasApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CF222F1615DE165619456974 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 43D55555CA7BCC7C87E44A39 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BEE0910772920D84B133CC47;
+			remoteInfo = Atlas;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		05FE774A1AF1958FCC24A3BF /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
+		099641DBAF25D4053239E00E /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		0B209071411AE2843DFECAE2 /* AccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		130D59CB57AAC531E99AAAEA /* TerminalTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabView.swift; sourceTree = "<group>"; };
+		160187EA0FE1F861316FD975 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
+		18D9659A2CB56ED1EB68058B /* Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Server.swift; sourceTree = "<group>"; };
+		261E105AB20238A17A2B77A0 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		266892DD5064C7A67F4945FB /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		26C112347957CE09C3465B84 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		39CB0D1B0CCA4A5B029F7A37 /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		413A56C9FFE04C7BBD65B964 /* Atlas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Atlas.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		434E57C4EFDCD474E84C0007 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		43B1C755E462AA2C208FBF8D /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		5C997BACACAC45D73A86DA67 /* HotReload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotReload.swift; sourceTree = "<group>"; };
+		6CAFA8A4B31EB0A34156C781 /* AtlasTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AtlasTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E919D8080B71A61839FB20B /* SpawnAgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpawnAgentView.swift; sourceTree = "<group>"; };
+		83222E05B63415277A063361 /* AtlasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasTests.swift; sourceTree = "<group>"; };
+		842301ADA4D6AC16E765C595 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
+		864E29ECE16CE6AD6AE8F2D3 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
+		90F0AA0FA2401DD53A9A6B8D /* Styles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Styles.swift; sourceTree = "<group>"; };
+		93B197E7F1CA9FEE1D3A41E8 /* ActivityComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityComponents.swift; sourceTree = "<group>"; };
+		967E8BC0345A50FB038DDB5A /* ServerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerDetailView.swift; sourceTree = "<group>"; };
+		9B09F8F5CF737984BA98320A /* AgentSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionView.swift; sourceTree = "<group>"; };
+		9DA37D8694CDF78BD18D16F3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A5A0E34B0F2AAC62D397FDA3 /* SessionBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBoardView.swift; sourceTree = "<group>"; };
+		A8D6451B73D76B33356F3382 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		B2DFF60A715EDFCD11F420D2 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		B552CADE4DC95DD22BFC1BD8 /* DaemonManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonManager.swift; sourceTree = "<group>"; };
+		BB718E9F06B860F64D3F9306 /* ProjectSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSetupView.swift; sourceTree = "<group>"; };
+		BBC7F9FC78858F60C1FA1DEA /* AtlasApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasApp.swift; sourceTree = "<group>"; };
+		C135289DD71B963FFAD0108E /* KanbanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanView.swift; sourceTree = "<group>"; };
+		C4B19D5FACC49439752A5CA0 /* ServerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerRow.swift; sourceTree = "<group>"; };
+		CB20542C920D82E57F7DA3A1 /* ServiceRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceRow.swift; sourceTree = "<group>"; };
+		CD472CFF40CD17986138205F /* TechLeadChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechLeadChatView.swift; sourceTree = "<group>"; };
+		D324989FA4AB653ECA5107AE /* AgentActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentActivityView.swift; sourceTree = "<group>"; };
+		D6A5FCBC42A3C4985E73AFD5 /* ProjectWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindow.swift; sourceTree = "<group>"; };
+		DF1E68C5ADF2D18029B92E7F /* Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Service.swift; sourceTree = "<group>"; };
+		DF6CBD3AB47BC9D2B8CC965D /* AgentEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEvent.swift; sourceTree = "<group>"; };
+		E73A74E53FA8FF62A39A80BA /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3089F3CC24F02E74734F05DE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0AAF8EEA58074547751EEC43 /* SwiftTerm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		067B75CE523665353ACF39D5 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				14C2E9BB9664577D3D2D20F1 /* AtlasTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		0768F46BBF3C030D149036A4 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				5C997BACACAC45D73A86DA67 /* HotReload.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		094969CA57600E63674A1D97 /* Terminal */ = {
+			isa = PBXGroup;
+			children = (
+				130D59CB57AAC531E99AAAEA /* TerminalTabView.swift */,
+			);
+			path = Terminal;
+			sourceTree = "<group>";
+		};
+		14C2E9BB9664577D3D2D20F1 /* AtlasTests */ = {
+			isa = PBXGroup;
+			children = (
+				83222E05B63415277A063361 /* AtlasTests.swift */,
+			);
+			path = AtlasTests;
+			sourceTree = "<group>";
+		};
+		217844A1B81AED5D0F0F491C /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				F29F31A3A76AA6505E9445DA /* Atlas */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		2266173FD74F886406A2178B /* Agents */ = {
+			isa = PBXGroup;
+			children = (
+				93B197E7F1CA9FEE1D3A41E8 /* ActivityComponents.swift */,
+				D324989FA4AB653ECA5107AE /* AgentActivityView.swift */,
+				9B09F8F5CF737984BA98320A /* AgentSessionView.swift */,
+				7E919D8080B71A61839FB20B /* SpawnAgentView.swift */,
+			);
+			path = Agents;
+			sourceTree = "<group>";
+		};
+		3A0110BC66DAE0F2FE640395 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				DF6CBD3AB47BC9D2B8CC965D /* AgentEvent.swift */,
+				434E57C4EFDCD474E84C0007 /* AppState.swift */,
+				18D9659A2CB56ED1EB68058B /* Server.swift */,
+				DF1E68C5ADF2D18029B92E7F /* Service.swift */,
+				43B1C755E462AA2C208FBF8D /* Session.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		3FB9AA6B53AC37B464F348B7 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				2266173FD74F886406A2178B /* Agents */,
+				DD8B46419D88913A1365EB62 /* AI */,
+				E025340423A19B8B25F79069 /* Common */,
+				635C688A12AE3B1DF0833704 /* Project */,
+				D7B7CA2426507309E8B2DF75 /* Servers */,
+				BD6069805EF5069DCD753E0A /* Settings */,
+				DFD43C72F983584C61C7B965 /* Sidebar */,
+				094969CA57600E63674A1D97 /* Terminal */,
+				738EC84E65EA6D9D2CF41950 /* Welcome */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		635C688A12AE3B1DF0833704 /* Project */ = {
+			isa = PBXGroup;
+			children = (
+				C135289DD71B963FFAD0108E /* KanbanView.swift */,
+				BB718E9F06B860F64D3F9306 /* ProjectSetupView.swift */,
+				D6A5FCBC42A3C4985E73AFD5 /* ProjectWindow.swift */,
+				A5A0E34B0F2AAC62D397FDA3 /* SessionBoardView.swift */,
+				CD472CFF40CD17986138205F /* TechLeadChatView.swift */,
+			);
+			path = Project;
+			sourceTree = "<group>";
+		};
+		70A20106B8807AFCC4851B2C = {
+			isa = PBXGroup;
+			children = (
+				217844A1B81AED5D0F0F491C /* Sources */,
+				067B75CE523665353ACF39D5 /* Tests */,
+				8BC05A2DCB0F814BEC46CBFF /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		738EC84E65EA6D9D2CF41950 /* Welcome */ = {
+			isa = PBXGroup;
+			children = (
+				266892DD5064C7A67F4945FB /* WelcomeView.swift */,
+			);
+			path = Welcome;
+			sourceTree = "<group>";
+		};
+		850AEF2B2CE85B9602CCA35A /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A8D6451B73D76B33356F3382 /* AuthService.swift */,
+				160187EA0FE1F861316FD975 /* DaemonClient.swift */,
+				B552CADE4DC95DD22BFC1BD8 /* DaemonManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		8BC05A2DCB0F814BEC46CBFF /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				413A56C9FFE04C7BBD65B964 /* Atlas.app */,
+				6CAFA8A4B31EB0A34156C781 /* AtlasTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		94DB89D2C352C3A803902721 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				E73A74E53FA8FF62A39A80BA /* Colors.swift */,
+				90F0AA0FA2401DD53A9A6B8D /* Styles.swift */,
+				842301ADA4D6AC16E765C595 /* Typography.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		BD6069805EF5069DCD753E0A /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				0B209071411AE2843DFECAE2 /* AccountView.swift */,
+				9DA37D8694CDF78BD18D16F3 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		D7B7CA2426507309E8B2DF75 /* Servers */ = {
+			isa = PBXGroup;
+			children = (
+				967E8BC0345A50FB038DDB5A /* ServerDetailView.swift */,
+				39CB0D1B0CCA4A5B029F7A37 /* ServerListView.swift */,
+				CB20542C920D82E57F7DA3A1 /* ServiceRow.swift */,
+			);
+			path = Servers;
+			sourceTree = "<group>";
+		};
+		DD8B46419D88913A1365EB62 /* AI */ = {
+			isa = PBXGroup;
+			children = (
+				261E105AB20238A17A2B77A0 /* ChatView.swift */,
+				864E29ECE16CE6AD6AE8F2D3 /* MessageBubble.swift */,
+			);
+			path = AI;
+			sourceTree = "<group>";
+		};
+		DFD43C72F983584C61C7B965 /* Sidebar */ = {
+			isa = PBXGroup;
+			children = (
+				C4B19D5FACC49439752A5CA0 /* ServerRow.swift */,
+				099641DBAF25D4053239E00E /* SidebarView.swift */,
+			);
+			path = Sidebar;
+			sourceTree = "<group>";
+		};
+		E025340423A19B8B25F79069 /* Common */ = {
+			isa = PBXGroup;
+			children = (
+				B2DFF60A715EDFCD11F420D2 /* EmptyStateView.swift */,
+				05FE774A1AF1958FCC24A3BF /* MarkdownText.swift */,
+			);
+			path = Common;
+			sourceTree = "<group>";
+		};
+		F29F31A3A76AA6505E9445DA /* Atlas */ = {
+			isa = PBXGroup;
+			children = (
+				BBC7F9FC78858F60C1FA1DEA /* AtlasApp.swift */,
+				26C112347957CE09C3465B84 /* ContentView.swift */,
+				3A0110BC66DAE0F2FE640395 /* Models */,
+				850AEF2B2CE85B9602CCA35A /* Services */,
+				0768F46BBF3C030D149036A4 /* Support */,
+				94DB89D2C352C3A803902721 /* Theme */,
+				3FB9AA6B53AC37B464F348B7 /* Views */,
+			);
+			path = Atlas;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		925E1D0E76AD47B0070839D8 /* AtlasTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A17E0FCEC2EC472698A868FC /* Build configuration list for PBXNativeTarget "AtlasTests" */;
+			buildPhases = (
+				D29A36CF24B787737907460F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C5555094A8A06BFB5AB03D04 /* PBXTargetDependency */,
+			);
+			name = AtlasTests;
+			packageProductDependencies = (
+			);
+			productName = AtlasTests;
+			productReference = 6CAFA8A4B31EB0A34156C781 /* AtlasTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		BEE0910772920D84B133CC47 /* Atlas */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 22181CD7CED82AE7DBD59B1A /* Build configuration list for PBXNativeTarget "Atlas" */;
+			buildPhases = (
+				9D5BCD1670E44C0AE936D65A /* Build Daemon */,
+				5F00E980EC462CB5A8421B1C /* Sources */,
+				4F215DDE5DAEADFD133BB3CC /* Copy Daemon Binary */,
+				3089F3CC24F02E74734F05DE /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Atlas;
+			packageProductDependencies = (
+				445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */,
+			);
+			productName = Atlas;
+			productReference = 413A56C9FFE04C7BBD65B964 /* Atlas.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		43D55555CA7BCC7C87E44A39 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					BEE0910772920D84B133CC47 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 7EC0B782DE33925870958060 /* Build configuration list for PBXProject "Atlas" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 70A20106B8807AFCC4851B2C;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E400DE4D1C7A19F20326760E /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8BC05A2DCB0F814BEC46CBFF /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BEE0910772920D84B133CC47 /* Atlas */,
+				925E1D0E76AD47B0070839D8 /* AtlasTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4F215DDE5DAEADFD133BB3CC /* Copy Daemon Binary */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Daemon Binary";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "DAEMON_SRC=\"${SRCROOT}/../target/debug/atlas-daemon\"\nDAEMON_DST=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/atlas-daemon\"\nif [ -f \"$DAEMON_SRC\" ]; then\n  cp \"$DAEMON_SRC\" \"$DAEMON_DST\"\nfi\n";
+		};
+		9D5BCD1670E44C0AE936D65A /* Build Daemon */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Daemon";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cd \"${SRCROOT}/..\"\ncargo build --bin atlas-daemon 2>/dev/null || true\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5F00E980EC462CB5A8421B1C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AEF2A3D5DA6BF77CFEA712B /* AccountView.swift in Sources */,
+				80D31D7B21BFDB14F091D64E /* ActivityComponents.swift in Sources */,
+				C986DD7F2699514FE959A040 /* AgentActivityView.swift in Sources */,
+				AA1B7B0016EFF7CCCA01AA08 /* AgentEvent.swift in Sources */,
+				B913B44826350B41375500A8 /* AgentSessionView.swift in Sources */,
+				61CD0C94FB3208D288083215 /* AppState.swift in Sources */,
+				FD842B2004A0D63AFD239E13 /* AtlasApp.swift in Sources */,
+				0FF260F5AC50A45743409856 /* AuthService.swift in Sources */,
+				A6156D9EEBF886D480EFA8BE /* ChatView.swift in Sources */,
+				5AA9E34CB0DEEF466805CB65 /* Colors.swift in Sources */,
+				A4B3CB8D05AA5616E618F85C /* ContentView.swift in Sources */,
+				2CD7135F1B71C47E1375C230 /* DaemonClient.swift in Sources */,
+				6F3EE940D70BF82A329F5FD4 /* DaemonManager.swift in Sources */,
+				AA1D162575C21EE3B9480B45 /* EmptyStateView.swift in Sources */,
+				377B5E77CAB41E8467E40B8D /* HotReload.swift in Sources */,
+				46D90CDACD09C82C5927F4BA /* KanbanView.swift in Sources */,
+				0C1B31D7024FE221E53A957D /* MarkdownText.swift in Sources */,
+				5237A4BC9B9EBDC5C044574F /* MessageBubble.swift in Sources */,
+				2FDDAE103A4E922E03B34145 /* ProjectSetupView.swift in Sources */,
+				B2DB460325A7CE364BF555A4 /* ProjectWindow.swift in Sources */,
+				07A8B5A4B33C308A4750CA29 /* Server.swift in Sources */,
+				E9D8DEEE0257B31EE904D726 /* ServerDetailView.swift in Sources */,
+				8E5681DF988184046BC6F1FD /* ServerListView.swift in Sources */,
+				2B11CF22CA004CC91DFF3CCE /* ServerRow.swift in Sources */,
+				EBB093F0A828FF7284641849 /* Service.swift in Sources */,
+				93CCBC70E4AE8CE8695EF8DC /* ServiceRow.swift in Sources */,
+				1755FF08D30FDABEA4B95C5A /* Session.swift in Sources */,
+				E701FA91E59DC609DBEA1319 /* SessionBoardView.swift in Sources */,
+				F6B578970F3C7AA767C25E9F /* SettingsView.swift in Sources */,
+				63181865FF56DE691B02506E /* SidebarView.swift in Sources */,
+				800FFB15C01A14DAC6BF0368 /* SpawnAgentView.swift in Sources */,
+				EF395CD3107C0D03A19AF67E /* Styles.swift in Sources */,
+				28E3A0755FCAA67831EB0362 /* TechLeadChatView.swift in Sources */,
+				8A4E7AA87ACB27382FD10E07 /* TerminalTabView.swift in Sources */,
+				B0BC41B4C85B9E6E8B22C2C8 /* Typography.swift in Sources */,
+				2FE932119C9DBCD0758DCD6B /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D29A36CF24B787737907460F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8642E1AB27DCD1A8898D5881 /* AtlasTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C5555094A8A06BFB5AB03D04 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BEE0910772920D84B133CC47 /* Atlas */;
+			targetProxy = CF222F1615DE165619456974 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0357C3208ED930145396B664 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Support/Atlas.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.codeatlas.atlas;
+				PRODUCT_NAME = Atlas;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = targeted;
+			};
+			name = Release;
+		};
+		1BA2CA467077E2E91E1F4BE6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.codeatlas.atlas.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Atlas.app/Contents/MacOS/Atlas";
+			};
+			name = Debug;
+		};
+		3C0EF17F92F0BCB760DB8E27 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.codeatlas.atlas.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Atlas.app/Contents/MacOS/Atlas";
+			};
+			name = Release;
+		};
+		6C075FD071D9C4DB3D554A55 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		804FE0C9BF065A009759B8FF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Support/Atlas.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.codeatlas.atlas;
+				PRODUCT_NAME = Atlas;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = targeted;
+			};
+			name = Debug;
+		};
+		8D21ED53AFB54A8F40E5E443 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		22181CD7CED82AE7DBD59B1A /* Build configuration list for PBXNativeTarget "Atlas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				804FE0C9BF065A009759B8FF /* Debug */,
+				0357C3208ED930145396B664 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7EC0B782DE33925870958060 /* Build configuration list for PBXProject "Atlas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8D21ED53AFB54A8F40E5E443 /* Debug */,
+				6C075FD071D9C4DB3D554A55 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A17E0FCEC2EC472698A868FC /* Build configuration list for PBXNativeTarget "AtlasTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1BA2CA467077E2E91E1F4BE6 /* Debug */,
+				3C0EF17F92F0BCB760DB8E27 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E400DE4D1C7A19F20326760E /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.14.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		445F1D3C9F1D3F9F5D5DA638 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E400DE4D1C7A19F20326760E /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 43D55555CA7BCC7C87E44A39 /* Project object */;
+}

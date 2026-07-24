@@ -1,9 +1,10 @@
-name: Docs
+name: Deploy Docs
 
 on:
   push:
     branches: [main]
-    paths: [apps/docs/**]
+    paths: ['docs/**']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,26 +16,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install dependencies
-        run: bun install
+        working-directory: docs
+        run: bun install --frozen-lockfile
 
-      - name: Build docs
-        working-directory: apps/docs
+      - name: Build
+        working-directory: docs
         run: bun run build
 
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/docs/out
+          path: docs/dist
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4

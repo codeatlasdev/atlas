@@ -9,7 +9,9 @@ pub fn render(frame: &mut Frame, input: &str, commands: &[PaletteCommand], selec
     let area = frame.area();
 
     let width = 50.min(area.width.saturating_sub(4));
-    let height = (commands.len() as u16 + 4).min(area.height.saturating_sub(4)).min(14);
+    let height = (commands.len() as u16 + 4)
+        .min(area.height.saturating_sub(4))
+        .min(14);
     let x = (area.width.saturating_sub(width)) / 2;
     let y = 3; // Top-aligned like VS Code
     let palette_area = Rect::new(x, y, width, height);
@@ -64,7 +66,7 @@ pub fn render(frame: &mut Frame, input: &str, commands: &[PaletteCommand], selec
 mod tests {
     use super::*;
     use crate::tui::app::Message;
-    use ratatui::{backend::TestBackend, Terminal};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn test_command_palette_renders() {

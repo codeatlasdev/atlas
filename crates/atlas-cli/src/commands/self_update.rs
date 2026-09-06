@@ -1,9 +1,8 @@
 #![allow(dead_code)]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::env;
-use std::path::PathBuf;
 
 const MANIFEST_URL: &str = "https://releases.atlas.codeatlas.com.br/manifest.json";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,7 +20,6 @@ pub struct UpdateManifest {
 #[derive(Debug, Deserialize)]
 pub struct PlatformAssets {
     pub cli: AssetInfo,
-    pub daemon: Option<AssetInfo>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,7 +31,6 @@ pub struct AssetInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InstallMethod {
-    DesktopApp,
     Homebrew,
     ShellInstaller,
     Manual,
@@ -44,9 +41,7 @@ impl InstallMethod {
         let exe = env::current_exe().unwrap_or_default();
         let path = exe.to_string_lossy();
 
-        if path.contains("Atlas.app") {
-            Self::DesktopApp
-        } else if path.contains("/opt/homebrew")
+        if path.contains("/opt/homebrew")
             || path.contains("/usr/local/Cellar")
             || path.contains("/home/linuxbrew")
         {
@@ -58,11 +53,10 @@ impl InstallMethod {
         }
     }
 
-    pub fn update_instruction(&self) -> &'static str {
+    pub fn update_instruction(&self) -> String {
         match self {
-            Self::DesktopApp => "Updates are managed by Atlas.app. Open the app to update.",
-            Self::Homebrew => "Run `brew upgrade atlas` to update.",
-            Self::ShellInstaller | Self::Manual => "Running self-update...",
+            Self::Homebrew => "brew upgrade atlas".to_string(),
+            Self::ShellInstaller | Self::Manual => "atlas self-update".to_string(),
         }
     }
 }
@@ -70,35 +64,22 @@ impl InstallMethod {
 pub fn current_platform() -> String {
     let arch = if cfg!(target_arch = "aarch64") {
         "aarch64"
-    } else if cfg!(target_arch = "x86_64") {
+    } else {
         "x86_64"
-    } else {
-        "unknown"
     };
 
-    let os = if cfg!(target_os = "macos") {
-        "apple-darwin"
-    } else if cfg!(target_os = "linux") {
-        "unknown-linux-gnu"
+    if cfg!(target_os = "macos") {
+        format!("{arch}-apple-darwin")
     } else {
-        "unknown"
-    };
-
-    format!("{arch}-{os}")
+        format!("{arch}-unknown-linux-gnu")
+    }
 }
 
 pub async fn handle(check_only: bool, channel: Option<String>) -> Result<()> {
     let method = InstallMethod::detect();
-    match method {
-        InstallMethod::DesktopApp => {
-            println!("{}", method.update_instruction());
-            return Ok(());
-        }
-        InstallMethod::Homebrew => {
-            println!("{}", method.update_instruction());
-            return Ok(());
-        }
-        _ => {}
+    if method == InstallMethod::Homebrew {
+        println!("{}", method.update_instruction());
+        return Ok(());
     }
 
     println!("\x1b[1;34m\u{25cf}\x1b[0m Checking for updates...");
@@ -145,23 +126,11 @@ pub async fn handle(check_only: bool, channel: Option<String>) -> Result<()> {
     let binary = download_and_verify(&assets.cli).await?;
 
     println!("\x1b[1;34m\u{25cf}\x1b[0m Installing...");
-    let tmp_dir = std::env::temp_dir();
-    let tmp_path = tmp_dir.join("atlas-update-tmp");
+    let tmp_path = std::env::temp_dir().join("atlas-update-tmp");
     std::fs::write(&tmp_path, &binary)?;
     self_replace::self_replace(&tmp_path)
         .context("Failed to replace binary. Try running with sudo.")?;
     let _ = std::fs::remove_file(&tmp_path);
-
-    if let Some(ref daemon_asset) = assets.daemon {
-        let daemon_path = find_daemon_binary();
-        if let Some(path) = daemon_path {
-            let daemon_binary = download_and_verify(daemon_asset).await?;
-            replace_file(&path, &daemon_binary)?;
-            println!("  \u{2713} Updated atlas-daemon");
-
-            restart_daemon().await;
-        }
-    }
 
     println!();
     println!("\x1b[1;32m\u{2713}\x1b[0m Updated to v{}", manifest.version);
@@ -179,9 +148,7 @@ async fn fetch_manifest(channel: &str) -> Result<UpdateManifest> {
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
 
-    let response = client.get(&url).send().await;
-
-    match response {
+    match client.get(&url).send().await {
         Ok(resp) if resp.status().is_success() => Ok(resp.json().await?),
         _ => fetch_manifest_from_github(channel).await,
     }
@@ -193,9 +160,12 @@ async fn fetch_manifest_from_github(channel: &str) -> Result<UpdateManifest> {
         .user_agent("atlas-cli")
         .build()?;
 
-    let url = "https://api.github.com/repos/codeatlasdev/atlas/releases/latest".to_string();
-
-    let resp: serde_json::Value = client.get(&url).send().await?.json().await?;
+    let resp: serde_json::Value = client
+        .get("https://api.github.com/repos/codeatlasdev/atlas/releases/latest")
+        .send()
+        .await?
+        .json()
+        .await?;
 
     let tag = resp["tag_name"]
         .as_str()
@@ -228,7 +198,6 @@ async fn fetch_manifest_from_github(channel: &str) -> Result<UpdateManifest> {
                 sha256: String::new(),
                 size: asset["size"].as_u64().unwrap_or(0),
             },
-            daemon: None,
         },
     );
 
@@ -247,22 +216,20 @@ async fn download_and_verify(asset: &AssetInfo) -> Result<Vec<u8>> {
         .timeout(std::time::Duration::from_secs(300))
         .build()?;
 
-    let response = client
+    let bytes = client
         .get(&asset.url)
         .header("Accept", "application/octet-stream")
         .send()
         .await?
         .error_for_status()
-        .context("Download failed")?;
-
-    let bytes = response.bytes().await?.to_vec();
+        .context("Download failed")?
+        .bytes()
+        .await?
+        .to_vec();
 
     if !asset.sha256.is_empty() {
         use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let hash = hex::encode(hasher.finalize());
-
+        let hash = hex::encode(Sha256::digest(&bytes));
         if hash != asset.sha256 {
             bail!(
                 "SHA256 mismatch!\n  Expected: {}\n  Got: {}",
@@ -287,44 +254,18 @@ fn extract_tarball(data: &[u8]) -> Result<Vec<u8>> {
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.to_path_buf();
-        if let Some(name) = path.file_name() {
-            let name_str = name.to_string_lossy();
-            if name_str == "atlas" || name_str == "atlas-daemon" {
-                let mut buf = Vec::new();
-                entry.read_to_end(&mut buf)?;
-                return Ok(buf);
-            }
+        if path
+            .file_name()
+            .map(|n| n.to_string_lossy() == "atlas")
+            .unwrap_or(false)
+        {
+            let mut buf = Vec::new();
+            entry.read_to_end(&mut buf)?;
+            return Ok(buf);
         }
     }
 
     bail!("Could not find atlas binary in tarball")
-}
-
-fn find_daemon_binary() -> Option<PathBuf> {
-    let exe = env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    let daemon = dir.join("atlas-daemon");
-    if daemon.exists() {
-        Some(daemon)
-    } else {
-        None
-    }
-}
-
-fn replace_file(path: &PathBuf, data: &[u8]) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, data)?;
-    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
-}
-
-async fn restart_daemon() {
-    let _ = tokio::process::Command::new("launchctl")
-        .args(["kickstart", "-k", "gui/$(id -u)/dev.codeatlas.daemon"])
-        .output()
-        .await;
 }
 
 #[cfg(test)]
@@ -341,7 +282,10 @@ mod tests {
     #[test]
     fn test_install_method_detect() {
         let method = InstallMethod::detect();
-        assert!(method == InstallMethod::Manual || method == InstallMethod::ShellInstaller);
+        assert!(matches!(
+            method,
+            InstallMethod::Manual | InstallMethod::ShellInstaller | InstallMethod::Homebrew
+        ));
     }
 
     #[test]
@@ -349,14 +293,6 @@ mod tests {
         let current = semver::Version::parse("0.1.0").unwrap();
         let latest = semver::Version::parse("0.2.0").unwrap();
         assert!(latest > current);
-    }
-
-    #[test]
-    fn test_install_method_instructions() {
-        assert!(InstallMethod::Homebrew.update_instruction().contains("brew"));
-        assert!(InstallMethod::DesktopApp
-            .update_instruction()
-            .contains("Atlas.app"));
     }
 
     #[test]

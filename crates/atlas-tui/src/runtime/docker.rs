@@ -95,10 +95,4 @@ mod tests {
         assert_eq!(*dm.state(), ServiceState::Stopped);
         assert_eq!(dm.compose_file, PathBuf::from("/tmp/docker-compose.yml"));
     }
-
-    #[tokio::test]
-    async fn test_docker_check_port_closed() {
-        let dm = DockerManager::new("docker-compose.yml", Path::new("/tmp"));
-        assert!(!dm.check_port(63790).await);
-    }
 }

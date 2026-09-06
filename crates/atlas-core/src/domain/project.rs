@@ -1,68 +1,13 @@
+/// Reserved port block for atlas-managed local services.
+/// Use 4010–4099 for all services defined in atlas.yaml to avoid
+/// collisions with common defaults (3000, 8080, etc.).
+pub const PORT_BLOCK_START: u16 = 4010;
+pub const PORT_BLOCK_END: u16 = 4099;
+
 use std::collections::HashMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-
-use crate::{AtlasError, Result};
-
-// MARK: - Project Config (atlas.yaml)
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProjectConfig {
-    pub name: String,
-    #[serde(default)]
-    pub org: Option<String>,
-    #[serde(default)]
-    pub server: Option<ServerConfig>,
-    #[serde(default)]
-    pub services: HashMap<String, ServiceConfig>,
-    #[serde(default)]
-    pub deploy: Option<DeployConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerConfig {
-    pub host: String,
-    pub user: String,
-    #[serde(default = "default_port")]
-    pub port: u16,
-}
-
-fn default_port() -> u16 {
-    22
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServiceConfig {
-    pub command: String,
-    #[serde(default)]
-    pub port: Option<u16>,
-    #[serde(default)]
-    pub env_file: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeployConfig {
-    pub strategy: String,
-    #[serde(default)]
-    pub domain: Option<String>,
-}
-
-pub fn load_project(path: &Path) -> Result<ProjectConfig> {
-    let yaml_path = path.join("atlas.yaml");
-    let content = std::fs::read_to_string(&yaml_path).map_err(|e| {
-        AtlasError::InvalidInput(format!(
-            "failed to read atlas.yaml at {}: {e}",
-            yaml_path.display()
-        ))
-    })?;
-
-    serde_yaml::from_str(&content).map_err(|e| {
-        AtlasError::InvalidInput(format!("failed to parse atlas.yaml: {e}"))
-    })
-}
-
-// MARK: - Project Detection
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectDetection {
@@ -94,7 +39,6 @@ pub struct DetectedService {
     pub name: String,
     pub command: String,
     pub port: Option<u16>,
-    pub dev_command: Option<String>,
 }
 
 pub fn detect_project(path: &Path) -> ProjectDetection {
@@ -120,7 +64,6 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
     if path.join("package.json").exists() {
         detection.language = "typescript".into();
 
-        // Detect package manager
         if path.join("bun.lock").exists() || path.join("bun.lockb").exists() {
             detection.package_manager = Some("bun".into());
         } else if path.join("pnpm-lock.yaml").exists() {
@@ -133,7 +76,6 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
 
         if let Ok(content) = std::fs::read_to_string(path.join("package.json")) {
             if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&content) {
-                // Detect framework from dependencies
                 let deps = pkg.get("dependencies").and_then(|d| d.as_object());
                 let dev_deps = pkg.get("devDependencies").and_then(|d| d.as_object());
 
@@ -142,29 +84,30 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
                         || dev_deps.is_some_and(|d| d.contains_key(name))
                 };
 
-                if has_dep("next") {
-                    detection.framework = Some("nextjs".into());
+                detection.framework = if has_dep("next") {
+                    Some("nextjs".into())
                 } else if has_dep("astro") {
-                    detection.framework = Some("astro".into());
+                    Some("astro".into())
                 } else if has_dep("elysia") {
-                    detection.framework = Some("elysia".into());
+                    Some("elysia".into())
                 } else if has_dep("@tanstack/start") {
-                    detection.framework = Some("tanstack-start".into());
+                    Some("tanstack-start".into())
                 } else if has_dep("nuxt") {
-                    detection.framework = Some("nuxt".into());
+                    Some("nuxt".into())
                 } else if has_dep("svelte") || has_dep("@sveltejs/kit") {
-                    detection.framework = Some("sveltekit".into());
+                    Some("sveltekit".into())
                 } else if has_dep("vue") {
-                    detection.framework = Some("vue".into());
+                    Some("vue".into())
                 } else if has_dep("react") {
-                    detection.framework = Some("react".into());
+                    Some("react".into())
                 } else if has_dep("hono") {
-                    detection.framework = Some("hono".into());
+                    Some("hono".into())
                 } else if has_dep("express") {
-                    detection.framework = Some("express".into());
-                }
+                    Some("express".into())
+                } else {
+                    None
+                };
 
-                // Extract scripts
                 if let Some(scripts) = pkg.get("scripts").and_then(|s| s.as_object()) {
                     for (name, cmd) in scripts {
                         if let Some(c) = cmd.as_str() {
@@ -176,9 +119,12 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
         }
 
         // Detect services from scripts
-        let scripts_clone: Vec<(String, String)> =
-            detection.scripts.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        for (name, cmd) in &scripts_clone {
+        let scripts: Vec<(String, String)> = detection
+            .scripts
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        for (name, cmd) in &scripts {
             if name == "dev"
                 || name.starts_with("dev:")
                 || name == "start"
@@ -189,7 +135,6 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
                     name: name.clone(),
                     command: cmd.clone(),
                     port: extract_port(cmd),
-                    dev_command: Some(cmd.clone()),
                 });
             }
         }
@@ -209,15 +154,16 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
         } else {
             detection.package_manager = Some("pip".into());
         }
-        // Detect framework from pyproject.toml
         if let Ok(content) = std::fs::read_to_string(path.join("pyproject.toml")) {
-            if content.contains("fastapi") {
-                detection.framework = Some("fastapi".into());
+            detection.framework = if content.contains("fastapi") {
+                Some("fastapi".into())
             } else if content.contains("django") {
-                detection.framework = Some("django".into());
+                Some("django".into())
             } else if content.contains("flask") {
-                detection.framework = Some("flask".into());
-            }
+                Some("flask".into())
+            } else {
+                None
+            };
         }
     }
 
@@ -228,13 +174,15 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
         }
         detection.package_manager = Some("go".into());
         if let Ok(content) = std::fs::read_to_string(path.join("go.mod")) {
-            if content.contains("github.com/gin-gonic/gin") {
-                detection.framework = Some("gin".into());
+            detection.framework = if content.contains("github.com/gin-gonic/gin") {
+                Some("gin".into())
             } else if content.contains("github.com/gofiber/fiber") {
-                detection.framework = Some("fiber".into());
+                Some("fiber".into())
             } else if content.contains("github.com/labstack/echo") {
-                detection.framework = Some("echo".into());
-            }
+                Some("echo".into())
+            } else {
+                None
+            };
         }
     }
 
@@ -248,25 +196,25 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
     }
 
     // Deploy strategy detection
-    if path.join("Dockerfile").exists() || path.join("docker-compose.yml").exists() {
-        detection.deploy_strategy = Some("docker".into());
-    } else if path.join("fly.toml").exists() {
-        detection.deploy_strategy = Some("fly".into());
-    } else if path.join("vercel.json").exists() {
-        detection.deploy_strategy = Some("vercel".into());
-    } else if path.join("netlify.toml").exists() {
-        detection.deploy_strategy = Some("netlify".into());
-    } else if path.join("render.yaml").exists() {
-        detection.deploy_strategy = Some("render".into());
-    } else {
-        detection.deploy_strategy = Some("systemd".into());
-    }
+    detection.deploy_strategy =
+        if path.join("Dockerfile").exists() || path.join("docker-compose.yml").exists() {
+            Some("docker".into())
+        } else if path.join("fly.toml").exists() {
+            Some("fly".into())
+        } else if path.join("vercel.json").exists() {
+            Some("vercel".into())
+        } else if path.join("netlify.toml").exists() {
+            Some("netlify".into())
+        } else if path.join("render.yaml").exists() {
+            Some("render".into())
+        } else {
+            None
+        };
 
     detection
 }
 
 fn extract_port(cmd: &str) -> Option<u16> {
-    // --port NNNN
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     for (i, part) in parts.iter().enumerate() {
         if (*part == "--port" || *part == "-p") && i + 1 < parts.len() {
@@ -274,30 +222,18 @@ fn extract_port(cmd: &str) -> Option<u16> {
                 return Some(port);
             }
         }
-        // --port=NNNN
+        // --port=3000
         if let Some(val) = part.strip_prefix("--port=") {
             if let Ok(port) = val.parse::<u16>() {
                 return Some(port);
             }
         }
-    }
-    // PORT=NNNN
-    for part in &parts {
+        // PORT=3000 in env prefix
         if let Some(val) = part.strip_prefix("PORT=") {
             if let Ok(port) = val.parse::<u16>() {
                 return Some(port);
             }
         }
-    }
-    // Common framework defaults
-    if cmd.contains("next") {
-        return Some(3000);
-    }
-    if cmd.contains("astro") {
-        return Some(4321);
-    }
-    if cmd.contains("vite") {
-        return Some(5173);
     }
     None
 }

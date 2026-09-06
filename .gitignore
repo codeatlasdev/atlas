@@ -23,3 +23,10 @@ node_modules/
 # Atlas runtime
 .atlas/
 .logs/
+
+# Removed subsystems (no longer part of the project)
+docs/
+assets/AppIcon.icns
+assets/appicon.svg
+assets/icon-original.svg
+app/

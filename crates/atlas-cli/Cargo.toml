@@ -22,3 +22,7 @@ self-replace = "1.5"
 flate2 = "1.0"
 tar = "0.4"
 atlas-tui = { path = "../atlas-tui" }
+atlas-core = { path = "../atlas-core" }
+
+[dev-dependencies]
+tempfile = "3.14"

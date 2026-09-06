@@ -5,31 +5,24 @@
 <h1 align="center">Atlas</h1>
 
 <p align="center">
-  <strong>Development environment orchestrator for macOS</strong><br>
+  <strong>TUI dev environment orchestrator for macOS</strong><br>
   <em>One command. All your services. Built in Rust.</em>
 </p>
 
 <p align="center">
   <a href="#install">Install</a> •
-  <a href="#features">Features</a> •
   <a href="#usage">Usage</a> •
-  <a href="#architecture">Architecture</a> •
+  <a href="#configuration">Configuration</a> •
   <a href="#development">Development</a>
 </p>
 
 ---
 
-## Overview
-
-Atlas is a terminal-first development tool that manages your entire local environment — services, databases, tunnels, and infrastructure — from a single `atlas.yaml` config.
-
-Think **docker-compose for your dev workflow**, but native, fast, and with a beautiful TUI.
+Atlas reads `atlas.yaml`, starts your services in dependency order, monitors health, streams logs, and gives you an interactive terminal dashboard — all in a single binary.
 
 ```bash
 atlas dev
 ```
-
-That's it. Atlas reads your project config, starts services in dependency order, monitors health, streams logs, and gives you a polished interactive dashboard — all in your terminal.
 
 ## Install
 
@@ -48,86 +41,59 @@ curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 ```bash
 git clone https://github.com/codeatlasdev/atlas
 cd atlas
-cargo build --release
+cargo build --release -p atlas-cli
+# binary: target/release/atlas
 ```
 
-## Features
-
-### TUI Dashboard
-
-A full terminal application — not a script. Keyboard-driven with mouse support.
-
-- **Real-time service status** with colored indicators
-- **Aggregated log viewer** with per-service filtering
-- **Tab navigation** between services (0-6, Tab)
-- **Health monitoring** (HTTP, TCP port, process liveness)
-- **Toast notifications** with animated spinners
-- **Command palette** (`:` key) with fuzzy search
-- **Help modal** (`?` key) with contextual shortcuts
-- **Responsive layout** — adapts to terminal size
-
-### Intelligent Log Management
-
-Logs are first-class. Designed for the AI-assisted development workflow.
-
-| Key | Action | Description |
-|-----|--------|-------------|
-| `L` | Copy Logs | Last 3 minutes, formatted with timestamps and service headers |
-| `P` | Copy for AI | Pre-formatted prompt for Claude/GPT — includes error context, surrounding lines, and a help request |
-| `E` | Copy Errors | Only errors/warnings with service attribution |
-
-The `P` shortcut generates output like:
-
-```
-I'm working on a development environment and encountering issues.
-Here are the recent logs from my services:
-
-Project: myapp
-Services: api, web, worker
-
->>> [api] Error: Cannot read property 'id' of undefined
->>> [api]     at UserController.get (/app/src/user.ts:42)
-
-Can you help me understand what's going wrong and how to fix it?
+**Self-update** (if already installed):
+```bash
+atlas self-update
 ```
 
-Paste directly into any AI assistant. Zero effort.
+## Usage
 
-### Headless Mode
+```bash
+atlas dev                        # Start TUI dashboard
+atlas dev --headless             # Headless mode (CI / scripts)
+atlas dev --dir ./my-project     # Specify project root
+atlas init                       # Scaffold atlas.yaml for current directory
+atlas self-update                # Update to latest stable
+atlas self-update --check        # Check without installing
+atlas self-update --channel beta # Switch to beta channel
+```
 
-For CI, scripts, and automation:
+### TUI keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit (with confirmation) |
+| `?` | Help |
+| `r` | Restart all services |
+| `:` | Command palette |
+| `Tab` / `Shift+Tab` | Next / prev service tab |
+| `0`–`9` | Jump to tab by index |
+| `j` / `k` | Scroll logs down / up |
+| `G` / `g` | Jump to bottom / top |
+| `L` | Copy last 3 min of logs to clipboard |
+| `P` | Copy logs formatted as an AI prompt |
+| `E` | Copy only errors to clipboard |
+
+### Headless mode
+
+For CI pipelines and shell scripts — no TUI, just structured log output:
 
 ```bash
 atlas dev --headless
 ```
 
-Starts all services, streams logs to stdout with ANSI colors, and shuts down cleanly on Ctrl+C.
+Starts all services, streams stdout/stderr to terminal, exits cleanly on `Ctrl+C` or when all services stop.
 
-### Self-Update
+## Configuration
 
-```bash
-atlas self-update              # Update to latest
-atlas self-update --check      # Check without installing
-atlas self-update --channel beta   # Switch channels
-```
-
-Detects your installation method (Homebrew, shell installer, or manual) and acts accordingly.
-
-## Usage
-
-### Configuration
-
-Create `atlas.yaml` in your project root:
+Create `atlas.yaml` in your project root (or run `atlas init` to scaffold one):
 
 ```yaml
 name: myapp
-
-tunnel:
-  enabled: true
-  local_port: 54320
-  remote_host: localhost
-  remote_port: 5432
-  ssh_host: prod-db
 
 services:
   redis:
@@ -149,91 +115,90 @@ services:
   worker:
     command: bun run dev:worker
     depends_on: [redis]
-
-infra:
-  compose_file: docker-compose.yml
 ```
 
-Local overrides (gitignored):
+### Service fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Shell command to run |
+| `port` | number | Port for TCP health probe |
+| `health` | string | HTTP URL for health checks |
+| `depends_on` | list | Services that must start first |
+| `critical` | bool | Failure stops all services |
+| `enabled` | bool | Set `false` to skip (default `true`) |
+
+### Local overrides
+
+Create `atlas.local.yaml` (add to `.gitignore`) to override settings per-machine without touching the shared config:
 
 ```yaml
 # atlas.local.yaml
-tunnel:
-  enabled: false
 services:
   web:
     port: 3002
+  redis:
+    enabled: false
 ```
 
-### Keyboard Shortcuts
+### SSH tunnel
 
-| Key | Action |
+Forward a remote port locally (useful for staging databases):
+
+```yaml
+tunnel:
+  enabled: true
+  local_port: 54320
+  remote_host: localhost
+  remote_port: 5432
+  ssh_host: prod-db        # entry in ~/.ssh/config
+```
+
+### Infrastructure
+
+```yaml
+infra:
+  compose_file: docker-compose.yml   # started before services
+```
+
+## Log management
+
+Logs are first-class. Three clipboard shortcuts cover the main workflows:
+
+| Key | Output |
 |-----|--------|
-| `q` | Quit (with confirmation) |
-| `?` | Help |
-| `r` | Restart all services |
-| `:` | Command palette |
-| `Tab` / `Shift+Tab` | Next/prev tab |
-| `0-6` | Jump to tab |
-| `j` / `k` | Scroll logs |
-| `G` / `g` | Jump to bottom/top |
-| `L` | Copy logs to clipboard |
-| `P` | Copy logs as AI prompt |
-| `E` | Copy errors only |
+| `L` | Last 3 minutes, all services, with timestamps and service headers |
+| `P` | AI-ready prompt — includes project name, services, and error context |
+| `E` | Errors and stderr only, with service attribution |
 
-### CLI Commands
-
-```bash
-atlas dev                    # Start dev TUI
-atlas dev --headless         # Start without TUI
-atlas dev --dir ./my-project # Specify project directory
-atlas self-update            # Update Atlas
-atlas ping                   # Check daemon connection
-atlas server list            # List managed servers
-atlas deploy run             # Deploy to production
-```
+The `P` output pastes directly into Claude, ChatGPT, or any AI assistant.
 
 ## Architecture
-
-Atlas is a Rust workspace with clean separation of concerns:
 
 ```
 atlas/
 ├── crates/
-│   ├── atlas-core/       # Domain types, traits, zero dependencies
-│   ├── atlas-tui/        # TUI application (ratatui + crossterm)
-│   │   ├── config/       # atlas.yaml parser + merge
-│   │   ├── runtime/      # Process lifecycle, health, tunnel, docker
-│   │   ├── theme/        # Semantic color tokens
-│   │   ├── event/        # Async event loop (tokio + crossterm)
-│   │   └── tui/          # TEA state machine, views, widgets
-│   ├── atlas-cli/        # Binary: `atlas` command
-│   ├── atlas-daemon/     # Background daemon (socket server)
-│   ├── atlas-db/         # SQLite persistence
-│   ├── atlas-ssh/        # SSH client (session management)
-│   ├── atlas-ai/         # AI provider abstraction
-│   ├── atlas-server/     # Remote server management
-│   ├── atlas-agent/      # AI agent lifecycle (ACP protocol)
-│   ├── atlas-terminal/   # PTY session management
-│   ├── atlas-memory/     # Knowledge base (vector + graph)
-│   ├── atlas-plugin/     # Plugin system (TOML manifests)
-│   └── atlas-mcp/        # MCP bridge binary
-├── app/                  # SwiftUI desktop app (macOS 14+)
-├── scripts/              # Install + CI scripts
-├── Formula/              # Homebrew formula
-└── .github/workflows/    # CI/CD
+│   ├── atlas-core/   # Domain types (config, error, project)
+│   ├── atlas-tui/    # TUI + runtime
+│   │   ├── config/   # atlas.yaml loader, local overrides, defaults
+│   │   ├── runtime/  # Process lifecycle, health probes, tunnel, docker, logs
+│   │   ├── theme/    # Semantic color tokens (CodeAtlas palette)
+│   │   ├── event/    # Async event loop (tokio + crossterm)
+│   │   └── tui/      # TEA state machine, views, widgets
+│   └── atlas-cli/    # `atlas` binary (clap)
+├── scripts/          # install.sh, generate-manifest.py
+├── Formula/          # Homebrew formula
+└── .github/          # CI/CD (test → build → universal → release → brew)
 ```
 
-### Design Principles
+**Design:**
+- Single binary — `atlas` does everything
+- Config-driven — `atlas.yaml` is the source of truth
+- TEA pattern — Elm Architecture for predictable UI state
+- Async-first — tokio throughout, channels between runtime and UI
+- Zero runtime deps — no daemon, no background process
 
-- **Single binary** — `atlas` does everything (dev, deploy, manage)
-- **Config-driven** — `atlas.yaml` is the source of truth
-- **Daemon optional** — `atlas dev` works standalone, daemon adds remote features
-- **TEA pattern** — Elm Architecture for testable, predictable UI state
-- **Async-first** — tokio throughout, channels for communication
-- **Zero-cost DX** — instant startup, no runtime dependencies
-
-### Tech Stack
+**Tech stack:**
 
 | Component | Technology |
 |-----------|-----------|
@@ -241,70 +206,45 @@ atlas/
 | TUI | ratatui 0.30 + crossterm 0.28 |
 | Async | tokio (full features) |
 | Config | serde_yaml |
-| Desktop | SwiftUI (macOS 14+, Apple Silicon) |
-| IPC | Unix Domain Socket + JSON-RPC |
-| Database | SQLite WAL (sqlx) |
-| AI | reqwest → Claude/GPT/Ollama |
-| SSH | russh (pure Rust, async) |
-| Memory | redb (embedded key-value) |
+| Build | Cargo workspace |
 
 ## Development
 
-### Requirements
-
-- macOS 14+ (Sonoma) or later
-- Rust 1.87+ (via `rustup`, handled by `rust-toolchain.toml`)
-- Xcode 15+ (for SwiftUI desktop app)
-
-### Build
+**Requirements:** macOS, Rust 1.87+ (managed by `rust-toolchain.toml`)
 
 ```bash
-# Everything
-cargo build
-
-# Just the CLI + TUI
-cargo build -p atlas-cli -p atlas-tui
+# Build
+cargo build -p atlas-cli
 
 # Run tests
-cargo test -p atlas-tui
+cargo test -p atlas-tui -p atlas-cli -p atlas-core
 
-# Run with clippy
-cargo clippy -p atlas-tui -- -D warnings
+# Lint (strict)
+cargo clippy -p atlas-tui -p atlas-cli -p atlas-core --all-targets -- -D warnings
+
+# Format
+cargo fmt --all
 ```
 
-### Test Coverage
+**Test coverage (84 tests):**
 
 ```
-74 tests (atlas-tui) + 5 tests (atlas-cli) = 79 total
+atlas-tui (77):
+  config/    9   — loader, merge, find_root, defaults
+  runtime/  21   — health, lock, manager (crash/dedup/restart), tunnel, docker, deps, logs
+  theme/     2   — token coverage
+  event/     3   — channel, tick, debug
+  tui/app   27   — TEA messages, layers, scroll, palette, mouse, stderr stream
+  widgets/   3   — command palette, spinner
+  views/     2   — quit modal rendering
+  headless/  1   — config requirement
 
-config/         9 tests — parser, merge, find_root, defaults
-runtime/       18 tests — health, lock, manager, tunnel, docker, deps, logs
-theme/          2 tests — token coverage
-event/          3 tests — channel, tick, debug
-tui/app        19 tests — TEA messages, layers, scroll, palette, mouse
-tui/widgets     3 tests — command palette, spinner
-tui/views       2 tests — quit modal rendering
-headless        1 test  — config requirement
-cli/self_update 5 tests — platform, install method, version compare
+atlas-cli  (6):
+  self_update  — platform detection, install method, version compare
+
+atlas-core (1):
+  domain       — project types
 ```
-
-### Project Status
-
-Atlas is in active development. The CLI/TUI is functional and ready for daily use. The desktop app and remote features (deploy, AI agents) are in progress.
-
-| Component | Status |
-|-----------|--------|
-| CLI + TUI | ✅ Production-ready |
-| Config system | ✅ Complete |
-| Process management | ✅ Complete |
-| Health monitoring | ✅ Complete |
-| Log management | ✅ Complete |
-| Self-update | ✅ Complete |
-| SSH tunnel | ✅ Complete |
-| Headless mode | ✅ Complete |
-| Desktop app | 🚧 In progress |
-| Remote deploy | 🚧 In progress |
-| AI agents | 🚧 In progress |
 
 ## License
 

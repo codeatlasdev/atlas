@@ -23,36 +23,40 @@ error() { printf "${RED}\u2717${RESET} %s\n" "$1"; exit 1; }
 
 # Detect platform
 detect_platform() {
-    OS=$(uname -s)
     ARCH=$(uname -m)
+    OS=$(uname -s)
 
     case "$OS" in
-        Darwin) OS="apple-darwin" ;;
-        Linux) OS="unknown-linux-gnu" ;;
+        Darwin)
+            case "$ARCH" in
+                arm64) PLATFORM="aarch64-apple-darwin" ;;
+                x86_64) PLATFORM="x86_64-apple-darwin" ;;
+                *) error "Unsupported architecture: $ARCH" ;;
+            esac
+            ;;
+        Linux)
+            case "$ARCH" in
+                x86_64) PLATFORM="x86_64-unknown-linux-gnu" ;;
+                aarch64) PLATFORM="aarch64-unknown-linux-gnu" ;;
+                *) error "Unsupported architecture: $ARCH" ;;
+            esac
+            ;;
         *) error "Unsupported OS: $OS" ;;
     esac
-
-    case "$ARCH" in
-        arm64|aarch64) ARCH="aarch64" ;;
-        x86_64|amd64) ARCH="x86_64" ;;
-        *) error "Unsupported architecture: $ARCH" ;;
-    esac
-
-    PLATFORM="${ARCH}-${OS}"
 }
 
 # Get latest version from GitHub
 get_latest_version() {
     if command -v curl >/dev/null 2>&1; then
-        VERSION=$(curl -fsSL "https://api.github.com/repos/${ATLAS_REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
+        VERSION=$(curl -fsSL "https://api.github.com/repos/${ATLAS_REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": "v\([^"]*\)".*/\1/')
     elif command -v wget >/dev/null 2>&1; then
-        VERSION=$(wget -qO- "https://api.github.com/repos/${ATLAS_REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
+        VERSION=$(wget -qO- "https://api.github.com/repos/${ATLAS_REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": "v\([^"]*\)".*/\1/')
     else
-        error "Neither curl nor wget found. Please install one of them."
+        error "curl or wget is required"
     fi
 
     if [ -z "$VERSION" ]; then
-        error "Could not determine latest version. Check your internet connection."
+        error "Could not determine latest version"
     fi
 }
 
@@ -76,10 +80,6 @@ install() {
     fi
 
     chmod +x "$INSTALL_DIR/atlas"
-    if [ -f "$INSTALL_DIR/atlas-daemon" ]; then
-        chmod +x "$INSTALL_DIR/atlas-daemon"
-    fi
-
     success "Installed atlas v${VERSION} to ${INSTALL_DIR}/atlas"
 }
 
@@ -98,12 +98,10 @@ verify_signature() {
 setup_path() {
     ATLAS_BIN="$INSTALL_DIR"
 
-    # Check if already in PATH
     case ":$PATH:" in
         *":$ATLAS_BIN:"*) return ;;
     esac
 
-    # Detect shell and rc file
     SHELL_NAME=$(basename "$SHELL")
     case "$SHELL_NAME" in
         zsh) RC_FILE="$HOME/.zshrc" ;;
@@ -126,55 +124,6 @@ setup_path() {
     fi
 }
 
-# Install launchd agent for daemon
-install_daemon_service() {
-    if [ ! -f "$INSTALL_DIR/atlas-daemon" ]; then
-        return
-    fi
-
-    PLIST_DIR="$HOME/Library/LaunchAgents"
-    PLIST_FILE="$PLIST_DIR/dev.codeatlas.daemon.plist"
-
-    if [ -f "$PLIST_FILE" ]; then
-        # Already installed, reload
-        launchctl unload "$PLIST_FILE" 2>/dev/null || true
-    fi
-
-    mkdir -p "$PLIST_DIR"
-    mkdir -p "$HOME/.atlas/logs"
-
-    cat > "$PLIST_FILE" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>dev.codeatlas.daemon</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${INSTALL_DIR}/atlas-daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>${HOME}/.atlas/logs/daemon.log</string>
-    <key>StandardErrorPath</key>
-    <string>${HOME}/.atlas/logs/daemon.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>HOME</key>
-        <string>${HOME}</string>
-    </dict>
-</dict>
-</plist>
-EOF
-
-    launchctl load "$PLIST_FILE" 2>/dev/null || true
-    success "Daemon service installed (launchd)"
-}
-
 # Main
 main() {
     printf "\n"
@@ -187,11 +136,6 @@ main() {
     install
     verify_signature
     setup_path
-
-    # Only install daemon service on macOS
-    if [ "$(uname -s)" = "Darwin" ]; then
-        install_daemon_service
-    fi
 
     printf "\n"
     success "Installation complete!"

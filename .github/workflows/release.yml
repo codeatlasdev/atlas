@@ -11,7 +11,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Run tests before releasing
   test:
     name: Test
     runs-on: macos-14
@@ -31,12 +30,11 @@ jobs:
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run tests
-        run: cargo test -p atlas-tui -p atlas-cli
+        run: cargo test -p atlas-tui -p atlas-cli -p atlas-core
 
       - name: Clippy
-        run: cargo clippy -p atlas-tui -p atlas-cli -- -D warnings
+        run: cargo clippy -p atlas-tui -p atlas-cli -p atlas-core -- -D warnings
 
-  # Build Rust binaries for each platform
   build:
     name: Build (${{ matrix.target }})
     needs: test
@@ -67,21 +65,17 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build CLI
+      - name: Build
         run: cargo build --release --target ${{ matrix.target }} -p atlas-cli
-
-      - name: Build Daemon
-        run: cargo build --release --target ${{ matrix.target }} -p atlas-daemon
 
       - name: Package
         run: |
           ATLAS_VERSION=${GITHUB_REF_NAME#v}
           mkdir -p dist
           cp target/${{ matrix.target }}/release/atlas dist/
-          cp target/${{ matrix.target }}/release/atlas-daemon dist/
-          chmod +x dist/atlas dist/atlas-daemon
+          chmod +x dist/atlas
           cd dist
-          tar czf atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz atlas atlas-daemon
+          tar czf atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz atlas
           shasum -a 256 atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz > atlas-${ATLAS_VERSION}-${{ matrix.target }}.tar.gz.sha256
 
       - name: Upload artifacts
@@ -90,7 +84,6 @@ jobs:
           name: atlas-${{ matrix.target }}
           path: dist/*.tar.gz*
 
-  # Create universal binary (macOS)
   universal:
     name: Universal Binary (macOS)
     needs: build
@@ -119,11 +112,10 @@ jobs:
           cd x86_64 && tar xzf *.tar.gz && cd ..
 
           lipo -create arm64/atlas x86_64/atlas -output universal/atlas
-          lipo -create arm64/atlas-daemon x86_64/atlas-daemon -output universal/atlas-daemon
-          chmod +x universal/atlas universal/atlas-daemon
+          chmod +x universal/atlas
 
           cd universal
-          tar czf atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz atlas atlas-daemon
+          tar czf atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz atlas
           shasum -a 256 atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz > atlas-${ATLAS_VERSION}-universal-apple-darwin.tar.gz.sha256
 
       - name: Upload universal
@@ -132,7 +124,6 @@ jobs:
           name: atlas-universal-apple-darwin
           path: universal/*.tar.gz*
 
-  # Publish GitHub Release
   publish:
     name: Publish Release
     needs: [build, universal]
@@ -180,7 +171,6 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
 
-  # Update Homebrew tap
   homebrew:
     name: Update Homebrew
     needs: publish

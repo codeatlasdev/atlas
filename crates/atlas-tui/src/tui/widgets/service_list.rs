@@ -18,10 +18,7 @@ pub fn render(frame: &mut Frame, area: Rect, services: &[&ServiceStatus]) {
     if running == total {
         text.push(Line::from(vec![
             Span::styled("● ", Style::default().fg(t.status_running).bold()),
-            Span::styled(
-                "All systems operational",
-                Style::default().fg(t.text),
-            ),
+            Span::styled("All systems operational", Style::default().fg(t.text)),
         ]));
     } else {
         text.push(Line::from(vec![

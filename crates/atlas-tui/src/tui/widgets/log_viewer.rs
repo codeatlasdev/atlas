@@ -14,12 +14,8 @@ pub fn render(frame: &mut Frame, area: Rect, logs: &[&LogEntry], scroll: usize) 
     let lines: Vec<Line> = logs[start..end]
         .iter()
         .map(|entry| {
-            let prefix = if entry.service.len() > 3 {
-                &entry.service[..3]
-            } else {
-                &entry.service
-            };
-
+            let prefix: String = entry.service.chars().take(3).collect();
+            let content = crate::runtime::logs::strip_ansi(&entry.content);
             let content_color = match entry.level {
                 LogLevel::Error => t.error,
                 LogLevel::Warn => t.warning,
@@ -29,12 +25,11 @@ pub fn render(frame: &mut Frame, area: Rect, logs: &[&LogEntry], scroll: usize) 
 
             Line::from(vec![
                 Span::styled(format!("[{prefix}] "), Style::default().fg(t.text_dim)),
-                Span::styled(&entry.content, Style::default().fg(content_color)),
+                Span::styled(content, Style::default().fg(content_color)),
             ])
         })
         .collect();
 
-    let paragraph =
-        Paragraph::new(lines).block(Block::default().padding(Padding::new(2, 1, 1, 0)));
+    let paragraph = Paragraph::new(lines).block(Block::default().padding(Padding::new(2, 1, 1, 0)));
     frame.render_widget(paragraph, area);
 }

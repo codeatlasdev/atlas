@@ -71,10 +71,7 @@ impl TunnelManager {
             self.config.remote_port,
             self.config.ssh_host
         );
-        let _ = Command::new("pkill")
-            .args(["-f", &pattern])
-            .output()
-            .await;
+        let _ = Command::new("pkill").args(["-f", &pattern]).output().await;
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // Start tunnel
@@ -147,17 +144,13 @@ impl TunnelManager {
             self.config.remote_port,
             self.config.ssh_host
         );
-        let _ = Command::new("pkill")
-            .args(["-f", &pattern])
-            .output()
-            .await;
+        let _ = Command::new("pkill").args(["-f", &pattern]).output().await;
     }
 
     async fn wait_for_port(&self, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
-            if health::check_port("127.0.0.1", self.config.local_port, Duration::from_secs(1))
-                .await
+            if health::check_port("127.0.0.1", self.config.local_port, Duration::from_secs(1)).await
             {
                 return true;
             }

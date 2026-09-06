@@ -58,7 +58,7 @@ pub fn render(frame: &mut Frame, selected: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::{backend::TestBackend, Terminal};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn test_quit_modal_renders() {

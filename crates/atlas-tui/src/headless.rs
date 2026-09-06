@@ -28,7 +28,7 @@ pub async fn run(root_dir: &Path) -> Result<()> {
     let log_task = tokio::spawn(async move {
         while let Some(event) = event_rx.recv().await {
             match event {
-                ManagerEvent::LogLine { name, line } => {
+                ManagerEvent::LogLine { name, line, .. } => {
                     let prefix = if name.len() > 5 { &name[..5] } else { &name };
                     println!("[{prefix:<5}] {line}");
                 }

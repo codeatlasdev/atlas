@@ -27,7 +27,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2), // tabs
-            Constraint::Min(5),   // content
+            Constraint::Min(5),    // content
             Constraint::Length(1), // footer
         ])
         .split(area);
@@ -63,8 +63,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         let sidebar_inner = sidebar_block.inner(content_layout[1]);
         frame.render_widget(sidebar_block, content_layout[1]);
 
-        let services: Vec<&crate::runtime::service::ServiceStatus> =
-            app.manager.services();
+        let services: Vec<&crate::runtime::service::ServiceStatus> = app.manager.services();
         widgets::service_list::render(frame, sidebar_inner, &services);
     } else {
         // No sidebar — logs take full width

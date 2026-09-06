@@ -58,6 +58,9 @@ mod tests {
 
         assert!(lock2.is_err());
         let err = lock2.unwrap_err();
-        assert!(err.to_string().contains("another atlas dev instance is running"));
+        assert!(
+            err.to_string()
+                .contains("another atlas dev instance is running")
+        );
     }
 }

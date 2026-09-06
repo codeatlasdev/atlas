@@ -75,7 +75,10 @@ mod tests {
         // Service status
         assert!(matches!(theme.status_running, Color::Rgb(0x22, 0xC5, 0x5E)));
         assert!(matches!(theme.status_stopped, Color::Rgb(0x71, 0x71, 0x7A)));
-        assert!(matches!(theme.status_starting, Color::Rgb(0xF5, 0x9E, 0x0B)));
+        assert!(matches!(
+            theme.status_starting,
+            Color::Rgb(0xF5, 0x9E, 0x0B)
+        ));
         assert!(matches!(theme.status_failed, Color::Rgb(0xEF, 0x44, 0x44)));
     }
 }

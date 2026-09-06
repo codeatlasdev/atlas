@@ -37,8 +37,7 @@ impl LogLevel {
             Self::Error
         } else if lower.contains("warn") || lower.contains("\x1b[33m") {
             Self::Warn
-        } else if lower.contains("debug") || lower.contains("\x1b[90m") || lower.contains("trace")
-        {
+        } else if lower.contains("debug") || lower.contains("\x1b[90m") || lower.contains("trace") {
             Self::Debug
         } else {
             Self::Info
@@ -286,28 +285,83 @@ pub struct ClipboardContext {
 }
 
 pub fn strip_ansi(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut in_escape = false;
-
-    for c in s.chars() {
-        if c == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        if in_escape {
-            if c == 'm' || c == 'K' || c == 'H' || c == 'J' {
-                in_escape = false;
-            }
-            continue;
-        }
-        result.push(c);
+    #[derive(Clone, Copy)]
+    enum State {
+        Ground,
+        Esc,
+        Csi,
+        Osc,
+        OscEsc,
+        StringControl,
+        StringEsc,
     }
+
+    let mut result = String::with_capacity(s.len());
+    let mut state = State::Ground;
+
+    for ch in s.chars() {
+        let code = ch as u32;
+        state = match state {
+            State::Ground => match ch {
+                '\x1b' => State::Esc,
+                '\u{009b}' => State::Csi,
+                '\u{009d}' => State::Osc,
+                '\u{0090}' | '\u{009e}' | '\u{009f}' => State::StringControl,
+                '\t' | '\n' | '\r' => {
+                    result.push(ch);
+                    State::Ground
+                }
+                _ if code < 0x20 || (0x7f..=0x9f).contains(&code) => State::Ground,
+                _ => {
+                    result.push(ch);
+                    State::Ground
+                }
+            },
+            State::Esc => match ch {
+                '[' => State::Csi,
+                ']' => State::Osc,
+                'P' | 'X' | '^' | '_' => State::StringControl,
+                '\x1b' => State::Esc,
+                _ => State::Ground,
+            },
+            State::Csi => {
+                if ch == '\x1b' {
+                    State::Esc
+                } else if (0x40..=0x7e).contains(&code) {
+                    State::Ground
+                } else {
+                    State::Csi
+                }
+            }
+            State::Osc => match ch {
+                '\x07' => State::Ground,
+                '\x1b' => State::OscEsc,
+                _ => State::Osc,
+            },
+            State::OscEsc => match ch {
+                '\\' => State::Ground,
+                '\x1b' => State::OscEsc,
+                _ => State::Osc,
+            },
+            State::StringControl => match ch {
+                '\x1b' => State::StringEsc,
+                _ => State::StringControl,
+            },
+            State::StringEsc => match ch {
+                '\\' => State::Ground,
+                '\x1b' => State::StringEsc,
+                _ => State::StringControl,
+            },
+        };
+    }
+
     result
 }
 
-pub fn copy_to_clipboard(text: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
+pub async fn copy_to_clipboard(text: &str) -> std::io::Result<()> {
+    use std::process::Stdio;
+    use tokio::io::AsyncWriteExt;
+    use tokio::process::Command;
 
     let mut child = if cfg!(target_os = "macos") {
         Command::new("pbcopy").stdin(Stdio::piped()).spawn()?
@@ -318,11 +372,16 @@ pub fn copy_to_clipboard(text: &str) -> std::io::Result<()> {
             .spawn()?
     };
 
-    if let Some(ref mut stdin) = child.stdin {
-        stdin.write_all(text.as_bytes())?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(text.as_bytes()).await?;
     }
-    child.wait()?;
-    Ok(())
+
+    let status = child.wait().await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("clipboard command failed"))
+    }
 }
 
 fn format_timestamp(millis: u64) -> String {
@@ -468,6 +527,15 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_ansi_preserves_newlines() {
+        assert_eq!(
+            strip_ansi("\x1b[31mfirst\x1b[0m\nsecond\r\n"),
+            "first\nsecond\r\n"
+        );
+        assert_eq!(strip_ansi("\x1b[?25lready\x1b[?25h"), "ready");
+    }
+
+    #[test]
     fn test_format_for_clipboard() {
         let mut buf = LogBuffer::new(100);
         buf.push(
@@ -480,11 +548,7 @@ mod tests {
             "Error: ECONNREFUSED".to_string(),
             LogStream::Stderr,
         );
-        buf.push(
-            "web".to_string(),
-            "Compiled".to_string(),
-            LogStream::Stdout,
-        );
+        buf.push("web".to_string(), "Compiled".to_string(), LogStream::Stdout);
 
         let entries: Vec<&LogEntry> = buf.all().iter().collect();
         let ctx = ClipboardContext {

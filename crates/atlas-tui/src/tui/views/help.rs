@@ -43,10 +43,7 @@ pub fn render(frame: &mut Frame) {
             Span::styled("Restart all", Style::default().fg(t.text)),
         ]),
         Line::from(""),
-        Line::from(Span::styled(
-            "NAVIGATION",
-            Style::default().fg(t.text_dim),
-        )),
+        Line::from(Span::styled("NAVIGATION", Style::default().fg(t.text_dim))),
         Line::from(vec![
             Span::styled(" tab  ", Style::default().fg(t.primary).bold()),
             Span::styled("Next tab", Style::default().fg(t.text)),
@@ -81,7 +78,6 @@ pub fn render(frame: &mut Frame) {
         )),
     ];
 
-    let paragraph =
-        Paragraph::new(lines).block(Block::default().padding(Padding::new(1, 1, 0, 0)));
+    let paragraph = Paragraph::new(lines).block(Block::default().padding(Padding::new(1, 1, 0, 0)));
     frame.render_widget(paragraph, inner);
 }

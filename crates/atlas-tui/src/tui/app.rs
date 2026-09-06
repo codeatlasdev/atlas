@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
@@ -22,8 +23,15 @@ pub enum Message {
     SwitchTab(usize),
     NextTab,
     PrevTab,
-    ServiceStateChanged { name: String, state: ServiceState },
-    LogLine { name: String, line: String },
+    ServiceStateChanged {
+        name: String,
+        state: ServiceState,
+    },
+    LogLineFrom {
+        name: String,
+        line: String,
+        stream: LogStream,
+    },
     RestartAll,
     ShowHelp,
     HideHelp,
@@ -38,8 +46,13 @@ pub enum Message {
     ScrollToTop,
     HealthCheckDone,
     // Mouse
-    MouseClick { x: u16, y: u16 },
-    MouseScroll { down: bool },
+    MouseClick {
+        x: u16,
+        y: u16,
+    },
+    MouseScroll {
+        down: bool,
+    },
     // Command Palette
     ShowPalette,
     HidePalette,
@@ -52,6 +65,10 @@ pub enum Message {
     CopyLogs,
     CopyLogsForAI,
     CopyErrors,
+    ClipboardResult {
+        success: String,
+        ok: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +96,18 @@ pub enum Layer {
     CommandPalette,
 }
 
+#[derive(Debug)]
+enum Effect {
+    RestartAll,
+    CheckHealth,
+    CopyToClipboard { text: String, success: String },
+}
+
+enum NextEvent {
+    Manager(Option<ManagerEvent>),
+    Ui(Option<Event>),
+}
+
 // --- App State ---
 pub struct App {
     pub config: ProjectConfig,
@@ -93,6 +122,7 @@ pub struct App {
     pub log_buffer: LogBuffer,
     pub log_scroll: usize,
     pub follow_logs: bool,
+    effects: VecDeque<Effect>,
     pub toast: Option<(String, ToastVariant, Instant)>,
     pub should_quit: bool,
     pub size: (u16, u16),
@@ -131,6 +161,7 @@ impl App {
             active_tab: 0,
             tabs,
             log_buffer: LogBuffer::new(5000),
+            effects: VecDeque::new(),
             log_scroll: 0,
             follow_logs: true,
             toast: None,
@@ -230,43 +261,72 @@ impl App {
     where
         B::Error: Send + Sync + 'static,
     {
-        // Start services
         self.manager.start_all().await;
         self.started = true;
 
-        loop {
-            // Compute tab areas before render (for mouse hit testing)
-            self.compute_tab_areas();
+        let mut manager_closed = false;
+        let mut ui_closed = false;
+        let mut force_ui = false;
 
-            // Render
+        loop {
+            self.compute_tab_areas();
             terminal.draw(|frame| self.view(frame))?;
 
-            // Drain manager events (non-blocking)
-            while let Ok(event) = self.manager_rx.try_recv() {
-                match event {
-                    ManagerEvent::StateChanged { name, state } => {
-                        self.update(Message::ServiceStateChanged { name, state });
-                    }
-                    ManagerEvent::LogLine { name, line } => {
-                        self.update(Message::LogLine { name, line });
-                    }
-                    ManagerEvent::AllStarted => {}
-                    ManagerEvent::AllStopped => {}
-                }
+            if manager_closed && ui_closed {
+                break;
             }
 
-            // Wait for next event
-            if let Some(event) = self.events.next().await {
-                let msg = self.map_event(event);
-                if let Some(m) = msg {
-                    self.update(m);
+            // A manager event cannot monopolize the loop. After handling
+            // manager traffic, give the UI channel one receive opportunity.
+            let next = if force_ui && !ui_closed {
+                force_ui = false;
+                NextEvent::Ui(self.events.next().await)
+            } else if manager_closed {
+                NextEvent::Ui(self.events.next().await)
+            } else if ui_closed {
+                NextEvent::Manager(self.manager_rx.recv().await)
+            } else {
+                let manager_rx = &mut self.manager_rx;
+                let events = &mut self.events;
+                tokio::select! {
+                    manager = manager_rx.recv() => NextEvent::Manager(manager),
+                    ui = events.next() => NextEvent::Ui(ui),
                 }
+            };
+
+            match next {
+                NextEvent::Manager(Some(event)) => {
+                    self.apply_manager_event(event);
+                    force_ui = true;
+                }
+                NextEvent::Manager(None) => manager_closed = true,
+                NextEvent::Ui(Some(event)) => {
+                    if let Some(message) = self.map_event(event) {
+                        self.update(message);
+                    }
+                }
+                NextEvent::Ui(None) => ui_closed = true,
             }
 
-            // Periodic health check every 50 ticks (5 seconds)
-            if self.tick_count.is_multiple_of(50) && self.tick_count > 0 && self.started {
-                self.manager.check_health().await;
+            // Drain a bounded batch so a noisy service cannot starve input.
+            let mut drained = 0;
+            while drained < 64 && !manager_closed {
+                match self.manager_rx.try_recv() {
+                    Ok(event) => {
+                        self.apply_manager_event(event);
+                        drained += 1;
+                    }
+                    Err(mpsc::error::TryRecvError::Empty) => break,
+                    Err(mpsc::error::TryRecvError::Disconnected) => {
+                        manager_closed = true;
+                    }
+                }
             }
+            if drained > 0 {
+                force_ui = true;
+            }
+
+            self.execute_effects().await;
 
             if self.should_quit {
                 self.manager.stop_all().await;
@@ -274,6 +334,38 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    fn apply_manager_event(&mut self, event: ManagerEvent) {
+        match event {
+            ManagerEvent::StateChanged { name, state } => {
+                self.update(Message::ServiceStateChanged { name, state });
+            }
+            ManagerEvent::LogLine { name, line, stream } => {
+                self.update(Message::LogLineFrom { name, line, stream });
+            }
+            ManagerEvent::AllStarted | ManagerEvent::AllStopped => {}
+        }
+    }
+
+    async fn execute_effects(&mut self) {
+        while let Some(effect) = self.effects.pop_front() {
+            match effect {
+                Effect::RestartAll => {
+                    self.manager.restart_all().await;
+                    self.toast = Some((
+                        "Services restarted".to_string(),
+                        ToastVariant::Success,
+                        Instant::now(),
+                    ));
+                }
+                Effect::CheckHealth => self.manager.check_health().await,
+                Effect::CopyToClipboard { text, success } => {
+                    let ok = logs::copy_to_clipboard(&text).await.is_ok();
+                    self.update(Message::ClipboardResult { success, ok });
+                }
+            }
+        }
     }
 
     fn map_event(&self, event: Event) -> Option<Message> {
@@ -308,9 +400,7 @@ impl App {
                     }
                 }
                 KeyCode::Esc | KeyCode::Char('n') => Some(Message::HideQuit),
-                KeyCode::Tab | KeyCode::Left | KeyCode::Right => {
-                    Some(Message::ToggleQuitSelection)
-                }
+                KeyCode::Tab | KeyCode::Left | KeyCode::Right => Some(Message::ToggleQuitSelection),
                 _ => None,
             },
             Layer::CommandPalette => match key.code {
@@ -363,10 +453,12 @@ impl App {
                     }
                 }
                 // Splash done
-                if !self.splash_done
-                    && self.splash_start.elapsed() > Duration::from_millis(1500)
-                {
+                if !self.splash_done && self.splash_start.elapsed() > Duration::from_millis(1500) {
                     self.splash_done = true;
+                }
+                // Enqueue periodic health check
+                if self.started && self.tick_count > 0 && self.tick_count.is_multiple_of(50) {
+                    self.effects.push_back(Effect::CheckHealth);
                 }
             }
             Message::Resize(w, h) => self.size = (w, h),
@@ -381,15 +473,14 @@ impl App {
                 self.follow_logs = true;
             }
             Message::PrevTab => {
-                self.active_tab =
-                    (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
+                self.active_tab = (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
                 self.follow_logs = true;
             }
             Message::ServiceStateChanged { name, state } => {
                 self.manager.update_state(&name, state);
             }
-            Message::LogLine { name, line } => {
-                self.log_buffer.push(name, line, LogStream::Stdout);
+            Message::LogLineFrom { name, line, stream } => {
+                self.log_buffer.push(name, line, stream);
                 if self.follow_logs {
                     self.log_scroll = self.log_buffer.len().saturating_sub(1);
                 }
@@ -400,6 +491,7 @@ impl App {
                     ToastVariant::Info,
                     Instant::now(),
                 ));
+                self.effects.push_back(Effect::RestartAll);
             }
             Message::ShowHelp => self.layer = Layer::Help,
             Message::HideHelp => self.layer = Layer::Dashboard,
@@ -503,23 +595,10 @@ impl App {
                         None
                     },
                 };
-                let text = logs::format_for_clipboard(&entries, &ctx);
-                match logs::copy_to_clipboard(&text) {
-                    Ok(_) => {
-                        self.toast = Some((
-                            "✓ Logs copied (3min)".to_string(),
-                            ToastVariant::Success,
-                            Instant::now(),
-                        ));
-                    }
-                    Err(_) => {
-                        self.toast = Some((
-                            "✗ Clipboard failed".to_string(),
-                            ToastVariant::Error,
-                            Instant::now(),
-                        ));
-                    }
-                }
+                self.effects.push_back(Effect::CopyToClipboard {
+                    text: logs::format_for_clipboard(&entries, &ctx),
+                    success: "Logs copied (3min)".to_string(),
+                });
             }
             Message::CopyLogsForAI => {
                 let entries: Vec<_> = self.log_buffer.since(300);
@@ -537,23 +616,10 @@ impl App {
                         None
                     },
                 };
-                let text = logs::format_for_ai_prompt(&entries, &ctx);
-                match logs::copy_to_clipboard(&text) {
-                    Ok(_) => {
-                        self.toast = Some((
-                            "✓ AI prompt copied".to_string(),
-                            ToastVariant::Success,
-                            Instant::now(),
-                        ));
-                    }
-                    Err(_) => {
-                        self.toast = Some((
-                            "✗ Clipboard failed".to_string(),
-                            ToastVariant::Error,
-                            Instant::now(),
-                        ));
-                    }
-                }
+                self.effects.push_back(Effect::CopyToClipboard {
+                    text: logs::format_for_ai_prompt(&entries, &ctx),
+                    success: "AI prompt copied".to_string(),
+                });
             }
             Message::CopyErrors => {
                 let entries = self.log_buffer.errors();
@@ -575,23 +641,18 @@ impl App {
                         .collect(),
                     filter: Some("errors only".to_string()),
                 };
-                let text = logs::format_for_clipboard(&entries, &ctx);
-                match logs::copy_to_clipboard(&text) {
-                    Ok(_) => {
-                        self.toast = Some((
-                            format!("✓ {} errors copied", entries.len()),
-                            ToastVariant::Success,
-                            Instant::now(),
-                        ));
-                    }
-                    Err(_) => {
-                        self.toast = Some((
-                            "✗ Clipboard failed".to_string(),
-                            ToastVariant::Error,
-                            Instant::now(),
-                        ));
-                    }
-                }
+                self.effects.push_back(Effect::CopyToClipboard {
+                    text: logs::format_for_clipboard(&entries, &ctx),
+                    success: format!("{} errors copied", entries.len()),
+                });
+            }
+            Message::ClipboardResult { success, ok } => {
+                let variant = if ok {
+                    ToastVariant::Success
+                } else {
+                    ToastVariant::Error
+                };
+                self.toast = Some((success, variant, Instant::now()));
             }
         }
     }
@@ -697,12 +758,26 @@ mod tests {
     #[test]
     fn test_update_log_line() {
         let mut app = make_app();
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "listening".to_string(),
+            stream: LogStream::Stdout,
         });
         assert_eq!(app.log_buffer.len(), 1);
         assert_eq!(app.log_buffer.all().back().unwrap().content, "listening");
+    }
+
+    #[test]
+    fn test_log_line_stderr_preserved() {
+        let mut app = make_app();
+        app.update(Message::LogLineFrom {
+            name: "web".to_string(),
+            line: "error output".to_string(),
+            stream: LogStream::Stderr,
+        });
+        let entry = app.log_buffer.all().back().unwrap();
+        assert_eq!(entry.stream, LogStream::Stderr);
+        assert_eq!(entry.content, "error output");
     }
 
     #[test]
@@ -727,17 +802,20 @@ mod tests {
     #[test]
     fn test_filtered_logs() {
         let mut app = make_app();
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "line1".to_string(),
+            stream: LogStream::Stdout,
         });
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "api".to_string(),
             line: "line2".to_string(),
+            stream: LogStream::Stdout,
         });
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "line3".to_string(),
+            stream: LogStream::Stdout,
         });
 
         // Tab 0 = All
@@ -754,9 +832,10 @@ mod tests {
     fn test_scroll() {
         let mut app = make_app();
         for i in 0..10 {
-            app.update(Message::LogLine {
+            app.update(Message::LogLineFrom {
                 name: "web".to_string(),
                 line: format!("line {i}"),
+                stream: LogStream::Stdout,
             });
         }
 
@@ -819,7 +898,11 @@ mod tests {
         app.update(Message::PaletteInput('r'));
         app.update(Message::PaletteInput('e'));
         // Should filter to "Restart All"
-        assert!(app.palette_filtered.iter().any(|c| c.name.contains("Restart")));
+        assert!(
+            app.palette_filtered
+                .iter()
+                .any(|c| c.name.contains("Restart"))
+        );
     }
 
     #[test]
@@ -898,13 +981,15 @@ mod tests {
     fn test_mouse_scroll() {
         let mut app = make_app();
 
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "line1".to_string(),
+            stream: LogStream::Stdout,
         });
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "line2".to_string(),
+            stream: LogStream::Stdout,
         });
 
         app.update(Message::MouseScroll { down: true });
@@ -928,13 +1013,15 @@ mod tests {
     fn test_copy_logs_no_crash() {
         let mut app = make_app();
 
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "started".to_string(),
+            stream: LogStream::Stdout,
         });
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "Error: crash".to_string(),
+            stream: LogStream::Stderr,
         });
 
         // These should not crash even if clipboard isn't available
@@ -947,9 +1034,10 @@ mod tests {
     fn test_copy_errors_empty() {
         let mut app = make_app();
 
-        app.update(Message::LogLine {
+        app.update(Message::LogLineFrom {
             name: "web".to_string(),
             line: "all good".to_string(),
+            stream: LogStream::Stdout,
         });
         app.update(Message::CopyErrors);
         // Should show "No errors found" toast

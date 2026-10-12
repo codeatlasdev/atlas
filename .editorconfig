@@ -1,0 +1,15 @@
+root = true
+
+[*]
+indent_style = tab
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+
+[*.rs]
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,md,json}]
+indent_style = space
+indent_size = 2

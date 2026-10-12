@@ -1,0 +1,21 @@
+---
+// A real product loop in an app-window frame. The poster is the static first frame; the video only downloads
+// when it scrolls into view and never plays under prefers-reduced-motion (see lib/page.ts).
+// On phones the frame uses the footage's own 16:10 (no crop, so the UI is never cut off); wider screens may crop to `ratio`.
+interface Props { name: string; alt: string; ratio?: string; pos?: string }
+const { name, alt, ratio = "16 / 10", pos = "top left" } = Astro.props;
+---
+<figure class="win clip" style={`--ratio:${ratio};--pos:${pos}`}>
+	<img src={`/media/${name}-poster.jpg`} alt={alt} width="1280" height="800" loading="lazy" decoding="async" />
+	<video muted loop playsinline disablepictureinpicture preload="none" tabindex="-1" aria-hidden="true" data-clip>
+		<source data-src={`/media/${name}.webm`} type="video/webm" />
+		<source data-src={`/media/${name}.mp4`} type="video/mp4" />
+	</video>
+</figure>
+<style>
+	.clip { position: relative; margin: 0; aspect-ratio: var(--ratio); }
+	.clip img, .clip video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: var(--pos); }
+	.clip video { opacity: 0; transition: opacity 0.3s; }
+	.clip video[data-ready] { opacity: 1; }
+	@media (max-width: 900px) { .clip { aspect-ratio: 16 / 10; } .clip img, .clip video { object-fit: contain; background: #0b0c10; } }
+</style>

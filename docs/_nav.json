@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Start here",
+    "items": ["introduction", "getting-started", "installation", "quickstart", "concepts"]
+  },
+  {
+    "title": "Guides",
+    "items": ["desktop", "terminal", "tui", "logs", "agents", "mcp", "deploy"]
+  },
+  {
+    "title": "Reference",
+    "items": ["cli", "configuration", "desktop-settings", "runtime"]
+  },
+  {
+    "title": "Help",
+    "items": ["troubleshooting", "faq"]
+  },
+  {
+    "title": "Project",
+    "items": ["architecture", "contributing", "release", "site"]
+  }
+]

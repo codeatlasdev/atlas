@@ -1,0 +1,57 @@
+[package]
+name = "atlas-desktop"
+version = "1.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+readme = "../../README.md"
+description = "Atlas Desktop: Tauri shell with GPU terminal, worktrees, browser and agent panels"
+
+[[bin]]
+name = "atlas-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png", "unstable"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-notification = "2"
+window-vibrancy = "0.8"
+atlas-tui = { path = "../atlas-tui" }
+atlas-core = { path = "../atlas-core" }
+atlas-host = { path = "../atlas-host" }
+base64 = "0.23"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+sha1_smol = "1"
+notify = "8"
+parking_lot = "0.12"
+libc = { workspace = true }
+semver = { workspace = true }
+tempfile = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSView", "NSResponder", "NSWindow", "NSGraphics", "NSPasteboard"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString"] }
+atlas-term = { path = "../atlas-term" }
+
+[dev-dependencies]
+serde_yaml = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+---
+import { render } from "astro:content";
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import { editUrl, loadNav, titleOf } from "../../lib/docs";
+
+export async function getStaticPaths() {
+	const { groups, entries } = await loadNav();
+	return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry, groups } }));
+}
+
+const { entry, groups } = Astro.props;
+const { Content, headings, remarkPluginFrontmatter } = await render(entry);
+const title = entry.data.title ?? remarkPluginFrontmatter.title ?? titleOf(entry);
+---
+<DocsLayout
+	title={title}
+	description={entry.data.description}
+	slug={entry.id}
+	groups={groups}
+	headings={headings}
+	editUrl={editUrl(entry)}
+>
+	<Content />
+</DocsLayout>

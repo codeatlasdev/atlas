@@ -1,0 +1,457 @@
+---
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+/** `/media/<f>?v=<content hash>`: media is cached for 30 days, so a recut needs a new URL. */
+const v = (f: string) =>
+	`/media/${f}?v=${createHash("sha1").update(readFileSync(`public/media/${f}`)).digest("hex").slice(0, 10)}`;
+
+import Base from "../layouts/Base.astro";
+import Hero from "../components/Hero.astro";
+import Rail from "../components/Rail.astro";
+import Clip from "../components/Clip.astro";
+import StackVisualizer from "../components/islands/StackVisualizer.svelte";
+import TerminalReplay from "../components/islands/TerminalReplay.svelte";
+import FilmPlayer from "../components/islands/FilmPlayer.svelte";
+import InstallCopy from "../components/islands/InstallCopy.svelte";
+import Waitlist from "../components/islands/Waitlist.svelte";
+import { SITE } from "../data/site";
+
+const faq = [
+	{ q: "How do I install it?", a: "Run `curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh`. It downloads the latest release, verifies its SHA-256 and installs `atlas` into `~/.atlas/bin`. Then `atlas desktop` installs the desktop app, or download the .dmg from the GitHub releases page." },
+	{ q: "What does it run on?", a: "Prebuilt releases are macOS 13 or later on Apple silicon only: the CLI and the desktop app with its GPU terminal. The CLI, the TUI and the MCP server also build from source on Linux; there are no prebuilt Linux binaries. No Windows." },
+	{ q: "Is it open source?", a: "Yes. The source is on GitHub under MIT or Apache-2.0, at your option. Issues and pull requests are welcome." },
+	{ q: "Do I need the desktop app to use atlas.yaml?", a: "No. The CLI, the TUI and the MCP server work on their own. The desktop app is a client of the same runners, so the app, a terminal and an agent all see the same live state." },
+	{ q: "Which agents does it work with?", a: "omp, Claude Code and Codex. `atlas setup` detects them, shows what it would change, and with `--apply` adds the MCP server, the skills and the status hooks. Cursor and other MCP clients can be configured by hand." },
+	{ q: "Does quitting the app stop my stack?", a: "No. Start runs `atlas dev --detach` and terminals live in a per-user daemon, so stacks and agents keep running when the app quits, crashes or updates." },
+	{ q: "Does it send my code or logs anywhere?", a: "No. Atlas is local first. Logs stay in `.logs/` in your project and the control socket is local. The release-notes email form on this page is the only thing on the site that talks to a server; the app only contacts GitHub to check for updates." },
+	{ q: "How is it different from process-compose, mprocs or Tilt?", a: "Those run processes. Atlas also gives you the workspace around them: a GPU terminal, a worktree per agent, a project panel with live charts, and an MCP server so agents can read logs and restart services. The README's comparison table is honest about where the others win, such as Windows and replicas." },
+];
+
+const jsonLd = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "SoftwareApplication",
+			name: "Atlas",
+			applicationCategory: "DeveloperApplication",
+			operatingSystem: "macOS 13+ (Apple silicon), Linux (CLI)",
+			description: SITE.description,
+			url: SITE.url,
+			license: ["https://opensource.org/licenses/MIT", "https://opensource.org/licenses/Apache-2.0"],
+			publisher: { "@type": "Organization", name: "CodeAtlas", url: SITE.codeatlas },
+		},
+		{
+			"@type": "FAQPage",
+			mainEntity: faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a.replace(/`/g, "") } })),
+		},
+	],
+};
+const rows = [
+	'22:12:22 worker job email.send done in 37ms',
+	'22:12:23 api {"level":30,"msg":"GET /orders","ms":17,"status":200}',
+	'22:12:23 web [hmr] updated src/routes/cart.tsx',
+	'22:12:24 api {"level":30,"msg":"POST /checkout","ms":221,"status":201}',
+	'22:12:24 worker WARN queue lag 1.2s',
+	'22:12:25 search query "running shoes" 14ms',
+	'22:12:26 database checkpoint complete: wrote 42 buffers',
+	'22:12:26 api {"level":30,"msg":"GET /orders","ms":90,"status":200}',
+	'22:12:27 web [hmr] updated src/routes/cart.tsx',
+	'22:12:28 api {"level":50,"msg":"stripe timeout","ms":5000,"status":504}',
+];
+const riverText = [...rows, ...rows].join("\n");
+const code = (s: string) => s.replace(/`([^`]+)`/g, "<code>$1</code>");
+---
+<Base jsonLd={jsonLd}>
+	<Rail slot="rail" />
+	<Hero />
+
+	<!-- ONE FILE: paper. The file is still; the system it starts is not. -->
+	<section id="yaml" class="sec on-paper file screen" data-sec="yaml" data-ground="paper">
+		<div class="wrap">
+			<h2 class="display rise">The whole stack is one file you can read.</h2>
+			<div class="two">
+				<div>
+					<p class="lead">Services, ports, health checks, who waits for whom. A typo gets a <em>did you mean</em> before anything starts. No <code>sleep 10</code> hiding in a Makefile.</p>
+					<p class="prose-sm">Atlas sorts the boot order from <code>depends_on</code>, waits for each condition, restarts what crashes with backoff, and gives up loudly instead of painting a green dot on a crash loop. <a class="ln" href="/docs/configuration/">Every field is in the reference.</a></p>
+				</div>
+			</div>
+			<div class="viz"><StackVisualizer client:visible /></div>
+		</div>
+	</section>
+
+	<!-- TERMINAL -->
+	<section id="terminal" class="sec term screen" data-sec="terminal">
+		<div class="wrap">
+			<h2 class="display rise">A terminal that isn't a web page.</h2>
+		</div>
+		<div class="bleed">
+			<div class="text wrap">
+				<p class="lead">Most app terminals are xterm.js in a web view. Atlas draws each terminal natively with Metal and wgpu. Its render thread sleeps until there is output.</p>
+				<dl class="nums">
+					<div><dt>0.29 ms</dt><dd>render work per frame, p95</dd></div>
+					<div><dt>8.45 ms</dt><dd>frame interval p95 at 120 Hz</dd></div>
+				</dl>
+				<p class="prose-sm">Kitty graphics and sixel, color emoji, ligatures, shell integration. The docs put Ghostty's numbers right next to ours, including the rows where Ghostty wins. <a class="ln" href="/docs/terminal/#performance">Read the table.</a></p>
+			</div>
+			<div class="winwrap" data-slide>
+				<Clip name="loop-terminal" ratio="16 / 7" alt="Atlas GPU terminal showing ligatures, truecolor, emoji and an inline kitty-protocol image" />
+			</div>
+		</div>
+	</section>
+
+	<!-- SPACES -->
+	<section id="spaces" class="sec on-deep spaces screen" data-sec="spaces">
+		<div class="wrap">
+			<h2 class="display rise">One space per project. No window juggling.</h2>
+			<div class="split">
+				<div class="stage" data-peek>
+					<div class="win shell">
+						<img class="base" src="/media/shot-workspace.jpg" alt="Atlas Desktop with the project sidebar open next to a worktree" width="2000" height="1281" loading="lazy" decoding="async" />
+					</div>
+				</div>
+				<div class="words">
+					<p class="lead">Every repo is a space with its own color, worktrees, tabs and docks. Hide the sidebar and it still peeks back when your pointer touches the window edge.</p>
+					<p class="prose-sm">Switch with a two-finger swipe over the sidebar, or <kbd>⌃1</kbd> to <kbd>⌃9</kbd>. Names, shortcuts and themes follow Zed's, so your hands already know it. <a class="ln" href="/docs/desktop/#getting-around">Getting around.</a></p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- PANEL -->
+	<section id="panel" class="sec panel screen" data-sec="panel">
+		<div class="wrap">
+			<div class="phead">
+				<h2 class="display rise">Open the project. Know if it's healthy before you read a line.</h2>
+				<div class="pcopy">
+					<p class="lead">A card per service: state, port, last log line, CPU and memory sparklines. The header says <em>All healthy</em>, <em>2 starting</em> or <em>1 failed</em> before you read anything else.</p>
+					<p class="prose-sm">A failed service says why, and one click opens its logs. <a class="ln" href="/docs/desktop/#project-panel">The project panel.</a></p>
+				</div>
+			</div>
+			<div class="zoomstage" data-zoom>
+				<div class="frame"><div class="win">
+					<img src="/media/shot-panel.jpg" alt="The Atlas project panel: a card per service with CPU and memory sparklines, resource charts and health over time" width="2000" height="1281" loading="lazy" decoding="async" />
+				</div></div>
+				<p class="tip" data-tip>Memory, CPU and error rate for the last 5 minutes. Health over time for the last 10.</p>
+			</div>
+		</div>
+	</section>
+
+	<!-- LOGS -->
+	<section id="logs" class="sec on-deep logs screen" data-sec="logs">
+		<div class="river2" aria-hidden="true" data-fast><div class="strip" data-rows={riverText}></div>
+		</div>
+		<div class="wrap over">
+			<h2 class="display rise">A chatty service shouldn't hide the one that's failing.</h2>
+			<div class="lw">
+				<div class="words">
+					<p class="lead">Lines are assembled from the raw pipe, every service has its own buffer, and the view only parses what is on screen.</p>
+					<dl class="nums">
+						<div><dt>4 M/s</dt><dd>lines ingested by the TUI, 1,000,000 lines through 8 services</dd></div>
+						<div><dt>45 ms</dt><dd>regex find across ~437k held lines</dd></div>
+					</dl>
+					<p class="prose-sm">Regex find with a match counter, level filter, time ranges, jump to the next error. Click a URL or <code>path:line</code> to open it. Everything also lands in <code>.logs/</code>, so nothing is lost when you scroll. <a class="ln" href="/docs/logs/">Logs.</a></p>
+				</div>
+				<div class="winwrap"><Clip name="loop-logs" alt="Searching and filtering a busy multi-service log stream in Atlas Desktop" /></div>
+			</div>
+		</div>
+	</section>
+
+	<!-- AGENTS -->
+	<section id="agents" class="sec agents screen" data-sec="agents">
+		<div class="wrap">
+			<div class="phead">
+				<h2 class="display rise">Run three agents without them stepping on each other.</h2>
+				<div class="pcopy">
+					<p class="lead">An agent task is a worktree. Atlas branches from <code>origin/main</code>, runs your setup, offsets the ports, and opens the agent in a terminal that survives quitting the app.</p>
+					<p class="prose-sm">omp, Claude Code and Codex, each with live status: working, needs you, done. Review the diff, comment a line, send it back. <a class="ln" href="/docs/agents/">Agent setup.</a></p>
+				</div>
+			</div>
+			<div class="ag">
+				<div class="branches" data-branches>
+					<svg viewBox="0 0 520 360" role="img" aria-label="main branches into three agent worktrees, each with its own port offset">
+						<path class="trunk" d="M30 20 V340" pathLength="1" />
+						<g class="b" data-b="0"><path d="M30 70 H150 V70 H470" pathLength="1" /><circle cx="30" cy="70" r="6" /><text x="160" y="58">checkout-shipping</text><text x="160" y="92" class="po">ports +100</text></g>
+						<g class="b" data-b="1"><path d="M30 170 H470" pathLength="1" /><circle cx="30" cy="170" r="6" /><text x="160" y="158">fix-stripe-timeout</text><text x="160" y="192" class="po">ports +200</text></g>
+						<g class="b" data-b="2"><path d="M30 270 H470" pathLength="1" /><circle cx="30" cy="270" r="6" /><text x="160" y="258">cart-empty-state</text><text x="160" y="292" class="po">ports +300</text></g>
+						<text class="mn" x="44" y="14">main</text>
+					</svg>
+				</div>
+				<div class="winwrap"><Clip name="loop-agents" alt="The Atlas agents dashboard: three agents in separate worktrees with live working, needs-you and done status" /></div>
+			</div>
+		</div>
+	</section>
+
+	<!-- MCP: paper, a transcript -->
+	<section id="mcp" class="sec on-paper mcp screen" data-sec="mcp" data-ground="paper">
+		<div class="wrap">
+			<h2 class="display rise">Your agent can read the logs. You can stop being the clipboard.</h2>
+			<div class="mc">
+				<div class="words">
+					<p class="lead">Atlas ships an MCP server. Your agent asks the live stack what is wrong, instead of asking you to paste a stack trace.</p>
+					<p class="prose-sm">Status, logs, log search and config are read-only. Restart, stop, start and run-action need <code>atlas dev</code> running, and a destructive action stays refused until you approve it. One command wires it up: <code>atlas setup claude-code --apply</code>. <a class="ln" href="/docs/mcp/">The tools.</a></p>
+				</div>
+				<figure class="tx" data-type>
+					<figcaption>An example session. The tool names and arguments are the real ones.</figcaption>
+					<pre><code><span class="u">you</span>  why is checkout returning 504?
+<span class="a">agent</span> <b>atlas_status</b>
+       api    <i class="g">running</i>  :4100
+       worker <i class="g">running</i>  queue lag 1.2s
+<span class="a">agent</span> <b>atlas_logs_search</b> {"{"} query: "/stripe|504/", service: "api" {"}"}
+       [api:3318] {"{"}"level":50,"msg":"stripe timeout","ms":5000{"}"}
+<span class="a">agent</span> <b>atlas_restart_service</b> {"{"} service: "worker" {"}"}
+<span class="a">agent</span> <b>atlas_wait_ready</b> {"{"} service: "worker", timeout_s: 30 {"}"}
+       worker <i class="g">running</i>  healthy after 2.1s
+<span class="a">agent</span> Stripe was timing out at 5s. Worker restarted and healthy.
+       The retry in <u>src/billing/charge.ts:88</u> needs a jitter. Want a patch?</code></pre>
+				</figure>
+			</div>
+			<div class="winwrap mcpclip"><Clip name="loop-mcp" ratio="16 / 7" alt="An omp session in Atlas Desktop calling atlas_status and atlas_logs_search" /></div>
+		</div>
+	</section>
+
+	<!-- TUI -->
+	<section id="tui" class="sec tui screen" data-sec="tui">
+		<div class="wrap grid2">
+			<div class="words">
+				<h2 class="display rise">No desktop? Same engine, in your terminal.</h2>
+				<p class="lead">Dependency conditions, restart with backoff, log search, mouse support, a command palette. <code>atlas dev --headless</code> and <code>--ci</code> are there for scripts.</p>
+				<p class="prose-sm">The TUI, the desktop app and the MCP server are three clients of one runner. <a class="ln" href="/docs/tui/">TUI guide.</a> <a class="ln" href="/docs/cli/">CLI reference.</a></p>
+			</div>
+			<div class="replay">
+				<TerminalReplay client:visible />
+				<div class="tuiclip"><Clip name="loop-tui" ratio="16 / 8" alt="The atlas dev log viewer: searching across services with a live match counter, jumping between errors" /></div>
+			</div>
+		</div>
+	</section>
+
+	<!-- FILM -->
+	<section id="film" class="sec on-deep film screen" data-sec="film">
+		<div class="wrap">
+			<h2 class="display rise">All of it, in 78 seconds.</h2>
+		</div>
+		<div class="filmwrap">
+			<FilmPlayer client:visible poster={v("film-poster.jpg")} mp4={v("film.mp4")} webm={v("film.webm")} captions={v("film.vtt")} thumbs={v("film-thumbs.jpg")} label="Atlas product film, 1 minute 18 seconds" />
+		</div>
+	</section>
+
+	<!-- FAQ + WAITLIST: paper -->
+	<section id="faq" class="sec on-paper faq" data-sec="faq" data-ground="paper">
+		<div class="wrap fq">
+			<div class="fh">
+				<h2 class="display rise">Questions you'd ask first.</h2>
+			</div>
+			<div class="items">
+				{faq.map((f) => (
+					<details>
+						<summary>{f.q}</summary>
+						<p set:html={code(f.a)} />
+					</details>
+				))}
+			</div>
+		</div>
+	</section>
+
+	<section id="join" class="sec close screen" data-sec="join" aria-labelledby="close-h">
+		<div class="wrap">
+			<h2 id="close-h" class="display rise">Atlas is out. Install it in one line.</h2>
+			<div class="cw">
+				<InstallCopy client:visible cmd={SITE.install} />
+				<div class="ctas">
+					<a class="btn solid" href={SITE.releases} rel="noopener">Download for Mac (.dmg)</a>
+					<a class="btn" href={SITE.github} rel="noopener">Star on GitHub</a>
+				</div>
+				<p class="fine">Open source, MIT or Apache-2.0. Prebuilt for macOS on Apple silicon; on Linux, <a class="ln" href="/docs/installation/#build-from-source">build from source</a>.</p>
+				<div class="notes">
+					<p class="notes-h">Get release notes by email</p>
+					<Waitlist client:visible variant="close" />
+					<p class="fine">One email per release, nothing else. Or watch <a class="ln" href={SITE.github} rel="noopener">github.com/codeatlasdev/atlas</a>.</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+</Base>
+
+<script>
+	// Text and the board are already painted from static HTML; load GSAP + Lenis right after the first frame.
+	const boot = () => import("../lib/page");
+	if ("requestIdleCallback" in window) requestIdleCallback(boot, { timeout: 600 });
+	else setTimeout(boot, 120);
+</script>
+
+<style>
+	/* One idea per screen. svh/dvh so the iOS URL bar never moves the layout. The visual gets the height left under the headline. */
+	.screen { min-height: 100vh; min-height: 100svh; padding: clamp(4.2rem, 9svh, 6rem) 0 clamp(1.4rem, 4svh, 3rem); display: grid; align-content: center; }
+	.screen > .wrap, .screen > .bleed { width: min(var(--max), 100% - 2.5rem); }
+	section :global(.rise) { max-width: 22ch; font-size: clamp(2rem, min(5vw, 8.2svh), 4.6rem); }
+	.phead { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: clamp(1.2rem, 4vw, 4rem); align-items: end; }
+	.pcopy { display: grid; gap: 0.8rem; padding-bottom: 0.4rem; }
+	.pcopy .lead { font-size: clamp(1rem, min(1.4vw, 2.6svh), 1.3rem); max-width: 38ch; }
+	.words { display: grid; gap: 1rem; align-content: start; }
+
+	/* one file (paper) */
+	.file :global(.rise) { max-width: 20ch; }
+	.file .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(1rem, 4vw, 3rem); margin-top: clamp(0.6rem, 1.6svh, 1.2rem); align-items: start; }
+	.file .two .lead { font-size: clamp(1rem, min(1.4vw, 2.6svh), 1.3rem); }
+	.file .viz { margin-top: clamp(0.8rem, 2svh, 1.4rem); }
+	.file :global(.prose-sm) { font-size: 0.95rem; }
+	.file :global(.node) { padding: 0.4rem 0.7rem; }
+	.file :global(.wave) { padding-bottom: 0.6rem; }
+	.file :global(.cap) { font-size: 1.2rem; margin-bottom: 0.6rem; }
+	.file :global(textarea) { min-height: 0; height: min(22rem, 30svh); }
+
+	/* terminal: window runs off the right edge, numbers carry the story */
+	.term { overflow: clip; }
+	.term .bleed { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: center; margin-top: clamp(1rem, 3svh, 2.4rem); padding-left: max(1.25rem, calc((100vw - var(--max)) / 2)); width: 100%; }
+	.term .text { width: auto; margin: 0; display: grid; gap: clamp(0.8rem, 2svh, 1.4rem); align-content: start; }
+	.term .winwrap { margin-right: -6vw; }
+	.nums { display: grid; gap: 1rem; margin: 0; }
+	.nums div { display: grid; gap: 0.1rem; }
+	.nums dt { font-weight: 800; font-stretch: 62%; font-size: clamp(2.8rem, min(6vw, 10svh), 5.4rem); line-height: 0.9; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+	.nums dd { margin: 0; color: var(--fg-2); font-size: 0.95rem; max-width: 28ch; }
+
+	/* spaces */
+	.split { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 0.8fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: end; margin-top: clamp(1rem, 3svh, 2.4rem); }
+	.stage { position: relative; }
+	.stage :global(.win) { position: relative; }
+	.stage :global(.peekcover) { position: absolute; left: 0; top: 0; bottom: 0; width: 20%; background: var(--blue-deep); box-shadow: 1px 0 0 rgb(255 255 255 / 0.18); z-index: 2; }
+	:global(.calm) .stage :global(.peekcover) { display: none; }
+	.stage .base { max-height: 52svh; width: 100%; object-fit: cover; object-position: top left; }
+
+	/* panel: the zoom is the scene */
+	.zoomstage { margin-top: clamp(0.8rem, 2svh, 1.6rem); position: relative; overflow: hidden; border-radius: 10px; height: min(46svh, 33rem); }
+	.zoomstage .frame { display: contents; }
+	.zoomstage .win { transform-origin: 70% 82%; }
+	.zoomstage :global(.win) { height: 100%; }
+	.zoomstage img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+	.tip { position: absolute; left: 1rem; bottom: 1rem; max-width: 26ch; margin: 0; background: var(--white); color: var(--ink); padding: 0.6rem 0.8rem; font-weight: 600; font-size: 0.92rem; border-radius: 3px; z-index: 2; }
+
+	/* logs */
+	.logs { overflow: clip; }
+	.river2 { position: absolute; inset: 0; opacity: 0.14; overflow: hidden; mask-image: linear-gradient(90deg, transparent 20%, #000 85%); -webkit-mask-image: linear-gradient(90deg, transparent 20%, #000 85%); }
+	.river2 .strip { will-change: transform; padding: 1rem; animation: flow2 40s linear infinite; animation-play-state: paused; }
+	:global(.river-on) .river2 .strip { animation-play-state: running; }
+	:global(.calm) .river2 .strip { animation: none; }
+	.river2 .strip::before { content: attr(data-rows); display: block; white-space: pre; font: 400 clamp(0.9rem, 1.8vw, 1.4rem)/1.9 var(--mono); color: #fff; }
+	@keyframes flow2 { to { transform: translateY(-50%); } }
+	.over { position: relative; }
+	.lw { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1rem, 3svh, 2.4rem); align-items: center; }
+	.logs .nums { grid-template-columns: 1fr 1fr; }
+	.logs .nums dt { font-size: clamp(2.2rem, min(4.4vw, 8svh), 4rem); }
+
+	/* agents */
+	.ag { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1rem, 3svh, 2.2rem); align-items: center; }
+	.branches svg { width: 100%; height: auto; max-height: 50svh; overflow: visible; }
+	.branches path { fill: none; stroke: var(--white); stroke-width: 3; stroke-dasharray: 1; stroke-dashoffset: 0; }
+	.branches .trunk { stroke-width: 4; }
+	.branches circle { fill: var(--blue); stroke: var(--white); stroke-width: 3; }
+	.branches text { fill: var(--white); font: 700 17px var(--font); font-stretch: 85%; }
+	.branches .po, .branches .mn { font: 500 13px var(--mono); fill: var(--wait); }
+	.branches .mn { fill: var(--white); }
+
+	/* mcp */
+	.mc { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(1.5rem, 4vw, 4rem); margin-top: clamp(1rem, 3svh, 2.2rem); align-items: start; }
+	.tx { margin: 0; background: var(--blue-deep); color: #eef0ff; border-radius: 10px; overflow: hidden; box-shadow: 8px 8px 0 var(--ink); }
+	.tx figcaption { padding: 0.6rem 1rem; font-size: 0.85rem; font-weight: 600; border-bottom: 1px solid rgb(255 255 255 / 0.18); color: rgb(255 255 255 / 0.78); }
+	.tx pre { margin: 0; padding: 1rem 1.1rem 1.2rem; font-size: clamp(0.62rem, min(1vw, 1.9svh), 0.82rem); line-height: 1.65; overflow-x: auto; }
+	.tx .u { color: var(--wait); } .tx .a { color: var(--port); } .tx b { color: #fff; font-weight: 700; } .tx i { font-style: normal; } .tx .g { color: var(--go); } .tx u { text-decoration-color: rgb(255 255 255 / 0.5); text-underline-offset: 0.2em; }
+	.mcpclip { display: none; }
+
+	/* tui */
+	.grid2 { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: center; }
+	.tui .words { gap: 1.4rem; }
+	.replay { display: grid; gap: 1rem; min-width: 0; }
+	.tuiclip { display: none; }
+	@media (min-height: 860px) and (min-width: 901px) { .tuiclip { display: block; max-width: 70%; justify-self: end; margin-top: -3rem; position: relative; } }
+
+	/* film: the player gets the screen */
+	.film { align-content: center; gap: clamp(0.6rem, 1.6svh, 1.2rem); padding-top: clamp(5rem, 11svh, 6.5rem); }
+	.film :global(.rise) { max-width: 24ch; font-size: clamp(2rem, min(4.6vw, 8svh), 4.2rem); }
+	.filmwrap { width: min(calc((100svh - 18rem) * 16 / 9), 1500px, 100% - 2rem); margin: 0 auto; }
+	@media (max-height: 1000px) { .filmwrap :global(.chapters) { display: none; } }
+
+	/* faq */
+	.faq { min-height: 0; display: block; padding: clamp(4rem, 9vw, 8rem) 0; }
+	.fq { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: clamp(1.5rem, 5vw, 5rem); }
+	.fh { position: sticky; top: 5rem; align-self: start; }
+	details { border-top: 2px solid var(--ink); }
+	details:last-child { border-bottom: 2px solid var(--ink); }
+	summary { cursor: pointer; list-style: none; padding: 1.1rem 2.4rem 1.1rem 0; font-weight: 700; font-size: 1.12rem; position: relative; }
+	summary::-webkit-details-marker { display: none; }
+	summary::after { content: "+"; position: absolute; right: 0.2rem; top: 0.85rem; font: 500 1.6rem/1 var(--mono); }
+	details[open] summary::after { content: "−"; }
+	details p { margin: 0 0 1.3rem; max-width: 62ch; color: var(--ink-2); }
+
+	/* close */
+	.close { background: var(--blue); }
+	.close :global(.rise) { max-width: 15ch; font-size: clamp(2.8rem, min(9vw, 15svh), 8rem); }
+	.cw { margin-top: clamp(1.2rem, 3svh, 2.4rem); max-width: 40rem; min-width: 0; }
+	.close > .wrap { min-width: 0; }
+	.fine { margin: 1rem 0 0; color: var(--fg-2); font-size: 0.95rem; }
+	.ctas { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.9rem; }
+	.notes { margin-top: clamp(1.6rem, 4svh, 2.6rem); padding-top: 1.2rem; border-top: 1px solid var(--blue-line); }
+	.notes-h { margin: 0 0 0.6rem; font-weight: 700; font-size: 1.05rem; }
+
+	@media (max-height: 780px) and (min-width: 901px) {
+		.file .two .prose-sm { display: none; }
+		.file :global(textarea) { height: 22svh; }
+		.file :global(.node) { padding: 0.3rem 0.6rem; }
+		.file :global(.node small) { display: none; }
+		.pcopy .prose-sm { display: none; }
+		.ag .branches svg { max-height: 36svh; }
+	}
+	@media (max-width: 900px) {
+		/* Phones: chapters flow at their natural height (no forced full-screen blocks, no pinned scenes), one idea each. */
+		.screen { min-height: 0; align-content: start; padding: clamp(3.5rem, 12vw, 5rem) 0 clamp(2.4rem, 8vw, 4rem); }
+		.hero ~ .screen:first-of-type { padding-top: clamp(3.5rem, 12vw, 5rem); }
+		section :global(.rise) { font-size: clamp(2.3rem, 10.6vw, 3.6rem); max-width: 16ch; }
+		.lead, .pcopy .lead, .file .two .lead { font-size: 1.125rem; line-height: 1.45; max-width: 40ch; }
+		.prose-sm, .file :global(.prose-sm), .pcopy .prose-sm, .file .two .prose-sm { display: block; font-size: 1rem; line-height: 1.6; }
+		.words { gap: 1.1rem; }
+		.phead, .split, .lw, .ag, .mc, .grid2, .fq, .file .two { grid-template-columns: 1fr; gap: 1.4rem; margin-top: 1.4rem; }
+		.phead { margin-top: 0; }
+		.file .viz { margin-top: 1.6rem; }
+		.file :global(textarea) { height: 17rem; }
+		.file :global(.out) { max-height: none; }
+		.term .bleed { grid-template-columns: 1fr; padding-left: 0; width: 100%; gap: 1.4rem; margin-top: 1.4rem; }
+		.term .text { padding-inline: 0; width: min(var(--max), 100% - 2rem); margin-inline: auto; }
+		.term .winwrap { margin: 0 1rem; }
+		.nums dt { font-size: clamp(3rem, 15vw, 4.4rem); }
+		.nums dd { font-size: 1rem; }
+		.fh { position: static; }
+		.logs .nums { grid-template-columns: 1fr 1fr; }
+		.logs .nums dt { font-size: clamp(2.4rem, 12vw, 3.6rem); }
+		.logs .nums dd { font-size: 0.9rem; }
+		.stage .base { max-height: none; object-fit: contain; }
+		/* the push-in is clipped by the stage frame; the caption sits under it, not on it */
+		.zoomstage { height: auto; aspect-ratio: auto; overflow: visible; display: grid; gap: 0.8rem; }
+		.zoomstage .frame { display: block; overflow: hidden; border-radius: 10px; }
+		.zoomstage .win { height: auto; transform-origin: 70% 82%; }
+		.zoomstage img { height: auto; object-fit: contain; }
+		.tip { position: static; max-width: none; margin: 0; font-size: 1rem; }
+		.branches svg { max-height: none; }
+		.branches text { font-size: 21px; }
+		.branches .po, .branches .mn { font-size: 17px; }
+		/* the transcript scrolls sideways inside its card at a readable size, instead of shrinking to 10px */
+		.mc .tx pre { font-size: 0.8125rem; line-height: 1.65; -webkit-overflow-scrolling: touch; }
+		.tx { box-shadow: 5px 5px 0 var(--ink); }
+		.mcpclip { display: block; margin-top: 0.4rem; }
+		.tuiclip { display: none; }
+		.river2 .strip::before { font-size: 0.9rem; }
+		/* film: full width, poster first; chapters are a tap list under the poster, and a bottom sheet while playing */
+		.film { padding-top: clamp(4.5rem, 14vw, 6rem); }
+		.filmwrap { width: min(100% - 1rem, 40rem); }
+		.filmwrap :global(.chapters) { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+		.filmwrap :global(.chapters button) { text-align: left; }
+		/* FAQ: 56px rows, bigger type */
+		.faq { padding: clamp(3.5rem, 12vw, 5rem) 0; }
+		.prose-sm :global(a.ln), .fine :global(a.ln), .lead :global(a.ln) { display: inline-block; }
+		summary { min-height: 56px; display: flex; align-items: center; padding: 0.9rem 2.6rem 0.9rem 0; font-size: 1.125rem; line-height: 1.3; }
+		summary::after { top: 50%; transform: translateY(-50%); right: 0.1rem; }
+		details p { font-size: 1rem; line-height: 1.6; }
+		.close :global(.rise) { font-size: clamp(2.6rem, 12.5vw, 4.4rem); max-width: 12ch; }
+		.cw { max-width: none; }
+		.fine { font-size: 1rem; line-height: 1.55; }
+	}
+	@media (max-width: 380px) { .logs .nums { grid-template-columns: 1fr; } }
+</style>

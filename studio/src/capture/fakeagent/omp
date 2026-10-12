@@ -1,0 +1,53 @@
+#!/bin/bash
+# Scripted stand-in for the `omp` CLI, used only to shoot the app scenes. It posts the same lifecycle events as the
+# real atlas-omp extension (session_start, before_agent_start, tool_execution_*, tool_approval_*, agent_end) to the
+# hook endpoint of the app it runs under ($HOME/.atlas/desktop/hook-endpoint.env), so the sidebar and the Agents view
+# show a genuine working -> blocked -> done arc.
+#
+#   usage:  omp "<task title>"
+#   env:    DEMO_DELAY  seconds to wait before starting (stagger several agents)
+#           DEMO_ASK    seconds the approval prompt stays open ("blocked") before the agent continues
+hook() { # event [json-extra]
+	. "$HOME/.atlas/desktop/hook-endpoint.env" 2>/dev/null
+	curl -s -m 1 -o /dev/null -X POST "http://127.0.0.1:$ATLAS_HOOK_PORT/hook/omp" \
+		-H 'content-type: application/json' -H "x-atlas-hook-token: $ATLAS_HOOK_TOKEN" \
+		-d "{\"pane_key\":\"$ATLAS_PANE_KEY\",\"launch_token\":\"$ATLAS_LAUNCH_TOKEN\",\"tab_id\":\"$ATLAS_TAB_ID\",\"worktree_id\":\"$ATLAS_WORKTREE_ID\",\"agent\":\"omp\",\"payload\":{\"event\":\"$1\"$2}}"
+}
+title() { printf '\033]0;%s\007' "$1"; }
+
+task=""
+for a in "$@"; do case "$a" in --*) ;; *) task="$a" ;; esac; done
+
+clear
+title "π > $task"
+printf '\033[1;38;5;141mπ\033[0m  \033[2momp · claude-sonnet\033[0m\n\n'
+hook session_start ',"session_id":"demo","model":"claude-sonnet"'
+sleep "${DEMO_DELAY:-0}"
+sleep 1
+printf '\033[1m› %s\033[0m\n\n' "$task"
+hook before_agent_start ",\"prompt\":\"$task\""
+title "π : $task"
+for l in "Reading apps/api/src/server.ts" "Reading apps/web/src/routes/cart.tsx" "Planning the change"; do
+	printf '\033[2m  ⠋ %s\033[0m\n' "$l"
+	hook tool_execution_start ',"tool_name":"read"'
+	sleep 1.2
+done
+printf '\n\033[32m  ✓\033[0m Edit apps/api/src/server.ts  \033[32m+12\033[0m \033[31m-3\033[0m\n'
+hook tool_execution_end
+sleep 1.4
+printf '\033[32m  ✓\033[0m Edit apps/web/src/routes/cart.tsx  \033[32m+7\033[0m \033[31m-1\033[0m\n'
+hook tool_execution_end
+sleep 1.2
+printf '\n\033[33m  ?\033[0m Allow running `bun test`? \033[2m(y/n)\033[0m\n'
+hook tool_approval_requested ',"tool_name":"bash"'
+title "π ! $task"
+sleep "${DEMO_ASK:-6}"
+hook tool_approval_resolved
+title "π : $task"
+printf '\n\033[2m  ⠋ running tests\033[0m\n'
+sleep 1.8
+printf '\033[32m  ✓ 128 passed\033[0m\n'
+printf '\n\033[1mDone.\033[0m Changes are on this branch, ready to review.\n'
+hook agent_end ',"will_continue":false'
+title "π > $task"
+sleep 3600

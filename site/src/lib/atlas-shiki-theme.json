@@ -1,0 +1,28 @@
+{
+  "name": "atlas-night",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#0b1672",
+    "editor.foreground": "#f3f5ff"
+  },
+  "tokenColors": [
+    { "scope": ["comment", "punctuation.definition.comment"], "settings": { "foreground": "#8f9bff", "fontStyle": "italic" } },
+    { "scope": ["string", "string.quoted", "punctuation.definition.string"], "settings": { "foreground": "#5df0a6" } },
+    { "scope": ["constant.numeric", "constant.language", "constant.character", "support.constant"], "settings": { "foreground": "#ffd23f" } },
+    { "scope": ["keyword", "storage", "storage.type", "keyword.control", "keyword.operator.new"], "settings": { "foreground": "#7fe9ff" } },
+    { "scope": ["keyword.operator", "punctuation.separator", "punctuation.terminator", "punctuation.accessor"], "settings": { "foreground": "#c5ccff" } },
+    { "scope": ["entity.name.function", "support.function", "meta.function-call", "variable.function"], "settings": { "foreground": "#ffffff" } },
+    { "scope": ["entity.name.type", "entity.name.class", "support.type", "support.class", "entity.other.inherited-class"], "settings": { "foreground": "#ffb86b" } },
+    { "scope": ["entity.name.tag", "meta.tag", "punctuation.definition.tag"], "settings": { "foreground": "#7fe9ff" } },
+    { "scope": ["entity.other.attribute-name", "support.type.property-name", "meta.object-literal.key", "entity.name.tag.yaml", "support.type.property-name.json"], "settings": { "foreground": "#ffb86b" } },
+    { "scope": ["variable", "variable.other", "variable.parameter", "meta.definition.variable"], "settings": { "foreground": "#f3f5ff" } },
+    { "scope": ["variable.language", "variable.other.constant"], "settings": { "foreground": "#ffd23f" } },
+    { "scope": ["markup.heading", "entity.name.section"], "settings": { "foreground": "#7fe9ff", "fontStyle": "bold" } },
+    { "scope": ["markup.bold"], "settings": { "fontStyle": "bold" } },
+    { "scope": ["markup.italic"], "settings": { "fontStyle": "italic" } },
+    { "scope": ["markup.inserted"], "settings": { "foreground": "#5df0a6" } },
+    { "scope": ["markup.deleted", "invalid"], "settings": { "foreground": "#ff5c4a" } },
+    { "scope": ["string.regexp"], "settings": { "foreground": "#ffd23f" } },
+    { "scope": ["meta.embedded", "source.shell"], "settings": { "foreground": "#f3f5ff" } }
+  ]
+}

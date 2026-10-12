@@ -1,0 +1,36 @@
+---
+// The page navigation is the Atlas sidebar: sections listed as services, with a state lamp that goes green
+// while the section is in view. Hidden on small screens.
+const items = [
+	["yaml", "One file"],
+	["terminal", "Terminal"],
+	["spaces", "Spaces"],
+	["panel", "Panel"],
+	["logs", "Logs"],
+	["agents", "Agents"],
+	["mcp", "MCP"],
+	["tui", "TUI"],
+	["film", "Film"],
+	["faq", "FAQ"],
+];
+---
+<nav class="rail" aria-label="On this page">
+	<p class="proj"><i class="dot go"></i> orbit-shop</p>
+	<ul>
+		{items.map(([id, label]) => (
+			<li><a href={`#${id}`} data-rail={id}><i class="dot off"></i>{label}</a></li>
+		))}
+	</ul>
+</nav>
+<style>
+	.rail { position: fixed; left: clamp(0.8rem, 1.8vw, 1.6rem); top: 50%; transform: translateY(-50%); z-index: 40; font-size: 0.86rem; color: var(--white); opacity: 0; pointer-events: none; transition: opacity 0.3s; mix-blend-mode: normal; }
+	:global(.rail-on) .rail { opacity: 1; pointer-events: auto; }
+	:global(.on-paper-sec) .rail { color: var(--ink); }
+	.proj { margin: 0 0 0.6rem; display: flex; align-items: center; gap: 0.5rem; font-weight: 800; font-stretch: 80%; }
+	ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+	a { display: flex; align-items: center; gap: 0.55rem; padding: 0.15rem 0; text-decoration: none; font-weight: 500; opacity: 0.75; }
+	a:hover { opacity: 1; }
+	a[aria-current="true"] { opacity: 1; font-weight: 700; }
+	a[aria-current="true"] .dot { background: var(--go); box-shadow: none; opacity: 1; }
+	@media (max-width: 1500px) { .rail { display: none; } }
+</style>

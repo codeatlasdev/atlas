@@ -1,0 +1,58 @@
+# Rust
+target/
+dist/
+
+# macOS
+.DS_Store
+*.dSYM/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+*.icns.iconset/
+
+# Node
+node_modules/
+.turbo/
+*.tsbuildinfo
+
+# Atlas runtime
+.atlas/
+.logs/
+.agents/
+
+# Graphify
+graphify-out/
+
+# act local runs
+.act/
+
+# Secrets / site build output
+.env
+.env.*
+site/.env
+site/.env.*
+site/dist/
+site/.astro/
+site/.wrangler/
+.wrangler/
+
+# Heavy site media is not in git: scripts/fetch-media.sh downloads it (small posters/stills stay tracked)
+site/public/media/*.mp4
+site/public/media/*.webm
+site/public/media/demo.gif
+
+# Tool scratch dirs created by agent harness URIs (e.g. "xd://…" written as a path)
+/xd:/
+
+# vhs take for the film (demo/demo.tape)
+demo/.out/
+
+# Studio: heavy caches and render outputs (studio/AGENTS.md)
+studio/.cache/
+studio/.build/
+studio/out/

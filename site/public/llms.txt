@@ -1,0 +1,24 @@
+# Atlas
+
+> The developer platform for everyone: one atlas.yaml runs your stack, a native workspace runs your agents. Atlas is a native macOS dev environment by CodeAtlas: one `atlas.yaml` starts your whole stack (infra, services, health checks, dependencies, restarts); Atlas Desktop adds a GPU terminal, a Zed-style workspace, a live project panel, logs built for real traffic, and AI agents (omp, Claude Code, Codex) in parallel git worktrees; an MCP server lets agents read logs and control services. Open source, MIT or Apache-2.0.
+
+Source: https://github.com/codeatlasdev/atlas (MIT or Apache-2.0). Releases: https://github.com/codeatlasdev/atlas/releases/latest
+Install: `curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh` (prebuilt for macOS 13+ on Apple silicon; `atlas desktop` installs the desktop app).
+Platforms: prebuilt binaries are macOS on Apple silicon only; the CLI, TUI and MCP server also build from source on Linux. No Windows.
+
+## Docs
+
+- [Getting started](https://atlas.codeatlas.com.br/docs/getting-started/): install, first atlas.yaml, first run
+- [Configuration](https://atlas.codeatlas.com.br/docs/configuration/): every atlas.yaml field, validation, JSON Schema
+- [Desktop](https://atlas.codeatlas.com.br/docs/desktop/): spaces, worktrees, agents, project panel, logs, SSH hosts, keys
+- [GPU terminal](https://atlas.codeatlas.com.br/docs/terminal/): Metal renderer, images, shell integration, benchmarks
+- [TUI](https://atlas.codeatlas.com.br/docs/tui/): layout, keys, log viewer
+- [CLI](https://atlas.codeatlas.com.br/docs/cli/): commands, flags, exit codes
+- [Agent setup](https://atlas.codeatlas.com.br/docs/agents/): `atlas setup omp|claude-code|codex`
+- [MCP](https://atlas.codeatlas.com.br/docs/mcp/): tool reference and manual client setup
+- [Runtime](https://atlas.codeatlas.com.br/docs/runtime/): startup order, restarts, shutdown, .logs/
+
+## Optional
+
+- [Changelog](https://atlas.codeatlas.com.br/changelog/)
+- [CodeAtlas](https://codeatlas.com.br)

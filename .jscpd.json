@@ -1,0 +1,8 @@
+{
+  "minTokens": 50,
+  "minLines": 5,
+  "ignore": ["**/target/**", "**/node_modules/**", "**/gen/**", "**/build/**", "**/*_tests.rs", "**/tests/**"],
+  "format": ["rust", "typescript"],
+  "reporters": ["console"],
+  "threshold": 1.5
+}

@@ -1,0 +1,60 @@
+name: Bug report
+description: Something does not work the way the docs say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security problems do not go here**: use [private vulnerability reporting](https://github.com/codeatlasdev/atlas/security/advisories/new).
+        Please redact secrets from anything you paste.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal `atlas.yaml` and the commands you ran are the fastest way to get this fixed.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it happen?
+      options:
+        - atlas dev (TUI)
+        - atlas dev --detach / --headless / --ci
+        - atlas mcp / agent setup
+        - Atlas Desktop
+        - GPU terminal
+        - atlas deploy
+        - installer / atlas update
+        - docs or website
+        - other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Output of `atlas version`
+      placeholder: "atlas 1.0.1 (macos aarch64)"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and hardware
+      placeholder: "macOS 15.1, Apple M3"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Lines from `.logs/<service>.log`, `atlas dev --status`, or `atlas desktop debug logs`. A crash report (`crash-*.toml`) may contain private data; review it first.
+      render: text

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<script id="ca-theme-init">
+			(function () {
+				try {
+					var h = document.documentElement;
+					h.classList.add("ca-init");
+					var s = localStorage.getItem("ca-scheme");
+					var p = localStorage.getItem("ca-preset");
+					var scheme = s ? JSON.parse(s) : "system";
+					var preset = p ? JSON.parse(p) : "ocean";
+					var resolved =
+						scheme === "system"
+							? window.matchMedia("(prefers-color-scheme: dark)").matches
+								? "dark"
+								: "light"
+							: scheme;
+					if (resolved === "dark") h.classList.add("dark");
+					h.setAttribute("data-preset", preset);
+					h.setAttribute("data-ca-scheme", scheme);
+					requestAnimationFrame(function () {
+						requestAnimationFrame(function () {
+							h.classList.remove("ca-init");
+						});
+					});
+				} catch (e) {}
+			})();
+		</script>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		%sveltekit.head%
+	</head>
+	<body>
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

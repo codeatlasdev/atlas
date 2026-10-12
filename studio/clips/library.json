@@ -1,0 +1,12 @@
+{
+	"$comment": "Clips available to release videos. `clip` is an asset key (see `bun studio assets`); `from`/`seconds` select the moment; `crop` is in source pixels. A highlight picks the clip whose tags share the most words with its text. Add a clip here after `bun studio capture app <scene>`.",
+	"clips": [
+		{ "id": "spaces", "clip": "rec:spaces", "from": 2.5, "seconds": 6, "tags": ["sidebar", "space", "spaces", "project", "projects", "worktree", "worktrees", "icon", "icons", "switch", "workspace", "dock", "docks", "palette"] },
+		{ "id": "terminal", "clip": "rec:terminal", "from": 1.5, "seconds": 7, "tags": ["terminal", "gpu", "emoji", "ligature", "ligatures", "image", "images", "shell", "pty", "metal", "font"] },
+		{ "id": "panel", "clip": "rec:panel", "from": 2.2, "seconds": 6, "tags": ["panel", "health", "cpu", "memory", "dashboard", "service", "services", "restart", "update", "updates", "settings"] },
+		{ "id": "logs", "clip": "rec:logs", "from": 2.5, "seconds": 8, "tags": ["log", "logs", "search", "regex", "level", "levels", "filter", "error", "errors", "time"] },
+		{ "id": "agents", "clip": "rec:agents", "from": 3.5, "seconds": 8, "tags": ["agent", "agents", "worktree", "worktrees", "omp", "claude", "codex", "notification", "notifications"] },
+		{ "id": "mcp", "clip": "rec:mcp", "from": 1.5, "seconds": 9, "tags": ["mcp", "tool", "tools", "server", "protocol"] }
+	],
+	"crop": { "x": 0, "y": 40, "w": 2560, "h": 1600 }
+}

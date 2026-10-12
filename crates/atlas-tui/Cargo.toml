@@ -1,0 +1,46 @@
+[package]
+name = "atlas-tui"
+version = "1.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+readme = "../../README.md"
+description = "Atlas runtime: service manager, TUI, MCP server and runner"
+
+[lib]
+name = "atlas_tui"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+
+ratatui = "0.30"
+unicode-width = "0.2"
+crossterm = { workspace = true, features = ["event-stream", "bracketed-paste"] }
+futures-util = "0.3"
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
+libc = { workspace = true }
+atlas-core = { path = "../atlas-core" }
+dirs = { workspace = true }
+regex = "1"
+schemars = "1"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+insta = "1.49"
+
+[lints]
+workspace = true

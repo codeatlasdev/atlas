@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.450 --> 00:00:03.880
+Atlas. Your whole dev stack, in one file.
+
+2
+00:00:04.750 --> 00:00:09.690
+Services, ports, health and actions. One atlas.yaml.
+
+3
+00:00:09.700 --> 00:00:13.100
+Run atlas dev for a fast terminal dashboard.
+
+4
+00:00:13.110 --> 00:00:19.990
+Search every service with a live match counter. Jump between errors, follow links, filter by level or time.
+
+5
+00:00:20.000 --> 00:00:23.847
+Atlas Desktop. Every project is a space.
+
+6
+00:00:23.950 --> 00:00:28.738
+Switch spaces in one move. Hide the sidebar, and peek it back.
+
+7
+00:00:28.750 --> 00:00:33.593
+A GPU terminal with ligatures, color emoji and inline images.
+
+8
+00:00:35.850 --> 00:00:40.999
+A live project panel. Health, CPU and memory, as it happens.
+
+9
+00:00:42.950 --> 00:00:49.065
+Logs you can search. Regex, levels, time ranges. Find the error in seconds.
+
+10
+00:00:52.950 --> 00:00:57.609
+Agents in their own worktrees. See who's working, blocked, or done.
+
+11
+00:01:02.550 --> 00:01:07.006
+MCP is built in. Your agent sees the same stack you do.
+
+12
+00:01:13.350 --> 00:01:16.522
+Atlas is open source. Install it today.

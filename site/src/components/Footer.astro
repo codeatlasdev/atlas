@@ -1,0 +1,65 @@
+---
+import { SITE } from "../data/site";
+const cols = [
+	{ h: "In the app", l: [["GPU terminal", "/docs/terminal/"], ["Desktop", "/docs/desktop/"], ["Logs", "/docs/logs/"], ["Agents", "/docs/agents/"], ["MCP", "/docs/mcp/"], ["TUI", "/docs/tui/"]] },
+	{ h: "Read", l: [["Getting started", "/docs/getting-started/"], ["atlas.yaml reference", "/docs/configuration/"], ["CLI", "/docs/cli/"], ["Troubleshooting", "/docs/troubleshooting/"], ["Changelog", "/changelog/"]] },
+	{ h: "Elsewhere", l: [["GitHub", SITE.github], ["Releases", SITE.releases], ["CodeAtlas", SITE.codeatlas], ["llms.txt", "/llms.txt"]] },
+];
+---
+<footer class="site-foot">
+	<div class="wrap top">
+		<div class="sig"><span class="tile" aria-hidden="true"><img src="/favicon.svg" alt="" width="96" height="96" loading="lazy" decoding="async" /></span><p class="sign display" aria-hidden="true">atlas</p></div>
+		<div class="cols">
+			{cols.map((c) => (
+				<nav aria-label={c.h}>
+					<h2>{c.h}</h2>
+					<ul>{c.l.map(([t, h]) => <li><a class="ln" href={h} rel={h.startsWith("http") ? "noopener" : undefined}>{t}</a></li>)}</ul>
+				</nav>
+			))}
+		</div>
+	</div>
+	<div class="wrap legal">
+		<span>© 2026 <a class="ln" href={SITE.codeatlas} rel="noopener">CodeAtlas</a>. MIT or Apache-2.0. Built in Rust, on a Mac, for the Mac.</span>
+	</div>
+</footer>
+<style>
+	/* The footer is always the deep-cobalt surface, whatever the page theme is (paper docs, changelog, 404 included).
+	   It declares its own ground AND its own text tokens; nothing is inherited from <body>. */
+	.site-foot {
+		--bg: var(--blue-deep);
+		--fg: var(--white);
+		--fg-2: rgb(255 255 255 / 0.78);
+		--line: var(--blue-line);
+		color-scheme: dark;
+		background: var(--bg);
+		color: var(--fg);
+		position: relative;
+		padding: clamp(4rem, 9vw, 8rem) 0 calc(2rem + env(safe-area-inset-bottom));
+		overflow: hidden;
+	}
+	.top { display: grid; grid-template-columns: 1.2fr 1.6fr; gap: 3rem; align-items: end; }
+	.sig { display: flex; align-items: flex-end; gap: clamp(0.8rem, 2vw, 1.6rem); }
+	.tile { display: grid; place-items: center; flex: none; width: clamp(4rem, 9vw, 8rem); aspect-ratio: 1; background: #fff; border-radius: 14%; margin-bottom: 0.4rem; }
+	.tile img { width: 72%; height: auto; }
+	.sign { font-size: clamp(5.5rem, 17vw, 15rem); line-height: 0.78; margin: 0 0 -0.04em -0.04em; font-stretch: 62%; letter-spacing: -0.02em; color: var(--white); }
+	.cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; padding-bottom: 0.8rem; }
+	h2 { font-family: var(--font); font-size: 1rem; font-weight: 800; font-stretch: 80%; margin: 0 0 0.9rem; color: var(--fg); }
+	ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+	li a { color: var(--fg-2); font-size: 0.97rem; }
+	li a:hover { color: var(--white); }
+	.legal { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line); color: var(--fg-2); font-size: 0.9rem; }
+	.legal a { color: var(--fg); }
+	@media (max-width: 860px) {
+		.top { grid-template-columns: 1fr; gap: 2.2rem; }
+		.cols { grid-template-columns: 1fr 1fr; gap: 1.8rem 1.4rem; }
+		.sign { font-size: clamp(5.5rem, 30vw, 12rem); }
+	}
+	/* Touch: each link is a 44px row */
+	@media (pointer: coarse) {
+		ul { gap: 0; }
+		li a { display: flex; align-items: center; min-height: 44px; font-size: 1rem; }
+		.legal { font-size: 0.95rem; line-height: 1.6; }
+		.legal a { display: inline-block; padding-block: 0.7rem; margin-block: -0.7rem; }
+	}
+	@media (max-width: 420px) { .cols { grid-template-columns: 1fr; } }
+</style>

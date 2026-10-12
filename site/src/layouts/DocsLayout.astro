@@ -1,0 +1,238 @@
+---
+import Base from "./Base.astro";
+import Search from "astro-pagefind/components/Search.astro";
+import type { MarkdownHeading } from "astro";
+import type { NavGroup } from "../lib/docs";
+
+interface Props {
+	title: string;
+	description?: string;
+	slug: string;
+	groups: NavGroup[];
+	headings: MarkdownHeading[];
+	editUrl: string;
+}
+const { title, description, slug, groups, headings, editUrl } = Astro.props;
+
+const flat = groups.flatMap((g) => g.items);
+const i = flat.findIndex((p) => p.slug === slug);
+const prev = i > 0 ? flat[i - 1] : undefined;
+const next = i >= 0 && i < flat.length - 1 ? flat[i + 1] : undefined;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+<Base ground="paper" title={`${title} · Atlas docs`} description={description ?? `Atlas documentation: ${title}.`}>
+	<div class="docs wrap">
+		<!-- Phones: a sticky sub-bar opens the section drawer (replaces the always-open sidebar) -->
+		<div class="docbar" data-docbar>
+			<button type="button" class="dbtn" aria-expanded="false" aria-controls="docs-drawer" data-drawer-open>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" /></svg>
+				<span class="dcur"><small>Docs</small><b>{title}</b></span>
+				<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+			</button>
+		</div>
+		<div class="scrim" data-scrim hidden></div>
+		<aside class="side" id="docs-drawer" aria-label="Documentation" data-drawer>
+			<div class="drawer-head">
+				<b>Documentation</b>
+				<button type="button" class="dclose" aria-label="Close documentation menu" data-drawer-close>
+					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19" /></svg>
+				</button>
+			</div>
+			<div class="search"><Search className="pagefind-ui" searchboxOptions={{ placeholder: "Search the docs" }} /></div>
+			<nav>
+				{groups.map((g) => (
+					<section>
+						<h2>{g.title}</h2>
+						<ul>
+							{g.items.map((p) => (
+								<li><a href={`/docs/${p.slug}/`} aria-current={p.slug === slug ? "page" : undefined}>{p.title}</a></li>
+							))}
+						</ul>
+					</section>
+				))}
+			</nav>
+		</aside>
+
+		<article class="doc" data-pagefind-body>
+			<h1 class="display">{title}</h1>
+			<div class="prose"><slot /></div>
+			<footer class="foot">
+				<a class="edit" href={editUrl} rel="noopener">Edit this page on GitHub</a>
+				<div class="pn">
+					{prev ? <a href={`/docs/${prev.slug}/`} rel="prev"><span>Previous</span>{prev.title}</a> : <span />}
+					{next ? <a href={`/docs/${next.slug}/`} rel="next"><span>Next</span>{next.title}</a> : <span />}
+				</div>
+			</footer>
+		</article>
+
+		{toc.length > 1 && (
+			<aside class="toc" aria-label="On this page" data-pagefind-ignore>
+				<details class="tocd" data-toc>
+					<summary><h2>On this page</h2></summary>
+					<ul>
+						{toc.map((h) => (
+							<li class={h.depth === 3 ? "sub" : undefined}><a href={`#${h.slug}`}>{h.text.replace(/#$/, "")}</a></li>
+						))}
+					</ul>
+				</details>
+			</aside>
+		)}
+	</div>
+</Base>
+
+<script>
+	// Docs drawer (phones): opens from the sub-bar, closes on scrim tap, Escape, a link tap, or when the viewport widens.
+	const drawer = document.querySelector<HTMLElement>("[data-drawer]");
+	const scrim = document.querySelector<HTMLElement>("[data-scrim]");
+	const openBtn = document.querySelector<HTMLButtonElement>("[data-drawer-open]");
+	const wide = matchMedia("(min-width: 761px)");
+	if (drawer && scrim && openBtn) {
+		const root = document.documentElement;
+		const set = (open: boolean) => {
+			drawer.classList.toggle("open", open);
+			scrim.hidden = !open;
+			openBtn.setAttribute("aria-expanded", String(open));
+			root.classList.toggle("drawer-open", open);
+			if (open) drawer.querySelector<HTMLElement>("[data-drawer-close]")?.focus({ preventScroll: true });
+		};
+		openBtn.addEventListener("click", () => set(true));
+		scrim.addEventListener("click", () => set(false));
+		drawer.querySelector("[data-drawer-close]")?.addEventListener("click", () => (set(false), openBtn.focus()));
+		drawer.addEventListener("click", (e) => (e.target as HTMLElement).closest("nav a") && set(false));
+		addEventListener("keydown", (e) => {
+			if (e.key === "Escape" && drawer.classList.contains("open")) (set(false), openBtn.focus());
+		});
+		wide.addEventListener("change", (m) => m.matches && set(false));
+		addEventListener("pageshow", () => set(false));
+	}
+	// ToC: on phones it is a collapsed block (closed in the markup, so nothing moves after load). On wider screens it is a plain
+	// sidebar list and the summary is inert (see CSS), so there is nothing to sync.
+</script>
+
+<style is:global>
+	.docs { display: grid; grid-template-columns: 15rem minmax(0, 1fr) 13.5rem; gap: 3rem; padding-block: 6rem 5rem; align-items: start; }
+	.docs .side, .docs .toc { position: sticky; top: 5.5rem; max-height: calc(100vh - 7rem); overflow: auto; font-size: .95rem; scrollbar-width: thin; }
+	.docs .docbar, .docs .drawer-head, .docs .scrim { display: none; }
+	.docs .tocd > summary { list-style: none; cursor: default; pointer-events: none; }
+	@media (min-width: 761px) { .docs .tocd:not([open]) > ul { display: block; } }
+	.docs .tocd > summary::-webkit-details-marker { display: none; }
+	.docs .tocd > summary h2 { margin: 0 0 .5rem; }
+	.docs .side section { margin-bottom: 1.6rem; }
+	.docs .side h2, .docs .toc h2 { font-family: var(--font); font-size: 1rem; font-weight: 800; font-stretch: 75%; color: var(--fg); margin: 0 0 .5rem; letter-spacing: .005em; }
+	.docs ul { list-style: none; margin: 0; padding: 0; }
+	.docs .side li a, .docs .toc li a { display: block; padding: .28rem .8rem; border-left: 3px solid transparent; color: var(--fg-2); text-decoration: none; }
+	.docs .side li a:hover, .docs .toc li a:hover { color: var(--fg); border-left-color: var(--line); }
+	.docs .side li a[aria-current="page"] { color: var(--fg); font-weight: 700; border-left-color: var(--fg); }
+	.docs .toc li.sub a { padding-left: 1.6rem; font-size: .9rem; }
+	.docs .search { margin-bottom: 1.6rem; }
+
+	.doc { min-width: 0; }
+	.doc > h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); margin: 0 0 2rem; }
+	.prose { color: var(--fg); font-size: 1.0625rem; line-height: 1.7; }
+	.prose > :first-child { margin-top: 0; }
+	.prose :is(p, ul, ol, blockquote) { max-width: 70ch; }
+	.prose h2 { font-family: var(--font); font-weight: 800; font-stretch: 75%; font-size: 2rem; line-height: 1.05; letter-spacing: -.005em; margin: 3.2rem 0 1rem; padding-top: .8rem; border-top: 2px solid var(--fg); }
+	.prose h3 { font-family: var(--font); font-weight: 800; font-stretch: 80%; font-size: 1.4rem; line-height: 1.15; margin: 2.2rem 0 .6rem; }
+	.prose h4 { font-family: var(--font); font-weight: 700; font-size: 1.05rem; margin: 1.6rem 0 .4rem; }
+	.prose h2, .prose h3, .prose h4 { color: var(--fg); position: relative; scroll-margin-top: 5rem; }
+	.prose .anchor { margin-left: .45rem; color: var(--fg-2); opacity: 0; text-decoration: none; font-weight: 400; transition: opacity .15s; }
+	.prose :is(h2, h3, h4):hover .anchor, .prose .anchor:focus { opacity: .7; }
+	.prose a { color: var(--fg); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: .2em; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+	.prose a:hover { text-decoration-color: currentColor; }
+	.prose ul, .prose ol { padding-left: 1.4rem; }
+	.prose li::marker { color: var(--fg-2); }
+	.prose :not(pre) > code { font-size: .86em; padding: .1em .38em; border-radius: 0; background: rgb(12 16 56 / .08); color: var(--fg); }
+	.prose pre { background: #0b1672 !important; color: #fff; border: 1px solid rgb(12 16 56 / .3); border-radius: 10px; padding: 1rem 1.15rem; overflow-x: auto; font-size: .86rem; line-height: 1.6; margin: 1.3rem 0; }
+	.prose pre code { background: none; border: 0; padding: 0; color: inherit; font-size: inherit; }
+	.prose blockquote { margin: 1.4rem 0; padding: .2rem 0 .2rem 1.2rem; border-left: 4px solid var(--fg); background: none; color: var(--fg); }
+	.prose blockquote p { margin: .4rem 0; }
+	.prose hr { border: 0; border-top: 1px solid var(--line); margin: 2.4rem 0; }
+	.prose table { display: block; overflow-x: auto; border-collapse: collapse; width: 100%; margin: 1.4rem 0; font-size: .95rem; line-height: 1.5; }
+	.prose th, .prose td { border: 1px solid var(--line); padding: .55rem .8rem; text-align: left; vertical-align: top; }
+	.prose th { color: var(--fg); font-weight: 700; border-bottom: 2px solid var(--fg); }
+	.prose img { border-radius: 10px; border: 1px solid var(--line); }
+	.prose kbd { font-size: .8em; padding: .08em .45em; border: 1px solid var(--fg-2); border-bottom-width: 2px; border-radius: 2px; background: none; color: var(--fg); }
+
+	.foot { margin-top: 4rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
+	.foot .edit { color: var(--fg-2); font-size: .95rem; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: .2em; }
+	.foot .edit:hover { color: var(--fg); }
+	.foot .pn { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.4rem; }
+	.foot .pn a { display: block; padding: .9rem 1.1rem; border: 2px solid var(--fg); border-radius: 3px; color: var(--fg); text-decoration: none; font-weight: 700; transition: background .15s, color .15s; }
+	.foot .pn a:hover, .foot .pn a:focus-visible { background: var(--fg); color: var(--bg); }
+	.foot .pn a[rel="next"] { text-align: right; grid-column: 2; }
+	.foot .pn span { display: block; font-weight: 400; font-size: .9rem; opacity: .75; margin-bottom: .2rem; }
+
+	.pagefind-ui { --pf-background: var(--paper); --pf-text: var(--ink); --pf-text-secondary: var(--ink-2); --pf-text-muted: var(--ink-2); --pf-border: var(--ink); --pf-border-focus: var(--ink); --pf-hover: rgb(12 16 56 / .08); --pf-mark: var(--wait); --pf-border-radius: 0; --pf-font: var(--font); --pf-outline-focus: var(--ink); --pf-searchbox-max-width: 100%; --pf-modal-backdrop: rgb(12 16 56 / .6); }
+	.pagefind-ui input[type="search"], .pagefind-ui input[type="text"], .pagefind-ui .pagefind-ui__search-input { border: 2px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); }
+
+	/* Tablet: the ToC folds away, the sidebar stays */
+	@media (max-width: 1080px) { .docs { grid-template-columns: 14rem minmax(0, 1fr); } .docs .toc { display: none; } }
+
+	/* Phones: the sidebar is a drawer, a sticky sub-bar opens it, the ToC is a collapsible block above the text. */
+	@media (max-width: 760px) {
+		.docs { display: flex; flex-direction: column; padding-bottom: 3rem; }
+		.docs > * { min-width: 0; max-width: 100%; }
+		.docs .toc { display: block; order: 1; position: static; max-height: none; overflow: visible; }
+		.docs .doc { order: 2; }
+		.docs .docbar { order: 0; }
+		.docs { padding-top: calc(3.6rem + env(safe-area-inset-top)); }
+		.docs .docbar { display: block; position: sticky; top: calc(3.6rem + env(safe-area-inset-top)); z-index: 30; margin-inline: -1rem; padding-inline: 1rem; width: calc(100% + 2rem); max-width: none !important; background: var(--paper); border-bottom: 1px solid var(--line); }
+		.docs .dbtn { display: flex; align-items: center; gap: .8rem; width: 100%; min-height: 52px; padding: 0; background: none; border: 0; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+		.docs .dcur { display: grid; min-width: 0; flex: 1; line-height: 1.15; }
+		.docs .dcur small { font-size: .8125rem; color: var(--fg-2); }
+		.docs .dcur b { font-weight: 700; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+		.docs .chev { opacity: .7; }
+		.docs .scrim:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 70; background: rgb(12 16 56 / .55); }
+		.docs .side {
+			position: fixed; z-index: 80; inset: 0 auto 0 0; width: min(21rem, 88vw); max-height: none; margin: 0;
+			padding: 0 1rem calc(1.5rem + env(safe-area-inset-bottom)); padding-left: max(1rem, env(safe-area-inset-left));
+			background: var(--paper); color: var(--fg); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+			transform: translateX(-102%); visibility: hidden; transition: transform .26s cubic-bezier(.2,.8,.2,1), visibility 0s .26s;
+			box-shadow: 8px 0 0 rgb(12 16 56 / .12); font-size: 1rem;
+		}
+		.docs .side.open { transform: none; visibility: visible; transition: transform .26s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+		.docs .drawer-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 2; margin-inline: -1rem; padding: calc(.4rem + env(safe-area-inset-top)) .5rem .4rem 1rem; background: var(--paper); border-bottom: 1px solid var(--line); font-weight: 800; font-stretch: 75%; font-size: 1.25rem; }
+		.docs .dclose { display: grid; place-items: center; width: 48px; height: 48px; background: none; border: 0; color: var(--fg); cursor: pointer; }
+		.docs .search { margin: 1rem 0 1.2rem; }
+		.docs .side li a { padding: .7rem .8rem; min-height: 44px; display: flex; align-items: center; font-size: 1.0625rem; }
+		.docs .side section { margin-bottom: 1.2rem; }
+		.docs .side h2 { font-size: 1.125rem; }
+		html.drawer-open, html.drawer-open body { overflow: hidden; }
+
+		.docs .doc { padding-top: 0; }
+		.docs .toc { margin: 1.2rem 0 1.4rem; width: 100%; border: 1px solid var(--line); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+		.docs .tocd > summary { width: 100%; display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 1rem; cursor: pointer; pointer-events: auto; }
+		.docs .tocd > summary h2 { margin: 0; font-size: 1rem; }
+		.docs .tocd > summary::after { content: "+"; font: 500 1.5rem/1 var(--mono); }
+		.docs .tocd[open] > summary::after { content: "−"; }
+		.docs .tocd ul { padding: 0 .4rem .6rem; max-height: 50vh; overflow: auto; }
+		.docs .toc li a, .docs .toc li.sub a { display: flex; align-items: center; min-height: 44px; font-size: 1rem; }
+		.docs .toc li.sub a { padding-left: 1.6rem; }
+
+		.doc > h1 { font-size: clamp(2.6rem, 13vw, 3.6rem); margin-bottom: 1.4rem; }
+		.prose { font-size: 1.0625rem; line-height: 1.65; overflow-wrap: break-word; }
+		.prose h2 { font-size: 1.75rem; margin-top: 2.6rem; }
+		.prose h3 { font-size: 1.3rem; }
+		.prose .anchor { display: none; }
+		/* wide content scrolls inside its own box, never the page. Edge-bleed so the scrollbar track reads as a scroller. */
+		.prose pre { font-size: .8125rem; max-width: none; margin-inline: -1rem; border-radius: 0; border-inline: 0; padding-inline: 1rem; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; tab-size: 2; }
+		.prose table { font-size: .9375rem; margin-inline: -1rem; width: calc(100% + 2rem); -webkit-overflow-scrolling: touch; }
+		.prose td a, .prose li > a:only-child { display: inline-block; padding-block: .6rem; margin-block: -.6rem; }
+		.prose th, .prose td { white-space: nowrap; }
+		.prose td { white-space: normal; min-width: 9rem; }
+		.prose :not(pre) > code { overflow-wrap: anywhere; font-size: .875em; }
+		.prose table code, .prose li code { font-size: .8125rem; }
+		.prose img { max-width: 100%; height: auto; }
+		.prose a { padding-block: .2em; }
+		.foot .pn { grid-template-columns: 1fr; }
+		.foot .pn a[rel="next"] { grid-column: 1; text-align: left; }
+		.foot .pn a { min-height: 64px; padding: 1rem 1.1rem; }
+		.foot .edit { display: inline-flex; align-items: center; min-height: 44px; font-size: 1rem; }
+
+		/* Pagefind: 16px field (no iOS zoom), no keyboard-shortcut hints on a touchscreen */
+		.pagefind-ui input[type="search"], .pagefind-ui input[type="text"], .pagefind-ui .pagefind-ui__search-input { font-size: 16px; min-height: 48px; }
+		.pagefind-ui .pf-trigger-shortcut, .pagefind-ui .pf-searchbox-footer { display: none !important; }
+		.docs .pagefind-ui .pf-searchbox-input, .docs .pagefind-ui input.pf-searchbox-input { font-size: 16px !important; height: 48px !important; min-height: 48px !important; }
+	}
+	@media (prefers-reduced-motion: reduce) { .docs .side { transition: none; } }
+</style>

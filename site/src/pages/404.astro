@@ -1,0 +1,20 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base ground="paper" title="Page not found · Atlas" description="This page does not exist." noindex>
+	<section class="wrap nf">
+		<h1 class="display">This page is off the map.</h1>
+		<p>The link is old or the page was never written. Docs search finds most things.</p>
+		<div class="cta">
+			<a class="btn solid" href="/">Back to the stack</a>
+			<a class="btn" href="/docs/getting-started/">Read the docs</a>
+		</div>
+	</section>
+</Base>
+<style>
+	.nf { min-height: 70vh; min-height: 70svh; padding: 8rem 0 4rem; }
+	h1 { font-size: clamp(3rem, 10vw, 8rem); max-width: 12ch; }
+	p { color: var(--fg-2); margin: 1.8rem 0; max-width: 46ch; }
+	.cta { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+	@media (max-width: 560px) { .nf { padding: 6.5rem 0 3rem; } h1 { font-size: clamp(3rem, 16vw, 5rem); } p { font-size: 1.125rem; } .cta .btn { flex: 1 1 100%; } }
+</style>

@@ -1,0 +1,392 @@
+/* Window is transparent: the native NSVisualEffectView (Sidebar material) shows
+   through the sidebar; the content pane paints its own opaque surface. */
+html,
+body {
+	margin: 0;
+	height: 100%;
+	background: transparent !important;
+	overflow: hidden;
+	font-family: var(--atlas-ui-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--ca-font-sans));
+	font-size: var(--atlas-ui-font-size, 13px);
+	-webkit-font-smoothing: antialiased;
+	user-select: none;
+	-webkit-user-select: none;
+	cursor: default;
+}
+
+:root {
+	--mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+	--sidebar-w: 260px;
+
+	/* Motion: one vocabulary for the whole shell. Spring-ish ease-out, fast. */
+	--ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--dur-fast: 120ms;
+	--dur: 200ms;
+	--dur-slow: 260ms;
+
+	/* Space accent; the shell overrides these on the content root per space. */
+	--space-accent: var(--ca-brand-main);
+	--space-tint: transparent;
+	--dot-ok: var(--ca-semantic-success);
+	--dot-warn: var(--ca-semantic-warning);
+	--dot-fail: var(--ca-semantic-error);
+	--dot-off: var(--ca-text-disabled);
+
+	/* ANSI 16 colors for service logs, tuned for the light surface. */
+	--ansi-black: #3b3f46;
+	--ansi-red: #c4314b;
+	--ansi-green: #1f8a4c;
+	--ansi-yellow: #9a6a00;
+	--ansi-blue: #2f62d6;
+	--ansi-magenta: #a33ea8;
+	--ansi-cyan: #0f7f91;
+	--ansi-white: #6b7280;
+	--ansi-bright-black: #7a808a;
+	--ansi-bright-red: #e0435f;
+	--ansi-bright-green: #2aa35e;
+	--ansi-bright-yellow: #b88400;
+	--ansi-bright-blue: #4a7dff;
+	--ansi-bright-magenta: #c056c5;
+	--ansi-bright-cyan: #1797ab;
+	--ansi-bright-white: #3b3f46;
+}
+.dark {
+	--ansi-black: #6e7681;
+	--ansi-red: #ff7b8a;
+	--ansi-green: #6fdc8c;
+	--ansi-yellow: #f2cc60;
+	--ansi-blue: #79a8ff;
+	--ansi-magenta: #e39cf0;
+	--ansi-cyan: #67d8e8;
+	--ansi-white: #c9d1d9;
+	--ansi-bright-black: #8b949e;
+	--ansi-bright-red: #ffa0aa;
+	--ansi-bright-green: #9be9a8;
+	--ansi-bright-yellow: #ffe08a;
+	--ansi-bright-blue: #a5c4ff;
+	--ansi-bright-magenta: #f0b8f7;
+	--ansi-bright-cyan: #9eeaf5;
+	--ansi-bright-white: #f0f6fc;
+}
+
+.app {
+	position: relative;
+	display: flex;
+	height: 100vh;
+	overflow: hidden;
+}
+
+/* The pinned sidebar takes its width from the flex row; hiding animates it to 0 so the
+   content glides to full width. The panel inside keeps its width and slides (transform),
+   so its text never reflows mid-animation. */
+.sidebar-slot {
+	flex: none;
+	width: var(--sidebar-w);
+	overflow: hidden;
+	transition: width var(--dur-slow) var(--ease);
+}
+.sidebar-slot.hidden {
+	width: 0;
+}
+.sidebar-slot > .sidebar-panel {
+	width: var(--sidebar-w);
+	height: 100%;
+	transition:
+		transform var(--dur-slow) var(--ease),
+		opacity var(--dur) var(--ease);
+}
+.sidebar-slot.hidden > .sidebar-panel {
+	transform: translateX(-100%);
+	opacity: 0;
+}
+
+/* Peek: the hidden sidebar floats over the content as a translucent panel.
+   Always mounted: showing it is a transform + opacity change on a pre-promoted layer.
+   The blur lives on `.peek-glass`, a sibling that never changes size or content while the
+   panel moves, so the compositor translates a cached texture instead of re-blurring per frame. */
+.peek-panel {
+	position: absolute;
+	/* Below the traffic lights (they stay clickable above the panel). */
+	top: 40px;
+	bottom: 8px;
+	z-index: 40;
+	width: var(--sidebar-w);
+	border-radius: 14px;
+	/* The shadow sits on the panel itself (not clipped); the rounded clip is on the children. */
+	box-shadow:
+		0 0 0 0.5px var(--ca-outline-subtle),
+		0 18px 48px -12px rgb(0 0 0 / 0.38),
+		0 4px 14px -4px rgb(0 0 0 / 0.2);
+	transition:
+		transform 220ms var(--ease),
+		opacity 160ms var(--ease),
+		visibility 0s linear 220ms;
+	will-change: transform, opacity;
+	backface-visibility: hidden;
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+}
+.peek-glass {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	border-radius: inherit;
+	/* Near-opaque: the window is transparent, so a see-through panel lets the content
+	   underneath bleed through the text (WebKit cannot blur the native vibrancy behind). */
+	background: color-mix(in oklab, var(--ca-surface-raised) 96%, var(--space-accent, transparent) 4%);
+	-webkit-backdrop-filter: blur(24px) saturate(1.4);
+	backdrop-filter: blur(24px) saturate(1.4);
+	pointer-events: none;
+}
+.peek-body {
+	position: relative;
+	z-index: 1;
+	overflow: hidden;
+	border-radius: inherit;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+.peek-panel.left {
+	left: 8px;
+	transform: translate3d(calc(-100% - 16px), 0, 0);
+}
+.peek-panel.right {
+	right: 8px;
+	transform: translate3d(calc(100% + 16px), 0, 0);
+}
+.peek-panel.shown {
+	transform: translate3d(0, 0, 0);
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+	transition:
+		transform 220ms var(--ease),
+		opacity 160ms var(--ease),
+		visibility 0s;
+}
+/* Invisible strip along the window edge that triggers the peek. */
+.edge-zone {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 6px;
+	z-index: 39;
+}
+.edge-zone.left {
+	left: 0;
+}
+.edge-zone.right {
+	right: 0;
+}
+
+.content {
+	position: relative;
+	isolation: isolate;
+	flex: 1;
+	min-width: 0;
+	margin: 8px 8px 8px 0;
+	border-radius: 12px;
+	background: var(--ca-surface-base);
+	box-shadow:
+		0 0 0 0.5px var(--ca-outline-subtle),
+		var(--ca-shadow-sm);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	transition: margin var(--dur-slow) var(--ease);
+}
+/* With the sidebar hidden the content owns the whole window. */
+.content.full {
+	margin-left: 8px;
+}
+/* A wash of the space's hue behind everything, so each space feels like its own place. */
+.content::before {
+	content: "";
+	position: absolute;
+	z-index: -1;
+	inset: 0;
+	pointer-events: none;
+	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%);
+	transition: background var(--dur-slow) var(--ease);
+}
+
+/* Space switch: the new space enters from the side you moved toward (Arc's space swipe). */
+.space-view {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	animation: space-in var(--dur-slow) var(--ease) both;
+}
+.space-view[data-dir="-1"] {
+	--enter: -28px;
+}
+.space-view[data-dir="1"] {
+	--enter: 28px;
+}
+@keyframes space-in {
+	from {
+		opacity: 0;
+		transform: translateX(var(--enter, 0));
+	}
+}
+/* Live trackpad swipe: lib/shell/gestures.ts writes `transform` inline on .space-view and the
+   chips (compositor-only, no reactivity); releasing clears it and the transition springs back. */
+.space-view {
+	transition: transform var(--dur-slow) var(--ease);
+	will-change: transform;
+}
+.content[data-space] .space-view {
+	transition: none;
+}
+/* The next space's accent peeks in from the edge the content is being pulled away from. */
+.space-edge {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 56px;
+	z-index: 5;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--dur) var(--ease);
+	background: linear-gradient(to right, var(--hint-accent, transparent), transparent);
+}
+.content[data-space="next"] .space-edge {
+	right: 0;
+	transform: scaleX(-1);
+	opacity: 0.55;
+}
+.content[data-space="prev"] .space-edge {
+	left: 0;
+	opacity: 0.55;
+}
+/* Back / Forward chip: an arrow that fills as you drag, like Safari's. */
+.nav-chip {
+	position: absolute;
+	top: 50%;
+	z-index: 6;
+	width: 36px;
+	height: 36px;
+	margin-top: -18px;
+	display: grid;
+	place-items: center;
+	border-radius: 50%;
+	pointer-events: none;
+	color: var(--ca-text-primary);
+	background: var(--ca-surface-raised);
+	box-shadow:
+		0 0 0 0.5px var(--ca-outline-subtle),
+		var(--ca-shadow-sm);
+	opacity: 0;
+	transition:
+		opacity var(--dur-fast) var(--ease),
+		transform var(--dur) var(--ease);
+	will-change: transform, opacity;
+}
+.nav-chip-prev {
+	left: 10px;
+	transform: translate3d(-48px, 0, 0);
+}
+.nav-chip-next {
+	right: 10px;
+	transform: translate3d(48px, 0, 0);
+}
+.content[data-nav="prev"] .nav-chip-prev,
+.content[data-nav="next"] .nav-chip-next {
+	opacity: 1;
+	transition: opacity var(--dur-fast) var(--ease);
+}
+.content[data-nav] .space-view {
+	transition: none;
+}
+/* Tab / view arrival. */
+@keyframes arrive {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+.arrive {
+	animation: arrive var(--dur) var(--ease) both;
+}
+
+.selectable {
+	user-select: text;
+	-webkit-user-select: text;
+	cursor: text;
+}
+
+.mono {
+	font-family: var(--mono);
+}
+
+.dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	background: var(--dot-off);
+	transition:
+		background 200ms ease-out,
+		box-shadow 200ms ease-out;
+}
+.dot.ok {
+	background: var(--dot-ok);
+	box-shadow: 0 0 6px color-mix(in oklab, var(--dot-ok) 60%, transparent);
+}
+.dot.warn {
+	background: var(--dot-warn);
+	animation: pulse 1.4s ease-in-out infinite;
+}
+.dot.fail {
+	background: var(--dot-fail);
+	box-shadow: 0 0 6px color-mix(in oklab, var(--dot-fail) 60%, transparent);
+}
+
+@keyframes pulse {
+	50% {
+		opacity: 0.45;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* @codeatlasdev/ui Dialog: `height: fit-content` + a `flex: 1; min-height: 0` body
+   collapses the body to 0 in WKWebView. Size the body to its content instead; the
+   panel's max-height still caps it and the body keeps scrolling. */
+.ca-dialog .ca-dialog__body {
+	flex: 0 1 auto;
+	min-height: auto;
+}
+
+/* Native app feel (see lib/native.ts): rings only during keyboard navigation. */
+html:not([data-kbd]) :focus,
+html:not([data-kbd]) :focus-visible {
+	outline: none !important;
+}
+html:not([data-kbd]) .ca-layer-close:focus-visible {
+	box-shadow: none !important;
+}
+html {
+	overscroll-behavior: none;
+	-webkit-text-size-adjust: none;
+}
+a,
+img {
+	-webkit-user-drag: none;
+}
+button,
+[role="button"],
+a {
+	cursor: default;
+}

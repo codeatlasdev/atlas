@@ -1,0 +1,59 @@
+{
+	"version": 1,
+	"files": {
+		"film-poster.jpg": {
+			"sha256": "2663e9ab52d52300d911ed46afe90fed8edb4108a368eea0aa104f9d3278deb4",
+			"bytes": 154810,
+			"film": "atlas-1-0",
+			"buildHash": "d22c6ad0511902ca"
+		},
+		"film-thumbs.jpg": {
+			"sha256": "95e79a74f37bd04845832e3880e8cdb6b71e877db594cca6784fb49554c86164",
+			"bytes": 65209,
+			"film": "atlas-1-0",
+			"buildHash": "d22c6ad0511902ca"
+		},
+		"film-thumbs.vtt": {
+			"sha256": "169d1a9f6c13746b85636c060e6424f8557dc5b75b835dd09e849c7de02ae868",
+			"bytes": 2593,
+			"film": "atlas-1-0",
+			"buildHash": "d22c6ad0511902ca"
+		},
+		"film-vertical-poster.jpg": {
+			"sha256": "139e16a40651005a20b71ab14f88fa1c92a92c246993b17b9754b60a7dab2443",
+			"bytes": 410567,
+			"film": "atlas-1-0",
+			"buildHash": "e750e984d67b0477"
+		},
+		"film-vertical.mp4": {
+			"sha256": "142cf587a6ef9543fb3d70dfffb7431b980b255bff42257d842474c78ea679c1",
+			"bytes": 4286249,
+			"film": "atlas-1-0",
+			"buildHash": "e750e984d67b0477"
+		},
+		"film-vertical.webm": {
+			"sha256": "5029afde33a5837708bcc2bdbfa81a8ecbf96678c1f8402532d9a2ee92b6d5e5",
+			"bytes": 4904571,
+			"film": "atlas-1-0",
+			"buildHash": "e750e984d67b0477"
+		},
+		"film.mp4": {
+			"sha256": "44326ccc15437497e12086d9298b5e08510d4c8dee003a3509325f07ad31258b",
+			"bytes": 10084972,
+			"film": "atlas-1-0",
+			"buildHash": "d22c6ad0511902ca"
+		},
+		"film.vtt": {
+			"sha256": "a42ec948a2fc7854e987c9a0ae33d04bb6a490bf288964beceab77e3abc321ac",
+			"bytes": 1121,
+			"film": "atlas-1-0",
+			"buildHash": "d22c6ad0511902ca"
+		},
+		"film.webm": {
+			"sha256": "f5fa8a9ab56c7c7a94ff2f8c3b0c25100471eac32076b3322e3eec3242c73575",
+			"bytes": 10376684,
+			"film": "atlas-1-0",
+			"buildHash": "d22c6ad0511902ca"
+		}
+	}
+}

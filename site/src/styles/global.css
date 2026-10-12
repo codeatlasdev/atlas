@@ -1,0 +1,160 @@
+@font-face {
+	font-family: "Archivo";
+	src: url("/fonts/archivo-var.woff2") format("woff2");
+	font-weight: 100 900;
+	font-stretch: 62% 125%;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: "JetBrains Mono";
+	src: url("/fonts/jetbrains-mono-var.woff2") format("woff2");
+	font-weight: 100 800;
+	font-style: normal;
+	font-display: swap;
+}
+
+:root {
+	/* The running system */
+	--blue: #1b33f0;
+	--blue-deep: #0b1672;
+	--blue-line: rgb(255 255 255 / 0.16);
+	/* The file */
+	--paper: #eef0f8;
+	--ink: #0c1038;
+	--ink-2: #3b4075;
+	--paper-line: rgb(12 16 56 / 0.16);
+	--white: #fff;
+	/* Status only. Never decoration. */
+	--go: #5df0a6;
+	--wait: #ffd23f;
+	--fail: #ff5c4a;
+	--port: #7fe9ff;
+
+	--font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+	--mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--max: 1240px;
+	--rail: 11.5rem;
+
+	/* resolved per section; default is cobalt */
+	--bg: var(--blue);
+	--fg: var(--white);
+	--fg-2: rgb(255 255 255 / 0.74);
+	--line: var(--blue-line);
+	color-scheme: dark;
+}
+.on-paper {
+	--bg: var(--paper);
+	--fg: var(--ink);
+	--fg-2: var(--ink-2);
+	--line: var(--paper-line);
+	color-scheme: light;
+}
+.on-deep {
+	--bg: var(--blue-deep);
+	--fg: var(--white);
+	--fg-2: rgb(255 255 255 / 0.76);
+	--line: var(--blue-line);
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 4.5rem; background: var(--blue); -webkit-tap-highlight-color: transparent; }
+/* Never let a stray wide child create a sideways scroll on a phone. `clip` (not hidden) keeps position: sticky working. */
+body { overflow-x: clip; }
+html.lenis, html.lenis body { height: auto; }
+.lenis:not(.lenis-autoToggle).lenis-stopped { overflow: clip; }
+.lenis [data-lenis-prevent] { overscroll-behavior: contain; }
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font);
+	font-size: 1.0625rem;
+	line-height: 1.55;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	font-synthesis: none;
+}
+img, video, svg { display: block; max-width: 100%; }
+a { color: inherit; }
+code, kbd, pre, samp { font-family: var(--mono); }
+:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+::selection { background: var(--wait); color: var(--ink); }
+.wrap { width: min(var(--max), 100% - 2.5rem); margin-inline: auto; }
+@media (max-width: 640px) {
+	/* notched phones in landscape: keep content out of the sensor housing */
+	.wrap { width: min(var(--max), 100% - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right)); }
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Section chrome: ground + text colors come from the tokens above */
+.sec { background: var(--bg); color: var(--fg); position: relative; }
+
+/* Display type: Archivo squeezed to signage width */
+.display {
+	font-family: var(--font);
+	font-weight: 800;
+	font-stretch: 68%;
+	letter-spacing: -0.012em;
+	line-height: 0.92;
+	margin: 0;
+	text-wrap: balance;
+}
+h2.display { font-size: clamp(2.7rem, 7.4vw, 6.4rem); }
+.lead { font-size: clamp(1.15rem, 1.7vw, 1.4rem); line-height: 1.4; color: var(--fg-2); max-width: 36ch; margin: 0; }
+.prose-sm { color: var(--fg-2); max-width: 54ch; margin: 0; }
+.prose-sm + .prose-sm { margin-top: 0.9em; }
+.fg { color: var(--fg); }
+
+/* Inline code on color */
+p code, li code, summary code { font-size: max(0.86em, 13px); padding: 0.08em 0.38em; color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+kbd { font-size: 0.8em; padding: 0.06em 0.45em; border: 1px solid color-mix(in srgb, var(--fg) 40%, transparent); border-bottom-width: 2px; }
+
+/* Links: underline with offset, no arrows */
+.ln { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 0.22em; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); transition: text-decoration-color 0.15s; }
+.ln:hover { text-decoration-color: currentColor; }
+
+/* Buttons: flat, square-ish, with a terminal cursor block that blinks on hover/focus */
+.btn {
+	display: inline-flex; align-items: center; gap: 0.7rem;
+	padding: 0.85rem 1.3rem; min-height: 44px; border-radius: 3px; border: 2px solid currentColor; justify-content: center;
+	font: 700 1rem/1 var(--font); font-stretch: 90%; background: transparent; color: inherit; cursor: pointer; text-decoration: none;
+	transition: background 0.12s, color 0.12s;
+}
+.btn::after { content: ""; width: 0; height: 1.05em; background: currentColor; margin-left: -0.7rem; transition: width 0.1s, margin 0.1s; }
+.btn:hover::after, .btn:focus-visible::after { width: 0.55em; margin-left: 0; animation: blink 1s steps(1) infinite; }
+.btn.solid { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.solid:hover { background: transparent; color: var(--fg); }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Touch: no sticky hover states, in-text links get a 44px-tall hit area without moving the text */
+@media (hover: none) {
+	.btn:hover::after { width: 0; margin-left: -0.7rem; animation: none; }
+	.btn.solid:hover { background: var(--fg); color: var(--bg); }
+}
+@media (pointer: coarse) {
+	a.ln { padding-block: 0.7em; margin-block: -0.7em; }
+}
+
+/* Status dots (the same lights as the Atlas sidebar) */
+.dot { display: inline-block; width: 0.62em; height: 0.62em; border-radius: 50%; background: currentColor; flex: none; }
+.dot.go { background: var(--go); }
+.dot.wait { background: var(--wait); }
+.dot.fail { background: var(--fail); }
+.dot.off { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; opacity: 0.55; }
+
+/* Windows: real app captures keep the app's own radius and chrome */
+.win { border-radius: 10px; overflow: hidden; background: #0b0c10; box-shadow: 0 1px 0 rgb(255 255 255 / 0.14) inset, 0 40px 80px -30px rgb(3 6 60 / 0.75), 0 0 0 1px rgb(255 255 255 / 0.12); }
+.win img, .win video { width: 100%; height: auto; }
+
+/* Heading reveal: words rise from a clipped baseline. Visible without JS. */
+.rise .w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: 0.08em; margin-bottom: -0.08em; }
+.rise .w > span { display: inline-block; will-change: transform; }
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

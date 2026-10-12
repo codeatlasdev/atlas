@@ -1,0 +1,32 @@
+{
+  "_comment": "Shared by crates/atlas-tui (LogLevel::detect) and apps/desktop (levelOf). `level` is the Rust level on the plain text; `ui` is what the desktop shows (debug collapses to info). Edit here, both test suites follow.",
+  "cases": [
+    { "text": "ERROR: boom", "level": "error", "ui": "error" },
+    { "text": "TypeError: x", "level": "info", "ui": "info" },
+    { "text": "error: could not compile", "level": "error", "ui": "error" },
+    { "text": "err: connection reset", "level": "error", "ui": "error" },
+    { "text": "FATAL: out of memory", "level": "error", "ui": "error" },
+    { "text": "panic: index out of bounds", "level": "error", "ui": "error" },
+    { "text": "0 errors found", "level": "info", "ui": "info" },
+    { "text": "terror in the night", "level": "info", "ui": "info" },
+    { "text": "Warning: deprecated API", "level": "warn", "ui": "warn" },
+    { "text": "WARN slow query detected", "level": "warn", "ui": "warn" },
+    { "text": "warn and error", "level": "error", "ui": "error" },
+    { "text": "debug then warn", "level": "warn", "ui": "warn" },
+    { "text": "DEBUG: cache hit for key xyz", "level": "debug", "ui": "info" },
+    { "text": "trace entering function", "level": "debug", "ui": "info" },
+    { "text": "https://x/debug", "level": "info", "ui": "info" },
+    { "text": "GET /api/error 500", "level": "info", "ui": "info" },
+    { "text": "see config.error for details", "level": "info", "ui": "info" },
+    { "text": "my-error and my_error and my_warn", "level": "info", "ui": "info" },
+    { "text": "[error] boom (src/error.rs)", "level": "error", "ui": "error" },
+    { "text": "Server listening on port 3000", "level": "info", "ui": "info" },
+    { "text": "GET /api/users 200", "level": "info", "ui": "info" },
+    { "text": "all good", "level": "info", "ui": "info" },
+    { "text": "", "level": "info", "ui": "info" },
+    { "text": "ünïcode ERROR ünïcode", "level": "error", "ui": "error" },
+    { "text": "éerror", "level": "info", "ui": "info" },
+    { "text": "\u001b[31mERROR\u001b[0m boom", "level": "error", "ui": "error", "ansi": true },
+    { "text": "\u001b[31mred but plain\u001b[0m", "level": "info", "ui": "info", "ansi": true }
+  ]
+}

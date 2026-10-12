@@ -1,0 +1,26 @@
+name: orbit-shop
+services:
+  migrate:
+    command: "echo 'applying 001_init'; sleep 0.6; echo 'applying 002_orders'; sleep 0.6; echo 'migrations done'"
+    oneshot: true
+  api:
+    command: "sleep 1; echo 'api listening on http://localhost:4100  docs: http://localhost:4100/docs'; n=0; while true; do n=$((n+1)); echo '{\"level\":30,\"msg\":\"GET /orders\",\"ms\":'$((RANDOM%90+5))',\"status\":200}'; sleep 0.45; echo '{\"level\":30,\"msg\":\"POST /checkout\",\"ms\":'$((RANDOM%200+40))',\"status\":201}'; sleep 0.6; if [ $((n%4)) -eq 0 ]; then echo '{\"level\":40,\"msg\":\"slow query\",\"ms\":912,\"table\":\"orders\"}'; sleep 0.3; fi; if [ $((n%6)) -eq 0 ]; then echo '{\"level\":50,\"msg\":\"stripe timeout\",\"retry\":true,\"at\":\"src/server/checkout.ts:88:14\"}'; sleep 0.3; fi; done"
+    port: 4100
+    ready_log: listening
+    depends_on: { migrate: completed_successfully }
+  web:
+    command: "printf '\\033[36m  VITE v6.2\\033[0m  ready in 312 ms\\n'; printf '  \\033[32m➜\\033[0m  Local: http://localhost:4101/\\n'; while true; do sleep 1.3; printf '\\033[2m[hmr]\\033[0m updated src/routes/cart.tsx\\n'; done"
+    depends_on: { api: log_ready }
+  worker:
+    command: "while true; do echo \"job email.send done in $((RANDOM%40+10))ms\"; sleep 0.9; [ $((RANDOM%4)) -eq 0 ] && echo 'WARN queue lag 1.2s (src/jobs/email.ts:41)'; done"
+    depends_on: { api: log_ready }
+  payments:
+    command: "sleep 2.5; echo 'connecting to ledger...'; sleep 0.8; echo 'ERROR ledger refused connection at src/ledger/client.go:132:9'; exit 2"
+    restart: on_failure
+    max_restarts: 2
+actions:
+  - key: x
+    label: Seed demo data
+    command: "for i in 1 2 3; do echo \"seeding batch $i/3\"; sleep 0.5; done"
+    confirm: "Insert 3 batches of fake orders into the local DB?"
+    pause_services: [worker]

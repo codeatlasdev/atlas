@@ -1,0 +1,34 @@
+{
+  "name": "atlas-workspace",
+  "description": "Atlas, the developer platform for everyone: Rust workspace, Atlas Desktop (Tauri + SvelteKit) and the website",
+  "private": true,
+  "scripts": {
+    "setup": "scripts/setup.sh",
+    "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked && cargo deny check && scripts/check-skills.sh && bun run desktop:check",
+    "dup": "bunx jscpd",
+    "deps:update": "for d in . apps/desktop site studio; do (cd $d && bunx npm-check-updates -u --configFilePath \"$(git rev-parse --show-toplevel)\") || exit 1; done && bun install && (cd apps/desktop && bun install) && (cd site && bun install)",
+    "release": "scripts/release.sh",
+    "release:dry": "scripts/release.sh --dry-run",
+    "release:act": "scripts/act-release.sh",
+    "ci:act": "act workflow_dispatch -W .github/workflows/ci.yml -j rust-macos",
+    "desktop:dev": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri dev",
+    "desktop:build": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri build",
+    "desktop:check": "cd apps/desktop && bun install --frozen-lockfile && bun run check",
+    "desktop:link": "cargo run -q -p atlas-cli -- link --desktop",
+    "icons": "scripts/icons.sh",
+    "site:deploy": "scripts/deploy-site.sh",
+    "studio": "bun studio/src/cli.ts"
+  },
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://atlas.codeatlas.com.br",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codeatlasdev/atlas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codeatlasdev/atlas/issues"
+  },
+  "workspaces": [
+    "studio"
+  ]
+}

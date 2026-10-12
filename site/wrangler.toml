@@ -1,0 +1,8 @@
+name = "atlas-site"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas-waitlist"
+database_id = "675ed091-f8fd-44c2-9dcb-cbea2d46b5ee"

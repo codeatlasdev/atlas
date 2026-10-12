@@ -1,0 +1,74 @@
+---
+import "../styles/global.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import { SITE } from "../data/site";
+
+interface Props {
+	title?: string;
+	description?: string;
+	image?: string;
+	noindex?: boolean;
+	jsonLd?: Record<string, unknown>;
+	/** "cobalt" (default) or "paper": the ground the page starts on, so the nav and overscroll match. */
+	ground?: "cobalt" | "paper";
+}
+const { title = SITE.title, description = SITE.description, image = "/og.png", noindex = false, jsonLd, ground = "cobalt" } = Astro.props;
+const canonical = new URL(Astro.url.pathname, SITE.url).href;
+const ogImage = new URL(image, SITE.url).href;
+---
+<!doctype html>
+<html lang="en" class="no-js">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<meta name="theme-color" content={ground === "paper" ? "#eef0f8" : "#1b33f0"} />
+		<meta name="color-scheme" content={ground === "paper" ? "light" : "dark"} />
+		<meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow, max-image-preview:large"} />
+		<link rel="canonical" href={canonical} />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.ico" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="sitemap" href="/sitemap-index.xml" />
+		<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+		<link rel="preload" href="/fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin />
+		<meta property="og:site_name" content="Atlas" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={ogImage} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content="Atlas: boot the stack, branch the agents" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={ogImage} />
+		{jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+		<script is:inline>
+			var d = document.documentElement;
+			d.classList.replace("no-js", "js");
+			if (matchMedia("(prefers-reduced-motion: reduce)").matches) d.classList.add("calm");
+			// Touch phones/tablets keep native scrolling: no Lenis, no pinning, no scrub (see lib/page.ts, lib/motion.ts)
+			if (matchMedia("(pointer: coarse)").matches || matchMedia("(max-width: 900px)").matches) d.classList.add("touch");
+		</script>
+		<slot name="head" />
+	</head>
+	<body class={ground === "paper" ? "on-paper" : undefined}>
+		<a class="skip" href="#main">Skip to content</a>
+		<Nav />
+		<slot name="rail" />
+		<main id="main"><slot /></main>
+		<Footer />
+		<slot name="scripts" />
+		<style is:global>
+			.skip { position: absolute; left: -999px; top: 0; background: var(--white); color: var(--ink); padding: 0.6rem 1rem; z-index: 100; font-weight: 700; }
+			.skip:focus { left: 0; }
+			.menu-open, .menu-open body { overflow: hidden; }
+			html:has(body.on-paper) { background: var(--paper); }
+		</style>
+	</body>
+</html>

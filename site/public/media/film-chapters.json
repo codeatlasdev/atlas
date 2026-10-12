@@ -1,0 +1,48 @@
+{
+	"film": "atlas-1-0",
+	"duration": 77.93,
+	"thumb": {
+		"step": 2,
+		"w": 160,
+		"h": 90,
+		"cols": 10
+	},
+	"chapters": [
+		{
+			"t": 0,
+			"title": "One file"
+		},
+		{
+			"t": 9.7,
+			"title": "atlas dev in the terminal"
+		},
+		{
+			"t": 20,
+			"title": "Spaces and the sidebar"
+		},
+		{
+			"t": 28.7,
+			"title": "GPU terminal"
+		},
+		{
+			"t": 35.85,
+			"title": "Project panel"
+		},
+		{
+			"t": 42.95,
+			"title": "Logs"
+		},
+		{
+			"t": 52.95,
+			"title": "Agents in worktrees"
+		},
+		{
+			"t": 62.55,
+			"title": "MCP"
+		},
+		{
+			"t": 73.2,
+			"title": "Get Atlas"
+		}
+	]
+}

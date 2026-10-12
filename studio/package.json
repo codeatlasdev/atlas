@@ -1,0 +1,20 @@
+{
+  "name": "@atlas/studio",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Atlas film studio: code-defined product films and release videos, rendered with HyperFrames",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "studio": "bun src/cli.ts",
+    "check": "bun src/cli.ts check"
+  },
+  "dependencies": {
+    "hyperframes": "0.8.149",
+    "shiki": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^6"
+  }
+}

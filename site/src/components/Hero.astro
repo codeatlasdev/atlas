@@ -1,0 +1,260 @@
+---
+import InstallCopy from "./islands/InstallCopy.svelte";
+import { SITE } from "../data/site";
+import { YAML, NODES, EDGES, LOGS, AGENT } from "../data/stack";
+
+// Graph geometry (SVG user units). Columns are boot waves, rows are lanes.
+const CW = 118, RH = 66, PX = 8, PY = 14, NW = 106, NH = 46;
+const pos = (n: (typeof NODES)[number]) => ({ x: PX + n.col * CW, y: PY + n.row * RH });
+const byId = Object.fromEntries(NODES.map((n) => [n.id, n]));
+const edgePath = ([a, b]: [string, string]) => {
+	const A = pos(byId[a]), B = pos(byId[b]);
+	const x1 = A.x + NW, y1 = A.y + NH / 2, x2 = B.x, y2 = B.y + NH / 2;
+	const mx = (x1 + x2) / 2;
+	return `M${x1} ${y1} H${mx} V${y2} H${x2}`;
+};
+const W = PX * 2 + 3 * CW + NW, H = PY * 2 + 2 * RH + NH;
+const label = (n: (typeof NODES)[number]) => (n.port ? ":" + n.port : n.note);
+const edges = EDGES.map((e) => ({ id: e[0] + "-" + e[1], d: edgePath(e) }));
+const forkD = "M" + (PX + 2 * CW + NW / 2) + " " + (PY + RH + NH) + " V" + (H + 18) + " H" + (PX + 8);
+const agentNodes = [["api", 4100], ["web", 4101]].map((x, i) => ({ id: "agent-" + x[0], name: String(x[0]), port: ":" + (Number(x[1]) + AGENT.offset), x: i * 118 }));
+const nodes = NODES.map((n) => ({ id: n.id, label: label(n), tf: "translate(" + pos(n).x + " " + pos(n).y + ")" }));
+const vb = "0 0 " + W + " " + (H + 66);
+const yamlLines = YAML.split("\n");
+
+// Portrait geometry (phones): the same graph as a compact vertical chain, ~1 unit = 1 css px so text stays 14px / 12.5px.
+// database -> migrate -> api down the left, web and worker beside api / migrate on the right. The agent fork hangs below.
+const PW = 148, PH = 44, PX0 = 6, PR = 186, PG = 18;
+const row = (i: number) => 6 + i * (PH + PG);
+const ppos: Record<string, { x: number; y: number }> = {
+	database: { x: PX0, y: row(0) },
+	migrate: { x: PX0, y: row(1) },
+	api: { x: PX0, y: row(2) },
+	web: { x: PR, y: row(2) - 4 - (PH + PG) / 2 + 2 },
+	worker: { x: PR, y: row(2) + (PH + PG) / 2 + 2 },
+};
+const pedge = ([a, b]: [string, string]) => {
+	const A = ppos[a], B = ppos[b];
+	if (A.x === B.x) return `M${A.x + PW / 2} ${A.y + PH} V${B.y}`;
+	const x1 = A.x + PW, y1 = A.y + PH / 2, x2 = B.x, y2 = B.y + PH / 2;
+	const mx = (x1 + x2) / 2;
+	return `M${x1} ${y1} H${mx} V${y2} H${x2}`;
+};
+const pedges = EDGES.map((e) => ({ id: e[0] + "-" + e[1], d: pedge(e) }));
+const pnodes = NODES.map((n) => ({ id: n.id, label: label(n), tf: "translate(" + ppos[n.id].x + " " + ppos[n.id].y + ")" }));
+const agentY = row(3) + 14;
+const pfork = "M" + (PX0 + PW / 2) + " " + (ppos.api.y + PH) + " V" + (agentY + 22) + " H" + (PX0 + 4);
+const pvb = "0 0 344 " + (agentY + 22 + 52);
+// Three river columns, each a different slice/speed of the same log shapes
+const river = [0, 6, 11].map((o) => [...LOGS.slice(o), ...LOGS.slice(0, o)]);
+const ts = (i: number) => `22:12:${String(10 + (i % 50)).padStart(2, "0")}`;
+---
+<section class="hero sec" id="top" aria-labelledby="hero-h">
+	<div class="wrap grid">
+		<div class="copy">
+			<h1 id="hero-h" class="display">
+				<span class="l">Boot the stack.</span>
+				<span class="l">Branch the agents.</span>
+			</h1>
+			<p class="lead">One <code>atlas.yaml</code> runs your whole stack. A native workspace runs your agents, each in its own worktree, with its own ports and terminal.</p>
+			<p class="tag">The developer platform for everyone.</p>
+			<div class="ask" id="install">
+				<InstallCopy client:load cmd={SITE.install} />
+				<div class="ctas">
+					<a class="btn solid" href={SITE.releases} rel="noopener">Download for Mac (.dmg)</a>
+					<a class="btn" href={SITE.github} rel="noopener">Star on GitHub</a>
+				</div>
+				<p class="ask-h">Open source, MIT or Apache-2.0. Prebuilt for macOS on Apple silicon.</p>
+			</div>
+		</div>
+
+		<div class="board" aria-label="A replay of atlas dev on the orbit-shop demo stack" role="img">
+			<div class="pane file" data-step="file">
+				<div class="bar"><span>atlas.yaml</span></div>
+				<pre aria-hidden="true">{yamlLines.map((l) => <span class="yl">{l}</span>)}</pre>
+			</div>
+
+			<div class="pane graph" data-step="graph">
+				<div class="bar"><span>atlas dev</span><span class="sum" data-sum><i class="dot go"></i> <b data-count>5</b> of 5 up</span></div>
+				<svg class="land" viewBox={vb} aria-hidden="true">
+					<g class="edges">
+						{edges.map((e) => <path d={e.d} data-edge={e.id} pathLength="1" />)}
+					</g>
+					<g class="agent-edge">
+						<path d={forkD} data-edge="fork" pathLength="1" />
+					</g>
+					{nodes.map((n) => (
+						<g class="node up" data-node={n.id} transform={n.tf}>
+							<rect width={NW} height={NH} />
+							<text class="nm" x="12" y="20">{n.id}</text>
+							<text class="pt" x="12" y="37">{n.label}</text>
+							<circle class="lamp" cx={NW - 14} cy="14" r="5" />
+						</g>
+					))}
+					<g class="agent" data-agent transform={"translate(" + PX + " " + (H + 6) + ")"}>
+						<text class="br" x="0" y="0">{AGENT.branch}</text>
+						{agentNodes.map((m) => (
+							<g class="node up mini" data-node={m.id} transform={"translate(" + m.x + " 16)"}>
+								<rect width={NW} height="40" />
+								<text class="nm" x="12" y="17">{m.name}</text>
+								<text class="pt" x="12" y="33">{m.port}</text>
+								<circle class="lamp" cx={NW - 14} cy="12" r="4.5" />
+							</g>
+						))}
+					</g>
+				</svg>
+				<!-- Portrait: the same graph as a vertical chain at 1 unit = 1 css px. Same state hooks, prefixed `p:` -->
+				<svg class="port" viewBox={pvb} aria-hidden="true">
+					<g class="edges">
+						{pedges.map((e) => <path d={e.d} data-edge={"p:" + e.id} pathLength="1" />)}
+					</g>
+					<g class="agent-edge">
+						<path d={pfork} data-edge="p:fork" pathLength="1" />
+					</g>
+					{pnodes.map((n) => (
+						<g class="node up" data-node={"p:" + n.id} transform={n.tf}>
+							<rect width={PW} height={PH} />
+							<text class="nm" x="12" y="21">{n.id}</text>
+							<text class="pt" x="12" y="38">{n.label}</text>
+							<circle class="lamp" cx={PW - 15} cy="15" r="5.5" />
+						</g>
+					))}
+					<g class="agent" data-agent="p" transform={"translate(" + PX0 + " " + agentY + ")"}>
+						<text class="br" x="0" y="0">{AGENT.branch}</text>
+						{agentNodes.map((m, i) => (
+							<g class="node up mini" data-node={"p:" + m.id} transform={"translate(" + (i * (PW + 16)) + " 14)"}>
+								<rect width={PW} height="44" />
+								<text class="nm" x="12" y="19">{m.name}</text>
+								<text class="pt" x="12" y="36">{m.port}</text>
+								<circle class="lamp" cx={PW - 15} cy="14" r="5" />
+							</g>
+						))}
+					</g>
+				</svg>
+			</div>
+		</div>
+	</div>
+
+	<div class="river" aria-hidden="true" data-river>
+		{river.map((col, c) => (
+			<div class="col" data-c={c}>
+				<div class="strip">
+					{[...col, ...col].map((r, i) => (
+						<p class={r.l ?? ""}><time>{ts(i)}</time> <b class={`s-${r.s}`}>{r.s}</b> {r.t}</p>
+					))}
+				</div>
+			</div>
+		))}
+	</div>
+	<p class="note wrap">A replay of <code>atlas dev</code> on the demo stack. The real recording is in the film below.</p>
+</section>
+
+<style>
+	/* Exactly one screen: svh/dvh so the iOS URL bar never causes a jump. Fallbacks first. */
+	.hero {
+		display: grid;
+		grid-template-rows: minmax(0, 1fr) auto auto;
+		height: 100vh; height: 100svh; min-height: 100vh; min-height: 100svh;
+		max-height: none;
+		padding-top: clamp(3.6rem, 8svh, 5.2rem);
+		overflow: clip;
+	}
+	@supports (height: 100dvh) { .hero { height: 100dvh; min-height: 100svh; } }
+	.grid { display: grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: clamp(1.2rem, 3vw, 3rem); align-items: center; min-height: 0; }
+	.copy { display: grid; align-content: center; min-width: 0; }
+	h1 { font-size: clamp(2.6rem, min(5.35vw, 11.5svh), 6.4rem); display: flex; flex-direction: column; }
+	h1 .l { display: block; white-space: nowrap; }
+	.lead { margin-top: clamp(0.7rem, 2svh, 1.4rem); max-width: 40ch; color: var(--white); font-size: clamp(1rem, min(1.35vw, 2.6svh), 1.25rem); }
+	.lead code { background: rgb(255 255 255 / 0.16); }
+	.tag { margin: 0.7rem 0 0; font-weight: 800; font-stretch: 80%; font-size: clamp(0.95rem, 2svh, 1.05rem); }
+	.ask { margin-top: clamp(0.9rem, 2.6svh, 1.8rem); max-width: min(36rem, 100%); min-width: 0; scroll-margin-top: 6rem; }
+	.ctas { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.7rem; }
+	.ask-h { margin: 0.7rem 0 0; font-weight: 600; font-size: 0.9rem; color: var(--fg-2); }
+
+	.board { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr); gap: 12px; min-width: 0; min-height: 0; align-items: stretch; max-height: 100%; }
+	.pane { border-radius: 10px; overflow: hidden; background: #0a0b3d; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.2), 0 30px 60px -28px rgb(2 4 50 / 0.9); min-height: 0; }
+	.bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.55rem 0.9rem; font: 600 0.82rem/1 var(--font); color: rgb(255 255 255 / 0.78); border-bottom: 1px solid rgb(255 255 255 / 0.14); }
+	.sum { display: inline-flex; align-items: center; gap: 0.45rem; font-family: var(--mono); font-weight: 500; font-size: 0.78rem; color: var(--white); }
+	.file { display: flex; flex-direction: column; }
+	.file pre { margin: 0; padding: 0.7rem 0.8rem 0.8rem; font-size: clamp(0.48rem, min(0.57vw, 1.36svh), 0.62rem); line-height: 1.5; color: #dfe4ff; white-space: pre; overflow: hidden; }
+	.yl { display: block; min-height: 1.5em; white-space: pre; }
+	.graph { display: flex; flex-direction: column; }
+	.graph svg { width: 100%; height: auto; max-height: 100%; padding: 0.4rem 0.7rem 0.8rem; margin: auto 0; }
+	.graph .port { display: none; }
+
+	.edges path, .agent-edge path { fill: none; stroke: rgb(255 255 255 / 0.55); stroke-width: 1.6; stroke-dasharray: 1; stroke-dashoffset: 0; }
+	.agent-edge path { stroke: var(--wait); }
+	.node rect { fill: #14177a; stroke: rgb(255 255 255 / 0.5); stroke-width: 1.2; rx: 4; }
+	.node .nm { fill: #fff; font: 700 14px var(--font); font-stretch: 85%; }
+	.node .pt { fill: var(--port); font: 500 11.5px var(--mono); }
+	.node .lamp { fill: var(--go); }
+	.node.mini rect { stroke: var(--wait); }
+	.node[data-node="migrate"] .pt { fill: rgb(255 255 255 / 0.7); }
+	.node.wait .lamp { fill: var(--wait); }
+	.node.off .lamp { fill: none; stroke: rgb(255 255 255 / 0.5); stroke-width: 1.5; }
+	.node.fail .lamp { fill: var(--fail); }
+	.agent .br { fill: var(--wait); font: 500 11.5px var(--mono); }
+
+	/* The river fills whatever height is left under the board */
+	.river { display: grid; grid-template-columns: repeat(3, 1fr); height: clamp(4.5rem, 17svh, 11rem); margin-top: clamp(0.5rem, 2svh, 1.4rem); overflow: hidden; border-top: 1px solid var(--blue-line); mask-image: linear-gradient(180deg, #000 0, #000 45%, transparent 100%); -webkit-mask-image: linear-gradient(180deg, #000 0, #000 45%, transparent 100%); }
+	.col { overflow: hidden; border-right: 1px solid var(--blue-line); padding: 0.3rem 0.8rem 0; }
+	.col:last-child { border-right: 0; }
+	.strip { will-change: transform; animation: flow var(--dur, 26s) linear infinite; animation-play-state: paused; }
+	.col[data-c="1"] .strip { --dur: 19s; }
+	.col[data-c="2"] .strip { --dur: 33s; }
+	:global(.river-on) .strip { animation-play-state: running; }
+	:global(.calm) .strip { animation: none; }
+	@keyframes flow { to { transform: translateY(-50%); } }
+	.strip p { margin: 0; font: 400 0.7rem/1.75 var(--mono); color: rgb(255 255 255 / 0.86); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.strip time { color: #c8d0ff; }
+	.strip b { font-weight: 600; margin-right: 0.3em; }
+	.s-api { color: var(--port); } .s-web { color: #d9ccff; } .s-worker { color: var(--wait); } .s-search { color: var(--go); } .s-database { color: #ffc6bc; }
+	.strip p.warn { color: var(--wait); } .strip p.err { color: var(--fail); }
+	.note { margin: 0 auto; padding: 0.4rem 0 clamp(0.5rem, 1.4svh, 0.9rem); font-size: 0.8rem; color: var(--fg-2); }
+	.note code { background: rgb(255 255 255 / 0.14); }
+
+	/* Short desktop windows (1280x720): tighter copy, board keeps its share */
+	@media (max-height: 760px) and (min-width: 961px) {
+		.ask-h { display: none; }
+		.tag { display: none; }
+	}
+	/* Phones / portrait: recompose, don't shrink. One screen, one pane at a time:
+	   atlas.yaml types at a real 13px, then crossfades to the graph, drawn as a vertical chain at 1 unit = 1 css px
+	   (14px names, 12.5px ports). The user never reads anything under ~12px. */
+	@media (max-width: 960px) {
+		.hero { padding-top: calc(3.6rem + env(safe-area-inset-top)); }
+		.grid { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); align-items: stretch; gap: 0.7rem; }
+		.copy { align-content: start; }
+		h1 { font-size: clamp(2.5rem, min(14.2vw, 7.2svh), 6rem); }
+		.lead { font-size: 1rem; max-width: 34ch; margin-top: 0.55rem; line-height: 1.38; }
+		.tag, .ask-h { display: none; }
+		.ask { margin-top: 0.7rem; }
+		.ask :global(.install) { font-size: 0.72rem; padding-left: 0.7rem; }
+		.ctas { margin-top: 0.5rem; gap: 0.5rem; }
+		.ctas .btn { flex: 1 1 auto; padding: 0.7rem 0.8rem; font-size: 0.92rem; }
+
+		.board { display: block; position: relative; align-self: stretch; min-height: 0; contain: layout paint; }
+		.pane { position: absolute; inset: 0; display: flex; flex-direction: column; transition: opacity 0.6s ease, visibility 0.6s; }
+		.bar { font-size: 0.85rem; padding: 0.6rem 0.9rem; }
+		.sum { font-size: 0.85rem; }
+		/* default (no JS / reduced motion): the finished graph is what you see */
+		.file { opacity: 0; visibility: hidden; }
+		.graph { opacity: 1; }
+		.graph .land { display: none; }
+		.graph .port { display: block; flex: 1 1 auto; min-height: 0; width: 100%; max-height: none; height: 100%; padding: 0.5rem 0.9rem 0.7rem; margin: 0; }
+		.file pre { font-size: 0.875rem; line-height: 1.55; padding: 0.8rem 0.9rem; overflow: hidden; flex: 1 1 0; min-height: 0; }
+		.yl { min-height: 1.55em; }
+		/* while the boot plays: yaml first, graph second */
+		:global(.hero.stage-file) .file { opacity: 1; visibility: visible; }
+		:global(.hero.stage-file) .graph { opacity: 0; visibility: hidden; }
+		.node .nm { font-size: 14px; }
+		.node .pt { font-size: 12.5px; }
+		.agent .br { font-size: 12.5px; }
+		.river { grid-template-columns: 1fr; height: clamp(3rem, 8svh, 5rem); margin-top: 0.4rem; }
+		.col:nth-child(n+2) { display: none; }
+		.col { border-right: 0; padding-inline: 1rem; }
+		.strip p { font-size: 0.8125rem; }
+		.note { display: none; }
+	}
+	@media (max-width: 960px) and (max-height: 700px) { .lead { display: none; } }
+</style>

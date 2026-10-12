@@ -1,0 +1,11 @@
+Atlas
+Copyright (c) 2026 CodeAtlas
+https://atlas.codeatlas.com.br
+
+Atlas is released under either the MIT License (LICENSE-MIT) or the Apache License,
+Version 2.0 (LICENSE-APACHE), at your option.
+
+This product bundles or links third-party software and assets. Their copyright
+notices and license terms are listed in THIRD_PARTY_NOTICES.md; the full
+license texts of bundled fonts are kept next to the files they cover
+(crates/atlas-term/fonts/).

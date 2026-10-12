@@ -1,0 +1,158 @@
+name: Release
+
+# Manual-only: releases are built and published locally via `bun run release`
+# (act runs this exact workflow on this machine). No GitHub-hosted minutes.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        if: ${{ !env.ACT }}
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Install Bun
+        if: ${{ !env.ACT }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install cargo-deny
+        run: command -v cargo-deny >/dev/null || cargo install cargo-deny --locked
+
+      - name: Check
+        run: bun run check
+
+  build:
+    name: Build (aarch64-apple-darwin)
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        if: ${{ !env.ACT }}
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: release-aarch64
+
+      - name: Build
+        run: cargo build --release --target aarch64-apple-darwin -p atlas-cli
+
+      - name: Install Bun
+        if: ${{ !env.ACT }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Build desktop app
+        run: |
+          command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
+          (cd apps/desktop && bun install --frozen-lockfile)
+          (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --bundles app,dmg --ci)
+
+      - name: Package
+        run: |
+          ATLAS_VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p dist
+          cp target/aarch64-apple-darwin/release/atlas dist/
+          chmod +x dist/atlas
+          # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run
+          codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
+          cd dist
+          tar czf atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz atlas
+          shasum -a 256 atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz > atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz.sha256
+          # Atlas Desktop: the .app tarball is what `atlas desktop` / `atlas update` install;
+          # the .dmg is for people who download it by hand.
+          BUNDLE=../target/aarch64-apple-darwin/release/bundle
+          APP=Atlas-${ATLAS_VERSION}-aarch64-apple-darwin
+          tar czf ${APP}.app.tar.gz -C ${BUNDLE}/macos Atlas.app
+          cp ${BUNDLE}/dmg/Atlas_*_aarch64.dmg ${APP}.dmg
+          shasum -a 256 ${APP}.app.tar.gz > ${APP}.app.tar.gz.sha256
+          shasum -a 256 ${APP}.dmg > ${APP}.dmg.sha256
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: atlas-aarch64-apple-darwin
+          path: |
+            dist/*.tar.gz*
+            dist/*.dmg*
+
+  publish:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the only job that may create the release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts/
+
+      - name: Generate manifest
+        run: |
+          ATLAS_VERSION=${GITHUB_REF_NAME#v}
+          python3 scripts/generate-manifest.py "$ATLAS_VERSION" artifacts/ > manifest.json
+
+      # The release body: this version's CHANGELOG.md section, then install/update steps.
+      - name: Release notes
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          awk -v v="$V" '/^## /{p = index($0, "[" v "]") > 0; next} p' CHANGELOG.md > notes.md
+          cat >> notes.md <<'EOF'
+
+          ## Install
+
+          ```bash
+          curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
+          ```
+
+          Or download `atlas-*-aarch64-apple-darwin.tar.gz` below, verify it against its
+          `.sha256`, extract it and run `./atlas install`.
+
+          ## Desktop app
+
+          ```bash
+          atlas desktop   # installs Atlas.app into /Applications on first run, then opens it
+          ```
+
+          Or download `Atlas-*-aarch64-apple-darwin.dmg` below.
+
+          ## Update
+
+          ```bash
+          atlas update    # updates the CLI and an installed Atlas.app together
+          ```
+          EOF
+
+      - name: Create GitHub Release
+        if: ${{ !env.ACT || env.ATLAS_PUBLISH == '1' }}
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Atlas ${{ github.ref_name }}
+          body_path: notes.md
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.dmg
+            artifacts/**/*.sha256
+            manifest.json
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}

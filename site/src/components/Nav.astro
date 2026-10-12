@@ -1,0 +1,148 @@
+---
+import { SITE } from "../data/site";
+const path = Astro.url.pathname;
+const links = [
+	{ href: SITE.docs, label: "Docs", active: path.startsWith("/docs") },
+	{ href: "/changelog/", label: "Changelog", active: path.startsWith("/changelog") },
+	{ href: SITE.github, label: "GitHub" },
+];
+---
+<header class="nav" data-nav>
+	<div class="bar">
+		<a class="brand" href="/" aria-label="Atlas home">
+			<span class="mark" aria-hidden="true"><img src="/favicon.svg" alt="" width="26" height="26" decoding="async" /></span>
+			<span class="word">Atlas</span>
+		</a>
+		<nav class="links" aria-label="Main">
+			<ul>
+				{links.map((l) => (
+					<li>
+						<a href={l.href} aria-current={l.active ? "page" : undefined} rel={l.href.startsWith("http") ? "noopener" : undefined}>{l.label}</a>
+					</li>
+				))}
+			</ul>
+		</nav>
+		<a class="btn solid sm" href="/#install">Install</a>
+		<button type="button" class="burger" aria-expanded="false" aria-controls="menu-sheet" aria-label="Open menu" data-burger>
+			<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" aria-hidden="true"><path class="l1" d="M4 8h16" /><path class="l2" d="M4 16h16" /></svg>
+		</button>
+	</div>
+	<div class="sheet" id="menu-sheet" hidden data-sheet>
+		<nav aria-label="Menu">
+			<ul>
+				<li><a href="/#yaml">The idea</a></li>
+				{links.map((l) => (
+					<li>
+						<a href={l.href} aria-current={l.active ? "page" : undefined} rel={l.href.startsWith("http") ? "noopener" : undefined}>{l.label}</a>
+					</li>
+				))}
+				<li><a href="/docs/getting-started/">Getting started</a></li>
+			</ul>
+		</nav>
+		<a class="btn solid wide" href="/#install" data-close>Install</a>
+	</div>
+</header>
+<script>
+	// Menu sheet: toggled by the burger, closed by Escape, a link tap, or leaving the phone breakpoint.
+	// Body scroll is locked while it is open (position-free, so iOS keeps the scroll offset).
+	const nav = document.querySelector<HTMLElement>("[data-nav]");
+	const burger = nav?.querySelector<HTMLButtonElement>("[data-burger]");
+	const sheet = nav?.querySelector<HTMLElement>("[data-sheet]");
+	if (nav && burger && sheet) {
+		const root = document.documentElement;
+		const set = (open: boolean) => {
+			sheet.hidden = !open;
+			burger.setAttribute("aria-expanded", String(open));
+			burger.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+			root.classList.toggle("menu-open", open);
+			if (open) sheet.querySelector<HTMLElement>("a")?.focus({ preventScroll: true });
+		};
+		burger.addEventListener("click", () => set(sheet.hidden));
+		sheet.addEventListener("click", (e) => {
+			if ((e.target as HTMLElement).closest("a")) set(false);
+		});
+		addEventListener("keydown", (e) => {
+			if (e.key === "Escape" && !sheet.hidden) {
+				set(false);
+				burger.focus();
+			}
+		});
+		matchMedia("(min-width: 721px)").addEventListener("change", (m) => m.matches && set(false));
+		addEventListener("pageshow", () => set(false));
+	}
+	// Paper pages (docs, changelog, 404): while the footer is under the bar, the bar takes the footer's surface.
+	// The landing page does this itself from lib/page.ts (it recolors per section), so it is skipped there.
+	const foot = document.querySelector<HTMLElement>("footer.site-foot");
+	if (foot && document.body.classList.contains("on-paper") && !document.querySelector(".hero")) {
+		const root = document.documentElement;
+		const barH = () => nav?.getBoundingClientRect().height ?? 60;
+		const sync = () => root.classList.toggle("over-foot", foot.getBoundingClientRect().top < barH() - 8);
+		addEventListener("scroll", sync, { passive: true });
+		addEventListener("resize", sync, { passive: true });
+		sync();
+	}
+</script>
+<style>
+	.nav { position: fixed; inset: 0 0 auto 0; z-index: 60; color: var(--white); pointer-events: none; padding-top: env(safe-area-inset-top); }
+	.bar { display: flex; align-items: center; gap: 1.6rem; padding: 0.9rem max(clamp(1rem, 2.4vw, 2rem), env(safe-area-inset-right)) 0.9rem max(clamp(1rem, 2.4vw, 2rem), env(safe-area-inset-left)); pointer-events: none; }
+	.bar > * { pointer-events: auto; }
+	.brand { display: flex; align-items: center; gap: 0.55rem; min-height: 44px; font-weight: 800; font-stretch: 75%; font-size: 1.45rem; letter-spacing: -0.01em; text-decoration: none; }
+	/* The logo is a blue-to-cobalt gradient: on the cobalt ground it sits on a white tile so it reads, bare on paper */
+	.mark { display: grid; place-items: center; width: 34px; height: 34px; background: #fff; border-radius: 8px; }
+	:global(.on-paper) .mark, :global(.on-paper-sec) .mark { background: transparent; }
+	.links { margin-left: auto; }
+	ul { display: flex; gap: 1.5rem; list-style: none; margin: 0; padding: 0; }
+	.links a { font-weight: 600; font-size: 0.98rem; text-decoration: none; padding: 0.3rem 0; border-bottom: 2px solid transparent; }
+	.links a:hover, .links a[aria-current] { border-bottom-color: currentColor; }
+	small { font-weight: 400; opacity: 0.7; font-size: 0.85em; }
+	.sm { padding: 0.62rem 0.95rem; font-size: 0.92rem; background: var(--white); color: var(--ink); border-color: var(--white); }
+	.sm:hover { background: transparent; color: var(--white); }
+	.short, .burger, .sheet { display: none; }
+	:global(.on-paper) .nav, :global(.on-paper-sec) .nav { color: var(--ink); }
+	:global(.on-paper) .sm, :global(.on-paper-sec) .sm { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+	:global(.on-paper) .sm:hover, :global(.on-paper-sec) .sm:hover { background: transparent; color: var(--ink); }
+	/* The bar has no ground of its own: ink follows the section under it (lib/page.ts), with a hairline once we leave the hero */
+	:global(.nav-solid) .bar { background: var(--bg-under, var(--blue)); }
+	/* Pages without the landing scroll script (docs, changelog, 404) have a paper ground and sticky content under the bar:
+	   the bar carries its own ground there so nothing scrolls through the logo and links. */
+	:global(body.on-paper) .bar { background: var(--paper); }
+	:global(body.on-paper) .nav { box-shadow: 0 1px 0 var(--paper-line); }
+	:global(html.over-foot body.on-paper) .bar { background: var(--blue-deep); }
+	:global(html.over-foot body.on-paper) .nav { color: var(--white); box-shadow: 0 1px 0 var(--blue-line); }
+	:global(html.over-foot body.on-paper) .mark { background: #fff; }
+	:global(html.over-foot body.on-paper) .sm { background: var(--white); color: var(--ink); border-color: var(--white); }
+	:global(.nav-solid) .nav { box-shadow: 0 1px 0 color-mix(in srgb, currentColor 18%, transparent); }
+
+	/* Phones: compact bar = logo, Install CTA, menu button. The rest lives in the sheet. */
+	@media (max-width: 720px) {
+		.nav { pointer-events: none; }
+		.bar { gap: 0.6rem; padding-block: 0.5rem; }
+		.links, .full { display: none; }
+		.short { display: inline; }
+		.brand { margin-right: auto; min-height: 44px; padding-right: 0.5rem; }
+		.sm { padding: 0 1rem; min-height: 44px; font-size: 0.95rem; }
+		.burger { display: inline-grid; place-items: center; width: 44px; height: 44px; margin-right: -0.5rem; background: transparent; border: 0; color: inherit; cursor: pointer; border-radius: 3px; }
+		.burger path { transition: transform 0.2s; transform-origin: 12px 12px; }
+		.burger[aria-expanded="true"] .l1 { transform: translateY(4px) rotate(45deg); }
+		.burger[aria-expanded="true"] .l2 { transform: translateY(-4px) rotate(-45deg); }
+		/* The sheet is solid and sits under the bar; while it is open the bar takes the sheet's ground */
+		:global(.menu-open) .bar { background: var(--blue-deep); color: var(--white); }
+		:global(.menu-open) .nav { color: var(--white); }
+		:global(.menu-open) .mark { background: #fff; }
+		:global(.menu-open) .sm { background: var(--white); color: var(--ink); border-color: var(--white); }
+		.sheet:not([hidden]) {
+			display: flex; flex-direction: column; justify-content: space-between; gap: 2rem;
+			position: fixed; inset: 0; z-index: -1; pointer-events: auto; overflow-y: auto; overscroll-behavior: contain;
+			padding: calc(env(safe-area-inset-top) + 4.5rem) max(1.25rem, env(safe-area-inset-right)) calc(1.5rem + env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+			background: var(--blue-deep); color: var(--white);
+		}
+		.sheet ul { flex-direction: column; gap: 0; }
+		.sheet li { border-top: 1px solid var(--blue-line); }
+		.sheet li:last-child { border-bottom: 1px solid var(--blue-line); }
+		.sheet li a { display: flex; align-items: center; min-height: 64px; font: 800 2.1rem/1 var(--font); font-stretch: 68%; letter-spacing: -0.01em; text-decoration: none; }
+		.sheet li a[aria-current] { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 0.18em; }
+		.sheet small { font: 500 1rem var(--font); margin-left: 0.6rem; }
+		.sheet .wide { width: 100%; font-size: 1.1rem; min-height: 56px; }
+	}
+	@media (prefers-reduced-motion: reduce) { .burger path { transition: none; } }
+</style>

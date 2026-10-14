@@ -343,9 +343,7 @@ async fn portless_crash_loop_never_runs_and_does_not_unblock_healthy_dep() {
                 ServiceDef {
                     restart: RestartPolicy::OnFailure,
                     max_restarts: Some(2),
-                    // Lives well under MIN_UPTIME (2 s): `sleep 1` left a 1 s margin that
-                    // fork/exec latency ate under the parallel gate (nextest), flashing Running.
-                    ..svc("sleep 0.2; exit 2")
+                    ..svc("sleep 1; exit 2")
                 },
             ),
             (
@@ -379,6 +377,20 @@ async fn portless_crash_loop_never_runs_and_does_not_unblock_healthy_dep() {
         m.fail_reason("dependent").as_deref(),
         Some("dependency worker failed")
     );
+    m.stop_all().await;
+}
+
+/// Race seen under the parallel gate: the no-probe watcher sends Running after
+/// MIN_UPTIME without looking at the child, so a child that already exited but
+/// was not reaped yet by check_health flashed Running.
+#[tokio::test]
+async fn late_running_event_for_an_exited_child_is_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut m, _rx) = manager(&dir, vec![("worker", svc("exit 2"))]);
+    m.start_app_services(&names(&["worker"])).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    m.update_state("worker", ServiceState::Running);
+    assert_ne!(m.get_state("worker"), Some(ServiceState::Running));
     m.stop_all().await;
 }
 

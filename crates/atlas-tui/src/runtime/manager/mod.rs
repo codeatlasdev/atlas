@@ -145,6 +145,17 @@ impl ServiceManager {
             if service.sched.tracker.pending_at.is_some() || service.sched.gave_up {
                 return;
             }
+            // Watchers send Running without looking at the child (the no-probe one
+            // after MIN_UPTIME): a child that already exited, not yet reaped by
+            // check_health, must not flash Running. check_health decides its exit.
+            if state == ServiceState::Running
+                && service
+                    .child
+                    .as_mut()
+                    .is_some_and(|c| !matches!(c.try_wait(), Ok(None)))
+            {
+                return;
+            }
             service.sched.note_state(&state);
             service.status.state = state;
         }

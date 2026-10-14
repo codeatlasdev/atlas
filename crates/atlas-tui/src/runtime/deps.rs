@@ -539,15 +539,10 @@ mod tests {
             reason.contains("`atlas-no-such-bin` was not found"),
             "{reason}"
         );
-        // The message caps a long PATH (CI runners have huge ones), so compare its start only.
-        let path = atlas_core::login_env::path_var()
-            .to_string_lossy()
-            .into_owned();
-        let head: String = path.chars().take(40).collect();
-        assert!(
-            reason.contains(&format!("PATH used by Atlas: {head}")),
-            "{reason}"
-        );
+        // Only that the PATH line is there: the process-wide probe it is read from is replaced by
+        // other tests running in parallel (`install` above), so its value is not stable here. The
+        // exact wording with a fixed PATH is `exit_127_names_the_binary_the_path_and_a_hint`.
+        assert!(reason.contains("PATH used by Atlas: /"), "{reason}");
         let status = fs::read_to_string(dir.path().join(".logs/setup.json")).unwrap();
         assert!(status.contains("atlas-no-such-bin"), "{status}");
     }

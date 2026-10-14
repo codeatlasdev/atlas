@@ -52,6 +52,7 @@ pub async fn run(
     let mut child = tokio::process::Command::new(bin)
         .args(args)
         .current_dir(cwd)
+        .envs(atlas_core::login_env::vars())
         .envs(env)
         .stdin(if input.is_some() {
             Stdio::piped()

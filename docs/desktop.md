@@ -66,11 +66,12 @@ Requirements:
 
 ### Shell environment
 
-Opened from Finder or the Dock, macOS gives apps a bare environment (`PATH=/usr/bin:/bin:…`), so `bun`, `node` and anything from Homebrew, nvm, mise or asdf would be missing. At launch Atlas reads the environment of your shell in the background and starts every `atlas dev`, `git`, `gh` and update with it, exactly as your terminal would.
+Opened from Finder or the Dock on macOS, or from a menu entry on Linux, the app gets the session's bare environment (`PATH=/usr/bin:/bin:…`), so `bun` (`~/.bun/bin`), `node` and anything from Homebrew, nvm, mise or asdf would be missing (`exit 127: sh: 1: bun: not found`). At launch Atlas reads the environment of your shell in the background and starts every service, `pre_command`, action, terminal and agent, plus `git`, `gh` and updates, with it, exactly as your terminal would. Commands themselves still run through `sh -c`. The runner (`atlas dev`) and the terminal host (`atlas hostd`) do the same when started from a terminal or by the app, so all of them see one `PATH`.
 
-- Which shell: the one chosen in **Settings → General → Shell for your projects**, else your account's login shell (`chsh`), else `$SHELL`, else `/bin/zsh`. Any shell works (zsh, bash, fish, nushell, ksh, dash, tcsh…): Atlas only asks it to run `/usr/bin/env -0`, trying `-l -i -c`, then `-l -c`, then `-c`.
+- Which shell: the one chosen in **Settings → General → Shell for your projects**, else `$SHELL`, else your account's login shell from the user database (`chsh`), else `/bin/zsh` (`/bin/sh` where zsh is missing). Any shell works (zsh, bash, fish, nushell, ksh, dash, tcsh…): Atlas runs it as an interactive login shell and only asks it to run `/usr/bin/env -0`, trying `-l -i -c`, then `-l -c`, then `-c`; anything your rc files print around the result is ignored.
 - Settings lists shells from `/etc/shells`, accepts any path, shows which flags worked, how long it took, the resulting `PATH`, and whether `bun`, `node`, `docker`, `gh`… are found. **Reload** re-reads it after you edit your rc files.
-- A shell that fails or takes over 6 s is reported there; services then get the system `PATH` only.
+- A shell that fails or takes over 6 s is reported there, and Atlas falls back to the inherited `PATH` with the usual user bin directories that exist prepended (`~/.bun/bin`, `~/.cargo/bin`, `~/.local/bin`, mise and asdf shims, the newest nvm node).
+- When a `pre_command` (the stack setup) exits 127, the setup panel and `.logs/setup.log` name the missing binary, the `PATH` Atlas used and what to do: put the directory on `PATH` in your shell's rc file (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`) or pick the right shell in Settings, then restart.
 - Projects already running keep the environment they started with: stop and start them after a change.
 - The choice is saved in `~/.atlas/desktop/settings.json` (`{"shell": "/opt/homebrew/bin/fish"}`).
 

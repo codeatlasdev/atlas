@@ -1,97 +1,45 @@
-//! A Finder/Dock launch hands the app launchd's bare environment
-//! (`PATH=/usr/bin:/bin:…`, no nvm/mise/brew/bun), so every service the
-//! runner spawns dies with `command not found`. We ask the user's own shell —
-//! whatever it is — for its environment and give it to every child we spawn.
-//!
-//! Shell choice: Settings override, else the account's login shell from the
-//! user database (`getpwuid`, what Terminal uses), else `$SHELL`, else zsh.
-//! The probe is shell-agnostic: the only things the shell has to run are
-//! `echo` and the external `/usr/bin/env -0`, and flag sets degrade from
-//! `-l -i -c` to `-l -c` to `-c` for shells that reject combined flags
-//! (csh/tcsh). Runs off the main thread; spawns wait for it at most a few
-//! seconds and fall back to the inherited environment (reported in the UI).
+//! Atlas Desktop's side of the login-shell environment (`atlas_core::login_env`, shared with the runner and
+//! hostd so a service, a `pre_command`, an action and a terminal all see the same PATH). A Finder/Dock or
+//! desktop-entry launch hands the app a bare environment (`PATH=/usr/bin:/bin:…`, no nvm/mise/brew/bun);
+//! the probe asks the user's own shell for its environment. This module owns the Settings override, the
+//! start-up probe off the main thread and the `shell_info`/`shell_set` commands.
 
-use std::ffi::CStr;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::{Condvar, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use atlas_core::login_env::{self, Probe};
 use serde::{Deserialize, Serialize};
 
-const MARK: &str = "__ATLAS_ENV__";
-const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(6);
 const SPAWN_WAIT: Duration = Duration::from_secs(8);
-const FLAG_SETS: [&[&str]; 3] = [&["-l", "-i", "-c"], &["-l", "-c"], &["-c"]];
-/// Per-session/terminal vars that must not leak into services.
-const SKIP: [&str; 6] = [
-    "PWD",
-    "OLDPWD",
-    "SHLVL",
-    "_",
-    "TERM_SESSION_ID",
-    "TERM_PROGRAM",
-];
 
-#[derive(Clone, Serialize)]
-pub struct Probe {
-    pub shell: String,
-    /// `settings` | `account` | `$SHELL` | `default`
-    pub source: &'static str,
-    /// Flags that worked, e.g. `-l -i -c`.
-    pub flags: Option<String>,
-    pub error: Option<String>,
-    pub took_ms: u64,
-    #[serde(skip)]
-    pub vars: Vec<(String, String)>,
-}
-
-static STATE: Mutex<Option<Probe>> = Mutex::new(None);
-static READY: Condvar = Condvar::new();
-
-/// Start the first probe in the background (call once at launch).
+/// Start the first probe in the background (call once at launch), with the Settings override applied.
 pub fn start() {
-    std::thread::spawn(|| store(run()));
+    login_env::set_override(load_settings().shell);
+    std::thread::spawn(|| report(login_env::reprobe()));
 }
 
 /// Re-probe now (after a settings change); blocks.
 pub fn reprobe() -> Probe {
-    let p = run();
-    store(p.clone());
+    login_env::set_override(load_settings().shell);
+    let p = login_env::reprobe();
+    report(p.clone());
     p
 }
 
-fn store(p: Probe) {
+fn report(p: Probe) {
     if let Some(e) = &p.error {
         eprintln!("atlas-desktop: shell env probe failed ({}): {e}", p.shell);
     }
-    *STATE.lock().unwrap() = Some(p);
-    READY.notify_all();
-}
-
-/// Latest probe, waiting up to `SPAWN_WAIT` for the first one.
-pub fn current() -> Option<Probe> {
-    let g = STATE.lock().unwrap();
-    let (g, _) = READY
-        .wait_timeout_while(g, SPAWN_WAIT, |p| p.is_none())
-        .unwrap();
-    g.clone()
 }
 
 /// The user's shell environment, to pass to every child via `.envs(...)`.
-/// Empty when the probe failed: the child then inherits our own env.
 pub fn vars() -> Vec<(String, String)> {
-    current().map(|p| p.vars).unwrap_or_default()
+    login_env::vars()
 }
 
-/// The `PATH` children run with (probed, else ours).
+/// The `PATH` children run with.
 pub fn path_var() -> Option<std::ffi::OsString> {
-    vars()
-        .into_iter()
-        .find(|(k, _)| k == "PATH")
-        .map(|(_, v)| v.into())
-        .or_else(|| std::env::var_os("PATH"))
+    Some(login_env::path_var())
 }
 
 /// [`vars`] without blocking an async worker.
@@ -99,6 +47,15 @@ pub async fn vars_async() -> Vec<(String, String)> {
     tauri::async_runtime::spawn_blocking(vars)
         .await
         .unwrap_or_default()
+}
+
+/// The probe, waiting at most `SPAWN_WAIT` for a first one still running.
+pub fn current() -> Option<Probe> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(login_env::current());
+    });
+    rx.recv_timeout(SPAWN_WAIT).ok()
 }
 
 /// [`vars_async`] as the JSON `env` object hostd's `exec` takes.
@@ -126,8 +83,8 @@ pub struct ShellInfo {
 fn info(probe: Option<Probe>) -> ShellInfo {
     let path = probe
         .as_ref()
-        .and_then(|p| p.vars.iter().find(|(k, _)| k == "PATH"))
-        .map(|(_, v)| v.split(':').map(String::from).collect())
+        .and_then(Probe::path)
+        .map(|v| v.split(':').map(String::from).collect())
         .unwrap_or_default();
     let tools = ["bun", "node", "npm", "pnpm", "docker", "git", "gh", "atlas"]
         .map(|t| {
@@ -175,7 +132,7 @@ pub async fn shell_set(shell: Option<String>) -> Result<ShellInfo, String> {
 
 /// First `name` executable on the children's `PATH`.
 pub fn which(name: &str) -> Option<PathBuf> {
-    atlas_core::paths::which_in(name, &path_var()?)
+    login_env::which(name)
 }
 
 pub use atlas_core::paths::is_executable;
@@ -262,159 +219,9 @@ fn shells_from(text: &str, exists: impl Fn(&str) -> bool) -> Vec<String> {
         .collect()
 }
 
-// ---------- probe ----------
-
-fn resolve_shell() -> (String, &'static str) {
-    if let Some(s) = load_settings()
-        .shell
-        .filter(|s| is_executable(Path::new(s)))
-    {
-        return (s, "settings");
-    }
-    if let Some(s) = account_shell().filter(|s| is_executable(Path::new(s))) {
-        return (s, "account");
-    }
-    if let Some(s) = std::env::var("SHELL")
-        .ok()
-        .filter(|s| is_executable(Path::new(s)))
-    {
-        return (s, "$SHELL");
-    }
-    // zsh is macOS's default; a Linux box may not have it.
-    let default = if is_executable(Path::new("/bin/zsh")) {
-        "/bin/zsh"
-    } else {
-        "/bin/sh"
-    };
-    (default.into(), "default")
-}
-
-/// Login shell from the user database (set by `chsh`).
-fn account_shell() -> Option<String> {
-    let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
-    let mut buf = vec![0 as libc::c_char; 4096];
-    let mut out: *mut libc::passwd = std::ptr::null_mut();
-    // SAFETY: buffers live for the call; `out` points into `pw` on success.
-    let rc = unsafe {
-        libc::getpwuid_r(
-            libc::getuid(),
-            &mut pw,
-            buf.as_mut_ptr(),
-            buf.len(),
-            &mut out,
-        )
-    };
-    if rc != 0 || out.is_null() || pw.pw_shell.is_null() {
-        return None;
-    }
-    let s = unsafe { CStr::from_ptr(pw.pw_shell) }
-        .to_string_lossy()
-        .into_owned();
-    (!s.is_empty()).then_some(s)
-}
-
-fn run() -> Probe {
-    let t0 = Instant::now();
-    let (shell, source) = resolve_shell();
-    let mut errors = Vec::new();
-    for flags in FLAG_SETS {
-        match attempt(&shell, flags) {
-            Ok(vars) => {
-                return Probe {
-                    shell,
-                    source,
-                    flags: Some(flags.join(" ")),
-                    error: None,
-                    took_ms: t0.elapsed().as_millis() as u64,
-                    vars,
-                };
-            }
-            Err(e) => errors.push(format!("{}: {e}", flags.join(" "))),
-        }
-    }
-    Probe {
-        shell,
-        source,
-        flags: None,
-        error: Some(errors.join("; ")),
-        took_ms: t0.elapsed().as_millis() as u64,
-        vars: Vec::new(),
-    }
-}
-
-fn attempt(shell: &str, flags: &[&str]) -> Result<Vec<(String, String)>, String> {
-    let script = format!("echo {MARK}; /usr/bin/env -0; echo {MARK}");
-    let mut child = Command::new(shell)
-        .args(flags)
-        .arg(&script)
-        .current_dir(dirs::home_dir().unwrap_or_else(|| "/".into()))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    // Read concurrently so a chatty rc file can't fill the pipe and stall.
-    let mut stdout = child.stdout.take().expect("piped");
-    let reader = std::thread::spawn(move || {
-        let mut out = Vec::new();
-        let _ = stdout.read_to_end(&mut out);
-        out
-    });
-    let deadline = Instant::now() + ATTEMPT_TIMEOUT;
-    loop {
-        if child.try_wait().map_err(|e| e.to_string())?.is_some() {
-            break;
-        }
-        if Instant::now() > deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("timed out after {}s", ATTEMPT_TIMEOUT.as_secs()));
-        }
-        std::thread::sleep(Duration::from_millis(15));
-    }
-    let out = reader.join().unwrap_or_default();
-    parse(&String::from_utf8_lossy(&out)).ok_or_else(|| "no environment in output".into())
-}
-
-/// `KEY=VALUE` pairs between the markers; rc files may print around them.
-fn parse(out: &str) -> Option<Vec<(String, String)>> {
-    let mut parts = out.split(MARK);
-    parts.next()?;
-    let body = parts.next()?;
-    parts.next()?; // closing marker must be present
-    let vars: Vec<_> = body
-        .trim_start_matches(['\r', '\n'])
-        .split('\0')
-        .filter_map(|kv| kv.split_once('='))
-        .filter(|(k, _)| !k.is_empty() && !SKIP.contains(k))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-    vars.iter().any(|(k, _)| k == "PATH").then_some(vars)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_keeps_env_drops_noise_and_session_vars() {
-        let out = format!("Welcome!\n{MARK}\nPATH=/a:/b\0FOO=x=y\0PWD=/tmp\0\n{MARK}\nbye");
-        let v = parse(&out).unwrap();
-        assert_eq!(
-            v,
-            vec![
-                ("PATH".into(), "/a:/b".into()),
-                ("FOO".into(), "x=y".into())
-            ]
-        );
-    }
-
-    #[test]
-    fn parse_rejects_truncated_or_pathless_output() {
-        assert!(parse(&format!("{MARK}\nPATH=/a\0")).is_none());
-        assert!(parse(&format!("{MARK}\nFOO=1\0{MARK}")).is_none());
-        assert!(parse("nothing").is_none());
-    }
 
     /// Guards the first Linux build: Ubuntu's `/etc/shells` lists `rbash` (it refuses `/usr/bin/env`, so the
     /// probe can never succeed) and `tmux`, and offering either in Settings breaks every spawn.
@@ -426,14 +233,5 @@ mod tests {
             shells_from(debian, |p| !p.starts_with("/opt/gone")),
             ["/bin/sh", "/usr/bin/sh", "/bin/bash", "/usr/bin/dash"]
         );
-    }
-
-    /// Every shell installed here yields a PATH from a launchd-bare env.
-    #[test]
-    fn probes_installed_shells() {
-        for sh in installed_shells() {
-            let ok = FLAG_SETS.iter().any(|f| attempt(&sh, f).is_ok());
-            assert!(ok, "{sh}: no env");
-        }
     }
 }

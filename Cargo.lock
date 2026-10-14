@@ -331,6 +331,8 @@ version = "1.5.0-alpha.6"
 dependencies = [
  "anyhow",
  "dirs",
+ "libc",
+ "parking_lot",
  "semver",
  "serde",
  "serde_json",
@@ -385,6 +387,7 @@ name = "atlas-host"
 version = "1.5.0-alpha.6"
 dependencies = [
  "anyhow",
+ "atlas-core",
  "atlas-lsp",
  "base64 0.23.1",
  "dirs",

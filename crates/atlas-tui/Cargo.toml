@@ -40,6 +40,7 @@ schemars = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
 
 [lints]
 workspace = true

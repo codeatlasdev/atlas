@@ -73,6 +73,7 @@ pub fn package(
         eprintln!("▸ build: {build}");
         let st = Command::new("sh")
             .args(["-c", build])
+            .envs(atlas_core::login_env::vars())
             .current_dir(root)
             .status()
             .context("running build")?;

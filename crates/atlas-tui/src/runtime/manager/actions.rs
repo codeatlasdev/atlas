@@ -209,6 +209,7 @@ pub(super) async fn run_action_streaming(
     let mut cmd = Command::new("sh");
     cmd.args(["-c", command])
         .current_dir(root_dir)
+        .envs(atlas_core::login_env::vars())
         .envs(file_env)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

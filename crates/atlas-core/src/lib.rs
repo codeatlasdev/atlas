@@ -3,6 +3,7 @@ pub mod crash;
 pub mod domain;
 pub mod error;
 pub mod github;
+pub mod login_env;
 pub mod paths;
 pub mod util;
 

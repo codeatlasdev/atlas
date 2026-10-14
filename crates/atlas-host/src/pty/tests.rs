@@ -49,3 +49,65 @@ async fn stuck_raw_reader_does_not_block_the_program() {
     assert!(s.buf.lock().raw.is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Incident (Linux, app launched from the menu): a terminal or agent started through hostd inherited the
+/// bare session PATH and could not find `bun` (`~/.bun/bin`, added only by the user's rc file). Every pty
+/// and exec hostd starts runs with the login shell's environment, under the caller's own `env`.
+#[tokio::test(flavor = "multi_thread")]
+async fn pty_and_exec_find_binaries_the_login_shell_put_on_path() {
+    use atlas_core::login_env::{fixtures, install, probe_with};
+    let Some(sh) = fixtures::some_shell() else {
+        return;
+    };
+    let home = fixtures::fake_home();
+    install(probe_with(sh, home.path(), &fixtures::gui_env(home.path())));
+    let dir = tempfile::tempdir().unwrap();
+
+    let req = PtyCreate {
+        cwd: "/".into(),
+        argv: vec!["/bin/sh".into(), "-c".into(), "bun from-pty".into()],
+        env: Default::default(),
+        cols: 80,
+        rows: 24,
+        scope: Default::default(),
+        title: None,
+        mode: Default::default(),
+    };
+    let s = Session::spawn(req, dir.path()).unwrap();
+    let t0 = std::time::Instant::now();
+    while s.exited().is_none() {
+        assert!(t0.elapsed() < Duration::from_secs(10), "pty did not exit");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let out = String::from_utf8_lossy(&s.buf.lock().ring_bytes()).into_owned();
+    assert!(out.contains("bun-ran from-pty"), "{out:?}");
+
+    let r = crate::exec::run(
+        "/",
+        &[
+            "/bin/sh".into(),
+            "-c".into(),
+            "bun from-exec; echo $CALLER".into(),
+        ],
+        &[("CALLER".to_string(), "mine".to_string())].into(),
+        None,
+        10_000,
+    )
+    .await
+    .unwrap();
+    let stdout = {
+        use base64::Engine;
+        let b = r["stdout"].as_str().unwrap_or_default();
+        String::from_utf8_lossy(
+            &base64::engine::general_purpose::STANDARD
+                .decode(b)
+                .unwrap_or_default(),
+        )
+        .into_owned()
+    };
+    assert!(
+        stdout.contains("bun-ran from-exec") && stdout.contains("mine"),
+        "{r}"
+    );
+}

@@ -25,9 +25,11 @@ portable-pty = "0.9"
 base64 = { workspace = true }
 notify = { workspace = true }
 atlas-lsp = { path = "../atlas-lsp" }
+atlas-core = { path = "../atlas-core" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
 
 [lints]
 workspace = true

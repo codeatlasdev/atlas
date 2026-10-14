@@ -4,6 +4,12 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 > **Atlas is in alpha.** Expect bugs and breaking changes between releases. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new). Releases come in [Stable, Beta and Alpha channels](docs/versioning.md); every one of them is alpha-quality until Atlas meets the general availability criteria there.
 
+## [Unreleased]
+
+### Fixed
+
+- **Linux: the stack setup failed with `exit 127: sh: 1: bun: not found` when Atlas Desktop was started from the menu.** A menu launch has no shell rc, so `~/.bun/bin` (and nvm, mise, cargo…) was not on `PATH`. The user's login-shell environment (`$SHELL`, else the passwd entry, run as an interactive login shell with a timeout; rc output around it is ignored) is now one shared probe in `atlas-core` used by every spawn on Linux and macOS: services, `pre_command`, actions, mobile sessions, docker, `atlas dev` itself, and the terminal host's ptys and `exec`. If the shell cannot be probed, the usual user bin directories are prepended and the Settings panel says so. An exit 127 in the setup names the missing binary, the `PATH` Atlas used and how to fix it. See [Shell environment](docs/desktop.md#shell-environment).
+
 ## [1.5.0-alpha.6] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

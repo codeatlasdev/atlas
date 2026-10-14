@@ -19,7 +19,14 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 dirs = { workspace = true }
+libc = { workspace = true }
+parking_lot = { workspace = true }
 semver = { workspace = true }
+tempfile = { workspace = true, optional = true }
+
+[features]
+# Fixtures for spawn-path tests in dependent crates (`login_env::fixtures`).
+test-fixtures = ["dep:tempfile"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

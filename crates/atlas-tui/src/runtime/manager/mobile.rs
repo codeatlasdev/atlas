@@ -44,6 +44,7 @@ impl ServiceManager {
                 let _ = tokio::fs::write(project_yml, &patched).await;
                 // Regenerate .xcodeproj from the patched project.yml
                 let _ = Command::new("xcodegen")
+                    .envs(atlas_core::login_env::vars())
                     .arg("generate")
                     .arg("--spec")
                     .arg(project_yml)

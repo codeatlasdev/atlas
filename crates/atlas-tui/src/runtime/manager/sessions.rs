@@ -78,7 +78,8 @@ impl ServiceManager {
             .stderr(Stdio::piped())
             .process_group(0);
 
-        // env_files: lowest-precedence layer above the inherited env.
+        // The user's login-shell env (a desktop launch has a bare PATH), then env_files on top.
+        cmd.envs(atlas_core::login_env::vars());
         cmd.envs(&self.file_env);
 
         // Inject env from atlas.local.yaml frontend service (Android SDK, etc.)

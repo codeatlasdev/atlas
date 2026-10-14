@@ -161,6 +161,7 @@ pub async fn ensure_deps(
         let err = f.try_clone()?;
         Command::new("sh")
             .args(["-c", &command])
+            .envs(atlas_core::login_env::vars())
             .current_dir(root_dir)
             .stdin(Stdio::null())
             .stdout(f)
@@ -178,7 +179,11 @@ pub async fn ensure_deps(
                 let code = exit.code().map_or("signal".to_string(), |c| c.to_string());
                 append_log(&log_path, &format!("exit status: {code}"));
                 let tail = last_nonempty_line(&log_path);
-                DepsOutcome::Failed(format!("exit {code}: {tail}"))
+                let path = atlas_core::login_env::path_var();
+                DepsOutcome::Failed(match exit.code() {
+                    Some(c) => explain_failure(c, &tail, &command, &path.to_string_lossy()),
+                    None => format!("exit {code}: {tail}"),
+                })
             }
             Err(e) => {
                 let reason = format!("could not run: {e}");
@@ -207,6 +212,41 @@ pub async fn ensure_deps(
     }
     write_status(&log_dir, &status);
     outcome
+}
+
+/// The binary a shell could not find: from its own message (`sh: 1: bun: not found`, `bash: bun: command
+/// not found`, `zsh: command not found: bun`), else the command's first word that is not `VAR=value`.
+fn missing_binary(tail: &str, command: &str) -> Option<String> {
+    let named = if let Some((_, n)) = tail.rsplit_once("command not found: ") {
+        Some(n) // zsh
+    } else {
+        tail.strip_suffix(": command not found") // bash, sh
+            .or_else(|| tail.strip_suffix(": not found")) // dash
+            .and_then(|head| head.rsplit(": ").next())
+    };
+    named
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && !n.contains(' '))
+        .map(String::from)
+        .or_else(|| {
+            command
+                .split_whitespace()
+                .find(|w| !w.contains('='))
+                .map(String::from)
+        })
+}
+
+/// `exit <code>: <last output line>`; exit 127 (the shell could not find a command) also names the binary,
+/// the `PATH` Atlas ran with and what to do about it.
+fn explain_failure(code: i32, tail: &str, command: &str, path: &str) -> String {
+    let base = format!("exit {code}: {tail}");
+    if code != 127 {
+        return base;
+    }
+    let bin = missing_binary(tail, command).unwrap_or_else(|| "a command".into());
+    format!(
+        "{base}. `{bin}` was not found. PATH used by Atlas: {path}. Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings > Shell."
+    )
 }
 
 fn append_log(path: &Path, line: &str) {
@@ -441,5 +481,70 @@ mod tests {
 
         touch_marker(&nm).unwrap();
         assert!(nm.join(".atlas-installed").exists());
+    }
+
+    /// Incident (Linux, app launched from the menu): the stack setup `bun install` failed with
+    /// `exit 127: sh: 1: bun: not found`; `bun` lives in `~/.bun/bin`, put on PATH by the user's rc file.
+    #[tokio::test]
+    async fn pre_command_finds_binaries_the_login_shell_put_on_path() {
+        use atlas_core::login_env::{fixtures, install, probe_with};
+        let Some(sh) = fixtures::some_shell() else {
+            return;
+        };
+        let home = fixtures::fake_home();
+        install(probe_with(sh, home.path(), &fixtures::gui_env(home.path())));
+        let dir = TempDir::new().unwrap();
+        let out = ensure_deps(dir.path(), Some("bun install"), None, false).await;
+        assert_eq!(out, DepsOutcome::Installed);
+        let log = fs::read_to_string(dir.path().join(".logs/setup.log")).unwrap();
+        assert!(log.contains("bun-ran install"), "{log}");
+    }
+
+    /// Exit 127 names the missing binary, the PATH Atlas used and what to do about it.
+    #[test]
+    fn exit_127_names_the_binary_the_path_and_a_hint() {
+        let r = explain_failure(127, "sh: 1: bun: not found", "bun install", "/usr/bin:/bin");
+        assert!(r.starts_with("exit 127: sh: 1: bun: not found"), "{r}");
+        assert!(r.contains("`bun` was not found"), "{r}");
+        assert!(r.contains("PATH used by Atlas: /usr/bin:/bin"), "{r}");
+        assert!(r.contains("rc file") && r.contains("Settings"), "{r}");
+        // dash, bash and zsh word it differently; the binary is the command's first word otherwise.
+        for tail in [
+            "sh: bun: command not found",
+            "bash: bun: command not found",
+            "zsh: command not found: bun",
+        ] {
+            assert!(
+                explain_failure(127, tail, "bun install", "/p").contains("`bun` was not found"),
+                "{tail}"
+            );
+        }
+        assert!(
+            explain_failure(127, "", "FOO=1 bun install && x", "/p")
+                .contains("`bun` was not found")
+        );
+        // Other exit codes are untouched.
+        assert_eq!(explain_failure(3, "boom", "x", "/p"), "exit 3: boom");
+    }
+
+    #[tokio::test]
+    async fn a_missing_binary_in_pre_command_is_explained_in_the_failure() {
+        let dir = TempDir::new().unwrap();
+        let out = ensure_deps(dir.path(), Some("atlas-no-such-bin --x"), None, false).await;
+        let DepsOutcome::Failed(reason) = out else {
+            panic!("expected failure");
+        };
+        assert!(reason.contains("exit 127"), "{reason}");
+        assert!(
+            reason.contains("`atlas-no-such-bin` was not found"),
+            "{reason}"
+        );
+        let path = atlas_core::login_env::path_var();
+        assert!(
+            reason.contains(&format!("PATH used by Atlas: {}", path.to_string_lossy())),
+            "{reason}"
+        );
+        let status = fs::read_to_string(dir.path().join(".logs/setup.json")).unwrap();
+        assert!(status.contains("atlas-no-such-bin"), "{status}");
     }
 }

@@ -931,3 +931,95 @@ async fn action_guard_releases_on_panic() {
         other => panic!("expected ActionCompleted, got {other:?}"),
     }
 }
+
+/// Seed the shared login-shell probe the way a desktop-entry launch would produce it: bare PATH, the
+/// user's rc files add `~/.bun/bin`. Returns the fake HOME (keep it alive for the test).
+fn gui_login_env() -> Option<tempfile::TempDir> {
+    use atlas_core::login_env::{fixtures, probe_with};
+    let sh = fixtures::some_shell()?;
+    let home = fixtures::fake_home();
+    let p = probe_with(sh, home.path(), &fixtures::gui_env(home.path()));
+    assert!(p.error.is_none(), "{:?}", p.error);
+    atlas_core::login_env::install(p);
+    Some(home)
+}
+
+/// Incident (Linux, app launched from the menu): `exit 127: sh: 1: bun: not found`. Actions run with the
+/// same env as services and `pre_command`.
+#[tokio::test]
+async fn an_action_finds_binaries_the_login_shell_put_on_path() {
+    let Some(_home) = gui_login_env() else { return };
+    let dir = tempfile::TempDir::new().unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let ok = run_action_streaming(
+        "bun run thing",
+        dir.path(),
+        &HashMap::new(),
+        &dir.path().join(".logs"),
+        "Bun",
+        &tx,
+    )
+    .await;
+    drop(tx);
+    let mut lines = Vec::new();
+    while let Some(ev) = rx.recv().await {
+        if let ManagerEvent::LogLine { line, .. } = ev {
+            lines.push(line);
+        }
+    }
+    assert!(ok, "action failed: {lines:?}");
+    assert!(lines.iter().any(|l| l == "bun-ran run thing"), "{lines:?}");
+}
+
+#[tokio::test]
+async fn a_service_finds_binaries_the_login_shell_put_on_path() {
+    let Some(_home) = gui_login_env() else { return };
+    let dir = tempfile::TempDir::new().unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let cfg = one_service_cfg("bun dev; sleep 30", None);
+    let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
+    mgr.start_service("svc").await;
+    let line = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(ev) = rx.recv().await {
+            if let ManagerEvent::LogLine { line, .. } = ev {
+                return line;
+            }
+        }
+        String::new()
+    })
+    .await
+    .unwrap_or_default();
+    mgr.stop_service("svc").await;
+    assert_eq!(line, "bun-ran dev");
+}
+
+#[tokio::test]
+async fn a_session_action_finds_binaries_the_login_shell_put_on_path() {
+    let Some(_home) = gui_login_env() else { return };
+    let dir = tempfile::TempDir::new().unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut cfg = one_service_cfg("sleep 30", None);
+    cfg.actions = vec![
+        serde_norway::from_str(
+            "key: m\nlabel: Mob\ncommand: 'bun tauri ios dev'\nsession: true\nplatform: ios\n",
+        )
+        .unwrap(),
+    ];
+    let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
+    let _ = mgr.run_session('m').await;
+    let line = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(ev) = rx.recv().await {
+            if let ManagerEvent::LogLine { line, .. } = ev
+                && line.starts_with("bun-ran")
+            {
+                return Some(line);
+            }
+        }
+        None
+    })
+    .await
+    .ok()
+    .flatten();
+    mgr.stop_session("Mob").await;
+    assert_eq!(line.as_deref(), Some("bun-ran tauri ios dev"));
+}

@@ -130,6 +130,7 @@ pub fn load_script(path: &Path) -> Result<Value> {
                 serde_json::to_string(&abs.to_string_lossy())?
             );
             let out = Command::new("bun")
+                .envs(atlas_core::login_env::vars())
                 .args(["-e", &program])
                 .output()
                 .context("running `bun` to evaluate the script (is bun installed?)")?;

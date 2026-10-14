@@ -54,7 +54,7 @@ The full table is in [Agent setup](agents.md#troubleshooting) and [MCP](mcp.md#t
 | Symptom | Cause and fix |
 |---|---|
 | `atlas desktop` cannot download the app | Check your connection and that the release for your CLI version exists. `atlas desktop --status` shows what is installed; `atlas desktop --install --latest` reinstalls. |
-| `bun` or `node` not found inside the app | An app opened from Finder gets a bare environment. Atlas reads your login shell's environment at launch; Settings → General → *Shell for your projects* shows what it found and has **Reload**. Restart a running stack after changing it. |
+| `bun` or `node` not found inside the app (`exit 127: sh: 1: bun: not found` in the stack setup) | An app opened from Finder, the Dock or a Linux menu entry gets a bare environment. Atlas reads your login shell's environment at launch (as an interactive login shell, so `~/.bashrc`, `~/.zshrc` and `~/.config/fish/config.fish` count); the setup error shows the `PATH` Atlas used; Settings → General → *Shell for your projects* shows what it found and has **Reload**. Restart a running stack after changing it. |
 | Terminals use the classic renderer with GPU on, and Settings says the terminal host is from an older Atlas | The daemon predates the app and could not be replaced live. Click **Restart terminal host** in Settings → Appearance → Terminal when no terminal is busy. |
 | A terminal is blank right after opening | Turn off *Fast terminal (GPU)* in Settings → Appearance → Terminal to compare with the xterm.js renderer, and file an issue with `atlas desktop debug logs` output. |
 | A worktree was not deleted with its branch | The branch is unmerged, so Atlas keeps it (a toast says so). Delete it with `git branch -D` when you are sure. |

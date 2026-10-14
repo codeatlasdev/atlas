@@ -478,3 +478,21 @@ mod window_tests {
         ));
     }
 }
+
+/// Every `term::` command registered here must exist in `term_stub.rs` too, or only the Linux build
+/// fails (CI broke this way on the 1.5.0-alpha.6 commit). Reads both sources, so it runs on macOS.
+#[cfg(test)]
+mod term_stub_tests {
+    #[test]
+    fn every_registered_term_command_has_a_linux_stub() {
+        let main = include_str!("main.rs");
+        let stub = include_str!("term_stub.rs");
+        let missing: Vec<&str> = main
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+            .filter_map(|w| w.strip_prefix("term::"))
+            .filter(|n| n.starts_with("term_"))
+            .filter(|n| !stub.contains(&format!("    {n},")))
+            .collect();
+        assert!(missing.is_empty(), "add to term_stub.rs: {missing:?}");
+    }
+}

@@ -41,4 +41,9 @@ unsupported!(
     term_clear,
     term_click_move,
     term_font,
+    term_paste_clipboard,
+    term_path_at,
+    term_select_output,
+    term_mouse,
+    term_mouse_captured,
 );

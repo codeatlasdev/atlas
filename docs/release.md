@@ -38,7 +38,7 @@ All from the repository root (`package.json` scripts, run with `bun run <name>`)
 | `bun run release <alpha\|beta\|rc\|stable\|patch\|X.Y.Z[-pre.N]>` | Cut and publish a release. |
 | `bun run release:dry` | `scripts/release.sh --dry-run`: prints every step, changes and pushes nothing. Pass the request after it: `bun run release:dry alpha`. |
 | `bun run release:test` | The release tooling's own tests: `bun test scripts` (version, branch, soak and diff-guard rules) and `python3 -m unittest scripts/test_generate_manifest.py`. |
-| `bun run release:act [vX.Y.Z[-pre.N]] [--publish]` | Run `.github/workflows/release.yml` through `act`. Default tag: `v` + the version in `crates/atlas-cli/Cargo.toml`. Without `--publish` it builds artifacts into `.act/artifacts` and publishes nothing. |
+| `bun run release:act [vX.Y.Z[-pre.N]] [--publish] [-j <job>]...` | Run `.github/workflows/release.yml` through `act`. Default tag: `v` + the version in `crates/atlas-cli/Cargo.toml`. Without `--publish` it builds artifacts into `.act/artifacts` and publishes nothing. `-j build-linux` runs only that job (its `needs` outside the selection are dropped), which proves the Linux packaging without the macOS jobs; not combinable with `--publish`. |
 | `bun run ci:act` | Run the macOS job of `.github/workflows/ci.yml` locally through `act`. |
 
 You can ask the rules directly, without changing anything:

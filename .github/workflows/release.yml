@@ -16,7 +16,7 @@ jobs:
     name: Test
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
@@ -40,7 +40,7 @@ jobs:
     needs: test
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
@@ -105,7 +105,19 @@ jobs:
           shasum -a 256 ${APP}.dmg > ${APP}.dmg.sha256
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: atlas-aarch64-apple-darwin
+          path: |
+            dist/*.tar.gz*
+            dist/*.dmg*
+            dist/*.cdx.json
+
+      # act's artifact server (0.2.89) rejects upload-artifact v6+; v5 is the newest it accepts.
+      - name: Upload artifacts (act)
+        if: ${{ env.ACT }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: atlas-aarch64-apple-darwin
           path: |
@@ -121,12 +133,13 @@ jobs:
     needs: test
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: System libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential curl file pkg-config \
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
 
       - name: Install Rust
@@ -150,7 +163,11 @@ jobs:
           cargo build --release --locked -p atlas-cli
 
       # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
+      # linuxdeploy (and its plugins) are AppImages; APPIMAGE_EXTRACT_AND_RUN makes them unpack instead of mounting
+      # through FUSE, which containers (act) do not have.
       - name: Build desktop app
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
@@ -173,7 +190,16 @@ jobs:
           ls -l
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: atlas-x86_64-unknown-linux-gnu
+          path: dist/*
+
+      # act's artifact server (0.2.89) rejects upload-artifact v6+; v5 is the newest it accepts.
+      - name: Upload artifacts (act)
+        if: ${{ env.ACT }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: atlas-x86_64-unknown-linux-gnu
           path: dist/*
@@ -186,13 +212,14 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
+      # --disable-sandbox: pacman's download sandbox (seccomp + the `alpm` user) fails inside act's emulated amd64 container.
       - name: Tools
-        run: pacman -Syu --noconfirm --needed git nodejs
+        run: pacman -Syu --noconfirm --needed --disable-sandbox git nodejs
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Download Linux build
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: atlas-x86_64-unknown-linux-gnu
           path: linux/
@@ -214,7 +241,16 @@ jobs:
           ls -l
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: atlas-x86_64-unknown-linux-gnu-arch
+          path: dist/*
+
+      # act's artifact server (0.2.89) rejects upload-artifact v6+; v5 is the newest it accepts.
+      - name: Upload artifacts (act)
+        if: ${{ env.ACT }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: atlas-x86_64-unknown-linux-gnu-arch
           path: dist/*
@@ -226,7 +262,7 @@ jobs:
     permissions:
       contents: write   # the only job that may create the release
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Install Bun
         if: ${{ !env.ACT }}
@@ -239,7 +275,7 @@ jobs:
         run: bun scripts/release-version.ts github-flags --tag "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
 
       - name: Download artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: artifacts/
 
@@ -325,7 +361,7 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ !env.ACT || env.ATLAS_PUBLISH == '1' }}
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_name }}
           name: Atlas ${{ github.ref_name }}

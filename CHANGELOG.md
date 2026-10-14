@@ -9,6 +9,11 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Fixed
 
 - **Linux: the stack setup failed with `exit 127: sh: 1: bun: not found` when Atlas Desktop was started from the menu.** A menu launch has no shell rc, so `~/.bun/bin` (and nvm, mise, cargo…) was not on `PATH`. The user's login-shell environment (`$SHELL`, else the passwd entry, run as an interactive login shell with a timeout; rc output around it is ignored) is now one shared probe in `atlas-core` used by every spawn on Linux and macOS: services, `pre_command`, actions, mobile sessions, docker, `atlas dev` itself, and the terminal host's ptys and `exec`. If the shell cannot be probed, the usual user bin directories are prepended and the Settings panel says so. An exit 127 in the setup names the missing binary, the `PATH` Atlas used and how to fix it. See [Shell environment](docs/desktop.md#shell-environment).
+- **The Linux release builds under `act`.** The Linux job failed on `sudo: command not found` (the `act` container runs as root); the system-library step now uses `sudo` only when it exists, in `release.yml` and `ci.yml`. The AppImage bundle needs `APPIMAGE_EXTRACT_AND_RUN` (no FUSE in a container), and the Arch job needs `pacman --disable-sandbox` (its seccomp sandbox fails in an emulated amd64 container). `scripts/act-release.sh` gained `-j <job>` to run one job (the Linux build, say) without the macOS ones, and `.actrc` maps `ubuntu-22.04`.
+
+### Changed
+
+- The workflows' GitHub Actions moved to their Node 24 releases (`checkout` v6, `download-artifact` v8, `upload-artifact` v7, `action-gh-release` v3.0.3), still pinned by SHA. Under `act` the artifact upload stays on `upload-artifact` v5, the newest its artifact server accepts.
 
 ## [1.5.0-alpha.6] — 2026-10-14
 

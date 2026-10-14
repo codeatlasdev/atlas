@@ -539,9 +539,13 @@ mod tests {
             reason.contains("`atlas-no-such-bin` was not found"),
             "{reason}"
         );
-        let path = atlas_core::login_env::path_var();
+        // The message caps a long PATH (CI runners have huge ones), so compare its start only.
+        let path = atlas_core::login_env::path_var()
+            .to_string_lossy()
+            .into_owned();
+        let head: String = path.chars().take(40).collect();
         assert!(
-            reason.contains(&format!("PATH used by Atlas: {}", path.to_string_lossy())),
+            reason.contains(&format!("PATH used by Atlas: {head}")),
             "{reason}"
         );
         let status = fs::read_to_string(dir.path().join(".logs/setup.json")).unwrap();

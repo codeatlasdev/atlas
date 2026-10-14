@@ -23,6 +23,7 @@
 The flow is in [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md#pull-request-flow-and-who-merges).
 
 - [ ] Branch is named `type/short-desc` and targets `main`
+- [ ] I follow the [Code of Conduct](../blob/main/CODE_OF_CONDUCT.md)
 - [ ] Every commit is signed off (`git commit -s`), see [DCO](../blob/main/CONTRIBUTING.md#developer-certificate-of-origin-dco)
 - [ ] `bun run check` passes
 - [ ] **Tests first:** for a bug fix, the regression test was written and seen failing before the fix (see [AGENTS.md](../blob/main/AGENTS.md))

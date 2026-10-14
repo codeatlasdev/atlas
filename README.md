@@ -17,6 +17,7 @@
   <img alt="built with rust" src="https://img.shields.io/badge/built%20with-rust-orange?style=flat-square">
   <img alt="platform" src="https://img.shields.io/badge/macOS%20%7C%20Linux-Apple%20silicon%20%7C%20x86__64-lightgrey?style=flat-square">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-2025--11--25-black?style=flat-square">
+  <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 3.0" src="https://img.shields.io/badge/Contributor%20Covenant-3.0-4baaaa?style=flat-square"></a>
 </p>
 
 <p align="center">

@@ -64,8 +64,8 @@ fi
 if ! command -v actionlint >/dev/null; then
   say "▶ install actionlint"
   if command -v brew >/dev/null; then brew install actionlint
-  elif command -v go >/dev/null; then go install github.com/rhysd/actionlint/cmd/actionlint@latest
-  else die "actionlint not found (brew install actionlint, or go install github.com/rhysd/actionlint/cmd/actionlint@latest)"
+  elif command -v go >/dev/null; then go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12   # same as ci.yml
+  else die "actionlint not found (brew install actionlint, or go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12)"
   fi
 fi
 

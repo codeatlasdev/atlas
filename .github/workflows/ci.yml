@@ -189,10 +189,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install actionlint and zizmor
+      - name: Install zizmor
         uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
-          tool: actionlint,zizmor
+          tool: zizmor
+
+      # install-action has no actionlint; Go (preinstalled on the runner) verifies the module against
+      # sum.golang.org. Keep the version in step with scripts/setup.sh.
+      - name: Install actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Lint
         run: scripts/lint-workflows.sh

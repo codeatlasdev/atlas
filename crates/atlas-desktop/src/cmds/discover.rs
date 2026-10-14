@@ -146,6 +146,27 @@ fn skipped(name: &str) -> bool {
     name.starts_with('.') || SKIP.contains(&name)
 }
 
+/// Folders a repo keeps its own demo and test stacks in. Such a folder under a git checkout belongs to that checkout.
+const FIXTURE_DIRS: &[&str] = &["demo", "examples", "fixtures", "testdata", "samples"];
+
+/// `dir` is (or sits under) a fixture folder of a git checkout: a stack the repo ships for itself (`atlas/demo`, named
+/// `orbit-shop`), not a project of the user's. The checkout is the project; a `demo/` with no checkout above it is not
+/// covered, it is somebody's project.
+fn in_checkout_fixture(dir: &Path) -> bool {
+    dir.ancestors().skip(1).any(|up| {
+        up.file_name()
+            .is_some_and(|n| FIXTURE_DIRS.iter().any(|f| n == *f))
+            && up
+                .parent()
+                .is_some_and(|p| p.ancestors().any(|a| a.join(".git").exists()))
+    }) || dir
+        .file_name()
+        .is_some_and(|n| FIXTURE_DIRS.iter().any(|f| n == *f))
+        && dir
+            .parent()
+            .is_some_and(|p| p.ancestors().any(|a| a.join(".git").exists()))
+}
+
 fn mtime(p: &Path) -> Option<u64> {
     let m = std::fs::metadata(p).ok()?.modified().ok()?;
     m.duration_since(SystemTime::UNIX_EPOCH)
@@ -305,6 +326,9 @@ impl Walk<'_> {
         }
         self.stats.dirs += 1;
         self.progress(dir, false);
+        if in_checkout_fixture(dir) {
+            return;
+        }
         if dir.join("atlas.yaml").is_file() {
             self.report(inspect(dir, root, false));
             // Stop here: the project is the unit. Nested configs (monorepo packages) are
@@ -437,6 +461,7 @@ pub fn parse_mdfind(text: &str) -> Vec<PathBuf> {
         .map(Path::new)
         .filter(|p| p.file_name().is_some_and(|n| n == "atlas.yaml"))
         .filter_map(Path::parent)
+        .filter(|d| !in_checkout_fixture(d))
         .filter(|d| {
             !d.components().any(|c| {
                 let c = c.as_os_str().to_string_lossy();
@@ -569,6 +594,56 @@ mod tests {
         let api = found.iter().find(|f| f.name == "api").unwrap();
         assert!(api.nested);
         assert!(!found.iter().find(|f| f.name == "mono").unwrap().nested);
+    }
+
+    // Incident (owner's tray, v1.5.0-alpha.7): "orbit-shop" sat in the real project list. It is `atlas/demo`, the
+    // repo's own demo stack (`name: orbit-shop`), found by "Find projects" and added with the rest. A fixture folder
+    // of a git checkout is part of that repo, not a project of its own; the checkout is the project.
+    fn checkout(dir: &Path) {
+        fs::create_dir_all(dir.join(".git")).unwrap();
+    }
+
+    #[test]
+    fn a_fixture_folder_inside_a_git_checkout_is_not_offered_as_a_project() {
+        for fixture in ["demo", "examples", "fixtures", "testdata", "samples"] {
+            let t = tempfile::tempdir().unwrap();
+            checkout(&t.path().join("atlas"));
+            project(
+                &t.path().join("atlas").join(fixture).join("shop"),
+                "orbit-shop",
+            );
+            project(&t.path().join("atlas").join(fixture), "orbit-shop-direct");
+            project(&t.path().join("real"), "real");
+            assert_eq!(names(&run(&opts(t.path())).0), ["real"], "{fixture}");
+        }
+    }
+
+    #[test]
+    fn the_checkout_itself_and_a_package_named_like_a_fixture_outside_a_checkout_are_still_found() {
+        let t = tempfile::tempdir().unwrap();
+        // the checkout has its own atlas.yaml: it is the project, its demo/ is nested, flagged, and not a project root
+        checkout(&t.path().join("shop"));
+        project(&t.path().join("shop"), "shop");
+        // a folder called demo that is NOT inside a checkout is somebody's project
+        project(&t.path().join("demo"), "standalone-demo");
+        let (found, _) = run(&opts(t.path()));
+        assert_eq!(names(&found), ["shop", "standalone-demo"]);
+    }
+
+    #[test]
+    fn spotlight_hits_inside_a_checkout_fixture_folder_are_dropped_too() {
+        // not `.tmpXXXX`: a hidden component would be dropped by the noise filter and hide what this test is about
+        let t = tempfile::Builder::new().prefix("scan").tempdir().unwrap();
+        checkout(&t.path().join("atlas"));
+        fs::create_dir_all(t.path().join("atlas/demo")).unwrap();
+        fs::write(t.path().join("atlas/demo/atlas.yaml"), "name: orbit-shop\n").unwrap();
+        project(&t.path().join("real"), "real");
+        let out = format!(
+            "{}/atlas/demo/atlas.yaml\n{}/real/atlas.yaml\n",
+            t.path().display(),
+            t.path().display()
+        );
+        assert_eq!(parse_mdfind(&out), [t.path().join("real")]);
     }
 
     #[cfg(unix)]

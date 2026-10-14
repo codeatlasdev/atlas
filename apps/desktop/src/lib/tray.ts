@@ -204,6 +204,75 @@ export function serviceTone(state: string): Tone {
 export const TRAY_MAX_HEIGHT = 560;
 export const TRAY_MIN_HEIGHT = 220;
 
-export function trayHeight(content: number): number {
-	return Math.min(TRAY_MAX_HEIGHT, Math.max(TRAY_MIN_HEIGHT, Math.ceil(content)));
+/**
+ * Height of the window for `content` px of page: grown to fit, between the min and the max, and never taller than the
+ * `room` the screen leaves under the menu bar (a short display must not push the popover off its bottom edge).
+ */
+export function trayHeight(content: number, room = Infinity): number {
+	const fit = Math.min(TRAY_MAX_HEIGHT, Math.max(TRAY_MIN_HEIGHT, Math.ceil(content)));
+	return Math.min(fit, Math.max(0, Math.floor(room)));
+}
+
+/** Failed services of a RUNNING stack, in service order (a stopped project's last states are history, not news). */
+export function failedServices(p: TrayProject): string[] {
+	return p.running ? p.services.filter((s) => s.state === "failed").map((s) => s.name) : [];
+}
+
+/** The `service_cmd` invocations that restart exactly the failed services of `p` (never the whole stack). */
+export function restartFailedCalls(
+	p: TrayProject,
+): { id: string; cmd: "restart_service"; service: string }[] {
+	return failedServices(p).map((service) => ({ id: p.id, cmd: "restart_service", service }));
+}
+
+export type CardState = "healthy" | "starting" | "failed" | "idle";
+
+/** The card's one-line state: what is wrong, by name, or that nothing is. Failed beats starting beats healthy. */
+export function projectHeadline(p: TrayProject): { state: CardState; text: string } {
+	if (!p.running) return { state: "idle", text: "Stopped" };
+	const failed = failedServices(p);
+	if (failed.length) {
+		const shown = failed.slice(0, 2).join(", ");
+		return { state: "failed", text: `${shown}${failed.length > 2 ? ` +${failed.length - 2}` : ""} failed` };
+	}
+	const starting = p.services.filter((s) => s.state === "starting").length;
+	if (starting) return { state: "starting", text: `${starting} starting` };
+	const up = p.services.filter((s) => s.state === "running").length;
+	if (up === p.services.length) return { state: "healthy", text: `All ${up} services up` };
+	return { state: "starting", text: `${up}/${p.services.length} up` };
+}
+
+/**
+ * SVG path data for a sparkline in a `w`×`h` box with `pad` px kept free at top and bottom (so the stroke is never
+ * clipped). Newest sample on the right; the y axis runs from 0 to the series peak, so a flat zero series is a baseline.
+ * `area` closes the line down to the bottom edge for the soft fill.
+ */
+export function sparkPaths(
+	data: number[],
+	w: number,
+	h: number,
+	pad: number,
+): { line: string; area: string } {
+	if (!data.length) return { line: "", area: "" };
+	const pts = data.length === 1 ? [data[0]!, data[0]!] : data;
+	const peak = Math.max(...pts, 0);
+	const top = pad;
+	const bottom = h - pad;
+	const pt = (v: number, i: number) => {
+		const x = (i / (pts.length - 1)) * w;
+		const y = peak > 0 ? bottom - (v / peak) * (bottom - top) : bottom;
+		return `${+x.toFixed(2)} ${+y.toFixed(2)}`;
+	};
+	const line = pts.map((v, i) => `${i ? "L" : "M"}${pt(v, i)}`).join(" ");
+	return { line, area: `${line} L${w} ${h} L0 ${h} Z` };
+}
+
+/** Next focused index (`-1` = none) in a list of `count` items for an arrow/Home/End key; unrelated keys keep it. */
+export function moveFocus(count: number, current: number, key: string): number {
+	if (count <= 0) return -1;
+	if (key === "ArrowDown") return Math.min(count - 1, current + 1);
+	if (key === "ArrowUp") return Math.max(0, current - 1);
+	if (key === "Home") return 0;
+	if (key === "End") return count - 1;
+	return current;
 }

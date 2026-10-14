@@ -4,7 +4,7 @@
 		"assets/templates/app-icon.svg": "74334050a298686b6e06536c42073dcb5e5365ab3d079d74b87998ceb6fdb740",
 		"assets/templates/tray-template.svg": "678b5c780047437e72754c90ae7443cb4c0d2552f85285352da3d78007a724ab",
 		"assets/templates/logo-animated.svg": "eec79fe859f1869fd37d86799ac194a68cd7034d894588dacd5654f206e08b86",
-		"scripts/icons.ts": "9c21ebe060dd5f7d4f5cbfe6af0463f01a60cf1ab0d0ddaf69697d944d7aa9d0"
+		"scripts/icons.ts": "733b240e80baa02fe64914594f1b010ddfc45bfb65d40e3a43f5b16525a8a472"
 	},
 	"rasters": {
 		"assets/app-icon-1024.png": "1024x1024:78362c58b89e8aad891421acc4fe31f5e3a65b2b30221482cbd5a6f3346d1327",

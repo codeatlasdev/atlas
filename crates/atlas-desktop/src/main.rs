@@ -308,10 +308,11 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .iter()
         .find(|w| w.label == "main")
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    let (theme, script) = boot::window_boot(cache.as_ref());
     let win = tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?
         .visible(false)
-        .theme(boot::window_theme(cache.as_ref()))
-        .initialization_script(boot::init_script(cache.as_ref()))
+        .theme(theme)
+        .initialization_script(script)
         .build()?;
     boot::mark("window:created");
     boot::arm_deadline(app.handle());

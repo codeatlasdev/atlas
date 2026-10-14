@@ -4,6 +4,21 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 > **Atlas is in alpha.** Expect bugs and breaking changes between releases. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new). Releases come in [Stable, Beta and Alpha channels](docs/versioning.md); every one of them is alpha-quality until Atlas meets the general availability criteria there.
 
+## [Unreleased]
+
+### Changed
+
+- **The menu-bar popover, redesigned.** It sits on the active theme's ground and surface ladder (Atlas Dark's blue, Atlas Light's paper) instead of pure black, with AA contrast on every text and state color in both. Each running project is one card with a state rail and a chip that names what is wrong (_redis, api +2 failed_), one bar segment per service, a clean CPU sparkline, and **Restart failed** / **Logs** / **Open** / **Stop**. Agents and Terminals are one balanced row, stopped projects a dense list that reveals **Start** on hover or focus, and the popover is keyboard-navigable (↑ ↓ Home End, Enter, ⎋).
+
+### Fixed
+
+- **The popover header showed the old purple tile.** The mark is now drawn from `assets/logo.svg` through the generated `mark.ts` (which also carries the logo's gradient), so `bun run icons --check` covers it.
+- **The popover was pure black, not the theme.** The kit declares its whole token set on any element with the class `dark`, and the popover put that class on its root, replacing the applied theme. The popover window is also now created with the cached theme and native appearance, like the main window.
+- **The sparkline under a project card was a broken, clipped line.** It was an ECharts canvas handed `var()`/`oklch()` colors it cannot parse, in a 22 px box; it is now an inline SVG that stretches to the card.
+- **The project list was cut off at the bottom with no scroll.** The list scrolls inside the popover with the header and footer pinned, and the window is never taller than the room the screen leaves below the menu bar.
+- **The Agents and Terminals cards left an empty cell** next to a lone project card.
+- **"Find projects" offered a repo's own demo stack as a project.** `atlas/demo` (named `orbit-shop`) was found and added next to your real projects. A `demo/`, `examples/`, `fixtures/`, `testdata/` or `samples/` folder inside a git checkout belongs to that checkout and is no longer offered, by the folder walk or by Spotlight. To drop one already added, use **Remove from Atlas** in its sidebar menu (`⋯`).
+
 ## [1.5.0-alpha.7] — 2026-10-14
 
 > `v1.5.0-alpha.6` was tagged but never published: its Linux build failed under the local release runner. This release carries everything from it plus the fixes below.

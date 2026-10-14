@@ -31,6 +31,8 @@ const SETTLE: std::time::Duration = std::time::Duration::from_millis(250);
 pub struct TrayState {
     snapshot: Mutex<Value>,
     shown_at: Mutex<Option<std::time::Instant>>,
+    /// Where the icon was when the popover was last opened (physical x, y, w, h), for [`room`].
+    icon: Mutex<Option<(f64, f64, f64, f64)>>,
 }
 
 /// Top-left (physical px) of a popover of `size` (w, h) under `icon` (x, y, w, h),
@@ -51,6 +53,13 @@ pub fn place(
     (x, y)
 }
 
+/// Logical px of height the popover may use under `icon` (physical x, y, w, h) on `screen` (physical x, y, w, h):
+/// from the icon's bottom edge plus the gap down to the screen's bottom margin. Never negative.
+pub fn room(icon: (f64, f64, f64, f64), screen: (f64, f64, f64, f64), scale: f64) -> f64 {
+    let below = (screen.1 + screen.3) - (icon.1 + icon.3);
+    (below / scale - GAP - MARGIN).max(0.0)
+}
+
 /// Icon rect from a tray event, as physical (x, y, w, h).
 fn rect_px(rect: &Rect, scale: f64) -> (f64, f64, f64, f64) {
     let p = rect.position.to_physical::<f64>(scale);
@@ -59,7 +68,10 @@ fn rect_px(rect: &Rect, scale: f64) -> (f64, f64, f64, f64) {
 }
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
     let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray".into()))
+        .theme(theme)
+        .initialization_script(script)
         .title("Atlas")
         .inner_size(WIDTH, HEIGHT)
         .decorations(false)
@@ -108,6 +120,7 @@ fn show(app: &AppHandle, icon: Option<&Rect>) {
     if let Some(icon) = icon {
         let scale = win.scale_factor().unwrap_or(1.0);
         let icon = rect_px(icon, scale);
+        *app.state::<TrayState>().icon.lock() = Some(icon);
         let size = win
             .outer_size()
             .map(|s| (f64::from(s.width), f64::from(s.height)))
@@ -218,12 +231,30 @@ pub fn tray_hide(app: AppHandle) {
     }
 }
 
-/// Popover: fit the window to its content (logical px).
+/// Popover: fit the window to its content (logical px), never taller than the room the screen leaves below the
+/// menu bar icon (the page scrolls inside the rest). Returns the height it set so the page can size its list.
 #[tauri::command]
-pub fn tray_resize(app: AppHandle, height: f64) {
-    if let Some(w) = app.get_webview_window(LABEL) {
-        let _ = w.set_size(LogicalSize::new(WIDTH, height));
-    }
+pub fn tray_resize(app: AppHandle, state: State<'_, TrayState>, height: f64) -> f64 {
+    let Some(w) = app.get_webview_window(LABEL) else {
+        return height;
+    };
+    let height = match *state.icon.lock() {
+        Some(icon) => {
+            let scale = w.scale_factor().unwrap_or(1.0);
+            let screen = w.current_monitor().ok().flatten().map(|m| {
+                (
+                    f64::from(m.position().x),
+                    f64::from(m.position().y),
+                    f64::from(m.size().width),
+                    f64::from(m.size().height),
+                )
+            });
+            screen.map_or(height, |s| height.min(room(icon, s, scale)))
+        }
+        None => height,
+    };
+    let _ = w.set_size(LogicalSize::new(WIDTH, height));
+    height
 }
 
 /// Popover → main window: hide the popover, bring the app forward and hand the click to it.
@@ -236,7 +267,7 @@ pub fn tray_action(app: AppHandle, action: Value) {
 
 #[cfg(test)]
 mod tests {
-    use super::place;
+    use super::{place, room};
 
     const SCREEN: (f64, f64, f64, f64) = (0.0, 0.0, 3024.0, 1964.0);
     const SIZE: (f64, f64) = (720.0, 1040.0);
@@ -270,5 +301,32 @@ mod tests {
     fn a_popover_taller_than_the_screen_keeps_its_top() {
         let (_, y) = place((100.0, 0.0, 40.0, 50.0), (720.0, 3000.0), SCREEN, 2.0);
         assert_eq!(y, 16.0);
+    }
+
+    // Incident (v1.5.0-alpha.7): the project list hung off the bottom of the popover with no scroll. The page asked
+    // for up to 560 logical px whatever the display; the window must never be taller than the screen leaves room for,
+    // and the page scrolls inside the rest.
+    #[test]
+    fn room_is_the_screen_below_the_icon_minus_gap_and_margin() {
+        // 1964 physical px tall @2x = 982 logical; icon bottom at 50 physical -> 25 logical.
+        let r = room((1500.0, 0.0, 48.0, 50.0), SCREEN, 2.0);
+        assert_eq!(r, 982.0 - 25.0 - 6.0 - 8.0);
+    }
+
+    #[test]
+    fn room_on_a_short_screen_is_small_but_never_negative() {
+        let short = (0.0, 0.0, 2560.0, 700.0);
+        assert_eq!(
+            room((100.0, 0.0, 40.0, 50.0), short, 2.0),
+            350.0 - 25.0 - 6.0 - 8.0
+        );
+        assert_eq!(room((100.0, 650.0, 40.0, 50.0), short, 2.0), 0.0);
+    }
+
+    #[test]
+    fn room_follows_a_screen_that_does_not_start_at_zero() {
+        let ext = (0.0, -1080.0, 1920.0, 1080.0);
+        let r = room((100.0, -1080.0, 40.0, 50.0), ext, 1.0);
+        assert_eq!(r, 1080.0 - 50.0 - 6.0 - 8.0);
     }
 }

@@ -146,6 +146,12 @@ pub fn window_theme(cache: Option<&ThemeCache>) -> Option<tauri::Theme> {
     })
 }
 
+/// Everything a window needs to be born in the app's theme: the native appearance and the init script. The main window
+/// and the menu-bar popover share it, so neither starts on the kit's defaults.
+pub fn window_boot(cache: Option<&ThemeCache>) -> (Option<tauri::Theme>, String) {
+    (window_theme(cache), init_script(cache))
+}
+
 /// A user theme file as read from disk.
 #[derive(Serialize)]
 pub struct ThemeFile {
@@ -253,6 +259,32 @@ mod tests {
         assert!(js.contains(r#"dataset.atlasTheme="Atlas Dark""#));
         // The kit reads its scheme from localStorage: it must agree with the cache.
         assert!(js.contains(r#"JSON.stringify("dark")"#));
+    }
+
+    // Incident (v1.5.0-alpha.7): the menu-bar popover was pure black. Only the main window was built with the cached
+    // theme on <html>; the popover started on the kit's defaults (no Atlas surface ladder, no cached scheme), so its
+    // cards sat on black instead of the theme's ground. Both windows now share one boot recipe.
+    #[test]
+    fn the_popover_boots_with_the_same_cached_theme_as_the_main_window() {
+        let c = cache("dark", true);
+        let (theme, js) = window_boot(Some(&c));
+        assert_eq!(theme, Some(tauri::Theme::Dark));
+        assert_eq!(js, init_script(Some(&c)));
+        assert!(js.contains("--ca-surface-base"));
+    }
+
+    #[test]
+    fn a_light_cache_boots_a_light_window_even_when_the_scheme_is_system() {
+        let (theme, js) = window_boot(Some(&cache("system", false)));
+        assert_eq!(theme, Some(tauri::Theme::Light));
+        assert!(js.contains("classList.toggle('dark',false)"));
+    }
+
+    #[test]
+    fn without_a_cache_the_popover_follows_macos_and_replays_nothing() {
+        let (theme, js) = window_boot(None);
+        assert_eq!(theme, None);
+        assert!(!js.contains("setProperty"));
     }
 
     #[test]

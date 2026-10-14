@@ -6,10 +6,15 @@ import {
 	TRAY_MIN_HEIGHT,
 	agentsLine,
 	ago,
+	failedServices,
+	restartFailedCalls,
 	idleProjects,
+	moveFocus,
 	overall,
+	projectHeadline,
 	recommend,
 	runningCards,
+	sparkPaths,
 	trayHeight,
 	upLine,
 } from "./tray.ts";
@@ -136,5 +141,124 @@ describe("labels", () => {
 		expect(trayHeight(10)).toBe(TRAY_MIN_HEIGHT);
 		expect(trayHeight(300.2)).toBe(301);
 		expect(trayHeight(5000)).toBe(TRAY_MAX_HEIGHT);
+	});
+});
+
+// Incident (v1.5.0-alpha.7): the card said "4 services failed" in the header but never named them, and offered no
+// way to act on them. The popover now names the failed services and restarts exactly those.
+describe("failed services", () => {
+	test("names only the failed services of a running stack, in service order", () => {
+		const p = proj("ac", ["running", "failed", "starting", "failed"]);
+		expect(failedServices(p)).toEqual(["s1", "s3"]);
+	});
+	test("a stopped project has none, even if its last states were failed", () => {
+		expect(failedServices(proj("ac", null, { services: [svc("api", "failed")] }))).toEqual([]);
+	});
+});
+
+describe("project headline", () => {
+	test("healthy / starting / failed / idle", () => {
+		expect(projectHeadline(proj("a", ["running", "running"]))).toEqual({
+			state: "healthy",
+			text: "All 2 services up",
+		});
+		expect(projectHeadline(proj("a", ["running", "starting"]))).toEqual({
+			state: "starting",
+			text: "1 starting",
+		});
+		expect(projectHeadline(proj("a", null))).toEqual({ state: "idle", text: "Stopped" });
+	});
+	test("failed names up to two services and counts the rest", () => {
+		const names = (n) =>
+			proj("a", ["running", ...Array(n).fill("failed")], {}).services.map((s, i) => ({
+				...s,
+				name: ["db", "api", "web", "docs"][i] ?? s.name,
+			}));
+		const mk = (n) => proj("a", ["running"], { services: names(n) });
+		expect(projectHeadline(mk(1)).text).toBe("api failed");
+		expect(projectHeadline(mk(2)).text).toBe("api, web failed");
+		expect(projectHeadline(mk(3)).text).toBe("api, web +1 failed");
+		expect(projectHeadline(mk(3)).state).toBe("failed");
+	});
+	test("failed beats starting in the same stack", () => {
+		expect(projectHeadline(proj("a", ["starting", "failed"])).state).toBe("failed");
+	});
+});
+
+// Incident: the sparkline under the project card rendered as a clipped scribble (an ECharts canvas given a
+// `var(--c)` / oklch colour it cannot parse, in a 22px box). The popover draws its own SVG path: pure, so testable.
+describe("sparkline path", () => {
+	test("maps the series into the box, newest on the right, never outside it", () => {
+		const { line, area } = sparkPaths([0, 10, 5, 10], 100, 20, 2);
+		const ys = [...line.matchAll(/[ML]\s*([\d.]+)[ ,]([\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+		expect(ys.length).toBe(4);
+		expect(ys[0][0]).toBe(0);
+		expect(ys[3][0]).toBe(100);
+		for (const [x, y] of ys) {
+			expect(x).toBeGreaterThanOrEqual(0);
+			expect(x).toBeLessThanOrEqual(100);
+			expect(y).toBeGreaterThanOrEqual(2);
+			expect(y).toBeLessThanOrEqual(18);
+		}
+		expect(ys[1][1]).toBe(2); // the peak touches the top padding
+		expect(ys[0][1]).toBe(18); // zero sits on the bottom padding
+		expect(area.endsWith("Z")).toBe(true);
+	});
+	test("a flat or empty series is a flat baseline, not NaN or a crash", () => {
+		for (const data of [[], [0], [0, 0, 0], [7, 7, 7]]) {
+			const { line, area } = sparkPaths(data, 100, 20, 2);
+			expect(line).not.toMatch(/NaN|Infinity/);
+			expect(area).not.toMatch(/NaN|Infinity/);
+		}
+		expect(sparkPaths([], 100, 20, 2).line).toBe("");
+	});
+	test("a single point is drawn as a segment, so a fresh stack still shows something", () => {
+		expect(sparkPaths([5], 100, 20, 2).line).toMatch(/^M/);
+	});
+});
+
+describe("keyboard focus", () => {
+	test("arrows move through the items and stop at the ends; Home/End jump", () => {
+		expect(moveFocus(3, -1, "ArrowDown")).toBe(0);
+		expect(moveFocus(3, 0, "ArrowDown")).toBe(1);
+		expect(moveFocus(3, 2, "ArrowDown")).toBe(2);
+		expect(moveFocus(3, 0, "ArrowUp")).toBe(0);
+		expect(moveFocus(3, 2, "ArrowUp")).toBe(1);
+		expect(moveFocus(3, 1, "Home")).toBe(0);
+		expect(moveFocus(3, 1, "End")).toBe(2);
+	});
+	test("nothing to focus, or an unrelated key, changes nothing", () => {
+		expect(moveFocus(0, -1, "ArrowDown")).toBe(-1);
+		expect(moveFocus(3, 1, "a")).toBe(1);
+	});
+});
+
+// Incident: the project list was cut off at the bottom with no scroll. The window is capped by the SCREEN too, not
+// only by a constant: on a short display a 560px popover would hang off the bottom edge.
+describe("trayHeight on a short screen", () => {
+	test("never taller than the room the screen leaves under the menu bar", () => {
+		expect(trayHeight(5000, 400)).toBe(400);
+		expect(trayHeight(5000, 900)).toBe(TRAY_MAX_HEIGHT);
+		expect(trayHeight(300, 900)).toBe(300);
+		expect(trayHeight(10, 900)).toBe(TRAY_MIN_HEIGHT);
+	});
+	test("a screen smaller than the minimum wins over the minimum", () => {
+		expect(trayHeight(5000, 150)).toBe(150);
+	});
+});
+
+// "Restart failed" must restart exactly the failed services through the same `service_cmd` the main window uses
+// (cmds/stack.rs accepts start_service | stop_service | restart_service), never the whole stack.
+describe("restart failed", () => {
+	test("one restart_service call per failed service of that project, nothing else", () => {
+		const p = proj("ac", ["running", "failed", "starting", "failed"]);
+		expect(restartFailedCalls(p)).toEqual([
+			{ id: "ac", cmd: "restart_service", service: "s1" },
+			{ id: "ac", cmd: "restart_service", service: "s3" },
+		]);
+	});
+	test("nothing failed, or the project stopped: no calls", () => {
+		expect(restartFailedCalls(proj("ac", ["running", "starting"]))).toEqual([]);
+		expect(restartFailedCalls(proj("ac", null, { services: [svc("api", "failed")] }))).toEqual([]);
 	});
 });

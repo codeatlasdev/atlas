@@ -5,11 +5,17 @@ import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { EditorState } from "@codemirror/state";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { outline } from "./outline.ts";
 import { registerEditor, saveAllEditors, saveEditor, savers, unregisterEditor, editors } from "./symbols.ts";
 
-const symbols = (doc: string, extension: unknown) =>
-	outline(EditorState.create({ doc, extensions: [extension] })).map((s) => [s.kind, s.name, s.line]);
+// A whole parse first: `EditorState.create` parses within a small time budget, so on a loaded machine the tree
+// `outline` reads could be partial (the Python case came back empty on a loaded release gate).
+const symbols = (doc: string, extension: unknown) => {
+	const state = EditorState.create({ doc, extensions: [extension] });
+	ensureSyntaxTree(state, state.doc.length, 5000);
+	return outline(state).map((s) => [s.kind, s.name, s.line]);
+};
 
 test("TypeScript: functions, classes, interfaces and type aliases; imports are skipped", () => {
 	const doc = [

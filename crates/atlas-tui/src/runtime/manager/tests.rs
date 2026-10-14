@@ -702,7 +702,9 @@ async fn test_action_streaming_returns_with_background_pipe_holder() {
     )
     .await;
     assert!(ok);
-    assert!(t.elapsed() < Duration::from_secs(5), "drain is bounded");
+    // The point is that it does not wait for the background `sleep 31` holding the pipe. A 5 s
+    // bound failed on a loaded release run (5.9 s); 20 s still proves it.
+    assert!(t.elapsed() < Duration::from_secs(20), "drain is bounded");
     // reap the stray sleep we started (exact pid we recorded)
     if let Ok(p) = std::fs::read_to_string(&pidfile)
         && let Ok(p) = p.trim().parse::<i32>()

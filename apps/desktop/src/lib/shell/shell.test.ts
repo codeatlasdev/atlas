@@ -55,7 +55,8 @@ test("accentTextOf is AA on every chrome surface of every bundled theme, for eve
 		}
 	}
 	expect(fails).toEqual([]);
-});
+	// Exhaustive (every theme x surface x hue): 8 s on a loaded release gate, over bun's 5 s default.
+}, 30_000);
 
 test("accentTextOf keeps the space's hue (it is the same accent, only moved along lightness)", () => {
 	for (const hue of [25, 100, 145, 255, 330]) {

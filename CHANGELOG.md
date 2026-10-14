@@ -6,9 +6,11 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
-## [1.5.0-alpha.9] — 2026-10-14
+## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
+> `v1.5.0-alpha.9` was tagged but never published: two timing-sensitive tests failed under the local release runner. This release is the same code plus those tests made deterministic.
 
 ### Changed
 

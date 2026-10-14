@@ -549,14 +549,26 @@ async fn wait_for(what: &str, mut ok: impl FnMut() -> bool) {
     panic!("timed out waiting for {what}");
 }
 
+/// Connect once the daemon really serves. The socket file appears at `bind`, before `listen`
+/// and the token are ready, so "the file exists" raced into `connection refused` under load
+/// (it failed the v1.5.0-alpha.9 release run).
+async fn connect_when_up(dir: &Path) -> HostClient {
+    for _ in 0..200 {
+        if let Ok(c) = HostClient::connect_dir(dir, "test").await {
+            return c;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("hostd never accepted a client in {}", dir.display());
+}
+
 #[tokio::test]
 async fn idle_hostd_with_no_terminal_and_no_client_exits_and_cleans_up() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let mut d = spawn_with(dir, &[("ATLAS_HOSTD_IDLE_SECS", "1")]);
-    wait_for("the socket", || paths::socket(dir).exists()).await;
     // Connect once, then hang up: a client resets the clock, and its absence restarts it.
-    drop(HostClient::connect_dir(dir, "test").await.unwrap());
+    drop(connect_when_up(dir).await);
     let t0 = std::time::Instant::now();
     wait_for("idle exit", || matches!(d.0.try_wait(), Ok(Some(_)))).await;
     assert!(t0.elapsed() < Duration::from_secs(10), "{:?}", t0.elapsed());
@@ -570,8 +582,7 @@ async fn hostd_with_a_connected_client_or_a_live_pty_does_not_idle_exit() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let mut d = spawn_with(dir, &[("ATLAS_HOSTD_IDLE_SECS", "1")]);
-    wait_for("the socket", || paths::socket(dir).exists()).await;
-    let c = HostClient::connect_dir(dir, "test").await.unwrap();
+    let c = connect_when_up(dir).await;
     // Connected client: well past the limit, still up.
     tokio::time::sleep(Duration::from_millis(2500)).await;
     assert!(
@@ -610,8 +621,7 @@ async fn hostd_exits_when_its_dir_disappears() {
     let dir = tmp.path().join("hostd-dir");
     // A long idle limit, so only the missing dir can end it; a pty keeps it "busy".
     let mut d = spawn_with(&dir, &[("ATLAS_HOSTD_IDLE_SECS", "2")]);
-    wait_for("the socket", || paths::socket(&dir).exists()).await;
-    let c = HostClient::connect_dir(&dir, "test").await.unwrap();
+    let c = connect_when_up(&dir).await;
     c.call(
         "pty_create",
         json!({"cwd": tmp.path(), "argv": ["sh", "-c", "sleep 30"], "cols": 80, "rows": 24}),

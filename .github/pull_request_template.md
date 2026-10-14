@@ -33,4 +33,4 @@ The flow is in [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md#pull-request-flow-
 - [ ] **Breaking change?** (`atlas.yaml`, CLI flags or exit codes, MCP tool names or arguments, settings files): the changelog entry is under **Changed** or **Removed** and says what to do instead, and the [deprecation policy](../blob/main/docs/deprecation.md) is followed
 - [ ] No secrets, private URLs or personal data in the diff
 - [ ] I understand every line of this change; AI assistance, if any, is disclosed above
-- [ ] I will not merge my own PR: it needs 2 approvals from people other than me, and a maintainer merges it
+- [ ] External contributors: I will not merge my own PR; it needs 2 approvals from people other than me, and a maintainer merges it (maintainers may merge their own, see the flow)

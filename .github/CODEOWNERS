@@ -1,22 +1,22 @@
 # Review routing. Later matches win; see GOVERNANCE.md.
-# The owner is on everything. The sensitive paths are listed again at the end
-# so they stay owner-reviewed even if a broader rule above is ever changed.
-*                       @mvilacad
-/crates/                @mvilacad
-/apps/desktop/          @mvilacad
-/site/                  @mvilacad
-/studio/                @mvilacad
-/docs/                  @mvilacad
-/skills/                @mvilacad
-/LICENSE-*              @mvilacad
-/SECURITY.md            @mvilacad
-/GOVERNANCE.md          @mvilacad
-/CONTRIBUTING.md        @mvilacad
+# The maintainers team is on everything. The sensitive paths are listed again at the end
+# so they stay maintainer-reviewed even if a broader rule above is ever changed.
+*                       @codeatlasdev/atlas-maintainers
+/crates/                @codeatlasdev/atlas-maintainers
+/apps/desktop/          @codeatlasdev/atlas-maintainers
+/site/                  @codeatlasdev/atlas-maintainers
+/studio/                @codeatlasdev/atlas-maintainers
+/docs/                  @codeatlasdev/atlas-maintainers
+/skills/                @codeatlasdev/atlas-maintainers
+/LICENSE-*              @codeatlasdev/atlas-maintainers
+/SECURITY.md            @codeatlasdev/atlas-maintainers
+/GOVERNANCE.md          @codeatlasdev/atlas-maintainers
+/CONTRIBUTING.md        @codeatlasdev/atlas-maintainers
 
 # Sensitive: CI and rulesets, releases, the host daemon, agent rules.
-/.github/               @mvilacad
-/.agents/               @mvilacad
-/scripts/release*       @mvilacad
-/scripts/act-release.sh @mvilacad
-/crates/atlas-host/     @mvilacad
-/AGENTS.md              @mvilacad
+/.github/               @codeatlasdev/atlas-maintainers
+/.agents/               @codeatlasdev/atlas-maintainers
+/scripts/release*       @codeatlasdev/atlas-maintainers
+/scripts/act-release.sh @codeatlasdev/atlas-maintainers
+/crates/atlas-host/     @codeatlasdev/atlas-maintainers
+/AGENTS.md              @codeatlasdev/atlas-maintainers

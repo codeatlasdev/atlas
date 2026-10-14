@@ -13,11 +13,11 @@ main ── alpha ── alpha ──────────────▶  ev
     release/X.Y ── beta ── fix(cherry-pick) ── beta ── stable ── patch
 ```
 
-- `main` and `release/*` are protected by a GitHub ruleset ("main and release branches"): pull request required, 2 approving human reviews (stale ones dismissed, last push approved by someone else), threads resolved, the six CI jobs plus `Signed-off-by` required, branch up to date, no deletion, no force-push. **Only the owner bypasses** (team `atlas-owner`), which is how `bun run release` pushes the release commit and tag. Everyone else, including maintainers and agents, goes through a pull request.
+- `main` and `release/*` are protected by a GitHub ruleset ("main and release branches"): pull request required, 2 approving human reviews (stale ones dismissed, last push approved by someone else), threads resolved, the six CI jobs plus `Signed-off-by` required, branch up to date, no deletion, no force-push. **Only maintainers bypass** (team `atlas-maintainers`: mvilacad, luancoleto), which is how they merge without approvals and how `bun run release` pushes the release commit and tag. Everyone else, including write-access contributors who are not maintainers, goes through a pull request with 2 approvals.
 - Tags `v*` are immutable (ruleset "release tags are immutable"), same single bypass. Never move or delete a tag; cut the next version instead.
 - Fixes land on `main` first. For a soaking release: `git switch release/X.Y && git cherry-pick -x <sha>`, then a PR to `release/X.Y` by a maintainer. Never commit a fix only to `release/X.Y`.
-- The flow for every change: branch `type/short-desc` (fork or branch), draft PR to `main`, CI green, 2 human approvals from people other than the author, a maintainer merges (squash). The canonical text is [CONTRIBUTING.md](../../../CONTRIBUTING.md#pull-request-flow-and-who-merges); do not restate or soften it here.
-- Bypass is acceptable only for the owner, for a release or an emergency hotfix, with a note saying what was bypassed and why. An agent never pushes to `main`, merges a PR or uses the bypass unless the owner is running it and asks for exactly that. If you are not sure whom you are working for, open a PR.
+- The flow for every change: branch `type/short-desc` (fork or branch), draft PR to `main`, CI green, 2 human approvals from people other than the author (external contributors only; maintainers need none), a maintainer merges (squash). The canonical text is [CONTRIBUTING.md](../../../CONTRIBUTING.md#pull-request-flow-and-who-merges); do not restate or soften it here.
+- Bypass is for maintainers: merging their own PR without approvals, a release, or an emergency hotfix (with a note saying what was bypassed and why). An agent never pushes to `main`, merges a PR or uses the bypass unless a maintainer is running it and asks for exactly that. If you are not sure whom you are working for, open a PR.
 
 ## The gate
 
@@ -39,7 +39,7 @@ main ── alpha ── alpha ──────────────▶  ev
 
 ## Releases
 
-Only the owner cuts releases, and only from a green CI on the exact commit. `scripts/release.sh` picks the version, bumps every crate, tags, pushes and publishes through `act` (~40 min; run with a long timeout). Full details: `docs/release.md`, `docs/versioning.md`.
+Only maintainers cut releases, and only from a green CI on the exact commit. `scripts/release.sh` picks the version, bumps every crate, tags, pushes and publishes through `act` (~40 min; run with a long timeout). Full details: `docs/release.md`, `docs/versioning.md`.
 
 | Want | Branch | Command |
 |---|---|---|
@@ -56,6 +56,6 @@ Default choice: `alpha` from `main` for new work; `beta` once a feature set shou
 ## Never
 
 - Force-push, rewrite published history, delete branches or tags.
-- Merge a pull request (yours or anyone's), push to `main`, or use the ruleset bypass, unless the owner is running you and asks for it.
+- Merge a pull request (yours or anyone's), push to `main`, or use the ruleset bypass, unless a maintainer is running you and asks for it.
 - Release from a red or still-running CI.
 - `docker compose down`, port-based kills, or showing an Atlas window on the user's screen (see `AGENTS.md`).

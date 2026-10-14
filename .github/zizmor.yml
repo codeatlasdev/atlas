@@ -1,12 +1,10 @@
 # zizmor (https://docs.zizmor.sh) configuration: run by scripts/lint-workflows.sh. Every ignore names
 # its reason; fix a finding instead of adding a line here whenever the fix is possible.
 rules:
-  # `uses: ./.github/actions/...` instead of the newer `$/` syntax: act 0.2.89 (`bun run ci:act`,
-  # `bun run release`) does not understand `$/`.
+  # `uses: ./.github/actions/...` is GitHub's documented local-action syntax; keep it.
   self-repository:
     disable: true
-  # The release is published with softprops/action-gh-release, proven under act; swapping it for a
-  # `gh release` script is only verifiable by a real publish.
+  # The publish step stays one pinned action call (softprops/action-gh-release); a hand-written gh script would be more code to audit.
   superfluous-actions:
     ignore:
       - release.yml

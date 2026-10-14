@@ -30,7 +30,6 @@ dist/
 .agents/*
 !.agents/skills/
 graphify-out/
-.act/
 
 # ── OS and editors ──────────────────────────────────────────────────────────
 .DS_Store

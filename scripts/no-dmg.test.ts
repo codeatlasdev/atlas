@@ -44,7 +44,7 @@ describe("local, debug and agent builds never build the DMG", () => {
 	});
 
 	test("no script or hint runs a debug `cargo tauri build` that includes the dmg", () => {
-		const files = ["package.json", "scripts/desktop-agent.sh", "scripts/release.sh", "scripts/act-release.sh", "scripts/setup.sh", "studio/src/capture/app.ts"];
+		const files = ["package.json", "scripts/desktop-agent.sh", "scripts/release.sh", "scripts/setup.sh", "studio/src/capture/app.ts"];
 		for (const f of files)
 			for (const c of tauriBuilds(read(f)))
 				if (/--debug/.test(c)) expect(c, `${f}: ${c}`).toMatch(/--bundles app(\s|$)/);

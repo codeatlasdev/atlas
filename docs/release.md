@@ -5,7 +5,7 @@ description: "How maintainers cut, promote and publish an Atlas release on the S
 
 # Releasing Atlas (maintainers)
 
-Releases are built and published **from a maintainer's machine**. The `Release` workflow is manual-only (`workflow_dispatch`); `CI` runs on pull requests and pushes to `main`. [`act`](https://github.com/nektos/act) runs the real workflow files locally: macOS jobs run natively on the host (`-self-hosted`), Ubuntu jobs in Docker.
+Releases are built and published by GitHub Actions on hosted runners when a maintainer pushes a `v*` tag, which `bun run release` does. CI runs on pull requests and on pushes to `main`/`release/**`; the Release workflow waits for the CI run of the tagged commit to pass before building.
 
 What the channels mean for users, and what Atlas promises on each, is in [Versioning and release channels](versioning.md). This page is how to cut them.
 
@@ -34,12 +34,11 @@ All from the repository root (`package.json` scripts, run with `bun run <name>`)
 
 | Command | What it does |
 |---|---|
-| `bun run check` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo nextest run --workspace --locked`, `cargo test --workspace --locked --doc`, `cargo deny check`, the skills check, the workflow lint (actionlint + zizmor), `bun run desktop:check`, then `bun run release:test`. The same gate as CI. |
-| `bun run release <alpha\|beta\|rc\|stable\|patch\|X.Y.Z[-pre.N]>` | Cut and publish a release. |
+| `bun run check` | The local gate (see [Contributing](contributing.md#the-gate)); CI runs the same checks. |
+| `bun run release <alpha\|beta\|rc\|stable\|patch\|X.Y.Z[-pre.N]>` | Cut and publish a release: requires a green CI on `HEAD`, bumps, commits, tags and pushes; the tag push starts the Release workflow, which the script watches. |
 | `bun run release:dry` | `scripts/release.sh --dry-run`: prints every step, changes and pushes nothing. Pass the request after it: `bun run release:dry alpha`. |
-| `bun run release:test` | The release tooling's own tests: `bun test scripts` (version, branch, soak and diff-guard rules) and `python3 -m unittest scripts/test_generate_manifest.py`. |
-| `bun run release:act [vX.Y.Z[-pre.N]] [--publish] [-j <job>]...` | Run `.github/workflows/release.yml` through `act`. Default tag: `v` + the version in `crates/atlas-cli/Cargo.toml`. Without `--publish` it builds artifacts into `.act/artifacts` and publishes nothing. `-j build-linux` runs only that job (its `needs` outside the selection are dropped), which proves the Linux packaging without the macOS jobs; not combinable with `--publish`. |
-| `bun run ci:act` | Run the macOS job of `.github/workflows/ci.yml` locally through `act`. |
+| `bun run release:test` | The release tooling's own tests: `bun test scripts` (version, branch, soak and diff-guard rules, CI scripts) and `python3 -m unittest scripts/test_generate_manifest.py`. |
+| `bun run release:publish vX.Y.Z[-pre.N]` | (Re)build and publish an existing tag: dispatches `release.yml` from `main` with that tag and watches the run, then deploys the site. |
 
 You can ask the rules directly, without changing anything:
 
@@ -52,15 +51,14 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lists files a
 ## Prerequisites
 
 - The right branch, working tree clean, in sync with its `origin` branch (the script checks; `--dry-run` relaxes the clean/sync checks and a missing `CHANGELOG.md` section becomes a warning).
-- `gh` logged in with write access to `codeatlasdev/atlas` (`gh auth login`); its token is used to publish.
-- `act` (`brew install act`) and a running Docker (OrbStack or Docker Desktop) for the Ubuntu `publish` job.
-- Rust toolchain pinned in `rust-toolchain.toml`, `bun`, `gh`. `scripts/setup.sh` (run by `release.sh`, `desktop:dev` and `desktop:build`) verifies them and installs frontend deps, `cargo-tauri`, `cargo-deny`, `cargo-nextest`, `actionlint` and `zizmor` when missing. `release.yml` has no cargo cache: under `act` the local `target/` is the cache, and a release is never built from a restored one.
-- `.actrc` is committed and configures act: `macos-14` and `macos-latest` → `-self-hosted`, `ubuntu-latest` → `catthehacker/ubuntu:act-latest`, container architecture `linux/arm64`, artifact server path `.act/artifacts` (gitignored).
+- `gh` logged in with write access to `codeatlasdev/atlas` (`gh auth login`): it reads the CI result, dispatches and watches the Release run. The publish itself uses the workflow's own `GITHUB_TOKEN`, so no token is stored anywhere.
+- `bun`, `cargo` and `git`. Nothing is built on your machine.
+- A **green `CI` run on `HEAD`**: push the branch (or merge the pull request) and let CI finish first. `--skip-checks` skips this requirement.
 - Write the `## [X.Y.Z[-pre.N]]` section of `CHANGELOG.md` **before** you run the command: the release notes come from it.
 
 ## What `bun run release` does
 
-1. **Resume check.** If `HEAD` is already a pushed `vX.Y.Z[-pre.N]` tag whose GitHub Release does not exist (a previous publish failed), it only runs the publish step for that tag and exits. It never bumps again. A promoted stable keeps its provenance: the `Promoted from:` line in the tag message is passed on again.
+1. **Resume check.** If `HEAD` is already a pushed `vX.Y.Z[-pre.N]` tag whose GitHub Release does not exist (a previous publish failed), it only dispatches and watches the Release workflow for that tag (the same as `bun run release:publish vX.Y.Z`) and exits. It never bumps again. A promoted stable keeps its provenance: the workflow reads the `Promoted from:` line from the tag message again.
 2. **Plan** (`scripts/release-version.ts`, unit-tested). Reads `Cargo.toml`, every `v*` tag (local and on `origin`), the branches and the current branch, then decides the next version or says why it cannot:
    - `alpha`: only on `main`. The base is the next minor after the current stable; it moves up a minor once `release/<base>` or any `beta`, `rc` or stable tag of that base exists (`--bump major` starts a new major). The counter is the highest existing `-alpha.N` **in the tags** plus one, not whatever `Cargo.toml` says.
    - `beta`: on `main` it creates `release/X.Y` and tags `X.Y.0-beta.1` there; on `release/X.Y` it increments `beta.N`, and is refused once an `rc` exists.
@@ -69,11 +67,11 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lists files a
    - `patch`: only on `release/X.Y`, `X.Y.(Z+1)`, and only after `X.Y.0` is out. On `main` it fails and explains the hotfix flow. `minor` and `major` no longer exist: use `alpha` / `beta`.
    - Explicit versions: same branch rules as their channel; counters glued to the label (`alpha10`), unknown labels, leading zeros and build metadata are rejected.
 3. **Preflight.** Tree clean; the branch equals its `origin` branch (for a first beta, `main` equals `origin/main`); the tag exists neither locally nor on `origin`; `CHANGELOG.md` has a `## [<version>]` section; for `stable`, the **promotion guard** below.
-4. **Checks.** `bun run check` (unless `--skip-checks`).
+4. **CI green on HEAD** (`scripts/ci-passed.sh`, skip with `--skip-checks`). It waits for the `CI` run of `HEAD` and refuses to go on unless it passed; the release does not re-run the gate locally.
 5. **Branch.** A first beta runs `git switch -c release/X.Y`.
 6. **Bump.** Every `crates/*/Cargo.toml` (including `atlas-desktop`; `tauri.conf.json` has no version of its own and reads it from the crate) gets the same version; `cargo update --workspace --offline` refreshes `Cargo.lock`.
 7. **Commit, tag, push.** Commit `chore(release): vX.Y.Z[-pre.N]`, annotated tag, then `git push --atomic origin <main|release/X.Y> <tag>`: the branch and the tag land together or not at all.
-8. **Build and publish** via `scripts/act-release.sh <tag> --publish`, then the site deploy (kept; it never fails the release).
+8. **Push the tag; GitHub runs `release.yml`** (gate → macOS build, Linux build → Arch package → publish). The script watches the run (`gh run watch`), then deploys the site (kept; it never fails the release).
 
 ### Promotion guard (stable)
 
@@ -85,7 +83,7 @@ crates/atlas-core/src/lib.rs
 Re-cut a beta/rc that includes them and let it soak, or revert them from release/1.4.
 ```
 
-The tag message records `Promoted from: v1.4.0-beta.2` and the manifest gets `promoted_from` (through `ATLAS_PROMOTED_FROM`), so anyone can re-run the same diff later.
+The tag message records `Promoted from: v1.4.0-beta.2` and the `publish` job copies it into the manifest as `promoted_from`, so anyone can re-run the same diff later.
 
 ### Soak
 
@@ -113,11 +111,15 @@ Only the newest stable line gets fixes. If a hotfix touches code the next beta a
 
 ## What the release workflow does
 
-`.github/workflows/release.yml`, three jobs in order:
+`.github/workflows/release.yml`, five jobs on GitHub-hosted runners. It runs on a `v*` tag push, or by hand (`workflow_dispatch` with the `tag` input, which is what `bun run release:publish` does). Every job checks out `refs/tags/<tag>`, and the version comes from the tag name (`TAG`, which is `inputs.tag` or the pushed ref).
 
-1. **Test** (`macos-14`): `bun run check` (the full gate: every workspace crate, deny, skills, desktop frontend, release tooling).
-2. **Build** (`macos-14`): `cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli` with `SOURCE_DATE_EPOCH` set to the commit time, ad-hoc `codesign` (so Gatekeeper does not SIGKILL the binary), package `atlas-<version>-aarch64-apple-darwin.tar.gz` plus a `.sha256`. A CycloneDX SBOM of the CLI's dependencies (`cargo cyclonedx`, installed with `--locked` when missing; the step warns and carries on if it cannot be) becomes `atlas-<version>-sbom.cdx.json`. Then Atlas Desktop: `cargo tauri build --bundles app,dmg` (ad-hoc signed through `bundle.macOS.signingIdentity: "-"`), packaged as `Atlas-<version>-aarch64-apple-darwin.app.tar.gz` (what `atlas desktop` and `atlas update` install) and `Atlas-<version>-aarch64-apple-darwin.dmg` (manual download), each with a `.sha256`.
-3. **Publish** (`ubuntu-latest`): `scripts/generate-manifest.py` writes `manifest.json` (`version`, `date`, `assets`, plus `channel`, `prerelease`, `commit` and, for a promotion, `promoted_from`); a `SHA256SUMS` file covers every asset and the manifest; then the GitHub Release (`softprops/action-gh-release`). The body is the version's `CHANGELOG.md` section followed by the install/update instructions; for a prerelease it opens with a line saying which channel the build is on (and, for a default-channel build that GitHub marks "Latest", that it is still not offered on the Stable channel).
+1. **`gate`** (`ubuntu-latest`): `scripts/ci-passed.sh` waits for the `CI` run of the tagged commit and fails the release unless it finished `success`. The release never re-runs the tests; it trusts the one CI run of that exact commit.
+2. **`build`** (`macos-14`, after `gate`): `cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli` with `SOURCE_DATE_EPOCH` set to the commit time, ad-hoc `codesign` (so Gatekeeper does not SIGKILL the binary), package `atlas-<version>-aarch64-apple-darwin.tar.gz` plus a `.sha256`. A CycloneDX SBOM of the CLI's dependencies (`cargo cyclonedx`, installed with `--locked` when missing; the step warns and carries on if it cannot be) becomes `atlas-<version>-sbom.cdx.json`. Then Atlas Desktop: `cargo tauri build --bundles app,dmg` (ad-hoc signed through `bundle.macOS.signingIdentity: "-"`), packaged as `Atlas-<version>-aarch64-apple-darwin.app.tar.gz` (what `atlas desktop` and `atlas update` install) and `Atlas-<version>-aarch64-apple-darwin.dmg` (manual download), each with a `.sha256`.
+3. **`build-linux`** (`ubuntu-22.04`, after `gate`): the CLI (`atlas-<version>-x86_64-unknown-linux-gnu.tar.gz`) and Atlas Desktop through `cargo tauri build` with `tauri.linux.conf.json`: an AppImage, a `.deb` and an `.rpm`, each with a `.sha256`.
+4. **`build-arch`** (`archlinux:base-devel` container, after `build-linux`): repackages the `.deb` with `makepkg` (`packaging/arch/`) into a `.pkg.tar.zst` plus the rendered `PKGBUILD`.
+5. **`publish`** (`ubuntu-latest`, after `build`, `build-linux` and `build-arch`): `scripts/generate-manifest.py` writes `manifest.json` (`version`, `date`, `assets`, plus `channel`, `prerelease`, `commit` and, for a promotion, `promoted_from`); a `SHA256SUMS` file covers every asset and the manifest; then the GitHub Release (`softprops/action-gh-release`, with the run's own `GITHUB_TOKEN`). `promoted_from` comes from the `Promoted from: …` line in the tag message, which `release.sh stable` writes. The body is the version's `CHANGELOG.md` section followed by the install/update instructions; for a prerelease it opens with a line saying which channel the build is on (and, for a default-channel build that GitHub marks "Latest", that it is still not offered on the Stable channel).
+
+A release is built cold on purpose: there is no cargo cache, because a release is never built from a restored one.
 
 The GitHub flags come from the tag's channel against the **default channel** (`"default"` in `crates/atlas-core/data/channels.json`, pinned to `#[default]` on `Channel` by a test), through `scripts/release-version.ts github-flags` (unit-tested; the workflow has no `contains('-')` guess of its own):
 
@@ -129,21 +131,15 @@ The GitHub flags come from the tag's channel against the **default channel** (`"
 
 So pre-GA GitHub's "Latest" badge and `releases/latest` show the newest build of the default channel: what a user who never chose a channel gets. **That redirect is therefore not the Stable channel any more.** Clients never use it as "the stable tag": Stable is the newest tag without a prerelease label among `releases.atom` (older pages with `?after=<tag>` when a run of alphas fills the 10-entry window) and the redirect, which is only one more candidate. The release notes header says so for a default-channel alpha. The manifest's `prerelease` is the SemVer label, not GitHub's flag. At GA the default flips back to Stable (see [versioning](versioning.md#general-availability)) and the table's right column applies with no other edit.
 
-Publishing is skipped under `act` unless `ATLAS_PUBLISH=1` is set, which `act-release.sh --publish` does. The version comes from the tag name (`GITHUB_REF_NAME`), which the script passes to `act` through a synthetic event file.
-
 ### Prerelease versions in the macOS bundle
 
 Tauri writes the crate version unchanged into `CFBundleShortVersionString` and `CFBundleVersion`, and into the `.dmg` file name (`Atlas_<version>_aarch64.dmg`), so a prerelease version such as `1.4.0-alpha.1` appears there as is. The bundler source (`tauri-bundler`, `macos/app.rs` and `dmg/mod.rs`) does no SemVer parsing for the plist. On a copy of the installed `Atlas.app` with that value, `plutil -lint`, ad-hoc `codesign --verify --deep --strict` and `hdiutil create` all succeed, and the one reader in this repo (`app_version` in `atlas-cli`, through `plutil -extract`) treats it as a string. The release job's `Atlas_*_aarch64.dmg` glob still matches. A full `cargo tauri build` with a prerelease version has **not** been run end to end here: the first alpha is that test. If it misbehaves, set `bundle.macOS.bundleVersion` in `tauri.conf.json` to the core `X.Y.Z` and keep the full version in the asset names and `atlas --version`.
-
-## Publishing with a token
-
-`scripts/act-release.sh --publish` needs a token with permission to create releases. It uses `$GITHUB_TOKEN` if set, otherwise `gh auth token`, and passes it to `act` as the `GITHUB_TOKEN` secret. It refuses to publish when the tag is not on `origin`, `act` is missing, Docker is not running, or no token is available. Without `--publish` nothing is uploaded.
 
 ## If something fails
 
 - **Plan or preflight fails** (wrong branch, soak, guard, tag exists, changelog section): nothing has changed yet; fix and rerun.
 - **Checks fail**: nothing has changed yet.
-- **Push succeeded but build or publish failed**: rerun the same `bun run release <request>` on that commit; the resume check sees the pushed tag without a Release and only republishes. Or run `bun run release:act vX.Y.Z --publish` directly.
+- **Push succeeded but the Release run failed**: fix the cause (`gh run view <id> --log-failed`), then rerun `bun run release:publish vX.Y.Z`. It dispatches `release.yml` for the existing tag and watches it. Rerunning the same `bun run release <request>` on that commit does the same (the resume check sees the pushed tag without a Release). Failed jobs can also be re-run from the Actions page.
 - **Push failed halfway**: `--atomic` means neither the branch nor the tag moved on `origin`. A local commit and tag remain: delete the tag (`git tag -d vX.Y.Z`), reset the release commit, and rerun.
 - **First beta failed after the branch was created**: `release/X.Y` exists locally; switch back to `main`, `git branch -D release/X.Y` if nothing was pushed, rerun.
 - **Tag exists**: pick another version, or delete the tag only if no Release was created from it.
@@ -152,7 +148,6 @@ Tauri writes the crate version unchanged into `CFBundleShortVersionString` and `
 
 ```bash
 bun run release:dry alpha     # prints the version it would cut and every step; changes nothing
-bun run release:act           # builds artifacts into .act/artifacts, publishes nothing
 bun run release:test          # the rules themselves
 ```
 
@@ -201,9 +196,10 @@ A release that must not be installed is handled in the open and never rewritten:
 | Signed `SHA256SUMS` | **no**; a maintainer decision, commands below |
 | SBOM | CycloneDX JSON of the CLI's dependency tree, when `cargo-cyclonedx` is available |
 | Reproducible builds | partial: `--locked`, `SOURCE_DATE_EPOCH`; `--remap-path-prefix` is not set because it has not been verified against the Tauri build |
-| GitHub artifact attestations (SLSA provenance) | **no**: they need Actions' hosted OIDC identity and do not work under `act` |
+| Built on GitHub-hosted runners from the tag | yes (`release.yml`, triggered by the `v*` tag push) |
+| GitHub artifact attestations (SLSA provenance) | **not enabled**; possible now that builds are hosted |
 
-**What a local build can claim:** the artifacts were built from the tagged commit by the maintainer's machine, from locked dependencies, and the manifest records that commit. That is at most [SLSA](https://slsa.dev) build level 1 (provenance exists, is not signed by a build service, and is self-asserted). Do not describe the builds as higher than that.
+**What a hosted build can claim:** the artifacts were built by GitHub Actions from the tagged commit, from locked dependencies, and the manifest records that commit. Without attestations that is at most [SLSA](https://slsa.dev) build level 1 (provenance exists, is not signed by a build service, and is self-asserted). Do not describe the builds as higher than that.
 
 If the maintainer decides to sign, these are the commands (run after the release is published, on the downloaded `SHA256SUMS`, then attach the result with `gh release upload`):
 

@@ -40,17 +40,9 @@ main ── alpha ── alpha ──────────────▶  ev
 
 ## Releases
 
-Only maintainers cut releases, and only from a green CI on the exact commit. `scripts/release.sh` picks the version, bumps every crate, tags, pushes and publishes through `act` (~40 min; run with a long timeout). Full details: `docs/release.md`, `docs/versioning.md`.
+Only maintainers cut releases, and only from a green CI on the exact commit. `bun run release alpha` (needs a green CI on HEAD; pushes the tag; watches the GitHub Release run, ~30–40 min; run with no timeout or a long one). Every other command, the flow per channel, recovery (`bun run release:publish vX.Y.Z`) and verification: `docs/release.md`; what the channels mean: `docs/versioning.md`.
 
-| Want | Branch | Command |
-|---|---|---|
-| Ship `main` to early adopters | `main` | `bun run release alpha` |
-| Start stabilizing X.Y | `main` | `bun run release beta` (creates `release/X.Y`) |
-| Another beta after cherry-picks | `release/X.Y` | `bun run release beta` |
-| Promote after the 48 h soak | `release/X.Y` | `bun run release stable` |
-| Hotfix a stable | `release/X.Y` | `bun run release patch` |
-
-Default choice: `alpha` from `main` for new work; `beta` once a feature set should become the next stable; `stable` only after the soak (avoid `--force-soak`). Always `--dry-run` first. After publishing, verify with the commands under "Verify a release" in `docs/release.md`.
+Default choice: `alpha` from `main` for new work; `beta` once a feature set should become the next stable; `stable` only after the soak (avoid `--force-soak`). Always `--dry-run` first.
 
 **GitHub "Latest" = the default channel.** While the default channel is Alpha (`crates/atlas-core/data/channels.json`), every alpha is published as a normal release and becomes GitHub's "Latest" (and `/releases/latest`); betas stay pre-releases. Clients built from 1.5.0-alpha.4 on resolve Stable as the newest release without a prerelease label, never from `/releases/latest`; 1.4.0 binaries follow `/releases/latest`, which moves them to Alpha on purpose. At GA, set the default back to `stable` in that one file (tests flag every copy that drifts) and the badge returns to Stable releases.
 

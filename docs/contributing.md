@@ -23,7 +23,7 @@ You need `rustup`, [`bun`](https://bun.sh) and, for the desktop app, the Xcode c
 ```bash
 git clone https://github.com/codeatlasdev/atlas.git
 cd atlas
-scripts/setup.sh        # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny and cargo-nextest
+scripts/setup.sh        # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny, cargo-nextest, actionlint and zizmor
 ```
 
 The Rust toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on the first `cargo` command. Workspace lints apply to every crate: fix warnings, do not add global `allow`s. Build profiles, the `cargo lint`/`cargo t` aliases, `bun run sweep` and the measured build times: [Build performance](build-perf.md).
@@ -34,7 +34,7 @@ The Rust toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on t
 bun run check
 ```
 
-`bun run check` is the only gate and the one CI runs. It chains, in order:
+`bun run check` is the local gate. CI runs the same checks plus the site build and the duplication report. It chains, in order:
 
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --locked -- -D warnings`
@@ -47,14 +47,32 @@ bun run check
 
 Run it on its own and read the exit code before you push. A pull request should pass it.
 
-Also useful:
+### Commands
+
+Every command is a root `package.json` script, so `bun run <name>` from the repo root is the one entry point (`scripts/setup.sh` first, once). This is the one command table; other pages link here.
 
 | Command | Use |
 |---|---|
-| `bun run dup` | jscpd duplication report; keep it at or below 1.5% |
+| `bun run setup` | the one preflight: rustup, bun, frontend deps, `cargo-tauri`, `cargo-deny`, `cargo-nextest`, `actionlint`, `zizmor` (idempotent; same as `scripts/setup.sh`) |
+| `bun run check` | **the gate**, above |
+| `bun run sweep` | free `target/build` (intermediate artifacts; the next build recreates them), see [Build performance](build-perf.md) |
+| `bun run fmt` | `cargo fmt` and prettier for the desktop frontend |
+| `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte and Astro; keep it at or below 1.5% (config: `.jscpd.json`) |
+| `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
+| `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
+| `bun run desktop:agent` | start your own agent instance of the desktop app (see [AGENTS.md](https://github.com/codeatlasdev/atlas/blob/main/AGENTS.md)) |
+| `bun run site:dev` / `site:build` / `site:check` / `site:deploy` | the website: dev server, static build, `astro check` plus script/function type-checks, Cloudflare deploy |
+| `bun run studio` / `studio:check` | the film studio CLI, and its checks (`studio/` is not part of `bun run check`) |
+| `bun run icons` / `icons:check` | regenerate the app icons from `assets/*.svg`; fail when anything derived is stale |
+| `bun run deps:update` | update JS dependencies everywhere (see [Updating JS dependencies](#updating-js-dependencies)) |
+| `bun run release <alpha\|beta\|rc\|stable\|patch>` / `release:dry` / `release:publish vX.Y.Z` / `release:test` | maintainers only: cut a release, rehearse it, (re)publish an existing tag, run the release tooling's tests (see [Releasing](release.md)) |
 | `cargo test -p atlas-cli --test mcp` | the MCP integration suite (real binary, live headless run; needs `python3`) |
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | the log pipeline benchmark |
 | `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench` | the terminal renderer benchmark |
+
+### Updating JS dependencies
+
+`bun run deps:update` runs `npm-check-updates -u` in the root, `apps/desktop`, `site` and `studio` (config: `.ncurc.json`) and then reinstalls. `typescript` is rejected on purpose: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7. `studio` pins `hyperframes` exactly; after an update run `bun studio check` and keep the old pin if it fails.
 
 ## Build and run your changes
 
@@ -183,4 +201,4 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `mai
 - **Caches come from `main`.** A pull request's cache is visible to that pull request only ([GitHub docs](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)) and would evict the `main` cache that every pull request restores (10 GB per repository), so caches are saved only from `main` and `release/*`. Runs there are never cancelled; a new push to a pull request cancels its older run.
 - **Pinned and audited.** Every action is pinned to a full commit SHA with its exact version in a comment (`# v7.0.1`), updated by Dependabot after a 7-day cooldown. `scripts/lint-workflows.sh` runs actionlint and zizmor (config: `.github/zizmor.yml`, every ignore with its reason) locally in `bun run check` and in CI.
 
-Releases are built and published from a maintainer's machine through [`act`](https://github.com/nektos/act) (`bun run release`); see [Releasing](release.md). `bun run ci:act` runs the macOS job of the CI workflow locally (`-j rust-macos`).
+Releases: [Releasing](release.md).

@@ -17,8 +17,8 @@ For anything bigger than a small fix, open an issue first so we can agree on the
 ```bash
 git clone https://github.com/codeatlasdev/atlas.git
 cd atlas
-scripts/setup.sh          # rustup, bun, frontend deps, cargo-tauri, cargo-deny, cargo-nextest
-bun run check             # the only gate: fmt, clippy -D warnings, tests, cargo deny, skills, desktop checks
+scripts/setup.sh          # idempotent preflight: tools, frontend deps and the cargo/lint tools (docs/contributing.md#set-up)
+bun run check             # the only gate (what it runs: docs/contributing.md#the-gate)
 ```
 
 1. Branch from `main` (see [the flow](#pull-request-flow-and-who-merges)).
@@ -52,7 +52,7 @@ These rules are enforced by a GitHub ruleset on `main` and `release/*` (pull req
 
 **Agents** never push to `main`, merge a pull request or use the bypass on their own initiative. An agent run by a maintainer may merge, or use the bypass, when that maintainer says so for that change. An agent working for an external contributor opens a branch and a pull request like that contributor would, and stops there; it is not one of the two approvals. Why the approval rule exists is in [GOVERNANCE.md](GOVERNANCE.md#why-external-contributors-do-not-merge-their-own-pull-requests).
 
-CI runs on every pull request (fmt, clippy `-D warnings`, tests, `cargo deny`, the desktop frontend checks, the site type-check and build, and the duplication gate) on macOS and Linux; the same gate is `bun run check` locally, plus `bun run site:check` and `bun run dup`. What Stable, Beta and Alpha mean is in [docs/versioning.md](docs/versioning.md).
+CI runs on every pull request on macOS and Linux and on pushes to `main` and `release/**`. What Stable, Beta and Alpha mean is in [docs/versioning.md](docs/versioning.md).
 
 ### Release branches
 
@@ -60,26 +60,7 @@ Pull requests always target `main`. When a release is being soaked it lives on a
 
 ### Commands
 
-Everything is a root `package.json` script, so `bun run <name>` from the repo root is the one entry point (`scripts/setup.sh` first, once).
-
-| Command | What it does |
-|---|---|
-| `bun run setup` | the one preflight: rustup, bun, frontend deps, `cargo-tauri`, `cargo-deny`, `cargo-nextest` (idempotent) |
-| `bun run check` | **the gate**: fmt, clippy `-D warnings`, workspace tests (nextest + doctests), `cargo deny`, skills, desktop checks |
-| `bun run sweep` | free `target/build` (intermediate artifacts; the next build recreates them). See `docs/build-perf.md` |
-| `bun run fmt` | `cargo fmt` and prettier for the desktop frontend |
-| `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte and Astro; fails above 1.5% (config: `.jscpd.json`) |
-| `bun run desktop:dev` / `desktop:build` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, check the frontend, link the debug bundle |
-| `bun run site:dev` / `site:build` / `site:check` / `site:deploy` | the website: dev server, static build, `astro check` plus script/function type-checks, Cloudflare deploy |
-| `bun run studio` / `studio:check` | the film studio CLI, and its checks (`studio/` is not part of `bun run check`) |
-| `bun run icons` | regenerate the app icons from `assets/*.svg` |
-| `bun run deps:update` | update JS dependencies everywhere (see below) |
-| `bun run release <alpha\|beta\|rc\|stable\|patch>` / `release:dry` / `release:act` | owner only: cut a release (see [docs/release.md](docs/release.md)) |
-| `bun run ci:act` | run the macOS CI job locally through `act` |
-
-### Updating JS dependencies
-
-`bun run deps:update` runs `npm-check-updates -u` in the root, `apps/desktop`, `site` and `studio` (config: `.ncurc.json`) and then reinstalls. `typescript` is rejected on purpose: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7. `studio` pins `hyperframes` exactly; after an update run `bun studio check` and keep the old pin if it fails.
+Every command, the gate and the CI design: [docs/contributing.md](docs/contributing.md).
 
 ### Platforms and toolchain
 

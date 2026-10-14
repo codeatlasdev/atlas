@@ -1,8 +1,7 @@
 name: CI
 
 # Runs on pull requests (forks included: read-only token, no secrets are used) and on pushes to main and
-# release branches. The same gate runs locally with `bun run check`; `bun run ci:act` runs the macOS job
-# through act. The ruleset requires one check from this file, `CI` (the last job), so jobs can be renamed,
+# release branches. The same gate runs locally with `bun run check`. The ruleset requires one check from this file, `CI` (the last job), so jobs can be renamed,
 # added or split without touching the ruleset.
 on:
   pull_request:
@@ -97,7 +96,6 @@ jobs:
           persist-credentials: false
 
       - name: Install Bun
-        if: ${{ !env.ACT }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           no-cache: true
@@ -120,7 +118,6 @@ jobs:
           persist-credentials: false
 
       - name: Install Bun
-        if: ${{ !env.ACT }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           no-cache: true
@@ -151,7 +148,6 @@ jobs:
           persist-credentials: false
 
       - name: Install Bun
-        if: ${{ !env.ACT }}
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           no-cache: true

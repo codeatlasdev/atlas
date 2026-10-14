@@ -21,19 +21,19 @@ This page is the honest version of "how much can you trust an Atlas download". I
 | Release integrity | Each release asset has a `.sha256` and `manifest.json` lists the checksum of every file. `atlas update`, `atlas desktop` and the installer verify the checksum before installing anything. | [Installation](installation.md) |
 | SBOM | The release job attaches a CycloneDX SBOM of the CLI's dependency tree (`atlas-<version>-sbom.cdx.json`) when `cargo-cyclonedx` is available, and warns loudly when it is not, so a release can ship without one. | `release.yml` |
 | Code signing | Binaries and the app are **ad-hoc** code signed (`codesign --sign -`), which satisfies the Apple silicon "must be signed" rule. | `release.yml` |
-| No hosted build | Releases are built on the maintainer's machine with `act`; no secret is stored in GitHub. | [Releasing](release.md) |
+| Hosted build | Releases are built on GitHub-hosted runners from the tag; no long-lived secret: the publish job uses the run's `GITHUB_TOKEN`. | [Releasing](release.md) |
 | Network surface | Atlas makes no network request other than update checks and downloads from GitHub; there is no telemetry. | [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md) |
 
 ## What is deliberately not claimed
 
-- **No SLSA level.** SLSA Build L2 and above require the build to run on a hosted platform and not on an individual's workstation. Atlas is built on a maintainer's laptop, so even a signed provenance document would be at most Build L1. Atlas publishes none and claims none.
-- **No GitHub artifact attestations.** They need the GitHub Actions OIDC token of a hosted run (`id-token: write`); `act` does not provide it. A hosted job that only attests files already uploaded would prove "these bytes were uploaded", not "these bytes were built from this commit", so it is not used.
+- **No SLSA level.** Atlas builds on GitHub-hosted runners from the tag, but publishes no signed provenance document and claims no SLSA level.
+- **No GitHub artifact attestations yet.** They need the GitHub Actions OIDC token of a hosted run (`id-token: write`), which release builds now have, so they are possible; they are not enabled. A hosted job that only attests files already uploaded would prove "these bytes were uploaded", not "these bytes were built from this commit", so attest the build job's own output when this is turned on.
 - **Not Developer ID signed or notarized.** Gatekeeper may ask for confirmation on first open of a downloaded app. The installer and `atlas update` fetch with `curl`, which is the path that works without a prompt.
 - **Not reproducible bit for bit.** Code signing and the macOS bundle embed timestamps; nothing here promises two builds are byte identical.
 - **No signed checksum file yet** (it is in the list below). The SBOM is best effort, see the table above.
 - **No third-party audit.** Dependencies are screened by `cargo deny`, not reviewed line by line.
 
-Provenance in one sentence: *maintainer-built locally, ad-hoc code signed, checksummed.*
+Provenance in one sentence: *built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed.*
 
 ## Release checklist addition
 

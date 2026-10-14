@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Cut a release on a channel: pick the next version (scripts/release-version.ts), run checks, bump
-# every crate, commit, tag, push, then build + publish locally by running
-# .github/workflows/release.yml through act. GitHub Actions is manual-only (no hosted minutes).
+# Cut a release on a channel: pick the next version (scripts/release-version.ts), require a green CI on HEAD,
+# bump every crate, commit, tag and push. The tag push runs .github/workflows/release.yml on GitHub, which this
+# script watches, then deploys the site.
 #
 # Usage: bun run release <alpha|beta|rc|stable|patch|X.Y.Z[-(alpha|beta|rc).N]>
 #          [--dry-run] [--skip-checks] [--force-soak] [--bump major]
+#        bun run release --publish vX.Y.Z[-pre.N]   (re)publish an existing tag
 #
 #   alpha    from main              1.4.0-alpha.N
 #   beta     from main (first beta creates release/X.Y) or release/X.Y   1.4.0-beta.N
@@ -15,10 +16,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-request="" dry=0 checks=1 force_soak=0 bump=""
+request="" dry=0 checks=1 force_soak=0 bump="" publish_tag=""
 while (($#)); do
   case "$1" in
     --dry-run) dry=1 ;;
+    --publish) shift; publish_tag="${1:?--publish needs a tag}" ;;
     --skip-checks) checks=0 ;;
     --force-soak) force_soak=1 ;;
     --bump)
@@ -36,7 +38,34 @@ done
 die() { echo "✗ $*" >&2; exit 1; }
 run() { echo "+ $*"; [[ $dry == 1 ]] || "$@"; }
 
-[[ -n "$request" ]] || die "usage: bun run release <alpha|beta|rc|stable|patch|X.Y.Z[-pre.N]> [--dry-run] [--skip-checks] [--force-soak] [--bump major]"
+# Waits for the Release run of <tag> started at or after <since> (ISO 8601) and fails unless it succeeded.
+watch_release() {
+  local tag="$1" since="$2" id="" conclusion
+  if [[ $dry == 1 ]]; then echo "+ watch the Release run for $tag"; return 0; fi
+  for _ in $(seq 24); do
+    id="$(gh run list --repo codeatlasdev/atlas --workflow release.yml --json databaseId,createdAt,displayTitle,headBranch --limit 10 \
+      --jq "[.[] | select(.createdAt >= \"$since\" and (.headBranch == \"$tag\" or (.displayTitle | contains(\"$tag\"))))] | sort_by(.createdAt) | last | .databaseId // empty")"
+    [[ -z "$id" ]] || break
+    sleep 5
+  done
+  [[ -n "$id" ]] || die "no Release run started for $tag"
+  echo "▶ Release run: $(gh run view "$id" --repo codeatlasdev/atlas --json url -q .url)"
+  # gh run watch's exit code is unreliable; the conclusion is read afterwards.
+  gh run watch "$id" --repo codeatlasdev/atlas --interval 30 >/dev/null || true
+  conclusion="$(gh run view "$id" --repo codeatlasdev/atlas --json conclusion -q .conclusion)"
+  [[ "$conclusion" == success ]] || die "release run $id: $conclusion (gh run view $id --log-failed)"
+}
+
+# Builds and publishes a tag that is already on origin: dispatches release.yml from main with that tag.
+publish_existing() {
+  local since
+  since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  run gh workflow run release.yml --repo codeatlasdev/atlas --ref main -f tag="$1"
+  watch_release "$1" "$since"
+  deploy_site "$1"
+}
+
+[[ -n "$request" || -n "$publish_tag" ]] || die "usage: bun run release <alpha|beta|rc|stable|patch|X.Y.Z[-pre.N]> [--dry-run] [--skip-checks] [--force-soak] [--bump major] | --publish vX.Y.Z[-pre.N]"
 
 # Belt and braces: /download and /changelog read the latest release at the edge (site/functions), so they are never stale on
 # their own, but a deploy also refreshes the build-time fallback and the docs. Never fails the release: it is already published.
@@ -50,6 +79,12 @@ deploy_site() {
   bun run site:deploy || echo "⚠ site deploy failed; $1 is published and the site picks it up from GitHub within ~1 minute. Retry: bun run site:deploy" >&2
 }
 
+if [[ -n "$publish_tag" ]]; then
+  git ls-remote --exit-code --tags origin "refs/tags/$publish_tag" >/dev/null 2>&1 || die "tag $publish_tag is not on origin"
+  publish_existing "$publish_tag"
+  exit 0
+fi
+
 crates=(crates/*/Cargo.toml)
 current="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/atlas-cli/Cargo.toml | head -1)"
 branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -59,19 +94,12 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 head_tag="$(git describe --exact-match --tags --match 'v[0-9]*' HEAD 2>/dev/null || true)"
 if [[ -n "$head_tag" ]] && ! gh release view "$head_tag" --repo codeatlasdev/atlas >/dev/null 2>&1; then
   echo "▶ resuming publish of $head_tag (tag exists, release missing)"
-  # A resumed stable keeps its provenance: the prerelease it was promoted from is in the tag message.
-  promoted="$(git tag -l --format='%(contents)' "$head_tag" | sed -n 's/^Promoted from: //p' | head -1)"
-  [[ -z "$promoted" ]] || export ATLAS_PROMOTED_FROM="$promoted"
-  run scripts/act-release.sh "$head_tag" --publish
-  deploy_site "$head_tag"
+  publish_existing "$head_tag"
   exit 0
 fi
 
 # Preflight
-# The macOS build job runs natively here (act -self-hosted) and bundles Atlas Desktop.
-[[ $dry == 1 ]] || scripts/setup.sh --quiet
-command -v act >/dev/null || [[ $dry == 1 ]] || die "act not found"
-command -v bun >/dev/null || die "bun not found"
+for t in bun gh cargo git; do command -v "$t" >/dev/null || die "$t not found"; done
 
 # Version, branch and soak rules (unit-tested): also reads tags from origin, so it sees what is already out there.
 git fetch --quiet --tags origin
@@ -122,7 +150,7 @@ echo "▶ release $current → $next ($tag, channel: $channel) on $target$([[ $d
 [[ -z "$notes" ]] || echo "  note for the release notes: ${notes//$'\n'/; }"
 
 if [[ $checks == 1 ]]; then
-  if [[ $dry == 1 ]]; then echo "+ bun run check"; else bun run check; fi
+  run scripts/ci-passed.sh codeatlasdev/atlas "$(git rev-parse HEAD)"
 fi
 
 if [[ -n "$create_branch" ]]; then
@@ -157,8 +185,7 @@ tag_msg="Atlas $tag"
 
 Promoted from: $promoted_from"
 run git tag -a "$tag" -m "$tag_msg"
+since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 run git push --atomic origin "$target" "$tag"
-
-[[ -z "$promoted_from" ]] || export ATLAS_PROMOTED_FROM="$promoted_from"
-run scripts/act-release.sh "$tag" --publish
+watch_release "$tag" "$since"
 deploy_site "$tag"

@@ -57,7 +57,7 @@
   description: The website and its edge functions
 - name: "area: ci"
   color: 1d76db
-  description: Workflows, release tooling, local act builds
+  description: Workflows and release tooling
 
 # priority: how urgent (set by a maintainer during triage; at most one)
 - name: "priority: 0 data loss or security"

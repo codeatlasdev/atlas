@@ -7,7 +7,7 @@ description: "How Atlas versions releases, what Stable, Beta and Alpha mean, how
 
 > **Atlas is in alpha.** Every channel, including Stable, can have rough edges and breaking changes until the first release that meets the [general availability criteria](#general-availability) below. Channels describe how thoroughly a build was soaked, not how finished Atlas is.
 
-Atlas ships the CLI and the desktop app together with the same version. Every release is built and published from the maintainer's machine (see [Releasing](release.md)).
+Atlas ships the CLI and the desktop app together with the same version. Every release is built and published by GitHub Actions from the version tag (see [Releasing](release.md)).
 
 ## Channels
 

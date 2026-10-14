@@ -86,6 +86,6 @@ shasum -a 256 -c atlas-<version>-aarch64-apple-darwin.tar.gz.sha256
 
 What that does and does not prove, so you can decide how much to trust it:
 
-- **Provenance: maintainer-built locally, ad-hoc code signed, checksummed.** Releases are built on the maintainer's machine, not on a hosted build service, and the binaries are ad-hoc signed (not Developer ID signed or notarized, so macOS may ask you to confirm the first launch of a downloaded app).
+- **Provenance: built on GitHub-hosted runners from the tag, ad-hoc code signed, checksummed.** Releases are built by GitHub Actions from the version tag, with no long-lived secret (the publish job uses the run's `GITHUB_TOKEN`), and the binaries are ad-hoc signed (not Developer ID signed or notarized, so macOS may ask you to confirm the first launch of a downloaded app).
 - The checksum protects against a corrupted or truncated download. It comes from the same place as the file, so it does not on its own protect against someone who can replace both on GitHub. A signed `SHA256SUMS` is planned, not shipped.
-- **No SLSA level is claimed**, and there are no GitHub artifact attestations. See [docs/supply-chain.md](docs/supply-chain.md) for what is done today, what is not claimed and why.
+- **No SLSA level is claimed**, and GitHub artifact attestations are not enabled yet (possible now that builds are hosted). See [docs/supply-chain.md](docs/supply-chain.md) for what is done today, what is not claimed and why.

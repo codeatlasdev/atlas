@@ -17,6 +17,5 @@
 /.github/               @codeatlasdev/atlas-maintainers
 /.agents/               @codeatlasdev/atlas-maintainers
 /scripts/release*       @codeatlasdev/atlas-maintainers
-/scripts/act-release.sh @codeatlasdev/atlas-maintainers
 /crates/atlas-host/     @codeatlasdev/atlas-maintainers
 /AGENTS.md              @codeatlasdev/atlas-maintainers

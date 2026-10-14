@@ -81,3 +81,52 @@ describe("ci-tested.sh", () => {
 		expect(tested(broken)).toMatchObject({ code: 0, out: "false" });
 	});
 });
+
+describe("ci-passed.sh", () => {
+	// A fake `gh` answering call N with answers[N] (the last one repeats); null fails like an API error.
+	function seqGh(answers: (string | null)[]) {
+		const dir = mkdtempSync(join(tmpdir(), "ci-passed-"));
+		const gh = join(dir, "gh");
+		const cases = answers
+			.map((a, i) => `  ${i}) ${a === null ? "exit 1" : `printf '%s\\n' ${JSON.stringify(a)}`} ;;`)
+			.join("\n");
+		writeFileSync(
+			gh,
+			`#!/usr/bin/env bash\nn=$(cat "${dir}/n" 2>/dev/null || echo 0); echo $((n + 1)) > "${dir}/n"\n` +
+				`((n > ${answers.length - 1})) && n=${answers.length - 1}\ncase "$n" in\n${cases}\nesac\n`,
+		);
+		chmodSync(gh, 0o755);
+		return gh;
+	}
+	const passed = (answers: (string | null)[], polls = "5") =>
+		run(["scripts/ci-passed.sh", "o/r", "abc"], {
+			GH: seqGh(answers),
+			CI_PASSED_POLL_SECS: "0",
+			CI_PASSED_MAX_POLLS: polls,
+		});
+	const URL = "https://github.com/o/r/actions/runs/1";
+
+	test("a green run: passes", () => {
+		expect(passed([`completed success ${URL}`]).code).toBe(0);
+	});
+
+	test("a failed run: fails and names the conclusion", () => {
+		const r = passed([`completed failure ${URL}`]);
+		expect(r.code).toBe(1);
+		expect(r.err).toContain("failure");
+	});
+
+	test("no run yet, then running, then green: waits and passes", () => {
+		expect(passed(["", `in_progress null ${URL}`, `completed success ${URL}`]).code).toBe(0);
+	});
+
+	test("never a run: fails once the poll budget is spent", () => {
+		const r = passed([""], "3");
+		expect(r.code).toBe(1);
+		expect(r.err).toContain("no completed CI run");
+	});
+
+	test("gh errors on every call: never passes", () => {
+		expect(passed([null], "2").code).toBe(1);
+	});
+});

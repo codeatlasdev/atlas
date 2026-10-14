@@ -26,7 +26,6 @@ runs:
     # Caches are saved only from main and release branches: a pull request's cache is visible to that pull
     # request alone and would evict the main cache every pull request restores (10 GB per repository).
     - name: Cache cargo
-      if: ${{ !env.ACT }}
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}

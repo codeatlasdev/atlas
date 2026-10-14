@@ -26,9 +26,8 @@
     "icons:check": "bun scripts/icons.ts --check",
     "release": "scripts/release.sh",
     "release:dry": "scripts/release.sh --dry-run",
-    "release:act": "scripts/act-release.sh",
-    "release:test": "bun test scripts && python3 -m unittest scripts/test_generate_manifest.py && scripts/test-bootstrap-channel.sh && scripts/test-labels.sh",
-    "ci:act": "act workflow_dispatch -W .github/workflows/ci.yml -j rust-macos"
+    "release:publish": "scripts/release.sh --publish",
+    "release:test": "bun test scripts && python3 -m unittest scripts/test_generate_manifest.py && scripts/test-bootstrap-channel.sh && scripts/test-labels.sh"
   },
   "license": "MIT OR Apache-2.0",
   "homepage": "https://atlas.codeatlas.com.br",

@@ -73,7 +73,7 @@ Measure with nothing else compiling (a concurrent `cargo install` turned 49 s in
 | sccache locally | no gain with incremental; maybe a later CI experiment |
 | cargo-sweep | unmaintained; `bun run sweep` deletes `target/build` instead |
 | per-dep `opt-level = 3` for proc-macros | no measured need; revisit if `--timings` shows macro expansion on the critical path |
-| `debug = "line-tables-only"` in release | measured on a throwaway binary copied out of `target/`: its own frames printed no file:line with or without the setting (macOS leaves the line tables in the object files; no `.dSYM` is made). Release crash backtraces stay function-name-only; shipping a `.dSYM` is a packaging change, not evaluated here |
+| `debug = "line-tables-only"` in release | not adopted: on macOS no `.dSYM` is produced, so the line tables stay in the object files under `target/`, not in the shipped binary (a short-format backtrace of a throwaway binary copied out of `target/` showed no file:line either way; not re-checked with `RUST_BACKTRACE=full`). Shipping a `.dSYM` is a packaging change, not evaluated here |
 
 ## Editor
 

@@ -1,7 +1,8 @@
 name: Release
 
 # Manual-only: releases are built and published locally via `bun run release`
-# (act runs this exact workflow on this machine). No GitHub-hosted minutes.
+# (act runs this exact workflow on this machine). No GitHub-hosted minutes, and so no cargo cache:
+# act's local target/ is the cache, and a release is never built from a restored cache.
 on:
   workflow_dispatch:
 
@@ -15,19 +16,20 @@ jobs:
   test:
     name: Test
     runs-on: macos-14
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
 
-      - name: Cache cargo
-        if: ${{ !env.ACT }}
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-
       - name: Install Bun
         if: ${{ !env.ACT }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
 
       - name: Install cargo-deny
         run: command -v cargo-deny >/dev/null || cargo install cargo-deny --locked
@@ -39,23 +41,21 @@ jobs:
     name: Build (aarch64-apple-darwin)
     needs: test
     runs-on: macos-14
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
-
-      - name: Cache cargo
-        if: ${{ !env.ACT }}
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          key: release-aarch64
 
       # SOURCE_DATE_EPOCH = the commit time, so embedded timestamps do not depend on when the build ran.
       # No --remap-path-prefix: not verified against the Tauri build in this repo.
       - name: Build
         run: |
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli
 
       # CycloneDX SBOM of the CLI's dependency tree (the shipped binary). Skipped, loudly, when the tool is missing.
@@ -75,13 +75,16 @@ jobs:
 
       - name: Install Bun
         if: ${{ !env.ACT }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
 
       - name: Build desktop app
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri build --target aarch64-apple-darwin --bundles app,dmg --ci)
 
       - name: Package
@@ -93,20 +96,20 @@ jobs:
           # Ad-hoc sign so macOS Gatekeeper doesn't SIGKILL on first run
           codesign --sign - --force --preserve-metadata=entitlements,requirements,flags dist/atlas
           cd dist
-          tar czf atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz atlas
-          shasum -a 256 atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz > atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz.sha256
+          tar czf "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz" atlas
+          shasum -a 256 "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz" > "atlas-${ATLAS_VERSION}-aarch64-apple-darwin.tar.gz.sha256"
           # Atlas Desktop: the .app tarball is what `atlas desktop` / `atlas update` install;
           # the .dmg is for people who download it by hand.
           BUNDLE=../target/aarch64-apple-darwin/release/bundle
           APP=Atlas-${ATLAS_VERSION}-aarch64-apple-darwin
-          tar czf ${APP}.app.tar.gz -C ${BUNDLE}/macos Atlas.app
-          cp ${BUNDLE}/dmg/Atlas_*_aarch64.dmg ${APP}.dmg
-          shasum -a 256 ${APP}.app.tar.gz > ${APP}.app.tar.gz.sha256
-          shasum -a 256 ${APP}.dmg > ${APP}.dmg.sha256
+          tar czf "${APP}.app.tar.gz" -C "${BUNDLE}/macos" Atlas.app
+          cp "${BUNDLE}"/dmg/Atlas_*_aarch64.dmg "${APP}.dmg"
+          shasum -a 256 "${APP}.app.tar.gz" > "${APP}.app.tar.gz.sha256"
+          shasum -a 256 "${APP}.dmg" > "${APP}.dmg.sha256"
 
       - name: Upload artifacts
         if: ${{ !env.ACT }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: atlas-aarch64-apple-darwin
           path: |
@@ -117,7 +120,7 @@ jobs:
       # act's artifact server (0.2.89) rejects upload-artifact v6+; v5 is the newest it accepts.
       - name: Upload artifacts (act)
         if: ${{ env.ACT }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: atlas-aarch64-apple-darwin
           path: |
@@ -132,8 +135,11 @@ jobs:
     name: Build (x86_64-unknown-linux-gnu)
     needs: test
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: System libraries
         run: |
@@ -148,18 +154,15 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
 
-      - name: Cache cargo
-        if: ${{ !env.ACT }}
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          key: release-x86_64-linux
-
       - name: Install Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
 
       - name: Build CLI
         run: |
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           cargo build --release --locked -p atlas-cli
 
       # tauri.linux.conf.json picks the deb/rpm/appimage bundles and puts target/release/atlas in the packages.
@@ -171,7 +174,8 @@ jobs:
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
           (cd apps/desktop && bun install --frozen-lockfile)
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri build --ci)
 
       - name: Package
@@ -181,17 +185,17 @@ jobs:
           B=target/release/bundle
           mkdir -p dist
           cp target/release/atlas dist/
-          (cd dist && tar czf atlas-$V-$T.tar.gz atlas && rm atlas)
-          cp $B/appimage/*.AppImage dist/Atlas-$V-$T.AppImage
-          cp $B/deb/*.deb dist/atlas_${V}_amd64.deb
-          cp $B/rpm/*.rpm dist/atlas-$V-1.x86_64.rpm
+          (cd dist && tar czf "atlas-$V-$T.tar.gz" atlas && rm atlas)
+          cp "$B"/appimage/*.AppImage "dist/Atlas-$V-$T.AppImage"
+          cp "$B"/deb/*.deb "dist/atlas_${V}_amd64.deb"
+          cp "$B"/rpm/*.rpm "dist/atlas-$V-1.x86_64.rpm"
           cd dist
           for f in *.tar.gz *.AppImage *.deb *.rpm; do sha256sum "$f" > "$f.sha256"; done
           ls -l
 
       - name: Upload artifacts
         if: ${{ !env.ACT }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: atlas-x86_64-unknown-linux-gnu
           path: dist/*
@@ -199,7 +203,7 @@ jobs:
       # act's artifact server (0.2.89) rejects upload-artifact v6+; v5 is the newest it accepts.
       - name: Upload artifacts (act)
         if: ${{ env.ACT }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: atlas-x86_64-unknown-linux-gnu
           path: dist/*
@@ -210,16 +214,19 @@ jobs:
     name: Package (Arch Linux)
     needs: build-linux
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: archlinux:base-devel
     steps:
       # --disable-sandbox: pacman's download sandbox (seccomp + the `alpm` user) fails inside act's emulated amd64 container.
       - name: Tools
         run: pacman -Syu --noconfirm --needed --disable-sandbox git nodejs
 
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download Linux build
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: atlas-x86_64-unknown-linux-gnu
           path: linux/
@@ -242,7 +249,7 @@ jobs:
 
       - name: Upload artifacts
         if: ${{ !env.ACT }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: atlas-x86_64-unknown-linux-gnu-arch
           path: dist/*
@@ -250,7 +257,7 @@ jobs:
       # act's artifact server (0.2.89) rejects upload-artifact v6+; v5 is the newest it accepts.
       - name: Upload artifacts (act)
         if: ${{ env.ACT }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: atlas-x86_64-unknown-linux-gnu-arch
           path: dist/*
@@ -259,14 +266,19 @@ jobs:
     name: Publish Release
     needs: [build, build-linux, build-arch]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write   # the only job that may create the release
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Bun
         if: ${{ !env.ACT }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
 
       # prerelease / make_latest come from the tag's channel against the default channel
       # (crates/atlas-core/data/channels.json): a build of the default channel is a normal, "Latest" release.
@@ -275,7 +287,7 @@ jobs:
         run: bun scripts/release-version.ts github-flags --tag "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
 
       - name: Download artifacts
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts/
 
@@ -305,6 +317,8 @@ jobs:
 
       # The release body: this version's CHANGELOG.md section, then install/update steps.
       - name: Release notes
+        env:
+          MAKE_LATEST: ${{ steps.flags.outputs.make_latest }}
         run: |
           V=${GITHUB_REF_NAME#v}
           case "$V" in
@@ -316,7 +330,7 @@ jobs:
           : > notes.md
           if [ -n "$CH" ]; then
             # GitHub's "Latest" badge follows the default channel (alpha pre-GA), which is not the Stable channel.
-            if [ "${{ steps.flags.outputs.make_latest }}" = true ]; then
+            if [ "$MAKE_LATEST" = true ]; then
               printf '> This is %s GitHub marks it "Latest" because it is what the default update channel offers while Atlas is in alpha; it is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> notes.md
             else
               printf '> This is %s It is not offered on the Stable channel; see [versioning](https://atlas.codeatlas.com.br/docs/versioning).\n\n' "$CH" >> notes.md

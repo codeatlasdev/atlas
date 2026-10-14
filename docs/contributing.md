@@ -41,7 +41,9 @@ bun run check
 3. `cargo nextest run --workspace --locked`, then `cargo test --workspace --locked --doc` (nextest does not run doctests)
 4. `cargo deny check` (licenses, advisories, duplicate and banned crates)
 5. `scripts/check-skills.sh` (validates `skills/*/SKILL.md` against the Agent Skills spec)
-6. `bun run desktop:check` (svelte-check, prettier and `bun test` for the frontend)
+6. `scripts/lint-workflows.sh` (actionlint and zizmor over `.github/`; also `bun run lint:workflows`)
+7. `bun run desktop:check` (svelte-check, prettier and `bun test` for the frontend)
+8. `bun run release:test` (the release tooling's and CI scripts' own tests)
 
 Run it on its own and read the exit code before you push. A pull request should pass it.
 
@@ -173,4 +175,11 @@ Before you open it: make the change with its tests and doc updates, run `bun run
 
 ## CI and releases
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`: macOS (the full workspace gate) and Ubuntu (the workspace without the macOS-only crates), plus the desktop frontend checks, the site build and `cargo deny`; the `DCO` workflow adds the `Signed-off-by` check. All of them must pass before a merge. Fork pull requests run it with a read-only token and no secrets. Releases are built and published from a maintainer's machine through [`act`](https://github.com/nektos/act) (`bun run release`); see [Releasing](release.md). `bun run ci:act` runs the macOS job of the CI workflow locally (`-j rust-macos`).
+CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS and Linux run the Rust gate (one composite action, `.github/actions/rust-gate`, so the two cannot drift), plus the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:
+
+- **One required check.** The last job, `CI`, passes only when every other job passed, so jobs can be renamed or split without touching the ruleset. `pr.yml` adds `Signed-off-by` (DCO) and `Conventional title` (the pull request title becomes the squash commit subject). These three are the required checks.
+- **No second test run after a merge.** The branch must be up to date to merge, so the squash commit on `main` has exactly the tree its pull request tested. `scripts/ci-tested.sh` checks that (same tree as the pull request head, and a green CI run for it) and then the push skips the tests and only builds what keeps the cache warm. A different tree, a direct push or any API error runs everything.
+- **Caches come from `main`.** A pull request's cache is visible to that pull request only ([GitHub docs](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)) and would evict the `main` cache that every pull request restores (10 GB per repository), so caches are saved only from `main` and `release/*`. Runs there are never cancelled; a new push to a pull request cancels its older run.
+- **Pinned and audited.** Every action is pinned to a full commit SHA with its exact version in a comment (`# v7.0.1`), updated by Dependabot after a 7-day cooldown. `scripts/lint-workflows.sh` runs actionlint and zizmor (config: `.github/zizmor.yml`, every ignore with its reason) locally in `bun run check` and in CI.
+
+Releases are built and published from a maintainer's machine through [`act`](https://github.com/nektos/act) (`bun run release`); see [Releasing](release.md). `bun run ci:act` runs the macOS job of the CI workflow locally (`-j rust-macos`).

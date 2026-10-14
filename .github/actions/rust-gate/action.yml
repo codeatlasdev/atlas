@@ -1,0 +1,56 @@
+name: Rust gate
+description: >-
+  The Rust half of `bun run check` (fmt, clippy, nextest, doctests), shared by the macOS and Linux CI jobs so
+  they cannot drift apart. Expects the repository checked out.
+
+inputs:
+  tests:
+    description: >-
+      "true": the full gate. "false": the tree already passed CI in its pull request (scripts/ci-tested.sh), so
+      only build what a pull request builds (clippy + test binaries) to keep the cache warm.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # rust-toolchain.toml pins the version; rustup installs it (with rustfmt + clippy) on first use.
+    - name: Install Rust
+      shell: bash
+      run: rustup show active-toolchain || rustup toolchain install
+
+    - name: Install nextest
+      uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+      with:
+        tool: nextest
+
+    # Caches are saved only from main and release branches: a pull request's cache is visible to that pull
+    # request alone and would evict the main cache every pull request restores (10 GB per repository).
+    - name: Cache cargo
+      if: ${{ !env.ACT }}
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
+
+    - name: Format
+      if: ${{ inputs.tests == 'true' }}
+      shell: bash
+      run: cargo fmt --all -- --check
+
+    - name: Clippy
+      shell: bash
+      run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+    - name: Test
+      if: ${{ inputs.tests == 'true' }}
+      shell: bash
+      run: cargo nextest run --workspace --locked --profile ci
+
+    - name: Build tests (already tested in the pull request)
+      if: ${{ inputs.tests != 'true' }}
+      shell: bash
+      run: cargo nextest run --workspace --locked --no-run
+
+    - name: Doctests
+      if: ${{ inputs.tests == 'true' }}
+      shell: bash
+      run: cargo test --workspace --locked --doc

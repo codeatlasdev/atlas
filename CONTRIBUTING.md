@@ -31,7 +31,7 @@ Rules of thumb:
 - Prefer behavior tests (boundaries, failures, state transitions) over getters.
 - Fix warnings; do not add global `allow`s. Workspace lints apply to every crate.
 - Keep duplication at or below 1.5% (`bun run dup`).
-- Commit subjects are short and imperative with a conventional prefix (`feat:`, `fix:`, `docs:`, `chore:`, `test:`), scoped when useful (`fix(desktop): ...`).
+- Commit subjects are short and imperative with a conventional prefix (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`, `revert:`, `style:`), scoped when useful (`fix(desktop): ...`), `!` for a breaking change (`feat!: ...`). The pull request **title** must have this form: it becomes the commit subject on squash, and the `Conventional title` check (`scripts/check-pr-title.sh`) fails otherwise.
 - Do not add a dependency without saying why; `cargo deny check` must pass.
 - Respect the runtime safety rules in [AGENTS.md](AGENTS.md) (exact-PID orphan cleanup, never `docker compose down`, and so on). They come from real incidents.
 
@@ -41,7 +41,7 @@ This is the one flow. [GOVERNANCE.md](GOVERNANCE.md), [AGENTS.md](AGENTS.md), `d
 
 1. **Branch.** Fork (outside contributors) or branch (people with write access) from `main`, named `type/short-desc`, where `type` is a conventional prefix: `feat/`, `fix/`, `docs/`, `chore/`, `test/`, `refactor/` (for example `fix/empty-ready-log`).
 2. **Open a pull request to `main`**, as a **draft** until it is ready for review. Every commit carries a [DCO](#developer-certificate-of-origin-dco) sign-off. Fill in the template.
-3. **CI is green.** The six CI jobs and the `Signed-off-by` check are required, and the branch must be up to date with `main`.
+3. **CI is green.** Three checks are required: `CI` (the aggregate of every job in `ci.yml`), `Signed-off-by` and `Conventional title` (`pr.yml`). The branch must be up to date with `main`.
 4. **Approvals depend on who wrote it.**
    - **External contributors** (anyone who is not a maintainer, including people with write access such as Richards0nd): **two approvals** from humans other than the author. New pushes dismiss earlier approvals, and the most recent push has to be approved by someone other than whoever pushed it. Every review thread is resolved before merging.
    - **Maintainers** (the GitHub team `atlas-maintainers`: [@mvilacad](https://github.com/mvilacad), the owner, and [@luancoleto](https://github.com/luancoleto)) may merge their own pull requests **without approvals**, through the ruleset bypass, once CI is green. Reviews are welcome and encouraged for anything non-trivial, but not required.

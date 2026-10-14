@@ -1,8 +1,11 @@
 version: 2
+# cooldown: a new version waits 7 days before a PR, so a compromised or yanked release is usually caught
+# upstream before it reaches us (zizmor dependabot-cooldown).
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
@@ -11,6 +14,7 @@ updates:
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
     groups:
       desktop-minor-patch:
         update-types: [minor, patch]
@@ -19,6 +23,7 @@ updates:
   - package-ecosystem: npm
     directory: /site
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
     groups:
       site-minor-patch:
         update-types: [minor, patch]
@@ -27,6 +32,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 7 }
     groups:
       actions:
         patterns: ["*"]

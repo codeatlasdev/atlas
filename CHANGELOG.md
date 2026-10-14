@@ -10,6 +10,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 - **Code of Conduct updated to the Contributor Covenant 3.0** (was 2.1), with the reporting channel (a private report on the repository) and the moderators (the maintainers) filled in. Linked from the README badge, the issue chooser and the pull request checklist.
 - **Faster, leaner Rust builds** for contributors: clean `cargo build --workspace` 82 → 49 s and `target/` 3.5 → 2.3 G (dev profiles without dependency debug info, `ring` instead of the C-built `aws-lc-rs`). Tests run through cargo-nextest (installed by `scripts/setup.sh`), intermediates live in `target/build` and `bun run sweep` frees them. Details: `docs/build-perf.md`.
+- **CI reworked for contributors.** One required check, `CI`, aggregates every job, and pull requests also need a Conventional Commits title (`Conventional title`; the title becomes the squash commit). After a merge, `main` no longer re-runs the tests its pull request already passed on the same tree; caches are saved only from `main`, so pull requests always restore a warm cache instead of filling the 10 GB quota. The macOS and Linux Rust jobs share one composite action. Workflows are linted by actionlint and zizmor in `bun run check` and CI, every action is pinned to an exact version, and Dependabot waits 7 days before proposing an update. Details: `docs/contributing.md`, "CI and releases".
 
 ## [1.5.0-alpha.8] — 2026-10-14
 

@@ -1,0 +1,12 @@
+# zizmor (https://docs.zizmor.sh) configuration: run by scripts/lint-workflows.sh. Every ignore names
+# its reason; fix a finding instead of adding a line here whenever the fix is possible.
+rules:
+  # `uses: ./.github/actions/...` instead of the newer `$/` syntax: act 0.2.89 (`bun run ci:act`,
+  # `bun run release`) does not understand `$/`.
+  self-repository:
+    disable: true
+  # The release is published with softprops/action-gh-release, proven under act; swapping it for a
+  # `gh release` script is only verifiable by a real publish.
+  superfluous-actions:
+    ignore:
+      - release.yml

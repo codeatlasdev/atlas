@@ -34,7 +34,7 @@ All from the repository root (`package.json` scripts, run with `bun run <name>`)
 
 | Command | What it does |
 |---|---|
-| `bun run check` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo nextest run --workspace --locked`, `cargo test --workspace --locked --doc`, `cargo deny check`, the skills check, `bun run desktop:check`, then `bun run release:test`. The same gate as CI. |
+| `bun run check` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo nextest run --workspace --locked`, `cargo test --workspace --locked --doc`, `cargo deny check`, the skills check, the workflow lint (actionlint + zizmor), `bun run desktop:check`, then `bun run release:test`. The same gate as CI. |
 | `bun run release <alpha\|beta\|rc\|stable\|patch\|X.Y.Z[-pre.N]>` | Cut and publish a release. |
 | `bun run release:dry` | `scripts/release.sh --dry-run`: prints every step, changes and pushes nothing. Pass the request after it: `bun run release:dry alpha`. |
 | `bun run release:test` | The release tooling's own tests: `bun test scripts` (version, branch, soak and diff-guard rules) and `python3 -m unittest scripts/test_generate_manifest.py`. |
@@ -54,7 +54,7 @@ bun scripts/release-version.ts diff-guard --from v1.4.0-beta.2   # lists files a
 - The right branch, working tree clean, in sync with its `origin` branch (the script checks; `--dry-run` relaxes the clean/sync checks and a missing `CHANGELOG.md` section becomes a warning).
 - `gh` logged in with write access to `codeatlasdev/atlas` (`gh auth login`); its token is used to publish.
 - `act` (`brew install act`) and a running Docker (OrbStack or Docker Desktop) for the Ubuntu `publish` job.
-- Rust toolchain pinned in `rust-toolchain.toml`, `bun`, `gh`. `scripts/setup.sh` (run by `release.sh`, `desktop:dev` and `desktop:build`) verifies them and installs frontend deps, `cargo-tauri` and `cargo-deny` when missing. Under `act`, the `Swatinem/rust-cache` steps are skipped (`if: ${{ !env.ACT }}`): the local `target/` is the cache.
+- Rust toolchain pinned in `rust-toolchain.toml`, `bun`, `gh`. `scripts/setup.sh` (run by `release.sh`, `desktop:dev` and `desktop:build`) verifies them and installs frontend deps, `cargo-tauri`, `cargo-deny`, `cargo-nextest`, `actionlint` and `zizmor` when missing. `release.yml` has no cargo cache: under `act` the local `target/` is the cache, and a release is never built from a restored one.
 - `.actrc` is committed and configures act: `macos-14` and `macos-latest` → `-self-hosted`, `ubuntu-latest` → `catthehacker/ubuntu:act-latest`, container architecture `linux/arm64`, artifact server path `.act/artifacts` (gitignored).
 - Write the `## [X.Y.Z[-pre.N]]` section of `CHANGELOG.md` **before** you run the command: the release notes come from it.
 

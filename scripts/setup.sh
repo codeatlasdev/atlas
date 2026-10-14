@@ -55,6 +55,19 @@ if ! command -v cargo-nextest >/dev/null; then
   say "▶ cargo install cargo-nextest"
   cargo install cargo-nextest --locked
 fi
+# Workflow linters for `bun run check` (scripts/lint-workflows.sh). Homebrew on macOS (and Linuxbrew);
+# otherwise zizmor through cargo and actionlint through Go.
+if ! command -v zizmor >/dev/null; then
+  say "▶ install zizmor"
+  if command -v brew >/dev/null; then brew install zizmor; else cargo install zizmor --locked; fi
+fi
+if ! command -v actionlint >/dev/null; then
+  say "▶ install actionlint"
+  if command -v brew >/dev/null; then brew install actionlint
+  elif command -v go >/dev/null; then go install github.com/rhysd/actionlint/cmd/actionlint@latest
+  else die "actionlint not found (brew install actionlint, or go install github.com/rhysd/actionlint/cmd/actionlint@latest)"
+  fi
+fi
 
 say "✓ toolchain ready ($(cargo tauri --version))"
 

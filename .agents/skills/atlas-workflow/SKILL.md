@@ -13,7 +13,7 @@ main ── alpha ── alpha ──────────────▶  ev
     release/X.Y ── beta ── fix(cherry-pick) ── beta ── stable ── patch
 ```
 
-- `main` and `release/*` are protected by a GitHub ruleset ("main and release branches"): pull request required, 2 approving human reviews (stale ones dismissed, last push approved by someone else), threads resolved, the six CI jobs plus `Signed-off-by` required, branch up to date, no deletion, no force-push. **Only maintainers bypass** (team `atlas-maintainers`: mvilacad, luancoleto), which is how they merge without approvals and how `bun run release` pushes the release commit and tag. Everyone else, including write-access contributors who are not maintainers, goes through a pull request with 2 approvals.
+- `main` and `release/*` are protected by a GitHub ruleset ("main and release branches"): pull request required, 2 approving human reviews (stale ones dismissed, last push approved by someone else), threads resolved, three required checks (`CI` from `ci.yml`, `Signed-off-by` and `Conventional title` from `pr.yml`), branch up to date, no deletion, no force-push. **Only maintainers bypass** (team `atlas-maintainers`: mvilacad, luancoleto), which is how they merge without approvals and how `bun run release` pushes the release commit and tag. Everyone else, including write-access contributors who are not maintainers, goes through a pull request with 2 approvals.
 - Tags `v*` are immutable (ruleset "release tags are immutable"), same single bypass. Never move or delete a tag; cut the next version instead.
 - Fixes land on `main` first. For a soaking release: `git switch release/X.Y && git cherry-pick -x <sha>`, then a PR to `release/X.Y` by a maintainer. Never commit a fix only to `release/X.Y`.
 - The flow for every change: branch `type/short-desc` (fork or branch), draft PR to `main`, CI green, 2 human approvals from people other than the author (external contributors only; maintainers need none), a maintainer merges (squash). The canonical text is [CONTRIBUTING.md](../../../CONTRIBUTING.md#pull-request-flow-and-who-merges); do not restate or soften it here.
@@ -30,6 +30,7 @@ main ── alpha ── alpha ──────────────▶  ev
    gh run view --job <job-id> --log-failed | grep -E "error|\(fail\)" -A5
    ```
 4. A red CI job is a bug: regression test first (skill `real-tests`), then the fix.
+5. On `main`, a push whose tree its pull request already tested shows the non-Rust jobs as skipped and the Rust jobs as build-only (`scripts/ci-tested.sh`); that is expected, and `CI` is still green. Workflow changes: `bun run lint:workflows` (actionlint + zizmor) before pushing.
 
 ## Commits
 

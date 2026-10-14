@@ -6,6 +6,9 @@ use tokio::net::TcpStream;
 /// One shared client: redirects are not followed (a 3xx already proves the app
 /// is serving) and system proxies are ignored (health targets are local).
 static HTTP: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| {
+    // `ring` instead of aws-lc-rs: no C/cmake build (42 s of every clean build). reqwest then
+    // needs the provider installed by us, once, before the first client.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()

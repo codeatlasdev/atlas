@@ -17,6 +17,6 @@
   },
   {
     "title": "Project",
-    "items": ["architecture", "contributing", "release", "versioning", "deprecation", "supply-chain", "labels", "site"]
+    "items": ["architecture", "contributing", "build-perf", "release", "versioning", "deprecation", "supply-chain", "labels", "site"]
   }
 ]

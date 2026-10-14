@@ -1,0 +1,8 @@
+[profile.default]
+# A hung test fails instead of hanging the gate (the mcp/hostd suites spawn real processes).
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[profile.ci]
+fail-fast = false
+failure-output = "immediate-final"
+status-level = "skip"

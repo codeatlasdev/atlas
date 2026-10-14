@@ -23,10 +23,10 @@ You need `rustup`, [`bun`](https://bun.sh) and, for the desktop app, the Xcode c
 ```bash
 git clone https://github.com/codeatlasdev/atlas.git
 cd atlas
-scripts/setup.sh        # idempotent: checks tools, installs frontend deps, cargo-tauri and cargo-deny
+scripts/setup.sh        # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny and cargo-nextest
 ```
 
-The Rust toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on the first `cargo` command. Workspace lints apply to every crate: fix warnings, do not add global `allow`s.
+The Rust toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on the first `cargo` command. Workspace lints apply to every crate: fix warnings, do not add global `allow`s. Build profiles, the `cargo lint`/`cargo t` aliases, `bun run sweep` and the measured build times: [Build performance](build-perf.md).
 
 ## The gate
 
@@ -38,7 +38,7 @@ bun run check
 
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --locked -- -D warnings`
-3. `cargo test --workspace --locked`
+3. `cargo nextest run --workspace --locked`, then `cargo test --workspace --locked --doc` (nextest does not run doctests)
 4. `cargo deny check` (licenses, advisories, duplicate and banned crates)
 5. `scripts/check-skills.sh` (validates `skills/*/SKILL.md` against the Agent Skills spec)
 6. `bun run desktop:check` (svelte-check, prettier and `bun test` for the frontend)

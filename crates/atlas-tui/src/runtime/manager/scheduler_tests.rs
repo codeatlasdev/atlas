@@ -343,7 +343,9 @@ async fn portless_crash_loop_never_runs_and_does_not_unblock_healthy_dep() {
                 ServiceDef {
                     restart: RestartPolicy::OnFailure,
                     max_restarts: Some(2),
-                    ..svc("sleep 1; exit 2")
+                    // Lives well under MIN_UPTIME (2 s): `sleep 1` left a 1 s margin that
+                    // fork/exec latency ate under the parallel gate (nextest), flashing Running.
+                    ..svc("sleep 0.2; exit 2")
                 },
             ),
             (

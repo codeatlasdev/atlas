@@ -51,5 +51,15 @@ if ! command -v cargo-deny >/dev/null; then
   say "▶ cargo install cargo-deny"
   cargo install cargo-deny --locked
 fi
+if ! command -v cargo-nextest >/dev/null; then
+  say "▶ cargo install cargo-nextest"
+  cargo install cargo-nextest --locked
+fi
 
 say "✓ toolchain ready ($(cargo tauri --version))"
+
+# Advice only: target/ has no GC (docs/build-perf.md); never delete here.
+target="$(dirname "$0")/../target"
+if [[ -d $target ]] && (( $(du -sk "$target" | cut -f1) > 20971520 )); then
+  say "target/ is $(du -sh "$target" | cut -f1); run: bun run sweep"
+fi

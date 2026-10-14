@@ -59,3 +59,22 @@ unsafe_op_in_unsafe_fn = "warn"
 all = { level = "warn", priority = -1 }
 dbg_macro = "warn"
 
+# Build profiles. Rationale and measurements: docs/build-perf.md.
+[profile.dev]
+# Backtraces keep file:line; variable/type debug info is dropped (uv measured -20 % on a warm
+# edit/build/test loop on Apple silicon). Need lldb with variables? `cargo build --profile debug`.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+# Dependencies: no debug info at all (the bulk of target/ and of link input).
+debug = false
+
+[profile.dev.build-override]
+# Build scripts and proc-macros (host artifacts): same, or Cargo builds the shared deps twice.
+debug = false
+
+[profile.debug]
+# Full debug info for a debugger session. Opt-in only.
+inherits = "dev"
+debug = "full"
+

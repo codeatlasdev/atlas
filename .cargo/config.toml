@@ -1,0 +1,19 @@
+# Shared Cargo config for everyone (humans, agents, CI). Rationale: docs/build-perf.md.
+
+[build]
+# Intermediate artifacts (deps/, .fingerprint/, build/) live under target/build; the final
+# binaries stay where every script expects them (target/debug/atlas, target/release/...).
+# `bun run sweep` deletes target/build when it grows; nothing else needs to know the layout.
+build-dir = "{workspace-root}/target/build"
+
+[alias]
+# The names used in docs and by agents. Same flags as CI.
+lint = "clippy --workspace --all-targets --locked -- -D warnings"
+t = "nextest run --workspace --locked"
+t-doc = "test --workspace --locked --doc"
+
+# Nightly-only experiments (never the default; stable 1.99 rejects -Z flags). Notes in
+# docs/build-perf.md "Watch list". Run as e.g.:
+#   cargo +nightly build -Zunstable-options --jobs-frontend=4
+# Cranelift is not usable for `cargo test` on macOS (panic=abort only) and objc2 statics are open
+# (rustc_codegen_cranelift#1689): do not enable it for atlas-desktop / atlas-term.

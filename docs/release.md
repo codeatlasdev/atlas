@@ -34,7 +34,7 @@ All from the repository root (`package.json` scripts, run with `bun run <name>`)
 
 | Command | What it does |
 |---|---|
-| `bun run check` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo deny check`, the skills check, `bun run desktop:check`, then `bun run release:test`. The same gate as CI. |
+| `bun run check` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo nextest run --workspace --locked`, `cargo test --workspace --locked --doc`, `cargo deny check`, the skills check, `bun run desktop:check`, then `bun run release:test`. The same gate as CI. |
 | `bun run release <alpha\|beta\|rc\|stable\|patch\|X.Y.Z[-pre.N]>` | Cut and publish a release. |
 | `bun run release:dry` | `scripts/release.sh --dry-run`: prints every step, changes and pushes nothing. Pass the request after it: `bun run release:dry alpha`. |
 | `bun run release:test` | The release tooling's own tests: `bun test scripts` (version, branch, soak and diff-guard rules) and `python3 -m unittest scripts/test_generate_manifest.py`. |

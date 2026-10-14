@@ -17,7 +17,7 @@ For anything bigger than a small fix, open an issue first so we can agree on the
 ```bash
 git clone https://github.com/codeatlasdev/atlas.git
 cd atlas
-scripts/setup.sh          # rustup, bun, frontend deps, cargo-tauri, cargo-deny
+scripts/setup.sh          # rustup, bun, frontend deps, cargo-tauri, cargo-deny, cargo-nextest
 bun run check             # the only gate: fmt, clippy -D warnings, tests, cargo deny, skills, desktop checks
 ```
 
@@ -64,8 +64,9 @@ Everything is a root `package.json` script, so `bun run <name>` from the repo ro
 
 | Command | What it does |
 |---|---|
-| `bun run setup` | the one preflight: rustup, bun, frontend deps, `cargo-tauri`, `cargo-deny` (idempotent) |
-| `bun run check` | **the gate**: fmt, clippy `-D warnings`, workspace tests, `cargo deny`, skills, desktop checks |
+| `bun run setup` | the one preflight: rustup, bun, frontend deps, `cargo-tauri`, `cargo-deny`, `cargo-nextest` (idempotent) |
+| `bun run check` | **the gate**: fmt, clippy `-D warnings`, workspace tests (nextest + doctests), `cargo deny`, skills, desktop checks |
+| `bun run sweep` | free `target/build` (intermediate artifacts; the next build recreates them). See `docs/build-perf.md` |
 | `bun run fmt` | `cargo fmt` and prettier for the desktop frontend |
 | `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte and Astro; fails above 1.5% (config: `.jscpd.json`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, check the frontend, link the debug bundle |

@@ -9,6 +9,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Changed
 
 - **Code of Conduct updated to the Contributor Covenant 3.0** (was 2.1), with the reporting channel (a private report on the repository) and the moderators (the maintainers) filled in. Linked from the README badge, the issue chooser and the pull request checklist.
+- **Faster, leaner Rust builds** for contributors: clean `cargo build --workspace` 82 → 49 s and `target/` 3.5 → 2.3 G (dev profiles without dependency debug info, `ring` instead of the C-built `aws-lc-rs`). Tests run through cargo-nextest (installed by `scripts/setup.sh`), intermediates live in `target/build` and `bun run sweep` frees them. Details: `docs/build-perf.md`.
 
 ## [1.5.0-alpha.8] — 2026-10-14
 

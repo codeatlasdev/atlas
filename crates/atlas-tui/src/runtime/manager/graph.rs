@@ -96,6 +96,7 @@ impl ServiceManager {
             log_dir,
             session,
             started_at,
+            min_uptime: super::types::MIN_UPTIME,
             services,
             order,
             event_tx,

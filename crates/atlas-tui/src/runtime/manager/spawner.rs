@@ -6,7 +6,7 @@ use tokio::process::Command;
 
 use super::ServiceManager;
 use super::types::{
-    MIN_UPTIME, ManagerEvent, PROBE_FAILS_TO_FAIL, WATCH_HEALTHY_INTERVAL, WATCH_PROBE_TIMEOUT,
+    ManagerEvent, PROBE_FAILS_TO_FAIL, WATCH_HEALTHY_INTERVAL, WATCH_PROBE_TIMEOUT,
     WATCH_RETRY_INTERVAL, WATCH_STARTUP_INTERVAL,
 };
 use crate::runtime::logs::{LogStream, spawn_line_pump};
@@ -221,6 +221,7 @@ impl ServiceManager {
                     .get(name)
                     .map(|s| Arc::clone(&s.stopped))
                     .unwrap_or_default();
+                let min_uptime = self.min_uptime;
                 tokio::spawn(async move {
                     let mut interval = WATCH_STARTUP_INTERVAL;
                     let mut ever_healthy = false;
@@ -247,7 +248,7 @@ impl ServiceManager {
                             // No probe available: alive for MIN_UPTIME = running.
                             // A crash inside the window is decided by check_health,
                             // which also retires this watcher via `stopped`.
-                            tokio::time::sleep(MIN_UPTIME).await;
+                            tokio::time::sleep(min_uptime).await;
                             if !stopped.load(std::sync::atomic::Ordering::Acquire) {
                                 let _ = tx_watch.send(ManagerEvent::StateChanged {
                                     name: svc_name.clone(),

@@ -355,6 +355,9 @@ async fn portless_crash_loop_never_runs_and_does_not_unblock_healthy_dep() {
             ),
         ],
     );
+    // A window no load can reach: a child that lived past the default 2 s on a loaded machine
+    // (the release gate) was rightly Running, which made this test flaky.
+    m.min_uptime = Duration::from_secs(3600);
     m.start_app_services(&names(&["worker", "dependent"])).await;
     let mut ever_running = false;
     drive(&mut m, &mut rx, 15, |m| {
@@ -419,13 +422,17 @@ async fn late_running_event_for_a_fresh_respawn_is_ignored() {
 async fn portless_service_runs_after_min_uptime() {
     let dir = tempfile::tempdir().unwrap();
     let (mut m, mut rx) = manager(&dir, vec![("idle", svc("sleep 30"))]);
+    // Not green before the window ends, however long the spawn took on this machine...
+    m.min_uptime = Duration::from_secs(3600);
     m.start_app_services(&names(&["idle"])).await;
     m.check_health().await;
     assert_eq!(
         m.get_state("idle"),
         Some(ServiceState::Starting),
-        "not green at t=0"
+        "not green inside the window"
     );
+    // ...and green once it ends (a short window keeps the test fast).
+    m.min_uptime = Duration::from_millis(200);
     drive(&mut m, &mut rx, 6, |m| {
         m.get_state("idle") == Some(ServiceState::Running)
     })
@@ -453,9 +460,14 @@ async fn start_timeout_warns_and_alerts_critical_once() {
         )],
     );
     m.start_app_services(&names(&["badport"])).await;
+    // The wait starts now, whatever start_app_services cost on a loaded machine: otherwise the
+    // first tick can already be past the 1 s timeout and never show the "waiting" note.
+    m.services.get_mut("badport").unwrap().sched.starting_since = Some(std::time::Instant::now());
+    let mut saw_waiting = m
+        .service_note("badport")
+        .is_some_and(|n| n.starts_with("waiting for :1 ("));
     let (mut notes, mut alerts) = (0, 0);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    let mut saw_waiting = false;
     while tokio::time::Instant::now() < deadline && (notes == 0 || alerts == 0) {
         m.check_health().await;
         saw_waiting |= m

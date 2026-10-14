@@ -43,6 +43,10 @@ pub struct ServiceManager {
     pub(crate) session: String,
     /// Unix seconds at manager creation; immutable for the whole run.
     pub(crate) started_at: u64,
+    /// How long a service with no port, health URL or `ready_log` must stay alive before it
+    /// counts as Running ([`types::MIN_UPTIME`]). A field so tests can pick a window that no
+    /// machine load can blur.
+    pub(crate) min_uptime: std::time::Duration,
     pub(crate) services: HashMap<String, ManagedService>,
     pub(crate) order: Vec<String>,
     pub(crate) event_tx: mpsc::UnboundedSender<ManagerEvent>,
@@ -159,7 +163,7 @@ impl ServiceManager {
                     && !service
                         .sched
                         .spawned_at
-                        .is_some_and(|t| t.elapsed() >= types::MIN_UPTIME);
+                        .is_some_and(|t| t.elapsed() >= self.min_uptime);
                 if exited || too_young {
                     return;
                 }

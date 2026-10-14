@@ -107,7 +107,7 @@ impl ServiceManager {
                 && !svc
                     .sched
                     .spawned_at
-                    .is_some_and(|t| t.elapsed() >= super::types::MIN_UPTIME)
+                    .is_some_and(|t| t.elapsed() >= self.min_uptime)
             {
                 continue;
             }

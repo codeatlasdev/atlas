@@ -23,6 +23,8 @@ All footage is real: recorded from the Atlas Desktop debug build (window capture
 | `loop-tui.mp4` / `.webm` / `-poster.jpg` | 1280x800, 24 fps, silent, 8s, <600KB, the current `atlas dev` log UX; cut from the vhs take (`bun studio capture tui tui`) by `bun studio loops` |
 | `shot-{workspace,panel,logs,terminal,agents}.jpg` | 2000px wide stills of the real app: the window PNG of the matching `shot` step of the recipe |
 
+The app footage and stills show Atlas Dark, the app's default theme (the capture's seeded settings set no theme). Captures are 1248x780 windows (2496x1560 frames at 2x), the largest the agent display admits; `bun studio loops` scales them to the loops' 1280x800.
+
 ## How the lint judges them
 
 `bun studio lint site/public/media` must report 0 errors. Loops and `.webm` siblings use the `site-loop` / `site-sibling` profiles, and `shot-*.jpg` and the loops' posters use `site-shot`: all `captured`, so the app's own UI text (13 px at 1x, 6-10 px when a full window is shown at 506 px) is not judged against a legibility floor that only authored titles can meet. Framing (the window whole, with headroom) and the audio/spec rules apply to every file. The film posters are composed frames and keep the strict `still` profile.

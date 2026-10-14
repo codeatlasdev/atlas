@@ -6,9 +6,9 @@
 
 import type { AppClipScene, Cut, NarrationLine, Scene, TerminalScene, TitleScene, VoiceSpec } from "../../src/lib/types.ts";
 
-const APP_CROP = { x: 0, y: 4, w: 2560, h: 1576 };
+const APP_CROP = { x: 0, y: 4, w: 2496, h: 1556 };
 /** `box` is ignored by a camera scene (the viewport replaces it); it is the source cut's own 16:9 placement. */
-const BOX = { x: "center", y: "center", w: 1520, h: 936 } as const;
+const BOX = { x: "center", y: "center", w: 1500, h: 936 } as const;
 
 const beat = (id: string, clip: string, from: number, focus: NonNullable<AppClipScene["focus"]>, headline: { title: string; subtitle: string }): AppClipScene => ({
 	id,

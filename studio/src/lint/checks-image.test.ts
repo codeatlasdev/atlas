@@ -190,6 +190,12 @@ describe("what is NOT a defect (false positives found scanning the published med
 		expect(checkEdgeClipping(await load("window-only-poster.jpg"), still)).toEqual([]);
 	});
 
+	test("a dark window-only loop frame (Atlas Dark, 1280x800) is the picture, not content cut by the frame (loop-panel/logs/mcp/terminal, 1.5.0-alpha.7)", async () => {
+		// Incident: after Atlas Dark the loops bled only top and bottom (the dark bezel is within `thresh` of the corner
+		// colours on the sides), so the all-four-sides exemption no longer applied and 28 frame/edge-clipped errors came out.
+		expect(checkEdgeClipping(await load("window-only-dark-loop.jpg"), PROFILES["site-loop"]!)).toEqual([]);
+	});
+
 	test("a dense terminal on a field is not 'sliced' on its sides: text runs to a terminal's left/right edges", async () => {
 		// Only top/bottom can be sliced. (This 1040-in-1080 terminal DOES lack side headroom, a separate, real finding.)
 		const d = checkEdgeClipping(await load("terminal-on-field.jpg"), still);
@@ -201,6 +207,17 @@ describe("what is NOT a defect (false positives found scanning the published med
 		const sides = d.filter((x) => x.code === "frame/edge-clipped").map((x) => x.fix?.params?.side);
 		expect(sides).toEqual(["left", "right"]);
 		expect(d[0]!.fix?.params?.add).toBeGreaterThan(0);
+	});
+
+	test("a whole window over a dark aurora field is boxed at its own edges, not grown up into the headline (window-cropped false positive, site film 1.5.0-alpha.7)", async () => {
+		// Incident: after Atlas Dark (near-black, blue-tinted) replaced the grey look, film-vertical.mp4 failed
+		// frame/window-cropped at 22.5 s on a window that is whole. `mergeAligned` grew the box 630 px up over the
+		// headline (rows whose edge columns merely resemble the bezel in a dark field), so the "top edge" it measured was
+		// aurora, std 26.8. The real window starts at row 700 of this 1080x1920 frame and ends at 1310.
+		const r = analyzeSubject(await load("vertical-window-dark-field.jpg"));
+		expect(r.box!.y).toBeGreaterThanOrEqual(690);
+		expect(r.box!.y + r.box!.h).toBeLessThanOrEqual(1320);
+		expect(checkEdgeClipping(await load("vertical-window-dark-field.jpg"), PROFILES["social-vertical"]!).filter((d) => d.code === "frame/window-cropped")).toEqual([]);
 	});
 
 	test("a synthetic window with intact chrome on a field has no findings on any side", () => {

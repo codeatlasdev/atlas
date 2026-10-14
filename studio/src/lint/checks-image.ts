@@ -125,6 +125,13 @@ function edgeSubjectShare(mask: Uint8Array, w: number, h: number, side: "top" | 
 	return hit / n;
 }
 
+/** True when both outer columns of the frame (3 px in, between the corners) are a flat line: a window's own bezel. */
+function sideBezelFlat(img: Image): boolean {
+	const y0 = Math.round(img.h * 0.08);
+	const y1 = img.h - y0;
+	return [3, img.w - 4].every((x) => lineStd(img, y0, y1, (t) => [x, t]) < SLICE_STD / 3);
+}
+
 export function checkEdgeClipping(img: Image, profile: Profile): Diagnostic[] {
 	const { box, edgeStd } = analyzeSubject(img);
 	if (!box || !edgeStd) {
@@ -132,6 +139,10 @@ export function checkEdgeClipping(img: Image, profile: Profile): Diagnostic[] {
 		// runs off 3+ sides the picture IS the content (a window-only screenshot): there is no frame to judge.
 		const bleeding = bleedingSides(img);
 		if (bleeding.length >= 3) return [];
+		// A whole window that fills the frame (a loop frame): top and bottom bleed, but its left and right edge columns are a
+		// flat bezel (luminance std ~ 0; measured 0-2 on every window-only fixture). On the dark Atlas look the side bezel
+		// sits within `bleedingSides`' threshold of the corner colour, so the all-sides rule above no longer sees it.
+		if (bleeding.length === 2 && bleeding.includes("top") && bleeding.includes("bottom") && sideBezelFlat(img)) return [];
 		// A cut subject is subject-coloured along the edge it runs off, so the subject mask sees it there (1.00 on every
 		// real case measured). A textured background (the aurora behind a title card, whose band crosses an edge) fools
 		// the corner-blend model but is not subject to the mask (0.00): that edge is field, not content. The exception is

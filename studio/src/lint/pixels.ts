@@ -242,14 +242,25 @@ function mergeAligned(mask: Uint8Array, img: Image, box: Rect): Rect {
 	};
 	let top = box.y;
 	let bottom = box.y + box.h - 1;
-	// skip over holes: look ahead up to the box's own height for the next row where both bezel edges are present
+	// skip over holes: look ahead up to the box's own height for the next row where both bezel edges are present.
+	// A bezel is a CONTINUOUS line: a run of edge rows shorter than `minRun` is a coincidence (a light streak or star
+	// whose colour is near the bezel's in a dark field: runs of 1-6 rows on a 606 px window, 1.5.0-alpha.7 film) and is
+	// ignored; the real edge runs measure >= 112 rows on the fixtures.
+	const minRun = Math.max(8, Math.round(box.h * 0.02));
 	const reach = (from: number, dir: 1 | -1) => {
 		let last = from;
 		for (let y = from + dir, miss = 0; y >= 0 && y < h && miss < box.h * 1.5; y += dir) {
-			if (hasEdges(y)) {
-				last = y;
+			if (!hasEdges(y)) {
+				miss++;
+				continue;
+			}
+			let end = y;
+			while (end + dir >= 0 && end + dir < h && hasEdges(end + dir)) end += dir;
+			if (Math.abs(end - y) + 1 >= minRun) {
+				last = end;
 				miss = 0;
-			} else miss++;
+			} else miss += Math.abs(end - y) + 1;
+			y = end;
 		}
 		return last;
 	};

@@ -8,17 +8,17 @@ import { socialRenditions, socialSource } from "./social.ts";
 // ---- 16:9 -------------------------------------------------------------------------------------------------------
 
 /**
- * App footage is the six captures of `recipes/site-media.ts` (`bun studio run`): the real app in agent mode, Dracula,
- * with the window buttons hidden by the recorder (no OS "being shared" pill). Each frame is 2560x1580: the window
- * (2560x1576, 2x) starts at row 4, the 4 rows above are the wallpaper of the private virtual display. Cropping the
+ * App footage is the six captures of `recipes/site-media.ts` (`bun studio run`): the real app in agent mode, Atlas Dark (the default theme),
+ * with the window buttons hidden by the recorder (no OS "being shared" pill). Each frame is 2496x1560 (the 1248x780 window the agent display admits, 2x): the window
+ * (2496x1556) starts at row 4, the 4 rows above are the wallpaper of the private virtual display. Cropping the
  * window EXACTLY keeps its bezel, corners and titlebar whole and leaves out the sliver, which sat above the dark
  * bezel and read as structure crossing the window's top edge (`frame/window-cropped` at 38.97 s and 58.45 s).
  * `film.test.ts` measures that row on the footage each scene plays. The box gives >= 3% headroom (the lint's rule).
  */
-const APP_CROP = { x: 0, y: 4, w: 2560, h: 1576 };
-/** 1520 wide at the window's aspect is 936 high: 72 px of headroom above and below in a 1080 frame (6.7%). */
-const APP_BOX = { x: "center", y: "center", w: 1520, h: 936 } as const;
-/** The window's own corner radius is ~28 px at 2x; at the 1520/2560 scale that is ~17 px. */
+const APP_CROP = { x: 0, y: 4, w: 2496, h: 1556 };
+/** 1500 wide at the window's aspect is 936 high: 72 px of headroom above and below in a 1080 frame (6.7%). */
+const APP_BOX = { x: "center", y: "center", w: 1500, h: 936 } as const;
+/** The window's own corner radius is ~28 px at 2x; at the 1500/2496 scale that is ~17 px. */
 const APP_RADIUS = 17;
 
 /** Section card: headline and subtitle centered over a still of the field, 1.7 s. */

@@ -3,13 +3,14 @@
 //   bun studio run recipes/site-media.ts            (add --force to re-record)
 //   bun studio loops                                 cut + encode loop-*.mp4/.webm/-poster.jpg and shot-*.jpg into site/public/media
 //
-// Each capture starts a fresh app (Dracula, the current theme and contrast) from a fixture (capture/fixtures.ts) and a
+// Each capture starts a fresh app (Atlas Dark, the app's default theme: the seeded settings set no theme) from a fixture (capture/fixtures.ts) and a
 // script that drives it through its own stores: no OS input, no window on the user's desktop, no recording indicator
 // (the recorder is ScreenCaptureKit inside the app, with the window buttons hidden). What each file is made of is in
 // src/site-media.ts. Scripts port the 1.0 scenes of src/capture/scenes/*.ts, same pacing.
 import { RECIPE_SCHEMA, type RecipeInput } from "../src/run/recipe.ts";
 
-const size = { width: 1280, height: 800 } as const;
+/** 16:10, the largest window the agent display admits: it is 1280x820 pt, the window keeps 4 pt clear of every edge and starts below the 30 pt menu-bar band (`agent_mode::target_frame`; 1272x784 is already hidden by the watchdog). */
+const size = { width: 1248, height: 780 } as const;
 const base = { version: 1, size, fps: 60, cursor: false } as const;
 /** The Logs tab's search box and its regex toggle (aria-labels of Logs.svelte). */
 const search = 'input[aria-label="Search logs"]';

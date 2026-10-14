@@ -31,7 +31,7 @@ const recipe: RecipeInput = {
 			shots: ["welcome", "scanned"],
 			script: {
 				version: 1,
-				size: { width: 1280, height: 800 },
+				size: { width: 1248, height: 780 },
 				fps: 60,
 				cursor: true,
 				steps: [

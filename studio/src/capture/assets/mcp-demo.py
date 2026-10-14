@@ -5,6 +5,8 @@ env: ATLAS_BIN      the atlas binary to run as the MCP server (required)
      MCP_DEMO_DIR   the project directory the server serves (required)
      MCP_DEMO_HOLD  seconds to keep the final screen (default 8)
 """
+from __future__ import annotations
+
 import json
 import os
 import subprocess

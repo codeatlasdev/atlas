@@ -15,8 +15,8 @@ test("every published loop and shot has a capture that records it, and every `sh
 	}
 });
 
-test("the site shows loops at 1280x800 (16:10): every capture's window is that size, so no crop or scale is needed", () => {
-	for (const c of parsed.captures) expect(c.script.size).toEqual({ width: 1280, height: 800 });
+test("every capture's window is 16:10 and the largest the agent display admits (1248x780: 1272x784 is hidden by the window watchdog), so the loops' 1280x800 scale is exact", () => {
+	for (const c of parsed.captures) expect(c.script.size).toEqual({ width: 1248, height: 780 });
 });
 
 test("a loop fits inside its capture: it starts after the settle and ends before the recording does", () => {

@@ -1,4 +1,5 @@
 name: Release
+run-name: Release ${{ inputs.tag || github.ref_name }}
 
 # Runs on GitHub-hosted runners when a v* tag is pushed (`bun run release` pushes it), or by hand for an
 # existing tag (`bun run release --publish vX.Y.Z`, which dispatches this workflow from main with `tag`).

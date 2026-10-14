@@ -353,6 +353,7 @@ dependencies = [
  "chrono",
  "dirs",
  "dispatch2",
+ "gio",
  "libc",
  "notify",
  "objc2",

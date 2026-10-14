@@ -394,6 +394,26 @@ async fn late_running_event_for_an_exited_child_is_ignored() {
     m.stop_all().await;
 }
 
+/// The class of the race above: a watcher of the PREVIOUS spawn (its MIN_UPTIME timer started
+/// before a restart) delivers Running while the new child is alive but has only just started.
+/// Running for a no-probe service is accepted only after MIN_UPTIME of the current spawn.
+#[tokio::test]
+async fn late_running_event_for_a_fresh_respawn_is_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut m, _rx) = manager(&dir, vec![("worker", svc("sleep 30"))]);
+    m.start_app_services(&names(&["worker"])).await;
+    // The spawn is "just now", whatever the machine's load made start_app_services cost.
+    m.services.get_mut("worker").unwrap().sched.spawned_at = Some(std::time::Instant::now());
+    m.update_state("worker", ServiceState::Running);
+    assert_ne!(m.get_state("worker"), Some(ServiceState::Running));
+    // Once the current spawn is older than MIN_UPTIME, the same event is accepted.
+    m.services.get_mut("worker").unwrap().sched.spawned_at =
+        Some(std::time::Instant::now() - super::types::MIN_UPTIME);
+    m.update_state("worker", ServiceState::Running);
+    assert_eq!(m.get_state("worker"), Some(ServiceState::Running));
+    m.stop_all().await;
+}
+
 /// A port-less service that stays alive past MIN_UPTIME does turn Running.
 #[tokio::test]
 async fn portless_service_runs_after_min_uptime() {

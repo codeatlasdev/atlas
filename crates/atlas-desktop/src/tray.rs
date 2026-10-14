@@ -1,6 +1,11 @@
-//! Menu-bar popover. Left click on the tray icon toggles a borderless, translucent,
+//! Tray icon and menu-bar popover. On macOS a left click on the icon toggles a borderless, translucent,
 //! always-on-top window (`tray`, route `/tray`) under the icon; right click keeps a small
 //! native menu. The window is built once, hidden, and only moved/shown afterwards.
+//!
+//! Linux: the icon is an AppIndicator/StatusNotifier item. Hosts deliver no click events (only the menu works),
+//! so the menu is the whole UI there (Show / Hide, Quit; see [`lifecycle::tray_menu`]). The icon is drawn only
+//! when something on the session bus hosts it, which [`reachable`] asks; `main.rs` uses that to decide whether
+//! closing the window may hide it (`lifecycle.rs`).
 //!
 //! The popover has no stores of its own: the main window publishes a snapshot
 //! (`tray_publish`), Rust caches it and forwards it as `tray://snapshot`; clicks come back
@@ -15,6 +20,8 @@ use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Rect, State, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
+
+use crate::lifecycle::{self, TrayItem};
 
 pub const LABEL: &str = "tray";
 const WIDTH: f64 = 360.0;
@@ -159,37 +166,128 @@ fn toggle(app: &AppHandle, icon: &Rect) {
     }
 }
 
-/// Right-click menu: just the essentials, everything else lives in the popover.
+const ID_OPEN: &str = "open";
+const ID_TOGGLE: &str = "toggle";
+const ID_QUIT: &str = "quit";
+
+/// The tray's native menu, from [`lifecycle::tray_menu`]. Quit is a plain item handled in [`on_menu`]: the
+/// predefined `quit` only exists on macOS (muda's GTK backend renders it as a disabled entry that never fires).
 fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::new(app)?;
-    menu.append(&MenuItem::with_id(
-        app,
-        "open",
-        "Open Atlas",
-        true,
-        None::<&str>,
-    )?)?;
-    menu.append(&PredefinedMenuItem::separator(app)?)?;
-    menu.append(&PredefinedMenuItem::quit(app, Some("Quit Atlas"))?)?;
+    for item in lifecycle::tray_menu(cfg!(target_os = "linux")) {
+        match item {
+            TrayItem::Open => menu.append(&MenuItem::with_id(
+                app,
+                ID_OPEN,
+                "Open Atlas",
+                true,
+                None::<&str>,
+            )?)?,
+            TrayItem::ToggleWindow => menu.append(&MenuItem::with_id(
+                app,
+                ID_TOGGLE,
+                "Show / Hide Atlas",
+                true,
+                None::<&str>,
+            )?)?,
+            TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+            TrayItem::Quit => menu.append(&MenuItem::with_id(
+                app,
+                ID_QUIT,
+                "Quit Atlas",
+                true,
+                None::<&str>,
+            )?)?,
+        }
+    }
     Ok(menu)
 }
 
-/// Create the popover window and the tray icon.
+/// Tray menu click. Quit goes through `AppHandle::exit` with an explicit code, which [`lifecycle::exit`] never blocks.
+fn on_menu(app: &AppHandle, id: &str) {
+    match id {
+        ID_OPEN => crate::show_main(app),
+        ID_TOGGLE => toggle_main(app),
+        ID_QUIT => app.exit(0),
+        _ => {}
+    }
+}
+
+/// Hide the main window when it is showing, bring it forward when it is not (hidden, minimized or behind).
+fn toggle_main(app: &AppHandle) {
+    let showing = app
+        .get_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false));
+    match app.get_window("main") {
+        Some(w) if showing => {
+            let _ = w.hide();
+        }
+        _ => crate::show_main(app),
+    }
+}
+
+/// Is somebody on the session bus hosting StatusNotifier items (KDE Plasma, GNOME with the AppIndicator extension,
+/// XFCE/Cinnamon/MATE/waybar trays)? Without one the icon is created but drawn nowhere. Every such host owns
+/// `org.kde.StatusNotifierWatcher`; libayatana-appindicator itself only registers with it. Any failure to ask (no
+/// session bus, no reply in 1.5 s) counts as "no host": the safe answer, because it makes closing quit.
+#[cfg(target_os = "linux")]
+fn tray_host_present() -> bool {
+    use gio::prelude::*;
+    let Ok(bus) = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) else {
+        return false;
+    };
+    bus.call_sync(
+        Some("org.freedesktop.DBus"),
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "NameHasOwner",
+        Some(&("org.kde.StatusNotifierWatcher",).to_variant()),
+        Some(gio::glib::VariantTy::new("(b)").expect("static type string")),
+        gio::DBusCallFlags::NONE,
+        1500,
+        None::<&gio::Cancellable>,
+    )
+    .ok()
+    .and_then(|v| v.get::<(bool,)>())
+    .is_some_and(|(owned,)| owned)
+}
+
+/// Tray hosts are a Linux concern; the macOS menu bar always exists.
+#[cfg(not(target_os = "linux"))]
+fn tray_host_present() -> bool {
+    true
+}
+
+/// May the main window hide into the background right now? Asks the session bus each time (a host can appear after
+/// the app starts: a GNOME extension enabled later, a panel that registers late at login). False only when [`start`]
+/// ran and no host owns the StatusNotifierWatcher: then a hidden window could never be brought back. Without a tray
+/// (agent instances, `agent_mode::tray_allowed`: none by design, driven over the debug bridge) it is true, which
+/// keeps their close-hides behavior. Called on close/exit requests only, never in a loop.
+pub fn reachable(app: &AppHandle) -> bool {
+    app.try_state::<TrayState>().is_none() || tray_host_present()
+}
+
+/// The tray glyph: white on Linux (hosts draw the PNG as is on dark panels), the black template on macOS (tinted by
+/// the system). Both are rendered from `assets/tray-template.svg` by `scripts/icons.ts`.
+fn icon() -> tauri::Result<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(if cfg!(target_os = "linux") {
+        include_bytes!("../icons/tray-linux.png")
+    } else {
+        include_bytes!("../icons/tray.png")
+    })
+}
+
+/// Create the popover window and the tray icon. On Linux the popover is built but never opened (no click events
+/// there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
     build(app)?;
     TrayIconBuilder::with_id("main")
-        .icon(tauri::image::Image::from_bytes(include_bytes!(
-            "../icons/tray.png"
-        ))?)
-        .icon_as_template(true)
+        .icon(icon()?)
+        .icon_as_template(!cfg!(target_os = "linux"))
         .menu(&menu(app)?)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, ev| {
-            if ev.id().as_ref() == "open" {
-                crate::show_main(app);
-            }
-        })
+        .on_menu_event(|app, ev| on_menu(app, ev.id().as_ref()))
         .on_tray_icon_event(|tray, ev| {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,

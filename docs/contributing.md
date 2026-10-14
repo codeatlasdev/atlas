@@ -130,6 +130,7 @@ The Atlas mark has **one source**: [`assets/logo.svg`](https://github.com/codeat
 | `assets/app-icon.svg`, `assets/app-icon-1024.png` | README, the Tauri icon set |
 | `crates/atlas-desktop/icons/{32x32,128x128,128x128@2x,icon}.png`, `icon.icns`, `icon.ico` | the app bundle: Dock, Cmd-Tab, Finder, **notifications** |
 | `crates/atlas-desktop/icons/tray.png`, `assets/tray-template.svg` | menu bar (monochrome template; macOS tints it) |
+| `crates/atlas-desktop/icons/tray-linux.png` | Linux tray (the same glyph in white: AppIndicator hosts do not tint) |
 | `assets/logo-animated.svg` | README/docs animation |
 | `site/public/{favicon.svg,favicon.ico,apple-touch-icon.png}` | the website |
 | `studio/assets/logo/logo.svg` | studio films |

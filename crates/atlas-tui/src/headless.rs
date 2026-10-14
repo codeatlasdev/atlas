@@ -90,6 +90,10 @@ pub async fn run_ci(
                 ManagerEvent::ServiceNote { name, message } => {
                     eprintln!("  {name}: {message}");
                 }
+                ManagerEvent::InfraFailed { names, reason } => {
+                    eprintln!("  infra {}: {reason}", names.join(", "));
+                    manager.record_failure(&names, &reason);
+                }
                 ManagerEvent::LogReady { name } => manager.mark_log_ready(&name),
                 ManagerEvent::TunnelState { state } => {
                     eprintln!("  tunnel: {state:?}");

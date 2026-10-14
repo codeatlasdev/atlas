@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use super::ServiceManager;
-use super::types::{ManagerEvent, STOP_GRACE};
+use super::types::{INFRA_PORT_WAIT, ManagerEvent, STOP_GRACE};
 use crate::runtime::service::ServiceState;
 
 impl ServiceManager {
@@ -72,14 +70,17 @@ impl ServiceManager {
             {
                 let _ = tx.send(ManagerEvent::CriticalAlert {
                     service: "docker".to_string(),
-                    message: format!(
-                        "Docker daemon not available or compose failed (is OrbStack / Docker \
-                         Desktop running?): {reason}"
-                    ),
+                    message: reason.clone(),
                 });
-                for (name, _) in &infra_checks {
+                // Reason first (card note + service log), then the Failed state it explains.
+                let names: Vec<String> = infra_checks.iter().map(|(n, _)| n.clone()).collect();
+                let _ = tx.send(ManagerEvent::InfraFailed {
+                    names: names.clone(),
+                    reason,
+                });
+                for name in names {
                     let _ = tx.send(ManagerEvent::StateChanged {
-                        name: name.clone(),
+                        name,
                         state: ServiceState::Failed,
                     });
                 }
@@ -97,16 +98,27 @@ impl ServiceManager {
                         let ok = crate::runtime::health::wait_for_port(
                             "127.0.0.1",
                             port,
-                            Duration::from_secs(30),
+                            INFRA_PORT_WAIT,
                         )
                         .await;
-                        (name, ok)
+                        (name, port, ok)
                     })
                 })
                 .collect();
 
             for handle in handles {
-                if let Ok((name, ok)) = handle.await {
+                if let Ok((name, port, ok)) = handle.await {
+                    if !ok {
+                        let _ = tx.send(ManagerEvent::InfraFailed {
+                            names: vec![name.clone()],
+                            reason: format!(
+                                "nothing is listening on :{port} after {}s: the container did not \
+                                 start, exited, or maps another port (check `docker compose ps` and \
+                                 `docker compose logs`)",
+                                INFRA_PORT_WAIT.as_secs()
+                            ),
+                        });
+                    }
                     let state = if ok {
                         ServiceState::Running
                     } else {
@@ -117,6 +129,29 @@ impl ServiceManager {
             }
             let _ = tx.send(ManagerEvent::InfraReady { app_names });
         });
+    }
+
+    /// Record why `names` are Failed, where every reader looks: the card note (`fail_reason`, first line
+    /// of `reason`), `.logs/<name>.log` (MCP, `atlas logs`) and the live buffer (`LogLine` → View
+    /// logs). A service with no process (command-less infra, a spawn that failed) has no output that
+    /// could carry the reason, so without this it looked identical to one that never started. Applied
+    /// by every event loop for `ManagerEvent::InfraFailed`, and called directly for a failed spawn.
+    pub fn record_failure(&mut self, names: &[String], reason: &str) {
+        for name in names {
+            let Some(svc) = self.services.get_mut(name) else {
+                continue;
+            };
+            svc.sched.fail_reason = Some(reason.lines().next().unwrap_or(reason).to_string());
+            for line in reason.lines().filter(|l| !l.trim().is_empty()) {
+                self.append_log_mark(name, line);
+                let _ = self.event_tx.send(ManagerEvent::LogLine {
+                    name: name.clone(),
+                    line: line.to_string(),
+                    stream: crate::runtime::logs::LogStream::Stderr,
+                });
+            }
+        }
+        let _ = self.event_tx.send(ManagerEvent::StatusChanged);
     }
 
     /// Phase 3: start app services once infra is ready (`ManagerEvent::InfraReady`).

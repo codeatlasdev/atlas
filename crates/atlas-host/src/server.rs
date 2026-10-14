@@ -131,21 +131,61 @@ fn hostname() -> String {
 }
 
 /// Hold an exclusive `flock` on the pid file for the daemon's lifetime.
+///
+/// The lock can outlive its daemon: a process that inherited the fd (before received fds were
+/// close-on-exec, every child of a daemon that had taken over) keeps it after the daemon dies.
+/// Then no hostd is behind the lock and it is orphaned: rather than refusing forever
+/// (1.5.0-alpha.8, "another atlas hostd is running" on every start), we move that pid file aside
+/// and lock a fresh one. A live atlas hostd named by the pid file is never bypassed.
 pub(crate) fn lock_pid(dir: &Path) -> Result<std::fs::File> {
-    use std::io::Write;
+    let path = paths::pid(dir);
+    if let Some(f) = try_lock(&path)? {
+        return write_pid(f);
+    }
+    if crate::client::live_hostd_pid(dir).is_some() {
+        return Err(another_running(dir));
+    }
+    // Serialize recoveries: two starters must not both move the file aside and lock a copy each.
+    let guard = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(dir.join("hostd.pid.recover"))?;
+    // SAFETY: valid fd owned by `guard`; blocking until the other recovery is done.
+    unsafe { libc::flock(guard.as_raw_fd(), libc::LOCK_EX) };
+    // Re-check under the guard: an earlier recovery may already hold a fresh pid file.
+    if let Some(f) = try_lock(&path)? {
+        return write_pid(f);
+    }
+    if crate::client::live_hostd_pid(dir).is_some() {
+        return Err(another_running(dir));
+    }
+    std::fs::rename(&path, dir.join("hostd.pid.orphaned"))?;
+    match try_lock(&path)? {
+        Some(f) => write_pid(f),
+        None => Err(another_running(dir)),
+    }
+}
+
+fn another_running(dir: &Path) -> anyhow::Error {
+    anyhow!("another atlas hostd is running ({})", dir.display())
+}
+
+/// Open (create) `path` and take a non-blocking exclusive `flock`; `None` when it is held.
+fn try_lock(path: &Path) -> Result<Option<std::fs::File>> {
     let f = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(paths::pid(dir))?;
+        .open(path)?;
     // SAFETY: valid fd owned by `f`.
-    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(anyhow!(
-            "another atlas hostd is running ({})",
-            dir.display()
-        ));
-    }
+    let held = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0;
+    Ok((!held).then_some(f))
+}
+
+fn write_pid(f: std::fs::File) -> Result<std::fs::File> {
+    use std::io::Write;
     f.set_len(0)?;
     (&f).write_all(std::process::id().to_string().as_bytes())?;
     Ok(f)
@@ -597,4 +637,79 @@ async fn raw(
     }
     s.detach(conn_id);
     let _ = w.shutdown().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Another open file description holding the `flock`, like a process that inherited the
+    /// lock fd from a daemon that is gone.
+    fn hold(path: &Path) -> std::fs::File {
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)
+            .unwrap();
+        // SAFETY: valid fd owned by `f`.
+        assert_eq!(
+            unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+            0
+        );
+        f
+    }
+
+    fn dead_pid() -> u32 {
+        let mut c = std::process::Command::new("true").spawn().unwrap();
+        let pid = c.id();
+        c.wait().unwrap();
+        pid
+    }
+
+    /// Regression (1.5.0-alpha.8): a dead hostd's lock still held by a process that inherited
+    /// the fd (a language server started after a takeover) made every start fail with "another
+    /// atlas hostd is running", forever, and Restart went through the same path. With no live
+    /// hostd behind it, the lock is orphaned: the new daemon takes a fresh pid file.
+    #[test]
+    fn a_lock_held_without_a_live_hostd_is_recovered() {
+        let dir = tempfile::tempdir().unwrap();
+        let _orphan = hold(&paths::pid(dir.path()));
+        std::fs::write(paths::pid(dir.path()), dead_pid().to_string()).unwrap();
+        let _lock = lock_pid(dir.path()).expect("orphaned lock is recovered");
+        let written = std::fs::read_to_string(paths::pid(dir.path())).unwrap();
+        assert_eq!(written, std::process::id().to_string());
+    }
+
+    /// The pid file can name a recycled pid that now belongs to an unrelated live process.
+    #[test]
+    fn a_lock_whose_pid_is_not_a_hostd_is_recovered() {
+        let dir = tempfile::tempdir().unwrap();
+        let _orphan = hold(&paths::pid(dir.path()));
+        std::fs::write(paths::pid(dir.path()), std::process::id().to_string()).unwrap();
+        assert!(lock_pid(dir.path()).is_ok());
+    }
+
+    /// Recovery never yields two holders: the first recovery's lock stays exclusive.
+    #[test]
+    fn a_second_start_after_a_recovery_is_refused_while_the_first_holds() {
+        let dir = tempfile::tempdir().unwrap();
+        let _orphan = hold(&paths::pid(dir.path()));
+        std::fs::write(paths::pid(dir.path()), dead_pid().to_string()).unwrap();
+        let _first = lock_pid(dir.path()).unwrap();
+        // What a second daemon's own flock would do on the pid file now in place.
+        let second = hold_attempt(dir.path());
+        assert!(second.is_err(), "the recovered lock must stay exclusive");
+    }
+
+    /// A plain flock attempt on the current pid file, as a second daemon's would start.
+    fn hold_attempt(dir: &Path) -> Result<std::fs::File> {
+        let f = std::fs::File::open(paths::pid(dir))?;
+        // SAFETY: valid fd owned by `f`.
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            return Err(anyhow!("held"));
+        }
+        Ok(f)
+    }
 }

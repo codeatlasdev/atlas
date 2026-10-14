@@ -159,6 +159,10 @@ pub fn recv_with_fds(sock: RawFd, buf: &mut [u8]) -> io::Result<(usize, Vec<Owne
                         (&mut fd as *mut RawFd).cast::<u8>(),
                         std::mem::size_of::<RawFd>(),
                     );
+                    // macOS has no MSG_CMSG_CLOEXEC: received fds are inheritable until we say
+                    // otherwise. Without this every child (language servers, the next hostd)
+                    // kept the pid lock and the pty masters (see the regression test below).
+                    libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
                     fds.push(OwnedFd::from_raw_fd(fd));
                 }
             }
@@ -426,6 +430,51 @@ mod tests {
         let mut got = String::new();
         pr.read_to_string(&mut got).unwrap();
         assert_eq!(got, "via-fd");
+    }
+
+    /// Regression (1.5.0-alpha.8, hostd.log of a user stuck on "another atlas hostd is running"):
+    /// fds received over `SCM_RIGHTS` came without `FD_CLOEXEC` (macOS has no `MSG_CMSG_CLOEXEC`),
+    /// so every child spawned after a takeover (pty shells, language servers, the next hostd)
+    /// inherited the pid-lock fd and the pty masters. When the daemon died, its shells still held
+    /// the `flock`: no hostd could ever start again, and fds piled up across takeovers until
+    /// "Too many open files".
+    #[test]
+    fn received_fds_are_not_inherited_by_children() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hostd.pid");
+        let lock = std::fs::File::create(&path).unwrap();
+        // SAFETY: valid fd owned by `lock`.
+        assert_eq!(
+            unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+            0
+        );
+        let (a, b) = UnixStream::pair().unwrap();
+        send_with_fds(a.as_raw_fd(), b"lock\n", &[lock.as_raw_fd()]).unwrap();
+        drop(lock);
+        let mut buf = [0u8; 16];
+        let (_, fds) = recv_with_fds(b.as_raw_fd(), &mut buf).unwrap();
+        // SAFETY: F_GETFD on an owned, open fd.
+        let flags = unsafe { libc::fcntl(fds[0].as_raw_fd(), libc::F_GETFD) };
+        assert_ne!(
+            flags & libc::FD_CLOEXEC,
+            0,
+            "received fd must be close-on-exec"
+        );
+        // A child started while we hold the received lock, like a pty shell after a takeover.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        drop(fds);
+        let again = std::fs::File::open(&path).unwrap();
+        // SAFETY: valid fd owned by `again`.
+        let free = unsafe { libc::flock(again.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(
+            free,
+            "a child of the daemon kept the pid lock after the daemon let go"
+        );
     }
 
     #[test]

@@ -36,6 +36,7 @@ export const RASTERS = [
 	"crates/atlas-desktop/icons/icon.ico",
 	"crates/atlas-desktop/icons/icon.icns",
 	"crates/atlas-desktop/icons/tray.png",
+	"crates/atlas-desktop/icons/tray-linux.png",
 	"site/public/apple-touch-icon.png",
 	"site/public/favicon.ico",
 ];
@@ -151,6 +152,9 @@ export function renderRasters(svgRoot: string, dest: string) {
 
 	// menu bar: MUST stay monochrome (tray.rs sets icon_as_template(true); macOS tints by alpha). 44px = 22pt @2x.
 	run("rsvg-convert", ["-w", "44", "-h", "44", svg("assets/tray-template.svg"), "-o", put("crates/atlas-desktop/icons/tray.png")]);
+	// Linux panel: AppIndicator hosts (GNOME's extension, KDE Plasma) draw the PNG as is, with no template tinting, and
+	// the panels are dark by default, so the black template would vanish. Same glyph, white, alpha kept (tray.rs picks it).
+	run("magick", [join(dest, "crates/atlas-desktop/icons/tray.png"), "-channel", "RGB", "-negate", "+channel", put("crates/atlas-desktop/icons/tray-linux.png")]);
 
 	// web: favicon.ico (16 + 32, transparent) and the touch icon (opaque white tile, mark at 130/180)
 	const mark = svg("assets/logo.svg");

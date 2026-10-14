@@ -18,6 +18,7 @@ mod diag;
 mod display_mac;
 mod git;
 mod host;
+mod lifecycle;
 mod live;
 mod live_server;
 mod menu;
@@ -397,10 +398,16 @@ fn main() {
         })
         .on_menu_event(|app, ev| menu::on_event(app, ev.id().as_ref()))
         .on_window_event(|win, ev| match ev {
-            // Closing hides; stacks keep running in their runners. ⌘Q quits.
+            // Closing hides while the tray can bring the window back; stacks keep running in their runners.
+            // ⌘Q / the tray's Quit exit. With no tray host (Linux without an AppIndicator host) there is no way
+            // back to a hidden window, so closing the main window quits (lifecycle.rs).
             WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                let _ = win.hide();
+                if win.label() != "main"
+                    || lifecycle::close(tray::reachable(win.app_handle())) == lifecycle::Close::Hide
+                {
+                    api.prevent_close();
+                    let _ = win.hide();
+                }
             }
             // window-state's restored position lands as the first move, after setup
             // and Ready; check it once there.
@@ -439,6 +446,13 @@ fn main() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = ev {
                 show_main(app);
+            }
+            // An exit the user did not ask for (the last window going away) is held while the tray can reopen the
+            // app; an explicit `exit(code)` (tray Quit, ⌘Q, the updater's restart) always goes through.
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = &ev
+                && lifecycle::exit(*code, tray::reachable(app)) == lifecycle::Exit::Prevent
+            {
+                api.prevent_exit();
             }
             // Quitting with "restart when idle" armed and no terminal left: end the old host now.
             if matches!(ev, tauri::RunEvent::Exit) {

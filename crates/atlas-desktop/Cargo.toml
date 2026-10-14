@@ -62,6 +62,11 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 dispatch2 = "0.3"
 atlas-term = { path = "../atlas-term" }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Already in the graph through wry/gtk (same 0.18 line); used to ask the session bus whether a StatusNotifier host
+# exists (tray.rs), because a tray icon with no host is silently invisible.
+gio = "0.18"
+
 [dev-dependencies]
 serde_norway = { workspace = true }
 

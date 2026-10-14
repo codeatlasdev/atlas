@@ -111,6 +111,13 @@ pub enum ManagerEvent {
     InfraReady {
         app_names: Vec<String>,
     },
+    /// Docker/compose could not bring infra up, or an infra port never opened: these
+    /// command-less services are Failed with `reason` (card note, service log, View logs).
+    /// Applied by every event loop through `ServiceManager::record_failure`.
+    InfraFailed {
+        names: Vec<String>,
+        reason: String,
+    },
     /// Signal from OS (SIGTERM/SIGHUP) — triggers graceful quit.
     Quit,
     /// Mobile build pipeline phase changed — drives the sidebar badge.
@@ -242,6 +249,8 @@ pub(crate) const WATCH_RETRY_INTERVAL: std::time::Duration = std::time::Duration
 pub(crate) const WATCH_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// Shared SIGTERM→SIGKILL grace when stopping service trees.
 pub(crate) const STOP_GRACE: std::time::Duration = std::time::Duration::from_millis(800);
+/// How long an infra service's port may stay closed after `docker compose up -d` before it is Failed.
+pub(crate) const INFRA_PORT_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 impl Sched {
     /// Feed a state transition into the stability clock (restart counter reset).

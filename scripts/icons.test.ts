@@ -80,6 +80,20 @@ describe.skipIf(!haveRasterTools())("rasters match a fresh render of the sources
 		expect(clean).toEqual([]);
 	});
 
+	// Incident (Linux tray): AppIndicator hosts do not tint, so the black macOS template was invisible on the default
+	// dark GNOME/KDE panels. The Linux icon is the same glyph (same alpha) with white pixels.
+	test("the Linux tray icon is the template glyph in white, with the same alpha", () => {
+		// `txt:` lists every pixel as `x,y: (...) #RRGGBBAA ...`; the hex column is the same whatever channel layout
+		// ImageMagick decoded the PNG into (this one is gray+alpha).
+		const [mac, linux] = ["tray.png", "tray-linux.png"].map((f) =>
+			[...Bun.spawnSync(["magick", abs(`crates/atlas-desktop/icons/${f}`), "-depth", "8", "-alpha", "on", "-colorspace", "sRGB", "txt:-"]).stdout.toString().matchAll(/#([0-9A-F]{6})([0-9A-F]{2})/g)].map((m) => ({ rgb: m[1], a: m[2] })),
+		);
+		expect(linux!.length).toBe(44 * 44);
+		expect(linux!.map((p) => p.a)).toEqual(mac!.map((p) => p.a));
+		expect(linux!.some((p) => p.a !== "00")).toBe(true);
+		for (const p of linux!) if (p.a !== "00") expect(p.rgb).toBe("FFFFFF");
+	});
+
 	test("a hand-painted raster is caught by its pixels even when the sources are untouched", () => {
 		const f = "site/public/apple-touch-icon.png";
 		const before = readFileSync(abs(f));

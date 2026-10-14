@@ -65,7 +65,7 @@ impl ServiceManager {
             return;
         };
         if command.trim().is_empty() {
-            self.set_state_if_changed(name, ServiceState::Failed);
+            self.fail_to_start(name, "could not start: the service command is empty");
             return;
         }
 
@@ -299,8 +299,18 @@ impl ServiceManager {
                 });
                 self.sync_pid_file();
             }
-            Err(_) => self.set_state_if_changed(name, ServiceState::Failed),
+            Err(e) => {
+                let wd = dir.as_deref().map_or(".".to_string(), str::to_string);
+                self.fail_to_start(name, &format!("could not start `{command}` in {wd}: {e}"));
+            }
         }
+    }
+
+    /// A start that never produced a process: no pipe will ever carry a reason, so say it here: the
+    /// card note (`fail_reason`), the service's log on disk and the live View logs buffer.
+    pub(crate) fn fail_to_start(&mut self, name: &str, reason: &str) {
+        self.record_failure(&[name.to_string()], reason);
+        self.set_state_if_changed(name, ServiceState::Failed);
     }
 
     pub(crate) async fn stop_service(&mut self, name: &str) {

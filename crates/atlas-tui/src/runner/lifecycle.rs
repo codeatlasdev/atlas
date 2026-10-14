@@ -230,6 +230,10 @@ async fn handle_event(manager: &mut ServiceManager, event: ManagerEvent, foregro
         ManagerEvent::ServiceNote { name, message } => {
             eprintln!("\x1b[36m↻\x1b[0m {name}: {message}");
         }
+        ManagerEvent::InfraFailed { names, reason } => {
+            eprintln!("\x1b[31m✗\x1b[0m infra {}: {reason}", names.join(", "));
+            manager.record_failure(&names, &reason);
+        }
         ManagerEvent::LogReady { name } => manager.mark_log_ready(&name),
         ManagerEvent::TunnelState { state } => {
             eprintln!("\x1b[36m⇄\x1b[0m tunnel: {state:?}");

@@ -86,6 +86,9 @@ impl App {
                 self.set_toast(format!("pre_command failed: {reason}"), ToastVariant::Error);
                 self.deps_done();
             }
+            ManagerEvent::InfraFailed { names, reason } => {
+                self.manager.record_failure(&names, &reason);
+            }
             ManagerEvent::InfraReady { app_names } => {
                 if self.deps_pending {
                     self.held_app_start = Some(app_names);

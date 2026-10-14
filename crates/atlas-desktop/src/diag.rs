@@ -25,8 +25,9 @@ use std::sync::LazyLock;
 use parking_lot::Mutex;
 use serde::Serialize;
 
-/// Bytes of a log read from its end; a report stays pasteable and a URL stays under GitHub's limit.
-const TAIL_BYTES: u64 = 16 * 1024;
+/// Bytes of a log read from its end before collapsing repeats. The report is bounded by
+/// [`TAIL_LINES`], so this only has to reach past a burst of one repeated error to its cause.
+const TAIL_BYTES: u64 = 1024 * 1024;
 /// Lines of a tail that go into a report.
 const TAIL_LINES: usize = 40;
 /// Incidents kept in memory.
@@ -235,8 +236,9 @@ pub fn install_panic_hook() {
     }));
 }
 
-/// Last [`TAIL_LINES`] lines of `path` (reading at most [`TAIL_BYTES`] from its end), redacted.
-/// Empty when the file is missing or unreadable.
+/// Last [`TAIL_LINES`] lines of `path` (reading at most [`TAIL_BYTES`] from its end), ANSI escapes
+/// stripped, runs of identical lines collapsed into one `(repeated N×)` line so a burst of the same
+/// error cannot push its cause out of the tail, and redacted. Empty when missing or unreadable.
 pub fn tail(path: &Path) -> String {
     let Ok(mut f) = std::fs::File::open(path) else {
         return String::new();
@@ -250,14 +252,31 @@ pub fn tail(path: &Path) -> String {
     if f.read_to_end(&mut buf).is_err() {
         return String::new();
     }
-    let text = String::from_utf8_lossy(&buf);
-    let mut lines: Vec<&str> = text.lines().collect();
+    let text = atlas_host::strip_ansi(&String::from_utf8_lossy(&buf));
+    let mut lines = text.lines();
     // A read that began mid-file starts mid-line: drop that fragment.
-    if start > 0 && !lines.is_empty() {
-        lines.remove(0);
+    if start > 0 {
+        lines.next();
     }
-    let skip = lines.len().saturating_sub(TAIL_LINES);
-    redact(&lines[skip..].join("\n"))
+    let mut runs: Vec<(&str, usize)> = Vec::new();
+    for l in lines {
+        match runs.last_mut() {
+            Some((prev, n)) if *prev == l => *n += 1,
+            _ => runs.push((l, 1)),
+        }
+    }
+    let skip = runs.len().saturating_sub(TAIL_LINES);
+    let out: Vec<String> = runs[skip..]
+        .iter()
+        .map(|&(l, n)| {
+            if n > 1 {
+                format!("{l}  (repeated {n}×)")
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    redact(&out.join("\n"))
 }
 
 /// Replace what must never leave the machine: tokens and keys by shape and by name, `Authorization`
@@ -637,10 +656,41 @@ plain line, nothing to hide: terminal 3 exited with code 0";
     fn tail_of_a_huge_log_starts_on_a_whole_line() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("big.log");
-        let line = "x".repeat(99) + "\n";
-        std::fs::write(&p, line.repeat(5000)).unwrap();
+        // Distinct lines (identical ones would collapse) and more than TAIL_BYTES of them, so the
+        // read starts mid-file.
+        let body: String = (0..15_000).map(|i| format!("{i:0>99}\n")).collect();
+        assert!(body.len() as u64 > TAIL_BYTES);
+        std::fs::write(&p, body).unwrap();
         let t = tail(&p);
         assert!(t.lines().all(|l| l.len() == 99), "a fragment leaked in");
+    }
+
+    /// Regression (1.5.0-alpha.8 report): hostd.log ended in 1300+ copies of "another atlas hostd
+    /// is running" in red ANSI, so the report's 40-line tail was that one line 40 times with raw
+    /// escape codes, and the cause ("Too many open files", the takeovers before it) never reached
+    /// the issue. Repeats collapse into one line with a count, escapes are stripped, and the lines
+    /// before the burst stay in the tail.
+    #[test]
+    fn tail_collapses_a_repeated_burst_and_keeps_what_came_before() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("hostd.log");
+        let mut body =
+            String::from("atlas hostd 1.5.0-alpha.5 listening (pid 73595, took over 7 pty(s))\n");
+        body.push_str("\x1b[1;31merror:\x1b[0m Too many open files (os error 24)\n");
+        for _ in 0..1331 {
+            body.push_str("\x1b[1;31merror:\x1b[0m another atlas hostd is running (~/.atlas)\n");
+        }
+        std::fs::write(&p, body).unwrap();
+        let t = tail(&p);
+        assert!(!t.contains('\x1b'), "ANSI escapes leaked: {t}");
+        assert!(t.contains("Too many open files"), "{t}");
+        assert!(t.contains("took over 7 pty(s)"), "{t}");
+        assert_eq!(
+            t.matches("another atlas hostd is running").count(),
+            1,
+            "{t}"
+        );
+        assert!(t.contains("(repeated 1331×)"), "{t}");
     }
 
     #[test]

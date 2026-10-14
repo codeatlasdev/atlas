@@ -19,14 +19,30 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 dirs = { workspace = true }
-libc = { workspace = true }
 parking_lot = { workspace = true }
 semver = { workspace = true }
+tokio = { workspace = true }
 tempfile = { workspace = true, optional = true }
 
 [features]
 # Fixtures for spawn-path tests in dependent crates (`login_env::fixtures`).
 test-fixtures = ["dep:tempfile"]
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Wdk_System_Threading",
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

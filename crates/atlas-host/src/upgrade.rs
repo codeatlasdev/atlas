@@ -15,26 +15,60 @@
 //! timeout, bad bundle) it thaws the sessions and keeps serving, and the caller gets
 //! an error. After `R` there is no way back, so the old daemon only stops serving.
 
+#[cfg(unix)]
 use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::{AsRawFd, OwnedFd};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+#[cfg(unix)]
 use std::process::Stdio;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 use anyhow::{Context, Result, anyhow};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(any(unix, test))]
+use serde_json::json;
 
+#[cfg(unix)]
 use crate::handoff::{
     Bundle, SessionState, encode_chunks, handoff_socket, recv_with_fds, send_with_fds,
 };
+#[cfg(unix)]
 use crate::paths;
 use crate::server::Hub;
 
+#[cfg(unix)]
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(unix)]
 const ACK_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Windows: a pty cannot move to another process, so there is no live upgrade (the daemon does
+/// not advertise the `upgrade` capability and clients restart it when no terminal runs).
+#[cfg(windows)]
+pub(crate) async fn run(_hub: &Hub, _exe: &str) -> Result<Value, String> {
+    let _ = Path::new("");
+    Err("live upgrade is not supported on Windows".into())
+}
+
+/// Never constructed on Windows: `serve_with` refuses `--takeover` there.
+#[cfg(windows)]
+pub(crate) struct Takeover {
+    pub lock: Option<std::fs::File>,
+}
+
+#[cfg(windows)]
+impl Takeover {
+    pub fn confirm(self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 /// Old side of the handoff, for the `upgrade` command.
+#[cfg(unix)]
 pub(crate) async fn run(hub: &Hub, exe: &str) -> Result<Value, String> {
     let exe = Path::new(exe);
     if !exe.is_file() {
@@ -43,6 +77,7 @@ pub(crate) async fn run(hub: &Hub, exe: &str) -> Result<Value, String> {
     run_inner(hub, exe).await.map_err(|e| format!("{e:#}"))
 }
 
+#[cfg(unix)]
 async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
     let sock = handoff_socket(&hub.dir, std::process::id());
     let _ = std::fs::remove_file(&sock);
@@ -116,6 +151,7 @@ async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
     Ok(json!({"handed_off": moved, "pid": child_pid}))
 }
 
+#[cfg(unix)]
 fn scopeguard(p: std::path::PathBuf) -> impl Drop {
     struct G(std::path::PathBuf);
     impl Drop for G {
@@ -127,6 +163,7 @@ fn scopeguard(p: std::path::PathBuf) -> impl Drop {
 }
 
 /// Wait for the successor to connect; fail at once if it exits first (bad binary).
+#[cfg(unix)]
 fn accept_timeout(
     l: &UnixListener,
     child: &mut std::process::Child,
@@ -154,6 +191,7 @@ fn accept_timeout(
     }
 }
 
+#[cfg(unix)]
 fn send_and_ack(
     mut s: UnixStream,
     bundle: &Bundle,
@@ -175,12 +213,14 @@ fn send_and_ack(
 
 /// What the successor got: the sessions, the already-locked pid file, and the open
 /// handoff stream, over which it confirms with `R` once it serves.
+#[cfg(unix)]
 pub(crate) struct Takeover {
     pub sessions: Vec<(SessionState, Option<OwnedFd>)>,
     pub lock: Option<std::fs::File>,
     stream: UnixStream,
 }
 
+#[cfg(unix)]
 impl Takeover {
     /// Tell the old daemon we serve now (it may exit). Until this, it stays authoritative
     /// and takes the ptys back if we die.
@@ -191,11 +231,13 @@ impl Takeover {
 }
 
 /// Successor side: connect to the old daemon and read every chunk.
+#[cfg(unix)]
 pub(crate) async fn receive(sock: &Path) -> Result<Takeover> {
     let sock = sock.to_path_buf();
     tokio::task::spawn_blocking(move || receive_blocking(&sock)).await?
 }
 
+#[cfg(unix)]
 fn receive_blocking(sock: &Path) -> Result<Takeover> {
     let s = UnixStream::connect(sock).with_context(|| format!("connect {}", sock.display()))?;
     s.set_read_timeout(Some(ACK_TIMEOUT))?;

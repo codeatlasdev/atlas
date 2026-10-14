@@ -45,7 +45,6 @@ fn read_log_tail(path: &Path) -> String {
 /// `atlas dev --detach`: validate, start the runner as a detached daemon and wait
 /// until it is reachable.
 pub async fn detach(root_dir: &Path, select: &config::SelectionRequest) -> Result<Detached> {
-    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
 
     // Fail on a bad atlas.yaml / selection here, on the user's terminal, not in a log file.
@@ -88,16 +87,8 @@ pub async fn detach(root_dir: &Path, select: &config::SelectionRequest) -> Resul
     }
     // New session: no controlling terminal, so closing this shell never signals
     // the runner (SIGHUP) and a tty read/write can never stop it (SIGTTIN/OU).
-    // SAFETY: setsid is async-signal-safe and touches no Rust state.
-    unsafe {
-        cmd.pre_exec(|| {
-            if libc::setsid() < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-    let mut child = cmd.spawn()?;
+    // Windows: out of this console (closing the window never ends it) and its job.
+    let mut child = atlas_core::sys::spawn_detached(&mut cmd)?;
     let pid = child.id() as i32;
 
     let deadline = std::time::Instant::now() + Duration::from_secs(60);
@@ -160,7 +151,7 @@ pub async fn down(root_dir: &Path, wait: Duration) -> Result<DownOutcome, String
 pub async fn wait_gone(root_dir: &Path, pid: i64, wait: Duration) -> DownOutcome {
     let deadline = std::time::Instant::now() + wait;
     while std::time::Instant::now() < deadline {
-        let alive = unsafe { libc::kill(pid as libc::pid_t, 0) == 0 };
+        let alive = atlas_core::sys::pid_alive(pid as u32);
         if !alive || SingletonLock::existing_pid(&root_dir.join(".logs/.tui.lock")).is_none() {
             return DownOutcome::Stopped { pid };
         }

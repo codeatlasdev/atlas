@@ -184,6 +184,7 @@ impl InstallMethod {
     }
 
     fn of_path(path: &str) -> Self {
+        let path = &path.replace('\\', "/");
         if path.contains("/opt/homebrew")
             || path.contains("/usr/local/Cellar")
             || path.contains("/home/linuxbrew")
@@ -211,6 +212,8 @@ pub fn current_platform() -> String {
     };
     if cfg!(target_os = "macos") {
         format!("{arch}-apple-darwin")
+    } else if cfg!(windows) {
+        format!("{arch}-pc-windows-msvc")
     } else {
         format!("{arch}-unknown-linux-gnu")
     }
@@ -512,7 +515,9 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     // `atlas link` made ~/.atlas/bin/atlas a symlink to target/debug/atlas: replacing
     // "the binary" would overwrite the dev build, not install a release.
     if !req.check_only
-        && let installed = atlas_core::paths::atlas_home().join("bin/atlas")
+        && let installed = atlas_core::paths::atlas_home()
+            .join("bin")
+            .join(atlas_core::paths::exe("atlas"))
         && installed
             .symlink_metadata()
             .is_ok_and(|m| m.file_type().is_symlink())
@@ -744,8 +749,7 @@ fn extract_tarball(data: &[u8]) -> Result<Vec<u8>> {
         let path = entry.path()?.to_path_buf();
         if path
             .file_name()
-            .map(|n| n.to_string_lossy() == "atlas")
-            .unwrap_or(false)
+            .is_some_and(|n| n.to_string_lossy() == atlas_core::paths::exe("atlas"))
         {
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
@@ -765,7 +769,7 @@ mod tests {
     #[test]
     fn test_current_platform() {
         let p = current_platform();
-        assert!(p.contains("apple-darwin") || p.contains("linux"));
+        assert!(p.contains("apple-darwin") || p.contains("linux") || p.contains("windows"));
         assert!(p.starts_with("aarch64") || p.starts_with("x86_64"));
     }
 
@@ -802,6 +806,11 @@ mod tests {
         assert_eq!(
             InstallMethod::of_path("/opt/homebrew/bin/atlas"),
             InstallMethod::Homebrew
+        );
+        // The shell installer's place on Windows (install.ps1), backslashes and all.
+        assert_eq!(
+            InstallMethod::of_path(r"C:\Users\u\.atlas\bin\atlas.exe"),
+            InstallMethod::ShellInstaller
         );
     }
 

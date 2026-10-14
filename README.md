@@ -15,7 +15,7 @@
 <p align="center">
   <a href="#contributing-security-license"><img alt="license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=flat-square"></a>
   <img alt="built with rust" src="https://img.shields.io/badge/built%20with-rust-orange?style=flat-square">
-  <img alt="platform" src="https://img.shields.io/badge/macOS%20%7C%20Linux-Apple%20silicon%20%7C%20x86__64-lightgrey?style=flat-square">
+  <img alt="platform" src="https://img.shields.io/badge/macOS%20%7C%20Linux%20%7C%20Windows-Apple%20silicon%20%7C%20x86__64-lightgrey?style=flat-square">
   <img alt="mcp" src="https://img.shields.io/badge/MCP-2025--11--25-black?style=flat-square">
   <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 3.0" src="https://img.shields.io/badge/Contributor%20Covenant-3.0-4baaaa?style=flat-square"></a>
 </p>
@@ -40,7 +40,7 @@
 Atlas is a **developer platform** that doesn't need a platform team. The thing big companies build with a dozen tools and a quarter of work (a paved road from `git clone` to a running, observable stack) is one file in your repo and one binary on your machine.
 
 - **Stack orchestration.** `atlas.yaml` describes infra, services, dependency order, health checks, restarts and actions. `atlas dev` boots it and keeps it honest.
-- **A desktop workspace.** Atlas Desktop is a native app (macOS and Linux today, Windows coming soon): a project per space, a git worktree per task, a GPU terminal, diff review, PRs and an embedded browser.
+- **A desktop workspace.** Atlas Desktop is a native app (macOS, Linux and Windows): a project per space, a git worktree per task, a GPU terminal, diff review, PRs and an embedded browser.
 - **Agents in the loop.** omp, Claude Code and Codex run in parallel worktrees, with live "working / needs you / done" status.
 - **MCP for your agents.** `atlas mcp` lets an agent read status and logs, restart a service and wait until it is healthy while you keep coding.
 
@@ -62,10 +62,12 @@ Downloads the newest release of the default update channel (the newest alpha whi
 
 ```bash
 atlas update    # checks every 6h; `atlas dev` offers to update before starting (Y/n)
-atlas desktop   # installs and opens Atlas Desktop (macOS on Apple silicon, Linux x86_64)
+atlas desktop   # installs and opens Atlas Desktop (macOS on Apple silicon, Linux x86_64, Windows x64)
 ```
 
-Atlas is for everyone; it ships platform by platform. Available now: macOS on Apple silicon and Linux x86_64, with [.deb, .rpm, Arch (`pacman -U`) and AppImage packages](docs/installation.md#linux-packages) on every release. Coming soon: Intel Macs, Linux on ARM and Windows (see the [download page](https://atlas.codeatlas.com.br/download/)). Details in the [FAQ](docs/faq.md).
+On Windows, in PowerShell: `irm https://atlas.codeatlas.com.br/install.ps1 | iex` ([what differs on Windows](docs/installation.md#windows)).
+
+Atlas is for everyone; it ships platform by platform. Available now: macOS on Apple silicon, Linux x86_64, with [.deb, .rpm, Arch (`pacman -U`) and AppImage packages](docs/installation.md#linux-packages) on every release, and Windows 10/11 on x64. Coming soon: Intel Macs and Linux on ARM (see the [download page](https://atlas.codeatlas.com.br/download/)). Details in the [FAQ](docs/faq.md).
 
 ## 60-second quickstart
 
@@ -208,12 +210,12 @@ Honest table. ✅ = built in · 🟡 = partial / via something else · ❌ = no.
 | Managed SSH tunnel | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Actions with confirm + pause services | ✅ | ❌ | ❌ | ❌ | 🟡 buttons | ❌ |
 | Detach + reattach later | ✅ `--detach` | ✅ | ✅ dekit | ✅ tmux | ✅ | ❌ |
-| Native desktop app | ✅ macOS, Linux | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Native desktop app | ✅ macOS, Linux, Windows | ❌ | ❌ | ❌ | ❌ | ❌ |
 | File-watch restart | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ `watch` |
 | Replica scaling | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Windows | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Windows | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 
-**no cap:** process-compose is the closest all-rounder and still wins on replicas and Windows. Tilt owns the k8s world. Atlas goes deepest on a bun/TS monorepo with Docker infra, mobile targets and AI agents in the loop, and is growing from there.
+**no cap:** process-compose is the closest all-rounder and still wins on replicas. Tilt owns the k8s world. Atlas goes deepest on a bun/TS monorepo with Docker infra, mobile targets and AI agents in the loop, and is growing from there.
 
 ## docs
 

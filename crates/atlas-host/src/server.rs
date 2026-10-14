@@ -1,7 +1,9 @@
 //! The daemon: singleton lock, socket, per-connection dispatch.
 
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,13 +11,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
+use atlas_core::ipc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use notify::{RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, mpsc};
 
 use crate::paths;
@@ -25,6 +27,8 @@ use crate::pty::{Out, Session};
 pub(crate) struct Hub {
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     scroll_dir: PathBuf,
+    /// Read by the Unix live upgrade only.
+    #[cfg_attr(windows, allow(dead_code))]
     pub(crate) dir: PathBuf,
     started: Instant,
     token: String,
@@ -32,7 +36,9 @@ pub(crate) struct Hub {
     stop: Notify,
     /// Signalled once the successor has taken the ptys: `serve` returns without killing.
     handed_off: Arc<Notify>,
-    /// The locked pid file; its fd travels to the successor on upgrade.
+    /// The locked pid file; its fd travels to the successor on upgrade. Held for the lock
+    /// alone on Windows.
+    #[cfg_attr(windows, allow(dead_code))]
     lock: std::fs::File,
     /// Language servers (lazy: nothing runs until a document is opened).
     pub(crate) lsp: atlas_lsp::Manager,
@@ -67,6 +73,7 @@ impl Hub {
         })
     }
 
+    #[cfg(unix)]
     pub(crate) fn lock_fd(&self) -> std::os::fd::RawFd {
         self.lock.as_raw_fd()
     }
@@ -83,11 +90,13 @@ impl Hub {
         (live, self.subscribers.lock().len())
     }
 
+    #[cfg(unix)]
     pub(crate) fn sessions_snapshot(&self) -> Vec<Arc<Session>> {
         self.sessions.lock().values().cloned().collect()
     }
 
     /// Stop serving after `delay` (the upgrade reply needs to flush first); ptys stay alive.
+    #[cfg(unix)]
     pub(crate) fn handed_off_later(&self, delay: std::time::Duration) {
         let n = self.handed_off.clone();
         tokio::spawn(async move {
@@ -120,14 +129,7 @@ impl Hub {
 }
 
 fn hostname() -> String {
-    let mut buf = [0u8; 256];
-    // SAFETY: buffer is valid for its length; gethostname NUL-terminates on success.
-    let rc = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
-    if rc != 0 {
-        return String::new();
-    }
-    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-    String::from_utf8_lossy(&buf[..end]).into_owned()
+    atlas_core::sys::hostname().unwrap_or_default()
 }
 
 /// Hold an exclusive `flock` on the pid file for the daemon's lifetime.
@@ -139,8 +141,7 @@ pub(crate) fn lock_pid(dir: &Path) -> Result<std::fs::File> {
         .create(true)
         .truncate(false)
         .open(paths::pid(dir))?;
-    // SAFETY: valid fd owned by `f`.
-    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+    if !atlas_core::sys::try_lock(&f)? {
         return Err(anyhow!(
             "another atlas hostd is running ({})",
             dir.display()
@@ -167,8 +168,14 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // Successor: receive the sessions and the pid lock while the old daemon still serves.
     // The lock fd is the old daemon's open file description, so the singleton lock never
     // has a gap. The old daemon stays authoritative until we confirm below.
+    #[cfg(unix)]
     let mut takeover = match &opts.takeover {
         Some(sock) => Some(crate::upgrade::receive(sock).await?),
+        None => None,
+    };
+    #[cfg(windows)]
+    let mut takeover: Option<crate::upgrade::Takeover> = match &opts.takeover {
+        Some(_) => return Err(anyhow!("live takeover is not supported on Windows")),
         None => None,
     };
     let lock = match takeover.as_mut().and_then(|t| t.lock.take()) {
@@ -188,29 +195,41 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // Bind beside the live socket and rename over it: the path is never missing, and the
     // old daemon's listener just stops receiving new connections.
     let tmp_sock = dir.join(format!("hostd.sock.{}", std::process::id()));
+    #[cfg(unix)]
     let listener = if takeover.is_some() {
         let _ = std::fs::remove_file(&tmp_sock);
-        let l = UnixListener::bind(&tmp_sock)
+        let l = ipc::Listener::bind(&tmp_sock)
             .with_context(|| format!("bind {}", tmp_sock.display()))?;
         std::fs::set_permissions(&tmp_sock, std::fs::Permissions::from_mode(0o600))?;
         std::fs::rename(&tmp_sock, &sock)?;
         l
     } else {
         if sock.exists() {
-            if UnixStream::connect(&sock).await.is_ok() {
+            if ipc::connect(&sock).await.is_ok() {
                 return Err(anyhow!("socket {} is in use", sock.display()));
             }
             std::fs::remove_file(&sock)?;
         }
-        let l = UnixListener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
+        let l = ipc::Listener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?;
         std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600))?;
         l
+    };
+    // A named pipe (see `atlas_core::ipc`): no file to clean up, and a second bind fails while
+    // another daemon serves the path (the pid lock above already rules that out).
+    #[cfg(windows)]
+    let listener = {
+        let _ = &tmp_sock;
+        ipc::Listener::bind(&sock).with_context(|| format!("bind {}", sock.display()))?
     };
 
     let scroll_dir = paths::scrollback_dir(dir);
     std::fs::create_dir_all(&scroll_dir)?;
     let mut sessions = HashMap::new();
+    #[cfg(windows)]
+    let adopted = 0;
+    #[cfg(unix)]
     let mut adopted = 0;
+    #[cfg(unix)]
     for (st, fd) in takeover
         .as_mut()
         .map(|t| std::mem::take(&mut t.sessions))
@@ -268,14 +287,14 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         // Everything is adopted and bound: the old daemon may exit now.
         t.confirm()?;
     }
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut term = Terminate::new()?;
     let limit = crate::idle::limit_from_env();
     let mut ticker = tokio::time::interval(crate::idle::tick(limit));
     let mut idle_since: Option<Instant> = None;
     loop {
         tokio::select! {
             acc = listener.accept() => {
-                if let Ok((stream, _)) = acc {
+                if let Ok(stream) = acc {
                     let hub = hub.clone();
                     tokio::spawn(async move { conn(hub, stream).await });
                 }
@@ -310,14 +329,44 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         }
     }
     hub.kill_all().await;
-    let _ = std::fs::remove_file(&sock);
+    let _ = ipc::remove_stale(&sock);
+    drop(listener);
+    // The lock is held through the file: release it before removing the file (Windows refuses to
+    // delete an open file).
+    let hub = Arc::try_unwrap(hub).ok();
+    drop(hub);
     let _ = std::fs::remove_file(paths::pid(dir));
     Ok(())
 }
 
-async fn conn(hub: Arc<Hub>, stream: UnixStream) {
+/// `SIGTERM` (`atlas hostd --stop`, `retire_unusable`): stop and end the terminals. Windows ends
+/// a process without a signal, so only the console's close/shutdown events count there.
+#[cfg(unix)]
+struct Terminate(tokio::signal::unix::Signal);
+#[cfg(unix)]
+impl Terminate {
+    fn new() -> std::io::Result<Self> {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).map(Self)
+    }
+    async fn recv(&mut self) -> Option<()> {
+        self.0.recv().await
+    }
+}
+#[cfg(windows)]
+struct Terminate(tokio::signal::windows::CtrlShutdown);
+#[cfg(windows)]
+impl Terminate {
+    fn new() -> std::io::Result<Self> {
+        tokio::signal::windows::ctrl_shutdown().map(Self)
+    }
+    async fn recv(&mut self) -> Option<()> {
+        self.0.recv().await
+    }
+}
+
+async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let conn_id = hub.next_conn.fetch_add(1, Ordering::Relaxed);
-    let (r, w) = stream.into_split();
+    let (r, w) = ipc::split(stream);
     let mut lines = BufReader::new(r);
     let (tx, rx) = mpsc::unbounded_channel::<String>();
     // Returns the write half so `pty_attach_raw` can take the socket over.
@@ -410,10 +459,7 @@ async fn conn(hub: Arc<Hub>, stream: UnixStream) {
     let _ = writer.await;
 }
 
-async fn read_line(
-    r: &mut BufReader<tokio::net::unix::OwnedReadHalf>,
-    buf: &mut String,
-) -> Option<String> {
+async fn read_line(r: &mut BufReader<ipc::ReadHalf>, buf: &mut String) -> Option<String> {
     buf.clear();
     match r.read_line(buf).await {
         Ok(0) | Err(_) => None,
@@ -439,6 +485,8 @@ fn watch(
                 _ => return,
             };
             for p in ev.paths {
+                // Forward slashes on Windows too: clients match these against their own roots.
+                let p = atlas_core::paths::normalize(&p);
                 let _ = etx.send((p.to_string_lossy().into_owned(), kind.into()));
             }
         }
@@ -571,8 +619,8 @@ async fn raw(
     replay: bool,
     id: u64,
     tx: Out,
-    writer: tokio::task::JoinHandle<tokio::net::unix::OwnedWriteHalf>,
-    mut lines: BufReader<tokio::net::unix::OwnedReadHalf>,
+    writer: tokio::task::JoinHandle<ipc::WriteHalf>,
+    mut lines: BufReader<ipc::ReadHalf>,
     mut buf: String,
 ) {
     let (rtx, mut rrx) = mpsc::channel::<Vec<u8>>(crate::pty::RAW_QUEUE);

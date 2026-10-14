@@ -8,6 +8,7 @@
 //! `~/.atlas/desktop/hook-endpoint.env` is written to point at it.
 //! Reconnects with backoff while the host stays in `settings.sshHosts`.
 
+use atlas_core::sys::CommandExt as _;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -54,6 +55,7 @@ fn valid_alias(a: &str) -> Result<(), String> {
 
 async fn ssh(alias: &str, script: &str, timeout: Duration) -> Result<String, String> {
     let fut = Command::new("ssh")
+        .no_window()
         .args(SSH_OPTS)
         .arg(alias)
         .arg(script)
@@ -119,6 +121,7 @@ async fn prepare(alias: &str) -> Result<(String, String), String> {
         }
         ssh(alias, "mkdir -p ~/.atlas/bin", Duration::from_secs(15)).await?;
         let st = Command::new("scp")
+            .no_window()
             .args(["-q", "-o", "BatchMode=yes"])
             .arg(&bin)
             .arg(format!("{alias}:.atlas/bin/atlas"))
@@ -170,6 +173,7 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
     let sock = dir.join(format!("{alias}.sock"));
     let _ = std::fs::remove_file(&sock);
     let child = Command::new("ssh")
+        .no_window()
         .args(SSH_OPTS)
         .args([
             "-N",
@@ -372,6 +376,7 @@ pub async fn ssh_forward(
         .map_err(|e| e.to_string())?
         .port();
     let child = Command::new("ssh")
+        .no_window()
         .args(SSH_OPTS)
         .args(["-N", "-o", "ExitOnForwardFailure=yes", "-L"])
         .arg(format!("127.0.0.1:{local}:localhost:{port}"))

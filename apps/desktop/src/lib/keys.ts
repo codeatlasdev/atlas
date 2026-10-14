@@ -160,21 +160,84 @@ const CODE_KEYS: Record<string, string> = {
 	PageDown: "pagedown",
 };
 
-/** The physical key (layout-independent, like menu shortcuts) with modifiers. */
-export function strokeOf(e: KeyboardEvent): string | null {
+/**
+ * macOS: ⌘ is the primary modifier. Elsewhere the Windows/Super key (Meta) belongs to the system, so Ctrl takes
+ * ⌘'s place, as in VS Code and Zed: the keymap keeps its `cmd-…` spelling everywhere.
+ */
+export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/**
+ * Off macOS ⌃ and ⌘ are both Ctrl, so a default written with ⌃ or ⌃⌘ that shares its key with a ⌘ one could never
+ * run (⌃⌘S sidebar vs ⌘S save; ⌃1 space, ⌘1 tab, ⌃⌘1 recent worktree). Those move to Alt (⌃) and Alt+Shift (⌃⌘);
+ * never to Ctrl+Alt, which is AltGr on Windows. The others keep their macOS spelling (`cmd` reads as Ctrl).
+ */
+const OFF_MAC: Record<string, string> = {
+	"ctrl-cmd-s": "alt-shift-s",
+	...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`ctrl-cmd-${n}`, `alt-shift-${n}`])),
+	...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`ctrl-${n}`, `alt-${n}`])),
+};
+
+/** The default keymap on this platform: [`DEFAULT_KEYMAP`] on macOS, with [`OFF_MAC`]'s moves elsewhere. */
+export function defaultKeymap(mac = IS_MAC): Record<string, string> {
+	if (mac) return DEFAULT_KEYMAP;
+	return Object.fromEntries(Object.entries(DEFAULT_KEYMAP).map(([k, v]) => [OFF_MAC[k] ?? k, v]));
+}
+
+/** The modifier `cmd-…` bindings mean on this platform is held: ⌘ on macOS, Ctrl elsewhere. */
+export const primaryKey = (e: { metaKey: boolean; ctrlKey: boolean }, mac = IS_MAC) =>
+	mac ? e.metaKey : e.ctrlKey;
+
+/** The other of ⌘/Ctrl: Ctrl on macOS, the Windows key elsewhere (for "no other modifier" checks). */
+export const otherKey = (e: { metaKey: boolean; ctrlKey: boolean }, mac = IS_MAC) =>
+	mac ? e.ctrlKey : e.metaKey;
+
+/**
+ * Off macOS the app's shortcuts are Ctrl chords, which a shell needs (^C, ^R, ^L, ^W …): in a focused terminal a
+ * plain Ctrl+letter goes to the program. Ctrl+Shift chords (the palette, Ctrl+Shift+P) and Ctrl with a digit, Tab
+ * or punctuation still reach the app. macOS shortcuts use ⌘, which no program reads.
+ */
+export function shellKeepsCtrl(
+	e: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; code: string },
+	mac = IS_MAC,
+) {
+	return !mac && e.ctrlKey && !e.shiftKey && !e.altKey && /^Key[A-Z]$/.test(e.code);
+}
+
+function keyOf(e: KeyboardEvent): string | undefined {
 	const c = e.code;
-	const key = /^Key[A-Z]$/.test(c)
+	return /^Key[A-Z]$/.test(c)
 		? c.slice(3).toLowerCase()
 		: /^Digit\d$/.test(c)
 			? c.slice(5)
 			: /^F\d+$/.test(c)
 				? c.toLowerCase()
 				: CODE_KEYS[c];
-	if (!key) return null;
-	const mods = [e.ctrlKey && "ctrl", e.altKey && "alt", e.shiftKey && "shift", e.metaKey && "cmd"].filter(
-		Boolean,
-	);
-	return [...mods, key].join("-");
+}
+
+/**
+ * The physical key (layout-independent, like menu shortcuts) with modifiers. Off macOS Ctrl reads as `cmd` (see
+ * [`IS_MAC`]) and a chord with the Windows key is the system's (`null`).
+ */
+export function strokeOf(e: KeyboardEvent, mac = IS_MAC): string | null {
+	return strokesOf(e, mac)[0] ?? null;
+}
+
+/**
+ * Every binding a key event can mean, in precedence order. macOS: the one stroke. Elsewhere Ctrl is ⌘ first
+ * (`cmd-k`), then itself (`ctrl-tab`, `ctrl-\``), so the bindings written with ⌃ for macOS stay reachable.
+ */
+export function strokesOf(e: KeyboardEvent, mac = IS_MAC): string[] {
+	const key = keyOf(e);
+	if (!key) return [];
+	const join = (mods: (string | false)[]) => [...mods.filter(Boolean), key].join("-");
+	if (mac) return [join([e.ctrlKey && "ctrl", e.altKey && "alt", e.shiftKey && "shift", e.metaKey && "cmd"])];
+	if (e.metaKey) return [];
+	// AltGr arrives as Ctrl+Alt on Windows: a chord that types a character (ś, ², @) is text, not a shortcut.
+	const typed = typeof e.key === "string" && e.key.length === 1 && e.key.toLowerCase() !== key;
+	if (e.ctrlKey && e.altKey && /^(Key|Digit)/.test(e.code) && typed) return [];
+	const primary = join([e.altKey && "alt", e.shiftKey && "shift", e.ctrlKey && "cmd"]);
+	const literal = join([e.ctrlKey && "ctrl", e.altKey && "alt", e.shiftKey && "shift"]);
+	return primary === literal ? [primary] : [primary, literal];
 }
 
 const GLYPH: Record<string, string> = {
@@ -193,12 +256,45 @@ const GLYPH: Record<string, string> = {
 	space: "␣",
 };
 
-/** macOS-style label for a canonical keystroke (`⌘⇧P`). */
-export function label(stroke: string): string {
+/** Key names off macOS (`Ctrl+Shift+P`, as Windows and Linux write them). */
+const WORD: Record<string, string> = {
+	escape: "Esc",
+	enter: "Enter",
+	tab: "Tab",
+	backspace: "Backspace",
+	delete: "Delete",
+	space: "Space",
+	up: "↑",
+	down: "↓",
+	left: "←",
+	right: "→",
+	home: "Home",
+	end: "End",
+	pageup: "PgUp",
+	pagedown: "PgDn",
+};
+
+/** Label for a canonical keystroke: macOS glyphs (`⇧⌘P`), or `Ctrl+Shift+P` elsewhere (⌘ and ⌃ are both Ctrl). */
+export function label(stroke: string, mac = IS_MAC): string {
 	const parts = stroke.split("-");
 	if (stroke.endsWith("--")) parts.splice(-2, 2, "-");
-	return parts.map((p) => GLYPH[p] ?? p.toUpperCase()).join("");
+	if (mac) return parts.map((p) => GLYPH[p] ?? p.toUpperCase()).join("");
+	const key = parts.pop() ?? "";
+	const mods = [
+		(parts.includes("ctrl") || parts.includes("cmd")) && "Ctrl",
+		parts.includes("alt") && "Alt",
+		parts.includes("shift") && "Shift",
+	].filter(Boolean);
+	return [...mods, WORD[key] ?? key.toUpperCase()].join("+");
 }
+
+/** A key named in UI text (`kbd("cmd-enter")`: ⌘↩ on macOS, Ctrl+Enter elsewhere), spelled like [`label`]. */
+export function kbd(stroke: string, mac = IS_MAC): string {
+	return label(normalize(stroke) ?? stroke, mac);
+}
+
+/** "⌘-click" on macOS, "Ctrl+click" elsewhere (link clicks read [`primaryKey`]). */
+export const modClick = (mac = IS_MAC) => (mac ? "⌘-click" : "Ctrl+click");
 
 /** Effective keystroke → command: defaults, then user overrides (`null` unbinds). */
 export function merge(

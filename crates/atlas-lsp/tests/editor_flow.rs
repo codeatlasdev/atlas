@@ -4,6 +4,9 @@
 //! explainability surface (reasons, tail, custom command, settings overrides, restart,
 //! uninstall, catalog). No network, no real server: this is the CI-safe twin of `real.rs`.
 
+// The fake server is launched through `/bin/sh -c` (it sets the fake's env per test).
+#![cfg(unix)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;

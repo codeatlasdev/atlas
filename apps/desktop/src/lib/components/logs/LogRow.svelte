@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { modClick } from "#lib/keys.ts";
 	import type { LogLine } from "#lib/logs/model.ts";
 	import { hms } from "#lib/logs/text.ts";
 	import { svcColor } from "#lib/logs/svcColor.svelte.ts";
@@ -46,8 +47,8 @@
 						class:cur={p.hit === 2}
 						style={p.css}
 						title={p.link.kind === "file"
-							? `⌘-click to open ${p.link.target}${p.link.line ? `:${p.link.line}` : ""}`
-							: `⌘-click to open ${p.link.target}`}
+							? `${modClick()} to open ${p.link.target}${p.link.line ? `:${p.link.line}` : ""}`
+							: `${modClick()} to open ${p.link.target}`}
 						role="link"
 						tabindex="-1"
 						onclick={(e) => onlink(e, p, l)}

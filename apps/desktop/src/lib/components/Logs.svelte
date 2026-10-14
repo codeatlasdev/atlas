@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from "svelte";
+	import { primaryKey } from "#lib/keys.ts";
 	import { toast } from "@codeatlasdev/ui";
 	import { ArrowDown } from "@lucide/svelte";
 	import { api, type ProjectView } from "#lib/api.ts";
@@ -234,7 +235,7 @@
 
 	async function openLink(e: MouseEvent, seg: Seg, l: LogLine) {
 		const link = seg.link;
-		if (!link || !e.metaKey) return;
+		if (!link || !primaryKey(e)) return;
 		e.preventDefault();
 		e.stopPropagation();
 		try {
@@ -291,8 +292,8 @@
 </script>
 
 <svelte:window
-	onkeydown={(e) => (metaDown = e.metaKey)}
-	onkeyup={(e) => (metaDown = e.metaKey)}
+	onkeydown={(e) => (metaDown = primaryKey(e))}
+	onkeyup={(e) => (metaDown = primaryKey(e))}
 	onblur={() => (metaDown = false)}
 />
 

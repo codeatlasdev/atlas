@@ -1,3 +1,4 @@
+import { primaryKey } from "#lib/keys.ts";
 /**
  * Make the webview behave like a macOS app, not a web page:
  * - focus rings only while navigating with the keyboard (WebKit treats programmatic
@@ -20,7 +21,7 @@ export function nativeFeel(): () => void {
 		if (!editable) e.preventDefault();
 	};
 	const zoom = (e: KeyboardEvent) => {
-		if (e.metaKey && ["=", "+", "-", "0"].includes(e.key)) e.preventDefault();
+		if (primaryKey(e) && ["=", "+", "-", "0"].includes(e.key)) e.preventDefault();
 	};
 	const pinch = (e: WheelEvent) => {
 		if (e.ctrlKey) e.preventDefault();

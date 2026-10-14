@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { tick } from "svelte";
 	import { fuzzy, highlight } from "#lib/fuzzy.ts";
 	import { CornerDownLeft, ArrowUpDown } from "@lucide/svelte";
@@ -81,7 +82,7 @@
 		else if (e.key === "ArrowUp") sel = Math.max(sel - 1, 0);
 		else if (e.key === "Enter") run(sel, e.shiftKey);
 		else if (e.key === "Escape") open = false;
-		else if (e.metaKey && /^[1-6]$/.test(e.key)) run(Number(e.key) - 1, false);
+		else if (primaryKey(e) && /^[1-6]$/.test(e.key)) run(Number(e.key) - 1, false);
 		else return;
 		e.preventDefault();
 		e.stopPropagation();
@@ -121,8 +122,8 @@
 		<div class="foot">
 			<span><ArrowUpDown size={11} /> navigate</span>
 			<span><CornerDownLeft size={11} /> select</span>
-			<span><Kbd>⇧↩</Kbd> open beside</span>
-			<span class="end"><Kbd>⎋</Kbd> close</span>
+			<span><Kbd>{kbd("shift-enter")}</Kbd> open beside</span>
+			<span class="end"><Kbd>{kbd("escape")}</Kbd> close</span>
 		</div>
 	</div>
 {/if}

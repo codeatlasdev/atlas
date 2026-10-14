@@ -3,7 +3,7 @@
 	import { Undo2, X } from "@lucide/svelte";
 	import SearchField from "./SearchField.svelte";
 	import { errText } from "#lib/api.ts";
-	import { DEFAULT_KEYMAP, label, strokeOf } from "#lib/keys.ts";
+	import { DEFAULT_KEYMAP, IS_MAC, kbd, label, strokeOf } from "#lib/keys.ts";
 	import { highlight, fuzzy } from "#lib/fuzzy.ts";
 	import {
 		bindKey,
@@ -46,7 +46,9 @@
 		if (!stroke) return;
 		// A bare or shift-only key would steal typing everywhere; require ⌘, ⌃ or ⌥ (or an F-key).
 		if (!/(^|-)(ctrl|alt|cmd)-|^f\d+$/.test(stroke)) {
-			toast.info("Include ⌘, ⌃ or ⌥ so the shortcut does not clash with typing");
+			toast.info(
+				`Include ${IS_MAC ? "⌘, ⌃ or ⌥" : "Ctrl or Alt"} so the shortcut does not clash with typing`,
+			);
 			return;
 		}
 		recording = null;
@@ -88,7 +90,7 @@
 				</div>
 				<div class="keys">
 					{#if recording === c.id}
-						<span class="prompt">Press the new shortcut… <Kbd>⎋</Kbd> to cancel</span>
+						<span class="prompt">Press the new shortcut… <Kbd>{kbd("escape")}</Kbd> to cancel</span>
 					{:else}
 						<button
 							class="keybtn"

@@ -17,12 +17,12 @@ const otherChannels = copy.channels.filter((c) => c.id !== DEFAULT_CHANNEL);
 const rel = await latestRelease();
 const dmgUrl = rel.dmg?.url ?? SITE.releases;
 const dmgLabel = rel.version ? `Atlas ${rel.version} for Apple silicon` : "Latest release on GitHub";
-const desc = "Download Atlas for macOS (Apple silicon) and Linux x86_64 (Arch, .deb, .rpm, AppImage). Windows, Linux on Arm and Intel Macs are coming soon.";
+const desc = "Download Atlas for macOS (Apple silicon), Linux x86_64 (Arch, .deb, .rpm, AppImage) and Windows x64. Linux on Arm, native Windows on Arm and Intel Macs are coming soon.";
 
 // Platforms that are not shipped yet. `topic` is stored with the email by /api/waitlist.
 const soon = [
 	{ topic: "macos-intel", name: "macOS, Intel", note: "x86-64 Macs", icon: `<path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/>` },
-	{ topic: "windows", name: "Windows", note: "Windows 11, x64 and Arm", icon: `<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>` },
+	{ topic: "windows", name: "Windows on Arm", note: "native arm64 (the x64 build runs emulated today)", icon: `<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>` },
 	{ topic: "linux", name: "Linux on Arm", note: "aarch64: AppImage, .deb, .rpm and Arch", icon: `<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>` },
 ];
 const reqs: [string, string][] = [
@@ -147,6 +147,7 @@ const reqs: [string, string][] = [
 					))}
 				</ul>
 				<p class="fine src"><b>Linux x86_64 ships today:</b> <code>curl -fsSL {SITE.url}/install.sh | sh</code> then <code>atlas desktop</code>, or an Arch package (<code>pacman -U</code>), a .deb, an .rpm or an AppImage from the release page. <a class="ln" href="/docs/installation/#linux-packages">Linux packages</a> · <a class="ln" href={SITE.releases} rel="noopener">Release page</a></p>
+				<p class="fine src"><b>Windows 10/11 x64 ships today:</b> <code>irm {SITE.url}/install.ps1 | iex</code> in PowerShell then <code>atlas desktop</code>, or the setup <code>.exe</code> from the release page. <a class="ln" href="/docs/installation/#windows">Windows</a> · <a class="ln" href={SITE.releases} rel="noopener">Release page</a></p>
 			</section>
 
 			<section class="verify" aria-labelledby="sum-h">

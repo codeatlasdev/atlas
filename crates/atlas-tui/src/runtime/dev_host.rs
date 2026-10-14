@@ -1,6 +1,7 @@
 //! Host address a mobile dev server should advertise (`host_mode` of session
 //! actions). Injected into the session as `TAURI_DEV_HOST` and `ATLAS_DEV_HOST`.
 
+use atlas_core::sys::CommandExt as _;
 use std::process::Command;
 
 use crate::config::{HostMode, SessionPlatform};
@@ -76,7 +77,7 @@ pub fn resolve_blocking(
 }
 
 fn run(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new(cmd).args(args).output().ok()?;
+    let out = Command::new(cmd).no_window().args(args).output().ok()?;
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned())

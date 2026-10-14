@@ -338,6 +338,8 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -406,6 +408,7 @@ name = "atlas-lsp"
 version = "1.5.0-alpha.8"
 dependencies = [
  "anyhow",
+ "atlas-core",
  "dirs",
  "flate2",
  "hex",

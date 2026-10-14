@@ -120,7 +120,9 @@ pub fn default_roots(home: &Path, registered: &[String]) -> Vec<PathBuf> {
         }
     }
     let mut seen = HashSet::new();
-    roots.retain(|r| r.is_dir() && seen.insert(r.canonicalize().unwrap_or_else(|_| r.clone())));
+    roots.retain(|r| {
+        r.is_dir() && seen.insert(atlas_core::paths::canonical(r).unwrap_or_else(|_| r.clone()))
+    });
     // A root inside another one is already covered by the walk.
     let all = roots.clone();
     roots.retain(|r| !all.iter().any(|o| o != r && r.starts_with(o)));
@@ -132,7 +134,9 @@ pub fn default_roots(home: &Path, registered: &[String]) -> Vec<PathBuf> {
 pub fn canonical_roots(roots: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for r in roots {
-        let Ok(r) = r.canonicalize() else { continue };
+        let Ok(r) = atlas_core::paths::canonical(&r) else {
+            continue;
+        };
         if r.is_dir() && !out.contains(&r) {
             out.push(r);
         }
@@ -410,7 +414,7 @@ pub fn scan_skipping(
         last_progress: now - Duration::from_secs(1),
     };
     for root in &opts.roots {
-        let root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        let root = atlas_core::paths::canonical(root).unwrap_or_else(|_| root.clone());
         w.walk(&root, &root, 0);
     }
     let last = opts.roots.last().cloned().unwrap_or_default();
@@ -451,7 +455,7 @@ pub fn spotlight(home: &Path, timeout: Duration) -> Vec<PathBuf> {
     let _ = child.wait();
     parse_mdfind(&text)
         .into_iter()
-        .map(|d| d.canonicalize().unwrap_or(d))
+        .map(|d| atlas_core::paths::canonical(&d).unwrap_or(d))
         .collect()
 }
 
@@ -764,7 +768,7 @@ mod tests {
             real.join("inner"),
             t.path().join("missing"),
         ]);
-        assert_eq!(roots, vec![real.canonicalize().unwrap()]);
+        assert_eq!(roots, vec![atlas_core::paths::canonical(&real).unwrap()]);
     }
 
     #[test]

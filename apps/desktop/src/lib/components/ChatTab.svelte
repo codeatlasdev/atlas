@@ -4,6 +4,7 @@
 	 * (see `rpc.ts`) and writes commands back. The transcript and composer are in `chat/`.
 	 */
 	import { onMount } from "svelte";
+	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
 	import { toast } from "@codeatlasdev/ui";
 	import { SquareTerminal } from "@lucide/svelte";
@@ -67,11 +68,17 @@
 	onMount(() => {
 		let alive = true;
 		const offs: (() => void)[] = [];
-		listen<{ data: string; replay: boolean }>(`pty://${tab.pty}`, (e) =>
+		const ready = listen<{ data: string; replay: boolean }>(`pty://${tab.pty}`, (e) =>
 			feed(b64bytes(e.payload.data), e.payload.replay),
 		).then((u) => (alive ? offs.push(u) : u()));
-		const attach = () => tab.pty && host.ptyAttach(tab.pty, true).catch(() => {});
-		void attach();
+		// After the listener is live: the replay hostd sends at once would otherwise be lost (see ptyStream.ts).
+		const attach = () =>
+			void ready
+				.then(() => {
+					if (alive && tab.pty) return host.ptyAttach(tab.pty, true);
+				})
+				.catch(() => {});
+		attach();
 		listen("host://reconnected", attach).then((u) => (alive ? offs.push(u) : u()));
 		const poll = () => send({ type: "get_state", id: "state" });
 		const t = window.setInterval(poll, STATE_POLL_MS);
@@ -127,7 +134,7 @@
 	}
 
 	function onwindowkey(e: KeyboardEvent) {
-		if (focused && e.metaKey && e.key === "f") {
+		if (focused && primaryKey(e) && e.key === "f") {
 			searchOpen = !searchOpen;
 			if (!searchOpen) search = "";
 			e.preventDefault();

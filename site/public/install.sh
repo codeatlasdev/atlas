@@ -64,6 +64,10 @@ arch="$(uname -m)"
 case "$os-$arch" in
   Darwin-arm64) target="aarch64-apple-darwin" ;;
   Linux-x86_64 | Linux-amd64) target="x86_64-unknown-linux-gnu" ;;
+  MINGW* | MSYS* | CYGWIN*)
+    die "On Windows, install from PowerShell instead:
+    irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+    ;;
   *)
     die "Atlas ships prebuilt binaries for macOS on Apple silicon and Linux x86_64; this is $os/$arch.
     Build from source instead: https://github.com/$REPO/blob/main/docs/installation.md#build-from-source"

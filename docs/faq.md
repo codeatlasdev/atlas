@@ -15,7 +15,7 @@ A dev-environment orchestrator: one `atlas.yaml` starts your infra and services 
 
 ## Does it run on Linux or Windows?
 
-Atlas is for everyone, and we are shipping it platform by platform. Available now: macOS on Apple silicon and Linux x86_64 (the CLI, the TUI, the MCP server and Atlas Desktop). On Linux you can use the installer script, or a [.deb, .rpm, Arch package or AppImage](installation.md#linux-packages). Coming soon: Intel Macs, Linux on ARM and Windows; you can ask to be notified on the [download page](https://atlas.codeatlas.com.br/download/). On Linux, Atlas Desktop renders terminals with xterm.js (the native GPU terminal uses Metal, so it is macOS only), and the runtime is still mostly exercised on macOS: please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new). Windows is not supported yet.
+Atlas is for everyone, and we are shipping it platform by platform. Available now: macOS on Apple silicon, Linux x86_64 and Windows 10/11 on x64 (the CLI, the TUI, the MCP server and Atlas Desktop). On Linux you can use the installer script, or a [.deb, .rpm, Arch package or AppImage](installation.md#linux-packages); on Windows, `irm https://atlas.codeatlas.com.br/install.ps1 | iex` in PowerShell or the setup `.exe` from the release page ([what differs on Windows](installation.md#windows)). Coming soon: Intel Macs and Linux on ARM; you can ask to be notified on the [download page](https://atlas.codeatlas.com.br/download/). On Linux and Windows, Atlas Desktop renders terminals with xterm.js (the native GPU terminal uses Metal, so it is macOS only), and the runtime is still mostly exercised on macOS: please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
 
 ## Does Atlas send my data anywhere?
 

@@ -218,6 +218,8 @@ mod tests {
         );
     }
 
+    // Unix absolute paths (`/tmp/…`).
+    #[cfg(unix)]
     #[test]
     fn record_request_gives_the_app_a_video_path_and_the_long_timeout() {
         let r = record_request(json!({"version": 1}), Path::new("/tmp/o")).unwrap();

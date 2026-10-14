@@ -69,11 +69,21 @@ async fn remove(hub: &HostHub, id: &str, force: bool) -> Result<Value, String> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let env = hook_env(&root, &wt, &name, e.port_offset);
-        let mut argv: Vec<String> = vec!["env".into()];
-        for (k, v) in env.as_object().into_iter().flatten() {
-            argv.push(format!("{k}={}", v.as_str().unwrap_or_default()));
-        }
-        argv.extend(["sh".into(), "-c".into(), cmd]);
+        let vars = env.as_object().into_iter().flatten();
+        let argv: Vec<String> = if cfg!(windows) && host == crate::host::LOCAL {
+            // cmd has no `env`: `set "K=V"` before the script (quoted, so `&` in a path is data).
+            let sets: String = vars
+                .map(|(k, v)| format!("set \"{k}={}\"&& ", v.as_str().unwrap_or_default()))
+                .collect();
+            super::exec::shell_argv(&host, &format!("{sets}{cmd}"))
+        } else {
+            let mut argv: Vec<String> = vec!["env".into()];
+            for (k, v) in vars {
+                argv.push(format!("{k}={}", v.as_str().unwrap_or_default()));
+            }
+            argv.extend(["sh".into(), "-c".into(), cmd]);
+            argv
+        };
         let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
         let _ = exec(hub, &wt, &refs, 120_000).await;
     }

@@ -126,6 +126,8 @@ pub async fn copy_to_clipboard(text: &str) -> std::io::Result<()> {
 
     let mut child = if cfg!(target_os = "macos") {
         Command::new("pbcopy").stdin(Stdio::piped()).spawn()?
+    } else if cfg!(windows) {
+        Command::new("clip.exe").stdin(Stdio::piped()).spawn()?
     } else {
         Command::new("xclip")
             .args(["-selection", "clipboard"])

@@ -410,7 +410,7 @@ async fn sending_garbage_on_a_subscription_does_not_break_other_clients() {
     // A raw subscriber that writes junk and hangs up.
     {
         use tokio::io::AsyncWriteExt;
-        let mut raw = tokio::net::UnixStream::connect(control::socket_path(r.dir.path()))
+        let mut raw = atlas_core::ipc::connect(&control::socket_path(r.dir.path()))
             .await
             .unwrap();
         raw.write_all(b"{\"cmd\":\"subscribe\"}\n").await.unwrap();

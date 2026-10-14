@@ -159,6 +159,8 @@ mod tests {
         assert_eq!(shq("$(rm -rf /)"), "'$(rm -rf /)'");
     }
 
+    // The `local` deploy host is this machine's bash.
+    #[cfg(unix)]
     #[tokio::test]
     async fn local_exec_round_trips_quotes() {
         let r = Remote::new("local");

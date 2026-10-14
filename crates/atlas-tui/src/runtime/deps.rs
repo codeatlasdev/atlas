@@ -2,8 +2,8 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::SystemTime;
 
+use atlas_core::sys::CommandExt as _;
 use serde::{Deserialize, Serialize};
-use tokio::process::Command;
 use tracing::info;
 
 use crate::config::PreCommandWhen;
@@ -159,8 +159,8 @@ pub async fn ensure_deps(
         use std::io::Write;
         writeln!(f, "$ {command}")?;
         let err = f.try_clone()?;
-        Command::new("sh")
-            .args(["-c", &command])
+        atlas_core::sys::shell_tokio(&command)
+            .no_window()
             .envs(atlas_core::login_env::vars())
             .current_dir(root_dir)
             .stdin(Stdio::null())
@@ -236,17 +236,45 @@ fn missing_binary(tail: &str, command: &str) -> Option<String> {
         })
 }
 
-/// `exit <code>: <last output line>`; exit 127 (the shell could not find a command) also names the binary,
-/// the `PATH` Atlas ran with and what to do about it.
+/// Did the shell fail because it could not find the command? `sh` says so with exit 127. `cmd /c` exits
+/// with 1 and a localized message, so on Windows: it failed, and its first program is neither a `cmd`
+/// builtin nor on `path`.
+fn command_not_found(code: i32, command: &str, path: &str) -> bool {
+    if !cfg!(windows) {
+        return code == 127;
+    }
+    const BUILTINS: [&str; 20] = [
+        "call", "cd", "chdir", "cls", "copy", "del", "dir", "echo", "erase", "exit", "for", "if",
+        "md", "mkdir", "move", "rd", "ren", "rmdir", "set", "type",
+    ];
+    // The first word that is a program: not `VAR=value`, not a redirection (`>&2`, `2>nul`, `<in`).
+    let Some(bin) = command
+        .split_whitespace()
+        .map(|w| w.trim_start_matches(['(', '@']).trim_matches('"'))
+        .find(|w| !w.is_empty() && !w.contains('=') && !w.contains(['<', '>']))
+    else {
+        return false;
+    };
+    code != 0
+        && !BUILTINS.iter().any(|b| b.eq_ignore_ascii_case(bin))
+        && !Path::new(bin).exists()
+        && atlas_core::paths::which_in(bin, std::ffi::OsStr::new(path)).is_none()
+}
+
+/// `exit <code>: <last output line>`; a command the shell could not find ([`command_not_found`]) also
+/// names the binary, the `PATH` Atlas ran with and what to do about it.
 fn explain_failure(code: i32, tail: &str, command: &str, path: &str) -> String {
     let base = format!("exit {code}: {tail}");
-    if code != 127 {
+    if !command_not_found(code, command, path) {
         return base;
     }
     let bin = missing_binary(tail, command).unwrap_or_else(|| "a command".into());
-    format!(
-        "{base}. `{bin}` was not found. PATH used by Atlas: {path}. Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings > Shell."
-    )
+    let fix = if cfg!(windows) {
+        "Add its folder to your user Path (Environment Variables in the System settings) and restart Atlas"
+    } else {
+        "Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings > Shell"
+    };
+    format!("{base}. `{bin}` was not found. PATH used by Atlas: {path}. {fix}.")
 }
 
 fn append_log(path: &Path, line: &str) {
@@ -262,8 +290,8 @@ fn append_log(path: &Path, line: &str) {
 
 /// Last non-empty output line before the trailing `exit status:` marker.
 fn last_nonempty_line(path: &Path) -> String {
-    std::fs::read_to_string(path)
-        .unwrap_or_default()
+    // Lossy: a Windows console program writes its OEM code page (`não` from cmd is not UTF-8).
+    String::from_utf8_lossy(&std::fs::read(path).unwrap_or_default())
         .lines()
         .rev()
         .filter(|l| !l.trim().is_empty() && !l.starts_with("exit status:"))
@@ -290,6 +318,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::runtime::process::test_sh;
 
     /// node_modules whose marker is older than any lockfile written after it.
     fn project_with_stale_lock() -> TempDir {
@@ -361,7 +390,8 @@ mod tests {
     #[tokio::test]
     async fn pre_command_always_reruns_when_fresh() {
         let dir = TempDir::new().unwrap();
-        let cmd = Some("mkdir -p node_modules && echo ran >> ran.txt");
+        let cmd = test_sh("mkdir -p node_modules && echo ran >> ran.txt");
+        let cmd = Some(cmd.as_str());
         // Default (None) with an explicit pre_command is `always`.
         for expected_lines in [1, 2] {
             assert_eq!(
@@ -381,7 +411,8 @@ mod tests {
     #[tokio::test]
     async fn pre_command_lockfile_does_not_rerun_when_fresh() {
         let dir = TempDir::new().unwrap();
-        let cmd = Some("mkdir -p node_modules && echo ran >> ran.txt");
+        let cmd = test_sh("mkdir -p node_modules && echo ran >> ran.txt");
+        let cmd = Some(cmd.as_str());
         let lockfile = Some(PreCommandWhen::Lockfile);
         assert_eq!(
             ensure_deps(dir.path(), cmd, lockfile, false).await,
@@ -404,7 +435,13 @@ mod tests {
     #[tokio::test]
     async fn pre_command_failure_reports_exit_and_stderr() {
         let dir = TempDir::new().unwrap();
-        let out = ensure_deps(dir.path(), Some("echo boom >&2; exit 3"), None, false).await;
+        let out = ensure_deps(
+            dir.path(),
+            Some(&test_sh("echo boom >&2; exit 3")),
+            None,
+            false,
+        )
+        .await;
         assert_eq!(out, DepsOutcome::Failed("exit 3: boom".into()));
         assert!(!dir.path().join("node_modules/.atlas-installed").exists());
     }
@@ -414,19 +451,26 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let logs = dir.path().join(".logs");
 
-        ensure_deps(dir.path(), Some("echo hi; echo oops >&2"), None, false).await;
+        let hi = test_sh("echo hi; echo oops >&2");
+        ensure_deps(dir.path(), Some(&hi), None, false).await;
         let log = fs::read_to_string(logs.join(SETUP_LOG)).unwrap();
-        assert!(log.starts_with("$ echo hi; echo oops >&2\n"), "{log}");
+        assert!(log.starts_with(&format!("$ {hi}\n")), "{log}");
         assert!(log.contains("hi") && log.contains("oops"), "{log}");
         assert!(log.trim_end().ends_with("exit status: 0"), "{log}");
         let ok: SetupStatus =
             serde_json::from_str(&fs::read_to_string(logs.join(SETUP_STATUS)).unwrap()).unwrap();
         assert_eq!(ok.state, "ok");
-        assert_eq!(ok.command, "echo hi; echo oops >&2");
+        assert_eq!(ok.command, hi);
         assert!(ok.finished_at.is_some() && ok.reason.is_none());
 
         // Next run truncates the log and records the failure + reason.
-        let out = ensure_deps(dir.path(), Some("echo boom >&2; exit 3"), None, false).await;
+        let out = ensure_deps(
+            dir.path(),
+            Some(&test_sh("echo boom >&2; exit 3")),
+            None,
+            false,
+        )
+        .await;
         assert_eq!(out, DepsOutcome::Failed("exit 3: boom".into()));
         let log = fs::read_to_string(logs.join(SETUP_LOG)).unwrap();
         assert!(
@@ -485,6 +529,8 @@ mod tests {
 
     /// Incident (Linux, app launched from the menu): the stack setup `bun install` failed with
     /// `exit 127: sh: 1: bun: not found`; `bun` lives in `~/.bun/bin`, put on PATH by the user's rc file.
+    // Login-shell probes of POSIX shells (bash, zsh, fish).
+    #[cfg(unix)]
     #[tokio::test]
     async fn pre_command_finds_binaries_the_login_shell_put_on_path() {
         use atlas_core::login_env::{fixtures, install, probe_with};
@@ -507,7 +553,11 @@ mod tests {
         assert!(r.starts_with("exit 127: sh: 1: bun: not found"), "{r}");
         assert!(r.contains("`bun` was not found"), "{r}");
         assert!(r.contains("PATH used by Atlas: /usr/bin:/bin"), "{r}");
-        assert!(r.contains("rc file") && r.contains("Settings"), "{r}");
+        if cfg!(windows) {
+            assert!(r.contains("user Path"), "{r}");
+        } else {
+            assert!(r.contains("rc file") && r.contains("Settings"), "{r}");
+        }
         // dash, bash and zsh word it differently; the binary is the command's first word otherwise.
         for tail in [
             "sh: bun: command not found",
@@ -523,8 +573,31 @@ mod tests {
             explain_failure(127, "", "FOO=1 bun install && x", "/p")
                 .contains("`bun` was not found")
         );
-        // Other exit codes are untouched.
-        assert_eq!(explain_failure(3, "boom", "x", "/p"), "exit 3: boom");
+        // Other failures are untouched (on Windows: of a command that exists, here a cmd builtin).
+        assert_eq!(
+            explain_failure(3, "boom", "echo boom", "/p"),
+            "exit 3: boom"
+        );
+    }
+
+    /// Windows: `cmd /c` exits 1 with a localized message for a missing program, so "not found" is
+    /// judged from the command: a failure of a program that is neither a builtin nor on PATH.
+    #[cfg(windows)]
+    #[test]
+    fn cmd_failures_name_a_program_missing_from_path_but_not_a_builtin_or_one_that_exists() {
+        let tail = "'bun' não é reconhecido como um comando interno";
+        let r = explain_failure(1, tail, "bun install", "C:\\nowhere");
+        assert!(r.contains("`bun` was not found"), "{r}");
+        let sys = std::env::var("SystemRoot").unwrap() + "\\System32";
+        assert_eq!(
+            explain_failure(1, "x", "where nothing-here", &sys),
+            "exit 1: x"
+        );
+        assert_eq!(
+            explain_failure(1, "x", "mkdir a", "C:\\nowhere"),
+            "exit 1: x"
+        );
+        assert_eq!(explain_failure(0, "", "bun", "C:\\nowhere"), "exit 0: ");
     }
 
     #[tokio::test]
@@ -534,7 +607,8 @@ mod tests {
         let DepsOutcome::Failed(reason) = out else {
             panic!("expected failure");
         };
-        assert!(reason.contains("exit 127"), "{reason}");
+        let code = if cfg!(windows) { "exit 1" } else { "exit 127" };
+        assert!(reason.contains(code), "{reason}");
         assert!(
             reason.contains("`atlas-no-such-bin` was not found"),
             "{reason}"
@@ -542,7 +616,7 @@ mod tests {
         // Only that the PATH line is there: the process-wide probe it is read from is replaced by
         // other tests running in parallel (`install` above), so its value is not stable here. The
         // exact wording with a fixed PATH is `exit_127_names_the_binary_the_path_and_a_hint`.
-        assert!(reason.contains("PATH used by Atlas: /"), "{reason}");
+        assert!(reason.contains("PATH used by Atlas: "), "{reason}");
         let status = fs::read_to_string(dir.path().join(".logs/setup.json")).unwrap();
         assert!(status.contains("atlas-no-such-bin"), "{status}");
     }

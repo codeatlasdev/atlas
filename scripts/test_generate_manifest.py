@@ -71,6 +71,20 @@ class Manifest(unittest.TestCase):
         self.assertEqual(a["desktop_arch"]["sha256"], pkg)
         self.assertNotIn("desktop_dmg", a)
 
+    def test_windows_lists_the_cli_tarball_and_the_installer_as_the_desktop(self):
+        # The names release.yml uploads; `desktop` must be what `atlas desktop` downloads on Windows.
+        version = "1.6.0-alpha.1"
+        root = tempfile.mkdtemp()
+        plat = os.path.join(root, "atlas-x86_64-pc-windows-msvc")
+        os.makedirs(plat)
+        cli = write_asset(plat, f"atlas-{version}-x86_64-pc-windows-msvc.tar.gz", b"cli")
+        exe = write_asset(plat, f"Atlas-{version}-x86_64-pc-windows-msvc-setup.exe", b"MZexe")
+        a = run_cli(version, root)["assets"]["x86_64-pc-windows-msvc"]
+        self.assertEqual(a["cli"]["sha256"], cli)
+        self.assertEqual(a["desktop"]["sha256"], exe)
+        self.assertTrue(a["desktop"]["url"].endswith(f"/v{version}/Atlas-{version}-x86_64-pc-windows-msvc-setup.exe"))
+        self.assertEqual(sorted(a), ["cli", "daemon", "desktop"])
+
     def test_stable_keeps_the_backwards_compatible_keys(self):
         root, cli, app, dmg = make_artifacts("1.4.0")
         m = run_cli("1.4.0", root, {"GITHUB_SHA": "abc123"})

@@ -31,12 +31,14 @@ ratatui = "0.30"
 unicode-width = "0.2"
 crossterm = { workspace = true, features = ["event-stream", "bracketed-paste"] }
 futures-util = "0.3"
-nix = { version = "0.31", features = ["signal", "process", "fs"] }
-libc = { workspace = true }
 atlas-core = { path = "../atlas-core" }
 dirs = { workspace = true }
 regex = "1"
 schemars = "1"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
+libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

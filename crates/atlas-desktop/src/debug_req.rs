@@ -257,7 +257,8 @@ pub fn parse(v: &Value) -> Result<Req, String> {
     }
 }
 
-#[cfg(test)]
+// Unix absolute paths (`/tmp/…`): the debug bridge drives macOS agent instances.
+#[cfg(all(test, unix))]
 mod tests {
     use serde_json::json;
 

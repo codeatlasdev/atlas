@@ -1,5 +1,8 @@
 //! `atlas hostd` end-to-end: real binary, isolated `ATLAS_HOSTD_DIR`.
 
+// Unix scripts (sh -c) and Unix-only live upgrade; Windows has hostd_windows.rs.
+#![cfg(unix)]
+
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;

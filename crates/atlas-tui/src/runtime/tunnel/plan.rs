@@ -94,7 +94,8 @@ pub fn should_reuse(
 
 /// True when the (lowercase) executable path/name is an ssh client.
 pub fn is_ssh_name(name: &str) -> bool {
-    name.rsplit('/').next().unwrap_or(name) == "ssh"
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    atlas_core::sys::is_program(base, "ssh")
 }
 
 /// Identity of `pid` for the reuse/kill decision: its executable name, except
@@ -108,12 +109,7 @@ pub(super) fn ssh_identity(pid: i32) -> String {
     let Some(over) = std::env::var(SSH_BIN_ENV).ok().filter(|b| !b.is_empty()) else {
         return name;
     };
-    let args = std::process::Command::new("ps")
-        .args(["-o", "args=", "-p", &pid.to_string()])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default();
+    let args = atlas_core::sys::command_line(pid as u32).unwrap_or_default();
     if args.split_whitespace().any(|a| a == over) {
         "ssh".to_string()
     } else {
@@ -132,16 +128,13 @@ pub(super) fn reason_or(last: &str, fallback: &str) -> String {
 }
 
 pub(super) fn pid_alive(pid: i32) -> bool {
-    pid > 1 && nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
+    pid > 1 && atlas_core::sys::pid_alive(pid as u32)
 }
 
 /// SIGTERM exactly `pid` (never a group, never by port).
 pub(super) fn kill_pid(pid: i32) {
     if pid > 1 {
-        let _ = nix::sys::signal::kill(
-            nix::unistd::Pid::from_raw(pid),
-            nix::sys::signal::Signal::SIGTERM,
-        );
+        atlas_core::sys::terminate(pid as u32);
     }
 }
 

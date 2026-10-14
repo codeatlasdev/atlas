@@ -1,5 +1,6 @@
 //! Agents Atlas can launch in a terminal. omp first; claude/codex share the slots.
 
+use atlas_core::sys::CommandExt as _;
 use serde_json::{Value, json};
 
 pub struct AgentDef {
@@ -55,6 +56,7 @@ pub async fn agent_list() -> Vec<Value> {
         let version = match &path {
             Some(p) => {
                 let fut = tokio::process::Command::new(p)
+                    .no_window()
                     .arg("--version")
                     .envs(crate::shell_env::vars_async().await)
                     .stdin(std::process::Stdio::null())

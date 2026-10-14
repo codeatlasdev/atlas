@@ -3,10 +3,9 @@
 use std::path::Path;
 use std::time::Duration;
 
+use atlas_core::ipc::{self, ReadHalf as OwnedReadHalf, WriteHalf as OwnedWriteHalf};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 
 use super::protocol::ControlResponse;
 use super::{NOT_RUNNING, REPLY_TIMEOUT, socket_path};
@@ -26,10 +25,10 @@ async fn send_request(
     ),
     String,
 > {
-    let stream = UnixStream::connect(socket_path(root_dir))
+    let stream = ipc::connect(&socket_path(root_dir))
         .await
         .map_err(|_| NOT_RUNNING.to_string())?;
-    let (rd, mut wr) = stream.into_split();
+    let (rd, mut wr) = ipc::split(stream);
     let mut line = json!({ "cmd": cmd, "args": args }).to_string();
     line.push('\n');
     wr.write_all(line.as_bytes())

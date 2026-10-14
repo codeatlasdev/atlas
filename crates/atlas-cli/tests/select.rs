@@ -3,33 +3,46 @@
 
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
 const BIN: &str = env!("CARGO_BIN_EXE_atlas");
 
-/// db <- api <- web, plus a standalone worker.
+/// db <- api <- web, plus a standalone worker. `SLEEP` is replaced by a long-running command of the
+/// platform shell.
 const PROJECT: &str = "name: sel
 services:
   db:
-    command: sleep 300
+    command: SLEEP
   api:
-    command: sleep 300
+    command: SLEEP
     depends_on: [db]
   web:
-    command: sleep 300
+    command: SLEEP
     depends_on: [api]
   worker:
-    command: sleep 300
+    command: SLEEP
 profiles:
   x: [api]
   y: [worker]
 ";
 
+/// Five minutes in the shell services run under (`sh -c`, `cmd /c` on Windows).
+const SLEEP: &str = if cfg!(windows) {
+    "ping -n 300 127.0.0.1 >NUL"
+} else {
+    "sleep 300"
+};
+
 fn project(extra_local: Option<&str>) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("atlas.yaml"), PROJECT).unwrap();
+    std::fs::write(
+        dir.path().join("atlas.yaml"),
+        PROJECT.replace("SLEEP", SLEEP),
+    )
+    .unwrap();
     if let Some(local) = extra_local {
         std::fs::write(dir.path().join("atlas.local.yaml"), local).unwrap();
     }
@@ -180,6 +193,8 @@ fn config_check_rejects_a_profile_with_an_unknown_service() {
 
 /// Headless: `--status` marks deselected services `off`; a control-socket
 /// start brings one up and clears the mark.
+// Unix socket client and `kill`.
+#[cfg(unix)]
 #[test]
 fn headless_marks_off_and_starts_by_hand() {
     use std::io::{Read, Write};

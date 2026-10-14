@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use atlas_core::ipc;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::paths;
@@ -32,10 +32,10 @@ pub struct HostClient {
 
 impl HostClient {
     pub async fn connect(socket: &Path, token: &str, client: &str) -> Result<Self> {
-        let stream = UnixStream::connect(socket)
+        let stream = ipc::connect(socket)
             .await
             .with_context(|| format!("connect {}", socket.display()))?;
-        let (r, mut w) = stream.into_split();
+        let (r, mut w) = ipc::split(stream);
         let mut lines = BufReader::new(r).lines();
         let hello = crate::protocol::hello_line(token, client);
         w.write_all(format!("{hello}\n").as_bytes()).await?;
@@ -131,14 +131,19 @@ pub fn atlas_bin() -> Result<PathBuf> {
     }
     let home = dirs::home_dir()
         .unwrap_or_default()
-        .join(".atlas/bin/atlas");
+        .join(".atlas/bin")
+        .join(atlas_core::paths::exe("atlas"));
     if home.exists() {
         return Ok(home);
     }
+    if let Some(cli) = atlas_core::paths::bundled_cli() {
+        return Ok(cli);
+    }
+    let names = atlas_core::paths::exe_names("atlas");
     std::env::var_os("PATH")
         .and_then(|path| {
             std::env::split_paths(&path)
-                .map(|d| d.join("atlas"))
+                .flat_map(|d| names.iter().map(move |n| d.join(n)))
                 .find(|p| p.is_file())
         })
         .ok_or_else(|| anyhow!("atlas CLI not found; run atlas desktop --install"))
@@ -168,9 +173,7 @@ pub async fn ensure_in(dir: &Path, atlas: &Path, client: &str) -> Result<HostCli
         .stdout(log.try_clone()?)
         .stderr(log);
     // Detach hostd from our session so it survives the app quitting.
-    crate::exec::new_session(&mut cmd);
-    let mut child = cmd
-        .spawn()
+    let mut child = atlas_core::sys::spawn_detached(&mut cmd)
         .with_context(|| format!("spawn {}", atlas.display()))?;
     std::thread::spawn(move || child.wait());
     let mut last = None;
@@ -193,18 +196,23 @@ pub fn live_hostd_pid(dir: &Path) -> Option<u32> {
         .trim()
         .parse()
         .ok()?;
-    let out = std::process::Command::new("ps")
-        .args(["-o", "command=", "-p"])
-        .arg(pid.to_string())
-        .output()
-        .ok()?;
-    let cmd = String::from_utf8_lossy(&out.stdout);
-    let mut words = cmd.split_whitespace();
-    let exe_is_atlas = words
-        .next()
-        .and_then(|w| Path::new(w).file_name())
-        .is_some_and(|n| n == "atlas");
-    (exe_is_atlas && words.next() == Some("hostd")).then_some(pid)
+    let cmd = atlas_core::sys::command_line(pid)?;
+    is_hostd_command(&cmd).then_some(pid)
+}
+
+/// Is `cmd` (a process's command line) `atlas hostd …`? The program is matched by its file name
+/// (`atlas`, `atlas.exe` on Windows, where a path with spaces arrives quoted).
+fn is_hostd_command(cmd: &str) -> bool {
+    let cmd = cmd.trim_start();
+    let (exe, rest) = match cmd.strip_prefix('"') {
+        Some(q) => q.split_once('"').unwrap_or((q, "")),
+        None => cmd.split_once(char::is_whitespace).unwrap_or((cmd, "")),
+    };
+    let name = Path::new(exe)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    atlas_core::sys::is_program(&name, "atlas") && rest.split_whitespace().next() == Some("hostd")
 }
 
 /// The pid of a live atlas hostd in `dir` that this client cannot use (it holds the lock but
@@ -224,11 +232,11 @@ async fn retire_unusable(dir: &Path) {
     let Some(pid) = live_hostd_pid(dir) else {
         return;
     };
-    // SAFETY: `pid` was just verified to be this dir's atlas hostd.
-    unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+    // `pid` was just verified to be this dir's atlas hostd. Windows ends it outright: its
+    // terminals' pseudo consoles close with it.
+    atlas_core::sys::terminate(pid);
     for _ in 0..50 {
-        // SAFETY: signal 0 only checks existence.
-        if unsafe { libc::kill(pid as libc::pid_t, 0) } != 0 {
+        if !atlas_core::sys::pid_alive(pid) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -239,16 +247,16 @@ async fn retire_unusable(dir: &Path) {
 /// EOF when the pty exits. Dropping it detaches.
 pub struct RawPty {
     pub info: Value,
-    pub reader: BufReader<tokio::net::unix::OwnedReadHalf>,
+    pub reader: BufReader<ipc::ReadHalf>,
     /// Kept open: closing the write half tells hostd to detach.
-    _w: tokio::net::unix::OwnedWriteHalf,
+    _w: ipc::WriteHalf,
 }
 
 /// Open a dedicated raw byte stream for `pty` on the hostd at `dir`.
 pub async fn attach_raw(dir: &Path, pty: &str, replay: bool) -> Result<RawPty> {
     let token = paths::read_token(dir).context("hostd token")?;
-    let stream = UnixStream::connect(paths::socket(dir)).await?;
-    let (r, mut w) = stream.into_split();
+    let stream = ipc::connect(&paths::socket(dir)).await?;
+    let (r, mut w) = ipc::split(stream);
     let mut reader = BufReader::new(r);
     let hello = crate::protocol::hello_line(&token, "raw");
     let req = json!({"id": 1, "cmd": "pty_attach_raw", "args": {"pty": pty, "replay": replay}});
@@ -262,7 +270,7 @@ pub async fn attach_raw(dir: &Path, pty: &str, replay: bool) -> Result<RawPty> {
 }
 
 /// One `{"ok":..}` line from hostd, as its `data`.
-async fn reply_line(r: &mut BufReader<tokio::net::unix::OwnedReadHalf>) -> Result<Value> {
+async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
     let mut line = String::new();
     if r.read_line(&mut line).await? == 0 {
         return Err(anyhow!("hostd closed the connection"));
@@ -272,4 +280,29 @@ async fn reply_line(r: &mut BufReader<tokio::net::unix::OwnedReadHalf>) -> Resul
         return Err(anyhow!("hostd: {}", v["error"].as_str().unwrap_or("error")));
     }
     Ok(v.get("data").cloned().unwrap_or(Value::Null))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_hostd_command;
+
+    #[test]
+    fn only_an_atlas_hostd_command_line_is_recognised() {
+        assert!(is_hostd_command("/Users/u/.atlas/bin/atlas hostd"));
+        assert!(is_hostd_command("atlas hostd --dir /tmp/x"));
+        assert!(!is_hostd_command("/usr/bin/atlas-mcp hostd"));
+        assert!(!is_hostd_command("/Users/u/.atlas/bin/atlas mcp"));
+        assert!(!is_hostd_command("/bin/zsh -l"));
+        assert!(!is_hostd_command(""));
+        // Windows: a quoted program path with spaces, and the `.exe` suffix.
+        assert_eq!(
+            is_hostd_command(r#""C:\Users\Jane Doe\.atlas\bin\atlas.exe" hostd"#),
+            cfg!(windows)
+        );
+        assert_eq!(
+            is_hostd_command(r"C:\Users\u\.atlas\bin\ATLAS.EXE hostd"),
+            cfg!(windows)
+        );
+        assert!(!is_hostd_command(r#""C:\Program Files\x\atlas.exe" mcp"#));
+    }
 }

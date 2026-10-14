@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run .github/workflows/release.yml locally via act (no GitHub-hosted minutes).
-# macOS jobs run natively on this host (-self-hosted); ubuntu jobs (Linux build, Arch package, publish) in Docker.
+# macOS jobs run natively on this host (-self-hosted); ubuntu jobs (Linux build, Windows cross-build, Arch package,
+# publish) in Docker.
 #
 # Usage: bun run release:act [vX.Y.Z[-pre.N]] [--publish] [-j <job>]...
 #   default tag: version from crates/atlas-cli/Cargo.toml

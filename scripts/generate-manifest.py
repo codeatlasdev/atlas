@@ -50,6 +50,9 @@ def desktop_files(version, platform_key):
     if platform_key.endswith("-apple-darwin"):
         return (("desktop", f"Atlas-{version}-{platform_key}.app.tar.gz"),
                 ("desktop_dmg", f"Atlas-{version}-{platform_key}.dmg"))
+    if platform_key.endswith("-pc-windows-msvc"):
+        # The per-user NSIS installer: `atlas desktop` runs it silently, people double-click it.
+        return (("desktop", f"Atlas-{version}-{platform_key}-setup.exe"),)
     deb_arch, rpm_arch = {"x86_64": ("amd64", "x86_64"), "aarch64": ("arm64", "aarch64")}[platform_key.split("-")[0]]
     return (("desktop", f"Atlas-{version}-{platform_key}.AppImage"),
             ("desktop_deb", f"atlas_{version}_{deb_arch}.deb"),
@@ -78,6 +81,7 @@ def main():
         ("x86_64-apple-darwin", "atlas-x86_64-apple-darwin"),
         ("universal-apple-darwin", "atlas-universal-apple-darwin"),
         ("x86_64-unknown-linux-gnu", "atlas-x86_64-unknown-linux-gnu"),
+        ("x86_64-pc-windows-msvc", "atlas-x86_64-pc-windows-msvc"),
     ]
 
     assets = {}

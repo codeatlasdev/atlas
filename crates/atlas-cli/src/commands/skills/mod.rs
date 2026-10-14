@@ -49,9 +49,9 @@ pub fn handle(cmd: SkillsCommands) -> Result<()> {
 /// global=true  → ~/.agents/skills  (OMP-universal, discovered by omp/claude/codex)
 /// global=false → .agents/ in current project dir
 pub fn skills_dir(global: bool) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = atlas_core::paths::home_dir();
     if global {
-        PathBuf::from(home).join(".agents").join("skills")
+        home.join(".agents").join("skills")
     } else {
         std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))

@@ -1,11 +1,11 @@
 use std::fs::File;
-use std::os::unix::io::AsRawFd;
 use std::path::Path;
 
 /// Pure: is this (lowercase) executable path / process name the atlas binary?
-/// Exact basename match — never a substring of the directory path.
+/// Exact basename match — never a substring of the directory path (`atlas.exe` on Windows).
 fn exe_is_atlas(exe: &str) -> bool {
-    exe.rsplit('/').next() == Some("atlas")
+    let base = exe.rsplit(['/', '\\']).next().unwrap_or(exe);
+    atlas_core::sys::is_program(base, "atlas")
 }
 
 #[derive(Debug)]
@@ -24,10 +24,7 @@ impl SingletonLock {
             .truncate(false)
             .write(true)
             .open(lock_path)?;
-        let fd = file.as_raw_fd();
-
-        let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
-        if ret != 0 {
+        if !atlas_core::sys::try_lock(&file)? {
             return Err(anyhow::anyhow!("another atlas dev instance is running"));
         }
 
@@ -39,17 +36,15 @@ impl SingletonLock {
 
     /// Returns the PID of a live prior instance, or None.
     /// Safe to call before raw mode is enabled.
-    pub fn existing_pid(lock_path: &Path) -> Option<libc::pid_t> {
-        let our_pid = std::process::id() as libc::pid_t;
-        let our_ppid = unsafe { libc::getppid() };
+    pub fn existing_pid(lock_path: &Path) -> Option<i32> {
+        let our_pid = std::process::id() as i32;
+        let our_ppid = atlas_core::sys::parent_pid() as i32;
         let contents = std::fs::read_to_string(lock_path).ok()?;
-        let pid = contents.trim().parse::<libc::pid_t>().ok()?;
+        let pid = contents.trim().parse::<i32>().ok()?;
         if pid <= 0 || pid == our_pid || pid == our_ppid {
             return None;
         }
-        // kill -0: probe existence without sending a signal
-        let alive = unsafe { libc::kill(pid, 0) == 0 };
-        if !alive {
+        if !atlas_core::sys::pid_alive(pid as u32) {
             return None;
         }
         // Verify the candidate is actually an atlas process, not a recycled PID.
@@ -62,12 +57,12 @@ impl SingletonLock {
     /// `atlas`). Prevents killing unrelated processes whose PID was recycled from
     /// a previous atlas run — including binaries that merely live under a path
     /// containing "atlas" (e.g. `…/atlas-org/app/…/turbo`).
-    fn pid_is_atlas(pid: libc::pid_t) -> bool {
+    fn pid_is_atlas(pid: i32) -> bool {
         exe_is_atlas(&crate::runtime::process::proc_name(pid))
     }
 
     /// Kill a prior instance gracefully (SIGTERM → 3s → SIGKILL).
-    pub async fn kill_prior(pid: libc::pid_t) {
+    pub async fn kill_prior(pid: i32) {
         crate::runtime::process::kill_exact_gracefully(pid, std::time::Duration::from_secs(3))
             .await;
     }
@@ -124,5 +119,13 @@ mod tests {
         assert!(!exe_is_atlas("/users/m/atlas-org/app/apps/api/tmp/api"));
         assert!(!exe_is_atlas("/usr/local/bin/atlas-mcp-helper"));
         assert!(!exe_is_atlas("/opt/atlas/bin/"));
+        // Windows paths (lowercase, as `proc_name` gives them).
+        assert_eq!(
+            exe_is_atlas(r"c:\users\u\.atlas\bin\atlas.exe"),
+            cfg!(windows)
+        );
+        assert!(!exe_is_atlas(
+            r"c:\users\u\atlas-org\node_modules\turbo.exe"
+        ));
     }
 }

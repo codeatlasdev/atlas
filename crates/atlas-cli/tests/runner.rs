@@ -3,6 +3,9 @@
 //! `atlas down`. Services are plain `sh` loops, no network. A guard stops the runner
 //! (and so every service) on drop, even when an assertion fails.
 
+// The fixtures are sh scripts and Unix sockets.
+#![cfg(unix)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};

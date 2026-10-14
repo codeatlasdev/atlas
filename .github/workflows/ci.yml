@@ -79,6 +79,33 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  # Windows: the whole workspace, Atlas Desktop included (WebView2, xterm.js terminals over ConPTY),
+  # and the Windows end-to-end hostd test (named pipe, ConPTY, cmd.exe). No Unix tools assumed.
+  rust-windows:
+    name: Rust (Windows, full workspace)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        if: ${{ !env.ACT }}
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
   frontend:
     name: Desktop frontend + skills
     runs-on: ubuntu-latest

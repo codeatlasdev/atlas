@@ -127,6 +127,16 @@ test("uri <-> path round-trips spaces and unicode", () => {
 	expect(pathToUri("/a b/c.ts")).toBe("file:///a%20b/c.ts");
 });
 
+// Windows: the app keeps drive paths with forward slashes (C:/Users/…); servers send file:///C:/… (or c%3A).
+test("windows drive paths become three-slash file URIs and come back without the slash", () => {
+	const p = "C:/Users/me/My Proj/src/main.rs";
+	expect(pathToUri(p)).toBe("file:///C:/Users/me/My%20Proj/src/main.rs");
+	expect(uriToPath(pathToUri(p))).toBe(p);
+	expect(uriToPath("file:///c%3A/x/y.ts")).toBe("c:/x/y.ts");
+	// A Unix path that merely contains a colon is untouched.
+	expect(uriToPath(pathToUri("/a/C:/b"))).toBe("/a/C:/b");
+});
+
 function r(sl, sc, el, ec) {
 	return { start: { line: sl, character: sc }, end: { line: el, character: ec } };
 }

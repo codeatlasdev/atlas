@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** Left sidebar: filter, fixed views, the active project and the collapsible list of the others. */
 	import { IconButton, Kbd, Skeleton, Spinner } from "@codeatlasdev/ui";
+	import { primaryKey } from "#lib/keys.ts";
 	import {
 		Bot,
 		ChevronRight,
@@ -58,7 +59,7 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		if (!(e.metaKey && e.shiftKey && e.key === "Backspace")) return;
+		if (!(primaryKey(e) && e.shiftKey && e.key === "Backspace")) return;
 		const sel = Object.keys(sidebar.multi).filter((k) => sidebar.multi[k]);
 		const ids = sel.length ? sel : sidebar.hovered ? [sidebar.hovered] : [];
 		if (!ids.length) return;
@@ -238,6 +239,10 @@
 		align-items: center;
 		justify-content: flex-end;
 		padding-right: 10px;
+	}
+	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
+	:global(html.opaque-window) .drag {
+		height: 36px;
 	}
 	/* Hidden until the sidebar is hovered, like Arc's chrome. */
 	.drag :global(.hide-btn),

@@ -2,7 +2,6 @@
 //! Atlas Desktop window over the control socket (`~/.atlas/desktop.sock`).
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
@@ -15,7 +14,7 @@ pub const NOT_RUNNING: &str = "Atlas Desktop is not running; launch it with `atl
 
 /// True when an Atlas Desktop window owns the control socket.
 pub fn desktop_running() -> bool {
-    UnixStream::connect(atlas_core::paths::desktop_socket()).is_ok()
+    atlas_core::ipc::connect_sync(&atlas_core::paths::desktop_socket()).is_ok()
 }
 
 fn token() -> Result<String> {
@@ -30,7 +29,7 @@ fn token() -> Result<String> {
 
 pub fn call(cmd: &str, args: Value, timeout: Duration) -> Result<Value> {
     let sock = atlas_core::paths::desktop_socket();
-    let mut s = UnixStream::connect(&sock).map_err(|_| anyhow!(NOT_RUNNING))?;
+    let mut s = atlas_core::ipc::connect_sync(&sock).map_err(|_| anyhow!(NOT_RUNNING))?;
     s.set_write_timeout(Some(Duration::from_secs(5)))?;
     s.set_read_timeout(Some(timeout.saturating_add(Duration::from_secs(5))))?;
     let token = token()?;

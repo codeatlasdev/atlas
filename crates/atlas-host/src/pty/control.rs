@@ -33,6 +33,7 @@ impl Session {
     }
 
     /// Signal the child (session leader). Exact PID only, never a group.
+    #[cfg(unix)]
     pub fn signal(&self, sig: &str) -> Result<()> {
         let s = match sig {
             "TERM" => libc::SIGTERM,
@@ -49,6 +50,25 @@ impl Session {
         if unsafe { libc::kill(pid as libc::pid_t, s) } != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
+        Ok(())
+    }
+
+    /// Windows has no signals: `INT` types Ctrl-C into the console (ConPTY turns it into a
+    /// `CTRL_C_EVENT` for the foreground program); `TERM`, `KILL` and `HUP` end the shell and
+    /// everything it started.
+    #[cfg(windows)]
+    pub fn signal(&self, sig: &str) -> Result<()> {
+        if !matches!(sig, "TERM" | "KILL" | "INT" | "HUP") {
+            return Err(anyhow!("unknown signal {sig}"));
+        }
+        if self.exited().is_some() {
+            return Ok(());
+        }
+        if sig == "INT" {
+            return self.write(b"\x03");
+        }
+        let pid = self.pid.ok_or_else(|| anyhow!("no pid"))?;
+        atlas_core::sys::kill_tree(pid);
         Ok(())
     }
 
@@ -78,6 +98,7 @@ impl Session {
     pub fn remove_files(&self) {
         let _ = std::fs::remove_file(bin_path(&self.dir, &self.id));
         let _ = std::fs::remove_file(meta_path(&self.dir, &self.id));
+        let _ = std::fs::remove_file(super::batch_path(&self.dir, &self.id));
     }
 
     pub fn clear(&self) {
@@ -100,6 +121,29 @@ impl Session {
         all[from..].join("\n")
     }
 
+    /// The program in the foreground: the newest process under the shell, or the shell itself
+    /// (Windows has no terminal process groups).
+    #[cfg(windows)]
+    fn foreground(&self) -> Option<(i32, String)> {
+        let pid = self.pid?;
+        if self.exited().is_some() {
+            return None;
+        }
+        let rows = atlas_core::sys::process_rows();
+        let fg = atlas_core::sys::descendants(pid, &rows)
+            .last()
+            .copied()
+            .unwrap_or(pid);
+        let name = rows.iter().find(|r| r.pid == fg)?.exe.clone();
+        let name = name
+            .strip_suffix(".exe")
+            .or_else(|| name.strip_suffix(".EXE"))
+            .unwrap_or(&name)
+            .to_string();
+        Some((fg as i32, name))
+    }
+
+    #[cfg(unix)]
     fn foreground(&self) -> Option<(i32, String)> {
         let io = self.io.lock();
         let pid = io.as_ref()?.master.as_ref()?.process_group_leader()?;
@@ -127,7 +171,14 @@ impl Session {
         })
     }
 
-    /// Current working directory of the child (macOS/Linux via `lsof`).
+    /// Current working directory of the child (macOS/Linux via `lsof`). Windows does not expose
+    /// another process's directory; the terminal learns it from the shell's OSC 7/9;9 instead.
+    #[cfg(windows)]
+    pub async fn cwd_now(&self) -> Option<String> {
+        None
+    }
+
+    #[cfg(unix)]
     pub async fn cwd_now(&self) -> Option<String> {
         let pid = self.pid?;
         let fut = tokio::process::Command::new("lsof")

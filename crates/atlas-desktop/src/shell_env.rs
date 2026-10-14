@@ -2,7 +2,8 @@
 //! hostd so a service, a `pre_command`, an action and a terminal all see the same PATH). A Finder/Dock or
 //! desktop-entry launch hands the app a bare environment (`PATH=/usr/bin:/bin:…`, no nvm/mise/brew/bun);
 //! the probe asks the user's own shell for its environment. This module owns the Settings override, the
-//! start-up probe off the main thread and the `shell_info`/`shell_set` commands.
+//! start-up probe off the main thread and the `shell_info`/`shell_set` commands. On Windows the "probe" is
+//! the app's own environment, which already is the user's (see `login_env`).
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -84,7 +85,11 @@ fn info(probe: Option<Probe>) -> ShellInfo {
     let path = probe
         .as_ref()
         .and_then(Probe::path)
-        .map(|v| v.split(':').map(String::from).collect())
+        .map(|v| {
+            std::env::split_paths(v)
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect()
+        })
         .unwrap_or_default();
     let tools = ["bun", "node", "npm", "pnpm", "docker", "git", "gh", "atlas"]
         .map(|t| {
@@ -192,7 +197,21 @@ pub fn settings_patch(
     Ok(s)
 }
 
+/// Windows: the shells a terminal tab can run, as found on `PATH` (PowerShell 7, Windows
+/// PowerShell, Command Prompt, Git Bash).
+#[cfg(windows)]
+pub fn installed_shells() -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    ["pwsh", "powershell", "cmd", "bash"]
+        .iter()
+        .filter_map(|s| atlas_core::paths::which(s))
+        .map(|p| p.to_string_lossy().into_owned())
+        .filter(|p| seen.insert(p.to_lowercase()))
+        .collect()
+}
+
 /// Shells registered in `/etc/shells` that exist on disk.
+#[cfg(unix)]
 pub fn installed_shells() -> Vec<String> {
     shells_from(
         &std::fs::read_to_string("/etc/shells").unwrap_or_default(),
@@ -203,6 +222,7 @@ pub fn installed_shells() -> Vec<String> {
 /// Entries of an `/etc/shells` text that can report an environment: absolute, present (`exists`),
 /// deduplicated. Debian/Ubuntu also list restricted shells (`rbash` refuses `/usr/bin/env`, the
 /// probe's only external command) and multiplexers (`tmux`, `screen`), which are not shells.
+#[cfg_attr(windows, allow(dead_code))]
 fn shells_from(text: &str, exists: impl Fn(&str) -> bool) -> Vec<String> {
     const NOT_PROBEABLE: [&str; 4] = ["rbash", "rksh", "tmux", "screen"];
     let mut seen = std::collections::HashSet::new();

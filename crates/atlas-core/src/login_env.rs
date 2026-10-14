@@ -14,8 +14,13 @@
 //!
 //! When the probe fails (timeout, restricted shell, broken rc) [`fallback_path`] prepends the well-known
 //! user bin directories so `bun`/`cargo`/`node` managers still resolve, and [`Probe::error`] says so.
+//!
+//! Windows has nothing to probe: every app gets the user's environment (the registry's user and system
+//! `Path`) however it was started, so the probe is our own environment.
 
-use std::ffi::{CStr, OsString};
+#[cfg(unix)]
+use std::ffi::CStr;
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -53,12 +58,20 @@ pub struct Probe {
 }
 
 impl Probe {
-    /// The `PATH` children run with.
+    /// The `PATH` children run with. Windows names are case-insensitive and its own spelling is `Path`.
     pub fn path(&self) -> Option<&str> {
         self.vars
             .iter()
-            .find(|(k, _)| k == "PATH")
+            .find(|(k, _)| is_path_key(k))
             .map(|(_, v)| v.as_str())
+    }
+}
+
+fn is_path_key(k: &str) -> bool {
+    if cfg!(windows) {
+        k.eq_ignore_ascii_case("PATH")
+    } else {
+        k == "PATH"
     }
 }
 
@@ -190,7 +203,14 @@ fn pick_shell(
     (default.into(), "default")
 }
 
+/// Login shell from the user database (set by `chsh`). Windows has none.
+#[cfg(windows)]
+pub fn account_shell() -> Option<String> {
+    None
+}
+
 /// Login shell from the user database (set by `chsh`).
+#[cfg(unix)]
 pub fn account_shell() -> Option<String> {
     let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 4096];
@@ -215,6 +235,29 @@ pub fn account_shell() -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// Windows: our own environment is the user's (see the module doc); the shell is the override from
+/// Settings, else `%ComSpec%`.
+#[cfg(windows)]
+fn run() -> Probe {
+    let shell = OVERRIDE
+        .lock()
+        .clone()
+        .filter(|s| crate::paths::is_executable(Path::new(s)))
+        .or_else(|| std::env::var("ComSpec").ok())
+        .unwrap_or_else(|| "cmd.exe".into());
+    Probe {
+        shell,
+        source: "windows",
+        flags: None,
+        error: None,
+        took_ms: 0,
+        vars: std::env::vars()
+            .filter(|(k, _)| !SKIP.contains(&k.as_str()))
+            .collect(),
+    }
+}
+
+#[cfg(unix)]
 fn run() -> Probe {
     let (shell, source) = resolve_shell();
     let home = dirs::home_dir().unwrap_or_else(|| "/".into());
@@ -328,7 +371,7 @@ pub fn parse(out: &str) -> Option<Vec<(String, String)>> {
     vars.iter().any(|(k, _)| k == "PATH").then_some(vars)
 }
 
-#[cfg(any(test, feature = "test-fixtures"))]
+#[cfg(all(unix, any(test, feature = "test-fixtures")))]
 /// Fixtures for spawn-path tests in other crates: a fake HOME with a `bun` on `~/.bun/bin` added by every
 /// shell's rc file, and the bare environment of a desktop-entry launch.
 pub mod fixtures {
@@ -387,7 +430,26 @@ pub mod fixtures {
     }
 }
 
-#[cfg(test)]
+/// Windows: the probe is this process's environment, `Path` included, and children find tools on it.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn the_probe_is_our_environment_and_its_path_resolves_tools() {
+        let p = run();
+        assert_eq!(p.source, "windows");
+        assert!(p.error.is_none());
+        let path = p.path().expect("Path is found whatever its case");
+        assert_eq!(Some(path.to_string()), std::env::var("PATH").ok());
+        let ours = OsString::from(path);
+        assert!(crate::paths::which_in("cmd", &ours).is_some());
+        assert!(!p.vars.iter().any(|(k, _)| k == "PWD"));
+    }
+}
+
+// Probes POSIX login shells (bash, zsh, fish).
+#[cfg(all(test, unix))]
 mod tests {
     use super::fixtures::{all_shells as shells, fake_home, gui_env};
     use super::*;

@@ -5,6 +5,9 @@
 //! (`PATH=/usr/bin:/bin`, a fake HOME whose rc files add a dir with a fake `bun`) and assert every spawn
 //! path finds `bun`. They run on macOS and Linux CI.
 
+// POSIX login shells; Windows apps get the user environment without a probe.
+#![cfg(unix)]
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};

@@ -53,3 +53,13 @@ test("a focused terminal takes ⌘K (clear) and ⇧⌘D (split down); the menu k
 	);
 	expect(remapped["atlas::Jump"]).toBe("Shift+Cmd+J");
 });
+
+// Incident (Windows/Linux): muda reads `Cmd` as the Super/Windows key outside macOS, so the menu advertised and
+// grabbed Win+T, Win+S … (keys the system owns) while the page ran the same commands on Ctrl. Off macOS the page's
+// keymap handles every key (a focused terminal keeps its Ctrl letters, see shellKeepsCtrl), and the menu sets none.
+test("off macOS the menu sets no accelerators: the page's keymap owns the keys", () => {
+	const acc = menuAccelerators(merge(DEFAULT_KEYMAP, {}), false, false);
+	expect(Object.entries(acc).filter(([, a]) => a !== null)).toEqual([]);
+	expect(accelerator("cmd-w", false)).toBeNull();
+	expect(accelerator("cmd-w", true)).toBe("Cmd+W");
+});

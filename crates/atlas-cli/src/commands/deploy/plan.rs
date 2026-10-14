@@ -104,7 +104,8 @@ pub fn render_plan(p: &Plan) -> String {
     out
 }
 
-#[cfg(test)]
+// Runs the plan through a local bash (deploy targets are Linux servers).
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

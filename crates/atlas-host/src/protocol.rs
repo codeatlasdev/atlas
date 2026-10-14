@@ -39,7 +39,13 @@ use serde_json::Value;
 
 pub const PROTO: u32 = 2;
 /// Capabilities reported by `info`; the desktop gates features on these.
+/// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
+/// master fds, so clients restart the daemon when it has no running terminal (see
+/// `upgrade::decide`).
+#[cfg(unix)]
 pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp"];
+#[cfg(windows)]
+pub const CAPS: &[&str] = &["pty_attach_raw", "lsp"];
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -303,6 +309,14 @@ pub fn reply(id: u64, res: Result<Value, String>) -> String {
         Err(e) => serde_json::json!({"id": id, "ok": false, "error": e}),
     };
     v.to_string()
+}
+
+/// The `pty_title` push for the title a `pty_attach` answer carries, or `None` when it has none. A
+/// program that titles its terminal once, before a client attached (PowerShell does at start), would
+/// otherwise never reach that client: the push went out while nobody listened.
+pub fn title_event(pty: &str, attach: &Value) -> Option<Value> {
+    let title = attach["title"].as_str().filter(|t| !t.is_empty())?;
+    Some(serde_json::json!({"ev": "pty_title", "pty": pty, "title": title}))
 }
 
 /// The first client line: `{"hello":{token,client,proto}}`.

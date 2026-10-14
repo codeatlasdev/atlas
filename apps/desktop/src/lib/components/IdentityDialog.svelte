@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { IS_MAC } from "#lib/keys.ts";
 	import { Button, Dialog, SegmentedControl, toast } from "@codeatlasdev/ui";
 	import { Check, ImageIcon, Search } from "@lucide/svelte";
 	import { fromOklch, readableOn } from "#lib/theme/color.ts";
@@ -146,7 +147,7 @@
 			{#if tab === "emoji"}
 				<input
 					class="field"
-					placeholder="Type or paste an emoji (⌃⌘Space)"
+					placeholder={`Type or paste an emoji (${IS_MAC ? "⌃⌘Space" : "Win+."})`}
 					value={emoji}
 					maxlength="16"
 					oninput={(e) => pickEmoji(e.currentTarget.value)}

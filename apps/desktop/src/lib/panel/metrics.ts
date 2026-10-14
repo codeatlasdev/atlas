@@ -163,6 +163,7 @@ export type Tone = "ok" | "warn" | "fail" | "off";
 
 export function summarize(states: string[], running: boolean): { tone: Tone; label: string } {
 	if (!running) return { tone: "off", label: "Stopped" };
+	if (!states.length) return { tone: "ok", label: "No services" };
 	let up = 0;
 	let starting = 0;
 	let failed = 0;

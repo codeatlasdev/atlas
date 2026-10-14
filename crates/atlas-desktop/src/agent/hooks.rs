@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -195,12 +194,13 @@ fn write_endpoint(port: u16, token: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(d)?;
     }
     let tmp = p.with_extension("tmp~");
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)?;
+    let mut f = atlas_core::sys::owner_only(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true),
+    )
+    .open(&tmp)?;
     writeln!(f, "ATLAS_HOOK_PORT={port}\nATLAS_HOOK_TOKEN={token}")?;
     std::fs::rename(tmp, p)
 }

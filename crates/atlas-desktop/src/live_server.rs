@@ -522,6 +522,8 @@ mod tests {
         }
     }
 
+    // Unix symlinks (Windows needs Developer Mode to make one).
+    #[cfg(unix)]
     #[test]
     fn symlink_out_of_root_is_rejected() {
         let d = tree();

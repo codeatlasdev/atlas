@@ -146,15 +146,9 @@ impl Tunnel {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(false);
-        // New session: no controlling terminal, so ssh can never grab the TUI's tty.
-        // SAFETY: setsid is async-signal-safe and runs in the forked child only.
-        unsafe {
-            cmd.pre_exec(|| {
-                nix::unistd::setsid()
-                    .map(|_| ())
-                    .map_err(|e| std::io::Error::from_raw_os_error(e as i32))
-            });
-        }
+        // New session: no controlling terminal, so ssh can never grab the TUI's tty
+        // (Windows: no console shared with the TUI).
+        atlas_core::sys::detach_tokio(&mut cmd);
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("cannot run {}: {e}", ssh_bin()))?;

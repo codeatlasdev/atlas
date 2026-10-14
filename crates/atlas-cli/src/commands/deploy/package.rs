@@ -71,8 +71,8 @@ pub fn package(
 
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
         eprintln!("▸ build: {build}");
-        let st = Command::new("sh")
-            .args(["-c", build])
+        // The project's own build command, in this machine's shell (`cmd` on Windows).
+        let st = atlas_core::sys::shell(build)
             .envs(atlas_core::login_env::vars())
             .current_dir(root)
             .status()

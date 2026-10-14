@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::process::Stdio;
 use std::time::Duration;
 
+use atlas_core::sys::CommandExt;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
@@ -12,16 +13,26 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 const OUT_CAP: usize = 10 * 1024 * 1024;
 
 /// Run `cmd`'s child in its own session (`setsid`): it survives our terminal/app and
-/// has no controlling tty.
+/// has no controlling tty. Windows: its own process group and a hidden console.
 pub(crate) fn new_session(cmd: &mut std::process::Command) {
-    use std::os::unix::process::CommandExt;
-    // SAFETY: setsid is async-signal-safe.
-    unsafe {
-        cmd.pre_exec(|| {
-            libc::setsid();
-            Ok(())
-        });
+    atlas_core::sys::detach(cmd);
+}
+
+/// The program to start for `bin`. Windows: a bare name is looked up on the request's `PATH`
+/// (else ours) with its executable extension, so `npm` finds `npm.cmd`; Rust would only try
+/// `npm.exe`.
+fn program(bin: &str, env: &BTreeMap<String, String>) -> std::path::PathBuf {
+    if cfg!(windows) && !bin.contains(['/', '\\']) {
+        let path = env
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
+            .map(|(_, v)| std::ffi::OsString::from(v))
+            .or_else(|| std::env::var_os("PATH"));
+        if let Some(found) = path.and_then(|p| atlas_core::paths::which_in(bin, &p)) {
+            return found;
+        }
     }
+    bin.into()
 }
 
 async fn read_capped(mut r: impl AsyncRead + Unpin) -> Vec<u8> {
@@ -49,8 +60,17 @@ pub async fn run(
     let input = stdin
         .map(|s| B64.decode(s).map_err(|e| format!("stdin: {e}")))
         .transpose()?;
-    let mut child = tokio::process::Command::new(bin)
-        .args(args)
+    // Windows: a shell-form argv goes to cmd verbatim (its quoting is not MSVC's).
+    let mut cmd = match atlas_core::sys::shell_script(argv) {
+        Some(script) => atlas_core::sys::shell_tokio(script),
+        None => {
+            let mut c = tokio::process::Command::new(program(bin, env));
+            c.args(args);
+            c
+        }
+    };
+    let mut child = cmd
+        .no_window()
         .current_dir(cwd)
         .envs(atlas_core::login_env::vars())
         .envs(env)

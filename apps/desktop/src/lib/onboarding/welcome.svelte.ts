@@ -34,7 +34,11 @@ class Welcome {
 			.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0)),
 	);
 	chosen = $derived(this.choices.filter((f) => this.picked[f.path] ?? true));
-	started = $derived(progress(this.watching ? (store.live[this.watching]?.services ?? []) : []));
+	started = $derived.by(() => {
+		const live = this.watching ? store.live[this.watching] : undefined;
+		// `mode` is set by the runner's snapshot (or its status file): it has reported.
+		return progress(live?.services ?? [], live?.mode != null);
+	});
 
 	send(ev: Event) {
 		const was = this.phase;

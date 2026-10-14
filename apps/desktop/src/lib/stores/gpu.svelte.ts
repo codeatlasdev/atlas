@@ -4,7 +4,7 @@ import { isMac } from "#lib/lsp/navigation.ts";
 const KEY = "atlas.gpuTerminal";
 
 export const gpu = $state({
-	/** The native terminal is an AppKit view drawn through Metal: macOS only. Elsewhere (Linux)
+	/** The native terminal is an AppKit view drawn through Metal: macOS only. Elsewhere (Linux, Windows)
 	 * every terminal uses xterm.js and the setting is not offered. */
 	supported: isMac(),
 	terminal: localStorage.getItem(KEY) !== "0",

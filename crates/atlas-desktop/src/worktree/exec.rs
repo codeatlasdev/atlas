@@ -15,6 +15,16 @@ pub(crate) struct Out {
     pub stderr: String,
 }
 
+/// The argv that runs `script` on `host`: this machine's shell for the local host (`cmd` on
+/// Windows, see `atlas_core::sys::shell_argv`), `sh -c` on an SSH host (Linux, macOS).
+pub(super) fn shell_argv(host: &str, script: &str) -> Vec<String> {
+    if host == crate::host::LOCAL {
+        atlas_core::sys::shell_argv(script)
+    } else {
+        vec!["sh".into(), "-c".into(), script.into()]
+    }
+}
+
 /// Run `argv` in `cwd` on the host that owns `cwd` (see `HostHub::call`).
 pub(super) async fn exec(
     hub: &HostHub,

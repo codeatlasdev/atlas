@@ -59,8 +59,8 @@ The first run downloads the `Atlas.app` that matches your CLI version from the p
 
 Requirements:
 
-- macOS 13+ on Apple silicon, or Linux x86_64 (glibc 2.35+, WebKitGTK 4.1). On Linux terminals use xterm.js rather than the native GPU terminal, the window uses your desktop's own title bar, and capture/recording and agent test instances are macOS only.
-- The atlas CLI. The app looks for it at `$ATLAS_BIN`, then `~/.atlas/bin/atlas`, then `atlas` on `PATH`.
+- macOS 13+ on Apple silicon, Linux x86_64 (glibc 2.35+, WebKitGTK 4.1), or Windows 10 (1809+) / 11 on x64 (WebView2). On Linux and Windows terminals use xterm.js rather than the native GPU terminal, the window uses the system's own title bar, and capture/recording and agent test instances are macOS only. Windows specifics (cmd.exe for `atlas.yaml` commands, ConPTY, no live host upgrade): [Installation › Windows](installation.md#windows).
+- The atlas CLI. The app looks for it at `$ATLAS_BIN`, then `~/.atlas/bin/atlas`, then (Windows) the `atlas.exe` its installer put next to the app, then `atlas` on `PATH`.
 - `curl` (preinstalled on macOS). No GitHub login is needed: releases are public.
 - Optional: `gh`, logged in (`gh auth login`), for the pull-request tab and checks.
 
@@ -205,6 +205,8 @@ Defaults follow macOS, Zed and browser conventions. Every shortcut is a named co
 ```json
 { "keymap": { "cmd-j": null, "cmd-shift-j": "workspace::ToggleBottomDock" } }
 ```
+
+**On Windows and Linux** the table reads with Ctrl for ⌘ (the Windows/Super key belongs to the system) and Alt for ⌥; labels in the app say so (`Ctrl+Shift+P`). The keymap file keeps the `cmd-…` spelling on every platform. Three macOS-only chords move, since ⌃ and ⌘ are the same Ctrl key there: spaces ⌃1…⌃9 are **Alt+1…9**, recent worktrees ⌃⌘1…⌃⌘6 are **Alt+Shift+1…6**, and the sidebar ⌃⌘S is **Alt+Shift+S**. In a focused terminal a plain Ctrl+letter goes to the shell (^C, ^R, ^W …), while Ctrl+Shift chords (Ctrl+Shift+P for the palette) and Ctrl with a digit, Tab or punctuation still reach the app; Ctrl+C copies when text is selected and Ctrl+V pastes. A Ctrl+Alt chord that types a character (AltGr on Windows: `ś`, `²`, `@`) stays text. The native menu shows no keys there; the app window handles them.
 
 | Keys                      | Action                                                                                                                       |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |

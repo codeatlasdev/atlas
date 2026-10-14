@@ -19,13 +19,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 dirs = { workspace = true }
-libc = { workspace = true }
+atlas-core = { path = "../atlas-core" }
 parking_lot = { workspace = true }
 portable-pty = "0.9"
 base64 = { workspace = true }
 notify = { workspace = true }
 atlas-lsp = { path = "../atlas-lsp" }
-atlas-core = { path = "../atlas-core" }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

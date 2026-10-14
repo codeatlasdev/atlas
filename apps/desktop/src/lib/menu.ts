@@ -5,7 +5,7 @@
  * fires twice. We push the effective keymap (user remaps included) and each command's
  * availability; a click or key sends `menu://command` back.
  */
-import { bindingsOf } from "#lib/keys.ts";
+import { IS_MAC, bindingsOf } from "#lib/keys.ts";
 
 /**
  * Edit items: the standard macOS keys, fixed (not part of the remappable keymap, so a
@@ -50,8 +50,12 @@ export const MENU_COMMANDS = [
 	"atlas::Help",
 ] as const;
 
-/** Muda accelerator for a canonical stroke (`shift-cmd-p` → `Shift+Cmd+P`), or null when it has none. */
-export function accelerator(stroke: string): string | null {
+/**
+ * Muda accelerator for a canonical stroke (`shift-cmd-p` → `Shift+Cmd+P`), or null when it has none. Off macOS
+ * there is none: muda reads `Cmd` as the Super/Windows key there, and the page's keymap owns the keys.
+ */
+export function accelerator(stroke: string, mac = IS_MAC): string | null {
+	if (!mac) return null;
 	const parts = stroke.split("-");
 	if (stroke.endsWith("--")) parts.splice(-2, 2, "-");
 	const key = parts.pop()!;
@@ -92,12 +96,18 @@ const TERMINAL_KEYS: Record<string, string> = { "atlas::Jump": "Cmd+K", "git::Di
 export function menuAccelerators(
 	effective: Map<string, string>,
 	terminalFocused = false,
+	mac = IS_MAC,
 ): Record<string, string | null> {
 	const out: Record<string, string | null> = {
 		...Object.fromEntries(
-			MENU_COMMANDS.map((id) => [id, bindingsOf(id, effective).map(accelerator).find(Boolean) ?? null]),
+			MENU_COMMANDS.map((id) => [
+				id,
+				bindingsOf(id, effective)
+					.map((k) => accelerator(k, mac))
+					.find(Boolean) ?? null,
+			]),
 		),
-		...EDIT_ACCELERATORS,
+		...(mac ? EDIT_ACCELERATORS : Object.fromEntries(Object.keys(EDIT_ACCELERATORS).map((id) => [id, null]))),
 	};
 	if (terminalFocused) {
 		for (const [id, key] of Object.entries(TERMINAL_KEYS)) if (out[id] === key) out[id] = null;

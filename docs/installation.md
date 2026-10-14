@@ -9,7 +9,7 @@ description: "Install Atlas from a release, update it, or build it from source."
 
 | | |
 |---|---|
-| OS | macOS 13+ on Apple silicon, or Linux x86_64 with glibc 2.35+ (Arch, Manjaro, Fedora, Debian 12, Ubuntu 22.04 and newer), for the prebuilt CLI and Atlas Desktop. Intel Macs, Linux on ARM and Windows are coming; meanwhile [build from source](#build-from-source). |
+| OS | macOS 13+ on Apple silicon, Linux x86_64 with glibc 2.35+ (Arch, Manjaro, Fedora, Debian 12, Ubuntu 22.04 and newer), or Windows 10 (1809+) / 11 on x64, for the prebuilt CLI and Atlas Desktop. Intel Macs and Linux on ARM are coming; meanwhile [build from source](#build-from-source). |
 | `docker` | Optional. Needed only when your `atlas.yaml` has an `infra:` block (OrbStack and Docker Desktop both work). |
 | `git`, `gh` | Optional. Atlas Desktop uses `git` for worktrees and the `gh` CLI for pull requests and checks. |
 
@@ -19,6 +19,12 @@ The installer downloads the latest stable release binary from GitHub, verifies i
 
 ```bash
 curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
+```
+
+On Windows, in PowerShell (see [Windows](#windows)):
+
+```powershell
+irm https://atlas.codeatlas.com.br/install.ps1 | iex
 ```
 
 `scripts/bootstrap.sh` in the repository goes further: it also runs `atlas install` (PATH entries and bundled skills) and offers to set up any agent it finds (omp, Claude Code, Codex). It also needs only `curl`, no `gh`:
@@ -70,6 +76,7 @@ The first run downloads the app that matches your CLI version, verifies its chec
 
 - **macOS:** `Atlas.app` goes into `/Applications`. You can also download `Atlas-<version>-aarch64-apple-darwin.dmg` from the release page by hand.
 - **Linux:** the AppImage goes to `~/.local/bin/atlas-desktop`, with an "Atlas" entry in your application menu. `atlas update` keeps it on the CLI's version.
+- **Windows:** the release's per-user installer runs silently into `%LOCALAPPDATA%\Atlas` (no admin rights), with a Start menu entry and an uninstaller in Settings › Apps. `atlas update` keeps it on the CLI's version.
 
 See the [Desktop app](desktop.md) for the details.
 
@@ -91,6 +98,25 @@ A package manager owns what it installed: `atlas update` does not touch `/usr/bi
 AppImages need FUSE 2 to start (`fuse2` on Arch, `libfuse2` on Debian/Ubuntu). Without it, run `./Atlas-*.AppImage --appimage-extract-and-run`.
 
 On Linux, Atlas Desktop draws terminals with xterm.js (WebGL) instead of the macOS GPU terminal, and the capture/recording tools (`atlas desktop capture`, `record`) and the agent test instances (`desktop:agent`) are macOS only.
+
+## Windows
+
+Windows 10 (1809 or newer) and 11 on x64 get the same CLI, TUI, MCP server and Atlas Desktop (ARM64 machines run the x64 build emulated). Install from PowerShell, no admin rights:
+
+```powershell
+irm https://atlas.codeatlas.com.br/install.ps1 | iex
+$env:ATLAS_CHANNEL = 'stable'; irm https://atlas.codeatlas.com.br/install.ps1 | iex   # or pick a channel
+```
+
+It verifies the release checksum, puts `atlas.exe` in `%USERPROFILE%\.atlas\bin`, adds that folder to your user `PATH` (open a new terminal afterwards) and installs the bundled agent skills. `atlas desktop` then installs and opens the app. You can also run `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` from the release page by hand: it installs the app and an `atlas.exe` next to it, which the app uses until you install the CLI.
+
+What differs from macOS and Linux:
+
+- **Commands in `atlas.yaml` run through `cmd.exe`** (`cmd /d /s /c`, as npm runs scripts), so `&&`, `>` and `%VAR%` work; POSIX-only syntax (`FOO=1 cmd`, `$VAR`, `;`) does not. Write commands both shells understand (`bun run dev`, `docker compose up -d`), or wrap one in `bash -c '…'` if you use Git Bash. `worktree.setup` and `archive` run the same way; `worktree.shared` links folders with a symlink (Developer Mode) or a junction.
+- **Terminals** run on ConPTY and are drawn with xterm.js (the GPU terminal is macOS only). A new tab starts PowerShell 7 (`pwsh`) when installed, else Windows PowerShell, else `cmd.exe`; pick another shell or program per tab as usual. npm-installed agents (`claude`, `codex`) are found through their `.cmd` shims.
+- **The terminal host is not upgraded live.** Windows cannot hand a running console to a new process, so after an update the host restarts by itself once no terminal is running, and otherwise asks first, like an old host on any platform.
+- Atlas keeps paths with forward slashes internally (`C:/Users/me/app`, as git prints them).
+- Not on Windows: capture and recording (`atlas desktop capture`, `record`), agent test instances (`desktop:agent`), `atlas link --desktop`, and the `local` target of `atlas deploy` (deploy targets are Linux servers reached over SSH, which works from Windows). `atlas link` makes a symlink, which needs Developer Mode.
 
 ## Update
 
@@ -143,12 +169,13 @@ Build `atlas-cli`, not `atlas-tui` alone: `atlas-tui` is a library, and `atlas-c
 ### Atlas Desktop
 
 ```bash
-bun run desktop:build            # macOS: .app + .dmg; Linux: .deb, .rpm and .AppImage, all in target/release/bundle/
+bun run desktop:build            # macOS: .app + .dmg; Linux: .deb, .rpm and .AppImage; Windows: the NSIS setup .exe; all in target/release/bundle/
 atlas desktop --from target/release/bundle/macos/Atlas.app                 # macOS
 atlas desktop --from target/release/bundle/appimage/Atlas_*.AppImage       # Linux
+atlas desktop --from target/release/bundle/nsis/Atlas_*-setup.exe          # Windows
 ```
 
-On Linux, build the CLI first (`cargo build --release -p atlas-cli`): the `.deb` and `.rpm` include `target/release/atlas`.
+On Linux, build the CLI first (`cargo build --release -p atlas-cli`): the `.deb` and `.rpm` include `target/release/atlas`. On Windows you need the Visual Studio Build Tools (C++ workload) and WebView2 (preinstalled on Windows 11); the release build also puts `atlas.exe` in the installer (`release.yml`, `build-windows`).
 
 For day-to-day work on the app use the hot-reload loop instead: `bun run desktop:dev`. More in [Contributing](contributing.md#develop-the-desktop-app).
 
@@ -171,4 +198,4 @@ atlas setup omp --uninstall --apply   # and claude-code / codex, if you set them
 atlas uninstall                       # removes ~/.atlas and the PATH lines it added (asks first; -y skips)
 ```
 
-`atlas uninstall` deletes the whole `~/.atlas/` directory: the binary, desktop settings and projects, worktrees under `~/.atlas/worktrees`, terminal scrollback and the omp plugin. It lists what it will remove and asks before doing anything. Delete `/Applications/Atlas.app` yourself to remove the desktop app (Linux: `~/.local/bin/atlas-desktop`, `~/.local/share/applications/dev.codeatlas.atlas.desktop` and the icon under `~/.local/share/icons/hicolor/128x128/apps/`; a distro package: remove it with your package manager, e.g. `sudo pacman -R codeatlas-atlas-bin`, `sudo apt remove atlas`). Skills copied to `~/.agents/skills/` and `~/.claude/skills/` are left in place; remove them with your agent's tooling if you want them gone.
+`atlas uninstall` deletes the whole `~/.atlas/` directory: the binary, desktop settings and projects, worktrees under `~/.atlas/worktrees`, terminal scrollback and the omp plugin. It lists what it will remove and asks before doing anything. Delete `/Applications/Atlas.app` yourself to remove the desktop app (Linux: `~/.local/bin/atlas-desktop`, `~/.local/share/applications/dev.codeatlas.atlas.desktop` and the icon under `~/.local/share/icons/hicolor/128x128/apps/`; a distro package: remove it with your package manager, e.g. `sudo pacman -R codeatlas-atlas-bin`, `sudo apt remove atlas`; Windows: uninstall **Atlas** in Settings › Apps, and `atlas uninstall` also takes `~\.atlas\bin` off your user `PATH`). Skills copied to `~/.agents/skills/` and `~/.claude/skills/` are left in place; remove them with your agent's tooling if you want them gone.

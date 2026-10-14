@@ -1,7 +1,8 @@
 //! `atlas desktop`: open Atlas Desktop, installing the release that matches this CLI
 //! when it is missing. The app ships as a release asset next to the CLI tarball
 //! (`Atlas-<version>-<platform>.app.tar.gz` on macOS, `Atlas-<version>-<platform>.AppImage` on
-//! Linux, see `desktop_linux.rs`), downloaded and checksum-verified like `atlas update`.
+//! Linux, see `desktop_linux.rs`, `Atlas-<version>-<platform>-setup.exe` on Windows, see
+//! `desktop_windows.rs`), downloaded and checksum-verified like `atlas update`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -155,10 +156,16 @@ impl AtlasCommand for DesktopArgs {
 pub(crate) use atlas_core::paths::installed_app;
 
 /// Where a fresh install goes: `/Applications` when writable, else `~/Applications`
-/// (Linux: `~/.local/bin/atlas-desktop`).
-#[cfg(not(target_os = "macos"))]
+/// (Linux: `~/.local/bin/atlas-desktop`; Windows: `%LOCALAPPDATA%\Atlas\atlas-desktop.exe`).
+#[cfg(target_os = "linux")]
 pub(crate) fn default_location() -> PathBuf {
     atlas_core::paths::linux_app(&dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")))
+}
+
+#[cfg(windows)]
+pub(crate) fn default_location() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    atlas_core::paths::windows_app(&atlas_core::paths::local_app_data(&home))
 }
 
 #[cfg(target_os = "macos")]
@@ -189,9 +196,14 @@ pub(crate) fn is_symlink(p: &Path) -> bool {
         .is_ok_and(|m| m.file_type().is_symlink())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn app_version(app: &Path) -> Option<String> {
     super::desktop_linux::app_version(app)
+}
+
+#[cfg(windows)]
+pub(crate) fn app_version(app: &Path) -> Option<String> {
+    super::desktop_windows::app_version(app)
 }
 
 /// `CFBundleShortVersionString` of an installed bundle.
@@ -210,11 +222,13 @@ pub(crate) fn app_version(app: &Path) -> Option<String> {
 
 pub(crate) fn asset_name(version: &str) -> String {
     let ext = if cfg!(target_os = "macos") {
-        "app.tar.gz"
+        ".app.tar.gz"
+    } else if cfg!(windows) {
+        "-setup.exe"
     } else {
-        "AppImage"
+        ".AppImage"
     };
-    format!("Atlas-{version}-{}.{ext}", current_platform())
+    format!("Atlas-{version}-{}{ext}", current_platform())
 }
 
 // ── actions ───────────────────────────────────────────────────────────────────
@@ -304,8 +318,10 @@ fn install_app(source: &Path, target: &Path, version: Option<&str>) -> Result<()
         let _ = version; // the bundle's Info.plist carries it
         install(source, target)
     }
-    #[cfg(not(target_os = "macos"))]
-    super::desktop_linux::install(source, target, version)
+    #[cfg(target_os = "linux")]
+    return super::desktop_linux::install(source, target, version);
+    #[cfg(windows)]
+    super::desktop_windows::install(source, target, version)
 }
 
 /// Put the bundle at `source` (`.app` dir or `.app.tar.gz`) at `target`, replacing any
@@ -393,13 +409,25 @@ fn open(app: &Path) -> Result<()> {
     run(Command::new("/usr/bin/open").arg(app))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn open(app: &Path) -> Result<()> {
     super::desktop_linux::open(app)
 }
 
+#[cfg(windows)]
+fn open(app: &Path) -> Result<()> {
+    super::desktop_windows::open(app)
+}
+
 /// `bun run desktop:dev` from the atlas workspace (hot-reloading frontend + Tauri shell).
+/// Agent instances live on a private macOS virtual display; there is no equivalent here.
+#[cfg(windows)]
+fn agent(_stop: bool, _name: Option<String>, _scratch: bool) -> Result<()> {
+    bail!("agent instances (atlas desktop --agent) need macOS")
+}
+
 /// `atlas desktop --agent [--name N] [--scratch] [--stop]`: see `desktop_agent.rs`.
+#[cfg(unix)]
 fn agent(stop: bool, name: Option<String>, scratch: bool) -> Result<()> {
     if stop {
         return super::desktop_agent::stop(name.as_deref());
@@ -448,6 +476,8 @@ mod tests {
                 name,
                 format!("Atlas-1.6.0-{}.app.tar.gz", current_platform())
             );
+        } else if cfg!(windows) {
+            assert_eq!(name, "Atlas-1.6.0-x86_64-pc-windows-msvc-setup.exe");
         } else {
             assert_eq!(name, format!("Atlas-1.6.0-{}.AppImage", current_platform()));
         }

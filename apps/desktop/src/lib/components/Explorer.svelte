@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
+	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
 	import { DropdownMenu, DropdownMenuItem, Skeleton, toast } from "@codeatlasdev/ui";
 	import { ChevronRight, ChevronDown, Ellipsis, FilePlus, LocateFixed } from "@lucide/svelte";
@@ -204,7 +205,7 @@
 	const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.success("Copied"));
 
 	function onkeydown(e: KeyboardEvent) {
-		if (e.metaKey && e.altKey && e.shiftKey && e.code === "KeyC") {
+		if (primaryKey(e) && e.altKey && e.shiftKey && e.code === "KeyC") {
 			const t = ws.tab(ws.focusedGroup(worktreeId).activeTab);
 			if (t?.path) {
 				void copy(t.path);

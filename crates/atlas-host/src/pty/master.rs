@@ -1,5 +1,6 @@
 //! The pty master end and the child-exit waiter type.
 
+#[cfg(unix)]
 use std::os::fd::{AsRawFd, BorrowedFd, OwnedFd, RawFd};
 
 use anyhow::Result;
@@ -9,12 +10,24 @@ use portable_pty::{MasterPty, PtySize};
 pub(super) type Waiter = Box<dyn FnOnce() -> Option<i32> + Send>;
 
 /// The pty master: owned by `portable_pty` for sessions this daemon spawned, a bare fd
-/// for sessions adopted from a previous daemon (see `handoff`).
+/// for sessions adopted from a previous daemon (see `handoff`, Unix only). On Windows it is
+/// the ConPTY pseudo console; dropping it closes the console.
 pub(super) enum Master {
     Pty(Box<dyn MasterPty + Send>),
+    #[cfg(unix)]
     Fd(OwnedFd),
 }
 
+#[cfg(windows)]
+impl Master {
+    pub(super) fn resize(&self, size: PtySize) -> Result<()> {
+        match self {
+            Master::Pty(m) => Ok(m.resize(size)?),
+        }
+    }
+}
+
+#[cfg(unix)]
 impl Master {
     pub(super) fn dup_file(&self) -> std::io::Result<std::fs::File> {
         let fd = self

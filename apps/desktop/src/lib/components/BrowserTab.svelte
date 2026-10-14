@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { DropdownMenu, DropdownMenuItem, toast } from "@codeatlasdev/ui";
@@ -119,7 +120,7 @@
 
 	function onkeydown(e: KeyboardEvent) {
 		if (!visible) return;
-		if (e.metaKey && e.key === "l") {
+		if (primaryKey(e) && e.key === "l") {
 			e.preventDefault();
 			document.getElementById(`addr-${tab.id}`)?.focus();
 		}
@@ -144,7 +145,7 @@
 			}}
 			onblur={() => (editing = false)}
 			onkeydown={(e) => e.key === "Enter" && go()}
-			placeholder="Search or enter address (⌘L)"
+			placeholder={`Search or enter address (${kbd("cmd-l")})`}
 		/>
 		<datalist id="hist-{tab.id}">
 			{#each ws.doc.urlHistory[tab.worktreeId] ?? [] as u (u)}<option value={u}></option>{/each}

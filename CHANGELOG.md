@@ -6,9 +6,22 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Atlas on Windows.** Windows 10 (1809+) and 11 on x64 get the CLI, the TUI, the MCP server and Atlas Desktop: install with `irm https://atlas.codeatlas.com.br/install.ps1 | iex` in PowerShell (no admin rights; `atlas.exe` in `~\.atlas\bin`, added to your user `PATH`), then `atlas desktop`, or run the per-user `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` from the release page; `atlas update` keeps both current. Terminals run on ConPTY with PowerShell 7, Windows PowerShell or `cmd.exe`, `atlas.yaml` commands run through `cmd.exe` like npm scripts, and the terminal host restarts instead of upgrading live. See [Windows](docs/installation.md#windows).
+
 ### Changed
 
 - **Code of Conduct updated to the Contributor Covenant 3.0** (was 2.1), with the reporting channel (a private report on the repository) and the moderators (the maintainers) filled in. Linked from the README badge, the issue chooser and the pull request checklist.
+
+### Fixed
+
+- **New terminals opened blank until a reload (Windows, Linux).** An xterm.js terminal asked the terminal host for its history before its listener was registered; a fast host answered first, the history was lost and every later byte waited behind it. The terminal (and the chat tab) now attach only once they listen.
+- **"Starting your stack…" never finished for a stack with no services.** A project whose `atlas.yaml` declares no services (all commented out) stayed on the welcome progress forever; it is done once the runner has reported. Its health dot, header pill (now _No services_, not an orange _0 of 0 up_) and popover card say it is up.
+- **Shortcuts on Windows and Linux.** The keymap's `cmd-…` bindings use Ctrl off macOS (the Windows/Super key belongs to the system), and labels, hints and placeholders read `Ctrl+Shift+P`, `Ctrl+Enter`, `Esc` instead of `⇧⌘P`, `⌘↩`, `⎋`. The macOS-only ⌃ and ⌃⌘ chords, which collided with ⌘ ones on the single Ctrl key (the palette listed Ctrl+S for both Save and Toggle sidebar), move: spaces to Alt+1…9, recent worktrees to Alt+Shift+1…6, the sidebar to Alt+Shift+S. In a focused terminal a plain Ctrl+letter goes to the shell (^C, ^R, ^L …); Ctrl+C copies when there is a selection, Ctrl+V pastes. AltGr (Ctrl+Alt on Windows) typing `ś`, `²` or `@` stays text instead of running a Ctrl+Alt shortcut. Ctrl+click opens terminal links like ⌘-click. The native menu no longer advertises Windows-key chords.
+- **Terminal tabs on Windows were titled with the shell's full path** (`C:\WINDOWS\System32\…\powershell.exe`), or stayed "Terminal" when the shell set its title before the tab attached (PowerShell sets it once): the title is the program's name (`powershell`, `cmd - npm run dev`) and is taken from the attach answer too.
+- **A theme error on every window load on Windows.** WebView2 runs the startup script before `<html>` exists; the cached theme is now applied as soon as it does.
+- **A missing command in `atlas.yaml` on Windows** (`cmd` exits 1, not 127) is explained like on macOS and Linux: the program is named, with the `Path` Atlas used and how to add its folder.
 
 ## [1.5.0-alpha.8] — 2026-10-14
 

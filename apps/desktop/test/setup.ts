@@ -9,6 +9,9 @@ import { plugin } from "bun";
 import { compile, compileModule } from "svelte/compiler";
 
 GlobalRegistrator.register();
+// The suite is written against the macOS app (⌘ shortcuts, glyph labels); happy-dom reports an X11/Win32 platform.
+// Platform-specific code takes the platform as a parameter and its Windows/Linux branches are tested explicitly.
+Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
 
 plugin({
 	name: "svelte",

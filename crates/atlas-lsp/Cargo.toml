@@ -25,12 +25,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 dirs = { workspace = true }
-libc = { workspace = true }
+atlas-core = { path = "../atlas-core" }
 parking_lot = { workspace = true }
 tar = "0.4"
 flate2 = { workspace = true }
 sha2 = "0.11"
 hex = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

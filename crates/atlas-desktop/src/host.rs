@@ -951,9 +951,12 @@ fn choose(app: &AppHandle, hub: &HostHub, choice: Choice) {
     let _ = app.emit("host://status", state);
 }
 
-/// Generic passthrough to hostd (`pty_*`, `exec`, `fs_*`, `info`), routed by host.
+/// Generic passthrough to hostd (`pty_*`, `exec`, `fs_*`, `info`), routed by host. A `pty_attach`
+/// answer's title is also sent as `pty_title`: a title the program set before this attach (PowerShell
+/// sets it once, at start) was pushed while the app was not listening to that pty yet.
 #[tauri::command]
 pub async fn host_call(
+    app: AppHandle,
     hub: tauri::State<'_, Arc<HostHub>>,
     cmd: String,
     args: Option<Value>,
@@ -961,7 +964,15 @@ pub async fn host_call(
     if cmd == "shutdown" {
         return Err("shutdown is not allowed from the app".into());
     }
-    hub.call(&cmd, args.unwrap_or_else(|| json!({}))).await
+    let args = args.unwrap_or_else(|| json!({}));
+    let pty = (cmd == "pty_attach")
+        .then(|| args["pty"].as_str().map(str::to_owned))
+        .flatten();
+    let out = hub.call(&cmd, args).await?;
+    if let Some(ev) = pty.and_then(|p| atlas_host::protocol::title_event(&p, &out)) {
+        let _ = app.emit("host://event", ev);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

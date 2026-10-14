@@ -230,6 +230,7 @@ export type CardState = "healthy" | "starting" | "failed" | "idle";
 /** The card's one-line state: what is wrong, by name, or that nothing is. Failed beats starting beats healthy. */
 export function projectHeadline(p: TrayProject): { state: CardState; text: string } {
 	if (!p.running) return { state: "idle", text: "Stopped" };
+	if (!p.services.length) return { state: "healthy", text: "No services" };
 	const failed = failedServices(p);
 	if (failed.length) {
 		const shown = failed.slice(0, 2).join(", ");

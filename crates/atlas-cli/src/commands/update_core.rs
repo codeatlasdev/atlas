@@ -4,7 +4,6 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -101,8 +100,7 @@ impl UpdateLock {
             .truncate(false)
             .open(path)
             .with_context(|| format!("cannot open {}", path.display()))?;
-        // SAFETY: plain flock(2) on an fd we own.
-        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        if !atlas_core::sys::try_lock(&file)? {
             bail!("another Atlas update is already running; wait for it to finish");
         }
         let _ = file.set_len(0);

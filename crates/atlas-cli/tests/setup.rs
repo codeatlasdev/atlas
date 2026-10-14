@@ -2,6 +2,9 @@
 //! binary, fully sandboxed: HOME, PI_CODING_AGENT_DIR, CLAUDE_CONFIG_DIR and CODEX_HOME point
 //! into a temp dir, never the user's real config.
 
+// The fixtures are sh scripts and Unix sockets.
+#![cfg(unix)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 

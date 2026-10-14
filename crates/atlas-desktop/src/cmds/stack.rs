@@ -1,6 +1,7 @@
 //! Running a project: start/stop the stack (locally or through hostd for SSH checkouts),
 //! per-service control, actions, and the config overview the dashboard renders.
 
+use atlas_core::sys::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -21,14 +22,18 @@ fn host_hub(app: &AppHandle) -> std::sync::Arc<HostHub> {
 /// `$ATLAS_BIN`, then `~/.atlas/bin/atlas`, then `atlas` on the shell's PATH.
 pub(crate) fn atlas_bin() -> Result<PathBuf, String> {
     let env = std::env::var_os("ATLAS_BIN").map(PathBuf::from);
-    let home = dirs::home_dir().map(|h| h.join(".atlas/bin/atlas"));
-    [env, home]
+    let home = dirs::home_dir().map(|h| h.join(".atlas/bin").join(atlas_core::paths::exe("atlas")));
+    [env, home, atlas_core::paths::bundled_cli()]
         .into_iter()
         .flatten()
         .find(|p| p.is_file())
         .or_else(|| crate::shell_env::which("atlas"))
         .ok_or_else(|| {
-            "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash".into()
+            if cfg!(windows) {
+                "atlas CLI not found — install (PowerShell): irm https://atlas.codeatlas.com.br/install.ps1 | iex".into()
+            } else {
+                "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash".into()
+            }
         })
 }
 
@@ -66,6 +71,7 @@ pub async fn stack_start(
         };
     }
     let mut cmd = tokio::process::Command::new(atlas_bin()?);
+    cmd.no_window();
     cmd.envs(crate::shell_env::vars_async().await);
     if e.port_offset > 0 {
         cmd.env(config::PORT_OFFSET_ENV, e.port_offset.to_string());

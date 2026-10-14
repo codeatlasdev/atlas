@@ -1,7 +1,8 @@
 //! Files of one hostd instance. Base dir is `~/.atlas`, overridable with
 //! `ATLAS_HOSTD_DIR` (tests, remote hosts with `--dir`).
 
-use std::io::{Read, Write};
+use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
@@ -44,12 +45,12 @@ pub fn ensure_token(dir: &Path) -> std::io::Result<String> {
     }
     std::fs::create_dir_all(dir)?;
     let t = random_hex(32)?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(token(dir))?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    // Windows: the file inherits the per-user ACL of `~/.atlas` (the profile is private).
+    #[cfg(unix)]
+    opts.mode(0o600);
+    let mut f = opts.open(token(dir))?;
     f.write_all(t.as_bytes())?;
     Ok(t)
 }
@@ -64,7 +65,7 @@ pub fn read_token(dir: &Path) -> std::io::Result<String> {
 
 pub fn random_hex(bytes: usize) -> std::io::Result<String> {
     let mut buf = vec![0u8; bytes];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
+    atlas_core::sys::random_bytes(&mut buf)?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 

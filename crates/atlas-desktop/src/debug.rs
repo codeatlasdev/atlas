@@ -114,12 +114,13 @@ pub fn debug_reply(state: State<'_, DebugState>, id: u64, ok: bool, value: Strin
 }
 
 /// Binds the bridge socket (0600: `eval` runs arbitrary JS in the app, only this user may connect).
-fn bind(path: &std::path::Path) -> std::io::Result<tokio::net::UnixListener> {
+fn bind(path: &std::path::Path) -> std::io::Result<atlas_core::ipc::Listener> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let _ = std::fs::remove_file(path);
-    let listener = tokio::net::UnixListener::bind(path)?;
+    let _ = atlas_core::ipc::remove_stale(path);
+    let listener = atlas_core::ipc::Listener::bind(path)?;
+    #[cfg(unix)]
     std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     Ok(listener)
 }
@@ -127,10 +128,10 @@ fn bind(path: &std::path::Path) -> std::io::Result<tokio::net::UnixListener> {
 async fn serve<R: Runtime>(app: AppHandle<R>) -> std::io::Result<()> {
     let listener = bind(&socket_path())?;
     loop {
-        let (stream, _) = listener.accept().await?;
+        let stream = listener.accept().await?;
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
-            let (rd, mut wr) = stream.into_split();
+            let (rd, mut wr) = atlas_core::ipc::split(stream);
             let mut lines = BufReader::new(rd).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let reply = match serde_json::from_str::<Value>(&line) {
@@ -557,6 +558,7 @@ async fn record<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
@@ -636,6 +638,8 @@ mod tests {
     /// Incident: an isolated instance (fresh HOME, e.g. Studio's capture) logged
     /// `atlas-debug: No such file or directory` and had no bridge, because `~/.atlas` did not exist yet
     /// when the bridge bound its socket (the ctl socket, which creates the directory, races it).
+    // Socket files and mode bits: Unix (Windows serves a named pipe).
+    #[cfg(unix)]
     #[tokio::test]
     async fn bind_creates_the_missing_socket_directory_and_locks_it_to_the_user() {
         let d = tempfile::tempdir().unwrap();
@@ -647,6 +651,8 @@ mod tests {
         );
     }
 
+    // Socket files and mode bits: Unix (Windows serves a named pipe).
+    #[cfg(unix)]
     #[tokio::test]
     async fn bind_replaces_a_stale_socket_file_from_a_crashed_run() {
         let d = tempfile::tempdir().unwrap();

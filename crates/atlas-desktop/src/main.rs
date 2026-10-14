@@ -1,4 +1,6 @@
 //! Atlas Desktop: native client of the `atlas dev` runners.
+// A release build is a GUI app on Windows: no console window next to it.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agent;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -320,7 +322,27 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Windows: a relaunch after an update (`updates::relaunch`) starts us while the old process is
+/// still exiting; wait for it so the control socket and the window state are free.
+#[cfg(windows)]
+fn wait_for_predecessor() {
+    let Some(pid) = std::env::var("ATLAS_RELAUNCH_WAIT_PID")
+        .ok()
+        .and_then(|p| p.parse::<u32>().ok())
+    else {
+        return;
+    };
+    for _ in 0..100 {
+        if !atlas_core::sys::pid_alive(pid) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    wait_for_predecessor();
     diag::install_panic_hook();
     boot::start();
     boot::mark("main");

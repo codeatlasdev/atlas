@@ -2,6 +2,7 @@
 //! (`atlas update` → `atlas desktop --sync`), so the app and the terminal share
 //! one code path for downloading, verifying and replacing binaries.
 
+use atlas_core::sys::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -189,6 +190,7 @@ impl Release {
 /// First line of `atlas version` is `atlas X.Y.Z`.
 pub(crate) async fn cli_version(bin: &Path) -> Option<String> {
     let out = tokio::process::Command::new(bin)
+        .no_window()
         .arg("version")
         .output()
         .await
@@ -207,7 +209,8 @@ fn link_target(p: &Path) -> Option<String> {
 }
 
 /// Linux: the AppImage this process runs from (`$APPIMAGE`, set by its runtime), else the distro
-/// package's `/usr/bin/atlas-desktop`; none for a dev build.
+/// package's `/usr/bin/atlas-desktop`; none for a dev build. Windows: the installed exe is
+/// [`atlas_core::paths::installed_app`] already, so this finds nothing more.
 #[cfg(not(target_os = "macos"))]
 fn own_bundle() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("APPIMAGE").map(PathBuf::from)
@@ -367,6 +370,7 @@ async fn pump<R: tokio::io::AsyncRead + Unpin>(rd: R, app: AppHandle) -> String 
 async fn stream(app: &AppHandle, args: &[&str]) -> Result<(), String> {
     let _guard = InstallGuard::take()?;
     let mut child = tokio::process::Command::new(atlas_bin()?)
+        .no_window()
         .envs(crate::shell_env::vars_async().await)
         .args(args)
         .env("NO_COLOR", "1")
@@ -566,18 +570,30 @@ pub fn relaunch(app: AppHandle) -> Result<(), String> {
         .or_else(own_bundle)
         .ok_or("not running from an installed Atlas.app")?;
     // macOS opens the bundle through Launch Services; Linux runs the AppImage/binary in its own session.
-    let script = if cfg!(target_os = "macos") {
-        r#"sleep 1; /usr/bin/open "$0""#
-    } else {
-        r#"sleep 1; exec setsid "$0" </dev/null >/dev/null 2>&1"#
-    };
-    std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg(script)
-        .arg(&bundle)
-        .stdin(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        let script = if cfg!(target_os = "macos") {
+            r#"sleep 1; /usr/bin/open "$0""#
+        } else {
+            r#"sleep 1; exec setsid "$0" </dev/null >/dev/null 2>&1"#
+        };
+        std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(script)
+            .arg(&bundle)
+            .stdin(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    // Windows: the new exe starts on its own while this one exits. A second instance would
+    // find the control socket taken, so give this process a moment to release it.
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new(&bundle);
+        cmd.env("ATLAS_RELAUNCH_WAIT_PID", std::process::id().to_string())
+            .stdin(std::process::Stdio::null());
+        atlas_core::sys::spawn_detached(&mut cmd).map_err(|e| e.to_string())?;
+    }
     app.exit(0);
     Ok(())
 }

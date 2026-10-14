@@ -1,5 +1,6 @@
 //! The project registry commands: list, add, remove, pin, identity, relink and discovery.
 
+use atlas_core::sys::CommandExt as _;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -192,7 +193,7 @@ pub fn projects_add(
     root: String,
 ) -> Result<ProjectView, String> {
     let root = config::find_root(Path::new(&root)).ok_or(format!("no atlas.yaml in {root}"))?;
-    let root = root.canonicalize().unwrap_or(root);
+    let root = atlas_core::paths::canonical(&root).unwrap_or(root);
     let mut entries = registry::load()?;
     let id = registry::id_for(&root);
     if let Some(e) = existing(&entries, &id, &root) {
@@ -404,7 +405,7 @@ pub fn projects_relink(
 fn relink(entries: &mut [Entry], id: &str, picked: &Path) -> Result<String, String> {
     let root = config::find_root(picked)
         .ok_or_else(|| format!("no atlas.yaml in {}", picked.display()))?;
-    let root = root.canonicalize().unwrap_or(root);
+    let root = atlas_core::paths::canonical(&root).unwrap_or(root);
     let root_s = root.to_string_lossy().into_owned();
     if entries
         .iter()
@@ -513,6 +514,7 @@ pub async fn project_init(
     dir: String,
 ) -> Result<ProjectView, String> {
     let out = tokio::process::Command::new(super::atlas_bin()?)
+        .no_window()
         .args(["init", "--dir", &dir])
         .stdin(std::process::Stdio::null())
         .output()
@@ -646,7 +648,11 @@ mod tests {
         let stored = relink(&mut entries, "keep", &new).unwrap();
         assert_eq!(entries[0].id, "keep");
         assert_eq!(entries[0].root, stored);
-        assert_eq!(Path::new(&stored), new.canonicalize().unwrap());
+        // The stored form: canonical, and on Windows with forward slashes and no verbatim prefix.
+        assert_eq!(
+            Path::new(&stored),
+            atlas_core::paths::canonical(&new).unwrap()
+        );
         assert_eq!(missing_of(&entries[0]), None);
 
         // No atlas.yaml in (or above) the folder: refused, entry untouched.
@@ -662,7 +668,7 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let used = t.path().join("used");
         project(&used);
-        let canon = used.canonicalize().unwrap();
+        let canon = atlas_core::paths::canonical(&used).unwrap();
         let mut entries = vec![entry("a", &t.path().join("old")), entry("b", &canon)];
         let err = relink(&mut entries, "a", &used).unwrap_err();
         assert!(err.contains("already another project"), "{err}");

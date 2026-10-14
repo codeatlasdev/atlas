@@ -8,7 +8,6 @@
 //! the instance it started.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -263,7 +262,7 @@ pub fn run(cmd: DebugCmd) -> Result<()> {
 
 fn request(req: &Value, timeout: Duration) -> Result<Value> {
     let path = atlas_core::paths::desktop_debug_socket();
-    let stream = UnixStream::connect(&path).with_context(|| {
+    let stream = atlas_core::ipc::connect_sync(&path).with_context(|| {
         format!(
             "no debug bridge at {} — start an agent instance (`atlas desktop --agent`, or `bun run desktop:agent`) and point ATLAS_DEBUG_SOCK at the socket it prints",
             path.display()
@@ -308,6 +307,8 @@ mod tests {
         Cli::try_parse_from(std::iter::once("debug").chain(args.iter().copied())).is_err()
     }
 
+    // Unix absolute paths (`/tmp/…`); the debug bridge is for macOS agent instances.
+    #[cfg(unix)]
     #[test]
     fn gesture_record_and_replay_map_to_the_bridge_with_absolute_paths() {
         let v = req(&["gesture-record", "/tmp/s.json", "--seconds", "8"]);
@@ -324,6 +325,8 @@ mod tests {
         assert!(refused(&["gesture-record"]));
     }
 
+    // Unix absolute paths (`/tmp/…`); the debug bridge is for macOS agent instances.
+    #[cfg(unix)]
     #[test]
     fn shot_flags_become_the_bridge_fields_and_the_path_is_made_absolute() {
         let v = req(&["shot", "/tmp/a.png", "--selector", ".card"]);
@@ -361,6 +364,8 @@ mod tests {
         }
     }
 
+    // Unix absolute paths (`/tmp/…`); the debug bridge is for macOS agent instances.
+    #[cfg(unix)]
     #[test]
     fn record_takes_seconds_or_a_selector_never_both() {
         let v = req(&["record", "/tmp/a.mov", "--seconds", "5"]);

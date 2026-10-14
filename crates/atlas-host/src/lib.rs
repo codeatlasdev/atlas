@@ -7,6 +7,7 @@
 pub mod client;
 mod exec;
 mod fs;
+#[cfg(unix)]
 pub mod handoff;
 mod idle;
 mod lsp;

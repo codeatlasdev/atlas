@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { fontStep, keyToSend, optionActsAsAlt, termAction } from "./termKeys.ts";
+import { fontStep, keyToSend, optionActsAsAlt, termAction, xtermKey } from "./termKeys.ts";
 
 const ev = (
 	key: string,
@@ -182,4 +182,29 @@ test("⌘K and ⇧⌘D are kept by a focused terminal; app-only chords are not",
 	expect(terminalKeeps(e("d", true))).toBe(true);
 	for (const k of ["t", "w", "n", ",", "l"]) expect(terminalKeeps(e(k)), k).toBe(false);
 	expect(terminalKeeps(e("p", true))).toBe(false);
+});
+
+// Windows: in an xterm.js terminal Ctrl+C must stay ^C for the program unless text is selected, and copy/paste
+// follow Windows Terminal (Ctrl+Shift+C/V, Ctrl+V); the app's shortcuts there are Ctrl+Shift chords.
+test("xterm keys off macOS: copy with a selection, paste, ^C otherwise, Ctrl+Shift for the app", () => {
+	const k = (key, m = {}) => ({ key, metaKey: false, altKey: false, ctrlKey: false, shiftKey: false, ...m });
+	expect(xtermKey(k("c", { ctrlKey: true }), false, false)).toBeNull();
+	expect(xtermKey(k("c", { ctrlKey: true }), true, false)).toBe("copy");
+	expect(xtermKey(k("C", { ctrlKey: true, shiftKey: true }), false, false)).toBe("copy");
+	expect(xtermKey(k("v", { ctrlKey: true }), false, false)).toBe("paste");
+	expect(xtermKey(k("V", { ctrlKey: true, shiftKey: true }), false, false)).toBe("paste");
+	expect(xtermKey(k("F", { ctrlKey: true, shiftKey: true }), false, false)).toBe("search");
+	expect(xtermKey(k("T", { ctrlKey: true, shiftKey: true }), false, false)).toBe("app");
+	expect(xtermKey(k("r", { ctrlKey: true }), false, false)).toBeNull();
+	expect(xtermKey(k("Enter", { shiftKey: true }), false, false)).toBe("shiftEnter");
+	expect(xtermKey(k("x"), false, false)).toBeNull();
+});
+
+test("xterm keys on macOS: ⌘F searches, other ⌘ chords are the app's, Ctrl stays the program's", () => {
+	const k = (key, m = {}) => ({ key, metaKey: false, altKey: false, ctrlKey: false, shiftKey: false, ...m });
+	expect(xtermKey(k("f", { metaKey: true }), false, true)).toBe("search");
+	expect(xtermKey(k("t", { metaKey: true }), false, true)).toBe("app");
+	expect(xtermKey(k("c", { ctrlKey: true }), true, true)).toBeNull();
+	expect(xtermKey(k("v", { ctrlKey: true }), false, true)).toBeNull();
+	expect(xtermKey(k("Enter", { shiftKey: true }), false, true)).toBe("shiftEnter");
 });

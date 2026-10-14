@@ -4,6 +4,7 @@
 	 * takes its own row (the terminal shrinks by its height) instead of floating over the text.
 	 */
 	import { invoke } from "@tauri-apps/api/core";
+	import { primaryKey } from "#lib/keys.ts";
 	import FindInput from "../FindInput.svelte";
 	import ToggleChip from "../ToggleChip.svelte";
 
@@ -71,7 +72,7 @@
 		} else if (e.key === "Escape") {
 			e.preventDefault();
 			close();
-		} else if (e.metaKey && e.key === "f") {
+		} else if (primaryKey(e) && e.key === "f") {
 			e.preventDefault();
 			input?.select();
 		}

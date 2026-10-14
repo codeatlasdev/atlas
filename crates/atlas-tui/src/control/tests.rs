@@ -88,6 +88,8 @@ async fn call_without_server_is_not_running() {
     assert_eq!(e, NOT_RUNNING);
 }
 
+// Mode bits: Unix sockets only (Windows serves a named pipe).
+#[cfg(unix)]
 #[tokio::test]
 async fn socket_roundtrip_perms_and_cleanup() {
     use std::os::unix::fs::PermissionsExt;

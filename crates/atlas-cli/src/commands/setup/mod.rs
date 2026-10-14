@@ -237,7 +237,7 @@ fn dir_from_env(var: &str) -> Option<PathBuf> {
 
 impl Env {
     pub fn from_process() -> Result<Self> {
-        let home = PathBuf::from(std::env::var("HOME").context("$HOME not set")?);
+        let home = atlas_core::paths::home_dir();
         let agent_dir =
             dir_from_env("PI_CODING_AGENT_DIR").unwrap_or_else(|| home.join(".omp").join("agent"));
         let claude_cfg = dir_from_env("CLAUDE_CONFIG_DIR");

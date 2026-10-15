@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Linux: no way to copy text out of the terminal** (#28). The xterm.js terminal never wrote the clipboard. **Ctrl+Shift+C** copies the selection, **Ctrl+Shift+V** pastes (bracketed), **Ctrl+C** copies only while text is selected and is otherwise still SIGINT, and *Copy on select* (`terminal.copy_on_select`) now works in xterm.js terminals too. When the webview's async clipboard is refused, the copy falls back to `execCommand("copy")`. Not yet verified on a real Linux desktop.
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -11,6 +11,8 @@
 	import { api } from "#lib/api.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
+	import { isMac } from "#lib/lsp/navigation.ts";
+	import { copyText, keyAction } from "./terminal/clipboardKeys.ts";
 	import FindInput from "./FindInput.svelte";
 
 	let {
@@ -104,6 +106,18 @@
 			// canvas renderer fallback
 		}
 		t.attachCustomKeyEventHandler((e) => {
+			// Linux clipboard keys: Ctrl+Shift+C/V, and Ctrl+C while text is selected (issue #28).
+			const clip = keyAction(e, { mac: isMac(), hasSelection: t.hasSelection() });
+			if (clip) {
+				e.preventDefault();
+				if (clip === "copy") void copyText(t.getSelection());
+				else if (clip === "paste" && !readonly)
+					void navigator.clipboard.readText().then(
+						(x) => t.paste(x),
+						() => {},
+					);
+				return false;
+			}
 			if (e.type !== "keydown") return true;
 			if (e.metaKey && e.key === "f") {
 				searchOpen = true;
@@ -119,6 +133,13 @@
 		});
 		const offs: (() => void)[] = [];
 		let alive = true;
+		// `terminal.copy_on_select`: selecting copies, as in the GPU terminal (the selection is not a DOM
+		// selection, so the webview never puts it on the clipboard by itself).
+		const sel = t.onSelectionChange(() => {
+			if (!isMac() && prefs.value.terminal.copy_on_select && t.hasSelection())
+				void copyText(t.getSelection());
+		});
+		offs.push(() => sel.dispose());
 		const pendingLive: Uint8Array[] = [];
 		let replayed = false;
 		listen<{ data: string; replay: boolean }>(`pty://${pty}`, (e) => {

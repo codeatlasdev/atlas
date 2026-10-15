@@ -14,7 +14,7 @@ use tokio::io::AsyncReadExt;
 
 use super::mac;
 use super::render_loop::render_loop;
-use super::shared::{BELL, Shared, State};
+use super::shared::{BELL, Placement, Shared, State};
 use super::{APP, TERMS, Term, TermPrefs, on_main, write_clipboard, write_pty};
 use crate::host::HostHub;
 
@@ -192,6 +192,7 @@ pub async fn term_open(
             }),
             osc52: Mutex::new(prefs.osc52.clone()),
             wake: Condvar::new(),
+            placement: Mutex::new(Placement::default()),
         }
     });
     shared
@@ -201,7 +202,8 @@ pub async fn term_open(
     // Surface creation touches the NSView/CAMetalLayer: main thread only.
     let spec_open = spec.clone();
     let (view, renderer, resolution) = on_main(&app, move || {
-        let view = mac::create(ns_win, x, y, w, h)?;
+        // Parked: it is moved over the pane when the first frame is drawn (`Placement`).
+        let view = mac::create(ns_win, OFFSCREEN, OFFSCREEN, w, h)?;
         let ptr = std::ptr::NonNull::new(view as *mut std::ffi::c_void).ok_or("null view")?;
         let (pw, ph) = ((w * scale) as u32, (h * scale) as u32);
         // SAFETY: the view stays retained until `term_close` joins the render thread.
@@ -216,6 +218,8 @@ pub async fn term_open(
     emit_font_event(&app, &tab, &spec, &resolution);
     let tab_for_render = tab.clone();
     let (sh, a, p) = (shared.clone(), app.clone(), pty.clone());
+    shared.placement.lock().request((x, y, w, h), true);
+    let first = (shared.clone(), app.clone(), view);
     let render = thread::Builder::new()
         .name("atlas-term-render".into())
         .spawn(move || {
@@ -231,6 +235,16 @@ pub async fn term_open(
                     });
                 },
                 move |spec, res| emit_font_event(&font_app, &tab, spec, res),
+                move || {
+                    let (sh, app, view) = first;
+                    let frame = sh.placement.lock().drawn();
+                    if let Some((x, y, w, h)) = frame {
+                        let _ = on_main(&app, move || {
+                            mac::set_frame(view, x, y, w, h);
+                            Ok(())
+                        });
+                    }
+                },
             )
         })
         .map_err(|e| e.to_string())?;
@@ -293,10 +307,10 @@ pub async fn term_bounds(
             .ok_or_else(|| format!("no terminal for tab {tab}"))?;
         (t.view, t.shared.clone())
     };
-    let (vx, vy) = if visible {
-        (x, y)
-    } else {
-        (OFFSCREEN, OFFSCREEN)
+    // Before the first frame is drawn the view stays parked; the rect is applied when it is (`Placement`).
+    let (vx, vy) = match shared.placement.lock().request((x, y, w, h), visible) {
+        Some((x, y, _, _)) => (x, y),
+        None => (OFFSCREEN, OFFSCREEN),
     };
     on_main(&app, move || {
         mac::set_frame(view, vx, vy, w, h);

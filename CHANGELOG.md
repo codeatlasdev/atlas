@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop: terminals and space swipes flickered.** The GPU terminal's native view is now held off screen until its first frame is drawn (it used to be placed over the pane while still empty, showing the webview through it), and its slot is painted in the terminal colour from the first paint. Slot geometry from the resize/mutation observers is coalesced into one `requestAnimationFrame` per frame instead of one IPC and one forced layout per observer. A dialog now parks a native terminal or browser only when it overlaps it. The xterm.js terminal loads WebGL before `open`, fits right after it, stays hidden until its first render (and during a replay), falls back to the DOM renderer when the WebGL context is lost, and releases its WebGL context while its space is parked. The pill, toasts, checklist, first-run and PDF toolbar no longer use `backdrop-filter` over content the pager moves.
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

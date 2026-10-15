@@ -210,8 +210,12 @@ export const SURFACES: Surface[] = [
 			await d.eval(select(d.fixtures.main));
 			await d.sleep(600);
 			for (const sel of ['[aria-label="New tab"]', '[aria-label="Project menu"]', '[aria-label="Worktree menu"]']) {
-				// `click()` on the element itself: the bridge's `click` only takes visible elements, and these are not until a hover
-				const hit = await d.eval<boolean>(`const b = [...document.querySelectorAll(${JSON.stringify(sel)})][0]; b?.click(); return !!b`);
+				// the label sits on an inner span and other layers hold copies: take the first match inside the current layer that
+				// has a box (hover-only triggers are `display: none`, so fall back to any), and press the kit's trigger the way a
+				// pointer does (the kit opens on pointerdown; `click()` alone does not open it)
+				const hit = await d.eval<boolean>(
+					`const all = [...document.querySelectorAll(${JSON.stringify(sel)})]; const el = all.find((e) => e.getClientRects().length) ?? all[0]; const b = el?.closest('button,[role=button],[aria-haspopup]') ?? el; if (!b) return false; const o = { bubbles: true, cancelable: true, button: 0, pointerType: "mouse", isPrimary: true }; b.dispatchEvent(new PointerEvent("pointerdown", o)); b.dispatchEvent(new PointerEvent("pointerup", o)); b.click(); return true`
+				);
 				if (!hit) throw new Error(`no element matches ${sel}`);
 				await d.sleep(1400);
 				const opened = await d.eval<boolean>(`return !!document.querySelector('[role=menu][data-state=open], [data-state=open][role=menu]')`);

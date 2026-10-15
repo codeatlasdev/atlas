@@ -19,6 +19,15 @@ test("cellFromStats rejects a renderer that has no cell size yet", () => {
 	expect(cellFromStats({ cell_w: 8, cell_h: 16 })).toEqual({ w: 8, h: 16 });
 });
 
+// Layout zoom: the renderer reports its cell in window points, the pointer arrives in CSS px. At 150% a cell
+// of 12 pt is 8 CSS px wide, so a click 80 CSS px in is column 10, not column 6.
+test("cellFromStats reports the cell in the page's CSS px under layout zoom", () => {
+	expect(cellFromStats({ cell_w: 12, cell_h: 24 }, 1.5)).toEqual({ w: 8, h: 16 });
+	expect(cellFromStats({ cell_w: 8, cell_h: 16 })).toEqual({ w: 8, h: 16 });
+	const cell = cellFromStats({ cell_w: 12, cell_h: 24 }, 1.5);
+	expect(cellAt(80, 0, { left: 0, top: 0 }, cell)).toMatchObject({ col: 10, row: 0 });
+});
+
 test("wheelLines scrolls up for negative deltas, falling back to 16px per line", () => {
 	expect(wheelLines(-32, null)).toBe(2);
 	expect(wheelLines(40, { w: 8, h: 20 })).toBe(-2);

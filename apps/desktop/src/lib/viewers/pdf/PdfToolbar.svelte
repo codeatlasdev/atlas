@@ -209,9 +209,8 @@
 		padding: 4px 6px;
 		border: 0.5px solid var(--ca-outline-subtle);
 		border-radius: 999px;
-		background: color-mix(in oklab, var(--ca-surface-raised) 78%, transparent);
-		backdrop-filter: blur(18px) saturate(1.6);
-		-webkit-backdrop-filter: blur(18px) saturate(1.6);
+		/* Opaque: the page this sits in is translated by the pager, and a blur is re-rendered every frame of a swipe. */
+		background: var(--ca-surface-raised);
 		box-shadow: 0 8px 28px color-mix(in oklab, black 28%, transparent);
 		color: var(--ca-text-secondary);
 		font-size: 11.5px;

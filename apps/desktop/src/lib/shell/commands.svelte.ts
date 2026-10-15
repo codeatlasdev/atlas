@@ -25,6 +25,7 @@ import { isHtml } from "#lib/stores/preview.ts";
 import { previewHtml } from "#lib/stores/preview.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { worktrees } from "#lib/stores/worktrees.svelte.ts";
+import { stepZoom } from "#lib/stores/zoom.svelte.ts";
 import { editorShellCommands } from "#lib/editor/shellCommands.ts";
 import { lspCommands } from "#lib/lsp/commands.ts";
 import { saveAllEditors } from "#lib/symbols.ts";
@@ -270,6 +271,9 @@ export function shellCommands(): Command[] {
 		{ id: "shell::Forward", label: "Go forward", run: () => shell.go(1), when: () => shell.canGo(1) },
 		{ id: "shell::PreviousSpace", label: "Previous space", run: () => shell.cycleSpace(-1) },
 		{ id: "shell::NextSpace", label: "Next space", run: () => shell.cycleSpace(1) },
+		{ id: "shell::ZoomIn", label: "Zoom in", run: () => void stepZoom("in") },
+		{ id: "shell::ZoomOut", label: "Zoom out", run: () => void stepZoom("out") },
+		{ id: "shell::ZoomReset", label: "Reset zoom", run: () => void stepZoom("reset") },
 		...dockCommands(),
 		...paletteCommands(),
 		...panelCommands(),

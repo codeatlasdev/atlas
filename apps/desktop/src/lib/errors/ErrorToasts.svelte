@@ -81,9 +81,8 @@
 		padding: 9px 8px 9px 11px;
 		border-radius: 12px;
 		color: var(--ca-text-primary);
-		background: var(--ca-glass-bg, var(--ca-surface-raised));
-		backdrop-filter: var(--ca-blur-thick);
-		-webkit-backdrop-filter: var(--ca-blur-thick);
+		/* Opaque: it floats over the pager, and a blur over moving content re-renders every frame of a swipe. */
+		background: var(--ca-surface-raised);
 		box-shadow:
 			0 0 0 0.5px color-mix(in oklab, var(--ca-semantic-error) 40%, var(--ca-outline-subtle)),
 			0 10px 30px -10px rgb(0 0 0 / 0.35);

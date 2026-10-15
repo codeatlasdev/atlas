@@ -24,7 +24,11 @@
 	{#if ui.kind === "host-old" && ui.ptys.length > 0}
 		<ul class="ptys" aria-label="Running terminals">
 			{#each ui.ptys.slice(0, 6) as p}
-				<li><span class="t">{p.title || "Terminal"}</span><span class="cwd mono">{p.cwd}</span></li>
+				<li>
+					<span class="t">{p.title || "Terminal"}</span><span class="cwd mono" dir="rtl"
+						><bdi dir="ltr">{p.cwd}</bdi></span
+					>
+				</li>
 			{/each}
 			{#if ui.ptys.length > 6}<li class="more">and {ui.ptys.length - 6} more</li>{/if}
 		</ul>
@@ -96,7 +100,6 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: var(--ca-text-secondary);
-		direction: rtl;
 	}
 	.more {
 		color: var(--ca-text-secondary);

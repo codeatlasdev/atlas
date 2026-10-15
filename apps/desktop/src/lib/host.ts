@@ -50,24 +50,8 @@ export interface FsEntry {
 	mtime: number;
 }
 
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
-export function b64encode(s: string | Uint8Array): string {
-	const bytes = typeof s === "string" ? enc.encode(s) : s;
-	let bin = "";
-	for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-	return btoa(bin);
-}
-
-export function b64bytes(b: string): Uint8Array {
-	const bin = atob(b);
-	const out = new Uint8Array(bin.length);
-	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-	return out;
-}
-
-export const b64decode = (b: string) => dec.decode(b64bytes(b));
+import { b64decode, b64encode } from "#lib/b64.ts";
+export { b64bytes, b64decode, b64encode } from "#lib/b64.ts";
 
 export const host = {
 	ptyCreate: (a: {

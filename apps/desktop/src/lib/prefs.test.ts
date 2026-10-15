@@ -178,3 +178,11 @@ test("a persisted minimum_contrast of 1 without the chosen marker is the old def
 	expect(resolvePrefs({ terminal: { minimum_contrast: 7 } }).terminal.minimum_contrast).toBe(7);
 	expect(resolvePrefs({ terminal: { minimum_contrast: 1.5 } }).terminal.minimum_contrast).toBe(1.5);
 });
+
+test("diff view pref: defaults to unified, accepts split, bad values fall back (split diff, #26)", () => {
+	expect(resolvePrefs({}).diff.view).toBe("unified");
+	expect(resolvePrefs({ diff: { view: "split" } }).diff.view).toBe("split");
+	expect(resolvePrefs({ diff: { view: "sideways" } }).diff.view).toBe("unified");
+	expect(resolvePrefs({ diff: { view: 2 } }).diff.view).toBe("unified");
+	expect(resolvePrefs({ diff: "split" }).diff.view).toBe("unified");
+});

@@ -163,6 +163,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 	entry(
 		"appearance",
+		"Zoom",
+		"ui-zoom",
+		"Zoom",
+		"Scale the whole window. ⌘+ and ⌘− step it, ⌘0 resets it (Ctrl instead of ⌘ outside macOS).",
+		"scale magnify bigger smaller zoom in out reset layout size",
+	),
+	entry(
+		"appearance",
 		"Interface font",
 		"ui-font",
 		"Interface font",

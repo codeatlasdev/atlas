@@ -44,6 +44,8 @@ pub(super) struct Shared {
     /// OSC 52 policy (`allow` | `ask` | `deny`), live-updatable.
     pub(super) osc52: Mutex<String>,
     pub(super) wake: Condvar,
+    /// Where the native view belongs, and whether its first frame is drawn yet.
+    pub(super) placement: Mutex<Placement>,
 }
 
 impl Shared {
@@ -55,5 +57,83 @@ impl Shared {
     pub(super) fn update(&self, f: impl FnOnce(&mut State)) {
         f(&mut self.state.lock());
         self.wake.notify_one();
+    }
+}
+
+/// Where the native view belongs and whether it may be shown yet.
+///
+/// A new `CAMetalLayer` is empty until the render thread presents its first frame, so a view placed over the
+/// pane at once shows the webview through it for a frame (a flash). The view therefore stays parked off screen
+/// until `drawn()`; `term_bounds` calls in between only record where it belongs.
+#[derive(Default)]
+pub(super) struct Placement {
+    rect: Option<(f64, f64, f64, f64)>,
+    shown: bool,
+    drawn: bool,
+}
+
+impl Placement {
+    /// JS asked for this rect; `show: false` parks it (dialog open, space moving). Returns the frame to apply
+    /// to the view: the rect, or `None` to park it off screen.
+    pub(super) fn request(
+        &mut self,
+        rect: (f64, f64, f64, f64),
+        show: bool,
+    ) -> Option<(f64, f64, f64, f64)> {
+        self.rect = Some(rect);
+        self.shown = show;
+        self.frame()
+    }
+
+    /// The first frame is on the layer. Returns the frame to apply now (`None`: still parked).
+    pub(super) fn drawn(&mut self) -> Option<(f64, f64, f64, f64)> {
+        self.drawn = true;
+        self.frame()
+    }
+
+    fn frame(&self) -> Option<(f64, f64, f64, f64)> {
+        self.rect.filter(|_| self.shown && self.drawn)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const R: (f64, f64, f64, f64) = (10.0, 20.0, 300.0, 200.0);
+
+    /// Incident (desktop flicker): the native view was placed over the pane the moment it was created, before its
+    /// first frame, so the empty layer flashed over the terminal.
+    #[test]
+    fn a_new_view_stays_parked_until_its_first_frame_is_drawn() {
+        let mut p = Placement::default();
+        assert_eq!(p.request(R, true), None);
+        assert_eq!(p.drawn(), Some(R));
+    }
+
+    #[test]
+    fn rect_changes_before_the_first_frame_are_remembered_and_the_last_one_wins() {
+        let mut p = Placement::default();
+        let moved = (10.0, 20.0, 400.0, 220.0);
+        assert_eq!(p.request(R, true), None);
+        assert_eq!(p.request(moved, true), None);
+        assert_eq!(p.drawn(), Some(moved));
+    }
+
+    #[test]
+    fn parked_by_js_stays_parked_even_after_the_first_frame() {
+        let mut p = Placement::default();
+        assert_eq!(p.request(R, false), None);
+        assert_eq!(p.drawn(), None);
+        assert_eq!(p.request(R, true), Some(R));
+    }
+
+    #[test]
+    fn after_the_first_frame_requests_apply_at_once_and_parking_still_works() {
+        let mut p = Placement::default();
+        p.request(R, true);
+        p.drawn();
+        assert_eq!(p.request(R, false), None);
+        assert_eq!(p.request(R, true), Some(R));
     }
 }

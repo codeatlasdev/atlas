@@ -6,9 +6,20 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Zoom the whole layout with ⌘+ / ⌘− / ⌘0** (Ctrl+ / Ctrl− / Ctrl0 on Linux). Steps from 50% to 300% like a browser tab, remembered across restarts, also in the View menu and Settings → Appearance → Zoom. Native views follow: the GPU terminal, embedded browser pages, the space-swipe stage and its gesture zones are placed at the zoomed layout, and clicks in the terminal land on the right cell. A focused GPU terminal keeps ⌘+ ⌘− ⌘0 for its own font size, as before. On Linux and Windows Ctrl− now zooms out (it used to be "go back" in the editor; that command stays in the palette and can be rebound).
+- **Side-by-side (split) diff in the Changes tab.** A Unified / Split selector in the diff toolbar shows the old version on the left and the new one on the right, deletions paired with additions row by row (uneven runs leave an empty cell), the changed characters of a modified line marked, and both halves scrolling together. Staging a hunk and commenting a line for the agent work in both layouts, and the choice is remembered in `settings.json` (`diff.view`).
+
+- **Whole-app flicker sweep (`bun scripts/flicker-sweep.ts`).** Films every surface of a real agent instance at 60 fps (boot, sidebar, space switch, Panel with a failed service, action toast, Logs, Changes, Settings, dialogs, menus, palette, error toast, terminal, window resize, browser, tabs) and judges the pixels: single-frame blips, blank frames and BT.1702 flashing. Exits 1 on any, with timestamps and crops in `report.md`; a surface it could not drive, or that left a dialog open, fails too. `atlas desktop debug resize W H` resizes the window mid-recording. See `docs/desktop.md`, "Flicker sweep".
+
 ### Fixed
 
 - **Linux: no way to copy text out of the terminal** (#28). The xterm.js terminal never wrote the clipboard. **Ctrl+Shift+C** copies the selection, **Ctrl+Shift+V** pastes (bracketed), **Ctrl+C** copies only while text is selected and is otherwise still SIGINT, and *Copy on select* (`terminal.copy_on_select`) now works in xterm.js terminals too. When the webview's async clipboard is refused, the copy falls back to `execCommand("copy")`. Not yet verified on a real Linux desktop.
+
+- **Source control lists every untracked file, and paths read correctly.** A new folder was one row (`.logs/`) instead of its files, so they could not be reviewed, staged or discarded one by one; `git status` now runs with `--untracked-files=all` (ignored folders such as `node_modules/` stay one dimmed entry via `--ignored=matching`). Paths clipped at the start with `direction: rtl` also had their edge punctuation reordered (`.logs/` showed as `/logs.`); the text is now an LTR isolate inside the clipping box in Source control, the review file list, the command palette, Find projects and the LSP popover. [#29](https://github.com/codeatlasdev/atlas/issues/29)
+
+- **Desktop: terminals and space swipes flickered.** The GPU terminal's native view is now held off screen until its first frame is drawn (it used to be placed over the pane while still empty, showing the webview through it), and its slot is painted in the terminal colour from the first paint. Slot geometry from the resize/mutation observers is coalesced into one `requestAnimationFrame` per frame instead of one IPC and one forced layout per observer. A dialog now parks a native terminal or browser only when it overlaps it. The xterm.js terminal loads WebGL before `open`, fits right after it, stays hidden until its first render (and during a replay), falls back to the DOM renderer when the WebGL context is lost, and releases its WebGL context while its space is parked. The pill, toasts, checklist, first-run and PDF toolbar no longer use `backdrop-filter` over content the pager moves.
 
 ## [1.5.0-alpha.10] — 2026-10-14
 

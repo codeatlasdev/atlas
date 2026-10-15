@@ -67,11 +67,17 @@
 	onMount(() => {
 		let alive = true;
 		const offs: (() => void)[] = [];
-		listen<{ data: string; replay: boolean }>(`pty://${tab.pty}`, (e) =>
+		const ready = listen<{ data: string; replay: boolean }>(`pty://${tab.pty}`, (e) =>
 			feed(b64bytes(e.payload.data), e.payload.replay),
 		).then((u) => (alive ? offs.push(u) : u()));
-		const attach = () => tab.pty && host.ptyAttach(tab.pty, true).catch(() => {});
-		void attach();
+		// After the listener is live: the replay hostd sends at once would otherwise be lost (see ptyStream.ts).
+		const attach = () =>
+			void ready
+				.then(() => {
+					if (alive && tab.pty) return host.ptyAttach(tab.pty, true);
+				})
+				.catch(() => {});
+		attach();
 		listen("host://reconnected", attach).then((u) => (alive ? offs.push(u) : u()));
 		const poll = () => send({ type: "get_state", id: "state" });
 		const t = window.setInterval(poll, STATE_POLL_MS);

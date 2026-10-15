@@ -156,6 +156,15 @@ describe("progress: how far a stack start is", () => {
 	test("no services yet is not done (the stack has not reported)", () => {
 		expect(progress([])).toEqual({ up: 0, total: 0, failed: 0, done: false });
 	});
+	// Incident (first run on Windows, 2026-10-14): a project whose atlas.yaml has every service commented out
+	// started a runner with nothing to run, and the welcome sat on "Starting your stack… 0 of … services up"
+	// forever. Once the runner has reported, an empty set of wanted services is a stack that is up.
+	test("a stack with nothing to start is up once the runner has reported", () => {
+		expect(progress([], true)).toEqual({ up: 0, total: 0, failed: 0, done: true });
+		expect(progress([s("stopped", { deselected: true })], true)).toMatchObject({ total: 0, done: true });
+		// Reported, but a wanted service is still starting: not done.
+		expect(progress([s("starting")], true)).toMatchObject({ done: false });
+	});
 });
 
 describe("showWelcome: the overlay stays for the whole guided flow", () => {

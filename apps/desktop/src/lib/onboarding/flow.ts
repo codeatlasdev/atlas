@@ -103,12 +103,16 @@ export interface StartProgress {
 	done: boolean;
 }
 
-/** How far a stack start is: running over wanted services (deselected and finished one-shots do not count). */
-export function progress(rows: Row[]): StartProgress {
+/**
+ * How far a stack start is: running over wanted services (deselected and finished one-shots do not count).
+ * `reported`: the runner has sent its state; with nothing wanted the stack is then up (an atlas.yaml whose
+ * services are all commented out), while before that report an empty list only means "not heard from yet".
+ */
+export function progress(rows: Row[], reported = false): StartProgress {
 	const want = rows.filter((r) => !r.deselected && !r.completed_ok);
 	const up = want.filter((r) => r.state === "running").length;
 	const failed = want.filter((r) => r.state === "failed").length;
-	return { up, total: want.length, failed, done: want.length > 0 && up === want.length };
+	return { up, total: want.length, failed, done: want.length > 0 ? up === want.length : reported };
 }
 
 /**

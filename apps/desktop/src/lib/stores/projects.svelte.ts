@@ -436,11 +436,4 @@ class Store {
 
 export const store = new Store();
 
-/** Sidebar dot: green all healthy, amber starting/degraded, red failed, grey stopped. */
-export function health(p: ProjectView, live: Live | undefined): "ok" | "warn" | "fail" | "off" {
-	if (!p.running) return "off";
-	const svcs = (live?.services ?? []).filter((s) => !s.deselected && s.state !== "disabled");
-	if (svcs.some((s) => s.state === "failed")) return "fail";
-	if (svcs.length && svcs.every((s) => s.state === "running" || s.completed_ok)) return "ok";
-	return "warn";
-}
+export { health } from "./health.ts";

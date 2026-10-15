@@ -26,6 +26,11 @@ Atlas is in **alpha**: expect bugs and breaking changes. Please [report what bre
 - **Error reports carry the cause, not a wall of one repeated line.** The log tails in a report (Report button, diagnostics) strip terminal colour codes and collapse repeated lines into one `(repeated N×)` line, so the lines before a burst of the same error (here the "Too many open files" that started it) reach the issue.
 - **A no-probe service could flash Running during a crash loop** when a health watcher of the previous spawn fired right after a restart. Running is now accepted only from a live child, and for services without a port or health check only after the minimum uptime of the current spawn.
 
+### Fixed
+
+- **New terminals opened blank until a reload (Linux).** An xterm.js terminal asked the terminal host for its history before its listener was registered; a fast host answered first, the history was lost and every later byte waited behind it. The terminal (and the chat tab) now attach only once they listen.
+- **"Starting your stack…" never finished for a stack with no services.** A project whose `atlas.yaml` declares no services (all commented out) stayed on the welcome progress forever; it is done once the runner has reported. Its health dot, header pill (now _No services_, not an orange _0 of 0 up_) and popover card say it is up.
+
 ## [1.5.0-alpha.8] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

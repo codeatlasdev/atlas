@@ -170,4 +170,11 @@ describe("formatting and summary", () => {
 		expect(summarize(["running", "stopped"], true)).toEqual({ tone: "warn", label: "1 of 2 up" });
 		expect(summarize(["running"], false)).toEqual({ tone: "off", label: "Stopped" });
 	});
+
+	// Incident: a running stack whose atlas.yaml declares no services (all commented out) showed an orange
+	// "0 of 0 up" in the project header, as if something were still starting.
+	test("summarize: a running stack with no services is healthy, not half up", () => {
+		expect(summarize([], true)).toEqual({ tone: "ok", label: "No services" });
+		expect(summarize([], false)).toEqual({ tone: "off", label: "Stopped" });
+	});
 });

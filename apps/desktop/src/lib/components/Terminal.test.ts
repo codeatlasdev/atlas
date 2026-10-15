@@ -41,6 +41,15 @@ class FakeTerminal {
 	}
 	refresh() {}
 	onData() {}
+	onSelectionChange() {
+		return { dispose() {} };
+	}
+	hasSelection() {
+		return false;
+	}
+	getSelection() {
+		return "";
+	}
 	attachCustomKeyEventHandler() {}
 	focus() {}
 	reset() {

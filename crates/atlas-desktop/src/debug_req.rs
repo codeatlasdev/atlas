@@ -460,7 +460,10 @@ mod tests {
         let r = |w: Value, h: Value| parse(&json!({"cmd":"resize","width":w,"height":h}));
         assert_eq!(
             r(json!(1100), json!(700)).unwrap(),
-            Req::Resize { w: 1100.0, h: 700.0 }
+            Req::Resize {
+                w: 1100.0,
+                h: 700.0
+            }
         );
         assert!(r(json!(1100.5), json!(700.25)).is_ok());
         assert!(parse(&json!({"cmd":"resize"})).is_err());

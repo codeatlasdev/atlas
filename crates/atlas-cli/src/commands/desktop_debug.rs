@@ -397,10 +397,7 @@ mod tests {
     #[test]
     fn resize_sends_the_two_sides_as_numbers_and_refuses_a_missing_one() {
         let v = req(&["resize", "1100", "700.5"]);
-        assert_eq!(
-            v,
-            json!({"cmd":"resize","width":1100.0,"height":700.5})
-        );
+        assert_eq!(v, json!({"cmd":"resize","width":1100.0,"height":700.5}));
         assert!(refused(&["resize", "1100"]));
         assert!(refused(&["resize", "wide", "700"]));
     }

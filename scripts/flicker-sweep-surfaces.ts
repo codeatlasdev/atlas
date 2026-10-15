@@ -203,19 +203,19 @@ export const SURFACES: Surface[] = [
 	},
 	{
 		id: "menus-tooltips",
-		covers: "dropdown menus that are always visible (New tab, Project menu) and a tooltip: open and close. NOT covered: the worktree-row menu, a hover-only button (`display: none` until a real pointer hovers the row; the bridge never sends OS input)",
-		seconds: 14,
+		covers: "dropdown menus (New tab, the project menu and a worktree row's menu) and a tooltip: open and close. The project and worktree triggers are hover-only (`display: none` until a pointer hovers the row), so they are opened with a page-side `click()`, which neither hovers nor changes layout",
+		seconds: 20,
 		expects: [["the New tab trigger", '[aria-label="New tab"]']],
 		async run(d) {
 			await d.eval(select(d.fixtures.main));
 			await d.sleep(600);
-			for (const sel of ['[aria-label="New tab"]']) {
-				await d.click(sel);
+			for (const sel of ['[aria-label="New tab"]', '[aria-label="Project menu"]', '[aria-label="Worktree menu"]']) {
+				// `click()` on the element itself: the bridge's `click` only takes visible elements, and these are not until a hover
+				const hit = await d.eval<boolean>(`const b = [...document.querySelectorAll(${JSON.stringify(sel)})][0]; b?.click(); return !!b`);
+				if (!hit) throw new Error(`no element matches ${sel}`);
 				await d.sleep(1400);
-				await d.eval(key("escape"));
-				await d.sleep(1000);
-				await d.click(sel);
-				await d.sleep(1400);
+				const opened = await d.eval<boolean>(`return !!document.querySelector('[role=menu][data-state=open], [data-state=open][role=menu]')`);
+				if (!opened) throw new Error(`${sel} did not open a menu`);
 				await d.eval(key("escape"));
 				await d.sleep(1000);
 			}

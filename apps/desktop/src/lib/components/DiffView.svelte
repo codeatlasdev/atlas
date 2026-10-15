@@ -6,6 +6,10 @@
 	import { uid, ws, type DiffComment } from "#lib/stores/workspace.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import DiffTable, { type Draft } from "./diff/DiffTable.svelte";
+	import SplitTable from "./diff/SplitTable.svelte";
+	import { prefs } from "#lib/stores/prefs.svelte.ts";
+	import { savePref } from "#lib/settings/savePref.ts";
+	import PathText from "./PathText.svelte";
 	import { highlightFile } from "./diff/highlight.ts";
 
 	let {
@@ -38,6 +42,7 @@
 		curMode = mode;
 	});
 
+	let view = $derived(prefs.value.diff.view);
 	let comments = $derived(ws.doc.diffComments[worktreeId] ?? []);
 	let shown = $derived(only ? files.filter((f) => f.path === only) : files);
 	let open = $derived(comments.filter((c) => !c.resolved));
@@ -148,6 +153,14 @@
 					{#each commits as c (c)}<option value={c.split(" ")[0]}>{c}</option>{/each}
 				</select>
 			{/if}
+			<select
+				aria-label="Diff layout"
+				value={view}
+				onchange={(e) => savePref("diff", { view: e.currentTarget.value === "split" ? "split" : "unified" })}
+			>
+				<option value="unified">Unified</option>
+				<option value="split">Split</option>
+			</select>
 			<label><input type="checkbox" bind:checked={wrap} /> Wrap</label>
 			<button title="Refresh" onclick={load}><RefreshCw size={12} /></button>
 			<span class="spacer"></span>
@@ -181,7 +194,7 @@
 						}}
 					>
 						<span class="st">{f.status[0].toUpperCase()}</span>
-						<span class="name">{f.path}</span>
+						<PathText path={f.path} />
 						{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
 					</button>
 				{:else}
@@ -219,15 +232,27 @@
 								</button>
 							{/if}
 						</div>
-						<DiffTable
-							path={f.path}
-							hunk={h}
-							tokens={tokens[`${f.path}#${hi}`]}
-							{comments}
-							bind:draft
-							onsave={addComment}
-							onresolve={setResolved}
-						/>
+						{#if view === "split"}
+							<SplitTable
+								path={f.path}
+								hunk={h}
+								tokens={tokens[`${f.path}#${hi}`]}
+								{comments}
+								bind:draft
+								onsave={addComment}
+								onresolve={setResolved}
+							/>
+						{:else}
+							<DiffTable
+								path={f.path}
+								hunk={h}
+								tokens={tokens[`${f.path}#${hi}`]}
+								{comments}
+								bind:draft
+								onsave={addComment}
+								onresolve={setResolved}
+							/>
+						{/if}
 					{/each}
 				</section>
 			{:else}
@@ -305,15 +330,6 @@
 	.file.on,
 	.file:hover {
 		background: var(--ca-action-hover);
-	}
-	.file .name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		direction: rtl;
-		text-align: left;
 	}
 	.st {
 		width: 12px;

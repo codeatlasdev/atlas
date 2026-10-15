@@ -11,6 +11,7 @@
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 	import { statusGroups } from "#lib/stores/tree.ts";
+	import PathText from "./PathText.svelte";
 
 	/** Porcelain status letter → `.code` class (anything else reads as modified). */
 	const CODE_KIND: Record<string, string> = {
@@ -245,7 +246,7 @@
 					onkeydown={(ev) => ev.key === "Enter" && openFile(worktreeId, e.path)}
 				>
 					<span class="code {CODE_KIND[code] ?? 'modified'}">{code}</span>
-					<span class="name">{e.path}</span>
+					<PathText path={e.path} />
 					{#if kind === "staged"}
 						<button title="Unstage" onclick={(ev) => (ev.stopPropagation(), unstage([e.path]))}
 							><Minus size={12} /></button
@@ -361,15 +362,6 @@
 	}
 	.code.conflict {
 		color: var(--ca-semantic-error);
-	}
-	.name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		direction: rtl;
-		text-align: left;
 	}
 	button {
 		border: 0;

@@ -14,6 +14,19 @@ use crate::worktree::git;
 /// Untracked files larger than this show as binary instead of their content.
 const UNTRACKED_MAX: u64 = 512 * 1024;
 
+/// Args of the `git_status` command; the tests run the real git with exactly these.
+/// `--untracked-files=all` lists every untracked file (git collapses a new folder to `dir/` otherwise);
+/// `--ignored=matching` keeps an ignored directory as one `dir/` entry (`traditional` + `-uall` would list every
+/// file of `node_modules/`).
+const STATUS_ARGS: [&str; 6] = [
+    "status",
+    "--porcelain=v2",
+    "-z",
+    "--branch",
+    "--ignored=matching",
+    "--untracked-files=all",
+];
+
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Line {
     kind: &'static str,
@@ -295,12 +308,7 @@ fn parse_status(out: &str) -> (Option<String>, Option<String>, Option<String>, V
 #[tauri::command]
 pub async fn git_status(hub: State<'_, Arc<HostHub>>, id: String) -> Result<Value, String> {
     let dir = root(&id)?;
-    let out = git(
-        &hub,
-        &dir,
-        &["status", "--porcelain=v2", "-z", "--branch", "--ignored"],
-    )
-    .await?;
+    let out = git(&hub, &dir, &STATUS_ARGS).await?;
     let (branch, upstream, ab, entries) = parse_status(&out);
     let base = default_base(&hub, &dir).await;
     let vs_base = if base != "HEAD" {
@@ -526,7 +534,7 @@ Binary files /dev/null and b/img.png differ
         std::fs::write(d.path().join("node_modules/x/i.js"), "").unwrap();
         std::fs::write(d.path().join(".env"), "").unwrap();
         std::fs::write(d.path().join("new.txt"), "").unwrap();
-        let out = run(&["status", "--porcelain=v2", "-z", "--branch", "--ignored"]);
+        let out = run(&STATUS_ARGS);
         let (_, _, _, entries) = parse_status(&out);
         let get = |p: &str| {
             entries
@@ -566,6 +574,123 @@ Binary files /dev/null and b/img.png differ
         assert_eq!(
             committed, fresh,
             "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+}
+
+#[cfg(test)]
+mod untracked_tests {
+    use super::*;
+
+    fn real_repo() -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        let run = |a: &[&str]| {
+            let o = std::process::Command::new("git")
+                .arg("-C")
+                .arg(d.path())
+                .args(["-c", "user.email=a@b", "-c", "user.name=n"])
+                .args(a)
+                .output()
+                .unwrap();
+            assert!(
+                o.status.success(),
+                "git {a:?}: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+        };
+        run(&["init", "-q", "."]);
+        std::fs::write(d.path().join(".gitignore"), "node_modules/\n").unwrap();
+        d
+    }
+
+    fn write(d: &tempfile::TempDir, rel: &str) {
+        let p = d.path().join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, "x").unwrap();
+    }
+
+    /// Runs the real git with the exact args `git_status` uses and parses it with the real parser.
+    fn status(d: &tempfile::TempDir) -> Vec<(String, String)> {
+        let o = std::process::Command::new("git")
+            .arg("-C")
+            .arg(d.path())
+            .args(STATUS_ARGS)
+            .output()
+            .unwrap();
+        assert!(o.status.success());
+        let (_, _, _, entries) = parse_status(&String::from_utf8_lossy(&o.stdout));
+        entries
+            .iter()
+            .map(|e| {
+                (
+                    e["path"].as_str().unwrap().to_string(),
+                    e["x"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    // Incident #29: a new folder showed as ONE untracked row (`.logs/`, git's collapsed form) instead of its files,
+    // so they could not be reviewed, staged or discarded one by one.
+    #[test]
+    fn untracked_folders_are_listed_file_by_file_not_collapsed() {
+        let d = real_repo();
+        write(&d, ".logs/api.log");
+        write(&d, ".logs/web.log");
+        write(&d, "pkg/deep/er/a.txt");
+        write(&d, "top.txt");
+        let got = status(&d);
+        let untracked: Vec<&str> = got
+            .iter()
+            .filter(|(_, x)| x == "?")
+            .map(|(p, _)| p.as_str())
+            .collect();
+        assert_eq!(
+            untracked,
+            [
+                ".gitignore",
+                ".logs/api.log",
+                ".logs/web.log",
+                "pkg/deep/er/a.txt",
+                "top.txt"
+            ],
+            "{got:?}"
+        );
+        assert!(
+            got.iter()
+                .all(|(p, _)| !p.ends_with('/') || p == "node_modules/"),
+            "{got:?}"
+        );
+    }
+
+    // Same class: the explorer dims ignored directories as ONE collapsed `dir/` entry (see
+    // `ignored_paths_are_reported_with_bang_and_keep_the_dir_slash`); listing untracked files individually must
+    // not explode an ignored directory into thousands of `!` rows.
+    #[test]
+    fn ignored_directories_stay_collapsed_while_untracked_are_expanded() {
+        let d = real_repo();
+        write(&d, "node_modules/a/i.js");
+        write(&d, "node_modules/b/j.js");
+        write(&d, "src/new.ts");
+        let got = status(&d);
+        let ignored: Vec<&str> = got
+            .iter()
+            .filter(|(_, x)| x == "!")
+            .map(|(p, _)| p.as_str())
+            .collect();
+        assert_eq!(ignored, ["node_modules/"], "{got:?}");
+        assert!(got.contains(&("src/new.ts".into(), "?".into())), "{got:?}");
+    }
+
+    // Paths with spaces and non-ASCII inside an untracked folder stay whole and unquoted (`-z`).
+    #[test]
+    fn untracked_files_with_spaces_and_unicode_inside_folders_stay_whole() {
+        let d = real_repo();
+        write(&d, "my dir/café au lait.txt");
+        let got = status(&d);
+        assert!(
+            got.contains(&("my dir/café au lait.txt".into(), "?".into())),
+            "{got:?}"
         );
     }
 }

@@ -66,6 +66,8 @@ pub enum DebugCmd {
         #[arg(long, default_value_t = 60)]
         fps: u32,
     },
+    /// Resize the main window (logical px) and print the size the page view ended up with
+    Resize { width: f64, height: f64 },
     /// Block until a selector is visible, or a JS expression is truthy
     Wait {
         /// CSS selector, or (with --expr) a JS expression
@@ -184,6 +186,10 @@ pub fn to_request(cmd: &DebugCmd) -> Result<(Value, Duration)> {
             // The reply comes after the recording: its length (or, until a selector, the 5 min cap) plus encoding.
             (v, extra(seconds.unwrap_or(300) * 1000 + 30_000))
         }
+        DebugCmd::Resize { width, height } => (
+            json!({ "cmd": "resize", "width": width, "height": height }),
+            Duration::ZERO,
+        ),
         DebugCmd::Wait {
             target,
             expr,
@@ -386,6 +392,14 @@ mod tests {
             "--until",
             "a"
         ]));
+    }
+
+    #[test]
+    fn resize_sends_the_two_sides_as_numbers_and_refuses_a_missing_one() {
+        let v = req(&["resize", "1100", "700.5"]);
+        assert_eq!(v, json!({"cmd":"resize","width":1100.0,"height":700.5}));
+        assert!(refused(&["resize", "1100"]));
+        assert!(refused(&["resize", "wide", "700"]));
     }
 
     #[test]

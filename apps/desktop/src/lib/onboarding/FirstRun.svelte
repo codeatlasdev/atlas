@@ -67,9 +67,8 @@
 		position: fixed;
 		inset: 0;
 		z-index: 80;
-		background: color-mix(in oklab, var(--ca-surface-base) 92%, transparent);
-		backdrop-filter: blur(28px) saturate(1.4);
-		-webkit-backdrop-filter: blur(28px) saturate(1.4);
+		/* Opaque: a full-window blur recomposites the transparent window on every frame beneath it. */
+		background: var(--ca-surface-base);
 		animation: fade 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 	.drag {

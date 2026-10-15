@@ -6,9 +6,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Whole-app flicker sweep (`bun scripts/flicker-sweep.ts`).** Films every surface of a real agent instance at 60 fps (boot, sidebar, space switch, Panel with a failed service, action toast, Logs, Changes, Settings, dialogs, menus, palette, error toast, terminal, window resize, browser, tabs) and judges the pixels: single-frame blips, blank frames and BT.1702 flashing. Exits 1 on any, with timestamps and crops in `report.md`; a surface it could not drive, or that left a dialog open, fails too. `atlas desktop debug resize W H` resizes the window mid-recording. See `docs/desktop.md`, "Flicker sweep".
+
 ### Fixed
 
 - **Source control lists every untracked file, and paths read correctly.** A new folder was one row (`.logs/`) instead of its files, so they could not be reviewed, staged or discarded one by one; `git status` now runs with `--untracked-files=all` (ignored folders such as `node_modules/` stay one dimmed entry via `--ignored=matching`). Paths clipped at the start with `direction: rtl` also had their edge punctuation reordered (`.logs/` showed as `/logs.`); the text is now an LTR isolate inside the clipping box in Source control, the review file list, the command palette, Find projects and the LSP popover. [#29](https://github.com/codeatlasdev/atlas/issues/29)
+
+- **Desktop: terminals and space swipes flickered.** The GPU terminal's native view is now held off screen until its first frame is drawn (it used to be placed over the pane while still empty, showing the webview through it), and its slot is painted in the terminal colour from the first paint. Slot geometry from the resize/mutation observers is coalesced into one `requestAnimationFrame` per frame instead of one IPC and one forced layout per observer. A dialog now parks a native terminal or browser only when it overlaps it. The xterm.js terminal loads WebGL before `open`, fits right after it, stays hidden until its first render (and during a replay), falls back to the DOM renderer when the WebGL context is lost, and releases its WebGL context while its space is parked. The pill, toasts, checklist, first-run and PDF toolbar no longer use `backdrop-filter` over content the pager moves.
 
 ## [1.5.0-alpha.10] — 2026-10-14
 

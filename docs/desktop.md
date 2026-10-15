@@ -307,6 +307,7 @@ atlas desktop debug shot x.png [--selector css | --rect x,y,w,h | --full | --win
 atlas desktop debug record x.mov --seconds 5 | --until '[data-intro="done"]' [--fps 30]
 atlas desktop debug wait '.ready' [--timeout ms] | wait 'window.__atlas.ws.loaded' --expr
 atlas desktop debug click 'button.go' | type 'input' 'text' [--delay ms]
+atlas desktop debug resize 1100 720                # main window, logical px (320..5120); prints the page view size
 atlas desktop debug a11y [selector]               # roles, names, nesting; unnamed controls are flagged
 atlas desktop debug perf --seconds 3              # rAF/s, p50/p95/max frame ms, long tasks
 ```
@@ -350,6 +351,21 @@ atlas desktop debug gesture-record /tmp/my-swipe.json --seconds 8
 ```
 
 The file is the raw event stream (timestamps, phases, deltas, pointer) with what the engine did with each event. Set `expect` in it (`zone`, `steps`: `1` next, `-1` previous, `0` stay, `untouched`) and keep it as `apps/desktop/src/lib/shell/__fixtures__/traces/recorded-<name>.json`: the Rust suite and the bench pick it up. `atlas desktop debug gesture-replay <trace.json>` feeds one into the running app in-process.
+
+#### Flicker sweep
+
+`gesture-bench` and `selection-bench` measure the main thread; a flicker is something the compositor *showed*, so the sweep judges pixels. It drives every surface of a real agent instance (never your window, never OS input) while the in-app recorder films it at 60 fps, then exits 1 on any flicker:
+
+```bash
+bun scripts/flicker-sweep.ts [--only settings,terminal] [--out /tmp/flicker-sweep] [--keep] [--list]
+bun scripts/flicker-sweep.ts --judge /tmp/x.mov [--surface name]      # judge one recording, no app
+```
+
+It starts its own instance (`--name sweep`, scratch HOME, three throwaway repos under `/tmp/flicker-sweep-fixtures`: a stack with a crash-looping service, an action and an uncommitted diff, plus two neighbour spaces) and stops it at the end. One recording per surface, so a finding names its surface: boot (idle baseline), sidebar select, space switch, Panel (cards filling in, failed service), action toast and output drawer, Logs, Changes, Settings (every section), dialogs, menus and tooltips, palette, error toast, terminal open/close, window resize with a live terminal, browser tab, tab swaps (`--list` prints them; `scripts/flicker-sweep-surfaces.ts` is the one place to add one). `atlas desktop debug resize W H` resizes the window mid-recording.
+
+A recording is decoded with its own presentation times (ScreenCaptureKit is variable frame rate: no `fps=` resample) into a 24 x 15 luminance grid per frame (`lib/debug/flickerSweep.ts`, unit-tested; flashing reuses `studio/src/lint` `flashWindows`). It fails on a **blip** (a region that differs from the frame before and the frame after while those two agree: the picture left its state for 1-2 frames and came back; ramps, one-way changes and states held 3+ frames are motion, not flicker), a **blank** frame (black or a cleared flat surface between frames with content) and BT.1702 **flashing**. A surface that recorded fewer than 3 frames fails too: a recording that never started is not a pass. The report (`report.md`, `report.json`) lists every surface with its frame count and, per finding, the timestamp and PNG crops of the frames around it.
+
+Needs Screen Recording permission. It is heavy: run it alone, with the load average under 4, like the benches. Run it before a release; `bun test scripts` covers the detector and the script's exit codes without an app.
 
 #### Capture and record (agents)
 

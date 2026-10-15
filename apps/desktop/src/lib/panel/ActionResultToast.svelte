@@ -60,9 +60,8 @@
 		border-radius: var(--ca-radius-md);
 		border: 1px solid var(--ca-outline-subtle);
 		border-left: 3px solid var(--ca-semantic-success);
-		background: var(--ca-glass-bg);
-		backdrop-filter: var(--ca-blur-thick);
-		-webkit-backdrop-filter: var(--ca-blur-thick);
+		/* Opaque: it floats over the pager, and a blur over moving content re-renders every frame of a swipe. */
+		background: var(--ca-surface-raised);
 		box-shadow: var(--ca-shadow-md);
 		font-size: 12.5px;
 		color: var(--ca-text-primary);

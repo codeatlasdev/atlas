@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { EmptyState, GlassCard, Select } from "@codeatlasdev/ui";
+	import { EmptyState, Card, Select } from "@codeatlasdev/ui";
 	import { Bot, LayoutDashboard } from "@lucide/svelte";
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
 	import AgentGlyph from "#lib/components/AgentGlyph.svelte";
@@ -126,7 +126,7 @@
 					<h2>{col.title} <span>{items.length}</span></h2>
 					{#each items as p (p.tab.id)}
 						<button class="card" onclick={() => focus(p.tab.id)}>
-							<GlassCard padding={12}>
+							<Card material="glass" p="3">
 								<div class="row">
 									<AgentGlyph state={p.st?.state ?? "idle"} /><b>{p.tab.agent}</b><span class="dim"
 										>{where(p.tab.worktreeId)}</span
@@ -135,7 +135,7 @@
 								{#if p.st?.prompt}<p class="prompt">{p.st.prompt}</p>{/if}
 								{#if p.st?.last_message}<p class="msg">{p.st.last_message}</p>{/if}
 								<div class="dim">{age(p.st?.state_started_at ?? p.tab.createdAt)} in state</div>
-							</GlassCard>
+							</Card>
 						</button>
 					{:else}
 						<div class="col-empty">Nothing here</div>

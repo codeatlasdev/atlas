@@ -10,6 +10,20 @@ import { compile, compileModule } from "svelte/compiler";
 
 GlobalRegistrator.register();
 
+// The kit's layers are `popover` elements (and `<dialog>`s): happy-dom has no Popover API, so this stands in for the
+// part the kit calls (`showPopover`, `hidePopover`, `:popover-open`). A real browser provides all of it.
+const open = new WeakSet();
+HTMLElement.prototype.showPopover ??= function () {
+	open.add(this);
+};
+HTMLElement.prototype.hidePopover ??= function () {
+	open.delete(this);
+};
+const matches = Element.prototype.matches;
+Element.prototype.matches = function (selector) {
+	return selector === ":popover-open" ? open.has(this) : matches.call(this, selector);
+};
+
 plugin({
 	name: "svelte",
 	setup(build) {
@@ -21,6 +35,15 @@ plugin({
 		build.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
 			const js = new Bun.Transpiler({ loader: "ts" }).transformSync(await Bun.file(path).text());
 			const out = compileModule(js, { filename: path, generate: "client", dev: true });
+			return { contents: out.js.code, loader: "js" };
+		});
+		// The kit ships its stores (`*.svelte.js`, runes) uncompiled: they must go through the same compiler.
+		build.onLoad({ filter: /\.svelte\.js$/ }, async ({ path }) => {
+			const out = compileModule(await Bun.file(path).text(), {
+				filename: path,
+				generate: "client",
+				dev: true,
+			});
 			return { contents: out.js.code, loader: "js" };
 		});
 	},

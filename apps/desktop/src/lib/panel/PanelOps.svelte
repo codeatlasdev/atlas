@@ -12,7 +12,6 @@
 	import type { ProjectView } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { runAction } from "#lib/actions.svelte.ts";
-	import Overlay from "#lib/components/Overlay.svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { activity } from "./activity.svelte.ts";
 	import { actionOutput } from "./actionOutput.svelte.ts";
@@ -20,9 +19,6 @@
 	import ActionResultToast from "./ActionResultToast.svelte";
 	import { fold, unread } from "./activity.ts";
 	import { buttonState, menuGroups } from "./actions.ts";
-
-	/** The idle trigger: Zap 14 + gap 4 + chevron 12 + padding 2×6 (a busy label only ever widens it). */
-	const ACTIONS_IDLE_W = 42;
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -62,75 +58,71 @@
 	{/snippet}
 </Tip>
 
-<Overlay>
-	<ActionOutputDrawer {project} />
-</Overlay>
+<ActionOutputDrawer {project} />
 <ActionResultToast {project} />
 
 {#if groups.length}
-	<Overlay width={ACTIONS_IDLE_W} height={24}>
-		<DropdownMenu align="end">
-			{#snippet triggerChild(props)}
-				<button
-					{...props}
-					class="actions-btn"
-					class:busy={!!ui.busy || !!remote}
-					aria-label="Actions"
-					data-tour="panel-actions"
-				>
-					{#if ui.busy || remote}
-						<!-- The running indicator opens the output; stop the menu from toggling. -->
-						<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-						<span
-							class="live"
-							title="View output"
-							onpointerdown={(e) => e.stopPropagation()}
-							onclick={(e) => {
-								e.stopPropagation();
-								actionOutput.show(project.id);
-							}}
-						>
-							<Spinner size={13} />
-							<span class="label">{ui.busy?.label ?? remote?.label}</span>
-						</span>
-					{:else}<Zap size={14} />{/if}
-					<ChevronDown size={12} />
-				</button>
-			{/snippet}
-			{#each groups as g, gi (g.label)}
-				{#if gi > 0}<DropdownMenuSeparator />{/if}
-				{#if g.label}<DropdownMenuLabel>{g.label}</DropdownMenuLabel>{/if}
-				{#each g.items as a (a.key)}
-					<DropdownMenuItem
-						variant={a.confirm ? "destructive" : "default"}
-						disabled={!!a.disabled}
-						onclick={() => runAction(project.id, a.key)}
+	<DropdownMenu align="end">
+		{#snippet triggerChild(props)}
+			<button
+				{...props}
+				class="actions-btn"
+				class:busy={!!ui.busy || !!remote}
+				aria-label="Actions"
+				data-tour="panel-actions"
+			>
+				{#if ui.busy || remote}
+					<!-- The running indicator opens the output; stop the menu from toggling. -->
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+					<span
+						class="live"
+						title="View output"
+						onpointerdown={(e) => e.stopPropagation()}
+						onclick={(e) => {
+							e.stopPropagation();
+							actionOutput.show(project.id);
+						}}
 					>
-						<Tooltip content={a.disabled ?? a.confirm ?? a.label} side="left" delay={250}>
-							{#snippet triggerChild(props)}
-								<span {...props} class="item">
-									{#if a.busy}<Spinner size={13} />{:else if a.confirm}<TriangleAlert size={13} />{:else}<Zap
-											size={13}
-										/>{/if}
-									<span class="name">{a.label}</span>
-									<Kbd>{a.key}</Kbd>
-								</span>
-							{/snippet}
-						</Tooltip>
-					</DropdownMenuItem>
-				{/each}
-			{/each}
-			{#if hasRuns}
-				<DropdownMenuSeparator />
-				<DropdownMenuItem onclick={() => actionOutput.show(project.id)}>
-					<span class="item">
-						<Terminal size={13} />
-						<span class="name">View output</span>
+						<Spinner size={13} />
+						<span class="label">{ui.busy?.label ?? remote?.label}</span>
 					</span>
+				{:else}<Zap size={14} />{/if}
+				<ChevronDown size={12} />
+			</button>
+		{/snippet}
+		{#each groups as g, gi (g.label)}
+			{#if gi > 0}<DropdownMenuSeparator />{/if}
+			{#if g.label}<DropdownMenuLabel>{g.label}</DropdownMenuLabel>{/if}
+			{#each g.items as a (a.key)}
+				<DropdownMenuItem
+					variant={a.confirm ? "destructive" : "default"}
+					disabled={!!a.disabled}
+					onclick={() => runAction(project.id, a.key)}
+				>
+					<Tooltip content={a.disabled ?? a.confirm ?? a.label} side="left" delay={250}>
+						{#snippet triggerChild(props)}
+							<span {...props} class="item">
+								{#if a.busy}<Spinner size={13} />{:else if a.confirm}<TriangleAlert size={13} />{:else}<Zap
+										size={13}
+									/>{/if}
+								<span class="name">{a.label}</span>
+								<Kbd>{a.key}</Kbd>
+							</span>
+						{/snippet}
+					</Tooltip>
 				</DropdownMenuItem>
-			{/if}
-		</DropdownMenu>
-	</Overlay>
+			{/each}
+		{/each}
+		{#if hasRuns}
+			<DropdownMenuSeparator />
+			<DropdownMenuItem onclick={() => actionOutput.show(project.id)}>
+				<span class="item">
+					<Terminal size={13} />
+					<span class="name">View output</span>
+				</span>
+			</DropdownMenuItem>
+		{/if}
+	</DropdownMenu>
 {/if}
 
 <style>

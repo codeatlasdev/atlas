@@ -21,7 +21,6 @@
 		Trash2,
 	} from "@lucide/svelte";
 	import { api, type ProjectView } from "#lib/api.ts";
-	import Overlay from "#lib/components/Overlay.svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import PanelOps from "#lib/panel/PanelOps.svelte";
 	import Crumbs from "#lib/shell/Crumbs.svelte";
@@ -70,21 +69,19 @@
 	</span>
 	<div class="grow" data-tauri-drag-region></div>
 	<div class="actions">
-		<Overlay width={36} height={36}>
-			<NotificationBell
-				notifications={agents.inbox.map((n) => ({
-					id: n.id,
-					title: n.title,
-					body: n.body,
-					read: n.read,
-					time: new Date(n.ts).toLocaleTimeString(),
-					variant: n.body === "Needs you" ? "warning" : "success",
-				}))}
-				onRead={openInbox}
-				onReadAll={() => agents.inbox.forEach((n) => (n.read = true))}
-				onClear={() => (agents.inbox = [])}
-			/>
-		</Overlay>
+		<NotificationBell
+			notifications={agents.inbox.map((n) => ({
+				id: n.id,
+				title: n.title,
+				body: n.body,
+				read: n.read,
+				time: new Date(n.ts).toLocaleTimeString(),
+				variant: n.body === "Needs you" ? "warning" : "success",
+			}))}
+			onRead={openInbox}
+			onReadAll={() => agents.inbox.forEach((n) => (n.read = true))}
+			onClear={() => (agents.inbox = [])}
+		/>
 		<div class="docks" role="group" aria-label="Docks">
 			{#each DOCKS as d (d.side)}
 				<Tip label="Toggle {d.label.toLowerCase()}" command={d.command}>
@@ -107,22 +104,20 @@
 		<div class="ops" role="group" aria-label="Activity and actions">
 			<PanelOps project={p} />
 		</div>
-		<Overlay width={28} height={28}>
-			<DropdownMenu align="end">
-				{#snippet trigger()}
-					<span class="more" aria-label="Project menu"><Ellipsis size={16} /></span>
-				{/snippet}
-				<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}>
-					<Code size={14} /> Open in external editor
-				</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
-					{#if p.pinned}<PinOff size={14} /> Unpin{:else}<Pin size={14} /> Pin to top{/if}
-				</DropdownMenuItem>
-				<DropdownMenuItem variant="destructive" onclick={() => (removeOpen = true)}>
-					<Trash2 size={14} /> Remove from Atlas
-				</DropdownMenuItem>
-			</DropdownMenu>
-		</Overlay>
+		<DropdownMenu align="end">
+			{#snippet trigger()}
+				<span class="more" aria-label="Project menu"><Ellipsis size={16} /></span>
+			{/snippet}
+			<DropdownMenuItem onclick={() => store.run("ed", () => api.openEditor(p.id))}>
+				<Code size={14} /> Open in external editor
+			</DropdownMenuItem>
+			<DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
+				{#if p.pinned}<PinOff size={14} /> Unpin{:else}<Pin size={14} /> Pin to top{/if}
+			</DropdownMenuItem>
+			<DropdownMenuItem variant="destructive" onclick={() => (removeOpen = true)}>
+				<Trash2 size={14} /> Remove from Atlas
+			</DropdownMenuItem>
+		</DropdownMenu>
 		{#if p.running}
 			<Button
 				variant="glass"
@@ -150,44 +145,40 @@
 					Start
 				</Button>
 				{#if p.profiles.length}
-					<Overlay width={24} height={28}>
-						<DropdownMenu align="end">
-							{#snippet trigger()}
-								<span class="split-arrow" aria-label="Start with profile"><ChevronDown size={13} /></span>
-							{/snippet}
-							<DropdownMenuLabel>Start with profile</DropdownMenuLabel>
-							{#each p.profiles as prof (prof)}
-								<DropdownMenuItem onclick={() => store.run(`stack:${p.id}`, () => api.start(p.id, [prof]))}>
-									{prof}
-								</DropdownMenuItem>
-							{/each}
-						</DropdownMenu>
-					</Overlay>
+					<DropdownMenu align="end">
+						{#snippet trigger()}
+							<span class="split-arrow" aria-label="Start with profile"><ChevronDown size={13} /></span>
+						{/snippet}
+						<DropdownMenuLabel>Start with profile</DropdownMenuLabel>
+						{#each p.profiles as prof (prof)}
+							<DropdownMenuItem onclick={() => store.run(`stack:${p.id}`, () => api.start(p.id, [prof]))}>
+								{prof}
+							</DropdownMenuItem>
+						{/each}
+					</DropdownMenu>
 				{/if}
 			</div>
 		{/if}
 	</div>
 </header>
 
-<Overlay>
-	<Dialog
-		bind:open={removeOpen}
-		title="Remove {p.name}?"
-		description="Only removes it from the sidebar. Files and running stacks are untouched."
-		size="sm"
-	>
-		{#snippet actions()}
-			<Button variant="ghost" onclick={() => (removeOpen = false)}>Cancel</Button>
-			<Button
-				variant="destructive"
-				onclick={() => {
-					removeOpen = false;
-					store.run("rm", () => api.remove(p.id));
-				}}>Remove</Button
-			>
-		{/snippet}
-	</Dialog>
-</Overlay>
+<Dialog
+	bind:open={removeOpen}
+	title="Remove {p.name}?"
+	description="Only removes it from the sidebar. Files and running stacks are untouched."
+	size="sm"
+>
+	{#snippet actions()}
+		<Button variant="ghost" onclick={() => (removeOpen = false)}>Cancel</Button>
+		<Button
+			variant="destructive"
+			onclick={() => {
+				removeOpen = false;
+				store.run("rm", () => api.remove(p.id));
+			}}>Remove</Button
+		>
+	{/snippet}
+</Dialog>
 
 <style>
 	/* One row, 40px: the same band as the macOS traffic lights (window y ≈ 8 + 20). The crumb

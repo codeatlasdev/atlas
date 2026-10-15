@@ -355,24 +355,10 @@ html.opaque-window body {
 	}
 }
 
-/* @codeatlasdev/ui Dialog: `height: fit-content` + a `flex: 1; min-height: 0` body
-   collapses the body to 0 in WKWebView. Size the body to its content instead; the
-   panel's max-height still caps it and the body keeps scrolling. */
-.ca-dialog .ca-dialog__body {
-	flex: 0 1 auto;
-	min-height: auto;
-}
-
-/* Native app feel (see lib/native.ts): rings only during keyboard navigation. */
-html:not([data-kbd]) :focus,
-html:not([data-kbd]) :focus-visible {
-	outline: none !important;
-}
-html:not([data-kbd]) .ca-layer-close:focus-visible {
-	box-shadow: none !important;
-}
+/* Native app feel: `nativeFeel()` (kit, started in lib/shell/session.svelte.ts) hides every focus ring until the keyboard
+   is used (`data-kbd`); this is how the keyboard ring looks. */
 html[data-kbd] :focus-visible {
-	outline: 2px solid var(--atlas-focus-ring, var(--ca-brand-main));
+	outline: 2px solid var(--ca-focus-ring);
 	outline-offset: 1px;
 	box-shadow: none;
 }
@@ -412,71 +398,16 @@ a:hover {
 	color: var(--atlas-link, var(--ca-brand-main));
 }
 html {
-	overscroll-behavior: none;
 	-webkit-text-size-adjust: none;
 }
-a,
-img {
-	-webkit-user-drag: none;
-}
-button,
-[role="button"],
-a {
-	cursor: default;
-}
 
-/* Disabled controls: the kit fades them with `opacity: 0.45`, which multiplies into the label colour and measured
-   1.6-2.7:1 (`atlas desktop debug contrast`). Disabled labels are exempt from AA by WCAG; Atlas holds them to 3:1, and
-   a token colour guarantees it (`--ca-text-disabled` is lifted to 3:1 on every surface in theme/derive.ts). The kit's
-   own rules carry a Svelte hash class, so these double the class to out-rank them. */
-.ca-btn.ca-btn:disabled,
-.ca-btn.ca-btn[aria-disabled="true"] {
-	opacity: 1;
-	color: var(--ca-text-disabled);
-}
-.ca-btn--outlined.ca-btn--outlined:disabled,
-.ca-btn--outlined.ca-btn--outlined[aria-disabled="true"] {
-	border-color: var(--ca-outline-default);
-}
-.ca-btn--filled.ca-btn--filled:disabled,
-.ca-btn--filled.ca-btn--filled[aria-disabled="true"] {
-	background: var(--ca-surface-sunken);
-	box-shadow: inset 0 0 0 1px var(--ca-outline-subtle);
-}
-
-/* Field boundaries (WCAG 2.2 1.4.11, 3:1): the kit draws text fields, text areas and selects with `--ca-outline-subtle`
-   (8% of the text colour, ~1.2:1). `--atlas-control-border` is derived per theme (theme/derive.ts, `border.control`) to
-   read 3:1 on every surface a field sits on. Focus and error colours stay the kit's; the doubled class out-ranks the
-   kit's hashed rules. */
-.ca-tf__wrap.ca-tf__wrap:not(.ca-tf__wrap--focused):not(.ca-tf__wrap--error),
-.ca-ta__wrap.ca-ta__wrap:not(.ca-ta__wrap--focused):not(.ca-ta__wrap--error) {
-	border-color: var(--atlas-control-border, var(--ca-outline-default));
-}
-
-/* Kit surfaces whose colours the kit takes from translucent glass tints (measured by the runtime audit, per theme):
-   - the destructive button's label is white on `--ca-semantic-error-fill`, the (lifted, light) error colour in dark
-     themes: 1.8:1. `--atlas-error-on-fill` is black or white by contrast (theme/derive.ts).
-   - the tooltip is inverted (text colour as fill, editor background as ink): 7:1+ on any theme, over any backdrop.
-   - menus and popovers (`glass-overlay`) paint an OPAQUE overlay surface: a blurred translucent tint over the page
-     measured 4.08:1 on One Light. */
-.ca-btn--destructive.ca-btn--destructive {
-	color: var(--atlas-error-on-fill, oklch(1 0 0));
-}
-.ca-tooltip-content.ca-tooltip-content {
-	background: var(--atlas-tooltip-bg, var(--ca-surface-overlay));
-	color: var(--ca-tooltip-fg, var(--ca-text-primary));
-	backdrop-filter: none;
-}
-.glass-overlay.glass-overlay {
-	background-color: var(--atlas-overlay-bg, var(--ca-surface-overlay));
-	backdrop-filter: none;
-	-webkit-backdrop-filter: none;
-}
-
-/* A disabled destructive button: the disabled label colour (`--ca-text-disabled`, 3:1 on the chrome surfaces) must sit on
-   a chrome surface too, not on the red fill (1.2:1 measured). Same look as the disabled filled button above. */
-.ca-btn--destructive.ca-btn--destructive:disabled,
-.ca-btn--destructive.ca-btn--destructive[aria-disabled="true"] {
-	background: var(--ca-surface-sunken);
-	box-shadow: inset 0 0 0 1px var(--ca-outline-subtle);
+/* The kit (2.2+) draws disabled controls, field boundaries, the destructive label, tooltips and menus from tokens, and its
+   component CSS is in `@layer ca.components`, so there is nothing to out-rank here: the theme sets the tokens
+   (theme/tokens.ts: `--ca-outline-control`, `--ca-semantic-error-contrast`, `--ca-tooltip-bg`, `--ca-overlay-bg`,
+   `--ca-focus-ring`, `--ca-action-disabled-bg`; each derived to its contrast floor in theme/derive.ts).
+   Only the blur is ours: the window is transparent (tauri-apps/tauri#15471), and menus, popovers and tooltips are opaque
+   tokens, so a backdrop blur only costs frames. */
+:root {
+	--ca-overlay-blur: none;
+	--ca-blur-ultra-thin: none;
 }

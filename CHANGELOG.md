@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **UI kit `@codeatlasdev/ui` 0.7.1 → 3.1.0** (bits-ui is gone: every overlay is a native `<dialog>` or `popover`, and a closed one renders nothing). Atlas drops the workarounds the kit now makes unnecessary: the deferral of overlays in neighbour space layers (`Overlay`, `AfterIdle`, the idle queue, `Tip`'s lazy tooltip), the doubled-class overrides for disabled buttons, field borders, the destructive label, tooltips and menus (the theme now sets the kit's own `--ca-outline-control`, `--ca-semantic-error-contrast`, `--ca-tooltip-bg`, `--ca-overlay-bg`, `--ca-focus-ring` and `--ca-action-disabled-bg`), the dialog-body WKWebView fix, and the local `nativeFeel` (the kit's, which also clears `data-kbd` from `<html>` on cleanup). `GlassCard` became `Card`.
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

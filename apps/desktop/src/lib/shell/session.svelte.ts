@@ -3,6 +3,8 @@
  * keeps the workspace, registry, dock badge and window theme in sync. Returns one cleanup.
  */
 import { colorScheme, toast } from "@codeatlasdev/ui";
+import { nativeFeel } from "@codeatlasdev/ui/kit";
+import { allowContextMenu } from "#lib/contextMenu.ts";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { untrack } from "svelte";
@@ -14,7 +16,6 @@ import { errors, startErrorHandler } from "#lib/errors/errors.svelte.ts";
 import { loadKeymap, register } from "#lib/keymap.svelte.ts";
 import { startCtl } from "#lib/ctl.ts";
 import { startMenu } from "#lib/menu.svelte.ts";
-import { nativeFeel } from "#lib/native.ts";
 import { metrics } from "#lib/panel/metrics.svelte.ts";
 import { shellCommands } from "#lib/shell/commands.svelte.ts";
 import { offerGhostty, startThemeCommands } from "#lib/shell/themeCommands.svelte.ts";
@@ -42,7 +43,6 @@ import { navigator as jumps } from "#lib/lsp/history.ts";
 import { hooks, worktrees } from "#lib/stores/worktrees.svelte.ts";
 import * as captureDom from "#lib/capture/dom.ts";
 import * as agentDebug from "#lib/debug/agent.ts";
-import { idleQueue } from "#lib/idleQueue.ts";
 import { runSelectionBench, type BenchEnv } from "#lib/debug/selectionBench.ts";
 import { idleFloor, runGesture, type GestureRunOpts } from "#lib/debug/gestureRun.ts";
 import { swipeDebug } from "#lib/shell/nativeSwipe.ts";
@@ -171,12 +171,6 @@ function syncEffects() {
 		});
 	});
 
-	// A space switch is activity: deferred UI work (`idleQueue`, kit overlays of neighbour layers) waits for it to settle.
-	$effect(() => {
-		void shell.activeId;
-		idleQueue.bump();
-	});
-
 	// Remember (worktree, tab) visits for ⌘[ / ⌘].
 	$effect(() => {
 		const w = ws.selected;
@@ -222,7 +216,7 @@ export function startSession(): () => void {
 	const stopThemeCommands = startThemeCommands();
 	hooks.launchAgent = (id, agent, prompt) => agents.launch(id, agent, { prompt });
 	exposeStores();
-	const stopFeel = nativeFeel();
+	const stopFeel = nativeFeel({ blockZoom: true, allowContextMenu });
 	const stopTray = startTrayFeed();
 	// The popover's sparklines need samples even with no Panel open.
 	const stopMetrics = metrics.start();

@@ -3,7 +3,6 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { Select, Skeleton, toast } from "@codeatlasdev/ui";
 	import { Play, Copy, FolderSearch, Globe, RefreshCw, PanelRightClose, Pin } from "@lucide/svelte";
-	import Overlay from "#lib/components/Overlay.svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { docks, toggleDock } from "#lib/stores/docks.svelte.ts";
 	import { api, errText } from "#lib/api.ts";
@@ -163,18 +162,16 @@
 				oninput={onSearch}
 				onkeydown={(e) => e.key === "Enter" && (clearTimeout(typing), loadSessions())}
 			/>
-			<Overlay fill height={30}>
-				<Select
-					size="sm"
-					value={scope}
-					options={[
-						{ value: "workspace", label: "Workspace" },
-						{ value: "project", label: "Project" },
-						{ value: "all", label: "All" },
-					]}
-					onchange={(v) => (scope = v as typeof scope)}
-				/>
-			</Overlay>
+			<Select
+				size="sm"
+				value={scope}
+				options={[
+					{ value: "workspace", label: "Workspace" },
+					{ value: "project", label: "Project" },
+					{ value: "all", label: "All" },
+				]}
+				onchange={(v) => (scope = v as typeof scope)}
+			/>
 		</div>
 		<div class="list">
 			{#each sessions as s (s.file)}

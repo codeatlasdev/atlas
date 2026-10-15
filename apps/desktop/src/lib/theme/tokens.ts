@@ -9,7 +9,8 @@
 
 /** Style key → kit custom properties it drives (`--ca-*`) or app-level vars (`--atlas-*`). */
 export const UI_TOKENS: Record<string, string[]> = {
-	background: ["--ca-surface-sunken"],
+	/** The chrome ground; also the fill of a disabled control, so its `--ca-text-disabled` label (3:1) sits on a chrome surface. */
+	background: ["--ca-surface-sunken", "--ca-action-disabled-bg"],
 	"editor.background": ["--ca-surface-base"],
 	"surface.background": ["--ca-surface-raised"],
 	"elevated_surface.background": ["--ca-surface-overlay"],
@@ -29,17 +30,18 @@ export const UI_TOKENS: Record<string, string[]> = {
 	"border.variant": ["--ca-outline-subtle"],
 	border: ["--ca-outline-default"],
 	"border.focused": ["--ca-outline-strong"],
-	/** The boundary of a text field / select / control: 3:1 on every surface it sits on (WCAG 2.2 1.4.11). */
-	"border.control": ["--atlas-control-border"],
+	/** The boundary of a text field / select / control: 3:1 on every surface it sits on (WCAG 2.2 1.4.11). The kit draws
+	 * its fields, checkboxes and radios from `--ca-outline-control`; `--atlas-control-border` is the app's own fields. */
+	"border.control": ["--ca-outline-control", "--atlas-control-border"],
 	/** Label on the destructive button's fill (the error colour): black or white by contrast. */
-	"error.on_fill": ["--atlas-error-on-fill"],
+	"error.on_fill": ["--ca-semantic-error-contrast"],
 	/** The tooltip is inverted (text colour as fill, surface as ink): 7:1+ on any theme. */
-	"tooltip.background": ["--atlas-tooltip-bg"],
+	"tooltip.background": ["--ca-tooltip-bg"],
 	"tooltip.foreground": ["--ca-tooltip-fg"],
 	/** The overlay (menus, popovers) is opaque: what is behind it never changes what text on it reads. */
-	"overlay.background": ["--atlas-overlay-bg"],
-	/** Keyboard focus ring. */
-	"border.selected": ["--atlas-focus-ring"],
+	"overlay.background": ["--ca-overlay-bg"],
+	/** Keyboard focus ring: the kit's own components read `--ca-focus-ring`, the app's controls `--atlas-focus-ring`. */
+	"border.selected": ["--ca-focus-ring", "--atlas-focus-ring"],
 	"element.hover": ["--ca-action-hover"],
 	"element.selected": ["--ca-action-selected"],
 	/** Success / warning / info / error as TEXT and fills: AA on every surface of the theme. */

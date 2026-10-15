@@ -542,6 +542,33 @@ describe("kit surfaces: destructive button, tooltip, overlay", () => {
 	}
 });
 
+/**
+ * `@codeatlasdev/ui` 2.2+ draws every state from named tokens and puts component CSS in `@layer ca.components`, so an
+ * unlayered app token wins with no doubled class. Incident: app.css doubled the kit's selectors (`.ca-btn.ca-btn:disabled`,
+ * `.ca-tf__wrap.ca-tf__wrap`, `.glass-overlay.glass-overlay`, …) to patch colours the kit now reads from tokens, so the
+ * theme must set the KIT's token names (the derived colours the runtime audit measured), not only `--atlas-*` copies.
+ */
+describe("kit tokens: the theme drives the kit's own contrast tokens", () => {
+	const KIT_VARS = {
+		"border.control": "--ca-outline-control",
+		"error.on_fill": "--ca-semantic-error-contrast",
+		"tooltip.background": "--ca-tooltip-bg",
+		"overlay.background": "--ca-overlay-bg",
+		"border.selected": "--ca-focus-ring",
+	};
+	for (const t of bundled) {
+		test(`${t.name}: cssVars sets each kit token to the derived colour`, () => {
+			const s = complete(t.style, t.appearance);
+			const vars = cssVars(s);
+			for (const [key, kitVar] of Object.entries(KIT_VARS))
+				expect([kitVar, vars[kitVar]]).toEqual([kitVar, s[key]]);
+			// a disabled control is filled with the chrome ground: its 3:1 label never sits on the red/brand fill
+			expect(vars["--ca-action-disabled-bg"]).toBe(s.background);
+			expect(vars["--ca-action-disabled-bg"]).toBe(vars["--ca-surface-sunken"]);
+		});
+	}
+});
+
 describe("terminalLift (the terminal's minimum-contrast rule, for previews)", () => {
 	test("returns fg untouched when it reads or the rule is off; else lifts toward white on dark and black on light", () => {
 		expect(terminalLift("#f8f8f2", "#282a36", 4.5)).toBe("#f8f8f2");

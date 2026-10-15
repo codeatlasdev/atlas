@@ -3,7 +3,6 @@
 	import { listen } from "@tauri-apps/api/event";
 	import { DropdownMenu, DropdownMenuItem, Skeleton, toast } from "@codeatlasdev/ui";
 	import { ChevronRight, ChevronDown, Ellipsis, FilePlus, LocateFixed } from "@lucide/svelte";
-	import Overlay from "#lib/components/Overlay.svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { fileIcon, folderIcon } from "#lib/icons.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
@@ -285,36 +284,34 @@
 			{:else}
 				<span class="name">{e.name}</span>
 			{/if}
-			<Overlay width={12} height={12}>
-				<DropdownMenu align="end">
-					{#snippet trigger()}
-						<span class="more"><Ellipsis size={12} /></span>
-					{/snippet}
-					{#if isDir}<DropdownMenuItem onclick={() => newFile(rel)}>New file</DropdownMenuItem>{/if}
-					<DropdownMenuItem onclick={() => rename(rel)}>Rename</DropdownMenuItem>
-					<DropdownMenuItem onclick={() => copy(`${root}/${rel}`)}>Copy path</DropdownMenuItem>
-					<DropdownMenuItem onclick={() => copy(rel)}>Copy relative path</DropdownMenuItem>
-					<DropdownMenuItem onclick={() => host.exec(root, ["open", "-R", `${root}/${rel}`])}
-						>Reveal in Finder</DropdownMenuItem
-					>
-					{#if st && st !== "ignored" && !isDir}
-						<DropdownMenuItem onclick={() => gitDo(["add", "--", rel])}>Stage</DropdownMenuItem>
-						{#if st !== "untracked"}
-							<DropdownMenuItem
-								variant="destructive"
-								onclick={async () =>
-									(await confirmDialog(`Discard changes to ${rel}?`, {
-										confirmLabel: "Discard",
-										destructive: true,
-									})) && gitDo(["checkout", "--", rel])}
-							>
-								Discard changes
-							</DropdownMenuItem>
-						{/if}
+			<DropdownMenu align="end">
+				{#snippet trigger()}
+					<span class="more"><Ellipsis size={12} /></span>
+				{/snippet}
+				{#if isDir}<DropdownMenuItem onclick={() => newFile(rel)}>New file</DropdownMenuItem>{/if}
+				<DropdownMenuItem onclick={() => rename(rel)}>Rename</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => copy(`${root}/${rel}`)}>Copy path</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => copy(rel)}>Copy relative path</DropdownMenuItem>
+				<DropdownMenuItem onclick={() => host.exec(root, ["open", "-R", `${root}/${rel}`])}
+					>Reveal in Finder</DropdownMenuItem
+				>
+				{#if st && st !== "ignored" && !isDir}
+					<DropdownMenuItem onclick={() => gitDo(["add", "--", rel])}>Stage</DropdownMenuItem>
+					{#if st !== "untracked"}
+						<DropdownMenuItem
+							variant="destructive"
+							onclick={async () =>
+								(await confirmDialog(`Discard changes to ${rel}?`, {
+									confirmLabel: "Discard",
+									destructive: true,
+								})) && gitDo(["checkout", "--", rel])}
+						>
+							Discard changes
+						</DropdownMenuItem>
 					{/if}
-					<DropdownMenuItem variant="destructive" onclick={() => remove(rel, isDir)}>Delete</DropdownMenuItem>
-				</DropdownMenu>
-			</Overlay>
+				{/if}
+				<DropdownMenuItem variant="destructive" onclick={() => remove(rel, isDir)}>Delete</DropdownMenuItem>
+			</DropdownMenu>
 		</div>
 		{#if isDir && expanded[rel]}{@render tree(rel, depth + 1)}{/if}
 	{/each}

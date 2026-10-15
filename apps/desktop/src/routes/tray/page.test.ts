@@ -10,11 +10,11 @@ const kit = readFileSync(
 );
 
 // Incident (v1.5.0-alpha.7): the popover was "pure black, not Atlas Dark". The kit declares its WHOLE token set on any
-// element with the class `dark` (`.dark { --ca-surface-*, --ca-brand-* … }`, tokens.css), not only on <html>. The page
+// element with the class `dark` (`.dark, [data-theme-scope="dark"] { --ca-surface-*, --ca-brand-* … }`, tokens.css; the preset files repeat it), not only on <html>. The page
 // put `class:dark` on its root, so inside it every `var(--ca-*)` was the kit's palette, never the applied theme's
 // (which lives on <html>). The scheme flag must stay on <html>; no element of the page may carry `dark`.
 test("the kit scopes its tokens on a bare .dark class (why no element may carry it)", () => {
-	expect(kit).toMatch(/^\.dark\s*\{/m);
+	expect(kit).toMatch(/^\.dark,\s*\n\[data-theme-scope="dark"\]\s*\{/m);
 });
 
 test("no element of the tray page carries the kit's `dark` class, which would replace the applied theme", () => {

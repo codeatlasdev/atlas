@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Linux: accents typed with dead keys (`´` + `e`, `~` + `a`, `'` + `c`) corrupted the terminal: each new accent replayed the characters typed before it, followed by runs of spaces.** xterm.js keeps capitals and spaces in its hidden input field and, when the input method stages a dead key (a keyCode-229 keydown outside a composition on WebKitGTK + IBus), re-sends that whole field. The terminal now ignores those staging keydowns (the text arrives through the input and composition events) and empties the field once a key or composition is settled, never in the middle of one. Fixes [#23](https://github.com/codeatlasdev/atlas/issues/23).
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

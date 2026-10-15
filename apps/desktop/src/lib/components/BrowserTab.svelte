@@ -37,7 +37,7 @@
 		tab: tab.id,
 		invoke,
 		measure: () => (area ? rect() : null),
-		shown: () => visible && !overlayOpen(),
+		shown: () => visible && !!area && !overlayOpen(area.getBoundingClientRect()),
 		url: () => tab.url,
 		onError: (e) => toast.error(errText(e)),
 	});

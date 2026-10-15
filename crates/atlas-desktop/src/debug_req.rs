@@ -11,6 +11,10 @@ pub const MAX_WAIT_MS: u64 = 120_000;
 pub const DEFAULT_WAIT_MS: u64 = 10_000;
 /// Longest `record --seconds`.
 pub const MAX_RECORD_SECS: u64 = 300;
+/// Window size bounds (logical px) for `resize`: under the app's own minimum nothing lays out, over a few 5K
+/// displays is a typo.
+pub const MIN_WINDOW: f64 = 320.0;
+pub const MAX_WINDOW: f64 = 5120.0;
 pub const DEFAULT_PERF_SECS: u64 = 2;
 pub const MAX_PERF_SECS: u64 = 60;
 
@@ -79,6 +83,11 @@ pub enum Req {
         out: PathBuf,
         stop: Stop,
         fps: u32,
+    },
+    /// Resize the main window to `w` x `h` logical px (the page view follows); a flicker sweep resizes mid-recording.
+    Resize {
+        w: f64,
+        h: f64,
     },
 }
 
@@ -233,6 +242,17 @@ pub fn parse(v: &Value) -> Result<Req, String> {
                 window,
             })
         }
+        "resize" => {
+            let side = |k: &str| {
+                v[k].as_f64()
+                    .filter(|n| (MIN_WINDOW..=MAX_WINDOW).contains(n))
+                    .ok_or_else(|| format!("{k} must be {MIN_WINDOW}..={MAX_WINDOW} logical px"))
+            };
+            Ok(Req::Resize {
+                w: side("width")?,
+                h: side("height")?,
+            })
+        }
         "record" => {
             let stop = match (v["seconds"].as_u64(), str_field(v, "until")) {
                 (Some(_), Some(_)) => return Err("give --seconds or --until, not both".into()),
@@ -252,7 +272,7 @@ pub fn parse(v: &Value) -> Result<Req, String> {
             })
         }
         other => Err(format!(
-            "unknown cmd {other:?}; expected info|logs|eval|state|wait|click|type|a11y|contrast|perf|shot|record|gesture_record|gesture_replay"
+            "unknown cmd {other:?}; expected info|logs|eval|state|wait|click|type|a11y|contrast|perf|shot|record|resize|gesture_record|gesture_replay"
         )),
     }
 }
@@ -431,6 +451,29 @@ mod tests {
         assert!(rec(json!({"seconds":0})).is_err());
         assert!(rec(json!({"seconds":MAX_RECORD_SECS + 1})).is_err());
         assert!(rec(json!({"seconds":5,"fps":59})).is_err());
+    }
+
+    /// Sweep gap: no way to resize the window while a recording runs, so "window resize" was the one surface a flicker
+    /// sweep could not exercise. The size is bounded: a typo must not ask for a 100000 px window.
+    #[test]
+    fn resize_takes_a_bounded_positive_logical_size() {
+        let r = |w: Value, h: Value| parse(&json!({"cmd":"resize","width":w,"height":h}));
+        assert_eq!(
+            r(json!(1100), json!(700)).unwrap(),
+            Req::Resize {
+                w: 1100.0,
+                h: 700.0
+            }
+        );
+        assert!(r(json!(1100.5), json!(700.25)).is_ok());
+        assert!(parse(&json!({"cmd":"resize"})).is_err());
+        assert!(r(json!(1100), Value::Null).is_err());
+        assert!(r(json!(0), json!(700)).is_err());
+        assert!(r(json!(-5), json!(700)).is_err());
+        assert!(r(json!(MIN_WINDOW - 1.0), json!(700)).is_err());
+        assert!(r(json!(MAX_WINDOW + 1.0), json!(700)).is_err());
+        assert!(r(json!("1100"), json!(700)).is_err());
+        assert!(r(json!(MIN_WINDOW), json!(MAX_WINDOW)).is_ok());
     }
 
     #[test]

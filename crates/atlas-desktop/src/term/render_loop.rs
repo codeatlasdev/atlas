@@ -19,7 +19,9 @@ pub(super) fn render_loop(
     sh: Arc<Shared>,
     on_resize: impl Fn(u16, u16),
     on_font: impl Fn(&FontSpec, &FontResolution),
+    on_first_frame: impl FnOnce(),
 ) {
+    let mut on_first_frame = Some(on_first_frame);
     let mut pal = sh.state.lock().pal.clone();
     let mut frame = Frame::default();
     let mut blink_at = Instant::now() + BLINK;
@@ -121,8 +123,15 @@ pub(super) fn render_loop(
             frame.bg.iter_mut().for_each(|c| *c = tint(*c));
             frame.clear = tint(frame.clear);
         }
-        if let Err(e) = r.render(&frame) {
-            eprintln!("atlas-term render: {e}");
+        match r.render(&frame) {
+            // The first presented frame: the native view may be shown now (see `Placement`).
+            Ok(true) => {
+                if let Some(f) = on_first_frame.take() {
+                    f();
+                }
+            }
+            Ok(false) => {}
+            Err(e) => eprintln!("atlas-term render: {e}"),
         }
         {
             let mut s = sh.state.lock();

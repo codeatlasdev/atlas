@@ -66,7 +66,7 @@
 				{onFile}
 			/>
 		{:else}
-			<Terminal {pty} focused={focused && active} readonly={ended !== null} {onLink} />
+			<Terminal {pty} visible={active} focused={focused && active} readonly={ended !== null} {onLink} />
 		{/if}
 	{/key}
 {/if}

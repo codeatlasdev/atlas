@@ -99,7 +99,7 @@ export class NativeView {
 		const { padding_x: px, padding_y: py } = prefs.value.terminal;
 		const rect = insetRect(r, px, py);
 		// The native view sits above the webview: park it under dialogs/palette.
-		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen();
+		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen(r);
 		try {
 			if (!this.opened) {
 				if (!show) return;

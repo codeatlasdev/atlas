@@ -9,6 +9,7 @@
 	import SplitTable from "./diff/SplitTable.svelte";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { savePref } from "#lib/settings/savePref.ts";
+	import PathText from "./PathText.svelte";
 	import { highlightFile } from "./diff/highlight.ts";
 
 	let {
@@ -193,7 +194,7 @@
 						}}
 					>
 						<span class="st">{f.status[0].toUpperCase()}</span>
-						<span class="name">{f.path}</span>
+						<PathText path={f.path} />
 						{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
 					</button>
 				{:else}
@@ -329,15 +330,6 @@
 	.file.on,
 	.file:hover {
 		background: var(--ca-action-hover);
-	}
-	.file .name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		direction: rtl;
-		text-align: left;
 	}
 	.st {
 		width: 12px;

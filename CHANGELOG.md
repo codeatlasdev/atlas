@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Side-by-side (split) diff in the Changes tab.** A Unified / Split selector in the diff toolbar shows the old version on the left and the new one on the right, deletions paired with additions row by row (uneven runs leave an empty cell), the changed characters of a modified line marked, and both halves scrolling together. Staging a hunk and commenting a line for the agent work in both layouts, and the choice is remembered in `settings.json` (`diff.view`).
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -87,6 +87,8 @@ export interface Prefs {
 		indent_size: number;
 	};
 	active_pane_modifiers: { border_size: number; inactive_opacity: number };
+	/** Changes tab: one column (`unified`) or old and new next to each other (`split`). */
+	diff: { view: "unified" | "split" };
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -137,6 +139,7 @@ export const DEFAULT_PREFS: Prefs = {
 	},
 	project_panel: { dock: "left", file_icons: true, folder_icons: true, indent_size: 12 },
 	active_pane_modifiers: { border_size: 0, inactive_opacity: 1 },
+	diff: { view: "unified" },
 };
 
 type Shape = Record<string, unknown>;
@@ -161,6 +164,7 @@ const ENUMS: Record<string, readonly string[]> = {
 	"terminal.osc52": ["allow", "ask", "deny"],
 	"terminal.option_as_alt": ["both", "left", "right", "none"],
 	"project_panel.dock": ["left", "right"],
+	"diff.view": ["unified", "split"],
 };
 const RANGES: Record<string, [number, number]> = {
 	buffer_font_size: [6, 48],

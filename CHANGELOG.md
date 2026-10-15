@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Source control lists every untracked file, and paths read correctly.** A new folder was one row (`.logs/`) instead of its files, so they could not be reviewed, staged or discarded one by one; `git status` now runs with `--untracked-files=all` (ignored folders such as `node_modules/` stay one dimmed entry via `--ignored=matching`). Paths clipped at the start with `direction: rtl` also had their edge punctuation reordered (`.logs/` showed as `/logs.`); the text is now an LTR isolate inside the clipping box in Source control, the review file list, the command palette, Find projects and the LSP popover. [#29](https://github.com/codeatlasdev/atlas/issues/29)
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

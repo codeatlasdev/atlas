@@ -11,6 +11,7 @@
 	import { api } from "#lib/api.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
+	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
 	import FindInput from "./FindInput.svelte";
 
 	let {
@@ -103,7 +104,10 @@
 		} catch {
 			// canvas renderer fallback
 		}
+		// Linux dead keys: xterm re-sends its hidden textarea (issue #23), see `xtermInput.ts`.
+		const input = keepTextareaEmpty(t);
 		t.attachCustomKeyEventHandler((e) => {
+			if (imeStagingKey(e, input.composing())) return false;
 			if (e.type !== "keydown") return true;
 			if (e.metaKey && e.key === "f") {
 				searchOpen = true;
@@ -157,6 +161,7 @@
 		ro.observe(el);
 		return () => {
 			alive = false;
+			input.stop();
 			ro.disconnect();
 			offs.forEach((u) => u());
 			void host.ptyDetach(pty).catch(() => {});

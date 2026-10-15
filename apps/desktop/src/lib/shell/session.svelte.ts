@@ -28,7 +28,7 @@ import { ask, confirmDialog, promptDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
 import { welcome } from "#lib/onboarding/welcome.svelte.ts";
 import { sound } from "#lib/sound/sound.svelte.ts";
-import { loadPrefs } from "#lib/stores/prefs.svelte.ts";
+import { loadPrefs, prefs } from "#lib/stores/prefs.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { quick } from "#lib/stores/quick.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
@@ -58,6 +58,7 @@ function exposeStores() {
 				...stores,
 				shell,
 				docks,
+				prefs,
 				themes,
 				updates,
 				/** The overlays `scripts/contrast-audit.ts` opens: dialogs (`ask`), the project scan and the kit's toasts. */

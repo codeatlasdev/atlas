@@ -28,9 +28,12 @@ export function cellAt(
 	};
 }
 
-/** The renderer's cell size for a tab from `term_stats`, or `null` before the first frame. */
-export function cellFromStats(t: { cell_w: number; cell_h: number } | undefined): Cell | null {
-	return t && t.cell_w > 0 && t.cell_h > 0 ? { w: t.cell_w, h: t.cell_h } : null;
+/**
+ * The renderer's cell size for a tab from `term_stats`, or `null` before the first frame. The renderer
+ * measures in window points; the pointer and the layout are in CSS px, which are `zoom` times smaller.
+ */
+export function cellFromStats(t: { cell_w: number; cell_h: number } | undefined, zoom = 1): Cell | null {
+	return t && t.cell_w > 0 && t.cell_h > 0 ? { w: t.cell_w / zoom, h: t.cell_h / zoom } : null;
 }
 
 /** Scroll lines for a wheel delta (one line per cell height; 16 px before the cell size is known). */

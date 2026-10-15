@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { Tab, Worktree } from "#lib/stores/workspace.svelte.ts";
 import { openFile, openDiff } from "#lib/stores/files.svelte.ts";
 import { openPreview, toUrl } from "#lib/stores/browser.svelte.ts";
+import { nativeRect } from "#lib/zoom.ts";
 import { errText } from "#lib/api.ts";
 import { realEnv } from "#lib/capture/env.ts";
 import { runScript } from "#lib/capture/runner.ts";
@@ -345,12 +346,9 @@ const handlers: Record<string, (a: Args) => Promise<unknown>> = {
 		const area = document.querySelector<HTMLElement>(".pane:not(.hidden) .browser .area");
 		if (!area) throw new Error("browser tab is not visible");
 		const r = area.getBoundingClientRect();
-		const path = await invoke<string>("window_region_png", {
-			x: r.left,
-			y: r.top,
-			w: r.width,
-			h: r.height,
-		});
+		// `window_region_png` crops in window points; the area is measured in CSS px (they differ under layout zoom).
+		const crop = nativeRect({ x: r.left, y: r.top, w: r.width, h: r.height });
+		const path = await invoke<string>("window_region_png", { ...crop });
 		return { path };
 	},
 };

@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CommitMsg, FrameMsg } from "#lib/shell/pager.ts";
 import { availability, availabilityKey, trailing } from "#lib/shell/trailing.ts";
+import { nativeRect } from "#lib/zoom.ts";
 
 export type SwipeZone = "space" | "tab" | "history";
 
@@ -119,14 +120,15 @@ function push() {
 		zones.push({
 			zone: spec.zone,
 			id: spec.id,
-			rect,
+			// The monitor hit-tests `locationInWindow` (window points); the page measures CSS px (layout zoom).
+			rect: nativeRect(rect),
 			prev: spec.can(-1),
 			next: spec.can(1),
 			pinned: spec.pinned?.() ?? false,
 		});
 	}
 	zones.sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h);
-	const scrollers = scrollerRects();
+	const scrollers = scrollerRects().map(nativeRect);
 	const key = JSON.stringify([zones, scrollers]);
 	toldKey = availabilityKey(entries);
 	if (key === last) return;

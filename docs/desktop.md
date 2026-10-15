@@ -215,6 +215,7 @@ Defaults follow macOS, Zed and browser conventions. Every shortcut is a named co
 | ⌘B / ⌘J / ⌥⌘Y             | left dock / bottom dock (terminals) / all docks                                                                              |
 | ⌘⇧E / ⌃⇧G / ⌃\` / ⌘?      | project panel / git panel / terminal panel (focus) / agents                                                                  |
 | ⇧Esc                      | zoom the focused pane (palette: centered layout)                                                                             |
+| ⌘+ / ⌘− / ⌘0              | zoom the whole layout in / out / back to 100% (Ctrl instead of ⌘ outside macOS; steps 50–300%, saved; View menu, Settings → Appearance → Zoom). In a focused GPU terminal ⌘+ ⌘− ⌘0 change that terminal's font size instead |
 | ⌃⌘1…⌃⌘6                   | recent worktrees                                                                                                             |
 | ⌘S / ⌥⌘S                  | save the focused editor (atlas.yaml: review the diff, then save) / save every open editor; files also autosave after 0.5 s    |
 | ⌃⌘S                       | hide / pin the sidebar (hidden: move the pointer to the left edge to peek)                                                   |

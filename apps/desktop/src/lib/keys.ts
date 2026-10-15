@@ -11,6 +11,10 @@ export const DEFAULT_KEYMAP: Record<string, string> = {
 	"cmd-j": "workspace::ToggleBottomDock",
 	"alt-cmd-y": "workspace::ToggleAllDocks",
 	"shift-escape": "workspace::ToggleZoom",
+	// Layout zoom: ⌘+ is ⇧⌘=, so zoom.ts also takes it (and Ctrl on other systems, ahead of the keymap)
+	"cmd-=": "shell::ZoomIn",
+	"cmd--": "shell::ZoomOut",
+	"cmd-0": "shell::ZoomReset",
 	// Language server (the focused editor): F-keys as in Zed/VS Code
 	f12: "editor::GoToDefinition",
 	"ctrl--": "editor::GoBack",

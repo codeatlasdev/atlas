@@ -133,6 +133,7 @@ describe("settings index", () => {
 			notify: "general",
 			"theme-mode": "appearance",
 			accent: "appearance",
+			"ui-zoom": "appearance",
 			"ui-font": "appearance",
 			"ui-size": "appearance",
 			"panel-dock": "appearance",

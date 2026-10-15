@@ -10,6 +10,7 @@
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { grabPrompt, type Grab } from "#lib/grab.ts";
+	import { nativeRect } from "#lib/zoom.ts";
 	import { overlayOpen, watchSlot } from "./nativeSlot.ts";
 
 	let { tab, visible }: { tab: Tab; visible: boolean } = $props();
@@ -24,9 +25,10 @@
 		if (!editing) address = tab.url ?? "";
 	});
 
+	/** The pane in window points (what the native child webview's frame takes; the slot itself is in CSS px). */
 	function rect() {
 		const r = area!.getBoundingClientRect();
-		return { x: r.left, y: r.top, w: r.width, h: r.height };
+		return nativeRect({ x: r.left, y: r.top, w: r.width, h: r.height });
 	}
 
 	// Observers fire concurrently; PaneSync serializes open → bounds per tab and measures when

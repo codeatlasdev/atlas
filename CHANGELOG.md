@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Zoom the whole layout with ⌘+ / ⌘− / ⌘0** (Ctrl+ / Ctrl− / Ctrl0 on Linux). Steps from 50% to 300% like a browser tab, remembered across restarts, also in the View menu and Settings → Appearance → Zoom. Native views follow: the GPU terminal, embedded browser pages, the space-swipe stage and its gesture zones are placed at the zoomed layout, and clicks in the terminal land on the right cell. A focused GPU terminal keeps ⌘+ ⌘− ⌘0 for its own font size, as before. On Linux and Windows Ctrl− now zooms out (it used to be "go back" in the editor; that command stays in the palette and can be rebound).
+
 ## [1.5.0-alpha.10] — 2026-10-14
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

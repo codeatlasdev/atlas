@@ -5,7 +5,7 @@
 	 * A channel that offers an *older* build never installs it by switching: the panel has a separate,
 	 * explicit downgrade button.
 	 */
-	import { Alert, Button, Spinner } from "@codeatlasdev/ui";
+	import { Alert, Button, Skeleton, Spinner } from "@codeatlasdev/ui";
 	import {
 		ChevronRight,
 		FlaskConical,
@@ -132,7 +132,7 @@
 
 	{#if cards.length === 0}
 		<div class="skeleton" aria-busy="true" aria-label="Loading update channels">
-			<i></i><i></i><i></i>
+			{#each [0, 1, 2] as i (i)}<Skeleton variant="rounded" height={52} />{/each}
 		</div>
 	{:else}
 		<div class="cards" role="radiogroup" aria-label="Update channel" aria-disabled={locked}>
@@ -495,24 +495,10 @@
 		flex-direction: column;
 		gap: 8px;
 	}
-	.skeleton i {
-		height: 52px;
-		border-radius: 12px;
-		background: var(--ca-surface-sunken);
-		animation: pulse 1.4s ease-in-out infinite;
-	}
-	@keyframes pulse {
-		50% {
-			opacity: 0.5;
-		}
-	}
 	@media (prefers-reduced-motion: reduce) {
 		.card,
 		.more :global(svg) {
 			transition: none;
-		}
-		.skeleton i {
-			animation: none;
 		}
 	}
 </style>

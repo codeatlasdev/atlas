@@ -33,8 +33,8 @@
 	description="The code editor and diffs: font, indentation and display, and the language servers behind completion and diagnostics."
 />
 
-<Tabs bind:value={updates.tab as SettingsTab} class="etabs">
-	<TabsList class="etabs-list">
+<Tabs bind:value={updates.tab as SettingsTab}>
+	<TabsList>
 		{#each SECTION_TABS.editor ?? [] as t (t.id)}
 			<TabsTrigger value={t.id}>{t.label}</TabsTrigger>
 		{/each}
@@ -48,11 +48,6 @@
 </p>
 
 <style>
-	/* The tab strip hugs its tabs instead of stretching across the page. */
-	:global(.etabs-list) {
-		align-self: flex-start;
-		width: fit-content;
-	}
 	.tab {
 		display: flex;
 		flex-direction: column;

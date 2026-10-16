@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **UI kit `@codeatlasdev/ui` 4.0.0 → 4.2.0.** Atlas adopts what the kit now covers and drops the local copies: the New-tab menu puts the agent logos and its glyphs in `DropdownMenuItem`'s `icon` slot (`brandIcon` keeps a logo's own colors, and the fixed 14px box replaces the hand-sized span), `AgentLogo` picks the light or dark mark with the kit's `SchemeAsset` (CSS on `.dark`, so no theme-store read and no flash on first paint), the Settings ▸ Editor tab strip drops its `width: fit-content` wrapper (`TabsList` hugs its tabs and scrolls on its own), the Agents board card uses `Card padding="sm"` and no longer asks for `material="glass"` (an explicit material ignores `data-style` and blurs over the pager), and the update-channel loading state is the kit's `Skeleton`. All backdrop blur now comes from one kit rule (`data-ca-blur`); Atlas's blur-off overrides still resolve every role to `none`, and a test now reads the kit's CSS to keep it that way. A menu or popover that is already open when a modal opens now moves into the modal and stays clickable above it (atlas#66, codeatlasdev/ui#225).
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

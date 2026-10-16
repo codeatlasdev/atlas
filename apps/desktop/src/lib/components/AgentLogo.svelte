@@ -1,23 +1,41 @@
 <script lang="ts">
-	/** The official logo of a coding agent, or the generic robot for an agent without one. See `lib/agent-logos/README.md`. */
+	/**
+	 * The official logo of a coding agent, or the generic robot for an agent without one. See `lib/agent-logos/README.md`.
+	 * The light/dark mark is the kit's `SchemeAsset` (CSS on `.dark`, so no theme store and no flash on first paint).
+	 * In a kit `icon` slot (`DropdownMenuItem`, `TabsTrigger`) pass `bare`: the slot already draws the 14px box.
+	 */
 	import { Bot } from "@lucide/svelte";
+	import { SchemeAsset } from "@codeatlasdev/ui";
 	import { agentLogo } from "#lib/agentLogos.ts";
-	import { themes } from "#lib/stores/theme.svelte.ts";
 
-	let { agent, size = 14 }: { agent: string | undefined; size?: number } = $props();
+	let {
+		agent,
+		size = 14,
+		bare = false,
+	}: { agent: string | undefined; size?: number; bare?: boolean } = $props();
 
 	const logo = $derived(agentLogo(agent));
-	const svg = $derived(logo && themes.current?.appearance === "dark" && logo.dark ? logo.dark : logo?.light);
 </script>
 
-{#if svg}
-	<span
-		class="logo"
-		style:width="{size}px"
-		style:height="{size}px"
-		aria-hidden="true"
-		data-contrast-decorative>{@html svg}</span
-	>
+{#snippet light()}{@html logo?.light}{/snippet}
+{#snippet dark()}{@html logo?.dark ?? logo?.light}{/snippet}
+
+{#if logo}
+	{#if bare}
+		<SchemeAsset {light} {dark} />
+	{:else}
+		<span
+			class="logo"
+			style:width="{size}px"
+			style:height="{size}px"
+			aria-hidden="true"
+			data-contrast-decorative
+		>
+			<SchemeAsset {light} {dark} />
+		</span>
+	{/if}
+{:else if bare}
+	<Bot />
 {:else}
 	<Bot {size} />
 {/if}

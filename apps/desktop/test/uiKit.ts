@@ -23,6 +23,7 @@ const KIT_COMPONENTS = [
 	"Select",
 	"Switch",
 	"Chip",
+	"SchemeAsset",
 ];
 const Stub = () => {};
 const kit = {

@@ -22,8 +22,13 @@
 	let at = $state({ x: 0, y: 0 });
 	let anchor: HTMLButtonElement | undefined = $state();
 
-	/** Open the menu with its corner at viewport point (x, y). */
+	/** Open the menu with its corner at viewport point (x, y). The kit has no `open` prop (codeatlasdev/ui#298) and a
+	 * trigger click toggles, so an already open menu is closed first: a right-click on another row moves the menu. */
 	export async function openAt(x: number, y: number) {
+		if (anchor?.getAttribute("aria-expanded") === "true") {
+			anchor.click();
+			await tick();
+		}
 		at = { x, y };
 		await tick();
 		anchor?.click();

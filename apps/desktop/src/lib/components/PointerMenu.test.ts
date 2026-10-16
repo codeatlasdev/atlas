@@ -88,3 +88,20 @@ test("a second right-click on another row reopens the menu with the new items", 
 	unmount(app);
 	target.remove();
 });
+
+// Incident (agent instance on the alpha.13 integration): a right-click while the menu was already open closed it,
+// because `openAt` clicked the trigger and a trigger click toggles. Right-clicking another row must move the menu.
+test("openAt while the menu is open keeps it open, at the new point", async () => {
+	const { api, done } = await setup([{ label: "Open", run() {} }]);
+	await api.openAt(10, 10);
+	await tick();
+	await frame();
+	expect(menu()).not.toBeNull();
+	await api.openAt(200, 120);
+	await tick();
+	await frame();
+	expect(document.querySelector("[role=menu]"), "second right-click closed the menu").not.toBeNull();
+	const a = document.querySelector(".pointer-anchor");
+	expect([a.style.left, a.style.top]).toEqual(["200px", "120px"]);
+	done();
+});

@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tab and space shortcuts work while an embedded browser page has focus** (#42). ⌘1…⌘9, ⌃Tab / ⌃⇧Tab, ⇧⌘[ ⇧⌘], ⌃⌘1…⌃⌘6 and every other ⌘ ⌃ ⌥ chord bound in your keymap (remaps included) used to go to the page and do nothing until you clicked out of it. A native key monitor now takes only the strokes the keymap binds from a focused browser page; typing and unbound keys still reach the page.
+
 ## [1.5.0-alpha.11] — 2026-10-15
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

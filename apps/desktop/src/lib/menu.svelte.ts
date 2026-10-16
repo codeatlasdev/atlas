@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { EDIT_COMMANDS, runEdit, targetOf, type EditEnv } from "#lib/edit.ts";
-import { allCommands, keymap, runCommand } from "#lib/keymap.svelte.ts";
+import { allCommands, dispatchStroke, keymap, runCommand } from "#lib/keymap.svelte.ts";
 import { ops } from "#lib/symbols.ts";
 import { DEFAULT_KEYMAP, merge } from "#lib/keys.ts";
+import { forwardedStrokes, strokeOfBrowserKey, type BrowserKey } from "#lib/browserKeys.ts";
 import { EDIT_ACCELERATORS, MENU_COMMANDS, menuAccelerators } from "#lib/menu.ts";
 import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 
@@ -31,6 +32,11 @@ function edit(id: string): boolean {
 /** Start listening for menu clicks/keys and keep the menu's keys and enabled state in sync. Returns cleanup. */
 export async function startMenu(): Promise<() => void> {
 	const off = await listen<string>("menu://command", (e) => edit(e.payload) || runCommand(e.payload));
+	// Keys the native side took from a focused browser page (issue #42): the same keymap resolves them.
+	const offKeys = await listen<BrowserKey>(
+		"browser://key",
+		(e) => void dispatchStroke(strokeOfBrowserKey(e.payload)),
+	);
 	const stop = $effect.root(() => {
 		$effect(() => {
 			const enabled = new Set(allCommands().map((c) => c.id));
@@ -42,10 +48,14 @@ export async function startMenu(): Promise<() => void> {
 				enabled: id in EDIT_ACCELERATORS || enabled.has(id),
 			}));
 			void invoke("menu_sync", { list: items }).catch(() => {});
+			void invoke("browser_set_keys", {
+				strokes: forwardedStrokes(merge(DEFAULT_KEYMAP, keymap.user)),
+			}).catch(() => {});
 		});
 	});
 	return () => {
 		off();
+		offKeys();
 		stop();
 	};
 }

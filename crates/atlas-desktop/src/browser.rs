@@ -249,9 +249,16 @@ pub async fn browser_open(
     // Born at its final placement: never full-window, never over the UI first.
     let b = at.bounds(last);
     let created = window.add_child(builder, b.position, b.size);
-    if let Err(e) = created {
-        REGISTRY.lock().close(&tab);
-        return Err(e.to_string());
+    match created {
+        // The key monitor (browser_keys_mac.rs) needs to know which native views are browser pages.
+        #[cfg(target_os = "macos")]
+        Ok(v) => crate::browser_keys_mac::track(&v, label(&tab)),
+        #[cfg(not(target_os = "macos"))]
+        Ok(_) => {}
+        Err(e) => {
+            REGISTRY.lock().close(&tab);
+            return Err(e.to_string());
+        }
     }
     Ok(())
 }
@@ -337,6 +344,8 @@ pub fn browser_nav(app: AppHandle, tab: String, action: String) -> Result<(), St
 pub async fn browser_close(app: AppHandle, tab: String) -> Result<(), String> {
     let _gate = LIFECYCLE.lock().await;
     REGISTRY.lock().close(&tab);
+    #[cfg(target_os = "macos")]
+    crate::browser_keys_mac::untrack(&label(&tab));
     match webview(&app, &tab) {
         Ok(v) => v.close().map_err(|e| e.to_string()),
         Err(_) => Ok(()),

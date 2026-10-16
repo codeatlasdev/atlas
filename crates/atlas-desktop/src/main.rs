@@ -6,6 +6,11 @@ mod agent;
 mod agent_mode;
 mod boot;
 mod browser;
+// Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod browser_keys;
+#[cfg(target_os = "macos")]
+mod browser_keys_mac;
 mod capture;
 mod cmds;
 mod ctl;
@@ -196,6 +201,7 @@ macro_rules! handlers {
             browser::browser_eval,
             browser::browser_pick,
             browser::browser_pick_cancel,
+            browser_keys::browser_set_keys,
             browser::window_region_png,
             capture::capture_cmd,
             term::term_open,
@@ -374,6 +380,8 @@ fn main() {
 
             #[cfg(target_os = "macos")]
             swipe_mac::install(&handle);
+            #[cfg(target_os = "macos")]
+            browser_keys_mac::install(&handle);
             #[cfg(target_os = "macos")]
             if let Some(win) = app.get_window("main") {
                 use window_vibrancy::{

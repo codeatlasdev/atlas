@@ -52,6 +52,8 @@
 			panel.classList.toggle("shown", on);
 			panel.toggleAttribute("inert", !on);
 			panel.setAttribute("aria-hidden", String(!on));
+			// Native views (browser, terminal) cannot be covered by CSS: `watchSlot` sees this flip and parks them.
+			panel.dataset.state = on ? "open" : "closed";
 		}
 	}
 

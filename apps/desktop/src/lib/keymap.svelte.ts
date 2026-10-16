@@ -100,16 +100,23 @@ export function shortcutFor(id: string): string | undefined {
 }
 
 /**
- * Run the command bound to this key event. `true` = handled. `ownedByFocus` lets the focused
- * surface keep a chord (a GPU terminal claims ⇧⌘D for split-down like Ghostty, not "Changes").
+ * Run the command bound to `stroke` (canonical spelling). `true` = handled. The one resolution path of
+ * a key: the window handler and keys forwarded from a browser page (`browserKeys.ts`) both end here.
  */
-export function dispatch(e: KeyboardEvent, ownedByFocus?: (e: KeyboardEvent) => boolean): boolean {
-	if (ownedByFocus?.(e)) return false;
-	const s = strokeOf(e);
-	const id = s && merge(DEFAULT_KEYMAP, keymap.user).get(s);
+export function dispatchStroke(stroke: string | null): boolean {
+	const id = stroke && merge(DEFAULT_KEYMAP, keymap.user).get(stroke);
 	const c = id ? commands.get(id) : undefined;
 	if (!c || !(c.when?.() ?? true)) return false;
 	noteRun(c.id);
 	c.run();
 	return true;
+}
+
+/**
+ * Run the command bound to this key event. `true` = handled. `ownedByFocus` lets the focused
+ * surface keep a chord (a GPU terminal claims ⇧⌘D for split-down like Ghostty, not "Changes").
+ */
+export function dispatch(e: KeyboardEvent, ownedByFocus?: (e: KeyboardEvent) => boolean): boolean {
+	if (ownedByFocus?.(e)) return false;
+	return dispatchStroke(strokeOf(e));
 }

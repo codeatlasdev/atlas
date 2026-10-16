@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **xterm.js terminal: a font the webview cannot draw no longer spreads the text apart** ([#68](https://github.com/codeatlasdev/atlas/issues/68)). A user-installed font WKWebView could not load fell back to the default serif for the glyphs while the cell was measured on another face (`W e l c o m e  t o  f i s h`). The family list given to xterm now keeps only families that draw fixed-pitch in the webview (a measured `i`/`W` advance: `document.fonts.check` answers `true` for any name in WKWebView, even the default `SF Mono`), always ends with `monospace`, and is resolved again when the webfonts finish loading so xterm re-measures the cell.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

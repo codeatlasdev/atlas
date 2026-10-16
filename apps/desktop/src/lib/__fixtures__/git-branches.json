@@ -1,0 +1,55 @@
+{
+	"branches": [
+		{
+			"current": true,
+			"date": "2026-01-01T00:00:00+00:00",
+			"kind": "local",
+			"local": null,
+			"name": "main",
+			"worktree": null
+		},
+		{
+			"current": false,
+			"date": "2026-01-01T00:00:00+00:00",
+			"kind": "local",
+			"local": null,
+			"name": "feat",
+			"worktree": null
+		},
+		{
+			"current": false,
+			"date": "2026-01-01T00:00:00+00:00",
+			"kind": "local",
+			"local": null,
+			"name": "busy",
+			"worktree": {
+				"path": "/work/repo-busy"
+			}
+		},
+		{
+			"current": false,
+			"date": "2026-01-01T00:00:00+00:00",
+			"kind": "remote",
+			"local": "feat",
+			"name": "origin/feat",
+			"worktree": null
+		},
+		{
+			"current": false,
+			"date": "2026-01-01T00:00:00+00:00",
+			"kind": "remote",
+			"local": "busy",
+			"name": "origin/busy",
+			"worktree": null
+		},
+		{
+			"current": false,
+			"date": "2026-01-01T00:00:00+00:00",
+			"kind": "remote",
+			"local": "main",
+			"name": "origin/main",
+			"worktree": null
+		}
+	],
+	"current": "main"
+}

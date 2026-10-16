@@ -64,6 +64,7 @@ const GO: Entries = &[
     Some(("atlas::Logs", "Logs")),
     Some(("atlas::Config", "Config")),
     Some(("git::Diff", "Changes")),
+    Some(("git::Branch", "Switch Branch…")),
     Some(("atlas::RestartService", "Restart Focused Service")),
 ];
 

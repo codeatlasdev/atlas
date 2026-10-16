@@ -22,6 +22,7 @@ mod diag;
 #[cfg(target_os = "macos")]
 mod display_mac;
 mod git;
+mod git_branch;
 mod host;
 mod lifecycle;
 mod live;
@@ -176,6 +177,8 @@ macro_rules! handlers {
             git::git_status,
             git::git_run,
             git::git_files,
+            git_branch::git_branches,
+            git_branch::git_switch,
             ctl::ctl_reply,
             remote::ssh_config_hosts,
             remote::ssh_status,

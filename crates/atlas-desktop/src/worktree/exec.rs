@@ -16,7 +16,7 @@ pub(crate) struct Out {
 }
 
 /// Run `argv` in `cwd` on the host that owns `cwd` (see `HostHub::call`).
-pub(super) async fn exec(
+pub(crate) async fn exec(
     hub: &HostHub,
     cwd: &Path,
     argv: &[&str],

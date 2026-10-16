@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop: branch switcher** (#71). Click the branch in the title bar breadcrumb, or run **Switch branch…** (`git::Branch`, ⌥⌘B, remappable; Go menu) to open a fuzzy picker over the local branches (most recently checked out first, with the age of the last commit) and the remote ones. Pick one to `git switch` the selected worktree, pick an `origin/x` to create the tracking branch, or type a new name to **Create branch** from the current HEAD. A branch another worktree has checked out jumps to that worktree instead of failing; when local changes would be overwritten, git's message is shown with **Stash and switch** (untracked files included, kept in `git stash`) or Cancel, and nothing is discarded. The sidebar, breadcrumb and Changes tab follow the new HEAD; running services keep running.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

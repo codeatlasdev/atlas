@@ -46,6 +46,7 @@ export const MENU_COMMANDS = [
 	"shell::ZoomOut",
 	"shell::ZoomReset",
 	"git::Diff",
+	"git::Branch",
 	"atlas::Logs",
 	"atlas::Config",
 	"atlas::RestartService",

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Found } from "#lib/components/sidebar/discovery.ts";
 import type { Identity } from "#lib/shell/identity.ts";
+import { parseBranches, parseSwitched, type Branches, type Switched } from "#lib/branches.ts";
 
 export interface DiscoverArgs {
 	/** Extra folders besides the defaults (absolute or `~/…`). */
@@ -261,4 +262,14 @@ export const git = {
 	run: (id: string, args: string[], stdin?: string) =>
 		invoke<RunResult>("git_run", { id, args, stdin: stdin ?? null }),
 	files: (id: string) => invoke<string[]>("git_files", { id }),
+	branches: async (id: string): Promise<Branches> => parseBranches(await invoke("git_branches", { id })),
+	/** `create`: new branch from HEAD; `stash`: stash (incl. untracked) first. */
+	switch: async (
+		id: string,
+		branch: string,
+		opts: { create?: boolean; stash?: boolean } = {},
+	): Promise<Switched> =>
+		parseSwitched(
+			await invoke("git_switch", { id, req: { branch, create: !!opts.create, stash: !!opts.stash } }),
+		),
 };

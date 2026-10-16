@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Desktop: the `…` of a project, worktree or Explorer row opens its menu instead of switching to the row** (#67). The kit's menu trigger let the click reach the row's own `onclick`, and the switch re-rendered the sidebar under the menu. The `…` is now a real `<button>` (`RowMore`) that keeps its click and its Enter/Space, so it is reachable by keyboard and no longer a span nested in a `role=button`; the row ignores clicks and keys that come from inside its menu.
+- **Desktop: a modal (Settings, dialogs) is now modal** (#66). App shortcuts (⌘B, ⌘T, ⌘N, …), strokes forwarded from a native page and native-menu items no longer run behind an open modal, and a modal parks every native terminal/browser view instead of only the ones its box overlaps (their NSView painted above the scrim and stayed clickable). Background inertness, focus trap and overlays above the modal come from the kit's native `showModal()` (ui#225); a test now pins that a menu or popover declared outside a dialog and opened while it is up lives inside it.
 - Desktop: reopening a closed terminal tab (⇧⌘T) starts it in the folder it was opened in, not always the worktree root.
 
 ## [1.5.0-alpha.12] — 2026-10-16

@@ -16,6 +16,7 @@ import { errors, startErrorHandler } from "#lib/errors/errors.svelte.ts";
 import { loadKeymap, register } from "#lib/keymap.svelte.ts";
 import { startCtl } from "#lib/ctl.ts";
 import { startMenu } from "#lib/menu.svelte.ts";
+import { startModalWatch } from "#lib/modalOpen.ts";
 import { metrics } from "#lib/panel/metrics.svelte.ts";
 import { shellCommands } from "#lib/shell/commands.svelte.ts";
 import { offerGhostty, startThemeCommands } from "#lib/shell/themeCommands.svelte.ts";
@@ -211,6 +212,7 @@ export function startSession(): () => void {
 	startCtl().catch(() => {});
 	loadKeymap().catch(() => {});
 	const stopMenu = startMenu();
+	const stopModalWatch = startModalWatch();
 	loadPrefs().catch(() => {});
 	themes.init().then(offerGhostty, fail);
 	const unregister = register(shellCommands());
@@ -227,6 +229,7 @@ export function startSession(): () => void {
 		unregister();
 		stopThemeCommands();
 		void stopMenu.then((f) => f());
+		stopModalWatch();
 		void stopHostStatus.then((f) => f());
 		void stopSound.then((f) => f());
 		store.dispose();

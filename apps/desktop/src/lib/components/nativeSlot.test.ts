@@ -118,6 +118,35 @@ test("a full-window modal (palette scrim, first run) parks every slot", () => {
 	expect(overlayOpen(SLOT)).toBe(true);
 });
 
+// Incident (codeatlasdev/atlas#66): Settings is a modal `<dialog>` whose scrim covers the whole window, but its box
+// (820px) leaves a native terminal/browser beside it uncovered by the rule above. The scrim is DOM; the native view is a
+// sibling NSView above all of it, so it stayed bright, undimmed and (for the browser) clickable around a "modal".
+// A modal must park every native view, whatever its box overlaps. A non-modal dialog still only parks what it covers.
+function modalDialog(at: DOMRect, open = true) {
+	const d = document.createElement("dialog");
+	d.setAttribute("role", "dialog");
+	if (open) d.dataset.state = "open";
+	d.matches = (sel: string) => (sel === ":modal" ? open : Element.prototype.matches.call(d, sel));
+	d.getBoundingClientRect = () => at;
+	document.body.append(d);
+	return d;
+}
+
+test("an open modal parks the native view even when its box is beside the slot", () => {
+	modalDialog(rect(0, 0, 150, 300));
+	expect(overlayOpen(SLOT)).toBe(true);
+});
+
+test("a closing modal (exit animation, data-state=closed) no longer parks the native view", () => {
+	modalDialog(rect(0, 0, 150, 300), false);
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
+test("a non-modal dialog beside the slot still leaves it alone", () => {
+	dialog(rect(0, 0, 150, 300));
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
 // Regression (#43): the collapsed-sidebar hover peek is an HTML panel (role=complementary, no data-state), so it
 // neither parked the native browser/terminal nor triggered a re-sync: it slid in BEHIND the native view.
 // An open peek must count as an overlay for the slot it overlaps, and its open/close must schedule ONE re-sync.

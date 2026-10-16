@@ -1,8 +1,9 @@
 <script lang="ts">
 	/** One worktree of a project: agent glyph, name/branch, linked PR, services count, menu. */
-	import { DropdownMenu } from "@codeatlasdev/ui";
 	import { Ellipsis, GitBranch, Pin } from "@lucide/svelte";
 	import AgentGlyph from "#lib/components/AgentGlyph.svelte";
+	import RowMore from "#lib/components/RowMore.svelte";
+	import { fromMenu } from "#lib/components/rowEvent.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { pr, rollup } from "#lib/stores/pr.svelte.ts";
@@ -51,8 +52,9 @@
 		tabindex="0"
 		onmouseenter={() => (sidebar.hovered = p.id)}
 		onmouseleave={() => sidebar.hovered === p.id && (sidebar.hovered = null)}
-		onclick={select}
-		onkeydown={(e) => e.key === "Enter" && (store.selected = p.id)}
+		onclick={(e) => fromMenu(e) || select(e)}
+		onkeydown={(e) =>
+			e.key === "Enter" && !fromMenu(e) && e.target === e.currentTarget && (store.selected = p.id)}
 	>
 		{#if glyph}<AgentGlyph state={glyph} />{:else}<span class="glyph"><GitBranch size={11} /></span>{/if}
 		<span class="name">
@@ -71,12 +73,10 @@
 		<span class="meta">
 			{#if p.running}<span class="count">{up}/{live?.services.length || p.services_total}</span>{/if}
 		</span>
-		<DropdownMenu align="end">
-			{#snippet trigger()}
-				<span class="hover-btn" aria-label="Worktree menu"><Ellipsis size={13} /></span>
-			{/snippet}
+		<RowMore label="Worktree menu" class="hover-btn">
+			{#snippet icon()}<Ellipsis size={13} />{/snippet}
 			<RowMenu {p} {w} {onAgent} />
-		</DropdownMenu>
+		</RowMore>
 	</div>
 {/if}
 
@@ -109,10 +109,12 @@
 	.item :global(.pin) {
 		color: var(--ca-text-secondary);
 	}
-	.item:hover .hover-btn {
+	.item:hover :global(.hover-btn),
+	.item:focus-within :global(.hover-btn) {
 		display: inline-flex;
 	}
-	.item:hover .meta {
+	.item:hover .meta,
+	.item:focus-within .meta {
 		display: none;
 	}
 	.branch {

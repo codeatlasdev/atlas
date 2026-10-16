@@ -3,6 +3,7 @@
 	import { listen } from "@tauri-apps/api/event";
 	import { Skeleton, toast } from "@codeatlasdev/ui";
 	import PointerMenu from "#lib/components/PointerMenu.svelte";
+	import { fromMenu } from "#lib/components/rowEvent.ts";
 	import { ChevronRight, ChevronDown, Ellipsis, FilePlus, FolderPlus, LocateFixed } from "@lucide/svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { fileIcon, folderIcon } from "#lib/icons.ts";
@@ -178,7 +179,7 @@
 	}
 
 	function onTreeKey(ev: KeyboardEvent) {
-		if (editing) return;
+		if (editing || fromMenu(ev)) return;
 		if (onTreeContextKey(ev)) return;
 		if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 		const move = navMove(ev.key, visibleRows(children, expanded), cursor, expanded);
@@ -351,10 +352,10 @@
 			draggable="true"
 			ondragstart={(ev) => ev.dataTransfer?.setData("text/plain", `${root}/${rel}`)}
 			onfocus={() => (cursor = rel)}
-			onclick={() => activate(rel, isDir)}
+			onclick={(ev) => fromMenu(ev) || activate(rel, isDir)}
 			oncontextmenu={(ev) => onContext(ev, rel, isDir)}
 			onkeydown={(ev) => {
-				if (ev.key !== " ") return;
+				if (ev.key !== " " || fromMenu(ev) || ev.target !== ev.currentTarget) return;
 				ev.preventDefault();
 				activate(rel, isDir);
 			}}
@@ -393,7 +394,8 @@
 					ev.stopPropagation();
 					const r = ev.currentTarget.getBoundingClientRect();
 					void openMenu(menuOf(rel, isDir), r.right, r.bottom);
-				}}><Ellipsis size={12} /></button
+				}}
+				onkeydown={(ev) => ev.stopPropagation()}><Ellipsis size={12} /></button
 			>
 		</div>
 		{#if isDir && expanded[rel]}{@render tree(rel, depth + 1)}{/if}
@@ -612,17 +614,15 @@
 		opacity: 0.55;
 	}
 	.more {
-		opacity: 0;
 		display: inline-flex;
-		background: none;
-		border: 0;
 		padding: 0;
+		border: 0;
+		background: none;
 		color: inherit;
-		cursor: default;
+		cursor: pointer;
+		opacity: 0;
 	}
-	.more:focus-visible {
-		opacity: 1;
-	}
+	.more:focus-visible,
 	.row:hover .more {
 		opacity: 1;
 	}

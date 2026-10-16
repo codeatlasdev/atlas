@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop: right-click on any Explorer row opens its menu** (#64), also with Shift+F10 / the menu key, and right-click on the empty area of the tree opens New file / New folder at the root. One menu serves the `…` button and right-click: Open (files), New file / New folder (folders and root), Rename, Duplicate, Copy path, Copy relative path, Reveal in Finder, Stage / Discard changes (changed files) and Delete (with confirmation). A *New folder* button joins *New file* in the Explorer header.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

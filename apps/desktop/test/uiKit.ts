@@ -23,6 +23,9 @@ const KIT_COMPONENTS = [
 	"Select",
 	"Switch",
 	"Chip",
+	"DropdownMenu",
+	"DropdownMenuItem",
+	"DropdownMenuSeparator",
 ];
 const Stub = () => {};
 const kit = {
@@ -43,7 +46,9 @@ export async function installUiKit() {
  */
 export async function realKitComponent(name) {
 	const root = dirname(createRequire(import.meta.url).resolve("@codeatlasdev/ui/package.json"));
-	return (await import(join(root, "dist/components", name, `${name}.svelte`))).default;
+	// A member of another component's folder is `Folder/Name` (`DropdownMenu/DropdownMenuItem`), exported as `Name`.
+	const [folder, file = folder] = name.split("/");
+	return (await import(join(root, "dist/components", folder, `${file}.svelte`))).default;
 }
 
 /**
@@ -53,7 +58,9 @@ export async function realKitComponent(name) {
 export async function useRealKit(...names) {
 	Object.assign(
 		kit,
-		Object.fromEntries(await Promise.all(names.map(async (n) => [n, await realKitComponent(n)]))),
+		Object.fromEntries(
+			await Promise.all(names.map(async (n) => [n.split("/").pop(), await realKitComponent(n)])),
+		),
 	);
 	publish();
 }

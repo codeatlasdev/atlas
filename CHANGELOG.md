@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **GPU terminal: no more `Surface::configure` panic when the pane is laid out past the GPU's texture limit** ([#63](https://github.com/codeatlasdev/atlas/issues/63)). A rect far larger than the device allows (e.g. 100000 px before the layout settles) reached wgpu, which panicked the terminal's render thread and left an empty terminal. The surface size is now clamped to `[1, max_texture_dimension_2d]` on creation and on every resize.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -9,6 +9,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Fixed
 
 - **Tab and space shortcuts work while an embedded browser page has focus** (#42). ⌘1…⌘9, ⌃Tab / ⌃⇧Tab, ⇧⌘[ ⇧⌘], ⌃⌘1…⌃⌘6 and every other ⌘ ⌃ ⌥ chord bound in your keymap (remaps included) used to go to the page and do nothing until you clicked out of it. A native key monitor now takes only the strokes the keymap binds from a focused browser page; typing and unbound keys still reach the page.
+- Desktop: the collapsed-sidebar hover peek (left and right) now opens above browser and terminal tabs instead of behind them; the native view is parked only while an open peek overlaps it ([#43](https://github.com/codeatlasdev/atlas/issues/43)).
 
 ## [1.5.0-alpha.11] — 2026-10-15
 

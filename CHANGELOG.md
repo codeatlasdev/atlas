@@ -10,6 +10,11 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 - **Desktop: add and remove projects from the app** (#65). *Add project…* (sidebar footer, palette, or a folder dragged from Finder onto the sidebar) now accepts a folder **without** `atlas.yaml`: Atlas shows the file `atlas init` would create (detected stack and services) and, on confirm, creates it and adds the project: no terminal, no "no atlas.yaml in <dir>" error. A folder already in Atlas is selected instead of duplicated, and a subfolder of a project says which project it adds. *Remove from Atlas…* is now in the menu (`…` and right-click) of every project, and in the palette (*Remove project from Atlas…*): it stops the running stack first, removes the project and its linked worktrees from the sidebar, and never deletes a file.
 
+### Fixed
+
+- **Desktop: the `…` of a project, worktree or Explorer row opens its menu instead of switching to the row** (#67). The kit's menu trigger let the click reach the row's own `onclick`, and the switch re-rendered the sidebar under the menu. The `…` is now a real `<button>` (`RowMore`) that keeps its click and its Enter/Space, so it is reachable by keyboard and no longer a span nested in a `role=button`; the row ignores clicks and keys that come from inside its menu.
+- **Desktop: a modal (Settings, dialogs) is now modal** (#66). App shortcuts (⌘B, ⌘T, ⌘N, …), strokes forwarded from a native page and native-menu items no longer run behind an open modal, and a modal parks every native terminal/browser view instead of only the ones its box overlaps (their NSView painted above the scrim and stayed clickable). Background inertness, focus trap and overlays above the modal come from the kit's native `showModal()` (ui#225); a test now pins that a menu or popover declared outside a dialog and opened while it is up lives inside it.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

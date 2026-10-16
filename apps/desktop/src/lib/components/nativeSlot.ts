@@ -42,7 +42,8 @@ const hits = (a: Pick<DOMRect, "left" | "top" | "right" | "bottom">, b: typeof a
  * Dialogs, the palette and an open edge peek must sit above the native view, which is a sibling NSView no web layer
  * can cover: park it while one is open over it. Only one that overlaps the slot can cover it; the others (a popover
  * over the sidebar, a chip far from the terminal) used to park it too, so it vanished and reappeared on every
- * open/close.
+ * open/close. A modal is the exception: its scrim dims the whole window and everything behind it is inert, so a
+ * native view left bright and clickable beside its box would break the modal (codeatlasdev/atlas#66).
  *
  * A peek panel slides in by `transform`, so its bounding rect is off-window until the animation ends: use its layout
  * box (offset*, transform-free), which is where it will rest. The `data-state` flip on open/close is what makes
@@ -50,7 +51,8 @@ const hits = (a: Pick<DOMRect, "left" | "top" | "right" | "bottom">, b: typeof a
  */
 export function overlayOpen(slot: Pick<DOMRect, "left" | "top" | "right" | "bottom">): boolean {
 	for (const d of document.querySelectorAll("[role=dialog][data-state=open]"))
-		if (hits(d.getBoundingClientRect(), slot)) return true;
+		// A modal's scrim covers the whole window, whatever its box overlaps, and the native view paints above it.
+		if (d.matches(":modal") || hits(d.getBoundingClientRect(), slot)) return true;
 	for (const p of document.querySelectorAll<HTMLElement>(".peek-panel[data-state=open]")) {
 		const { offsetLeft: left, offsetTop: top } = p;
 		if (hits({ left, top, right: left + p.offsetWidth, bottom: top + p.offsetHeight }, slot)) return true;

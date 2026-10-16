@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 	import { listen } from "@tauri-apps/api/event";
-	import { DropdownMenu, DropdownMenuItem, Skeleton, toast } from "@codeatlasdev/ui";
+	import { DropdownMenuItem, Skeleton, toast } from "@codeatlasdev/ui";
 	import { ChevronRight, ChevronDown, Ellipsis, FilePlus, LocateFixed } from "@lucide/svelte";
+	import RowMore from "#lib/components/RowMore.svelte";
+	import { fromMenu } from "#lib/components/rowEvent.ts";
 	import Tip from "#lib/components/Tip.svelte";
 	import { fileIcon, folderIcon } from "#lib/icons.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
@@ -171,7 +173,7 @@
 	}
 
 	function onTreeKey(ev: KeyboardEvent) {
-		if (editing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+		if (editing || ev.metaKey || ev.ctrlKey || ev.altKey || fromMenu(ev)) return;
 		const move = navMove(ev.key, visibleRows(children, expanded), cursor, expanded);
 		if (!move) return;
 		ev.preventDefault();
@@ -252,9 +254,9 @@
 			draggable="true"
 			ondragstart={(ev) => ev.dataTransfer?.setData("text/plain", `${root}/${rel}`)}
 			onfocus={() => (cursor = rel)}
-			onclick={() => activate(rel, isDir)}
+			onclick={(ev) => fromMenu(ev) || activate(rel, isDir)}
 			onkeydown={(ev) => {
-				if (ev.key !== " ") return;
+				if (ev.key !== " " || fromMenu(ev) || ev.target !== ev.currentTarget) return;
 				ev.preventDefault();
 				activate(rel, isDir);
 			}}
@@ -284,10 +286,8 @@
 			{:else}
 				<span class="name">{e.name}</span>
 			{/if}
-			<DropdownMenu align="end">
-				{#snippet trigger()}
-					<span class="more"><Ellipsis size={12} /></span>
-				{/snippet}
+			<RowMore label="More actions" class="more">
+				{#snippet icon()}<Ellipsis size={12} />{/snippet}
 				{#if isDir}<DropdownMenuItem onclick={() => newFile(rel)}>New file</DropdownMenuItem>{/if}
 				<DropdownMenuItem onclick={() => rename(rel)}>Rename</DropdownMenuItem>
 				<DropdownMenuItem onclick={() => copy(`${root}/${rel}`)}>Copy path</DropdownMenuItem>
@@ -311,7 +311,7 @@
 					{/if}
 				{/if}
 				<DropdownMenuItem variant="destructive" onclick={() => remove(rel, isDir)}>Delete</DropdownMenuItem>
-			</DropdownMenu>
+			</RowMore>
 		</div>
 		{#if isDir && expanded[rel]}{@render tree(rel, depth + 1)}{/if}
 	{/each}
@@ -510,11 +510,19 @@
 	.ignored .ico {
 		opacity: 0.55;
 	}
-	.more {
-		opacity: 0;
+	/* The "…" is RowMore's own button (a child component), so its class is reached through :global. */
+	.row :global(.more) {
 		display: inline-flex;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		cursor: pointer;
+		opacity: 0;
 	}
-	.row:hover .more {
+	.row:hover :global(.more),
+	.row :global(.more:focus-visible),
+	.row :global(.more[data-state="open"]) {
 		opacity: 1;
 	}
 </style>

@@ -11,7 +11,7 @@
 	import { git, errText } from "#lib/api.ts";
 	import { duplicateName, menuItems, type MenuAction, type MenuTarget } from "#lib/stores/explorerMenu.ts";
 	import { uid, ws } from "#lib/stores/workspace.svelte.ts";
-	import { openFile } from "#lib/stores/files.svelte.ts";
+	import { openFile, openFileToSide } from "#lib/stores/files.svelte.ts";
 	import { errors } from "#lib/errors/errors.svelte.ts";
 	import { foldersToReload, loadFolder } from "#lib/stores/explorerLoad.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
@@ -269,6 +269,10 @@
 		switch (action) {
 			case "open":
 				return openFile(worktreeId, rel);
+			case "open-side":
+				return openFileToSide(worktreeId, rel);
+			case "terminal":
+				return void ws.newTerminal(worktreeId, { cwd: dir ? `${root}/${dir}` : root });
 			case "new-file":
 				return newFile(dir);
 			case "new-folder":

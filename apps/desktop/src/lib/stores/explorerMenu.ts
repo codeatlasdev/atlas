@@ -3,12 +3,14 @@ export type MenuTarget = { kind: "file" | "dir"; rel: string; status?: string } 
 
 export type MenuAction =
 	| "open"
+	| "open-side"
 	| "new-file"
 	| "new-folder"
 	| "rename"
 	| "duplicate"
 	| "copy-path"
 	| "copy-relative-path"
+	| "terminal"
 	| "reveal"
 	| "stage"
 	| "discard"
@@ -36,18 +38,24 @@ export function menuItems(t: MenuTarget): MenuItem[] {
 	if (t.kind === "root") {
 		return [
 			...NEW.map((i) => ({ ...i, group: 0 })),
+			{ action: "terminal", label: "Open in terminal", group: 1 },
 			{ action: "reveal", label: "Reveal in Finder", group: 1 },
 			{ action: "copy-path", label: "Copy path", group: 1 },
 		];
 	}
 	const items: MenuItem[] = [];
-	if (t.kind === "file") items.push({ action: "open", label: "Open", group: 0 });
-	else items.push(...NEW.map((i) => ({ ...i, group: 0 })));
+	if (t.kind === "file") {
+		items.push(
+			{ action: "open", label: "Open", group: 0 },
+			{ action: "open-side", label: "Open to the side", group: 0 },
+		);
+	} else items.push(...NEW.map((i) => ({ ...i, group: 0 })));
 	items.push(
 		{ action: "rename", label: "Rename", group: 1 },
 		{ action: "duplicate", label: "Duplicate", group: 1 },
 		{ action: "copy-path", label: "Copy path", group: 2 },
 		{ action: "copy-relative-path", label: "Copy relative path", group: 2 },
+		{ action: "terminal", label: "Open in terminal", group: 2 },
 		{ action: "reveal", label: "Reveal in Finder", group: 2 },
 	);
 	const changed = t.kind === "file" && t.status && t.status !== "ignored";

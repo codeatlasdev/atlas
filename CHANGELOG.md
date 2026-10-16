@@ -8,7 +8,11 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Added
 
-- **Desktop: right-click on any Explorer row opens its menu** (#64), also with Shift+F10 / the menu key, and right-click on the empty area of the tree opens New file / New folder at the root. One menu serves the `…` button and right-click: Open (files), New file / New folder (folders and root), Rename, Duplicate, Copy path, Copy relative path, Reveal in Finder, Stage / Discard changes (changed files) and Delete (with confirmation). A *New folder* button joins *New file* in the Explorer header.
+- **Desktop: right-click on any Explorer row opens its menu** (#64), also with Shift+F10 / the menu key, and right-click on the empty area of the tree opens New file / New folder at the root. One menu serves the `…` button and right-click: Open and Open to the side (files), New file / New folder (folders and root), Rename, Duplicate, Copy path, Copy relative path, Open in terminal (starts in that folder), Reveal in Finder, Stage / Discard changes (changed files) and Delete (with confirmation). A *New folder* button joins *New file* in the Explorer header.
+
+### Fixed
+
+- Desktop: reopening a closed terminal tab (⇧⌘T) starts it in the folder it was opened in, not always the worktree root.
 
 ## [1.5.0-alpha.12] — 2026-10-16
 

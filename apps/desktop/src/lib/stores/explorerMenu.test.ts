@@ -15,6 +15,17 @@ test("a file offers Open and no New entries; a folder offers New file/folder and
 	expect(dir).not.toContain("open");
 });
 
+// The issue asks for "Open to the side" and "Open in terminal here": a file opens beside, a folder (or the root, or a
+// file's folder) is where the terminal starts.
+test("files open to the side; every target but a bare file offers a terminal in its folder", () => {
+	expect(actions({ kind: "file", rel: "a.ts" })).toContain("open-side");
+	expect(actions({ kind: "dir", rel: "d" })).not.toContain("open-side");
+	expect(actions({ kind: "root" })).not.toContain("open-side");
+	for (const t of [{ kind: "file", rel: "a.ts" }, { kind: "dir", rel: "d" }, { kind: "root" }]) {
+		expect(actions(t)).toContain("terminal");
+	}
+});
+
 test("every row can be renamed, duplicated, copied, revealed and deleted; delete is last and destructive", () => {
 	for (const kind of ["file", "dir"]) {
 		const items = menuItems({ kind, rel: "x" });
@@ -28,7 +39,7 @@ test("every row can be renamed, duplicated, copied, revealed and deleted; delete
 });
 
 test("the empty area (root) can only create, reveal and copy the path: never rename or delete the worktree", () => {
-	expect(actions({ kind: "root" })).toEqual(["new-file", "new-folder", "reveal", "copy-path"]);
+	expect(actions({ kind: "root" })).toEqual(["new-file", "new-folder", "terminal", "reveal", "copy-path"]);
 });
 
 test("git items follow the status: untracked can only be staged, modified can also be discarded, ignored and folders get none", () => {

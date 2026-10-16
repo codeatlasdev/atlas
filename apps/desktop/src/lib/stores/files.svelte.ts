@@ -18,6 +18,16 @@ export function openFile(
 	});
 }
 
+/** Open a file in the pane to the side of the focused one, keeping focus on the pane you came from. */
+export function openFileToSide(worktreeId: string, path: string) {
+	const from = ws.focusedGroup(worktreeId).id;
+	const side = ws.sideGroup(worktreeId);
+	const existing = ws.tabsOf(worktreeId).find((t) => t.kind === "editor" && t.path === path);
+	if (existing) ws.activate(existing.id);
+	else ws.openTab(worktreeId, { kind: "editor", label: path.split("/").pop() ?? path, path }, side);
+	if (!existing) ws.focusGroup(from);
+}
+
 export function openDiff(worktreeId: string) {
 	ws.reveal(worktreeId, (t) => t.kind === "diff", { kind: "diff", label: "Changes" });
 }

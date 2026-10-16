@@ -46,6 +46,13 @@ pub(super) fn gpu() -> Result<&'static Gpu, String> {
     GPU.as_ref().map_err(Clone::clone)
 }
 
+/// The surface size wgpu accepts for a requested pixel size: `Surface::configure` panics on a zero side and on one
+/// past the device's `max_texture_dimension_2d`, so every configure goes through here.
+pub(super) fn surface_extent(width: u32, height: u32, max_side: u32) -> (u32, u32) {
+    let side = |v: u32| v.min(max_side).max(1);
+    (side(width), side(height))
+}
+
 /// Mirrors the WGSL `U` block (2×vec2 + vec2 + vec2 + u32, 40 bytes).
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

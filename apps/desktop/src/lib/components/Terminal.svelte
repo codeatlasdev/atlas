@@ -14,6 +14,7 @@
 	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
 	import { isMac } from "#lib/lsp/navigation.ts";
 	import { copyText, keyAction } from "./terminal/clipboardKeys.ts";
+	import { browserFontEnv, usableFamilies } from "./terminal/xtermFont.ts";
 	import FindInput from "./FindInput.svelte";
 
 	let {
@@ -40,6 +41,13 @@
 	let drawn = $state(false);
 	let searchOpen = $state(false);
 	let query = $state("");
+	/** Bumped when the webview finished loading fonts: the family list is resolved again and xterm re-measures. */
+	let fontsLoaded = $state(0);
+
+	/** The user's font list reduced to families the webview can draw fixed-pitch, ending with `monospace` (#68). */
+	function xtermFamily(css: string) {
+		return usableFamilies(css, browserFontEnv());
+	}
 
 	const CURSOR_STYLE = { block: "block", bar: "bar", underline: "underline", hollow: "block" } as const;
 
@@ -98,8 +106,9 @@
 	// `terminal.*` font and cursor settings apply live; the host refits to the new cell size.
 	$effect(() => {
 		const t = prefs.value.terminal;
+		void fontsLoaded;
 		if (!term) return;
-		term.options.fontFamily = t.font_family;
+		term.options.fontFamily = xtermFamily(t.font_family);
 		term.options.fontSize = t.font_size;
 		term.options.fontWeight = t.font_thicken ? 500 : "normal";
 		term.options.fontWeightBold = t.font_thicken ? 700 : "bold";
@@ -117,7 +126,7 @@
 		const t = new Terminal({
 			allowProposedApi: true,
 			scrollback: prefs.value.terminal.max_scroll_history_lines,
-			fontFamily: prefs.value.terminal.font_family,
+			fontFamily: xtermFamily(prefs.value.terminal.font_family),
 			fontSize: prefs.value.terminal.font_size,
 			fontWeight: prefs.value.terminal.font_thicken ? 500 : "normal",
 			fontWeightBold: prefs.value.terminal.font_thicken ? 700 : "bold",
@@ -175,6 +184,10 @@
 		});
 		const offs: (() => void)[] = [];
 		let alive = true;
+		// A webfont still loading was measured on its fallback: redo the list (and the cell) once they are ready.
+		void document.fonts?.ready.then(() => {
+			if (alive) fontsLoaded++;
+		});
 		// `terminal.copy_on_select`: selecting copies, as in the GPU terminal (the selection is not a DOM
 		// selection, so the webview never puts it on the clipboard by itself).
 		const sel = t.onSelectionChange(() => {

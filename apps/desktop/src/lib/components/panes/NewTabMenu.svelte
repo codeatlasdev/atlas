@@ -1,8 +1,8 @@
 <script lang="ts">
+	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	/** The "+" menu of a tab strip: new terminal/agent/panel/changes/PR tabs, split, rename, close. */
 	import { DropdownMenu, DropdownMenuItem } from "@codeatlasdev/ui";
 	import {
-		Bot,
 		FileCode2,
 		FileDiff,
 		GitPullRequest,
@@ -45,12 +45,12 @@
 	</DropdownMenuItem>
 	{#each agents.list.filter((a) => a.installed) as a (a.id)}
 		<DropdownMenuItem onclick={() => w && agents.launch(w.id, a.id, { groupId })}>
-			<Bot size={14} /> New {a.label} session
+			<AgentLogo agent={a.id} /> New {a.label} session
 		</DropdownMenuItem>
 	{/each}
 	{#if agents.list.find((a) => a.id === "omp" && a.installed)}
 		<DropdownMenuItem onclick={() => w && agents.launch(w.id, "omp", { groupId, chat: true })}>
-			<Bot size={14} /> New omp chat
+			<AgentLogo agent="omp" /> New omp chat
 		</DropdownMenuItem>
 	{/if}
 	{#if project}

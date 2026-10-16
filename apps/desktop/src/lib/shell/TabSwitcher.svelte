@@ -8,8 +8,8 @@
 		FileDiff,
 		GitPullRequest,
 		Globe,
-		Bot,
 	} from "@lucide/svelte";
+	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { switcher } from "#lib/shell/switcher.svelte.ts";
 
@@ -30,7 +30,7 @@
 			if (!t) return [];
 			const title =
 				t.kind === "services" ? "Panel" : t.customLabel ? t.label : (t.pty && ws.titles[t.pty]) || t.label;
-			return [{ id, title, Icon: t.agent ? Bot : (ICONS[t.kind as keyof typeof ICONS] ?? SquareTerminal) }];
+			return [{ id, title, agent: t.agent, Icon: ICONS[t.kind as keyof typeof ICONS] ?? SquareTerminal }];
 		}),
 	);
 </script>
@@ -39,7 +39,7 @@
 	<div class="switcher" role="listbox" aria-label="Recent tabs">
 		{#each items as it, i (it.id)}
 			<div class="row" class:on={i === switcher.s.index} role="option" aria-selected={i === switcher.s.index}>
-				<it.Icon size={14} />
+				{#if it.agent}<AgentLogo agent={it.agent} />{:else}<it.Icon size={14} />{/if}
 				<span>{it.title}</span>
 			</div>
 		{/each}

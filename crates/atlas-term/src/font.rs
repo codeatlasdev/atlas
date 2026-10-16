@@ -553,6 +553,35 @@ mod tests {
         assert!(f.glyph(' ', 0).is_none());
     }
 
+    // Acceptance of #68: the cell width is the font's own advance at every DPR (measured once in physical px, not
+    // scaled again), the same for every glyph of the face, so text never spreads into wide cells.
+    #[test]
+    fn cell_width_is_the_font_advance_at_dpr_1_and_2() {
+        let (one, two) = (Font::new(13.0, 1.0), Font::new(13.0, 2.0));
+        assert!(
+            (two.cell[0] - 2.0 * one.cell[0]).abs() <= 1.0,
+            "DPR 2 cell {:?} is not twice DPR 1 {:?}",
+            two.cell,
+            one.cell
+        );
+        for f in [&one, &two] {
+            let face = face_of(None, Face::Mono(0)).expect("regular face");
+            for ch in ['i', 'l', 'W', 'M', '0', '.'] {
+                let adv = face
+                    .font
+                    .glyph_metrics(face.coords)
+                    .scale(f.ppem)
+                    .advance_width(face.font.charmap().map(ch));
+                assert!(
+                    (adv - f.cell[0]).abs() <= 1.0,
+                    "{ch:?} advance {adv} vs cell {} at ppem {}",
+                    f.cell[0],
+                    f.ppem
+                );
+            }
+        }
+    }
+
     #[test]
     fn empty_or_unresolvable_family_falls_back_to_the_bundled_font() {
         for families in [vec![], vec!["No Such Family 9000".to_string()]] {

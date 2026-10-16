@@ -15,10 +15,16 @@
 	}: { agent: string | undefined; size?: number; bare?: boolean } = $props();
 
 	const logo = $derived(agentLogo(agent));
+	/** The root svg sized to its box: the kit's icon box sizes only a direct svg child, and SchemeAsset wraps the mark
+	 * in display:contents spans, so an unsized mark collapsed to 0x0 (codeatlasdev/ui#297). */
+	const fill = (svg: string | undefined) =>
+		svg?.replace(/<svg\b[^>]*>/, (tag) =>
+			tag.replace(/\s(width|height)="[^"]*"/g, "").replace(/^<svg/, '<svg width="100%" height="100%"'),
+		);
 </script>
 
-{#snippet light()}{@html logo?.light}{/snippet}
-{#snippet dark()}{@html logo?.dark ?? logo?.light}{/snippet}
+{#snippet light()}{@html fill(logo?.light)}{/snippet}
+{#snippet dark()}{@html fill(logo?.dark ?? logo?.light)}{/snippet}
 
 {#if logo}
 	{#if bare}

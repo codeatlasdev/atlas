@@ -89,3 +89,18 @@ test("in the kit's icon slot the logo is bare: the slot draws the box, so there 
 	expect(fallback.target.querySelector("svg")?.getAttribute("width")).not.toBe("14");
 	fallback.done();
 });
+
+// Incident (4.2 bump, seen in an agent instance): the kit sizes only a DIRECT svg child of the icon box, but SchemeAsset
+// wraps the mark in display:contents spans, so Claude Code and omp (viewBox, no width/height) rendered 0x0 and Codex
+// (width="24") overflowed the 14px box. codeatlasdev/ui#297. A bare mark must size itself to its box.
+test("a bare logo's svg fills its box for every agent, light and dark", () => {
+	for (const agent of ["omp", "claude", "codex"]) {
+		const { target, done } = render({ agent, bare: true });
+		const svgs = [...target.querySelectorAll(".ca-scheme-asset svg")].filter((s) => !s.parentElement?.closest("svg"));
+		expect(svgs.length, agent).toBeGreaterThan(0);
+		for (const s of svgs) {
+			expect([s.getAttribute("width"), s.getAttribute("height")], agent).toEqual(["100%", "100%"]);
+		}
+		done();
+	}
+});

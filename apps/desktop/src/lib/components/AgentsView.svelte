@@ -3,6 +3,7 @@
 	import { Bot, LayoutDashboard } from "@lucide/svelte";
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
 	import AgentGlyph from "#lib/components/AgentGlyph.svelte";
+	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	import { agents, type AgentState } from "#lib/stores/agents.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -128,9 +129,9 @@
 						<button class="card" onclick={() => focus(p.tab.id)}>
 							<GlassCard padding={12}>
 								<div class="row">
-									<AgentGlyph state={p.st?.state ?? "idle"} /><b>{p.tab.agent}</b><span class="dim"
-										>{where(p.tab.worktreeId)}</span
-									>
+									<AgentGlyph state={p.st?.state ?? "idle"} /><AgentLogo agent={p.tab.agent} size={12} /><b
+										>{p.tab.agent}</b
+									><span class="dim">{where(p.tab.worktreeId)}</span>
 								</div>
 								{#if p.st?.prompt}<p class="prompt">{p.st.prompt}</p>{/if}
 								{#if p.st?.last_message}<p class="msg">{p.st.last_message}</p>{/if}
@@ -153,7 +154,9 @@
 	<div class="feed">
 		{#each running as p (p.tab.id)}
 			<button class="line pinned" onclick={() => focus(p.tab.id)}>
-				<AgentGlyph state="working" /><b>{p.tab.agent}</b><span>{where(p.tab.worktreeId)}</span>
+				<AgentGlyph state="working" /><AgentLogo agent={p.tab.agent} size={12} /><b>{p.tab.agent}</b><span
+					>{where(p.tab.worktreeId)}</span
+				>
 				<span class="dim">{p.st?.prompt ?? ""}</span>
 			</button>
 		{/each}
@@ -161,7 +164,7 @@
 			<button class="line" onclick={() => focus(e.tabId)}>
 				<AgentGlyph state={e.state as AgentState} />
 				<span class="time">{new Date(e.ts).toLocaleTimeString()}</span>
-				<b>{e.agent}</b>
+				<AgentLogo agent={e.agent} size={12} /><b>{e.agent}</b>
 				<span class="where">{where(e.worktreeId)}</span>
 				<span class="state">{e.state}</span>
 				{#if e.text}<span class="dim">{e.text}</span>{/if}

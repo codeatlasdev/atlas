@@ -16,6 +16,7 @@
 	import { pinned } from "#lib/stores/tabs.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import AgentGlyph from "#lib/components/AgentGlyph.svelte";
+	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { host } from "#lib/host.ts";
 	import { quick } from "#lib/stores/quick.svelte.ts";
@@ -160,7 +161,7 @@
 						onauxclick={(e) => e.button === 1 && ws.closeTab(t.id)}
 						ondblclick={() => !pinned(t) && (renaming = t.id)}
 					>
-						{#if t.agent}<AgentGlyph
+						{#if t.agent}<AgentLogo agent={t.agent} size={13} /><AgentGlyph
 								state={agents.status[t.id]?.state ?? "idle"}
 							/>{:else if t.kind === "editor" && t.path}<span class="ico" data-contrast-decorative
 								>{@html fileIcon(t.path.split("/").pop() ?? t.label)}</span

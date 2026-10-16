@@ -2,23 +2,17 @@
 /**
  * The one mock of `@codeatlasdev/ui` for the suites that stub `document` and the runes by hand (hostCall,
  * hostErrors, workspace): the real kit builds its stores at import time and would throw under that stub, and those
- * suites only need `toast`. Component tests (Tip, kitOverlays) run the REAL kit through `realKit()`, because a module
- * mock is process-wide and `mock.module` on the bare specifier would hand them this object instead.
+ * suites only need `toast`. Component tests (Tip, kitOverlays) get real components through `useRealKit` /
+ * `realKitComponent`, which extend this same module instead of replacing it.
  */
 import { mock } from "bun:test";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-export async function installUiKit() {
-	// Every export a component in these suites' import graphs names (Tip's Tooltip, ErrorPanel's Button, …) must exist,
-	// or an unrelated file that loads later in the run fails with "Export named 'X' not found": a stub component each.
-	const Stub = () => {};
-	mock.module("@codeatlasdev/ui", () => ({
-		toast: { error() {}, info() {} },
-		...Object.fromEntries(KIT_COMPONENTS.map((n) => [n, Stub])),
-	}));
-}
-
+// A module mock is process-wide and the last `mock.module` of the specifier wins, so the stubs and the real
+// components are ONE module that every call extends: a suite that asks for a real `Tooltip` must not take `toast`
+// away from the suite that loads after it ("Export named 'toast' not found", which also skipped that suite's `afterAll`
+// and left its stub `document` in place for every file after it).
 const KIT_COMPONENTS = [
 	"Button",
 	"Dialog",
@@ -30,6 +24,18 @@ const KIT_COMPONENTS = [
 	"Switch",
 	"Chip",
 ];
+const Stub = () => {};
+const kit = {
+	toast: { error() {}, info() {} },
+	...Object.fromEntries(KIT_COMPONENTS.map((n) => [n, Stub])),
+};
+const publish = () => mock.module("@codeatlasdev/ui", () => ({ ...kit }));
+
+export async function installUiKit() {
+	// Every export a component in these suites' import graphs names (Tip's Tooltip, ErrorPanel's Button, …) must exist,
+	// or an unrelated file that loads later in the run fails with "Export named 'X' not found": a stub component each.
+	publish();
+}
 
 /**
  * A real kit component, loaded by its file under the package (`dist/components/<Name>/<Name>.svelte`) so a
@@ -45,8 +51,11 @@ export async function realKitComponent(name) {
  * wins), for a component test whose subject imports from the package entry (`Tip` imports `Tooltip`).
  */
 export async function useRealKit(...names) {
-	const real = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await realKitComponent(n)])));
-	mock.module("@codeatlasdev/ui", () => real);
+	Object.assign(
+		kit,
+		Object.fromEntries(await Promise.all(names.map(async (n) => [n, await realKitComponent(n)]))),
+	);
+	publish();
 }
 
 /** A real kit module by its path under `dist/` (plain `.js`: no component, no store), same reason as `realKitComponent`. */

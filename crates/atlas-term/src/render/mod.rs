@@ -386,17 +386,18 @@ impl Renderer {
         }
     }
 
-    /// Draw a snapshot (blocks on vsync when the swapchain is full).
-    pub fn render(&mut self, f: &Frame) -> Result<(), String> {
+    /// Draw a snapshot (blocks on vsync when the swapchain is full). `true`: a frame was presented; `false`:
+    /// the surface had no texture to draw into (lost or outdated, reconfigured for the next call).
+    pub fn render(&mut self, f: &Frame) -> Result<bool, String> {
         let g = gpu()?;
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&g.device, &self.config);
-                return Ok(());
+                return Ok(false);
             }
-            _ => return Ok(()),
+            _ => return Ok(false),
         };
         let t0 = Instant::now();
         self.text.layout(f);
@@ -481,6 +482,6 @@ impl Renderer {
         g.queue.submit([enc.finish()]);
         g.queue.present(frame);
         self.timing.record(t0);
-        Ok(())
+        Ok(true)
     }
 }

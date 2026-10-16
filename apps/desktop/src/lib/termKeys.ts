@@ -75,10 +75,19 @@ export function termAction(e: KeyLike): TermAction | null {
 
 /**
  * Chords a focused GPU terminal keeps instead of the app keymap: the ones whose app binding would
- * otherwise win in the window's capture handler. ⌘K (Jump) is Ghostty's clear_screen and ⇧⌘D
- * (Changes) its split-down. Everything else (⌘T, ⌘W, ⇧⌘P …) stays with the app.
+ * otherwise win in the window's capture handler. ⌘K (Jump) is Ghostty's clear_screen, ⇧⌘D
+ * (Changes) its split-down and ⌘= ⌘+ ⌘- ⌘0 its font size (the layout zoom, `zoom.ts`, takes them
+ * everywhere else). Everything else (⌘T, ⌘W, ⇧⌘P …) stays with the app.
  */
-const KEPT: Record<string, true> = { k: true, "shift+d": true };
+const KEPT: Record<string, true> = {
+	k: true,
+	"shift+d": true,
+	"=": true,
+	"+": true,
+	"shift++": true,
+	"-": true,
+	"0": true,
+};
 
 export function terminalKeeps(e: KeyLike): boolean {
 	return (

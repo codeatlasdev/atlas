@@ -3,7 +3,8 @@
  * - focus rings only while navigating with the keyboard (WebKit treats programmatic
  *   focus, e.g. a dialog focusing its close button, as `:focus-visible`);
  * - no browser context menu (Reload / Inspect Element) outside text fields;
- * - no page zoom (⌘+ / ⌘- / ⌘0 / pinch) and no dragging of links or images.
+ * - no browser page zoom: pinch is blocked, and ⌘+ / ⌘- / ⌘0 are swallowed here so WebKit never zooms by
+ *   itself (the app's own keyboard zoom is `zoom.ts`, stepped and persisted), plus no dragging of links or images.
  * Returns a cleanup function.
  */
 export function nativeFeel(): () => void {

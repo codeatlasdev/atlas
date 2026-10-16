@@ -142,10 +142,9 @@ html.opaque-window body {
 	z-index: 0;
 	border-radius: inherit;
 	/* Near-opaque: the window is transparent, so a see-through panel lets the content
-	   underneath bleed through the text (WebKit cannot blur the native vibrancy behind). */
+	   underneath bleed through the text (WebKit cannot blur the native vibrancy behind). No `backdrop-filter`: this
+	   panel floats over the pager, and a blur over content that moves is re-rendered every frame of a swipe. */
 	background: color-mix(in oklab, var(--ca-surface-raised) 96%, var(--space-accent, transparent) 4%);
-	-webkit-backdrop-filter: blur(24px) saturate(1.4);
-	backdrop-filter: blur(24px) saturate(1.4);
 	pointer-events: none;
 }
 .peek-body {

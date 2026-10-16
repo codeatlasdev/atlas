@@ -114,7 +114,9 @@
 				Scanning… {discovery.dirs.toLocaleString()} folders · {(discovery.elapsedMs / 1000).toFixed(1)}s ·
 				{split.projects.length} found
 			</span>
-			<span class="cur mono" title={discovery.current}>{tilde(discovery.current)}</span>
+			<span class="cur mono" dir="rtl" title={discovery.current}
+				><bdi dir="ltr">{tilde(discovery.current)}</bdi></span
+			>
 			<Button size="sm" variant="ghost" onclick={() => discovery.cancel()}>Cancel</Button>
 		{:else if discovery.error}
 			<TriangleAlert size={13} /> <span>{discovery.error}</span>
@@ -259,7 +261,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		direction: rtl;
 		text-align: left;
 		font-size: 11px;
 		color: var(--ca-text-secondary);

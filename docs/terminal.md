@@ -104,6 +104,8 @@ The web view's `paste` event only exposes text, so ⌘V is a trigger and the hos
 
 A terminal cannot carry a bitmap, so for an image the program reads the clipboard itself; Atlas only tells it to. Dropping a file on the terminal still pastes its quoted path. Terminals that use xterm.js (SSH hosts, or when Fast terminal is off) paste text only.
 
+**Clipboard keys in xterm.js terminals (Linux, SSH hosts).** Ctrl+Shift+C copies the selection and Ctrl+Shift+V pastes it (bracketed); Ctrl+C copies only while text is selected and otherwise stays SIGINT. With `terminal.copy_on_select` (on) selecting also copies. The PRIMARY selection (middle-click paste) is not filled. macOS keeps ⌘C/⌘V through the Edit menu.
+
 ## Compared with Ghostty
 
 Audit against Ghostty's documented features (ghostty.org/docs/config/reference and keybind actions). **present** = behaves as Ghostty, **partial** = some of it, **missing** = not there. Evidence is the code that does it; the proof of each is a test in the same crate.

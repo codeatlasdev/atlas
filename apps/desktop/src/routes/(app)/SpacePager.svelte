@@ -14,6 +14,7 @@
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { neighbour } from "#lib/shell/space.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { nativeRect } from "#lib/zoom.ts";
 	import SpaceSlot from "./SpaceSlot.svelte";
 
 	let root: HTMLElement | undefined = $state();
@@ -110,7 +111,9 @@
 		if (measure || !rect) {
 			const r = root?.getBoundingClientRect();
 			if (!r) return Promise.resolve();
-			rect = [r.x, r.y, r.width, r.height];
+			// Native lays its snapshot layers out in window points; the page measures CSS px (they differ under layout zoom).
+			const n = nativeRect({ x: r.x, y: r.y, w: r.width, h: r.height });
+			rect = [n.x, n.y, n.w, n.h];
 		}
 		const next = { order, rect };
 		if (!pagesChanged(pushedPages, next)) return Promise.resolve();

@@ -42,6 +42,9 @@ export const MENU_COMMANDS = [
 	"workspace::ToggleRightDock",
 	"workspace::ToggleBottomDock",
 	"workspace::ToggleZoom",
+	"shell::ZoomIn",
+	"shell::ZoomOut",
+	"shell::ZoomReset",
 	"git::Diff",
 	"atlas::Logs",
 	"atlas::Config",
@@ -80,10 +83,16 @@ export function accelerator(stroke: string): string | null {
 
 /**
  * Commands whose key the terminal takes while it has focus (Ghostty's conventions): ⌘K clears the
- * screen and ⇧⌘D splits down there; elsewhere they stay Jump and Changes (the menu items,
- * ⇧⌘P and the Go menu still reach both).
+ * screen, ⇧⌘D splits down and ⌘= ⌘- ⌘0 change the terminal's font size there; elsewhere they stay
+ * Jump, Changes and the layout zoom (the menu items, ⇧⌘P and the Go menu still reach all of them).
  */
-const TERMINAL_KEYS: Record<string, string> = { "atlas::Jump": "Cmd+K", "git::Diff": "Shift+Cmd+D" };
+const TERMINAL_KEYS: Record<string, string> = {
+	"atlas::Jump": "Cmd+K",
+	"git::Diff": "Shift+Cmd+D",
+	"shell::ZoomIn": "Cmd+=",
+	"shell::ZoomOut": "Cmd+-",
+	"shell::ZoomReset": "Cmd+0",
+};
 
 /**
  * `{ commandId: accelerator|null }` for every menu command, from the effective keymap (Edit keys

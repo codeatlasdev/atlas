@@ -23,6 +23,9 @@ const KIT_COMPONENTS = [
 	"Select",
 	"Switch",
 	"Chip",
+	"DropdownMenu",
+	"DropdownMenuItem",
+	"Popover",
 ];
 const Stub = () => {};
 const kit = {
@@ -40,10 +43,12 @@ export async function installUiKit() {
 /**
  * A real kit component, loaded by its file under the package (`dist/components/<Name>/<Name>.svelte`) so a
  * `mock.module("@codeatlasdev/ui")` elsewhere in the run, which replaces the package entry, cannot replace it.
+ * A sub-component that shares its parent's folder is `Dir/Name` (`DropdownMenu/DropdownMenuItem`); its export is `Name`.
  */
 export async function realKitComponent(name) {
 	const root = dirname(createRequire(import.meta.url).resolve("@codeatlasdev/ui/package.json"));
-	return (await import(join(root, "dist/components", name, `${name}.svelte`))).default;
+	const [dir, file = dir] = name.split("/");
+	return (await import(join(root, "dist/components", dir, `${file}.svelte`))).default;
 }
 
 /**
@@ -53,7 +58,9 @@ export async function realKitComponent(name) {
 export async function useRealKit(...names) {
 	Object.assign(
 		kit,
-		Object.fromEntries(await Promise.all(names.map(async (n) => [n, await realKitComponent(n)]))),
+		Object.fromEntries(
+			await Promise.all(names.map(async (n) => [n.split("/").pop(), await realKitComponent(n)])),
+		),
 	);
 	publish();
 }

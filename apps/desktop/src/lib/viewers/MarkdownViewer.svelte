@@ -38,7 +38,7 @@
 	});
 </script>
 
-<article class="md selectable" bind:this={el}>
+<article class="md ca-selectable" bind:this={el}>
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 	{@html html}
 </article>

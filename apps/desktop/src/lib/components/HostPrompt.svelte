@@ -26,7 +26,7 @@
 	onOpenChange={(o) => !o && dismissHostPrompt()}
 >
 	{#if copy.items.length}
-		<ul class="ptys selectable" aria-label="Running terminals">
+		<ul class="ptys ca-selectable" aria-label="Running terminals">
 			{#each copy.items as item, i (i)}
 				<li class="mono">{item}</li>
 			{/each}

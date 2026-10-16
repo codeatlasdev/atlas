@@ -199,7 +199,7 @@
 		{/each}
 	</ol>
 	<button class="link" onclick={() => (notesOpen = !notesOpen)}>{notesOpen ? "Hide" : "Show"} details</button>
-	{#if notesOpen}<pre class="log mono selectable" bind:this={logEl}>{u.log.join("\n") ||
+	{#if notesOpen}<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") ||
 				"starting…"}</pre>{/if}
 {/if}
 

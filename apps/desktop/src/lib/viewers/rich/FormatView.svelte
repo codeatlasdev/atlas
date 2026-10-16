@@ -81,7 +81,7 @@
 					{/if}
 				</div>
 			</header>
-			<pre class="rv-code selectable text">{ctx.text}</pre>
+			<pre class="rv-code ca-selectable text">{ctx.text}</pre>
 		{:else if kind === "codeowners" && owners}
 			<header class="rv-head">
 				<div class="rv-title">

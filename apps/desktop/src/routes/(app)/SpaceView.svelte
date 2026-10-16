@@ -34,7 +34,7 @@
 	{#if p.error}
 		<div class="banner">
 			<Alert severity="error" title="atlas.yaml has problems"
-				><pre class="mono selectable">{p.error}</pre></Alert
+				><pre class="mono ca-selectable">{p.error}</pre></Alert
 			>
 		</div>
 	{/if}

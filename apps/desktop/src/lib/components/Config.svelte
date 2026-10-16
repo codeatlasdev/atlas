@@ -212,7 +212,7 @@
 {/if}
 
 <div class="split">
-	<div class="editor selectable" bind:this={host}></div>
+	<div class="editor ca-selectable" bind:this={host}></div>
 	{#if problems.length}
 		<aside class="problems">
 			{#each problems as p, i (i)}
@@ -226,7 +226,7 @@
 </div>
 
 <Dialog bind:open={diffOpen} title="Save atlas.yaml?" description="Review the changes." size="lg">
-	<div class="diff selectable">
+	<div class="diff ca-selectable">
 		{#each diffRows as r, i (i)}
 			<div class="row-{r.kind}">
 				<span class="sign">{r.kind === "add" ? "+" : r.kind === "del" ? "-" : " "}</span>{@html r.html}

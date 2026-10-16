@@ -22,9 +22,12 @@
 </script>
 
 {#if inline}
-	<code class="rv-ic selectable"><!-- eslint-disable-next-line svelte/no-at-html-tags -->{@html shown}</code>
+	<code class="rv-ic ca-selectable"
+		><!-- eslint-disable-next-line svelte/no-at-html-tags -->{@html shown}</code
+	>
 {:else}
-	<pre class="rv-code selectable"><!-- eslint-disable-next-line svelte/no-at-html-tags -->{@html shown}</pre>
+	<pre
+		class="rv-code ca-selectable"><!-- eslint-disable-next-line svelte/no-at-html-tags -->{@html shown}</pre>
 {/if}
 
 <style>

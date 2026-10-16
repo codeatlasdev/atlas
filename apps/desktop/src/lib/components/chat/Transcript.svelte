@@ -38,7 +38,7 @@
 	{#if !chat.ready}<div class="center"><Spinner /> Starting omp…</div>{/if}
 	{#each items as it (it.id)}
 		{#if it.kind === "user"}
-			<div class="msg user selectable">
+			<div class="msg user ca-selectable">
 				{it.text}{#if it.images}<span class="dim"> · {it.images} image(s)</span>{/if}
 			</div>
 		{:else if it.kind === "assistant"}
@@ -47,9 +47,9 @@
 					<button class="fold" onclick={() => (open[`th-${it.id}`] = !open[`th-${it.id}`])}>
 						{#if open[`th-${it.id}`]}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if} Thinking
 					</button>
-					{#if open[`th-${it.id}`]}<pre class="thinking selectable">{it.thinking}</pre>{/if}
+					{#if open[`th-${it.id}`]}<pre class="thinking ca-selectable">{it.thinking}</pre>{/if}
 				{/if}
-				{#if it.text}<div class="md selectable">{@html md(it.text)}</div>{/if}
+				{#if it.text}<div class="md ca-selectable">{@html md(it.text)}</div>{/if}
 				{#each it.tools as id (id)}
 					{@const tc = chat.tools[id]}
 					{#if tc}
@@ -58,7 +58,7 @@
 								{#if tc.status === "running"}<Spinner size={11} />{:else}<Wrench size={11} />{/if}
 								<b>{tc.name}</b> <span class="mono">{argsLine(tc.args)}</span>
 							</button>
-							{#if open[id] && tc.result}<pre class="selectable">{tc.result}</pre>{/if}
+							{#if open[id] && tc.result}<pre class="ca-selectable">{tc.result}</pre>{/if}
 						</div>
 					{/if}
 				{/each}
@@ -67,7 +67,7 @@
 		{:else if it.kind === "note"}
 			<div class="msg note">{it.text}</div>
 		{:else}
-			<div class="msg error selectable">{it.text}</div>
+			<div class="msg error ca-selectable">{it.text}</div>
 		{/if}
 	{/each}
 	{#each chat.ui as u (u.id)}

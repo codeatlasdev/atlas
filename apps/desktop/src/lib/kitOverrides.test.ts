@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 const css = readFileSync(new URL("../app.css", import.meta.url), "utf8");
 
@@ -37,4 +38,34 @@ test("app.css leaves the native-feel rules the kit now owns to the kit", () => {
 
 test("the keyboard ring is the one rule app.css still owns", () => {
 	expect(css).toMatch(/html\[data-kbd\] :focus-visible\s*\{[^}]*outline:\s*2px solid var\(--ca-focus-ring\)/);
+});
+
+// Incident (ui#136, fixed in kit 4.0.0): `nativeFeel()` filtered the context menu by `.selectable` while its CSS opted
+// text selection in with `.ca-selectable`, so Atlas kept its own `.selectable` rule. The kit now has one opt-out class,
+// `.ca-selectable` (menu + selection); the local class and its rule must not come back.
+test("selectable text opts in with the kit's .ca-selectable, not a local .selectable", () => {
+	expect(css).not.toMatch(/(^|[^\w-])\.selectable\b/m);
+	const stale: string[] = [];
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			const path = join(dir, name);
+			if (statSync(path).isDirectory()) walk(path);
+			else if (
+				/\.svelte$/.test(name) &&
+				/class="[^"]*(^|[\s"])selectable[\s"]/.test(readFileSync(path, "utf8"))
+			)
+				stale.push(path);
+		}
+	};
+	walk(new URL("..", import.meta.url).pathname);
+	expect(stale).toEqual([]);
+});
+
+// Incident (ui#135, ui#137, fixed in kit 4.0.0): the scrim blur and the tooltip blur had no token of their own, so Atlas
+// zeroed the shared `--ca-blur-ultra-thin` (also read by Tabs, Pagination, `.glass-ultra-thin`, uploads) to un-blur them.
+// The window is transparent and these surfaces float over moving content: a backdrop blur only costs frames.
+test("app.css turns the scrim and tooltip blur off through their own kit tokens, not the shared ultra-thin one", () => {
+	expect(css).toMatch(/--ca-scrim-blur:\s*none/);
+	expect(css).toMatch(/--ca-tooltip-blur:\s*none/);
+	expect(css).not.toMatch(/--ca-blur-ultra-thin\s*:/);
 });

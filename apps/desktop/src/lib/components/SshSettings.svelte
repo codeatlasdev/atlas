@@ -98,7 +98,7 @@
 			<Button size="sm" variant="outlined" onclick={() => test(h)}>Test connection</Button>
 			<Button size="sm" variant="ghost" onclick={() => remove(h)}>Remove</Button>
 			{#snippet below()}
-				{#if status[h]?.startsWith("error")}<div class="err selectable">{status[h]}</div>{/if}
+				{#if status[h]?.startsWith("error")}<div class="err ca-selectable">{status[h]}</div>{/if}
 			{/snippet}
 		</Row>
 	{:else}

@@ -214,7 +214,7 @@
 
 	{#if failure}
 		<div class="failure">
-			<pre class="selectable">{failure}</pre>
+			<pre class="ca-selectable">{failure}</pre>
 			<Button
 				size="sm"
 				variant="ghost"

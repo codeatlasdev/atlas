@@ -143,7 +143,7 @@
 				/>
 				Show the full PATH ({info.path.length} folders)
 			</button>
-			{#if showPath}<pre class="mono selectable">{info.path.join("\n")}</pre>{/if}
+			{#if showPath}<pre class="mono ca-selectable">{info.path.join("\n")}</pre>{/if}
 		{/if}
 	</Group>
 {/if}

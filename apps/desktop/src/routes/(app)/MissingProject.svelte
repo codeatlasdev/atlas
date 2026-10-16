@@ -50,7 +50,7 @@
 			<Button variant="ghost" onclick={() => removeProject(p.id)}>Remove from Atlas</Button>
 		{/snippet}
 	</EmptyState>
-	<p class="path mono selectable" title="Last known path">{tilde(p.root)}</p>
+	<p class="path mono ca-selectable" title="Last known path">{tilde(p.root)}</p>
 
 	{#if suggestion === undefined}
 		<p class="hint"><Spinner size={12} /> Looking for a moved copy…</p>
@@ -58,7 +58,7 @@
 		<div class="suggest" role="group" aria-label="Moved copy found">
 			<div>
 				<strong>Probably the moved copy of {p.name}</strong>
-				<span class="mono selectable">{tilde(suggestion.path)}</span>
+				<span class="mono ca-selectable">{tilde(suggestion.path)}</span>
 				<small>
 					{suggestion.remote ? "Same git remote" : "Same name"}
 					{#if suggestion.branch}· {suggestion.branch}{/if}

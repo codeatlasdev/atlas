@@ -305,9 +305,8 @@ html.opaque-window body {
 	animation: arrive var(--dur) var(--ease) both;
 }
 
-.selectable {
-	user-select: text;
-	-webkit-user-select: text;
+/* Selection and the context menu come from the kit's `.ca-selectable` (base.css, `nativeFeel`); the I-beam is ours. */
+.ca-selectable {
 	cursor: text;
 }
 
@@ -404,9 +403,11 @@ html {
    component CSS is in `@layer ca.components`, so there is nothing to out-rank here: the theme sets the tokens
    (theme/tokens.ts: `--ca-outline-control`, `--ca-semantic-error-contrast`, `--ca-tooltip-bg`, `--ca-overlay-bg`,
    `--ca-focus-ring`, `--ca-action-disabled-bg`; each derived to its contrast floor in theme/derive.ts).
-   Only the blur is ours: the window is transparent (tauri-apps/tauri#15471), and menus, popovers and tooltips are opaque
-   tokens, so a backdrop blur only costs frames. */
+   Only the blur is ours: the window is transparent (tauri-apps/tauri#15471), and the scrim, menus, popovers and tooltips
+   float over content that moves, so a backdrop blur only costs frames. Each has its own kit token (4.0.0: `--ca-scrim-blur`,
+   `--ca-tooltip-blur`), so the shared `--ca-blur-ultra-thin` (Tabs, Pagination, `.glass-ultra-thin`) keeps the kit's value. */
 :root {
+	--ca-scrim-blur: none;
 	--ca-overlay-blur: none;
-	--ca-blur-ultra-thin: none;
+	--ca-tooltip-blur: none;
 }

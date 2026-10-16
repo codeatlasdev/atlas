@@ -115,13 +115,13 @@
 			<section class="timeline">
 				{#if v.body}<article>
 						<b>{v.author.login}</b>
-						<p class="selectable">{v.body}</p>
+						<p class="ca-selectable">{v.body}</p>
 					</article>{/if}
 				{#each [...v.reviews.map( (r) => ({ who: r.author.login, at: r.submittedAt, text: r.body, tag: r.state }) ), ...v.comments.map( (c) => ({ who: c.author.login, at: c.createdAt, text: c.body, tag: "" }) )].sort( (a, b) => a.at.localeCompare(b.at) ) as e, i (i)}
 					<article>
 						<b>{e.who}</b>{#if e.tag}<span class="dim"> · {e.tag.toLowerCase()}</span>{/if}
 						<span class="dim"> · {new Date(e.at).toLocaleString()}</span>
-						{#if e.text}<p class="selectable">{e.text}</p>{/if}
+						{#if e.text}<p class="ca-selectable">{e.text}</p>{/if}
 					</article>
 				{/each}
 				<div class="reply">
@@ -155,7 +155,7 @@
 				{#if log}
 					<div class="log">
 						<b>{log.name}</b>
-						<pre class="selectable">{log.text}</pre>
+						<pre class="ca-selectable">{log.text}</pre>
 					</div>
 				{/if}
 			</section>

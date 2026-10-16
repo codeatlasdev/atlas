@@ -33,7 +33,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-	class="scroller selectable"
+	class="scroller ca-selectable"
 	bind:this={scroller}
 	{onscroll}
 	{onwheel}

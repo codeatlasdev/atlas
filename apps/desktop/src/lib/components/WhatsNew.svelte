@@ -236,7 +236,7 @@
 												{#if it.title}<b class="title">{it.title}</b>{/if}
 												{#if it.body}
 													<!-- Our own CHANGELOG, sanitised by renderNote; CSP blocks inline script anyway. -->
-													<div class="body selectable" class:clamp={long}>
+													<div class="body ca-selectable" class:clamp={long}>
 														{@html renderNote(it.body)}
 													</div>
 													{#if isLong(it)}
@@ -311,7 +311,7 @@
 						<ChevronDown size={12} class={detailsOpen ? "" : "shut"} /> Details
 					</button>
 					{#if detailsOpen}
-						<pre class="log mono selectable" bind:this={logEl}>{u.log.join("\n") || "starting…"}</pre>
+						<pre class="log mono ca-selectable" bind:this={logEl}>{u.log.join("\n") || "starting…"}</pre>
 					{/if}
 				</div>
 			{/if}

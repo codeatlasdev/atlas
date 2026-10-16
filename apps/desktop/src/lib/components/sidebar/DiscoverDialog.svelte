@@ -190,7 +190,7 @@
 						{#if f.branch}<span class="meta mono">{f.branch}</span>{/if}
 						<span class="meta when">{ago(f.modified)}</span>
 					</div>
-					<div class="path mono selectable" title={f.path}>{tilde(f.path)}</div>
+					<div class="path mono ca-selectable" title={f.path}>{tilde(f.path)}</div>
 					{#if f.remote}<div class="path mono">{f.remote}</div>{/if}
 					{#if f.error}
 						<div class="err" title={f.error}><TriangleAlert size={11} /> atlas.yaml has problems</div>

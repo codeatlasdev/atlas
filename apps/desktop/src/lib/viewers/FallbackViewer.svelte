@@ -35,7 +35,7 @@
 	{#if hex}
 		<div class="hexwrap">
 			<div class="label">First {formatBytes(head!.length)}</div>
-			<pre class="hex selectable">{hex}</pre>
+			<pre class="hex ca-selectable">{hex}</pre>
 		</div>
 	{/if}
 </div>

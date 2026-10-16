@@ -35,7 +35,7 @@ test("focus rings are for the keyboard: Tab / arrows set data-kbd, a pointer pre
 	expect("kbd" in root.dataset).toBe(false);
 });
 
-test("the browser context menu is blocked on chrome and kept in text fields, editors and .selectable", () => {
+test("the browser context menu is blocked on chrome and kept in text fields, editors and .ca-selectable", () => {
 	stop = nativeFeel();
 	const chrome = document.body.appendChild(document.createElement("button"));
 	expect(menu(chrome).defaultPrevented).toBe(true);
@@ -44,7 +44,7 @@ test("the browser context menu is blocked on chrome and kept in text fields, edi
 		"<textarea></textarea>",
 		"<div contenteditable='true'></div>",
 		"<div class='cm-editor'><span>x</span></div>",
-		"<p class='selectable'>x</p>",
+		"<p class='ca-selectable'>x</p>",
 	]) {
 		const host = document.body.appendChild(document.createElement("div"));
 		host.innerHTML = html;
@@ -53,6 +53,15 @@ test("the browser context menu is blocked on chrome and kept in text fields, edi
 			menu(host.firstElementChild.querySelector("span") ?? host.firstElementChild).defaultPrevented,
 		]).toEqual([html, false]);
 	}
+});
+
+// Incident (ui#136): the filter said `.selectable`, the CSS said `.ca-selectable`. Kit 4.0.0 has one class; the old name no
+// longer opts out, so a leftover `class="selectable"` is a visible bug (menu blocked), not a half-working one.
+test("the pre-4.0 .selectable class no longer keeps the menu", () => {
+	stop = nativeFeel();
+	const host = document.body.appendChild(document.createElement("p"));
+	host.className = "selectable";
+	expect(menu(host).defaultPrevented).toBe(true);
 });
 
 test("a debug build keeps the browser menu for Inspect Element", () => {
@@ -80,6 +89,20 @@ test("page zoom is blocked: ⌘ + - = 0 and ctrl-wheel pinch; other ⌘ keys pas
 	Object.defineProperty(pinch, "ctrlKey", { value: true });
 	window.dispatchEvent(pinch);
 	expect(pinch.defaultPrevented).toBe(true);
+});
+
+// Atlas zooms the layout itself (stores/zoom.svelte.ts, ⌘+ ⌘- ⌘0): the kit only cancels the browser's own zoom, it must
+// not stop the event, or the app's handler on the same window never runs.
+test("blocking browser zoom still lets the app's own zoom handler see the key", () => {
+	stop = nativeFeel();
+	const seen: string[] = [];
+	const onKey = (e: KeyboardEvent) => seen.push(e.key);
+	window.addEventListener("keydown", onKey);
+	window.dispatchEvent(
+		new KeyboardEvent("keydown", { key: "-", metaKey: true, bubbles: true, cancelable: true }),
+	);
+	window.removeEventListener("keydown", onKey);
+	expect(seen).toEqual(["-"]);
 });
 
 test("links and images cannot be dragged out of the window", () => {

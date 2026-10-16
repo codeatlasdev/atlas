@@ -130,7 +130,7 @@
 			</div>
 		</div>
 
-		<pre class="msg selectable">{report.message}</pre>
+		<pre class="msg ca-selectable">{report.message}</pre>
 
 		<div class="actions" bind:this={actions}>
 			{#if retry}
@@ -208,7 +208,7 @@
 				Details
 			</button>
 			{#if open}
-				<div id="ep-details" class="details selectable">
+				<div id="ep-details" class="details ca-selectable">
 					<dl>
 						{#each meta as [k, v] (k)}
 							<dt>{k}</dt>

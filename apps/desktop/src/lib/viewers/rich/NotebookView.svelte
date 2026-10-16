@@ -44,7 +44,7 @@
 				{#each nb.cells as c, i (i)}
 					<section class="cell {c.type}">
 						{#if c.type === "markdown"}
-							<article class="md selectable">
+							<article class="md ca-selectable">
 								<!-- eslint-disable-next-line svelte/no-at-html-tags -->{@html renderMarkdown(c.source, dir)}
 							</article>
 						{:else}
@@ -59,13 +59,13 @@
 										{#if o.kind === "image"}
 											<img src="data:{o.mime};base64,{o.data}" alt="Cell {i + 1} output" />
 										{:else if o.kind === "html"}
-											<pre class="rv-code selectable">{strip(o.text)}</pre>
+											<pre class="rv-code ca-selectable">{strip(o.text)}</pre>
 										{:else if o.kind === "error"}
-											<pre class="rv-code selectable err">{#if o.trace.includes(o.name)}{o.trace}{:else}<b
+											<pre class="rv-code ca-selectable err">{#if o.trace.includes(o.name)}{o.trace}{:else}<b
 														>{o.name}</b
 													>: {o.value}{o.trace ? "\n" + o.trace : ""}{/if}</pre>
 										{:else}
-											<pre class="rv-code selectable" class:err={o.stream === "stderr"}>{o.text}</pre>
+											<pre class="rv-code ca-selectable" class:err={o.stream === "stderr"}>{o.text}</pre>
 										{/if}
 									</div>
 								</div>

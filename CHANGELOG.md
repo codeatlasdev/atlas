@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- Desktop: the collapsed-sidebar hover peek (left and right) now opens above browser and terminal tabs instead of behind them; the native view is parked only while an open peek overlaps it ([#43](https://github.com/codeatlasdev/atlas/issues/43)).
+
 ## [1.5.0-alpha.11] — 2026-10-15
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

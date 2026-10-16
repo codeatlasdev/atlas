@@ -117,3 +117,56 @@ test("a full-window modal (palette scrim, first run) parks every slot", () => {
 	dialog(rect(0, 0, 1280, 800));
 	expect(overlayOpen(SLOT)).toBe(true);
 });
+
+// Regression (#43): the collapsed-sidebar hover peek is an HTML panel (role=complementary, no data-state), so it
+// neither parked the native browser/terminal nor triggered a re-sync: it slid in BEHIND the native view.
+// An open peek must count as an overlay for the slot it overlaps, and its open/close must schedule ONE re-sync.
+function peekPanel(at: DOMRect, open = true) {
+	const p = document.createElement("div");
+	p.className = "peek-panel left";
+	p.setAttribute("role", "complementary");
+	if (open) p.dataset.state = "open";
+	// The panel is transform-animated: its layout box (what the final rect is made of) ignores the transform.
+	Object.defineProperty(p, "offsetLeft", { value: at.left });
+	Object.defineProperty(p, "offsetTop", { value: at.top });
+	Object.defineProperty(p, "offsetWidth", { value: at.width });
+	Object.defineProperty(p, "offsetHeight", { value: at.height });
+	p.getBoundingClientRect = () => rect(-9999, at.top, at.width, at.height); // parked off-window mid-slide
+	document.body.append(p);
+	return p;
+}
+
+test("an open edge peek over the slot parks the native view, even mid-slide", () => {
+	peekPanel(rect(190, 40, 260, 700));
+	expect(overlayOpen(SLOT)).toBe(true);
+});
+
+test("a closed edge peek never parks", () => {
+	peekPanel(rect(190, 40, 260, 700), false);
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
+test("an open peek that does not overlap the slot (slot already beside it) leaves the native view alone", () => {
+	peekPanel(rect(0, 40, 150, 700));
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
+test("opening and closing a peek schedules exactly one re-sync each, never more", async () => {
+	let calls = 0;
+	const stop = watchSlot(document.createElement("div"), () => calls++);
+	const p = peekPanel(rect(190, 40, 260, 700), false);
+	await tick();
+	flush();
+	calls = 0;
+	p.dataset.state = "open";
+	await tick();
+	flush();
+	expect(calls).toBe(1);
+	p.dataset.state = "closed";
+	await tick();
+	flush();
+	expect(calls).toBe(2);
+	flush();
+	expect(calls).toBe(2); // no further syncs without a change
+	stop();
+});

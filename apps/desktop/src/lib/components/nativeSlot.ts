@@ -35,15 +35,25 @@ export function watchSlot(slot: Element, sync: () => void): () => void {
 	};
 }
 
+const hits = (a: Pick<DOMRect, "left" | "top" | "right" | "bottom">, b: typeof a) =>
+	a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
 /**
- * Dialogs and the palette must sit above the native view, which is a sibling NSView no web layer can cover: park it
- * while one is open over it. Only a dialog that overlaps the slot can cover it; the others (a popover over the
- * sidebar, a chip far from the terminal) used to park it too, so it vanished and reappeared on every open/close.
+ * Dialogs, the palette and an open edge peek must sit above the native view, which is a sibling NSView no web layer
+ * can cover: park it while one is open over it. Only one that overlaps the slot can cover it; the others (a popover
+ * over the sidebar, a chip far from the terminal) used to park it too, so it vanished and reappeared on every
+ * open/close.
+ *
+ * A peek panel slides in by `transform`, so its bounding rect is off-window until the animation ends: use its layout
+ * box (offset*, transform-free), which is where it will rest. The `data-state` flip on open/close is what makes
+ * `watchSlot` re-sync, once, and never on pointermove.
  */
 export function overlayOpen(slot: Pick<DOMRect, "left" | "top" | "right" | "bottom">): boolean {
-	for (const d of document.querySelectorAll("[role=dialog][data-state=open]")) {
-		const r = d.getBoundingClientRect();
-		if (r.left < slot.right && r.right > slot.left && r.top < slot.bottom && r.bottom > slot.top) return true;
+	for (const d of document.querySelectorAll("[role=dialog][data-state=open]"))
+		if (hits(d.getBoundingClientRect(), slot)) return true;
+	for (const p of document.querySelectorAll<HTMLElement>(".peek-panel[data-state=open]")) {
+		const { offsetLeft: left, offsetTop: top } = p;
+		if (hits({ left, top, right: left + p.offsetWidth, bottom: top + p.offsetHeight }, slot)) return true;
 	}
 	return false;
 }

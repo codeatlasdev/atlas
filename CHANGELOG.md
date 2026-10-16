@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop: add and remove projects from the app** (#65). *Add project…* (sidebar footer, palette, or a folder dragged from Finder onto the sidebar) now accepts a folder **without** `atlas.yaml`: Atlas shows the file `atlas init` would create (detected stack and services) and, on confirm, creates it and adds the project: no terminal, no "no atlas.yaml in <dir>" error. A folder already in Atlas is selected instead of duplicated, and a subfolder of a project says which project it adds. *Remove from Atlas…* is now in the menu (`…` and right-click) of every project, and in the palette (*Remove project from Atlas…*): it stops the running stack first, removes the project and its linked worktrees from the sidebar, and never deletes a file.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

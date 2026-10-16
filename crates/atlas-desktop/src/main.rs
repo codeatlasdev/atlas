@@ -121,6 +121,8 @@ macro_rules! handlers {
             cmds::projects_remove_missing,
             cmds::projects_find_moved,
             cmds::project_init,
+            cmds::project_probe,
+            cmds::project_init_preview,
             cmds::stack_start,
             cmds::stack_stop,
             cmds::service_cmd,

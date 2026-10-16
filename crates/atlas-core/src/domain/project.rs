@@ -238,3 +238,80 @@ fn extract_port(cmd: &str) -> Option<u16> {
     }
     None
 }
+
+/// The `atlas.yaml` that `atlas init` writes for `root`, and what was detected there. The one place the file is
+/// rendered: the CLI writes it, Atlas Desktop previews it before creating the project.
+pub fn initial_config(root: &Path) -> (String, ProjectDetection) {
+    let detection = detect_project(root);
+    let name = root
+        .canonicalize()
+        .unwrap_or_else(|_| root.to_path_buf())
+        .file_name()
+        .map_or_else(
+            || "my-project".to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+
+    let mut yaml = format!("name: {name}\n\nservices:\n");
+    if detection.services.is_empty() {
+        yaml.push_str("  # app:\n");
+        yaml.push_str("  #   command: npm run dev\n");
+        yaml.push_str(&format!("  #   port: {PORT_BLOCK_START}\n"));
+    } else {
+        for (i, svc) in detection.services.iter().enumerate() {
+            let port = svc.port.unwrap_or(PORT_BLOCK_START + i as u16);
+            yaml.push_str(&format!("  {}:\n", svc.name));
+            yaml.push_str(&format!("    command: {}\n", svc.command));
+            yaml.push_str(&format!("    port: {port}\n"));
+        }
+    }
+    (yaml, detection)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Incident (#65): the desktop could only add a folder that already had an atlas.yaml. Its "set up this folder"
+    // flow previews exactly what `atlas init` will write, so both must come from this one function.
+    #[test]
+    fn initial_config_of_an_unknown_folder_is_named_after_the_folder_with_only_commented_hints() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("my-api");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (yaml, d) = initial_config(&dir);
+        assert_eq!(d.language, "unknown");
+        assert!(yaml.starts_with("name: my-api\n\nservices:\n"), "{yaml}");
+        // No service line is active: every line after `services:` is a comment.
+        let active: Vec<&str> = yaml
+            .lines()
+            .skip(3)
+            .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+            .collect();
+        assert!(active.is_empty(), "{active:?}");
+    }
+
+    #[test]
+    fn initial_config_lists_every_detected_service_with_a_command_and_a_port() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::write(
+            t.path().join("package.json"),
+            r#"{"name":"x","scripts":{"dev":"vite --port 5173"}}"#,
+        )
+        .unwrap();
+        let (yaml, d) = initial_config(t.path());
+        assert!(!d.services.is_empty(), "{d:?}");
+        for svc in &d.services {
+            assert!(yaml.contains(&format!("  {}:\n", svc.name)), "{yaml}");
+            assert!(
+                yaml.contains(&format!("    command: {}\n", svc.command)),
+                "{yaml}"
+            );
+        }
+        assert_eq!(
+            yaml.matches("    port: ").count(),
+            d.services.len(),
+            "{yaml}"
+        );
+    }
+}

@@ -121,6 +121,24 @@ export interface SetupStatus {
 	output: string;
 }
 
+/** What the Add flow learns about a picked folder (`project_probe`). */
+export interface Probe {
+	picked: string;
+	/** Where `atlas.yaml` is (the picked folder or one above it); the picked folder when there is none. */
+	root: string;
+	has_config: boolean;
+	name: string;
+	/** Id of the project already registered for this folder. */
+	registered: string | null;
+}
+
+/** What `atlas init` would write in a folder (`project_init_preview`). */
+export interface InitPreview {
+	yaml: string;
+	detected: string | null;
+	services: string[];
+}
+
 export interface ProjectConfig {
 	name: string;
 	services: ServiceDef[];
@@ -164,6 +182,8 @@ export const api = {
 	removeMissing: () => invoke<number>("projects_remove_missing"),
 	findMoved: (id: string) => invoke<Found | null>("projects_find_moved", { id }),
 	initProject: (dir: string) => invoke<ProjectView>("project_init", { dir }),
+	probe: (dir: string) => invoke<Probe>("project_probe", { dir }),
+	initPreview: (dir: string) => invoke<InitPreview>("project_init_preview", { dir }),
 	start: (id: string, profiles: string[] = [], services: string[] = []) =>
 		invoke<void>("stack_start", { id, services, profiles }),
 	stop: (id: string) => invoke<void>("stack_stop", { id }),

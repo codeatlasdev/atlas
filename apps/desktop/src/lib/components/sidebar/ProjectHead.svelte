@@ -7,7 +7,6 @@
 	import { ChevronRight, Ellipsis, Pin, Plus } from "@lucide/svelte";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
 	import { shell } from "#lib/shell/shell.svelte.ts";
-	import { identities } from "#lib/stores/identity.svelte.ts";
 	import { health, store } from "#lib/stores/projects.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -24,6 +23,8 @@
 	const w = $derived(ws.worktree(r.id));
 	const up = $derived(live?.services.filter((s) => s.state === "running").length ?? 0);
 	const open = $derived(!!sidebar.openRepos[r.id]);
+	/** The `…` button: right-click on the row opens the same menu through it. */
+	let menuTrigger: HTMLButtonElement | undefined = $state();
 
 	/** The active project with worktrees only selects; everything else switches to it. */
 	function activate() {
@@ -45,7 +46,7 @@
 	aria-label="{r.name}{active ? '' : ' — open project'}"
 	oncontextmenu={(e) => {
 		e.preventDefault();
-		identities.editing = r.id;
+		menuTrigger?.click();
 	}}
 	onmouseenter={() => (sidebar.hovered = r.id)}
 	onmouseleave={() => sidebar.hovered === r.id && (sidebar.hovered = null)}
@@ -97,8 +98,10 @@
 		</button>
 	{/if}
 	<DropdownMenu align="end">
-		{#snippet trigger()}
-			<span class="hover-btn" aria-label="Project menu"><Ellipsis size={13} /></span>
+		{#snippet triggerChild(props)}
+			<button {...props} bind:this={menuTrigger} class="hover-btn" aria-label="Project menu">
+				<Ellipsis size={13} />
+			</button>
 		{/snippet}
 		<RowMenu p={r} {w} {onAgent} />
 	</DropdownMenu>

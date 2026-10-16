@@ -32,7 +32,6 @@
 
 {#if p.missing}
 	<DropdownMenuItem onclick={() => locateProject(p.id)}>Locate…</DropdownMenuItem>
-	<DropdownMenuItem onclick={() => removeProject(p.id)}>Remove from Atlas</DropdownMenuItem>
 {:else}
 	<DropdownMenuItem onclick={() => openTerminal(p.id)}>New terminal</DropdownMenuItem>
 	<DropdownMenuItem onclick={() => onAgent?.(p.id)}>New agent</DropdownMenuItem>
@@ -51,6 +50,9 @@
 </DropdownMenuItem>
 {#if !p.parent}
 	<DropdownMenuItem onclick={() => (identities.editing = p.id)}>Change icon and color…</DropdownMenuItem>
+	<DropdownMenuItem variant="destructive" onclick={() => removeProject(p.id)}
+		>Remove from Atlas…</DropdownMenuItem
+	>
 {/if}
 {#if w}
 	<DropdownMenuItem onclick={() => (w.unread = !w.unread)}>

@@ -23,7 +23,7 @@ export function watchSlot(slot: Element, sync: () => void): () => void {
 	mo.observe(document.body, {
 		subtree: true,
 		attributes: true,
-		attributeFilter: ["data-state"],
+		attributeFilter: ["data-state", "data-swiping"],
 		childList: true,
 	});
 	window.addEventListener("resize", schedule);
@@ -44,11 +44,16 @@ const hits = (a: Pick<DOMRect, "left" | "top" | "right" | "bottom">, b: typeof a
  * over the sidebar, a chip far from the terminal) used to park it too, so it vanished and reappeared on every
  * open/close.
  *
+ * A slot inside a pane the tab pager is moving (`data-swiping`) is covered too: the native view cannot follow the pane's
+ * CSS transform (no per-frame IPC), so it is parked for the generation and `watchSlot` re-syncs it, at the
+ * untransformed rect, when the mark is lifted on `rest`. A sync that runs mid-swipe therefore never measures the rect.
+ *
  * A peek panel slides in by `transform`, so its bounding rect is off-window until the animation ends: use its layout
  * box (offset*, transform-free), which is where it will rest. The `data-state` flip on open/close is what makes
  * `watchSlot` re-sync, once, and never on pointermove.
  */
-export function overlayOpen(slot: Pick<DOMRect, "left" | "top" | "right" | "bottom">): boolean {
+export function overlayOpen(slot: Pick<DOMRect, "left" | "top" | "right" | "bottom">, el?: Element): boolean {
+	if (el?.closest("[data-swiping]")) return true;
 	for (const d of document.querySelectorAll("[role=dialog][data-state=open]"))
 		if (hits(d.getBoundingClientRect(), slot)) return true;
 	for (const p of document.querySelectorAll<HTMLElement>(".peek-panel[data-state=open]")) {

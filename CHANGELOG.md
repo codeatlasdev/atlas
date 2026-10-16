@@ -6,6 +6,11 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop: a trackpad tab swipe no longer shoves terminals and browsers sideways** (#69). Terminals and browser tabs are native views above the webview, so a CSS transform cannot move them: they stayed at the old rect while the pane slid, and a sync mid-swipe measured the rect with the in-flight `translate3d` and left the view offset after the swipe. The tab pager now marks the panes in flight (`data-swiping`) for the generation: the native views under them are parked (no per-frame IPC) and `watchSlot` puts them back at the untransformed rect when the swipe rests, committed or cancelled.
+- **Desktop: swiping over the peeked (collapsed) sidebar switches projects, not tabs** (#70). The peek panel is `inert` while closed, so the last zone push had no `space` zone, and opening it flips a transform (no resize), so nothing re-pushed. `EdgePeek` now re-pushes the swipe zones when it opens or closes and once the slide settles (the right dock peek too), never per pointer move.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

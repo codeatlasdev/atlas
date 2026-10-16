@@ -170,3 +170,46 @@ test("opening and closing a peek schedules exactly one re-sync each, never more"
 	expect(calls).toBe(2); // no further syncs without a change
 	stop();
 });
+
+// Regression (#69): a native view cannot follow the CSS transform of a tab swipe. A slot inside a pane the tab
+// pager marked `data-swiping` is covered (parked), and lifting the mark makes `watchSlot` re-sync ONCE, so the view
+// is placed at the untransformed rect when the swipe rests.
+function swipingPane() {
+	const pane = document.createElement("div");
+	pane.className = "pane";
+	pane.setAttribute("data-swiping", "");
+	const slot = document.createElement("div");
+	slot.getBoundingClientRect = () => rect(600, 100, 600, 400); // includes the in-flight translate3d
+	pane.append(slot);
+	document.body.append(pane);
+	return { pane, slot };
+}
+
+test("a slot inside a swiping pane counts as covered, wherever the transform put it", () => {
+	const { slot } = swipingPane();
+	expect(overlayOpen(slot.getBoundingClientRect(), slot)).toBe(true);
+});
+
+test("a slot in a pane that is not swiping is not covered", () => {
+	const { pane, slot } = swipingPane();
+	pane.removeAttribute("data-swiping");
+	expect(overlayOpen(slot.getBoundingClientRect(), slot)).toBe(false);
+});
+
+test("lifting the swipe mark re-syncs the slot once; setting it does too (to park)", async () => {
+	let calls = 0;
+	const { pane, slot } = swipingPane();
+	const stop = watchSlot(slot, () => calls++);
+	await tick();
+	flush();
+	calls = 0;
+	pane.removeAttribute("data-swiping");
+	await tick();
+	flush();
+	expect(calls).toBe(1);
+	pane.setAttribute("data-swiping", "");
+	await tick();
+	flush();
+	expect(calls).toBe(2);
+	stop();
+});

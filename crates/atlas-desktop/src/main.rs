@@ -54,6 +54,7 @@ mod tray;
 mod updates;
 mod workspace;
 mod worktree;
+mod zoom;
 
 use tauri::{AppHandle, Manager, WindowEvent};
 
@@ -180,6 +181,7 @@ macro_rules! handlers {
             remote::ssh_forwards,
             remote::projects_add_remote,
             menu::menu_sync,
+            zoom::zoom_set,
             live_server::live_open,
             live_server::live_touch,
             live_server::live_stop,

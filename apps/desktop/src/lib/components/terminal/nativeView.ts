@@ -11,6 +11,7 @@ import { bootMark } from "#lib/boot.ts";
 import { gpu } from "#lib/stores/gpu.svelte.ts";
 import { prefs } from "#lib/stores/prefs.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
+import { nativeRect } from "#lib/zoom.ts";
 import { overlayOpen } from "../nativeSlot.ts";
 import { fontCandidates, insetRect } from "./fonts.ts";
 
@@ -97,9 +98,10 @@ export class NativeView {
 		const { tab, pty } = this.ids();
 		const r = area.getBoundingClientRect();
 		const { padding_x: px, padding_y: py } = prefs.value.terminal;
-		const rect = insetRect(r, px, py);
+		// The view's frame is in window points, the slot in CSS px (they differ under layout zoom).
+		const rect = nativeRect(insetRect(r, px, py));
 		// The native view sits above the webview: park it under dialogs/palette.
-		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen();
+		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen(r);
 		try {
 			if (!this.opened) {
 				if (!show) return;

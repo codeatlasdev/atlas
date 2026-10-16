@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { SegmentedControl, Switch } from "@codeatlasdev/ui";
+	import { SegmentedControl, Select, Switch } from "@codeatlasdev/ui";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
+	import { ZOOM_LEVELS } from "#lib/zoom.ts";
 	import FontRows from "./FontRows.svelte";
 	import Group from "./Group.svelte";
 	import NumInput from "./NumInput.svelte";
@@ -8,7 +9,30 @@
 	import { savePref } from "./savePref.ts";
 
 	let p = $derived(prefs.value);
+	/** The ladder; a value off it (hand-edited settings.json) stays selectable as what it is. */
+	let zoomOptions = $derived(
+		[...new Set([...ZOOM_LEVELS, p.zoom])]
+			.sort((a, b) => a - b)
+			.map((z) => ({ value: String(z), label: `${Math.round(z * 100)}%` })),
+	);
 </script>
+
+<Group title="Zoom">
+	<Row
+		id="ui-zoom"
+		label="Zoom"
+		description="Scale the whole window. ⌘+ and ⌘− step it, ⌘0 resets it (Ctrl instead of ⌘ outside macOS)."
+	>
+		<div class="select">
+			<Select
+				size="sm"
+				value={String(p.zoom)}
+				options={zoomOptions}
+				onchange={(v) => savePref("zoom", Number(v))}
+			/>
+		</div>
+	</Row>
+</Group>
 
 <Group title="Interface font">
 	<FontRows
@@ -94,6 +118,9 @@
 </Group>
 
 <style>
+	.select {
+		width: 120px;
+	}
 	.sample {
 		padding: 10px 12px;
 		border-radius: 8px;

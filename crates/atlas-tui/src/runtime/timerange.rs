@@ -109,7 +109,11 @@ pub fn parse_custom(input: &str) -> Result<TimeRange, String> {
     let to_s = match b {
         None => None,
         Some(b) if b.trim().is_empty() => None,
-        Some(b) => Some(parse_clock(b).ok_or_else(|| format!("not a time: {:?}", b.trim()))?),
+        // an end without seconds means the whole minute: `14:20` ends at 14:20:59
+        Some(b) => Some(
+            parse_clock(b).ok_or_else(|| format!("not a time: {:?}", b.trim()))?
+                + if b.matches(':').count() == 1 { 59 } else { 0 },
+        ),
     };
     if to_s.is_some_and(|t| t < from_s) {
         return Err("the end is before the start".into());
@@ -242,9 +246,11 @@ mod tests {
                 to_s: None
             })
         );
+        // An `HH:MM` end covers its whole minute: `14:20` ends at 14:20:59. Incident: CI ran the logview
+        // `00:00-23:59` test at 23:59:53 UTC and the lines of that last minute were filtered out.
         let want = Ok(TimeRange::Custom {
             from_s: 14 * 3600 + 300,
-            to_s: Some(14 * 3600 + 1200),
+            to_s: Some(14 * 3600 + 1200 + 59),
         });
         for s in [
             "14:05–14:20",
@@ -261,6 +267,14 @@ mod tests {
                 from_s: 9 * 3600 + 300,
                 to_s: Some(9 * 3600 + 30 * 60 + 15)
             })
+        );
+        assert_eq!(
+            parse_custom("00:00-23:59"),
+            Ok(TimeRange::Custom {
+                from_s: 0,
+                to_s: Some(86_399)
+            }),
+            "the whole day, last minute included"
         );
         // Trailing separator = open end.
         assert_eq!(
@@ -350,7 +364,11 @@ mod tests {
                 .timestamp_millis() as u64
         };
         assert_eq!(w.from_ms, Some(at(14, 5, 0)));
-        assert_eq!(w.to_ms, Some(at(14, 20, 0) + 999));
+        assert_eq!(
+            w.to_ms,
+            Some(at(14, 20, 59) + 999),
+            "an HH:MM end covers its whole minute"
+        );
         assert_eq!(seconds_of_day(now), 15 * 3600);
     }
 

@@ -5,6 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { appliedZoom } from "#lib/zoom.ts";
 import { cellAt, cellFromStats, wheelLines, type Cell, type CellHit } from "./geometry.ts";
 import { mouseRoute, wheelReports } from "./mouseRoute.ts";
 
@@ -45,7 +46,7 @@ export class Pointer {
 
 	async #fetchCell() {
 		const s = await invoke<Record<string, { cell_w: number; cell_h: number }>>("term_stats");
-		this.#cell = cellFromStats(s[this.#o.tab()]);
+		this.#cell = cellFromStats(s[this.#o.tab()], appliedZoom());
 	}
 
 	#toCell(e: MouseEvent): CellHit | null {

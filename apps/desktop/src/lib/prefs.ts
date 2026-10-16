@@ -4,6 +4,7 @@
  * `active_pane_modifiers`) plus `lsp` (language server overrides per language).
  * Pure: `resolvePrefs` fills defaults and drops bad values.
  */
+import { ZOOM_LEVELS } from "#lib/zoom.ts";
 
 /** User override of the language server for one LSP language id (`typescript`, `rust`…). */
 export interface LspLanguagePref {
@@ -45,6 +46,8 @@ export interface Prefs {
 	buffer_line_height: number;
 	ui_font_family: string;
 	ui_font_size: number;
+	/** Layout zoom (1 = 100 %), stepped by ⌘+ ⌘− ⌘0 (`zoom.ts`). */
+	zoom: number;
 	/** Language servers (completion, diagnostics, go to definition…) in the editor. */
 	enable_language_servers: boolean;
 	/** Format with the language server when saving. */
@@ -87,6 +90,8 @@ export interface Prefs {
 		indent_size: number;
 	};
 	active_pane_modifiers: { border_size: number; inactive_opacity: number };
+	/** Changes tab: one column (`unified`) or old and new next to each other (`split`). */
+	diff: { view: "unified" | "split" };
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -95,6 +100,7 @@ export const DEFAULT_PREFS: Prefs = {
 	buffer_line_height: 1.55,
 	ui_font_family: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
 	ui_font_size: 13,
+	zoom: 1,
 	enable_language_servers: true,
 	format_on_save: false,
 	inlay_hints: { enabled: true },
@@ -137,6 +143,7 @@ export const DEFAULT_PREFS: Prefs = {
 	},
 	project_panel: { dock: "left", file_icons: true, folder_icons: true, indent_size: 12 },
 	active_pane_modifiers: { border_size: 0, inactive_opacity: 1 },
+	diff: { view: "unified" },
 };
 
 type Shape = Record<string, unknown>;
@@ -161,11 +168,13 @@ const ENUMS: Record<string, readonly string[]> = {
 	"terminal.osc52": ["allow", "ask", "deny"],
 	"terminal.option_as_alt": ["both", "left", "right", "none"],
 	"project_panel.dock": ["left", "right"],
+	"diff.view": ["unified", "split"],
 };
 const RANGES: Record<string, [number, number]> = {
 	buffer_font_size: [6, 48],
 	buffer_line_height: [1, 3],
 	ui_font_size: [9, 24],
+	zoom: [ZOOM_LEVELS[0], ZOOM_LEVELS[ZOOM_LEVELS.length - 1]],
 	"terminal.font_size": [6, 48],
 	"terminal.minimum_contrast": [1, 21],
 	"terminal.padding_x": [0, 64],

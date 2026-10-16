@@ -18,7 +18,7 @@
 	import { fontStep, keyToSend, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
 	import { watchSlot } from "./nativeSlot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";
-	import { NativeView, listenFontFallback, termBg, termPrefs } from "./terminal/nativeView.ts";
+	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { Pointer } from "./terminal/pointer.ts";
 	import TermSearchBar from "./terminal/TermSearchBar.svelte";
 
@@ -88,8 +88,11 @@
 		view.recolor();
 	});
 
-	// The slot behind the padding is painted with the terminal background (Ghostty `window-padding-color = extend`).
-	const slotBg = $derived(area ? termBg(area) : undefined);
+	// The slot is painted with the terminal background from its very first paint (Ghostty `window-padding-color =
+	// extend`; the same fallback as `termBg`, which needs the mounted element and so came a frame late). The native
+	// view stays parked until its first frame is drawn (`Placement` in term/shared.rs), and the slot is all that shows until then:
+	// it must be the terminal's own colour, not the webview behind it.
+	const slotBg = $derived(themes.terminal?.bg ?? "var(--ca-surface-base)");
 
 	// Padding moves the native rect: re-sync when it changes.
 	$effect(() => {

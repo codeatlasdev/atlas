@@ -330,6 +330,15 @@ async fn handle<R: Runtime>(app: &AppHandle<R>, raw: &Value) -> Result<Value, St
             window,
         } => shot(app, out, target, full, window).await,
         Req::Record { out, stop, fps } => record(app, out, stop, fps).await,
+        Req::Resize { w, h } => {
+            set_view_size(app, w, h).await?;
+            let win = app.get_window("main").ok_or("main window not found")?;
+            let scale = win.scale_factor().map_err(|e| e.to_string())?;
+            let inner = win.inner_size().map_err(|e| e.to_string())?;
+            Ok(
+                json!({ "width": f64::from(inner.width) / scale, "height": f64::from(inner.height) / scale }),
+            )
+        }
     }
 }
 

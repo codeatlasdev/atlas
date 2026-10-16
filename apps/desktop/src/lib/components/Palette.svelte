@@ -109,7 +109,7 @@
 						>{#each highlight(q, it.label) as r, k (k)}{#if r.hit}<mark>{r.text}</mark
 								>{:else}{r.text}{/if}{/each}</span
 					>
-					{#if it.description}<span class="desc">{it.description}</span>{/if}
+					{#if it.description}<span class="desc" dir="rtl"><bdi dir="ltr">{it.description}</bdi></span>{/if}
 					{#if it.shortcut}<Kbd>{it.shortcut}</Kbd>{/if}
 				</button>
 			{:else}
@@ -219,7 +219,6 @@
 		white-space: nowrap;
 		font-size: 11.5px;
 		color: var(--ca-text-secondary);
-		direction: rtl;
 		text-align: left;
 	}
 	.row :global(.ca-kbd) {

@@ -74,6 +74,10 @@ const VIEW: Entries = &[
     Some(("workspace::ToggleBottomDock", "Toggle Bottom Dock")),
     Some(("workspace::ToggleZoom", "Zoom Pane")),
     None,
+    Some(("shell::ZoomIn", "Zoom In")),
+    Some(("shell::ZoomOut", "Zoom Out")),
+    Some(("shell::ZoomReset", "Actual Size")),
+    None,
     Some(("pane::SplitRight", "Split Right")),
     Some(("pane::SplitDown", "Split Down")),
 ];

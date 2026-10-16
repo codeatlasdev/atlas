@@ -105,3 +105,37 @@ test("openAt while the menu is open keeps it open, at the new point", async () =
 	expect([a.style.left, a.style.top]).toEqual(["200px", "120px"]);
 	done();
 });
+
+// Incident (alpha.13 integration, agent instance, WKWebView): the Explorer context menu was `open` in the DOM but never
+// painted. The kit's anchored menus carry `position-visibility: anchors-visible`, and WebKit treats a 0x0 anchor as
+// not visible, so it hid the menu. Separately, `.space-view` has `will-change: transform`, which makes it the
+// containing block of `position: fixed`. That geometry needs real layout and was checked in the agent instance;
+// happy-dom has no layout, so this pins the box the stylesheet gives the anchor.
+test("the anchor has a box: an empty anchor hides an anchors-visible menu", async () => {
+	const { api, done } = await setup([{ label: "Open", run() {} }]);
+	await api.openAt(10, 10);
+	await tick();
+	const a = document.querySelector(".pointer-anchor");
+	expect([a.style.width, a.style.height], "0x0 anchor").toEqual(["1px", "1px"]);
+	done();
+});
+
+// Incident (alpha.13 integration): right-click, right-click on another row, Escape left a `data-state=closed` menu
+// mounted forever, painted in page flow at the Explorer's bottom-left ("ghost menu"). Closing and reopening in one
+// flush left the kit's exit presence of the first menu stuck. After any sequence, at most one menu exists, and none
+// once closed.
+test("reopening and then closing leaves no menu mounted", async () => {
+	const { api, done } = await setup([{ label: "Open", run() {} }]);
+	await api.openAt(10, 10);
+	await tick();
+	await frame();
+	await api.openAt(40, 60);
+	await tick();
+	await frame();
+	expect(document.querySelectorAll("[role=menu]").length).toBe(1);
+	document.querySelector(".pointer-anchor").click();
+	for (let i = 0; i < 4; i++) await frame();
+	await tick();
+	expect(document.querySelectorAll("[role=menu]").length, "a closed menu stayed mounted").toBe(0);
+	done();
+});

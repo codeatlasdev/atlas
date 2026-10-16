@@ -29,7 +29,12 @@
 			anchor.click();
 			await tick();
 		}
-		at = { x, y };
+		// `fixed` is relative to the nearest transformed / will-change ancestor (the space view is one), not the
+		// viewport: measure where (0, 0) lands and subtract it, so the anchor sits on the viewport point.
+		at = { x: 0, y: 0 };
+		await tick();
+		const origin = anchor?.getBoundingClientRect() ?? { left: 0, top: 0 };
+		at = { x: x - origin.left, y: y - origin.top };
 		await tick();
 		anchor?.click();
 	}
@@ -46,6 +51,8 @@
 			tabindex="-1"
 			style:left="{at.x}px"
 			style:top="{at.y}px"
+			style:width="1px"
+			style:height="1px"
 		></button>
 	{/snippet}
 	{#each items as item, i (item.label)}
@@ -59,8 +66,8 @@
 <style>
 	.pointer-anchor {
 		position: fixed;
-		width: 0;
-		height: 0;
+		/* Sized inline to 1px, not 0: the kit's menus use `position-visibility: anchors-visible`, and WebKit counts an
+		   empty anchor as not visible, so a 0x0 anchor left the menu open but unpainted. */
 		padding: 0;
 		border: 0;
 		opacity: 0;

@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
-	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest } from "@lucide/svelte";
+	import { Plus, Minus, Undo2, Sparkles, Ellipsis, GitPullRequest, Square, RefreshCw } from "@lucide/svelte";
 	import { listen } from "@tauri-apps/api/event";
 	import { git, errText, type GitEntry, type GitStatus } from "#lib/api.ts";
-	import { host } from "#lib/host.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { commitMessages } from "#lib/stores/commitMessage.svelte.ts";
+	import { providerHint } from "#lib/commitMessage.ts";
 	import { openFile, openDiff } from "#lib/stores/files.svelte.ts";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
@@ -29,6 +30,10 @@
 	let message = $state("");
 	let busy = $state<string | null>(null);
 	let failure = $state<string | null>(null);
+	let instruction = $state("");
+	let showInstruction = $state(false);
+	let gen = $derived(commitMessages.run(worktreeId));
+	let hint = $derived(providerHint(commitMessages.provider));
 
 	let groups = $derived(statusGroups(st?.entries ?? []));
 	let staged = $derived(groups.staged);
@@ -37,7 +42,6 @@
 	let conflicts = $derived(groups.conflicts);
 	let ahead = $derived(st?.ab ? Number(st.ab.split(" ")[0].slice(1)) : 0);
 	let behind = $derived(st?.ab ? Number(st.ab.split(" ")[1].slice(1)) : 0);
-	let w = $derived(ws.worktree(worktreeId));
 
 	async function refresh() {
 		st = await git.status(worktreeId).catch((e) => {
@@ -48,11 +52,14 @@
 
 	onMount(() => {
 		void refresh();
+		void commitMessages.loadProvider();
+		const detach = commitMessages.attach(worktreeId, (text) => (message = text));
 		const off = listen<{ ev: string }>("host://event", (e) => {
 			if (e.payload.ev === "fs_event") void refresh();
 		});
 		const t = window.setInterval(refresh, 5000);
 		return () => {
+			detach();
 			clearInterval(t);
 			void off.then((u) => u());
 		};
@@ -114,30 +121,6 @@
 						: "Up to date",
 	);
 
-	async function generate() {
-		busy = "ai";
-		try {
-			const diff = await git.run(worktreeId, ["diff", "--cached", "--no-color"]);
-			if (!diff.stdout.trim()) return toast.error("Stage something first");
-			const r = await host.exec(
-				w!.path,
-				[
-					"omp",
-					"-p",
-					"--no-session",
-					`Write a conventional commit message for this diff. Reply with the message only.\n\n${diff.stdout.slice(0, 60_000)}`,
-				],
-				{ timeout_ms: 60_000 },
-			);
-			if (r.code === 0) message = r.stdout.trim();
-			else toast.error(r.stderr || "omp failed");
-		} catch (e) {
-			toast.error(errText(e));
-		} finally {
-			busy = null;
-		}
-	}
-
 	async function toAgent(text: string) {
 		const t = agents.tabsIn(worktreeId)[0];
 		if (t) await agents.send(t.id, text);
@@ -194,17 +177,53 @@
 
 	<div class="msg" role="presentation" onkeydown={(e) => e.key === "Enter" && e.metaKey && commit()}>
 		<TextArea bind:value={message} placeholder="Commit message (⌘Enter to commit)" rows={3} />
+		{#if gen.phase === "running"}
+			<span class="dim">Writing with {gen.agent || "the agent"}…</span>
+		{:else if gen.error}
+			<span class="err">{gen.error}</span>
+		{:else if gen.notice}
+			<span class="dim">{gen.notice}</span>
+		{/if}
+		{#if hint.show}
+			{#if showInstruction}
+				<input
+					class="instr"
+					aria-label="Instruction for the commit message"
+					placeholder="e.g. mention issue #72"
+					bind:value={instruction}
+					onkeydown={(e) =>
+						e.key === "Enter" && (e.preventDefault(), commitMessages.generate(worktreeId, instruction))}
+				/>
+			{:else}
+				<button class="link" onclick={() => (showInstruction = true)}>Add an instruction…</button>
+			{/if}
+		{/if}
 		<div class="row-btns">
 			<Button size="sm" disabled={!!busy || primaryLabel === "Up to date"} onclick={primary}>
 				{#snippet leading()}{#if busy && busy !== "ai"}<Spinner size={12} />{/if}{/snippet}
 				{primaryLabel}
 			</Button>
-			<Button size="sm" variant="ghost" disabled={busy === "ai"} onclick={generate}>
-				{#snippet leading()}{#if busy === "ai"}<Spinner size={12} />{:else}<Sparkles
-							size={12}
-						/>{/if}{/snippet}
-				Generate
-			</Button>
+			{#if hint.show}
+				{#if gen.phase === "running"}
+					<Button size="sm" variant="ghost" onclick={() => commitMessages.cancel(worktreeId)}>
+						{#snippet leading()}<Square size={12} />{/snippet}
+						Stop
+					</Button>
+				{:else}
+					<Button
+						size="sm"
+						variant="ghost"
+						title="Write the message from {staged.length ? 'the staged diff' : 'all changes'}"
+						data-tour="commit-ai"
+						onclick={() => commitMessages.generate(worktreeId, instruction)}
+					>
+						{#snippet leading()}{#if message.trim() && gen.agent}<RefreshCw size={12} />{:else}<Sparkles
+									size={12}
+								/>{/if}{/snippet}
+						{message.trim() && gen.agent ? "Regenerate" : "Generate"}
+					</Button>
+				{/if}
+			{/if}
 			<Button size="sm" variant="ghost" onclick={() => pr.openCreate(worktreeId)}>
 				{#snippet leading()}<GitPullRequest size={12} />{/snippet}
 				PR
@@ -378,6 +397,26 @@
 	}
 	.mono {
 		font-family: var(--mono);
+	}
+	.err {
+		font-size: 11px;
+		color: var(--ca-semantic-error);
+	}
+	.link {
+		align-self: flex-start;
+		padding: 0;
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+		text-decoration: underline;
+	}
+	.instr {
+		font: inherit;
+		font-size: 12px;
+		padding: 5px 8px;
+		border: 0.5px solid var(--ca-outline-subtle);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--ca-text-primary);
 	}
 	.dim {
 		color: var(--ca-text-secondary);

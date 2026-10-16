@@ -64,6 +64,7 @@ export const DEFAULT_KEYMAP: Record<string, string> = {
 	"cmd-l": "atlas::Logs",
 	"cmd-e": "atlas::Config",
 	"cmd-shift-d": "git::Diff",
+	"alt-cmd-g": "git::GenerateCommitMessage",
 	"cmd-shift-v": "atlas::PreviewHtml",
 	"cmd-shift-r": "atlas::RestartService",
 	"cmd-/": "atlas::Help",

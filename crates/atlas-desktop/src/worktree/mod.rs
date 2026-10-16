@@ -17,4 +17,4 @@ mod naming;
 pub use create::*;
 pub use manage::*;
 
-pub(crate) use exec::git;
+pub(crate) use exec::{exec, git};

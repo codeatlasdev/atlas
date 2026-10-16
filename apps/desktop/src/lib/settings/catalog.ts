@@ -621,6 +621,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 
 	entry(
+		"git",
+		"Commit messages",
+		"git-commit-agent",
+		"Generate commit messages with",
+		"Which agent writes the commit message from your staged diff, or Off to hide the button. Secrets are never sent.",
+		"ai commit message sparkle generate omp claude codex privacy diff staged",
+	),
+
+	entry(
 		"keyboard",
 		"Shortcuts",
 		"keymap",

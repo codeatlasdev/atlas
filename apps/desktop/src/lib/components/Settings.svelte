@@ -8,6 +8,7 @@
 	import PageHead from "#lib/settings/PageHead.svelte";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
 	import AgentSettings from "./AgentSettings.svelte";
+	import GitSettings from "./GitSettings.svelte";
 	import AppearanceSettings from "./AppearanceSettings.svelte";
 	import EditorSettings from "./EditorSettings.svelte";
 	import LinksNotifications from "./settings/LinksNotifications.svelte";
@@ -77,6 +78,8 @@
 					<WorkspaceSettings />
 				{:else if u.section === "agents"}
 					<AgentSettings />
+				{:else if u.section === "git"}
+					<GitSettings />
 				{:else if u.section === "keyboard"}
 					<PageHead
 						title="Keyboard shortcuts"

@@ -31,6 +31,7 @@ export const PAGES: { section: SettingsSection; tab?: SettingsTab; files: string
 	{ section: "terminal", files: ["settings/TerminalTab.svelte"] },
 	{ section: "workspaces", files: ["components/WorkspaceSettings.svelte"] },
 	{ section: "agents", files: ["components/AgentSettings.svelte"] },
+	{ section: "git", files: ["components/GitSettings.svelte"] },
 	{ section: "keyboard", files: ["components/ShortcutSettings.svelte"] },
 	{ section: "ssh", files: ["components/SshSettings.svelte"] },
 	{ section: "help", files: ["onboarding/HelpSettings.svelte"] },

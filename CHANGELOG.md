@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop: generate the commit message with AI** (#72). The ✨ **Generate** button in Source control (and **Generate commit message**, `git::GenerateCommitMessage`, ⌥⌘G, remappable) writes the message from the **staged** diff, or from all changes when nothing is staged (it says so). The message streams into the box, stays fully editable, **Stop** cancels mid-stream, **Regenerate** tries again and **Add an instruction…** steers it ("mention #72"). Nothing is committed for you. It follows your repo: the last commit subjects and the commit rules of `CONTRIBUTING.md` / `AGENTS.md` go into the prompt, with a subject of at most 72 characters in the imperative. The provider is an agent you already have (omp, Claude Code or Codex, run non-interactively with no tools and no saved session), chosen in the new **Settings → Git**; **Off** hides the button and with no agent installed the button points you to the setup. Privacy: the diff goes only to that agent; files that look like secrets (`.env*`, keys, certificates, credentials) are never sent, lockfiles, binaries and generated files are sent as names only, long files are cut per file and the whole diff stays under a size budget, and the box tells you what was left out.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

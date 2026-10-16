@@ -1,0 +1,28 @@
+[
+	{
+		"agent": "omp",
+		"digest": {
+			"omitted": 0,
+			"summarized": 1,
+			"truncated": 3,
+			"withheld": 2
+		},
+		"kind": "start",
+		"scope": "staged"
+	},
+	{
+		"kind": "chunk",
+		"text": "feat: add"
+	},
+	{
+		"kind": "done",
+		"message": "feat: add x"
+	},
+	{
+		"kind": "error",
+		"message": "boom"
+	},
+	{
+		"kind": "cancelled"
+	}
+]

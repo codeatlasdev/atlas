@@ -13,6 +13,7 @@ mod browser_keys;
 mod browser_keys_mac;
 mod capture;
 mod cmds;
+mod commit_msg;
 mod ctl;
 #[cfg(debug_assertions)]
 mod debug;
@@ -176,6 +177,9 @@ macro_rules! handlers {
             git::git_status,
             git::git_run,
             git::git_files,
+            commit_msg::commit_msg_provider,
+            commit_msg::commit_msg_generate,
+            commit_msg::commit_msg_cancel,
             ctl::ctl_reply,
             remote::ssh_config_hosts,
             remote::ssh_status,
@@ -371,6 +375,7 @@ fn main() {
             app.manage(std::sync::Arc::new(host::HostHub::default()));
             host::start(&handle);
             app.manage(std::sync::Arc::new(agent::hooks::AgentHub::default()));
+            app.manage(commit_msg::Runs::default());
             agent::hooks::start(&handle);
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));

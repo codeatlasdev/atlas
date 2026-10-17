@@ -14,13 +14,13 @@ Seven crates, all `publish = false`, in one Cargo workspace (`cargo metadata --n
 | Path | Crate | Role | Depends on (workspace) |
 |---|---|---|---|
 | `crates/atlas-core` | `atlas-core` | shared domain types, paths (`~/.atlas`), GitHub release helpers | none |
-| `crates/atlas-host` | `atlas-host` | `atlas hostd`: PTYs, one-shot exec, file access and scrollback behind a unix socket, plus the client and the live upgrade | `atlas-lsp` |
+| `crates/atlas-host` | `atlas-host` | `atlas hostd`: PTYs, one-shot exec, file access and scrollback behind a unix socket, plus the client and the live upgrade; agent state and its hook server; the Atlas Mobile gateway (iroh) | `atlas-core`, `atlas-lsp`, `atlas-tui` |
 | `crates/atlas-lsp` | `atlas-lsp` | language servers behind hostd: server registry and root detection, verified installer (rust-analyzer, gopls, npm servers, managed Node.js), JSON-RPC client, per-root manager with idle shutdown and crash restart | none |
 | `crates/atlas-term` | `atlas-term` | the GPU terminal without Tauri: VT state (on `alacritty_terminal`), the wgpu/Metal renderer, fonts, inline images, key encoding | none |
 | `crates/atlas-tui` | `atlas-tui` | a library: config loading and validation, the runtime (manager, scheduler, health, process supervision, logs), the TUI (ratatui), the runner, the control socket and the MCP server | `atlas-core` |
 | `crates/atlas-skills` | `atlas-skills` | the agent skills compiled into the binary and their installer | `atlas-core` |
 | `crates/atlas-cli` | `atlas-cli` | the `atlas` binary: argument parsing (clap), every subcommand, self-update, agent setup | `atlas-core`, `atlas-host`, `atlas-skills`, `atlas-tui` |
-| `crates/atlas-desktop` | `atlas-desktop` | Atlas Desktop: the Tauri 2 shell, worktrees, the agent hook server, the embedded browser, the tray, the debug bridge | `atlas-core`, `atlas-host`, `atlas-tui`, and `atlas-term` on macOS only |
+| `crates/atlas-desktop` | `atlas-desktop` | Atlas Desktop: the Tauri 2 shell, worktrees, the embedded browser, the tray, the debug bridge | `atlas-core`, `atlas-host`, `atlas-tui`, and `atlas-term` on macOS only |
 
 ```text
 atlas-cli ──▶ atlas-tui ──▶ atlas-core
@@ -70,7 +70,7 @@ Other top-level directories:
 | `~/.atlas/hostd.sock` + `hostd.token` | `atlas hostd` | Atlas Desktop, `atlas term` without the app |
 | `~/.atlas/desktop.sock` | Atlas Desktop | `atlas wt`, `atlas term`, `atlas browser`, `atlas file` |
 | `~/.atlas/desktop-debug.sock` | debug builds of Atlas Desktop only | `atlas desktop debug …` |
-| loopback HTTP, `~/.atlas/desktop/hook-endpoint.env` | Atlas Desktop | `atlas hook`, the omp `atlas-status` extension |
+| loopback HTTP, `~/.atlas/desktop/hook-endpoint.env` | `atlas hostd` (`atlas_host::agents`) | `atlas hook`, the omp `atlas-status` extension |
 
 ### The runner
 

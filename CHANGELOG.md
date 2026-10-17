@@ -6,6 +6,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Atlas Mobile (preview): control this Mac's Atlas from your phone, with no account.** A Flutter app (`apps/mobile`, iOS and Android) pairs by scanning a one-time code in Settings → Mobile, then reaches `atlas hostd` over iroh (end-to-end encrypted QUIC, direct when possible, n0's public relays otherwise). From the phone: projects, services (restart/start/stop, start the stack), logs and search, actions with their confirm step, agent tabs with state and last reply, sending a prompt to an idle agent, answering Claude Code and Codex permission prompts, and watching or (with its own permission and Face ID) typing in terminals. Each phone has its own permissions, can be revoked, and every non-read request is written to `~/.atlas/mobile/audit.log`. It works with the Atlas window closed; the Mac must be awake. See [docs/mobile.md](docs/mobile.md).
+
+### Changed
+
+- **Agent state moved from the desktop app into `atlas hostd`.** The hook server (`~/.atlas/desktop/hook-endpoint.env`) and the per-tab state (working / needs you / done) now live in the terminal daemon, so they survive the window closing and an SSH host reports its own agents over the existing connection (the reverse port forward is gone). `atlas setup claude-code|codex --apply` registers `PermissionRequest` for both agents with a 60 s timeout; re-run it to pick that up.
+
 ## [1.5.0-alpha.12] — 2026-10-16
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

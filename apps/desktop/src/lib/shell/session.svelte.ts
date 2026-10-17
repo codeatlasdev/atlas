@@ -15,6 +15,7 @@ import { host } from "#lib/host.ts";
 import { errors, startErrorHandler } from "#lib/errors/errors.svelte.ts";
 import { loadKeymap, register } from "#lib/keymap.svelte.ts";
 import { startCtl } from "#lib/ctl.ts";
+import { startAutoCleanup } from "#lib/stores/autoCleanup.svelte.ts";
 import { startMenu } from "#lib/menu.svelte.ts";
 import { startModalWatch } from "#lib/modalOpen.ts";
 import { metrics } from "#lib/panel/metrics.svelte.ts";
@@ -225,6 +226,7 @@ export function startSession(): () => void {
 	const stopMetrics = metrics.start();
 	const stopEffects = $effect.root(syncEffects);
 	const stopErrors = startErrorHandler();
+	const stopAutoCleanup = startAutoCleanup();
 	return () => {
 		unregister();
 		stopThemeCommands();
@@ -241,5 +243,6 @@ export function startSession(): () => void {
 		stopTray();
 		stopMetrics();
 		stopEffects();
+		stopAutoCleanup();
 	};
 }

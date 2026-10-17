@@ -86,3 +86,65 @@ test("a Dialog opened over another does not overflow the stack and hands focus b
 	unmount(a);
 	host.remove();
 });
+
+// Contract the keymap gate (modalOpen.ts, codeatlasdev/atlas#66) reads: the kit announces a modal on `document` as
+// `layerchange` with `detail.modal`, true for a Dialog and false for a menu. If a kit upgrade renames or drops it, the
+// shortcuts would run behind Settings again, so this goes red first. Real kit, real event.
+test("a Dialog announces itself as a modal on document (layerchange) and a menu does not", async () => {
+	const seen: boolean[] = [];
+	const on = (e: Event) => seen.push(e.detail.modal);
+	document.addEventListener("layerchange", on);
+	const host = document.createElement("div");
+	document.body.append(host);
+	const Dialog = await realKitComponent("Dialog");
+	const props = proxy({ open: false, title: "t", children: text });
+	const app = flushSync(() => mount(Dialog, { target: host, props }));
+	props.open = true;
+	flushSync();
+	expect(seen.at(-1)).toBe(true);
+	props.open = false;
+	flushSync();
+	await new Promise((r) => setTimeout(r, 30));
+	expect(seen.at(-1)).toBe(false);
+	document.removeEventListener("layerchange", on);
+	unmount(app);
+	host.remove();
+});
+
+// Acceptance of codeatlasdev/atlas#66 ("overlays opened from inside a modal stack above it"). `showModal()` makes
+// everything outside the dialog inert, top-layer popovers included, so an overlay that is not INSIDE the modal's subtree
+// is dead (unclickable, unfocusable) however high it paints. Atlas declares most of them elsewhere in the tree (a menu
+// in the shell, a confirm opened from a Settings button) and opens them while Settings is up: the kit's layer engine
+// must move them into the modal. Real kit; the trigger is moved into the open dialog to model "opened from inside it".
+// happy-dom has no hit-testing, so containment is the checkable half; ui's own browser suite (ModalContract, ui#225)
+// owns the pixel half.
+test("a DropdownMenu and a Popover declared outside a Dialog but opened while it is up live inside it", async () => {
+	await (
+		await import("../../../test/uiKit.ts")
+	).useRealKit("Dialog", "DropdownMenu", "DropdownMenu/DropdownMenuItem", "Popover");
+	const { default: Harness } = await import("../../../test/DialogOverlaysHarness.svelte");
+	const host = document.createElement("div");
+	document.body.append(host);
+	const app = flushSync(() => mount(Harness, { target: host, props: {} }));
+	const dialog = document.querySelector("dialog[role=dialog]");
+	expect(dialog).not.toBeNull();
+	for (const [sel, layerSel] of [
+		[".menu-t", "[role=menu]"],
+		[".pop-t", "[popover]:not(dialog)"],
+	]) {
+		const trigger = host.querySelector(sel);
+		expect(trigger).not.toBeNull();
+		expect(dialog.contains(trigger)).toBe(false); // declared outside the modal
+		trigger.click();
+		flushSync();
+		await new Promise((r) => setTimeout(r, 20));
+		const layer = document.querySelector(layerSel);
+		expect(layer).not.toBeNull();
+		expect(dialog.contains(layer)).toBe(true);
+		trigger.click();
+		flushSync();
+		await new Promise((r) => setTimeout(r, 30));
+	}
+	unmount(app);
+	host.remove();
+});

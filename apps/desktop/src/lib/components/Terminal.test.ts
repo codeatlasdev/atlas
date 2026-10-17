@@ -15,6 +15,10 @@ let sendEvent: (e: PtyEvent) => void;
 const emit = (payload: PtyEvent["payload"]) => sendEvent({ payload });
 let attachDone: () => void;
 let renderCb: () => void;
+/** The families the webview can draw (what `document.fonts.check` answers) and the user's pref list. */
+let installed: string[] = [];
+let userFamily = "Fira Code, mono";
+let fontsReady: () => void;
 
 interface Addon {
 	name?: string;
@@ -24,7 +28,19 @@ interface Addon {
 class FakeTerminal {
 	cols = 80;
 	rows = 24;
-	options: Record<string, unknown> = {};
+	options: Record<string, unknown>;
+	constructor(opts: Record<string, unknown> = {}) {
+		// xterm re-measures the cell whenever `fontFamily` is set: the log records each set, in order.
+		this.options = new Proxy(opts, {
+			set(o, k, v) {
+				// xterm ignores a set that does not change the value: only a real change re-measures the cell.
+				if (k === "fontFamily" && o[k] !== v) log.push(`font:${v}`);
+				o[k] = v;
+				return true;
+			},
+		});
+		if (opts.fontFamily) log.push(`font:${opts.fontFamily}`);
+	}
 	unicode = { activeVersion: "" };
 	element: HTMLElement | undefined;
 	loadAddon(a: Addon) {
@@ -125,7 +141,9 @@ mock.module("#lib/stores/prefs.svelte.ts", () => ({
 		value: {
 			terminal: {
 				max_scroll_history_lines: 1000,
-				font_family: "mono",
+				get font_family() {
+					return userFamily;
+				},
 				font_size: 13,
 				font_thicken: false,
 				blinking: false,
@@ -136,6 +154,27 @@ mock.module("#lib/stores/prefs.svelte.ts", () => ({
 		},
 	},
 }));
+
+// A fixed-pitch face for every installed family; the rest cannot be drawn by the webview.
+mock.module("./terminal/xtermFont.ts", async () => {
+	const real = await import("./terminal/xtermFont.ts?real");
+	return {
+		...real,
+		// WKWebView: an undrawable family measures as the serif fallback (narrow `i`, wide `W`), and
+		// `document.fonts.check` says true for every name, so the env has no `check`.
+		browserFontEnv: () => ({
+			measure: (f: string, ch: string) => (installed.includes(f) ? 7 : ch === "i" ? 4.45 : 15.1),
+		}),
+	};
+});
+Object.defineProperty(document, "fonts", {
+	configurable: true,
+	value: {
+		ready: new Promise<void>((r) => (fontsReady = r)),
+		addEventListener() {},
+		removeEventListener() {},
+	},
+});
 
 // Dynamic on purpose: the module mocks above and the Svelte loader from test/setup.ts must exist before these load.
 const { flushSync, mount, unmount } = await import("svelte");
@@ -224,5 +263,37 @@ test("WebGL is released while the terminal is not visible (parked neighbour spac
 	p.visible = true;
 	flushSync();
 	expect(log).toContain("load:webgl");
+	unmount(app);
+});
+
+// Incident (#68, xterm path): a user-installed font WKWebView could not draw fell back to a serif while the cell was
+// measured elsewhere: the terminal showed `W e l c o m e`. The list given to xterm must only hold drawable families
+// and end with the generic monospace, and must be redone once the webfonts are ready (the cell is re-measured).
+test("a family the webview cannot draw never reaches xterm: its list drops it and ends with monospace", () => {
+	installed = ["mono"];
+	userFamily = "Fira Code, mono";
+	const { app } = setup();
+	expect(log.filter((l) => l.startsWith("font:"))).toEqual(["font:mono, monospace"]);
+	unmount(app);
+});
+
+test("with no usable family xterm gets plain monospace, not the user's unloadable list", () => {
+	installed = [];
+	userFamily = "Fira Code";
+	const { app } = setup();
+	expect(log.filter((l) => l.startsWith("font:"))).toEqual(["font:monospace"]);
+	unmount(app);
+});
+
+test("when the webfonts finish loading the family list is resolved again so xterm re-measures the cell", async () => {
+	installed = [];
+	userFamily = "Fira Code, mono";
+	const { app } = setup();
+	expect(log.filter((l) => l.startsWith("font:")).at(-1)).toBe("font:monospace");
+	installed = ["Fira Code", "mono"];
+	fontsReady();
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(log.filter((l) => l.startsWith("font:")).at(-1)).toBe("font:Fira Code, mono, monospace");
 	unmount(app);
 });

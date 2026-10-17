@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use atlas_core::domain::project::{PORT_BLOCK_START, detect_project};
+use atlas_core::domain::project::initial_config;
 use clap::Args;
 
 use super::AtlasCommand;
@@ -29,29 +29,7 @@ pub async fn handle(dir: &str) -> Result<()> {
         );
     }
 
-    let detection = detect_project(root);
-    let project_name = root
-        .canonicalize()
-        .unwrap_or(root.to_path_buf())
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "my-project".to_string());
-
-    let mut yaml = format!("name: {project_name}\n");
-
-    yaml.push_str("\nservices:\n");
-    if detection.services.is_empty() {
-        yaml.push_str("  # app:\n");
-        yaml.push_str("  #   command: npm run dev\n");
-        yaml.push_str(&format!("  #   port: {PORT_BLOCK_START}\n"));
-    } else {
-        for (i, svc) in detection.services.iter().enumerate() {
-            let port = svc.port.unwrap_or(PORT_BLOCK_START + i as u16);
-            yaml.push_str(&format!("  {}:\n", svc.name));
-            yaml.push_str(&format!("    command: {}\n", svc.command));
-            yaml.push_str(&format!("    port: {port}\n"));
-        }
-    }
+    let (yaml, detection) = initial_config(root);
 
     std::fs::write(&config_path, &yaml)?;
 

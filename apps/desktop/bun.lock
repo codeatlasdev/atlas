@@ -5,7 +5,7 @@
     "": {
       "name": "atlas-desktop",
       "dependencies": {
-        "@codeatlasdev/ui": "^4.0.0",
+        "@codeatlasdev/ui": "^4.2.0",
         "@codemirror/autocomplete": "^6.20.3",
         "@codemirror/commands": "^6.11.1",
         "@codemirror/lang-css": "^6.3.1",
@@ -61,7 +61,7 @@
     },
   },
   "packages": {
-    "@codeatlasdev/ui": ["@codeatlasdev/ui@4.0.0", "", { "dependencies": { "@floating-ui/dom": "1.8.0", "@internationalized/date": "3.12.4", "@lucide/svelte": "1.55.0", "clsx": "2.1.1", "esm-env": "1.2.2" }, "peerDependencies": { "@resvg/resvg-js": "^2.6.0", "@sveltejs/kit": "^2.12.0 || ^3.0.0", "@tanstack/svelte-table": "^9.2.4", "astro": "^5.0.0 || ^6.0.0 || ^7.0.0", "axe-core": "^4.0.0", "echarts": "^6.0.0", "png-to-ico": "^3.0.0", "shiki": "^4.0.0", "svelte": "^5.33.0", "typescript": ">=5.0.0" }, "optionalPeers": ["@resvg/resvg-js", "@sveltejs/kit", "@tanstack/svelte-table", "astro", "axe-core", "echarts", "png-to-ico", "shiki", "typescript"], "bin": { "ca-ui-mcp": "dist/bin/ca-ui-mcp.js", "codeatlas-ui": "dist/bin/codeatlas-ui.js" } }, "sha512-8RDvFh1aFfAxTh/GunwbiHnTzhOIw+UoEjdiI+jYqI2HjzXLmJIiuV4lIwTCfkIext/3Q4mpnshOmF1FgPmvkg=="],
+    "@codeatlasdev/ui": ["@codeatlasdev/ui@4.2.0", "", { "dependencies": { "@floating-ui/dom": "1.8.0", "@internationalized/date": "3.12.4", "@lucide/svelte": "1.55.0", "clsx": "2.1.1", "esm-env": "1.2.2" }, "peerDependencies": { "@resvg/resvg-js": "^2.6.0", "@sveltejs/kit": "^2.12.0 || ^3.0.0", "@tanstack/svelte-table": "^9.2.4", "astro": "^5.0.0 || ^6.0.0 || ^7.0.0", "axe-core": "^4.0.0", "echarts": "^6.0.0", "png-to-ico": "^3.0.0", "shiki": "^4.0.0", "svelte": "^5.33.0", "typescript": ">=5.0.0" }, "optionalPeers": ["@resvg/resvg-js", "@sveltejs/kit", "@tanstack/svelte-table", "astro", "axe-core", "echarts", "png-to-ico", "shiki", "typescript"], "bin": { "ca-ui-mcp": "dist/bin/ca-ui-mcp.js", "codeatlas-ui": "dist/bin/codeatlas-ui.js" } }, "sha512-6hi0ZusEVFhOtKXvVpAPI94gAn85FBM8USxfPDmB+KuYsJ1+L+GZrm6oMd55g6TAm31udP5ZobMgp+Oi7WQGtg=="],
 
     "@codemirror/autocomplete": ["@codemirror/autocomplete@6.20.3", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.17.0", "@lezer/common": "^1.0.0" } }, "sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g=="],
 

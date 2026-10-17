@@ -6,8 +6,13 @@ mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 await (await import("../../../test/uiKit.ts")).installUiKit();
 mock.module("#lib/api.ts", () => ({ errText: String }));
 let ptyList: () => Promise<unknown[]> = async () => [];
+const created = [];
 mock.module("#lib/host.ts", () => ({
-	host: { ptyKill: async () => {}, ptyList: () => ptyList(), ptyCreate: async () => ({ pty: "p1" }) },
+	host: {
+		ptyKill: async () => {},
+		ptyList: () => ptyList(),
+		ptyCreate: async (a) => (created.push(a), { pty: "p1" }),
+	},
 }));
 // The real `errors` store (not a mock of it: a process-wide module mock would leak into
 // errors/hostErrors.test.ts): its toasts are what a user would see.
@@ -115,6 +120,42 @@ test("⌘T-style reopen restores editors in place; terminals and singletons beha
 	const re = await ws.reopenClosed(W);
 	expect(re.kind).toBe("terminal");
 	expect(re.argv).toEqual(["zsh"]);
+});
+
+// Feature (#64, "Open in terminal here"): a terminal can start in a folder of the worktree, and Restart / reopen keep it
+// there instead of falling back to the worktree root.
+test("a terminal opened in a subfolder spawns there and remembers it for restart and reopen", async () => {
+	fresh();
+	created.length = 0;
+	const t = await ws.newTerminal(W, { cwd: "/repo/src/api" });
+	expect(created[0].cwd).toBe("/repo/src/api");
+	expect(t.cwd).toBe("/repo/src/api");
+	const root = await ws.newTerminal(W);
+	expect(created[1].cwd).toBe(ws.worktree(W).path);
+	expect(root.cwd).toBe(ws.worktree(W).path);
+	ws.closeTab(t.id);
+	const back = await ws.reopenClosed(W);
+	expect(back.cwd).toBe("/repo/src/api");
+});
+
+// Feature (#64, "Open to the side"): the side group is the pane right of the focused one, created once and then reused.
+test("sideGroup splits right the first time and reuses that pane afterwards", () => {
+	fresh();
+	const from = ws.focusedGroup(W).id;
+	const first = ws.sideGroup(W);
+	expect(first).not.toBe(from);
+	ws.focusGroup(from);
+	expect(ws.sideGroup(W)).toBe(first);
+	expect(ws.doc.groups.filter((g) => g.worktreeId === W).length).toBe(2);
+});
+
+test("sideGroup never lands in the bottom dock", () => {
+	fresh();
+	const from = ws.focusedGroup(W).id;
+	ws.doc.bottomGroup[W] = ws.newGroup(W).id;
+	const side = ws.sideGroup(W);
+	expect(side).not.toBe(ws.doc.bottomGroup[W]);
+	expect(side).not.toBe(from);
 });
 
 test("activateNth follows the focused pane order, ⌘9 the last", () => {

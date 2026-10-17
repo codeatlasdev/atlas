@@ -191,15 +191,27 @@ pub fn projects_add(
     hub: State<'_, LiveHub>,
     root: String,
 ) -> Result<ProjectView, String> {
-    let root = config::find_root(Path::new(&root)).ok_or(format!("no atlas.yaml in {root}"))?;
-    let root = root.canonicalize().unwrap_or(root);
     let mut entries = registry::load()?;
+    let (entry, fresh) = register(&mut entries, Path::new(&root))?;
+    if fresh {
+        registry::save(&entries)?;
+        hub.ensure(&app, &entry.id, Path::new(&entry.root));
+        notify_changed(&app);
+    }
+    Ok(view(&entry, None))
+}
+
+/// Registry edit behind `projects_add`: the project whose `atlas.yaml` is at or above `picked`, added once.
+/// Returns its entry and whether it is new. A folder without a config is refused (`probe` tells the UI first).
+fn register(entries: &mut Vec<Entry>, picked: &Path) -> Result<(Entry, bool), String> {
+    let root = config::find_root(picked).ok_or(format!("no atlas.yaml in {}", picked.display()))?;
+    let root = root.canonicalize().unwrap_or(root);
     let id = registry::id_for(&root);
-    if let Some(e) = existing(&entries, &id, &root) {
-        return Ok(view(e, None));
+    if let Some(e) = existing(entries, &id, &root) {
+        return Ok((e.clone(), false));
     }
     let entry = Entry {
-        id: id.clone(),
+        id,
         root: root.to_string_lossy().into_owned(),
         pinned: false,
         added: chrono::Utc::now().to_rfc3339(),
@@ -210,10 +222,84 @@ pub fn projects_add(
         identity: None,
     };
     entries.push(entry.clone());
-    registry::save(&entries)?;
-    hub.ensure(&app, &id, &root);
-    notify_changed(&app);
-    Ok(view(&entry, None))
+    Ok((entry, true))
+}
+
+/// What the Add flow learns about a picked folder before touching anything.
+#[derive(Serialize, Debug)]
+pub struct Probe {
+    /// The folder that was picked (canonical).
+    picked: String,
+    /// The project root: where `atlas.yaml` is (the picked folder or one above it), else the picked folder.
+    root: String,
+    has_config: bool,
+    /// Project name from the config, else the folder name.
+    name: String,
+    /// Id of the registered project for this folder, when there is one.
+    registered: Option<String>,
+}
+
+fn probe(entries: &[Entry], picked: &Path) -> Result<Probe, String> {
+    if !picked.is_dir() {
+        return Err(format!("{} is not a folder", picked.display()));
+    }
+    let picked = picked
+        .canonicalize()
+        .unwrap_or_else(|_| picked.to_path_buf());
+    let found = config::find_root(&picked).map(|r| r.canonicalize().unwrap_or(r));
+    let root = found.clone().unwrap_or_else(|| picked.clone());
+    let name = found
+        .as_deref()
+        .and_then(|r| config::load(r).ok())
+        .map(|c| c.name)
+        .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| root.to_string_lossy().into_owned());
+    let registered = found
+        .as_deref()
+        .and_then(|r| existing(entries, &registry::id_for(r), r))
+        .map(|e| e.id.clone());
+    Ok(Probe {
+        picked: picked.to_string_lossy().into_owned(),
+        root: root.to_string_lossy().into_owned(),
+        has_config: found.is_some(),
+        name,
+        registered,
+    })
+}
+
+/// Look at a folder the user picked or dropped: has it a config, which project root is that, is it registered.
+#[tauri::command]
+pub fn project_probe(dir: String) -> Result<Probe, String> {
+    probe(&registry::load()?, Path::new(&dir))
+}
+
+/// What `atlas init` would write in `dir` (nothing is created), for the preview before "Create and add".
+#[derive(Serialize, Debug)]
+pub struct InitPreview {
+    yaml: String,
+    /// `language (framework)` or `None` when nothing was recognised.
+    detected: Option<String>,
+    services: Vec<String>,
+}
+
+#[tauri::command]
+pub fn project_init_preview(dir: String) -> Result<InitPreview, String> {
+    let dir = Path::new(&dir);
+    if !dir.is_dir() {
+        return Err(format!("{} is not a folder", dir.display()));
+    }
+    if dir.join("atlas.yaml").exists() {
+        return Err(format!("atlas.yaml already exists in {}", dir.display()));
+    }
+    let (yaml, d) = atlas_core::domain::project::initial_config(dir);
+    Ok(InitPreview {
+        yaml,
+        detected: (d.language != "unknown").then(|| match &d.framework {
+            Some(fw) => format!("{} ({fw})", d.language),
+            None => d.language.clone(),
+        }),
+        services: d.services.into_iter().map(|s| s.name).collect(),
+    })
 }
 
 /// The entry already showing `root`: same id, or (after a relink, which keeps the old id) the
@@ -224,14 +310,45 @@ fn existing<'a>(entries: &'a [Entry], id: &str, root: &Path) -> Option<&'a Entry
         .find(|e| e.id == id || (!e.is_remote() && Path::new(&e.root) == root))
 }
 
+/// Take a project out of Atlas: its running stack is stopped first, then it and its linked worktrees are
+/// unregistered. Never touches a file on disk.
 #[tauri::command]
-pub fn projects_remove(app: AppHandle, hub: State<'_, LiveHub>, id: String) -> Result<(), String> {
+pub async fn projects_remove(
+    app: AppHandle,
+    hub: State<'_, LiveHub>,
+    id: String,
+) -> Result<(), String> {
     let mut entries = registry::load()?;
-    entries.retain(|e| e.id != id);
+    // The main checkout's worktrees go with it, so stop every stack that is about to lose its row.
+    let doomed: Vec<Entry> = entries
+        .iter()
+        .filter(|e| e.id == id || e.parent.as_deref() == Some(id.as_str()))
+        .cloned()
+        .collect();
+    for e in doomed.iter().filter(|e| !e.is_remote()) {
+        if status::live_snapshot(Path::new(&e.root)).is_ok() {
+            super::stack_stop(app.clone(), e.id.clone()).await?;
+        }
+    }
+    let gone = unregister(&mut entries, &id);
     registry::save(&entries)?;
-    hub.remove(&id);
+    for g in &gone {
+        hub.remove(g);
+    }
     notify_changed(&app);
     Ok(())
+}
+
+/// Registry edit behind `projects_remove`: `id` and, when it is a main checkout, its linked worktrees (a dangling
+/// `parent` would render them as orphans). Returns the ids removed, in registry order.
+fn unregister(entries: &mut Vec<Entry>, id: &str) -> Vec<String> {
+    let gone: Vec<String> = entries
+        .iter()
+        .filter(|e| e.id == id || e.parent.as_deref() == Some(id))
+        .map(|e| e.id.clone())
+        .collect();
+    entries.retain(|e| !gone.contains(&e.id));
+    gone
 }
 
 #[tauri::command]
@@ -686,5 +803,202 @@ mod tests {
         assert_eq!(expand(home, "~/code"), Path::new("/h/code"));
         assert_eq!(expand(home, "~"), Path::new("/h"));
         assert_eq!(expand(home, "/abs"), Path::new("/abs"));
+    }
+
+    // Incident (#65): adding a folder without atlas.yaml failed with "no atlas.yaml in <dir>" and the UI had no way
+    // forward. `probe` is what the Add flow asks first, so it can offer `atlas init` instead of that error.
+    #[test]
+    fn probe_tells_a_configless_folder_from_a_configured_one_and_a_subfolder_of_one() {
+        let t = tempfile::tempdir().unwrap();
+        let bare = t.path().join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let p = probe(&[], &bare).unwrap();
+        assert!(!p.has_config);
+        assert_eq!(p.registered, None);
+        assert_eq!(p.name, "bare");
+
+        let proj = t.path().join("proj");
+        project(&proj);
+        let p = probe(&[], &proj).unwrap();
+        assert!(p.has_config);
+        assert_eq!(p.name, "x");
+        assert_eq!(Path::new(&p.root), proj.canonicalize().unwrap());
+
+        // `find_root` walks up: a subfolder of a configured project would silently add the PARENT, so the probe
+        // reports the folder the config really lives in and the UI says so.
+        let sub = proj.join("apps/web");
+        std::fs::create_dir_all(&sub).unwrap();
+        let p = probe(&[], &sub).unwrap();
+        assert!(p.has_config);
+        assert_eq!(Path::new(&p.root), proj.canonicalize().unwrap());
+        assert_eq!(Path::new(&p.picked), sub.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn probe_reports_the_project_already_registered_for_that_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let proj = t.path().join("proj");
+        project(&proj);
+        let canon = proj.canonicalize().unwrap();
+        let entries = vec![entry("abc", &canon)];
+        assert_eq!(
+            probe(&entries, &proj).unwrap().registered.as_deref(),
+            Some("abc")
+        );
+    }
+
+    #[test]
+    fn probe_refuses_what_is_not_a_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let file = t.path().join("f");
+        std::fs::write(&file, "x").unwrap();
+        assert!(probe(&[], &file).is_err());
+        assert!(probe(&[], &t.path().join("gone")).is_err());
+    }
+
+    #[test]
+    fn register_adds_once_and_never_duplicates_a_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let proj = t.path().join("proj");
+        project(&proj);
+        let mut entries = Vec::new();
+        let (first, fresh) = register(&mut entries, &proj).unwrap();
+        assert!(fresh);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(Path::new(&first.root), proj.canonicalize().unwrap());
+        assert_eq!(first.id, registry::id_for(&proj.canonicalize().unwrap()));
+        let (again, fresh) = register(&mut entries, &proj).unwrap();
+        assert!(!fresh);
+        assert_eq!(again.id, first.id);
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn register_without_a_config_is_the_old_error_so_callers_must_init_first() {
+        let t = tempfile::tempdir().unwrap();
+        let bare = t.path().join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let mut entries = Vec::new();
+        let err = register(&mut entries, &bare).unwrap_err();
+        assert!(err.contains("no atlas.yaml"), "{err}");
+        assert!(entries.is_empty());
+    }
+
+    // Incident (#65): a main project removed from the app left its linked worktrees registered with a dangling
+    // `parent`, rendered as orphans. Unregistering takes them along; files are never touched.
+    #[test]
+    fn unregister_takes_the_project_and_its_worktrees_and_leaves_files_alone() {
+        let t = tempfile::tempdir().unwrap();
+        project(&t.path().join("main"));
+        project(&t.path().join("wt"));
+        project(&t.path().join("other"));
+        let mut entries = vec![
+            entry("main", &t.path().join("main")),
+            entry("wt", &t.path().join("wt")),
+            entry("other", &t.path().join("other")),
+        ];
+        entries[1].parent = Some("main".into());
+        let gone = unregister(&mut entries, "main");
+        assert_eq!(gone, ["main", "wt"]);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "other");
+        for d in ["main", "wt", "other"] {
+            assert!(t.path().join(d).join("atlas.yaml").is_file(), "{d} touched");
+        }
+    }
+
+    #[test]
+    fn unregister_of_a_worktree_or_unknown_id_removes_only_that_one() {
+        let t = tempfile::tempdir().unwrap();
+        let mut entries = vec![
+            entry("main", &t.path().join("main")),
+            entry("wt", &t.path().join("wt")),
+        ];
+        entries[1].parent = Some("main".into());
+        assert!(unregister(&mut entries, "nope").is_empty());
+        assert_eq!(entries.len(), 2);
+        assert_eq!(unregister(&mut entries, "wt"), ["wt"]);
+        assert_eq!(entries[0].id, "main");
+    }
+
+    // Acceptance (#65): a folder without atlas.yaml becomes a project with a config and no terminal. The steps the UI
+    // runs, on a real folder: probe says "no config", the preview names what will be written, `atlas init`'s file
+    // (`initial_config`) is written, and the folder then registers once and loads as a project of that name.
+    #[test]
+    fn a_configless_folder_becomes_a_loadable_registered_project() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("shop");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("package.json"),
+            r#"{"name":"shop","scripts":{"dev":"vite --port 5173"}}"#,
+        )
+        .unwrap();
+        let mut entries = Vec::new();
+        assert!(register(&mut entries, &dir).is_err());
+        assert!(!probe(&entries, &dir).unwrap().has_config);
+
+        let preview = project_init_preview(dir.to_string_lossy().into_owned()).unwrap();
+        assert!(preview.yaml.starts_with("name: shop\n"), "{}", preview.yaml);
+        assert!(!dir.join("atlas.yaml").exists(), "a preview must not write");
+
+        std::fs::write(dir.join("atlas.yaml"), &preview.yaml).unwrap();
+        let (entry, fresh) = register(&mut entries, &dir).unwrap();
+        assert!(fresh);
+        let v = view(&entry, None);
+        assert_eq!(v.name, "shop");
+        assert_eq!(v.error, None, "the generated config must load cleanly");
+        assert_eq!(v.missing, None);
+        assert_eq!(v.services_total, preview.services.len());
+        assert!(probe(&entries, &dir).unwrap().registered.is_some());
+    }
+
+    #[test]
+    fn the_init_preview_refuses_an_existing_config_and_a_non_folder() {
+        let t = tempfile::tempdir().unwrap();
+        project(&t.path().join("p"));
+        let p = t.path().join("p").to_string_lossy().into_owned();
+        assert!(
+            project_init_preview(p)
+                .unwrap_err()
+                .contains("already exists")
+        );
+        let f = t.path().join("f");
+        std::fs::write(&f, "x").unwrap();
+        assert!(project_init_preview(f.to_string_lossy().into_owned()).is_err());
+    }
+
+    // Contract (AGENTS.md): the frontend reads the REAL serialization of what `project_probe` returns.
+    // `UPDATE_FIXTURES=1` regenerates `__fixtures__/project-probe.json`.
+    #[test]
+    fn probe_fixture_is_the_real_serialization() {
+        let t = tempfile::tempdir().unwrap();
+        let bare = t.path().join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let mut real = serde_json::to_value(probe(&[], &bare).unwrap()).unwrap();
+        // The temp path differs per run; the contract is the shape, so it is pinned to a stable value.
+        for k in ["root", "picked"] {
+            real[k] = "/projects/bare".into();
+        }
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/project-probe.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&real, &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, real,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 }

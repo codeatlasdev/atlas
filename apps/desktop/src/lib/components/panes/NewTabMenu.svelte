@@ -40,29 +40,45 @@
 		>
 	{/snippet}
 	<DropdownMenuItem onclick={() => w && ws.newTerminal(w.id, { groupId })}>
-		<SquareTerminal size={14} /> Terminal
+		{#snippet icon()}<SquareTerminal />{/snippet}
+		Terminal
 		<span class="kbd">{shortcutFor("workspace::NewTerminal") ?? ""}</span>
 	</DropdownMenuItem>
 	{#each agents.list.filter((a) => a.installed) as a (a.id)}
-		<DropdownMenuItem onclick={() => w && agents.launch(w.id, a.id, { groupId })}>
-			<AgentLogo agent={a.id} /> New {a.label} session
+		<DropdownMenuItem brandIcon onclick={() => w && agents.launch(w.id, a.id, { groupId })}>
+			{#snippet icon()}<AgentLogo agent={a.id} bare />{/snippet}
+			New {a.label} session
 		</DropdownMenuItem>
 	{/each}
 	{#if agents.list.find((a) => a.id === "omp" && a.installed)}
-		<DropdownMenuItem onclick={() => w && agents.launch(w.id, "omp", { groupId, chat: true })}>
-			<AgentLogo agent="omp" /> New omp chat
+		<DropdownMenuItem brandIcon onclick={() => w && agents.launch(w.id, "omp", { groupId, chat: true })}>
+			{#snippet icon()}<AgentLogo agent="omp" bare />{/snippet}
+			New omp chat
 		</DropdownMenuItem>
 	{/if}
 	{#if project}
-		<DropdownMenuItem onclick={() => openKind("services")}><LayoutGrid size={14} /> Panel</DropdownMenuItem>
-		<DropdownMenuItem onclick={() => openKind("logs")}><ScrollText size={14} /> Logs</DropdownMenuItem>
-		<DropdownMenuItem onclick={() => openKind("config")}><FileCode2 size={14} /> Config</DropdownMenuItem>
+		<DropdownMenuItem onclick={() => openKind("services")}>
+			{#snippet icon()}<LayoutGrid />{/snippet}
+			Panel
+		</DropdownMenuItem>
+		<DropdownMenuItem onclick={() => openKind("logs")}>
+			{#snippet icon()}<ScrollText />{/snippet}
+			Logs
+		</DropdownMenuItem>
+		<DropdownMenuItem onclick={() => openKind("config")}>
+			{#snippet icon()}<FileCode2 />{/snippet}
+			Config
+		</DropdownMenuItem>
 	{/if}
 	{#if w}
-		<DropdownMenuItem onclick={() => openDiff(w.id)}><FileDiff size={14} /> Changes</DropdownMenuItem>
-		<DropdownMenuItem onclick={() => pr.openTab(w.id)}
-			><GitPullRequest size={14} /> Pull request</DropdownMenuItem
-		>
+		<DropdownMenuItem onclick={() => openDiff(w.id)}>
+			{#snippet icon()}<FileDiff />{/snippet}
+			Changes
+		</DropdownMenuItem>
+		<DropdownMenuItem onclick={() => pr.openTab(w.id)}>
+			{#snippet icon()}<GitPullRequest />{/snippet}
+			Pull request
+		</DropdownMenuItem>
 	{/if}
 	<DropdownMenuItem onclick={() => g?.activeTab && ws.split(groupId, "h", g.activeTab)}
 		>Split right <span class="kbd">{shortcutFor("pane::SplitRight") ?? ""}</span></DropdownMenuItem

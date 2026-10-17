@@ -26,6 +26,7 @@ const KIT_COMPONENTS = [
 	"DropdownMenu",
 	"DropdownMenuItem",
 	"DropdownMenuSeparator",
+	"SchemeAsset",
 	"Popover",
 ];
 const Stub = () => {};

@@ -98,3 +98,52 @@ test("two groups never share generation state", () => {
 	tabPager.frame("h", host(), { zone: "tab", id: "h", seq: 1, amount: 0.1, stage: "track" });
 	expect(el.t2.style.transform).not.toBe("");
 });
+
+// Regression (#69): terminals and browsers are native views above the webview; a CSS transform cannot move them, so
+// during a tab swipe they stayed at the old rect while the DOM pane slid, and a sync mid-gesture measured the rect
+// WITH the in-flight translate3d and left the native view shoved sideways after `rest`. The pager must mark the
+// panes it moves (`data-swiping`) for exactly the generation, so the native views are parked (never moved per frame)
+// and `watchSlot` re-syncs them at the untransformed rect when the mark is lifted.
+const marked = () => ["t1", "t2", "t3"].filter((id) => el[id].dataset.swiping === "");
+beforeEach(() => {
+	for (const id of ["t1", "t2", "t3"]) {
+		const dataset = {};
+		el[id].dataset = dataset;
+		el[id].toggleAttribute = (name, on) => {
+			if (name === "data-swiping") on ? (dataset.swiping = "") : delete dataset.swiping;
+		};
+	}
+});
+
+test("the panes in flight are marked swiping from the first frame, and only those", () => {
+	f(1, 0.25);
+	expect(marked()).toEqual(["t2", "t3"]);
+	f(1, 0.4);
+	expect(marked()).toEqual(["t2", "t3"]);
+});
+
+test("a swipe that turns around moves the mark to the new neighbour and drops it from the old one", () => {
+	f(1, 0.25);
+	f(1, -0.25);
+	expect(marked()).toEqual(["t1", "t2"]);
+});
+
+test("rest lifts the mark after a commit and after a cancel", async () => {
+	f(1, 0.6);
+	c(1, 1);
+	f(1, 1, "rest");
+	await settle();
+	expect(marked()).toEqual([]);
+	f(2, -0.2); // t3 is last now: the neighbour is t2
+	expect(marked()).toEqual(["t2", "t3"]);
+	c(2, 0);
+	f(2, 0, "rest");
+	await settle();
+	expect(marked()).toEqual([]);
+});
+
+test("the mark never appears for a rest-only generation (a no-op cannot park a terminal)", async () => {
+	f(1, 0, "rest");
+	await settle();
+	expect(marked()).toEqual([]);
+});

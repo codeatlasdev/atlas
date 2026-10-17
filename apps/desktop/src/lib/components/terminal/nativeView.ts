@@ -101,7 +101,7 @@ export class NativeView {
 		// The view's frame is in window points, the slot in CSS px (they differ under layout zoom).
 		const rect = nativeRect(insetRect(r, px, py));
 		// The native view sits above the webview: park it under dialogs/palette.
-		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen(r);
+		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen(r, area);
 		try {
 			if (!this.opened) {
 				if (!show) return;

@@ -951,3 +951,69 @@ async fn unusable_hostd_pid_names_only_a_live_daemon_that_refuses_us() {
     std::fs::write(paths::token(dir), "0123456789abcdef").unwrap();
     assert_eq!(atlas_host::client::unusable_hostd_pid(dir).await, Some(pid));
 }
+
+/// Agent state lives in hostd (not the app) so it survives the window closing and
+/// every client sees it: a hook POST and a pane exit both reach clients as `agent_status`.
+#[tokio::test]
+async fn hook_events_drive_agent_status_pushed_to_clients() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let tmp = tempfile::tempdir().unwrap();
+    let (_d, c) = start(tmp.path()).await;
+    let mut ev = c.events();
+    let env = std::fs::read_to_string(paths::hook_endpoint(tmp.path())).unwrap();
+    let get = |k: &str| {
+        env.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .unwrap()
+            .to_string()
+    };
+    let (port, token) = (get("ATLAS_HOOK_PORT"), get("ATLAS_HOOK_TOKEN"));
+    let post = |tok: String| {
+        let port = port.clone();
+        async move {
+            let body = json!({"pane_key":"p1","payload":{"event":"agent_start","prompt":"hi"}})
+                .to_string();
+            let mut s = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
+                .await
+                .unwrap();
+            let req = format!(
+                "POST /hook/omp HTTP/1.1\r\nX-Atlas-Hook-Token: {tok}\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            s.write_all(req.as_bytes()).await.unwrap();
+            let mut out = String::new();
+            s.read_to_string(&mut out).await.unwrap();
+            out
+        }
+    };
+    assert!(post("wrong".into()).await.starts_with("HTTP/1.1 401"));
+    assert!(post(token.clone()).await.starts_with("HTTP/1.1 204"));
+    async fn next(
+        ev: &mut tokio::sync::broadcast::Receiver<atlas_host::client::HostEvent>,
+    ) -> Value {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let e = ev.recv().await.unwrap();
+                if e["ev"] == "agent_status" {
+                    return (*e).clone();
+                }
+            }
+        })
+        .await
+        .expect("agent_status push")
+    }
+    let working = next(&mut ev).await;
+    assert_eq!(working["pane_key"], "p1");
+    assert_eq!(working["status"]["state"], "working");
+    assert_eq!(working["status"]["prompt"], "hi");
+
+    let mut ev = c.events();
+    c.call("agent_pane_exited", json!({"pane": "p1"}))
+        .await
+        .unwrap();
+    let idle = next(&mut ev).await;
+    assert_eq!(idle["status"]["state"], "idle");
+    let all = c.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(all["panes"]["p1"]["state"], "idle");
+    assert_eq!(all["hook_port"].to_string(), port);
+}

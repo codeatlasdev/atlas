@@ -36,6 +36,10 @@ pub fn open_log(dir: &Path) -> std::io::Result<std::fs::File> {
 pub fn scrollback_dir(dir: &Path) -> PathBuf {
     dir.join("hostd").join("scrollback")
 }
+/// Where the agent hook server publishes `ATLAS_HOOK_PORT`/`ATLAS_HOOK_TOKEN`.
+pub fn hook_endpoint(dir: &Path) -> PathBuf {
+    dir.join("desktop").join("hook-endpoint.env")
+}
 
 /// Read the token, creating a random one (0600) when absent.
 pub fn ensure_token(dir: &Path) -> std::io::Result<String> {

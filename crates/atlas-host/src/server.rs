@@ -42,10 +42,14 @@ pub(crate) struct Hub {
     /// without `lsp_close` has its documents closed, so idle servers can shut down; a document
     /// re-opened by a reconnected client now belongs to the new connection.
     pub(crate) lsp_docs: Mutex<HashMap<String, u64>>,
+    /// Coding-agent state per pane (hook-fed); changes are pushed as `agent_status`.
+    pub(crate) agents: Arc<crate::agents::AgentHub>,
+    /// Atlas Mobile: identity, paired phones, pairing codes (`crate::mobile`).
+    pub(crate) mobile: Arc<crate::mobile::Mobile>,
 }
 
 impl Hub {
-    fn get(&self, id: &str) -> Result<Arc<Session>, String> {
+    pub(crate) fn get(&self, id: &str) -> Result<Arc<Session>, String> {
         self.sessions
             .lock()
             .get(id)
@@ -102,6 +106,17 @@ impl Hub {
         self.lsp.shutdown().await;
     }
 
+    /// Register a push receiver (mobile sessions); returns its connection id.
+    pub(crate) fn add_subscriber(&self, tx: Out) -> u64 {
+        let id = self.next_conn.fetch_add(1, Ordering::Relaxed);
+        self.subscribers.lock().insert(id, tx);
+        id
+    }
+
+    pub(crate) fn remove_subscriber(&self, id: u64) {
+        self.subscribers.lock().remove(&id);
+    }
+
     pub(crate) fn broadcast(&self, line: String) {
         for tx in self.subscribers.lock().values() {
             let _ = tx.send(line.clone());
@@ -119,7 +134,7 @@ impl Hub {
     }
 }
 
-fn hostname() -> String {
+pub(crate) fn hostname() -> String {
     let mut buf = [0u8; 256];
     // SAFETY: buffer is valid for its length; gethostname NUL-terminates on success.
     let rc = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
@@ -290,7 +305,29 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         lsp: atlas_lsp::Manager::new(dir, atlas_lsp::Config::default(), lsp_tx),
         subscribers: Mutex::new(HashMap::new()),
         lsp_docs: Mutex::new(HashMap::new()),
+        agents: Arc::new(crate::agents::AgentHub::default()),
+        mobile: Arc::new(crate::mobile::Mobile::load(dir)?),
     });
+    crate::mobile::start(hub.clone());
+    if let Err(e) = crate::agents::hook_server::start(dir, hub.agents.clone()).await {
+        eprintln!("hostd: agent hook server: {e}");
+    }
+    {
+        let mut rx = hub.agents.subscribe();
+        let weak = Arc::downgrade(&hub);
+        tokio::spawn(async move {
+            use tokio::sync::broadcast::error::RecvError;
+            loop {
+                let ev = match rx.recv().await {
+                    Ok(x) => x,
+                    Err(RecvError::Lagged(_)) => continue,
+                    Err(RecvError::Closed) => return,
+                };
+                let Some(hub) = weak.upgrade() else { return };
+                hub.broadcast(ev.to_string());
+            }
+        });
+    }
     tokio::spawn(crate::lsp::pump(Arc::downgrade(&hub), lsp_rx));
     eprintln!(
         "atlas hostd {} listening on {} (pid {}{})",
@@ -514,7 +551,7 @@ fn watch(
     Ok(json!({}))
 }
 
-async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
+pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
         HostCmd::PtyCreate(req) => {
@@ -578,6 +615,41 @@ async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> 
         HostCmd::FsRename { from, to } => crate::fs::rename(&from, &to),
         HostCmd::FsRemove { path, recursive } => crate::fs::remove(&path, recursive),
         HostCmd::Info {} => Ok(hub.info()),
+        HostCmd::AgentBind { pane, agent, cwd } => {
+            hub.agents.bind(&pane, &agent, &cwd);
+            Ok(json!({}))
+        }
+        HostCmd::AgentPaneExited { pane } => {
+            hub.agents.idle(&pane);
+            Ok(json!({}))
+        }
+        HostCmd::AgentSend { pane, text } => agent_send(hub, &pane, &text).await,
+        HostCmd::ProjectList {} => crate::projects::list(&hub.dir).await,
+        HostCmd::ProjectLogs {
+            id,
+            service,
+            lines,
+            query,
+        } => crate::projects::logs(&hub.dir, &id, service, lines, query).await,
+        HostCmd::ProjectService { id, service, op } => {
+            crate::projects::service(&hub.dir, &id, service, &op).await
+        }
+        HostCmd::ProjectAction { id, key, confirmed } => {
+            crate::projects::action(&hub.dir, &id, &key, confirmed).await
+        }
+        HostCmd::MobilePairStart {} => Ok(hub.mobile.pair_start()),
+        HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
+        HostCmd::MobileRevoke { node_id } => hub.mobile.revoke(&node_id).map(|()| json!({})),
+        HostCmd::MobileSetScopes { node_id, scopes } => {
+            hub.mobile.set_scopes(&node_id, scopes).map(|()| json!({}))
+        }
+        HostCmd::AgentApprove { pane, req, allow } => {
+            hub.agents.approve(&pane, &req, allow).map(|()| json!({}))
+        }
+        HostCmd::AgentStatusAll {} => Ok(json!({
+            "panes": hub.agents.all(),
+            "hook_port": *hub.agents.port.lock(),
+        })),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
         lsp @ (HostCmd::LspOpen { .. }
         | HostCmd::LspChange { .. }
@@ -637,6 +709,27 @@ async fn raw(
     }
     s.detach(conn_id);
     let _ = w.shutdown().await;
+}
+
+/// Type a prompt into an agent's terminal: text, then Enter as a separate write (TUI
+/// agents such as omp treat a pasted `\r` inside the text as part of it). Refused while
+/// the agent works, so a phone never interleaves keystrokes with a running turn.
+async fn agent_send(hub: &Hub, pane: &str, text: &str) -> Result<Value, String> {
+    use crate::agents::State;
+    match hub.agents.state_of(pane) {
+        Some(State::Idle | State::Done) => {}
+        None => return Err("unknown agent pane".into()),
+        Some(_) => return Err("agent is working".into()),
+    }
+    let s = hub
+        .sessions_snapshot()
+        .into_iter()
+        .find(|s| s.meta.scope.pane_key.as_deref() == Some(pane) && s.exited().is_none())
+        .ok_or("no terminal for pane")?;
+    s.write(text.as_bytes()).map_err(|e| format!("{e:#}"))?;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    s.write(b"\r").map_err(|e| format!("{e:#}"))?;
+    Ok(json!({}))
 }
 
 #[cfg(test)]

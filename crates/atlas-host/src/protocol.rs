@@ -39,7 +39,7 @@ use serde_json::Value;
 
 pub const PROTO: u32 = 2;
 /// Capabilities reported by `info`; the desktop gates features on these.
-pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp"];
+pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents"];
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -293,6 +293,65 @@ pub enum HostCmd {
     LspApplyEditResult {
         id: String,
         applied: bool,
+    },
+    /// Remember which pane runs `agent` in `cwd` (fallback for hooks without a pane key).
+    AgentBind {
+        pane: String,
+        agent: String,
+        cwd: String,
+    },
+    /// The pane's process exited: back to Idle.
+    AgentPaneExited {
+        pane: String,
+    },
+    /// `{panes: {pane_key: status}, hook_port}`.
+    AgentStatusAll {},
+    /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
+    AgentApprove {
+        pane: String,
+        req: String,
+        allow: bool,
+    },
+    /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
+    AgentSend {
+        pane: String,
+        text: String,
+    },
+    /// Local projects of the desktop registry with their live service state.
+    ProjectList {},
+    /// Service logs (`query` = search, case-insensitive substring or `/regex/`).
+    ProjectLogs {
+        id: String,
+        #[serde(default)]
+        service: Option<String>,
+        #[serde(default)]
+        lines: Option<u64>,
+        #[serde(default)]
+        query: Option<String>,
+    },
+    /// `op`: `restart` | `start` | `stop` one service, or `up` (start the stack detached).
+    ProjectService {
+        id: String,
+        #[serde(default)]
+        service: Option<String>,
+        op: String,
+    },
+    /// Run an atlas.yaml action; ones with `confirm` need `confirmed: true`.
+    ProjectAction {
+        id: String,
+        key: String,
+        #[serde(default)]
+        confirmed: bool,
+    },
+    /// New one-time pairing code + this host's iroh address (desktop only).
+    MobilePairStart {},
+    MobileDevices {},
+    MobileRevoke {
+        node_id: String,
+    },
+    MobileSetScopes {
+        node_id: String,
+        scopes: Vec<crate::mobile::Scope>,
     },
 }
 

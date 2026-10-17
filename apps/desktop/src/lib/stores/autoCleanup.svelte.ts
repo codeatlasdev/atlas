@@ -22,7 +22,7 @@ export async function sweep(now = Date.now()) {
 		const prefs = cleanupPrefs(s);
 		const before = restorable(s.cleanedWorktrees, now);
 		const log = [...before];
-		// A worktree whose stack is up is in use whatever its agents did: idle mode never touches it.
+		// A worktree whose stack is up is in use, whatever its agents or its PR say: auto clean up never stops it.
 		const busy = new Set(store.projects.filter((p) => p.running).map((p) => p.id));
 		for (const w of candidates(ws.doc.worktrees, prefs, ws.doc.selected, now, busy)) {
 			const r = await api.worktreeAutoRemove(w.id, prefs.mode === "merged").catch((e) => {

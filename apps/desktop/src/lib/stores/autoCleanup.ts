@@ -26,8 +26,8 @@ export function cleanupPrefs(s: Record<string, unknown>): CleanupPrefs {
 }
 
 /**
- * Worktrees a sweep looks at: linked, not pinned, not the one on screen, and in idle mode N days without agent
- * activity and no running stack (`busy`). Merged mode is decided by Rust, which asks `gh`.
+ * Worktrees a sweep looks at: linked, not pinned, not the one on screen, no running stack (`busy`), and in idle
+ * mode N days without agent activity. Merged mode is decided by Rust, which asks `gh`.
  */
 export function candidates(
 	list: Worktree[],
@@ -42,7 +42,8 @@ export function candidates(
 			!w.isMain &&
 			!w.pinned &&
 			w.id !== selected &&
-			(prefs.mode === "merged" || (!busy.has(w.id) && now - w.lastActivityAt >= prefs.days * DAY)),
+			!busy.has(w.id) &&
+			(prefs.mode === "merged" || now - w.lastActivityAt >= prefs.days * DAY),
 	);
 }
 

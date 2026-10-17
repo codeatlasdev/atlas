@@ -29,12 +29,14 @@ describe("auto clean up (#58)", () => {
 		expect(candidates(list, { mode: "idle", days: 14 }, null, now).map((w) => w.id)).toEqual(["at"]);
 	});
 
-	// A shell or dev server with no agent leaves lastActivityAt old: a worktree whose stack is up is never idle.
-	test("idle mode skips a worktree whose stack is running", () => {
-		const list = [wt("up", { lastActivityAt: 0 }), wt("down", { lastActivityAt: 0 })];
-		const busy = new Set(["up"]);
-		expect(candidates(list, { mode: "idle", days: 14 }, null, now, busy).map((w) => w.id)).toEqual(["down"]);
-	});
+	// A shell or dev server with no agent leaves lastActivityAt old, and a merged PR does not mean the user stopped
+	// using the worktree: a running stack is never stopped by auto clean up, in either mode.
+	for (const mode of ["idle", "merged"])
+		test(`${mode} mode skips a worktree whose stack is running`, () => {
+			const list = [wt("up", { lastActivityAt: 0 }), wt("down", { lastActivityAt: 0 })];
+			const busy = new Set(["up"]);
+			expect(candidates(list, { mode, days: 14 }, null, now, busy).map((w) => w.id)).toEqual(["down"]);
+		});
 
 	test("the restore list drops entries older than 7 days and malformed ones", () => {
 		const ok = { repoId: "r", name: "n", branch: "b", at: now - RESTORE_MS + 1 };

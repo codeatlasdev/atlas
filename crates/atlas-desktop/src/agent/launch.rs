@@ -11,8 +11,9 @@ fn desktop_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".atlas/desktop")
 }
 
+/// Published by the local hostd's hook server (`atlas_host::agents::hook_server`).
 pub fn hook_endpoint_file() -> PathBuf {
-    desktop_dir().join("hook-endpoint.env")
+    atlas_host::paths::hook_endpoint(&atlas_host::paths::base())
 }
 
 /// Overlay that keeps omp from resuming an unrelated session in a fresh tab.

@@ -370,8 +370,6 @@ fn main() {
             app.manage(servers);
             app.manage(std::sync::Arc::new(host::HostHub::default()));
             host::start(&handle);
-            app.manage(std::sync::Arc::new(agent::hooks::AgentHub::default()));
-            agent::hooks::start(&handle);
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
             ctl::start(&handle);

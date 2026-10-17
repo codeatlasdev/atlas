@@ -2,10 +2,9 @@
 //!
 //! Per host alias (from `~/.ssh/config`): check `~/.atlas/bin/atlas` (upload
 //! `~/.atlas/remote/atlas-<arch>-linux` when missing), start `atlas hostd`, then
-//! keep `ssh -N -L <local sock>:<remote sock> -R <port>:127.0.0.1:<hook port>`
-//! running and connect a `HostClient` through it. The reverse forward lets the
-//! omp status extension on the host reach this app's hook server; the host's
-//! `~/.atlas/desktop/hook-endpoint.env` is written to point at it.
+//! keep `ssh -N -L <local sock>:<remote sock>` running and connect a `HostClient`
+//! through it. The host's own hostd runs the agent hook server, so its agents'
+//! status arrives as `agent_status` pushes over this connection.
 //! Reconnects with backoff while the host stays in `settings.sshHosts`.
 
 use std::path::PathBuf;
@@ -147,24 +146,6 @@ async fn prepare(alias: &str) -> Result<(String, String), String> {
 
 async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String> {
     let (home, token) = prepare(alias).await?;
-    let hook_port = *app
-        .state::<Arc<crate::agent::hooks::AgentHub>>()
-        .port
-        .lock();
-    let hook_token = app
-        .state::<Arc<crate::agent::hooks::AgentHub>>()
-        .token
-        .lock()
-        .clone();
-    // The status extension on the host reads this file; same port through -R.
-    ssh(
-        alias,
-        &format!(
-            "mkdir -p ~/.atlas/desktop && umask 077 && printf 'ATLAS_HOOK_PORT={hook_port}\\nATLAS_HOOK_TOKEN={hook_token}\\n' > ~/.atlas/desktop/hook-endpoint.env"
-        ),
-        Duration::from_secs(15),
-    )
-    .await?;
     let dir = local_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let sock = dir.join(format!("{alias}.sock"));
@@ -180,8 +161,6 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
         ])
         .arg("-L")
         .arg(format!("{}:{home}/.atlas/hostd.sock", sock.display()))
-        .arg("-R")
-        .arg(format!("127.0.0.1:{hook_port}:127.0.0.1:{hook_port}"))
         .arg(alias)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

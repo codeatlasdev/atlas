@@ -240,6 +240,18 @@ impl HostHub {
             }
         }
     }
+
+    /// Run `cmd` on every connected host; failures (e.g. an older host) are skipped.
+    pub async fn call_all(&self, cmd: &str, args: Value) -> Vec<Value> {
+        let clients: Vec<HostClient> = self.clients.read().await.values().cloned().collect();
+        let mut out = Vec::new();
+        for c in clients {
+            if let Ok(v) = c.call(cmd, args.clone()).await {
+                out.push(v);
+            }
+        }
+        out
+    }
 }
 
 /// Filesystem helpers over hostd, so local and SSH checkouts share one code path.
@@ -324,6 +336,12 @@ fn forward(app: &AppHandle, ev: &Value) {
             let _ = app.emit(
                 &format!("pty://{pty}"),
                 json!({"data": ev["data"], "replay": k == "pty_replay"}),
+            );
+        }
+        Some("agent_status") => {
+            let _ = app.emit(
+                "agent://status",
+                json!({"pane_key": ev["pane_key"], "status": ev["status"]}),
             );
         }
         Some("disconnected") | None => {}

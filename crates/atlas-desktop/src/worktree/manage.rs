@@ -29,22 +29,34 @@ pub async fn worktree_remove(
 }
 
 /// Auto clean up (#58): remove a worktree only when nothing would be lost, never with `--force`, and keep its
-/// branch so the frontend can restore it. `pr_head` is the head sha of the merged PR that made it a candidate.
-/// Returns `{kept: "dirty"|"unpushed"}` or `{removed: true, branch}`.
+/// branch so the frontend can restore it. With `merged`, Rust asks `gh` itself: the worktree is removed only when
+/// its branch's PR is MERGED, and only commits up to that PR's head count as pushed.
+/// Returns `{kept: "not_merged"|"dirty"|"secrets"|"unpushed"}` or `{removed: true, branch}`.
 #[tauri::command]
 pub async fn worktree_auto_remove(
     app: AppHandle,
     hub: State<'_, Arc<HostHub>>,
     live: State<'_, LiveHub>,
     id: String,
-    pr_head: Option<String>,
+    merged: bool,
 ) -> Result<Value, String> {
+    use crate::git_branch::{gh_runner, hostd_runner, keep_reason, merged_head};
     let e = registry::load()?
         .into_iter()
         .find(|e| e.id == id)
         .ok_or("unknown worktree")?;
-    let run = crate::git_branch::hostd_runner(hub.inner().clone(), PathBuf::from(&e.root));
-    if let Some(why) = crate::git_branch::keep_reason(&run, pr_head.as_deref()).await? {
+    let dir = PathBuf::from(&e.root);
+    let head = match (merged, &e.branch) {
+        (false, _) => None,
+        (true, Some(b)) => match merged_head(&gh_runner(hub.inner().clone(), dir.clone()), b).await
+        {
+            Some(h) => Some(h),
+            None => return Ok(json!({"kept": "not_merged"})),
+        },
+        (true, None) => return Ok(json!({"kept": "not_merged"})),
+    };
+    if let Some(why) = keep_reason(&hostd_runner(hub.inner().clone(), dir), head.as_deref()).await?
+    {
         return Ok(json!({"kept": why}));
     }
     remove(&hub, &id, false, true).await?;

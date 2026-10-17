@@ -225,14 +225,11 @@ export const api = {
 	gitRefs: (id: string) => invoke<string[]>("git_refs", { id }),
 	worktreesImport: (repoId: string) => invoke<number>("worktrees_import", { repoId }),
 	worktreeStats: (id: string) => invoke<WorktreeStats>("worktree_stats", { id }),
-	worktreeAutoRemove: (id: string, prHead?: string) =>
-		invoke<{ kept: "dirty" | "unpushed" } | { removed: true; branch: string | null }>(
-			"worktree_auto_remove",
-			{
-				id,
-				prHead: prHead ?? null,
-			},
-		),
+	/** `merged`: Rust checks with `gh` that the branch's PR is merged before removing anything. */
+	worktreeAutoRemove: (id: string, merged: boolean) =>
+		invoke<
+			{ kept: "not_merged" | "dirty" | "secrets" | "unpushed" } | { removed: true; branch: string | null }
+		>("worktree_auto_remove", { id, merged }),
 };
 
 /** Tauri rejects with the command's error string. */

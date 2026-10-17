@@ -106,6 +106,28 @@ jobs:
       - name: svelte-check, prettier, bun test
         run: bun run desktop:check
 
+  mobile:
+    name: Mobile app
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+
+      - name: Native crate builds
+        run: cargo build --locked --manifest-path apps/mobile/native/Cargo.toml
+
+      - name: analyze, flutter test
+        run: scripts/mobile-check.sh
+
   site:
     name: Site build
     needs: plan
@@ -205,7 +227,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, frontend, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, frontend, mobile, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -47,6 +47,7 @@ export function createEngine(deps: EngineDeps): Engine {
 	const buffers = new Map<Category, Promise<unknown>>();
 	let ctx: AudioCtxLike | null = null;
 	let held: Category | null = null;
+	let deviceFailed = false;
 
 	function decoded(category: Category, c: AudioCtxLike) {
 		let p = buffers.get(category);
@@ -89,7 +90,12 @@ export function createEngine(deps: EngineDeps): Engine {
 		gesture() {
 			if (!deps.AudioContext) return;
 			ctx ??= new deps.AudioContext();
-			if (ctx.state === "suspended") void ctx.resume();
+			// #87: WebKitGTK without a usable audio device rejects resume(); unhandled, every gesture surfaced as an
+			// app error. A device that failed to start stays silent for the session instead of being retried.
+			if (ctx.state === "suspended" && !deviceFailed)
+				Promise.resolve(ctx.resume()).catch(() => {
+					deviceFailed = true;
+				});
 			if (held) {
 				const category = held;
 				held = null;

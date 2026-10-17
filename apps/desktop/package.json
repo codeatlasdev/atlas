@@ -24,7 +24,7 @@
     "vite": "^8.3.4"
   },
   "dependencies": {
-    "@codeatlasdev/ui": "^4.2.0",
+    "@codeatlasdev/ui": "^4.5.0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-css": "^6.3.1",

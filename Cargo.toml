@@ -10,6 +10,8 @@ members = [
     "crates/atlas-lsp",
     "crates/atlas-term",
 ]
+exclude = ["apps/mobile/native"]
+
 # `cargo build|test` without `--workspace` skips the GUI crates (Tauri/WebKit, the Metal terminal), so the CLI,
 # TUI, runtime and MCP server build anywhere without system GUI libraries. CI and `bun run check` pass
 # `--workspace` (on Linux that needs WebKitGTK: see docs/installation.md, "Build from source").

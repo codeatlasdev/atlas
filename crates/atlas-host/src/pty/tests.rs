@@ -15,6 +15,56 @@ fn title_split_across_chunks() {
     assert_eq!(p.feed(b"\x1b]1;icon\x07"), None);
 }
 
+/// #56: an agent without hooks shows working/idle from terminal output. The event is throttled to one per
+/// `ACTIVITY_EVERY` so a stream of output costs one line a second, not one per chunk.
+#[test]
+fn activity_is_reported_at_most_once_per_interval() {
+    use super::stream::{ACTIVITY_EVERY, Activity};
+    let t0 = std::time::Instant::now();
+    let mut a = Activity::default();
+    assert!(a.due(t0), "first output");
+    assert!(!a.due(t0 + ACTIVITY_EVERY / 2), "inside the interval");
+    assert!(a.due(t0 + ACTIVITY_EVERY), "a full interval later");
+    assert!(!a.due(t0 + ACTIVITY_EVERY), "same instant twice");
+}
+
+fn sh(cmd: &str) -> PtyCreate {
+    PtyCreate {
+        cwd: "/".into(),
+        argv: vec!["/bin/sh".into(), "-c".into(), cmd.into()],
+        env: Default::default(),
+        cols: 80,
+        rows: 24,
+        scope: Default::default(),
+        title: None,
+        mode: Default::default(),
+    }
+}
+
+/// Listener-only clients (the app watches every pty that way) get `pty_activity` when the program prints,
+/// and none from a program that stays silent.
+#[tokio::test(flavor = "multi_thread")]
+async fn listeners_get_activity_only_from_output() {
+    let dir = std::env::temp_dir().join(format!("atlas-host-act-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for (cmd, want) in [("printf hello", true), ("sleep 0.2", false)] {
+        let s = Session::spawn(sh(cmd), &dir).unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        s.attach(1, tx, false, false);
+        let t0 = std::time::Instant::now();
+        while s.exited().is_none() {
+            assert!(t0.elapsed() < Duration::from_secs(10), "{cmd} never exited");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let mut got = false;
+        while let Ok(l) = rx.try_recv() {
+            got |= l.contains(r#""ev":"pty_activity""#);
+        }
+        assert_eq!(got, want, "{cmd}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A raw reader that never reads must not freeze the program: it is dropped
 /// after `RAW_STALL` and the output (far more than the queues hold) completes.
 #[tokio::test(flavor = "multi_thread")]

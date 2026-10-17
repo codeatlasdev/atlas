@@ -613,6 +613,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 	entry(
 		"agents",
+		"Custom agents",
+		"agent-custom",
+		"Add agent",
+		"Run any agent CLI (OpenCode, Gemini CLI, Amp…) from the + menu and ⌘⇧A.",
+		"custom opencode gemini amp aider cli preset add",
+	),
+	entry(
+		"agents",
 		"Quick commands",
 		"quick",
 		"Quick commands",

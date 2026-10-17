@@ -9,6 +9,7 @@ import { host } from "#lib/host.ts";
 import { titleState } from "#lib/title.ts";
 import { noticeText, shouldNotify, type TermNotice } from "#lib/termNotice.ts";
 import { uid, ws, type Tab } from "#lib/stores/workspace.svelte.ts";
+import { activityTracker } from "#lib/stores/agentActivity.ts";
 
 interface AgentInfo {
 	id: string;
@@ -16,6 +17,8 @@ interface AgentInfo {
 	installed: boolean;
 	path: string | null;
 	version: string | null;
+	/** A user-defined agent (Settings → Agents → Custom agents), any CLI. */
+	custom: boolean;
 }
 
 export type AgentState = "idle" | "working" | "blocked" | "waiting" | "done";
@@ -66,6 +69,11 @@ class Agents {
 	ompIntegration = $state<"ok" | "missing" | "unknown">("unknown");
 	private focused = true;
 	private off: UnlistenFn[] = [];
+	/** Working/idle from terminal output, for custom agents (no hooks unless they call `atlas hook`). */
+	private activity = activityTracker((pane, state) => {
+		const tab = ws.tab(pane);
+		if (tab) this.fallback(tab, state);
+	});
 
 	async init() {
 		const s = await api.settings();
@@ -87,14 +95,25 @@ class Agents {
 			await listen<{ ev: string; pty?: string; title?: string }>("host://event", (e) => {
 				const tab = e.payload.pty ? ws.doc.tabs.find((t) => t.pty === e.payload.pty && t.agent) : undefined;
 				if (!tab) return;
-				if (e.payload.ev === "pty_exit") void invoke("agent_pane_exited", { pane: tab.id });
-				if (e.payload.ev === "pty_title") this.fromTitle(tab, e.payload.title ?? "");
+				if (e.payload.ev === "pty_exit") {
+					this.activity.forget(tab.id);
+					void invoke("agent_pane_exited", { pane: tab.id });
+				}
+				if (e.payload.ev === "pty_title") {
+					const state = titleState(e.payload.title ?? "");
+					if (state) this.fallback(tab, state);
+				}
+				if (e.payload.ev === "pty_activity" && this.list.find((a) => a.id === tab.agent)?.custom)
+					this.activity.bump(tab.id);
 			}),
 		);
 		this.status = await invoke<Record<string, AgentStatus>>("agent_status_all");
 		// Restart recovery: panes the hub doesn't know get their state from the title.
 		for (const t of ws.doc.tabs)
-			if (t.agent && t.pty && !this.status[t.id]) this.fromTitle(t, ws.titles[t.pty] ?? "");
+			if (t.agent && t.pty && !this.status[t.id]) {
+				const state = titleState(ws.titles[t.pty] ?? "");
+				if (state) this.fallback(t, state);
+			}
 		this.list = await invoke<AgentInfo[]>("agent_list");
 		void this.checkOmp();
 	}
@@ -104,10 +123,10 @@ class Agents {
 		this.off = [];
 	}
 
-	private fromTitle(tab: Tab, title: string) {
-		const state = titleState(title);
+	/** State from the terminal (title, output) when the agent's hooks have been silent for `HOOK_GRACE_MS`. */
+	private fallback(tab: Tab, state: AgentState) {
 		const cur = this.status[tab.id];
-		if (!state || (cur && Date.now() - cur.updated_at < HOOK_GRACE_MS)) return;
+		if (cur && Date.now() - cur.updated_at < HOOK_GRACE_MS) return;
 		if (cur?.state === state) return;
 		this.apply(
 			tab.id,
@@ -177,6 +196,11 @@ class Agents {
 		].slice(0, INBOX_MAX);
 		if (this.notify.enabled && (away || !this.notify.suppressWhenFocused))
 			void invoke("agent_notify", { title, body, sound: this.notify.sound }).catch(() => {});
+	}
+
+	/** Re-read the agent list (after custom agents change in Settings). */
+	async refresh() {
+		this.list = await invoke<AgentInfo[]>("agent_list");
 	}
 
 	async setDefault(id: string) {

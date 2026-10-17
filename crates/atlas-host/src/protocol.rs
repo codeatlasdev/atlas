@@ -4,7 +4,9 @@
 //!   reply `{"ok":true,"data":{..info}}` or `{"ok":false,"error":"unauthorized"}` + close.
 //! - Request `{"id":n,"cmd":"..","args":{..}}` → `{"id":n,"ok":true,"data":{..}}` |
 //!   `{"id":n,"ok":false,"error":".."}`.
-//! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_exit"|"fs_event",..}`.
+//! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"fs_event",..}`.
+//!   `pty_activity {pty}` goes to every attached connection (listeners too) at most once a second while the
+//!   program prints; an older daemon simply never sends it.
 //! - `pty_attach_raw` (first and only command on a connection): after its reply line the
 //!   connection carries the pty's raw output bytes (replay first), no framing, until the pty
 //!   exits (hostd closes) or the client closes. Terminal renderers use it: no JSON, no base64.

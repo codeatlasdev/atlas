@@ -33,7 +33,7 @@ pub async fn agent_command(
     prompt: Option<String>,
     resume: Option<String>,
 ) -> Result<Value, String> {
-    let def = registry::get(&agent).ok_or_else(|| format!("unknown agent {agent}"))?;
+    let def = registry::find(&agent).ok_or_else(|| format!("unknown agent {agent}"))?;
     let entry = crate::registry::load()?
         .into_iter()
         .find(|e| e.id == worktree_id);
@@ -69,7 +69,7 @@ pub async fn agent_command(
         }
         None => (
             Vec::new(),
-            registry::which(def.bin)
+            registry::which(&def.bin)
                 .ok_or_else(|| format!("{} is not installed (not on PATH)", def.bin))?
                 .to_string_lossy()
                 .into_owned(),
@@ -86,28 +86,25 @@ pub async fn agent_command(
     if def.id == "omp" {
         argv.push(format!("--config={overlay}"));
     }
-    if yolo {
-        argv.extend(def.yolo_args.iter().map(|s| s.to_string()));
-    }
-    if let Some(a) = extra.and_then(|m| m.get(def.id)).and_then(Value::as_str) {
-        argv.extend(a.split_whitespace().map(str::to_string));
-    }
-    if let Some(r) = resume.filter(|r| !r.is_empty()) {
-        argv.extend((def.resume)(&r));
-    } else if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
-        argv.push(p);
-    }
+    argv.extend(registry::tail_args(
+        &def,
+        yolo,
+        extra.and_then(|m| m.get(&def.id)).and_then(Value::as_str),
+        prompt,
+        resume,
+    ));
     let token = atlas_host::paths::new_id();
-    Ok(json!({
-        "argv": argv,
-        "env": {
-            "ATLAS_HOOK_ENDPOINT": endpoint,
-            "ATLAS_PANE_KEY": tab_id,
-            "ATLAS_TAB_ID": tab_id,
-            "ATLAS_WORKTREE_ID": worktree_id,
-            "ATLAS_LAUNCH_TOKEN": token,
-            "ATLAS_AGENT": def.id,
-        },
-        "label": def.label,
-    }))
+    let mut env: serde_json::Map<String, Value> =
+        def.env.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
+    for (k, v) in [
+        ("ATLAS_HOOK_ENDPOINT", endpoint),
+        ("ATLAS_PANE_KEY", tab_id.clone()),
+        ("ATLAS_TAB_ID", tab_id),
+        ("ATLAS_WORKTREE_ID", worktree_id),
+        ("ATLAS_LAUNCH_TOKEN", token),
+        ("ATLAS_AGENT", def.id.clone()),
+    ] {
+        env.insert(k.into(), json!(v));
+    }
+    Ok(json!({"argv": argv, "env": env, "label": def.label}))
 }

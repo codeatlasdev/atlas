@@ -22,6 +22,25 @@ const COALESCE_BYTES: usize = 64 * 1024;
 /// A raw reader that accepts nothing for this long is dropped (hung client): the
 /// program must not freeze behind it.
 const RAW_STALL: Duration = Duration::from_secs(2);
+/// At most one `pty_activity` per interval while a program prints (#56: working/idle of agents without hooks).
+pub(super) const ACTIVITY_EVERY: Duration = Duration::from_secs(1);
+
+/// Throttle of `pty_activity`, one per coalescer.
+#[derive(Default)]
+pub(super) struct Activity {
+    last: Option<std::time::Instant>,
+}
+
+impl Activity {
+    /// True when output at `now` should be reported.
+    pub(super) fn due(&mut self, now: std::time::Instant) -> bool {
+        if self.last.is_some_and(|l| now < l + ACTIVITY_EVERY) {
+            return false;
+        }
+        self.last = Some(now);
+        true
+    }
+}
 
 enum Msg {
     Data(Vec<u8>),
@@ -50,6 +69,7 @@ impl Session {
 
     async fn coalesce(self: Arc<Self>, mut rx: mpsc::Receiver<Msg>) {
         let mut title = TitleParser::default();
+        let mut activity = Activity::default();
         while let Some(msg) = rx.recv().await {
             let mut pending = match msg {
                 Msg::Data(d) => d,
@@ -81,6 +101,10 @@ impl Session {
             }
             if let Some(t) = title.feed(&pending) {
                 self.set_title(t);
+            }
+            if !pending.is_empty() && activity.due(std::time::Instant::now()) {
+                let line = json!({"ev": "pty_activity", "pty": self.id}).to_string();
+                self.buf.lock().notify(&line);
             }
             for (conn, out) in self.output(&pending) {
                 if !send_raw(&out, &pending).await {

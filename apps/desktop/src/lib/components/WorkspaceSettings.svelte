@@ -38,9 +38,10 @@
 	});
 
 	async function restore(c: Cleaned) {
+		// Drop the entry only once the worktree exists again: a failed create keeps the branch reachable from here.
+		if (!(await worktrees.create({ repoId: c.repoId, name: c.name, branch: c.branch }))) return;
 		cleaned = cleaned.filter((x) => x !== c);
 		save({ cleanedWorktrees: cleaned.length ? cleaned : null });
-		await worktrees.create({ repoId: c.repoId, name: c.name, branch: c.branch });
 	}
 
 	function save(patch: Record<string, unknown>) {

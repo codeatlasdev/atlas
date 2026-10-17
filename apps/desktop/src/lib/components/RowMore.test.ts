@@ -124,14 +124,13 @@ test("a second click on the … closes the menu again without activating the row
 });
 
 // The real rows import the whole store graph (`import.meta.glob`, Tauri) and cannot be mounted under bun, so the
-// three that carry a "…" are pinned by what their markup must contain. Verified red: restore the bare `trigger` span
+// two that carry a RowMore "…" are pinned by what their markup must contain. Verified red: restore the bare `trigger` span
 // in any of them and this fails.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 const rows = {
 	"sidebar/ProjectHead.svelte": "Project menu",
 	"sidebar/WorktreeRow.svelte": "Worktree menu",
-	"Explorer.svelte": "More actions",
 };
 for (const [file, label] of Object.entries(rows)) {
 	test(`${file}: the … is a RowMore button and the row ignores events from its menu`, () => {
@@ -154,6 +153,25 @@ test("ProjectHead.svelte: right-click opens the RowMore menu; RowMenu carries Re
 	expect(head).toContain("<RowMenu ");
 	expect(readFileSync(join(import.meta.dir, "sidebar/RowMenu.svelte"), "utf8")).toContain(
 		"Remove from Atlas",
+	);
+});
+
+// The Explorer row has one menu mechanism: its "…" is a button that stops its own click and key and opens the tree's
+// PointerMenu (the one item list right-click and Shift+F10 use) at its rect. The row and the tree both consult
+// `fromMenu`, so nothing from a menu activates a row or moves the tree cursor.
+test("Explorer.svelte: the … opens the shared PointerMenu and the row/tree ignore events from a menu", () => {
+	const src = readFileSync(join(import.meta.dir, "Explorer.svelte"), "utf8");
+	expect(src).not.toMatch(/<DropdownMenu\b/);
+	expect(src).not.toMatch(/\{#snippet trigger\(\)\}/);
+	const more = src.match(/<button[^>]*class="more"[\s\S]*?<\/button\s*>/)?.[0] ?? "";
+	expect(more).toContain('aria-label="More actions"');
+	expect(more).toContain("ev.stopPropagation()");
+	expect(more).toContain("openMenu(menuOf(rel, isDir)");
+	// row click, row Space key and the tree's key handler all consult it
+	expect(src.match(/fromMenu\(/g).length).toBeGreaterThanOrEqual(3);
+	expect(src).toMatch(/onclick=\{\(ev\) => fromMenu\(ev\) \|\| activate\(rel, isDir\)\}/);
+	expect(src).toMatch(
+		/function onTreeKey\(ev: KeyboardEvent\) \{\s*if \(editing \|\| fromMenu\(ev\)\) return;/,
 	);
 });
 

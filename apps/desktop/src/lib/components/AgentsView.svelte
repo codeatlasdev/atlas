@@ -127,7 +127,7 @@
 					<h2>{col.title} <span>{items.length}</span></h2>
 					{#each items as p (p.tab.id)}
 						<button class="card" onclick={() => focus(p.tab.id)}>
-							<Card material="glass" p="3">
+							<Card padding="sm">
 								<div class="row">
 									<AgentGlyph state={p.st?.state ?? "idle"} /><AgentLogo agent={p.tab.agent} size={12} /><b
 										>{p.tab.agent}</b

@@ -1,17 +1,18 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 	import { listen } from "@tauri-apps/api/event";
-	import { DropdownMenuItem, Skeleton, toast } from "@codeatlasdev/ui";
-	import { ChevronRight, ChevronDown, Ellipsis, FilePlus, LocateFixed } from "@lucide/svelte";
-	import RowMore from "#lib/components/RowMore.svelte";
+	import { Skeleton, toast } from "@codeatlasdev/ui";
+	import PointerMenu from "#lib/components/PointerMenu.svelte";
 	import { fromMenu } from "#lib/components/rowEvent.ts";
+	import { ChevronRight, ChevronDown, Ellipsis, FilePlus, FolderPlus, LocateFixed } from "@lucide/svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { fileIcon, folderIcon } from "#lib/icons.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { host, type FsEntry } from "#lib/host.ts";
 	import { git, errText } from "#lib/api.ts";
+	import { duplicateName, menuItems, type MenuAction, type MenuTarget } from "#lib/stores/explorerMenu.ts";
 	import { uid, ws } from "#lib/stores/workspace.svelte.ts";
-	import { openFile } from "#lib/stores/files.svelte.ts";
+	import { openFile, openFileToSide } from "#lib/stores/files.svelte.ts";
 	import { errors } from "#lib/errors/errors.svelte.ts";
 	import { foldersToReload, loadFolder } from "#lib/stores/explorerLoad.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
@@ -96,11 +97,11 @@
 	}
 
 	/** Row being edited in place: a new file inside `dir`, or a rename of `rel`. */
-	let editing = $state<{ mode: "new" | "rename"; rel: string; value: string } | null>(null);
+	let editing = $state<{ mode: "new" | "folder" | "rename"; rel: string; value: string } | null>(null);
 	let editInput: HTMLInputElement | undefined = $state();
 
-	async function beginEdit(mode: "new" | "rename", rel: string) {
-		if (mode === "new") {
+	async function beginEdit(mode: "new" | "folder" | "rename", rel: string) {
+		if (mode !== "rename") {
 			expanded[rel] = true;
 			if (!children[rel]) await load(rel);
 		}
@@ -113,6 +114,7 @@
 	}
 
 	const newFile = (dir: string) => beginEdit("new", dir);
+	const newFolder = (dir: string) => beginEdit("folder", dir);
 	const rename = (rel: string) => beginEdit("rename", rel);
 
 	async function commitEdit() {
@@ -120,7 +122,11 @@
 		editing = null;
 		const name = e?.value.trim();
 		if (!e || !name || name.includes("/")) return;
-		if (e.mode === "new") {
+		if (e.mode === "folder") {
+			await host.fsMkdir(`${root}/${join(e.rel, name)}`).catch((err) => toast.error(errText(err)));
+			await load(e.rel);
+			expanded[join(e.rel, name)] = true;
+		} else if (e.mode === "new") {
 			const rel = join(e.rel, name);
 			await host.fsWrite(`${root}/${rel}`, "").catch((err) => toast.error(errText(err)));
 			await load(e.rel);
@@ -132,7 +138,7 @@
 				.catch((err) => toast.error(errText(err)));
 			await load(dir);
 		}
-		focusRow(e.mode === "new" ? join(e.rel, name) : join(parentOf(e.rel), name));
+		focusRow(e.mode === "rename" ? join(parentOf(e.rel), name) : join(e.rel, name));
 	}
 
 	function onEditKey(ev: KeyboardEvent) {
@@ -173,7 +179,9 @@
 	}
 
 	function onTreeKey(ev: KeyboardEvent) {
-		if (editing || ev.metaKey || ev.ctrlKey || ev.altKey || fromMenu(ev)) return;
+		if (editing || fromMenu(ev)) return;
+		if (onTreeContextKey(ev)) return;
+		if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 		const move = navMove(ev.key, visibleRows(children, expanded), cursor, expanded);
 		if (!move) return;
 		ev.preventDefault();
@@ -204,6 +212,96 @@
 
 	const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast.success("Copied"));
 
+	/**
+	 * One menu for the `…` button, right-click and Shift+F10 / the menu key: `menuTarget` says what it is about,
+	 * `menuItems` what it offers, `PointerMenu` where it opens.
+	 */
+	let menuTarget = $state<MenuTarget>({ kind: "root" });
+	let pointerMenu: PointerMenu | undefined = $state();
+
+	async function openMenu(target: MenuTarget, x: number, y: number) {
+		menuTarget = target;
+		if (target.kind !== "root") cursor = target.rel;
+		await tick();
+		await pointerMenu?.openAt(x, y);
+	}
+
+	function menuOf(rel: string, isDir: boolean): MenuTarget {
+		return isDir ? { kind: "dir", rel } : { kind: "file", rel, status: statusOf(status, rel) };
+	}
+
+	/** Right-click on a row (`rel` set) or on the empty area (the worktree root). */
+	function onContext(ev: MouseEvent, rel?: string, isDir = false) {
+		ev.preventDefault();
+		ev.stopPropagation();
+		void openMenu(rel === undefined ? { kind: "root" } : menuOf(rel, isDir), ev.clientX, ev.clientY);
+	}
+
+	/** Shift+F10 / the context-menu key on the focused row: open under it, like a native tree. */
+	function onTreeContextKey(ev: KeyboardEvent) {
+		if (!(ev.key === "ContextMenu" || (ev.key === "F10" && ev.shiftKey))) return false;
+		const row = (ev.target as Element).closest<HTMLElement>("[data-rel]");
+		if (!row || row.dataset.rel === undefined) return false;
+		ev.preventDefault();
+		const r = row.getBoundingClientRect();
+		const rel = row.dataset.rel;
+		void openMenu(menuOf(rel, row.getAttribute("aria-expanded") !== null), r.left + 24, r.bottom);
+		return true;
+	}
+
+	async function duplicate(rel: string) {
+		const dir = parentOf(rel);
+		const name = rel.split("/").pop() ?? rel;
+		const taken = new Set((children[dir] ?? []).map((e) => e.name));
+		const to = join(dir, duplicateName(name, taken));
+		const r = await host.exec(root, ["cp", "-R", "--", `${root}/${rel}`, `${root}/${to}`]).catch((e) => e);
+		if (r instanceof Error || (r as { code?: number }).code) {
+			toast.error(r instanceof Error ? errText(r) : (r as { stderr: string }).stderr || "Duplicate failed");
+			return;
+		}
+		await load(dir);
+		focusRow(to);
+	}
+
+	/** Runs one entry of `menuItems`; `t` is the target the menu was opened for. */
+	async function runMenu(action: MenuAction, t: MenuTarget) {
+		const rel = t.kind === "root" ? "" : t.rel;
+		const dir = t.kind === "file" ? parentOf(rel) : rel;
+		switch (action) {
+			case "open":
+				return openFile(worktreeId, rel);
+			case "open-side":
+				return openFileToSide(worktreeId, rel);
+			case "terminal":
+				return void ws.newTerminal(worktreeId, { cwd: dir ? `${root}/${dir}` : root });
+			case "new-file":
+				return newFile(dir);
+			case "new-folder":
+				return newFolder(dir);
+			case "rename":
+				return rename(rel);
+			case "duplicate":
+				return duplicate(rel);
+			case "copy-path":
+				return copy(rel ? `${root}/${rel}` : root);
+			case "copy-relative-path":
+				return copy(rel);
+			case "reveal":
+				return host.exec(root, ["open", "-R", rel ? `${root}/${rel}` : root]);
+			case "stage":
+				return gitDo(["add", "--", rel]);
+			case "discard":
+				return (
+					(await confirmDialog(`Discard changes to ${rel}?`, {
+						confirmLabel: "Discard",
+						destructive: true,
+					})) && gitDo(["checkout", "--", rel])
+				);
+			case "delete":
+				return remove(rel, t.kind === "dir");
+		}
+	}
+
 	function onkeydown(e: KeyboardEvent) {
 		if (e.metaKey && e.altKey && e.shiftKey && e.code === "KeyC") {
 			const t = ws.tab(ws.focusedGroup(worktreeId).activeTab);
@@ -218,7 +316,7 @@
 <svelte:window {onkeydown} />
 
 {#snippet newRow(dir: string, depth: number)}
-	{#if editing?.mode === "new" && editing.rel === dir}
+	{#if editing && editing.mode !== "rename" && editing.rel === dir}
 		<div class="row editing" style:padding-left="{8 + depth * prefs.value.project_panel.indent_size}px">
 			<span class="sp"></span>
 			<input
@@ -255,6 +353,7 @@
 			ondragstart={(ev) => ev.dataTransfer?.setData("text/plain", `${root}/${rel}`)}
 			onfocus={() => (cursor = rel)}
 			onclick={(ev) => fromMenu(ev) || activate(rel, isDir)}
+			oncontextmenu={(ev) => onContext(ev, rel, isDir)}
 			onkeydown={(ev) => {
 				if (ev.key !== " " || fromMenu(ev) || ev.target !== ev.currentTarget) return;
 				ev.preventDefault();
@@ -286,32 +385,18 @@
 			{:else}
 				<span class="name">{e.name}</span>
 			{/if}
-			<RowMore label="More actions" class="more">
-				{#snippet icon()}<Ellipsis size={12} />{/snippet}
-				{#if isDir}<DropdownMenuItem onclick={() => newFile(rel)}>New file</DropdownMenuItem>{/if}
-				<DropdownMenuItem onclick={() => rename(rel)}>Rename</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => copy(`${root}/${rel}`)}>Copy path</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => copy(rel)}>Copy relative path</DropdownMenuItem>
-				<DropdownMenuItem onclick={() => host.exec(root, ["open", "-R", `${root}/${rel}`])}
-					>Reveal in Finder</DropdownMenuItem
-				>
-				{#if st && st !== "ignored" && !isDir}
-					<DropdownMenuItem onclick={() => gitDo(["add", "--", rel])}>Stage</DropdownMenuItem>
-					{#if st !== "untracked"}
-						<DropdownMenuItem
-							variant="destructive"
-							onclick={async () =>
-								(await confirmDialog(`Discard changes to ${rel}?`, {
-									confirmLabel: "Discard",
-									destructive: true,
-								})) && gitDo(["checkout", "--", rel])}
-						>
-							Discard changes
-						</DropdownMenuItem>
-					{/if}
-				{/if}
-				<DropdownMenuItem variant="destructive" onclick={() => remove(rel, isDir)}>Delete</DropdownMenuItem>
-			</RowMore>
+			<button
+				type="button"
+				class="more"
+				aria-label="More actions"
+				tabindex="-1"
+				onclick={(ev) => {
+					ev.stopPropagation();
+					const r = ev.currentTarget.getBoundingClientRect();
+					void openMenu(menuOf(rel, isDir), r.right, r.bottom);
+				}}
+				onkeydown={(ev) => ev.stopPropagation()}><Ellipsis size={12} /></button
+			>
 		</div>
 		{#if isDir && expanded[rel]}{@render tree(rel, depth + 1)}{/if}
 	{/each}
@@ -344,10 +429,24 @@
 					</button>
 				{/snippet}
 			</Tip>
+			<Tip label="New folder" side="bottom">
+				{#snippet child(props)}
+					<button {...props} class="hbtn" aria-label="New folder" onclick={() => newFolder("")}>
+						<FolderPlus size={13} />
+					</button>
+				{/snippet}
+			</Tip>
 		</span>
 	</div>
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<div class="list" bind:this={listEl} onkeydown={onTreeKey} role="tree" tabindex="-1">
+	<div
+		class="list"
+		bind:this={listEl}
+		onkeydown={onTreeKey}
+		oncontextmenu={(ev) => onContext(ev)}
+		role="tree"
+		tabindex="-1"
+	>
 		{#if !children[""]}
 			<div class="skel" aria-busy="true">
 				{#each [70, 55, 80, 45, 65] as w, i (i)}<Skeleton variant="rounded" height={14} width="{w}%" />{/each}
@@ -358,6 +457,10 @@
 			{@render tree("", 0)}
 		{/if}
 	</div>
+	<PointerMenu
+		bind:this={pointerMenu}
+		items={menuItems(menuTarget).map((i) => ({ ...i, run: () => runMenu(i.action, menuTarget) }))}
+	/>
 </aside>
 
 <style>
@@ -510,8 +613,7 @@
 	.ignored .ico {
 		opacity: 0.55;
 	}
-	/* The "…" is RowMore's own button (a child component), so its class is reached through :global. */
-	.row :global(.more) {
+	.more {
 		display: inline-flex;
 		padding: 0;
 		border: 0;
@@ -520,9 +622,8 @@
 		cursor: pointer;
 		opacity: 0;
 	}
-	.row:hover :global(.more),
-	.row :global(.more:focus-visible),
-	.row :global(.more[data-state="open"]) {
+	.more:focus-visible,
+	.row:hover .more {
 		opacity: 1;
 	}
 </style>

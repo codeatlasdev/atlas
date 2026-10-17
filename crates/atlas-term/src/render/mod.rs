@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use gpu::{
     DecoInst, Gpu, ImgInst, Uniforms, VBuf, bind_group, bind_layout, glyph_vertex_layout, gpu,
-    pipeline, texture,
+    pipeline, surface_extent, texture,
 };
 use images::Tex;
 use stats::Timing;
@@ -97,8 +97,10 @@ impl Renderer {
             // Non-sRGB target: cell colors are sRGB bytes (CSS theme values), written as-is.
             .find(|f| *f == wgpu::TextureFormat::Bgra8Unorm)
             .unwrap_or(caps.formats[0]);
+        let (width, height) =
+            surface_extent(width, height, g.device.limits().max_texture_dimension_2d);
         let mut config = surface
-            .get_default_config(&g.adapter, width.max(1), height.max(1))
+            .get_default_config(&g.adapter, width, height)
             .ok_or("surface unsupported by adapter")?;
         config.format = format;
         config.present_mode = wgpu::PresentMode::Fifo;
@@ -217,13 +219,14 @@ impl Renderer {
         Ok((renderer, resolution))
     }
 
-    /// Physical pixels. Returns the grid size that fits.
+    /// Physical pixels, clamped to what the surface accepts (see `surface_extent`). Returns the grid size that fits.
     pub fn resize(&mut self, width: u32, height: u32) -> (u16, u16) {
-        let (w, h) = (width.max(1), height.max(1));
-        if (w, h) != (self.config.width, self.config.height) {
-            self.config.width = w;
-            self.config.height = h;
-            if let Ok(g) = gpu() {
+        let (mut w, mut h) = (width.max(1), height.max(1));
+        if let Ok(g) = gpu() {
+            (w, h) = surface_extent(w, h, g.device.limits().max_texture_dimension_2d);
+            if (w, h) != (self.config.width, self.config.height) {
+                self.config.width = w;
+                self.config.height = h;
                 self.surface.configure(&g.device, &self.config);
             }
         }

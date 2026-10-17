@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { rememberUrl } from "#lib/stores/browser.svelte.ts";
-import { isHtml, originOf, rightNeighbor } from "#lib/stores/preview.ts";
+import { isHtml, originOf } from "#lib/stores/preview.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { saveEditor } from "#lib/symbols.ts";
 
@@ -52,9 +52,7 @@ export async function previewHtml(worktreeId: string, relPath: string) {
 			return;
 		}
 		const from = ws.focusedGroup(worktreeId);
-		const target =
-			rightNeighbor(ws.doc.layouts[worktreeId], from.id, (g) => g === ws.doc.bottomGroup[worktreeId]) ??
-			ws.split(from.id, "h")?.id;
+		const target = ws.sideGroup(worktreeId);
 		ws.openTab(
 			worktreeId,
 			{ kind: "browser", label: relPath.split("/").pop() ?? relPath, url, path: relPath },

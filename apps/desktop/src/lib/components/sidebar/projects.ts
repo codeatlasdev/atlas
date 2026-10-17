@@ -5,16 +5,50 @@ import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api } from "#lib/api.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
+import { addPlan, initDescription, removeDescription } from "./addProject.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 
+/** Pick a folder and add it. */
 export async function addProject() {
-	const dir = await pickFolder({ directory: true, title: "Add atlas project" });
-	if (typeof dir !== "string") return;
-	const p = await store.run("add", () => api.add(dir));
-	if (p) {
-		await store.refresh();
-		store.selected = p.id;
+	const dir = await pickFolder({ directory: true, title: "Add project" });
+	if (typeof dir === "string") await addFolder(dir);
+}
+
+/**
+ * Add one folder (picked or dropped) to the sidebar and select it. A folder with an `atlas.yaml` is registered as is;
+ * one without it is offered an `atlas init` first, with the file shown, so no terminal is needed.
+ */
+export async function addFolder(dir: string) {
+	const probe = await store.run("probe", () => api.probe(dir));
+	if (!probe) return;
+	const plan = addPlan(probe);
+	if (plan.kind === "select") {
+		store.selected = plan.id;
+		toast.info(`${probe.name} is already in Atlas`);
+		return;
 	}
+	if (plan.kind === "add" && plan.inside) {
+		const ok = await confirmDialog(`Add ${probe.name}?`, {
+			description: `${probe.picked} is inside the project at ${plan.root}, so that project is added.`,
+			confirmLabel: "Add project",
+		});
+		if (!ok) return;
+	}
+	if (plan.kind === "init") {
+		const pv = await store.run("init-preview", () => api.initPreview(plan.dir));
+		if (!pv) return;
+		const ok = await confirmDialog(`Set up ${probe.name} for Atlas?`, {
+			description: initDescription(plan.dir, pv),
+			confirmLabel: "Create atlas.yaml and add",
+		});
+		if (!ok) return;
+	}
+	const p = await store.run("add", () =>
+		plan.kind === "init" ? api.initProject(plan.dir) : api.add(plan.root),
+	);
+	if (!p) return;
+	await store.refresh();
+	store.selected = p.id;
 }
 
 /** Open "Find projects": the dialog fills in while the scan runs. */
@@ -55,12 +89,13 @@ export async function relinkProject(id: string, dir: string) {
 	toast.success(`${p.name} now points to ${dir}`);
 }
 
-/** Take one project out of Atlas (never touches the folder). */
+/** Take one project out of Atlas: stops its stack if it runs; never touches the folder. */
 export async function removeProject(id: string) {
 	const p = store.projects.find((x) => x.id === id);
 	if (!p) return;
+	const linked = store.projects.filter((x) => x.parent === id).length;
 	const ok = await confirmDialog(`Remove ${p.name} from Atlas?`, {
-		description: `${p.root}\nThe folder on disk is not touched.`,
+		description: removeDescription(p, linked),
 		confirmLabel: "Remove",
 		destructive: true,
 	});

@@ -23,6 +23,7 @@ mod diag;
 #[cfg(target_os = "macos")]
 mod display_mac;
 mod git;
+mod git_branch;
 mod host;
 mod lifecycle;
 mod live;
@@ -122,6 +123,8 @@ macro_rules! handlers {
             cmds::projects_remove_missing,
             cmds::projects_find_moved,
             cmds::project_init,
+            cmds::project_probe,
+            cmds::project_init_preview,
             cmds::stack_start,
             cmds::stack_stop,
             cmds::service_cmd,
@@ -180,6 +183,8 @@ macro_rules! handlers {
             commit_msg::commit_msg_provider,
             commit_msg::commit_msg_generate,
             commit_msg::commit_msg_cancel,
+            git_branch::git_branches,
+            git_branch::git_switch,
             ctl::ctl_reply,
             remote::ssh_config_hosts,
             remote::ssh_status,

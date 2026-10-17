@@ -61,6 +61,8 @@ test("closed tabs are remembered newest last, capped, singletons skipped", () =>
 	const term = snapshot({ kind: "terminal", label: "Terminal", argv: ["zsh"], pty: "x" }, 1);
 	expect(term.argv).toEqual(["zsh"]);
 	expect("pty" in term).toBe(false);
+	// A terminal opened in a subfolder reopens there, not at the worktree root.
+	expect(snapshot({ kind: "terminal", label: "T", cwd: "/r/src" }, 0).cwd).toBe("/r/src");
 });
 
 test("MRU stepping wraps and needs two entries", () => {

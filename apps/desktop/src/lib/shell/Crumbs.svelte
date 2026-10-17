@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
-	import { ChevronLeft, ChevronRight } from "@lucide/svelte";
+	import { ChevronLeft, ChevronRight, GitBranch } from "@lucide/svelte";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import { openBranchPicker } from "#lib/stores/branch.svelte.ts";
 	import Tip from "#lib/components/Tip.svelte";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
 
@@ -65,6 +66,20 @@
 	{#if w && store.current}
 		<ChevronRight size={11} class="sep" />
 		<button class="seg wt" class:last={!tab} onclick={toWorktree}><span class="label">{wtName}</span></button>
+		{#if w.branch}
+			<Tip label="Switch branch" command="git::Branch">
+				{#snippet child(props)}
+					<button
+						{...props}
+						class="seg branch"
+						aria-label="Branch {w.branch}, switch"
+						onclick={openBranchPicker}
+					>
+						<GitBranch size={12} /><span class="label mono">{w.branch}</span>
+					</button>
+				{/snippet}
+			</Tip>
+		{/if}
 	{/if}
 	{#if tab}
 		<ChevronRight size={11} class="sep" />
@@ -135,6 +150,11 @@
 	.seg.wt {
 		flex: 0 2 auto;
 		max-width: 200px;
+	}
+	.seg.branch {
+		flex: 0 3 auto;
+		max-width: 200px;
+		font-size: 11.5px;
 	}
 	.seg.last {
 		flex: 0 4 auto;

@@ -3,8 +3,9 @@
 	 * A project: its icon, name, live status. The active one also acts as its own `main` row
 	 * when it has no other worktrees (a lone "main" child would be redundant).
 	 */
-	import { DropdownMenu } from "@codeatlasdev/ui";
 	import { ChevronRight, Ellipsis, Pin, Plus } from "@lucide/svelte";
+	import RowMore from "#lib/components/RowMore.svelte";
+	import { fromMenu } from "#lib/components/rowEvent.ts";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { identities } from "#lib/stores/identity.svelte.ts";
@@ -49,8 +50,8 @@
 	}}
 	onmouseenter={() => (sidebar.hovered = r.id)}
 	onmouseleave={() => sidebar.hovered === r.id && (sidebar.hovered = null)}
-	onclick={activate}
-	onkeydown={(e) => e.key === "Enter" && activate()}
+	onclick={(e) => fromMenu(e) || activate()}
+	onkeydown={(e) => e.key === "Enter" && !fromMenu(e) && e.target === e.currentTarget && activate()}
 >
 	{#if !active && kids.length}
 		<button
@@ -96,12 +97,10 @@
 			<Plus size={13} />
 		</button>
 	{/if}
-	<DropdownMenu align="end">
-		{#snippet trigger()}
-			<span class="hover-btn" aria-label="Project menu"><Ellipsis size={13} /></span>
-		{/snippet}
+	<RowMore label="Project menu" class="hover-btn">
+		{#snippet icon()}<Ellipsis size={13} />{/snippet}
 		<RowMenu p={r} {w} {onAgent} />
-	</DropdownMenu>
+	</RowMore>
 </div>
 
 <style>
@@ -201,11 +200,12 @@
 		display: inline-flex;
 		gap: 6px;
 	}
-	.project:hover .meta {
+	.project:hover .meta,
+	.project:focus-within .meta {
 		display: none;
 	}
-	.project:hover .hover-btn,
-	.project:focus-within .hover-btn {
+	.project:hover :global(.hover-btn),
+	.project:focus-within :global(.hover-btn) {
 		display: inline-flex;
 	}
 	.project :global(.chev) {

@@ -309,8 +309,37 @@ pub async fn switch(run: Run<'_>, req: SwitchReq) -> Result<Switched, String> {
     }
 }
 
+/// Why auto clean up must keep this worktree (`"dirty"`, `"unpushed"`), or `None` when removing it loses nothing.
+/// `pushed` is the head sha of a merged PR: commits up to it are on GitHub even if the remote branch is gone.
+/// Anything git cannot answer (an unknown tip) counts as unpushed.
+pub async fn keep_reason(
+    run: Run<'_>,
+    pushed: Option<&str>,
+) -> Result<Option<&'static str>, String> {
+    if pushed.is_some_and(|t| t.len() != 40 || !t.bytes().all(|b| b.is_ascii_hexdigit())) {
+        return Err("the PR head is not a commit sha".into());
+    }
+    if !ok(run, &["status", "--porcelain", "--untracked-files=all"])
+        .await?
+        .trim()
+        .is_empty()
+    {
+        return Ok(Some("dirty"));
+    }
+    let mut args = vec!["rev-list", "--count", "HEAD", "--not", "--remotes"];
+    args.extend(pushed);
+    let o = git(run, &args).await?;
+    if o.code != Some(0) || o.stdout.trim() != "0" {
+        return Ok(Some("unpushed"));
+    }
+    Ok(None)
+}
+
 /// The runner for a registered worktree: `git -C <root> …` through hostd `exec`.
-fn hostd_runner(hub: Arc<HostHub>, dir: PathBuf) -> impl Fn(Vec<String>) -> Fut + Send + Sync {
+pub(crate) fn hostd_runner(
+    hub: Arc<HostHub>,
+    dir: PathBuf,
+) -> impl Fn(Vec<String>) -> Fut + Send + Sync {
     move |args| {
         let (hub, dir) = (hub.clone(), dir.clone());
         Box::pin(async move {
@@ -860,6 +889,61 @@ mod tests {
         .unwrap_err();
         assert!(e.contains("nope"), "{e}");
         assert_eq!(r.git(&["branch", "--list", "nope"]), "");
+    }
+
+    // #58 auto clean up: a worktree is only removed when nothing in it would be lost. Dirty (tracked or untracked)
+    // and commits on no remote are kept; a merged PR whose head the local branch matches is safe even after the
+    // remote branch was deleted (squash merge + fetch --prune), which `--remotes` alone would call unpushed.
+    #[test]
+    fn auto_clean_keeps_dirty_and_unpushed_worktrees() {
+        let tmp = tempfile::tempdir().unwrap();
+        let remote = tmp.path().join("remote.git");
+        sh(tmp.path(), &["init", "-q", "--bare", "remote.git"]);
+        let r = Repo::new();
+        r.git(&["remote", "add", "origin", &remote.to_string_lossy()]);
+        r.git(&["push", "-q", "origin", "HEAD:refs/heads/main"]);
+        r.git(&["fetch", "-q", "origin"]);
+        let run = runner(r.dir.clone());
+        assert_eq!(block(keep_reason(&run, None)), Ok(None), "clean and pushed");
+
+        std::fs::write(r.dir.join("new.txt"), "x").unwrap();
+        assert_eq!(
+            block(keep_reason(&run, None)),
+            Ok(Some("dirty")),
+            "untracked file"
+        );
+        std::fs::remove_file(r.dir.join("new.txt")).unwrap();
+        std::fs::write(r.dir.join("f.txt"), "edit\n").unwrap();
+        assert_eq!(
+            block(keep_reason(&run, None)),
+            Ok(Some("dirty")),
+            "tracked edit"
+        );
+
+        r.git(&["commit", "-qam", "local only"]);
+        assert_eq!(block(keep_reason(&run, None)), Ok(Some("unpushed")));
+        let tip = r.git(&["rev-parse", "HEAD"]).trim().to_string();
+        assert_eq!(
+            block(keep_reason(&run, Some(&tip))),
+            Ok(None),
+            "HEAD is the merged PR head"
+        );
+
+        r.git(&["commit", "-q", "--allow-empty", "-m", "after the PR"]);
+        assert_eq!(
+            block(keep_reason(&run, Some(&tip))),
+            Ok(Some("unpushed")),
+            "work after the merged head"
+        );
+        assert!(
+            block(keep_reason(&run, Some("--all"))).is_err(),
+            "a tip is a sha, never an option"
+        );
+        assert_eq!(
+            block(keep_reason(&run, Some(&"0".repeat(40)))),
+            Ok(Some("unpushed")),
+            "unknown tip"
+        );
     }
 
     /// Contract with the frontend: `__fixtures__/git-branches.json` / `git-switch.json` are the REAL serialization of

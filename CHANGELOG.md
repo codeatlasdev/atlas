@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- Desktop: auto clean up of linked worktrees (Settings → Workspaces, off by default): when their PR is merged or after N idle days. Dirty or unpushed worktrees are never removed, the branch is kept, and a cleaned worktree can be restored for 7 days (#58).
+
 ## [1.5.0-alpha.13] — 2026-10-17
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

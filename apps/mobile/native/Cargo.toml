@@ -16,3 +16,7 @@ hex = "0.4"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+# Own workspace root: cargokit builds with `rustup run stable`, which must not parse the
+# Atlas workspace above (its `[profile.debug]` needs the pinned toolchain).
+[workspace]

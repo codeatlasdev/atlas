@@ -40,6 +40,7 @@ A new Flutter FFI plugin project.
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libatlas_mobile_native.a',
+    # iroh (netwatch/netdev/portmapper) links Apple networking frameworks.
+    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/libatlas_mobile_native.a -framework Network -framework SystemConfiguration -framework Security -framework CoreFoundation',
   }
 end

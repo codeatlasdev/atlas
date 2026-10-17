@@ -4,7 +4,16 @@
  */
 
 export type SettingsSection =
-	"general" | "appearance" | "editor" | "terminal" | "workspaces" | "agents" | "keyboard" | "ssh" | "help";
+	| "general"
+	| "appearance"
+	| "editor"
+	| "terminal"
+	| "workspaces"
+	| "agents"
+	| "keyboard"
+	| "ssh"
+	| "mobile"
+	| "help";
 
 /** Tabs of the Editor section: everyday editor prefs, and the language-server manager. */
 export type SettingsTab = "editor" | "languages";
@@ -24,6 +33,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "agents", label: "Agents" },
 	{ id: "keyboard", label: "Keyboard shortcuts" },
 	{ id: "ssh", label: "SSH hosts" },
+	{ id: "mobile", label: "Mobile" },
 	{ id: "help", label: "Help & onboarding" },
 ];
 

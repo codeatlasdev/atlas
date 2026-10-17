@@ -183,6 +183,7 @@ describe("settings index", () => {
 			"agents",
 			"keyboard",
 			"ssh",
+			"mobile",
 			"help",
 		]);
 	});

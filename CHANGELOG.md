@@ -6,6 +6,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- Desktop: kit menus and listboxes (the + new-tab menu, Select, Combobox) open above the native terminal and browser instead of under them (#86).
+- Desktop (Linux): no more repeated "Failed to start the audio device" errors when WebKitGTK has no usable audio device; sounds stay off for the session (#87).
+
+### Changed
+
+- Desktop: `@codeatlasdev/ui` 4.2 → 4.5.
+
 ## [1.5.0-alpha.13] — 2026-10-17
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

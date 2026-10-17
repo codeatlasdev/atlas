@@ -6,7 +6,6 @@
  */
 import { toast } from "@codeatlasdev/ui";
 import { api, errText } from "#lib/api.ts";
-import { pr } from "#lib/stores/pr.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { candidates, cleanupPrefs, restorable, type Cleaned } from "#lib/stores/autoCleanup.ts";
@@ -23,14 +22,10 @@ export async function sweep(now = Date.now()) {
 		const prefs = cleanupPrefs(s);
 		const before = restorable(s.cleanedWorktrees, now);
 		const log = [...before];
-		for (const w of candidates(ws.doc.worktrees, prefs, ws.doc.selected, now)) {
-			let head: string | undefined;
-			if (prefs.mode === "merged") {
-				const v = await pr.view(w.id);
-				if (v?.state !== "MERGED") continue;
-				head = v.headRefOid;
-			}
-			const r = await api.worktreeAutoRemove(w.id, head).catch((e) => {
+		// A worktree whose stack is up is in use whatever its agents did: idle mode never touches it.
+		const busy = new Set(store.projects.filter((p) => p.running).map((p) => p.id));
+		for (const w of candidates(ws.doc.worktrees, prefs, ws.doc.selected, now, busy)) {
+			const r = await api.worktreeAutoRemove(w.id, prefs.mode === "merged").catch((e) => {
 				toast.error(errText(e));
 				return null;
 			});

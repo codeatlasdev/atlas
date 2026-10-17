@@ -40,7 +40,8 @@ export interface FlickerOpts {
 	maxLen: number;
 	/** frames at the start to ignore (the window being created) */
 	skipLeading: number;
-	/** mean luminance under which a frame is black */
+	/** mean LINEAR luminance (the grid's unit) under which a frame is black: 0.0024 is sRGB 8/255. Dark theme
+	 * backgrounds sit at sRGB 18-40/255 (linear 0.006-0.02), so a higher value calls a dark UI black. */
 	blackMean: number;
 	/** grid standard deviation under which a frame is flat */
 	flatStd: number;
@@ -54,7 +55,7 @@ export const DEFAULTS: FlickerOpts = {
 	minCells: 6,
 	maxLen: 2,
 	skipLeading: 0,
-	blackMean: 0.02,
+	blackMean: 0.0024,
 	flatStd: 0.004,
 	texturedStd: 0.02,
 };

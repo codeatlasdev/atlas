@@ -136,18 +136,18 @@
 			"film": "loops"
 		},
 		"loop-tui-poster.jpg": {
-			"sha256": "259cdc01143291708334b847411673f3f8b270975f2a97757baa7dd9db96b25a",
-			"bytes": 186304,
+			"sha256": "c34cfe7a4509264e7da6374192b80b178c57440e655f7f00b99886b0c9a4a7bf",
+			"bytes": 183094,
 			"film": "loops"
 		},
 		"loop-tui.mp4": {
-			"sha256": "fdaa82c3d58492844426e959e020d389d90124d63e9d305a551ef71bece736b1",
-			"bytes": 585167,
+			"sha256": "a0fe1a68d456684c1e5836424d01a1980dc355c81b7bf723e74cf1ea386166a9",
+			"bytes": 522676,
 			"film": "loops"
 		},
 		"loop-tui.webm": {
-			"sha256": "93863db031769e2ae895f977640ddd729de00fb22303826ca39aa24e8b3a90e5",
-			"bytes": 577729,
+			"sha256": "39149b8dcb4456aa13413de909fe1925f6146e32c4cf84257fe167339c118517",
+			"bytes": 561617,
 			"film": "loops"
 		},
 		"loop-workspace-poster.jpg": {

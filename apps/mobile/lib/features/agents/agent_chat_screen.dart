@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 /// Agent states as the desktop labels them.
 String agentStateLabel(String state) => switch (state) {
@@ -15,14 +18,6 @@ String agentStateLabel(String state) => switch (state) {
   'waiting' => 'asked you',
   'done' => 'done',
   _ => 'idle',
-};
-
-Color agentStateColor(String state) => switch (state) {
-  'working' => const Color(0xFF60A5FA),
-  'blocked' => const Color(0xFFF59E0B),
-  'waiting' => const Color(0xFFFBBF24),
-  'done' => const Color(0xFF8BC34A),
-  _ => const Color(0xFF64748B),
 };
 
 /// One agent: its conversation (read from its session file), its state (pushed live by
@@ -148,6 +143,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
+      if (prev?.value == null && next.value != null) _loadHistory();
+    });
     final live = ref
         .watch(agentStatusMapNotifierProvider(widget.device))
         .value?[widget.paneKey];
@@ -180,15 +178,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             padding: const EdgeInsets.only(left: 16, bottom: 8),
             child: Row(
               children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: agentStateColor(status.state),
-                    shape: BoxShape.circle,
-                  ),
+                StatusDot(
+                  color: AtlasColors.of(context).agentState(status.state),
+                  pulse: status.state == 'working' || status.state == 'blocked',
+                  size: 7,
                 ),
-                const SizedBox(width: 6),
                 Text(
                   '${status.agent} · ${agentStateLabel(status.state)}'
                   '${status.model != null ? ' · ${status.model}' : ''}',
@@ -208,18 +202,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 if (status.state == 'working')
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(width: 8),
-                        Text('working…', style: TextStyle(color: muted)),
-                      ],
+                  const Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _Typing(),
                     ),
                   ),
                 // No session turns yet: show what the hooks reported.
@@ -252,41 +239,69 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
                 _error!,
-                style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12),
+                style: TextStyle(
+                  color: AtlasColors.of(context).error,
+                  fontSize: 12,
+                ),
               ),
             ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _msg,
-                      minLines: 1,
-                      maxLines: 5,
-                      enabled: canSendChat(status),
-                      decoration: InputDecoration(
-                        hintText: canSendChat(status)
-                            ? 'Message'
-                            : 'Agent is ${agentStateLabel(status.state)}',
-                        isDense: true,
-                        border: const OutlineInputBorder(),
+          Container(
+            decoration: BoxDecoration(
+              color: AtlasColors.of(context).base,
+              border: Border(
+                top: BorderSide(color: AtlasColors.of(context).borderSubtle),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _msg,
+                        minLines: 1,
+                        maxLines: 5,
+                        enabled: canSendChat(status),
+                        decoration: InputDecoration(
+                          hintText: canSendChat(status)
+                              ? 'Message'
+                              : 'Agent is ${agentStateLabel(status.state)}',
+                          fillColor: AtlasColors.of(context).ground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
+                          disabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide(
+                              color: AtlasColors.of(context).accent,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: canSend ? _send : null,
-                    icon: _sending
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: canSend ? _send : null,
+                      icon: _sending
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.arrow_upward_rounded),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -311,17 +326,24 @@ class _Bubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final c = AtlasColors.of(context);
+    const r = Radius.circular(18);
     return Container(
       constraints: BoxConstraints(
         maxWidth: MediaQuery.of(context).size.width * 0.82,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: mine ? cs.primaryContainer : cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        color: mine ? c.accent.withValues(alpha: .2) : c.base,
+        border: mine ? null : Border.all(color: c.borderSubtle),
+        borderRadius: BorderRadius.only(
+          topLeft: r,
+          topRight: r,
+          bottomLeft: mine ? r : const Radius.circular(4),
+          bottomRight: mine ? const Radius.circular(4) : r,
+        ),
       ),
-      child: SelectableText(text),
+      child: SelectableText(text, style: TextStyle(color: c.text, height: 1.4)),
     );
   }
 }
@@ -340,18 +362,30 @@ class _ApprovalBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-        border: Border.all(color: const Color(0xFFF59E0B)),
-        borderRadius: BorderRadius.circular(10),
+        color: AtlasColors.of(context).warning.withValues(alpha: .12),
+        border: Border.all(
+          color: AtlasColors.of(context).warning.withValues(alpha: .6),
+        ),
+        borderRadius: BorderRadius.circular(Space.radius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Wants to run ${approval.toolName ?? 'a tool'}',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Icon(
+                Icons.shield_outlined,
+                size: 18,
+                color: AtlasColors.of(context).warning,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Wants to run ${approval.toolName ?? 'a tool'}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           ConstrainedBox(
@@ -359,7 +393,11 @@ class _ApprovalBanner extends StatelessWidget {
             child: SingleChildScrollView(
               child: SelectableText(
                 detail,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                style: const TextStyle(
+                  fontFamily: monoFamily,
+                  fontFamilyFallback: monoFallback,
+                  fontSize: 12,
+                ),
               ),
             ),
           ),
@@ -379,6 +417,67 @@ class _ApprovalBanner extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Three dots that rise in turn while the agent works.
+class _Typing extends StatefulWidget {
+  const _Typing();
+
+  @override
+  State<_Typing> createState() => _TypingState();
+}
+
+class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
+  late final AnimationController _a = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _a.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: c.base,
+        border: Border.all(color: c.borderSubtle),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: AnimatedBuilder(
+        animation: _a,
+        builder: (_, _) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < 3; i++)
+              Transform.translate(
+                offset: Offset(
+                  0,
+                  -3 *
+                      math
+                          .sin(((_a.value - i * .18) % 1) * math.pi)
+                          .clamp(0, 1),
+                ),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: c.muted,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

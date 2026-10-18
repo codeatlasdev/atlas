@@ -9,6 +9,9 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
+import 'package:atlas_mobile/features/projects/projects_screen.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
@@ -141,6 +144,11 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the connection alive while this screen is open, and reload the moment it
+    // (re)connects instead of waiting for the next poll.
+    ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
+      if (prev?.value == null && next.value != null) _refresh();
+    });
     final s = _snap;
     return Scaffold(
       appBar: AppBar(
@@ -154,37 +162,49 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         ],
       ),
       body: s == null
-          ? Center(
-              child: _error != null
-                  ? SelectableText(_error!)
-                  : const CircularProgressIndicator(),
-            )
+          ? (_error != null
+                ? EmptyState(
+                    title: 'Could not load ${widget.project.name}',
+                    message: _error!,
+                    action: OutlinedButton(
+                      onPressed: _refresh,
+                      child: const Text('Try again'),
+                    ),
+                  )
+                : const _Skeleton())
           : RefreshIndicator(
               onRefresh: _refresh,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                padding: const EdgeInsets.fromLTRB(
+                  Space.lg,
+                  Space.xs,
+                  Space.lg,
+                  Space.xxl,
+                ),
                 children: [
                   _Header(
                     snap: s,
                     onUp: _busy.contains('up') ? null : () => _serviceOp('up'),
                   ),
-                  if (s.setupState != null) _SetupRow(snap: s),
+                  if (s.setupState != null && s.setupState != 'ok')
+                    _SetupRow(snap: s),
                   const SizedBox(height: 8),
                   _Kpis(snap: s),
                   const SizedBox(height: 16),
-                  _section(context, 'Services ${s.services.length}'),
+                  SectionHeader('Services', count: s.services.length),
                   for (var i = 0; i < s.services.length; i++)
                     _ServiceCard(
                       svc: s.services[i],
                       mem: _history.mem[s.services[i].name] ?? const [],
-                      color: seriesColors[i % seriesColors.length],
+                      color: AtlasColors.of(context)
+                          .series[i % AtlasColors.of(context).series.length],
                       busy: _busy.contains(s.services[i].name),
                       onOp: (op) => _serviceOp(op, service: s.services[i].name),
                       onLogs: () => _openLogs(service: s.services[i].name),
                     ),
                   if (s.agents.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    _section(context, 'Agents ${s.agents.length}'),
+                    SectionHeader('Agents', count: s.agents.length),
                     for (final (pane, a) in s.agents)
                       _AgentRow(
                         status: a,
@@ -202,7 +222,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                   ],
                   if (s.actions.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    _section(context, 'Actions'),
+                    const SectionHeader('Actions'),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -215,66 +235,34 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                       ],
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      _section(context, 'Resources'),
-                      const Spacer(),
-                      SegmentedButton<bool>(
-                        segments: const [
-                          ButtonSegment(value: false, label: Text('Memory')),
-                          ButtonSegment(value: true, label: Text('CPU')),
-                        ],
-                        selected: {_cpuChart},
-                        onSelectionChanged: (v) =>
-                            setState(() => _cpuChart = v.first),
-                        style: const ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                        ),
+                  SectionHeader(
+                    'Resources',
+                    trailing: SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(value: false, label: Text('Memory')),
+                        ButtonSegment(value: true, label: Text('CPU')),
+                      ],
+                      selected: {_cpuChart},
+                      onSelectionChanged: (v) =>
+                          setState(() => _cpuChart = v.first),
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
                       ),
-                    ],
+                    ),
                   ),
-                  _Card(
+                  AtlasCard(
                     child: LinesChart(
                       series: _cpuChart ? _history.cpu : _history.mem,
                       unit: _cpuChart ? '%' : 'MB',
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  _section(context, 'Health over time'),
-                  _Card(child: HealthTimeline(states: _history.states)),
+                  const SectionHeader('Health over time'),
+                  AtlasCard(child: HealthTimeline(states: _history.states)),
                 ],
               ),
             ),
     );
   }
-}
-
-Widget _section(BuildContext context, String title) => Padding(
-  padding: const EdgeInsets.only(bottom: 8, top: 4),
-  child: Text(title, style: Theme.of(context).textTheme.titleSmall),
-);
-
-class _Card extends StatelessWidget {
-  const _Card({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    margin: const EdgeInsets.only(bottom: 8),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest
-          .withValues(alpha: 0.4),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(
-        color: Theme.of(context).colorScheme.outlineVariant
-            .withValues(alpha: 0.4),
-      ),
-    ),
-    child: child,
-  );
 }
 
 String _dur(int s) {
@@ -293,7 +281,6 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final ports = snap.services
         .where((s) => s.port != null)
         .map((s) => ':${s.port}');
@@ -304,35 +291,52 @@ class _Header extends StatelessWidget {
       if (snap.pid != null) 'runner · pid ${snap.pid}',
       if (ports.isNotEmpty) ports.join(' '),
     ];
+    final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(top: Space.sm, bottom: Space.sm),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  parts.join(' · '),
-                  style: TextStyle(fontSize: 12, color: muted),
+          ProjectAvatar(name: snap.name, size: 44),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    StatusDot(
+                      color: snap.running ? c.success : c.faint,
+                      pulse: snap.running,
+                      size: 7,
+                    ),
+                    Flexible(
+                      child: Text(
+                        parts.join(' · '),
+                        style: TextStyle(fontSize: 12, color: c.muted),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              if (!snap.running)
-                FilledButton.icon(
-                  onPressed: onUp,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Start stack'),
+                Text(
+                  snap.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: c.faint,
+                    fontFamily: monoFamily,
+                    fontFamilyFallback: monoFallback,
+                  ),
                 ),
-            ],
-          ),
-          Text(
-            snap.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
-            style: TextStyle(
-              fontSize: 11,
-              color: muted,
-              fontFamily: 'monospace',
+              ],
             ),
           ),
+          if (!snap.running)
+            FilledButton.icon(
+              onPressed: onUp,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Start'),
+            ),
         ],
       ),
     );
@@ -346,7 +350,7 @@ class _SetupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ok = snap.setupState == 'ok';
-    return _Card(
+    return AtlasCard(
       child: Row(
         children: [
           Icon(
@@ -356,7 +360,9 @@ class _SetupRow extends StatelessWidget {
                 ? Icons.hourglass_top
                 : Icons.error_outline,
             size: 16,
-            color: ok ? stateColor('running') : stateColor('failed'),
+            color: ok
+                ? AtlasColors.of(context).success
+                : AtlasColors.of(context).error,
           ),
           const SizedBox(width: 8),
           const Text('Setup', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -365,7 +371,11 @@ class _SetupRow extends StatelessWidget {
             child: Text(
               snap.setupCommand ?? '',
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              style: const TextStyle(
+                fontFamily: monoFamily,
+                fontFamilyFallback: monoFallback,
+                fontSize: 12,
+              ),
             ),
           ),
           Text(snap.setupState!, style: const TextStyle(fontSize: 12)),
@@ -381,59 +391,64 @@ class _Kpis extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
     final mem = snap.memMb >= 1024
         ? '${(snap.memMb / 1024).toStringAsFixed(1)} GB'
         : '${snap.memMb.round()} MB';
+    final allUp = snap.upCount == snap.services.length;
+    // (label, value, colour when it needs attention)
     final items = [
       (
-        Icons.dns_outlined,
-        'Services',
-        '${snap.upCount}/${snap.services.length}',
         'running',
+        '${snap.upCount}/${snap.services.length}',
+        allUp ? null : c.error,
       ),
-      (Icons.refresh, 'Restarts', '${snap.restarts}', 'this run'),
-      (Icons.warning_amber, 'Errors', '${snap.errors5m}', 'last 5 min'),
-      (Icons.memory, 'Memory', mem, 'all services'),
-      (Icons.speed, 'CPU', '${snap.cpu.round()}%', 'of one core'),
+      ('errors · 5m', '${snap.errors5m}', snap.errors5m > 0 ? c.warning : null),
+      ('restarts', '${snap.restarts}', snap.restarts > 0 ? c.warning : null),
+      ('memory', mem, null),
+      ('cpu', '${snap.cpu.round()}%', null),
     ];
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    // Two per row, height from content: a fixed aspect ratio overflowed with larger text.
-    return LayoutBuilder(
-      builder: (context, box) => Wrap(
-        spacing: 8,
-        children: [
-          for (final (icon, title, value, sub) in items)
-            SizedBox(
-              width: (box.maxWidth - 8) / 2,
-              child: _Card(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+    // One strip, scrollable on narrow phones, like the desktop's KPI row.
+    return AtlasCard(
+      padding: const EdgeInsets.symmetric(vertical: Space.md),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: Space.md),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0)
+                  VerticalDivider(color: c.borderSubtle, width: Space.xl),
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(icon, size: 13, color: muted),
-                        const SizedBox(width: 4),
-                        Text(
-                          title,
-                          style: TextStyle(fontSize: 11, color: muted),
+                    AnimatedSwitcher(
+                      duration: Motion.normal,
+                      transitionBuilder: (w, a) =>
+                          FadeTransition(opacity: a, child: w),
+                      child: Text(
+                        items[i].$2,
+                        key: ValueKey(items[i].$2),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: items[i].$3 ?? c.text,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    Text(sub, style: TextStyle(fontSize: 10, color: muted)),
+                    const SizedBox(height: 2),
+                    Text(
+                      items[i].$1,
+                      style: TextStyle(fontSize: 11, color: c.faint),
+                    ),
                   ],
                 ),
-              ),
-            ),
-        ],
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -458,110 +473,145 @@ class _ServiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    return _Card(
+    final c = AtlasColors.of(context);
+    final failed = svc.state == 'failed';
+    return AtlasCard(
+      padding: const EdgeInsets.fromLTRB(
+        Space.md,
+        Space.sm,
+        Space.xs,
+        Space.md,
+      ),
+      accent: failed ? c.error : null,
+      onTap: onLogs,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: stateColor(svc.state),
-                  shape: BoxShape.circle,
-                ),
+              StatusDot(
+                color: c.serviceState(svc.state),
+                pulse: svc.state == 'starting',
+                size: 7,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 2),
               Text(
                 svc.name,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                svc.note ?? svc.state,
-                style: TextStyle(fontSize: 12, color: muted),
+              const SizedBox(width: Space.sm),
+              Flexible(
+                child: Text(
+                  svc.note ?? svc.state,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: failed ? c.error : c.faint,
+                  ),
+                ),
               ),
               const Spacer(),
               if (svc.port != null)
-                InkWell(
-                  onTap: () =>
-                      Clipboard.setData(ClipboardData(text: '${svc.port}')),
-                  child: Text(
-                    ':${svc.port}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
+                Pill(
+                  ':${svc.port}',
+                  color: c.accent,
+                  mono: true,
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: '${svc.port}'));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Port ${svc.port} copied')),
+                    );
+                  },
                 ),
-              busy
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+              SizedBox(
+                width: 40,
+                height: 36,
+                child: busy
+                    ? const Center(
+                        child: SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(Icons.more_horiz_rounded, color: c.muted),
+                        onSelected: (v) => v == 'logs' ? onLogs() : onOp(v),
+                        itemBuilder: (_) => [
+                          if (svc.up)
+                            const PopupMenuItem(
+                              value: 'restart',
+                              child: Text('Restart'),
+                            ),
+                          if (svc.up)
+                            const PopupMenuItem(
+                              value: 'stop',
+                              child: Text('Stop'),
+                            ),
+                          if (!svc.up)
+                            const PopupMenuItem(
+                              value: 'start',
+                              child: Text('Start'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'logs',
+                            child: Text('Logs'),
+                          ),
+                        ],
                       ),
-                    )
-                  : PopupMenuButton<String>(
-                      onSelected: (v) => v == 'logs' ? onLogs() : onOp(v),
-                      itemBuilder: (_) => [
-                        if (svc.up)
-                          const PopupMenuItem(
-                            value: 'restart',
-                            child: Text('Restart'),
-                          ),
-                        if (svc.up)
-                          const PopupMenuItem(
-                            value: 'stop',
-                            child: Text('Stop'),
-                          ),
-                        if (!svc.up)
-                          const PopupMenuItem(
-                            value: 'start',
-                            child: Text('Start'),
-                          ),
-                        const PopupMenuItem(value: 'logs', child: Text('Logs')),
-                      ],
-                    ),
+              ),
             ],
           ),
           if (svc.up) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Sparkline(values: mem, color: color),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${svc.memMb.round()} MB · ${svc.cpu.round()}%',
-                  style: TextStyle(fontSize: 11, color: muted),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-          ],
-          if (svc.lastLine.isNotEmpty)
-            Text(
-              svc.lastLine,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: muted,
+            const SizedBox(height: Space.xs),
+            Padding(
+              padding: const EdgeInsets.only(right: Space.sm),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 22,
+                      child: Sparkline(values: mem, color: color),
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Text(
+                    '${svc.memMb.round()} MB · ${svc.cpu.round()}%',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: c.faint,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ),
             ),
+          ],
+          if (svc.lastLine.isNotEmpty) ...[
+            const SizedBox(height: Space.xs),
+            Padding(
+              padding: const EdgeInsets.only(right: Space.sm),
+              child: Text(
+                svc.lastLine,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: monoFamily,
+                  fontFamilyFallback: monoFallback,
+                  fontSize: 11,
+                  color: failed ? c.error : c.muted,
+                ),
+              ),
+            ),
+          ],
           if (svc.dependsOn.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              children: [
-                for (final d in svc.dependsOn)
-                  Text('↳ $d', style: TextStyle(fontSize: 11, color: muted)),
-              ],
+            const SizedBox(height: Space.xs),
+            Text(
+              'needs ${svc.dependsOn.join(', ')}',
+              style: TextStyle(fontSize: 11, color: c.faint),
             ),
           ],
         ],
@@ -653,7 +703,8 @@ class _LogsPageState extends State<_LogsPage> {
                     child: SelectableText(
                       _text.isEmpty ? 'No log lines yet.' : _text,
                       style: const TextStyle(
-                        fontFamily: 'monospace',
+                        fontFamily: monoFamily,
+                        fontFamilyFallback: monoFallback,
                         fontSize: 11,
                       ),
                     ),
@@ -676,42 +727,95 @@ class _AgentRow extends StatelessWidget {
     final line = status.state == 'working'
         ? (status.prompt ?? '')
         : (status.lastMessage ?? status.prompt ?? '');
-    return InkWell(
+    return AtlasCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: _Card(
-        child: Row(
-          children: [
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: agentStateColor(status.state),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+      accent: status.state == 'blocked' || status.state == 'waiting'
+          ? AtlasColors.of(context).warning
+          : null,
+      child: Row(
+        children: [
+          StatusDot(
+            color: AtlasColors.of(context).agentState(status.state),
+            pulse: status.state == 'working' || status.state == 'blocked',
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${status.agent} · ${agentStateLabel(status.state)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (line.isNotEmpty)
                   Text(
-                    '${status.agent} · ${agentStateLabel(status.state)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    line.replaceAll('\n', ' '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: muted),
                   ),
-                  if (line.isNotEmpty)
-                    Text(
-                      line.replaceAll('\n', ' '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: muted),
-                    ),
-                ],
-              ),
+              ],
             ),
-            Icon(Icons.chevron_right, color: muted),
-          ],
-        ),
+          ),
+          Icon(Icons.chevron_right, color: muted),
+        ],
+      ),
+    );
+  }
+}
+
+/// The panel's shape, shimmering, while the first `project_detail` is on its way.
+class _Skeleton extends StatefulWidget {
+  const _Skeleton();
+
+  @override
+  State<_Skeleton> createState() => _SkeletonState();
+}
+
+class _SkeletonState extends State<_Skeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _a = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _a.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    Widget bar(double h, {double? w}) => Container(
+      height: h,
+      width: w,
+      margin: const EdgeInsets.only(bottom: Space.sm),
+      decoration: BoxDecoration(
+        color: c.base,
+        borderRadius: BorderRadius.circular(Space.radius),
+      ),
+    );
+    return FadeTransition(
+      opacity: Tween(begin: .45, end: 1.0).animate(_a),
+      child: ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(Space.lg),
+        children: [
+          Row(
+            children: [
+              bar(44, w: 44),
+              const SizedBox(width: Space.md),
+              Expanded(child: bar(14)),
+            ],
+          ),
+          const SizedBox(height: Space.sm),
+          bar(64),
+          const SizedBox(height: Space.lg),
+          bar(12, w: 90),
+          for (var i = 0; i < 4; i++) bar(86),
+        ],
       ),
     );
   }

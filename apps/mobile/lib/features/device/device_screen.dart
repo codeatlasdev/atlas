@@ -13,8 +13,14 @@ class DeviceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(device.name),
       leading: BackButton(onPressed: () => context.pop()),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(device.name),
+          Text('Projects', style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
     ),
     body: ProjectsScreen(device: device),
   );

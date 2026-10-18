@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
@@ -92,99 +95,211 @@ class PairScreen extends ConsumerStatefulWidget {
 class _PairScreenState extends ConsumerState<PairScreen> {
   bool _scanned = false;
 
+  void _onDetect(BarcodeCapture capture) {
+    final raw = capture.barcodes.firstOrNull?.rawValue;
+    if (raw == null || _scanned) return;
+    _scanned = true;
+    ref.read(pairNotifierProvider.notifier).pair(raw, ref);
+  }
+
+  void _done() {
+    // Home lists paired Macs from storage: reload it.
+    ref.invalidate(pairedDevicesProvider);
+    context.pop();
+  }
+
+  void _retry() {
+    _scanned = false;
+    ref.invalidate(pairNotifierProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pairState = ref.watch(pairNotifierProvider);
-
+    final st = ref.watch(pairNotifierProvider);
+    final c = AtlasColors.of(context);
+    final scanning = !_scanned && st.status == PairStatus.idle;
     return Scaffold(
-      appBar: AppBar(title: const Text('Pair a Mac')),
-      body: Stack(
-        children: [
-          if (!_scanned && pairState.status == PairStatus.idle) ...[
-            MobileScanner(
-              onDetect: (capture) {
-                final barcode = capture.barcodes.firstOrNull;
-                if (barcode?.rawValue != null && !_scanned) {
-                  _scanned = true;
-                  ref
-                      .read(pairNotifierProvider.notifier)
-                      .pair(barcode!.rawValue!, ref);
-                }
-              },
-            ),
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Scan the QR code shown in\nAtlas Desktop → Settings → Mobile Devices',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 16),
+      backgroundColor: scanning ? Colors.black : null,
+      extendBodyBehindAppBar: scanning,
+      appBar: AppBar(
+        title: const Text('Pair a Mac'),
+        backgroundColor: scanning ? Colors.transparent : null,
+        foregroundColor: scanning ? Colors.white : null,
+      ),
+      body: AnimatedSwitcher(
+        duration: Motion.slow,
+        child: switch (st.status) {
+          _ when scanning => _Scanner(
+            key: const ValueKey('scan'),
+            onDetect: _onDetect,
+          ),
+          PairStatus.success => EmptyState(
+            key: const ValueKey('ok'),
+            icon: _Burst(color: c.success),
+            title: 'Paired',
+            message: 'This phone can now reach your Mac from anywhere, while it is awake.',
+            action: FilledButton(onPressed: _done, child: const Text('Open')),
+          ),
+          PairStatus.error => EmptyState(
+            key: const ValueKey('err'),
+            icon: Icon(Icons.link_off_rounded, size: 56, color: c.error),
+            title: 'Could not pair',
+            message: st.error ?? 'Unknown error',
+            action: Column(
+              children: [
+                FilledButton(
+                  onPressed: _retry,
+                  child: const Text('Scan again'),
                 ),
-              ),
+                TextButton.icon(
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('Copy error'),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: st.error ?? ''));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Error copied')),
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
-          if (pairState.status == PairStatus.connecting)
-            const Center(child: CircularProgressIndicator()),
-          if (pairState.status == PairStatus.success)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green, size: 64),
-                  const SizedBox(height: 16),
-                  const Text('Mac paired successfully!'),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Home lists paired Macs from storage: reload it.
-                      ref.invalidate(pairedDevicesProvider);
-                      context.pop();
-                    },
-                    child: const Text('Done'),
-                  ),
-                ],
-              ),
-            ),
-          if (pairState.status == PairStatus.error)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error, color: Colors.red, size: 64),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: SelectableText(
-                      pairState.error ?? 'Unknown error',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton.icon(
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy error'),
-                    onPressed: () {
-                      Clipboard.setData(
-                        ClipboardData(text: pairState.error ?? ''),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Error copied')),
-                      );
-                    },
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      _scanned = false;
-                      ref.invalidate(pairNotifierProvider);
-                    },
-                    child: const Text('Try Again'),
-                  ),
-                ],
-              ),
-            ),
-        ],
+          ),
+          _ => const EmptyState(
+            key: ValueKey('busy'),
+            icon: AtlasLogo(size: 96, animated: true),
+            title: 'Reaching your Mac…',
+            message:
+                'Directly when possible, through an encrypted relay otherwise.',
+          ),
+        },
       ),
     );
   }
+}
+
+/// Camera with a framed target and the hint where the code is.
+class _Scanner extends StatelessWidget {
+  const _Scanner({super.key, required this.onDetect});
+  final void Function(BarcodeCapture) onDetect;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        MobileScanner(onDetect: onDetect),
+        CustomPaint(painter: _FramePainter(c.accent)),
+        Positioned(
+          left: Space.xl,
+          right: Space.xl,
+          bottom: Space.xxl + MediaQuery.paddingOf(context).bottom,
+          child: Container(
+            padding: const EdgeInsets.all(Space.lg),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: .6),
+              borderRadius: BorderRadius.circular(Space.radius),
+            ),
+            child: const Text(
+              'On your Mac: Atlas Desktop → Settings → Mobile → Pair a phone',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Darkens around a centered square and draws accent corners on it.
+class _FramePainter extends CustomPainter {
+  _FramePainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final side = size.width * .68;
+    final r = Rect.fromCenter(
+      center: size.center(Offset.zero) - const Offset(0, 40),
+      width: side,
+      height: side,
+    );
+    final hole = RRect.fromRectAndRadius(r, const Radius.circular(24));
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(Offset.zero & size),
+        Path()..addRRect(hole),
+      ),
+      Paint()..color = Colors.black.withValues(alpha: .55),
+    );
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round;
+    const l = 34.0;
+    for (final (dx, dy) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]) {
+      final x = r.left + r.width * dx, y = r.top + r.height * dy;
+      final sx = dx == 0 ? 1 : -1, sy = dy == 0 ? 1 : -1;
+      canvas.drawLine(
+        Offset(x, y + sy * 24),
+        Offset(x, y + sy * l + sy * 24),
+        p,
+      );
+      canvas.drawLine(
+        Offset(x + sx * 24, y),
+        Offset(x + sx * l + sx * 24, y),
+        p,
+      );
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(x + sx * 24, y + sy * 24), radius: 24),
+        _startAngle(dx, dy),
+        1.5708,
+        false,
+        p,
+      );
+    }
+  }
+
+  double _startAngle(double dx, double dy) => switch ((dx, dy)) {
+    (0, 0) => 3.1416,
+    (1, 0) => -1.5708,
+    (0, 1) => 1.5708,
+    _ => 0,
+  };
+
+  @override
+  bool shouldRepaint(_FramePainter old) => old.color != color;
+}
+
+/// Success mark: a check that scales in over a soft glow.
+class _Burst extends StatelessWidget {
+  const _Burst({required this.color});
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 600),
+    curve: const Cubic(.2, .9, .3, 1.25),
+    builder: (_, t, _) => Container(
+      width: 112,
+      height: 112,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            color.withValues(alpha: .3 * t),
+            color.withValues(alpha: 0),
+          ],
+        ),
+      ),
+      child: Transform.scale(
+        scale: .5 + .5 * t,
+        child: Icon(Icons.check_circle_rounded, size: 64, color: color),
+      ),
+    ),
+  );
 }

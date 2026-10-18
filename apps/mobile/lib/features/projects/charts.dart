@@ -2,23 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// Series colors, in service order (stable across rebuilds).
-const seriesColors = [
-  Color(0xFF60A5FA),
-  Color(0xFFF59E0B),
-  Color(0xFF34D399),
-  Color(0xFFF472B6),
-  Color(0xFFA78BFA),
-  Color(0xFFF87171),
-];
-
-Color stateColor(String state) => switch (state) {
-  'running' => const Color(0xFF8BC34A),
-  'starting' => const Color(0xFFF59E0B),
-  'failed' => const Color(0xFFEF4444),
-  'suspended' || 'disabled' => const Color(0xFF64748B),
-  _ => const Color(0xFF475569),
-};
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 /// One small line, scaled to its own max (service cards).
 class Sparkline extends StatelessWidget {
@@ -28,7 +12,7 @@ class Sparkline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-    size: const Size(double.infinity, 28),
+    size: Size.infinite,
     painter: _LinesPainter([values], [color], fill: true),
   );
 }
@@ -42,9 +26,9 @@ class LinesChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final names = series.keys.toList();
+    final palette = AtlasColors.of(context).series;
     final colors = [
-      for (var i = 0; i < names.length; i++)
-        seriesColors[i % seriesColors.length],
+      for (var i = 0; i < names.length; i++) palette[i % palette.length],
     ];
     final max = series.values.expand((v) => v).fold(0.0, math.max);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -168,7 +152,10 @@ class HealthTimeline extends StatelessWidget {
                 Expanded(
                   child: CustomPaint(
                     size: const Size(double.infinity, 8),
-                    painter: _StatePainter(e.value),
+                    painter: _StatePainter(
+                      e.value,
+                      AtlasColors.of(context).serviceState,
+                    ),
                   ),
                 ),
               ],
@@ -180,8 +167,9 @@ class HealthTimeline extends StatelessWidget {
 }
 
 class _StatePainter extends CustomPainter {
-  _StatePainter(this.states);
+  _StatePainter(this.states, this.colorOf);
   final List<String> states;
+  final Color Function(String) colorOf;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -190,7 +178,7 @@ class _StatePainter extends CustomPainter {
     for (var i = 0; i < states.length; i++) {
       canvas.drawRect(
         Rect.fromLTWH(i * w, 0, w + 0.5, size.height),
-        Paint()..color = stateColor(states[i]),
+        Paint()..color = colorOf(states[i]),
       );
     }
   }

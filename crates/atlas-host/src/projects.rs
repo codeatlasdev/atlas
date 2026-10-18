@@ -325,11 +325,14 @@ mod tests {
             std::fs::create_dir_all(fixture.parent().unwrap()).unwrap();
             std::fs::write(&fixture, format!("{text}\n")).unwrap();
         }
+        // Compared as JSON, not text: key order depends on whether another crate in the
+        // build turns on serde_json's `preserve_order`, and the phone does not care.
+        let want: Value =
+            serde_json::from_str(&std::fs::read_to_string(&fixture).unwrap_or_default())
+                .unwrap_or(Value::Null);
+        let got: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(
-            std::fs::read_to_string(&fixture)
-                .unwrap_or_default()
-                .trim_end(),
-            text,
+            want, got,
             "project_detail changed shape: rerun with ATLAS_UPDATE_FIXTURES=1 and update the phone"
         );
     }

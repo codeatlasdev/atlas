@@ -2,13 +2,15 @@ import 'dart:math';
 
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-
+import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
 /// State for the pairing flow.
 enum PairStatus { idle, connecting, success, error }
@@ -33,9 +35,7 @@ class PairNotifier extends Notifier<PairState> {
     try {
       final info = PairInfo.parse(qrUrl);
       final storage = ref.read(macStorageProvider);
-      await _ensureSecretKey(storage);
-
-      // Use the ConnectionNotifier to send the pair command.
+      final secretKey = await _ensureSecretKey(storage);
       final device = MacDevice(
         nodeId: info.nodeId,
         name: info.name,
@@ -43,20 +43,24 @@ class PairNotifier extends Notifier<PairState> {
         relay: info.relay,
       );
 
-      final muxAsync = await widgetRef
-          .read(connectionNotifierProvider(device).future);
-      if (muxAsync == null) {
-        throw Exception('Could not connect to Mac');
+      // One-shot: dial, send `pair`, close. The long-lived connection is opened by
+      // ConnectionNotifier once the Mac is in the paired list.
+      final transport = await ref.read(transportFactoryProvider)(
+        device,
+        secretKey,
+      );
+      final mux = Multiplexer(transport);
+      try {
+        final resp = await mux.call('pair', {
+          'code': info.code,
+          'name': 'Atlas Mobile',
+        });
+        if (resp['ok'] != true) {
+          throw Exception(resp['error'] ?? 'Pairing failed');
+        }
+      } finally {
+        await mux.close();
       }
-
-      final resp = await muxAsync.call('pair', {
-        'code': info.code,
-        'name': 'Atlas Mobile',
-      });
-      if (resp['ok'] != true) {
-        throw Exception(resp['error'] ?? 'Pairing failed');
-      }
-
       await storage.upsertDevice(device);
       state = const PairState(status: PairStatus.success);
     } catch (e) {
@@ -96,8 +100,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
       appBar: AppBar(title: const Text('Pair a Mac')),
       body: Stack(
         children: [
-          if (!_scanned &&
-              pairState.status == PairStatus.idle) ...[
+          if (!_scanned && pairState.status == PairStatus.idle) ...[
             MobileScanner(
               onDetect: (capture) {
                 final barcode = capture.barcodes.firstOrNull;
@@ -133,7 +136,11 @@ class _PairScreenState extends ConsumerState<PairScreen> {
                   const Text('Mac paired successfully!'),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => context.pop(),
+                    onPressed: () {
+                      // Home lists paired Macs from storage: reload it.
+                      ref.invalidate(pairedDevicesProvider);
+                      context.pop();
+                    },
                     child: const Text('Done'),
                   ),
                 ],
@@ -146,8 +153,26 @@ class _PairScreenState extends ConsumerState<PairScreen> {
                 children: [
                   const Icon(Icons.error, color: Colors.red, size: 64),
                   const SizedBox(height: 16),
-                  Text(pairState.error ?? 'Unknown error'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: SelectableText(
+                      pairState.error ?? 'Unknown error',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                   const SizedBox(height: 16),
+                  TextButton.icon(
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy error'),
+                    onPressed: () {
+                      Clipboard.setData(
+                        ClipboardData(text: pairState.error ?? ''),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Error copied')),
+                      );
+                    },
+                  ),
                   ElevatedButton(
                     onPressed: () {
                       _scanned = false;

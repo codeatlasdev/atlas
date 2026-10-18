@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 
-
 /// Provides the list of paired [MacDevice]s loaded from secure storage.
 final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
   (ref) => ref.read(macStorageProvider).loadDevices(),
@@ -66,11 +65,13 @@ class _MacTile extends ConsumerWidget {
       ),
       title: Text(device.name),
       subtitle: Text(
-        isConnected ? 'Connected' : muxAsync.isLoading ? 'Connecting…' : 'Disconnected',
+        isConnected
+            ? 'Connected'
+            : muxAsync.isLoading
+            ? 'Connecting…'
+            : 'Disconnected',
       ),
-      onTap: isConnected
-          ? () => context.push('/device', extra: device)
-          : null,
+      onTap: isConnected ? () => context.push('/device', extra: device) : null,
     );
   }
 }

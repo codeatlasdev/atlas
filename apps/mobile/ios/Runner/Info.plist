@@ -66,6 +66,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Atlas Mobile connects directly to your Mac when it is on the same network.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to scan QR codes when pairing a Mac.</string>
 	<key>NSFaceIDUsageDescription</key>

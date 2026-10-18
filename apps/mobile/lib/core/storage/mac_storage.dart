@@ -12,14 +12,14 @@ const _kSecretKeyKey = 'atlas_mobile.secret_key';
 /// Read/write paired [MacDevice]s to [FlutterSecureStorage].
 class MacStorage {
   MacStorage({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 
   /// Load all paired devices, or `[]` if none stored yet.
   Future<List<MacDevice>> loadDevices() async {
     final raw = await _storage.read(key: _kDevicesKey);
-    if (raw == null || raw.isEmpty) return const [];
+    if (raw == null || raw.isEmpty) return [];
     final list = jsonDecode(raw) as List<dynamic>;
     return list
         .map((e) => MacDevice.fromJson(e as Map<String, dynamic>))
@@ -63,8 +63,7 @@ class MacStorage {
   // ── Secret key ────────────────────────────────────────────────────────────
 
   /// Load the phone's own secret key hex, or `null` if not set yet.
-  Future<String?> loadSecretKey() async =>
-      _storage.read(key: _kSecretKeyKey);
+  Future<String?> loadSecretKey() async => _storage.read(key: _kSecretKeyKey);
 
   /// Persist the phone's own secret key hex.
   Future<void> saveSecretKey(String hexKey) async =>

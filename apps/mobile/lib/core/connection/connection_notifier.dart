@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
@@ -8,20 +10,26 @@ import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/frb_transport.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
-
 /// Factory that creates a [Transport] for a given [MacDevice].
-typedef TransportFactory = Future<Transport> Function(MacDevice device, String secretKeyHex);
+typedef TransportFactory = Future<Transport> Function(
+  MacDevice device,
+  String secretKeyHex,
+);
 
-Future<Transport> _defaultTransportFactory(MacDevice device, String secretKeyHex) =>
-    FrbTransport.connect(
-      secretKeyHex: secretKeyHex,
-      nodeId: device.nodeId,
-      addrs: device.addrs,
-      relay: device.relay,
-    );
+Future<Transport> _defaultTransportFactory(
+  MacDevice device,
+  String secretKeyHex,
+) => FrbTransport.connect(
+  secretKeyHex: secretKeyHex,
+  nodeId: device.nodeId,
+  addrs: device.addrs,
+  relay: device.relay,
+);
 
 /// Overridable transport factory provider (override in tests).
-final transportFactoryProvider = Provider<TransportFactory>((ref) => _defaultTransportFactory);
+final transportFactoryProvider = Provider<TransportFactory>(
+  (ref) => _defaultTransportFactory,
+);
 
 /// Provides the [MacStorage] singleton.
 final macStorageProvider = Provider<MacStorage>((ref) => MacStorage());
@@ -32,7 +40,9 @@ final macStorageProvider = Provider<MacStorage>((ref) => MacStorage());
 /// - Disconnects 30 s after the app backgrounds.
 /// - Family key: [MacDevice] (freezed equality keeps the provider stable).
 final connectionNotifierProvider = AsyncNotifierProvider.autoDispose
-    .family<ConnectionNotifier, Multiplexer?, MacDevice>(ConnectionNotifier.new);
+    .family<ConnectionNotifier, Multiplexer?, MacDevice>(
+      ConnectionNotifier.new,
+    );
 
 class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   ConnectionNotifier(this._device);
@@ -41,6 +51,9 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   static const int _maxBackoff = 30;
 
   Multiplexer? _mux;
+
+  /// Why the last connection attempt failed (shown by the pairing screen).
+  Object? lastError;
   Timer? _reconnectTimer;
   Timer? _backgroundTimer;
   int _backoffSeconds = 1;
@@ -72,7 +85,9 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
       });
 
       return mux;
-    } catch (_) {
+    } catch (e) {
+      lastError = e;
+      debugPrint('atlas-mobile: connect to ${_device.nodeId} failed: $e');
       _scheduleReconnect();
       return null;
     }

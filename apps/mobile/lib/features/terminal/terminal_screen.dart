@@ -15,11 +15,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 /// - Key bar sends raw escape sequences; never sends pty_resize.
 /// - Detaches from the PTY on dispose.
 class TerminalScreen extends ConsumerStatefulWidget {
-  const TerminalScreen({
-    super.key,
-    required this.device,
-    required this.pty,
-  });
+  const TerminalScreen({super.key, required this.device, required this.pty});
 
   final MacDevice device;
   final String pty;
@@ -45,8 +41,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   }
 
   Future<void> _attach() async {
-    final mux =
-        await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null || !mounted) return;
     await mux.call('pty_attach', {
       'pty': widget.pty,
@@ -75,11 +72,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   void dispose() {
     _pushSub?.cancel();
     // Fire-and-forget detach; ignore errors (connection may already be gone).
-    ref
-        .read(connectionNotifierProvider(widget.device))
-        .value
-        ?.call('pty_detach', {'pty': widget.pty})
-        .ignore();
+    ref.read(connectionNotifierProvider(widget.device)).value?.call(
+      'pty_detach',
+      {'pty': widget.pty},
+    ).ignore();
     _ctrl.dispose();
     super.dispose();
   }
@@ -102,14 +98,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   void _sendRaw(String data) {
     if (!_writeEnabled) return;
-    final mux =
-        ref.read(connectionNotifierProvider(widget.device)).value;
-    mux
-        ?.call('pty_write', {
-          'pty': widget.pty,
-          'data': base64.encode(utf8.encode(data)),
-        })
-        .ignore();
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    mux?.call('pty_write', {
+      'pty': widget.pty,
+      'data': base64.encode(utf8.encode(data)),
+    }).ignore();
   }
 
   @override
@@ -121,8 +114,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         actions: [
           IconButton(
             icon: Icon(_writeEnabled ? Icons.lock_open : Icons.lock),
-            tooltip:
-                _writeEnabled ? 'Disable terminal input' : 'Enable terminal input',
+            tooltip: _writeEnabled
+                ? 'Disable terminal input'
+                : 'Enable terminal input',
             onPressed: _toggleWrite,
           ),
         ],
@@ -179,13 +173,13 @@ class _KeyBarState extends State<_KeyBar> {
     final bg = Theme.of(context).colorScheme.surfaceContainerHighest;
 
     Widget key(String label, String seq) => TextButton(
-          style: TextButton.styleFrom(
-            minimumSize: const Size(44, 40),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-          ),
-          onPressed: widget.enabled ? () => _tap(seq) : null,
-          child: Text(label),
-        );
+      style: TextButton.styleFrom(
+        minimumSize: const Size(44, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+      onPressed: widget.enabled ? () => _tap(seq) : null,
+      child: Text(label),
+    );
 
     final baseKeys = [
       key('Esc', '\x1b'),
@@ -195,10 +189,12 @@ class _KeyBarState extends State<_KeyBar> {
         style: TextButton.styleFrom(
           minimumSize: const Size(44, 40),
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          backgroundColor:
-              _ctrlActive ? Theme.of(context).colorScheme.primary : null,
-          foregroundColor:
-              _ctrlActive ? Theme.of(context).colorScheme.onPrimary : null,
+          backgroundColor: _ctrlActive
+              ? Theme.of(context).colorScheme.primary
+              : null,
+          foregroundColor: _ctrlActive
+              ? Theme.of(context).colorScheme.onPrimary
+              : null,
         ),
         onPressed: widget.enabled
             ? () => setState(() => _ctrlActive = !_ctrlActive)
@@ -224,9 +220,7 @@ class _KeyBarState extends State<_KeyBar> {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Row(
-            children: _ctrlActive ? ctrlKeys : baseKeys,
-          ),
+          child: Row(children: _ctrlActive ? ctrlKeys : baseKeys),
         ),
       ),
     );

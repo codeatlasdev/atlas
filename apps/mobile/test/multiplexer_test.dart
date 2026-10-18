@@ -1,4 +1,3 @@
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/transport/fake_transport.dart';
@@ -76,8 +75,7 @@ void main() {
       final sub = mux.pushEvents.listen(pushes.add);
 
       // Inject an oversized "push" line — it must be silently dropped.
-      final giant =
-          '{"ev":"too_big","data":"${'x' * (1024 * 1024)}"}';
+      final giant = '{"ev":"too_big","data":"${'x' * (1024 * 1024)}"}';
       expect(giant.length, greaterThan(Multiplexer.maxLineBytes));
       ft.injectLine(giant);
 
@@ -91,8 +89,7 @@ void main() {
       await sub.cancel();
     });
 
-    test(
-        'oversized line does not resolve a pending call; subsequent valid '
+    test('oversized line does not resolve a pending call; subsequent valid '
         'response does', () async {
       final callFuture = mux.call('ping'); // id=1
       final giant = 'x' * (Multiplexer.maxLineBytes + 1);

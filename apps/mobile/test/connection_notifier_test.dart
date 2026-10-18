@@ -44,43 +44,51 @@ void main() {
     test('connects successfully when transport factory succeeds', () async {
       final fakeTransport = FakeTransport();
 
-      final container = ProviderContainer(overrides: [
-        transportFactoryProvider.overrideWithValue(
-          (_, _) async => fakeTransport,
-        ),
-        macStorageProvider.overrideWithValue(_FakeMacStorage()),
-      ]);
+      final container = ProviderContainer(
+        overrides: [
+          transportFactoryProvider.overrideWithValue(
+            (_, _) async => fakeTransport,
+          ),
+          macStorageProvider.overrideWithValue(_FakeMacStorage()),
+        ],
+      );
       addTearDown(container.dispose);
 
-      final mux =
-          await container.read(connectionNotifierProvider(device).future);
+      final mux = await container.read(
+        connectionNotifierProvider(device).future,
+      );
       expect(mux, isNotNull);
       expect(mux, isA<Multiplexer>());
     });
 
     test('returns null (and schedules reconnect) when factory throws', () async {
-      final container = ProviderContainer(overrides: [
-        transportFactoryProvider.overrideWithValue(
-          (_, _) async => throw Exception('connection refused'),
-        ),
-        macStorageProvider.overrideWithValue(_FakeMacStorage()),
-      ]);
+      final container = ProviderContainer(
+        overrides: [
+          transportFactoryProvider.overrideWithValue(
+            (_, _) async => throw Exception('connection refused'),
+          ),
+          macStorageProvider.overrideWithValue(_FakeMacStorage()),
+        ],
+      );
       addTearDown(container.dispose);
 
       // _connect() catches errors and returns null; provider resolves to null.
-      final mux =
-          await container.read(connectionNotifierProvider(device).future);
+      final mux = await container.read(
+        connectionNotifierProvider(device).future,
+      );
       expect(mux, isNull);
     });
 
     test('transitions through loading then delivers mux', () async {
       final fakeTransport = FakeTransport();
-      final container = ProviderContainer(overrides: [
-        transportFactoryProvider.overrideWithValue(
-          (_, _) async => fakeTransport,
-        ),
-        macStorageProvider.overrideWithValue(_FakeMacStorage()),
-      ]);
+      final container = ProviderContainer(
+        overrides: [
+          transportFactoryProvider.overrideWithValue(
+            (_, _) async => fakeTransport,
+          ),
+          macStorageProvider.overrideWithValue(_FakeMacStorage()),
+        ],
+      );
       addTearDown(container.dispose);
 
       final states = <AsyncValue<Multiplexer?>>[];

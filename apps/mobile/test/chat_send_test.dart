@@ -3,11 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 
 AgentStatus _status(String state) => AgentStatus(
-      state: state,
-      agent: 'test-agent',
-      updatedAt: 0,
-      stateStartedAt: 0,
-    );
+  state: state,
+  agent: 'test-agent',
+  updatedAt: 0,
+  stateStartedAt: 0,
+);
 
 void main() {
   group('canSendChat', () {

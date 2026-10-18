@@ -13,14 +13,8 @@ import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 
 final _router = GoRouter(
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (_, _) => const HomeScreen(),
-    ),
-    GoRoute(
-      path: '/pair',
-      builder: (_, _) => const PairScreen(),
-    ),
+    GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+    GoRoute(path: '/pair', builder: (_, _) => const PairScreen()),
     GoRoute(
       path: '/device',
       builder: (_, state) => DeviceScreen(device: state.extra! as MacDevice),

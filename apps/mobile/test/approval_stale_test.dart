@@ -1,4 +1,3 @@
-
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/transport/fake_transport.dart';
@@ -37,9 +36,7 @@ void main() {
         '{"ev":"agent_approval","pane_key":"p1","agent":"a",'
         '"req":"r1","tool_name":"bash","tool_input":"ls"}',
       );
-      ft.injectLine(
-        '{"ev":"agent_approval_done","pane_key":"p1","req":"r1"}',
-      );
+      ft.injectLine('{"ev":"agent_approval_done","pane_key":"p1","req":"r1"}');
       await Future.delayed(Duration.zero);
 
       expect(pushes, hasLength(2));
@@ -50,8 +47,7 @@ void main() {
       await sub.cancel();
     });
 
-    test(
-        'stale approve (after agent_approval_done) returns '
+    test('stale approve (after agent_approval_done) returns '
         '"no such pending request" error', () async {
       final pushes = <Map<String, dynamic>>[];
       final sub = mux.pushEvents.listen(pushes.add);
@@ -61,21 +57,18 @@ void main() {
         '{"ev":"agent_approval","pane_key":"p1","agent":"a",'
         '"req":"r1","tool_name":"bash","tool_input":"ls"}',
       );
-      ft.injectLine(
-        '{"ev":"agent_approval_done","pane_key":"p1","req":"r1"}',
-      );
+      ft.injectLine('{"ev":"agent_approval_done","pane_key":"p1","req":"r1"}');
       await Future.delayed(Duration.zero);
       await sub.cancel();
 
       // Client calls agent_approve after the request is already done.
-      final approveFuture = mux.call(
-        'agent_approve',
-        {'pane': 'p1', 'req': 'r1', 'allow': true},
-      );
+      final approveFuture = mux.call('agent_approve', {
+        'pane': 'p1',
+        'req': 'r1',
+        'allow': true,
+      });
       // Server replies with an error (id=1, first call on this mux).
-      ft.injectLine(
-        '{"id":1,"ok":false,"error":"no such pending request"}',
-      );
+      ft.injectLine('{"id":1,"ok":false,"error":"no such pending request"}');
 
       final resp = await approveFuture;
       expect(resp['ok'], isFalse);

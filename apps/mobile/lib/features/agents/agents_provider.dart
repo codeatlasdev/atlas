@@ -4,13 +4,13 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 
-
 /// Tracks agent statuses for all panes on [device].
 ///
 /// Initialises from `agent_status_all` then updates on `agent_status` pushes.
 final agentStatusMapNotifierProvider = AsyncNotifierProvider.autoDispose
     .family<AgentStatusMapNotifier, Map<String, AgentStatus>, MacDevice>(
-        AgentStatusMapNotifier.new);
+      AgentStatusMapNotifier.new,
+    );
 
 class AgentStatusMapNotifier extends AsyncNotifier<Map<String, AgentStatus>> {
   AgentStatusMapNotifier(this.device);
@@ -53,7 +53,8 @@ class AgentStatusMapNotifier extends AsyncNotifier<Map<String, AgentStatus>> {
 /// Set to non-null on `agent_approval`, cleared on `agent_approval_done`.
 final pendingApprovalNotifierProvider = NotifierProvider.autoDispose
     .family<PendingApprovalNotifier, AgentApproval?, (MacDevice, String)>(
-        PendingApprovalNotifier.new);
+      PendingApprovalNotifier.new,
+    );
 
 class PendingApprovalNotifier extends Notifier<AgentApproval?> {
   PendingApprovalNotifier(this.arg);

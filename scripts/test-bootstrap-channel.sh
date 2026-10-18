@@ -102,10 +102,42 @@ istable() { (ATLAS_BOOTSTRAP_SOURCE_ONLY=1; . "$ROOT/site/public/install.sh"; pr
 check "install.sh: /releases/latest is an alpha: the bootstrap binary is still the newest stable" \
   "$(istable 'v1.5.0-alpha.4,v1.4.0,v1.4.0-beta.1' 'v1.5.0-alpha.4')" "v1.4.0"
 check "install.sh: /releases/latest is a stable: used as is" "$(istable 'v1.4.0' 'v1.4.0')" "v1.4.0"
-check "install.sh: nothing stable anywhere: empty, so the script dies instead of installing an alpha" \
+check "install.sh: nothing stable anywhere: no stable tag to bootstrap from" \
   "$(istable 'v1.5.0-alpha.4' 'v1.5.0-alpha.4')" ""
 check "install.sh: an unknown channel is rejected" "$(step nightly)" "invalid"
 check "install.sh: channel names are exact (no case folding)" "$(step Alpha)" "invalid"
+check "install.sh: default channel matches bootstrap.sh" \
+  "$( (ATLAS_BOOTSTRAP_SOURCE_ONLY=1; . "$ROOT/site/public/install.sh"; printf '%s' "$DEFAULT_CHANNEL") )" "$DEFAULT_CHANNEL"
+
+# install.sh downloads the first candidate whose release has a build for the platform (#91: the
+# newest Stable, 1.4.0, predates the Linux builds, so `curl | sh` died on a 404 on Linux x86_64).
+# boot WITH STEP STABLE LATEST: the tag install.sh downloads for x86_64 Linux, with `has_asset`
+# stubbed to the comma-separated releases in WITH that carry atlas-<version>-<target>.tar.gz.
+boot() {
+  (
+    ATLAS_BOOTSTRAP_SOURCE_ONLY=1
+    . "$ROOT/site/public/install.sh"
+    with="$1"
+    has_asset() { case ",$with," in *",$1,"*) [ "$2" = "atlas-${1#v}-x86_64-unknown-linux-gnu.tar.gz" ] ;; *) return 1 ;; esac; }
+    bootstrap_candidates "$2" "$3" "$4" | first_with_asset x86_64-unknown-linux-gnu
+  )
+}
+check "install.sh #91: the newest Stable has no build for the platform: the default channel's newest build" \
+  "$(boot 'v1.5.0-alpha.13' default v1.4.0 v1.5.0-alpha.13)" "v1.5.0-alpha.13"
+check "install.sh #91: same with ATLAS_CHANNEL=alpha" \
+  "$(boot 'v1.5.0-alpha.13' alpha v1.4.0 v1.5.0-alpha.13)" "v1.5.0-alpha.13"
+check "install.sh: ATLAS_CHANNEL=stable never bootstraps from an alpha" \
+  "$(boot 'v1.5.0-alpha.13' stable v1.4.0 v1.5.0-alpha.13)" ""
+check "install.sh: ATLAS_CHANNEL=beta never bootstraps from an alpha" \
+  "$(boot 'v1.5.0-alpha.13' beta v1.4.0 v1.5.0-alpha.13)" ""
+check "install.sh: a Stable with the build still wins over a newer alpha" \
+  "$(boot 'v1.4.0,v1.5.0-alpha.13' default v1.4.0 v1.5.0-alpha.13)" "v1.4.0"
+check "install.sh: no Stable published: the default channel's newest build" \
+  "$(boot 'v1.5.0-alpha.13' default '' v1.5.0-alpha.13)" "v1.5.0-alpha.13"
+check "install.sh: no release has the build: nothing, so the script dies" \
+  "$(boot '' default v1.4.0 v1.5.0-alpha.13)" ""
+check "install.sh: a malformed redirect tag is never probed or installed" \
+  "$(boot 'v1.5.0;x' default v1.4.0 'v1.5.0;x')" ""
 
 echo "bootstrap channel selection: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

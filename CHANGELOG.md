@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`install.sh` failed on Linux with a 404** ([#91](https://github.com/codeatlasdev/atlas/issues/91)). It always started from the newest Stable, and no Stable has a Linux build yet (1.4.0 predates them), so `curl … | sh` died on `atlas-1.4.0-x86_64-unknown-linux-gnu.tar.gz`, with or without `ATLAS_CHANNEL=alpha`. It now checks that the release has the build for your platform first. With no channel set or `ATLAS_CHANNEL=alpha` it falls back to the default channel's newest build (`/releases/latest`); with `stable` or `beta` it stops with a message that names the newest Stable and the alpha one-liner, and never installs an alpha.
+
 ## [1.5.0-alpha.13] — 2026-10-17
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

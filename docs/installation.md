@@ -15,7 +15,7 @@ description: "Install Atlas from a release, update it, or build it from source."
 
 ## Install a release
 
-The installer downloads the latest stable release binary from GitHub, verifies its SHA-256 and runs the binary's own `atlas install`: it copies `atlas` to `~/.atlas/bin/atlas`, adds that directory to `PATH` for every detected shell (fish, zsh, bash) and installs the bundled agent skills. It needs `curl`, `tar` and `sha256sum` (or `shasum`), never `sudo`, and exits with a message on anything other than macOS on Apple silicon or Linux x86_64.
+The installer downloads the latest stable release binary from GitHub, verifies its SHA-256 and runs the binary's own `atlas install`: it copies `atlas` to `~/.atlas/bin/atlas`, adds that directory to `PATH` for every detected shell (fish, zsh, bash) and installs the bundled agent skills. When that stable has no build for your platform (no Stable has a Linux build yet: Linux ships from 1.5.0-alpha.7 on), it starts from the newest build of the default channel (Alpha) instead, and with `ATLAS_CHANNEL=stable` or `beta` it stops and says so. It needs `curl`, `tar` and `sha256sum` (or `shasum`), never `sudo`, and exits with a message on anything other than macOS on Apple silicon or Linux x86_64.
 
 ```bash
 curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
@@ -36,7 +36,7 @@ curl -fsSL https://atlas.codeatlas.com.br/install.sh | ATLAS_CHANNEL=stable sh  
 curl -fsSL https://raw.githubusercontent.com/codeatlasdev/atlas/main/scripts/bootstrap.sh | ATLAS_CHANNEL=beta bash
 ```
 
-`install.sh` installs the latest Stable and then runs `atlas update` (the default channel, nothing saved) or `atlas update --channel <name>` (an explicit choice, saved), so the newer build comes through the same verified update path. `bootstrap.sh` picks the right release itself.
+`install.sh` installs the latest Stable (or, when it has no build for your platform and you follow Alpha, the default channel's newest build) and then runs `atlas update` (the default channel, nothing saved) or `atlas update --channel <name>` (an explicit choice, saved), so the newer build comes through the same verified update path. `bootstrap.sh` picks the right release itself.
 
 Beta installs the newest beta or release candidate, Alpha the newest alpha, beta or release candidate; both fall back to the latest Stable when that is newer (or when nothing else is published), and Stable installs releases only. The installer reads only the public `releases.atom` feed (older pages with `?after=` when needed) and the `releases/latest` redirect (no GitHub API, so no rate limit) and picks the highest SemVer precedence. Stable is the newest release without a prerelease label, never the redirect alone: while Alpha is the default, GitHub's "Latest" is the newest alpha. An explicit `ATLAS_CHANNEL` is saved to `~/.atlas/update-channel`, so `atlas update` keeps following it; with none, nothing is saved and `atlas update` follows the default. What each channel promises: [Versioning and release channels](versioning.md).
 

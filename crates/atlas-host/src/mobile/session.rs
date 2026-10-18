@@ -77,6 +77,12 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
         let id = raw["id"].as_u64().unwrap_or(0);
         // Re-checked per request: a revoke or scope change applies at once.
         let Some(dev) = m.device(&node) else { break };
+        // A paired phone scanning a new code (e.g. it lost its local list): already trusted.
+        if raw["cmd"] == "pair" {
+            let data = json!({"device": dev, "hostname": crate::server::hostname()});
+            let _ = tx.send(protocol::reply(id, Ok(data)));
+            continue;
+        }
         let req: Request = match serde_json::from_value(raw.clone()) {
             Ok(r) => r,
             Err(e) => {

@@ -46,7 +46,13 @@ struct Phone {
 
 impl Phone {
     async fn dial(info: &Value) -> Self {
+        Self::dial_as(info, iroh::SecretKey::generate()).await
+    }
+
+    /// Dial as a given identity (the same phone reconnecting).
+    async fn dial_as(info: &Value, key: iroh::SecretKey) -> Self {
         let ep = Endpoint::builder(iroh::endpoint::presets::Minimal)
+            .secret_key(key)
             .bind()
             .await
             .unwrap();
@@ -127,6 +133,14 @@ async fn pairing_scopes_and_revocation() {
     assert_eq!(r["error"], "no pairing in progress");
 
     assert_eq!(phone.call("pty_list", json!({})).await.unwrap()["ok"], true);
+    // The phone lost its local list and scans a new QR: an already paired phone is
+    // answered OK, with no code check, instead of a "bad request".
+    let mut again = Phone::dial_as(&info, phone._ep.secret_key().clone()).await;
+    let r = again
+        .call("pair", json!({"code": "whatever", "name": "iPhone"}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
     // Never from a phone, whatever its scopes: shell exec, raw attach, managing devices.
     for cmd in [
         "exec",

@@ -32,6 +32,7 @@ atlas-tui = { version = "1.5.0-alpha.12", path = "../atlas-tui" }
 [dev-dependencies]
 tempfile = { workspace = true }
 atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
+chrono = { workspace = true, features = ["serde"] }
 
 [lints]
 workspace = true

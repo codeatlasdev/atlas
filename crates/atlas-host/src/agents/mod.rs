@@ -5,6 +5,7 @@
 //! the loopback HTTP server in [`hook_server`]; clients get `agent_status`
 //! pushes and the `agent_*` commands.
 
+pub mod history;
 pub mod hook_server;
 #[cfg(test)]
 mod tests;
@@ -244,6 +245,10 @@ impl AgentHub {
         let (_, tx) = p.remove(req).expect("checked above");
         tx.send(allow)
             .map_err(|_| "no such pending request".to_string())
+    }
+
+    pub fn session_file(&self, pane: &str) -> Option<String> {
+        self.panes.lock().get(pane)?.session_file.clone()
     }
 
     pub fn state_of(&self, pane: &str) -> Option<State> {

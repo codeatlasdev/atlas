@@ -115,6 +115,9 @@ fn default_lines() -> u32 {
 fn default_log_lines() -> usize {
     80
 }
+fn default_history_limit() -> usize {
+    200
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "cmd", content = "args", rename_all = "snake_case")]
@@ -317,8 +320,19 @@ pub enum HostCmd {
         pane: String,
         text: String,
     },
+    /// The agent's conversation from its session file: `{messages: [{role, text}], truncated}`.
+    /// Takes the pane, never a path: the file is the one hostd recorded for that pane.
+    AgentHistory {
+        pane: String,
+        #[serde(default = "default_history_limit")]
+        limit: usize,
+    },
     /// Local projects of the desktop registry with their live service state.
     ProjectList {},
+    /// One project's status, config, last log line per service and recent error count.
+    ProjectDetail {
+        id: String,
+    },
     /// Service logs (`query` = search, case-insensitive substring or `/regex/`).
     ProjectLogs {
         id: String,

@@ -624,7 +624,25 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             Ok(json!({}))
         }
         HostCmd::AgentSend { pane, text } => agent_send(hub, &pane, &text).await,
+        HostCmd::AgentHistory { pane, limit } => {
+            let file = hub
+                .agents
+                .session_file(&pane)
+                .ok_or("no session for pane")?;
+            let (messages, truncated) = crate::agents::history::read(&file, limit.min(1000))?;
+            Ok(json!({"messages": messages, "truncated": truncated}))
+        }
         HostCmd::ProjectList {} => crate::projects::list(&hub.dir).await,
+        HostCmd::ProjectDetail { id } => {
+            let panes: Vec<(String, String)> = hub
+                .sessions_snapshot()
+                .into_iter()
+                .filter(|s| s.exited().is_none())
+                .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
+                .collect();
+            let status = serde_json::to_value(hub.agents.all()).unwrap_or_default();
+            crate::projects::detail(&hub.dir, &id, &panes, &status).await
+        }
         HostCmd::ProjectLogs {
             id,
             service,

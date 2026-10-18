@@ -285,8 +285,14 @@ impl Mobile {
 pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
     use HostCmd as C;
     Ok(match cmd {
-        C::PtyList {} | C::PtyInfo { .. } | C::PtyRead { .. } | C::AgentStatusAll {} => Scope::Read,
-        C::ProjectList {} | C::ProjectLogs { .. } | C::Info {} => Scope::Read,
+        C::PtyList {}
+        | C::PtyInfo { .. }
+        | C::PtyRead { .. }
+        | C::AgentStatusAll {}
+        | C::AgentHistory { .. } => Scope::Read,
+        C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
+            Scope::Read
+        }
         C::ProjectService { .. } | C::ProjectAction { .. } | C::AgentSend { .. } => Scope::Act,
         C::AgentApprove { .. } => Scope::Approve,
         C::PtyAttach { .. } | C::PtyDetach { .. } => Scope::TermRead,

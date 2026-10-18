@@ -447,6 +447,7 @@ dependencies = [
  "atlas-lsp",
  "atlas-tui",
  "base64 0.23.1",
+ "chrono",
  "dirs",
  "iroh",
  "libc",

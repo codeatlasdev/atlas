@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
 import 'package:atlas_mobile/features/device/device_screen.dart';
@@ -56,21 +57,10 @@ class AtlasMobileApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Atlas Mobile',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      title: 'Atlas',
+      debugShowCheckedModeBanner: false,
+      theme: atlasTheme(Brightness.light),
+      darkTheme: atlasTheme(Brightness.dark),
       themeMode: ThemeMode.system,
       routerConfig: _router,
     );

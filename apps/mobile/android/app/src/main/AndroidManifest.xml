@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="atlas_mobile"
+        android:label="Atlas"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

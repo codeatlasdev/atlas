@@ -145,6 +145,59 @@ describe("audio engine", () => {
 		e.gesture();
 		await e.play("update");
 	});
+
+	// #87: on Linux, WebKitGTK rejects `resume()` with "Failed to start the audio device" when it cannot open an
+	// output (no sink, PipeWire/Pulse refusing it). The rejection escaped as an unhandled promise on every click and
+	// key, and the global error handler toasted it repeatedly. Sound is never the only channel: it must stay quiet.
+	test("a context whose resume() rejects (no audio device) handles the rejection and retries on the next gesture", async () => {
+		// resume() returns a thenable that rejects only once someone subscribes to it, so "was the rejection handled"
+		// is a recorded fact instead of a race against the runtime's unhandled-rejection timer.
+		const resumes = [];
+		class DeadCtx {
+			state = "suspended";
+			destination = {};
+			resume() {
+				const call = { handled: false };
+				resumes.push(call);
+				const error = new Error("Failed to start the audio device");
+				return {
+					then(ok, fail) {
+						if (fail) call.handled = true;
+						return Promise.reject(error).then(ok, fail);
+					},
+					catch(fail) {
+						call.handled = true;
+						return Promise.reject(error).catch(fail);
+					},
+				};
+			}
+			decodeAudioData() {
+				return Promise.resolve({});
+			}
+			createBufferSource() {
+				return { buffer: null, connect: (x) => x, start() {} };
+			}
+			createGain() {
+				return { gain: { value: 1 }, connect: (x) => x };
+			}
+		}
+		const e = createEngine({
+			AudioContext: DeadCtx,
+			fetchAsset: async () => new ArrayBuffer(1),
+			context: () => ({
+				now: 1,
+				foreground: true,
+				systemUiSounds: true,
+				prefs: DEFAULT_SOUND_PREFS,
+				reducedMotion: false,
+			}),
+		});
+		e.gesture();
+		e.gesture();
+		await e.play("success");
+		// Still suspended, so every gesture tries again (a device plugged in later works), and each failure is caught.
+		expect(resumes.map((c) => c.handled)).toEqual([true, true]);
+	});
 });
 
 describe("persisted cooldown", () => {

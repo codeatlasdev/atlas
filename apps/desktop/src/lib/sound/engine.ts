@@ -10,7 +10,7 @@ import { PERSISTED, decide, gain, record, seedMemory, type Category, type Ctx } 
 interface AudioCtxLike {
 	state: string;
 	destination: unknown;
-	resume(): unknown;
+	resume(): Promise<unknown>;
 	decodeAudioData(data: ArrayBuffer): Promise<unknown>;
 	createBufferSource(): {
 		buffer: unknown;
@@ -89,7 +89,9 @@ export function createEngine(deps: EngineDeps): Engine {
 		gesture() {
 			if (!deps.AudioContext) return;
 			ctx ??= new deps.AudioContext();
-			if (ctx.state === "suspended") void ctx.resume();
+			// WebKitGTK rejects with "Failed to start the audio device" when no output can be opened (#87). Like a
+			// missing asset it is a silent miss; the context stays suspended, so the next gesture tries again.
+			if (ctx.state === "suspended") ctx.resume().catch(() => {});
 			if (held) {
 				const category = held;
 				held = null;

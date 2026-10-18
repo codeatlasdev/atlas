@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop on Linux: no more "Failed to start the audio device" toasts** ([#87](https://github.com/codeatlasdev/atlas/issues/87)). When WebKitGTK cannot open an audio output, `AudioContext.resume()` rejects with that message; the earcon engine called it on every click and key without catching it, so each one reached the global error handler as an unhandled rejection. A failed resume is now a silent miss like a missing sound file, and the next click or key tries again, so a device that shows up later still plays.
+
 ## [1.5.0-alpha.13] — 2026-10-17
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -21,6 +21,8 @@ export interface PrView {
 	isDraft: boolean;
 	mergeable: string;
 	headRefName: string;
+	/** Head commit sha; auto clean up only treats commits up to it as pushed. */
+	headRefOid: string;
 	baseRefName: string;
 	reviews: { author: { login: string }; state: string; body: string; submittedAt: string }[];
 	comments: { author: { login: string }; body: string; createdAt: string }[];
@@ -34,7 +36,7 @@ export interface PrView {
 }
 
 const PR_FIELDS =
-	"number,title,state,url,body,author,reviews,comments,statusCheckRollup,mergeable,headRefName,baseRefName,isDraft";
+	"number,title,state,url,body,author,reviews,comments,statusCheckRollup,mergeable,headRefName,headRefOid,baseRefName,isDraft";
 
 /** Failed/pending/ok summary of a check rollup. */
 export function rollup(p: Pick<PrView, "statusCheckRollup">): "failed" | "pending" | "ok" | "none" {

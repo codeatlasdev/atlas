@@ -173,6 +173,7 @@ macro_rules! handlers {
             workspace::workspace_save,
             worktree::worktree_create,
             worktree::worktree_remove,
+            worktree::worktree_auto_remove,
             worktree::git_refs,
             worktree::worktrees_import,
             worktree::worktree_stats,

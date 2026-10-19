@@ -22,13 +22,50 @@ pub async fn worktree_remove(
     id: String,
     force: bool,
 ) -> Result<Value, String> {
-    let res = remove(&hub, &id, force).await?;
+    let res = remove(&hub, &id, force, false).await?;
     live.remove(&id);
     let _ = app.emit("projects://changed", ());
     Ok(res)
 }
 
-async fn remove(hub: &HostHub, id: &str, force: bool) -> Result<Value, String> {
+/// Auto clean up (#58): remove a worktree only when nothing would be lost, never with `--force`, and keep its
+/// branch so the frontend can restore it. With `merged`, Rust asks `gh` itself: the worktree is removed only when
+/// its branch's PR is MERGED, and only commits up to that PR's head count as pushed.
+/// Returns `{kept: "not_merged"|"dirty"|"secrets"|"unpushed"}` or `{removed: true, branch}`.
+#[tauri::command]
+pub async fn worktree_auto_remove(
+    app: AppHandle,
+    hub: State<'_, Arc<HostHub>>,
+    live: State<'_, LiveHub>,
+    id: String,
+    merged: bool,
+) -> Result<Value, String> {
+    use crate::git_branch::{gh_runner, hostd_runner, keep_reason, merged_head};
+    let e = registry::load()?
+        .into_iter()
+        .find(|e| e.id == id)
+        .ok_or("unknown worktree")?;
+    let dir = PathBuf::from(&e.root);
+    let head = match (merged, &e.branch) {
+        (false, _) => None,
+        (true, Some(b)) => match merged_head(&gh_runner(hub.inner().clone(), dir.clone()), b).await
+        {
+            Some(h) => Some(h),
+            None => return Ok(json!({"kept": "not_merged"})),
+        },
+        (true, None) => return Ok(json!({"kept": "not_merged"})),
+    };
+    if let Some(why) = keep_reason(&hostd_runner(hub.inner().clone(), dir), head.as_deref()).await?
+    {
+        return Ok(json!({"kept": why}));
+    }
+    remove(&hub, &id, false, true).await?;
+    live.remove(&id);
+    let _ = app.emit("projects://changed", ());
+    Ok(json!({"removed": true, "branch": e.branch}))
+}
+
+async fn remove(hub: &HostHub, id: &str, force: bool, keep_branch: bool) -> Result<Value, String> {
     let entries = registry::load()?;
     let e = entries
         .iter()
@@ -88,7 +125,7 @@ async fn remove(hub: &HostHub, id: &str, force: bool) -> Result<Value, String> {
         let _ = git(hub, &root, &["worktree", "prune"]).await;
     }
     let mut preserved = None;
-    if let Some(b) = &e.branch {
+    if let Some(b) = e.branch.as_ref().filter(|_| !keep_branch) {
         let flag = if force { "-D" } else { "-d" };
         if git(hub, &root, &["branch", flag, b]).await.is_err() {
             preserved = Some(b.clone());

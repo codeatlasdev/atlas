@@ -14,6 +14,68 @@ import 'package:atlas_mobile/src/rust/frb_generated.dart';
 
 const _pairUrl = String.fromEnvironment('E2E_PAIR_URL');
 
+/// `--watch`: pause on each step so a person can follow it.
+const _slow = bool.fromEnvironment('E2E_SLOW');
+
+/// The step being tested, shown in a banner on top of the app.
+final _caption = ValueNotifier<String>('');
+
+/// Real time (a live binding does not wait on `pump`'s duration), only with `--watch`.
+Future<void> _pause(WidgetTester t, int ms) async {
+  if (!_slow) return t.pump();
+  await Future<void>.delayed(Duration(milliseconds: ms));
+  await t.pump();
+}
+
+/// Name the next step in the banner (and the log), then let it be read.
+Future<void> _step(WidgetTester t, String text) async {
+  _caption.value = text;
+  debugPrint('e2e: $text');
+  await _pause(t, 1500);
+}
+
+/// The app under test with the step banner over it.
+Widget _withBanner(Widget app) => Directionality(
+  textDirection: TextDirection.ltr,
+  child: Stack(
+    children: [
+      app,
+      Positioned(
+        left: 12,
+        right: 12,
+        bottom: 40,
+        child: IgnorePointer(
+          child: ValueListenableBuilder(
+            valueListenable: _caption,
+            builder: (_, text, _) => text.isEmpty
+                ? const SizedBox.shrink()
+                : Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xE6000000),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      text,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    ],
+  ),
+);
+
 /// Pump until [f] finds something, or fail after [timeout]. Network and iroh
 /// make every step asynchronous; fixed sleeps would be flaky or slow.
 Future<void> _until(
@@ -40,6 +102,7 @@ Future<void> _tap(WidgetTester t, Finder f) async {
   await _until(t, f);
   await t.pump(const Duration(milliseconds: 600));
   await t.tap(f.first);
+  await _pause(t, 800);
 }
 
 void main() {
@@ -48,12 +111,15 @@ void main() {
   testWidgets('pair, open the project, its agent and the terminal', (t) async {
     expect(_pairUrl, isNotEmpty, reason: 'run through scripts/mobile-e2e.ts');
     await RustLib.init();
-    await t.pumpWidget(const ProviderScope(child: AtlasMobileApp()));
+    await t.pumpWidget(
+      _withBanner(const ProviderScope(child: AtlasMobileApp())),
+    );
     await t.pump();
     final container = ProviderScope.containerOf(
       t.element(find.byType(AtlasMobileApp)),
     );
 
+    await _step(t, '1/6  Pairing with the computer');
     // Pairing: the code a scan would read, through the same notifier, kept alive
     // the way the pairing screen keeps it (it watches the state).
     final keep = container.listen(pairNotifierProvider, (_, _) {});
@@ -66,22 +132,29 @@ void main() {
     keep.close();
     container.invalidate(pairedDevicesProvider);
 
+    await _step(t, '2/6  Home: the computer\'s projects');
     // Home (onboarding off: ATLAS_ALWAYS_ONBOARD=false): the computer's projects.
     await _tap(t, find.text('e2e-shop'));
 
+    await _step(t, '3/6  Project: its services');
     // Project screen: services from atlas.yaml; a service's sheet has its last log line.
     await _until(t, find.text('worker'));
+    await _step(t, '4/6  A service: its last log line');
     await _tap(t, find.text('api'));
     await _until(t, find.textContaining('listening on 4100'));
     await t.tapAt(const Offset(20, 80)); // outside the sheet: close it
     await t.pump(const Duration(milliseconds: 600));
 
+    await _step(t, '5/6  Agents: the agent and its chat');
     // Agents tab: the agent from the hook, with its last reply; then its chat.
     await _tap(t, find.textContaining('Agents'));
     await _tap(t, find.textContaining('e2e reply'));
 
+    await _step(t, '6/6  The agent\'s terminal');
     // Its terminal: the replay arrives (the bug of an empty terminal).
     await _tap(t, find.byTooltip('Terminal'));
     await _until(t, find.textContaining('hello from e2e', findRichText: true));
+    await _step(t, '✓  Everything works');
+    await _pause(t, 3000);
   });
 }

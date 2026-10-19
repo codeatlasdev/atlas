@@ -16,6 +16,7 @@
     "desktop:build:app": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri build --debug --bundles app --ci",
     "mobile:check": "scripts/mobile-check.sh",
     "mobile:e2e": "bun scripts/mobile-e2e.ts",
+    "mobile:watch": "bun scripts/mobile-e2e.ts --watch",
     "desktop:check": "cd apps/desktop && bun install --frozen-lockfile && bun run check",
     "desktop:link": "cargo run -q -p atlas-cli -- link --desktop",
     "site:dev": "cd site && bun install --frozen-lockfile && bun run dev",

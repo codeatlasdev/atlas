@@ -188,7 +188,6 @@ try {
 	await $`xcrun simctl erase ${udid}`;
 	await $`xcrun simctl boot ${udid}`;
 	await $`xcrun simctl bootstatus ${udid} -b`.quiet();
-	if (watch) await $`open -a Simulator --args -CurrentDeviceUDID ${udid}`;
 	// Stopped with SIGINT so the file is finalized.
 	const filming = record
 		? Bun.spawn(
@@ -200,10 +199,34 @@ try {
 			)
 		: null;
 
-	const run =
-		await $`flutter test integration_test/e2e_test.dart -d ${udid} --dart-define=E2E_PAIR_URL=${url} --dart-define=ATLAS_ALWAYS_ONBOARD=false`
-			.cwd(join(root, "apps/mobile"))
-			.nothrow();
+	const defines = [
+		`--dart-define=E2E_PAIR_URL=${url}`,
+		"--dart-define=ATLAS_ALWAYS_ONBOARD=false",
+	];
+	if (watch) defines.push("--dart-define=E2E_SLOW=true");
+	const test = Bun.spawn(
+		[
+			"flutter",
+			"test",
+			"integration_test/e2e_test.dart",
+			"-d",
+			udid,
+			...defines,
+		],
+		{ cwd: join(root, "apps/mobile"), stdout: "pipe", stderr: "inherit" },
+	);
+	// --watch: open the simulator once the app is built, so the window shows the run, not
+	// a minute of home screen while Xcode compiles.
+	let shown = !watch;
+	const out = test.stdout.pipeThrough(new TextDecoderStream()).getReader();
+	for (let c = await out.read(); !c.done; c = await out.read()) {
+		process.stdout.write(c.value);
+		if (!shown && c.value.includes("Xcode build done")) {
+			shown = true;
+			await $`open -a Simulator --args -CurrentDeviceUDID ${udid}`;
+		}
+	}
+	const run = { exitCode: await test.exited };
 	status = run.exitCode;
 	if (filming) {
 		filming.kill("SIGINT");

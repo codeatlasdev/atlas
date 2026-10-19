@@ -1,0 +1,98 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_transport.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/storage/mac_storage.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/features/home/onboarding.dart';
+
+class _Storage extends MacStorage {
+  _Storage(this.devices) : super(storage: null);
+  final List<MacDevice> devices;
+  @override
+  Future<List<MacDevice>> loadDevices() async => devices;
+  @override
+  Future<String?> loadSecretKey() async => 'ab';
+}
+
+Future<void> _settle(WidgetTester t) async {
+  for (var i = 0; i < 30; i++) {
+    await t.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Future<void> _app(WidgetTester t, List<MacDevice> paired) async {
+  await t.binding.setSurfaceSize(const Size(393, 852));
+  await t.pumpWidget(
+    ProviderScope(
+      overrides: [
+        macStorageProvider.overrideWithValue(_Storage(paired)),
+        // The real computer is never reached in tests; the demo protocol stands in.
+        transportFactoryProvider.overrideWithValue(
+          (_, _) async => demoTransport(),
+        ),
+      ],
+      child: MaterialApp(
+        theme: atlasTheme(Brightness.dark),
+        home: const HomeScreen(),
+      ),
+    ),
+  );
+  await _settle(t);
+}
+
+Future<void> _toLastPage(WidgetTester t) async {
+  for (var i = 0; i < 3; i++) {
+    await t.tap(find.text('Continue'));
+    await _settle(t);
+  }
+}
+
+void main() {
+  const mac = MacDevice(nodeId: 'n1', name: 'My Mac');
+
+  // Debug builds show the onboarding on every launch; with a computer paired, its last
+  // button opens that computer, and the debug menu brings the onboarding back.
+  testWidgets('paired: onboarding → my computer → menu → onboarding again', (
+    t,
+  ) async {
+    await _app(t, [mac]);
+    expect(find.byType(Onboarding), findsOneWidget);
+    await _toLastPage(t);
+    await t.tap(find.text('Open my computer'));
+    await _settle(t);
+    expect(find.byType(Onboarding), findsNothing);
+    expect(find.text('My Mac'), findsWidgets);
+
+    await t.tap(find.byIcon(Icons.more_horiz_rounded));
+    await _settle(t);
+    await t.tap(find.text('Show onboarding (debug)'));
+    await _settle(t);
+    expect(find.byType(Onboarding), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    await _settle(t);
+  });
+
+  testWidgets('try the demo from the onboarding, then leave it', (t) async {
+    await _app(t, []);
+    await t.tap(find.text('Try the demo'));
+    await _settle(t);
+    expect(find.text(demoDevice.name), findsWidgets);
+
+    await t.tap(find.byIcon(Icons.more_horiz_rounded));
+    await _settle(t);
+    await t.tap(find.text('Leave the demo'));
+    await _settle(t);
+    expect(
+      find.byType(Onboarding),
+      findsOneWidget,
+      reason: 'nothing paired: back to onboarding',
+    );
+    await t.pumpWidget(const SizedBox());
+    await _settle(t);
+  });
+}

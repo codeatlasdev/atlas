@@ -94,10 +94,12 @@ class Multiplexer {
     return completer.future;
   }
 
-  /// Close the multiplexer and the underlying transport.
+  /// Close the multiplexer and the underlying transport. The transport is closed first,
+  /// so its resources (sockets, timers) go even if cancelling the subscription is slow.
   Future<void> close() async {
+    final closing = _transport.close();
     await _sub.cancel();
-    await _transport.close();
+    await closing;
     _onDone();
   }
 }

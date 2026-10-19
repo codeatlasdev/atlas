@@ -32,6 +32,9 @@ const _alwaysOnboard =
 /// Onboarding was finished in this launch (debug: lets the dashboard show afterwards).
 final onboardingSeenProvider = StateProvider<bool>((ref) => false);
 
+/// Debug: the home menu asked for the onboarding again.
+final forceOnboardingProvider = StateProvider<bool>((ref) => false);
+
 /// Showing the in-app demo computer instead of the paired ones (not saved).
 final demoModeProvider = StateProvider<bool>((ref) => false);
 
@@ -86,7 +89,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             final list = demo ? [demoDevice] : stored;
             final onboard =
                 list.isEmpty ||
-                (_alwaysOnboard && !demo && !ref.watch(onboardingSeenProvider));
+                (!demo &&
+                    !ref.watch(onboardingSeenProvider) &&
+                    (_alwaysOnboard || ref.watch(forceOnboardingProvider)));
             if (onboard) return Onboarding(paired: stored.isNotEmpty);
             final device = list.firstWhere(
               (d) => d.nodeId == _nodeId,
@@ -202,6 +207,13 @@ class _DashboardState extends ConsumerState<_Dashboard> {
     );
   }
 
+  /// Debug: back to the onboarding (leaves the demo too, which skips it).
+  void _showOnboarding() {
+    ref.read(demoModeProvider.notifier).state = false;
+    ref.read(onboardingSeenProvider.notifier).state = false;
+    ref.read(forceOnboardingProvider.notifier).state = true;
+  }
+
   void _openProject(ProjectInfo p) =>
       context.push('/project', extra: {'device': widget.device, 'project': p});
 
@@ -270,17 +282,34 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                 icon: const Icon(Icons.more_horiz_rounded),
                 onSelected: (v) => switch (v) {
                   'pair' => context.push('/pair'),
+                  'exit' => ref.read(demoModeProvider.notifier).state = false,
+                  'onboarding' => _showOnboarding(),
+                  'privacy' => openPrivacy(),
                   _ => _forget(),
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'pair',
-                    child: Text('Pair another computer'),
-                  ),
-                  PopupMenuItem(
-                    value: 'forget',
-                    child: Text('Forget this computer'),
-                  ),
+                itemBuilder: (_) => [
+                  if (isDemo(widget.device)) ...const [
+                    PopupMenuItem(value: 'exit', child: Text('Leave the demo')),
+                    PopupMenuItem(
+                      value: 'pair',
+                      child: Text('Pair a computer'),
+                    ),
+                  ] else ...const [
+                    PopupMenuItem(
+                      value: 'pair',
+                      child: Text('Pair another computer'),
+                    ),
+                    PopupMenuItem(
+                      value: 'forget',
+                      child: Text('Forget this computer'),
+                    ),
+                  ],
+                  const PopupMenuItem(value: 'privacy', child: Text('Privacy')),
+                  if (kDebugMode)
+                    const PopupMenuItem(
+                      value: 'onboarding',
+                      child: Text('Show onboarding (debug)'),
+                    ),
                 ],
               ),
             ],

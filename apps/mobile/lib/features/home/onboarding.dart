@@ -63,11 +63,11 @@ class _OnboardingState extends State<Onboarding> {
     super.dispose();
   }
 
-  void _finish() =>
-      ProviderScope.containerOf(context)
-              .read(onboardingSeenProvider.notifier)
-              .state =
-          true;
+  void _finish() {
+    final c = ProviderScope.containerOf(context);
+    c.read(forceOnboardingProvider.notifier).state = false;
+    c.read(onboardingSeenProvider.notifier).state = true;
+  }
 
   void _next() => _pages.nextPage(duration: Motion.slow, curve: Motion.ease);
 

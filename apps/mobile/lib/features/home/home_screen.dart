@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -16,6 +17,15 @@ import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/projects/projects_screen.dart';
+
+/// Debug builds only: show the onboarding on every launch, even with a paired computer.
+/// `--dart-define=ATLAS_ALWAYS_ONBOARD=false` turns it off; release builds never do it.
+const _alwaysOnboard =
+    kDebugMode &&
+    bool.fromEnvironment('ATLAS_ALWAYS_ONBOARD', defaultValue: true);
+
+/// Onboarding was finished in this launch (debug: lets the dashboard show afterwards).
+final onboardingSeenProvider = StateProvider<bool>((ref) => false);
 
 /// Showing the in-app demo computer instead of the paired ones (not saved).
 final demoModeProvider = StateProvider<bool>((ref) => false);
@@ -56,7 +66,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           data: (stored) {
             final demo = ref.watch(demoModeProvider);
             final list = demo ? [demoDevice] : stored;
-            if (list.isEmpty) return const Onboarding();
+            final onboard =
+                list.isEmpty ||
+                (_alwaysOnboard && !demo && !ref.watch(onboardingSeenProvider));
+            if (onboard) return Onboarding(paired: stored.isNotEmpty);
             final device = list.firstWhere(
               (d) => d.nodeId == _nodeId,
               orElse: () => list.first,

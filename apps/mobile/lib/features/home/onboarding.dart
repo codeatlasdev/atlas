@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/home/home_screen.dart';
 
 /// First run (no Mac paired yet): three short pages, then how to pair.
 class Onboarding extends StatefulWidget {
-  const Onboarding({super.key});
+  const Onboarding({super.key, this.paired = false});
+
+  /// A computer is already paired (debug: onboarding shown anyway): offer to skip pairing.
+  final bool paired;
 
   @override
   State<Onboarding> createState() => _OnboardingState();
@@ -58,6 +63,12 @@ class _OnboardingState extends State<Onboarding> {
     super.dispose();
   }
 
+  void _finish() =>
+      ProviderScope.containerOf(context)
+              .read(onboardingSeenProvider.notifier)
+              .state =
+          true;
+
   void _next() => _pages.nextPage(duration: Motion.slow, curve: Motion.ease);
 
   @override
@@ -102,11 +113,18 @@ class _OnboardingState extends State<Onboarding> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: _last ? () => context.push('/pair') : _next,
+                    onPressed: _last
+                        ? () =>
+                              widget.paired ? _finish() : context.push('/pair')
+                        : _next,
                     child: AnimatedSwitcher(
                       duration: Motion.normal,
                       child: Text(
-                        _last ? 'Scan pairing code' : 'Continue',
+                        _last
+                            ? (widget.paired
+                                  ? 'Open my computer'
+                                  : 'Scan pairing code')
+                            : 'Continue',
                         key: ValueKey(_last),
                       ),
                     ),

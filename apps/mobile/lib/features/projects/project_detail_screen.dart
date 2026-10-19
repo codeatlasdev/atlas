@@ -1300,42 +1300,127 @@ class _AgentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final c = AtlasColors.of(context);
+    final k = c.agentState(status.state);
+    final needsYou = status.state == 'blocked' || status.state == 'waiting';
     final line = status.state == 'working'
         ? (status.prompt ?? '')
         : (status.lastMessage ?? status.prompt ?? '');
-    return AtlasCard(
-      onTap: onTap,
-      accent: status.state == 'blocked' || status.state == 'waiting'
-          ? AtlasColors.of(context).warning
-          : null,
-      child: Row(
-        children: [
-          StatusDot(
-            color: AtlasColors.of(context).agentState(status.state),
-            pulse: status.state == 'working' || status.state == 'blocked',
-          ),
-          const SizedBox(width: 10),
-          Expanded(
+    // An agent is the big deal on this screen: a tinted card in its state's
+    // colour, a state pill, two lines of what it said, and a call to action.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(Space.md),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: k.withValues(alpha: needsYou ? .6 : .3),
+              ),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  k.withValues(alpha: needsYou ? .22 : .12),
+                  c.raised,
+                ],
+              ),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${status.agent} · ${agentStateLabel(status.state)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: k.withValues(alpha: .18),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        color: k,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: Space.sm + 2),
+                    Expanded(
+                      child: Text(
+                        status.agent,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: k.withValues(alpha: .16),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          StatusDot(
+                            color: k,
+                            pulse: status.state == 'working' || needsYou,
+                            size: 6,
+                          ),
+                          Text(
+                            agentStateLabel(status.state),
+                            style: TextStyle(
+                              color: k,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                if (line.isNotEmpty)
+                if (line.isNotEmpty) ...[
+                  const SizedBox(height: Space.sm + 2),
                   Text(
                     line.replaceAll('\n', ' '),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: muted),
+                    style: TextStyle(fontSize: 14, height: 1.35, color: c.text),
                   ),
+                ],
+                const SizedBox(height: Space.sm + 2),
+                Row(
+                  children: [
+                    Text(
+                      needsYou ? 'Review and reply' : 'Open chat',
+                      style: TextStyle(
+                        color: needsYou ? k : c.muted,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 16,
+                      color: needsYou ? k : c.muted,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: muted),
-        ],
+        ),
       ),
     );
   }

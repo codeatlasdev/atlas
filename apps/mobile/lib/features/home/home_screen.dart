@@ -18,10 +18,8 @@ import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/projects/projects_screen.dart';
 
-/// Paired computers, held back on first launch until the logo entrance completes.
-final _launchProvider = FutureProvider.autoDispose<List<MacDevice>>(
-  (ref) => _withLogo(ref.watch(pairedDevicesProvider.future)),
-);
+/// While the home is not ready: (stage caption, or null while reading storage).
+typedef _Loading = ({String? caption});
 
 /// Debug builds only: show the onboarding on every launch, even with a paired computer.
 /// `--dart-define=ATLAS_ALWAYS_ONBOARD=false` turns it off; release builds never do it.
@@ -43,18 +41,6 @@ final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
   (ref) => ref.read(macStorageProvider).loadDevices(),
 );
 
-/// The launch logo finished forming once: later loads in this run don't wait for it.
-bool _launchLogoShown = false;
-
-/// Keeps a loading state on screen until the logo entrance has drawn the whole globe,
-/// once per launch, so a fast load does not cut the animation halfway.
-Future<T> _withLogo<T>(Future<T> f) async {
-  if (_launchLogoShown) return f;
-  final r = await Future.wait([f, Future<void>.delayed(logoEntrance)]);
-  _launchLogoShown = true;
-  return r.first as T;
-}
-
 /// Home: onboarding until a computer is paired, then that computer's dashboard.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -67,47 +53,140 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The computer shown; the first paired one until the user switches.
   String? _nodeId;
 
+  /// When the current loading screen appeared: it stays until the logo has formed.
+  DateTime? _splashSince;
+  Timer? _splashTimer;
+
+  /// The last stage shown, kept while the logo finishes forming.
+  String? _caption;
+
+  /// Computers whose dashboard has shown: a later reconnect is handled inside it.
+  final _ready = <String>{};
+
+  @override
+  void dispose() {
+    _splashTimer?.cancel();
+    super.dispose();
+  }
+
+  /// What the home shows: onboarding, or a computer's dashboard.
+  ({bool onboard, MacDevice? device, List<MacDevice> others}) _target(
+    List<MacDevice> stored,
+  ) {
+    final demo = ref.watch(demoModeProvider);
+    final list = demo ? [demoDevice] : stored;
+    final onboard =
+        list.isEmpty ||
+        (!demo &&
+            !ref.watch(onboardingSeenProvider) &&
+            (_alwaysOnboard || ref.watch(forceOnboardingProvider)));
+    if (onboard) return (onboard: true, device: null, others: const []);
+    final device = list.firstWhere(
+      (d) => d.nodeId == _nodeId,
+      orElse: () => list.first,
+    );
+    return (
+      onboard: false,
+      device: device,
+      others: [
+        for (final d in list)
+          if (d.nodeId != device.nodeId) d,
+      ],
+    );
+  }
+
+  /// One loading screen from launch until the dashboard has data: the connection and the
+  /// first project list are watched here so the logo is not torn down between stages.
+  _Loading? _loading(AsyncValue<List<MacDevice>> devices, MacDevice? device) {
+    if (devices.isLoading && !devices.hasValue) return (caption: null);
+    if (device == null || _ready.contains(device.nodeId)) return null;
+    final conn = ref.watch(connectionNotifierProvider(device));
+    if (conn.value == null) {
+      return conn.isLoading ? (caption: 'Reaching ${device.name}…') : null;
+    }
+    if (ref.watch(projectListProvider(device)).value == null) {
+      return (caption: 'Loading projects…');
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final devices = ref.watch(_launchProvider);
+    final devices = ref.watch(pairedDevicesProvider);
+    final target = devices.hasValue ? _target(devices.value!) : null;
+    final loading = devices.hasError ? null : _loading(devices, target?.device);
+
+    // Hold the loading screen until the globe has formed, so it never flashes halfway.
+    if (loading != null) {
+      _splashSince ??= DateTime.now();
+      _caption = loading.caption ?? _caption;
+    } else if (_splashSince != null) {
+      final left = logoEntrance - DateTime.now().difference(_splashSince!);
+      if (left > Duration.zero) {
+        _splashTimer ??= Timer(left, () {
+          if (mounted) setState(() => _splashSince = _splashTimer = null);
+        });
+      } else {
+        _splashSince = null;
+        _splashTimer = null;
+      }
+    }
+    final splash = loading != null || _splashSince != null;
+    if (!splash && target?.device != null) _ready.add(target!.device!.nodeId);
+
     return Scaffold(
       body: AnimatedSwitcher(
         duration: Motion.slow,
-        child: devices.when(
-          loading: () =>
-              const Center(child: AtlasLogo(size: 96, animated: true)),
-          error: (e, _) => EmptyState(
-            title: 'Could not read paired computers',
-            message: '$e',
-            action: OutlinedButton(
-              onPressed: () => ref.invalidate(pairedDevicesProvider),
-              child: const Text('Try again'),
+        child: splash
+            ? _Splash(key: const ValueKey('splash'), caption: _caption)
+            : devices.hasError
+            ? EmptyState(
+                title: 'Could not read paired computers',
+                message: '${devices.error}',
+                action: OutlinedButton(
+                  onPressed: () => ref.invalidate(pairedDevicesProvider),
+                  child: const Text('Try again'),
+                ),
+              )
+            : target!.onboard
+            ? Onboarding(paired: devices.value!.isNotEmpty)
+            : _Dashboard(
+                key: ValueKey(target.device!.nodeId),
+                device: target.device!,
+                others: target.others,
+                onSwitch: (d) => setState(() => _nodeId = d.nodeId),
+              ),
+      ),
+    );
+  }
+}
+
+/// The launch screen: the forming logo with the current stage under it.
+class _Splash extends StatelessWidget {
+  const _Splash({super.key, this.caption});
+  final String? caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AtlasLogo(size: 96, animated: true),
+          const SizedBox(height: Space.xl),
+          SizedBox(
+            height: 20,
+            child: AnimatedSwitcher(
+              duration: Motion.normal,
+              child: Text(
+                caption ?? '',
+                key: ValueKey(caption),
+                style: TextStyle(color: c.muted),
+              ),
             ),
           ),
-          data: (stored) {
-            final demo = ref.watch(demoModeProvider);
-            final list = demo ? [demoDevice] : stored;
-            final onboard =
-                list.isEmpty ||
-                (!demo &&
-                    !ref.watch(onboardingSeenProvider) &&
-                    (_alwaysOnboard || ref.watch(forceOnboardingProvider)));
-            if (onboard) return Onboarding(paired: stored.isNotEmpty);
-            final device = list.firstWhere(
-              (d) => d.nodeId == _nodeId,
-              orElse: () => list.first,
-            );
-            return _Dashboard(
-              key: ValueKey(device.nodeId),
-              device: device,
-              others: [
-                for (final d in list)
-                  if (d.nodeId != device.nodeId) d,
-              ],
-              onSwitch: (d) => setState(() => _nodeId = d.nodeId),
-            );
-          },
-        ),
+        ],
       ),
     );
   }

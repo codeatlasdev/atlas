@@ -6,6 +6,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
+import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
@@ -25,7 +26,11 @@ Future<void> _settle(WidgetTester t) async {
   }
 }
 
-Future<void> _app(WidgetTester t, List<MacDevice> paired) async {
+Future<void> _app(
+  WidgetTester t,
+  List<MacDevice> paired, {
+  Duration connectDelay = Duration.zero,
+}) async {
   await t.binding.setSurfaceSize(const Size(393, 852));
   await t.pumpWidget(
     ProviderScope(
@@ -54,6 +59,30 @@ Future<void> _toLastPage(WidgetTester t) async {
 
 void main() {
   const mac = MacDevice(nodeId: 'n1', name: 'My Mac');
+
+  // Reported on device: launch showed a logo, then a second "Reaching…" screen with its
+  // own logo. One loading screen from launch to data, then the dashboard.
+  testWidgets('one loading screen while the computer connects', (t) async {
+    await _app(t, [mac], connectDelay: const Duration(seconds: 2));
+    await _toLastPage(t);
+    await t.tap(find.text('Open my computer'));
+    for (var i = 0; i < 8; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+      expect(find.byType(AtlasLogo), findsOneWidget);
+      expect(find.byType(SliverAppBar), findsNothing);
+    }
+    expect(
+      find.textContaining(RegExp('Reaching My Mac…|Loading projects…')),
+      findsOneWidget,
+    );
+    for (var i = 0; i < 40; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(SliverAppBar), findsOneWidget);
+    expect(find.byType(AtlasLogo), findsNothing);
+    await t.pumpWidget(const SizedBox());
+    await _settle(t);
+  });
 
   // Debug builds show the onboarding on every launch; with a computer paired, its last
   // button opens that computer, and the debug menu brings the onboarding back.

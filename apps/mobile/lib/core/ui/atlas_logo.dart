@@ -8,6 +8,9 @@ import 'package:atlas_mobile/core/ui/logo_data.dart';
 
 /// The Atlas globe. [animated]: the desktop's entrance (each tile pops in on its own delay)
 /// followed by the slow opacity wave; static and fully drawn under reduced motion.
+/// How long the animated entrance takes to draw the whole globe (last tile's delay + pop).
+const logoEntrance = Duration(milliseconds: 1650);
+
 class AtlasLogo extends StatefulWidget {
   const AtlasLogo({super.key, this.size = 64, this.animated = false});
 

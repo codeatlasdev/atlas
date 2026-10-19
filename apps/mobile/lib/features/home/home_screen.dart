@@ -18,6 +18,11 @@ import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/projects/projects_screen.dart';
 
+/// Paired computers, held back on first launch until the logo entrance completes.
+final _launchProvider = FutureProvider.autoDispose<List<MacDevice>>(
+  (ref) => _withLogo(ref.watch(pairedDevicesProvider.future)),
+);
+
 /// Debug builds only: show the onboarding on every launch, even with a paired computer.
 /// `--dart-define=ATLAS_ALWAYS_ONBOARD=false` turns it off; release builds never do it.
 const _alwaysOnboard =
@@ -35,6 +40,18 @@ final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
   (ref) => ref.read(macStorageProvider).loadDevices(),
 );
 
+/// The launch logo finished forming once: later loads in this run don't wait for it.
+bool _launchLogoShown = false;
+
+/// Keeps a loading state on screen until the logo entrance has drawn the whole globe,
+/// once per launch, so a fast load does not cut the animation halfway.
+Future<T> _withLogo<T>(Future<T> f) async {
+  if (_launchLogoShown) return f;
+  final r = await Future.wait([f, Future<void>.delayed(logoEntrance)]);
+  _launchLogoShown = true;
+  return r.first as T;
+}
+
 /// Home: onboarding until a computer is paired, then that computer's dashboard.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -49,12 +66,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final devices = ref.watch(pairedDevicesProvider);
+    final devices = ref.watch(_launchProvider);
     return Scaffold(
       body: AnimatedSwitcher(
         duration: Motion.slow,
         child: devices.when(
-          loading: () => const Center(child: AtlasLogo(size: 56)),
+          loading: () =>
+              const Center(child: AtlasLogo(size: 96, animated: true)),
           error: (e, _) => EmptyState(
             title: 'Could not read paired computers',
             message: '$e',
@@ -280,8 +298,8 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                   _Offline(device: widget.device, connecting: conn.isLoading)
                 else if (projects!.value == null)
                   const Padding(
-                    padding: EdgeInsets.only(top: Space.xxl),
-                    child: Center(child: CircularProgressIndicator()),
+                    padding: EdgeInsets.only(top: 96),
+                    child: Center(child: AtlasLogo(size: 96, animated: true)),
                   )
                 else ...[
                   _Summary(

@@ -315,16 +315,27 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
           _AgentRow(status: a, onTap: () => _openAgent(pane, a)),
       ],
       SectionHeader('Services', count: s.services.length),
-      for (var i = 0; i < s.services.length; i++)
-        _ServiceCard(
-          svc: s.services[i],
-          mem: _history.mem[s.services[i].name] ?? const [],
-          color: AtlasColors.of(context)
-              .series[i % AtlasColors.of(context).series.length],
-          busy: _busy.contains(s.services[i].name),
-          onOp: (op) => _serviceOp(op, service: s.services[i].name),
-          onLogs: () => _openLogs(service: s.services[i].name),
+      // Two per row; tap a tile for its details and controls.
+      LayoutBuilder(
+        builder: (context, box) => Wrap(
+          spacing: Space.sm,
+          children: [
+            for (var i = 0; i < s.services.length; i++)
+              SizedBox(
+                width: (box.maxWidth - Space.sm) / 2,
+                child: _ServiceCard(
+                  svc: s.services[i],
+                  mem: _history.mem[s.services[i].name] ?? const [],
+                  color: AtlasColors.of(context)
+                      .series[i % AtlasColors.of(context).series.length],
+                  busy: _busy.contains(s.services[i].name),
+                  onOp: (op) => _serviceOp(op, service: s.services[i].name),
+                  onLogs: () => _openLogs(service: s.services[i].name),
+                ),
+              ),
+          ],
         ),
+      ),
       if (s.actions.isNotEmpty) ...[
         SectionHeader('Actions', count: s.actions.length),
         for (final a in s.actions)
@@ -830,12 +841,12 @@ class _ServiceCard extends StatelessWidget {
     return AtlasCard(
       padding: const EdgeInsets.fromLTRB(
         Space.md,
-        Space.sm,
-        Space.xs,
+        Space.sm + 2,
         Space.md,
+        Space.sm + 2,
       ),
       accent: failed ? c.error : null,
-      onTap: onLogs,
+      onTap: () => _ServiceSheet.show(context, this),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -844,129 +855,202 @@ class _ServiceCard extends StatelessWidget {
               StatusDot(
                 color: c.serviceState(svc.state),
                 pulse: svc.state == 'starting',
-                size: 7,
+                size: 6,
               ),
-              const SizedBox(width: 2),
-              Text(
-                svc.name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              Flexible(
+              Expanded(
                 child: Text(
-                  svc.note ?? svc.state,
+                  svc.name,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: failed ? c.error : c.faint,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
                   ),
                 ),
               ),
-              const Spacer(),
-              if (svc.port != null)
-                Pill(
-                  ':${svc.port}',
-                  color: c.accent,
-                  mono: true,
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: '${svc.port}'));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Port ${svc.port} copied')),
-                    );
-                  },
+              if (busy)
+                const SizedBox.square(
+                  dimension: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              SizedBox(
-                width: 40,
-                height: 36,
-                child: busy
-                    ? const Center(
-                        child: SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : PopupMenuButton<String>(
-                        padding: EdgeInsets.zero,
-                        icon: Icon(Icons.more_horiz_rounded, color: c.muted),
-                        onSelected: (v) => v == 'logs' ? onLogs() : onOp(v),
-                        itemBuilder: (_) => [
-                          if (svc.up)
-                            const PopupMenuItem(
-                              value: 'restart',
-                              child: Text('Restart'),
-                            ),
-                          if (svc.up)
-                            const PopupMenuItem(
-                              value: 'stop',
-                              child: Text('Stop'),
-                            ),
-                          if (!svc.up)
-                            const PopupMenuItem(
-                              value: 'start',
-                              child: Text('Start'),
-                            ),
-                          const PopupMenuItem(
-                            value: 'logs',
-                            child: Text('Logs'),
-                          ),
-                        ],
-                      ),
-              ),
             ],
           ),
-          if (svc.up) ...[
-            const SizedBox(height: Space.xs),
-            Padding(
-              padding: const EdgeInsets.only(right: Space.sm),
-              child: Row(
-                children: [
+          const SizedBox(height: 2),
+          Text(
+            svc.note ??
+                (svc.port != null && svc.up
+                    ? '${svc.state} · :${svc.port}'
+                    : svc.state),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: failed ? c.error : c.faint),
+          ),
+          const SizedBox(height: Space.sm),
+          SizedBox(
+            height: 22,
+            child: svc.up
+                ? Sparkline(values: mem, color: color)
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(height: 1, color: c.borderSubtle),
+                  ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            svc.up ? '${svc.memMb.round()} MB · ${svc.cpu.round()}%' : '—',
+            style: TextStyle(
+              fontSize: 11,
+              color: c.faint,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A service's details and controls, from its tile: state, port, last log line,
+/// dependencies, and restart / stop / start / logs.
+class _ServiceSheet extends StatelessWidget {
+  const _ServiceSheet(this.card);
+  final _ServiceCard card;
+
+  static Future<void> show(BuildContext context, _ServiceCard card) =>
+      showModalBottomSheet<void>(
+        context: context,
+        builder: (_) => _ServiceSheet(card),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final svc = card.svc;
+    final failed = svc.state == 'failed';
+    void run(String op) {
+      Navigator.pop(context);
+      card.onOp(op);
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                StatusDot(color: c.serviceState(svc.state), size: 8),
+                Text(svc.name, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(width: Space.sm),
+                Flexible(
+                  child: Text(
+                    svc.note ?? svc.state,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: failed ? c.error : c.muted),
+                  ),
+                ),
+                const Spacer(),
+                if (svc.port != null)
+                  Pill(
+                    ':${svc.port}',
+                    color: c.accent,
+                    mono: true,
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: 'http://localhost:${svc.port}'),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('localhost:${svc.port} copied')),
+                      );
+                    },
+                  ),
+              ],
+            ),
+            if (svc.up) ...[
+              const SizedBox(height: Space.md),
+              SizedBox(
+                height: 40,
+                child: Sparkline(values: card.mem, color: card.color),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${svc.memMb.round()} MB · ${svc.cpu.round()}% CPU'
+                '${svc.restarts > 0 ? ' · ${svc.restarts} restarts' : ''}',
+                style: TextStyle(color: c.faint, fontSize: 12),
+              ),
+            ],
+            if (svc.lastLine.isNotEmpty) ...[
+              const SizedBox(height: Space.md),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(Space.sm + 2),
+                decoration: BoxDecoration(
+                  color: c.ground,
+                  borderRadius: BorderRadius.circular(Space.radiusSm),
+                ),
+                child: Text(
+                  svc.lastLine,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: monoFamily,
+                    fontFamilyFallback: monoFallback,
+                    fontSize: 12,
+                    color: failed ? c.error : c.muted,
+                  ),
+                ),
+              ),
+            ],
+            if (svc.dependsOn.isNotEmpty) ...[
+              const SizedBox(height: Space.sm),
+              Text(
+                'Needs ${svc.dependsOn.join(', ')}',
+                style: TextStyle(color: c.faint, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: Space.lg),
+            Row(
+              children: [
+                if (svc.up) ...[
                   Expanded(
-                    child: SizedBox(
-                      height: 22,
-                      child: Sparkline(values: mem, color: color),
+                    child: FilledButton.icon(
+                      onPressed: () => run('restart'),
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Restart'),
                     ),
                   ),
                   const SizedBox(width: Space.sm),
-                  Text(
-                    '${svc.memMb.round()} MB · ${svc.cpu.round()}%',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: c.faint,
-                      fontFeatures: const [FontFeature.tabularFigures()],
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => run('stop'),
+                      icon: const Icon(Icons.stop_rounded, size: 18),
+                      label: const Text('Stop'),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ],
-          if (svc.lastLine.isNotEmpty) ...[
-            const SizedBox(height: Space.xs),
-            Padding(
-              padding: const EdgeInsets.only(right: Space.sm),
-              child: Text(
-                svc.lastLine,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: monoFamily,
-                  fontFamilyFallback: monoFallback,
-                  fontSize: 11,
-                  color: failed ? c.error : c.muted,
+                ] else
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => run('start'),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                      label: const Text('Start'),
+                    ),
+                  ),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      card.onLogs();
+                    },
+                    icon: const Icon(Icons.subject_rounded, size: 18),
+                    label: const Text('Logs'),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
-          if (svc.dependsOn.isNotEmpty) ...[
-            const SizedBox(height: Space.xs),
-            Text(
-              'needs ${svc.dependsOn.join(', ')}',
-              style: TextStyle(fontSize: 11, color: c.faint),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

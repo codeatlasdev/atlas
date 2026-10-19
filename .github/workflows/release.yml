@@ -198,7 +198,8 @@ jobs:
   # Windows x64: the CLI tarball (atlas.exe) and Atlas Desktop's per-user NSIS installer (what
   # `atlas desktop` runs), cross-compiled on Linux the way Tauri documents it (cargo-xwin fetches the
   # MSVC CRT and Windows SDK, makensis packs the installer). The installer also carries atlas.exe, next
-  # to the app, so a desktop-only install can start hostd.
+  # to the app, so a desktop-only install can start hostd. tauri-cli checks the build HOST for an appindicator
+  # library when the tray is on, even for a Windows target ("Can't detect any appindicator library").
   build-windows:
     name: Build (x86_64-pc-windows-msvc)
     needs: gate
@@ -215,7 +216,7 @@ jobs:
           SUDO=$(command -v sudo || true)
           $SUDO apt-get update
           $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            clang lld llvm nasm nsis
+            clang lld llvm nasm nsis libayatana-appindicator3-dev
 
       - name: Install Rust
         run: |

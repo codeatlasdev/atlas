@@ -123,7 +123,7 @@
 				...repos.map((r) => ({ value: r.id, label: r.name })),
 				{ value: ADD, label: "Add a new project…" },
 			]}
-			onchange={pickRepo}
+			onchange={(v) => typeof v === "string" && pickRepo(v)}
 		/>
 		<TextField
 			label="Name"
@@ -148,7 +148,7 @@
 					value={base}
 					placeholder="origin/<default branch>"
 					options={refs.map((r) => ({ value: r, label: r }))}
-					onchange={(v) => (base = v)}
+					onchange={(v) => typeof v === "string" && (base = v)}
 				/>
 				<Checkbox bind:checked={runSetup} label="Run setup script (worktree.setup)" />
 			</div>

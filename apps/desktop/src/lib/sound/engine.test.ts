@@ -70,6 +70,40 @@ describe("audio engine", () => {
 		expect(log.resumed).toBeGreaterThanOrEqual(1);
 	});
 
+	// #87: on Linux without a usable audio device WebKitGTK rejects resume() with "Failed to start the audio
+	// device". The engine fired it with `void`, so every click/key raised an unhandled rejection that the error
+	// reporter showed to the user (×5 per second while editing). A device that failed to start is not retried.
+	test("a resume() that rejects is swallowed and not retried on later gestures", async () => {
+		const returned = [];
+		const engine = createEngine({
+			AudioContext: class {
+				state = "suspended";
+				destination = {};
+				resume() {
+					const p = Promise.reject(new Error("Failed to start the audio device"));
+					const entry = { handled: false };
+					const then = p.then.bind(p);
+					p.then = (ok, fail) => {
+						if (fail) entry.handled = true;
+						return then(ok, fail);
+					};
+					returned.push(entry);
+					p.catch(() => {}); // keep the test runner itself quiet; `handled` records the engine's own handler
+					entry.handled = false;
+					return p;
+				}
+			},
+			fetchAsset: async () => new ArrayBuffer(16),
+			context: () => ({ now: 0, foreground: true, systemUiSounds: true, prefs: DEFAULT_SOUND_PREFS }),
+		});
+		engine.gesture();
+		await Promise.resolve();
+		await Promise.resolve();
+		engine.gesture();
+		engine.gesture();
+		expect(returned.map((r) => r.handled)).toEqual([true]);
+	});
+
 	test("plays a decoded buffer with the category's gain; an asset is fetched and decoded once", async () => {
 		const { engine, log } = rig({ prefs: { ...DEFAULT_SOUND_PREFS, volume: 0.5 } });
 		engine.gesture();

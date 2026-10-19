@@ -10,6 +10,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 - Desktop: custom agents (#56). Settings → Agents → Custom agents runs any agent CLI (OpenCode, Gemini CLI, Amp…): name, command, arguments, resume arguments (`{session}`) and environment, saved under `customAgents` in `~/.atlas/desktop/settings.json`. It starts from the + menu and ⌘⇧A (as the default agent) like omp, Claude Code and Codex. Without hooks its tab shows working while the terminal prints and idle after 3 quiet seconds (new hostd event `pty_activity`); the hook event contract an agent can use for real states is documented in `docs/agents.md`.
 
+### Fixed
+
+- Desktop: kit menus and listboxes (the + new-tab menu, Select, Combobox) open above the native terminal and browser instead of under them (#86).
+- Desktop (Linux): no more repeated "Failed to start the audio device" errors when WebKitGTK has no usable audio device; sounds stay off for the session (#87).
+
+### Changed
+
+- Desktop: `@codeatlasdev/ui` 4.2 → 4.5.
+
 ## [1.5.0-alpha.13] — 2026-10-17
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

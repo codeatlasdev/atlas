@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { expect, test } from "bun:test";
+import { overlayOpen } from "./nativeSlot.ts";
 
 // Incident (selection stall, 13 spaces; codeatlasdev/ui#27): on kit 0.7.1 every overlay wrapped a bits-ui Portal that
 // mounted an imperative root under <body> even while closed (~11 nodes each, ~160 per space switch), so Atlas deferred
@@ -8,7 +9,7 @@ import { expect, test } from "bun:test";
 // is `present`, so a closed one is free. This runs the REAL kit (not a stub of it): if a kit upgrade makes a closed
 // overlay cost body nodes again, the deferral machinery is needed again and this goes red.
 // Dynamic imports on purpose: the Svelte loader registered by test/setup.ts must exist before these modules load.
-const { flushSync, mount, unmount, createRawSnippet } = await import("svelte");
+const { flushSync, mount, tick, unmount, createRawSnippet } = await import("svelte");
 const { proxy } = await import("svelte/internal/client");
 const { realKitComponent } = await import("../../../test/uiKit.ts");
 
@@ -145,6 +146,29 @@ test("a DropdownMenu and a Popover declared outside a Dialog but opened while it
 		flushSync();
 		await new Promise((r) => setTimeout(r, 30));
 	}
+	unmount(app);
+	host.remove();
+});
+
+// Contract nativeSlot.overlayOpen reads (2026-10-17, the terminal painted over the new-tab "+" menu): an open kit menu
+// is `[role=menu][data-state=open]`. The native terminal parks under it only while that holds; if a kit upgrade renames
+// the role or drops `data-state`, the terminal covers menus again and this goes red. Real kit, real open menu.
+test("an open DropdownMenu over a native slot parks it (role=menu, data-state=open)", async () => {
+	await (
+		await import("../../../test/uiKit.ts")
+	).useRealKit("Dialog", "DropdownMenu", "DropdownMenu/DropdownMenuItem", "Popover");
+	const { default: Harness } = await import("../../../test/DialogOverlaysHarness.svelte");
+	const host = document.createElement("div");
+	document.body.append(host);
+	// No modal: a modal parks every slot on its own, which would hide what the menu does.
+	const app = flushSync(() => mount(Harness, { target: host, props: { open: false } }));
+	const everywhere = { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 };
+	expect(overlayOpen(everywhere)).toBe(false);
+	host.querySelector(".menu-t").click();
+	flushSync();
+	await tick();
+	expect(document.querySelector("[role=menu]")).not.toBeNull();
+	expect(overlayOpen(everywhere)).toBe(true);
 	unmount(app);
 	host.remove();
 });

@@ -82,9 +82,9 @@ test("a later change schedules a new frame; teardown cancels a pending one", asy
 const rect = (x: number, y: number, w: number, h: number) =>
 	({ left: x, top: y, right: x + w, bottom: y + h, width: w, height: h }) as DOMRect;
 
-function dialog(at: DOMRect, open = true) {
+function dialog(at: DOMRect, open = true, role = "dialog") {
 	const d = document.createElement("div");
-	d.setAttribute("role", "dialog");
+	d.setAttribute("role", role);
 	if (open) d.dataset.state = "open";
 	d.getBoundingClientRect = () => at;
 	document.body.append(d);
@@ -146,6 +146,19 @@ test("a non-modal dialog beside the slot still leaves it alone", () => {
 	dialog(rect(0, 0, 150, 300));
 	expect(overlayOpen(SLOT)).toBe(false);
 });
+
+// Regression (2026-10-17, "o terminal fica por cima quando eu clico o +"): the new-tab menu (a kit DropdownMenu,
+// role=menu) opens down over the terminal, but only dialogs parked the native view, so the terminal NSView painted
+// over the menu and swallowed its clicks. Every kit layer the user interacts with (menu, Select's listbox) counts.
+for (const role of ["menu", "listbox"])
+	test(`an open ${role} over the slot parks the native view; beside it or closed it does not`, () => {
+		const over = dialog(rect(300, 150, 200, 100), true, role);
+		expect(overlayOpen(SLOT)).toBe(true);
+		over.remove();
+		dialog(rect(0, 0, 150, 300), true, role);
+		dialog(rect(300, 150, 200, 100), false, role);
+		expect(overlayOpen(SLOT)).toBe(false);
+	});
 
 // Regression (#43): the collapsed-sidebar hover peek is an HTML panel (role=complementary, no data-state), so it
 // neither parked the native browser/terminal nor triggered a re-sync: it slid in BEHIND the native view.

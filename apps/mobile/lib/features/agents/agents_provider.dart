@@ -50,7 +50,8 @@ class AgentStatusMapNotifier extends AsyncNotifier<Map<String, AgentStatus>> {
 
 /// Tracks the pending approval for a single agent pane.
 ///
-/// Set to non-null on `agent_approval`, cleared on `agent_approval_done`.
+/// Starts from `agent_status_all`'s `pending_approvals` (a prompt pushed before this
+/// screen opened), then follows `agent_approval` / `agent_approval_done` pushes.
 final pendingApprovalNotifierProvider = NotifierProvider.autoDispose
     .family<PendingApprovalNotifier, AgentApproval?, (MacDevice, String)>(
       PendingApprovalNotifier.new,
@@ -79,6 +80,18 @@ class PendingApprovalNotifier extends Notifier<AgentApproval?> {
         });
       },
     );
+    _seed();
     return null;
+  }
+
+  Future<void> _seed() async {
+    final mux = await ref.read(connectionNotifierProvider(device).future);
+    if (mux == null || !ref.mounted) return;
+    final resp = await mux.call('agent_status_all');
+    if (!ref.mounted || resp['ok'] != true || state != null) return;
+    for (final e in (resp['data']['pending_approvals'] as List?) ?? const []) {
+      final m = (e as Map).cast<String, dynamic>();
+      if (m['pane_key'] == paneKey) state = AgentApproval.fromJson(m);
+    }
   }
 }

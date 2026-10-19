@@ -264,7 +264,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                         decoration: InputDecoration(
                           hintText: canSendChat(status)
                               ? 'Message'
-                              : 'Agent is ${agentStateLabel(status.state)}',
+                              : switch (status.state) {
+                                  'working' => 'Wait for the agent to finish',
+                                  'blocked' => 'Answer the request above first',
+                                  'waiting' => 'The agent asked you something in its terminal',
+                                  _ => 'The agent cannot take a message now',
+                                },
                           fillColor: AtlasColors.of(context).ground,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(22),

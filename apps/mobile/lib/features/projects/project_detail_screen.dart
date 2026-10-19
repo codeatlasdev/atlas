@@ -349,36 +349,6 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   Widget _overview(ProjectSnapshot s) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (s.agents.isNotEmpty) ...[
-        const SizedBox(height: Space.md),
-        // Agents live in their own tab; here only a one-line summary leading there.
-        AtlasCard(
-          onTap: () => setState(() => _tab = 1),
-          child: Row(
-            children: [
-              Icon(
-                Icons.auto_awesome_rounded,
-                size: 18,
-                color: AtlasColors.of(context).muted,
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  [
-                    '${s.agents.length} agent${s.agents.length == 1 ? '' : 's'}',
-                    if (s.agents.any((e) => _needsYou(e.$2)))
-                      '${s.agents.where((e) => _needsYou(e.$2)).length} need you'
-                    else if (s.agents.any((e) => e.$2.state == 'working'))
-                      '${s.agents.where((e) => e.$2.state == 'working').length} working',
-                  ].join(' · '),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              Icon(Icons.chevron_right, color: AtlasColors.of(context).faint),
-            ],
-          ),
-        ),
-      ],
       SectionHeader('Services', count: s.services.length),
       // Two per row; tap a tile for its details and controls.
       LayoutBuilder(

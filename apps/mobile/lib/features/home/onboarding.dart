@@ -6,6 +6,7 @@ import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/features/home/onboarding_art.dart';
 
 /// First run (no Mac paired yet): three short pages, then how to pair.
 class Onboarding extends StatefulWidget {
@@ -39,19 +40,13 @@ class _OnboardingState extends State<Onboarding> {
       'No account. Straight to your computer.',
       'Your phone talks to your computer directly, end-to-end encrypted. When a network blocks that, '
           'an encrypted relay carries the traffic and cannot read it.',
-      (c) => _Glyph(
-        icon: Icons.lock_outline_rounded,
-        color: AtlasColors.of(c).success,
-      ),
+      (_) => const SecureLinkArt(),
     ),
     _Page(
       'Keep your agents moving',
       'See what each agent is doing, read the conversation, send the next prompt '
           'and answer permission requests from anywhere.',
-      (c) => _Glyph(
-        icon: Icons.auto_awesome_rounded,
-        color: AtlasColors.of(c).accent,
-      ),
+      (_) => const AgentStoryArt(),
     ),
   ];
 
@@ -99,8 +94,19 @@ class _OnboardingState extends State<Onboarding> {
               controller: _pages,
               onPageChanged: (i) => setState(() => _i = i),
               children: [
-                for (final p in _content) _PageView(page: p),
-                const _HowToPair(),
+                for (var i = 0; i < _content.length; i++)
+                  _Parallax(
+                    controller: _pages,
+                    index: i,
+                    art: _content[i].art(context),
+                    child: _PageText(page: _content[i]),
+                  ),
+                _Parallax(
+                  controller: _pages,
+                  index: _content.length,
+                  art: const ScanArt(),
+                  child: _HowToPair(active: _last),
+                ),
               ],
             ),
           ),
@@ -152,41 +158,141 @@ class _OnboardingState extends State<Onboarding> {
   }
 }
 
-class _PageView extends StatelessWidget {
-  const _PageView({required this.page});
+/// One onboarding page: the illustration and the text move at different speeds while
+/// swiping (the art travels further and fades), so pages feel layered, not slid.
+class _Parallax extends StatelessWidget {
+  const _Parallax({
+    required this.controller,
+    required this.index,
+    required this.art,
+    required this.child,
+  });
+
+  final PageController controller;
+  final int index;
+  final Widget art;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) {
+      final page = controller.hasClients && controller.position.haveDimensions
+          ? controller.page ?? 0
+          : controller.initialPage.toDouble();
+      // -1 (one page left) .. 0 (centered) .. 1 (one page right)
+      final d = (index - page).clamp(-1.0, 1.0);
+      final reduced = Motion.reduced(context);
+      // Short screens / large text: the page scales down as a whole instead of overflowing.
+      return LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.xl),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  width: w - Space.xl * 2,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Transform.translate(
+                        offset: Offset(reduced ? 0 : d * w * .35, 0),
+                        child: Opacity(
+                          opacity: (1 - d.abs() * 1.4).clamp(0.0, 1.0),
+                          child: Transform.scale(
+                            scale: reduced ? 1 : 1 - d.abs() * .12,
+                            child: SizedBox(
+                              height: 180,
+                              child: Center(child: art),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: Space.xxl),
+                      Transform.translate(
+                        offset: Offset(reduced ? 0 : -d * w * .12, 0),
+                        child: Opacity(
+                          opacity: (1 - d.abs() * 1.2).clamp(0.0, 1.0),
+                          child: child,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+class _PageText extends StatelessWidget {
+  const _PageText({required this.page});
   final _Page page;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.xl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(height: 160, child: Center(child: page.art(context))),
-          const SizedBox(height: Space.xxl),
-          Text(
-            page.title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -.4),
-          ),
-          const SizedBox(height: Space.md),
-          Text(
-            page.body,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.muted, fontSize: 16, height: 1.45),
-          ),
-        ],
+    return Column(
+      children: [
+        Text(
+          page.title,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineSmall
+              ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -.4),
+        ),
+        const SizedBox(height: Space.md),
+        Text(
+          page.body,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: c.muted, fontSize: 16, height: 1.45),
+        ),
+      ],
+    );
+  }
+}
+
+/// Slides and fades in when [active] turns on, [index] steps after the first.
+class _StaggerIn extends StatelessWidget {
+  const _StaggerIn({
+    required this.active,
+    required this.index,
+    required this.child,
+  });
+  final bool active;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    const step = 110, base = 260;
+    final total = base + step * index;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: active || Motion.reduced(context) ? 1 : 0),
+      duration: Duration(milliseconds: total),
+      curve: Interval(step * index / total, 1, curve: Motion.ease),
+      builder: (_, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, 14 * (1 - t)),
+          child: child,
+        ),
       ),
+      child: child,
     );
   }
 }
 
 /// The last page: where the pairing code lives on the Mac.
 class _HowToPair extends StatelessWidget {
-  const _HowToPair();
+  const _HowToPair({required this.active});
+
+  /// The page is in view: its steps come in one after another.
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -232,55 +338,39 @@ class _HowToPair extends StatelessWidget {
         ],
       ),
     );
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.xl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Center(child: _Glyph(icon: Icons.qr_code_scanner_rounded)),
-          const SizedBox(height: Space.xxl),
-          Text(
-            'Pair your computer',
-            style: Theme.of(context).textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -.4),
-          ),
-          const SizedBox(height: Space.xl),
-          step(1, 'Open Atlas Desktop on your Mac or Linux PC', null),
-          step(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Pair your computer',
+          style: Theme.of(context).textTheme.headlineSmall
+              ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -.4),
+        ),
+        const SizedBox(height: Space.xl),
+        _StaggerIn(
+          active: active,
+          index: 0,
+          child: step(1, 'Open Atlas Desktop on your Mac or Linux PC', null),
+        ),
+        _StaggerIn(
+          active: active,
+          index: 1,
+          child: step(
             2,
             'Settings → Mobile → Pair a phone',
             'A code appears for two minutes.',
           ),
-          step(
+        ),
+        _StaggerIn(
+          active: active,
+          index: 2,
+          child: step(
             3,
             'Scan it with this phone',
             'Your computer must stay awake to be reachable.',
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Glyph extends StatelessWidget {
-  const _Glyph({required this.icon, this.color});
-  final IconData icon;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final k = color ?? AtlasColors.of(context).accent;
-    return Container(
-      width: 112,
-      height: 112,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [k.withValues(alpha: .28), k.withValues(alpha: 0)],
         ),
-      ),
-      child: Icon(icon, size: 52, color: k),
+      ],
     );
   }
 }

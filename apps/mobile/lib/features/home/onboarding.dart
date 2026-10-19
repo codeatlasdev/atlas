@@ -60,7 +60,6 @@ class _OnboardingState extends State<Onboarding> {
 
   void _finish() {
     final c = ProviderScope.containerOf(context);
-    c.read(forceOnboardingProvider.notifier).state = false;
     c.read(onboardingSeenProvider.notifier).state = true;
   }
 
@@ -137,11 +136,6 @@ class _OnboardingState extends State<Onboarding> {
                   ),
                 ),
                 const SizedBox(height: Space.sm),
-                // No computer with Atlas at hand (or App Review): sample data, connects to nothing.
-                TextButton(
-                  onPressed: () => startDemo(context),
-                  child: Text('Try the demo', style: TextStyle(color: c.muted)),
-                ),
                 TextButton(
                   onPressed: openPrivacy,
                   child: Text(

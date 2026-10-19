@@ -30,9 +30,6 @@ const _alwaysOnboard =
 /// Onboarding was finished in this launch (debug: lets the dashboard show afterwards).
 final onboardingSeenProvider = StateProvider<bool>((ref) => false);
 
-/// Debug: the home menu asked for the onboarding again.
-final forceOnboardingProvider = StateProvider<bool>((ref) => false);
-
 /// Showing the in-app demo computer instead of the paired ones (not saved).
 final demoModeProvider = StateProvider<bool>((ref) => false);
 
@@ -77,9 +74,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final list = demo ? [demoDevice] : stored;
     final onboard =
         list.isEmpty ||
-        (!demo &&
-            !ref.watch(onboardingSeenProvider) &&
-            (_alwaysOnboard || ref.watch(forceOnboardingProvider)));
+        (!demo && !ref.watch(onboardingSeenProvider) && _alwaysOnboard);
     if (onboard) return (onboard: true, device: null, others: const []);
     final device = list.firstWhere(
       (d) => d.nodeId == _nodeId,
@@ -284,13 +279,6 @@ class _DashboardState extends ConsumerState<_Dashboard> {
         ),
       ),
     );
-  }
-
-  /// Debug: back to the onboarding (leaves the demo too, which skips it).
-  void _showOnboarding() {
-    ref.read(demoModeProvider.notifier).state = false;
-    ref.read(onboardingSeenProvider.notifier).state = false;
-    ref.read(forceOnboardingProvider.notifier).state = true;
   }
 
   void _openProject(ProjectInfo p) =>
@@ -517,12 +505,6 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                 () => context.push('/pair'),
               ),
               row(Icons.privacy_tip_outlined, 'Privacy', openPrivacy),
-              if (kDebugMode)
-                row(
-                  Icons.slideshow_outlined,
-                  'Show onboarding (debug)',
-                  _showOnboarding,
-                ),
               demo
                   ? row(
                       Icons.logout_rounded,

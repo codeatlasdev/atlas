@@ -79,48 +79,26 @@ void main() {
       await t.pump(const Duration(milliseconds: 100));
     }
     expect(find.text('Projects'), findsOneWidget);
-    expect(find.byType(AtlasLogo), findsOneWidget, reason: 'only the header mark');
+    expect(
+      find.byType(AtlasLogo),
+      findsOneWidget,
+      reason: 'only the header mark',
+    );
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });
 
   // Debug builds show the onboarding on every launch; with a computer paired, its last
-  // button opens that computer, and the debug menu brings the onboarding back.
-  testWidgets('paired: onboarding → my computer → menu → onboarding again', (
-    t,
-  ) async {
+  // button opens that computer, and the onboarding offers no demo.
+  testWidgets('paired: onboarding opens my computer', (t) async {
     await _app(t, [mac]);
     expect(find.byType(Onboarding), findsOneWidget);
+    expect(find.text('Try the demo'), findsNothing);
     await _toLastPage(t);
     await t.tap(find.text('Open my computer'));
     await _settle(t);
     expect(find.byType(Onboarding), findsNothing);
     expect(find.text('My Mac'), findsWidgets);
-
-    await t.tap(find.byTooltip('Settings'));
-    await _settle(t);
-    await t.tap(find.text('Show onboarding (debug)'));
-    await _settle(t);
-    expect(find.byType(Onboarding), findsOneWidget);
-    await t.pumpWidget(const SizedBox());
-    await _settle(t);
-  });
-
-  testWidgets('try the demo from the onboarding, then leave it', (t) async {
-    await _app(t, []);
-    await t.tap(find.text('Try the demo'));
-    await _settle(t);
-    expect(find.text(demoDevice.name), findsWidgets);
-
-    await t.tap(find.byTooltip('Settings'));
-    await _settle(t);
-    await t.tap(find.text('Leave the demo'));
-    await _settle(t);
-    expect(
-      find.byType(Onboarding),
-      findsOneWidget,
-      reason: 'nothing paired: back to onboarding',
-    );
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

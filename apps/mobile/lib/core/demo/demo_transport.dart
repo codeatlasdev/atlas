@@ -1,23 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// The demo computer's identity. Never dialled: [demoTransport] answers for it.
 const demoDevice = MacDevice(nodeId: 'demo', name: 'Demo MacBook');
 
 bool isDemo(MacDevice d) => d.nodeId == demoDevice.nodeId;
-
-/// Open the demo computer's dashboard (home shows it instead of the paired ones).
-void startDemo(BuildContext context) =>
-    ProviderScope.containerOf(context).read(demoModeProvider.notifier).state =
-        true;
 
 /// The privacy policy (PRIVACY.md, its "Atlas Mobile" section).
 const privacyUrl =

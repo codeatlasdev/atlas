@@ -16,7 +16,7 @@ import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
-import 'package:atlas_mobile/features/projects/projects_screen.dart';
+import 'package:atlas_mobile/features/projects/project_avatar.dart';
 
 /// While the home is not ready: (stage caption, or null while reading storage).
 typedef _Loading = ({String? caption});
@@ -312,14 +312,13 @@ class _DashboardState extends ConsumerState<_Dashboard> {
 
     final list = projects?.value ?? const <ProjectInfo>[];
     final attention = <_Attention>[];
-    final agents = <(ProjectInfo, String, AgentStatus)>[];
+    final agentsOf = <String, List<(String, AgentStatus)>>{};
     for (final p in list) {
       for (final (pane, s0) in p.agents) {
         final s = live[pane] ?? s0;
+        (agentsOf[p.id] ??= []).add((pane, s));
         if (s.state == 'blocked' || s.state == 'waiting') {
           attention.add(_AgentAttention(p, pane, s));
-        } else {
-          agents.add((p, pane, s));
         }
       }
       if (p.running) {
@@ -328,175 +327,189 @@ class _DashboardState extends ConsumerState<_Dashboard> {
         }
       }
     }
-    // Working first, then done, then idle.
-    int rank(String s) => switch (s) {
-      'working' => 0,
-      'done' => 1,
-      _ => 2,
-    };
-    agents.sort((a, b) => rank(a.$3.state).compareTo(rank(b.$3.state)));
+    // Agent prompts first (someone is waiting), then failures.
+    attention.sort(
+      (a, b) => (a is _AgentAttention ? 0 : 1).compareTo(
+        b is _AgentAttention ? 0 : 1,
+      ),
+    );
+    // Projects that need you, then running, then stopped.
+    final flagged = {for (final a in attention) a.project.id};
+    final sorted = [...list]
+      ..sort((a, b) {
+        int rank(ProjectInfo p) => flagged.contains(p.id)
+            ? 0
+            : p.running
+            ? 1
+            : 2;
+        return rank(a).compareTo(rank(b));
+      });
+    final working = agentsOf.values
+        .expand((v) => v)
+        .where((a) => a.$2.state == 'working')
+        .length;
 
-    return RefreshIndicator(
-      color: c.accent,
-      edgeOffset: 120,
-      onRefresh: () async {
-        if (!connected) {
-          ref.invalidate(connectionNotifierProvider(widget.device));
-        } else {
-          ref.invalidate(projectListProvider(widget.device));
-        }
-      },
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverAppBar.large(
-            title: _Title(
-              device: widget.device,
-              conn: conn,
-              others: widget.others,
-              onSwitch: widget.onSwitch,
-            ),
-            actions: [
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_horiz_rounded),
-                onSelected: (v) => switch (v) {
-                  'pair' => context.push('/pair'),
-                  'exit' => ref.read(demoModeProvider.notifier).state = false,
-                  'onboarding' => _showOnboarding(),
-                  'privacy' => openPrivacy(),
-                  _ => _forget(),
-                },
-                itemBuilder: (_) => [
-                  if (isDemo(widget.device)) ...const [
-                    PopupMenuItem(value: 'exit', child: Text('Leave the demo')),
-                    PopupMenuItem(
-                      value: 'pair',
-                      child: Text('Pair a computer'),
-                    ),
-                  ] else ...const [
-                    PopupMenuItem(
-                      value: 'pair',
-                      child: Text('Pair another computer'),
-                    ),
-                    PopupMenuItem(
-                      value: 'forget',
-                      child: Text('Forget this computer'),
-                    ),
+    return Stack(
+      children: [
+        // The app icon's glow, faint, behind the header: Atlas, not a generic list.
+        Positioned(
+          top: -160,
+          left: -80,
+          right: -80,
+          height: 420,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF3D5BFF).withValues(alpha: .22),
+                    const Color(0xFF3D5BFF).withValues(alpha: 0),
                   ],
-                  const PopupMenuItem(value: 'privacy', child: Text('Privacy')),
-                  if (kDebugMode)
-                    const PopupMenuItem(
-                      value: 'onboarding',
-                      child: Text('Show onboarding (debug)'),
-                    ),
-                ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        RefreshIndicator(
+          color: c.accent,
+          onRefresh: () async {
+            if (!connected) {
+              ref.invalidate(connectionNotifierProvider(widget.device));
+            } else {
+              ref.invalidate(projectListProvider(widget.device));
+            }
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverSafeArea(
+                bottom: false,
+                sliver: SliverToBoxAdapter(
+                  child: _Header(
+                    device: widget.device,
+                    conn: conn,
+                    others: widget.others,
+                    onSwitch: widget.onSwitch,
+                    status: !connected || projects?.value == null
+                        ? null
+                        : attention.isNotEmpty
+                        ? (
+                            '${attention.length} ${attention.length == 1 ? 'needs' : 'need'} you',
+                            c.warning,
+                          )
+                        : working > 0
+                        ? (
+                            '$working ${working == 1 ? 'agent' : 'agents'} working',
+                            c.accent,
+                          )
+                        : ('All clear', c.success),
+                    menu: _menu(),
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.lg,
+                  Space.sm,
+                  Space.lg,
+                  Space.xxl,
+                ),
+                sliver: SliverList.list(
+                  children: [
+                    if (!connected)
+                      _Offline(
+                        device: widget.device,
+                        connecting: conn.isLoading,
+                      )
+                    else ...[
+                      if (attention.isNotEmpty) ...[
+                        EnterFade(
+                          child: _Hero(item: attention.first, onOpen: _open),
+                        ),
+                        for (var i = 1; i < attention.length; i++)
+                          EnterFade(
+                            index: i,
+                            child: _MoreAttention(
+                              item: attention[i],
+                              onOpen: _open,
+                            ),
+                          ),
+                        const SizedBox(height: Space.md),
+                      ],
+                      SectionHeader('Projects', count: list.length),
+                      if (list.isEmpty)
+                        Text(
+                          'Projects you add in Atlas Desktop show up here.',
+                          style: TextStyle(color: c.muted),
+                        ),
+                      for (var i = 0; i < sorted.length; i++)
+                        EnterFade(
+                          index: i,
+                          child: _ProjectTile(
+                            project: sorted[i],
+                            agents: agentsOf[sorted[i].id] ?? const [],
+                            flagged: flagged.contains(sorted[i].id),
+                            onOpen: () => _openProject(sorted[i]),
+                            onAgent: (pane, s) =>
+                                _openAgent(pane, s, sorted[i]),
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              Space.lg,
-              0,
-              Space.lg,
-              Space.xxl,
-            ),
-            sliver: SliverList.list(
-              children: [
-                if (!connected)
-                  _Offline(device: widget.device, connecting: conn.isLoading)
-                else if (projects!.value == null)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 96),
-                    child: Center(child: AtlasLogo(size: 96, animated: true)),
-                  )
-                else ...[
-                  _Summary(
-                    attention: attention.length,
-                    working: agents
-                        .where((a) => a.$3.state == 'working')
-                        .length,
-                    projects: list,
-                  ),
-                  if (attention.isNotEmpty) ...[
-                    SectionHeader('Needs you', count: attention.length),
-                    for (var i = 0; i < attention.length; i++)
-                      EnterFade(
-                        index: i,
-                        child: switch (attention[i]) {
-                          _AgentAttention(
-                            :final project,
-                            :final pane,
-                            :final status,
-                          ) =>
-                            _AttentionCard(
-                              color: c.warning,
-                              icon: Icons.front_hand_rounded,
-                              title: status.state == 'blocked'
-                                  ? '${status.agent} needs your approval'
-                                  : '${status.agent} asked you something',
-                              subtitle: project.name,
-                              action: 'Open',
-                              onTap: () => _openAgent(pane, status, project),
-                            ),
-                          _ServiceAttention(:final project, :final service) =>
-                            _AttentionCard(
-                              color: c.error,
-                              icon: Icons.error_outline_rounded,
-                              title: '${service.name} failed',
-                              subtitle: project.name,
-                              action: 'View',
-                              onTap: () => _openProject(project),
-                            ),
-                        },
-                      ),
-                  ],
-                  if (agents.isNotEmpty) ...[
-                    SectionHeader('Agents', count: agents.length),
-                    for (var i = 0; i < agents.length; i++)
-                      EnterFade(
-                        index: i,
-                        child: _AgentCard(
-                          project: agents[i].$1,
-                          status: agents[i].$3,
-                          onTap: () => _openAgent(
-                            agents[i].$2,
-                            agents[i].$3,
-                            agents[i].$1,
-                          ),
-                        ),
-                      ),
-                  ],
-                  SectionHeader('Projects', count: list.length),
-                  if (list.isEmpty)
-                    Text(
-                      'Projects you add in Atlas Desktop show up here.',
-                      style: TextStyle(color: c.muted),
-                    ),
-                  for (var i = 0; i < list.length; i++)
-                    EnterFade(
-                      index: i,
-                      child: ProjectCard(
-                        device: widget.device,
-                        project: list[i],
-                      ),
-                    ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+
+  void _open(_Attention a) => switch (a) {
+    _AgentAttention(:final project, :final pane, :final status) => _openAgent(
+      pane,
+      status,
+      project,
+    ),
+    _ServiceAttention(:final project) => _openProject(project),
+  };
+
+  Widget _menu() => PopupMenuButton<String>(
+    icon: const Icon(Icons.more_horiz_rounded),
+    onSelected: (v) => switch (v) {
+      'pair' => context.push('/pair'),
+      'exit' => ref.read(demoModeProvider.notifier).state = false,
+      'onboarding' => _showOnboarding(),
+      'privacy' => openPrivacy(),
+      _ => _forget(),
+    },
+    itemBuilder: (_) => [
+      if (isDemo(widget.device)) ...const [
+        PopupMenuItem(value: 'exit', child: Text('Leave the demo')),
+        PopupMenuItem(value: 'pair', child: Text('Pair a computer')),
+      ] else ...const [
+        PopupMenuItem(value: 'pair', child: Text('Pair another computer')),
+        PopupMenuItem(value: 'forget', child: Text('Forget this computer')),
+      ],
+      const PopupMenuItem(value: 'privacy', child: Text('Privacy')),
+      if (kDebugMode)
+        const PopupMenuItem(
+          value: 'onboarding',
+          child: Text('Show onboarding (debug)'),
+        ),
+    ],
+  );
 }
 
-/// Computer name with its connection state; tap to switch when more than one is paired.
-class _Title extends StatelessWidget {
-  const _Title({
+/// Logo, computer name (tap to switch), and one status pill that says it all.
+class _Header extends StatelessWidget {
+  const _Header({
     required this.device,
     required this.conn,
     required this.others,
     required this.onSwitch,
+    required this.status,
+    required this.menu,
   });
 
   final MacDevice device;
@@ -504,224 +517,374 @@ class _Title extends StatelessWidget {
   final List<MacDevice> others;
   final void Function(MacDevice) onSwitch;
 
+  /// (label, colour) once connected and loaded; null shows the connection state.
+  final (String, Color)? status;
+  final Widget menu;
+
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final connected = conn.value != null;
-    final (label, color) = connected
-        ? ('Connected', c.success)
-        : conn.isLoading
-        ? ('Connecting…', c.warning)
-        : ('Unreachable', c.faint);
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final (label, color) =
+        status ??
+        (conn.value != null
+            ? ('Connected', c.success)
+            : conn.isLoading
+            ? ('Connecting…', c.warning)
+            : ('Unreachable', c.faint));
+    final name = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(child: Text(device.name, overflow: TextOverflow.ellipsis)),
-            if (others.isNotEmpty)
-              Icon(Icons.expand_more_rounded, color: c.muted),
-          ],
+        Flexible(
+          child: Text(
+            device.name,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontSize: 22, letterSpacing: -.4),
+          ),
         ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
+        if (others.isNotEmpty)
+          Icon(Icons.unfold_more_rounded, color: c.muted, size: 20),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        Space.lg,
+        Space.md,
+        Space.xs,
+        Space.sm,
+      ),
+      child: Row(
+        children: [
+          const AtlasLogo(size: 34),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (others.isEmpty)
+                  name
+                else
+                  PopupMenuButton<MacDevice>(
+                    onSelected: onSwitch,
+                    itemBuilder: (_) => [
+                      for (final d in others)
+                        PopupMenuItem(value: d, child: Text(d.name)),
+                    ],
+                    child: name,
+                  ),
+                const SizedBox(height: 4),
+                AnimatedSwitcher(
+                  duration: Motion.normal,
+                  child: Container(
+                    key: ValueKey(label),
+                    padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        StatusDot(
+                          color: color,
+                          pulse: label != 'All clear' && label != 'Connected',
+                          size: 6,
+                        ),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          menu,
+        ],
+      ),
+    );
+  }
+}
+
+/// The most urgent thing, front and centre, with one obvious action.
+class _Hero extends StatelessWidget {
+  const _Hero({required this.item, required this.onOpen});
+  final _Attention item;
+  final void Function(_Attention) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final (color, icon, kicker, title, detail, action) = switch (item) {
+      _AgentAttention(:final project, :final status) => (
+        c.warning,
+        Icons.front_hand_rounded,
+        '${status.agent} · ${project.name}',
+        status.state == 'blocked'
+            ? 'Waiting for your approval'
+            : 'Asked you something',
+        status.lastMessage ?? status.prompt,
+        status.state == 'blocked' ? 'Review' : 'Answer',
+      ),
+      _ServiceAttention(:final project, :final service) => (
+        c.error,
+        Icons.error_outline_rounded,
+        project.name,
+        '${service.name} stopped working',
+        'Open the project to see its logs and restart it.',
+        'View',
+      ),
+    };
+    return GestureDetector(
+      onTap: () => onOpen(item),
+      child: Container(
+        padding: const EdgeInsets.all(Space.lg),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withValues(alpha: .45)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [color.withValues(alpha: .16), c.base],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            StatusDot(color: color, pulse: conn.isLoading, size: 6),
+            Row(
+              children: [
+                Icon(icon, color: color, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    kicker,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Space.sm),
             Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: c.muted,
-                fontWeight: FontWeight.w400,
+              title,
+              style: Theme.of(context).textTheme.titleLarge
+                  ?.copyWith(fontSize: 20),
+            ),
+            if (detail != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                detail.replaceAll('\n', ' '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: c.muted, height: 1.35),
+              ),
+            ],
+            const SizedBox(height: Space.md),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: color,
+                  foregroundColor: c.onAccent,
+                  minimumSize: const Size(0, 40),
+                ),
+                onPressed: () => onOpen(item),
+                child: Text(action),
               ),
             ),
           ],
         ),
-      ],
-    );
-    if (others.isEmpty) return title;
-    return PopupMenuButton<MacDevice>(
-      onSelected: onSwitch,
-      itemBuilder: (_) => [
-        for (final d in others) PopupMenuItem(value: d, child: Text(d.name)),
-      ],
-      child: title,
+      ),
     );
   }
 }
 
-/// One line of status under the title: all clear, or what is going on.
-class _Summary extends StatelessWidget {
-  const _Summary({
-    required this.attention,
-    required this.working,
-    required this.projects,
-  });
-
-  final int attention;
-  final int working;
-  final List<ProjectInfo> projects;
+/// The other things that need you, one line each.
+class _MoreAttention extends StatelessWidget {
+  const _MoreAttention({required this.item, required this.onOpen});
+  final _Attention item;
+  final void Function(_Attention) onOpen;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final running = projects.where((p) => p.running).length;
-    final (icon, color, text) = attention > 0
-        ? (
-            Icons.notifications_active_rounded,
-            c.warning,
-            '$attention ${attention == 1 ? 'thing needs' : 'things need'} you',
-          )
-        : (Icons.check_circle_rounded, c.success, 'All clear');
-    final detail = [
-      if (working > 0) '$working ${working == 1 ? 'agent' : 'agents'} working',
-      '$running of ${projects.length} ${projects.length == 1 ? 'project' : 'projects'} running',
-    ].join(' · ');
-    return AtlasCard(
-      padding: const EdgeInsets.all(Space.lg),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: .15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(text, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 2),
-                Text(detail, style: TextStyle(color: c.muted, fontSize: 13)),
-              ],
-            ),
-          ),
-        ],
+    final (color, text) = switch (item) {
+      _AgentAttention(:final project, :final status) => (
+        c.warning,
+        '${status.agent} needs you · ${project.name}',
+      ),
+      _ServiceAttention(:final project, :final service) => (
+        c.error,
+        '${service.name} failed · ${project.name}',
+      ),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.sm),
+      child: AtlasCard(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.sm + 2,
+        ),
+        accent: color,
+        onTap: () => onOpen(item),
+        child: Row(
+          children: [
+            const SizedBox(width: Space.xs),
+            Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
+            Icon(Icons.chevron_right_rounded, color: c.muted),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _AttentionCard extends StatelessWidget {
-  const _AttentionCard({
-    required this.color,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.action,
-    required this.onTap,
-  });
-
-  final Color color;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String action;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return AtlasCard(
-      accent: color,
-      onTap: onTap,
-      padding: const EdgeInsets.fromLTRB(
-        Space.lg,
-        Space.md,
-        Space.md,
-        Space.md,
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(subtitle, style: TextStyle(color: c.muted, fontSize: 12)),
-              ],
-            ),
-          ),
-          Pill(action, color: color),
-        ],
-      ),
-    );
-  }
-}
-
-class _AgentCard extends StatelessWidget {
-  const _AgentCard({
+/// A project with its health at a glance (one dot per service) and its agents inside.
+class _ProjectTile extends StatelessWidget {
+  const _ProjectTile({
     required this.project,
-    required this.status,
-    required this.onTap,
+    required this.agents,
+    required this.flagged,
+    required this.onOpen,
+    required this.onAgent,
   });
 
   final ProjectInfo project;
-  final AgentStatus status;
-  final VoidCallback onTap;
+  final List<(String, AgentStatus)> agents;
+  final bool flagged;
+  final VoidCallback onOpen;
+  final void Function(String pane, AgentStatus s) onAgent;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final line = status.state == 'working'
-        ? (status.prompt ?? '')
-        : (status.lastMessage ?? status.prompt ?? '');
+    final up = project.services.where((s) => s.state == 'running').length;
+    final caption = !project.running
+        ? 'Stopped'
+        : project.services.isEmpty
+        ? 'Running'
+        : '$up of ${project.services.length} services up';
     return AtlasCard(
-      onTap: onTap,
-      child: Row(
+      padding: EdgeInsets.zero,
+      child: Column(
         children: [
-          StatusDot(
-            color: c.agentState(status.state),
-            pulse: status.state == 'working',
-            size: 7,
+          InkWell(
+            onTap: onOpen,
+            child: Padding(
+              padding: const EdgeInsets.all(Space.md),
+              child: Row(
+                children: [
+                  ProjectAvatar(name: project.name, size: 40),
+                  const SizedBox(width: Space.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          project.name,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            for (final s in project.services.take(12))
+                              Container(
+                                margin: const EdgeInsets.only(right: 3),
+                                width: 14,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: project.running
+                                      ? c.serviceState(s.state)
+                                      : c.border,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
+                            if (project.services.isNotEmpty)
+                              const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                caption,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: flagged ? c.error : c.faint,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: c.faint),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: Space.xs),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          for (final (pane, s) in agents) ...[
+            Divider(height: 1, color: c.borderSubtle),
+            InkWell(
+              onTap: () => onAgent(pane, s),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.md,
+                  Space.sm,
+                  Space.md,
+                  Space.sm,
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      status.agent,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    const SizedBox(width: 10),
+                    StatusDot(
+                      color: c.agentState(s.state),
+                      pulse: s.state == 'working' || s.state == 'blocked',
+                      size: 6,
                     ),
+                    const SizedBox(width: 4),
                     Text(
-                      ' · ${project.name}',
-                      style: TextStyle(color: c.faint, fontSize: 13),
+                      s.agent,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: Space.sm),
+                    Expanded(
+                      child: Text(
+                        (s.state == 'working'
+                                    ? s.prompt
+                                    : s.lastMessage ?? s.prompt)
+                                ?.replaceAll('\n', ' ') ??
+                            '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: c.muted, fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(width: Space.sm),
                     Text(
-                      agentStateLabel(status.state),
+                      agentStateLabel(s.state),
                       style: TextStyle(
-                        color: c.agentState(status.state),
+                        color: c.agentState(s.state),
                         fontSize: 12,
                       ),
                     ),
                   ],
                 ),
-                if (line.isNotEmpty)
-                  Text(
-                    line.replaceAll('\n', ' '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: c.muted, fontSize: 13),
-                  ),
-              ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -9,7 +9,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
-import 'package:atlas_mobile/features/projects/projects_screen.dart';
+import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';

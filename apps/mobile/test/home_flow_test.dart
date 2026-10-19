@@ -69,7 +69,7 @@ void main() {
     for (var i = 0; i < 8; i++) {
       await t.pump(const Duration(milliseconds: 100));
       expect(find.byType(AtlasLogo), findsOneWidget);
-      expect(find.byType(SliverAppBar), findsNothing);
+      expect(find.text('Projects'), findsNothing);
     }
     expect(
       find.textContaining(RegExp('Reaching My Mac…|Loading projects…')),
@@ -78,8 +78,8 @@ void main() {
     for (var i = 0; i < 40; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    expect(find.byType(SliverAppBar), findsOneWidget);
-    expect(find.byType(AtlasLogo), findsNothing);
+    expect(find.text('Projects'), findsOneWidget);
+    expect(find.byType(AtlasLogo), findsOneWidget, reason: 'only the header mark');
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

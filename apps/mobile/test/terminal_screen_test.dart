@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xterm/xterm.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
@@ -19,13 +18,13 @@ class _Storage extends MacStorage {
   Future<String?> loadSecretKey() async => 'ab';
 }
 
-String _screen(WidgetTester t) {
-  final term = t.widget<TerminalView>(find.byType(TerminalView)).terminal;
-  return [
-    for (var i = 0; i < term.buffer.lines.length; i++)
-      term.buffer.lines[i].toString(),
-  ].join('\n');
-}
+/// What the readable feed shows: every block's command and output text.
+String _screen(WidgetTester t) => [
+  for (final w in t.widgetList<SelectableText>(find.byType(SelectableText)))
+    w.textSpan!.toPlainText(),
+  for (final w in t.widgetList<RichText>(find.byType(RichText)))
+    w.text.toPlainText(),
+].join('\n');
 
 /// A computer whose pty output splits "é" (C3 A9) across two pushes, the way a
 /// real pty read can cut a multi-byte character at a chunk boundary.

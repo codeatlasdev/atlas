@@ -10,6 +10,7 @@ import 'package:xterm/xterm.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/features/terminal/terminal_feed.dart';
 
 /// Full-screen terminal view for a single PTY session.
 ///
@@ -45,6 +46,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       .startChunkedConversion(_TerminalSink(_terminal));
 
   bool _writeEnabled = false;
+
+  /// Character grid instead of the readable feed.
+  bool _raw = false;
   String _title = '';
   bool _exited = false;
 
@@ -147,71 +151,75 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // auto-dispose provider close it under us ("closed" on attach).
     ref.watch(connectionNotifierProvider(widget.device));
     final titleStr = _title.isNotEmpty ? _title : (widget.title ?? 'Terminal');
+    final c = AtlasColors.of(context);
     return Scaffold(
       backgroundColor: atlasTerminalTheme.background,
       appBar: AppBar(
         backgroundColor: atlasTerminalTheme.background,
         title: Text(titleStr, overflow: TextOverflow.ellipsis),
         actions: [
+          // The character grid exactly as on the Mac, for when the feed's
+          // reflow gets a full-screen app wrong.
           IconButton(
             icon: Icon(
-              _writeEnabled ? Icons.lock_open_rounded : Icons.lock_rounded,
-              color: _writeEnabled ? AtlasColors.of(context).warning : null,
+              _raw ? Icons.view_agenda_outlined : Icons.grid_on_rounded,
             ),
-            tooltip: _writeEnabled
-                ? 'Disable terminal input'
-                : 'Enable terminal input',
-            onPressed: _toggleWrite,
+            tooltip: _raw ? 'Readable view' : 'Raw terminal',
+            onPressed: () => setState(() => _raw = !_raw),
           ),
+          if (_writeEnabled)
+            IconButton(
+              icon: Icon(Icons.lock_open_rounded, color: c.warning),
+              tooltip: 'Stop typing',
+              onPressed: _toggleWrite,
+            ),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            child: TerminalView(
-              _terminal,
-              controller: _ctrl,
-              // Input goes through the line field and key bar below, so the
-              // system keyboard never covers half of a wide TUI uninvited.
-              readOnly: true,
-              theme: atlasTerminalTheme,
-              textStyle: const TerminalStyle(
-                fontSize: 12,
-                fontFamily: monoFamily,
-              ),
-              backgroundOpacity: 1,
-            ),
+            child: _raw
+                ? TerminalView(
+                    _terminal,
+                    controller: _ctrl,
+                    readOnly: true,
+                    theme: atlasTerminalTheme,
+                    textStyle: const TerminalStyle(
+                      fontSize: 11,
+                      fontFamily: monoFamily,
+                    ),
+                    backgroundOpacity: 1,
+                  )
+                : TerminalFeed(terminal: _terminal, theme: atlasTerminalTheme),
           ),
           if (_exited)
             Container(
-              color: AtlasColors.of(context).raised,
+              color: c.raised,
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               child: Text(
                 'The process exited',
-                style: TextStyle(color: AtlasColors.of(context).muted),
+                style: TextStyle(color: c.muted),
+              ),
+            )
+          else if (_writeEnabled) ...[
+            _KeyBar(onKey: _sendRaw, enabled: true),
+            _LineInput(onSubmit: (t) => _sendRaw('$t\r')),
+          ] else
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _toggleWrite,
+                    icon: const Icon(Icons.keyboard_rounded),
+                    label: const Text('Tap to type'),
+                  ),
+                ),
               ),
             ),
-          if (!_exited)
-            AnimatedSize(
-              duration: Motion.normal,
-              curve: Motion.ease,
-              child: _writeEnabled
-                  ? _LineInput(onSubmit: (t) => _sendRaw('$t\r'))
-                  : Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.tonalIcon(
-                          onPressed: _toggleWrite,
-                          icon: const Icon(Icons.keyboard_rounded),
-                          label: const Text('Tap to type'),
-                        ),
-                      ),
-                    ),
-            ),
-          if (_writeEnabled && !_exited)
-            _KeyBar(onKey: _sendRaw, enabled: true),
         ],
       ),
     );
@@ -312,13 +320,10 @@ class _KeyBarState extends State<_KeyBar> {
         color: bg,
         border: Border(top: BorderSide(color: c.borderSubtle)),
       ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Row(children: _ctrlActive ? ctrlKeys : baseKeys),
-        ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(children: _ctrlActive ? ctrlKeys : baseKeys),
       ),
     );
   }
@@ -353,7 +358,15 @@ class _LineInputState extends State<_LineInput> {
     final c = AtlasColors.of(context);
     return Container(
       color: c.base,
-      padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.sm, 0),
+      padding: EdgeInsets.fromLTRB(
+        Space.md,
+        Space.sm,
+        Space.sm,
+        // The home indicator, unless the keyboard is up and already below us.
+        MediaQuery.viewInsetsOf(context).bottom > 0
+            ? Space.sm
+            : MediaQuery.paddingOf(context).bottom,
+      ),
       child: Row(
         children: [
           Expanded(

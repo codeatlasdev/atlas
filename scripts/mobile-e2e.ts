@@ -1,4 +1,4 @@
-// bun scripts/mobile-e2e.ts [--keep] [--device <simulator name>]
+// bun scripts/mobile-e2e.ts [--watch] [--record <file.mov>] [--keep] [--device <simulator name>]
 //
 // Atlas Mobile end to end, on an iOS Simulator against a real `atlas hostd`: the app pairs over
 // iroh, lists the fixture project, opens it, its agent and the agent's terminal
@@ -10,6 +10,8 @@
 //   survives in its Keychain, and booted headless: Simulator.app is never opened.
 //
 // Exits with the test's status. `--keep` leaves hostd, the dir and the simulator running.
+// `--watch` opens Simulator.app on the test device to follow the run live (the only option that
+// shows a window); `--record <file.mov>` films the simulator screen without showing anything.
 import { $ } from "bun";
 import {
 	existsSync,
@@ -27,6 +29,8 @@ const arg = (k: string, d?: string) => {
 	return i >= 0 ? process.argv[i + 1] : d;
 };
 const keep = process.argv.includes("--keep");
+const watch = process.argv.includes("--watch");
+const record = arg("record");
 const model = arg("device", "iPhone 15 Pro")!;
 const root = join(import.meta.dir, "..");
 const atlas = join(root, "target/debug/atlas");
@@ -184,12 +188,28 @@ try {
 	await $`xcrun simctl erase ${udid}`;
 	await $`xcrun simctl boot ${udid}`;
 	await $`xcrun simctl bootstatus ${udid} -b`.quiet();
+	if (watch) await $`open -a Simulator --args -CurrentDeviceUDID ${udid}`;
+	// Stopped with SIGINT so the file is finalized.
+	const filming = record
+		? Bun.spawn(
+				["xcrun", "simctl", "io", udid, "recordVideo", "--force", record],
+				{
+					stdout: "ignore",
+					stderr: "ignore",
+				},
+			)
+		: null;
 
 	const run =
 		await $`flutter test integration_test/e2e_test.dart -d ${udid} --dart-define=E2E_PAIR_URL=${url} --dart-define=ATLAS_ALWAYS_ONBOARD=false`
 			.cwd(join(root, "apps/mobile"))
 			.nothrow();
 	status = run.exitCode;
+	if (filming) {
+		filming.kill("SIGINT");
+		await filming.exited;
+		console.log(`recording: ${record}`);
+	}
 } catch (e) {
 	console.error(`mobile-e2e: ${e instanceof Error ? e.message : e}`);
 } finally {

@@ -97,6 +97,7 @@ async fn run_inner(hub: &Hub, exe: &Path) -> Result<Value> {
         from_version: env!("CARGO_PKG_VERSION").into(),
         sessions: states,
         lock: true,
+        agents: hub.agents.snapshot(),
     };
     let lock_fd = hub.lock_fd();
     let moved = frozen.len();
@@ -178,6 +179,8 @@ fn send_and_ack(
 pub(crate) struct Takeover {
     pub sessions: Vec<(SessionState, Option<OwnedFd>)>,
     pub lock: Option<std::fs::File>,
+    /// The predecessor's agent state, for `AgentHub::restore`.
+    pub agents: serde_json::Value,
     stream: UnixStream,
 }
 
@@ -201,6 +204,7 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
     s.set_read_timeout(Some(ACK_TIMEOUT))?;
     let mut sessions = Vec::new();
     let mut lock = None;
+    let agents;
     let mut pending: Vec<u8> = Vec::new();
     let mut buf = vec![0u8; 256 * 1024];
     let mut chunk_fds: Vec<Option<OwnedFd>> = Vec::new();
@@ -216,6 +220,7 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
             let b: Bundle =
                 serde_json::from_slice(&line[..line.len() - 1]).context("bad handoff bundle")?;
             if b.sessions.is_empty() {
+                agents = b.agents;
                 if b.lock {
                     lock = chunk_fds
                         .first_mut()
@@ -243,6 +248,7 @@ fn receive_blocking(sock: &Path) -> Result<Takeover> {
     Ok(Takeover {
         sessions,
         lock,
+        agents,
         stream: s,
     })
 }

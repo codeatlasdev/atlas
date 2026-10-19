@@ -309,6 +309,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         mobile: Arc::new(crate::mobile::Mobile::load(dir)?),
     });
     crate::mobile::start(hub.clone());
+    if let Some(t) = &takeover {
+        hub.agents.restore(&t.agents);
+    }
     if let Err(e) = crate::agents::hook_server::start(dir, hub.agents.clone()).await {
         eprintln!("hostd: agent hook server: {e}");
     }

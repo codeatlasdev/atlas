@@ -15,11 +15,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{broadcast, oneshot};
 
-#[derive(Clone, Copy, Serialize, PartialEq, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum State {
     Idle,
@@ -29,7 +29,7 @@ pub enum State {
     Done,
 }
 
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct AgentStatus {
     pub state: State,
     pub agent: String,
@@ -74,6 +74,25 @@ impl Default for AgentHub {
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
             mobile_live: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl AgentHub {
+    /// What a successor daemon needs to keep every agent: per-pane state and the cwd
+    /// bindings. Pending prompts stay behind: their hook connection is to this process.
+    pub fn snapshot(&self) -> Value {
+        json!({"panes": *self.panes.lock(), "by_cwd": *self.by_cwd.lock()})
+    }
+
+    /// Take over a predecessor's [`snapshot`](Self::snapshot); anything unreadable is
+    /// skipped (an older daemon sends nothing).
+    pub fn restore(&self, v: &Value) {
+        if let Ok(p) = serde_json::from_value::<HashMap<String, AgentStatus>>(v["panes"].clone()) {
+            self.panes.lock().extend(p);
+        }
+        if let Ok(b) = serde_json::from_value::<HashMap<String, String>>(v["by_cwd"].clone()) {
+            self.by_cwd.lock().extend(b);
         }
     }
 }

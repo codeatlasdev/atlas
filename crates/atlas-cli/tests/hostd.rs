@@ -373,6 +373,80 @@ async fn connect_retry(dir: &Path, pid_not: u64) -> HostClient {
     panic!("successor hostd did not come up");
 }
 
+/// Send one hook event the way `atlas hook` does (raw HTTP to the published port).
+fn post_hook(dir: &Path, agent: &str, body: &Value) {
+    use std::io::{Read, Write};
+    let env = std::fs::read_to_string(paths::hook_endpoint(dir)).unwrap();
+    let get = |k: &str| {
+        env.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .unwrap()
+            .to_string()
+    };
+    let body = body.to_string();
+    let mut s =
+        std::net::TcpStream::connect(("127.0.0.1", get("ATLAS_HOOK_PORT").parse::<u16>().unwrap()))
+            .unwrap();
+    write!(
+        s,
+        "POST /hook/{agent} HTTP/1.1\r\nHost: x\r\nX-Atlas-Hook-Token: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        get("ATLAS_HOOK_TOKEN"),
+        body.len()
+    )
+    .unwrap();
+    let mut r = String::new();
+    let _ = s.read_to_string(&mut r);
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
+}
+
+// Guards "no agent running" after an upgrade: agent state lived only in the old
+// daemon's memory, so every hostd upgrade forgot every agent until it next spoke,
+// and the phone, which needs an agent to reach its terminal, had nothing to open.
+#[tokio::test]
+async fn agent_state_survives_an_upgrade() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let old_pid = c.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    c.call(
+        "pty_create",
+        json!({"cwd": dir, "argv": ["sh", "-c", "sleep 30"]}),
+    )
+    .await
+    .unwrap();
+    c.call(
+        "agent_bind",
+        json!({"pane": "p1", "agent": "omp", "cwd": "/w"}),
+    )
+    .await
+    .unwrap();
+    post_hook(
+        dir,
+        "omp",
+        &json!({"pane_key": "p1", "payload": {"event": "agent_end", "last_assistant_message": "done it"}}),
+    );
+    let before = c.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(before["panes"]["p1"]["state"], "done", "{before}");
+
+    c.call("upgrade", json!({"exe": BIN})).await.unwrap();
+    let c2 = connect_retry(dir, old_pid).await;
+    let _kill_new = Pid(c2.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap() as u32);
+    let after = c2.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(after["panes"]["p1"], before["panes"]["p1"], "{after}");
+    // The cwd binding moves too: a hook without a pane key still finds p1.
+    post_hook(
+        dir,
+        "omp",
+        &json!({"payload": {"event": "agent_start", "cwd": "/w"}}),
+    );
+    let later = c2.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(later["panes"]["p1"]["state"], "working", "{later}");
+}
+
 #[tokio::test]
 async fn upgrade_hands_live_ptys_to_a_new_hostd_without_killing_the_program() {
     use tokio::io::AsyncReadExt;

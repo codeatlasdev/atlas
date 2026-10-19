@@ -107,5 +107,59 @@ void main() {
       expect(states.last.hasValue, isTrue);
       expect(states.last.value, isNotNull);
     });
+
+    // Guards the ~1 min first load: after the app sat idle or in the background,
+    // the connection could be dead without closing; the first request waited out
+    // its full deadline before anything reconnected.
+    test('coming back to the foreground replaces a connection that does not answer',
+        () async {
+      final dead = FakeTransport(), fresh = FakeTransport();
+      var made = 0;
+      final container = ProviderContainer(
+        overrides: [
+          transportFactoryProvider.overrideWithValue(
+            (_, _) async => [dead, fresh][made++],
+          ),
+          macStorageProvider.overrideWithValue(_FakeMacStorage()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final p = connectionNotifierProvider(device);
+      final sub = container.listen(p, (_, _) {});
+      addTearDown(sub.close);
+      final first = await container.read(p.future);
+      final n = container.read(p.notifier)..probeTimeout = const Duration(milliseconds: 50);
+      final sw = Stopwatch()..start();
+      await n.onForegrounded();
+      final second = await container.read(p.future);
+      expect(made, 2, reason: 'a silent connection is replaced');
+      expect(identical(first, second), isFalse);
+      expect(sw.elapsed, lessThan(const Duration(seconds: 2)));
+      expect(dead.sentLines.single, contains('"cmd":"info"'));
+    });
+
+    test('a connection that answers the probe is kept', () async {
+      final live = FakeTransport();
+      var made = 0;
+      final container = ProviderContainer(
+        overrides: [
+          transportFactoryProvider.overrideWithValue((_, _) async {
+            made++;
+            return live;
+          }),
+          macStorageProvider.overrideWithValue(_FakeMacStorage()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final p = connectionNotifierProvider(device);
+      final sub = container.listen(p, (_, _) {});
+      addTearDown(sub.close);
+      await container.read(p.future);
+      final probing = container.read(p.notifier).onForegrounded();
+      await Future<void>.delayed(Duration.zero);
+      live.injectLine('{"id":1,"ok":true,"data":{}}');
+      await probing;
+      expect(made, 1);
+    });
   });
 }

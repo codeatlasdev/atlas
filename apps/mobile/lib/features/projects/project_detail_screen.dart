@@ -168,6 +168,9 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     });
     final c = AtlasColors.of(context);
     final s = _snap;
+    final reconnecting = ref
+        .watch(connectionNotifierProvider(widget.device))
+        .isLoading;
     final tint = projectColor(context, widget.project.name);
     return Scaffold(
       body: Stack(
@@ -197,6 +200,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                 children: [
                   // Same top bar as the loaded page: the header below names it.
                   _TopBar(
+                    reconnecting: reconnecting,
                     onLogs: null,
                     title: _error != null ? widget.project.name : null,
                   ),
@@ -224,7 +228,11 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                   SliverSafeArea(
                     bottom: false,
                     sliver: SliverToBoxAdapter(
-                      child: _TopBar(onLogs: () => _openLogs(), title: null),
+                      child: _TopBar(
+                        onLogs: () => _openLogs(),
+                        title: null,
+                        reconnecting: reconnecting,
+                      ),
                     ),
                   ),
                   SliverPadding(
@@ -420,9 +428,16 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
 
 /// Back, and the logs shortcut; the title only while there is no header to carry it.
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onLogs, required this.title});
+  const _TopBar({
+    required this.onLogs,
+    required this.title,
+    this.reconnecting = false,
+  });
   final VoidCallback? onLogs;
   final String? title;
+
+  /// The connection to the Mac is being re-established.
+  final bool reconnecting;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -436,6 +451,26 @@ class _TopBar extends StatelessWidget {
           )
         else
           const Spacer(),
+        if (reconnecting)
+          Padding(
+            padding: const EdgeInsets.only(right: Space.sm),
+            child: Row(
+              children: [
+                const SizedBox.square(
+                  dimension: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.6),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Reconnecting…',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AtlasColors.of(context).muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (onLogs != null)
           TextButton.icon(
             onPressed: onLogs,

@@ -329,7 +329,7 @@ pub enum Decision {
 }
 
 /// Capabilities the app's features rely on.
-pub const NEEDED: &[&str] = &["pty_attach_raw", "lsp"];
+pub const NEEDED: &[&str] = &["pty_attach_raw", "lsp", "agents"];
 
 /// Capabilities in `info` (empty for a proto 1 daemon, which reports none).
 pub fn caps_of(info: &Value) -> Vec<&str> {
@@ -397,18 +397,20 @@ pub fn skew_reason(info: &Value, bundled: &str, app: &str) -> Option<String> {
         let lost = [
             ("lsp", "language features"),
             ("pty_attach_raw", "fast terminal rendering"),
+            ("agents", "agent status"),
         ];
         let off: Vec<&str> = lost
             .iter()
             .filter(|(c, _)| missing.contains(c))
             .map(|(_, d)| *d)
             .collect();
-        // Both feature names are plural ("language features", "fast terminal rendering" reads
-        // as one thing but is listed with its sibling): "are" in every case.
-        s.push_str(&format!(
-            "; {} are off until it restarts",
-            off.join(" and ")
-        ));
+        // "a", "a and b", "a, b and c". Every feature name reads as plural or is listed
+        // with a sibling: "are" in every case.
+        let list = match off.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+            _ => off.join(""),
+        };
+        s.push_str(&format!("; {list} are off until it restarts"));
     }
     s.push('.');
     Some(s)
@@ -418,7 +420,7 @@ pub fn skew_reason(info: &Value, bundled: &str, app: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    const FULL: &[&str] = &["pty_attach_raw", "upgrade", "lsp"];
+    const FULL: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents"];
 
     fn info(version: &str, caps: &[&str], live: Option<u64>) -> Value {
         let mut v = json!({"version": version, "caps": caps});
@@ -434,7 +436,11 @@ mod tests {
         assert_eq!(d(info("1.2.0", FULL, Some(3))), Decision::Current);
         // Same version missing a needed cap (no `lsp`) is not current.
         assert_eq!(
-            d(info("1.2.0", &["pty_attach_raw", "upgrade"], Some(3))),
+            d(info(
+                "1.2.0",
+                &["pty_attach_raw", "upgrade", "agents"],
+                Some(3)
+            )),
             Decision::Upgrade
         );
     }
@@ -470,7 +476,7 @@ mod tests {
     #[test]
     fn a_failed_handoff_falls_back_to_the_proto1_path() {
         let mut i = info("1.1.0", FULL, Some(2));
-        i["caps"] = json!(["pty_attach_raw", "lsp"]); // `upgrade` removed by the caller
+        i["caps"] = json!(["pty_attach_raw", "lsp", "agents"]); // `upgrade` removed by the caller
         // Nothing needed is missing, only the version differs: report, do not kill.
         assert_eq!(decide(&i, 0, "1.2.0", Choice::Ask), Decision::Passive);
         i["live_ptys"] = json!(0);
@@ -480,9 +486,21 @@ mod tests {
         assert_eq!(decide(&i, 0, "1.2.0", Choice::Ask), Decision::Prompt);
     }
 
+    // Guards silent loss of agent status: the app no longer runs a hook server, so a
+    // host from before `agents` (1.5.0-alpha.14, every Windows host) leaves tabs without
+    // state; it was judged "only the version differs" and left running quietly.
+    #[test]
+    fn a_host_without_agents_is_missing_a_feature() {
+        let old = info("1.5.0-alpha.14", &["pty_attach_raw", "lsp"], Some(2));
+        assert_eq!(missing_caps(&old), ["agents"]);
+        assert_eq!(decide(&old, 2, "1.5.0", Choice::Ask), Decision::Prompt);
+        let r = skew_reason(&old, "1.5.0", "Atlas 1.5.0").unwrap();
+        assert!(r.contains("agent status"), "{r}");
+    }
+
     #[test]
     fn only_missing_features_prompt() {
-        let same_caps = info("1.1.0", &["pty_attach_raw", "lsp"], Some(2));
+        let same_caps = info("1.1.0", &["pty_attach_raw", "lsp", "agents"], Some(2));
         assert_eq!(
             decide(&same_caps, 2, "1.2.0", Choice::Ask),
             Decision::Passive
@@ -504,10 +522,10 @@ mod tests {
         let r = skew_reason(&json!({"version": "0.6.2"}), "1.2.1", "Atlas 1.2.1").unwrap();
         assert_eq!(
             r,
-            "Terminal host 0.6.2 is older than Atlas 1.2.1; language features and fast terminal rendering are off until it restarts."
+            "Terminal host 0.6.2 is older than Atlas 1.2.1; language features, fast terminal rendering and agent status are off until it restarts."
         );
         let r = skew_reason(
-            &info("1.1.0", &["pty_attach_raw", "lsp"], None),
+            &info("1.1.0", &["pty_attach_raw", "lsp", "agents"], None),
             "1.2.0",
             "Atlas 1.2.0",
         )
@@ -515,7 +533,7 @@ mod tests {
         assert_eq!(r, "Terminal host 1.1.0 is older than Atlas 1.2.0.");
         // Only `lsp` missing: one plural noun, still "are".
         let r = skew_reason(
-            &info("1.1.0", &["pty_attach_raw", "upgrade"], None),
+            &info("1.1.0", &["pty_attach_raw", "upgrade", "agents"], None),
             "1.2.0",
             "Atlas 1.2.0",
         )

@@ -97,11 +97,10 @@ async fn approvals_resolve_only_their_own_pending_request() {
     let mut ev = hub.subscribe();
     // No phone connected: no wait, no prompt pushed.
     assert_eq!(
-        hub.ask("p1", "claude", &json!({}), Duration::from_secs(5))
+        hub.ask("p1", "claude", &json!({}), Duration::from_secs(5), false)
             .await,
         None
     );
-    hub.mobile_live.store(1, Ordering::Relaxed);
     let h = hub.clone();
     let asked = tokio::spawn(async move {
         h.ask(
@@ -109,6 +108,7 @@ async fn approvals_resolve_only_their_own_pending_request() {
             "claude",
             &json!({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
             Duration::from_secs(5),
+            true,
         )
         .await
     });
@@ -127,9 +127,8 @@ async fn approvals_resolve_only_their_own_pending_request() {
 #[tokio::test]
 async fn unanswered_prompt_times_out_to_no_decision() {
     let hub = AgentHub::default();
-    hub.mobile_live.store(1, Ordering::Relaxed);
     assert_eq!(
-        hub.ask("p1", "codex", &json!({}), Duration::from_millis(50))
+        hub.ask("p1", "codex", &json!({}), Duration::from_millis(50), true)
             .await,
         None
     );
@@ -140,7 +139,6 @@ async fn unanswered_prompt_times_out_to_no_decision() {
 #[tokio::test]
 async fn pending_prompts_can_be_listed_after_their_push() {
     let hub = std::sync::Arc::new(AgentHub::default());
-    hub.mobile_live.store(1, Ordering::Relaxed);
     assert!(hub.pending_approvals().is_empty());
     let h = hub.clone();
     let asked = tokio::spawn(async move {
@@ -149,6 +147,7 @@ async fn pending_prompts_can_be_listed_after_their_push() {
             "claude",
             &json!({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
             Duration::from_secs(5),
+            true,
         )
         .await
     });

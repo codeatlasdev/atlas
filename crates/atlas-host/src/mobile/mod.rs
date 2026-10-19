@@ -11,7 +11,9 @@
 //! socket (`{"id","cmd","args"}` → `{"id","ok","data"|"error"}`, pushes have `ev`). An
 //! unpaired phone may only send `{"id":1,"cmd":"pair","args":{"code","name"}}`.
 //!
-//! `ATLAS_MOBILE_RELAY=0` disables relays and address lookup (LAN/tests).
+//! The endpoint binds only once a phone is paired or a pairing starts: a hostd nobody
+//! pairs never touches the network. `ServeOpts::no_mobile_relay` (`ATLAS_MOBILE_RELAY=0`
+//! for `atlas hostd`) turns relays and address lookup off (LAN, tests).
 
 mod session;
 #[cfg(test)]
@@ -85,6 +87,12 @@ pub struct Mobile {
     /// Live connections per phone, closed on revoke.
     live: Mutex<HashMap<String, Vec<Connection>>>,
     endpoint: Mutex<Option<Endpoint>>,
+    /// Serializes binding, so two pairing requests bind one endpoint.
+    binding: tokio::sync::Mutex<()>,
+    /// Use n0's public relays (off: direct addresses only, for tests and local runs).
+    relay: bool,
+    /// The daemon, for the sessions the endpoint accepts (set once it exists).
+    hub: std::sync::OnceLock<std::sync::Weak<Hub>>,
 }
 
 fn now_s() -> u64 {
@@ -106,19 +114,29 @@ pub fn load_or_create_key(dir: &Path) -> std::io::Result<SecretKey> {
     #[cfg(unix)]
     std::fs::set_permissions(&d, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
     let p = d.join("key");
-    if let Ok(b) = std::fs::read(&p)
-        && let Ok(bytes) = <[u8; 32]>::try_from(b.as_slice())
-    {
-        return Ok(SecretKey::from_bytes(&bytes));
+    match std::fs::read(&p) {
+        // A key that is there but unreadable is an error, never a silent new identity:
+        // every paired phone dials this node id.
+        Ok(b) => {
+            let bytes = <[u8; 32]>::try_from(b.as_slice()).map_err(|_| {
+                std::io::Error::other(format!(
+                    "{}: not a 32-byte key; remove it to re-pair every phone",
+                    p.display()
+                ))
+            })?;
+            return Ok(SecretKey::from_bytes(&bytes));
+        }
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        Err(_) => {}
     }
     let mut bytes = [0u8; 32];
-    std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut bytes)?;
+    atlas_core::sys::random_bytes(&mut bytes)?;
     paths::write_private(&p, &bytes)?;
     Ok(SecretKey::from_bytes(&bytes))
 }
 
 impl Mobile {
-    pub fn load(dir: &Path) -> std::io::Result<Self> {
+    pub fn load(dir: &Path, relay: bool) -> std::io::Result<Self> {
         let key = load_or_create_key(dir)?;
         let devices = std::fs::read_to_string(mobile_dir(dir).join("devices.json"))
             .ok()
@@ -131,6 +149,9 @@ impl Mobile {
             pair: Mutex::new(None),
             live: Mutex::new(HashMap::new()),
             endpoint: Mutex::new(None),
+            binding: tokio::sync::Mutex::new(()),
+            relay,
+            hub: std::sync::OnceLock::new(),
         })
     }
 
@@ -154,36 +175,32 @@ impl Mobile {
     }
 
     /// New one-time code (replaces any previous one).
-    pub fn pair_start(&self) -> Value {
-        let n = crate::paths::random_hex(4)
-            .ok()
-            .and_then(|h| u32::from_str_radix(&h, 16).ok())
-            .unwrap_or(0);
-        let code = format!("{:06}", n % 1_000_000);
+    /// Fails rather than hand out a guessable code when the system has no randomness.
+    pub fn pair_start(&self) -> Result<Value, String> {
+        let mut n = [0u8; 4];
+        atlas_core::sys::random_bytes(&mut n).map_err(|e| format!("random: {e}"))?;
+        let code = format!("{:06}", u32::from_le_bytes(n) % 1_000_000);
         *self.pair.lock() = Some(PairCode {
             code: code.clone(),
             expires: std::time::Instant::now() + CODE_TTL,
             bad: 0,
         });
-        let addrs: Vec<String> = self
-            .endpoint
-            .lock()
+        let addr = self.endpoint.lock().as_ref().map(|e| e.addr());
+        let addrs: Vec<String> = addr
+            .iter()
+            .flat_map(|a| a.ip_addrs().map(|a| a.to_string()))
+            .collect();
+        let relay = addr
             .as_ref()
-            .map(|e| e.addr().ip_addrs().map(|a| a.to_string()).collect())
-            .unwrap_or_default();
-        let relay: Option<String> = self
-            .endpoint
-            .lock()
-            .as_ref()
-            .and_then(|e| e.addr().relay_urls().next().map(|u| u.to_string()));
-        json!({
+            .and_then(|a| a.relay_urls().next().map(|u| u.to_string()));
+        Ok(json!({
             "node_id": self.node_id(),
             "code": code,
             "expires_in_s": CODE_TTL.as_secs(),
             "addrs": addrs,
             "relay_url": relay,
             "hostname": crate::server::hostname(),
-        })
+        }))
     }
 
     /// Check a code from an unpaired phone; on success it is paired with every scope.
@@ -213,10 +230,16 @@ impl Mobile {
             scopes: ALL_SCOPES.to_vec(),
             revoked: false,
         };
+        // Trusted only once it is on disk: a phone told "failed" must not be paired.
         let mut all = self.devices.lock();
-        all.retain(|d| d.node_id != node_id);
-        all.push(dev.clone());
-        self.save(&all)?;
+        let mut next: Vec<Device> = all
+            .iter()
+            .filter(|d| d.node_id != node_id)
+            .cloned()
+            .collect();
+        next.push(dev.clone());
+        self.save(&next)?;
+        *all = next;
         Ok(dev)
     }
 
@@ -224,22 +247,25 @@ impl Mobile {
         self.devices.lock().clone()
     }
 
+    /// Takes effect at once, even when saving fails (the error is still returned): taking
+    /// trust away must never wait on the disk.
     pub fn revoke(&self, node_id: &str) -> Result<(), String> {
-        {
+        let saved = {
             let mut all = self.devices.lock();
             let d = all
                 .iter_mut()
                 .find(|d| d.node_id == node_id)
                 .ok_or("unknown device")?;
             d.revoked = true;
-            self.save(&all)?;
-        }
+            self.save(&all)
+        };
         for c in self.live.lock().remove(node_id).unwrap_or_default() {
             c.close(1u32.into(), b"revoked");
         }
-        Ok(())
+        saved
     }
 
+    /// Like [`revoke`](Self::revoke), applies at once and reports a failed save.
     pub fn set_scopes(&self, node_id: &str, scopes: Vec<Scope>) -> Result<(), String> {
         let mut all = self.devices.lock();
         let d = all
@@ -269,55 +295,59 @@ impl Mobile {
     }
 }
 
+/// The scope a push needs to reach a phone; `None` = never sent to one (the desktop's
+/// editor and file watching).
+pub fn push_scope(ev: &str) -> Option<Scope> {
+    Some(match ev {
+        "pty_output" | "pty_replay" | "pty_title" | "pty_activity" | "pty_exit" => Scope::TermRead,
+        // The prompt carries the tool input (a shell command, a file path).
+        "agent_approval" | "agent_approval_done" => Scope::Approve,
+        "agent_status" => Scope::Read,
+        _ => return None,
+    })
+}
+
 /// The scope a mobile request needs; `Err` = never available from a phone.
 pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
     use HostCmd as C;
     Ok(match cmd {
-        C::PtyList {}
-        | C::PtyInfo { .. }
-        | C::PtyRead { .. }
-        | C::AgentStatusAll {}
-        | C::AgentHistory { .. } => Scope::Read,
+        C::PtyList {} | C::PtyInfo { .. } | C::AgentStatusAll {} | C::AgentHistory { .. } => {
+            Scope::Read
+        }
         C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
             Scope::Read
         }
         C::ProjectService { .. } | C::ProjectAction { .. } | C::AgentSend { .. } => Scope::Act,
         C::AgentApprove { .. } => Scope::Approve,
-        C::PtyAttach { .. } | C::PtyDetach { .. } => Scope::TermRead,
+        // pty_read returns the scrollback text: reading a terminal, not listing it.
+        C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
         _ => return Err("not available on mobile"),
     })
 }
 
-fn preset_relay() -> bool {
-    std::env::var("ATLAS_MOBILE_RELAY").map_or(true, |v| v != "0")
+/// Open the gateway for a daemon that already has phones; one with none stays off the
+/// network until a pairing starts ([`Mobile::ensure_endpoint`]). Spawned so that a slow or
+/// offline network never delays the unix socket.
+pub(crate) fn start(hub: &Arc<Hub>) {
+    let _ = hub.mobile.hub.set(Arc::downgrade(hub));
+    if hub.mobile.devices.lock().iter().any(|d| !d.revoked) {
+        let mobile = hub.mobile.clone();
+        tokio::spawn(async move {
+            if let Err(e) = mobile.ensure_endpoint().await {
+                eprintln!("hostd: mobile gateway: {e}");
+            }
+        });
+    }
 }
 
-/// Bind the iroh endpoint and accept phones until the process exits. Spawned so that a
-/// slow or offline network never delays the unix socket.
-pub(crate) fn start(hub: Arc<Hub>) {
+/// Serve every phone `ep` accepts. A plain function, not part of an async fn's body: a
+/// session can start the endpoint (pairing), so a future that spawned sessions inline
+/// would have to name its own type.
+fn accept_phones(ep: Endpoint, hub: std::sync::Weak<Hub>) {
     tokio::spawn(async move {
-        let mobile = hub.mobile.clone();
-        let builder = if preset_relay() {
-            Endpoint::builder(iroh::endpoint::presets::N0)
-        } else {
-            Endpoint::builder(iroh::endpoint::presets::Minimal)
-        };
-        let ep = match builder
-            .secret_key(mobile.key.clone())
-            .alpns(vec![ALPN.to_vec()])
-            .bind()
-            .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                eprintln!("hostd: mobile gateway: {e}");
-                return;
-            }
-        };
-        *mobile.endpoint.lock() = Some(ep.clone());
         while let Some(inc) = ep.accept().await {
-            let hub = hub.clone();
+            let Some(hub) = hub.upgrade() else { break };
             tokio::spawn(async move {
                 let Ok(conn) = inc.await else { return };
                 session::run(hub, conn).await;
@@ -327,6 +357,36 @@ pub(crate) fn start(hub: Arc<Hub>) {
 }
 
 impl Mobile {
+    /// Bind the iroh endpoint (once) and accept phones until the process exits.
+    pub(crate) async fn ensure_endpoint(self: &Arc<Self>) -> Result<(), String> {
+        let _one = self.binding.lock().await;
+        if self.endpoint.lock().is_some() {
+            return Ok(());
+        }
+        let builder = if self.relay {
+            Endpoint::builder(iroh::endpoint::presets::N0)
+        } else {
+            Endpoint::builder(iroh::endpoint::presets::Minimal)
+        };
+        let ep = builder
+            .secret_key(self.key.clone())
+            .alpns(vec![ALPN.to_vec()])
+            .bind()
+            .await
+            .map_err(|e| format!("mobile gateway: {e}"))?;
+        *self.endpoint.lock() = Some(ep.clone());
+        accept_phones(ep, self.hub.get().cloned().unwrap_or_default());
+        Ok(())
+    }
+
+    /// A connected phone may answer permission prompts (scopes as they are now).
+    pub fn can_approve(&self) -> bool {
+        let live = self.live.lock();
+        self.devices.lock().iter().any(|d| {
+            !d.revoked && d.scopes.contains(&Scope::Approve) && live.contains_key(&d.node_id)
+        })
+    }
+
     fn track(&self, node: &str, c: &Connection) {
         self.live
             .lock()

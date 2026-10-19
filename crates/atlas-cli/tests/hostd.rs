@@ -376,8 +376,9 @@ async fn connect_retry(dir: &Path, pid_not: u64) -> HostClient {
     panic!("successor hostd did not come up");
 }
 
-/// Send one hook event the way `atlas hook` does (raw HTTP to the published port).
-fn post_hook(dir: &Path, agent: &str, body: &Value) {
+/// Send one hook event the way `atlas hook` does (raw HTTP to the published port), with
+/// the published token unless `token` overrides it; the raw response.
+fn post_hook(dir: &Path, agent: &str, body: &Value, token: Option<&str>) -> String {
     use std::io::{Read, Write};
     let env = std::fs::read_to_string(paths::hook_endpoint(dir)).unwrap();
     let get = |k: &str| {
@@ -393,13 +394,49 @@ fn post_hook(dir: &Path, agent: &str, body: &Value) {
     write!(
         s,
         "POST /hook/{agent} HTTP/1.1\r\nHost: x\r\nX-Atlas-Hook-Token: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        get("ATLAS_HOOK_TOKEN"),
+        token.map_or_else(|| get("ATLAS_HOOK_TOKEN"), str::to_string),
         body.len()
     )
     .unwrap();
     let mut r = String::new();
     let _ = s.read_to_string(&mut r);
+    r
+}
+
+// Guards a phone showing a dead agent as working forever: only the desktop told hostd
+// a pane's process exited (`agent_pane_exited`), so with the app closed, the case agent
+// state moved to hostd for, the pane never went back to idle.
+#[tokio::test]
+async fn an_agent_pane_whose_process_exits_goes_idle_without_the_app() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    c.call(
+        "pty_create",
+        json!({"cwd": dir, "argv": ["sh", "-c", "sleep 1"], "scope": {"pane_key": "p1"}}),
+    )
+    .await
+    .unwrap();
+    let r = post_hook(
+        dir,
+        "omp",
+        &json!({"pane_key": "p1", "payload": {"event": "agent_start"}}),
+        None,
+    );
     assert!(r.starts_with("HTTP/1.1 2"), "{r}");
+    let state = || async {
+        c.call("agent_status_all", json!({})).await.unwrap()["panes"]["p1"]["state"].clone()
+    };
+    assert_eq!(state().await, "working");
+    let mut s = Value::Null;
+    for _ in 0..50 {
+        s = state().await;
+        if s == "idle" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(s, "idle");
 }
 
 // Guards "no agent running" after an upgrade: agent state lived only in the old
@@ -425,13 +462,16 @@ async fn agent_state_survives_an_upgrade() {
     )
     .await
     .unwrap();
-    post_hook(
+    let r = post_hook(
         dir,
         "omp",
-        &json!({"pane_key": "p1", "payload": {"event": "agent_end", "last_assistant_message": "done it"}}),
+        &json!({"pane_key": "p1", "payload": {"event": "agent_end", "text": "done it"}}),
+        None,
     );
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
     let before = c.call("agent_status_all", json!({})).await.unwrap();
     assert_eq!(before["panes"]["p1"]["state"], "done", "{before}");
+    assert_eq!(before["panes"]["p1"]["last_message"], "done it", "{before}");
 
     c.call("upgrade", json!({"exe": BIN})).await.unwrap();
     let c2 = connect_retry(dir, old_pid).await;
@@ -441,11 +481,13 @@ async fn agent_state_survives_an_upgrade() {
     let after = c2.call("agent_status_all", json!({})).await.unwrap();
     assert_eq!(after["panes"]["p1"], before["panes"]["p1"], "{after}");
     // The cwd binding moves too: a hook without a pane key still finds p1.
-    post_hook(
+    let r = post_hook(
         dir,
         "omp",
         &json!({"payload": {"event": "agent_start", "cwd": "/w"}}),
+        None,
     );
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
     let later = c2.call("agent_status_all", json!({})).await.unwrap();
     assert_eq!(later["panes"]["p1"]["state"], "working", "{later}");
 }
@@ -912,7 +954,9 @@ async fn check_reports_a_stale_daemon_with_its_terminals_and_exits_3() {
         "{out}"
     );
     assert!(
-        out.contains("language features and fast terminal rendering are off until it restarts"),
+        out.contains(
+            "language features, fast terminal rendering and agent status are off until it restarts"
+        ),
         "{out}"
     );
     assert!(
@@ -1120,38 +1164,18 @@ async fn unusable_hostd_pid_names_only_a_live_daemon_that_refuses_us() {
 /// every client sees it: a hook POST and a pane exit both reach clients as `agent_status`.
 #[tokio::test]
 async fn hook_events_drive_agent_status_pushed_to_clients() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let tmp = tempfile::tempdir().unwrap();
     let (_d, c) = start(tmp.path()).await;
     let mut ev = c.events();
     let env = std::fs::read_to_string(paths::hook_endpoint(tmp.path())).unwrap();
-    let get = |k: &str| {
-        env.lines()
-            .find_map(|l| l.strip_prefix(&format!("{k}=")))
-            .unwrap()
-            .to_string()
-    };
-    let (port, token) = (get("ATLAS_HOOK_PORT"), get("ATLAS_HOOK_TOKEN"));
-    let post = |tok: String| {
-        let port = port.clone();
-        async move {
-            let body = json!({"pane_key":"p1","payload":{"event":"agent_start","prompt":"hi"}})
-                .to_string();
-            let mut s = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
-                .await
-                .unwrap();
-            let req = format!(
-                "POST /hook/omp HTTP/1.1\r\nX-Atlas-Hook-Token: {tok}\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            s.write_all(req.as_bytes()).await.unwrap();
-            let mut out = String::new();
-            s.read_to_string(&mut out).await.unwrap();
-            out
-        }
-    };
-    assert!(post("wrong".into()).await.starts_with("HTTP/1.1 401"));
-    assert!(post(token.clone()).await.starts_with("HTTP/1.1 204"));
+    let port = env
+        .lines()
+        .find_map(|l| l.strip_prefix("ATLAS_HOOK_PORT="))
+        .unwrap()
+        .to_string();
+    let hi = json!({"pane_key":"p1","payload":{"event":"agent_start","prompt":"hi"}});
+    assert!(post_hook(tmp.path(), "omp", &hi, Some("wrong")).starts_with("HTTP/1.1 401"));
+    assert!(post_hook(tmp.path(), "omp", &hi, None).starts_with("HTTP/1.1 204"));
     async fn next(
         ev: &mut tokio::sync::broadcast::Receiver<atlas_host::client::HostEvent>,
     ) -> Value {

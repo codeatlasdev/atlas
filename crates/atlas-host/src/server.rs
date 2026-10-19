@@ -17,7 +17,7 @@ use base64::engine::general_purpose::STANDARD as B64;
 use notify::{RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{Notify, mpsc};
 
 use crate::paths;
@@ -94,7 +94,6 @@ impl Hub {
         (live, self.subscribers.lock().len())
     }
 
-    #[cfg(unix)]
     pub(crate) fn sessions_snapshot(&self) -> Vec<Arc<Session>> {
         self.sessions.lock().values().cloned().collect()
     }
@@ -224,6 +223,9 @@ fn write_pid(f: std::fs::File) -> Result<std::fs::File> {
 pub struct ServeOpts {
     /// The old daemon's handoff socket (`atlas hostd --takeover <sock>`).
     pub takeover: Option<PathBuf>,
+    /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
+    /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
+    pub no_mobile_relay: bool,
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
@@ -337,15 +339,21 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         subscribers: Mutex::new(HashMap::new()),
         lsp_docs: Mutex::new(HashMap::new()),
         agents: Arc::new(crate::agents::AgentHub::default()),
-        mobile: Arc::new(crate::mobile::Mobile::load(dir)?),
+        mobile: Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?),
     });
-    crate::mobile::start(hub.clone());
+    crate::mobile::start(&hub);
+    // Adopted terminals (live handoff) keep idling their agent when they exit.
+    for s in hub.sessions_snapshot() {
+        idle_agent_on_exit(&hub, &s);
+    }
     // Agents travel with the ptys in a live handoff (Unix only, like the handoff).
     #[cfg(unix)]
     if let Some(t) = &takeover {
         hub.agents.restore(&t.agents);
     }
-    if let Err(e) = crate::agents::hook_server::start(dir, hub.agents.clone()).await {
+    if let Err(e) =
+        crate::agents::hook_server::start(dir, hub.agents.clone(), hub.mobile.clone()).await
+    {
         eprintln!("hostd: agent hook server: {e}");
     }
     {
@@ -466,8 +474,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     // Returns the write half so `pty_attach_raw` can take the socket over.
     let writer = tokio::spawn(protocol::write_lines(rx, w));
 
-    let mut buf = String::new();
-    let authed = match read_line(&mut lines, &mut buf).await {
+    let authed = match read_line(&mut lines, LongLine::Skip).await {
         Some(l) => serde_json::from_str::<Value>(&l)
             .ok()
             .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok())
@@ -485,7 +492,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
 
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
     let mut attached: Vec<Arc<Session>> = Vec::new();
-    while let Some(line) = read_line(&mut lines, &mut buf).await {
+    while let Some(line) = read_line(&mut lines, LongLine::Skip).await {
         let req: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
@@ -521,7 +528,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                         Ok(s) => {
                             // A raw byte stream cannot carry JSON pushes.
                             hub.subscribers.lock().remove(&conn_id);
-                            return raw(s, conn_id, replay, id, tx, writer, lines, buf).await;
+                            return raw(s, conn_id, replay, id, tx, writer, lines).await;
                         }
                         Err(e) => Err(e),
                     }
@@ -553,13 +560,40 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let _ = writer.await;
 }
 
-async fn read_line(r: &mut BufReader<ipc::ReadHalf>, buf: &mut String) -> Option<String> {
-    buf.clear();
-    match r.read_line(buf).await {
-        Ok(0) | Err(_) => None,
-        Ok(n) if n > MAX_LINE_BYTES => Some(String::new()),
-        Ok(_) => Some(buf.trim_end().to_string()),
+/// What to do with a line over `MAX_LINE_BYTES`.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum LongLine {
+    /// Skip it (the protocol drops it) and keep the connection: local clients.
+    Skip,
+    /// End the connection: peers from the network, which could otherwise stream one
+    /// endless line forever.
+    Close,
+}
+
+/// Next request line, `""` for a skipped long one, or `None` when the peer closed (or
+/// sent a long line under [`LongLine::Close`]). Never holds more than `MAX_LINE_BYTES`
+/// of a line, so a peer cannot grow the buffer without bound.
+pub(crate) async fn read_line<R: AsyncBufRead + Unpin>(
+    r: &mut R,
+    long_line: LongLine,
+) -> Option<String> {
+    let limit = MAX_LINE_BYTES as u64 + 1;
+    let mut bytes = Vec::new();
+    let mut long = false;
+    loop {
+        bytes.clear();
+        match (&mut *r).take(limit).read_until(b'\n', &mut bytes).await {
+            Ok(0) | Err(_) => return None,
+            Ok(_) if bytes.ends_with(b"\n") => break,
+            Ok(_) if (bytes.len() as u64) < limit => return None, // EOF mid-line
+            Ok(_) if long_line == LongLine::Close => return None,
+            Ok(_) => long = true,
+        }
     }
+    if long || bytes.len() > MAX_LINE_BYTES {
+        return Some(String::new());
+    }
+    Some(String::from_utf8_lossy(&bytes).trim_end().to_string())
 }
 
 fn watch(
@@ -616,12 +650,41 @@ fn watch(
     Ok(json!({}))
 }
 
+/// When the program in an agent's pane exits, the agent goes idle: hostd sees the exit
+/// itself, so this holds with the app closed (phones would otherwise show a dead agent
+/// as working). Listens like a client that wants no output.
+fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
+    let Some(pane) = s.meta.scope.pane_key.clone() else {
+        return;
+    };
+    if s.exited().is_some() {
+        return;
+    }
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    s.attach(
+        hub.next_conn.fetch_add(1, Ordering::Relaxed),
+        tx,
+        false,
+        false,
+    );
+    let agents = hub.agents.clone();
+    tokio::spawn(async move {
+        while let Some(line) = rx.recv().await {
+            if line.contains(r#""ev":"pty_exit""#) {
+                agents.idle(&pane);
+                break;
+            }
+        }
+    });
+}
+
 pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
         HostCmd::PtyCreate(req) => {
             let s = Session::spawn(req, &hub.scroll_dir).map_err(e)?;
             let id = s.id.clone();
+            idle_agent_on_exit(hub, &s);
             hub.sessions.lock().insert(id.clone(), s);
             Ok(json!({"pty": id}))
         }
@@ -717,7 +780,10 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::ProjectAction { id, key, confirmed } => {
             crate::projects::action(&hub.dir, &id, &key, confirmed).await
         }
-        HostCmd::MobilePairStart {} => Ok(hub.mobile.pair_start()),
+        HostCmd::MobilePairStart {} => {
+            hub.mobile.ensure_endpoint().await?;
+            hub.mobile.pair_start()
+        }
         HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
         HostCmd::MobileRevoke { node_id } => hub.mobile.revoke(&node_id).map(|()| json!({})),
         HostCmd::MobileSetScopes { node_id, scopes } => {
@@ -766,7 +832,6 @@ async fn raw(
     tx: Out,
     writer: tokio::task::JoinHandle<ipc::WriteHalf>,
     mut lines: BufReader<ipc::ReadHalf>,
-    mut buf: String,
 ) {
     let (rtx, mut rrx) = mpsc::channel::<Vec<u8>>(crate::pty::RAW_QUEUE);
     // Subscribe before replying: output produced meanwhile queues in `rrx`.
@@ -785,7 +850,7 @@ async fn raw(
                 None => break,
             },
             // The client sends nothing on a raw connection: any line or EOF ends it.
-            _ = read_line(&mut lines, &mut buf) => break,
+            _ = read_line(&mut lines, LongLine::Skip) => break,
         }
     }
     s.detach(conn_id);

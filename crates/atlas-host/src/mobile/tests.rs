@@ -11,10 +11,12 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::HostClient;
 
 async fn daemon(dir: &Path) -> HostClient {
-    // Safety: set once before any endpoint binds; every test sets the same value.
-    unsafe { std::env::set_var("ATLAS_MOBILE_RELAY", "0") };
     let d = dir.to_path_buf();
-    tokio::spawn(async move { crate::server::serve(&d).await });
+    let opts = crate::server::ServeOpts {
+        no_mobile_relay: true,
+        ..Default::default()
+    };
+    tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
     for _ in 0..100 {
         if let Ok(c) = HostClient::connect_dir(dir, "test").await {
             return c;
@@ -193,6 +195,152 @@ async fn pairing_scopes_and_revocation() {
     c.call("shutdown", json!({})).await.ok();
 }
 
+impl Phone {
+    /// Pushes (lines without an `id`) that arrive within `ms`.
+    async fn pushes(&mut self, ms: u64) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut buf = String::new();
+        let end = tokio::time::Instant::now() + Duration::from_millis(ms);
+        while let Ok(Ok(n)) = tokio::time::timeout_at(end, self.recv.read_line(&mut buf)).await {
+            if n == 0 {
+                break;
+            }
+            if let Ok(v) = serde_json::from_str::<Value>(&buf)
+                && v.get("id").is_none()
+            {
+                out.push(v);
+            }
+            buf.clear();
+        }
+        out
+    }
+}
+
+/// A paired phone and the desktop-side client of the same daemon.
+async fn paired(dir: &Path) -> (HostClient, Phone, String) {
+    let c = daemon(dir).await;
+    let info = pair_start(&c).await;
+    let mut phone = Phone::dial(&info).await;
+    let r = phone
+        .call("pair", json!({"code": info["code"], "name": "iPhone"}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let node = c.call("mobile_devices", json!({})).await.unwrap()["devices"][0]["node_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    (c, phone, node)
+}
+
+// Guards scopes on pushes: they were checked on requests only, so every phone got
+// every broadcast (approval prompts with their command, editor diagnostics), and
+// taking `term_read` away left an attached terminal streaming.
+// Multi-thread: `hook` blocks on std TCP while the daemon's hook server serves it.
+#[tokio::test(flavor = "multi_thread")]
+async fn pushes_follow_the_phone_scopes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": tmp.path(), "argv": ["sh", "-c", "while :; do echo tick; sleep 0.1; done"]}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let r = phone
+        .call(
+            "pty_attach",
+            json!({"pty": pty, "replay": false, "output": true}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let evs = |v: &[Value]| {
+        v.iter()
+            .map(|e| e["ev"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(evs(&phone.pushes(600).await).contains(&"pty_output".to_string()));
+
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read"]}),
+    )
+    .await
+    .unwrap();
+    hook(tmp.path(), json!({"event": "agent_start"}));
+    let got = evs(&phone.pushes(800).await);
+    assert!(
+        !got.contains(&"pty_output".to_string()),
+        "terminal kept streaming: {got:?}"
+    );
+    assert!(
+        got.contains(&"agent_status".to_string()),
+        "read still sees agents: {got:?}"
+    );
+    assert!(
+        got.iter()
+            .all(|e| !e.starts_with("lsp_") && e != "fs_event"),
+        "{got:?}"
+    );
+    c.call("pty_kill", json!({"pty": pty})).await.ok();
+    c.call("shutdown", json!({})).await.ok();
+}
+
+// Guards a phone paired against what it was told: the device was kept in memory when
+// writing devices.json failed, so a phone shown "failed" was trusted until restart.
+#[test]
+fn a_pairing_that_cannot_be_saved_does_not_pair() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let m = super::Mobile::load(tmp.path(), false).unwrap();
+    let code = m.pair_start().unwrap()["code"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let d = tmp.path().join("mobile");
+    std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let r = m.pair("n1", &code, "iPhone");
+    std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(r.is_err(), "{r:?}");
+    assert!(m.device("n1").is_none(), "trusted without being saved");
+}
+
+// Guards memory on the open gateway: any peer that knows the node id can dial
+// before pairing, and a line was read whole before its length was checked, so one
+// endless line grew hostd's buffer without bound. It is cut at MAX_LINE_BYTES.
+#[tokio::test]
+async fn an_unpaired_peer_sending_an_endless_line_is_cut_off() {
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    let info = pair_start(&c).await;
+    let mut p = Phone::dial(&info).await;
+    let chunk = vec![b'x'; 256 * 1024];
+    let mut sent = 0;
+    let cut = tokio::time::timeout(Duration::from_secs(20), async {
+        // No newline, ever: hostd must close the stream past the limit.
+        while p.send.write_all(&chunk).await.is_ok() {
+            sent += chunk.len();
+            if sent > 64 * crate::protocol::MAX_LINE_BYTES {
+                return false;
+            }
+        }
+        true
+    })
+    .await
+    .unwrap_or(false);
+    assert!(cut, "hostd kept reading an endless line ({sent} bytes)");
+    assert!(
+        sent <= 4 * crate::protocol::MAX_LINE_BYTES,
+        "cut late: {sent} bytes"
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
 #[tokio::test]
 async fn five_wrong_codes_invalidate_the_code() {
     let tmp = tempfile::tempdir().unwrap();
@@ -215,7 +363,8 @@ async fn five_wrong_codes_invalidate_the_code() {
     c.call("shutdown", json!({})).await.ok();
 }
 
-fn hook(dir: &Path, payload: Value) {
+/// POST to the hook server the way `atlas hook` does; the reply body.
+fn post_hook(dir: &Path, path: &str, body: Value) -> String {
     use std::io::{Read, Write};
     let env = std::fs::read_to_string(crate::paths::hook_endpoint(dir)).unwrap();
     let get = |k: &str| {
@@ -224,17 +373,89 @@ fn hook(dir: &Path, payload: Value) {
             .unwrap()
             .to_string()
     };
-    let body = json!({"pane_key": "p1", "payload": payload}).to_string();
+    let body = body.to_string();
     let mut s =
         std::net::TcpStream::connect(format!("127.0.0.1:{}", get("ATLAS_HOOK_PORT"))).unwrap();
     write!(
         s,
-        "POST /hook/omp HTTP/1.1\r\nX-Atlas-Hook-Token: {}\r\nContent-Length: {}\r\n\r\n{body}",
+        "POST {path} HTTP/1.1\r\nX-Atlas-Hook-Token: {}\r\nContent-Length: {}\r\n\r\n{body}",
         get("ATLAS_HOOK_TOKEN"),
         body.len()
     )
     .unwrap();
-    let _ = s.read_to_end(&mut Vec::new());
+    let mut r = String::new();
+    s.read_to_string(&mut r).unwrap();
+    r.split("\r\n\r\n").nth(1).unwrap_or_default().to_string()
+}
+
+/// One lifecycle event for pane `p1`.
+fn hook(dir: &Path, payload: Value) {
+    post_hook(
+        dir,
+        "/hook/omp",
+        json!({"pane_key": "p1", "payload": payload}),
+    );
+}
+
+/// A permission prompt for pane `p1`, as `atlas hook` asks it.
+fn ask_decision(dir: &Path) -> String {
+    post_hook(
+        dir,
+        "/hook/claude/decision",
+        json!({"pane_key": "p1", "payload": {"tool_name": "Bash"}}),
+    )
+}
+
+// Guards an agent stuck 55 s on a phone that cannot answer: any connected phone made
+// permission prompts wait, even one without `approve` (its answer is refused). And the
+// answer of one that may approve reaches the hook in the body `atlas hook` parses.
+#[tokio::test(flavor = "multi_thread")]
+async fn only_a_phone_that_may_approve_holds_a_prompt() {
+    use crate::agents::hook_server::parse_decision;
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read"]}),
+    )
+    .await
+    .unwrap();
+    let dir = tmp.path().to_path_buf();
+    let t = std::time::Instant::now();
+    let body = tokio::task::spawn_blocking(move || ask_decision(&dir))
+        .await
+        .unwrap();
+    assert_eq!(parse_decision(&body), None, "{body}");
+    assert!(
+        t.elapsed() < Duration::from_secs(3),
+        "waited {:?}",
+        t.elapsed()
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read", "approve"]}),
+    )
+    .await
+    .unwrap();
+    let dir = tmp.path().to_path_buf();
+    let asked = tokio::task::spawn_blocking(move || ask_decision(&dir));
+    let req = loop {
+        let p = phone.pushes(500).await;
+        if let Some(e) = p.iter().find(|e| e["ev"] == "agent_approval") {
+            break e["req"].as_str().unwrap().to_string();
+        }
+    };
+    let r = phone
+        .call(
+            "agent_approve",
+            json!({"pane": "p1", "req": req, "allow": true}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(parse_decision(&asked.await.unwrap()), Some(true));
+    c.call("shutdown", json!({})).await.ok();
 }
 
 /// A prompt typed while the agent runs a turn would land in the middle of it.
@@ -286,4 +507,45 @@ async fn agent_send_types_only_into_an_idle_or_done_agent() {
     // Echoed by the tty, then printed by `cat` once Enter arrived as its own write.
     assert!(text.matches("hello-agent").count() >= 2, "{text:?}");
     c.call("shutdown", json!({})).await.ok();
+}
+
+/// Contract with Settings → Mobile: `apps/desktop/src/lib/__fixtures__/mobile-*.json` are
+/// this producer's output (random parts pinned), read by `settings/mobile.test.ts`, whose
+/// pairing URL the phone's `pair_url_test.dart` parses. `UPDATE_FIXTURES=1` rewrites them.
+#[tokio::test]
+async fn settings_fixtures_are_the_real_payloads() {
+    let tmp = tempfile::tempdir().unwrap();
+    let m = std::sync::Arc::new(super::Mobile::load(tmp.path(), false).unwrap());
+    m.ensure_endpoint().await.unwrap();
+    let mut start = m.pair_start().unwrap();
+    let code = start["code"].as_str().unwrap().to_string();
+    m.pair("n1", &code, "iPhone").unwrap();
+    m.set_scopes("n1", vec![super::Scope::Read, super::Scope::TermRead])
+        .unwrap();
+    start["node_id"] = json!("NODE");
+    start["code"] = json!("012345");
+    start["hostname"] = json!("Luan's MacBook");
+    start["addrs"] = json!(["192.168.1.2:4433", "[fe80::1]:4433"]);
+    let mut devices = json!(m.devices());
+    devices[0]["paired_at"] = json!(1_700_000_000);
+    for (name, v) in [
+        ("mobile-pair-start.json", start),
+        ("mobile-devices.json", devices),
+    ] {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__")
+            .join(name);
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
+        }
+        let want: Value = serde_json::from_str(
+            &std::fs::read_to_string(&p)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            want, v,
+            "{name} changed: rerun with UPDATE_FIXTURES=1, then the TS test"
+        );
+    }
 }

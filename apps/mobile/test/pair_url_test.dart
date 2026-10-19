@@ -1,9 +1,29 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
 
 void main() {
   group('PairInfo.parse', () {
+    // The URL Settings → Mobile really shows (fixtures/pair_url.txt, written by the
+    // desktop's mobile.test.ts from hostd's real `mobile_pair_start` reply): a hand-typed
+    // URL here could hide an encoding the phone reads differently ('+' for a space).
+    test('reads the pairing URL the desktop produces', () {
+      final url = File('test/fixtures/pair_url.txt').readAsStringSync().trim();
+      final start = jsonDecode(
+        File('../desktop/src/lib/__fixtures__/mobile-pair-start.json')
+            .readAsStringSync(),
+      ) as Map<String, dynamic>;
+      final info = PairInfo.parse(url);
+      expect(info.nodeId, start['node_id']);
+      expect(info.code, start['code']);
+      expect(info.name, start['hostname']);
+      expect(info.addrs, start['addrs']);
+      expect(info.relay, start['relay_url']);
+    });
+
     test('parses a valid full URL', () {
       const url =
           'atlas-mobile://pair?node=abc123&code=654321&name=MyMac'

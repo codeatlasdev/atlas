@@ -1,0 +1,8 @@
+{
+	"addrs": ["192.168.1.2:4433", "[fe80::1]:4433"],
+	"code": "012345",
+	"expires_in_s": 120,
+	"hostname": "Luan's MacBook",
+	"node_id": "NODE",
+	"relay_url": null
+}

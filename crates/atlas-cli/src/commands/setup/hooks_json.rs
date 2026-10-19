@@ -22,8 +22,9 @@ use crate::commands::hook::{Event, Harness};
 
 /// Seconds. Both harnesses default to 600; the atlas hook reads one local file.
 const TIMEOUT_SECS: u64 = 10;
-/// `PermissionRequest` may wait for an answer from Atlas Mobile (`DECISION_WAIT` = 55 s).
-const DECISION_TIMEOUT_SECS: u64 = 60;
+/// `PermissionRequest` may wait for an answer from Atlas Mobile: hostd's wait plus the
+/// margin `atlas hook` adds, so the harness never kills a hook that is still answering.
+const DECISION_TIMEOUT_SECS: u64 = atlas_host::agents::hook_server::DECISION_WAIT.as_secs() + 5;
 
 /// What one event registers: harness event name, tool matcher (None = every occurrence).
 struct Registration {

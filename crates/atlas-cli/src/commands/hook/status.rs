@@ -1,14 +1,15 @@
-//! Status reporting to Atlas Desktop's hook server: map a harness event to the
-//! desktop's vocabulary and POST it over loopback.
+//! Status reporting to `atlas hostd`'s hook server: map a harness event to its
+//! vocabulary and POST it over loopback.
 
 use std::io::Read;
 
+use atlas_host::agents::hook_server;
 use serde_json::Value;
 
 use super::{Event, Harness};
 
-/// Status event for Atlas Desktop's hook server, in the vocabulary its
-/// `normalize` understands. `None` = not a status change worth sending.
+/// Status event for hostd's hook server, in the vocabulary its `normalize`
+/// understands. `None` = not a status change worth sending.
 pub fn status_payload(event: Event, input: &Value) -> Option<Value> {
     let s = |k: &str| input.get(k).and_then(Value::as_str);
     let name = match event {
@@ -64,10 +65,6 @@ pub(super) fn report_status(harness: Harness, event: Event, stdin: &str) {
     post(harness, "", payload, std::time::Duration::from_secs(1));
 }
 
-/// How long a permission prompt may wait for a remote answer (Atlas Mobile). The hook is
-/// registered with a 60 s timeout; past this the agent's own prompt takes over.
-pub const DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(55);
-
 /// Ask hostd for a remote decision on a permission request: `Some(true)` allow,
 /// `Some(false)` deny, `None` no answer (no phone connected, timeout, no Atlas).
 pub(super) fn ask_decision(harness: Harness, stdin: &str) -> Option<bool> {
@@ -81,14 +78,9 @@ pub(super) fn ask_decision(harness: Harness, stdin: &str) -> Option<bool> {
         harness,
         "/decision",
         payload,
-        DECISION_WAIT + std::time::Duration::from_secs(2),
+        hook_server::DECISION_WAIT + std::time::Duration::from_secs(2),
     )?;
-    let v: Value = serde_json::from_str(&body).ok()?;
-    match v["decision"].as_str()? {
-        "allow" => Some(true),
-        "deny" => Some(false),
-        _ => None,
-    }
+    hook_server::parse_decision(&body)
 }
 
 /// POST `{pane_key,…, payload}` to `/hook/<agent><suffix>`; the response body, if any.

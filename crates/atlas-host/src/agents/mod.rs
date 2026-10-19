@@ -11,7 +11,6 @@ pub mod hook_server;
 mod tests;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
@@ -60,9 +59,6 @@ pub struct AgentHub {
     /// event as pushed, answer channel). The event is kept so a client that subscribes
     /// after the push can still list it.
     pending: Mutex<HashMap<String, Pending>>,
-    /// Connected mobile sessions. Prompts block for a remote answer only while one is live,
-    /// so an agent never waits on a phone that is not there.
-    pub mobile_live: AtomicUsize,
 }
 
 impl Default for AgentHub {
@@ -73,7 +69,6 @@ impl Default for AgentHub {
             port: Mutex::new(0),
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
-            mobile_live: AtomicUsize::new(0),
         }
     }
 }
@@ -199,7 +194,7 @@ impl AgentHub {
         Some(out)
     }
 
-    /// Forget a pane (its pty exited).
+    /// The pane's program exited: back to Idle (the pane stays listed).
     pub fn idle(&self, pane: &str) -> Option<AgentStatus> {
         let mut panes = self.panes.lock();
         let st = panes.get_mut(pane)?;
@@ -223,15 +218,17 @@ impl AgentHub {
     }
 
     /// Wait up to `wait` for a remote answer to a permission prompt in `pane`.
-    /// `None` at once when no mobile session is live.
+    /// `None` at once unless `someone_can_answer` (a connected phone with `approve`).
     pub async fn ask(
         &self,
         pane: &str,
         agent: &str,
         payload: &Value,
         wait: Duration,
+        someone_can_answer: bool,
     ) -> Option<bool> {
-        if self.mobile_live.load(Ordering::Relaxed) == 0 {
+        // Never make an agent wait on a phone that is not there or may not approve.
+        if !someone_can_answer {
             return None;
         }
         let req = crate::paths::random_hex(6).ok()?;

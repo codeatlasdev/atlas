@@ -69,9 +69,6 @@ pub async fn list(
     Ok(json!({"projects": out}))
 }
 
-/// Everything the phone's project screen needs in one call (polled every few seconds; the
-/// phone keeps the history for the charts): live status, config (ports, dependencies,
-/// actions), the last log line of each service and the error lines of the last 5 minutes.
 /// Agent panes whose terminal runs inside `root` (a pane belongs to the project of its
 /// terminal's folder). `panes`: `(pane_key, terminal cwd)` of the live terminals.
 pub fn agents_in(root: &Path, panes: &[(String, String)], status: &Value) -> Vec<Value> {
@@ -87,6 +84,9 @@ pub fn agents_in(root: &Path, panes: &[(String, String)], status: &Value) -> Vec
     out
 }
 
+/// Everything the phone's project screen needs in one call (polled every few seconds; the
+/// phone keeps the history for the charts): live status, config (ports, dependencies,
+/// actions), the last log line of each service and the error lines of the last 5 minutes.
 pub async fn detail(
     dir: &Path,
     id: &str,

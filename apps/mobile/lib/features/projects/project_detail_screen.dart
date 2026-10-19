@@ -311,8 +311,22 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     children: [
       if (s.agents.isNotEmpty) ...[
         SectionHeader('Agents', count: s.agents.length),
+        // Only agents waiting on you get a big card; the rest share one compact
+        // list, so many open agents still fit on a screen.
         for (final (pane, a) in s.agents)
-          _AgentRow(status: a, onTap: () => _openAgent(pane, a)),
+          if (_needsYou(a))
+            _AgentRow(status: a, onTap: () => _openAgent(pane, a)),
+        if (s.agents.any((e) => !_needsYou(e.$2)))
+          AtlasCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (final (pane, a) in s.agents)
+                  if (!_needsYou(a))
+                    _AgentLine(status: a, onTap: () => _openAgent(pane, a)),
+              ],
+            ),
+          ),
       ],
       SectionHeader('Services', count: s.services.length),
       // Two per row; tap a tile for its details and controls.
@@ -1420,6 +1434,71 @@ class _AgentRow extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+bool _needsYou(AgentStatus a) => a.state == 'blocked' || a.state == 'waiting';
+
+/// An agent that doesn't need you, as one line in the shared list.
+class _AgentLine extends StatelessWidget {
+  const _AgentLine({required this.status, required this.onTap});
+  final AgentStatus status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final k = c.agentState(status.state);
+    final line = status.state == 'working'
+        ? (status.prompt ?? '')
+        : (status.lastMessage ?? status.prompt ?? '');
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.sm + 2,
+        ),
+        child: Row(
+          children: [
+            StatusDot(color: k, pulse: status.state == 'working'),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        status.agent,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      Text(
+                        agentStateLabel(status.state),
+                        style: TextStyle(
+                          color: k,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (line.isNotEmpty)
+                    Text(
+                      line.replaceAll('\n', ' '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.muted),
+                    ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: c.faint),
+          ],
         ),
       ),
     );

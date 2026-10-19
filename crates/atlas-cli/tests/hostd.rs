@@ -42,6 +42,64 @@ fn b64(v: &Value) -> String {
     String::from_utf8(B64.decode(v.as_str().unwrap()).unwrap()).unwrap()
 }
 
+// Guards the empty agent terminal on the phone: the whole replay (up to 2 MiB of
+// scrollback, ~2.7 MB in base64) went out as one line, and every client drops a
+// line over MAX_LINE_BYTES, so a long-running agent's history never arrived.
+#[tokio::test]
+async fn a_long_replay_arrives_whole_in_lines_under_the_limit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c", "head -c 1500000 /dev/zero | tr '\\0' a; echo END; sleep 30"]}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    wait_for("output", || {
+        std::fs::read_dir(dir.join("hostd/scrollback"))
+            .map(|d| {
+                d.flatten()
+                    .any(|e| e.metadata().map_or(0, |m| m.len()) > 1_500_000)
+            })
+            .unwrap_or(false)
+    })
+    .await;
+    let mut ev = c.events();
+    c.call("pty_attach", json!({"pty": pty, "replay": true}))
+        .await
+        .unwrap();
+    let (mut kinds, mut got) = (Vec::new(), String::new());
+    while let Ok(Ok(e)) = tokio::time::timeout(Duration::from_millis(500), ev.recv()).await {
+        let k = e["ev"].as_str().unwrap_or_default().to_string();
+        if k != "pty_replay" && k != "pty_output" {
+            continue;
+        }
+        assert!(
+            e.to_string().len() < MAX_LINE,
+            "a replay line over the limit"
+        );
+        got.push_str(&b64(&e["data"]));
+        kinds.push(k);
+    }
+    assert!(
+        got.contains("END"),
+        "replay incomplete: {} bytes",
+        got.len()
+    );
+    assert_eq!(got.matches('a').count(), 1_500_000);
+    // One reset for clients that clear the screen on pty_replay, then the rest.
+    assert_eq!(kinds[0], "pty_replay");
+    assert!(kinds[1..].iter().all(|k| k == "pty_output"), "{kinds:?}");
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+}
+
+const MAX_LINE: usize = 1024 * 1024;
+
 // The phone sizes its terminal from pty_info before attaching: the replay is drawn
 // into its grid before the attach reply (which also carries the size) arrives, so
 // a missing size drew a 180-column TUI into 80x24 and cut it apart.

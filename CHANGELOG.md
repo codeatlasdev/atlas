@@ -13,6 +13,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Changed
 
 - **Agent state moved from the desktop app into `atlas hostd`.** The hook server (`~/.atlas/desktop/hook-endpoint.env`) and the per-tab state (working / needs you / done) now live in the terminal daemon, so they survive the window closing and an SSH host reports its own agents over the existing connection (the reverse port forward is gone). `atlas setup claude-code|codex --apply` registers `PermissionRequest` for both agents with a 60 s timeout; re-run it to pick that up.
+- **`atlas hostd` sends a long terminal replay in pieces.** Attaching sent the whole scrollback (up to 2 MiB) as one line, and a client that drops lines over 1 MiB, like the phone, got no history at all from a long-running agent. The first piece is still `pty_replay` (the screen reset), the rest arrive as `pty_output`. `pty_info` now also reports the terminal's `cols`/`rows`.
 
 ## [1.5.0-alpha.12] — 2026-10-16
 

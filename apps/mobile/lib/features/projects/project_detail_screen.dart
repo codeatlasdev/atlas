@@ -246,7 +246,13 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                         const SizedBox(height: Space.md),
                         _Tabs(
                           index: _tab,
-                          labels: const ['Overview', 'Metrics'],
+                          labels: [
+                            'Overview',
+                            s.agents.isEmpty
+                                ? 'Agents'
+                                : 'Agents ${s.agents.length}',
+                            'Metrics',
+                          ],
                           onChanged: (i) => setState(() => _tab = i),
                         ),
                         AnimatedSwitcher(
@@ -264,7 +270,11 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                           ),
                           child: KeyedSubtree(
                             key: ValueKey(_tab),
-                            child: _tab == 0 ? _overview(s) : _metrics(),
+                            child: switch (_tab) {
+                              0 => _overview(s),
+                              1 => _agents(s),
+                              _ => _metrics(),
+                            },
                           ),
                         ),
                       ],
@@ -306,27 +316,68 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     ];
   }
 
+  /// Every agent of the project, one line each; the ones waiting on you first.
+  Widget _agents(ProjectSnapshot s) {
+    final list = [
+      ...s.agents.where((e) => _needsYou(e.$2)),
+      ...s.agents.where((e) => !_needsYou(e.$2)),
+    ];
+    if (list.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: Space.xl),
+        child: Text(
+          'No agent running in this project.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AtlasColors.of(context).muted),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.md),
+      child: AtlasCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            for (final (pane, a) in list)
+              _AgentLine(status: a, onTap: () => _openAgent(pane, a)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _overview(ProjectSnapshot s) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       if (s.agents.isNotEmpty) ...[
-        SectionHeader('Agents', count: s.agents.length),
-        // Only agents waiting on you get a big card; the rest share one compact
-        // list, so many open agents still fit on a screen.
-        for (final (pane, a) in s.agents)
-          if (_needsYou(a))
-            _AgentRow(status: a, onTap: () => _openAgent(pane, a)),
-        if (s.agents.any((e) => !_needsYou(e.$2)))
-          AtlasCard(
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                for (final (pane, a) in s.agents)
-                  if (!_needsYou(a))
-                    _AgentLine(status: a, onTap: () => _openAgent(pane, a)),
-              ],
-            ),
+        const SizedBox(height: Space.md),
+        // Agents live in their own tab; here only a one-line summary leading there.
+        AtlasCard(
+          onTap: () => setState(() => _tab = 1),
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 18,
+                color: AtlasColors.of(context).muted,
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  [
+                    '${s.agents.length} agent${s.agents.length == 1 ? '' : 's'}',
+                    if (s.agents.any((e) => _needsYou(e.$2)))
+                      '${s.agents.where((e) => _needsYou(e.$2)).length} need you'
+                    else if (s.agents.any((e) => e.$2.state == 'working'))
+                      '${s.agents.where((e) => e.$2.state == 'working').length} working',
+                  ].join(' · '),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Icon(Icons.chevron_right, color: AtlasColors.of(context).faint),
+            ],
           ),
+        ),
       ],
       SectionHeader('Services', count: s.services.length),
       // Two per row; tap a tile for its details and controls.
@@ -1307,72 +1358,9 @@ class _LogRow extends StatelessWidget {
   }
 }
 
-class _AgentRow extends StatelessWidget {
-  const _AgentRow({required this.status, required this.onTap});
-  final AgentStatus status;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final k = c.agentState(status.state);
-    final line = status.lastMessage ?? status.prompt ?? '';
-    // Same neutral card as the rest of the screen; the state shows only in the
-    // left edge, the dot and the button.
-    return AtlasCard(
-      onTap: onTap,
-      accent: k,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StatusDot(color: k, pulse: true),
-              const SizedBox(width: Space.sm),
-              Text(
-                status.agent,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              Text(
-                agentStateLabel(status.state),
-                style: TextStyle(
-                  color: k,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          if (line.isNotEmpty) ...[
-            const SizedBox(height: Space.sm),
-            Text(
-              line.replaceAll('\n', ' '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, height: 1.35, color: c.text),
-            ),
-          ],
-          const SizedBox(height: Space.sm + 2),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: onTap,
-              child: const Text('Review and reply'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 bool _needsYou(AgentStatus a) => a.state == 'blocked' || a.state == 'waiting';
 
-/// An agent that doesn't need you, as one line in the shared list.
+/// One agent as a line: state dot, name, state, last message.
 class _AgentLine extends StatelessWidget {
   const _AgentLine({required this.status, required this.onTap});
   final AgentStatus status;

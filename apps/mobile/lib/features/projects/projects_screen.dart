@@ -1,13 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/features/projects/projects_provider.dart';
 
 /// A project's letter avatar, coloured from its name like the desktop sidebar.
 class ProjectAvatar extends StatelessWidget {
@@ -39,80 +35,9 @@ class ProjectAvatar extends StatelessWidget {
   }
 }
 
-/// A Mac's projects, refreshed every few seconds while visible.
-class ProjectsScreen extends ConsumerStatefulWidget {
-  const ProjectsScreen({super.key, required this.device});
-
-  final MacDevice device;
-
-  @override
-  ConsumerState<ProjectsScreen> createState() => _ProjectsScreenState();
-}
-
-class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
-  late final Timer _timer = Timer.periodic(
-    const Duration(seconds: 5),
-    (_) => ref.invalidate(projectListProvider(widget.device)),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    _timer;
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final projects = ref.watch(projectListProvider(widget.device));
-    final list = projects.value;
-    return RefreshIndicator(
-      color: c.accent,
-      onRefresh: () async => ref.invalidate(projectListProvider(widget.device)),
-      child: switch (list) {
-        null when projects.hasError => ListView(
-          children: [
-            EmptyState(
-              title: 'Could not load projects',
-              message: '${projects.error}',
-            ),
-          ],
-        ),
-        null => const Center(child: CircularProgressIndicator()),
-        [] => ListView(
-          children: const [
-            EmptyState(
-              title: 'No projects yet',
-              message: 'Projects you add in Atlas Desktop show up here.',
-            ),
-          ],
-        ),
-        _ => ListView.builder(
-          padding: const EdgeInsets.fromLTRB(
-            Space.lg,
-            Space.sm,
-            Space.lg,
-            Space.xxl,
-          ),
-          itemCount: list.length,
-          itemBuilder: (context, i) => EnterFade(
-            index: i,
-            child: _ProjectCard(device: widget.device, project: list[i]),
-          ),
-        ),
-      },
-    );
-  }
-}
-
-class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({required this.device, required this.project});
+/// A project row: avatar, path and a one-line status.
+class ProjectCard extends StatelessWidget {
+  const ProjectCard({super.key, required this.device, required this.project});
   final MacDevice device;
   final ProjectInfo project;
 
@@ -130,7 +55,7 @@ class _ProjectCard extends StatelessWidget {
       padding: const EdgeInsets.all(Space.md),
       accent: failed > 0 && project.running ? c.error : null,
       onTap: () => context.push(
-        '/device/project',
+        '/project',
         extra: {'device': device, 'project': project},
       ),
       child: Row(

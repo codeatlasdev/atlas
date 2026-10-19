@@ -128,12 +128,16 @@ class ProjectInfo {
   final bool running;
   final List<ServiceInfo> services;
 
+  /// Agents whose terminal runs in this project: `(pane key, status)`.
+  final List<(String, AgentStatus)> agents;
+
   const ProjectInfo({
     required this.id,
     required this.root,
     required this.name,
     required this.running,
     required this.services,
+    this.agents = const [],
   });
 
   factory ProjectInfo.fromJson(Map<String, dynamic> j) => ProjectInfo(
@@ -146,6 +150,13 @@ class ProjectInfo {
             ?.map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>))
             .toList() ??
         [],
+    agents: [
+      for (final a in (j['agents'] as List<dynamic>?) ?? const [])
+        (
+          (a as Map)['pane_key'] as String,
+          AgentStatus.fromJson((a['status'] as Map).cast<String, dynamic>()),
+        ),
+    ],
   );
 }
 

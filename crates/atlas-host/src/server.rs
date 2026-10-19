@@ -632,15 +632,12 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             let (messages, truncated) = crate::agents::history::read(&file, limit.min(1000))?;
             Ok(json!({"messages": messages, "truncated": truncated}))
         }
-        HostCmd::ProjectList {} => crate::projects::list(&hub.dir).await,
+        HostCmd::ProjectList {} => {
+            let (panes, status) = agent_panes(hub);
+            crate::projects::list(&hub.dir, &panes, &status).await
+        }
         HostCmd::ProjectDetail { id } => {
-            let panes: Vec<(String, String)> = hub
-                .sessions_snapshot()
-                .into_iter()
-                .filter(|s| s.exited().is_none())
-                .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
-                .collect();
-            let status = serde_json::to_value(hub.agents.all()).unwrap_or_default();
+            let (panes, status) = agent_panes(hub);
             crate::projects::detail(&hub.dir, &id, &panes, &status).await
         }
         HostCmd::ProjectLogs {
@@ -727,6 +724,21 @@ async fn raw(
     }
     s.detach(conn_id);
     let _ = w.shutdown().await;
+}
+
+/// `(pane_key, cwd)` of every live terminal that belongs to a pane, and the agent status
+/// of all panes: what [`crate::projects`] needs to attach agents to projects.
+fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
+    let panes = hub
+        .sessions_snapshot()
+        .into_iter()
+        .filter(|s| s.exited().is_none())
+        .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
+        .collect();
+    (
+        panes,
+        serde_json::to_value(hub.agents.all()).unwrap_or_default(),
+    )
 }
 
 /// Type a prompt into an agent's terminal: text, then Enter as a separate write (TUI

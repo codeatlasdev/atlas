@@ -43,7 +43,13 @@ fn parse(s: String) -> Value {
     serde_json::from_str(&s).unwrap_or(Value::String(s))
 }
 
-pub async fn list(dir: &Path) -> Result<Value, String> {
+/// Every local project with its live services and the agents whose terminal runs in it
+/// (`panes`/`agent_status` as for [`detail`]): enough for the phone's home screen.
+pub async fn list(
+    dir: &Path,
+    panes: &[(String, String)],
+    agent_status: &Value,
+) -> Result<Value, String> {
     let mut out = Vec::new();
     for e in entries(dir)? {
         let root = Path::new(&e.root);
@@ -57,6 +63,7 @@ pub async fn list(dir: &Path) -> Result<Value, String> {
             "name": root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             "running": st["running"] == true,
             "services": st["services"].as_array().cloned().unwrap_or_default(),
+            "agents": agents_in(root, panes, agent_status),
         }));
     }
     Ok(json!({"projects": out}))
@@ -225,19 +232,30 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        let v = list(tmp.path()).await.unwrap();
+        let status = json!({"p1": {"state": "blocked", "agent": "claude"}});
+        let panes = vec![(
+            "p1".to_string(),
+            proj.join("src").to_string_lossy().into_owned(),
+        )];
+        let v = list(tmp.path(), &panes, &status).await.unwrap();
         let ps = v["projects"].as_array().unwrap();
         assert_eq!(ps.len(), 1);
         assert_eq!(ps[0]["id"], "a");
         assert_eq!(ps[0]["name"], "shop");
         assert_eq!(ps[0]["running"], false);
+        // The home screen's "needs you" comes from here: agents ride along per project.
+        assert_eq!(ps[0]["agents"][0]["pane_key"], "p1");
+        assert_eq!(ps[0]["agents"][0]["status"]["state"], "blocked");
         assert_eq!(root_of(tmp.path(), "b").unwrap_err(), "unknown project b");
     }
 
     #[tokio::test]
     async fn missing_registry_is_empty() {
         let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(list(tmp.path()).await.unwrap()["projects"], json!([]));
+        assert_eq!(
+            list(tmp.path(), &[], &json!({})).await.unwrap()["projects"],
+            json!([])
+        );
     }
 
     /// The phone's project screen reads one call: config services, the last line of

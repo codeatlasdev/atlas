@@ -195,7 +195,11 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
             SafeArea(
               child: Column(
                 children: [
-                  _TopBar(onLogs: null, title: widget.project.name),
+                  // Same top bar as the loaded page: the header below names it.
+                  _TopBar(
+                    onLogs: null,
+                    title: _error != null ? widget.project.name : null,
+                  ),
                   Expanded(
                     child: _error != null
                         ? EmptyState(
@@ -206,7 +210,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                               child: const Text('Try again'),
                             ),
                           )
-                        : const _Skeleton(),
+                        : _Skeleton(project: widget.project),
                   ),
                 ],
               ),
@@ -1393,9 +1397,12 @@ class _AgentLine extends StatelessWidget {
   }
 }
 
-/// The panel's shape, shimmering, while the first `project_detail` is on its way.
+/// The panel while the first `project_detail` is on its way: the real header (the
+/// list already knows the name, folder and services), then the screen's own blocks
+/// shimmering in place, one tile per service, so nothing jumps when data lands.
 class _Skeleton extends StatefulWidget {
-  const _Skeleton();
+  const _Skeleton({required this.project});
+  final ProjectInfo project;
 
   @override
   State<_Skeleton> createState() => _SkeletonState();
@@ -1417,35 +1424,92 @@ class _SkeletonState extends State<_Skeleton>
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    Widget bar(double h, {double? w}) => Container(
+    final p = widget.project;
+    Widget bar(double h, {double? w, double r = Space.radius}) => Container(
       height: h,
       width: w,
-      margin: const EdgeInsets.only(bottom: Space.sm),
       decoration: BoxDecoration(
         color: c.base,
-        borderRadius: BorderRadius.circular(Space.radius),
+        borderRadius: BorderRadius.circular(r),
       ),
     );
-    return FadeTransition(
+    Widget pulse(Widget w) => FadeTransition(
       opacity: Tween(begin: .45, end: 1.0).animate(_a),
-      child: ListView(
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(Space.lg),
-        children: [
-          Row(
+      child: w,
+    );
+    final tiles = p.services.isEmpty ? 2 : p.services.length;
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xxl),
+      children: [
+        Row(
+          children: [
+            Hero(
+              tag: 'project-${p.id}',
+              child: ProjectAvatar(name: p.name, size: 56),
+            ),
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    p.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: c.faint,
+                      fontFamily: monoFamily,
+                      fontFamilyFallback: monoFallback,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.md),
+        pulse(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              bar(44, w: 44),
-              const SizedBox(width: Space.md),
-              Expanded(child: bar(14)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: bar(24, w: 110, r: 999),
+              ),
+              const SizedBox(height: Space.md + Space.sm),
+              bar(76),
+              const SizedBox(height: Space.md),
+              bar(40, r: 999),
+              const SizedBox(height: Space.lg),
+              Align(alignment: Alignment.centerLeft, child: bar(12, w: 80)),
+              const SizedBox(height: Space.sm + 2),
+              LayoutBuilder(
+                builder: (_, box) => Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.sm,
+                  children: [
+                    for (var i = 0; i < tiles; i++)
+                      SizedBox(
+                        width: (box.maxWidth - Space.sm) / 2,
+                        child: bar(104),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: Space.sm),
-          bar(64),
-          const SizedBox(height: Space.lg),
-          bar(12, w: 90),
-          for (var i = 0; i < 4; i++) bar(86),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

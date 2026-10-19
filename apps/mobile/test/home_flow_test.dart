@@ -97,7 +97,7 @@ void main() {
     expect(find.byType(Onboarding), findsNothing);
     expect(find.text('My Mac'), findsWidgets);
 
-    await t.tap(find.byIcon(Icons.more_horiz_rounded));
+    await t.tap(find.byTooltip('Settings'));
     await _settle(t);
     await t.tap(find.text('Show onboarding (debug)'));
     await _settle(t);
@@ -112,7 +112,7 @@ void main() {
     await _settle(t);
     expect(find.text(demoDevice.name), findsWidgets);
 
-    await t.tap(find.byIcon(Icons.more_horiz_rounded));
+    await t.tap(find.byTooltip('Settings'));
     await _settle(t);
     await t.tap(find.text('Leave the demo'));
     await _settle(t);

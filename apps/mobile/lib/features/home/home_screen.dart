@@ -474,30 +474,72 @@ class _DashboardState extends ConsumerState<_Dashboard> {
     _ServiceAttention(:final project) => _openProject(project),
   };
 
-  Widget _menu() => PopupMenuButton<String>(
-    icon: const Icon(Icons.more_horiz_rounded),
-    onSelected: (v) => switch (v) {
-      'pair' => context.push('/pair'),
-      'exit' => ref.read(demoModeProvider.notifier).state = false,
-      'onboarding' => _showOnboarding(),
-      'privacy' => openPrivacy(),
-      _ => _forget(),
-    },
-    itemBuilder: (_) => [
-      if (isDemo(widget.device)) ...const [
-        PopupMenuItem(value: 'exit', child: Text('Leave the demo')),
-        PopupMenuItem(value: 'pair', child: Text('Pair a computer')),
-      ] else ...const [
-        PopupMenuItem(value: 'pair', child: Text('Pair another computer')),
-        PopupMenuItem(value: 'forget', child: Text('Forget this computer')),
-      ],
-      const PopupMenuItem(value: 'privacy', child: Text('Privacy')),
-      if (kDebugMode)
-        const PopupMenuItem(
-          value: 'onboarding',
-          child: Text('Show onboarding (debug)'),
-        ),
-    ],
+  /// Settings, behind a gear: the paired computer on top, then what you can do
+  /// with it, in a sheet instead of a bare ⋯ menu.
+  Widget _menu() => IconButton(
+    icon: const Icon(Icons.settings_outlined),
+    tooltip: 'Settings',
+    onPressed: () => showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) {
+        final c = AtlasColors.of(sheet);
+        final demo = isDemo(widget.device);
+        Widget row(
+          IconData icon,
+          String label,
+          VoidCallback onTap, {
+          Color? color,
+        }) => ListTile(
+          leading: Icon(icon, color: color ?? c.muted),
+          title: Text(label, style: TextStyle(color: color)),
+          onTap: () {
+            Navigator.pop(sheet);
+            onTap();
+          },
+        );
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.laptop_mac_rounded, color: c.accent),
+                title: Text(
+                  widget.device.name,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(demo ? 'Demo computer' : 'Paired'),
+              ),
+              const Divider(height: 1),
+              row(
+                Icons.qr_code_scanner_rounded,
+                demo ? 'Pair a computer' : 'Pair another computer',
+                () => context.push('/pair'),
+              ),
+              row(Icons.privacy_tip_outlined, 'Privacy', openPrivacy),
+              if (kDebugMode)
+                row(
+                  Icons.slideshow_outlined,
+                  'Show onboarding (debug)',
+                  _showOnboarding,
+                ),
+              demo
+                  ? row(
+                      Icons.logout_rounded,
+                      'Leave the demo',
+                      () => ref.read(demoModeProvider.notifier).state = false,
+                    )
+                  : row(
+                      Icons.link_off_rounded,
+                      'Forget this computer',
+                      _forget,
+                      color: c.error,
+                    ),
+            ],
+          ),
+        );
+      },
+    ),
   );
 }
 

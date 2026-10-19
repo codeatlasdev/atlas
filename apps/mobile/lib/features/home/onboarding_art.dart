@@ -83,8 +83,9 @@ class _SecureLinkArtState extends State<SecureLinkArt>
               Positioned(
                 left: 120,
                 top: 80,
-                // Locks as the first packet reaches it, opens between rounds.
-                child: _Lock(closed: (loop.value % .5 * 2) > .32, c: c),
+                // Locks as the first packet reaches the middle of each trip, opens
+                // between trips (same clock as _LinkPainter: two trips per half).
+                child: _Lock(closed: (loop.value % .25 * 4) > .3, c: c),
               ),
               Positioned(
                 left: 0,
@@ -199,12 +200,16 @@ class _LinkPainter extends CustomPainter {
     }
     canvas.drawPath(path, line);
 
-    // Packets: three, staggered, phone → computer then computer → phone.
+    // Packets: three, staggered. First half of each round phone → computer, second half
+    // computer → phone; each trip runs the whole line (the last packet lands at .95).
     final metric = path.computeMetrics().first;
+    final forward = half < .5;
+    final trip = forward
+        ? half * 2
+        : (half - .5) * 2; // 0..1 within one direction
     for (var i = 0; i < 3; i++) {
-      final p = (half * 1.4 - i * .18).clamp(0.0, 1.0);
+      final p = ((trip - i * .15) / .65).clamp(0.0, 1.0);
       if (p <= 0 || p >= 1) continue;
-      final forward = half < .5;
       final pos = metric
           .getTangentForOffset(metric.length * (forward ? p : 1 - p))!
           .position;

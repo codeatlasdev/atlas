@@ -1316,125 +1316,55 @@ class _AgentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final k = c.agentState(status.state);
-    final needsYou = status.state == 'blocked' || status.state == 'waiting';
-    final line = status.state == 'working'
-        ? (status.prompt ?? '')
-        : (status.lastMessage ?? status.prompt ?? '');
-    // An agent is the big deal on this screen: a tinted card in its state's
-    // colour, a state pill, two lines of what it said, and a call to action.
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.sm),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(Space.md),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: k.withValues(alpha: needsYou ? .6 : .3),
+    final line = status.lastMessage ?? status.prompt ?? '';
+    // Same neutral card as the rest of the screen; the state shows only in the
+    // left edge, the dot and the button.
+    return AtlasCard(
+      onTap: onTap,
+      accent: k,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              StatusDot(color: k, pulse: true),
+              const SizedBox(width: Space.sm),
+              Text(
+                status.agent,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
               ),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  k.withValues(alpha: needsYou ? .22 : .12),
-                  c.raised,
-                ],
+              const SizedBox(width: Space.sm),
+              Text(
+                agentStateLabel(status.state),
+                style: TextStyle(
+                  color: k,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+            ],
+          ),
+          if (line.isNotEmpty) ...[
+            const SizedBox(height: Space.sm),
+            Text(
+              line.replaceAll('\n', ' '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 14, height: 1.35, color: c.text),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: k.withValues(alpha: .18),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.auto_awesome_rounded,
-                        color: k,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: Space.sm + 2),
-                    Expanded(
-                      child: Text(
-                        status.agent,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 17,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: k.withValues(alpha: .16),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          StatusDot(
-                            color: k,
-                            pulse: status.state == 'working' || needsYou,
-                            size: 6,
-                          ),
-                          Text(
-                            agentStateLabel(status.state),
-                            style: TextStyle(
-                              color: k,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (line.isNotEmpty) ...[
-                  const SizedBox(height: Space.sm + 2),
-                  Text(
-                    line.replaceAll('\n', ' '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, height: 1.35, color: c.text),
-                  ),
-                ],
-                const SizedBox(height: Space.sm + 2),
-                Row(
-                  children: [
-                    Text(
-                      needsYou ? 'Review and reply' : 'Open chat',
-                      style: TextStyle(
-                        color: needsYou ? k : c.muted,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      size: 16,
-                      color: needsYou ? k : c.muted,
-                    ),
-                  ],
-                ),
-              ],
+          ],
+          const SizedBox(height: Space.sm + 2),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: onTap,
+              child: const Text('Review and reply'),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

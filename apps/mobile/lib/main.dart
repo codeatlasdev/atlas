@@ -33,6 +33,7 @@ final _router = GoRouter(
           device: args['device'] as MacDevice,
           pty: args['pty'] as String,
           title: args['title'] as String?,
+          pane: args['pane'] as String?,
         );
       },
     ),

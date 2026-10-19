@@ -114,7 +114,10 @@ impl Session {
     }
 
     pub fn summary(&self) -> Value {
+        let (cols, rows) = *self.size.lock();
         json!({
+            "cols": cols,
+            "rows": rows,
             "pty": self.id,
             "cwd": self.meta.cwd,
             "argv": self.meta.argv,

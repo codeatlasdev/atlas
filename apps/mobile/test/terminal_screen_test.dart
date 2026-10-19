@@ -10,7 +10,9 @@ import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/terminal/live_screen.dart';
 import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
+import 'package:xterm/xterm.dart';
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);
@@ -85,11 +87,11 @@ void main() {
   testWidgets('agent terminal shows the replay sent before the attach reply', (
     t,
   ) async {
-    await _open(t, demoTransport, 'pty-demo-claude');
+    await _open(t, demoTransport, 'pty-demo-omp');
     expect(_screen(t), contains('~/Projetos/orbit-shop'));
     // The app bar names the agent, never the pty id.
     expect(find.text('claude'), findsOneWidget);
-    expect(find.text('pty-demo-claude'), findsNothing);
+    expect(find.text('pty-demo-omp'), findsNothing);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 3));
   });
@@ -101,6 +103,24 @@ void main() {
   ) async {
     await _open(t, _SplitUtf8.new, 'p');
     expect(_screen(t), contains('café!'));
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 3));
+  });
+
+  // Guards the cut-apart agent screen: the replay was drawn into the default
+  // 80x24 grid, so a full-screen agent laid out for a 110-column Mac terminal
+  // wrapped every row and its box broke into pieces.
+  testWidgets('a full-screen agent is shown whole, at the Mac terminal size', (
+    t,
+  ) async {
+    await _open(t, demoTransport, 'pty-demo-claude');
+    expect(find.byType(LiveScreen), findsOneWidget, reason: 'automatic view');
+    final term = t.widget<TerminalView>(find.byType(TerminalView)).terminal;
+    expect((term.viewWidth, term.viewHeight), (110, 34));
+    final top = term.buffer.lines[0].getText().trimRight();
+    expect(top, startsWith('╭'));
+    expect(top, endsWith('╮'), reason: 'the box border fits on one row');
+    expect(top.length, 110);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 3));
   });

@@ -229,6 +229,8 @@ class _DemoComputer implements Transport {
               },
           ],
         };
+      case 'pty_info':
+        data = {'pty': args['pty'], ..._size(args['pty'] as String)};
       case 'pty_attach':
         // Same order as hostd (mobile/session.rs): the replay goes out before the
         // reply, so a screen that listens only after attach returns sees nothing.
@@ -327,7 +329,13 @@ class _DemoComputer implements Transport {
         'processed batch ${41 + _seq} (${120 + _seq % 16} jobs)';
   }
 
+  /// Claude runs full screen in a wide Mac terminal, like the real one.
+  Map<String, int> _size(String pty) => pty == 'pty-demo-claude'
+      ? {'cols': 110, 'rows': 34}
+      : {'cols': 80, 'rows': 30};
+
   void _replay(String pty) {
+    if (pty == 'pty-demo-claude') return _replayTui(pty);
     final a = _agents[pty.replaceFirst('pty-', '')];
     final buf = StringBuffer()
       ..write(
@@ -342,6 +350,49 @@ class _DemoComputer implements Transport {
     buf.write(
       '\x1b[2m(demo terminal: unlock to type, nothing runs)\x1b[0m\r\n',
     );
+    _emit({
+      'ev': 'pty_replay',
+      'pty': pty,
+      'data': base64.encode(utf8.encode(buf.toString())),
+    });
+  }
+
+  /// A full-screen agent's screen: alternate buffer, laid out for 110 columns.
+  void _replayTui(String pty) {
+    const w = 110;
+    String row(String text, [String sgr = '']) =>
+        '\x1b[38;2;65;72;104m│\x1b[0m $sgr${text.padRight(w - 4)}\x1b[0m \x1b[38;2;65;72;104m│\x1b[0m\r\n';
+    final buf = StringBuffer('\x1b[?1049h\x1b[H')
+      ..write('\x1b[38;2;65;72;104m╭${'─' * (w - 2)}╮\x1b[0m\r\n')
+      ..write(row('✻ Claude Code', '\x1b[1;38;2;224;175;104m'))
+      ..write(row('~/Projetos/orbit-shop', '\x1b[2m'))
+      ..write('\x1b[38;2;65;72;104m╰${'─' * (w - 2)}╯\x1b[0m\r\n\r\n')
+      ..write(
+        '\x1b[38;2;158;206;106m>\x1b[0m Add an index on orders.created_at and run the migration\r\n\r\n',
+      )
+      ..write('\x1b[38;2;192;202;245m⏺\x1b[0m Read(db/schema.sql)\r\n')
+      ..write('  ⎿  Read 214 lines\r\n\r\n')
+      ..write(
+        '\x1b[38;2;192;202;245m⏺\x1b[0m Write(db/migrations/0042_orders_created_at.sql)\r\n',
+      )
+      ..write(
+        '  ⎿  \x1b[38;2;158;206;106m+ CREATE INDEX CONCURRENTLY orders_created_at_idx ON orders (created_at);\x1b[0m\r\n\r\n',
+      )
+      ..write('\x1b[38;2;192;202;245m⏺\x1b[0m Bash(bun run db:migrate)\r\n\r\n')
+      ..write('\x1b[38;2;224;175;104m╭${'─' * (w - 2)}╮\x1b[0m\r\n')
+      ..write(row('Bash command', '\x1b[1m'))
+      ..write(row('  bun run db:migrate'))
+      ..write(
+        row('  Run the pending migration 0042 against the local database'),
+      )
+      ..write(row(''))
+      ..write(row('Do you want to proceed?'))
+      ..write(row('❯ 1. Yes', '\x1b[38;2;122;162;247m'))
+      ..write(
+        row('  2. Yes, and don\'t ask again for bun run db:migrate commands'),
+      )
+      ..write(row('  3. No, and tell Claude what to do differently (esc)'))
+      ..write('\x1b[38;2;224;175;104m╰${'─' * (w - 2)}╯\x1b[0m\r\n');
     _emit({
       'ev': 'pty_replay',
       'pty': pty,

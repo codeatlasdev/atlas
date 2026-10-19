@@ -42,6 +42,35 @@ fn b64(v: &Value) -> String {
     String::from_utf8(B64.decode(v.as_str().unwrap()).unwrap()).unwrap()
 }
 
+// The phone sizes its terminal from pty_info before attaching: the replay is drawn
+// into its grid before the attach reply (which also carries the size) arrives, so
+// a missing size drew a 180-column TUI into 80x24 and cut it apart.
+#[tokio::test]
+async fn pty_info_reports_the_current_size() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c", "sleep 30"], "cols": 132, "rows": 41}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let size = |v: Value| (v["cols"].as_u64(), v["rows"].as_u64());
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(size(info.clone()), (Some(132), Some(41)), "{info}");
+    c.call("pty_resize", json!({"pty": pty, "cols": 90, "rows": 20}))
+        .await
+        .unwrap();
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(size(info.clone()), (Some(90), Some(20)), "{info}");
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+}
+
 #[tokio::test]
 async fn pty_exec_fs_auth_and_cold_restore() {
     let tmp = tempfile::tempdir().unwrap();

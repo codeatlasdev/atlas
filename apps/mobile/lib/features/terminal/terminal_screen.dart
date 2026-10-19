@@ -10,6 +10,11 @@ import 'package:xterm/xterm.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/features/agents/agent_chat_screen.dart'
+    show agentStateLabel;
+import 'package:atlas_mobile/features/agents/agents_provider.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/features/terminal/live_screen.dart';
 import 'package:atlas_mobile/features/terminal/terminal_feed.dart';
 
 /// Full-screen terminal view for a single PTY session.
@@ -23,6 +28,7 @@ class TerminalScreen extends ConsumerStatefulWidget {
     required this.device,
     required this.pty,
     this.title,
+    this.pane,
   });
 
   final MacDevice device;
@@ -31,13 +37,15 @@ class TerminalScreen extends ConsumerStatefulWidget {
   /// What the app bar shows until the program sets a title (never the pty id).
   final String? title;
 
+  /// The agent's pane, when this is an agent's terminal: shows what it is doing.
+  final String? pane;
+
   @override
   ConsumerState<TerminalScreen> createState() => _TerminalScreenState();
 }
 
 class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   final Terminal _terminal = Terminal();
-  final TerminalController _ctrl = TerminalController();
   StreamSubscription<Map<String, dynamic>>? _pushSub;
 
   /// Output arrives in chunks that can split a UTF-8 character; decode as a stream
@@ -47,8 +55,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   bool _writeEnabled = false;
 
-  /// Character grid instead of the readable feed.
-  bool _raw = false;
+  /// The view the user picked; null = automatic (full-screen app → live
+  /// screen, shell → feed).
+  _View? _picked;
+
+  /// Follows the Mac's terminal size while the screen is open.
+  Timer? _sizeTimer;
   String _title = '';
   bool _exited = false;
 
@@ -68,6 +80,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     );
     if (mux == null || !mounted) return;
     _mux = mux;
+    // Size the grid like the Mac's before the replay is drawn into it: hostd
+    // sends the replay ahead of the attach reply, and a full-screen app drawn into
+    // the default 80x24 came out cut apart.
+    await _syncSize();
+    _sizeTimer = Timer.periodic(const Duration(seconds: 2), (_) => _syncSize());
     // Listen first: hostd sends the replay before it answers pty_attach, so a
     // listener added after the reply misses the whole screen (it showed blank).
     _pushSub = mux.pushEvents.listen(_onPush);
@@ -100,12 +117,29 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   @override
   void dispose() {
     _pushSub?.cancel();
+    _sizeTimer?.cancel();
     // Fire-and-forget detach on the connection we attached through (`ref` is
     // unusable here); errors mean the connection is already gone.
     _mux?.call('pty_detach', {'pty': widget.pty}).ignore();
-    _ctrl.dispose();
     super.dispose();
   }
+
+  Future<void> _syncSize() async {
+    final resp = await _mux?.call('pty_info', {'pty': widget.pty});
+    final d = resp?['data'];
+    if (!mounted || d is! Map) return;
+    final cols = d['cols'], rows = d['rows'];
+    if (cols is int &&
+        rows is int &&
+        cols > 0 &&
+        rows > 0 &&
+        (cols != _terminal.viewWidth || rows != _terminal.viewHeight)) {
+      setState(() => _terminal.resize(cols, rows));
+    }
+  }
+
+  _View get _view =>
+      _picked ?? (_terminal.isUsingAltBuffer ? _View.screen : _View.feed);
 
   Future<void> _toggleWrite() async {
     if (_writeEnabled) {
@@ -162,10 +196,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
           // reflow gets a full-screen app wrong.
           IconButton(
             icon: Icon(
-              _raw ? Icons.view_agenda_outlined : Icons.grid_on_rounded,
+              _view == _View.screen
+                  ? Icons.view_agenda_outlined
+                  : Icons.fit_screen_rounded,
             ),
-            tooltip: _raw ? 'Readable view' : 'Raw terminal',
-            onPressed: () => setState(() => _raw = !_raw),
+            tooltip: _view == _View.screen ? 'Readable view' : 'Whole screen',
+            onPressed: () => setState(
+              () => _picked = _view == _View.screen ? _View.feed : _View.screen,
+            ),
           ),
           if (_writeEnabled)
             IconButton(
@@ -177,20 +215,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       ),
       body: Column(
         children: [
+          if (widget.pane != null)
+            _AgentStrip(device: widget.device, pane: widget.pane!),
           Expanded(
-            child: _raw
-                ? TerminalView(
-                    _terminal,
-                    controller: _ctrl,
-                    readOnly: true,
-                    theme: atlasTerminalTheme,
-                    textStyle: const TerminalStyle(
-                      fontSize: 11,
-                      fontFamily: monoFamily,
+            // Rebuilt on output so the automatic view follows the program into
+            // and out of full screen.
+            child: ListenableBuilder(
+              listenable: _TerminalListenable(_terminal),
+              builder: (_, _) => _view == _View.screen
+                  ? LiveScreen(terminal: _terminal, theme: atlasTerminalTheme)
+                  : TerminalFeed(
+                      terminal: _terminal,
+                      theme: atlasTerminalTheme,
                     ),
-                    backgroundOpacity: 1,
-                  )
-                : TerminalFeed(terminal: _terminal, theme: atlasTerminalTheme),
+            ),
           ),
           if (_exited)
             Container(
@@ -220,6 +258,70 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _View { feed, screen }
+
+/// Adapts xterm's listener API to [Listenable], for [ListenableBuilder].
+class _TerminalListenable implements Listenable {
+  _TerminalListenable(this.t);
+  final Terminal t;
+  @override
+  void addListener(VoidCallback l) => t.addListener(l);
+  @override
+  void removeListener(VoidCallback l) => t.removeListener(l);
+}
+
+/// What the agent on this terminal is doing, from its hooks: state and the task
+/// it is on, above its screen.
+class _AgentStrip extends ConsumerWidget {
+  const _AgentStrip({required this.device, required this.pane});
+  final MacDevice device;
+  final String pane;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final a = ref.watch(agentStatusMapNotifierProvider(device)).value?[pane];
+    if (a == null) return const SizedBox.shrink();
+    final c = AtlasColors.of(context);
+    final k = c.agentState(a.state);
+    final task = a.state == 'working' ? a.prompt : (a.lastMessage ?? a.prompt);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+      decoration: BoxDecoration(
+        color: c.raised,
+        border: Border(bottom: BorderSide(color: c.borderSubtle)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              StatusDot(color: k, pulse: a.state == 'working', size: 6),
+              Text(
+                agentStateLabel(a.state),
+                style: TextStyle(
+                  color: k,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          if (task != null && task.trim().isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              task.replaceAll('\n', ' '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: c.text, fontSize: 13, height: 1.3),
+            ),
+          ],
         ],
       ),
     );

@@ -93,7 +93,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     }
     context.push(
       '/terminal',
-      extra: {'device': widget.device, 'pty': pty, 'title': widget.title},
+      extra: {
+        'device': widget.device,
+        'pty': pty,
+        'title': widget.title,
+        'pane': widget.paneKey,
+      },
     );
   }
 

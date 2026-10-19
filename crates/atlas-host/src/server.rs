@@ -664,6 +664,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::AgentStatusAll {} => Ok(json!({
             "panes": hub.agents.all(),
             "hook_port": *hub.agents.port.lock(),
+            "pending_approvals": hub.agents.pending_approvals(),
         })),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
         lsp @ (HostCmd::LspOpen { .. }

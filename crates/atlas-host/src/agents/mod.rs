@@ -44,6 +44,9 @@ pub struct AgentStatus {
     pub tab_id: Option<String>,
 }
 
+/// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
+type Pending = (String, Value, oneshot::Sender<bool>);
+
 pub struct AgentHub {
     panes: Mutex<HashMap<String, AgentStatus>>,
     /// `agent|cwd` → pane key, for hooks that arrive without one (Codex runs
@@ -53,8 +56,10 @@ pub struct AgentHub {
     pub port: Mutex<u16>,
     /// Push events for clients (`agent_status`, `agent_approval`, `agent_approval_done`).
     tx: broadcast::Sender<Value>,
-    /// Permission prompts waiting for a remote answer: `req` → (pane, answer channel).
-    pending: Mutex<HashMap<String, (String, oneshot::Sender<bool>)>>,
+    /// Permission prompts waiting for a remote answer: `req` → (pane, the `agent_approval`
+    /// event as pushed, answer channel). The event is kept so a client that subscribes
+    /// after the push can still list it.
+    pending: Mutex<HashMap<String, Pending>>,
     /// Connected mobile sessions. Prompts block for a remote answer only while one is live,
     /// so an agent never waits on a phone that is not there.
     pub mobile_live: AtomicUsize,
@@ -212,17 +217,18 @@ impl AgentHub {
         }
         let req = crate::paths::random_hex(6).ok()?;
         let (otx, orx) = oneshot::channel();
-        self.pending
-            .lock()
-            .insert(req.clone(), (pane.to_string(), otx));
-        let _ = self.tx.send(json!({
+        let event = json!({
             "ev": "agent_approval",
             "pane_key": pane,
             "agent": agent,
             "req": req,
             "tool_name": payload["tool_name"],
             "tool_input": payload["tool_input"],
-        }));
+        });
+        self.pending
+            .lock()
+            .insert(req.clone(), (pane.to_string(), event.clone(), otx));
+        let _ = self.tx.send(event);
         let res = tokio::time::timeout(wait, orx)
             .await
             .ok()
@@ -239,12 +245,21 @@ impl AgentHub {
     pub fn approve(&self, pane: &str, req: &str, allow: bool) -> Result<(), String> {
         let mut p = self.pending.lock();
         match p.get(req) {
-            Some((owner, _)) if owner == pane => {}
+            Some((owner, _, _)) if owner == pane => {}
             _ => return Err("no such pending request".into()),
         }
-        let (_, tx) = p.remove(req).expect("checked above");
+        let (_, _, tx) = p.remove(req).expect("checked above");
         tx.send(allow)
             .map_err(|_| "no such pending request".to_string())
+    }
+
+    /// Prompts still waiting, as the `agent_approval` events that announced them.
+    pub fn pending_approvals(&self) -> Vec<Value> {
+        self.pending
+            .lock()
+            .values()
+            .map(|(_, ev, _)| ev.clone())
+            .collect()
     }
 
     pub fn session_file(&self, pane: &str) -> Option<String> {

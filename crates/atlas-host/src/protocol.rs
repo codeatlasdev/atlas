@@ -307,7 +307,7 @@ pub enum HostCmd {
     AgentPaneExited {
         pane: String,
     },
-    /// `{panes: {pane_key: status}, hook_port}`.
+    /// `{panes: {pane_key: status}, hook_port, pending_approvals: [agent_approval event]}`.
     AgentStatusAll {},
     /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
     AgentApprove {

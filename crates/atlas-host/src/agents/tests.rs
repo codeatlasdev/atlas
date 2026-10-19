@@ -134,3 +134,40 @@ async fn unanswered_prompt_times_out_to_no_decision() {
         None
     );
 }
+
+/// A phone that opens an agent after its prompt was pushed (home → conversation) must
+/// still get the prompt: the push happened once, so pending prompts are listed too.
+#[tokio::test]
+async fn pending_prompts_can_be_listed_after_their_push() {
+    let hub = std::sync::Arc::new(AgentHub::default());
+    hub.mobile_live.store(1, Ordering::Relaxed);
+    assert!(hub.pending_approvals().is_empty());
+    let h = hub.clone();
+    let asked = tokio::spawn(async move {
+        h.ask(
+            "p1",
+            "claude",
+            &json!({"tool_name": "Bash", "tool_input": {"command": "ls"}}),
+            Duration::from_secs(5),
+        )
+        .await
+    });
+    let listed = loop {
+        let l = hub.pending_approvals();
+        if !l.is_empty() {
+            break l;
+        }
+        tokio::task::yield_now().await;
+    };
+    // Same shape as the `agent_approval` push, so the phone handles both alike.
+    let p = &listed[0];
+    assert_eq!(p["ev"], "agent_approval");
+    assert_eq!(p["pane_key"], "p1");
+    assert_eq!(p["tool_input"]["command"], "ls");
+    hub.approve("p1", p["req"].as_str().unwrap(), true).unwrap();
+    assert_eq!(asked.await.unwrap(), Some(true));
+    assert!(
+        hub.pending_approvals().is_empty(),
+        "answered prompts are not listed"
+    );
+}

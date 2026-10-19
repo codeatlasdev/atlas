@@ -39,6 +39,9 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   String? _error;
   Timer? _timer;
   bool _cpuChart = false;
+
+  /// Overview (0) or Metrics (1).
+  int _tab = 0;
   final Set<String> _busy = {};
 
   Multiplexer? get _mux =>
@@ -136,11 +139,25 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         builder: (_) => _LogsPage(
           mux: _mux,
           projectId: widget.project.id,
+          services: [
+            for (final s in _snap?.services ?? const <ServiceRow>[]) s.name,
+          ],
           service: service,
         ),
       ),
     );
   }
+
+  void _openAgent(String pane, AgentStatus a) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => AgentChatScreen(
+        device: widget.device,
+        paneKey: pane,
+        initial: a,
+        title: '${a.agent} · ${widget.project.name}',
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -149,118 +166,416 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
       if (prev?.value == null && next.value != null) _refresh();
     });
+    final c = AtlasColors.of(context);
     final s = _snap;
+    final tint = projectColor(context, widget.project.name);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.project.name),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.article_outlined),
-            tooltip: 'Logs',
-            onPressed: () => _openLogs(),
-          ),
-        ],
-      ),
-      body: s == null
-          ? (_error != null
-                ? EmptyState(
-                    title: 'Could not load ${widget.project.name}',
-                    message: _error!,
-                    action: OutlinedButton(
-                      onPressed: _refresh,
-                      child: const Text('Try again'),
-                    ),
-                  )
-                : const _Skeleton())
-          : RefreshIndicator(
-              onRefresh: _refresh,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.lg,
-                  Space.xs,
-                  Space.lg,
-                  Space.xxl,
-                ),
-                children: [
-                  _Header(
-                    snap: s,
-                    onUp: _busy.contains('up') ? null : () => _serviceOp('up'),
+      body: Stack(
+        children: [
+          // The project's colour as a faint glow behind its header.
+          Positioned(
+            top: -180,
+            left: -100,
+            right: -100,
+            height: 440,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    colors: [
+                      tint.withValues(alpha: .2),
+                      tint.withValues(alpha: 0),
+                    ],
                   ),
-                  if (s.setupState != null && s.setupState != 'ok')
-                    _SetupRow(snap: s),
-                  const SizedBox(height: 8),
-                  _Kpis(snap: s),
-                  const SizedBox(height: 16),
-                  SectionHeader('Services', count: s.services.length),
-                  for (var i = 0; i < s.services.length; i++)
-                    _ServiceCard(
-                      svc: s.services[i],
-                      mem: _history.mem[s.services[i].name] ?? const [],
-                      color: AtlasColors.of(context)
-                          .series[i % AtlasColors.of(context).series.length],
-                      busy: _busy.contains(s.services[i].name),
-                      onOp: (op) => _serviceOp(op, service: s.services[i].name),
-                      onLogs: () => _openLogs(service: s.services[i].name),
+                ),
+              ),
+            ),
+          ),
+          if (s == null)
+            SafeArea(
+              child: Column(
+                children: [
+                  _TopBar(onLogs: null, title: widget.project.name),
+                  Expanded(
+                    child: _error != null
+                        ? EmptyState(
+                            title: 'Could not load ${widget.project.name}',
+                            message: _error!,
+                            action: OutlinedButton(
+                              onPressed: _refresh,
+                              child: const Text('Try again'),
+                            ),
+                          )
+                        : const _Skeleton(),
+                  ),
+                ],
+              ),
+            )
+          else
+            RefreshIndicator(
+              color: c.accent,
+              onRefresh: _refresh,
+              child: CustomScrollView(
+                slivers: [
+                  SliverSafeArea(
+                    bottom: false,
+                    sliver: SliverToBoxAdapter(
+                      child: _TopBar(onLogs: () => _openLogs(), title: null),
                     ),
-                  if (s.agents.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    SectionHeader('Agents', count: s.agents.length),
-                    for (final (pane, a) in s.agents)
-                      _AgentRow(
-                        status: a,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => AgentChatScreen(
-                              device: widget.device,
-                              paneKey: pane,
-                              initial: a,
-                              title: '${a.agent} · ${widget.project.name}',
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      Space.lg,
+                      0,
+                      Space.lg,
+                      Space.xxl,
+                    ),
+                    sliver: SliverList.list(
+                      children: [
+                        _Header(
+                          snap: s,
+                          onUp: _busy.contains('up')
+                              ? null
+                              : () => _serviceOp('up'),
+                        ),
+                        if (s.setupState != null && s.setupState != 'ok')
+                          _SetupRow(snap: s),
+                        ..._attention(s),
+                        const SizedBox(height: Space.sm),
+                        _Kpis(snap: s),
+                        const SizedBox(height: Space.md),
+                        _Tabs(
+                          index: _tab,
+                          labels: const ['Overview', 'Metrics'],
+                          onChanged: (i) => setState(() => _tab = i),
+                        ),
+                        AnimatedSwitcher(
+                          duration: Motion.normal,
+                          switchInCurve: Motion.ease,
+                          transitionBuilder: (w, a) => FadeTransition(
+                            opacity: a,
+                            child: SlideTransition(
+                              position: Tween(
+                                begin: const Offset(0, .02),
+                                end: Offset.zero,
+                              ).animate(a),
+                              child: w,
                             ),
                           ),
-                        ),
-                      ),
-                  ],
-                  if (s.actions.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    const SectionHeader('Actions'),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final a in s.actions)
-                          OutlinedButton(
-                            onPressed: () => _runAction(a),
-                            child: Text(a.label),
+                          child: KeyedSubtree(
+                            key: ValueKey(_tab),
+                            child: _tab == 0 ? _overview(s) : _metrics(),
                           ),
+                        ),
                       ],
                     ),
-                  ],
-                  SectionHeader(
-                    'Resources',
-                    trailing: SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(value: false, label: Text('Memory')),
-                        ButtonSegment(value: true, label: Text('CPU')),
-                      ],
-                      selected: {_cpuChart},
-                      onSelectionChanged: (v) =>
-                          setState(() => _cpuChart = v.first),
-                      style: const ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
                   ),
-                  AtlasCard(
-                    child: LinesChart(
-                      series: _cpuChart ? _history.cpu : _history.mem,
-                      unit: _cpuChart ? '%' : 'MB',
-                    ),
-                  ),
-                  const SectionHeader('Health over time'),
-                  AtlasCard(child: HealthTimeline(states: _history.states)),
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// What in this project waits on the user: agent prompts, then failed services.
+  List<Widget> _attention(ProjectSnapshot s) {
+    final c = AtlasColors.of(context);
+    return [
+      for (final (pane, a) in s.agents.where(
+        (x) => x.$2.state == 'blocked' || x.$2.state == 'waiting',
+      ))
+        _Banner(
+          color: c.warning,
+          icon: Icons.front_hand_rounded,
+          title: a.state == 'blocked'
+              ? '${a.agent} is waiting for your approval'
+              : '${a.agent} asked you something',
+          action: a.state == 'blocked' ? 'Review' : 'Answer',
+          onTap: () => _openAgent(pane, a),
+        ),
+      if (s.running)
+        for (final svc in s.services.where((x) => x.state == 'failed'))
+          _Banner(
+            color: c.error,
+            icon: Icons.error_outline_rounded,
+            title: '${svc.name} stopped working',
+            action: 'Logs',
+            onTap: () => _openLogs(service: svc.name),
+          ),
+    ];
+  }
+
+  Widget _overview(ProjectSnapshot s) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (s.agents.isNotEmpty) ...[
+        SectionHeader('Agents', count: s.agents.length),
+        for (final (pane, a) in s.agents)
+          _AgentRow(status: a, onTap: () => _openAgent(pane, a)),
+      ],
+      SectionHeader('Services', count: s.services.length),
+      for (var i = 0; i < s.services.length; i++)
+        _ServiceCard(
+          svc: s.services[i],
+          mem: _history.mem[s.services[i].name] ?? const [],
+          color: AtlasColors.of(context)
+              .series[i % AtlasColors.of(context).series.length],
+          busy: _busy.contains(s.services[i].name),
+          onOp: (op) => _serviceOp(op, service: s.services[i].name),
+          onLogs: () => _openLogs(service: s.services[i].name),
+        ),
+      if (s.actions.isNotEmpty) ...[
+        SectionHeader('Actions', count: s.actions.length),
+        for (final a in s.actions)
+          _ActionTile(action: a, onRun: () => _runAction(a)),
+      ],
+    ],
+  );
+
+  Widget _metrics() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SectionHeader(
+        'Resources',
+        trailing: SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, label: Text('Memory')),
+            ButtonSegment(value: true, label: Text('CPU')),
+          ],
+          selected: {_cpuChart},
+          showSelectedIcon: false,
+          onSelectionChanged: (v) => setState(() => _cpuChart = v.first),
+          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        ),
+      ),
+      AtlasCard(
+        child: LinesChart(
+          series: _cpuChart ? _history.cpu : _history.mem,
+          unit: _cpuChart ? '%' : 'MB',
+        ),
+      ),
+      const SectionHeader('Health over time'),
+      AtlasCard(child: HealthTimeline(states: _history.states)),
+      Padding(
+        padding: const EdgeInsets.only(top: Space.xs, left: 2),
+        child: Text(
+          'Collected while this screen is open, every ${_poll.inSeconds} s.',
+          style: TextStyle(color: AtlasColors.of(context).faint, fontSize: 12),
+        ),
+      ),
+    ],
+  );
+}
+
+/// Back, and the logs shortcut; the title only while there is no header to carry it.
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.onLogs, required this.title});
+  final VoidCallback? onLogs;
+  final String? title;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+    child: Row(
+      children: [
+        const BackButton(),
+        if (title != null)
+          Expanded(
+            child: Text(title!, style: Theme.of(context).textTheme.titleMedium),
+          )
+        else
+          const Spacer(),
+        if (onLogs != null)
+          TextButton.icon(
+            onPressed: onLogs,
+            icon: const Icon(Icons.subject_rounded, size: 18),
+            label: const Text('Logs'),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Pill tabs; the selected one slides under the labels.
+class _Tabs extends StatelessWidget {
+  const _Tabs({
+    required this.index,
+    required this.labels,
+    required this.onChanged,
+  });
+  final int index;
+  final List<String> labels;
+  final void Function(int) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: c.base,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.borderSubtle),
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth / labels.length;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: Motion.slow,
+                curve: Motion.ease,
+                left: w * index,
+                top: 0,
+                bottom: 0,
+                width: w,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: c.raised,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  for (var i = 0; i < labels.length; i++)
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onChanged(i),
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: Motion.normal,
+                            style: TextStyle(
+                              color: i == index ? c.text : c.muted,
+                              fontWeight: i == index
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                              fontSize: 14,
+                            ),
+                            child: Text(labels[i]),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One thing in this project that waits on the user, with its action.
+class _Banner extends StatelessWidget {
+  const _Banner({
+    required this.color,
+    required this.icon,
+    required this.title,
+    required this.action,
+    required this.onTap,
+  });
+  final Color color;
+  final IconData icon;
+  final String title;
+  final String action;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: Space.sm),
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(
+          Space.md,
+          Space.sm,
+          Space.sm,
+          Space.sm,
+        ),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(Space.radius),
+          border: Border.all(color: color.withValues(alpha: .45)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Pill(action, color: color),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// An atlas.yaml action: what it is, whether it asks first, one tap to run.
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({required this.action, required this.onRun});
+  final ProjectAction action;
+  final VoidCallback onRun;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return AtlasCard(
+      onTap: onRun,
+      padding: const EdgeInsets.fromLTRB(
+        Space.md,
+        Space.sm + 2,
+        Space.md,
+        Space.sm + 2,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: c.accent.withValues(alpha: .14),
+              borderRadius: BorderRadius.circular(Space.radiusSm),
+            ),
+            child: Icon(Icons.play_arrow_rounded, color: c.accent, size: 20),
+          ),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  action.label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (action.confirm != null)
+                  Text(
+                    'Asks before running',
+                    style: TextStyle(color: c.faint, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            action.key,
+            style: TextStyle(
+              color: c.faint,
+              fontFamily: monoFamily,
+              fontFamilyFallback: monoFallback,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -281,62 +596,99 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ports = snap.services
-        .where((s) => s.port != null)
-        .map((s) => ':${s.port}');
-    final parts = [
-      snap.running
-          ? (snap.uptimeS != null ? 'Up ${_dur(snap.uptimeS!)}' : 'Up')
-          : 'Stopped',
-      if (snap.pid != null) 'runner · pid ${snap.pid}',
-      if (ports.isNotEmpty) ports.join(' '),
-    ];
     final c = AtlasColors.of(context);
+    final failed = snap.services.where((s) => s.state == 'failed').length;
+    final (label, color) = !snap.running
+        ? ('Stopped', c.faint)
+        : failed > 0
+        ? ('$failed failed', c.error)
+        : ('Running', c.success);
+    final meta = [
+      if (snap.running && snap.uptimeS != null) 'up ${_dur(snap.uptimeS!)}',
+      if (snap.pid != null) 'pid ${snap.pid}',
+    ].join(' · ');
     return Padding(
-      padding: const EdgeInsets.only(top: Space.sm, bottom: Space.sm),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ProjectAvatar(name: snap.name, size: 44),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              Hero(
+                tag: 'project-${snap.id}',
+                child: ProjectAvatar(name: snap.name, size: 56),
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    StatusDot(
-                      color: snap.running ? c.success : c.faint,
-                      pulse: snap.running,
-                      size: 7,
+                    Text(
+                      snap.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -.5,
+                          ),
                     ),
-                    Flexible(
-                      child: Text(
-                        parts.join(' · '),
-                        style: TextStyle(fontSize: 12, color: c.muted),
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 2),
+                    Text(
+                      snap.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: c.faint,
+                        fontFamily: monoFamily,
+                        fontFamilyFallback: monoFallback,
                       ),
                     ),
                   ],
                 ),
-                Text(
-                  snap.root.replaceFirst(RegExp(r'^/Users/[^/]+'), '~'),
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: c.faint,
-                    fontFamily: monoFamily,
-                    fontFamilyFallback: monoFallback,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          if (!snap.running)
-            FilledButton.icon(
-              onPressed: onUp,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text('Start'),
-            ),
+          const SizedBox(height: Space.md),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StatusDot(
+                      color: color,
+                      pulse: snap.running && failed == 0,
+                      size: 6,
+                    ),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (meta.isNotEmpty) ...[
+                const SizedBox(width: Space.sm),
+                Text(meta, style: TextStyle(color: c.faint, fontSize: 12)),
+              ],
+              const Spacer(),
+              if (!snap.running)
+                FilledButton.icon(
+                  onPressed: onUp,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Start'),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -620,97 +972,238 @@ class _ServiceCard extends StatelessWidget {
   }
 }
 
-/// Full-screen logs with search; one service or all merged.
+/// Logs, full screen: filter by service, search, and follow live. Lines are split into
+/// service tag, time and text; stderr and error lines stand out.
 class _LogsPage extends StatefulWidget {
-  const _LogsPage({required this.mux, required this.projectId, this.service});
+  const _LogsPage({
+    required this.mux,
+    required this.projectId,
+    required this.services,
+    this.service,
+  });
   final Multiplexer? mux;
   final String projectId;
+  final List<String> services;
   final String? service;
 
   @override
   State<_LogsPage> createState() => _LogsPageState();
 }
 
+/// `[api:12] 12:01:02 [stderr] text` → (service, time, stderr, text).
+final _logLine = RegExp(
+  r'^\[([^:\]]+)(?::\d+)?\]\s+(\d\d:\d\d:\d\d)\s+\[(stdout|stderr)\]\s?(.*)$',
+);
+
 class _LogsPageState extends State<_LogsPage> {
   final _search = TextEditingController();
-  String _text = '';
+  late String? _service = widget.service;
+  List<String> _lines = const [];
+  String? _error;
   bool _loading = true;
+  bool _live = true;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (_live && _search.text.trim().isEmpty) _load(quiet: true);
+    });
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool quiet = false}) async {
     final mux = widget.mux;
     if (mux == null) return;
-    setState(() => _loading = true);
+    if (!quiet) setState(() => _loading = true);
     final q = _search.text.trim();
     final resp = await mux.call('project_logs', {
       'id': widget.projectId,
-      'service': ?widget.service,
+      'service': ?_service,
       'lines': 300,
       if (q.isNotEmpty) 'query': q,
     });
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _text = resp['ok'] == true
-          ? (resp['data']?['text'] as String? ?? '')
-          : (resp['error'] as String? ?? 'error');
+      if (resp['ok'] == true) {
+        _error = null;
+        _lines = (resp['data']?['text'] as String? ?? '')
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
+      } else {
+        _error = resp['error'] as String? ?? 'error';
+      }
     });
+  }
+
+  void _pick(String? service) {
+    setState(() => _service = service);
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.service == null ? 'Logs' : 'Logs · ${widget.service}',
-        ),
+        title: Text(_service == null ? 'Logs' : 'Logs · $_service'),
         actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          TextButton.icon(
+            onPressed: () => setState(() => _live = !_live),
+            icon: StatusDot(
+              color: _live ? c.success : c.faint,
+              pulse: _live,
+              size: 6,
+            ),
+            label: Text(
+              _live ? 'Live' : 'Paused',
+              style: TextStyle(color: _live ? c.success : c.muted),
+            ),
+          ),
         ],
       ),
       body: Column(
         children: [
+          SizedBox(
+            height: 44,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: Space.md),
+              children: [
+                for (final s in [null, ...widget.services])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6, top: 6, bottom: 6),
+                    child: ChoiceChip(
+                      label: Text(s ?? 'All'),
+                      selected: _service == s,
+                      showCheckmark: false,
+                      onSelected: (_) => _pick(s),
+                      side: BorderSide(color: c.borderSubtle),
+                      selectedColor: c.raised,
+                      backgroundColor: c.base,
+                      labelStyle: TextStyle(
+                        color: _service == s ? c.text : c.muted,
+                        fontSize: 13,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+              ],
+            ),
+          ),
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(
+              Space.md,
+              Space.xs,
+              Space.md,
+              Space.sm,
+            ),
             child: TextField(
               controller: _search,
-              decoration: const InputDecoration(
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
                 hintText: 'Search (text or /regex/)',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search_rounded, color: c.faint),
               ),
               onSubmitted: (_) => _load(),
             ),
           ),
           Expanded(
-            child: _loading
+            child: _loading && _lines.isEmpty
                 ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
+                : _error != null
+                ? EmptyState(title: 'Could not read logs', message: _error!)
+                : _lines.isEmpty
+                ? EmptyState(
+                    icon: Icon(Icons.subject_rounded, size: 48, color: c.faint),
+                    title: 'No log lines yet',
+                    message: 'Lines show up here as the services write them.',
+                  )
+                : ListView.builder(
                     reverse: true,
-                    padding: const EdgeInsets.all(8),
-                    child: SelectableText(
-                      _text.isEmpty ? 'No log lines yet.' : _text,
-                      style: const TextStyle(
-                        fontFamily: monoFamily,
-                        fontFamilyFallback: monoFallback,
-                        fontSize: 11,
-                      ),
+                    padding: const EdgeInsets.fromLTRB(
+                      Space.md,
+                      0,
+                      Space.md,
+                      Space.lg,
+                    ),
+                    itemCount: _lines.length,
+                    itemBuilder: (_, i) => _LogRow(
+                      line: _lines[_lines.length - 1 - i],
+                      showService: _service == null,
+                      services: widget.services,
                     ),
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LogRow extends StatelessWidget {
+  const _LogRow({
+    required this.line,
+    required this.showService,
+    required this.services,
+  });
+  final String line;
+  final bool showService;
+  final List<String> services;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    const mono = TextStyle(
+      fontFamily: monoFamily,
+      fontFamilyFallback: monoFallback,
+      fontSize: 12,
+      height: 1.4,
+    );
+    final m = _logLine.firstMatch(line);
+    if (m == null) {
+      return SelectableText(line, style: mono.copyWith(color: c.muted));
+    }
+    final service = m[1]!, time = m[2]!, err = m[3] == 'stderr', text = m[4]!;
+    final bad =
+        err ||
+        RegExp(
+          r'\b(error|panic|fatal|exception)\b',
+          caseSensitive: false,
+        ).hasMatch(text);
+    final i = services.indexOf(service);
+    final tag = c.series[(i < 0 ? service.length : i) % c.series.length];
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: SelectableText.rich(
+        TextSpan(
+          style: mono,
+          children: [
+            TextSpan(
+              text: '$time ',
+              style: TextStyle(color: c.faint),
+            ),
+            if (showService)
+              TextSpan(
+                text: '$service ',
+                style: TextStyle(color: tag, fontWeight: FontWeight.w600),
+              ),
+            TextSpan(
+              text: text,
+              style: TextStyle(color: bad ? c.error : c.text),
+            ),
+          ],
+        ),
       ),
     );
   }

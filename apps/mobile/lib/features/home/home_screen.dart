@@ -785,7 +785,11 @@ class _ProjectTile extends StatelessWidget {
               padding: const EdgeInsets.all(Space.md),
               child: Row(
                 children: [
-                  ProjectAvatar(name: project.name, size: 40),
+                  // Flies into the project screen's header.
+                  Hero(
+                    tag: 'project-${project.id}',
+                    child: ProjectAvatar(name: project.name, size: 40),
+                  ),
                   const SizedBox(width: Space.md),
                   Expanded(
                     child: Column(

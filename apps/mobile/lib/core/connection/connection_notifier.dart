@@ -70,12 +70,14 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
 
   Future<Multiplexer?> _connect() async {
     try {
-      final storage = ref.read(macStorageProvider);
-      final secretKey = await storage.loadSecretKey() ?? '';
-      final factory = ref.read(transportFactoryProvider);
-      // Inject secret key by creating a device copy with it embedded
-      // (factory signature takes MacDevice; we pass via closure override in tests)
-      final transport = await factory(_device, secretKey);
+      // The demo computer lives in the app: it needs no identity, so no Keychain read.
+      final secretKey = isDemo(_device)
+          ? ''
+          : await ref.read(macStorageProvider).loadSecretKey() ?? '';
+      final transport = await ref.read(transportFactoryProvider)(
+        _device,
+        secretKey,
+      );
       final mux = Multiplexer(transport);
       _mux = mux;
       _backoffSeconds = 1;

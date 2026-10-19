@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -14,6 +16,9 @@ import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/projects/projects_screen.dart';
+
+/// Showing the in-app demo computer instead of the paired ones (not saved).
+final demoModeProvider = StateProvider<bool>((ref) => false);
 
 /// Paired computers from secure storage.
 final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
@@ -48,7 +53,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: const Text('Try again'),
             ),
           ),
-          data: (list) {
+          data: (stored) {
+            final demo = ref.watch(demoModeProvider);
+            final list = demo ? [demoDevice] : stored;
             if (list.isEmpty) return const Onboarding();
             final device = list.firstWhere(
               (d) => d.nodeId == _nodeId,

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -19,12 +20,14 @@ typedef TransportFactory = Future<Transport> Function(
 Future<Transport> _defaultTransportFactory(
   MacDevice device,
   String secretKeyHex,
-) => FrbTransport.connect(
-  secretKeyHex: secretKeyHex,
-  nodeId: device.nodeId,
-  addrs: device.addrs,
-  relay: device.relay,
-);
+) async => isDemo(device)
+    ? demoTransport()
+    : await FrbTransport.connect(
+        secretKeyHex: secretKeyHex,
+        nodeId: device.nodeId,
+        addrs: device.addrs,
+        relay: device.relay,
+      );
 
 /// Overridable transport factory provider (override in tests).
 final transportFactoryProvider = Provider<TransportFactory>(

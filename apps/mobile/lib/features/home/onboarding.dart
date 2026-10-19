@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
@@ -109,6 +110,19 @@ class _OnboardingState extends State<Onboarding> {
                         key: ValueKey(_last),
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(height: Space.sm),
+                // No computer with Atlas at hand (or App Review): sample data, connects to nothing.
+                TextButton(
+                  onPressed: () => startDemo(context),
+                  child: Text('Try the demo', style: TextStyle(color: c.muted)),
+                ),
+                TextButton(
+                  onPressed: openPrivacy,
+                  child: Text(
+                    'Privacy',
+                    style: TextStyle(color: c.faint, fontSize: 12),
                   ),
                 ),
               ],

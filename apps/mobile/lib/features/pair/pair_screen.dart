@@ -122,7 +122,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
       backgroundColor: scanning ? Colors.black : null,
       extendBodyBehindAppBar: scanning,
       appBar: AppBar(
-        title: const Text('Pair a Mac'),
+        title: const Text('Pair a computer'),
         backgroundColor: scanning ? Colors.transparent : null,
         foregroundColor: scanning ? Colors.white : null,
       ),
@@ -137,7 +137,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
             key: const ValueKey('ok'),
             icon: _Burst(color: c.success),
             title: 'Paired',
-            message: 'This phone can now reach your Mac from anywhere, while it is awake.',
+            message: 'This phone can now reach your computer from anywhere, while it is awake.',
             action: FilledButton(onPressed: _done, child: const Text('Open')),
           ),
           PairStatus.error => EmptyState(
@@ -167,7 +167,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
           _ => const EmptyState(
             key: ValueKey('busy'),
             icon: AtlasLogo(size: 96, animated: true),
-            title: 'Reaching your Mac…',
+            title: 'Reaching your computer…',
             message:
                 'Directly when possible, through an encrypted relay otherwise.',
           ),
@@ -201,7 +201,7 @@ class _Scanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(Space.radius),
             ),
             child: const Text(
-              'On your Mac: Atlas Desktop → Settings → Mobile → Pair a phone',
+              'On your computer: Atlas Desktop → Settings → Mobile → Pair a phone',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
             ),

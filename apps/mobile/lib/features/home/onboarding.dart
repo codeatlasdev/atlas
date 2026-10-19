@@ -25,13 +25,13 @@ class _OnboardingState extends State<Onboarding> {
 
   late final _content = <_Page>[
     _Page(
-      'Your Mac, in your pocket',
+      'Your computer, in your pocket',
       'Projects, services, agents and terminals from Atlas Desktop, live on your phone.',
       (_) => const AtlasLogo(size: 148, animated: true),
     ),
     _Page(
-      'No account. Straight to your Mac.',
-      'Your phone talks to your Mac directly, end-to-end encrypted. When a network blocks that, '
+      'No account. Straight to your computer.',
+      'Your phone talks to your computer directly, end-to-end encrypted. When a network blocks that, '
           'an encrypted relay carries the traffic and cannot read it.',
       (c) => _Glyph(
         icon: Icons.lock_outline_rounded,
@@ -209,12 +209,12 @@ class _HowToPair extends StatelessWidget {
           const Center(child: _Glyph(icon: Icons.qr_code_scanner_rounded)),
           const SizedBox(height: Space.xxl),
           Text(
-            'Pair your Mac',
+            'Pair your computer',
             style: Theme.of(context).textTheme.headlineSmall
                 ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -.4),
           ),
           const SizedBox(height: Space.xl),
-          step(1, 'Open Atlas Desktop on your Mac', null),
+          step(1, 'Open Atlas Desktop on your Mac or Linux PC', null),
           step(
             2,
             'Settings → Mobile → Pair a phone',
@@ -223,7 +223,7 @@ class _HowToPair extends StatelessWidget {
           step(
             3,
             'Scan it with this phone',
-            'Your Mac must stay awake to be reachable.',
+            'Your computer must stay awake to be reachable.',
           ),
         ],
       ),

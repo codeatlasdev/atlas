@@ -62,7 +62,7 @@ class _MacList extends ConsumerWidget {
           actions: [
             IconButton(
               icon: const Icon(Icons.add_rounded),
-              tooltip: 'Pair a Mac',
+              tooltip: 'Pair a computer',
               onPressed: () => context.push('/pair'),
             ),
           ],
@@ -74,7 +74,7 @@ class _MacList extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: Space.md, left: 2),
                 child: Text(
-                  devices.length == 1 ? 'Your Mac' : 'Your Macs',
+                  devices.length == 1 ? 'Your computer' : 'Your computers',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
@@ -85,7 +85,7 @@ class _MacList extends ConsumerWidget {
                 ),
               const SizedBox(height: Space.lg),
               Text(
-                'Long-press a Mac to forget it on this phone. To cut a phone off, use '
+                'Long-press a computer to forget it on this phone. To cut a phone off, use '
                 'Revoke in Atlas Desktop → Settings → Mobile.',
                 style: TextStyle(color: c.faint, fontSize: 12, height: 1.4),
               ),
@@ -138,7 +138,7 @@ class _MacCard extends ConsumerWidget {
         ? ('Connected', c.success, false)
         : conn.isLoading
         ? ('Connecting…', c.warning, true)
-        : ('Unreachable · is the Mac awake?', c.faint, false);
+        : ('Unreachable · is it awake?', c.faint, false);
     return GestureDetector(
       onLongPress: () => _forget(context, ref),
       child: AtlasCard(

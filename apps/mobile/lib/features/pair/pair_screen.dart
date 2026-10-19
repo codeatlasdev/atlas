@@ -33,11 +33,18 @@ class PairNotifier extends Notifier<PairState> {
   PairState build() => const PairState();
 
   /// Start pairing from a QR-scanned URL.
-  Future<void> pair(String qrUrl, WidgetRef widgetRef) async {
+  Future<void> pair(String qrUrl) async {
     state = const PairState(status: PairStatus.connecting);
+    // Read before the first await: leaving the screen disposes this notifier, but a
+    // pairing the computer accepted must still be saved.
+    final storage = ref.read(macStorageProvider);
+    final connect = ref.read(transportFactoryProvider);
+    void report(PairState s) {
+      if (ref.mounted) state = s;
+    }
+
     try {
       final info = PairInfo.parse(qrUrl);
-      final storage = ref.read(macStorageProvider);
       final secretKey = await _ensureSecretKey(storage);
       final device = MacDevice(
         nodeId: info.nodeId,
@@ -48,10 +55,7 @@ class PairNotifier extends Notifier<PairState> {
 
       // One-shot: dial, send `pair`, close. The long-lived connection is opened by
       // ConnectionNotifier once the Mac is in the paired list.
-      final transport = await ref.read(transportFactoryProvider)(
-        device,
-        secretKey,
-      );
+      final transport = await connect(device, secretKey);
       final mux = Multiplexer(transport);
       try {
         final resp = await mux.call('pair', {
@@ -65,9 +69,9 @@ class PairNotifier extends Notifier<PairState> {
         await mux.close();
       }
       await storage.upsertDevice(device);
-      state = const PairState(status: PairStatus.success);
+      report(const PairState(status: PairStatus.success));
     } catch (e) {
-      state = PairState(status: PairStatus.error, error: e.toString());
+      report(PairState(status: PairStatus.error, error: e.toString()));
     }
   }
 
@@ -99,7 +103,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
     final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null || _scanned) return;
     _scanned = true;
-    ref.read(pairNotifierProvider.notifier).pair(raw, ref);
+    ref.read(pairNotifierProvider.notifier).pair(raw);
   }
 
   void _done() {

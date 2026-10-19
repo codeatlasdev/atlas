@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -20,16 +19,13 @@ typedef TransportFactory = Future<Transport> Function(
 Future<Transport> _defaultTransportFactory(
   MacDevice device,
   String secretKeyHex,
-) async => isDemo(device)
-    ? demoTransport()
-    : await FrbTransport.connect(
-        secretKeyHex: secretKeyHex,
-        nodeId: device.nodeId,
-        addrs: device.addrs,
-        relay: device.relay,
-      );
+) async => FrbTransport.connect(
+  secretKeyHex: secretKeyHex,
+  nodeId: device.nodeId,
+  addrs: device.addrs,
+  relay: device.relay,
+);
 
-/// Overridable transport factory provider (override in tests).
 final transportFactoryProvider = Provider<TransportFactory>(
   (ref) => _defaultTransportFactory,
 );
@@ -41,7 +37,7 @@ final macStorageProvider = Provider<MacStorage>((ref) => MacStorage());
 ///
 /// - Reconnects with exponential backoff (1 s → 30 s) while the app is foregrounded.
 /// - Disconnects 30 s after the app backgrounds.
-/// - Family key: [MacDevice] (freezed equality keeps the provider stable).
+/// - Family key: [MacDevice] (equality on nodeId keeps the provider stable).
 final connectionNotifierProvider = AsyncNotifierProvider.autoDispose
     .family<ConnectionNotifier, Multiplexer?, MacDevice>(
       ConnectionNotifier.new,
@@ -60,8 +56,6 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   @visibleForTesting
   Duration probeTimeout = const Duration(seconds: 2);
 
-  /// Why the last connection attempt failed (shown by the pairing screen).
-  Object? lastError;
   Timer? _reconnectTimer;
   Timer? _backgroundTimer;
   int _backoffSeconds = 1;
@@ -75,10 +69,8 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
 
   Future<Multiplexer?> _connect() async {
     try {
-      // The demo computer lives in the app: it needs no identity, so no Keychain read.
-      final secretKey = isDemo(_device)
-          ? ''
-          : await ref.read(macStorageProvider).loadSecretKey() ?? '';
+      final secretKey =
+          await ref.read(macStorageProvider).loadSecretKey() ?? '';
       final transport = await ref.read(transportFactoryProvider)(
         _device,
         secretKey,
@@ -87,9 +79,8 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
       _mux = mux;
       _backoffSeconds = 1;
 
-      // Reconnect when transport closes.
+      // Reconnect when transport closes (only while foregrounded).
       mux.done.then((_) {
-        // A probe that replaced this connection already reconnected.
         if (identical(mux, _mux) && _foregrounded && ref.mounted) {
           _scheduleReconnect();
         }
@@ -97,7 +88,6 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
 
       return mux;
     } catch (e) {
-      lastError = e;
       debugPrint('atlas-mobile: connect to ${_device.nodeId} failed: $e');
       _scheduleReconnect();
       return null;
@@ -105,6 +95,8 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   }
 
   void _scheduleReconnect() {
+    // Never reconnect while backgrounded: the background timer handles that path.
+    if (!_foregrounded) return;
     _reconnectTimer?.cancel();
     final delay = Duration(seconds: _backoffSeconds);
     _backoffSeconds = (_backoffSeconds * 2).clamp(1, _maxBackoff);
@@ -129,11 +121,13 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
       if (state.value == null && !state.isLoading) _reconnectNow();
       return;
     }
-    final ok = await mux
+    // Count any real reply (even 'forbidden') as proof the link is alive;
+    // only a timeout or thrown error means the connection is dead.
+    final alive = await mux
         .call('info')
-        .timeout(probeTimeout, onTimeout: () => const {'ok': false})
-        .then((r) => r['ok'] == true, onError: (_) => false);
-    if (!ok && identical(mux, _mux) && ref.mounted) {
+        .timeout(probeTimeout, onTimeout: () => const {})
+        .then((r) => r.containsKey('id'), onError: (_) => false);
+    if (!alive && identical(mux, _mux) && ref.mounted) {
       _mux = null;
       mux.close().ignore();
       _reconnectNow();
@@ -147,9 +141,11 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
     ref.invalidateSelf();
   }
 
-  /// Call when the app goes to the background.
   void onBackgrounded() {
     _foregrounded = false;
+    // Cancel any pending reconnect so a backoff timer that fires while
+    // backgrounded cannot open a new connection (battery + hostd routing).
+    _reconnectTimer?.cancel();
     _backgroundTimer?.cancel();
     _backgroundTimer = Timer(_backgroundGrace, () {
       _mux?.close();
@@ -162,7 +158,9 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
 
   void _cleanup() {
     _reconnectTimer?.cancel();
-    _backgroundTimer?.cancel();
+    // Do NOT cancel _backgroundTimer here: _cleanup runs on every invalidateSelf
+    // rebuild. Cancelling it would leave an in-background mux open forever.
+    // The timer fires harmlessly after _mux is set to null by _cleanup.
     _mux?.close();
     _mux = null;
   }

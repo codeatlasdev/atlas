@@ -2,7 +2,6 @@
 ///
 /// Implementations:
 /// - [FrbTransport] — iroh P2P over the native Rust crate (production).
-/// - [FakeTransport] — in-memory stub for unit tests.
 library;
 
 /// A bidirectional text-line transport.
@@ -23,7 +22,4 @@ abstract class Transport {
 
   /// Close the connection and release resources.
   Future<void> close();
-
-  /// Whether the transport is currently open.
-  bool get isOpen;
 }

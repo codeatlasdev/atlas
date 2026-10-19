@@ -73,9 +73,18 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   /// The agent's own terminal: the live pty whose scope is this pane.
   Future<void> _openTerminal() async {
+    void say(String text) =>
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(text)));
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return;
+    if (mux == null) {
+      return say('Not connected to your computer');
+    }
     final resp = await mux.call('pty_list');
+    if (!mounted) return;
+    if (resp['ok'] != true) {
+      return say('${resp['error'] ?? 'Could not list terminals'}');
+    }
     String? pty;
     for (final p in (resp['data']?['ptys'] as List?) ?? const []) {
       final m = p as Map;
@@ -84,12 +93,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
         pty = m['pty'] as String?;
       }
     }
-    if (!mounted) return;
     if (pty == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This agent has no open terminal')),
-      );
-      return;
+      return say('This agent has no open terminal');
     }
     context.push(
       '/terminal',
@@ -302,6 +307,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                     ),
                     const SizedBox(width: 8),
                     IconButton.filled(
+                      tooltip: 'Send message',
                       onPressed: canSend ? _send : null,
                       icon: _sending
                           ? const SizedBox.square(

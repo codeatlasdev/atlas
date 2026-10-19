@@ -84,6 +84,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // sends the replay ahead of the attach reply, and a full-screen app drawn into
     // the default 80x24 came out cut apart.
     await _syncSize();
+    // The widget may have been disposed while waiting for pty_info.
+    if (!mounted) return;
     _sizeTimer = Timer.periodic(const Duration(seconds: 2), (_) => _syncSize());
     // Listen first: hostd sends the replay before it answers pty_attach, so a
     // listener added after the reply misses the whole screen (it showed blank).
@@ -93,7 +95,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       'replay': true,
       'output': true,
     });
-    if (resp['ok'] != true && mounted) {
+    // The widget may have been disposed while pty_attach was in flight.
+    if (!mounted) {
+      mux.call('pty_detach', {'pty': widget.pty}).ignore();
+      return;
+    }
+    if (resp['ok'] != true) {
       _terminal.write(
         '\x1b[31m${resp['error'] ?? 'could not attach'}\x1b[0m\r\n',
       );
@@ -181,9 +188,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Hold the connection open while this screen is up: a `read` alone lets the
-    // auto-dispose provider close it under us ("closed" on attach).
-    ref.watch(connectionNotifierProvider(widget.device));
+    // Hold the connection open while this screen is up, and re-attach whenever
+    // a new mux arrives (reconnect after a drop or 30 s background close).
+    ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
+      final prevMux = prev?.value;
+      final nextMux = next.value;
+      if (nextMux != null && prevMux != null && !identical(prevMux, nextMux)) {
+        // Cancel the old subscription and timer before re-attaching.
+        _pushSub?.cancel();
+        _pushSub = null;
+        _sizeTimer?.cancel();
+        _sizeTimer = null;
+        _mux = null;
+        _attach();
+      }
+    });
     final titleStr = _title.isNotEmpty ? _title : (widget.title ?? 'Terminal');
     final c = AtlasColors.of(context);
     return Scaffold(
@@ -488,6 +507,7 @@ class _LineInputState extends State<_LineInput> {
             ),
           ),
           IconButton(
+            tooltip: 'Send line',
             icon: const Icon(Icons.keyboard_return_rounded),
             onPressed: _send,
           ),

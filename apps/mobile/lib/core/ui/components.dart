@@ -58,17 +58,20 @@ class _AtlasCardState extends State<AtlasCard> {
       ),
     );
     if (widget.onTap == null) return card;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _down = true),
-      onTapCancel: () => setState(() => _down = false),
-      onTapUp: (_) => setState(() => _down = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _down ? .985 : 1,
-        duration: Motion.fast,
-        curve: Motion.ease,
-        child: card,
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _down = true),
+        onTapCancel: () => setState(() => _down = false),
+        onTapUp: (_) => setState(() => _down = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _down ? .985 : 1,
+          duration: Motion.fast,
+          curve: Motion.ease,
+          child: card,
+        ),
       ),
     );
   }

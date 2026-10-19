@@ -196,7 +196,11 @@ class _TerminalFeedState extends State<TerminalFeed> {
       itemBuilder: (_, i) {
         final b = _blocks[_blocks.length - 1 - i];
         return _BlockCard(
-          key: ValueKey(_blocks.length - 1 - i),
+          key: ValueKey(
+            b.command?.text.trim() ??
+                b.lines.firstOrNull?.text.trim() ??
+                'block:$i',
+          ),
           block: b,
           latest: i == 0,
           theme: widget.theme,

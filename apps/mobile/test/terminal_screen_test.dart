@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/core/demo/demo_transport.dart';
+import 'fixtures/demo_computer.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -32,13 +32,15 @@ String _screen(WidgetTester t) => [
 /// real pty read can cut a multi-byte character at a chunk boundary.
 class _SplitUtf8 implements Transport {
   final _lines = StreamController<String>.broadcast();
-  bool _open = true;
+  bool _closed = false;
   @override
   Stream<String> get incomingLines => _lines.stream;
   @override
-  bool get isOpen => _open;
-  @override
-  Future<void> close() async => _open = false;
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await _lines.close();
+  }
   @override
   Future<void> sendLine(String line) async {
     final m = jsonDecode(line) as Map;
@@ -47,18 +49,72 @@ class _SplitUtf8 implements Transport {
         [0x63, 0x61, 0x66, 0xC3],
         [0xA9, 0x21],
       ]) {
-        _lines.add(
-          jsonEncode({
+        if (!_closed) {
+          _lines.add(jsonEncode({
             'ev': 'pty_output',
             'pty': 'p',
             'data': base64.encode(chunk),
-          }),
-        );
+          }));
+        }
       }
     }
-    scheduleMicrotask(
-      () => _lines.add(jsonEncode({'id': m['id'], 'ok': true, 'data': {}})),
-    );
+    scheduleMicrotask(() {
+      if (!_closed) {
+        _lines.add(jsonEncode({'id': m['id'], 'ok': true, 'data': {}}));
+      }
+    });
+  }
+}
+
+/// A transport that answers pty_info immediately but holds pty_attach until
+/// [releaseAttach] is called. Used to verify the screen sends pty_detach when
+/// disposed while pty_attach is still in flight.
+class _DelayedAttach implements Transport {
+  final _lines = StreamController<String>.broadcast();
+  bool _closed = false;
+  final List<String> sentLines = [];
+  int? _attachId;
+
+  @override
+  Stream<String> get incomingLines => _lines.stream;
+
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await _lines.close();
+  }
+
+  /// Release the held pty_attach reply so its completer can resolve.
+  void releaseAttach() {
+    final id = _attachId;
+    if (id != null && !_closed) {
+      _lines.add(jsonEncode({'id': id, 'ok': true, 'data': {}}));
+    }
+  }
+
+  @override
+  Future<void> sendLine(String line) async {
+    sentLines.add(line);
+    final m = jsonDecode(line) as Map;
+    final id = m['id'] as int;
+    switch (m['cmd'] as String?) {
+      case 'pty_info':
+        scheduleMicrotask(() {
+          if (!_closed) {
+            _lines.add(jsonEncode({'id': id, 'ok': true, 'data': {'cols': 80, 'rows': 24}}));
+          }
+        });
+      case 'pty_attach':
+        _attachId = id; // held until releaseAttach() is called
+      case _:
+        // pty_detach and anything else: acknowledge immediately.
+        scheduleMicrotask(() {
+          if (!_closed) {
+            _lines.add(jsonEncode({'id': id, 'ok': true, 'data': {}}));
+          }
+        });
+    }
   }
 }
 
@@ -123,5 +179,50 @@ void main() {
     expect(top.length, 110);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 3));
+  });
+
+  // Guards the pty leak on early dispose: if the widget is torn down while
+  // pty_attach is still in flight (e.g. the user presses back immediately),
+  // pty_detach must still be sent so the pty session does not leak on the Mac.
+  testWidgets('no pty leak when widget is disposed before pty_attach replies', (
+    t,
+  ) async {
+    final transport = _DelayedAttach();
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          macStorageProvider.overrideWithValue(_Storage()),
+          transportFactoryProvider.overrideWithValue(
+            (_, _) async => transport,
+          ),
+        ],
+        child: MaterialApp(
+          theme: atlasTheme(Brightness.dark),
+          home: TerminalScreen(device: demoDevice, pty: 'p', title: 'test'),
+        ),
+      ),
+    );
+    // Pump until pty_info has been answered (_mux set, _syncSize complete)
+    // but pty_attach is still pending.
+    for (var i = 0; i < 10; i++) {
+      await t.pump(const Duration(milliseconds: 50));
+    }
+    expect(
+      transport.sentLines.any((l) => l.contains('"cmd":"pty_attach"')),
+      isTrue,
+      reason: 'pty_attach must be in flight before we dispose',
+    );
+    // Dispose the widget while pty_attach is still in flight.
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(milliseconds: 10));
+    // dispose() fires pty_detach immediately via _mux (set before _syncSize).
+    expect(
+      transport.sentLines.any((l) => l.contains('"cmd":"pty_detach"')),
+      isTrue,
+      reason: 'pty_detach must be sent when widget is disposed mid-attach',
+    );
+    // Release the held pty_attach so no 20 s deadline timer lingers.
+    transport.releaseAttach();
+    await t.pump(const Duration(milliseconds: 10));
   });
 }

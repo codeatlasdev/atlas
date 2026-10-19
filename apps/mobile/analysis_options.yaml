@@ -14,8 +14,6 @@ analyzer:
     - build/**
     - android/**
     - ios/**
-    - lib/**/*.g.dart
-    - lib/**/*.freezed.dart
     - rust_builder/**
 
 linter:

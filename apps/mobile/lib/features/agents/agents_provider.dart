@@ -65,6 +65,7 @@ class PendingApprovalNotifier extends Notifier<AgentApproval?> {
 
   @override
   AgentApproval? build() {
+    ref.watch(connectionNotifierProvider(device));
     ref.listen<AsyncValue<Map<String, dynamic>>>(
       devicePushEventsProvider(device),
       (_, next) {

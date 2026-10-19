@@ -3,12 +3,12 @@
 //! Bindings: `lib/src/rust/` (regenerate with `flutter_rust_bridge_codegen generate`).
 
 use anyhow::{Context, Result};
+use iroh::endpoint::{presets, Connection, RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr, EndpointId, RelayUrl, SecretKey, TransportAddr};
-use iroh::endpoint::{Connection, RecvStream, SendStream, presets};
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Mutex;
-use std::sync::Arc;
 
 /// An iroh endpoint (phone side).  Opaque handle owned by Flutter.
 pub struct NativeEndpoint {
@@ -19,6 +19,10 @@ pub struct NativeEndpoint {
 pub struct NativeConn {
     send: Arc<Mutex<SendStream>>,
     recv: Arc<Mutex<BufReader<RecvStream>>>,
+    /// Kept alive so we can send a graceful CONNECTION_CLOSE on [close_conn].
+    conn: iroh::endpoint::Connection,
+    /// Shared with [NativeEndpoint] so [close_conn] can await endpoint shutdown.
+    ep: Arc<Endpoint>,
 }
 
 /// Open a new iroh endpoint using the supplied 32-byte secret key (hex-encoded).
@@ -26,8 +30,7 @@ pub struct NativeConn {
 /// The secret key is the phone's identity, stored once in secure storage
 /// and reused across reconnections.
 pub async fn open(secret_key_hex: String) -> Result<NativeEndpoint> {
-    let raw = hex::decode(&secret_key_hex)
-        .context("secret_key_hex must be valid hex")?;
+    let raw = hex::decode(&secret_key_hex).context("secret_key_hex must be valid hex")?;
     let arr: [u8; 32] = raw
         .try_into()
         .map_err(|_| anyhow::anyhow!("secret key must be exactly 32 bytes"))?;
@@ -40,12 +43,9 @@ pub async fn open(secret_key_hex: String) -> Result<NativeEndpoint> {
         .await
         .context("failed to bind iroh endpoint")?;
 
-    Ok(NativeEndpoint { inner: Arc::new(endpoint) })
-}
-
-/// Return the string representation of the endpoint's public key (NodeId).
-pub fn endpoint_id(ep: &NativeEndpoint) -> String {
-    ep.inner.id().to_string()
+    Ok(NativeEndpoint {
+        inner: Arc::new(endpoint),
+    })
 }
 
 /// Connect to a Mac's iroh endpoint and open one bidirectional stream.
@@ -60,8 +60,7 @@ pub async fn connect(
     addrs: Vec<String>,
     relay: Option<String>,
 ) -> Result<NativeConn> {
-    let id = EndpointId::from_str(&node_id)
-        .context("invalid node_id")?;
+    let id = EndpointId::from_str(&node_id).context("invalid node_id")?;
 
     let mut transport_addrs: Vec<TransportAddr> = Vec::new();
     for a in &addrs {
@@ -73,16 +72,20 @@ pub async fn connect(
         transport_addrs.push(TransportAddr::Relay(ru));
     }
 
-    let addr = EndpointAddr::from_parts(id, transport_addrs.into_iter());
-    let conn: Connection = ep.inner.connect(addr, b"atlas-mobile/1").await
+    let addr = EndpointAddr::from_parts(id, transport_addrs);
+    let conn: Connection = ep
+        .inner
+        .connect(addr, b"atlas-mobile/1")
+        .await
         .context("connect failed")?;
 
-    let (send, recv) = conn.open_bi().await
-        .context("open_bi failed")?;
+    let (send, recv) = conn.open_bi().await.context("open_bi failed")?;
 
     Ok(NativeConn {
         send: Arc::new(Mutex::new(send)),
         recv: Arc::new(Mutex::new(BufReader::new(recv))),
+        conn,
+        ep: Arc::clone(&ep.inner),
     })
 }
 
@@ -103,14 +106,20 @@ pub async fn read_line(conn: &NativeConn) -> Result<Option<String>> {
         return Ok(None);
     }
     // strip trailing newline
-    if line.ends_with('\n') { line.pop(); }
-    if line.ends_with('\r') { line.pop(); }
+    if line.ends_with('\n') {
+        line.pop();
+    }
+    if line.ends_with('\r') {
+        line.pop();
+    }
     Ok(Some(line))
 }
 
-/// Close the connection gracefully.
+/// Close the connection gracefully: sends QUIC CONNECTION_CLOSE so hostd
+/// learns immediately (no 55 s idle timeout), then waits for the endpoint to
+/// finish.
 pub async fn close_conn(conn: &NativeConn) -> Result<()> {
-    let mut send = conn.send.lock().await;
-    send.finish()?;
+    conn.conn.close(0u32.into(), b"bye");
+    conn.ep.close().await;
     Ok(())
 }

@@ -30,9 +30,6 @@ const _alwaysOnboard =
 /// Onboarding was finished in this launch (debug: lets the dashboard show afterwards).
 final onboardingSeenProvider = StateProvider<bool>((ref) => false);
 
-/// Showing the in-app demo computer instead of the paired ones (not saved).
-final demoModeProvider = StateProvider<bool>((ref) => false);
-
 /// Paired computers from secure storage.
 final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
   (ref) => ref.read(macStorageProvider).loadDevices(),
@@ -70,21 +67,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ({bool onboard, MacDevice? device, List<MacDevice> others}) _target(
     List<MacDevice> stored,
   ) {
-    final demo = ref.watch(demoModeProvider);
-    final list = demo ? [demoDevice] : stored;
     final onboard =
-        list.isEmpty ||
-        (!demo && !ref.watch(onboardingSeenProvider) && _alwaysOnboard);
+        stored.isEmpty ||
+        (!ref.watch(onboardingSeenProvider) && _alwaysOnboard);
     if (onboard) return (onboard: true, device: null, others: const []);
-    final device = list.firstWhere(
+    final device = stored.firstWhere(
       (d) => d.nodeId == _nodeId,
-      orElse: () => list.first,
+      orElse: () => stored.first,
     );
     return (
       onboard: false,
       device: device,
       others: [
-        for (final d in list)
+        for (final d in stored)
           if (d.nodeId != device.nodeId) d,
       ],
     );
@@ -472,7 +467,6 @@ class _DashboardState extends ConsumerState<_Dashboard> {
       showDragHandle: true,
       builder: (sheet) {
         final c = AtlasColors.of(sheet);
-        final demo = isDemo(widget.device);
         Widget row(
           IconData icon,
           String label,
@@ -496,27 +490,21 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                   widget.device.name,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                subtitle: Text(demo ? 'Demo computer' : 'Paired'),
+                subtitle: const Text('Paired'),
               ),
               const Divider(height: 1),
               row(
                 Icons.qr_code_scanner_rounded,
-                demo ? 'Pair a computer' : 'Pair another computer',
+                'Pair another computer',
                 () => context.push('/pair'),
               ),
               row(Icons.privacy_tip_outlined, 'Privacy', openPrivacy),
-              demo
-                  ? row(
-                      Icons.logout_rounded,
-                      'Leave the demo',
-                      () => ref.read(demoModeProvider.notifier).state = false,
-                    )
-                  : row(
-                      Icons.link_off_rounded,
-                      'Forget this computer',
-                      _forget,
-                      color: c.error,
-                    ),
+              row(
+                Icons.link_off_rounded,
+                'Forget this computer',
+                _forget,
+                color: c.error,
+              ),
             ],
           ),
         );
@@ -665,68 +653,72 @@ class _Hero extends StatelessWidget {
         'View',
       ),
     };
-    return GestureDetector(
-      onTap: () => onOpen(item),
-      child: Container(
-        padding: const EdgeInsets.all(Space.lg),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: .45)),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [color.withValues(alpha: .16), c.base],
+    return Semantics(
+      button: true,
+      label: title,
+      child: GestureDetector(
+        onTap: () => onOpen(item),
+        child: Container(
+          padding: const EdgeInsets.all(Space.lg),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withValues(alpha: .45)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [color.withValues(alpha: .16), c.base],
+            ),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 18),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    kicker,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      kicker,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: Space.sm),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontSize: 20),
+              ),
+              if (detail != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  detail.replaceAll('\n', ' '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.muted, height: 1.35),
                 ),
               ],
-            ),
-            const SizedBox(height: Space.sm),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleLarge
-                  ?.copyWith(fontSize: 20),
-            ),
-            if (detail != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                detail.replaceAll('\n', ' '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: c.muted, height: 1.35),
+              const SizedBox(height: Space.md),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: color,
+                    foregroundColor: c.onAccent,
+                    minimumSize: const Size(0, 40),
+                  ),
+                  onPressed: () => onOpen(item),
+                  child: Text(action),
+                ),
               ),
             ],
-            const SizedBox(height: Space.md),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: color,
-                  foregroundColor: c.onAccent,
-                  minimumSize: const Size(0, 40),
-                ),
-                onPressed: () => onOpen(item),
-                child: Text(action),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -53,51 +53,6 @@ class AgentStatus {
   int get hashCode => Object.hash(state, updatedAt);
 }
 
-/// Scope of a PTY (which agent pane / worktree / tab it belongs to).
-class PtyScope {
-  final String? worktreeId;
-  final String? tabId;
-  final String? paneKey;
-
-  const PtyScope({this.worktreeId, this.tabId, this.paneKey});
-
-  factory PtyScope.fromJson(Map<String, dynamic> j) => PtyScope(
-    worktreeId: j['worktree_id'] as String?,
-    tabId: j['tab_id'] as String?,
-    paneKey: j['pane_key'] as String?,
-  );
-}
-
-/// One entry from `pty_list`.
-class PtySummary {
-  final String pty;
-  final String cwd;
-  final List<String> argv;
-  final PtyScope scope;
-  final String? title;
-  final int? exited;
-
-  const PtySummary({
-    required this.pty,
-    required this.cwd,
-    required this.argv,
-    required this.scope,
-    this.title,
-    this.exited,
-  });
-
-  factory PtySummary.fromJson(Map<String, dynamic> j) => PtySummary(
-    pty: j['pty'] as String? ?? '',
-    cwd: j['cwd'] as String? ?? '',
-    argv: (j['argv'] as List<dynamic>?)?.cast<String>() ?? [],
-    scope: j['scope'] is Map<String, dynamic>
-        ? PtyScope.fromJson(j['scope'] as Map<String, dynamic>)
-        : const PtyScope(),
-    title: j['title'] as String?,
-    exited: j['exited'] as int?,
-  );
-}
-
 /// One service entry from `project_list`.
 class ServiceInfo {
   final String name;

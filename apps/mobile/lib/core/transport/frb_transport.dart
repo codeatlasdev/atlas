@@ -16,11 +16,12 @@ final class FrbTransport implements Transport {
   final _lines = StreamController<String>.broadcast();
   bool _open = true;
 
-  @override
-  Stream<String> get incomingLines => _lines.stream;
+  /// Tracks whether [_endpoint] has been disposed so [close] is idempotent
+  /// even when [_readLoop] sets [_open] to false on a remote close.
+  bool _disposed = false;
 
   @override
-  bool get isOpen => _open;
+  Stream<String> get incomingLines => _lines.stream;
 
   /// Dial the Mac [nodeId] as the phone identity [secretKeyHex] (32 bytes, hex).
   /// [addrs] and [relay] are the optional hints from the pairing QR code.
@@ -31,13 +32,20 @@ final class FrbTransport implements Transport {
     String? relay,
   }) async {
     final ep = await native.open(secretKeyHex: secretKeyHex);
-    final conn = await native.connect(
-      ep: ep,
-      nodeId: nodeId,
-      addrs: addrs,
-      relay: relay,
-    );
-    return FrbTransport._(ep, conn);
+    try {
+      final conn = await native.connect(
+        ep: ep,
+        nodeId: nodeId,
+        addrs: addrs,
+        relay: relay,
+      );
+      return FrbTransport._(ep, conn);
+    } catch (e) {
+      // Dispose the endpoint so its sockets and relay session are released
+      // immediately, rather than waiting for GC on every failed retry.
+      ep.dispose();
+      rethrow;
+    }
   }
 
   Future<void> _readLoop() async {
@@ -62,10 +70,13 @@ final class FrbTransport implements Transport {
 
   @override
   Future<void> close() async {
-    if (!_open) return;
+    if (_disposed) return;
+    _disposed = true;
     _open = false;
     try {
       await native.closeConn(conn: _conn);
+    } catch (_) {
+      // Best-effort: the stream may already be gone after a remote close.
     } finally {
       _endpoint.dispose();
     }

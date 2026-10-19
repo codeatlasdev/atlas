@@ -51,15 +51,6 @@ class MacStorage {
     await saveDevices(devices);
   }
 
-  /// Get a single device by nodeId, or `null` if not found.
-  Future<MacDevice?> getDevice(String nodeId) async {
-    final devices = await loadDevices();
-    for (final d in devices) {
-      if (d.nodeId == nodeId) return d;
-    }
-    return null;
-  }
-
   // ── Secret key ────────────────────────────────────────────────────────────
 
   /// Load the phone's own secret key hex, or `null` if not set yet.

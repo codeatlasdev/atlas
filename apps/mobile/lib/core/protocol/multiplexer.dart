@@ -11,7 +11,7 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 ///
 /// Lines longer than [maxLineBytes] are silently dropped per contract.
 class Multiplexer {
-  static const int maxLineBytes = 1024 * 1024; // 1 MiB
+  static const int maxLineBytes = 1024 * 1024; // 1 M UTF-16 code units (Dart String.length; not bytes for multi-byte chars)
 
   final Transport _transport;
   int _nextId = 1;
@@ -77,8 +77,12 @@ class Multiplexer {
   void _onDone() {
     _closed = true;
     _cancelDeadlines();
-    for (final c in _pending.values) {
-      c.completeError(Exception('Transport closed'));
+    for (final entry in _pending.entries) {
+      entry.value.complete({
+        'id': entry.key,
+        'ok': false,
+        'error': 'connection closed',
+      });
     }
     _pending.clear();
     if (!_pushController.isClosed) {
@@ -90,10 +94,17 @@ class Multiplexer {
   }
 
   void _onError(Object error, StackTrace stack) {
-    // Propagate to pending completers.
+    // Propagate to pending completers as error maps, not thrown exceptions, so
+    // every caller can do `resp['ok'] == false` instead of try/catch.
     _cancelDeadlines();
-    for (final c in _pending.values) {
-      if (!c.isCompleted) c.completeError(error, stack);
+    for (final entry in _pending.entries) {
+      if (!entry.value.isCompleted) {
+        entry.value.complete({
+          'id': entry.key,
+          'ok': false,
+          'error': error.toString(),
+        });
+      }
     }
     _pending.clear();
   }
@@ -111,9 +122,9 @@ class Multiplexer {
     _pending[id] = completer;
     try {
       await _transport.sendLine(request);
-    } catch (_) {
+    } catch (e) {
       _pending.remove(id);
-      rethrow;
+      return {'id': id, 'ok': false, 'error': e.toString()};
     }
     // Closed while sending: nothing will answer, and a deadline now would outlive us.
     if (_closed) {

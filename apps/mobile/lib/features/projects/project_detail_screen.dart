@@ -137,7 +137,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => _LogsPage(
-          mux: _mux,
+          device: widget.device,
           projectId: widget.project.id,
           services: [
             for (final s in _snap?.services ?? const <ServiceRow>[]) s.name,
@@ -527,20 +527,24 @@ class _Tabs extends StatelessWidget {
                 children: [
                   for (var i = 0; i < labels.length; i++)
                     Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => onChanged(i),
-                        child: Center(
-                          child: AnimatedDefaultTextStyle(
-                            duration: Motion.normal,
-                            style: TextStyle(
-                              color: i == index ? c.text : c.muted,
-                              fontWeight: i == index
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                              fontSize: 14,
+                      child: Semantics(
+                        button: true,
+                        selected: i == index,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onChanged(i),
+                          child: Center(
+                            child: AnimatedDefaultTextStyle(
+                              duration: Motion.normal,
+                              style: TextStyle(
+                                color: i == index ? c.text : c.muted,
+                                fontWeight: i == index
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                                fontSize: 14,
+                              ),
+                              child: Text(labels[i]),
                             ),
-                            child: Text(labels[i]),
                           ),
                         ),
                       ),
@@ -1132,20 +1136,20 @@ class _ServiceSheet extends StatelessWidget {
 
 /// Logs, full screen: filter by service, search, and follow live. Lines are split into
 /// service tag, time and text; stderr and error lines stand out.
-class _LogsPage extends StatefulWidget {
+class _LogsPage extends ConsumerStatefulWidget {
   const _LogsPage({
-    required this.mux,
+    required this.device,
     required this.projectId,
     required this.services,
     this.service,
   });
-  final Multiplexer? mux;
+  final MacDevice device;
   final String projectId;
   final List<String> services;
   final String? service;
 
   @override
-  State<_LogsPage> createState() => _LogsPageState();
+  ConsumerState<_LogsPage> createState() => _LogsPageState();
 }
 
 /// `[api:12] 12:01:02 [stderr] text` → (service, time, stderr, text).
@@ -1153,7 +1157,7 @@ final _logLine = RegExp(
   r'^\[([^:\]]+)(?::\d+)?\]\s+(\d\d:\d\d:\d\d)\s+\[(stdout|stderr)\]\s?(.*)$',
 );
 
-class _LogsPageState extends State<_LogsPage> {
+class _LogsPageState extends ConsumerState<_LogsPage> {
   final _search = TextEditingController();
   late String? _service = widget.service;
   List<String> _lines = const [];
@@ -1179,7 +1183,7 @@ class _LogsPageState extends State<_LogsPage> {
   }
 
   Future<void> _load({bool quiet = false}) async {
-    final mux = widget.mux;
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
     if (mux == null) return;
     if (!quiet) setState(() => _loading = true);
     final q = _search.text.trim();

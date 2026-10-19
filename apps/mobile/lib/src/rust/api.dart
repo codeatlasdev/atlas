@@ -14,10 +14,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 Future<NativeEndpoint> open({required String secretKeyHex}) =>
     RustLib.instance.api.crateApiOpen(secretKeyHex: secretKeyHex);
 
-/// Return the string representation of the endpoint's public key (NodeId).
-Future<String> endpointId({required NativeEndpoint ep}) =>
-    RustLib.instance.api.crateApiEndpointId(ep: ep);
-
 /// Connect to a Mac's iroh endpoint and open one bidirectional stream.
 ///
 /// `node_id`  – the Mac's EndpointId (from the QR `node` parameter).
@@ -44,7 +40,9 @@ Future<void> sendLine({required NativeConn conn, required String line}) =>
 Future<String?> readLine({required NativeConn conn}) =>
     RustLib.instance.api.crateApiReadLine(conn: conn);
 
-/// Close the connection gracefully.
+/// Close the connection gracefully: sends QUIC CONNECTION_CLOSE so hostd
+/// learns immediately (no 55 s idle timeout), then waits for the endpoint to
+/// finish.
 Future<void> closeConn({required NativeConn conn}) =>
     RustLib.instance.api.crateApiCloseConn(conn: conn);
 

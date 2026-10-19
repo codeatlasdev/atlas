@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'transport.dart';
+import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// In-memory [Transport] for unit tests.
 ///
@@ -16,9 +16,6 @@ final class FakeTransport implements Transport {
 
   @override
   Stream<String> get incomingLines => _controller.stream;
-
-  @override
-  bool get isOpen => _open;
 
   /// Push a line as if it arrived from the remote end.
   void injectLine(String line) {

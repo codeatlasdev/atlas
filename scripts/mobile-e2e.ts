@@ -1,4 +1,4 @@
-// bun scripts/mobile-e2e.ts [--watch] [--record <file.mov>] [--keep] [--device <simulator name>]
+// bun scripts/mobile-e2e.ts [--android] [--watch] [--record <file>] [--keep] [--device <model>]
 //
 // Atlas Mobile end to end, on an iOS Simulator against a real `atlas hostd`: the app pairs over
 // iroh, lists the fixture project, opens it, its agent and the agent's terminal
@@ -6,15 +6,18 @@
 //
 // - hostd runs in its own dir under /tmp (`--dir`), with no relay (the simulator shares the Mac's
 //   network), a fixture project and one agent terminal.
-// - The simulator is a dedicated one (`atlas-e2e`), erased each run so no earlier pairing
-//   survives in its Keychain, and booted headless: Simulator.app is never opened.
+// - The device is a dedicated one named `atlas-e2e`, erased each run so no earlier pairing
+//   survives, and started without a window: an iOS Simulator (default) or, with `--android`, an
+//   Android emulator (its own AVD; the user's AVDs are never touched). It reaches this computer's
+//   loopback as 10.0.2.2.
 //
 // Exits with the test's status. `--keep` leaves hostd, the dir and the simulator running.
-// `--watch` opens Simulator.app on the test device to follow the run live (the only option that
-// shows a window); `--record <file.mov>` films the simulator screen without showing anything.
+// `--watch` shows the device to follow the run live, slowed down with a banner per step (the only
+// option that shows a window); `--record <file>` films its screen without showing anything.
 import { $ } from "bun";
 import {
 	existsSync,
+	readdirSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -31,7 +34,8 @@ const arg = (k: string, d?: string) => {
 const keep = process.argv.includes("--keep");
 const watch = process.argv.includes("--watch");
 const record = arg("record");
-const model = arg("device", "iPhone 15 Pro")!;
+const android = process.argv.includes("--android");
+const model = arg("device", android ? "pixel_7" : "iPhone 15 Pro")!;
 const root = join(import.meta.dir, "..");
 const atlas = join(root, "target/debug/atlas");
 const SIM = "atlas-e2e";
@@ -101,15 +105,190 @@ async function waitFor(what: string, ok: () => boolean, ms = 15_000) {
 	throw new Error(`timed out waiting for ${what}`);
 }
 
-/** The dedicated simulator's UDID, created on first use. */
-async function simulator(): Promise<string> {
-	const list: { devices: Record<string, { name: string; udid: string }[]> } =
-		JSON.parse(await $`xcrun simctl list devices available -j`.text());
-	const found = Object.values(list.devices)
-		.flat()
-		.find((d) => d.name === SIM);
-	if (found) return found.udid;
-	return (await $`xcrun simctl create ${SIM} ${model}`.text()).trim();
+/** What the run needs from a device: start it clean, show it, film it, stop it. */
+type Device = {
+	/** Start it erased; resolves with the id `flutter test -d` takes. */
+	boot(): Promise<string>;
+	/** A line of `flutter test` output meaning the app is built and about to run. */
+	built: string;
+	show(): Promise<void>;
+	/** Start filming to `file`; the returned function stops and saves it. */
+	film(file: string): () => Promise<void>;
+	stop(): Promise<void>;
+	/** How the device reaches this computer's loopback, for the pairing addresses. */
+	loopback?: string;
+};
+
+function ios(): Device {
+	let udid = "";
+	return {
+		async boot() {
+			const list: {
+				devices: Record<string, { name: string; udid: string }[]>;
+			} = JSON.parse(await $`xcrun simctl list devices available -j`.text());
+			udid =
+				Object.values(list.devices)
+					.flat()
+					.find((d) => d.name === SIM)?.udid ??
+				(await $`xcrun simctl create ${SIM} ${model}`.text()).trim();
+			await $`xcrun simctl shutdown ${udid}`.quiet().nothrow();
+			await $`xcrun simctl erase ${udid}`;
+			await $`xcrun simctl boot ${udid}`;
+			await $`xcrun simctl bootstatus ${udid} -b`.quiet();
+			return udid;
+		},
+		built: "Xcode build done",
+		async show() {
+			await $`open -a Simulator --args -CurrentDeviceUDID ${udid}`;
+		},
+		film(file) {
+			// Stopped with SIGINT so the file is finalized.
+			const p = Bun.spawn(
+				["xcrun", "simctl", "io", udid, "recordVideo", "--force", file],
+				{
+					stdout: "ignore",
+					stderr: "ignore",
+				},
+			);
+			return async () => {
+				p.kill("SIGINT");
+				await p.exited;
+			};
+		},
+		async stop() {
+			await device.stop();
+		},
+	};
+}
+
+function androidEmulator(): Device {
+	const sdk =
+		process.env.ANDROID_HOME ??
+		join(process.env.HOME ?? "", "Library/Android/sdk");
+	const adb = join(sdk, "platform-tools/adb");
+	// A fixed console port: the serial is known and never one of the user's emulators.
+	const serial = "emulator-5584";
+	let emu: ReturnType<typeof Bun.spawn> | null = null;
+	const sh = (...a: string[]) => $`${adb} -s ${serial} ${a}`.quiet().nothrow();
+	return {
+		async boot() {
+			const avds = (
+				await $`${join(sdk, "emulator/emulator")} -list-avds`.text()
+			).split("\n");
+			if (!avds.includes(SIM)) {
+				// Newest arm64 Google APIs image installed. The AVD is written directly (two small
+				// files, as Android Studio writes them): avdmanager lags the SDK's image metadata.
+				const image = readdirSync(join(sdk, "system-images"))
+					.filter((api) => /^android-\d+$/.test(api))
+					.sort((a, b) => Number(b.slice(8)) - Number(a.slice(8)))
+					.flatMap((api) =>
+						readdirSync(join(sdk, "system-images", api)).map((tag) => ({
+							api,
+							tag,
+						})),
+					)
+					.find(
+						({ api, tag }) =>
+							tag.startsWith("google_apis") &&
+							// A partial download has no kernel and cannot boot.
+							existsSync(
+								join(sdk, "system-images", api, tag, "arm64-v8a/kernel-ranchu"),
+							),
+					);
+				if (!image)
+					throw new Error(
+						"no arm64 Google APIs system image in the Android SDK",
+					);
+				const avd = join(process.env.HOME ?? "", ".android/avd");
+				mkdirSync(join(avd, `${SIM}.avd`), { recursive: true });
+				writeFileSync(
+					join(avd, `${SIM}.ini`),
+					`avd.ini.encoding=UTF-8\npath=${join(avd, `${SIM}.avd`)}\ntarget=${image.api}\n`,
+				);
+				writeFileSync(
+					join(avd, `${SIM}.avd/config.ini`),
+					[
+						"avd.ini.encoding=UTF-8",
+						"abi.type=arm64-v8a",
+						"hw.cpu.arch=arm64",
+						"hw.cpu.ncore=4",
+						"hw.ramSize=2048",
+						"disk.dataPartition.size=4G",
+						"hw.gpu.enabled=yes",
+						"hw.gpu.mode=auto",
+						"hw.keyboard=yes",
+						"hw.lcd.density=420",
+						"hw.lcd.width=1080",
+						"hw.lcd.height=2400",
+						"hw.device.name=pixel_7",
+						`image.sysdir.1=system-images/${image.api}/${image.tag}/arm64-v8a/`,
+						`tag.id=${image.tag}`,
+						`target=${image.api}`,
+						"",
+					].join("\n"),
+				);
+			}
+			// No window unless watching; -wipe-data: no pairing survives from a previous run.
+			emu = Bun.spawn(
+				[
+					join(sdk, "emulator/emulator"),
+					"-avd",
+					SIM,
+					"-port",
+					"5584",
+					"-wipe-data",
+					"-no-snapshot",
+					"-no-audio",
+					"-no-boot-anim",
+					...(watch ? [] : ["-no-window"]),
+				],
+				{ stdout: "ignore", stderr: "ignore" },
+			);
+			// Never wait on an emulator that already quit (a broken image exits at once).
+			let quit = false;
+			void emu.exited.then(() => {
+				quit = true;
+			});
+			for (
+				const end = Date.now() + 180_000;
+				Date.now() < end;
+				await Bun.sleep(1000)
+			) {
+				if (quit)
+					throw new Error(
+						`the Android emulator exited at start (try: emulator -avd ${SIM})`,
+					);
+				const booted = await sh("shell", "getprop", "sys.boot_completed");
+				if (booted.text().trim() === "1") return serial;
+			}
+			throw new Error("the Android emulator did not boot in 3 minutes");
+		},
+		built: "Built build/app/outputs",
+		// The window is already up when watching: an emulator cannot be shown after a headless start.
+		async show() {},
+		film(file) {
+			// screenrecord stops by itself at 3 minutes, longer than a run.
+			const p = Bun.spawn(
+				[adb, "-s", serial, "shell", "screenrecord", "/sdcard/e2e.mp4"],
+				{
+					stdout: "ignore",
+					stderr: "ignore",
+				},
+			);
+			return async () => {
+				p.kill("SIGINT");
+				await p.exited;
+				await Bun.sleep(1000);
+				await $`${adb} -s ${serial} pull /sdcard/e2e.mp4 ${file}`.quiet();
+			};
+		},
+		async stop() {
+			if (!emu) return;
+			await sh("emu", "kill");
+			await emu.exited;
+		},
+		loopback: "10.0.2.2",
+	};
 }
 
 /** Fixture: a project with two services and a log line, registered where hostd reads it. */
@@ -135,7 +314,7 @@ function fixture(dir: string): string {
 
 // /tmp, not os.tmpdir(): macOS caps a unix socket path at 104 bytes.
 const dir = mkdtempSync("/tmp/atlas-e2e-");
-let udid = "";
+const device = android ? androidEmulator() : ios();
 let status = 1;
 try {
 	await $`cargo build -p atlas-cli`.cwd(root);
@@ -181,23 +360,15 @@ try {
 		name: p.hostname || "e2e",
 	});
 	for (const a of p.addrs ?? []) q.append("addr", a);
+	// An emulator does not share this computer's network: its loopback, by the emulator's alias.
+	if (device.loopback)
+		for (const a of p.addrs ?? [])
+			if (a.startsWith("127.0.0.1:"))
+				q.append("addr", a.replace("127.0.0.1", device.loopback));
 	const url = `atlas-mobile://pair?${q}`;
 
-	udid = await simulator();
-	await $`xcrun simctl shutdown ${udid}`.quiet().nothrow();
-	await $`xcrun simctl erase ${udid}`;
-	await $`xcrun simctl boot ${udid}`;
-	await $`xcrun simctl bootstatus ${udid} -b`.quiet();
-	// Stopped with SIGINT so the file is finalized.
-	const filming = record
-		? Bun.spawn(
-				["xcrun", "simctl", "io", udid, "recordVideo", "--force", record],
-				{
-					stdout: "ignore",
-					stderr: "ignore",
-				},
-			)
-		: null;
+	const id = await device.boot();
+	const saveFilm = record ? device.film(record) : null;
 
 	const defines = [
 		`--dart-define=E2E_PAIR_URL=${url}`,
@@ -205,43 +376,49 @@ try {
 	];
 	if (watch) defines.push("--dart-define=E2E_SLOW=true");
 	const test = Bun.spawn(
+		// A stuck test fails with a message instead of running on (the build is not counted).
 		[
 			"flutter",
 			"test",
 			"integration_test/e2e_test.dart",
 			"-d",
-			udid,
+			id,
+			"--timeout",
+			"5m",
 			...defines,
 		],
 		{ cwd: join(root, "apps/mobile"), stdout: "pipe", stderr: "inherit" },
 	);
-	// --watch: open the simulator once the app is built, so the window shows the run, not
-	// a minute of home screen while Xcode compiles.
+	// --watch: show the device once the app is built, so the window shows the run, not
+	// minutes of home screen while it compiles.
 	let shown = !watch;
 	const out = test.stdout.pipeThrough(new TextDecoderStream()).getReader();
 	for (let c = await out.read(); !c.done; c = await out.read()) {
 		process.stdout.write(c.value);
-		if (!shown && c.value.includes("Xcode build done")) {
+		if (!shown && c.value.includes(device.built)) {
 			shown = true;
-			await $`open -a Simulator --args -CurrentDeviceUDID ${udid}`;
+			await device.show();
 		}
 	}
 	const run = { exitCode: await test.exited };
 	status = run.exitCode;
-	if (filming) {
-		filming.kill("SIGINT");
-		await filming.exited;
+	if (saveFilm) {
+		await saveFilm();
 		console.log(`recording: ${record}`);
 	}
 } catch (e) {
-	console.error(`mobile-e2e: ${e instanceof Error ? e.message : e}`);
+	// A failed shell command carries its stderr: print it, not just the exit code.
+	const err = e as { message?: string; stderr?: { toString(): string } };
+	console.error(
+		`mobile-e2e: ${err.message ?? e}\n${err.stderr?.toString() ?? ""}`,
+	);
 } finally {
 	if (!keep) {
 		await $`${atlas} hostd --stop --dir ${dir}`.quiet().nothrow();
-		if (udid) await $`xcrun simctl shutdown ${udid}`.quiet().nothrow();
+		await device.stop();
 		rmSync(dir, { recursive: true, force: true });
 	} else {
-		console.log(`kept: hostd dir ${dir}, simulator ${SIM} (${udid})`);
+		console.log(`kept: hostd dir ${dir}, device ${SIM}`);
 	}
 }
 process.exit(status);

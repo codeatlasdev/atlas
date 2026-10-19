@@ -38,7 +38,7 @@ Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iro
 
 Needs Flutter stable and a Rust toolchain (the transport is the `apps/mobile/native` crate, bound through flutter_rust_bridge). `scripts/mobile-check.sh` (part of `bun run check`) runs `flutter analyze` and `flutter test`. It is skipped with a notice when Flutter is not installed.
 
-## End-to-end test on an iOS Simulator
+## End-to-end test (iOS Simulator, Android emulator)
 
 `bun run mobile:e2e` (`scripts/mobile-e2e.ts`) runs `apps/mobile/integration_test/e2e_test.dart` against a real `atlas hostd`: the app pairs over iroh, lists a fixture project, opens it and a service's sheet, the Agents tab, an agent's chat and its terminal, whose replay must arrive. It touches nothing of yours and never shows a window:
 
@@ -46,3 +46,5 @@ Needs Flutter stable and a Rust toolchain (the transport is the `apps/mobile/nat
 - the simulator is a dedicated `atlas-e2e` device, erased on every run (no pairing survives in its Keychain) and booted headless: Simulator.app is never opened.
 
 It takes about two minutes, mostly the iOS build. `bun run mobile:watch` (`--watch`) is the one to look at: it opens Simulator.app on the test device once the app is built, pauses on each step and names it in a banner over the app (1/6 pairing … 6/6 the agent's terminal), the only option that shows a window; `--record <file.mov>` films the simulator screen instead, without showing anything. `--keep` leaves hostd, its dir and the simulator up for a look; `--device "<model>"` picks the simulator model (default iPhone 15 Pro). macOS with Xcode only; it is not part of `bun run check`.
+
+Android: `bun run mobile:e2e:android` / `bun run mobile:watch:android` (`--android`) run the same test on a dedicated `atlas-e2e` emulator (its AVD is created from the newest complete arm64 Google APIs image; your own AVDs are never touched), wiped each run and started without a window unless watching (an emulator cannot be shown after a headless start, so `--watch` shows it from the beginning). It reaches the computer's loopback as `10.0.2.2`. Needs the Android SDK and the Rust Android targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android`). `flutter test` gets `--timeout 5m`, so a stuck step fails with a message.

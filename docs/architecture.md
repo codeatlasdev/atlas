@@ -36,6 +36,7 @@ Other top-level directories:
 | Path | What |
 |---|---|
 | `apps/desktop` | the desktop frontend (SvelteKit 3, using `@codeatlasdev/ui`) |
+| `apps/mobile` | the Atlas Mobile app (Flutter, iOS and Android); see [docs/mobile.md](mobile.md) |
 | `skills/` | markdown skills, embedded by `atlas-skills/build.rs` |
 | `docs/` | these docs; the website renders them directly |
 | `site/` | the website (Astro); see [The website](site.md) |

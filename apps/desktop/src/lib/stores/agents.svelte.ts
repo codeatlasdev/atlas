@@ -106,6 +106,10 @@ class Agents {
 				if (e.payload.ev === "pty_activity" && this.list.find((a) => a.id === tab.agent)?.custom)
 					this.activity.bump(tab.id);
 			}),
+			await listen<{ host: string }>("host://reconnected", async () => {
+				const fresh = await invoke<Record<string, AgentStatus>>("agent_status_all").catch(() => null);
+				if (fresh) this.status = { ...this.status, ...fresh };
+			}),
 		);
 		this.status = await invoke<Record<string, AgentStatus>>("agent_status_all");
 		// Restart recovery: panes the hub doesn't know get their state from the title.

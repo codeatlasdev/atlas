@@ -218,7 +218,24 @@ pub fn keep(app: &AppHandle, alias: String) {
             match connect_once(&app, &alias).await {
                 Ok(c) => {
                     backoff = Duration::from_secs(2);
-                    set_status(&app, &alias, "connected");
+                    // A host's atlas is only uploaded when missing, so an older one keeps
+                    // running: say what it lacks instead of a silent "connected".
+                    let missing = match c.call("info", json!({})).await {
+                        Ok(info) => atlas_host::upgrade::missing_caps(&info),
+                        Err(_) => Vec::new(),
+                    };
+                    if missing.is_empty() {
+                        set_status(&app, &alias, "connected");
+                    } else {
+                        set_status(
+                            &app,
+                            &alias,
+                            &format!(
+                                "warning: its atlas hostd lacks {}; update atlas on the host and restart its hostd",
+                                missing.join(", ")
+                            ),
+                        );
+                    }
                     crate::host::serve_client(&app, &host_id(&alias), c).await;
                 }
                 Err(e) => set_status(&app, &alias, &format!("error: {e}")),

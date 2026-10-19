@@ -1,6 +1,6 @@
 # Atlas — notes for coding agents
 
-Rust workspace (`crates/*`: `atlas-cli` = the `atlas` binary, `atlas-tui` = runtime/TUI/MCP/runner, `atlas-host` = `atlas hostd` (PTYs/exec/fs daemon behind the app), `atlas-core`, `atlas-skills`, `atlas-term` = the GPU terminal, `atlas-desktop` = Tauri 2 shell) plus the desktop frontend in `apps/desktop` (SvelteKit 3 + `@codeatlasdev/ui`). Docs are plain markdown in `docs/`; the user-facing agent skills in `skills/` are embedded into the binary at build time.
+Rust workspace (`crates/*`: `atlas-cli` = the `atlas` binary, `atlas-tui` = runtime/TUI/MCP/runner, `atlas-host` = `atlas hostd` (PTYs/exec/fs daemon behind the app), `atlas-core`, `atlas-skills`, `atlas-term` = the GPU terminal, `atlas-desktop` = Tauri 2 shell) plus the desktop frontend in `apps/desktop` (SvelteKit 3 + `@codeatlasdev/ui`) and the mobile app in `apps/mobile` (Flutter, iOS and Android; see [docs/mobile.md](docs/mobile.md)). Docs are plain markdown in `docs/`; the user-facing agent skills in `skills/` are embedded into the binary at build time.
 
 ## Gate and workflow
 

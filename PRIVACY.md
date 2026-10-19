@@ -28,7 +28,7 @@ The phone app ([docs/mobile.md](docs/mobile.md)) has no account, telemetry, anal
 | Between the phone and your computer | Requests and replies: project and service state, logs, agent state and conversations, terminal output and input. End-to-end encrypted (QUIC, keys known only to the two devices). |
 | n0 public relays (`*.relay.n0.iroh.link`, run by number 0, the makers of iroh) | Used to find your computer and, when a direct connection is blocked, to forward the encrypted traffic. A relay sees both devices' IP addresses and public keys and how much data passes, never the content. |
 
-The camera is used only to scan the pairing code; nothing is recorded. Face ID / biometrics are checked by the system before typing in a terminal; the app only receives yes or no. The **Try the demo** mode uses sample data built into the app and connects to nothing.
+The camera is used only to scan the pairing code; nothing is recorded. Face ID / biometrics are checked by the system before typing in a terminal; the app only receives yes or no.
 
 ## The website
 

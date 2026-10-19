@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { invoke } from "@tauri-apps/api/core";
 	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { renderSVG } from "uqr";
 	import { errText } from "#lib/api.ts";
+	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
 	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
@@ -20,37 +20,41 @@
 	let pairing = $state<{ p: PairStart; at: number } | null>(null);
 	let now = $state(Date.now());
 
-	const call = <T,>(cmd: string, args: Record<string, unknown> = {}) => invoke<T>("host_call", { cmd, args });
-
 	async function load() {
-		devices = (await call<{ devices: Device[] }>("mobile_devices")).devices;
+		const prevIds = new Set(devices.filter((d) => !d.revoked).map((d) => d.node_id));
+		devices = (await hostCall<{ devices: Device[] }>("mobile_devices")).devices;
+		const gained = devices.find((d) => !d.revoked && !prevIds.has(d.node_id));
+		if (gained && pairing) {
+			pairing = null;
+			toast.success(`Paired ${gained.name}`);
+		}
 	}
 
 	onMount(() => {
 		load().catch((e) => toast.error(errText(e)));
 		const t = setInterval(() => {
 			now = Date.now();
-			// A paired phone shows up while the code is on screen.
-			if (pairing) void load().catch(() => {});
+			// Poll only while a code is live; stop once it expires.
+			if (pairing && left > 0) void load().catch(() => {});
 		}, 1000);
 		return () => clearInterval(t);
 	});
 
 	async function pair() {
 		try {
-			pairing = { p: await call<PairStart>("mobile_pair_start"), at: Date.now() };
+			pairing = { p: await hostCall<PairStart>("mobile_pair_start"), at: Date.now() };
 		} catch (e) {
 			toast.error(errText(e));
 		}
 	}
 
 	async function setScopes(d: Device, scopes: Device["scopes"]) {
-		await call("mobile_set_scopes", { node_id: d.node_id, scopes }).catch((e) => toast.error(errText(e)));
+		await hostCall("mobile_set_scopes", { node_id: d.node_id, scopes }).catch((e) => toast.error(errText(e)));
 		await load();
 	}
 
 	async function revoke(d: Device) {
-		await call("mobile_revoke", { node_id: d.node_id }).catch((e) => toast.error(errText(e)));
+		await hostCall("mobile_revoke", { node_id: d.node_id }).catch((e) => toast.error(errText(e)));
 		await load();
 	}
 
@@ -60,7 +64,7 @@
 
 <PageHead
 	title="Mobile"
-	description="See and control this Mac's projects, agents and terminals from Atlas Mobile. No account: the phone connects straight to this Mac (through an encrypted relay when a direct path is blocked). The Mac must be awake."
+	description="See and control this computer's projects, agents and terminals from Atlas Mobile. No account: the phone connects straight to this computer (through an encrypted relay when a direct path is blocked). The computer must be awake."
 />
 
 <Group title="Pair a phone">
@@ -87,8 +91,13 @@
 </Group>
 
 <Group title="Paired phones">
-	{#each active as d (d.node_id)}
-		<Row label={d.name} description={`Paired ${new Date(d.paired_at * 1000).toLocaleDateString()}`} stack>
+	{#each active as d, i (d.node_id)}
+		<Row
+			id={i === 0 ? "mobile-devices" : undefined}
+			label={d.name}
+			description={`Paired ${new Date(d.paired_at * 1000).toLocaleDateString()}`}
+			stack
+		>
 			<div class="scopes">
 				{#each SCOPES as s (s.id)}
 					<label class="scope">

@@ -1,5 +1,5 @@
 //! argv + env for an agent terminal. The frontend creates the pty/tab (it owns
-//! tabs); the hook env lets the agent's status extension find the app.
+//! tabs); the hook env lets the agent's status extension find `atlas hostd`.
 
 use std::path::PathBuf;
 

@@ -196,7 +196,7 @@ Agents run in worktree terminals with `ATLAS_HOOK_ENDPOINT` set. omp reports thr
 
 ## SSH hosts
 
-Settings → SSH hosts adds a host from `~/.ssh/config`. Atlas uploads `atlas` if `~/.atlas/remote/atlas-<arch>-<os>` exists and the host lacks it, starts `atlas hostd` there and keeps an `ssh` tunnel (`-L` to its socket, `-R` for agent status). Add a remote project by path; its worktrees, terminals, editor, diff and agents then run on the host. Ports tab: **Forward** opens a remote port locally. Not yet for remote checkouts: the Services/Logs/Config views and Design Mode.
+Settings → SSH hosts adds a host from `~/.ssh/config`. Atlas uploads `atlas` if `~/.atlas/remote/atlas-<arch>-<os>` exists and the host lacks it, starts `atlas hostd` there and keeps an `ssh` tunnel (`-L` to its socket). Add a remote project by path; its worktrees, terminals, editor, diff and agents then run on the host. Ports tab: **Forward** opens a remote port locally. Not yet for remote checkouts: the Services/Logs/Config views and Design Mode.
 
 ## Keyboard
 

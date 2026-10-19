@@ -232,7 +232,10 @@ mod tests {
             .to_string(),
         )
         .unwrap();
-        let status = json!({"p1": {"state": "blocked", "agent": "claude"}});
+        // Real AgentHub output, the same serialization hostd sends.
+        let hub = crate::agents::AgentHub::default();
+        hub.apply("claude", &json!({"pane_key": "p1", "payload": {"event": "permission_request", "tool_name": "Bash"}}));
+        let status = serde_json::to_value(hub.all()).unwrap();
         let panes = vec![(
             "p1".to_string(),
             proj.join("src").to_string_lossy().into_owned(),
@@ -246,6 +249,13 @@ mod tests {
         // The home screen's "needs you" comes from here: agents ride along per project.
         assert_eq!(ps[0]["agents"][0]["pane_key"], "p1");
         assert_eq!(ps[0]["agents"][0]["status"]["state"], "blocked");
+        // The phone's home parses this payload (apps/mobile/test/project_list_test.dart).
+        check_fixture(
+            "project_list.json",
+            &serde_json::to_string_pretty(&v)
+                .unwrap()
+                .replace(&proj.to_string_lossy().into_owned(), "/Users/me/shop"),
+        );
         assert_eq!(root_of(tmp.path(), "b").unwrap_err(), "unknown project b");
     }
 
@@ -336,22 +346,28 @@ mod tests {
             .unwrap()
             .replace(&proj.to_string_lossy().into_owned(), "/Users/me/shop")
             .replace(&now.to_string(), "12:00:00");
-        let text = regex_lite_ts(&text);
+        check_fixture("project_detail.json", &text);
+    }
+
+    /// Compare `text` (pretty JSON) with `apps/mobile/test/fixtures/<name>`, the payload the
+    /// phone's tests parse; `ATLAS_UPDATE_FIXTURES=1` rewrites it. Compared as JSON: key
+    /// order depends on serde_json's `preserve_order` being on somewhere in the build.
+    fn check_fixture(name: &str, text: &str) {
+        let text = regex_lite_ts(text);
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../apps/mobile/test/fixtures/project_detail.json");
+            .join("../../apps/mobile/test/fixtures")
+            .join(name);
         if std::env::var_os("ATLAS_UPDATE_FIXTURES").is_some() {
             std::fs::create_dir_all(fixture.parent().unwrap()).unwrap();
             std::fs::write(&fixture, format!("{text}\n")).unwrap();
         }
-        // Compared as JSON, not text: key order depends on whether another crate in the
-        // build turns on serde_json's `preserve_order`, and the phone does not care.
         let want: Value =
             serde_json::from_str(&std::fs::read_to_string(&fixture).unwrap_or_default())
                 .unwrap_or(Value::Null);
         let got: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(
             want, got,
-            "project_detail changed shape: rerun with ATLAS_UPDATE_FIXTURES=1 and update the phone"
+            "{name} changed shape: rerun with ATLAS_UPDATE_FIXTURES=1 and update the phone"
         );
     }
 

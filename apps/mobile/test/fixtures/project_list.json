@@ -1,0 +1,29 @@
+{
+  "projects": [
+    {
+      "agents": [
+        {
+          "pane_key": "p1",
+          "status": {
+            "agent": "claude",
+            "last_message": null,
+            "model": null,
+            "prompt": null,
+            "session_file": null,
+            "session_id": null,
+            "state": "blocked",
+            "state_started_at": 1700000000000,
+            "tab_id": null,
+            "updated_at": 1700000000000,
+            "worktree_id": null
+          }
+        }
+      ],
+      "id": "a",
+      "name": "shop",
+      "root": "/Users/me/shop",
+      "running": false,
+      "services": []
+    }
+  ]
+}

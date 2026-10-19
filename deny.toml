@@ -4,6 +4,9 @@ version = 2
 # upgrade them ourselves. Re-evaluate when bumping tauri.
 ignore = [
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via glib-macros (tauri -> tray-icon -> gtk, Linux-only); no fix available upstream" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); unmaintained notice, no newer notify-rust on zbus 6 yet" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); same as above" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus 5 (tauri-plugin-notification -> notify-rust, Linux-only); same as above" },
 ]
 
 [licenses]

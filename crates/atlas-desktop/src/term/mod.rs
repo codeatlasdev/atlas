@@ -96,18 +96,20 @@ struct Term {
     shared: Arc<Shared>,
     render: Option<JoinHandle<()>>,
     reader: tauri::async_runtime::JoinHandle<()>,
+    /// Drains `Shared::writer` into hostd.
+    writer: tauri::async_runtime::JoinHandle<()>,
 }
 
 static TERMS: LazyLock<Mutex<HashMap<String, Term>>> = LazyLock::new(Default::default);
 /// Set at first `term_open`; lets non-command paths (VT callbacks) reach the app.
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
-fn with_term(tab: &str) -> Result<(String, Arc<Shared>), String> {
+fn with_term(tab: &str) -> Result<Arc<Shared>, String> {
     let t = TERMS.lock();
     let t = t
         .get(tab)
         .ok_or_else(|| format!("no terminal for tab {tab}"))?;
-    Ok((t.pty.clone(), t.shared.clone()))
+    Ok(t.shared.clone())
 }
 
 /// The terminal of `tab`, or every open one when omitted.
@@ -168,15 +170,65 @@ fn write_clipboard(text: &str) {
     }
 }
 
-fn write_pty(app: &AppHandle, pty: &str, bytes: &[u8]) {
+/// Send queued pty input one request after the other, so it reaches the program in the
+/// order it was typed (one task per write could swap a paste and its ⏎).
+async fn drain<F: Future<Output = ()>>(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    mut send: impl FnMut(Vec<u8>) -> F,
+) {
+    while let Some(b) = rx.recv().await {
+        send(b).await;
+    }
+}
+
+/// The pty input queue of a terminal: a sender for `Shared::writer` and its drain task.
+fn pty_writer(
+    app: &AppHandle,
+    pty: &str,
+) -> (
+    tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    tauri::async_runtime::JoinHandle<()>,
+) {
     let hub = app.state::<Arc<HostHub>>().inner().clone();
-    let args = json!({
-        "pty": pty,
-        "data": base64::engine::general_purpose::STANDARD.encode(bytes),
-    });
-    tauri::async_runtime::spawn(async move {
-        let _ = hub.call("pty_write", args).await;
-    });
+    let pty = pty.to_string();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let task = tauri::async_runtime::spawn(drain(rx, move |b: Vec<u8>| {
+        let (hub, pty) = (hub.clone(), pty.clone());
+        async move {
+            let data = base64::engine::general_purpose::STANDARD.encode(&b);
+            if let Err(e) = hub
+                .call("pty_write", json!({"pty": pty, "data": data}))
+                .await
+            {
+                eprintln!("pty_write {pty}: {e}");
+            }
+        }
+    }));
+    (tx, task)
+}
+
+/// hostd came back (restart, live upgrade): reattach every GPU terminal's raw stream and
+/// replay its output from scratch. A pty that died with the old daemon keeps its last screen.
+pub async fn reattach_all() {
+    let terms: Vec<(String, String, Arc<Shared>)> = TERMS
+        .lock()
+        .iter()
+        .map(|(tab, t)| (tab.clone(), t.pty.clone(), t.shared.clone()))
+        .collect();
+    for (tab, pty, sh) in terms {
+        match atlas_host::client::attach_raw(&atlas_host::paths::base(), &pty, true).await {
+            Ok(raw) => {
+                sh.vt.reset();
+                sh.redraw();
+                let reader = lifecycle::spawn_reader(sh, raw);
+                match TERMS.lock().get_mut(&tab) {
+                    Some(t) => std::mem::replace(&mut t.reader, reader).abort(),
+                    None => reader.abort(),
+                }
+            }
+            Err(e) => eprintln!("reattach terminal {tab} (pty {pty}): {e:#}"),
+        }
+    }
 }
 
 fn on_main<T: Send + 'static>(
@@ -189,4 +241,29 @@ fn on_main<T: Send + 'static>(
     })
     .map_err(|e| e.to_string())?;
     rx.recv().map_err(|e| e.to_string())?
+}
+#[cfg(test)]
+mod tests {
+    /// Pty input goes out in the order it was queued, however fast it arrives.
+    #[tokio::test]
+    async fn drain_sends_in_queue_order() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        for i in 0..1000u32 {
+            tx.send(i.to_le_bytes().to_vec()).unwrap();
+        }
+        drop(tx);
+        let got = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let g = got.clone();
+        super::drain(rx, move |b| {
+            let g = g.clone();
+            async move {
+                // Later items finish sooner if they ran concurrently.
+                let i = u32::from_le_bytes(b.try_into().unwrap());
+                tokio::task::yield_now().await;
+                g.lock().push(i);
+            }
+        })
+        .await;
+        assert_eq!(*got.lock(), (0..1000).collect::<Vec<_>>());
+    }
 }

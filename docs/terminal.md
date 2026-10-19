@@ -143,7 +143,9 @@ Audit against Ghostty's documented features (ghostty.org/docs/config/reference a
 | Performance on large output | present | see [Performance](#performance): `cat` 1 GiB 8.0 s vs 12.3 s |
 | `minimum-contrast` | present | `terminal.minimum_contrast`, `colors.rs` |
 | `window-padding-x/y`, `window-padding-color = extend` | present | `terminal.padding_x/y`; no `window-padding-balance` |
-| `scroll-to-bottom = keystroke`, `mouse-hide-while-typing` | missing | |
+| `scroll-to-bottom = keystroke` | present | output leaves a scrolled-up viewport in place (#97); a key or paste returns to the bottom (`term/shared.rs` `Shared::input`) |
+| `mouse-hide-while-typing` | missing | |
+| OSC 10/11/4 color queries | present | answered from the theme palette (`Vt::set_palette`); a color the program set itself with OSC 4/10/11 is not reflected in the answer |
 
 ## Not yet
 
@@ -154,7 +156,7 @@ Audit against Ghostty's documented features (ghostty.org/docs/config/reference a
 - Kitty graphics shared-memory medium (`t=s`), animation, Unicode placeholders, relative placements; key release events.
 - Prompt marks and images are anchored to scrollback lines; once the 10 000-line history is full they drift with each dropped line.
 - Mouse reporting gaps: motion is reported only while a button is held, so a DECSET 1003 program (hover effects) gets drags but not bare motion; no focus events (DECSET 1004), no pixel coordinates (1016); middle-click paste is not implemented.
-- Ghostty bindings not carried over: tabs/windows/splits navigation beyond ⌘D (Atlas has its own pane keys), `write_screen_file`, `scroll_to_selection` (⌘J is the bottom dock), `adjust_selection` (⇧Home/End/arrows to extend a selection), `search_selection` (⌘E is Config), `toggle_fullscreen`, `inspector`, quick terminal (needs a global shortcut and an accessory window), `mouse-hide-while-typing`, `scroll-to-bottom = keystroke`.
+- Ghostty bindings not carried over: tabs/windows/splits navigation beyond ⌘D (Atlas has its own pane keys), `write_screen_file`, `scroll_to_selection` (⌘J is the bottom dock), `adjust_selection` (⇧Home/End/arrows to extend a selection), `search_selection` (⌘E is Config), `toggle_fullscreen`, `inspector`, quick terminal (needs a global shortcut and an accessory window), `mouse-hide-while-typing`.
 
 ## Performance
 

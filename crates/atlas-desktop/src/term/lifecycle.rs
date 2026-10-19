@@ -15,7 +15,7 @@ use tokio::io::AsyncReadExt;
 use super::mac;
 use super::render_loop::render_loop;
 use super::shared::{BELL, Placement, Shared, State};
-use super::{APP, TERMS, Term, TermPrefs, on_main, write_clipboard, write_pty};
+use super::{APP, TERMS, Term, TermPrefs, on_main, pty_writer, write_clipboard};
 use crate::host::HostHub;
 
 /// Where a hidden terminal's view is parked.
@@ -130,12 +130,16 @@ pub async fn term_open(
     let prefs = prefs.unwrap_or_default();
     let font_pt = prefs.font_size.clamp(6.0, 48.0);
     let spec = prefs.font_spec();
-    let (a, p, t) = (app.clone(), pty.clone(), tab.clone());
+    let (a, t) = (app.clone(), tab.clone());
+    let (writer_tx, writer) = pty_writer(&app, &pty);
+    let reply = writer_tx.clone();
     let shared = Arc::new_cyclic(|weak: &std::sync::Weak<Shared>| {
         let weak = weak.clone();
         Shared {
             vt: Vt::new(cols, rows, move |e| match e {
-                VtEvent::Write(s) => write_pty(&a, &p, s.as_bytes()),
+                VtEvent::Write(s) => {
+                    let _ = reply.send(s.into_bytes());
+                }
                 VtEvent::ClipboardWrite(text) => {
                     let policy = weak.upgrade().map(|s| s.osc52.lock().clone());
                     match policy.as_deref().unwrap_or("ask") {
@@ -150,13 +154,18 @@ pub async fn term_open(
                     if let Some(sh) = weak.upgrade() {
                         sh.update(|s| s.bell_until = Some(Instant::now() + BELL));
                     }
-                    if let Some(win) = a.get_window("main")
-                        && crate::agent_mode::Mode::current().focus_allowed()
-                        && !win.is_focused().unwrap_or(true)
-                    {
-                        let _ = win
-                            .request_user_attention(Some(tauri::UserAttentionType::Informational));
-                    }
+                    // Off the VT lock: AppKit calls must not run under `feed`.
+                    let a = a.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(win) = a.get_window("main")
+                            && crate::agent_mode::Mode::current().focus_allowed()
+                            && !win.is_focused().unwrap_or(true)
+                        {
+                            let _ = win.request_user_attention(Some(
+                                tauri::UserAttentionType::Informational,
+                            ));
+                        }
+                    });
                 }
                 VtEvent::Cwd(cwd) => {
                     let _ = a.emit("term://cwd", json!({"tab": t, "cwd": cwd}));
@@ -175,7 +184,7 @@ pub async fn term_open(
             }),
             state: Mutex::new(State {
                 size: Some(((w * scale) as u32, (h * scale) as u32)),
-                pal,
+                pal: pal.clone(),
                 pal_new: false,
                 font_pt: None,
                 ligatures: Some(prefs.ligatures),
@@ -193,11 +202,13 @@ pub async fn term_open(
             osc52: Mutex::new(prefs.osc52.clone()),
             wake: Condvar::new(),
             placement: Mutex::new(Placement::default()),
+            writer: writer_tx,
         }
     });
     shared
         .vt
         .set_options(prefs.scrollback, &prefs.cursor_shape, prefs.cursor_blink);
+    shared.vt.set_palette(&pal);
 
     // Surface creation touches the NSView/CAMetalLayer: main thread only.
     let spec_open = spec.clone();
@@ -248,33 +259,7 @@ pub async fn term_open(
             )
         })
         .map_err(|e| e.to_string())?;
-    let sh = shared.clone();
-    let reader = tauri::async_runtime::spawn(async move {
-        // Bind the whole `RawPty`: precise capture would move only `reader` and drop
-        // the write half here, which hostd reads as a hang-up.
-        let mut raw = raw;
-        let mut buf = vec![0u8; 64 * 1024];
-        // EOF = the pty exited (or hostd went away); the last screen stays up.
-        // `feed` follows output to the bottom of the scrollback.
-        // A synchronized update (mode 2026) that never ends is flushed at its deadline.
-        loop {
-            let read = raw.reader.read(&mut buf);
-            let n = match sh.vt.sync_deadline() {
-                Some(d) => match tokio::time::timeout_at(d.into(), read).await {
-                    Ok(r) => r,
-                    Err(_) => {
-                        sh.vt.flush_sync();
-                        sh.redraw();
-                        continue;
-                    }
-                },
-                None => read.await,
-            };
-            let Ok(n @ 1..) = n else { break };
-            sh.vt.feed(&buf[..n]);
-            sh.redraw();
-        }
-    });
+    let reader = spawn_reader(shared.clone(), raw);
     let _ = APP.set(app.clone());
     TERMS.lock().insert(
         tab,
@@ -284,6 +269,7 @@ pub async fn term_open(
             shared,
             render: Some(render),
             reader,
+            writer,
         },
     );
     Ok(())
@@ -332,6 +318,7 @@ pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
         return Ok(());
     };
     t.reader.abort();
+    t.writer.abort();
     t.shared.update(|s| s.closed = true);
     // The surface must be gone before its view is released.
     if let Some(r) = t.render.take() {
@@ -342,6 +329,38 @@ pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
         Ok(())
     })?;
     Ok(())
+}
+
+/// Feed a raw pty stream into the terminal until EOF (the pty exited or hostd went away;
+/// the last screen stays up, and `super::reattach_all` resumes after a hostd restart).
+/// A synchronized update (mode 2026) that never ends is flushed at its deadline.
+pub(super) fn spawn_reader(
+    sh: Arc<Shared>,
+    raw: atlas_host::client::RawPty,
+) -> tauri::async_runtime::JoinHandle<()> {
+    tauri::async_runtime::spawn(async move {
+        // Bind the whole `RawPty`: precise capture would move only `reader` and drop
+        // the write half here, which hostd reads as a hang-up.
+        let mut raw = raw;
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let read = raw.reader.read(&mut buf);
+            let n = match sh.vt.sync_deadline() {
+                Some(d) => match tokio::time::timeout_at(d.into(), read).await {
+                    Ok(r) => r,
+                    Err(_) => {
+                        sh.vt.flush_sync();
+                        sh.redraw();
+                        continue;
+                    }
+                },
+                None => read.await,
+            };
+            let Ok(n @ 1..) = n else { break };
+            sh.vt.feed(&buf[..n]);
+            sh.redraw();
+        }
+    })
 }
 
 #[cfg(test)]

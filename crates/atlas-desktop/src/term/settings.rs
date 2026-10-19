@@ -10,7 +10,7 @@ use super::{TERMS, TermPrefs, targets, with_term};
 /// Visible screen text (debug bridge / tests).
 #[tauri::command]
 pub fn term_text(tab: String) -> Result<String, String> {
-    Ok(with_term(&tab)?.1.vt.text())
+    Ok(with_term(&tab)?.vt.text())
 }
 
 /// Frame timings per open terminal.
@@ -75,6 +75,7 @@ pub fn term_recolor(
     };
     let pal = build_palette(&fg, &bg, ansi16.as_deref(), min_contrast, &extra)?;
     for sh in targets(tab.as_deref())? {
+        sh.vt.set_palette(&pal);
         let pal = pal.clone();
         sh.update(|s| {
             s.pal = pal;
@@ -118,7 +119,7 @@ pub fn term_set_prefs(tab: Option<String>, prefs: TermPrefs) -> Result<(), Strin
 #[tauri::command]
 pub fn term_font(tab: String, size: f32) -> Result<f32, String> {
     let pt = size.clamp(6.0, 48.0);
-    with_term(&tab)?.1.update(|s| {
+    with_term(&tab)?.update(|s| {
         if s.font_cur != pt {
             s.font_cur = pt;
             s.font_pt = Some(pt);
@@ -131,7 +132,7 @@ pub fn term_font(tab: String, size: f32) -> Result<f32, String> {
 /// Input sink focus: unfocused terminals draw a hollow, non-blinking cursor.
 #[tauri::command]
 pub fn term_focus(tab: String, focused: bool) -> Result<(), String> {
-    with_term(&tab)?.1.update(|s| {
+    with_term(&tab)?.update(|s| {
         s.focused = focused;
         s.dirty = true;
     });

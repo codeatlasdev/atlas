@@ -47,3 +47,6 @@ unsupported!(
     term_mouse,
     term_mouse_captured,
 );
+
+/// No GPU terminals to reattach after a hostd restart.
+pub async fn reattach_all() {}

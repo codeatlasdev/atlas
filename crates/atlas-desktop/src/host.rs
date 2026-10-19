@@ -340,7 +340,19 @@ pub async fn serve_client(app: &AppHandle, host: &str, c: HostClient) {
     hub.set(host, Some(c)).await;
     hub.index_ptys(host).await;
     let _ = app.emit("host://reconnected", json!({"host": host}));
-    while let Ok(ev) = rx.recv().await {
+    if host == LOCAL {
+        crate::term::reattach_all().await;
+    }
+    loop {
+        // A slow consumer lags; that is not a disconnect (it used to end the pump).
+        let ev = match rx.recv().await {
+            Ok(ev) => ev,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                eprintln!("host {host}: dropped {n} events");
+                continue;
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        };
         if ev["ev"] == "disconnected" {
             break;
         }

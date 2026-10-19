@@ -32,6 +32,7 @@ final _router = GoRouter(
         return TerminalScreen(
           device: args['device'] as MacDevice,
           pty: args['pty'] as String,
+          title: args['title'] as String?,
         );
       },
     ),

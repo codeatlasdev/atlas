@@ -8,6 +8,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:xterm/xterm.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 
 /// Full-screen terminal view for a single PTY session.
@@ -16,10 +17,18 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 /// - Key bar sends raw escape sequences; never sends pty_resize.
 /// - Detaches from the PTY on dispose.
 class TerminalScreen extends ConsumerStatefulWidget {
-  const TerminalScreen({super.key, required this.device, required this.pty});
+  const TerminalScreen({
+    super.key,
+    required this.device,
+    required this.pty,
+    this.title,
+  });
 
   final MacDevice device;
   final String pty;
+
+  /// What the app bar shows until the program sets a title (never the pty id).
+  final String? title;
 
   @override
   ConsumerState<TerminalScreen> createState() => _TerminalScreenState();
@@ -29,6 +38,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   final Terminal _terminal = Terminal();
   final TerminalController _ctrl = TerminalController();
   StreamSubscription<Map<String, dynamic>>? _pushSub;
+
+  /// Output arrives in chunks that can split a UTF-8 character; decode as a stream
+  /// straight into the terminal.
+  late final _utf8 = const Utf8Decoder(allowMalformed: true)
+      .startChunkedConversion(_TerminalSink(_terminal));
 
   bool _writeEnabled = false;
   String _title = '';
@@ -41,17 +55,28 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _attach());
   }
 
+  /// The connection the pty is attached through.
+  Multiplexer? _mux;
+
   Future<void> _attach() async {
     final mux = await ref.read(
       connectionNotifierProvider(widget.device).future,
     );
     if (mux == null || !mounted) return;
-    await mux.call('pty_attach', {
+    _mux = mux;
+    // Listen first: hostd sends the replay before it answers pty_attach, so a
+    // listener added after the reply misses the whole screen (it showed blank).
+    _pushSub = mux.pushEvents.listen(_onPush);
+    final resp = await mux.call('pty_attach', {
       'pty': widget.pty,
       'replay': true,
       'output': true,
     });
-    _pushSub = mux.pushEvents.listen(_onPush);
+    if (resp['ok'] != true && mounted) {
+      _terminal.write(
+        '\x1b[31m${resp['error'] ?? 'could not attach'}\x1b[0m\r\n',
+      );
+    }
   }
 
   void _onPush(Map<String, dynamic> event) {
@@ -60,8 +85,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     switch (ev) {
       case 'pty_output':
       case 'pty_replay':
-        final bytes = base64.decode(event['data'] as String);
-        _terminal.write(String.fromCharCodes(bytes));
+        _utf8.add(base64.decode(event['data'] as String));
       case 'pty_title':
         if (mounted) setState(() => _title = event['title'] as String? ?? '');
       case 'pty_exit':
@@ -72,11 +96,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   @override
   void dispose() {
     _pushSub?.cancel();
-    // Fire-and-forget detach; ignore errors (connection may already be gone).
-    ref.read(connectionNotifierProvider(widget.device)).value?.call(
-      'pty_detach',
-      {'pty': widget.pty},
-    ).ignore();
+    // Fire-and-forget detach on the connection we attached through (`ref` is
+    // unusable here); errors mean the connection is already gone.
+    _mux?.call('pty_detach', {'pty': widget.pty}).ignore();
     _ctrl.dispose();
     super.dispose();
   }
@@ -86,29 +108,45 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       setState(() => _writeEnabled = false);
       return;
     }
-    final auth = LocalAuthentication();
     try {
-      final ok = await auth.authenticate(
-        localizedReason: 'Enable terminal write access',
+      final ok = await LocalAuthentication().authenticate(
+        localizedReason: 'Type into this terminal on your Mac',
       );
       if (ok && mounted) setState(() => _writeEnabled = true);
-    } catch (_) {
-      // Biometric not available — deny silently.
+    } catch (e) {
+      _toast('Face ID unavailable: $e');
     }
   }
 
-  void _sendRaw(String data) {
+  void _toast(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _sendRaw(String data) async {
     if (!_writeEnabled) return;
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    mux?.call('pty_write', {
+    if (mux == null) return _toast('Not connected to your Mac');
+    final resp = await mux.call('pty_write', {
       'pty': widget.pty,
       'data': base64.encode(utf8.encode(data)),
-    }).ignore();
+    });
+    if (resp['ok'] != true) {
+      final err = resp['error'] as String? ?? 'error';
+      _toast(
+        err.startsWith('forbidden')
+            ? 'This phone may not type in terminals. Allow it on your Mac (Devices).'
+            : err,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final titleStr = _title.isEmpty ? widget.pty : _title;
+    // Hold the connection open while this screen is up: a `read` alone lets the
+    // auto-dispose provider close it under us ("closed" on attach).
+    ref.watch(connectionNotifierProvider(widget.device));
+    final titleStr = _title.isNotEmpty ? _title : (widget.title ?? 'Terminal');
     return Scaffold(
       backgroundColor: atlasTerminalTheme.background,
       appBar: AppBar(
@@ -154,18 +192,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                 style: TextStyle(color: AtlasColors.of(context).muted),
               ),
             ),
-          AnimatedSize(
-            duration: Motion.normal,
-            curve: Motion.ease,
-            child: _writeEnabled && !_exited
-                ? _LineInput(onSubmit: (t) => _sendRaw('$t\r'))
-                : const SizedBox(width: double.infinity),
-          ),
-          _KeyBar(onKey: _sendRaw, enabled: _writeEnabled),
+          if (!_exited)
+            AnimatedSize(
+              duration: Motion.normal,
+              curve: Motion.ease,
+              child: _writeEnabled
+                  ? _LineInput(onSubmit: (t) => _sendRaw('$t\r'))
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonalIcon(
+                          onPressed: _toggleWrite,
+                          icon: const Icon(Icons.keyboard_rounded),
+                          label: const Text('Tap to type'),
+                        ),
+                      ),
+                    ),
+            ),
+          if (_writeEnabled && !_exited)
+            _KeyBar(onKey: _sendRaw, enabled: true),
         ],
       ),
     );
   }
+}
+
+/// Feeds decoded text into the terminal.
+class _TerminalSink implements Sink<String> {
+  _TerminalSink(this.terminal);
+  final Terminal terminal;
+  @override
+  void add(String s) => terminal.write(s);
+  @override
+  void close() {}
 }
 
 // ── Key bar ───────────────────────────────────────────────────────────────────

@@ -230,12 +230,10 @@ class _DemoComputer implements Transport {
           ],
         };
       case 'pty_attach':
+        // Same order as hostd (mobile/session.rs): the replay goes out before the
+        // reply, so a screen that listens only after attach returns sees nothing.
+        _replay(args['pty'] as String);
         data = {'pty': args['pty']};
-        // After the reply: the screen listens for pushes once attach returns.
-        _later(
-          const Duration(milliseconds: 150),
-          () => _replay(args['pty'] as String),
-        );
       case 'pty_write':
         final text = utf8.decode(base64.decode(args['data'] as String? ?? ''));
         _emit({

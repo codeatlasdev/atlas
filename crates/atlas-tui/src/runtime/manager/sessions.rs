@@ -1,7 +1,5 @@
 use std::process::Stdio;
 
-use tokio::process::Command;
-
 use super::actions::drain_pumps;
 use super::mobile::detect_mobile_phase;
 use super::types::ManagedSession;
@@ -70,13 +68,11 @@ impl ServiceManager {
             self.patch_ios_project_yml_path().await;
         }
 
-        let mut cmd = Command::new("sh");
-        cmd.args(["-c", &action.command])
-            .current_dir(&self.root_dir)
+        let mut cmd = crate::runtime::process::task_command(&action.command);
+        cmd.current_dir(&self.root_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0);
+            .stderr(Stdio::piped());
 
         // The user's login-shell env (a desktop launch has a bare PATH), then env_files on top.
         cmd.envs(atlas_core::login_env::vars());

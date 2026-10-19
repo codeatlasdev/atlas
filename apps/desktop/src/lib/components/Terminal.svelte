@@ -14,7 +14,11 @@
 	import { imeStagingKey, keepTextareaEmpty } from "#lib/xtermInput.ts";
 	import { isMac } from "#lib/lsp/navigation.ts";
 	import { copyText, keyAction } from "./terminal/clipboardKeys.ts";
+	import { browserFontEnv, usableFamilies } from "./terminal/xtermFont.ts";
 	import FindInput from "./FindInput.svelte";
+	import { IS_MAC, primaryKey } from "#lib/keys.ts";
+	import { xtermKey } from "#lib/termKeys.ts";
+	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
 
 	let {
 		pty,
@@ -40,6 +44,13 @@
 	let drawn = $state(false);
 	let searchOpen = $state(false);
 	let query = $state("");
+	/** Bumped when the webview finished loading fonts: the family list is resolved again and xterm re-measures. */
+	let fontsLoaded = $state(0);
+
+	/** The user's font list reduced to families the webview can draw fixed-pitch, ending with `monospace` (#68). */
+	function xtermFamily(css: string) {
+		return usableFamilies(css, browserFontEnv());
+	}
 
 	const CURSOR_STYLE = { block: "block", bar: "bar", underline: "underline", hollow: "block" } as const;
 
@@ -98,8 +109,9 @@
 	// `terminal.*` font and cursor settings apply live; the host refits to the new cell size.
 	$effect(() => {
 		const t = prefs.value.terminal;
+		void fontsLoaded;
 		if (!term) return;
-		term.options.fontFamily = t.font_family;
+		term.options.fontFamily = xtermFamily(t.font_family);
 		term.options.fontSize = t.font_size;
 		term.options.fontWeight = t.font_thicken ? 500 : "normal";
 		term.options.fontWeightBold = t.font_thicken ? 700 : "bold";
@@ -117,7 +129,7 @@
 		const t = new Terminal({
 			allowProposedApi: true,
 			scrollback: prefs.value.terminal.max_scroll_history_lines,
-			fontFamily: prefs.value.terminal.font_family,
+			fontFamily: xtermFamily(prefs.value.terminal.font_family),
 			fontSize: prefs.value.terminal.font_size,
 			fontWeight: prefs.value.terminal.font_thicken ? 500 : "normal",
 			fontWeightBold: prefs.value.terminal.font_thicken ? 700 : "bold",
@@ -135,7 +147,7 @@
 		t.loadAddon(search);
 		t.loadAddon(new Unicode11Addon());
 		t.unicode.activeVersion = "11";
-		t.loadAddon(new WebLinksAddon((ev, url) => onLink(url, ev.metaKey)));
+		t.loadAddon(new WebLinksAddon((ev, url) => onLink(url, primaryKey(ev))));
 		if (visible) loadWebgl(t);
 		t.open(el);
 		// `el` is laid out: fit now, not after the attach answers (that painted the first frames at 80x24, then reflowed).
@@ -161,20 +173,32 @@
 				return false;
 			}
 			if (e.type !== "keydown") return true;
-			if (e.metaKey && e.key === "f") {
-				searchOpen = true;
-				return false;
-			}
-			// Let app shortcuts (⌘T, ⌘W, ⌘\ …) reach the window handler.
-			if (e.metaKey) return false;
-			if (e.shiftKey && e.key === "Enter") {
-				void host.ptyWrite(pty, "\x1b[13;2u");
-				return false;
+			switch (xtermKey(e, t.hasSelection(), IS_MAC)) {
+				case "search":
+					searchOpen = true;
+					return false;
+				case "copy":
+					void navigator.clipboard.writeText(t.getSelection());
+					t.clearSelection();
+					e.preventDefault();
+					return false;
+				// The browser's own paste follows; xterm's paste handler sends the text.
+				case "paste":
+				// App shortcuts (⌘T, ⌘W, ⌘\ …; Ctrl+Shift+P, Ctrl+Tab … off macOS) reach the window handler.
+				case "app":
+					return false;
+				case "shiftEnter":
+					void host.ptyWrite(pty, "\x1b[13;2u");
+					return false;
 			}
 			return true;
 		});
 		const offs: (() => void)[] = [];
 		let alive = true;
+		// A webfont still loading was measured on its fallback: redo the list (and the cell) once they are ready.
+		void document.fonts?.ready.then(() => {
+			if (alive) fontsLoaded++;
+		});
 		// `terminal.copy_on_select`: selecting copies, as in the GPU terminal (the selection is not a DOM
 		// selection, so the webview never puts it on the clipboard by itself).
 		const sel = t.onSelectionChange(() => {
@@ -182,39 +206,32 @@
 				void copyText(t.getSelection());
 		});
 		offs.push(() => sel.dispose());
-		const pendingLive: Uint8Array[] = [];
-		let replayed = false;
-		listen<{ data: string; replay: boolean }>(`pty://${pty}`, (e) => {
-			const bytes = b64bytes(e.payload.data);
-			if (e.payload.replay) {
+		const stream = ptyStream({
+			listen: (f) => listen<PtyEvent>(`pty://${pty}`, (e) => f(e.payload)),
+			attach: () =>
+				host.ptyAttach(pty, true).then(() => {
+					fit?.fit();
+					return host.ptyResize(pty, t.cols, t.rows);
+				}),
+			decode: b64bytes,
+			write: (b, replay) => {
+				if (!replay) return t.write(b);
 				// Fresh buffer behind a hidden host: the reset's blank frame is never on screen.
-				drawn = false;
-				t.reset();
-				t.write(bytes, () => {
+				t.write(b, () => {
 					const render = t.onRender(() => {
 						render.dispose();
 						drawn = true;
 					});
 					t.refresh(0, t.rows - 1);
 				});
-				replayed = true;
-				pendingLive.splice(0).forEach((b) => t.write(b));
-			} else if (replayed) t.write(bytes);
-			else pendingLive.push(bytes);
-		}).then((u) => (alive ? offs.push(u) : u()));
-		const attach = () =>
-			host
-				.ptyAttach(pty, true)
-				.then(() => {
-					fit?.fit();
-					return host.ptyResize(pty, t.cols, t.rows);
-				})
-				.catch(() => {});
-		void attach();
-		listen("host://reconnected", () => {
-			replayed = false;
-			void attach();
-		}).then((u) => (alive ? offs.push(u) : u()));
+			},
+			reset: () => {
+				drawn = false;
+				t.reset();
+			},
+		});
+		offs.push(() => stream.dispose());
+		listen("host://reconnected", () => stream.reattach()).then((u) => (alive ? offs.push(u) : u()));
 		if (!readonly) t.onData((d) => void host.ptyWrite(pty, d).catch(() => {}));
 		let timer: number | undefined;
 		const ro = new ResizeObserver(() => {
@@ -230,6 +247,7 @@
 			alive = false;
 			input.stop();
 			ro.disconnect();
+			clearTimeout(timer);
 			offs.forEach((u) => u());
 			void host.ptyDetach(pty).catch(() => {});
 			t.dispose();

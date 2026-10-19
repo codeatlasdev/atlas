@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { kbd } from "#lib/keys.ts";
 	import { tick } from "svelte";
 	import {
 		ZoomIn,
@@ -177,7 +178,7 @@
 			{/snippet}
 		</Tip>
 		<span class="sep"></span>
-		<Tip label="Find  ⌘F" side="top">
+		<Tip label={`Find  ${kbd("cmd-f")}`} side="top">
 			{#snippet child(props)}
 				<button {...props} aria-label="Find" onclick={openFind}><Search size={14} /></button>
 			{/snippet}

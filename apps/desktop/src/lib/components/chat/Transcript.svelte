@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** The chat transcript: user/assistant/note/error messages, folded thinking and tool calls, ask prompts. */
 	import { tick } from "svelte";
+	import { primaryKey } from "#lib/keys.ts";
 	import { Spinner } from "@codeatlasdev/ui";
 	import { ChevronDown, ChevronRight, Wrench } from "@lucide/svelte";
 	import { marked } from "marked";
@@ -87,7 +88,7 @@
 				<ChatTextarea
 					placeholder={u.placeholder ?? ""}
 					onkeydown={(e) => {
-						if (e.key === "Enter" && (e.metaKey || u.method === "input")) {
+						if (e.key === "Enter" && (primaryKey(e) || u.method === "input")) {
 							e.preventDefault();
 							onanswer(u, e.currentTarget.value);
 						}

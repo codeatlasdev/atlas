@@ -1,8 +1,8 @@
 /// Expand a leading `~/` to the user's home directory.
 pub fn expand_tilde(path: &str) -> String {
     if path.starts_with("~/") {
-        let home = std::env::var("HOME").unwrap_or_default();
-        format!("{}{}", home, &path[1..])
+        let home = crate::paths::home_dir();
+        format!("{}{}", home.display(), &path[1..])
     } else {
         path.to_string()
     }
@@ -24,8 +24,10 @@ mod tests {
 
     #[test]
     fn test_expand_tilde() {
-        unsafe { std::env::set_var("HOME", "/home/dev") };
-        assert_eq!(expand_tilde("~/foo"), "/home/dev/foo");
+        // An absolute home on this OS (`C:\…` on Windows, where `/home/dev` is not absolute).
+        let home = std::env::temp_dir().join("home-dev");
+        unsafe { std::env::set_var("HOME", &home) };
+        assert_eq!(expand_tilde("~/foo"), format!("{}/foo", home.display()));
         assert_eq!(expand_tilde("/absolute"), "/absolute");
         assert_eq!(expand_tilde("relative"), "relative");
     }

@@ -1,6 +1,9 @@
 //! Manager behavior against a fake language server process: sharing, refcount, idle
 //! shutdown, crash restart, sync modes, cancel, applyEdit, shutdown cleanup.
 
+// The fake server is launched through `/bin/sh -c` (it sets the fake's env per test).
+#![cfg(unix)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

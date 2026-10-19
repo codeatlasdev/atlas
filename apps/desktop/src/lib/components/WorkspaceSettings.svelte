@@ -2,6 +2,13 @@
 	import { Button, SegmentedControl, Spinner, Switch, toast } from "@codeatlasdev/ui";
 	import { onMount } from "svelte";
 	import { api, errText, type WorktreeStats } from "#lib/api.ts";
+	import {
+		cleanupPrefs,
+		restorable,
+		type Cleaned,
+		type CleanupMode,
+		type CleanupPrefs,
+	} from "#lib/stores/autoCleanup.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
@@ -17,6 +24,8 @@
 	let stats = $state<Record<string, WorktreeStats | "loading">>({});
 	let picked = $state<Record<string, boolean>>({});
 	let linked = $derived(store.projects.filter((p) => p.parent));
+	let auto = $state<CleanupPrefs>({ mode: "off", days: 14 });
+	let cleaned = $state<Cleaned[]>([]);
 
 	onMount(async () => {
 		const s = await api.settings();
@@ -24,7 +33,16 @@
 		branchPrefix = (s.branchPrefix as string) ?? "git-username";
 		branchPrefixCustom = (s.branchPrefixCustom as string) ?? "";
 		nest = s.nestWorkspaces !== "false";
+		auto = cleanupPrefs(s);
+		cleaned = restorable(s.cleanedWorktrees, Date.now());
 	});
+
+	async function restore(c: Cleaned) {
+		// Drop the entry only once the worktree exists again: a failed create keeps the branch reachable from here.
+		if (!(await worktrees.create({ repoId: c.repoId, name: c.name, branch: c.branch }))) return;
+		cleaned = cleaned.filter((x) => x !== c);
+		save({ cleanedWorktrees: cleaned.length ? cleaned : null });
+	}
 
 	function save(patch: Record<string, unknown>) {
 		api.settingsPatch(patch).catch((e) => toast.error(errText(e)));
@@ -129,6 +147,49 @@
 			/>
 		</Row>
 	{/if}
+</Group>
+
+<Group
+	title="Auto clean up"
+	description="Atlas never removes a worktree with unsaved changes or commits that are not on a remote, and keeps its branch."
+>
+	<Row
+		id="ws-autoclean"
+		label="Remove worktrees automatically"
+		description="Checked every 15 minutes. Pinned worktrees and the one you are viewing are skipped."
+	>
+		<SegmentedControl
+			aria-label="Remove worktrees automatically"
+			size="sm"
+			value={auto.mode}
+			items={[
+				{ value: "off", label: "Off" },
+				{ value: "merged", label: "PR merged" },
+				{ value: "idle", label: "Idle" },
+			]}
+			onchange={(v) => {
+				auto.mode = v as CleanupMode;
+				save({ autoCleanup: v === "off" ? null : v });
+			}}
+		/>
+	</Row>
+	{#if auto.mode === "idle"}
+		<Row label="Idle for (days)" description="Days without agent activity before a worktree is removed.">
+			<TextInput
+				label="Idle for (days)"
+				value={String(auto.days)}
+				onchange={(v) => {
+					auto = cleanupPrefs({ autoCleanup: auto.mode, autoCleanupDays: v });
+					save({ autoCleanupDays: auto.days });
+				}}
+			/>
+		</Row>
+	{/if}
+	{#each cleaned as c (c.at + c.name)}
+		<Row label={c.name} description={`Cleaned ${ago(c.at)}; branch ${c.branch} kept.`}>
+			<Button size="sm" variant="glass" onclick={() => restore(c)}>Restore</Button>
+		</Row>
+	{/each}
 </Group>
 
 <Group

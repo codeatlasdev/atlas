@@ -807,6 +807,8 @@ plain line, nothing to hide: terminal 3 exited with code 0";
     /// The machine facts a maintainer needs to diagnose a user's install remotely, with the home
     /// directory collapsed: which bundle runs, where the app and CLI are installed, whether macOS
     /// quarantined or translocated the app, and whether the CLI is a dev symlink.
+    // macOS bundle paths, quarantine and translocation.
+    #[cfg(unix)]
     #[test]
     fn install_facts_name_the_paths_and_flag_translocation_and_quarantine() {
         let home = dirs::home_dir().unwrap();

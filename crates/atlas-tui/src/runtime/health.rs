@@ -82,9 +82,16 @@ pub async fn wait_port_free(host: &str, port: u16, timeout: Duration) -> bool {
 }
 
 pub async fn check_process_alive(pid: u32) -> bool {
-    use nix::sys::signal;
-    use nix::unistd::Pid;
-    signal::kill(Pid::from_raw(pid as i32), None).is_ok()
+    #[cfg(unix)]
+    {
+        use nix::sys::signal;
+        use nix::unistd::Pid;
+        signal::kill(Pid::from_raw(pid as i32), None).is_ok()
+    }
+    #[cfg(windows)]
+    {
+        atlas_core::sys::pid_alive(pid)
+    }
 }
 
 #[cfg(test)]

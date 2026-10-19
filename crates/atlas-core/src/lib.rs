@@ -3,8 +3,10 @@ pub mod crash;
 pub mod domain;
 pub mod error;
 pub mod github;
+pub mod ipc;
 pub mod login_env;
 pub mod paths;
+pub mod sys;
 pub mod util;
 
 pub use error::AtlasError;

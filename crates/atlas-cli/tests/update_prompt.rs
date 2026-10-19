@@ -3,6 +3,9 @@
 //! ~/.atlas is never touched) and `curl` is shadowed by a stub that always fails, so there is
 //! no network and no download. Needs python3 (stdlib `pty`).
 
+// The fixtures are sh scripts and Unix sockets.
+#![cfg(unix)]
+
 use std::path::PathBuf;
 use std::process::Command;
 

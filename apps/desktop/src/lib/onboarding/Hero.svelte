@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { kbd } from "#lib/keys.ts";
 	/**
 	 * The welcome screen: one sky, one action per phase. Used full-screen on first run and as the standing empty
 	 * state when there is no project. The copy and the controls change with the phase; the sky stays.
@@ -257,7 +258,7 @@
 	<div class="check" aria-hidden="true"><Check size={26} /></div>
 	<h1>Your stack is up.</h1>
 	<p class="lead">
-		{plural(w.started.total, "service")} running. Press <Kbd>⌘K</Kbd> to jump anywhere.
+		{plural(w.started.total, "service")} running. Press <Kbd>{kbd("cmd-k")}</Kbd> to jump anywhere.
 	</p>
 	<div class="actions">
 		<Button size="lg" data-testid={ACTIONS.finish} onclick={onfinish}>

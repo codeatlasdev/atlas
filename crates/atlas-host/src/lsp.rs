@@ -170,7 +170,8 @@ pub(crate) async fn pump(hub: Weak<Hub>, mut rx: mpsc::Receiver<Push>) {
     }
 }
 
-#[cfg(test)]
+// The fake server is a shell script.
+#[cfg(all(test, unix))]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::time::Duration;

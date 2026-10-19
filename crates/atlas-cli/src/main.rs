@@ -126,6 +126,7 @@ async fn run() -> Result<()> {
     // Rust ignores SIGPIPE, so `atlas version | head` panics on the closed pipe. Short-lived
     // commands get the Unix default and end quietly; the socket servers (`dev`, `hostd`) keep
     // ignoring it so a client that hangs up is an EPIPE error, never a dead daemon.
+    #[cfg(unix)]
     if !matches!(cli.command, Commands::Dev(_) | Commands::Hostd(_)) {
         // SAFETY: before any thread is spawned or anything is written.
         unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };

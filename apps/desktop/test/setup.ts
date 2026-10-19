@@ -9,6 +9,9 @@ import { plugin } from "bun";
 import { compile, compileModule } from "svelte/compiler";
 
 GlobalRegistrator.register();
+// The suite is written against the macOS app (⌘ shortcuts, glyph labels); happy-dom reports an X11/Win32 platform.
+// Platform-specific code takes the platform as a parameter and its Windows/Linux branches are tested explicitly.
+Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
 
 // The kit's layers are `popover` elements (and `<dialog>`s): happy-dom has no Popover API, so this stands in for the
 // part the kit calls (`showPopover`, `hidePopover`, `:popover-open`). A real browser provides all of it.

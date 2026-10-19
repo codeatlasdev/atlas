@@ -1,4 +1,6 @@
 //! Atlas Desktop: native client of the `atlas dev` runners.
+// A release build is a GUI app on Windows: no console window next to it.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agent;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -13,6 +15,7 @@ mod browser_keys;
 mod browser_keys_mac;
 mod capture;
 mod cmds;
+mod commit_msg;
 mod ctl;
 #[cfg(debug_assertions)]
 mod debug;
@@ -22,6 +25,7 @@ mod diag;
 #[cfg(target_os = "macos")]
 mod display_mac;
 mod git;
+mod git_branch;
 mod host;
 mod lifecycle;
 mod live;
@@ -121,6 +125,8 @@ macro_rules! handlers {
             cmds::projects_remove_missing,
             cmds::projects_find_moved,
             cmds::project_init,
+            cmds::project_probe,
+            cmds::project_init_preview,
             cmds::stack_start,
             cmds::stack_stop,
             cmds::service_cmd,
@@ -169,6 +175,7 @@ macro_rules! handlers {
             workspace::workspace_save,
             worktree::worktree_create,
             worktree::worktree_remove,
+            worktree::worktree_auto_remove,
             worktree::git_refs,
             worktree::worktrees_import,
             worktree::worktree_stats,
@@ -176,6 +183,11 @@ macro_rules! handlers {
             git::git_status,
             git::git_run,
             git::git_files,
+            commit_msg::commit_msg_provider,
+            commit_msg::commit_msg_generate,
+            commit_msg::commit_msg_cancel,
+            git_branch::git_branches,
+            git_branch::git_switch,
             ctl::ctl_reply,
             remote::ssh_config_hosts,
             remote::ssh_status,
@@ -329,7 +341,27 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Windows: a relaunch after an update (`updates::relaunch`) starts us while the old process is
+/// still exiting; wait for it so the control socket and the window state are free.
+#[cfg(windows)]
+fn wait_for_predecessor() {
+    let Some(pid) = std::env::var("ATLAS_RELAUNCH_WAIT_PID")
+        .ok()
+        .and_then(|p| p.parse::<u32>().ok())
+    else {
+        return;
+    };
+    for _ in 0..100 {
+        if !atlas_core::sys::pid_alive(pid) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    wait_for_predecessor();
     diag::install_panic_hook();
     boot::start();
     boot::mark("main");
@@ -370,6 +402,7 @@ fn main() {
             app.manage(servers);
             app.manage(std::sync::Arc::new(host::HostHub::default()));
             host::start(&handle);
+            app.manage(commit_msg::Runs::default());
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
             ctl::start(&handle);

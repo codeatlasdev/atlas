@@ -2,6 +2,7 @@
 //! post-exit update requested from the TUI's "update when you quit" modal.
 
 use std::io::{BufRead, IsTerminal, Write};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::time::Duration;
 
@@ -119,7 +120,14 @@ fn reexec() -> std::io::Error {
     cmd.args(std::env::args_os().skip(1));
     // The re-exec'd process must not prompt again if the update somehow did not stick.
     cmd.env("ATLAS_NO_UPDATE_PROMPT", "1");
-    cmd.exec()
+    #[cfg(unix)]
+    return cmd.exec();
+    // No exec on Windows: run the new binary in this console and leave with its exit code.
+    #[cfg(windows)]
+    match cmd.status() {
+        Ok(st) => std::process::exit(st.code().unwrap_or(1)),
+        Err(e) => e,
+    }
 }
 
 /// What the prompt flow did, for the caller to continue or stop.

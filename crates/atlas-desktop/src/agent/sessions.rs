@@ -192,7 +192,85 @@ pub struct Port {
     command: String,
 }
 
+/// Every pid in the process trees rooted at `roots` (Toolhelp snapshot).
+#[cfg(windows)]
+fn descendants(roots: &[u32]) -> Vec<u32> {
+    let rows = atlas_core::sys::process_rows();
+    let mut all = roots.to_vec();
+    for &r in roots {
+        all.extend(atlas_core::sys::descendants(r, &rows));
+    }
+    all
+}
+
+/// `(port, pid)` of every listening TCP socket in `netstat -ano` output (IPv4 and IPv6).
+#[cfg_attr(unix, allow(dead_code))]
+fn parse_netstat(text: &str) -> Vec<(u16, u32)> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            match f.as_slice() {
+                [proto, local, _remote, state, pid]
+                    if proto.eq_ignore_ascii_case("TCP") && *state == "LISTENING" =>
+                {
+                    Some((local.rsplit(':').next()?.parse().ok()?, pid.parse().ok()?))
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// TCP ports listened on by the given terminals' process trees.
+#[cfg(windows)]
+#[tauri::command]
+pub async fn listening_ports(pids: Vec<u32>) -> Vec<Port> {
+    use atlas_core::sys::CommandExt as _;
+    tauri::async_runtime::spawn_blocking(move || {
+        let tree = descendants(&pids);
+        let Ok(out) = std::process::Command::new("netstat")
+            .args(["-ano", "-p", "TCP"])
+            .no_window()
+            .output()
+        else {
+            return Vec::new();
+        };
+        let v6 = std::process::Command::new("netstat")
+            .args(["-ano", "-p", "TCPv6"])
+            .no_window()
+            .output()
+            .map(|o| o.stdout)
+            .unwrap_or_default();
+        let text = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&v6)
+        );
+        let rows = atlas_core::sys::process_rows();
+        let mut ports: Vec<Port> = Vec::new();
+        for (port, pid) in parse_netstat(&text) {
+            if tree.contains(&pid) && !ports.iter().any(|x| x.port == port) {
+                let exe = rows
+                    .iter()
+                    .find(|r| r.pid == pid)
+                    .map(|r| r.exe.clone())
+                    .unwrap_or_default();
+                ports.push(Port {
+                    port,
+                    pid,
+                    command: exe.strip_suffix(".exe").map(str::to_string).unwrap_or(exe),
+                });
+            }
+        }
+        ports.sort_by_key(|p| p.port);
+        ports
+    })
+    .await
+    .unwrap_or_default()
+}
+
 /// Every pid in the process trees rooted at `roots` (via `ps -axo pid,ppid`).
+#[cfg(unix)]
 fn descendants(roots: &[u32]) -> Vec<u32> {
     let Ok(out) = std::process::Command::new("ps")
         .args(["-axo", "pid=,ppid="])
@@ -223,6 +301,7 @@ fn descendants(roots: &[u32]) -> Vec<u32> {
 }
 
 /// TCP ports listened on by the given terminals' process trees.
+#[cfg(unix)]
 #[tauri::command]
 pub async fn listening_ports(pids: Vec<u32>) -> Vec<Port> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -258,4 +337,21 @@ pub async fn listening_ports(pids: Vec<u32>) -> Vec<Port> {
     })
     .await
     .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_netstat;
+
+    /// Windows `netstat -ano` rows: only listening TCP sockets count, IPv4 and IPv6 alike.
+    #[test]
+    fn netstat_rows_give_listening_ports_with_their_pids() {
+        let text = "\r\nActive Connections\r\n\r\n  Proto  Local Address          Foreign Address        State           PID\r\n\
+  TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       4242\r\n\
+  TCP    127.0.0.1:5173         127.0.0.1:61000        ESTABLISHED     4242\r\n\
+  TCP    [::]:8080              [::]:0                 LISTENING       77\r\n\
+  UDP    0.0.0.0:5353           *:*                                    9\r\n";
+        assert_eq!(parse_netstat(text), [(3000, 4242), (8080, 77)]);
+        assert!(parse_netstat("").is_empty());
+    }
 }

@@ -3,11 +3,14 @@ use anyhow::Result;
 pub mod config;
 pub mod deploy;
 pub mod desktop;
+#[cfg(unix)]
 pub mod desktop_agent;
 pub mod desktop_capture;
 pub mod desktop_debug;
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub(crate) mod desktop_linux;
+#[cfg(windows)]
+pub(crate) mod desktop_windows;
 pub mod dev;
 pub mod down;
 pub mod hook;

@@ -146,7 +146,8 @@ pub fn pixel_size(logical: (f64, f64), scale: f64) -> (u32, u32) {
     (even(logical.0), even(logical.1))
 }
 
-#[cfg(test)]
+// Unix absolute paths (`/tmp/…`): capture is for the macOS app.
+#[cfg(all(test, unix))]
 mod tests {
     #[test]
     fn an_unfocused_window_caps_the_page_content_at_30_and_a_key_window_does_not() {

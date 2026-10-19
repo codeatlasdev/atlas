@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { kbd, modClick } from "#lib/keys.ts";
 	import { Kbd, Spinner } from "@codeatlasdev/ui";
 
 	let {
@@ -25,9 +26,9 @@
 	{#if warns}<span class="w">{warns.toLocaleString()} warnings</span>{/if}
 	{#if filtering}<span class="busy"><Spinner size={11} label="Working" /> filtering…</span>{/if}
 	<span class="hint"
-		><Kbd>⌘F</Kbd> find · <Kbd>e</Kbd>
-		<Kbd>w</Kbd> next error / warn · <Kbd>⌘</Kbd>-click links ·
-		<Kbd>⌘L</Kbd> logs</span
+		><Kbd>{kbd("cmd-f")}</Kbd> find · <Kbd>e</Kbd>
+		<Kbd>w</Kbd> next error / warn · {modClick()} links ·
+		<Kbd>{kbd("cmd-l")}</Kbd> logs</span
 	>
 </div>
 

@@ -22,6 +22,9 @@ use crate::channel::{self, Channel};
 
 pub const MISSING: &str = "curl not found — install it and try again";
 
+/// Where curl discards a body (`-o`): Windows has no `/dev/null`.
+const NULL_DEVICE: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
+
 #[derive(Debug, Error)]
 pub enum GithubError {
     #[error("{MISSING}")]
@@ -75,7 +78,7 @@ fn run(mut cmd: Command) -> Result<Vec<u8>, GithubError> {
 /// only [`stable_tag`] turns it into one.
 fn latest_tag(repo: &str) -> Result<String, GithubError> {
     let mut c = curl();
-    c.args(["-o", "/dev/null", "-w", "%{redirect_url}"])
+    c.args(["-o", NULL_DEVICE, "-w", "%{redirect_url}"])
         .arg(format!("https://github.com/{repo}/releases/latest"));
     let url = String::from_utf8_lossy(&run(c)?).trim().to_string();
     url.rsplit_once("/releases/tag/")
@@ -435,7 +438,7 @@ fn content_length(url: &str) -> Option<u64> {
         "-L",
         "-I",
         "-o",
-        "/dev/null",
+        NULL_DEVICE,
         "-w",
         "%header{content-length}",
     ])
@@ -656,12 +659,15 @@ mod tests {
         assert_eq!(r.url, "https://github.com/o/r/releases/tag/v1.4.0-alpha.2");
     }
 
+    #[cfg(unix)]
     fn sh(script: &str) -> Command {
         let mut c = Command::new("sh");
         c.args(["-c", script]);
         c
     }
 
+    // The fake download is a POSIX sh script.
+    #[cfg(unix)]
     #[test]
     fn watch_reports_growth_then_the_final_size() {
         let dir = tempfile::tempdir().unwrap();
@@ -692,6 +698,7 @@ mod tests {
         assert_eq!(seen.last(), Some(&(12, 12)));
     }
 
+    #[cfg(unix)]
     #[test]
     fn watch_total_follows_the_file_when_the_size_was_unknown() {
         let dir = tempfile::tempdir().unwrap();
@@ -711,6 +718,7 @@ mod tests {
         assert_eq!(last, (5, 5));
     }
 
+    #[cfg(unix)]
     #[test]
     fn watch_failure_carries_the_commands_stderr() {
         let dir = tempfile::tempdir().unwrap();

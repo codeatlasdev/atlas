@@ -279,7 +279,7 @@ pub(super) async fn create(
 
     let setup = wcfg.setup.filter(|_| args.run_setup).map(|cmd| {
         json!({
-            "argv": ["sh", "-c", cmd],
+            "argv": super::exec::shell_argv(&host, &cmd),
             "env": hook_env(&root, &real, &s, offset),
         })
     });
@@ -288,6 +288,38 @@ pub(super) async fn create(
                      "portOffset": offset, "repoId": repo.id, "name": s, "linkedPr": args.pr},
         "setup": setup,
     }))
+}
+
+/// Windows, local checkout: what the POSIX `share` script does, natively. A directory is linked
+/// (a symlink when Developer Mode allows one, else a junction, which needs no rights); a file is
+/// copied; nothing happens when the source is missing or the target exists.
+#[cfg(windows)]
+fn share_local(src: &Path, dst: &Path) -> std::io::Result<()> {
+    use atlas_core::sys::CommandExt as _;
+    use std::os::windows::process::CommandExt as _;
+    if !src.exists() || dst.symlink_metadata().is_ok() {
+        return Ok(());
+    }
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if !src.is_dir() {
+        return std::fs::copy(src, dst).map(|_| ());
+    }
+    if std::os::windows::fs::symlink_dir(src, dst).is_ok() {
+        return Ok(());
+    }
+    let win = |p: &Path| p.to_string_lossy().replace('/', "\\");
+    let st = std::process::Command::new("cmd.exe")
+        .raw_arg(format!("/d /c mklink /J \"{}\" \"{}\"", win(dst), win(src)))
+        .no_window()
+        .stdout(std::process::Stdio::null())
+        .status()?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("mklink /J failed"))
+    }
 }
 
 pub(super) fn hook_env(root: &Path, wt: &Path, name: &str, offset: u16) -> Value {
@@ -307,6 +339,10 @@ async fn share(hub: &HostHub, host: &str, root: &Path, wt: &Path, rel: &str) -> 
         ));
     }
     let (src, dst) = (root.join(rel), wt.join(rel));
+    #[cfg(windows)]
+    if host == crate::host::LOCAL {
+        return share_local(&src, &dst).map_err(|e| format!("{rel}: {e}"));
+    }
     // Positional args keep paths out of the shell string.
     let script = r#"[ -e "$1" ] || exit 0; [ -e "$2" ] && exit 0; mkdir -p "$(dirname "$2")"; if [ -d "$1" ]; then ln -s "$1" "$2"; else cp "$1" "$2"; fi"#;
     let (s, d) = (src.to_string_lossy(), dst.to_string_lossy());

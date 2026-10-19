@@ -84,6 +84,23 @@ jobs:
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
 
+  # Windows: the whole workspace, Atlas Desktop included (WebView2, xterm.js terminals over ConPTY),
+  # and the Windows end-to-end hostd test (named pipe, ConPTY, cmd.exe). No Unix tools assumed.
+  rust-windows:
+    name: Rust (Windows, full workspace)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-gate
+        with:
+          tests: ${{ needs.plan.outputs.tested != 'true' }}
+
   frontend:
     name: Desktop frontend + skills
     needs: plan
@@ -227,7 +244,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, frontend, mobile, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, rust-windows, frontend, mobile, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

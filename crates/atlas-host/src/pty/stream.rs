@@ -12,7 +12,7 @@ use serde_json::json;
 use tokio::sync::mpsc;
 
 use super::master::Waiter;
-use super::title::TitleParser;
+use super::title::{TitleParser, shown};
 use super::{Buf, RING_MAX, RawOut, Session, bin_path, open_append};
 
 const RING_DROP: usize = 64 * 1024;
@@ -22,6 +22,25 @@ const COALESCE_BYTES: usize = 64 * 1024;
 /// A raw reader that accepts nothing for this long is dropped (hung client): the
 /// program must not freeze behind it.
 const RAW_STALL: Duration = Duration::from_secs(2);
+/// At most one `pty_activity` per interval while a program prints (#56: working/idle of agents without hooks).
+pub(super) const ACTIVITY_EVERY: Duration = Duration::from_secs(1);
+
+/// Throttle of `pty_activity`, one per coalescer.
+#[derive(Default)]
+pub(super) struct Activity {
+    last: Option<std::time::Instant>,
+}
+
+impl Activity {
+    /// True when output at `now` should be reported.
+    pub(super) fn due(&mut self, now: std::time::Instant) -> bool {
+        if self.last.is_some_and(|l| now < l + ACTIVITY_EVERY) {
+            return false;
+        }
+        self.last = Some(now);
+        true
+    }
+}
 
 enum Msg {
     Data(Vec<u8>),
@@ -38,11 +57,14 @@ impl Session {
         // pty buffer fills, and the program waits.
         let (tx, rx) = mpsc::channel::<Msg>(64);
         // Pollable pty master (not pipe mode): lets `freeze` interrupt a blocked read.
+        #[cfg(unix)]
         let poll_fd = self
             .io
             .lock()
             .as_ref()
             .and_then(|io| io.master.as_ref()?.raw_fd());
+        #[cfg(windows)]
+        let (poll_fd, wait) = (None, self.close_console_on_exit(wait));
         let stop = self.stop.clone();
         std::thread::spawn(move || read_loop(reader, wait, poll_fd, &stop, &tx));
         tokio::spawn(self.clone().coalesce(rx));
@@ -50,6 +72,13 @@ impl Session {
 
     async fn coalesce(self: Arc<Self>, mut rx: mpsc::Receiver<Msg>) {
         let mut title = TitleParser::default();
+        let mut activity = Activity::default();
+        let mut startup_query = cfg!(windows)
+            && self
+                .io
+                .lock()
+                .as_ref()
+                .is_some_and(|io| io.master.is_some());
         while let Some(msg) = rx.recv().await {
             let mut pending = match msg {
                 Msg::Data(d) => d,
@@ -79,8 +108,16 @@ impl Session {
                     Ok(None) | Err(_) => break,
                 }
             }
+            if startup_query {
+                startup_query = false;
+                self.answer_startup_query(&mut pending);
+            }
             if let Some(t) = title.feed(&pending) {
-                self.set_title(t);
+                self.set_title(shown(t));
+            }
+            if !pending.is_empty() && activity.due(std::time::Instant::now()) {
+                let line = json!({"ev": "pty_activity", "pty": self.id}).to_string();
+                self.buf.lock().notify(&line);
             }
             for (conn, out) in self.output(&pending) {
                 if !send_raw(&out, &pending).await {
@@ -95,6 +132,19 @@ impl Session {
                 self.ack_frozen();
                 return;
             }
+        }
+    }
+
+    /// ConPTY opens by asking the terminal where the cursor is (`ESC [ 6 n`) and holds the
+    /// program until it hears back. hostd answers for the fresh console (row 1, column 1) and
+    /// keeps the query from the terminals: a session nobody watches yet still starts, and a
+    /// watching terminal does not answer a second time (its reply would reach the shell as
+    /// typed text). Only the first output is looked at; later queries belong to programs.
+    fn answer_startup_query(&self, first: &mut Vec<u8>) {
+        const DSR: &[u8] = b"[6n";
+        if let Some(i) = first.windows(DSR.len()).position(|w| w == DSR) {
+            first.drain(i..i + DSR.len());
+            let _ = self.write(b"[1;1R");
         }
     }
 
@@ -141,6 +191,35 @@ impl Session {
         self.buf.lock().notify(&line);
     }
 
+    /// ConPTY keeps the output pipe open after the child exits until the pseudo console is
+    /// closed, so the reader would never see EOF. Wait for the child on its own thread, then drop
+    /// the master (closing the console flushes the last output and ends the pipe); the reader
+    /// collects the code after its EOF.
+    #[cfg(windows)]
+    fn close_console_on_exit(self: &Arc<Self>, wait: Waiter) -> Waiter {
+        if self
+            .io
+            .lock()
+            .as_ref()
+            .and_then(|io| io.master.as_ref())
+            .is_none()
+        {
+            // Pipe mode: stdout ends with the child.
+            return wait;
+        }
+        let (ctx, crx) = std::sync::mpsc::channel();
+        let me = Arc::downgrade(self);
+        std::thread::spawn(move || {
+            let code = wait();
+            let master = me
+                .upgrade()
+                .and_then(|s| s.io.lock().as_mut().and_then(|io| io.master.take()));
+            drop(master);
+            let _ = ctx.send(code);
+        });
+        Box::new(move || crx.recv().ok().flatten())
+    }
+
     fn finish(&self, code: Option<i32>) {
         *self.exited.lock() = Some(code);
         self.io.lock().take();
@@ -152,10 +231,16 @@ impl Session {
 }
 
 /// Blocking half of the pipeline: read the pty (or pipe) until EOF/`stop`, then reap.
+#[cfg(unix)]
+type PollFd = std::os::fd::RawFd;
+/// No pollable handle on Windows: a read is only interrupted by the console closing.
+#[cfg(windows)]
+type PollFd = ();
+
 fn read_loop(
     mut reader: Box<dyn Read + Send>,
     wait: Waiter,
-    poll_fd: Option<std::os::fd::RawFd>,
+    poll_fd: Option<PollFd>,
     stop: &std::sync::atomic::AtomicBool,
     tx: &mpsc::Sender<Msg>,
 ) {
@@ -165,6 +250,7 @@ fn read_loop(
             let _ = tx.blocking_send(Msg::Frozen);
             return;
         }
+        #[cfg(unix)]
         if let Some(fd) = poll_fd {
             let mut p = libc::pollfd {
                 fd,
@@ -180,6 +266,8 @@ fn read_loop(
                 continue;
             }
         }
+        #[cfg(windows)]
+        let _ = poll_fd;
         match reader.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(n) => {

@@ -4,9 +4,9 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::sig::Signal;
 use anyhow::Result;
 use tokio::signal;
-use tokio::signal::unix::{Signal, SignalKind};
 use tokio::sync::mpsc;
 
 use super::{Hub, RunKind};
@@ -32,10 +32,7 @@ pub(crate) fn lock_or_err(root_dir: &Path) -> Result<SingletonLock> {
 }
 
 pub(crate) fn term_signals() -> Result<(Signal, Signal)> {
-    Ok((
-        signal::unix::signal(SignalKind::terminate())?,
-        signal::unix::signal(SignalKind::hangup())?,
-    ))
+    Ok((crate::sig::terminate()?, crate::sig::hangup()?))
 }
 
 /// Same `pre_command` staleness logic as the TUI, but before any service starts.

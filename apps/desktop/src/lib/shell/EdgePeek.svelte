@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import { peek } from "#lib/stores/docks.svelte.ts";
+	import { pushZones } from "#lib/shell/nativeSwipe.ts";
 	import {
 		CLOSE_DELAY,
 		OPEN_DELAY,
@@ -55,6 +56,10 @@
 			// Native views (browser, terminal) cannot be covered by CSS: `watchSlot` sees this flip and parks them.
 			panel.dataset.state = on ? "open" : "closed";
 		}
+		// The sidebar inside this panel is a swipe zone only while the panel is open (`rectOf` skips `[inert]`), and a
+		// transform flip fires no resize: tell the engine now (inert flipped) and again once the slide has settled
+		// (`ontransitionend`, below), when the panel is at its resting rect. Trailing, once per open/close, never per move.
+		pushZones(true);
 	}
 
 	/** Grace-delayed close; a menu or dialog opened from the panel lives in a portal, so wait for it. */
@@ -135,6 +140,7 @@
 	aria-label={label}
 	aria-hidden="true"
 	inert
+	ontransitionend={(e) => e.target === e.currentTarget && e.propertyName === "transform" && pushZones(true)}
 >
 	<div class="peek-glass" aria-hidden="true"></div>
 	<div class="peek-body">

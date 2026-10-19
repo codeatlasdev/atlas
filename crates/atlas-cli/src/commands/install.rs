@@ -23,10 +23,9 @@ impl AtlasCommand for InstallArgs {
 pub async fn handle(dir: Option<String>) -> Result<()> {
     let install_dir = match dir {
         Some(d) => PathBuf::from(expand_tilde(&d)),
-        None => {
-            let home = std::env::var("HOME").context("$HOME not set")?;
-            PathBuf::from(home).join(INSTALL_DIR)
-        }
+        None => dirs::home_dir()
+            .context("no home directory")?
+            .join(INSTALL_DIR),
     };
 
     println!("\x1b[1;34m◆\x1b[0m Atlas installer");
@@ -40,7 +39,7 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
     std::fs::create_dir_all(&install_dir)
         .with_context(|| format!("Could not create {}", install_dir.display()))?;
 
-    let dest = install_dir.join("atlas");
+    let dest = install_dir.join(atlas_core::paths::exe("atlas"));
     let tmp = install_dir.join(".atlas-install-tmp");
     std::fs::copy(&current_exe, &tmp)
         .with_context(|| format!("Could not copy binary to {}", tmp.display()))?;
@@ -51,18 +50,33 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
     }
 
+    // Windows: a running `atlas.exe` (hostd, a dev session) cannot be replaced, only moved aside.
+    #[cfg(windows)]
+    if dest.exists() {
+        let _ = std::fs::rename(
+            &dest,
+            install_dir.join(format!(".atlas-old-{}.exe", std::process::id())),
+        );
+    }
     std::fs::rename(&tmp, &dest)
         .with_context(|| format!("Could not install to {}", dest.display()))?;
 
     println!("\x1b[32m✓\x1b[0m Installed → {}", dest.display());
 
-    let already_in_path = std::env::var("PATH")
-        .unwrap_or_default()
-        .split(':')
-        .any(|p| Path::new(&p) == install_dir.as_path());
+    let already_in_path = std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|p| p == install_dir));
 
     if already_in_path {
         println!("\x1b[32m✓\x1b[0m Already in PATH");
+    } else if cfg!(windows) {
+        #[cfg(windows)]
+        match add_user_path(&install_dir) {
+            Ok(_) => println!("\x1b[32m✓\x1b[0m Added to PATH  [user environment]"),
+            Err(e) => println!(
+                "\x1b[33m◆\x1b[0m Add {} to your PATH manually ({e:#})",
+                install_dir.display()
+            ),
+        }
     } else {
         let written = setup_path_all_shells(&install_dir);
         if written.is_empty() {
@@ -77,8 +91,12 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
         }
     }
 
-    println!("\x1b[1;32m✓\x1b[0m Done! Restart your shell or run:");
-    println!("  export PATH=\"{}:$PATH\"", install_dir.display());
+    if cfg!(windows) {
+        println!("\x1b[1;32m✓\x1b[0m Done! Open a new terminal to use `atlas`.");
+    } else {
+        println!("\x1b[1;32m✓\x1b[0m Done! Restart your shell or run:");
+        println!("  export PATH=\"{}:$PATH\"", install_dir.display());
+    }
     println!();
 
     // Install the skills bundled in this binary into ~/.agents/skills
@@ -98,6 +116,47 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// Windows: put `dir` on the user's `Path` (registry, `HKCU\Environment`), the way installers do,
+/// so new terminals find `atlas`. `Ok(false)` when it is already there. PowerShell's
+/// `SetEnvironmentVariable` writes the full value (never `setx`, which truncates at 1024
+/// characters) and tells running programs the environment changed.
+#[cfg(windows)]
+pub(crate) fn add_user_path(dir: &Path) -> Result<bool> {
+    edit_user_path(dir, "add")
+}
+
+/// Windows: take `dir` off the user's `Path`. `Ok(false)` when it was not there.
+#[cfg(windows)]
+pub(crate) fn remove_user_path(dir: &Path) -> Result<bool> {
+    edit_user_path(dir, "remove")
+}
+
+#[cfg(windows)]
+fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
+    use atlas_core::sys::CommandExt as _;
+    // The dir travels in the environment, never inside the script text.
+    const SCRIPT: &str = "$d = $env:ATLAS_PATH_DIR; $op = $env:ATLAS_PATH_OP; \
+        $cur = [Environment]::GetEnvironmentVariable('Path', 'User'); \
+        $parts = @(if ($cur) { $cur -split ';' | Where-Object { $_ -ne '' } }); \
+        $has = @($parts | Where-Object { $_.TrimEnd('\\') -ieq $d.TrimEnd('\\') }).Count -gt 0; \
+        if ($op -eq 'add') { if ($has) { 'same'; exit } ; $parts += $d } \
+        else { if (-not $has) { 'same'; exit } ; $parts = @($parts | Where-Object { $_.TrimEnd('\\') -ine $d.TrimEnd('\\') }) } \
+        [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User'); 'changed'";
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+        .env("ATLAS_PATH_DIR", dir)
+        .env("ATLAS_PATH_OP", op)
+        .no_window()
+        .stdin(std::process::Stdio::null())
+        .output()
+        .context("cannot run powershell")?;
+    if !out.status.success() {
+        anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim() == "changed")
+}
+
+#[cfg_attr(windows, allow(dead_code))]
 fn setup_path_all_shells(install_dir: &Path) -> Vec<String> {
     let mut written = Vec::new();
     if shell_exists("fish")
@@ -118,6 +177,7 @@ fn setup_path_all_shells(install_dir: &Path) -> Vec<String> {
     written
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn shell_exists(name: &str) -> bool {
     let shell_var = std::env::var("SHELL").unwrap_or_default();
     if std::path::Path::new(&shell_var)
@@ -132,10 +192,7 @@ fn shell_exists(name: &str) -> bool {
 }
 
 fn which_exists(cmd: &str) -> bool {
-    std::env::var("PATH")
-        .unwrap_or_default()
-        .split(':')
-        .any(|dir| std::path::Path::new(dir).join(cmd).is_file())
+    atlas_core::paths::which(cmd).is_some()
 }
 
 fn setup_fish(install_dir: &Path) -> Result<String> {
@@ -234,7 +291,8 @@ mod tests {
 
     #[test]
     fn test_shell_exists_via_path() {
-        assert!(which_exists("sh"));
+        assert!(which_exists(if cfg!(windows) { "cmd" } else { "sh" }));
+        assert!(!which_exists("atlas-no-such-shell"));
     }
 
     #[test]

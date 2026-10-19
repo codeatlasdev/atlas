@@ -21,6 +21,10 @@ html.opaque-window,
 html.opaque-window body {
 	background: var(--ca-surface-sunken) !important;
 }
+/* Windows and Linux: no traffic lights over the content, the peeking sidebar can use the full height. */
+html.opaque-window .peek-panel {
+	top: 8px;
+}
 
 :root {
 	--mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;

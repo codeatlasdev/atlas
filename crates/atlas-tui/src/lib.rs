@@ -5,6 +5,7 @@ pub mod headless;
 pub mod mcp;
 pub mod runner;
 pub mod runtime;
+pub(crate) mod sig;
 pub mod status;
 pub mod theme;
 pub mod tui;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { kbd } from "#lib/keys.ts";
 	import { ChevronDown, ChevronUp } from "@lucide/svelte";
 
 	let {
@@ -88,8 +89,11 @@
 					? `${curOrdinal}/`
 					: ""}{matchCount.toLocaleString()}{searching ? "+" : ""}{:else}{searching ? "…" : "0"}{/if}{/if}
 	</span>
-	<button class="icon" title="Previous match (⇧↵)" aria-label="Previous match" onclick={() => onstep(-1)}
-		><ChevronUp size={14} /></button
+	<button
+		class="icon"
+		title={`Previous match (${kbd("shift-enter")})`}
+		aria-label="Previous match"
+		onclick={() => onstep(-1)}><ChevronUp size={14} /></button
 	>
 	<button class="icon" title="Next match (↵)" aria-label="Next match" onclick={() => onstep(1)}
 		><ChevronDown size={14} /></button

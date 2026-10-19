@@ -46,3 +46,28 @@ impl TitleParser {
         last
     }
 }
+
+/// Title as a tab shows it. ConPTY titles a Windows console with the full path of its program
+/// (`C:\WINDOWS\System32\…\powershell.exe`, `…\cmd.exe - npm run dev`): the path becomes the
+/// program's name. Every other title is the program's own and passes through.
+pub(super) fn shown(t: String) -> String {
+    let b = t.as_bytes();
+    let start = (0..b.len().saturating_sub(2)).find(|&i| {
+        (i == 0 || b[i - 1] == b' ')
+            && b[i].is_ascii_alphabetic()
+            && b[i + 1] == b':'
+            && b[i + 2] == b'\\'
+    });
+    let Some(start) = start else { return t };
+    let lower = t.to_ascii_lowercase();
+    let Some(end) = lower[start..]
+        .match_indices(".exe")
+        .map(|(i, _)| start + i + 4)
+        .find(|&e| e == t.len() || b[e] == b' ')
+    else {
+        return t;
+    };
+    let path = &t[start..end - 4];
+    let name = path.rsplit('\\').next().unwrap_or(path);
+    format!("{}{name}{}", &t[..start], &t[end..])
+}

@@ -13,7 +13,7 @@ use crate::runtime::service::ServiceState;
 
 fn svc(cmd: &str) -> ServiceDef {
     ServiceDef {
-        command: Some(cmd.to_string()),
+        command: Some(crate::runtime::process::test_sh(cmd)),
         ..Default::default()
     }
 }

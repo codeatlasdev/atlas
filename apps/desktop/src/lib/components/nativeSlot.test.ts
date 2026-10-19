@@ -82,9 +82,9 @@ test("a later change schedules a new frame; teardown cancels a pending one", asy
 const rect = (x: number, y: number, w: number, h: number) =>
 	({ left: x, top: y, right: x + w, bottom: y + h, width: w, height: h }) as DOMRect;
 
-function dialog(at: DOMRect, open = true) {
+function dialog(at: DOMRect, open = true, role = "dialog") {
 	const d = document.createElement("div");
-	d.setAttribute("role", "dialog");
+	d.setAttribute("role", role);
 	if (open) d.dataset.state = "open";
 	d.getBoundingClientRect = () => at;
 	document.body.append(d);
@@ -117,6 +117,48 @@ test("a full-window modal (palette scrim, first run) parks every slot", () => {
 	dialog(rect(0, 0, 1280, 800));
 	expect(overlayOpen(SLOT)).toBe(true);
 });
+
+// Incident (codeatlasdev/atlas#66): Settings is a modal `<dialog>` whose scrim covers the whole window, but its box
+// (820px) leaves a native terminal/browser beside it uncovered by the rule above. The scrim is DOM; the native view is a
+// sibling NSView above all of it, so it stayed bright, undimmed and (for the browser) clickable around a "modal".
+// A modal must park every native view, whatever its box overlaps. A non-modal dialog still only parks what it covers.
+function modalDialog(at: DOMRect, open = true) {
+	const d = document.createElement("dialog");
+	d.setAttribute("role", "dialog");
+	if (open) d.dataset.state = "open";
+	d.matches = (sel: string) => (sel === ":modal" ? open : Element.prototype.matches.call(d, sel));
+	d.getBoundingClientRect = () => at;
+	document.body.append(d);
+	return d;
+}
+
+test("an open modal parks the native view even when its box is beside the slot", () => {
+	modalDialog(rect(0, 0, 150, 300));
+	expect(overlayOpen(SLOT)).toBe(true);
+});
+
+test("a closing modal (exit animation, data-state=closed) no longer parks the native view", () => {
+	modalDialog(rect(0, 0, 150, 300), false);
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
+test("a non-modal dialog beside the slot still leaves it alone", () => {
+	dialog(rect(0, 0, 150, 300));
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
+// Regression (2026-10-17, "o terminal fica por cima quando eu clico o +"): the new-tab menu (a kit DropdownMenu,
+// role=menu) opens down over the terminal, but only dialogs parked the native view, so the terminal NSView painted
+// over the menu and swallowed its clicks. Every kit layer the user interacts with (menu, Select's listbox) counts.
+for (const role of ["menu", "listbox"])
+	test(`an open ${role} over the slot parks the native view; beside it or closed it does not`, () => {
+		const over = dialog(rect(300, 150, 200, 100), true, role);
+		expect(overlayOpen(SLOT)).toBe(true);
+		over.remove();
+		dialog(rect(0, 0, 150, 300), true, role);
+		dialog(rect(300, 150, 200, 100), false, role);
+		expect(overlayOpen(SLOT)).toBe(false);
+	});
 
 // Regression (#43): the collapsed-sidebar hover peek is an HTML panel (role=complementary, no data-state), so it
 // neither parked the native browser/terminal nor triggered a re-sync: it slid in BEHIND the native view.
@@ -168,5 +210,48 @@ test("opening and closing a peek schedules exactly one re-sync each, never more"
 	expect(calls).toBe(2);
 	flush();
 	expect(calls).toBe(2); // no further syncs without a change
+	stop();
+});
+
+// Regression (#69): a native view cannot follow the CSS transform of a tab swipe. A slot inside a pane the tab
+// pager marked `data-swiping` is covered (parked), and lifting the mark makes `watchSlot` re-sync ONCE, so the view
+// is placed at the untransformed rect when the swipe rests.
+function swipingPane() {
+	const pane = document.createElement("div");
+	pane.className = "pane";
+	pane.setAttribute("data-swiping", "");
+	const slot = document.createElement("div");
+	slot.getBoundingClientRect = () => rect(600, 100, 600, 400); // includes the in-flight translate3d
+	pane.append(slot);
+	document.body.append(pane);
+	return { pane, slot };
+}
+
+test("a slot inside a swiping pane counts as covered, wherever the transform put it", () => {
+	const { slot } = swipingPane();
+	expect(overlayOpen(slot.getBoundingClientRect(), slot)).toBe(true);
+});
+
+test("a slot in a pane that is not swiping is not covered", () => {
+	const { pane, slot } = swipingPane();
+	pane.removeAttribute("data-swiping");
+	expect(overlayOpen(slot.getBoundingClientRect(), slot)).toBe(false);
+});
+
+test("lifting the swipe mark re-syncs the slot once; setting it does too (to park)", async () => {
+	let calls = 0;
+	const { pane, slot } = swipingPane();
+	const stop = watchSlot(slot, () => calls++);
+	await tick();
+	flush();
+	calls = 0;
+	pane.removeAttribute("data-swiping");
+	await tick();
+	flush();
+	expect(calls).toBe(1);
+	pane.setAttribute("data-swiping", "");
+	await tick();
+	flush();
+	expect(calls).toBe(2);
 	stop();
 });

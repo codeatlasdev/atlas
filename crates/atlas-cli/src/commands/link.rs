@@ -39,8 +39,21 @@ impl AtlasCommand for UnlinkArgs {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 fn install_path() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("$HOME not set")?;
-    Ok(PathBuf::from(home).join(INSTALL_DIR).join("atlas"))
+    let home = dirs::home_dir().context("no home directory")?;
+    Ok(home.join(INSTALL_DIR).join(atlas_core::paths::exe("atlas")))
+}
+
+/// A file symlink. Windows allows it with Developer Mode on (or as administrator).
+fn symlink(target: &Path, link: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(target, link).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("{e} (Windows needs Developer Mode on to create symlinks)"),
+        )
+    })
 }
 
 /// Walk up from `cwd` until we find a `Cargo.toml` that contains `[workspace]`.
@@ -65,7 +78,10 @@ pub(crate) fn find_workspace_root() -> Result<PathBuf> {
 }
 
 fn debug_binary(workspace: &Path) -> PathBuf {
-    workspace.join("target").join("debug").join("atlas")
+    workspace
+        .join("target")
+        .join("debug")
+        .join(atlas_core::paths::exe("atlas"))
 }
 
 // ── link ──────────────────────────────────────────────────────────────────────
@@ -121,7 +137,7 @@ pub async fn link(dir: Option<String>, build: bool, desktop: bool) -> Result<()>
     }
 
     // Create symlink: ~/.atlas/bin/atlas → <workspace>/target/debug/atlas
-    std::os::unix::fs::symlink(&debug_bin, &installed)
+    symlink(&debug_bin, &installed)
         .with_context(|| format!("cannot create symlink at {}", installed.display()))?;
 
     println!(
@@ -151,6 +167,11 @@ fn debug_app(workspace: &Path) -> PathBuf {
 /// install aside (to `~/.atlas/desktop/Atlas.app.backup`) for `atlas unlink`.
 fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
     use super::desktop;
+    if cfg!(not(target_os = "macos")) {
+        bail!(
+            "atlas link --desktop links the macOS app bundle; on this OS run the debug app directly"
+        );
+    }
     if build {
         let setup = workspace.join("scripts/setup.sh");
         let st = std::process::Command::new(&setup)
@@ -199,7 +220,7 @@ fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
     if let Some(dir) = target.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::os::unix::fs::symlink(&app, &target)
+    symlink(&app, &target)
         .with_context(|| format!("cannot create symlink at {}", target.display()))?;
     println!(
         "\x1b[32m✓\x1b[0m Linked     {} → {}",

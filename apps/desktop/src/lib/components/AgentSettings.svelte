@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, SegmentedControl, Select, TextField, toast } from "@codeatlasdev/ui";
+	import { Button, SegmentedControl, Select, TextArea, TextField, toast } from "@codeatlasdev/ui";
 	import { Trash2, Plus } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import { api, errText } from "#lib/api.ts";
@@ -10,14 +10,42 @@
 	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
+	import { customAgentEntry, type CustomAgentEntry } from "#lib/settings/customAgents.ts";
 
 	let permissions = $state("manual");
 	let args = $state<Record<string, string>>({});
+	let custom = $state<CustomAgentEntry[]>([]);
+	const empty = { name: "", command: "", args: "", resume: "", env: "" };
+	let form = $state({ ...empty });
+	let formError = $state("");
+
+	async function saveCustom(next: CustomAgentEntry[]) {
+		custom = next;
+		await api
+			.settingsPatch({ customAgents: next.length ? next : null })
+			.catch((e) => toast.error(errText(e)));
+		await agents.refresh();
+	}
+
+	async function addCustom() {
+		const r = customAgentEntry(
+			form,
+			agents.list.map((a) => a.id),
+		);
+		if (!r.ok) {
+			formError = r.error;
+			return;
+		}
+		formError = "";
+		form = { ...empty };
+		await saveCustom([...custom, r.entry]);
+	}
 
 	onMount(async () => {
 		const s = await api.settings();
 		permissions = (s.agentPermissions as string) ?? "manual";
 		args = (s.agentArgs as Record<string, string>) ?? {};
+		custom = Array.isArray(s.customAgents) ? (s.customAgents as CustomAgentEntry[]) : [];
 	});
 
 	const save = (patch: Record<string, unknown>) =>
@@ -103,6 +131,30 @@
 </Group>
 
 <Group
+	title="Custom agents"
+	description="Any agent CLI (OpenCode, Gemini CLI, Amp…). It starts from the + menu and ⌘⇧A like the built-in ones. Without Atlas hooks its tab shows working while the terminal prints and idle after a few quiet seconds; to report real states it can run `atlas hook` (see docs/agents.md)."
+>
+	{#each custom as c (c.id)}
+		<Row label={c.label} description={[c.command, ...c.args].join(" ")}>
+			<button
+				class="rm"
+				aria-label="Remove {c.label}"
+				onclick={() => saveCustom(custom.filter((x) => x !== c))}><Trash2 size={14} /></button
+			>
+		</Row>
+	{/each}
+	<div data-setting="agent-custom" class="custom">
+		<TextField label="Name" placeholder="OpenCode" bind:value={form.name} />
+		<TextField label="Command" placeholder="opencode" bind:value={form.command} />
+		<TextField label="Arguments" placeholder="--model gpt-5" bind:value={form.args} />
+		<TextField label="Resume arguments" placeholder="--session {'{session}'}" bind:value={form.resume} />
+		<TextArea label="Environment" placeholder="KEY=value, one per line" rows={2} bind:value={form.env} />
+		{#if formError}<p class="err" role="alert">{formError}</p>{/if}
+		<div><Button size="sm" onclick={addCustom}><Plus size={14} /> Add agent</Button></div>
+	</div>
+</Group>
+
+<Group
 	title="Quick commands"
 	description="One-click buttons in the tab strip. Each one runs a command in a terminal, or sends a prompt to the agent."
 >
@@ -183,5 +235,21 @@
 		background: none;
 		color: var(--ca-text-secondary);
 		height: 30px;
+	}
+	.custom {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+		padding: 12px 14px;
+	}
+	.custom :global(.ca-textarea),
+	.custom .err,
+	.custom > div:last-child {
+		grid-column: 1 / -1;
+	}
+	.err {
+		margin: 0;
+		font-size: 12px;
+		color: var(--ca-semantic-error);
 	}
 </style>

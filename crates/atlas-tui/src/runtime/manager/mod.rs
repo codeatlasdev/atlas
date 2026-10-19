@@ -240,11 +240,10 @@ impl ServiceManager {
 
     /// Open a URL in the system default browser. Fire-and-forget.
     pub fn open_url(url: &str) {
-        #[cfg(target_os = "macos")]
-        let opener = "open";
-        #[cfg(not(target_os = "macos"))]
-        let opener = "xdg-open";
-        if let Ok(mut child) = Command::new(opener).arg(url).spawn() {
+        let opener = crate::runtime::opener::url_opener();
+        let mut cmd = Command::new(opener);
+        atlas_core::sys::CommandExt::no_window(&mut cmd);
+        if let Ok(mut child) = cmd.arg(url).spawn() {
             // Reap the launcher so it never lingers as a zombie.
             tokio::spawn(async move {
                 let _ = child.wait().await;

@@ -4,12 +4,18 @@
 
 use std::path::Path;
 use std::sync::Arc;
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use anyhow::{Context, Result};
 
+#[cfg(unix)]
 use super::master::{Master, Waiter};
-use super::{Buf, Init, Io, Meta, Session, bin_path, meta_path, open_append, ring_tail};
+use super::{Buf, Init, Meta, Session, bin_path, meta_path, ring_tail};
+#[cfg(unix)]
+use super::{Io, open_append};
+#[cfg(unix)]
 use crate::handoff::{ExitWatch, SessionState};
 use crate::protocol::Scope;
 
@@ -49,6 +55,7 @@ impl Session {
     /// Take over a session frozen by the previous daemon (see `handoff`). A live one
     /// arrives with its pty master `fd`; an exited one is restored like a cold session
     /// but keeps its title, size and exit code.
+    #[cfg(unix)]
     pub fn adopt(
         st: SessionState,
         fd: Option<std::os::fd::OwnedFd>,
@@ -104,6 +111,7 @@ impl Session {
 
     /// Waiter for a child this daemon did not spawn (adopted, or resumed after a failed
     /// handoff). The watch is registered here, not when the waiter runs.
+    #[cfg(unix)]
     fn exit_waiter(&self) -> Waiter {
         let watch = self.pid.map(ExitWatch::new);
         Box::new(move || watch.and_then(ExitWatch::wait))
@@ -113,6 +121,7 @@ impl Session {
     /// for the successor. Returns `None` for pipe-mode sessions (no pty master, so
     /// nothing to pass; they end with this daemon). The master fd stays owned by
     /// `self` until the caller has sent it.
+    #[cfg(unix)]
     pub async fn freeze(&self) -> Option<(SessionState, Option<std::os::fd::RawFd>)> {
         let exited = self.exited();
         let fd = if exited.is_none() {
@@ -151,6 +160,7 @@ impl Session {
     }
 
     /// Resume reading after a failed handoff (the successor never took the session).
+    #[cfg(unix)]
     pub fn thaw(self: &Arc<Self>) {
         if self.exited().is_some() {
             return;

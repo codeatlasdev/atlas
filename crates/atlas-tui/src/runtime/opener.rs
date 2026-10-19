@@ -62,12 +62,24 @@ pub fn editor_command(
 }
 
 fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
+    atlas_core::paths::which(bin).is_some()
+}
+
+/// The URL launcher of this OS: `open`, `xdg-open`, or File Explorer (it hands an http URL to
+/// the default browser).
+pub(crate) fn url_opener() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer.exe"
+    } else {
+        "xdg-open"
+    }
 }
 
 /// Spawn `cmd` detached from the TUI's terminal and reap it in the background.
 fn spawn_reaped(mut cmd: Command) -> bool {
+    atlas_core::sys::CommandExt::no_window(&mut cmd);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -84,11 +96,7 @@ fn spawn_reaped(mut cmd: Command) -> bool {
 
 /// Open `url` in the system browser. Returns whether a launcher started.
 pub fn open_url(url: &str) -> bool {
-    #[cfg(target_os = "macos")]
-    let opener = "open";
-    #[cfg(not(target_os = "macos"))]
-    let opener = "xdg-open";
-    let mut cmd = Command::new(opener);
+    let mut cmd = Command::new(url_opener());
     cmd.arg(url);
     spawn_reaped(cmd)
 }
@@ -99,7 +107,9 @@ pub fn open_path(path: &str, line: u32, col: Option<u32>) -> bool {
     else {
         return false;
     };
-    let mut cmd = Command::new(bin);
+    // Windows: `code` is `code.cmd`, which only a PATHEXT lookup finds.
+    let program = atlas_core::paths::which(&bin).unwrap_or_else(|| bin.into());
+    let mut cmd = Command::new(program);
     cmd.args(args);
     spawn_reaped(cmd)
 }

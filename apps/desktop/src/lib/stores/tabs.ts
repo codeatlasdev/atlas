@@ -34,7 +34,7 @@ export function tabAt(order: string[], n: number): string | undefined {
 	return n === 9 ? order[order.length - 1] : order[n - 1];
 }
 
-/** Enough of a closed tab to reopen it (terminals restart with their argv in the worktree). */
+/** Enough of a closed tab to reopen it (terminals restart with their argv and cwd). */
 export interface ClosedTab {
 	kind: string;
 	label: string;
@@ -43,6 +43,8 @@ export interface ClosedTab {
 	url?: string;
 	argv?: string[];
 	env?: Record<string, string>;
+	/** Folder a terminal was opened in (absent = the worktree root). */
+	cwd?: string;
 	agent?: string;
 	prNumber?: number;
 	chat?: boolean;
@@ -65,8 +67,8 @@ const REOPENABLE: Record<string, true> = {
 
 export function snapshot(t: Omit<ClosedTab, "index">, index: number): ClosedTab | null {
 	if (!(t.kind in REOPENABLE)) return null;
-	const { kind, label, customLabel, path, url, argv, env, agent, prNumber, chat } = t;
-	return { kind, label, customLabel, path, url, argv, env, agent, prNumber, chat, index };
+	const { kind, label, customLabel, path, url, argv, env, cwd, agent, prNumber, chat } = t;
+	return { kind, label, customLabel, path, url, argv, env, cwd, agent, prNumber, chat, index };
 }
 
 /** `stack` with `c` on top, capped at `CLOSED_MAX`. */

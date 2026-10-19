@@ -3,8 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
+use atlas_core::ipc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
 
 use super::protocol::{ControlCmd, ControlRequest, ControlResponse, WireRequest};
@@ -31,12 +31,15 @@ impl ControlServer {
     pub fn bind(
         root_dir: &Path,
     ) -> std::io::Result<(Self, mpsc::UnboundedReceiver<ControlRequest>)> {
-        use std::os::unix::fs::PermissionsExt;
         let path = socket_path(root_dir);
         std::fs::create_dir_all(crate::runtime::log_dir(root_dir))?;
-        let _ = std::fs::remove_file(&path);
-        let listener = UnixListener::bind(&path)?;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        let _ = ipc::remove_stale(&path);
+        let listener = ipc::Listener::bind(&path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
 
         let (tx, rx) = mpsc::unbounded_channel();
         let task = tokio::spawn(async move {
@@ -46,7 +49,7 @@ impl ControlServer {
             loop {
                 tokio::select! {
                     accepted = listener.accept() => {
-                        let Ok((stream, _)) = accepted else { break };
+                        let Ok(stream) = accepted else { break };
                         conns.spawn(serve_conn(stream, tx.clone()));
                     }
                     Some(_) = conns.join_next(), if !conns.is_empty() => {}
@@ -60,8 +63,8 @@ impl ControlServer {
 /// Subscription phase of a connection: forward pushed lines until the loop drops
 /// the sender (shutdown) or the client goes away (read EOF/error, write error).
 async fn pump_stream(
-    mut rd: BufReader<tokio::net::unix::OwnedReadHalf>,
-    mut wr: tokio::net::unix::OwnedWriteHalf,
+    mut rd: BufReader<ipc::ReadHalf>,
+    mut wr: ipc::WriteHalf,
     mut events: mpsc::Receiver<String>,
 ) {
     let mut sink = Vec::new();
@@ -111,8 +114,8 @@ pub(crate) async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(
     Ok(terminated.then_some(()))
 }
 
-async fn serve_conn(stream: UnixStream, tx: mpsc::UnboundedSender<ControlRequest>) {
-    let (rd, mut wr) = stream.into_split();
+async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlRequest>) {
+    let (rd, mut wr) = ipc::split(stream);
     let mut rd = BufReader::new(rd);
     let mut buf = Vec::new();
     loop {

@@ -8,8 +8,6 @@
 //! `POST /hook/<agent>/decision` (a permission prompt) replies `{"decision": "allow"|"deny"|null}`
 //! once a mobile client answers, or `null` at once when none is connected.
 
-use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -25,19 +23,10 @@ const MAX_BODY: usize = 1024 * 1024;
 const DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(55);
 
 fn write_endpoint(dir: &Path, port: u16, token: &str) -> std::io::Result<()> {
-    let p = paths::hook_endpoint(dir);
-    if let Some(d) = p.parent() {
-        std::fs::create_dir_all(d)?;
-    }
-    let tmp = p.with_extension("tmp~");
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)?;
-    writeln!(f, "ATLAS_HOOK_PORT={port}\nATLAS_HOOK_TOKEN={token}")?;
-    std::fs::rename(tmp, p)
+    paths::write_private(
+        &paths::hook_endpoint(dir),
+        format!("ATLAS_HOOK_PORT={port}\nATLAS_HOOK_TOKEN={token}\n").as_bytes(),
+    )
 }
 
 /// Bind the hook server, publish its endpoint file and serve until the process exits.

@@ -2,8 +2,6 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::process::Command;
-
 use super::ServiceManager;
 use super::types::{
     ManagerEvent, PROBE_FAILS_TO_FAIL, WATCH_HEALTHY_INTERVAL, WATCH_PROBE_TIMEOUT,
@@ -89,17 +87,15 @@ impl ServiceManager {
             crate::runtime::envfile::cleanup_lock(&self.root_dir, lock).await;
         }
 
-        let mut cmd = Command::new("sh");
+        let mut cmd = crate::runtime::process::task_command(&command);
         let work_dir = dir
             .as_ref()
             .map(|d| self.root_dir.join(d))
             .unwrap_or_else(|| self.root_dir.clone());
-        cmd.args(["-c", &command])
-            .current_dir(&work_dir)
+        cmd.current_dir(&work_dir)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0);
+            .stderr(Stdio::piped());
 
         // Env precedence (low→high): login shell < env_files < service `env:` <
         // atlas-injected (PORT, FORCE_COLOR, BROWSER below).
@@ -337,7 +333,7 @@ impl ServiceManager {
         let pid_path = crate::runtime::pid_file(&self.root_dir);
         if let Ok(contents) = tokio::fs::read_to_string(&pid_path).await {
             let our_pid = std::process::id() as i32;
-            let our_ppid = unsafe { libc::getppid() };
+            let our_ppid = atlas_core::sys::parent_pid() as i32;
 
             let pids: Vec<i32> = contents
                 .lines()

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { IS_MAC } from "#lib/keys.ts";
 	/** Settings ▸ General ▸ Links and Notifications: where links open and when Atlas tells you about agents. */
 	import { SegmentedControl, Switch } from "@codeatlasdev/ui";
 	import Group from "#lib/settings/Group.svelte";
@@ -11,7 +12,7 @@
 	<Row
 		id="browser"
 		label="Open links in"
-		description="Where links from services, ports and terminals open. Hold ⌘ while clicking to use the other browser."
+		description={`Where links from services, ports and terminals open. Hold ${IS_MAC ? "⌘" : "Ctrl"} while clicking to use the other browser.`}
 	>
 		<SegmentedControl
 			aria-label="Open links in"

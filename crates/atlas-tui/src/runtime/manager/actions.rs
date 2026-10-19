@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
-use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use super::disk_log::{self, action_service_name, log_file_stem};
@@ -206,9 +205,9 @@ pub(super) async fn run_action_streaming(
     let stem = log_file_stem(&service);
     let (log_out, log_err) = disk_log::open_service_writers(log_dir, &stem);
 
-    let mut cmd = Command::new("sh");
-    cmd.args(["-c", command])
-        .current_dir(root_dir)
+    let mut cmd = atlas_core::sys::shell_tokio(command);
+    atlas_core::sys::CommandExt::no_window(&mut cmd);
+    cmd.current_dir(root_dir)
         .envs(atlas_core::login_env::vars())
         .envs(file_env)
         .stdin(Stdio::null())

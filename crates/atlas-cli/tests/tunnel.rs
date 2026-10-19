@@ -2,6 +2,9 @@
 //! The fake parses `-L local:host:port`, listens on `local` and appends each
 //! invocation to a file. No real host is ever contacted.
 
+// The fixtures are sh scripts and Unix sockets.
+#![cfg(unix)]
+
 use std::net::TcpStream;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

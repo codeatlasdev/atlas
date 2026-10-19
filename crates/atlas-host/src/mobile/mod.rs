@@ -19,7 +19,6 @@ mod tests;
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -30,6 +29,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::paths;
 use crate::protocol::HostCmd;
 use crate::server::Hub;
 
@@ -98,23 +98,13 @@ fn mobile_dir(dir: &Path) -> PathBuf {
     dir.join("mobile")
 }
 
-fn write_private(p: &Path, data: &[u8]) -> std::io::Result<()> {
-    let tmp = p.with_extension("tmp~");
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)?;
-    f.write_all(data)?;
-    std::fs::rename(tmp, p)
-}
-
 /// This host's iroh identity, created on first use.
 pub fn load_or_create_key(dir: &Path) -> std::io::Result<SecretKey> {
     let d = mobile_dir(dir);
     std::fs::create_dir_all(&d)?;
-    std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700))?;
+    // Windows: the folder keeps the per-user ACL of `~/.atlas` (the profile is private).
+    #[cfg(unix)]
+    std::fs::set_permissions(&d, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
     let p = d.join("key");
     if let Ok(b) = std::fs::read(&p)
         && let Ok(bytes) = <[u8; 32]>::try_from(b.as_slice())
@@ -123,7 +113,7 @@ pub fn load_or_create_key(dir: &Path) -> std::io::Result<SecretKey> {
     }
     let mut bytes = [0u8; 32];
     std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut bytes)?;
-    write_private(&p, &bytes)?;
+    paths::write_private(&p, &bytes)?;
     Ok(SecretKey::from_bytes(&bytes))
 }
 
@@ -150,7 +140,7 @@ impl Mobile {
 
     fn save(&self, devices: &[Device]) -> Result<(), String> {
         let text = serde_json::to_string_pretty(devices).map_err(|e| e.to_string())?;
-        write_private(&mobile_dir(&self.dir).join("devices.json"), text.as_bytes())
+        paths::write_private(&mobile_dir(&self.dir).join("devices.json"), text.as_bytes())
             .map_err(|e| e.to_string())
     }
 
@@ -270,11 +260,9 @@ impl Mobile {
             args["text"] = json!(format!("<{} chars>", t.chars().count()));
         }
         let line = json!({"ts": now_s(), "node_id": node_id, "cmd": cmd, "args": args});
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .mode(0o600)
-            .open(mobile_dir(&self.dir).join("audit.log"))
+        if let Ok(mut f) =
+            atlas_core::sys::owner_only(std::fs::OpenOptions::new().create(true).append(true))
+                .open(mobile_dir(&self.dir).join("audit.log"))
         {
             let _ = writeln!(f, "{line}");
         }

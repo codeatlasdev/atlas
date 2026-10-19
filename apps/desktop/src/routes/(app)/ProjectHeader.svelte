@@ -196,6 +196,10 @@
 	header.inset {
 		padding-left: 70px;
 	}
+	/* Windows and Linux: the native title bar holds the window buttons. */
+	:global(html.opaque-window) header.inset {
+		padding-left: 10px;
+	}
 	header > :global(.crumbs) {
 		flex: 0 1 auto;
 		min-width: 0;

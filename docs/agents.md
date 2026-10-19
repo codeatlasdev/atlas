@@ -198,3 +198,55 @@ Docs used: [MCP](https://developers.openai.com/codex/mcp), [skills](https://deve
 ## Other agents
 
 Cursor is not set up by `atlas setup`. [MCP](mcp.md) documents the manual entry. Future agents will arrive as additional `atlas setup <agent>` variants that reuse the same dry-run, merge and ownership rules; no dates are promised.
+
+## Custom agents in Atlas Desktop
+
+Settings → Agents → **Custom agents** runs any agent CLI (OpenCode, Gemini CLI, Amp, Aider…) like the built-in ones: it is listed in the + menu of a tab strip, can be the default agent (⌘⇧A), and shows its state in the tab and the sidebar. The form takes a name, the command (program plus fixed arguments, quoted like a shell), extra arguments, resume arguments (`{session}` is replaced by the session id) and environment (`KEY=value` per line; `ATLAS_*` is reserved). Entries live in `~/.atlas/desktop/settings.json` under `customAgents`:
+
+```json
+{ "customAgents": [
+  { "id": "opencode", "label": "OpenCode", "command": "opencode",
+    "args": ["--model", "gpt-5"], "resume": ["--session", "{session}"], "env": { "FOO": "1" } }
+] }
+```
+
+An entry whose `id` is not a slug (`a-z`, `0-9`, `-`, at most 32), clashes with a built-in or earlier entry, or has no `label` or `command` is ignored. A custom agent never gets the built-in agents' auto-approve flags; put such flags in its arguments.
+
+**State without hooks.** A custom agent's tab shows *working* while its terminal prints (hostd's `pty_activity`, at most one a second) and *idle* after 3 quiet seconds. Typing that the program echoes counts as output. Real states (needs you, done) need the hook contract below.
+
+### Hook event contract
+
+Every agent terminal Atlas Desktop starts has these variables:
+
+| Variable | Value |
+|---|---|
+| `ATLAS_HOOK_ENDPOINT` | Path of a file with `ATLAS_HOOK_PORT=<port>` and `ATLAS_HOOK_TOKEN=<token>` lines (`~/.atlas/desktop/hook-endpoint.env`, mode 0600). |
+| `ATLAS_PANE_KEY`, `ATLAS_TAB_ID` | The tab the agent runs in. |
+| `ATLAS_WORKTREE_ID` | The worktree. |
+| `ATLAS_AGENT` | The agent id (`omp`, `claude`, `codex` or the custom id). |
+
+To report a state, POST to `http://127.0.0.1:<port>/hook/<agent id>` with the header `X-Atlas-Hook-Token: <token>` and a JSON body of at most 1 MB:
+
+```json
+{ "pane_key": "<ATLAS_PANE_KEY>", "tab_id": "<ATLAS_TAB_ID>", "worktree_id": "<ATLAS_WORKTREE_ID>",
+  "payload": { "event": "user_prompt_submit", "session_id": "…", "prompt": "…" } }
+```
+
+The reply is `204` (accepted), `401` (wrong token), `413` (body too large), `400` (not JSON), `404` (path) or `405` (not POST). Without `pane_key` the app matches the tab by agent and `payload.cwd`. Events and the state they set:
+
+| `payload.event` | State |
+|---|---|
+| `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `agent_start`, `message_end` | working |
+| `permission_request`, `tool_approval_requested` | needs you (blocked) |
+| `stop`, `agent_end` | done |
+| `session_end`, `session_shutdown` | idle |
+| `session_start` | no change (records `session_id` / `session_file`) |
+
+Optional payload fields: `session_id`, `session_file`, `prompt`, `tool_name`, `text` (last message), `cwd`. Hook events win over terminal activity for 5 seconds after each one. Keep the call short (Atlas's own hooks use a 1 s timeout) and ignore failures: outside Atlas Desktop `ATLAS_HOOK_ENDPOINT` is not set.
+
+```sh
+. "$ATLAS_HOOK_ENDPOINT"
+curl -s -m 1 -X POST "http://127.0.0.1:$ATLAS_HOOK_PORT/hook/$ATLAS_AGENT" \
+  -H "X-Atlas-Hook-Token: $ATLAS_HOOK_TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"pane_key\":\"$ATLAS_PANE_KEY\",\"payload\":{\"event\":\"stop\"}}" || true
+```

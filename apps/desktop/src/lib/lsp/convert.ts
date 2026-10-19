@@ -115,9 +115,14 @@ export interface WorkspaceEdit {
 	)[];
 }
 
-export const uriToPath = (uri: string) => decodeURIComponent(uri.replace(/^file:\/\//, ""));
+/** `file:///C:/x` → `C:/x` on Windows (the app keeps forward-slash paths); `file:///x` → `/x` elsewhere. */
+export const uriToPath = (uri: string) =>
+	decodeURIComponent(uri.replace(/^file:\/\//, "")).replace(/^\/([A-Za-z]:\/)/, "$1");
+/** A Windows drive path gets the leading slash a file URI needs: `C:/x` → `file:///C:/x`. */
 export const pathToUri = (path: string) =>
-	"file://" + path.split("/").map(encodeURIComponent).join("/").replace(/%3A/g, ":");
+	"file://" +
+	(/^[A-Za-z]:\//.test(path) ? "/" : "") +
+	path.split("/").map(encodeURIComponent).join("/").replace(/%3A/g, ":");
 
 /** Flatten a WorkspaceEdit to `path -> edits` plus the file operations it carries. */
 export function planWorkspaceEdit(edit: WorkspaceEdit) {

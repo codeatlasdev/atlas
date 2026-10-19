@@ -16,13 +16,59 @@ pub struct Usage {
     pub cpu: f32,
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 struct Proc {
     ppid: u32,
     rss_kb: u64,
     cpu: f32,
 }
 
+/// Usage of each `(name, root pid)`; services whose pid is gone are omitted. Windows: the
+/// working set, and CPU time over the process's lifetime (what `ps` reports as `%cpu`).
+#[cfg(windows)]
+pub async fn sample(roots: &[(String, u32)]) -> HashMap<String, Usage> {
+    if roots.is_empty() {
+        return HashMap::new();
+    }
+    let roots = roots.to_vec();
+    tokio::task::spawn_blocking(move || sample_blocking(&roots))
+        .await
+        .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn sample_blocking(roots: &[(String, u32)]) -> HashMap<String, Usage> {
+    let rows = atlas_core::sys::process_rows();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let one = |pid: u32| -> Option<Usage> {
+        let (cpu_ms, mem) = atlas_core::sys::usage(pid)?;
+        let started = atlas_core::sys::start_time_secs(pid)? * 1000;
+        let alive_ms = now.saturating_sub(started).max(1);
+        Some(Usage {
+            mem,
+            cpu: cpu_ms as f32 * 100.0 / alive_ms as f32,
+        })
+    };
+    roots
+        .iter()
+        .filter_map(|(name, root)| {
+            let mut u = one(*root)?;
+            for pid in atlas_core::sys::descendants(*root, &rows) {
+                if let Some(k) = one(pid) {
+                    u.mem += k.mem;
+                    u.cpu += k.cpu;
+                }
+            }
+            Some((name.clone(), u))
+        })
+        .collect()
+}
+
 /// Usage of each `(name, root pid)`; services whose pid is gone are omitted.
+#[cfg(unix)]
 pub async fn sample(roots: &[(String, u32)]) -> HashMap<String, Usage> {
     if roots.is_empty() {
         return HashMap::new();
@@ -58,6 +104,7 @@ pub async fn sample(roots: &[(String, u32)]) -> HashMap<String, Usage> {
         .collect()
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn parse_ps(text: &str) -> HashMap<u32, Proc> {
     text.lines()
         .filter_map(|l| {
@@ -86,7 +133,7 @@ fn footprint(pid: u32) -> Option<u64> {
     (rc == 0).then(|| unsafe { info.assume_init() }.ri_phys_footprint)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn footprint(_pid: u32) -> Option<u64> {
     None
 }
@@ -119,6 +166,7 @@ mod tests {
         assert_eq!(parse_size("0M"), None);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn sums_the_process_tree() {
         let mut child = tokio::process::Command::new("sh")
@@ -146,5 +194,33 @@ mod tests {
             "tree total {only_sh} must exceed the root alone {own}"
         );
         child.kill().await.unwrap();
+    }
+
+    /// Windows: the service's `cmd /c` root plus the program under it.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn sums_the_process_tree() {
+        let mut child = atlas_core::sys::shell_tokio("ping -n 30 127.0.0.1 >NUL")
+            .spawn()
+            .unwrap();
+        let pid = child.id().unwrap();
+        let mut kids = Vec::new();
+        for _ in 0..100 {
+            kids = atlas_core::sys::descendants(pid, &atlas_core::sys::process_rows());
+            if !kids.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(!kids.is_empty(), "ping under cmd");
+        let tree = sample(&[("x".into(), pid)]).await["x"].mem;
+        let own = atlas_core::sys::usage(pid).unwrap().1;
+        assert!(
+            tree > own,
+            "tree total {tree} must exceed the root alone {own}"
+        );
+        assert!(sample(&[("gone".into(), 0)]).await.is_empty());
+        atlas_core::sys::kill_tree(pid);
+        let _ = child.wait().await;
     }
 }

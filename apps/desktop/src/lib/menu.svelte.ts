@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { EDIT_COMMANDS, runEdit, targetOf, type EditEnv } from "#lib/edit.ts";
 import { allCommands, dispatchStroke, keymap, runCommand } from "#lib/keymap.svelte.ts";
 import { ops } from "#lib/symbols.ts";
-import { DEFAULT_KEYMAP, merge } from "#lib/keys.ts";
+import { defaultKeymap, merge } from "#lib/keys.ts";
 import { forwardedStrokes, strokeOfBrowserKey, type BrowserKey } from "#lib/browserKeys.ts";
 import { EDIT_ACCELERATORS, MENU_COMMANDS, menuAccelerators } from "#lib/menu.ts";
 import { termFocus } from "#lib/stores/termFocus.svelte.ts";
@@ -40,7 +40,7 @@ export async function startMenu(): Promise<() => void> {
 	const stop = $effect.root(() => {
 		$effect(() => {
 			const enabled = new Set(allCommands().map((c) => c.id));
-			const accels = menuAccelerators(merge(DEFAULT_KEYMAP, keymap.user), termFocus.on);
+			const accels = menuAccelerators(merge(defaultKeymap(), keymap.user), termFocus.on);
 			const items = [...MENU_COMMANDS, ...Object.keys(EDIT_ACCELERATORS)].map((id) => ({
 				id,
 				accelerator: accels[id],
@@ -49,7 +49,7 @@ export async function startMenu(): Promise<() => void> {
 			}));
 			void invoke("menu_sync", { list: items }).catch(() => {});
 			void invoke("browser_set_keys", {
-				strokes: forwardedStrokes(merge(DEFAULT_KEYMAP, keymap.user)),
+				strokes: forwardedStrokes(merge(defaultKeymap(), keymap.user)),
 			}).catch(() => {});
 		});
 	});

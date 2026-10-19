@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** Review notes under one diff line plus the draft box, as table rows spanning `cols` columns (shared by the unified and split tables). */
 	import { Check } from "@lucide/svelte";
+	import { kbd, primaryKey } from "#lib/keys.ts";
 	import type { DiffComment } from "#lib/stores/workspace.svelte.ts";
 	import type { Draft } from "./DiffTable.svelte";
 
@@ -49,10 +50,10 @@
 			<!-- svelte-ignore a11y_autofocus -->
 			<textarea
 				autofocus
-				placeholder="Comment for the agent (⌘Enter to save, Esc to cancel)"
+				placeholder={`Comment for the agent (${kbd("cmd-enter")} to save, Esc to cancel)`}
 				bind:value={draft.text}
 				onkeydown={(e) => {
-					if (e.key === "Enter" && e.metaKey) onsave();
+					if (e.key === "Enter" && primaryKey(e)) onsave();
 					if (e.key === "Escape") draft = null;
 				}}></textarea>
 		</td>

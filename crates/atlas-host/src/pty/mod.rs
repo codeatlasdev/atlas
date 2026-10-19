@@ -166,6 +166,10 @@ fn bin_path(dir: &Path, id: &str) -> PathBuf {
 fn meta_path(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{id}.json"))
 }
+/// Windows: the batch file a shell-form terminal runs (see `spawn`).
+fn batch_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{id}.cmd"))
+}
 
 fn open_append(p: &Path) -> Option<std::fs::File> {
     std::fs::OpenOptions::new()

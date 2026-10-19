@@ -1,6 +1,9 @@
 //! End-to-end tests for `atlas mcp` (stdio) and `atlas dev --headless` (control socket).
 //! Everything drives the real binary. Children are owned by RAII guards that kill them on drop.
 
+// The fixtures are sh scripts and Unix sockets.
+#![cfg(unix)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

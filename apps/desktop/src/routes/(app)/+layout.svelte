@@ -29,6 +29,7 @@
 		palettes,
 		symbolItems,
 	} from "#lib/shell/palettes.svelte.ts";
+	import { branchPicker, branchItems, createBranchItems } from "#lib/stores/branch.svelte.ts";
 	import { startReadyGate } from "#lib/shell/ready.svelte.ts";
 	import { startSession } from "#lib/shell/session.svelte.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
@@ -115,6 +116,12 @@
 <LazyOpen when={worktrees.newDialog.open} load={() => import("#lib/components/NewWorktreeDialog.svelte")} />
 <LazyOpen when={!!pr.createFor} load={() => import("#lib/components/CreatePrDialog.svelte")} />
 <Palette bind:open={palettes.files} placeholder="Go to file" items={fileItems} />
+<Palette
+	bind:open={branchPicker.open}
+	placeholder="Switch branch or create one"
+	items={branchItems}
+	dynamic={createBranchItems}
+/>
 <Palette bind:open={palettes.symbols} placeholder="Go to symbol in file" items={symbolItems} />
 <LspPicker />
 <LazyOpen when={updates.open} load={() => import("#lib/components/Settings.svelte")} />

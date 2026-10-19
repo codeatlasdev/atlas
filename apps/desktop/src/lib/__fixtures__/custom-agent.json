@@ -1,0 +1,14 @@
+{
+	"customAgents": [
+		{
+			"id": "opencode",
+			"label": "OpenCode",
+			"command": "opencode",
+			"args": ["run", "--model", "x"],
+			"resume": ["--session", "{session}"],
+			"env": {
+				"FOO": "1"
+			}
+		}
+	]
+}

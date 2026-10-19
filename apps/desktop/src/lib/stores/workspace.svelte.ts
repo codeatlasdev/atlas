@@ -15,6 +15,7 @@ import {
 	tabAt,
 } from "#lib/stores/tabs.ts";
 import { clampRatio, leaves, removeLeaf, splitAt, splitLeaf } from "#lib/stores/layout.ts";
+import { rightNeighbor } from "#lib/stores/preview.ts";
 import { ptyRequest } from "#lib/stores/ptySpawn.ts";
 import { WorkspacePersist } from "#lib/stores/workspacePersist.svelte.ts";
 import {
@@ -208,6 +209,19 @@ class Workspace {
 		return ng;
 	}
 
+	/**
+	 * The pane "to the side" of the focused one: the group right of it (never the bottom dock) when the layout has one,
+	 * so repeated opens do not keep splitting; else a new group split to its right.
+	 */
+	sideGroup(worktreeId: string): string | undefined {
+		const from = this.focusedGroup(worktreeId);
+		const bottom = this.doc.bottomGroup[worktreeId];
+		return (
+			rightNeighbor(this.doc.layouts[worktreeId], from.id, (g) => g === bottom) ??
+			this.split(from.id, "h")?.id
+		);
+	}
+
 	setRatio(path: number[], worktreeId: string, ratio: number) {
 		const node = splitAt(this.doc.layouts[worktreeId], path);
 		if (node) node.ratio = clampRatio(ratio);
@@ -347,8 +361,8 @@ class Workspace {
 		const groupId = this.focusedGroup(worktreeId).id;
 		let t: Tab | undefined;
 		if (c.kind === "terminal") {
-			const { argv, env, label, agent, chat } = c;
-			t = await this.newTerminal(worktreeId, { argv, env, label, agent, chat, groupId });
+			const { argv, env, label, agent, chat, cwd } = c;
+			t = await this.newTerminal(worktreeId, { argv, env, label, agent, chat, groupId, cwd });
 		} else {
 			const { index: _index, ...rest } = c;
 			t = this.openTab(worktreeId, { ...rest, kind: rest.kind as TabKind }, groupId);
@@ -401,17 +415,20 @@ class Workspace {
 			agent?: string;
 			groupId?: string;
 			chat?: boolean;
+			/** Start in this folder (absolute) instead of the worktree root. */
+			cwd?: string;
 		} = {},
 	): Promise<Tab | undefined> {
 		const w = this.worktree(worktreeId);
 		if (!w) return;
+		const cwd = opts.cwd ?? w.path;
 		const tabId = opts.tabId ?? uid();
 		try {
 			const { pty } = await host.ptyCreate(
 				ptyRequest({
 					id: tabId,
 					worktreeId: w.id,
-					cwd: w.path,
+					cwd,
 					argv: opts.argv,
 					env: opts.env,
 					chat: opts.chat,
@@ -419,7 +436,7 @@ class Workspace {
 			);
 			this.ptys[pty] = {
 				pty,
-				cwd: w.path,
+				cwd,
 				argv: opts.argv ?? [],
 				scope: {},
 				title: "",
@@ -436,7 +453,7 @@ class Workspace {
 					label: opts.label ?? "Terminal",
 					pty,
 					argv: opts.argv ?? [],
-					cwd: w.path,
+					cwd,
 					env: opts.env,
 					agent: opts.agent,
 					chat: opts.chat,

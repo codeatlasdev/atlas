@@ -135,20 +135,65 @@ pub fn initialize_params(root: &str, name: &str, init_options: Value) -> Value {
 }
 
 pub fn uri_from_path(path: &str) -> String {
+    uri_from_path_on(path, cfg!(windows))
+}
+
+/// [`uri_from_path`] for a Windows (`C:\a\b` → `file:///C:/a/b`) or a Unix path.
+fn uri_from_path_on(path: &str, windows: bool) -> String {
+    let fixed;
+    let path = if windows {
+        fixed = windows_path_to_uri_path(path);
+        fixed.as_str()
+    } else {
+        path
+    };
     let mut out = String::from("file://");
     for b in path.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
                 out.push(b as char)
             }
+            // The drive colon stays literal, as VS Code and the servers write it.
+            b':' if windows => out.push(':'),
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
     out
 }
 
+/// `C:\a\b` → `/C:/a/b`: forward slashes and a leading slash before the drive.
+fn windows_path_to_uri_path(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    if p.as_bytes().get(1) == Some(&b':') {
+        format!("/{p}")
+    } else {
+        p
+    }
+}
+
 /// `file://` URI → absolute path (percent-decoded). `None` for other schemes.
 pub fn path_from_uri(uri: &str) -> Option<String> {
+    let p = path_from_uri_on(uri)?;
+    Some(if cfg!(windows) {
+        windows_path_from_uri_path(&p)
+    } else {
+        p
+    })
+}
+
+/// `/C:/a/b` (or `/c%3A/a/b`, already decoded) → `C:/a/b`: the forward-slash form the app keeps
+/// every path in (`atlas_core::paths::normalize`), so pushed diagnostics match its documents.
+fn windows_path_from_uri_path(p: &str) -> String {
+    let b = p.as_bytes();
+    let p = if b.len() >= 3 && b[0] == b'/' && b[1].is_ascii_alphabetic() && b[2] == b':' {
+        &p[1..]
+    } else {
+        p
+    };
+    p.to_string()
+}
+
+fn path_from_uri_on(uri: &str) -> Option<String> {
     let rest = uri.strip_prefix("file://")?;
     let rest = rest.strip_prefix("localhost").unwrap_or(rest);
     let bytes = rest.as_bytes();
@@ -394,13 +439,27 @@ mod tests {
     #[test]
     fn uris_roundtrip_with_special_characters() {
         for p in ["/a/b.rs", "/with space/ü/日本.rs", "/p/100%/a#b?c.ts"] {
-            let u = uri_from_path(p);
+            let u = uri_from_path_on(p, false);
             assert!(u.starts_with("file:///"));
             assert!(!u.contains(' ') && !u.contains('#') && !u.contains('?'));
-            assert_eq!(path_from_uri(&u).as_deref(), Some(p));
+            assert_eq!(path_from_uri_on(&u).as_deref(), Some(p));
         }
         assert_eq!(path_from_uri("untitled:Untitled-1"), None);
-        assert_eq!(path_from_uri("file:///a%2"), Some("/a%2".into()));
+        assert_eq!(path_from_uri_on("file:///a%2"), Some("/a%2".into()));
+    }
+
+    #[test]
+    fn windows_paths_become_drive_uris_and_come_back() {
+        let u = uri_from_path_on(r"C:\Users\u\my app\src\main.rs", true);
+        assert_eq!(u, "file:///C:/Users/u/my%20app/src/main.rs");
+        let back = windows_path_from_uri_path(&path_from_uri_on(&u).unwrap());
+        assert_eq!(back, "C:/Users/u/my app/src/main.rs");
+        // The app's own form (forward slashes) makes the same URI and comes back unchanged.
+        let app = "C:/Users/u/my app/src/main.rs";
+        assert_eq!(uri_from_path_on(app, true), u);
+        // Servers that percent-encode the colon (VS Code does) decode to the same path.
+        let enc = path_from_uri_on("file:///c%3A/x/y.ts").unwrap();
+        assert_eq!(windows_path_from_uri_path(&enc), "c:/x/y.ts");
     }
 
     #[test]

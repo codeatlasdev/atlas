@@ -1,8 +1,69 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+#[cfg(unix)]
 use nix::sys::signal::{self, Signal};
+#[cfg(unix)]
 use nix::unistd::Pid;
+
+/// The two stops a task tree gets: asked (`SIGTERM`), then forced (`SIGKILL`). Windows has no
+/// polite stop for a console program it does not share a console with, so both end the process.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stop {
+    Term,
+    Kill,
+}
+
+/// A service or action command: `script` through the platform shell (`sh -c`, `cmd /d /s /c` on
+/// Windows), in a process group of its own on Unix (so a stop reaches its whole tree) and without
+/// a console window on Windows (the desktop app has none to share).
+pub fn task_command(script: &str) -> tokio::process::Command {
+    let mut cmd = atlas_core::sys::shell_tokio(script);
+    #[cfg(unix)]
+    cmd.process_group(0);
+    #[cfg(windows)]
+    atlas_core::sys::CommandExt::no_window(&mut cmd);
+    cmd
+}
+
+/// Test-only: a test's POSIX one-liner (`a; b`, `a && b`, `sleep N`, `mkdir -p d`,
+/// `echo x >&2`, `$VAR`, `exit N`) in the dialect of the platform shell, so scheduler, action and
+/// pre_command tests run real processes on Windows too (`cmd`: `&` sequencing, `ping` as sleep,
+/// `%VAR%`, redirections first so echo keeps no trailing space).
+#[cfg(test)]
+pub(crate) fn test_sh(script: &str) -> String {
+    if cfg!(unix) {
+        return script.to_string();
+    }
+    let var = regex::Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").expect("regex");
+    let one = |c: &str| -> String {
+        let c = c.trim();
+        if let Some(n) = c
+            .strip_prefix("sleep ")
+            .and_then(|n| n.trim().parse::<u64>().ok())
+        {
+            return format!("ping -n {} 127.0.0.1 >NUL", n + 1);
+        }
+        if let Some(d) = c.strip_prefix("mkdir -p ") {
+            return format!("(if not exist {d} mkdir {d})");
+        }
+        match c {
+            "true" => return "exit 0".into(),
+            "false" => return "exit 1".into(),
+            _ => {}
+        }
+        let c = var.replace_all(c, "%$1%").into_owned();
+        match c.split_once(" >") {
+            Some((cmd, redir)) => format!(">{} {}", redir.trim(), cmd.trim()),
+            None => c,
+        }
+    };
+    script
+        .split(';')
+        .map(|part| part.split("&&").map(one).collect::<Vec<_>>().join("&&"))
+        .collect::<Vec<_>>()
+        .join("&")
+}
 
 /// One process-table row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +75,7 @@ pub struct ProcEntry {
 
 /// Snapshot of the whole process table (`ps -ax -o pid=,ppid=,pgid=`).
 /// Empty when `ps` is unavailable — callers then fall back to group-only kills.
+#[cfg(unix)]
 pub fn process_table() -> Vec<ProcEntry> {
     let Ok(out) = std::process::Command::new("ps")
         .args(["-ax", "-o", "pid=,ppid=,pgid="])
@@ -24,6 +86,31 @@ pub fn process_table() -> Vec<ProcEntry> {
     parse_process_table(&String::from_utf8_lossy(&out.stdout))
 }
 
+/// Snapshot of the whole process table (Toolhelp). Windows has no process groups: `pgid` is 0,
+/// which [`KillTree`] never signals. A recorded parent pid outlives its process and pids are
+/// reused, so a row whose parent was created after it is cut loose (`ppid` 0).
+#[cfg(windows)]
+pub fn process_table() -> Vec<ProcEntry> {
+    let rows = atlas_core::sys::process_rows();
+    let born: HashMap<u32, u64> = rows
+        .iter()
+        .filter_map(|r| Some((r.pid, atlas_core::sys::start_time_secs(r.pid)?)))
+        .collect();
+    rows.iter()
+        .map(|r| {
+            let stale_parent = matches!(
+                (born.get(&r.ppid), born.get(&r.pid)),
+                (Some(p), Some(c)) if p > c
+            );
+            ProcEntry {
+                pid: r.pid as i32,
+                ppid: if stale_parent { 0 } else { r.ppid as i32 },
+                pgid: 0,
+            }
+        })
+        .collect()
+}
+
 /// `process_table` off the async runtime: `ps` blocks for tens of ms.
 pub async fn process_table_async() -> Vec<ProcEntry> {
     tokio::task::spawn_blocking(process_table)
@@ -31,6 +118,7 @@ pub async fn process_table_async() -> Vec<ProcEntry> {
         .unwrap_or_default()
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 fn parse_process_table(text: &str) -> Vec<ProcEntry> {
     text.lines()
         .filter_map(|l| {
@@ -112,7 +200,12 @@ impl KillTree {
         self.pids.is_empty() && self.pgids.is_empty()
     }
 
-    pub fn signal(&self, sig: Signal) {
+    #[cfg(unix)]
+    pub fn signal(&self, stop: Stop) {
+        let sig = match stop {
+            Stop::Term => Signal::SIGTERM,
+            Stop::Kill => Signal::SIGKILL,
+        };
         for &g in &self.pgids {
             let _ = signal::kill(Pid::from_raw(-g), sig);
         }
@@ -121,7 +214,24 @@ impl KillTree {
         }
     }
 
+    /// Windows: end every member (there are no groups; `collect` snapshotted the descendants).
+    #[cfg(windows)]
+    pub fn signal(&self, _stop: Stop) {
+        for &p in &self.pids {
+            atlas_core::sys::force_kill(p as u32);
+        }
+    }
+
+    /// True while any member pid still exists.
+    #[cfg(windows)]
+    pub fn alive(&self) -> bool {
+        self.pids
+            .iter()
+            .any(|&p| atlas_core::sys::pid_alive(p as u32))
+    }
+
     /// True while any member pid or group still exists.
+    #[cfg(unix)]
     pub fn alive(&self) -> bool {
         self.pgids.iter().any(|&g| group_alive(g))
             || self.pids.iter().any(|&p| {
@@ -147,12 +257,12 @@ fn protected_pids(table: &[ProcEntry]) -> Vec<i32> {
         p = pp;
     }
     // `ps` may be unavailable/empty: the direct parent is always protected.
-    // SAFETY: getppid has no preconditions.
-    out.push(unsafe { libc::getppid() });
+    out.push(atlas_core::sys::parent_pid() as i32);
     out
 }
 
 /// True while any process remains in the process group `pgid`.
+#[cfg(unix)]
 fn group_alive(pgid: i32) -> bool {
     // EPERM still means the group exists; only ESRCH means it is gone.
     !matches!(
@@ -164,7 +274,7 @@ fn group_alive(pgid: i32) -> bool {
 /// SIGTERM `tree`, poll every 50ms until it is gone or `grace` expires, then
 /// SIGKILL the survivors. `reap` runs on every poll (reaping zombie leaders).
 pub async fn kill_tree_gracefully(tree: &KillTree, grace: Duration, mut reap: impl FnMut()) {
-    tree.signal(Signal::SIGTERM);
+    tree.signal(Stop::Term);
     if grace.is_zero() {
         return;
     }
@@ -175,7 +285,7 @@ pub async fn kill_tree_gracefully(tree: &KillTree, grace: Duration, mut reap: im
             return;
         }
         if tokio::time::Instant::now() >= deadline {
-            tree.signal(Signal::SIGKILL);
+            tree.signal(Stop::Kill);
             reap();
             return;
         }
@@ -216,8 +326,11 @@ pub async fn kill_stale_tree(roots: &[i32], grace: Duration) {
 /// `grace` for it to exit, SIGKILL if it is still alive.
 /// Used for orphan cleanup where we don't trust the process group.
 pub async fn kill_exact_gracefully(pid: i32, grace: Duration) {
-    let _ = signal::kill(Pid::from_raw(pid), Signal::SIGTERM);
-    if grace.is_zero() || pid <= 0 {
+    if pid <= 0 {
+        return;
+    }
+    atlas_core::sys::terminate(pid as u32);
+    if grace.is_zero() {
         return;
     }
     let deadline = tokio::time::Instant::now() + grace;
@@ -228,13 +341,14 @@ pub async fn kill_exact_gracefully(pid: i32, grace: Duration) {
         tokio::time::sleep(Duration::from_millis(100).min(grace)).await;
     }
     if crate::runtime::health::check_process_alive(pid as u32).await {
-        let _ = signal::kill(Pid::from_raw(pid), Signal::SIGKILL);
+        atlas_core::sys::force_kill(pid as u32);
     }
 }
 
 /// Process names that must never be killed on the strength of a stale pid
-/// (recycled into a shell, container runtime, init, or atlas itself).
-const PID_BLOCKLIST: [&str; 9] = [
+/// (recycled into a shell, container runtime, init, the desktop shell, or atlas itself).
+/// `cmd.exe` is not here: on Windows it is the root of every service (`cmd /c`).
+const PID_BLOCKLIST: [&str; 14] = [
     "fish",
     "zsh",
     "dash",
@@ -244,6 +358,11 @@ const PID_BLOCKLIST: [&str; 9] = [
     "launchd",
     "systemd",
     "atlas",
+    "pwsh",
+    "powershell",
+    "explorer.exe",
+    "svchost",
+    "windowsterminal",
 ];
 
 /// Pure: is a process with this (lowercase) name safe to kill as a leftover
@@ -256,6 +375,12 @@ pub fn name_is_killable(name: &str) -> bool {
 
 /// Lowercase executable path/name of `pid`, or empty string.
 pub fn proc_name(pid: i32) -> String {
+    #[cfg(windows)]
+    {
+        atlas_core::sys::exe_path(pid as u32)
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    }
     #[cfg(target_os = "macos")]
     {
         let mut buf = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
@@ -270,7 +395,7 @@ pub fn proc_name(pid: i32) -> String {
         }
         String::new()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         std::fs::read_to_string(format!("/proc/{pid}/comm"))
             .map(|s| s.trim().to_lowercase())
@@ -285,6 +410,10 @@ pub fn pid_is_service_runtime(pid: i32) -> bool {
 
 /// Process start time as Unix seconds, or None if unreadable.
 pub fn proc_start_secs(pid: i32) -> Option<u64> {
+    #[cfg(windows)]
+    {
+        atlas_core::sys::start_time_secs(pid as u32)
+    }
     #[cfg(target_os = "macos")]
     {
         let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
@@ -317,7 +446,7 @@ pub fn proc_start_secs(pid: i32) -> Option<u64> {
         let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
         Some(btime + ticks / hz)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = pid;
         None
@@ -389,6 +518,7 @@ mod tests {
         assert!(!init_child.pids.contains(&1));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn kill_gracefully_reaches_setsid_grandchildren() {
         let pidfile = std::env::temp_dir().join(format!("atlas-tree-{}", std::process::id()));
@@ -430,6 +560,35 @@ mod tests {
             let _ = signal::kill(Pid::from_raw(gc), Signal::SIGKILL);
         }
         assert!(!alive, "setsid grandchild must die with its task tree");
+    }
+
+    /// Windows has no process groups: a service's tree is its descendants, and stopping the
+    /// `cmd /c` root alone would leave the real program (node, bun…) running.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn kill_gracefully_ends_the_program_under_the_shell() {
+        let mut child = atlas_core::sys::shell_tokio("ping -n 60 127.0.0.1 >NUL")
+            .spawn()
+            .unwrap();
+        let root = child.id().unwrap() as i32;
+        let mut kids = Vec::new();
+        for _ in 0..100 {
+            kids = descendants(root, &process_table());
+            if !kids.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!kids.is_empty(), "ping never showed up under cmd");
+        kill_gracefully(&mut child, Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        for k in kids {
+            assert!(
+                !atlas_core::sys::pid_alive(k.pid as u32),
+                "{} survived",
+                k.pid
+            );
+        }
     }
 
     #[test]

@@ -223,6 +223,36 @@ describe("gridOf: raw rgb24 -> the luminance grid the detector reads", () => {
 		).toBe(true);
 	});
 
+	// Incident (alpha.13 site media): the judge called frame 471 of demo.gif "black" while it was the dark TUI with text
+	// (sRGB mean 0.114). The grid is LINEAR luminance (WCAG), but `blackMean` 0.02 was an sRGB-looking number: linear
+	// 0.02 is sRGB ~39/255, above the background of most dark themes. Through the real grid, a near-black theme
+	// background between two lit frames must not be a blank frame; true black and a 5/255 near-black must be.
+	test("a dark theme background is not black; black and near-black are", () => {
+		const at = (t: number, c: [number, number, number]) => ({
+			t,
+			grid: gridOf(
+				rgb(() => c),
+				w,
+				h,
+			),
+		});
+		const lit: [number, number, number] = [200, 200, 200];
+		for (const theme of [
+			[24, 24, 27],
+			[30, 31, 41],
+			[18, 18, 18],
+		] as [number, number, number][])
+			expect(blankFrames([at(0, lit), at(1 / 60, theme), at(2 / 60, lit)], opts), String(theme)).toEqual([]);
+		for (const black of [
+			[0, 0, 0],
+			[5, 5, 5],
+		] as [number, number, number][])
+			expect(
+				blankFrames([at(0, lit), at(1 / 60, black), at(2 / 60, lit)], opts).map((b) => b.kind),
+				String(black),
+			).toEqual(["black"]);
+	});
+
 	test("each cell averages its own pixels: a white pixel in a black cell raises only that cell, by 1/(px*px)", () => {
 		const g = gridOf(
 			rgb((x, y) => (x === 0 && y === 0 ? [255, 255, 255] : [0, 0, 0])),

@@ -5,6 +5,7 @@
 
 import type { Level } from "./model.ts";
 import { ROW } from "./viewport.svelte.ts";
+import { otherKey, primaryKey } from "#lib/keys.ts";
 
 export interface LogsKeyActions {
 	/** The scrollable body element and its height. */
@@ -22,16 +23,16 @@ export interface LogsKeyActions {
 }
 
 export function handleLogsKey(e: KeyboardEvent, a: LogsKeyActions) {
-	if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key === "f") {
+	if (primaryKey(e) && !e.shiftKey && !e.altKey && !otherKey(e) && e.key === "f") {
 		e.preventDefault();
 		e.stopPropagation();
 		return a.focusSearch();
 	}
-	if (e.metaKey && !e.shiftKey && !e.altKey && e.key === "g") {
+	if (primaryKey(e) && !e.shiftKey && !e.altKey && e.key === "g") {
 		e.preventDefault();
 		return a.step(1);
 	}
-	if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "g") {
+	if (primaryKey(e) && e.shiftKey && e.key.toLowerCase() === "g") {
 		e.preventDefault();
 		return a.step(-1);
 	}

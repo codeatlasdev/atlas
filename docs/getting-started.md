@@ -14,7 +14,7 @@ curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh
 atlas version
 ```
 
-The installer verifies the release checksum, puts `atlas` in `~/.atlas/bin` and wires your `PATH` (open a new shell afterwards). Prebuilt releases cover macOS on Apple silicon and Linux x86_64; Linux users can also install a [.deb, .rpm, Arch package or AppImage](installation.md#linux-packages). Manual install, updates and uninstalling: [Installation](installation.md).
+The installer verifies the release checksum, puts `atlas` in `~/.atlas/bin` and wires your `PATH` (open a new shell afterwards). Prebuilt releases cover macOS on Apple silicon, Linux x86_64 and Windows x64; Linux users can also install a [.deb, .rpm, Arch package or AppImage](installation.md#linux-packages), and on Windows you run `irm https://atlas.codeatlas.com.br/install.ps1 | iex` in PowerShell instead ([Windows](installation.md#windows)). Manual install, updates and uninstalling: [Installation](installation.md).
 
 ## 2. Describe your stack
 

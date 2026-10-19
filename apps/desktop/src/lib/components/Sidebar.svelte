@@ -1,6 +1,7 @@
 <script lang="ts">
 	/** Left sidebar: filter, fixed views, the active project and the collapsible list of the others. */
 	import { IconButton, Kbd, Skeleton, Spinner } from "@codeatlasdev/ui";
+	import { primaryKey } from "#lib/keys.ts";
 	import {
 		Bot,
 		ChevronRight,
@@ -10,6 +11,7 @@
 		TriangleAlert,
 	} from "@lucide/svelte";
 	import { onMount } from "svelte";
+	import { getCurrentWebview } from "@tauri-apps/api/webview";
 	import IdentityDialog from "#lib/components/IdentityDialog.svelte";
 	import SearchField from "#lib/components/SearchField.svelte";
 	import Tip from "#lib/components/Tip.svelte";
@@ -28,7 +30,15 @@
 	import ProjectHead from "./sidebar/ProjectHead.svelte";
 	import SidebarFooter from "./sidebar/SidebarFooter.svelte";
 	import WorktreeRow from "./sidebar/WorktreeRow.svelte";
-	import { addProject, refreshProjects, removeAllMissing, showDiscover } from "./sidebar/projects.ts";
+	import { droppedOn } from "./sidebar/addProject.ts";
+	import {
+		addFolder,
+		addProject,
+		refreshProjects,
+		removeAllMissing,
+		removeProject,
+		showDiscover,
+	} from "./sidebar/projects.ts";
 	import { sidebar } from "./sidebar/state.svelte.ts";
 
 	let { onJump, onAgent }: { onJump?: () => void; onAgent?: (worktreeId: string) => void } = $props();
@@ -58,7 +68,7 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		if (!(e.metaKey && e.shiftKey && e.key === "Backspace")) return;
+		if (!(primaryKey(e) && e.shiftKey && e.key === "Backspace")) return;
 		const sel = Object.keys(sidebar.multi).filter((k) => sidebar.multi[k]);
 		const ids = sel.length ? sel : sidebar.hovered ? [sidebar.hovered] : [];
 		if (!ids.length) return;
@@ -72,9 +82,32 @@
 		pushZones();
 	});
 
+	let asideEl: HTMLElement | undefined = $state();
+	let dropping = $state(false);
+
+	/** A folder dragged from Finder onto the sidebar is added like a picked one (Tauri delivers native drops, not DOM ones). */
+	onMount(() => {
+		const off = getCurrentWebview().onDragDropEvent((e) => {
+			const d = e.payload;
+			if (d.type === "leave") dropping = false;
+			if (d.type !== "over" && d.type !== "enter" && d.type !== "drop") return;
+			const rect = asideEl?.getBoundingClientRect();
+			const inside = !!rect && droppedOn(rect, d.position, window.devicePixelRatio);
+			dropping = inside && d.type !== "drop";
+			if (d.type === "drop" && inside) for (const path of new Set(d.paths)) void addFolder(path);
+		});
+		return () => void off.then((u) => u());
+	});
+
 	onMount(() =>
 		register([
 			{ id: "atlas::AddProject", label: "Add project…", run: () => void addProject() },
+			{
+				id: "atlas::RemoveProject",
+				label: "Remove project from Atlas…",
+				run: () => activeRepo && void removeProject(activeRepo.id),
+				when: () => !!activeRepo,
+			},
 			{
 				id: "atlas::DiscoverProjects",
 				label: "Find projects on this machine",
@@ -93,7 +126,7 @@
 
 <svelte:window {onkeydown} />
 
-<aside class="sidebar" data-tour="sidebar" use:swipe={spaceSwipe()}>
+<aside class="sidebar" class:dropping data-tour="sidebar" bind:this={asideEl} use:swipe={spaceSwipe()}>
 	<div class="drag" data-tauri-drag-region>
 		<Tip label="Hide sidebar" command="shell::ToggleSidebar" side="bottom">
 			{#snippet child(props)}
@@ -231,6 +264,10 @@
 		   wallpaper or macOS appearance. */
 		background: var(--ca-surface-sunken);
 	}
+	/* A folder is being dragged over: it will be added. */
+	.sidebar.dropping {
+		box-shadow: inset 0 0 0 2px var(--ca-brand-main);
+	}
 	.drag {
 		height: 52px;
 		flex-shrink: 0;
@@ -238,6 +275,10 @@
 		align-items: center;
 		justify-content: flex-end;
 		padding-right: 10px;
+	}
+	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
+	:global(html.opaque-window) .drag {
+		height: 36px;
 	}
 	/* Hidden until the sidebar is hovered, like Arc's chrome. */
 	.drag :global(.hide-btn),

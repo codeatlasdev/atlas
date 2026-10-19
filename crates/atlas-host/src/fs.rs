@@ -1,6 +1,5 @@
 //! Filesystem commands. Writes are atomic (tmp + rename in the same dir).
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -118,10 +117,17 @@ pub fn write(path: &str, data: &str, mode: Option<u32>) -> Result<Value, String>
         std::process::id()
     ));
     std::fs::write(&tmp, &bytes).map_err(err)?;
-    let perm = mode.or_else(|| std::fs::metadata(p).ok().map(|m| m.permissions().mode()));
-    if let Some(m) = perm {
-        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(m));
+    // Unix modes only: Windows has no mode bits (the file inherits its folder's ACL).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perm = mode.or_else(|| std::fs::metadata(p).ok().map(|m| m.permissions().mode()));
+        if let Some(m) = perm {
+            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(m));
+        }
     }
+    #[cfg(not(unix))]
+    let _ = mode;
     std::fs::rename(&tmp, p).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         err(e)

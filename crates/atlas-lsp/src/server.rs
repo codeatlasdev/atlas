@@ -240,12 +240,16 @@ pub fn spawn_process(launch: &Launch, root: &Path, log: &Path) -> Result<Child> 
         cmd.env("PATH", crate::install::prepend_path(&launch.path_prepend));
     }
     // SAFETY: setsid is async-signal-safe and runs in the forked child before exec.
+    #[cfg(unix)]
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
             Ok(())
         });
     }
+    // CREATE_NO_WINDOW: a console server started from the GUI app must not flash a window.
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
     cmd.spawn()
         .with_context(|| format!("spawn {}", launch.program.display()))
 }
@@ -321,9 +325,13 @@ pub async fn start(
 pub fn kill_group(pid: Option<u32>) {
     if let Some(pid) = pid {
         // SAFETY: plain signal to a group we created with setsid.
+        #[cfg(unix)]
         unsafe {
             libc::kill(-(pid as i32), libc::SIGKILL);
         }
+        // Windows has no groups: end the server and every process it started.
+        #[cfg(windows)]
+        atlas_core::sys::kill_tree(pid);
     }
 }
 

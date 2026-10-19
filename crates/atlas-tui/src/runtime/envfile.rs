@@ -132,7 +132,13 @@ pub fn process_cwd(pid: i32) -> Option<PathBuf> {
     {
         std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
     }
-    #[cfg(not(target_os = "linux"))]
+    // Windows does not expose another process's directory: the lock is then never "inside".
+    #[cfg(windows)]
+    {
+        let _ = pid;
+        None
+    }
+    #[cfg(target_os = "macos")]
     {
         let out = std::process::Command::new("lsof")
             .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
@@ -178,8 +184,7 @@ pub async fn cleanup_lock(root: &Path, lock_file: &str) {
         _ => (false, false),
     };
     let our_pid = std::process::id() as i32;
-    // SAFETY: getppid has no preconditions.
-    let our_ppid = unsafe { libc::getppid() };
+    let our_ppid = atlas_core::sys::parent_pid() as i32;
     match decide_lock_action(pid, alive, inside, plausible, our_pid, our_ppid) {
         LockAction::RemoveFileOnly => {
             let _ = std::fs::remove_file(&path);

@@ -12,6 +12,7 @@ import {
 	moveFocus,
 	overall,
 	projectHeadline,
+	projectTone,
 	recommend,
 	runningCards,
 	sparkPaths,
@@ -182,6 +183,11 @@ describe("project headline", () => {
 	});
 	test("failed beats starting in the same stack", () => {
 		expect(projectHeadline(proj("a", ["starting", "failed"])).state).toBe("failed");
+	});
+	// Same incident as metrics' "no services" summary: a running stack with nothing declared read "All 0 services up".
+	test("a running stack with no services says so", () => {
+		expect(projectHeadline(proj("a", []))).toEqual({ state: "healthy", text: "No services" });
+		expect(projectTone(proj("a", []))).toBe("ok");
 	});
 });
 

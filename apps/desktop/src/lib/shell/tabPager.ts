@@ -31,6 +31,16 @@ export function placeTabs(order: string[], active: string, amount: number, w: nu
 	return out;
 }
 
+/**
+ * Native views (terminal, browser) cannot follow a CSS transform and nothing crosses IPC per frame, so every pane in
+ * flight carries `data-swiping` for the generation: `overlayOpen` parks the native view under it, and lifting the mark
+ * makes `watchSlot` put the view back at the pane's untransformed rect.
+ */
+function release(el: HTMLElement) {
+	el.style.transform = el.style.visibility = "";
+	el.toggleAttribute("data-swiping", false);
+}
+
 /** The strip nudges a quarter of the drag, capped, so the finger reads as moving the whole group. */
 const STRIP_NUDGE = 24;
 
@@ -74,7 +84,7 @@ class TabPager {
 		for (const id of g.moved) {
 			if (keep.has(id)) continue;
 			const el = h.pane(id);
-			if (el) el.style.transform = el.style.visibility = "";
+			if (el) release(el);
 		}
 		g.moved = keep;
 		for (const [i, p] of next.entries()) {
@@ -82,6 +92,7 @@ class TabPager {
 			if (!el) continue;
 			el.style.transform = `translate3d(${p.x}px,0,0)`;
 			el.style.visibility = i === 0 ? "" : "visible";
+			el.toggleAttribute("data-swiping", true);
 		}
 		const strip = h.strip();
 		if (strip)
@@ -101,7 +112,7 @@ class TabPager {
 	#clear(g: GroupState, h: TabHost) {
 		for (const id of g.moved) {
 			const el = h.pane(id);
-			if (el) el.style.transform = el.style.visibility = "";
+			if (el) release(el);
 		}
 		g.moved.clear();
 		const strip = h.strip();

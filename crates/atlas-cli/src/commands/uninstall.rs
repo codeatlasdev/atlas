@@ -18,9 +18,9 @@ impl AtlasCommand for UninstallArgs {
 }
 
 pub async fn handle(yes: bool) -> Result<()> {
-    let home = std::env::var("HOME").context("$HOME not set")?;
-    let atlas_dir = PathBuf::from(&home).join(".atlas");
-    let bin = atlas_dir.join("bin").join("atlas");
+    let home = dirs::home_dir().context("no home directory")?;
+    let atlas_dir = home.join(".atlas");
+    let bin = atlas_dir.join("bin").join(atlas_core::paths::exe("atlas"));
 
     println!("\x1b[1;31m◆\x1b[0m Atlas uninstaller");
     println!();
@@ -37,6 +37,8 @@ pub async fn handle(yes: bool) -> Result<()> {
 
     // Detect shell configs that reference atlas
     let shell_files = shell_config_files(&home);
+    #[cfg(windows)]
+    println!("    {} (user PATH entry)", atlas_dir.join("bin").display());
     let dirty: Vec<&PathBuf> = shell_files
         .iter()
         .filter(|p| {
@@ -63,11 +65,31 @@ pub async fn handle(yes: bool) -> Result<()> {
         println!();
     }
 
+    // Windows cannot delete a running executable (this one, or `atlas hostd`), but it can move
+    // it: out of the way to the temp dir, where nothing refers to it.
+    #[cfg(windows)]
+    if bin.exists() {
+        let aside =
+            std::env::temp_dir().join(format!("atlas-uninstalled-{}.exe", std::process::id()));
+        let _ = std::fs::rename(&bin, aside);
+    }
+
     // Remove ~/.atlas
     if atlas_dir.exists() {
-        std::fs::remove_dir_all(&atlas_dir)
-            .with_context(|| format!("Could not remove {}", atlas_dir.display()))?;
+        std::fs::remove_dir_all(&atlas_dir).with_context(|| {
+            format!(
+                "Could not remove {} (close Atlas Desktop and running `atlas` commands, then retry)",
+                atlas_dir.display()
+            )
+        })?;
         println!("\x1b[32m✓\x1b[0m Removed  {}", atlas_dir.display());
+    }
+
+    #[cfg(windows)]
+    match super::install::remove_user_path(&atlas_dir.join("bin")) {
+        Ok(true) => println!("\x1b[32m✓\x1b[0m Removed  user PATH entry"),
+        Ok(false) => {}
+        Err(e) => eprintln!("\x1b[33m◆\x1b[0m Could not edit the user PATH: {e:#}"),
     }
 
     // Strip PATH lines from shell configs
@@ -105,8 +127,7 @@ pub async fn handle(yes: bool) -> Result<()> {
     Ok(())
 }
 
-fn shell_config_files(home: &str) -> Vec<PathBuf> {
-    let home = PathBuf::from(home);
+fn shell_config_files(home: &std::path::Path) -> Vec<PathBuf> {
     [
         ".zshenv",
         ".zshrc",

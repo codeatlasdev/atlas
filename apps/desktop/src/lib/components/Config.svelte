@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { kbd } from "#lib/keys.ts";
 	import { Button, Alert, Dialog, Spinner, toast, Kbd } from "@codeatlasdev/ui";
 	import { Save, RotateCcw, CircleCheck, CircleAlert } from "@lucide/svelte";
 	import { EditorView, basicSetup } from "codemirror";
@@ -183,7 +184,7 @@
 	<Button size="sm" disabled={!dirty || problems.length > 0 || validating || saving} onclick={review}>
 		{#snippet leading()}<Save size={13} />{/snippet}
 		Save
-		{#snippet trailing()}<Kbd>⌘S</Kbd>{/snippet}
+		{#snippet trailing()}<Kbd>{kbd("cmd-s")}</Kbd>{/snippet}
 	</Button>
 </div>
 

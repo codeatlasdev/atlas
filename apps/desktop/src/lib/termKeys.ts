@@ -155,3 +155,27 @@ export function keyToSend(
 	if (key.length === 1 && !e.ctrlKey && !alt) return null;
 	return { key, shift: e.shiftKey, alt, ctrl: e.ctrlKey };
 }
+
+/** What the xterm.js terminal does with a keydown before it encodes it for the program. */
+export type XtermKey = "search" | "copy" | "paste" | "app" | "shiftEnter" | null;
+
+/**
+ * xterm.js keys (every terminal off macOS, and remote ones on macOS). macOS: ⌘F searches, other ⌘ chords are the
+ * app's. Elsewhere, like Windows Terminal: Ctrl+C copies when text is selected (else it is ^C for the program),
+ * Ctrl+Shift+C copies, Ctrl+V and Ctrl+Shift+V paste, Ctrl+Shift+F searches and other Ctrl+Shift chords are the
+ * app's. Shift+Enter is sent as `CSI 13;2u` so agents can tell it from Enter.
+ */
+export function xtermKey(e: KeyLike, hasSelection: boolean, mac: boolean): XtermKey {
+	const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+	if (mac) {
+		if (e.metaKey && k === "f") return "search";
+		if (e.metaKey) return "app";
+	} else if (e.ctrlKey && !e.altKey && !e.metaKey) {
+		if (k === "c" && (e.shiftKey || hasSelection)) return "copy";
+		if (k === "v") return "paste";
+		if (e.shiftKey && k === "f") return "search";
+		if (e.shiftKey) return "app";
+	}
+	if (e.shiftKey && k === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey) return "shiftEnter";
+	return null;
+}

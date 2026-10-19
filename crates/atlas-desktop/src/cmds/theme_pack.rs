@@ -108,16 +108,39 @@ fn unsafe_entry(name: &str) -> bool {
         })
 }
 
-/// Vet the archive's entry list and size before extracting anything.
+/// Windows' own archive tool (bsdtar, in System32 since Windows 10), which reads zip.
+#[cfg(windows)]
+fn bsdtar() -> Command {
+    use atlas_core::sys::CommandExt as _;
+    let exe = std::env::var_os("SystemRoot")
+        .map(|r| PathBuf::from(r).join("System32").join("tar.exe"))
+        .unwrap_or_else(|| PathBuf::from("tar.exe"));
+    let mut c = Command::new(exe);
+    c.no_window();
+    c
+}
+
+/// The archive's entry names, one per line.
+fn list_entries(zip: &Path) -> Result<Vec<u8>, String> {
+    #[cfg(windows)]
+    let (cmd, what) = {
+        let mut c = bsdtar();
+        c.arg("-tf").arg(zip);
+        (c, "tar")
+    };
+    #[cfg(unix)]
+    let (cmd, what) = {
+        let mut c = Command::new("/usr/bin/unzip");
+        c.arg("-Z1").arg(zip);
+        (c, "unzip")
+    };
+    run_tool(cmd, what)
+}
+
+/// Vet the archive's entry list and size before extracting anything. Windows' bsdtar reports no
+/// uncompressed total up front: there the size cap is enforced by `walk` after extraction.
 fn vet_archive(zip: &Path) -> Result<(), String> {
-    let list = run_tool(
-        {
-            let mut c = Command::new("/usr/bin/unzip");
-            c.arg("-Z1").arg(zip);
-            c
-        },
-        "unzip",
-    )?;
+    let list = list_entries(zip)?;
     let list = String::from_utf8_lossy(&list);
     let mut count = 0usize;
     for name in list.lines().filter(|l| !l.is_empty()) {
@@ -132,6 +155,9 @@ fn vet_archive(zip: &Path) -> Result<(), String> {
                 "This archive has an entry outside its folder ({name}): refusing to import it"
             ));
         }
+    }
+    if cfg!(windows) {
+        return Ok(());
     }
     let totals = run_tool(
         {
@@ -238,6 +264,16 @@ fn unpack_blocking(path: &str) -> Result<UnpackedPackage, String> {
         .map_err(|e| format!("could not create a temp folder: {e}"))?;
     // Until extraction is vetted the TempDir guard removes the dir on every error path.
     let dir = tmp.path().to_path_buf();
+    #[cfg(windows)]
+    run_tool(
+        {
+            let mut c = bsdtar();
+            c.arg("-xf").arg(&src).arg("-C").arg(&dir);
+            c
+        },
+        "tar",
+    )?;
+    #[cfg(unix)]
     run_tool(
         {
             let mut c = Command::new("/usr/bin/ditto");
@@ -515,6 +551,8 @@ mod tests {
         assert!(err.contains("outside its folder"), "{err}");
     }
 
+    // Unix symlinks (Windows needs Developer Mode to make one).
+    #[cfg(unix)]
     #[test]
     fn symlink_is_dropped() {
         if !have_zip() {
@@ -554,6 +592,8 @@ mod tests {
         assert!(err.contains("more than 5000 entries"), "{err}");
     }
 
+    // Unix symlinks (Windows needs Developer Mode to make one).
+    #[cfg(unix)]
     #[test]
     fn read_packed_rejects_traversal_symlink_and_non_utf8() {
         let w = tempfile::Builder::new()
@@ -628,6 +668,8 @@ mod tests {
         assert!(read_packed(&p.dir, "a.json").is_err());
     }
 
+    // Unix symlinks (Windows needs Developer Mode to make one).
+    #[cfg(unix)]
     #[test]
     fn cleanup_refuses_foreign_dir_and_folder_import_survives() {
         // A dir that is not ours (no prefix): left alone.

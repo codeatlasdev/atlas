@@ -1,0 +1,15 @@
+[
+	{
+		"branch": "feat",
+		"stashed": false,
+		"status": "ok"
+	},
+	{
+		"message": "error: Your local changes",
+		"status": "dirty"
+	},
+	{
+		"path": "/work/repo-busy",
+		"status": "worktree"
+	}
+]

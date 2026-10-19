@@ -572,6 +572,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 	entry(
 		"workspaces",
+		"Auto clean up",
+		"ws-autoclean",
+		"Remove worktrees automatically",
+		"Remove linked worktrees whose PR was merged or that sat idle, never with unsaved or unpushed work.",
+		"auto delete merged idle stale prune restore",
+	),
+	entry(
+		"workspaces",
 		"Clean up",
 		"ws-cleanup",
 		"Clean up worktrees",
@@ -613,11 +621,28 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 	entry(
 		"agents",
+		"Custom agents",
+		"agent-custom",
+		"Add agent",
+		"Run any agent CLI (OpenCode, Gemini CLI, Amp…) from the + menu and ⌘⇧A.",
+		"custom opencode gemini amp aider cli preset add",
+	),
+	entry(
+		"agents",
 		"Quick commands",
 		"quick",
 		"Quick commands",
 		"One-click buttons in the tab strip that run a command or send a prompt to the agent.",
 		"shortcuts prompt buttons",
+	),
+
+	entry(
+		"git",
+		"Commit messages",
+		"git-commit-agent",
+		"Generate commit messages with",
+		"Which agent writes the commit message from your staged diff, or Off to hide the button. Secrets are never sent.",
+		"ai commit message sparkle generate omp claude codex privacy diff staged",
 	),
 
 	entry(

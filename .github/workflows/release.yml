@@ -195,6 +195,78 @@ jobs:
           name: atlas-x86_64-unknown-linux-gnu
           path: dist/*
 
+  # Windows x64: the CLI tarball (atlas.exe) and Atlas Desktop's per-user NSIS installer (what
+  # `atlas desktop` runs), cross-compiled on Linux the way Tauri documents it (cargo-xwin fetches the
+  # MSVC CRT and Windows SDK, makensis packs the installer). The installer also carries atlas.exe, next
+  # to the app, so a desktop-only install can start hostd. tauri-cli checks the build HOST for an appindicator
+  # library when the tray is on, even for a Windows target ("Can't detect any appindicator library").
+  build-windows:
+    name: Build (x86_64-pc-windows-msvc)
+    needs: gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: System tools
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
+            clang lld llvm nasm nsis libayatana-appindicator3-dev
+
+      - name: Install Rust
+        run: |
+          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: Build CLI
+        run: |
+          command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          cargo xwin build --release --locked --target x86_64-pc-windows-msvc -p atlas-cli
+
+      # tauri.windows.conf.json picks the NSIS bundle (per-user install in %LOCALAPPDATA%\Atlas);
+      # --config adds the CLI next to the app only here, so a plain `cargo build` never needs it.
+      - name: Build desktop app
+        run: |
+          command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
+          (cd apps/desktop && bun install --frozen-lockfile)
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          (cd crates/atlas-desktop && cargo tauri build --ci --runner cargo-xwin \
+            --target x86_64-pc-windows-msvc --bundles nsis \
+            --config '{"bundle":{"resources":{"../../target/x86_64-pc-windows-msvc/release/atlas.exe":"atlas.exe"}}}')
+
+      - name: Package
+        run: |
+          V=${TAG#v}
+          T=x86_64-pc-windows-msvc
+          mkdir -p dist
+          cp "target/$T/release/atlas.exe" dist/
+          (cd dist && tar czf "atlas-$V-$T.tar.gz" atlas.exe && rm atlas.exe)
+          cp "target/$T/release/bundle/nsis/"*-setup.exe "dist/Atlas-$V-$T-setup.exe"
+          cd dist
+          for f in *.tar.gz *.exe; do sha256sum "$f" > "$f.sha256"; done
+          ls -l
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: atlas-x86_64-pc-windows-msvc
+          path: dist/*
+
   # Arch Linux: the .deb repackaged by makepkg (packaging/arch). Attached as a .pkg.tar.zst
   # (`sudo pacman -U`) together with the rendered PKGBUILD, which is what goes to the AUR.
   build-arch:
@@ -242,7 +314,7 @@ jobs:
 
   publish:
     name: Publish Release
-    needs: [build, build-linux, build-arch]
+    needs: [build, build-linux, build-arch, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -295,7 +367,7 @@ jobs:
       - name: SHA256SUMS
         run: |
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.dmg' -o -name '*.cdx.json' -o -name '*.AppImage' \
-            -o -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' -o -name 'PKGBUILD' \) -print0 \
+            -o -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' -o -name 'PKGBUILD' -o -name '*-setup.exe' \) -print0 \
             | xargs -0 shasum -a 256 | sed 's#  .*/#  #' | sort -k2 > SHA256SUMS
           shasum -a 256 manifest.json >> SHA256SUMS
           cat SHA256SUMS
@@ -330,13 +402,20 @@ jobs:
           curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
           ```
 
-          Or download `atlas-*-aarch64-apple-darwin.tar.gz` (macOS) or `atlas-*-x86_64-unknown-linux-gnu.tar.gz`
-          (Linux) below, verify it against its `.sha256` (or `SHA256SUMS`), extract it and run `./atlas install`.
+          Windows (PowerShell):
+
+          ```powershell
+          irm https://atlas.codeatlas.com.br/install.ps1 | iex
+          ```
+
+          Or download `atlas-*-aarch64-apple-darwin.tar.gz` (macOS), `atlas-*-x86_64-unknown-linux-gnu.tar.gz`
+          (Linux) or `atlas-*-x86_64-pc-windows-msvc.tar.gz` (Windows) below, verify it against its `.sha256`
+          (or `SHA256SUMS`), extract it and run `./atlas install`.
 
           ## Desktop app
 
           ```bash
-          atlas desktop   # installs Atlas Desktop on first run (macOS: /Applications; Linux: ~/.local/bin), then opens it
+          atlas desktop   # installs Atlas Desktop on first run (macOS: /Applications; Linux: ~/.local/bin; Windows: %LOCALAPPDATA%\Atlas), then opens it
           ```
 
           Or download a package below:
@@ -344,6 +423,7 @@ jobs:
           | | |
           |---|---|
           | macOS | `Atlas-*-aarch64-apple-darwin.dmg` |
+          | Windows 10/11 | `Atlas-*-x86_64-pc-windows-msvc-setup.exe` (per-user, no admin rights; carries `atlas.exe` too) |
           | Arch Linux | `codeatlas-atlas-bin-*-x86_64.pkg.tar.zst`: `sudo pacman -U codeatlas-atlas-bin-*.pkg.tar.zst` |
           | Debian, Ubuntu | `atlas_*_amd64.deb`: `sudo apt install ./atlas_*_amd64.deb` |
           | Fedora, openSUSE | `atlas-*.x86_64.rpm`: `sudo dnf install ./atlas-*.x86_64.rpm` |
@@ -372,6 +452,7 @@ jobs:
             artifacts/**/*.rpm
             artifacts/**/*.pkg.tar.zst
             artifacts/**/PKGBUILD
+            artifacts/**/*-setup.exe
             artifacts/**/*.sha256
             artifacts/**/*.cdx.json
             manifest.json

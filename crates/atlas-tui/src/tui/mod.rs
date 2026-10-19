@@ -67,6 +67,12 @@ impl Drop for TerminalGuard {
 
 /// Ctrl+Z: hand the terminal back, stop the process, and re-enter TUI modes on resume (SIGCONT).
 /// Raw mode swallows the tty's own SIGTSTP, so we raise it ourselves.
+#[cfg(windows)]
+pub(crate) fn suspend() {
+    // No job control on Windows: there is no shell to return to while we are stopped.
+}
+
+#[cfg(unix)]
 pub(crate) fn suspend() {
     restore_terminal();
     // SIGTSTP is stoppable and shell-friendly (job control shows "Stopped").
@@ -128,9 +134,8 @@ fn quit_on_terminate(
     tx: tokio::sync::mpsc::UnboundedSender<crate::runtime::manager::ManagerEvent>,
 ) {
     tokio::spawn(async move {
-        use tokio::signal::unix::{SignalKind, signal};
-        let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
-        let mut sighup = signal(SignalKind::hangup()).expect("sighup");
+        let mut sigterm = crate::sig::terminate().expect("sigterm");
+        let mut sighup = crate::sig::hangup().expect("sighup");
         tokio::select! {
             _ = sigterm.recv() => {}
             _ = sighup.recv()  => {}

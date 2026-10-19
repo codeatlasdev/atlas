@@ -64,7 +64,7 @@ pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
         serde_json::from_str(&text).map_err(|e| format!("unreadable status file: {e}"))?;
 
     let pid = v["pid"].as_i64().unwrap_or(0) as i32;
-    if pid <= 0 || unsafe { libc::kill(pid, 0) } != 0 {
+    if pid <= 0 || !atlas_core::sys::pid_alive(pid as u32) {
         return Err(format!("process {pid} is not alive"));
     }
 

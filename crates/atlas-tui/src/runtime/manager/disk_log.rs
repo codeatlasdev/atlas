@@ -130,15 +130,17 @@ impl LogWriter {
     }
 
     fn rotate_if_needed(&mut self) {
-        use std::os::unix::fs::MetadataExt;
+        use atlas_core::sys::file_identity;
         let path = self.dir.join(format!("{}.log", self.name));
         let Ok(mine) = self.file.metadata() else {
             return;
         };
-        let on_disk = std::fs::metadata(&path).ok();
+        let on_disk = std::fs::File::open(&path).ok();
         // The sibling reader (or a restart) already replaced the file under our
         // handle: just follow the new one, whatever its size.
-        let stale = on_disk.as_ref().is_none_or(|m| m.ino() != mine.ino());
+        let stale = on_disk
+            .as_ref()
+            .is_none_or(|f| file_identity(f) != file_identity(&self.file));
         if !stale && mine.len() < self.max_bytes {
             return;
         }

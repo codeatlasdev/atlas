@@ -8,17 +8,16 @@
 //! and answered through [`ctl_reply`].
 
 use std::collections::HashMap;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use atlas_core::ipc;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::oneshot;
 
 const MAX_LINE: usize = 1024 * 1024;
@@ -68,24 +67,29 @@ async fn serve(app: AppHandle) -> std::io::Result<()> {
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d)?;
     }
-    if UnixStream::connect(&path).await.is_ok() {
+    if ipc::connect(&path).await.is_ok() {
         return Err(std::io::Error::other(
             "another Atlas Desktop owns the control socket",
         ));
     }
-    let _ = std::fs::remove_file(&path);
+    let _ = ipc::remove_stale(&path);
     let token = atlas_host::paths::random_hex(24)?;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(token_path())?;
+    let mut f = atlas_core::sys::owner_only(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true),
+    )
+    .open(token_path())?;
     std::io::Write::write_all(&mut f, token.as_bytes())?;
-    let listener = UnixListener::bind(&path)?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    let listener = ipc::Listener::bind(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
     loop {
-        let (stream, _) = listener.accept().await?;
+        let stream = listener.accept().await?;
         let (app, token) = (app.clone(), token.clone());
         tauri::async_runtime::spawn(async move {
             let _ = conn(stream, app, &token).await;
@@ -93,7 +97,7 @@ async fn serve(app: AppHandle) -> std::io::Result<()> {
     }
 }
 
-async fn read_json(r: &mut BufReader<tokio::net::unix::OwnedReadHalf>) -> Option<Value> {
+async fn read_json(r: &mut BufReader<ipc::ReadHalf>) -> Option<Value> {
     let mut line = String::new();
     let n = r.read_line(&mut line).await.ok()?;
     if n == 0 || n > MAX_LINE {
@@ -102,8 +106,8 @@ async fn read_json(r: &mut BufReader<tokio::net::unix::OwnedReadHalf>) -> Option
     serde_json::from_str(&line).ok()
 }
 
-async fn conn(stream: UnixStream, app: AppHandle, token: &str) -> std::io::Result<()> {
-    let (r, mut w) = stream.into_split();
+async fn conn(stream: ipc::Stream, app: AppHandle, token: &str) -> std::io::Result<()> {
+    let (r, mut w) = ipc::split(stream);
     let mut r = BufReader::new(r);
     let reply = match read_json(&mut r).await {
         Some(h) if h["token"] == token => match read_json(&mut r).await {

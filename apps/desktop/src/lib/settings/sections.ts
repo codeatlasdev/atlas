@@ -10,6 +10,7 @@ export type SettingsSection =
 	| "terminal"
 	| "workspaces"
 	| "agents"
+	| "git"
 	| "keyboard"
 	| "ssh"
 	| "mobile"
@@ -31,6 +32,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "terminal", label: "Terminal" },
 	{ id: "workspaces", label: "Workspaces" },
 	{ id: "agents", label: "Agents" },
+	{ id: "git", label: "Git" },
 	{ id: "keyboard", label: "Keyboard shortcuts" },
 	{ id: "ssh", label: "SSH hosts" },
 	{ id: "mobile", label: "Mobile" },

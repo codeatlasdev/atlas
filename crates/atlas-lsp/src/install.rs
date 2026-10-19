@@ -254,15 +254,15 @@ async fn resolve_uncached(base: &Path, s: &'static Server, p: &dyn Progress) -> 
     let dir = version_dir(base, s.name, s.version);
     match s.install {
         Install::GithubGz => {
-            let bin = dir.join(s.bin);
+            let bin = dir.join(exe(s.bin));
             if !bin.is_file() {
                 p.set(&format!("Downloading {} {}", s.name, s.version));
-                install_rust_analyzer(&dir, s.bin, s.version).await?;
+                install_rust_analyzer(&dir, &exe(s.bin), s.version).await?;
             }
             Ok(managed(bin, vec![], vec![], s))
         }
         Install::GoInstall => {
-            let bin = dir.join("bin").join(s.bin);
+            let bin = dir.join("bin").join(exe(s.bin));
             if !bin.is_file() {
                 let go = which_in("go", &extra_bin_dirs()).ok_or_else(no_go)?;
                 p.set(&format!("Installing {} {}", s.name, s.version));
@@ -317,8 +317,8 @@ pub async fn detect(base: &Path, s: &'static Server) -> Detected {
     }
     let dir = version_dir(base, s.name, s.version);
     let installed = match s.install {
-        Install::GithubGz => dir.join(s.bin),
-        Install::GoInstall => dir.join("bin").join(s.bin),
+        Install::GithubGz => dir.join(exe(s.bin)),
+        Install::GoInstall => dir.join("bin").join(exe(s.bin)),
         Install::Npm => dir.join("node_modules").join(s.entry),
     };
     if installed.is_file() {
@@ -376,29 +376,46 @@ pub fn extra_bin_dirs() -> Vec<PathBuf> {
     let Some(home) = dirs::home_dir() else {
         return vec![];
     };
-    vec![
+    let mut dirs = vec![
         home.join(".cargo/bin"),
         home.join("go/bin"),
         home.join(".atlas/bin"),
-        PathBuf::from("/opt/homebrew/bin"),
-        PathBuf::from("/usr/local/bin"),
-        PathBuf::from("/usr/local/go/bin"),
-    ]
+    ];
+    if cfg!(windows) {
+        let env_dir =
+            |var: &str, rest: &str| std::env::var_os(var).map(|d| PathBuf::from(d).join(rest));
+        dirs.extend(
+            [
+                env_dir("ProgramFiles", "Go/bin"),
+                env_dir("ProgramFiles", "nodejs"),
+                env_dir("APPDATA", "npm"),
+            ]
+            .into_iter()
+            .flatten(),
+        );
+    } else {
+        dirs.extend([
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/usr/local/bin"),
+            PathBuf::from("/usr/local/go/bin"),
+        ]);
+    }
+    dirs
 }
 
-fn is_exe(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    p.metadata()
-        .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-}
-
-/// First executable `name` on `PATH`, then in `extra`.
+/// First executable `name` on `PATH`, then in `extra` (`name.exe`, `name.cmd`… on Windows).
 pub fn which_in(name: &str, extra: &[PathBuf]) -> Option<PathBuf> {
     let path = std::env::var_os("PATH").unwrap_or_default();
+    let names = atlas_core::paths::exe_names(name);
     std::env::split_paths(&path)
         .chain(extra.iter().cloned())
-        .map(|d| d.join(name))
-        .find(|p| is_exe(p))
+        .flat_map(|d| names.iter().map(move |n| d.join(n)))
+        .find(|p| atlas_core::paths::is_executable(p))
+}
+
+/// `name` as the executable file Atlas installs (`gopls`, `gopls.exe` on Windows).
+fn exe(name: &str) -> String {
+    atlas_core::paths::exe(name)
 }
 
 /// `rust-analyzer` on `PATH` may be the rustup proxy of a toolchain that lacks the component:
@@ -566,6 +583,8 @@ fn ra_target() -> Result<&'static str> {
         ("macos", "x86_64") => "x86_64-apple-darwin",
         ("linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
+        ("windows", "x86_64") => "x86_64-pc-windows-msvc",
+        ("windows", "aarch64") => "aarch64-pc-windows-msvc",
         (os, arch) => bail!("no rust-analyzer build for {os}/{arch}"),
     })
 }
@@ -590,7 +609,9 @@ async fn github_asset_digest(repo: &str, tag: &str, asset: &str) -> Result<Strin
 }
 
 async fn install_rust_analyzer(dir: &Path, bin_name: &str, tag: &str) -> Result<()> {
-    let asset = format!("rust-analyzer-{}.gz", ra_target()?);
+    // Windows builds ship as a zip holding `rust-analyzer.exe`; the others as a bare gzip.
+    let ext = if cfg!(windows) { "zip" } else { "gz" };
+    let asset = format!("rust-analyzer-{}.{ext}", ra_target()?);
     let digest = github_asset_digest("rust-lang/rust-analyzer", tag, &asset).await?;
     let stage = Stage::new(dir)?;
     let part = stage.dir.join("download.part");
@@ -601,17 +622,54 @@ async fn install_rust_analyzer(dir: &Path, bin_name: &str, tag: &str) -> Result<
     )
     .await?;
     let bin = stage.dir.join(bin_name);
-    gunzip_exec(&part, &bin)?;
+    if cfg!(windows) {
+        extract_zip(&part, &stage.dir, 0)?;
+        if !bin.is_file() {
+            bail!("rust-analyzer archive has no {bin_name}");
+        }
+    } else {
+        gunzip_exec(&part, &bin)?;
+    }
     let _ = std::fs::remove_file(&part);
     stage.publish(dir)
 }
 
+/// Extract the zip `archive` into `out` with the system `tar` (bsdtar ships with Windows 10+ and
+/// reads zip), dropping `strip` leading path components. bsdtar refuses absolute and `..` paths.
+fn extract_zip(archive: &Path, out: &Path, strip: usize) -> Result<()> {
+    std::fs::create_dir_all(out)?;
+    let tar = std::env::var_os("SystemRoot")
+        .map(|r| PathBuf::from(r).join("System32").join("tar.exe"))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("tar"));
+    let st = std::process::Command::new(tar)
+        .arg("-xf")
+        .arg(archive)
+        .arg("-C")
+        .arg(out)
+        .arg(format!("--strip-components={strip}"))
+        .stdin(Stdio::null())
+        .output()
+        .context("run tar")?;
+    if !st.status.success() {
+        bail!(
+            "extract {}: {}",
+            archive.display(),
+            String::from_utf8_lossy(&st.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
 fn gunzip_exec(gz: &Path, out: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
     let mut d = flate2::read::GzDecoder::new(std::fs::File::open(gz)?);
     let mut f = std::fs::File::create(out)?;
     std::io::copy(&mut d, &mut f).context("decompress")?;
-    std::fs::set_permissions(out, std::fs::Permissions::from_mode(0o755))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(out, std::fs::Permissions::from_mode(0o755))?;
+    }
     Ok(())
 }
 
@@ -674,8 +732,20 @@ fn node_target() -> Result<&'static str> {
         ("macos", "x86_64") => "darwin-x64",
         ("linux", "x86_64") => "linux-x64",
         ("linux", "aarch64") => "linux-arm64",
+        ("windows", "x86_64") => "win-x64",
+        ("windows", "aarch64") => "win-arm64",
         (os, arch) => bail!("no Node.js build for {os}/{arch}"),
     })
+}
+
+/// Where the managed Node's executable lives under its install dir: `bin/node`, or `node.exe` at
+/// the root on Windows (that is how nodejs.org lays out each archive).
+fn node_bin_dir(dir: &Path) -> PathBuf {
+    if cfg!(windows) {
+        dir.to_path_buf()
+    } else {
+        dir.join("bin")
+    }
 }
 
 /// The `node` to run npm servers with, and its bin dir to prepend to `PATH` (None: system).
@@ -688,12 +758,12 @@ async fn ensure_node(base: &Path, p: &dyn Progress) -> Result<(PathBuf, Option<P
         return Ok((node, None));
     }
     let dir = version_dir(base, "node", NODE_VERSION);
-    let bin_dir = dir.join("bin");
-    if !bin_dir.join("node").is_file() {
+    let bin_dir = node_bin_dir(&dir);
+    if !bin_dir.join(exe("node")).is_file() {
         p.set(&format!("Downloading Node.js {NODE_VERSION}"));
         install_node(&dir, NODE_VERSION).await?;
     }
-    Ok((bin_dir.join("node"), Some(bin_dir)))
+    Ok((bin_dir.join(exe("node")), Some(bin_dir)))
 }
 
 /// Parse one `SHASUMS256.txt` line set for `file`.
@@ -705,15 +775,20 @@ pub fn shasum_for(sums: &str, file: &str) -> Option<String> {
 }
 
 async fn install_node(dir: &Path, version: &str) -> Result<()> {
-    let file = format!("node-{version}-{}.tar.gz", node_target()?);
+    let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
+    let file = format!("node-{version}-{}.{ext}", node_target()?);
     let base = format!("https://nodejs.org/dist/{version}");
     let sums = curl_text(&format!("{base}/SHASUMS256.txt")).await?;
     let want = shasum_for(&sums, &file).ok_or_else(|| anyhow!("no checksum for {file}"))?;
     let stage = Stage::new(dir)?;
-    let part = stage.dir.join("node.tar.gz.part");
+    let part = stage.dir.join(format!("node.{ext}.part"));
     fetch_verified(&format!("{base}/{file}"), &part, &want).await?;
     let unpack = stage.dir.join("unpack");
-    extract_tar_gz(&part, &unpack, 1)?;
+    if cfg!(windows) {
+        extract_zip(&part, &unpack, 1)?;
+    } else {
+        extract_tar_gz(&part, &unpack, 1)?;
+    }
     let _ = std::fs::remove_file(&part);
     // Hoist the unpacked tree into the stage root so the final layout is dir/bin/node.
     for e in std::fs::read_dir(&unpack)? {
@@ -721,8 +796,8 @@ async fn install_node(dir: &Path, version: &str) -> Result<()> {
         std::fs::rename(e.path(), stage.dir.join(e.file_name()))?;
     }
     std::fs::remove_dir(&unpack)?;
-    if !stage.dir.join("bin/node").is_file() {
-        bail!("Node archive has no bin/node");
+    if !node_bin_dir(&stage.dir).join(exe("node")).is_file() {
+        bail!("Node archive has no node executable");
     }
     stage.publish(dir)
 }
@@ -805,9 +880,18 @@ async fn npm_install(base: &Path, node: &Path, dir: &Path, s: &Server) -> Result
 
 /// `npm-cli.js` next to `node`: managed Node ships `lib/node_modules/npm`; a system Node's
 /// layout is `<prefix>/bin/node` + `<prefix>/lib/node_modules/npm` (fnm/nvm/Homebrew follow it).
+/// On Windows npm sits beside `node.exe`: `<dir>/node_modules/npm`.
 async fn npm_cli_for(node: &Path) -> Result<PathBuf> {
     let real = std::fs::canonicalize(node).unwrap_or_else(|_| node.to_path_buf());
     for cand in [node, real.as_path()] {
+        if cfg!(windows)
+            && let Some(dir) = cand.parent()
+        {
+            let beside = dir.join("node_modules/npm/bin/npm-cli.js");
+            if beside.is_file() {
+                return Ok(beside);
+            }
+        }
         if let Some(prefix) = cand.parent().and_then(Path::parent) {
             let cli = prefix.join("lib/node_modules/npm/bin/npm-cli.js");
             if cli.is_file() {
@@ -994,7 +1078,6 @@ mod tests {
 
     #[test]
     fn gunzip_roundtrip_is_executable_and_sha_matches() {
-        use std::os::unix::fs::PermissionsExt;
         let t = tempfile::tempdir().unwrap();
         let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         e.write_all(b"binary-bytes").unwrap();
@@ -1003,7 +1086,11 @@ mod tests {
         let out = t.path().join("ra");
         gunzip_exec(&gz, &out).unwrap();
         assert_eq!(std::fs::read(&out).unwrap(), b"binary-bytes");
-        assert!(out.metadata().unwrap().permissions().mode() & 0o111 != 0);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert!(out.metadata().unwrap().permissions().mode() & 0o111 != 0);
+        }
         // sha256("abc")
         std::fs::write(t.path().join("abc"), "abc").unwrap();
         assert_eq!(
@@ -1038,6 +1125,7 @@ mod tests {
         assert!(fin.join("f").is_file() && !fin.join("g").exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn which_finds_executables_only() {
         let t = tempfile::tempdir().unwrap();
@@ -1051,6 +1139,7 @@ mod tests {
         assert_eq!(which_in("plain", std::slice::from_ref(&d)), None);
     }
 
+    #[cfg(unix)]
     fn gunzip_exec_for_test(p: &Path) {
         use std::os::unix::fs::PermissionsExt;
         std::fs::write(p, "#!/bin/sh\n").unwrap();

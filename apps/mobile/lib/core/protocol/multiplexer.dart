@@ -17,6 +17,10 @@ class Multiplexer {
   int _nextId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
 
+  /// One deadline per pending call; cancelled when its reply or the end arrives.
+  final Map<int, Timer> _deadlines = {};
+  bool _closed = false;
+
   final StreamController<Map<String, dynamic>> _pushController =
       StreamController<Map<String, dynamic>>.broadcast();
 
@@ -30,7 +34,11 @@ class Multiplexer {
   /// Completes when the underlying transport closes.
   Future<void> get done => _doneCompleter.future;
 
-  Multiplexer(this._transport) {
+  /// How long a call waits for its reply. A connection can die without closing
+  /// (the Mac sleeps, a network drops); without a limit the caller waited forever.
+  final Duration timeout;
+
+  Multiplexer(this._transport, {this.timeout = const Duration(seconds: 20)}) {
     _sub = _transport.incomingLines.listen(
       _onLine,
       onDone: _onDone,
@@ -51,6 +59,7 @@ class Multiplexer {
     if (msg.containsKey('id')) {
       final id = msg['id'] as int?;
       if (id != null) {
+        _deadlines.remove(id)?.cancel();
         _pending.remove(id)?.complete(msg);
       }
     } else if (msg.containsKey('ev')) {
@@ -58,7 +67,16 @@ class Multiplexer {
     }
   }
 
+  void _cancelDeadlines() {
+    for (final t in _deadlines.values) {
+      t.cancel();
+    }
+    _deadlines.clear();
+  }
+
   void _onDone() {
+    _closed = true;
+    _cancelDeadlines();
     for (final c in _pending.values) {
       c.completeError(Exception('Transport closed'));
     }
@@ -73,6 +91,7 @@ class Multiplexer {
 
   void _onError(Object error, StackTrace stack) {
     // Propagate to pending completers.
+    _cancelDeadlines();
     for (final c in _pending.values) {
       if (!c.isCompleted) c.completeError(error, stack);
     }
@@ -90,13 +109,33 @@ class Multiplexer {
     final request = jsonEncode({'id': id, 'cmd': cmd, 'args': args ?? {}});
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
-    await _transport.sendLine(request);
+    try {
+      await _transport.sendLine(request);
+    } catch (_) {
+      _pending.remove(id);
+      rethrow;
+    }
+    // Closed while sending: nothing will answer, and a deadline now would outlive us.
+    if (_closed) {
+      _pending.remove(id);
+      return {'id': id, 'ok': false, 'error': 'connection closed'};
+    }
+    _deadlines[id] = Timer(timeout, () {
+      _deadlines.remove(id);
+      _pending.remove(id)?.complete({
+        'id': id,
+        'ok': false,
+        'error': 'Your Mac did not answer in ${timeout.inSeconds}s',
+      });
+    });
     return completer.future;
   }
 
   /// Close the multiplexer and the underlying transport. The transport is closed first,
   /// so its resources (sockets, timers) go even if cancelling the subscription is slow.
   Future<void> close() async {
+    _closed = true;
+    _cancelDeadlines();
     final closing = _transport.close();
     await _sub.cancel();
     await closing;

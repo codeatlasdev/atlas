@@ -98,5 +98,26 @@ void main() {
       final resp = await callFuture;
       expect(resp['ok'], isTrue);
     });
+
+    // Guards the endless pull-to-refresh spinner: a call whose reply never came
+    // (connection dead without closing) waited forever.
+    test(
+      'a call with no reply fails with a timeout instead of hanging',
+      () async {
+        final m = Multiplexer(ft, timeout: const Duration(milliseconds: 50));
+        final resp = await m
+            .call('project_detail')
+            .timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => {'hung': true},
+            );
+        expect(resp['hung'], isNull, reason: 'call never completed');
+        expect(resp['ok'], isFalse);
+        expect(resp['error'], contains('did not answer'));
+        // A reply that turns up late is dropped, not delivered to a finished call.
+        ft.injectLine('{"id":1,"ok":true,"data":{}}');
+        await Future<void>.delayed(Duration.zero);
+      },
+    );
   });
 }

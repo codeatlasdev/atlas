@@ -262,59 +262,70 @@ class _BlockCardState extends State<_BlockCard> {
       onPressed: () => setState(() => _open = true),
       child: Text('Show ${b.lines.length - _fold} more lines'),
     );
+    void copy() {
+      Clipboard.setData(
+        ClipboardData(
+          text: [
+            if (b.command != null) b.command!.text.trim(),
+            ...b.lines.map((l) => l.text.trimRight()),
+          ].join('\n'),
+        ),
+      );
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Block copied')));
+    }
+
+    // Long-press belongs to text selection (SelectableText), so copying the
+    // whole block is a visible button instead.
+    final copyBtn = IconButton(
+      icon: const Icon(Icons.copy_rounded, size: 16),
+      tooltip: 'Copy block',
+      color: c.faint,
+      visualDensity: VisualDensity.compact,
+      onPressed: copy,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.sm),
-      child: GestureDetector(
-        onLongPress: () {
-          Clipboard.setData(
-            ClipboardData(
-              text: [
-                if (b.command != null) b.command!.text.trim(),
-                ...b.lines.map((l) => l.text.trimRight()),
-              ].join('\n'),
-            ),
-          );
-          HapticFeedback.mediumImpact();
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Block copied')));
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: c.raised.withValues(alpha: .55),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: widget.latest
-                  ? c.accent.withValues(alpha: .35)
-                  : c.borderSubtle,
-            ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: c.raised.withValues(alpha: .55),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: widget.latest
+                ? c.accent.withValues(alpha: .35)
+                : c.borderSubtle,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (b.command != null)
-                Container(
-                  color: c.raised,
-                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-                  child: Text.rich(_span(b.command!, size: 14)),
-                ),
-              if (b.screen)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  child: Text(
-                    'Full-screen app · live view',
-                    style: TextStyle(color: c.faint, fontSize: 11),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              color: b.command != null ? c.raised : null,
+              padding: const EdgeInsets.only(left: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: b.command != null
+                        ? Text.rich(_span(b.command!, size: 14))
+                        : Text(
+                            b.screen ? 'Full-screen app · live view' : 'Output',
+                            style: TextStyle(color: c.faint, fontSize: 11),
+                          ),
                   ),
-                ),
-              if (folded && !(widget.latest || b.screen)) ...[
-                _body(shown),
-                more,
-              ] else ...[
-                if (folded) more,
-                if (shown.isNotEmpty) _body(shown),
-              ],
+                  copyBtn,
+                ],
+              ),
+            ),
+            if (folded && !(widget.latest || b.screen)) ...[
+              _body(shown),
+              more,
+            ] else ...[
+              if (folded) more,
+              if (shown.isNotEmpty) _body(shown),
             ],
-          ),
+          ],
         ),
       ),
     );

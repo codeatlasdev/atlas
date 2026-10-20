@@ -8,7 +8,8 @@
     "build": "bun run icons && vite build",
     "format": "prettier --write src",
     "lint": "prettier --check src",
-    "check": "bun run icons && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check src && bun test --conditions browser src",
+    "check": "bun run icons && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check src && bun run test",
+    "test": "bun test --conditions browser src",
     "icons": "bun scripts/gen-icons.ts"
   },
   "devDependencies": {

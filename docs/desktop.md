@@ -332,7 +332,7 @@ Snapshot cost (`WKWebView.takeSnapshot` runs on the main thread), measured on a 
 
 AppKit's `trackSwipeEvent` is deliberately not used: its `gestureAmount` is a fixed `scrollingDeltaX / 1000` whatever the view size (a half-page drag is a 500 pt reach) and its settle is opaque.
 
-**Tests.** `cargo test -p atlas-desktop swipe` runs the engine against the trace suite (`apps/desktop/src/lib/shell/__fixtures__/traces/*.json`, synthesized from the trackpad physics by `bun scripts/gesture-fixtures.ts`, plus any `recorded-*.json`). `bun test src/lib/shell src/lib/debug` covers the pagers, the stage scheduler and the bench's assessment rules.
+**Tests.** `cargo test -p atlas-desktop swipe` runs the engine against the trace suite (`apps/desktop/src/lib/shell/__fixtures__/traces/*.json`, synthesized from the trackpad physics by `bun scripts/gesture-fixtures.ts`, plus any `recorded-*.json`). `bun test --conditions browser src/lib/shell src/lib/debug` (in `apps/desktop`) covers the pagers, the stage scheduler and the bench's assessment rules.
 
 **Bench.** Against a real agent instance (never your window, never OS input):
 

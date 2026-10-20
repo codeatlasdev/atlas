@@ -32,7 +32,8 @@
     "release": "scripts/release.sh",
     "release:dry": "scripts/release.sh --dry-run",
     "release:publish": "scripts/release.sh --publish",
-    "release:test": "bun test scripts && python3 -m unittest scripts/test_generate_manifest.py && scripts/test-bootstrap-channel.sh && scripts/test-labels.sh"
+    "release:test": "bun test scripts && python3 -m unittest scripts/test_generate_manifest.py && scripts/test-bootstrap-channel.sh && scripts/test-labels.sh",
+    "test": "bun run --cwd apps/desktop test && bun run release:test"
   },
   "license": "MIT OR Apache-2.0",
   "homepage": "https://atlas.codeatlas.com.br",

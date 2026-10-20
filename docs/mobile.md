@@ -61,7 +61,7 @@ Android: `bun run mobile:e2e:android` / `bun run mobile:watch:android` (`--andro
 | `PLAY_SERVICE_ACCOUNT_JSON`                                                                         | Google Play service account JSON, invited in Play Console with release rights on this app only.                                                                                            |
 | `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | The Play upload key (`base64 -i upload.jks`). Locally, `android/key.properties` (git-ignored) works too; without either, a release build is signed with the debug key, which Play refuses. |
 
-Once per store, by hand: create the app record (iOS `dev.codeatlas.atlasMobile`, Android `dev.codeatlas.atlas_mobile`), and upload the first Android bundle through Play Console (the API cannot create an app's first release). Testers: an internal TestFlight group (up to 100 team members, no review) and the Play internal testing list (up to 100 emails); each tester gets an invitation link.
+Once per store, by hand: create the app record (`dev.codeatlas.atlas.mobile` on both; `dev.codeatlas.atlas` is the desktop app), and upload the first Android bundle through Play Console (the API cannot create an app's first release). Testers: an internal TestFlight group (up to 100 team members, no review) and the Play internal testing list (up to 100 emails); each tester gets an invitation link.
 
 ### Store dashboards from an agent (optional)
 

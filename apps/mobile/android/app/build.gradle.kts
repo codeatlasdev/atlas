@@ -14,7 +14,7 @@ val upload = Properties().apply {
 }
 
 android {
-    namespace = "dev.codeatlas.atlas_mobile"
+    namespace = "dev.codeatlas.atlas.mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +24,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.codeatlas.atlas_mobile"
+        applicationId = "dev.codeatlas.atlas.mobile"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // From pubspec.yaml; the beta lane overrides the build number per upload.

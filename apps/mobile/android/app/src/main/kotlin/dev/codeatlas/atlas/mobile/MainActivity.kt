@@ -1,4 +1,4 @@
-package dev.codeatlas.atlas_mobile
+package dev.codeatlas.atlas.mobile
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

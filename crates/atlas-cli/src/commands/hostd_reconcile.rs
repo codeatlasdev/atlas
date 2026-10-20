@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn current_host_has_no_report() {
-        let s = snap("1.2.1", atlas_host::protocol::CAPS, 2);
+        let s = snap("1.2.1", &["pty_attach_raw", "upgrade", "lsp", "agents"], 2);
         assert_eq!(check_report(&s, "1.2.1", ""), None);
     }
 

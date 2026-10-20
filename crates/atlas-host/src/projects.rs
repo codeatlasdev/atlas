@@ -254,7 +254,7 @@ mod tests {
             "project_list.json",
             &serde_json::to_string_pretty(&v)
                 .unwrap()
-                .replace(&proj.to_string_lossy().into_owned(), "/Users/me/shop"),
+                .replace(&json_path(&proj), "/Users/me/shop"),
         );
         assert_eq!(root_of(tmp.path(), "b").unwrap_err(), "unknown project b");
     }
@@ -344,9 +344,15 @@ mod tests {
         // fixture is regenerated with ATLAS_UPDATE_FIXTURES=1 and the Dart side follows.
         let text = serde_json::to_string_pretty(&d)
             .unwrap()
-            .replace(&proj.to_string_lossy().into_owned(), "/Users/me/shop")
+            .replace(&json_path(&proj), "/Users/me/shop")
             .replace(&now.to_string(), "12:00:00");
         check_fixture("project_detail.json", &text);
+    }
+
+    /// `p` as it appears inside a JSON string (Windows backslashes are escaped there).
+    fn json_path(p: &std::path::Path) -> String {
+        let quoted = serde_json::to_string(&p.to_string_lossy()).unwrap();
+        quoted[1..quoted.len() - 1].to_string()
     }
 
     /// Compare `text` (pretty JSON) with `apps/mobile/test/fixtures/<name>`, the payload the

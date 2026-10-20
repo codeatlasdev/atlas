@@ -16,6 +16,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **`atlas hostd` sends a long terminal replay in pieces.** Attaching sent the whole scrollback (up to 2 MiB) as one line, and a client that drops lines over 1 MiB, like the phone, got no history at all from a long-running agent. The first piece is still `pty_replay` (the screen reset), the rest arrive as `pty_output`. `pty_info` now also reports the terminal's `cols`/`rows`.
 - **Agents survive an `atlas hostd` upgrade.** Agent state (working / needs you / done, last message, cwd bindings) lived only in the old daemon's memory, so every upgrade forgot every agent until it next spoke; the phone, which reaches a terminal through its agent, showed "no agent running". The state now travels with the terminals in the handoff.
 
+## [1.5.0-alpha.15] — 2026-10-19
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
 ### Fixed
 
 - Terminal: scrolling up while a program prints (omp, logs, a build) no longer snaps back to the bottom on every chunk; a key or a paste returns to the live screen, as in Ghostty (#97).
@@ -23,6 +27,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - Terminal (macOS GPU): a terminal host restart or live upgrade no longer leaves the terminal frozen; it reattaches and replays its output.
 - Terminal: a paste can no longer leave bracketed-paste mode through a nested end marker; programs that ask for the theme's colors (OSC 10/11/4) get an answer instead of waiting for a timeout; trackpad scrolling keeps fractions of a line instead of losing small movements; a read-only terminal no longer sends arrow keys when scrolled over a full-screen program; a request over 1 MiB to the terminal host is reported instead of vanishing (large pastes are split).
 - Desktop: a burst of terminal host events no longer looks like a disconnect.
+
+### Changed
+
+- Development: `bun run test` runs the desktop frontend tests (with Svelte's browser build) and the release tooling's tests; a bare `bun test` in `apps/desktop` now stops at once with the reason instead of failing 70 component tests.
 
 ## [1.5.0-alpha.14] — 2026-10-19
 

@@ -19,6 +19,7 @@
     "mobile:watch": "bun scripts/mobile-e2e.ts --watch",
     "mobile:e2e:android": "bun scripts/mobile-e2e.ts --android",
     "mobile:watch:android": "bun scripts/mobile-e2e.ts --android --watch",
+    "mobile:beta": "cd apps/mobile && bundle exec fastlane beta",
     "desktop:check": "cd apps/desktop && bun install --frozen-lockfile && bun run check",
     "desktop:link": "cargo run -q -p atlas-cli -- link --desktop",
     "site:dev": "cd site && bun install --frozen-lockfile && bun run dev",

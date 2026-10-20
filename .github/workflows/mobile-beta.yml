@@ -1,0 +1,106 @@
+name: Mobile beta
+
+# Atlas Mobile to testers: TestFlight and the Play internal testing track, through fastlane
+# (apps/mobile/fastlane/Fastfile). Runs when a `mobile-v*` tag is pushed, or by hand. Both jobs
+# use one build number (the run's start, in minutes) so the two stores stay in step. The
+# secrets live in the `mobile-beta` environment; docs/mobile.md, "Testers", lists them.
+on:
+  push:
+    tags: ["mobile-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-beta
+  cancel-in-progress: false
+
+jobs:
+  number:
+    name: Build number
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      n: ${{ steps.n.outputs.n }}
+    steps:
+      - id: n
+        run: echo "n=$(( $(date +%s) / 60 ))" >> "$GITHUB_OUTPUT"
+
+  ios:
+    name: TestFlight
+    needs: number
+    runs-on: macos-latest
+    timeout-minutes: 60
+    environment: mobile-beta
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.47.6"
+          channel: stable
+
+      - name: Rust targets for the native crate
+        run: rustup target add aarch64-apple-ios
+
+      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1.331.0
+        with:
+          working-directory: apps/mobile
+
+      # No cache: a publishing run must not restore what another run could have written.
+      - name: fastlane
+        working-directory: apps/mobile
+        run: bundle install
+
+      - name: Build and upload
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TESTFLIGHT_GROUPS: ${{ vars.TESTFLIGHT_GROUPS }}
+        run: bundle exec fastlane ios_beta
+
+  android:
+    name: Play internal testing
+    needs: number
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: mobile-beta
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: "3.47.6"
+          channel: stable
+
+      - name: Rust targets for the native crate
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1.331.0
+        with:
+          working-directory: apps/mobile
+
+      # No cache: a publishing run must not restore what another run could have written.
+      - name: fastlane
+        working-directory: apps/mobile
+        run: bundle install
+
+      - name: Build and upload
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bundle exec fastlane android_beta

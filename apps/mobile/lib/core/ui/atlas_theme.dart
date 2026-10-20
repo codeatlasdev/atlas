@@ -80,33 +80,6 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
     ],
   );
 
-  static const light = AtlasColors(
-    ground: Color(0xFFD0D5E3),
-    base: Color(0xFFE1E2E7),
-    raised: Color(0xFFE9E9ED),
-    overlay: Color(0xFFF2F2F5),
-    text: Color(0xFF273469),
-    muted: Color(0xFF3A426E),
-    faint: Color(0xFF6172B0),
-    accent: Color(0xFF1A43AB),
-    onAccent: Color(0xFFFFFFFF),
-    border: Color(0x293760BF),
-    borderSubtle: Color(0x143760BF),
-    hover: Color(0x103760BF),
-    success: Color(0xFF2F6B1F),
-    warning: Color(0xFF8A4B12),
-    info: Color(0xFF116A87),
-    error: Color(0xFFB4233F),
-    series: [
-      Color(0xFF2E7DE9),
-      Color(0xFF9854F1),
-      Color(0xFF587539),
-      Color(0xFF8C6C3E),
-      Color(0xFF007197),
-      Color(0xFFF52A65),
-    ],
-  );
-
   static AtlasColors of(BuildContext context) =>
       Theme.of(context).extension<AtlasColors>()!;
 
@@ -165,10 +138,10 @@ abstract final class Space {
 const monoFamily = 'Menlo';
 const monoFallback = ['SF Mono', 'RobotoMono', 'monospace'];
 
-ThemeData atlasTheme(Brightness brightness) {
-  final c = brightness == Brightness.dark
-      ? AtlasColors.dark
-      : AtlasColors.light;
+/// Atlas is dark only, like the desktop app.
+ThemeData atlasTheme() {
+  const c = AtlasColors.dark;
+  const brightness = Brightness.dark;
   final scheme = ColorScheme(
     brightness: brightness,
     primary: c.accent,

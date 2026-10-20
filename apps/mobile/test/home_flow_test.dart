@@ -42,7 +42,7 @@ Future<void> _app(
         ),
       ],
       child: MaterialApp(
-        theme: atlasTheme(Brightness.dark),
+        theme: atlasTheme(),
         home: const HomeScreen(),
       ),
     ),

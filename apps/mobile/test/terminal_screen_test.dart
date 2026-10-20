@@ -126,7 +126,7 @@ Future<void> _open(WidgetTester t, Transport Function() tr, String pty) async {
         transportFactoryProvider.overrideWithValue((_, _) async => tr()),
       ],
       child: MaterialApp(
-        theme: atlasTheme(Brightness.dark),
+        theme: atlasTheme(),
         home: TerminalScreen(device: demoDevice, pty: pty, title: 'claude'),
       ),
     ),
@@ -197,7 +197,7 @@ void main() {
           ),
         ],
         child: MaterialApp(
-          theme: atlasTheme(Brightness.dark),
+          theme: atlasTheme(),
           home: TerminalScreen(device: demoDevice, pty: 'p', title: 'test'),
         ),
       ),

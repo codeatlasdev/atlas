@@ -88,9 +88,7 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
     return MaterialApp.router(
       title: 'Atlas',
       debugShowCheckedModeBanner: false,
-      theme: atlasTheme(Brightness.light),
-      darkTheme: atlasTheme(Brightness.dark),
-      themeMode: ThemeMode.system,
+      theme: atlasTheme(),
       routerConfig: _router,
     );
   }

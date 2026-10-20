@@ -12,7 +12,7 @@ Future<Terminal> _feed(WidgetTester t) async {
   term.write('❯ ls\r\n${List.generate(20, (i) => 'line$i').join('\r\n')}\r\n');
   await t.pumpWidget(
     MaterialApp(
-      theme: atlasTheme(Brightness.dark),
+      theme: atlasTheme(),
       home: Scaffold(
         body: TerminalFeed(terminal: term, theme: atlasTerminalTheme),
       ),

@@ -42,7 +42,7 @@ bun run check
 4. `cargo deny check` (licenses, advisories, duplicate and banned crates)
 5. `scripts/check-skills.sh` (validates `skills/*/SKILL.md` against the Agent Skills spec)
 6. `scripts/lint-workflows.sh` (actionlint and zizmor over `.github/`; also `bun run lint:workflows`)
-7. `bun run desktop:check` (svelte-check, prettier and `bun test` for the frontend)
+7. `bun run desktop:check` (svelte-check, prettier and the frontend tests, `bun run test` in `apps/desktop`: `bun test --conditions browser src`; a bare `bun test` there stops at once, since without the `browser` condition Svelte resolves its server build and no component can mount). `bun run test` at the root runs those tests plus `release:test`.
 8. `bun run release:test` (the release tooling's and CI scripts' own tests)
 
 Run it on its own and read the exit code before you push. A pull request should pass it.

@@ -6,7 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { appliedZoom } from "#lib/zoom.ts";
-import { cellAt, cellFromStats, wheelLines, type Cell, type CellHit } from "./geometry.ts";
+import { WheelAccum, cellAt, cellFromStats, wheelLines, type Cell, type CellHit } from "./geometry.ts";
 import { mouseRoute, wheelReports } from "./mouseRoute.ts";
 
 interface Options {
@@ -38,6 +38,7 @@ export class Pointer {
 	#lastCol = -1;
 	#lastRow = -1;
 	#lastHover = "";
+	#wheel = new WheelAccum();
 	#o: Options;
 
 	constructor(options: Options) {
@@ -177,16 +178,20 @@ export class Pointer {
 	wheel = async (e: WheelEvent) => {
 		e.preventDefault();
 		const tab = this.#o.tab();
-		const lines = wheelLines(e.deltaY, this.#cell);
+		// Before the first click the cell size is unknown: wheel at 16 px per line otherwise.
+		if (!this.#cell) await this.#fetchCell().catch(quiet);
+		const rows = this.#cell ? Math.floor((this.#o.area()?.clientHeight ?? 0) / this.#cell.h) : 24;
+		const lines = this.#wheel.take(wheelLines(e.deltaY, this.#cell, e.deltaMode, rows));
+		const readonly = this.#o.readonly();
 		const notch = wheelReports(lines);
-		if (notch && !this.#o.readonly() && (await this.#owns(tab, e))) {
+		if (notch && !readonly && (await this.#owns(tab, e))) {
 			const c = this.#toCell(e);
 			if (c) {
 				for (let i = 0; i < notch.count; i++) this.#report(tab, notch.action, null, c, e);
 				return;
 			}
 		}
-		if (lines) void invoke("term_scroll", { tab, delta: lines }).catch(quiet);
+		if (lines) void invoke("term_scroll", { tab, delta: lines, readonly }).catch(quiet);
 	};
 
 	#hoverUrl(e: MouseEvent) {

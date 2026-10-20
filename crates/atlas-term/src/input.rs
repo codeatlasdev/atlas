@@ -212,8 +212,14 @@ pub fn text(t: &str, mode: TermMode) -> Vec<u8> {
 pub fn paste(text: &str, mode: TermMode) -> Vec<u8> {
     let body = text.replace("\r\n", "\r").replace('\n', "\r");
     if mode.contains(TermMode::BRACKETED_PASTE) {
-        // A pasted end marker would let the clipboard escape the bracket.
-        let body = body.replace("\x1b[201~", "");
+        // A pasted end marker would let the clipboard escape the bracket; strip until none
+        // is left, since removing one can join two halves into a new one.
+        let mut body = body;
+        for end in ["\x1b[201~", "\u{9b}201~"] {
+            while let Some(i) = body.find(end) {
+                body.replace_range(i..i + end.len(), "");
+            }
+        }
         format!("\x1b[200~{body}\x1b[201~").into_bytes()
     } else {
         body.into_bytes()
@@ -436,6 +442,29 @@ mod tests {
     }
 
     const B: TermMode = TermMode::BRACKETED_PASTE;
+
+    // A single-pass strip let `\x1b[2\x1b[201~01~` reassemble into an end marker.
+    #[test]
+    fn nested_end_marker_cannot_escape_the_bracket() {
+        let out = String::from_utf8(paste("\x1b[2\x1b[201~01~rm", B)).unwrap();
+        assert_eq!(out.matches("\x1b[201~").count(), 1, "{out:?}");
+        assert!(out.ends_with("\x1b[201~"));
+    }
+
+    #[test]
+    fn c1_end_marker_is_removed() {
+        assert_eq!(paste("a\u{9b}201~b", B), "\x1b[200~ab\x1b[201~".as_bytes());
+    }
+
+    // #27: omp and other TUIs read ⇧⏎ as CSI u even without the kitty protocol.
+    #[test]
+    fn shift_enter_sends_csi_u_in_legacy_mode_too_issue_27() {
+        let m = Mods {
+            shift: true,
+            ..Mods::default()
+        };
+        assert_eq!(key("Enter", m, TermMode::empty()).unwrap(), b"\x1b[13;2u");
+    }
 
     /// Incident: ⌘V of a screenshot did nothing in omp / Claude Code / Codex inside Atlas,
     /// because the webview paste event carries no text for an image-only clipboard and the

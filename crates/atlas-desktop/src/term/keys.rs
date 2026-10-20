@@ -1,9 +1,8 @@
 //! Keyboard, paste and scrolling commands, plus prompt navigation (OSC 133) and clear.
 
 use atlas_term::input::{self, Mods};
-use tauri::AppHandle;
 
-use super::{with_term, write_pty};
+use super::with_term;
 
 /// A key from the webview: `text` for printable input (IME/dead keys already
 /// composed), else the DOM `key` name with modifiers. `meta` (⌘) is only sent for the
@@ -11,7 +10,6 @@ use super::{with_term, write_pty};
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn term_key(
-    app: AppHandle,
     tab: String,
     key: String,
     text: Option<String>,
@@ -20,7 +18,7 @@ pub fn term_key(
     ctrl: bool,
     meta: Option<bool>,
 ) -> Result<bool, String> {
-    let (pty, sh) = with_term(&tab)?;
+    let sh = with_term(&tab)?;
     // ⇧PgUp / ⇧PgDn page through the scrollback (Terminal.app, iTerm2, xterm); on the
     // alternate screen the program owns the keys and gets `CSI 5;2~` as usual.
     if text.is_none()
@@ -48,36 +46,38 @@ pub fn term_key(
             }
         }
     };
-    write_pty(&app, &pty, &bytes);
+    sh.input(&bytes);
     Ok(true)
 }
 
 #[tauri::command]
-pub fn term_paste(app: AppHandle, tab: String, text: String) -> Result<(), String> {
-    let (pty, sh) = with_term(&tab)?;
-    write_pty(&app, &pty, &input::paste(&text, sh.vt.mode()));
+pub fn term_paste(tab: String, text: String) -> Result<(), String> {
+    let sh = with_term(&tab)?;
+    sh.input(&input::paste(&text, sh.vt.mode()));
     Ok(())
 }
 
 /// ⌘V: paste whatever the pasteboard holds (text, copied files, or an image the program
 /// reads itself), decided by `input::paste_clipboard`.
 #[tauri::command]
-pub fn term_paste_clipboard(app: AppHandle, tab: String) -> Result<(), String> {
-    let (pty, sh) = with_term(&tab)?;
+pub fn term_paste_clipboard(tab: String) -> Result<(), String> {
+    let sh = with_term(&tab)?;
     if let Some(bytes) = input::paste_clipboard(&super::read_clipboard(), sh.vt.mode()) {
-        write_pty(&app, &pty, &bytes);
+        sh.input(&bytes);
     }
     Ok(())
 }
 
 /// Scroll the viewport; positive `delta` goes up into history. On the alternate screen
 /// (less, vim, htop) there is no scrollback: the wheel becomes arrow keys (Ghostty's
-/// mouse-scroll on the alt screen, xterm mode 1007).
+/// mouse-scroll on the alt screen, xterm mode 1007). A read-only tab never sends them.
 #[tauri::command]
-pub fn term_scroll(app: AppHandle, tab: String, delta: i32) -> Result<(), String> {
-    let (pty, sh) = with_term(&tab)?;
-    if let Some(arrows) = input::alt_scroll(delta, sh.vt.mode()) {
-        write_pty(&app, &pty, &arrows);
+pub fn term_scroll(tab: String, delta: i32, readonly: Option<bool>) -> Result<(), String> {
+    let sh = with_term(&tab)?;
+    if !readonly.unwrap_or(false)
+        && let Some(arrows) = input::alt_scroll(delta, sh.vt.mode())
+    {
+        sh.write(&arrows);
         return Ok(());
     }
     sh.vt.scroll(delta);
@@ -97,7 +97,7 @@ pub enum ScrollTo {
 
 #[tauri::command]
 pub fn term_scroll_to(tab: String, to: ScrollTo) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     match to {
         ScrollTo::Top => sh.vt.scroll_to_top(),
         ScrollTo::Bottom => sh.vt.scroll_to_bottom(),
@@ -111,7 +111,7 @@ pub fn term_scroll_to(tab: String, to: ScrollTo) -> Result<(), String> {
 /// ⌘A: select everything (scrollback and screen). The text goes to the clipboard on ⌘C.
 #[tauri::command]
 pub fn term_select_all(tab: String) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     sh.vt.select_all();
     sh.redraw();
     Ok(())
@@ -121,7 +121,7 @@ pub fn term_select_all(tab: String) -> Result<(), String> {
 /// before. The text also goes to the clipboard. `false` = no marked output to select.
 #[tauri::command]
 pub fn term_select_output(tab: String) -> Result<bool, String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     let found = sh.vt.select_last_output();
     if found && let Some(text) = sh.vt.end_selection() {
         super::write_clipboard(&text);
@@ -133,11 +133,11 @@ pub fn term_select_output(tab: String) -> Result<bool, String> {
 /// ⌘K (Ghostty `clear_screen`): erase screen and scrollback, then `^L` so the shell redraws
 /// its prompt at the top. On the alternate screen the program owns the display: no-op.
 #[tauri::command]
-pub fn term_clear(app: AppHandle, tab: String) -> Result<bool, String> {
-    let (pty, sh) = with_term(&tab)?;
+pub fn term_clear(tab: String) -> Result<bool, String> {
+    let sh = with_term(&tab)?;
     let cleared = sh.vt.clear_screen();
     if cleared {
-        write_pty(&app, &pty, b"\x0c");
+        sh.write(b"\x0c");
         sh.redraw();
     }
     Ok(cleared)
@@ -146,7 +146,7 @@ pub fn term_clear(app: AppHandle, tab: String) -> Result<bool, String> {
 /// Scroll to the previous (`up`) / next shell prompt (OSC 133). `false` = no prompt there.
 #[tauri::command]
 pub fn term_jump_prompt(tab: String, up: bool) -> Result<bool, String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     let moved = sh.vt.jump_to_prompt(up);
     sh.redraw();
     Ok(moved)
@@ -156,8 +156,8 @@ pub fn term_jump_prompt(tab: String, up: bool) -> Result<bool, String> {
 /// delta from the cursor becomes arrow keys. `false` = the click is not on an editable
 /// prompt (no OSC 133, a command is running, alternate screen) and is a plain click.
 #[tauri::command]
-pub fn term_click_move(app: AppHandle, tab: String, col: u16, row: u16) -> Result<bool, String> {
-    let (pty, sh) = with_term(&tab)?;
+pub fn term_click_move(tab: String, col: u16, row: u16) -> Result<bool, String> {
+    let sh = with_term(&tab)?;
     let Some((dx, dy)) = sh.vt.click_to_move(col as usize, row as i32) else {
         return Ok(false);
     };
@@ -165,6 +165,6 @@ pub fn term_click_move(app: AppHandle, tab: String, col: u16, row: u16) -> Resul
     if bytes.is_empty() {
         return Ok(false);
     }
-    write_pty(&app, &pty, &bytes);
+    sh.write(&bytes);
     Ok(true)
 }

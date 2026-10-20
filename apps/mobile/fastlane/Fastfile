@@ -9,7 +9,7 @@
 default_platform(:ios)
 
 APP = File.expand_path("..", __dir__) # apps/mobile
-ANDROID_PACKAGE = "dev.codeatlas.atlas.mobile"
+ANDROID_PACKAGE = "br.com.codeatlas.atlashub"
 
 # One build number for both stores, increasing on every run: minutes since the Unix epoch
 # (~29 million, well under Play's 2.1 billion limit). BUILD_NUMBER overrides it.

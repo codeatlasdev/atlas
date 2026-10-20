@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+
 import 'fixtures/demo_computer.dart';
+
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
@@ -41,10 +43,7 @@ Future<void> _app(
           (_, _) async => demoTransport(),
         ),
       ],
-      child: MaterialApp(
-        theme: atlasTheme(),
-        home: const HomeScreen(),
-      ),
+      child: MaterialApp(theme: atlasTheme(), home: const HomeScreen()),
     ),
   );
   await _settle(t);

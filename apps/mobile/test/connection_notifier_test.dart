@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'fake_transport.dart';
+
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
@@ -31,7 +32,6 @@ class _FakeMacStorage extends MacStorage {
 
   @override
   Future<void> removeDevice(String nodeId) async {}
-
 }
 
 void main() {
@@ -109,8 +109,7 @@ void main() {
     // Guards the ~1 min first load: after the app sat idle or in the background,
     // the connection could be dead without closing; the first request waited out
     // its full deadline before anything reconnected.
-    test('coming back to the foreground replaces a connection that does not answer',
-        () async {
+    test('coming back to the foreground replaces a connection that does not answer', () async {
       final dead = FakeTransport(), fresh = FakeTransport();
       var made = 0;
       final container = ProviderContainer(
@@ -126,7 +125,8 @@ void main() {
       final sub = container.listen(p, (_, _) {});
       addTearDown(sub.close);
       final first = await container.read(p.future);
-      final n = container.read(p.notifier)..probeTimeout = const Duration(milliseconds: 50);
+      final n = container.read(p.notifier)
+        ..probeTimeout = const Duration(milliseconds: 50);
       final sw = Stopwatch()..start();
       await n.onForegrounded();
       final second = await container.read(p.future);

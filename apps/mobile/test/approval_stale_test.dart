@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'fake_transport.dart';
+
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -11,12 +12,18 @@ import 'package:atlas_mobile/features/agents/agents_provider.dart';
 
 class _FakeStorage extends MacStorage {
   _FakeStorage() : super(storage: null);
-  @override Future<String?> loadSecretKey() async => null;
-  @override Future<List<MacDevice>> loadDevices() async => [];
-  @override Future<void> saveDevices(List<MacDevice> _) async {}
-  @override Future<void> saveSecretKey(String _) async {}
-  @override Future<void> upsertDevice(MacDevice _) async {}
-  @override Future<void> removeDevice(String _) async {}
+  @override
+  Future<String?> loadSecretKey() async => null;
+  @override
+  Future<List<MacDevice>> loadDevices() async => [];
+  @override
+  Future<void> saveDevices(List<MacDevice> _) async {}
+  @override
+  Future<void> saveSecretKey(String _) async {}
+  @override
+  Future<void> upsertDevice(MacDevice _) async {}
+  @override
+  Future<void> removeDevice(String _) async {}
 }
 
 // Reply injected for agent_status_all (id=1, the first mux call).
@@ -65,7 +72,9 @@ void main() {
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      final state = container.read(pendingApprovalNotifierProvider((device, 'p1')));
+      final state = container.read(
+        pendingApprovalNotifierProvider((device, 'p1')),
+      );
       expect(state, isNotNull);
       expect(state!.req, 'r1');
       expect(state.paneKey, 'p1');
@@ -92,7 +101,11 @@ void main() {
 
       // Server pushes done — approval should clear.
       ft.injectLine(
-        jsonEncode({'ev': 'agent_approval_done', 'pane_key': 'p1', 'req': 'r1'}),
+        jsonEncode({
+          'ev': 'agent_approval_done',
+          'pane_key': 'p1',
+          'req': 'r1',
+        }),
       );
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
@@ -124,7 +137,9 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      final state = container.read(pendingApprovalNotifierProvider((device, 'p1')));
+      final state = container.read(
+        pendingApprovalNotifierProvider((device, 'p1')),
+      );
       expect(state, isNotNull);
       expect(state!.req, 'r1');
 

@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+
 import 'fixtures/demo_computer.dart';
+
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -41,6 +43,7 @@ class _SplitUtf8 implements Transport {
     _closed = true;
     await _lines.close();
   }
+
   @override
   Future<void> sendLine(String line) async {
     final m = jsonDecode(line) as Map;
@@ -50,11 +53,13 @@ class _SplitUtf8 implements Transport {
         [0xA9, 0x21],
       ]) {
         if (!_closed) {
-          _lines.add(jsonEncode({
-            'ev': 'pty_output',
-            'pty': 'p',
-            'data': base64.encode(chunk),
-          }));
+          _lines.add(
+            jsonEncode({
+              'ev': 'pty_output',
+              'pty': 'p',
+              'data': base64.encode(chunk),
+            }),
+          );
         }
       }
     }
@@ -102,7 +107,13 @@ class _DelayedAttach implements Transport {
       case 'pty_info':
         scheduleMicrotask(() {
           if (!_closed) {
-            _lines.add(jsonEncode({'id': id, 'ok': true, 'data': {'cols': 80, 'rows': 24}}));
+            _lines.add(
+              jsonEncode({
+                'id': id,
+                'ok': true,
+                'data': {'cols': 80, 'rows': 24},
+              }),
+            );
           }
         });
       case 'pty_attach':
@@ -192,9 +203,7 @@ void main() {
       ProviderScope(
         overrides: [
           macStorageProvider.overrideWithValue(_Storage()),
-          transportFactoryProvider.overrideWithValue(
-            (_, _) async => transport,
-          ),
+          transportFactoryProvider.overrideWithValue((_, _) async => transport),
         ],
         child: MaterialApp(
           theme: atlasTheme(),

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_transport.dart';
+
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
 void main() {
@@ -122,39 +123,43 @@ void main() {
 
     // Guards the disabled send button: when the transport was closed, call() was
     // throwing instead of returning an error map, so `_sending` was never reset.
-    test('a call on a closed transport returns an error map, not a thrown error',
-        () async {
-      await ft.simulateRemoteClose();
-      // Attempting to call after the transport closes must never throw.
-      Map<String, dynamic>? resp;
-      Object? thrown;
-      try {
-        resp = await mux.call('ping');
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown, isNull, reason: 'must not throw');
-      expect(resp, isNotNull);
-      expect(resp!['ok'], isFalse);
-    });
+    test(
+      'a call on a closed transport returns an error map, not a thrown error',
+      () async {
+        await ft.simulateRemoteClose();
+        // Attempting to call after the transport closes must never throw.
+        Map<String, dynamic>? resp;
+        Object? thrown;
+        try {
+          resp = await mux.call('ping');
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown, isNull, reason: 'must not throw');
+        expect(resp, isNotNull);
+        expect(resp!['ok'], isFalse);
+      },
+    );
 
     // Guards the same spinner bug via the _onDone path: transport closes while a
     // call is in flight.  The completer must complete (not completeError).
-    test('a pending call whose transport closes mid-flight returns an error map',
-        () async {
-      final callFuture = mux.call('ping'); // id=1, now in-flight
-      // Close the transport before the reply arrives.
-      await ft.simulateRemoteClose();
-      Map<String, dynamic>? resp;
-      Object? thrown;
-      try {
-        resp = await callFuture;
-      } catch (e) {
-        thrown = e;
-      }
-      expect(thrown, isNull, reason: 'must not throw');
-      expect(resp, isNotNull);
-      expect(resp!['ok'], isFalse);
-    });
+    test(
+      'a pending call whose transport closes mid-flight returns an error map',
+      () async {
+        final callFuture = mux.call('ping'); // id=1, now in-flight
+        // Close the transport before the reply arrives.
+        await ft.simulateRemoteClose();
+        Map<String, dynamic>? resp;
+        Object? thrown;
+        try {
+          resp = await callFuture;
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown, isNull, reason: 'must not throw');
+        expect(resp, isNotNull);
+        expect(resp!['ok'], isFalse);
+      },
+    );
   });
 }

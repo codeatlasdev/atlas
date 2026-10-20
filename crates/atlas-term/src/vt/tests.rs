@@ -1,7 +1,7 @@
 //! `Vt` behavior: parsing, snapshot, prompt marks, images, selection, search, URLs.
 
 use super::*;
-use crate::colors::{Palette, rgba};
+use crate::colors::{NamedColor, Palette, rgba};
 use alacritty_terminal::vte::ansi::Rgb;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -674,4 +674,143 @@ fn answers_grapheme_cluster_mode_query() {
     });
     vt.feed(b"\x1b[?2027$p");
     assert_eq!(*out.lock(), "\x1b[?2027;3$y");
+}
+
+// #97: the viewport snapped to the bottom on every pty chunk, so nobody could scroll up
+// while a program kept printing. Output now leaves a scrolled-up viewport where it is;
+// the desktop snaps on keystroke/paste (Ghostty `scroll-to-bottom = keystroke`).
+fn numbered(from: usize, n: usize) -> Vec<u8> {
+    (from..from + n)
+        .flat_map(|i| format!("line {i}\r\n").into_bytes())
+        .collect()
+}
+
+/// The rows the user sees (scrolled into history), unlike `text()` (the live screen).
+fn viewport(vt: &Vt) -> String {
+    let t = vt.term.lock();
+    let off = t.grid().display_offset() as i32;
+    (0..t.screen_lines() as i32)
+        .map(|r| {
+            let row = &t.grid()[Line(r - off)];
+            (0..t.columns())
+                .map(|c| row[Column(c)].c)
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn output_keeps_a_scrolled_up_viewport_in_place() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    vt.scroll(5);
+    assert_eq!(vt.scrollbar().0, 5);
+    let seen = viewport(&vt);
+    vt.feed(&numbered(40, 3));
+    assert_eq!(vt.scrollbar().0, 8);
+    assert_eq!(viewport(&vt), seen);
+}
+
+#[test]
+fn output_at_the_bottom_keeps_following() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    vt.feed(&numbered(40, 3));
+    assert_eq!(vt.scrollbar().0, 0);
+    assert!(vt.text().contains("line 42"), "{}", vt.text());
+}
+
+#[test]
+fn cursor_only_redraw_does_not_move_the_viewport() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    vt.scroll(5);
+    vt.feed(b"\x1b[s\x1b[2;1Hxyz\x1b[u");
+    assert_eq!(vt.scrollbar().0, 5);
+    vt.feed(&[]);
+    assert_eq!(vt.scrollbar().0, 5);
+}
+
+#[test]
+fn resize_while_scrolled_clamps_the_offset() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    vt.scroll(10_000);
+    vt.resize(20, 8);
+    let (off, max) = vt.scrollbar();
+    assert!(off <= max, "{off} > {max}");
+    assert!(!vt.text().is_empty());
+}
+
+#[test]
+fn scroll_delta_clamps_at_both_ends_and_scroll_to_bottom_snaps() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    vt.scroll(10_000);
+    let (off, max) = vt.scrollbar();
+    assert_eq!(off, max);
+    vt.scroll(-10_000);
+    assert_eq!(vt.scrollbar().0, 0);
+    vt.scroll(5);
+    vt.scroll_to_bottom();
+    assert_eq!(vt.scrollbar().0, 0);
+}
+
+#[test]
+fn search_recenter_keeps_a_live_screen_match_visible() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 39));
+    vt.feed(b"zzz");
+    vt.scroll(10);
+    vt.search("zzz", false, false, true).unwrap();
+    assert_eq!(vt.scrollbar().0, 0);
+}
+
+// A GPU tab reattached after a hostd restart gets the ring replayed from scratch.
+#[test]
+fn reset_clears_screen_scrollback_and_marks() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    prompt_cycle(&vt, "ls", "out", 0);
+    vt.reset();
+    assert_eq!(vt.text(), "");
+    assert_eq!(vt.scrollbar(), (0, 0));
+    assert!(!vt.select_last_output());
+}
+
+// TUIs probing OSC 10/11/4 for dark/light waited for a timeout: the query was dropped.
+#[test]
+fn answers_osc_10_11_and_4_color_queries() {
+    let out = Arc::new(Mutex::new(String::new()));
+    let o = out.clone();
+    let vt = Vt::new(10, 2, move |e| {
+        if let VtEvent::Write(s) = e {
+            o.lock().push_str(&s);
+        }
+    });
+    vt.feed(b"\x1b]11;?\x1b\\");
+    assert_eq!(*out.lock(), "", "no palette yet: no answer");
+    let mut p = pal();
+    p.base[NamedColor::Background as usize] = Rgb {
+        r: 0x10,
+        g: 0x10,
+        b: 0x10,
+    };
+    vt.set_palette(&p);
+    vt.feed(b"\x1b]11;?\x1b\\");
+    assert_eq!(*out.lock(), "\x1b]11;rgb:1010/1010/1010\x1b\\");
+    out.lock().clear();
+    vt.feed(b"\x1b]10;?\x07\x1b]4;1;?\x07");
+    let fg = p.base[NamedColor::Foreground as usize];
+    let c1 = p.base[1];
+    assert_eq!(
+        *out.lock(),
+        format!(
+            "\x1b]10;rgb:{0:02x}{0:02x}/{1:02x}{1:02x}/{2:02x}{2:02x}\x07\x1b]4;1;rgb:{3:02x}{3:02x}/{4:02x}{4:02x}/{5:02x}{5:02x}\x07",
+            fg.r, fg.g, fg.b, c1.r, c1.g, c1.b
+        )
+    );
 }

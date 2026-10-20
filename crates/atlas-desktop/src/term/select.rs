@@ -8,7 +8,7 @@ use super::{APP, with_term, write_clipboard};
 /// Selected text → system clipboard (⌘C). Returns the text.
 #[tauri::command]
 pub fn term_copy(tab: String) -> Result<Option<String>, String> {
-    let text = with_term(&tab)?.1.vt.end_selection();
+    let text = with_term(&tab)?.vt.end_selection();
     if let Some(t) = &text {
         write_clipboard(t);
     }
@@ -31,7 +31,7 @@ pub fn term_select_start(
     clicks: u8,
     block: bool,
 ) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     let ty = match (clicks, block) {
         (_, true) => SelectionType::Block,
         (2, _) => SelectionType::Semantic,
@@ -50,7 +50,7 @@ pub fn term_select_start(
 
 #[tauri::command]
 pub fn term_select_update(tab: String, col: u16, row: u16, frac: f32) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     sh.vt.update_selection(col as usize, row as i32, side(frac));
     sh.redraw();
     Ok(())
@@ -60,7 +60,7 @@ pub fn term_select_update(tab: String, col: u16, row: u16, frac: f32) -> Result<
 /// on by default) its text also goes to the clipboard.
 #[tauri::command]
 pub fn term_select_end(tab: String, copy: Option<bool>) -> Result<Option<String>, String> {
-    let text = with_term(&tab)?.1.vt.end_selection();
+    let text = with_term(&tab)?.vt.end_selection();
     if let (Some(t), true) = (&text, copy.unwrap_or(true)) {
         write_clipboard(t);
     }
@@ -69,7 +69,7 @@ pub fn term_select_end(tab: String, copy: Option<bool>) -> Result<Option<String>
 
 #[tauri::command]
 pub fn term_clear_selection(tab: String) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     sh.vt.clear_selection();
     sh.redraw();
     Ok(())
@@ -79,20 +79,20 @@ pub fn term_clear_selection(tab: String) -> Result<(), String> {
 /// `http(s)://` / `file://` URL in the text.
 #[tauri::command]
 pub fn term_hyperlink_at(tab: String, col: u16, row: u16) -> Result<Option<String>, String> {
-    Ok(with_term(&tab)?.1.vt.url_at(col as usize, row as i32))
+    Ok(with_term(&tab)?.vt.url_at(col as usize, row as i32))
 }
 
 /// The text token under viewport cell (`col`, `row`) for ⌘-click when no URL is there: the app
 /// decides whether it is a file of the worktree (`termPath.ts`).
 #[tauri::command]
 pub fn term_path_at(tab: String, col: u16, row: u16) -> Result<Option<String>, String> {
-    Ok(with_term(&tab)?.1.vt.path_at(col as usize, row as i32))
+    Ok(with_term(&tab)?.vt.path_at(col as usize, row as i32))
 }
 
 /// Underline the URL under the pointer (⌘ held); `col`/`row` omitted clears it.
 #[tauri::command]
 pub fn term_hover(tab: String, col: Option<u16>, row: Option<u16>) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     let at = col.zip(row).map(|(c, r)| (c as usize, r as i32));
     if sh.vt.set_hover(at) {
         sh.redraw();
@@ -117,7 +117,7 @@ pub fn term_search(
     case: bool,
     forward: bool,
 ) -> Result<SearchResult, String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     let r = sh.vt.search(&query, regex, case, forward);
     sh.redraw();
     r.map(|s| SearchResult {
@@ -128,7 +128,7 @@ pub fn term_search(
 
 #[tauri::command]
 pub fn term_search_clear(tab: String) -> Result<(), String> {
-    let sh = with_term(&tab)?.1;
+    let sh = with_term(&tab)?;
     sh.vt.clear_search();
     sh.redraw();
     Ok(())

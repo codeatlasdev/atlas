@@ -2,9 +2,8 @@
 //! pointer as escape sequences (`atlas_term::mouse`) instead of the terminal selecting text.
 
 use atlas_term::mouse::{self, Action, Event};
-use tauri::AppHandle;
 
-use super::{with_term, write_pty};
+use super::with_term;
 
 /// `action` as the webview sends it (`pointer.ts`): lowercase words.
 #[derive(serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,14 +31,13 @@ impl From<WireAction> for Action {
 /// Does the program own the mouse? `shift` held gives clicks back to the terminal (selection).
 #[tauri::command]
 pub fn term_mouse_captured(tab: String, shift: bool) -> Result<bool, String> {
-    Ok(mouse::captures(with_term(&tab)?.1.vt.mode(), shift))
+    Ok(mouse::captures(with_term(&tab)?.vt.mode(), shift))
 }
 
 /// Report a pointer event to the program. `false` = the active mode does not report it.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn term_mouse(
-    app: AppHandle,
     tab: String,
     action: WireAction,
     button: Option<u8>,
@@ -49,7 +47,7 @@ pub fn term_mouse(
     alt: bool,
     ctrl: bool,
 ) -> Result<bool, String> {
-    let (pty, sh) = with_term(&tab)?;
+    let sh = with_term(&tab)?;
     let ev = Event {
         action: action.into(),
         button,
@@ -62,7 +60,7 @@ pub fn term_mouse(
     let Some(bytes) = mouse::report(&ev, sh.vt.mode()) else {
         return Ok(false);
     };
-    write_pty(&app, &pty, &bytes);
+    sh.write(&bytes);
     Ok(true)
 }
 

@@ -493,6 +493,13 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
     let mut attached: Vec<Arc<Session>> = Vec::new();
     while let Some(line) = read_line(&mut lines, LongLine::Skip).await {
+        // `""` is a line over the limit, skipped. Its id is unreadable, so no reply can
+        // carry the failure: tell the client.
+        if line.is_empty() {
+            let msg = format!("request over {MAX_LINE_BYTES} bytes dropped");
+            let _ = tx.send(json!({"ev": "error", "message": msg}).to_string());
+            continue;
+        }
         let req: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
@@ -539,6 +546,10 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 hub.stop.notify_one();
                 break;
             }
+            // Input to a pty must reach it in request order: answered inline.
+            cmd @ (HostCmd::PtyWrite { .. }
+            | HostCmd::PtyResize { .. }
+            | HostCmd::PtySignal { .. }) => handle(&hub, cmd, conn_id).await,
             cmd => {
                 // Slow commands (exec, kill) must not block this connection's other requests.
                 let hub = hub.clone();
@@ -965,5 +976,105 @@ mod tests {
             return Err(anyhow!("held"));
         }
         Ok(f)
+    }
+
+    /// A hostd on a temp dir and a hand-driven connection to it (requests are written in
+    /// one go, without waiting for replies, the way a fast typist or a paste arrives).
+    async fn wire() -> (tempfile::TempDir, crate::client::HostClient, ipc::Stream) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let d2 = dir.clone();
+        tokio::spawn(async move { serve(&d2).await });
+        let client = loop {
+            if let Ok(c) = crate::client::HostClient::connect_dir(&dir, "test").await {
+                break c;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        };
+        let mut s = ipc::connect(&paths::socket(&dir)).await.unwrap();
+        let token = paths::read_token(&dir).unwrap();
+        let hello = protocol::hello_line(&token, "raw");
+        s.write_all(format!("{hello}\n").as_bytes()).await.unwrap();
+        (tmp, client, s)
+    }
+
+    /// Incident: every request was handled on its own task, so two writes of one connection
+    /// (paste then ⏎, two keys) could reach the pty swapped.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn writes_from_one_connection_reach_the_program_in_order() {
+        let (_tmp, client, mut s) = wire().await;
+        let pty = client
+            .call(
+                "pty_create",
+                json!({"cwd": "/", "argv": ["/bin/sh", "-c", "stty -echo; cat"], "rows": 300}),
+            )
+            .await
+            .unwrap()["pty"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let mut out = String::new();
+        for i in 0..200 {
+            let data = B64.encode(format!("{i}\n"));
+            out += &json!({"id": i + 1, "cmd": "pty_write", "args": {"pty": pty, "data": data}})
+                .to_string();
+            out.push('\n');
+        }
+        s.write_all(out.as_bytes()).await.unwrap();
+        let want: Vec<String> = (0..200).map(|i| i.to_string()).collect();
+        let mut got = Vec::new();
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let r = client
+                .call("pty_read", json!({"pty": pty, "lines": 1000}))
+                .await
+                .unwrap();
+            got = r["text"]
+                .as_str()
+                .unwrap()
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+            if got.len() >= 200 {
+                break;
+            }
+        }
+        assert_eq!(got, want);
+    }
+
+    /// Incident: a request over the line limit was dropped without a word (a big paste
+    /// vanished). The client now gets an error event, and the connection keeps serving.
+    #[tokio::test]
+    async fn an_oversize_request_is_reported_and_the_connection_survives() {
+        let (_tmp, _client, s) = wire().await;
+        let (r, mut w) = ipc::split(s);
+        let mut lines = BufReader::new(r).lines();
+        let big = format!(
+            "{{\"id\":7,\"cmd\":\"pty_write\",\"args\":{{\"pty\":\"x\",\"data\":\"{}\"}}}}\n",
+            "A".repeat(2 * MAX_LINE_BYTES)
+        );
+        w.write_all(big.as_bytes()).await.unwrap();
+        w.write_all(b"{\"id\":8,\"cmd\":\"pty_list\",\"args\":{}}\n")
+            .await
+            .unwrap();
+        let mut seen_error = false;
+        loop {
+            let l = tokio::time::timeout(std::time::Duration::from_secs(5), lines.next_line())
+                .await
+                .expect("hostd went quiet")
+                .unwrap()
+                .expect("connection closed");
+            let v: Value = serde_json::from_str(&l).unwrap();
+            if v["ev"] == "error" {
+                seen_error = true;
+            }
+            if v["id"] == 8 {
+                assert_eq!(v["ok"], true);
+                break;
+            }
+        }
+        assert!(seen_error, "no error event for the dropped request");
     }
 }

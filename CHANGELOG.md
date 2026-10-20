@@ -16,6 +16,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **`atlas hostd` sends a long terminal replay in pieces.** Attaching sent the whole scrollback (up to 2 MiB) as one line, and a client that drops lines over 1 MiB, like the phone, got no history at all from a long-running agent. The first piece is still `pty_replay` (the screen reset), the rest arrive as `pty_output`. `pty_info` now also reports the terminal's `cols`/`rows`.
 - **Agents survive an `atlas hostd` upgrade.** Agent state (working / needs you / done, last message, cwd bindings) lived only in the old daemon's memory, so every upgrade forgot every agent until it next spoke; the phone, which reaches a terminal through its agent, showed "no agent running". The state now travels with the terminals in the handoff.
 
+### Fixed
+
+- Terminal: scrolling up while a program prints (omp, logs, a build) no longer snaps back to the bottom on every chunk; a key or a paste returns to the live screen, as in Ghostty (#97).
+- Terminal, every OS: keystrokes and pastes reach the program in the order they were typed. The desktop sent each write as its own request and hostd ran each one on its own task, so a fast typist or a paste followed by ⏎ could arrive swapped.
+- Terminal (macOS GPU): a terminal host restart or live upgrade no longer leaves the terminal frozen; it reattaches and replays its output.
+- Terminal: a paste can no longer leave bracketed-paste mode through a nested end marker; programs that ask for the theme's colors (OSC 10/11/4) get an answer instead of waiting for a timeout; trackpad scrolling keeps fractions of a line instead of losing small movements; a read-only terminal no longer sends arrow keys when scrolled over a full-screen program; a request over 1 MiB to the terminal host is reported instead of vanishing (large pastes are split).
+- Desktop: a burst of terminal host events no longer looks like a disconnect.
+
 ## [1.5.0-alpha.14] — 2026-10-19
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

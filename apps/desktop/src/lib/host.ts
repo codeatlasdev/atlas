@@ -18,6 +18,17 @@ export const hostCall = <T = unknown>(cmd: string, args: Record<string, unknown>
 	});
 };
 
+/** Tail of each pty's write queue: every `invoke` runs on its own task, so unchained writes can swap. */
+const writes = new Map<string, Promise<unknown>>();
+
+function queued<T>(pty: string, send: () => Promise<T>): Promise<T> {
+	const run = (writes.get(pty) ?? Promise.resolve()).then(send, send);
+	const tail = run.catch(() => {});
+	writes.set(pty, tail);
+	void tail.then(() => writes.get(pty) === tail && writes.delete(pty));
+	return run;
+}
+
 interface PtyScope {
 	worktree_id?: string;
 	tab_id?: string;
@@ -72,7 +83,8 @@ export const host = {
 			{ pty, replay, output },
 		),
 	ptyDetach: (pty: string) => hostCall("pty_detach", { pty }),
-	ptyWrite: (pty: string, text: string | Uint8Array) => hostCall("pty_write", { pty, data: b64encode(text) }),
+	ptyWrite: (pty: string, text: string | Uint8Array) =>
+		queued(pty, () => hostCall("pty_write", { pty, data: b64encode(text) })),
 	ptyResize: (pty: string, cols: number, rows: number) => hostCall("pty_resize", { pty, cols, rows }),
 	ptyKill: (pty: string) => hostCall("pty_kill", { pty }),
 	/** Terminals of every connected host (local + SSH). */

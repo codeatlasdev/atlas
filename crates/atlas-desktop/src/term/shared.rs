@@ -46,7 +46,12 @@ pub(super) struct Shared {
     pub(super) wake: Condvar,
     /// Where the native view belongs, and whether its first frame is drawn yet.
     pub(super) placement: Mutex<Placement>,
+    /// Bytes for the pty, sent in order by one drain task (`super::drain`).
+    pub(super) writer: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
 }
+
+/// hostd drops a request line over 1 MiB; base64 grows a chunk by 4/3.
+const WRITE_CHUNK: usize = 512 * 1024;
 
 impl Shared {
     /// Ask the render thread for a new frame.
@@ -57,6 +62,23 @@ impl Shared {
     pub(super) fn update(&self, f: impl FnOnce(&mut State)) {
         f(&mut self.state.lock());
         self.wake.notify_one();
+    }
+
+    /// Queue bytes for the pty.
+    pub(super) fn write(&self, bytes: &[u8]) {
+        for c in bytes.chunks(WRITE_CHUNK) {
+            let _ = self.writer.send(c.to_vec());
+        }
+    }
+
+    /// User input (keys, paste): back to the live screen first (Ghostty
+    /// `scroll-to-bottom = keystroke`); output alone never moves the viewport (#97).
+    pub(super) fn input(&self, bytes: &[u8]) {
+        if self.vt.scrollbar().0 != 0 {
+            self.vt.scroll_to_bottom();
+            self.redraw();
+        }
+        self.write(bytes);
     }
 }
 

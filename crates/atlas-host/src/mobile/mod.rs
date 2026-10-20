@@ -16,7 +16,8 @@
 //! for `atlas hostd`) turns relays and address lookup off (LAN, tests).
 
 mod session;
-#[cfg(test)]
+// Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
+#[cfg(all(test, unix))]
 mod tests;
 
 use std::collections::HashMap;

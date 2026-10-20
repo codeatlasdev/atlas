@@ -187,8 +187,7 @@ async fn test_check_health_detects_exited_child() {
     let mut manager = ServiceManager::new(tmp, &config, tx);
 
     manager.start_service("short").await;
-    // Let `true` exit before probing.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    until_child_exited(&mut manager, "short").await;
     manager.check_health().await;
 
     assert_eq!(manager.get_state("short"), Some(ServiceState::Failed));
@@ -264,7 +263,7 @@ async fn test_start_service_replaces_exited_child() {
 
     manager.start_service("short").await;
     let first_pid = manager.services.get("short").unwrap().status.pid;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    until_child_exited(&mut manager, "short").await;
 
     manager.start_service("short").await;
     let second_pid = manager.services.get("short").unwrap().status.pid;
@@ -311,7 +310,7 @@ async fn test_zero_exit_with_port_recovers_via_port_check() {
     let mut manager = ServiceManager::new(std::env::temp_dir(), &config, tx);
 
     manager.start_service("detached").await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    until_child_exited(&mut manager, "detached").await;
     manager.check_health().await;
 
     // The state must NOT be Running (port 1 is closed), but the key check is
@@ -340,16 +339,16 @@ async fn test_short_lived_service_detected_as_failed() {
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
 
     mgr.start_service("short").await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    until_child_exited(&mut mgr, "short").await;
     mgr.check_health().await;
-
-    let state = mgr
-        .services()
-        .iter()
-        .find(|s| s.name == "short")
-        .map(|s| s.state.clone());
+    let state_of = |m: &ServiceManager| {
+        m.services()
+            .iter()
+            .find(|s| s.name == "short")
+            .map(|s| s.state.clone())
+    };
     assert_eq!(
-        state,
+        state_of(&mgr),
         Some(ServiceState::Failed),
         "exited process should be Failed"
     );
@@ -398,7 +397,7 @@ async fn test_nonzero_exit_with_live_port_is_failed() {
     );
 
     mgr.start_service("svc").await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    until_child_exited(&mut mgr, "svc").await;
     mgr.check_health().await;
 
     assert_eq!(mgr.get_state("svc"), Some(ServiceState::Failed));
@@ -420,7 +419,7 @@ async fn test_zero_exit_launcher_with_live_port_is_running() {
     );
 
     mgr.start_service("svc").await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    until_child_exited(&mut mgr, "svc").await;
     mgr.check_health().await;
 
     assert_eq!(mgr.get_state("svc"), Some(ServiceState::Running));
@@ -1308,4 +1307,23 @@ async fn a_successful_respawn_clears_the_previous_failure_reason() {
         "stale reason survived a new spawn"
     );
     mgr.stop_service("svc").await;
+}
+
+/// Wait (bounded) until a service's child has exited. Fixed sleeps raced slow process startup
+/// (`cmd /d /s /c` on Windows CI saw `Starting` after 300 ms, run 39356068863). tokio caches the
+/// exit status, so `check_health`'s own `try_wait` still sees it afterward.
+async fn until_child_exited(m: &mut ServiceManager, name: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        let running = m
+            .services
+            .get_mut(name)
+            .and_then(|s| s.child.as_mut())
+            .is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+        if !running {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("{name}: child still running after 10 s");
 }

@@ -485,6 +485,9 @@ mod tests {
         );
     }
 
+    /// Incident (CI, macOS, run 39354386940): this asserted the pid was gone right after `wait`,
+    /// but an exited orphan stays a zombie until launchd reaps it, so under load `kill(pid, 0)`
+    /// still succeeded. `wait` reports the exit; reaping is the parent's business.
     #[test]
     fn exit_watch_returns_when_a_non_child_dies_and_reports_its_status() {
         // A grandchild: `sh` forks a subshell and exits, so the subshell is not our child.
@@ -495,12 +498,49 @@ mod tests {
         let pid: u32 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap();
         let t0 = std::time::Instant::now();
         let code = ExitWatch::new(pid).wait();
-        assert!(t0.elapsed() < Duration::from_secs(5));
-        // SAFETY: existence probe.
-        assert_ne!(unsafe { libc::kill(pid as libc::pid_t, 0) }, 0);
+        let took = t0.elapsed();
+        assert!(took < Duration::from_secs(5));
+        // It waited for the exit (0.4 s), not returned at once.
+        assert!(
+            took >= Duration::from_millis(300),
+            "returned after {took:?}"
+        );
         #[cfg(target_os = "macos")]
         assert_eq!(code, Some(7));
         #[cfg(not(target_os = "macos"))]
         assert_eq!(code, None);
+    }
+
+    /// The exit is reported while the process is still a zombie (its parent has not reaped it),
+    /// which is the state the flaky assertion above tripped on.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn exit_watch_reports_an_exit_before_the_zombie_is_reaped() {
+        use std::io::BufRead;
+        // perl forks a child that exits 7 after 0.3 s and then sleeps without reaping it.
+        let mut parent = std::process::Command::new("perl")
+            .args([
+                "-e",
+                "$|=1; if (my $p = fork) { print \"$p\\n\"; sleep 3 } else { select(undef,undef,undef,0.3); exit 7 }",
+            ])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        std::io::BufReader::new(parent.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let pid: u32 = line.trim().parse().unwrap();
+        let t0 = std::time::Instant::now();
+        let code = ExitWatch::new(pid).wait();
+        assert!(
+            t0.elapsed() < Duration::from_secs(2),
+            "waited for the reap, not the exit"
+        );
+        assert_eq!(code, Some(7));
+        // SAFETY: existence probe; the zombie is still there because perl has not reaped it.
+        assert_eq!(unsafe { libc::kill(pid as libc::pid_t, 0) }, 0);
+        parent.kill().unwrap();
+        parent.wait().unwrap();
     }
 }

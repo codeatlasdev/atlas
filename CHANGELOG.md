@@ -16,9 +16,9 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **`atlas hostd` sends a long terminal replay in pieces.** Attaching sent the whole scrollback (up to 2 MiB) as one line, and a client that drops lines over 1 MiB, like the phone, got no history at all from a long-running agent. The first piece is still `pty_replay` (the screen reset), the rest arrive as `pty_output`. `pty_info` now also reports the terminal's `cols`/`rows`.
 - **Agents survive an `atlas hostd` upgrade.** Agent state (working / needs you / done, last message, cwd bindings) lived only in the old daemon's memory, so every upgrade forgot every agent until it next spoke; the phone, which reaches a terminal through its agent, showed "no agent running". The state now travels with the terminals in the handoff.
 
-## [1.5.0-alpha.15] — 2026-10-19
+## [1.5.0-alpha.16] — 2026-10-20
 
-Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new). The `v1.5.0-alpha.15` tag was never published (its CI run was red on Windows); its changes ship here.
 
 ### Fixed
 

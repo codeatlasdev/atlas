@@ -186,5 +186,5 @@ Why it looks the way it does (what Dracula, Tokyo Night, Catppuccin and One shar
 | Readable at 1x | syntax colors fitted to at least 4.7:1 on every code surface (line, selection, active line); comments `#acbae2` italic | Anti-aliasing on a low-DPI panel thins light-on-dark text, so margin above AA 4.5 beats being on the line. |
 | Syntax roles | keyword purple, function green, string amber, type and namespace cyan, constant orange, property blue | One hue per role everywhere (Dracula's spec), the Tokyo hues. |
 
-Atlas Light is its Tokyo Night Day counterpart: pale blue-grey ground (`#e1e2e7`), navy text, the same role-to-hue map with deeper values so every color keeps AA on the pale ground. `bun test` (`theme/atlasDefault.test.ts`) pins the palette, the OKLCH ladder rules above and the default selection; `bun scripts/contrast-audit.ts` checks the rendered screens for both.
+Atlas Light is its Tokyo Night Day counterpart: pale blue-grey ground (`#e1e2e7`), navy text, the same role-to-hue map with deeper values so every color keeps AA on the pale ground. `bun run test` (`theme/atlasDefault.test.ts`) pins the palette, the OKLCH ladder rules above and the default selection; `bun scripts/contrast-audit.ts` checks the rendered screens for both.
 

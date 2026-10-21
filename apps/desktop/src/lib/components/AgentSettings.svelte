@@ -119,15 +119,16 @@
 			/>
 		</Row>
 	{/each}
-	{#if agents.ompIntegration === "missing"}
+	{#each agents.integrations.filter((a) => a.state === "missing") as a, i (a.id)}
+		<!-- The first row carries the search anchor (catalog id agent-integration). -->
 		<Row
-			id="agent-omp"
-			label="omp integration"
-			description="Lets omp tell Atlas when it is working, waiting for you or done, and use Atlas tools."
+			id={i === 0 ? "agent-integration" : undefined}
+			label="{a.label} integration"
+			description="Lets {a.label} tell Atlas and Atlas Mobile when it is working, waiting for you or done, and use Atlas tools."
 		>
-			<Button size="sm" onclick={() => agents.enableOmp()}>Turn on</Button>
+			<Button size="sm" onclick={() => agents.enableIntegration(a.id)}>Turn on</Button>
 		</Row>
-	{/if}
+	{/each}
 </Group>
 
 <Group

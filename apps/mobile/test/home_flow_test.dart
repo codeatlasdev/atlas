@@ -32,6 +32,7 @@ Future<void> _app(
   WidgetTester t,
   List<MacDevice> paired, {
   Duration connectDelay = Duration.zero,
+  List<Map<String, String>> integrations = const [],
 }) async {
   await t.binding.setSurfaceSize(const Size(393, 852));
   await t.pumpWidget(
@@ -40,7 +41,7 @@ Future<void> _app(
         macStorageProvider.overrideWithValue(_Storage(paired)),
         // The real computer is never reached in tests; the demo protocol stands in.
         transportFactoryProvider.overrideWithValue(
-          (_, _) async => demoTransport(),
+          (_, _) async => demoTransport(integrations: integrations),
         ),
       ],
       child: MaterialApp(theme: atlasTheme(), home: const HomeScreen()),
@@ -98,6 +99,27 @@ void main() {
     await _settle(t);
     expect(find.byType(Onboarding), findsNothing);
     expect(find.text('My Mac'), findsWidgets);
+    await t.pumpWidget(const SizedBox());
+    await _settle(t);
+  });
+
+  // An agent whose hooks are off never shows on the phone, with no hint why: the home
+  // screen names each installed agent whose integration is off, and only those.
+  testWidgets('home names agents whose integration is off', (t) async {
+    await _app(
+      t,
+      [mac],
+      integrations: [
+        {'id': 'claude', 'label': 'Claude Code', 'state': 'missing'},
+        {'id': 'omp', 'label': 'omp', 'state': 'ok'},
+        {'id': 'codex', 'label': 'Codex', 'state': 'unknown'},
+      ],
+    );
+    await _toLastPage(t);
+    await t.tap(find.text('Open my computer'));
+    await _settle(t);
+    expect(find.text('Claude Code integration is off'), findsOneWidget);
+    expect(find.textContaining('integration is off'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

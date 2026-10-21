@@ -12,16 +12,20 @@
 	import ProjectHeader from "./ProjectHeader.svelte";
 	import Workbench from "./Workbench.svelte";
 	import { agents } from "#lib/stores/agents.svelte.ts";
+	import { dismissedKey, promptFor } from "#lib/stores/agentIntegration.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 
 	const space = useSpace();
 	let p = $derived(space.project);
-	// "Not now" hides the omp prompt on this computer until the integration is enabled from Settings.
-	const OMP_DISMISSED = "atlas.ompPromptDismissed";
-	let ompDismissed = $state(localStorage.getItem(OMP_DISMISSED) === "1");
-	function dismissOmp() {
-		localStorage.setItem(OMP_DISMISSED, "1");
-		ompDismissed = true;
+	// One agent's integration at a time. "Not now" hides it on this computer; Settings → Agents
+	// still turns it on.
+	let hidden = $state(new Set<string>());
+	let offer = $derived(
+		promptFor(agents.integrations, (id) => hidden.has(id) || localStorage.getItem(dismissedKey(id)) === "1"),
+	);
+	function dismiss(id: string) {
+		localStorage.setItem(dismissedKey(id), "1");
+		hidden = new Set([...hidden, id]);
 	}
 </script>
 
@@ -40,12 +44,13 @@
 	{/if}
 
 	<div class="rule"></div>
-	{#if agents.ompIntegration === "missing" && !ompDismissed}
+	{#if offer}
+		{@const o = offer}
 		<div use:corner class="floating">
-			<Alert severity="info" title="Enable omp integration">
-				Atlas shows omp's state (working, needs you, done) through a small omp extension.
-				<Button size="sm" onclick={() => agents.enableOmp()}>Enable</Button>
-				<Button size="sm" variant="ghost" onclick={dismissOmp}>Not now</Button>
+			<Alert severity="info" title="Enable {o.label} integration">
+				Atlas and Atlas Mobile show {o.label}'s state (working, needs you, done) through its hooks.
+				<Button size="sm" onclick={() => agents.enableIntegration(o.id)}>Enable</Button>
+				<Button size="sm" variant="ghost" onclick={() => dismiss(o.id)}>Not now</Button>
 			</Alert>
 		</div>
 	{/if}

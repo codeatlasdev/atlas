@@ -692,7 +692,18 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
 pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
-        HostCmd::PtyCreate(req) => {
+        HostCmd::PtyCreate(mut req) => {
+            // Any agent started in a terminal of a pane reports to the hook server (the omp
+            // extension and `atlas hook` need both); a launcher's own values win.
+            if let Some(pane) = req.scope.pane_key.clone() {
+                let endpoint = paths::hook_endpoint(&hub.dir)
+                    .to_string_lossy()
+                    .into_owned();
+                req.env.entry("ATLAS_PANE_KEY".into()).or_insert(pane);
+                req.env
+                    .entry("ATLAS_HOOK_ENDPOINT".into())
+                    .or_insert(endpoint);
+            }
             let s = Session::spawn(req, &hub.scroll_dir).map_err(e)?;
             let id = s.id.clone();
             idle_agent_on_exit(hub, &s);
@@ -808,6 +819,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             "hook_port": *hub.agents.port.lock(),
             "pending_approvals": hub.agents.pending_approvals(),
         })),
+        HostCmd::AgentIntegrations {} => Ok(crate::agents::integrations::all().await),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
         lsp @ (HostCmd::LspOpen { .. }
         | HostCmd::LspChange { .. }

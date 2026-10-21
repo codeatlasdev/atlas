@@ -253,6 +253,26 @@ fn dry_run_writes_nothing_apply_is_idempotent_uninstall_is_clean() {
     assert!(out(&gone).contains("nothing to remove"), "{}", out(&gone));
 }
 
+// The app asks `atlas setup <agent> --check` whether to offer turning hooks on: exit 0 when
+// set up, 1 when not, writing nothing. Without it, Claude Code and Codex users were never told
+// their agents report nothing to Atlas.
+#[test]
+fn check_reports_whether_an_agent_is_set_up_and_writes_nothing() {
+    let sb = Sandbox::new();
+    for agent in ["claude-code", "codex"] {
+        let before = sb.run(&sb.home, &["setup", agent, "--check"]);
+        assert_eq!(before.status.code(), Some(1), "{agent}: {}", out(&before));
+        assert!(std::fs::read_dir(&sb.claude).unwrap().next().is_none());
+        assert!(std::fs::read_dir(&sb.codex).unwrap().next().is_none());
+    }
+    for agent in ["claude-code", "codex"] {
+        let apply = sb.run(&sb.home, &["setup", agent, "--apply"]);
+        assert!(apply.status.success(), "{agent}: {}", out(&apply));
+        let after = sb.run(&sb.home, &["setup", agent, "--check"]);
+        assert_eq!(after.status.code(), Some(0), "{agent}: {}", out(&after));
+    }
+}
+
 #[test]
 fn missing_omp_still_writes_the_plugin_and_prints_the_link_command() {
     let sb = Sandbox::new();

@@ -317,6 +317,9 @@ pub enum HostCmd {
     },
     /// `{panes: {pane_key: status}, hook_port, pending_approvals: [agent_approval event]}`.
     AgentStatusAll {},
+    /// `{agents: [{id, label, setup, state: ok|missing|unknown}]}`: installed agents and whether
+    /// their hooks report to Atlas (`atlas setup <agent> --check`).
+    AgentIntegrations {},
     /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
     AgentApprove {
         pane: String,

@@ -262,6 +262,7 @@ macro_rules! handlers {
             agent::registry::agent_list,
             agent::launch::agent_command,
             agent::status::agent_status_all,
+            agent::status::agent_integrations,
             agent::status::agent_pane_exited,
             agent::status::agent_bind,
             agent::sessions::agent_sessions,

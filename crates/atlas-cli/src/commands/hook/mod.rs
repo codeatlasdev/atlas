@@ -165,7 +165,12 @@ pub fn permission_decision(allow: bool) -> String {
 /// The response for one hook invocation, or `None` for "no output". Pure over the
 /// filesystem state it reads (`atlas.yaml`, `package.json`, the status file).
 pub fn respond(harness: Harness, event: Event, stdin: &str) -> Option<String> {
-    let input: Value = serde_json::from_str(stdin).ok()?;
+    // A hook payload is an object; anything else (`[1,2]`, `3`) is noise, not a cwd-less
+    // request. Without this the fallback to the current dir answered for whatever atlas.yaml
+    // sat there (it failed `malformed_stdin_means_no_output` in a checkout with one).
+    let input = serde_json::from_str::<Value>(stdin)
+        .ok()
+        .filter(Value::is_object)?;
     let cwd = input
         .get("cwd")
         .and_then(Value::as_str)

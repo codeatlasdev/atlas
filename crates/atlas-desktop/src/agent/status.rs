@@ -36,6 +36,13 @@ pub async fn agent_pane_exited(
     Ok(())
 }
 
+/// Installed agents and whether their hooks are on, from the local hostd (the hooks report
+/// to this computer): `{agents: [{id, label, setup, state}]}`.
+#[tauri::command]
+pub async fn agent_integrations(hub: tauri::State<'_, Arc<HostHub>>) -> Result<Value, String> {
+    hub.call("agent_integrations", json!({})).await
+}
+
 /// Every host's panes, merged (pane keys are tab UUIDs, unique across hosts).
 #[tauri::command]
 pub async fn agent_status_all(hub: tauri::State<'_, Arc<HostHub>>) -> Result<Value, String> {

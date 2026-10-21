@@ -34,6 +34,10 @@ enum Commands {
         command: commands::config::ConfigCommands,
     },
 
+    #[command(next_help_heading = "Bots")]
+    /// Manage atlas bot computers: install, login, status, logs
+    Bot(commands::bot::BotArgs),
+
     #[command(next_help_heading = "Deploy")]
     /// Ship a release to a server: atomic swap, health-gated restarts, auto-rollback
     Deploy(commands::deploy::DeployArgs),
@@ -173,6 +177,7 @@ async fn run() -> Result<()> {
         Commands::Skills { command } => command.run().await?,
         Commands::Link(args) => args.run().await?,
         Commands::Unlink(args) => args.run().await?,
+        Commands::Bot(args) => args.run().await?,
     }
 
     // The TUI is gone and its services are stopped: install an update the user accepted

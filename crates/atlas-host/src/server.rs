@@ -391,7 +391,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let mut term = Terminate::new()?;
     let limit = crate::idle::limit_from_env();
-    let mut ticker = tokio::time::interval(crate::idle::tick(limit));
+    let tick_interval = limit.unwrap_or(crate::idle::IDLE_EXIT);
+    let mut ticker = tokio::time::interval(crate::idle::tick(tick_interval));
     let mut idle_since: Option<Instant> = None;
     loop {
         tokio::select! {
@@ -407,10 +408,10 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 let (live, clients) = hub.activity();
                 if live > 0 || clients > 0 {
                     idle_since = None;
-                } else {
+                } else if let Some(lim) = limit {
                     let since = *idle_since.get_or_insert_with(Instant::now);
-                    if crate::idle::idle_expired(live, clients, since.elapsed(), limit) {
-                        eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", limit.as_secs());
+                    if crate::idle::idle_expired(live, clients, since.elapsed(), lim) {
+                        eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", lim.as_secs());
                         break;
                     }
                 }

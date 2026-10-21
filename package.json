@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "setup": "scripts/setup.sh",
-    "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo nextest run --workspace --locked && cargo test --workspace --locked --doc && cargo deny check && scripts/check-skills.sh && scripts/lint-workflows.sh && bun run desktop:check && scripts/mobile-check.sh && bun run release:test",
+    "check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings && cargo nextest run --workspace --locked && cargo test --workspace --locked --doc && cargo deny check && scripts/check-skills.sh && scripts/lint-workflows.sh && bun run desktop:check && scripts/mobile-check.sh && scripts/push-relay-check.sh && bun run release:test",
     "sweep": "scripts/sweep.sh",
     "lint:workflows": "scripts/lint-workflows.sh",
     "fmt": "cargo fmt --all && cd apps/desktop && bun run format",

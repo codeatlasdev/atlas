@@ -15,7 +15,7 @@ mod inspect;
 mod launch;
 mod package;
 mod plan;
-mod remote;
+pub(crate) mod remote;
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};

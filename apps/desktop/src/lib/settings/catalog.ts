@@ -614,10 +614,10 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	entry(
 		"agents",
 		"Coding agents",
-		"agent-omp",
-		"omp integration",
-		"Lets omp report its status and tools to Atlas.",
-		"hooks plugin enable",
+		"agent-integration",
+		"Agent integrations",
+		"Lets omp, Claude Code and Codex report their status and tools to Atlas and Atlas Mobile.",
+		"hooks plugin enable omp claude codex",
 	),
 	entry(
 		"agents",

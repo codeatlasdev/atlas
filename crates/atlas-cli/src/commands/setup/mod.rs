@@ -61,6 +61,10 @@ pub struct HarnessArgs {
     /// Remove only atlas-owned artifacts
     #[arg(long)]
     pub uninstall: bool,
+    /// Exit 0 when atlas is set up for this agent, 1 when not; writes and prints nothing
+    /// (Atlas Desktop asks this before offering to turn the integration on)
+    #[arg(long, conflicts_with_all = ["uninstall", "apply", "refresh"])]
+    pub check: bool,
     /// Used by `atlas update`: re-apply quietly, only if atlas was already set up
     #[arg(long, hide = true, conflicts_with_all = ["uninstall", "apply"])]
     pub refresh: bool,
@@ -378,6 +382,13 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
         )
     };
     plan.warnings.splice(0..0, warnings);
+    if args.check {
+        std::process::exit(if plan.has_changes() || plan.has_conflict() {
+            1
+        } else {
+            0
+        });
+    }
 
     let scope_label = match args.scope {
         Scope::User => format!("user ({})", agent.user_dir(&env).display()),

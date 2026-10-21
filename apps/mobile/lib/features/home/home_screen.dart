@@ -327,6 +327,10 @@ class _DashboardState extends ConsumerState<_Dashboard> {
             : 2;
         return rank(a).compareTo(rank(b));
       });
+    final missing = connected
+        ? ref.watch(missingIntegrationsProvider(widget.device)).value ??
+              const <AgentIntegration>[]
+        : const <AgentIntegration>[];
     final working = agentsOf.values
         .expand((v) => v)
         .where((a) => a.$2.state == 'working')
@@ -360,6 +364,7 @@ class _DashboardState extends ConsumerState<_Dashboard> {
               ref.invalidate(connectionNotifierProvider(widget.device));
             } else {
               ref.invalidate(projectListProvider(widget.device));
+              ref.invalidate(missingIntegrationsProvider(widget.device));
             }
           },
           child: CustomScrollView(
@@ -419,6 +424,8 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                           ),
                         const SizedBox(height: Space.md),
                       ],
+                      for (final a in missing) _IntegrationOff(agent: a),
+                      if (missing.isNotEmpty) const SizedBox(height: Space.md),
                       SectionHeader('Projects', count: list.length),
                       if (list.isEmpty)
                         Text(
@@ -936,4 +943,38 @@ class _Offline extends ConsumerWidget {
             ),
     ),
   );
+}
+
+/// An installed agent whose hooks are off: its tabs never show here until it is turned on.
+class _IntegrationOff extends StatelessWidget {
+  const _IntegrationOff({required this.agent});
+  final AgentIntegration agent;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return AtlasCard(
+      accent: c.warning,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.link_off_rounded, color: c.warning, size: 20),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("${agent.label} integration is off"),
+                const SizedBox(height: Space.xs),
+                Text(
+                  "Its agents won't show here. Turn it on in Atlas on your Mac: Settings → Agents.",
+                  style: TextStyle(color: c.muted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

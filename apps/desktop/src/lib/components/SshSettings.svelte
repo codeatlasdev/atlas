@@ -80,9 +80,11 @@
 			? "success"
 			: s === "connecting"
 				? "warning"
-				: s?.startsWith("error")
-					? "error"
-					: "neutral";
+				: s?.startsWith("warning")
+					? "warning"
+					: s?.startsWith("error")
+						? "error"
+						: "neutral";
 </script>
 
 <PageHead
@@ -93,12 +95,19 @@
 <Group title="Your hosts">
 	{#each hosts as h (h)}
 		<Row label={h} description={tests[h] ?? undefined}>
-			<StatusChip status={chip(status[h])} label={(status[h] ?? "idle").slice(0, 60)} />
+			<StatusChip
+				status={chip(status[h])}
+				label={status[h]?.startsWith("warning") ? "connected, outdated" : (status[h] ?? "idle").slice(0, 60)}
+			/>
 			{#if status[h] === "connecting"}<Spinner size={11} />{/if}
 			<Button size="sm" variant="outlined" onclick={() => test(h)}>Test connection</Button>
 			<Button size="sm" variant="ghost" onclick={() => remove(h)}>Remove</Button>
 			{#snippet below()}
-				{#if status[h]?.startsWith("error")}<div class="err ca-selectable">{status[h]}</div>{/if}
+				{#if status[h]?.startsWith("error") || status[h]?.startsWith("warning")}<div
+						class="err ca-selectable"
+					>
+						{status[h]}
+					</div>{/if}
 			{/snippet}
 		</Row>
 	{:else}

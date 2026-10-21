@@ -244,7 +244,7 @@ Also published at [atlas.codeatlas.com.br/docs](https://atlas.codeatlas.com.br/d
 ```bash
 scripts/setup.sh           # rustup, bun, frontend deps, cargo-tauri, cargo-deny
 cargo build -p atlas-cli   # the real binary (atlas-tui alone is just a lib)
-bun run check              # fmt + clippy -D warnings + tests + deny + skills + desktop — same as CI
+bun run check              # fmt + clippy -D warnings + tests + deny + skills + desktop + mobile — same as CI
 atlas link                 # point your installed atlas at the debug build
 bun run desktop:dev        # Atlas Desktop with hot reload
 ```
@@ -259,6 +259,7 @@ crates/
   atlas-desktop/ Atlas Desktop (Tauri 2)
   atlas-cli/     the `atlas` binary
 apps/desktop/  Atlas Desktop UI (SvelteKit + @codeatlasdev/ui)
+apps/mobile/   Atlas Mobile (Flutter, iOS and Android)
 site/          the website (Astro + Svelte); renders docs/ as the docs section
 docs/  skills/  scripts/
 ```

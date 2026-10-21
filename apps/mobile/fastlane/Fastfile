@@ -1,0 +1,134 @@
+# Atlas Mobile to testers: TestFlight (iOS) and the Play internal testing track (Android), from
+# one command (`bun run mobile:beta`, or the `Mobile beta` workflow). Credentials come from the
+# environment only; nothing secret is in the repo. docs/mobile.md, "Testers", lists them.
+#
+#   fastlane beta          both stores, one build number
+#   fastlane ios_beta      TestFlight only
+#   fastlane android_beta  Play internal testing only
+
+default_platform(:ios)
+
+APP = File.expand_path("..", __dir__) # apps/mobile
+ANDROID_PACKAGE = "br.com.codeatlas.atlas.mobile"
+
+BETA_DESCRIPTION = <<~TEXT.strip
+  Atlas on your phone: see and control the Atlas running on your computer, from anywhere and
+  with no account. Pair with the QR code in Atlas Desktop (Settings, Mobile), then follow your
+  projects, services and logs, talk to your agents and answer their permission prompts.
+TEXT
+
+# One build number for both stores, increasing on every run: minutes since the Unix epoch
+# (~29 million, well under Play's 2.1 billion limit). BUILD_NUMBER overrides it.
+def build_number
+  (ENV["BUILD_NUMBER"] || (Time.now.to_i / 60)).to_s
+end
+
+def need(*names)
+  missing = names.reject { |n| ENV[n] && !ENV[n].empty? }
+  UI.user_error!("missing #{missing.join(', ')} (docs/mobile.md, \"Testers\")") unless missing.empty?
+end
+
+def flutter(*args)
+  sh("flutter", *args, log: true) # sh runs from fastlane/; Flutter needs the app dir
+end
+
+lane :beta do
+  n = build_number
+  ios_beta(build_number: n)
+  android_beta(build_number: n)
+end
+
+lane :ios_beta do |options|
+  need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "APPLE_TEAM_ID")
+  n = options[:build_number] || build_number
+  key = app_store_connect_api_key(
+    key_id: ENV["ASC_KEY_ID"],
+    issuer_id: ENV["ASC_ISSUER_ID"],
+    key_content: ENV["ASC_KEY_P8"],
+  )
+  # xcodebuild signs with the same key (automatic signing, no certificates in the repo).
+  p8 = File.join(Dir.tmpdir, "AuthKey_#{ENV['ASC_KEY_ID']}.p8")
+  File.write(p8, ENV["ASC_KEY_P8"])
+  Dir.chdir(APP) { flutter("build", "ios", "--release", "--no-codesign", "--build-number=#{n}") }
+  # Archive and export both sign through the API key (role Admin: creating the cloud-managed
+  # distribution certificate needs it): with -allowProvisioningUpdates Xcode
+  # uses Apple's cloud-managed distribution certificate, so no certificate lives anywhere.
+  auth = [
+    "-allowProvisioningUpdates",
+    "-authenticationKeyPath #{p8}",
+    "-authenticationKeyID #{ENV['ASC_KEY_ID']}",
+    "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']}",
+  ].join(" ")
+  ipa = build_app(
+    workspace: File.join(APP, "ios/Runner.xcworkspace"),
+    scheme: "Runner",
+    export_method: "app-store",
+    output_directory: File.join(APP, "build/fastlane"),
+    # fastlane hands xcargs to the export too (a second copy is refused).
+    xcargs: "#{auth} DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID']}",
+    export_options: { signingStyle: "automatic", teamID: ENV["APPLE_TEAM_ID"] },
+  )
+  # Internal groups only: external testers need Apple's beta review (and a way to try the
+  # app without a computer running Atlas).
+  groups = ENV.fetch("TESTFLIGHT_GROUPS", "").split(",").map(&:strip).reject(&:empty?)
+  upload_to_testflight(
+    api_key: key,
+    ipa: ipa,
+    groups: groups.empty? ? nil : groups,
+    skip_waiting_for_build_processing: groups.empty?,
+    # TestFlight asks for these before handing a build to a group.
+    beta_app_description: BETA_DESCRIPTION,
+    beta_app_feedback_email: ENV["BETA_FEEDBACK_EMAIL"],
+    changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
+  )
+ensure
+  File.delete(p8) if p8 && File.exist?(p8)
+end
+
+lane :android_beta do |options|
+  need("PLAY_SERVICE_ACCOUNT_JSON", "ANDROID_KEYSTORE_BASE64", "ANDROID_KEYSTORE_PASSWORD",
+       "ANDROID_KEY_ALIAS")
+  n = options[:build_number] || build_number
+  props = File.join(APP, "android/key.properties")
+  jks = File.join(Dir.tmpdir, "atlas-upload.jks")
+  File.binwrite(jks, Base64.decode64(ENV["ANDROID_KEYSTORE_BASE64"]))
+  File.write(props, <<~PROPS)
+    storeFile=#{jks}
+    storePassword=#{ENV['ANDROID_KEYSTORE_PASSWORD']}
+    keyAlias=#{ENV['ANDROID_KEY_ALIAS']}
+    keyPassword=#{ENV['ANDROID_KEY_PASSWORD'] || ENV['ANDROID_KEYSTORE_PASSWORD']}
+  PROPS
+  Dir.chdir(APP) { flutter("build", "appbundle", "--release", "--build-number=#{n}") }
+  upload_to_play_store(
+    package_name: ANDROID_PACKAGE,
+    track: "internal",
+    aab: File.join(APP, "build/app/outputs/bundle/release/app-release.aab"),
+    json_key_data: ENV["PLAY_SERVICE_ACCOUNT_JSON"],
+    skip_upload_metadata: true,
+    skip_upload_images: true,
+    skip_upload_screenshots: true,
+  )
+ensure
+  [props, jks].each { |f| File.delete(f) if f && File.exist?(f) }
+end
+
+# Hand an already uploaded iOS build to the TestFlight groups (e.g. after fixing what blocked
+# the distribution). BUILD_NUMBER and VERSION name it.
+lane :ios_distribute do
+  need("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_P8", "BUILD_NUMBER", "TESTFLIGHT_GROUPS")
+  upload_to_testflight(
+    api_key: app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_P8"],
+    ),
+    distribute_only: true,
+    app_platform: "ios",
+    app_version: ENV.fetch("VERSION", "1.0.0"),
+    build_number: ENV["BUILD_NUMBER"],
+    groups: ENV["TESTFLIGHT_GROUPS"].split(",").map(&:strip),
+    beta_app_description: BETA_DESCRIPTION,
+    beta_app_feedback_email: ENV["BETA_FEEDBACK_EMAIL"],
+    changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
+  )
+end

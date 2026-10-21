@@ -22,6 +22,9 @@ use crate::commands::hook::{Event, Harness};
 
 /// Seconds. Both harnesses default to 600; the atlas hook reads one local file.
 const TIMEOUT_SECS: u64 = 10;
+/// `PermissionRequest` may wait for an answer from Atlas Mobile: hostd's wait plus the
+/// margin `atlas hook` adds, so the harness never kills a hook that is still answering.
+const DECISION_TIMEOUT_SECS: u64 = atlas_host::agents::hook_server::DECISION_WAIT.as_secs() + 5;
 
 /// What one event registers: harness event name, tool matcher (None = every occurrence).
 struct Registration {
@@ -46,25 +49,26 @@ const fn reg(
     }
 }
 
-const COMMON: [Registration; 5] = [
+/// `PermissionRequest` is blocking in both harnesses and lets a hook answer the prompt
+/// (Atlas Mobile approvals); Claude also reports prompts as `Notification`.
+const COMMON: [Registration; 6] = [
     reg(Event::SessionStart, "SessionStart", None),
     reg(Event::PreToolUse, "PreToolUse", Some("Bash")),
     reg(Event::UserPromptSubmit, "UserPromptSubmit", None),
     reg(Event::PostToolUse, "PostToolUse", None),
     reg(Event::Stop, "Stop", None),
+    reg(Event::PermissionRequest, "PermissionRequest", None),
 ];
-/// Approval prompts: Claude reports them as `Notification`, Codex as `PermissionRequest`.
 const CLAUDE_ONLY: [Registration; 3] = [
     reg(Event::Notification, "Notification", None),
     reg(Event::StopFailure, "StopFailure", None),
     reg(Event::SessionEnd, "SessionEnd", None),
 ];
-const CODEX_ONLY: [Registration; 1] = [reg(Event::PermissionRequest, "PermissionRequest", None)];
 
 fn registrations(harness: Harness) -> impl Iterator<Item = &'static Registration> {
     let extra: &'static [Registration] = match harness {
         Harness::ClaudeCode => &CLAUDE_ONLY,
-        Harness::Codex => &CODEX_ONLY,
+        Harness::Codex => &[],
     };
     COMMON.iter().chain(extra)
 }
@@ -108,8 +112,13 @@ fn is_owned_command(command: &str, harness: Harness, event: Event) -> bool {
     bin == "atlas" || bin.ends_with("/atlas")
 }
 
-fn handler(command: &str) -> Value {
-    json!({ "type": "command", "command": command, "timeout": TIMEOUT_SECS })
+fn handler(command: &str, event: Event) -> Value {
+    let timeout = if event == Event::PermissionRequest {
+        DECISION_TIMEOUT_SECS
+    } else {
+        TIMEOUT_SECS
+    };
+    json!({ "type": "command", "command": command, "timeout": timeout })
 }
 
 fn group(reg: &Registration, command: &str) -> Value {
@@ -117,7 +126,7 @@ fn group(reg: &Registration, command: &str) -> Value {
     if let Some(m) = reg.matcher {
         g.insert("matcher".into(), json!(m));
     }
-    g.insert("hooks".into(), json!([handler(command)]));
+    g.insert("hooks".into(), json!([handler(command, reg.event)]));
     Value::Object(g)
 }
 
@@ -188,7 +197,7 @@ pub fn merge(existing: Option<&str>, harness: Harness, atlas: &str) -> Result<Me
     let before = Value::Object(root.clone());
     for reg in registrations(harness) {
         let command = command_line(atlas, harness, reg.event);
-        let desired = handler(&command);
+        let desired = handler(&command, reg.event);
         let groups = event_groups(&mut root, reg.json_event)?;
         let owned = owned_handlers(groups, harness, reg.event);
         match owned.split_first() {

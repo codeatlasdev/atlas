@@ -1,0 +1,3 @@
+# Identifiers only; credentials come from the environment (see Fastfile).
+app_identifier("br.com.codeatlas.atlas.mobile")
+package_name("br.com.codeatlas.atlas.mobile")

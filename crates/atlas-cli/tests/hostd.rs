@@ -45,6 +45,93 @@ fn b64(v: &Value) -> String {
     String::from_utf8(B64.decode(v.as_str().unwrap()).unwrap()).unwrap()
 }
 
+// Guards the empty agent terminal on the phone: the whole replay (up to 2 MiB of
+// scrollback, ~2.7 MB in base64) went out as one line, and every client drops a
+// line over MAX_LINE_BYTES, so a long-running agent's history never arrived.
+#[tokio::test]
+async fn a_long_replay_arrives_whole_in_lines_under_the_limit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c", "head -c 1500000 /dev/zero | tr '\\0' a; echo END; sleep 30"]}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    wait_for("output", || {
+        std::fs::read_dir(dir.join("hostd/scrollback"))
+            .map(|d| {
+                d.flatten()
+                    .any(|e| e.metadata().map_or(0, |m| m.len()) > 1_500_000)
+            })
+            .unwrap_or(false)
+    })
+    .await;
+    let mut ev = c.events();
+    c.call("pty_attach", json!({"pty": pty, "replay": true}))
+        .await
+        .unwrap();
+    let (mut kinds, mut got) = (Vec::new(), String::new());
+    while let Ok(Ok(e)) = tokio::time::timeout(Duration::from_millis(500), ev.recv()).await {
+        let k = e["ev"].as_str().unwrap_or_default().to_string();
+        if k != "pty_replay" && k != "pty_output" {
+            continue;
+        }
+        assert!(
+            e.to_string().len() < MAX_LINE,
+            "a replay line over the limit"
+        );
+        got.push_str(&b64(&e["data"]));
+        kinds.push(k);
+    }
+    assert!(
+        got.contains("END"),
+        "replay incomplete: {} bytes",
+        got.len()
+    );
+    assert_eq!(got.matches('a').count(), 1_500_000);
+    // One reset for clients that clear the screen on pty_replay, then the rest.
+    assert_eq!(kinds[0], "pty_replay");
+    assert!(kinds[1..].iter().all(|k| k == "pty_output"), "{kinds:?}");
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+}
+
+const MAX_LINE: usize = 1024 * 1024;
+
+// The phone sizes its terminal from pty_info before attaching: the replay is drawn
+// into its grid before the attach reply (which also carries the size) arrives, so
+// a missing size drew a 180-column TUI into 80x24 and cut it apart.
+#[tokio::test]
+async fn pty_info_reports_the_current_size() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c", "sleep 30"], "cols": 132, "rows": 41}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let size = |v: Value| (v["cols"].as_u64(), v["rows"].as_u64());
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(size(info.clone()), (Some(132), Some(41)), "{info}");
+    c.call("pty_resize", json!({"pty": pty, "cols": 90, "rows": 20}))
+        .await
+        .unwrap();
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(size(info.clone()), (Some(90), Some(20)), "{info}");
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+}
+
 #[tokio::test]
 async fn pty_exec_fs_auth_and_cold_restore() {
     let tmp = tempfile::tempdir().unwrap();
@@ -287,6 +374,122 @@ async fn connect_retry(dir: &Path, pid_not: u64) -> HostClient {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     panic!("successor hostd did not come up");
+}
+
+/// Send one hook event the way `atlas hook` does (raw HTTP to the published port), with
+/// the published token unless `token` overrides it; the raw response.
+fn post_hook(dir: &Path, agent: &str, body: &Value, token: Option<&str>) -> String {
+    use std::io::{Read, Write};
+    let env = std::fs::read_to_string(paths::hook_endpoint(dir)).unwrap();
+    let get = |k: &str| {
+        env.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .unwrap()
+            .to_string()
+    };
+    let body = body.to_string();
+    let mut s =
+        std::net::TcpStream::connect(("127.0.0.1", get("ATLAS_HOOK_PORT").parse::<u16>().unwrap()))
+            .unwrap();
+    write!(
+        s,
+        "POST /hook/{agent} HTTP/1.1\r\nHost: x\r\nX-Atlas-Hook-Token: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        token.map_or_else(|| get("ATLAS_HOOK_TOKEN"), str::to_string),
+        body.len()
+    )
+    .unwrap();
+    let mut r = String::new();
+    let _ = s.read_to_string(&mut r);
+    r
+}
+
+// Guards a phone showing a dead agent as working forever: only the desktop told hostd
+// a pane's process exited (`agent_pane_exited`), so with the app closed, the case agent
+// state moved to hostd for, the pane never went back to idle.
+#[tokio::test]
+async fn an_agent_pane_whose_process_exits_goes_idle_without_the_app() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    c.call(
+        "pty_create",
+        json!({"cwd": dir, "argv": ["sh", "-c", "sleep 1"], "scope": {"pane_key": "p1"}}),
+    )
+    .await
+    .unwrap();
+    let r = post_hook(
+        dir,
+        "omp",
+        &json!({"pane_key": "p1", "payload": {"event": "agent_start"}}),
+        None,
+    );
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
+    let state = || async {
+        c.call("agent_status_all", json!({})).await.unwrap()["panes"]["p1"]["state"].clone()
+    };
+    assert_eq!(state().await, "working");
+    let mut s = Value::Null;
+    for _ in 0..50 {
+        s = state().await;
+        if s == "idle" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(s, "idle");
+}
+
+// Guards "no agent running" after an upgrade: agent state lived only in the old
+// daemon's memory, so every hostd upgrade forgot every agent until it next spoke,
+// and the phone, which needs an agent to reach its terminal, had nothing to open.
+#[tokio::test]
+async fn agent_state_survives_an_upgrade() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let old_pid = c.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap();
+    c.call(
+        "pty_create",
+        json!({"cwd": dir, "argv": ["sh", "-c", "sleep 30"]}),
+    )
+    .await
+    .unwrap();
+    c.call(
+        "agent_bind",
+        json!({"pane": "p1", "agent": "omp", "cwd": "/w"}),
+    )
+    .await
+    .unwrap();
+    let r = post_hook(
+        dir,
+        "omp",
+        &json!({"pane_key": "p1", "payload": {"event": "agent_end", "text": "done it"}}),
+        None,
+    );
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
+    let before = c.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(before["panes"]["p1"]["state"], "done", "{before}");
+    assert_eq!(before["panes"]["p1"]["last_message"], "done it", "{before}");
+
+    c.call("upgrade", json!({"exe": BIN})).await.unwrap();
+    let c2 = connect_retry(dir, old_pid).await;
+    let _kill_new = Pid(c2.call("info", json!({})).await.unwrap()["pid"]
+        .as_u64()
+        .unwrap() as u32);
+    let after = c2.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(after["panes"]["p1"], before["panes"]["p1"], "{after}");
+    // The cwd binding moves too: a hook without a pane key still finds p1.
+    let r = post_hook(
+        dir,
+        "omp",
+        &json!({"payload": {"event": "agent_start", "cwd": "/w"}}),
+        None,
+    );
+    assert!(r.starts_with("HTTP/1.1 2"), "{r}");
+    let later = c2.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(later["panes"]["p1"]["state"], "working", "{later}");
 }
 
 #[tokio::test]
@@ -751,7 +954,9 @@ async fn check_reports_a_stale_daemon_with_its_terminals_and_exits_3() {
         "{out}"
     );
     assert!(
-        out.contains("language features and fast terminal rendering are off until it restarts"),
+        out.contains(
+            "language features, fast terminal rendering and agent status are off until it restarts"
+        ),
         "{out}"
     );
     assert!(
@@ -953,4 +1158,50 @@ async fn unusable_hostd_pid_names_only_a_live_daemon_that_refuses_us() {
     let pid = pid_of(dir) as u32;
     std::fs::write(paths::token(dir), "0123456789abcdef").unwrap();
     assert_eq!(atlas_host::client::unusable_hostd_pid(dir).await, Some(pid));
+}
+
+/// Agent state lives in hostd (not the app) so it survives the window closing and
+/// every client sees it: a hook POST and a pane exit both reach clients as `agent_status`.
+#[tokio::test]
+async fn hook_events_drive_agent_status_pushed_to_clients() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_d, c) = start(tmp.path()).await;
+    let mut ev = c.events();
+    let env = std::fs::read_to_string(paths::hook_endpoint(tmp.path())).unwrap();
+    let port = env
+        .lines()
+        .find_map(|l| l.strip_prefix("ATLAS_HOOK_PORT="))
+        .unwrap()
+        .to_string();
+    let hi = json!({"pane_key":"p1","payload":{"event":"agent_start","prompt":"hi"}});
+    assert!(post_hook(tmp.path(), "omp", &hi, Some("wrong")).starts_with("HTTP/1.1 401"));
+    assert!(post_hook(tmp.path(), "omp", &hi, None).starts_with("HTTP/1.1 204"));
+    async fn next(
+        ev: &mut tokio::sync::broadcast::Receiver<atlas_host::client::HostEvent>,
+    ) -> Value {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let e = ev.recv().await.unwrap();
+                if e["ev"] == "agent_status" {
+                    return (*e).clone();
+                }
+            }
+        })
+        .await
+        .expect("agent_status push")
+    }
+    let working = next(&mut ev).await;
+    assert_eq!(working["pane_key"], "p1");
+    assert_eq!(working["status"]["state"], "working");
+    assert_eq!(working["status"]["prompt"], "hi");
+
+    let mut ev = c.events();
+    c.call("agent_pane_exited", json!({"pane": "p1"}))
+        .await
+        .unwrap();
+    let idle = next(&mut ev).await;
+    assert_eq!(idle["status"]["state"], "idle");
+    let all = c.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(all["panes"]["p1"]["state"], "idle");
+    assert_eq!(all["hook_port"].to_string(), port);
 }

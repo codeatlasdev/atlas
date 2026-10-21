@@ -167,7 +167,7 @@ Every shortcut is a named command (`workspace::ToggleLeftDock`, `pane::SplitRigh
 | `projects.json` | the projects you added |
 | `workspace.json` | tabs, panes and docks per worktree |
 | `themes/` | legacy location of your Zed theme files (still read; new ones go to `~/.atlas/themes/`) |
-| `hook-endpoint.env` | loopback endpoint and token for agent hooks (new token per run) |
+| `hook-endpoint.env` | loopback endpoint and token for agent hooks (new token per hostd run) |
 
 ## Atlas Dark and Light
 

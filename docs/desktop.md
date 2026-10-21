@@ -192,11 +192,11 @@ A worktree with no open tabs shows a welcome state with **New terminal**, **Star
 
 ## Agents
 
-Agents run in worktree terminals with `ATLAS_HOOK_ENDPOINT` set. omp reports through the `atlas-status` extension that `atlas setup omp --apply` installs; Claude Code and Codex through `atlas hook` (`atlas setup claude-code|codex --apply`). Events go to a loopback server in the app (`~/.atlas/desktop/hook-endpoint.env`, new token per run). When a turn ends or the agent needs you while you look elsewhere, Atlas marks the worktree unread, adds it to the bell inbox, shows a notification and updates the Dock badge. After an app restart, omp's state is recovered from its terminal title. Settings → Agents: default agent, permissions (manual / auto-approve), extra args, notifications, quick commands, where links open.
+Agents run in worktree terminals with `ATLAS_HOOK_ENDPOINT` set. omp reports through the `atlas-status` extension that `atlas setup omp --apply` installs; Claude Code and Codex through `atlas hook` (`atlas setup claude-code|codex --apply`). Events go to a loopback server in `atlas hostd` (`~/.atlas/desktop/hook-endpoint.env`, new token per daemon run), which keeps agent state while the window is closed and pushes it to the app and to [Atlas Mobile](mobile.md). When a turn ends or the agent needs you while you look elsewhere, Atlas marks the worktree unread, adds it to the bell inbox, shows a notification and updates the Dock badge. After an app restart, omp's state is recovered from its terminal title. Settings → Agents: default agent, permissions (manual / auto-approve), extra args, notifications, quick commands, where links open.
 
 ## SSH hosts
 
-Settings → SSH hosts adds a host from `~/.ssh/config`. Atlas uploads `atlas` if `~/.atlas/remote/atlas-<arch>-<os>` exists and the host lacks it, starts `atlas hostd` there and keeps an `ssh` tunnel (`-L` to its socket, `-R` for agent status). Add a remote project by path; its worktrees, terminals, editor, diff and agents then run on the host. Ports tab: **Forward** opens a remote port locally. Not yet for remote checkouts: the Services/Logs/Config views and Design Mode.
+Settings → SSH hosts adds a host from `~/.ssh/config`. Atlas uploads `atlas` if `~/.atlas/remote/atlas-<arch>-<os>` exists and the host lacks it, starts `atlas hostd` there and keeps an `ssh` tunnel (`-L` to its socket). Add a remote project by path; its worktrees, terminals, editor, diff and agents then run on the host. Ports tab: **Forward** opens a remote port locally. Not yet for remote checkouts: the Services/Logs/Config views and Design Mode.
 
 ## Keyboard
 

@@ -4,6 +4,7 @@
 //! scrollback. Clients speak NDJSON over `~/.atlas/hostd.sock` (see
 //! [`protocol`]); the same binary runs on SSH hosts.
 
+pub mod agents;
 pub mod client;
 mod exec;
 mod fs;
@@ -11,7 +12,9 @@ mod fs;
 pub mod handoff;
 mod idle;
 mod lsp;
+pub mod mobile;
 pub mod paths;
+mod projects;
 pub mod protocol;
 mod pty;
 pub mod server;

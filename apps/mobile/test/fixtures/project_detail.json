@@ -1,0 +1,66 @@
+{
+  "agents": [
+    {
+      "pane_key": "p-in",
+      "status": {
+        "agent": "omp",
+        "last_message": "oi",
+        "model": null,
+        "prompt": "diga oi",
+        "session_file": null,
+        "session_id": null,
+        "state": "done",
+        "state_started_at": 1700000000000,
+        "tab_id": null,
+        "updated_at": 1700000000000,
+        "worktree_id": null
+      }
+    }
+  ],
+  "config": {
+    "actions": [
+      {
+        "confirm": "sure?",
+        "key": "x",
+        "label": "Migrate",
+        "pause_services": [],
+        "session": false
+      }
+    ],
+    "project": "shop",
+    "services": [
+      {
+        "command": "x",
+        "depends_on": [],
+        "enabled": true,
+        "name": "api",
+        "port": 3000
+      },
+      {
+        "command": "y",
+        "depends_on": [
+          {
+            "condition": "healthy",
+            "service": "api"
+          }
+        ],
+        "enabled": true,
+        "name": "db",
+        "port": null
+      }
+    ]
+  },
+  "errors_5m": 1,
+  "id": "a",
+  "last_lines": {
+    "api": "[api:3] 12:00:00 [stdout] listening on 3000"
+  },
+  "name": "shop",
+  "root": "/Users/me/shop",
+  "status": {
+    "hint": "atlas dev is not running; start it in a terminal",
+    "reason": "no status file",
+    "running": false,
+    "setup": null
+  }
+}

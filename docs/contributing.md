@@ -43,7 +43,8 @@ bun run check
 5. `scripts/check-skills.sh` (validates `skills/*/SKILL.md` against the Agent Skills spec)
 6. `scripts/lint-workflows.sh` (actionlint and zizmor over `.github/`; also `bun run lint:workflows`)
 7. `bun run desktop:check` (svelte-check, prettier and the frontend tests, `bun run test` in `apps/desktop`: `bun test --conditions browser src`; a bare `bun test` there stops at once, since without the `browser` condition Svelte resolves its server build and no component can mount). `bun run test` at the root runs those tests plus `release:test`.
-8. `bun run release:test` (the release tooling's and CI scripts' own tests)
+8. `scripts/mobile-check.sh` (the native crate's fmt and clippy, then Flutter analyze and test for `apps/mobile`; skipped with a notice when Flutter is not installed)
+9. `bun run release:test` (the release tooling's and CI scripts' own tests)
 
 Run it on its own and read the exit code before you push. A pull request should pass it.
 
@@ -60,6 +61,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run dup` | jscpd duplication over Rust, TypeScript, Svelte and Astro; keep it at or below 1.5% (config: `.jscpd.json`) |
 | `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
+| `bun run mobile:check` | `scripts/mobile-check.sh` — Flutter analyze and test for `apps/mobile` (also part of `bun run check`; skipped when Flutter is absent) |
 | `bun run desktop:agent` | start your own agent instance of the desktop app (see [AGENTS.md](https://github.com/codeatlasdev/atlas/blob/main/AGENTS.md)) |
 | `bun run site:dev` / `site:build` / `site:check` / `site:deploy` | the website: dev server, static build, `astro check` plus script/function type-checks, Cloudflare deploy |
 | `bun run studio` / `studio:check` | the film studio CLI, and its checks (`studio/` is not part of `bun run check`) |

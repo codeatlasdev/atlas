@@ -1,0 +1,1 @@
+atlas-mobile://pair?node=NODE&code=012345&name=Luan%27s+MacBook&addr=192.168.1.2%3A4433&addr=%5Bfe80%3A%3A1%5D%3A4433

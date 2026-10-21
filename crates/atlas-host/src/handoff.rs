@@ -58,6 +58,10 @@ pub struct Bundle {
     /// description, so the successor holds the singleton lock from the first instant.
     #[serde(default)]
     pub lock: bool,
+    /// Agent state (`AgentHub::snapshot`), on the terminator line only. Null from a
+    /// daemon that predates it.
+    #[serde(default)]
+    pub agents: serde_json::Value,
 }
 
 /// Where the old daemon listens for its successor.
@@ -186,6 +190,7 @@ pub fn encode_chunks(
         from_version: bundle.from_version.clone(),
         sessions: Vec::new(),
         lock: false,
+        agents: serde_json::Value::Null,
     };
     let mut cur_fds: Vec<RawFd> = Vec::new();
     for s in &bundle.sessions {
@@ -204,6 +209,7 @@ pub fn encode_chunks(
     // Terminator: an empty bundle, carrying the lock.
     cur.sessions.clear();
     cur.lock = lock_fd.is_some();
+    cur.agents = bundle.agents.clone();
     out.push((line(&cur), lock_fd.into_iter().collect()));
     out
 }
@@ -345,6 +351,7 @@ mod tests {
         let b = Bundle {
             from_version: "0.5.13".into(),
             lock: false,
+            agents: serde_json::Value::Null,
             sessions: vec![
                 state("a", Some(0)),
                 {
@@ -371,6 +378,7 @@ mod tests {
         let b = Bundle {
             from_version: "x".into(),
             lock: false,
+            agents: serde_json::Value::Null,
             sessions: (0..n)
                 .map(|i| state(&format!("s{i}"), Some(i)))
                 .chain([state("dead", None)])

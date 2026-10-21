@@ -15,6 +15,14 @@ dist/
 .astro/
 .wrangler/
 
+# ── Flutter (apps/mobile) ───────────────────────────────────────────────────
+apps/mobile/.dart_tool/
+apps/mobile/build/
+apps/mobile/native/target/
+apps/mobile/ios/Pods/
+apps/mobile/**/*.g.dart
+apps/mobile/**/*.freezed.dart
+
 # ── Secrets and machine-local config ────────────────────────────────────────
 .env
 .env.*

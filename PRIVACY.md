@@ -17,6 +17,19 @@ Everything else stays on your machine: logs in `.logs/`, settings and projects i
 
 Atlas does run the commands **you** put in `atlas.yaml`, your terminal sessions, the pages you open in the embedded browser and the AI agents you launch. Their network traffic is theirs, not Atlas's.
 
+## Atlas Mobile
+
+The phone app ([docs/mobile.md](docs/mobile.md)) has no account, telemetry, analytics or crash reporting either. It talks only to the computers you pair it with.
+
+| Where | What |
+|---|---|
+| On the phone (iOS Keychain / Android Keystore, through the system's secure storage) | The phone's own key (generated on the phone, never leaves it) and the list of paired computers: name, public key, network addresses. "Forget this computer" deletes a computer. iOS can keep Keychain items after the app is deleted. |
+| On your computer (`~/.atlas/mobile/`) | The computer's key, the paired phones (name, public key, permissions) and an audit log of what each phone did, with typed text recorded only as a length. |
+| Between the phone and your computer | Requests and replies: project and service state, logs, agent state and conversations, terminal output and input. End-to-end encrypted (QUIC, keys known only to the two devices). |
+| n0 public relays (`*.relay.n0.iroh.link`, run by number 0, the makers of iroh) | Used to find your computer and, when a direct connection is blocked, to forward the encrypted traffic. A relay sees both devices' IP addresses and public keys and how much data passes, never the content. |
+
+The camera is used only to scan the pairing code; nothing is recorded. Face ID / biometrics are checked by the system before typing in a terminal; the app only receives yes or no.
+
 ## The website
 
 [atlas.codeatlas.com.br](https://atlas.codeatlas.com.br) is a static site on Cloudflare Pages with a strict same-origin Content-Security-Policy: no third-party fonts, scripts, ads or embeds. The host (Cloudflare) keeps standard server logs and, if enabled for the project, its cookieless Web Analytics.

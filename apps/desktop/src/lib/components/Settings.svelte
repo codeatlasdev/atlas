@@ -20,6 +20,7 @@
 	import ShellSettings from "./ShellSettings.svelte";
 	import ShortcutSettings from "./ShortcutSettings.svelte";
 	import SshSettings from "./SshSettings.svelte";
+	import MobileSettings from "./MobileSettings.svelte";
 	import TerminalSettings from "./TerminalSettings.svelte";
 	import WorkspaceSettings from "./WorkspaceSettings.svelte";
 
@@ -88,6 +89,8 @@
 					<ShortcutSettings />
 				{:else if u.section === "ssh"}
 					<SshSettings />
+				{:else if u.section === "mobile"}
+					<MobileSettings />
 				{:else if u.section === "help"}
 					<PageHead
 						title="Help & onboarding"

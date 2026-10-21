@@ -672,6 +672,23 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 
 	entry(
+		"mobile",
+		"Pairing",
+		"mobile-pair",
+		"Pair a phone",
+		"Scan a code with Atlas Mobile to control this Mac from your phone.",
+		"iphone android qr phone remote p2p",
+	),
+	entry(
+		"mobile",
+		"Devices",
+		"mobile-devices",
+		"Paired phones",
+		"What each phone may do, and revoke it.",
+		"revoke permissions scopes terminal approve",
+	),
+
+	entry(
 		"help",
 		"Help",
 		"tour",

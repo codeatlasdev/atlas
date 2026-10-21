@@ -131,11 +131,35 @@ impl AtlasCommand for HookArgs {
         // Unreadable stdin = no input = no opinion.
         let _ = std::io::stdin().take(1 << 20).read_to_string(&mut raw);
         report_status(self.harness, self.event, &raw);
+        if self.event == Event::PermissionRequest {
+            if let Some(allow) = status::ask_decision(self.harness, &raw) {
+                println!("{}", permission_decision(allow));
+            }
+            return Ok(());
+        }
         if let Some(out) = respond(self.harness, self.event, &raw) {
             println!("{out}");
         }
         Ok(())
     }
+}
+
+/// `PermissionRequest` answer; Claude Code and Codex share this shape
+/// (<https://code.claude.com/docs/en/hooks#permissionrequest-decision-control>,
+/// codex `permission-request.command.output.schema.json`).
+pub fn permission_decision(allow: bool) -> String {
+    let decision = if allow {
+        json!({"behavior": "allow"})
+    } else {
+        json!({"behavior": "deny", "message": "Denied from Atlas Mobile"})
+    };
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": Event::PermissionRequest.json_name(),
+            "decision": decision,
+        }
+    })
+    .to_string()
 }
 
 /// The response for one hook invocation, or `None` for "no output". Pure over the
@@ -179,4 +203,28 @@ fn wire(harness: Harness, event: Event, text: &str) -> String {
         (_, _) => return String::new(),
     };
     out.to_string()
+}
+
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+
+    /// Both harnesses parse exactly this shape (codex fails closed on unknown fields).
+    #[test]
+    fn permission_decision_matches_the_harness_schema() {
+        let allow: Value = serde_json::from_str(&permission_decision(true)).unwrap();
+        assert_eq!(
+            allow,
+            json!({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}})
+        );
+        let deny: Value = serde_json::from_str(&permission_decision(false)).unwrap();
+        assert_eq!(deny["hookSpecificOutput"]["decision"]["behavior"], "deny");
+        let keys: Vec<_> = deny["hookSpecificOutput"]["decision"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(keys, ["behavior", "message"]);
+    }
 }

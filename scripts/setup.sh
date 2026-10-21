@@ -43,6 +43,9 @@ if [[ ! -d $front/node_modules || $front/bun.lock -nt $front/node_modules ]]; th
   touch "$front/node_modules"
 fi
 
+# Atlas Mobile (apps/mobile) needs Flutter; everything else works without it.
+command -v flutter >/dev/null || say "ℹ Flutter not found: apps/mobile is skipped by the gate (https://docs.flutter.dev/get-started/install)"
+
 if ! command -v cargo-tauri >/dev/null; then
   say "▶ cargo install tauri-cli"
   cargo install tauri-cli --version "$TAURI_CLI_VERSION" --locked

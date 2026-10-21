@@ -25,6 +25,8 @@ portable-pty = "0.9"
 base64 = { workspace = true }
 notify = { workspace = true }
 atlas-lsp = { path = "../atlas-lsp" }
+iroh = "1.3"
+atlas-tui = { path = "../atlas-tui" }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
@@ -32,6 +34,7 @@ libc = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 atlas-core = { path = "../atlas-core", features = ["test-fixtures"] }
+chrono = { workspace = true, features = ["serde"] }
 
 [lints]
 workspace = true

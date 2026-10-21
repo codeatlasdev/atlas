@@ -37,6 +37,10 @@ pub fn open_log(dir: &Path) -> std::io::Result<std::fs::File> {
 pub fn scrollback_dir(dir: &Path) -> PathBuf {
     dir.join("hostd").join("scrollback")
 }
+/// Where the agent hook server publishes `ATLAS_HOOK_PORT`/`ATLAS_HOOK_TOKEN`.
+pub fn hook_endpoint(dir: &Path) -> PathBuf {
+    dir.join("desktop").join("hook-endpoint.env")
+}
 
 /// Read the token, creating a random one (0600) when absent.
 pub fn ensure_token(dir: &Path) -> std::io::Result<String> {
@@ -53,6 +57,24 @@ pub fn ensure_token(dir: &Path) -> std::io::Result<String> {
     let mut f = opts.open(token(dir))?;
     f.write_all(t.as_bytes())?;
     Ok(t)
+}
+
+/// Replace `p` with `data`, readable by this user only, atomically: a reader sees
+/// the old file or the new one, never half of it.
+pub fn write_private(p: &Path, data: &[u8]) -> std::io::Result<()> {
+    if let Some(d) = p.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let tmp = p.with_extension("tmp~");
+    atlas_core::sys::owner_only(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true),
+    )
+    .open(&tmp)?
+    .write_all(data)?;
+    std::fs::rename(tmp, p)
 }
 
 pub fn read_token(dir: &Path) -> std::io::Result<String> {

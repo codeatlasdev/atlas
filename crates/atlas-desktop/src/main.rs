@@ -261,9 +261,9 @@ macro_rules! handlers {
             shell_env::settings_get,
             agent::registry::agent_list,
             agent::launch::agent_command,
-            agent::hooks::agent_status_all,
-            agent::hooks::agent_pane_exited,
-            agent::hooks::agent_bind,
+            agent::status::agent_status_all,
+            agent::status::agent_pane_exited,
+            agent::status::agent_bind,
             agent::sessions::agent_sessions,
             agent::sessions::listening_ports,
             agent::notify::agent_notify,
@@ -402,9 +402,7 @@ fn main() {
             app.manage(servers);
             app.manage(std::sync::Arc::new(host::HostHub::default()));
             host::start(&handle);
-            app.manage(std::sync::Arc::new(agent::hooks::AgentHub::default()));
             app.manage(commit_msg::Runs::default());
-            agent::hooks::start(&handle);
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
             ctl::start(&handle);

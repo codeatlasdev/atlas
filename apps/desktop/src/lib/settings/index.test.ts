@@ -185,6 +185,7 @@ describe("settings index", () => {
 			"git",
 			"keyboard",
 			"ssh",
+			"mobile",
 			"help",
 		]);
 	});

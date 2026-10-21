@@ -34,5 +34,6 @@ export const PAGES: { section: SettingsSection; tab?: SettingsTab; files: string
 	{ section: "git", files: ["components/GitSettings.svelte"] },
 	{ section: "keyboard", files: ["components/ShortcutSettings.svelte"] },
 	{ section: "ssh", files: ["components/SshSettings.svelte"] },
+	{ section: "mobile", files: ["components/MobileSettings.svelte"] },
 	{ section: "help", files: ["onboarding/HelpSettings.svelte"] },
 ];

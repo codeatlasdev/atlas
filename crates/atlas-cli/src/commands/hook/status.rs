@@ -1,14 +1,15 @@
-//! Status reporting to Atlas Desktop's hook server: map a harness event to the
-//! desktop's vocabulary and POST it over loopback.
+//! Status reporting to `atlas hostd`'s hook server: map a harness event to its
+//! vocabulary and POST it over loopback.
 
 use std::io::Read;
 
+use atlas_host::agents::hook_server;
 use serde_json::Value;
 
 use super::{Event, Harness};
 
-/// Status event for Atlas Desktop's hook server, in the vocabulary its
-/// `normalize` understands. `None` = not a status change worth sending.
+/// Status event for hostd's hook server, in the vocabulary its `normalize`
+/// understands. `None` = not a status change worth sending.
 pub fn status_payload(event: Event, input: &Value) -> Option<Value> {
     let s = |k: &str| input.get(k).and_then(Value::as_str);
     let name = match event {
@@ -51,30 +52,53 @@ pub fn status_payload(event: Event, input: &Value) -> Option<Value> {
     Some(p)
 }
 
-/// POST the event to Atlas Desktop when the agent runs in one of its terminals
-/// (`ATLAS_HOOK_ENDPOINT` set). Loopback only, 1 s timeout, never fails the hook.
+/// POST the event to Atlas's hook server (in `atlas hostd`) when the agent runs in one
+/// of its terminals (`ATLAS_HOOK_ENDPOINT` set). Loopback only, 1 s timeout, never
+/// fails the hook.
 pub(super) fn report_status(harness: Harness, event: Event, stdin: &str) {
-    let Ok(endpoint) = std::env::var("ATLAS_HOOK_ENDPOINT") else {
-        return;
-    };
     let Ok(input) = serde_json::from_str::<Value>(stdin) else {
         return;
     };
     let Some(payload) = status_payload(event, &input) else {
         return;
     };
-    let Ok(file) = std::fs::read_to_string(endpoint) else {
-        return;
-    };
+    post(harness, "", payload, std::time::Duration::from_secs(1));
+}
+
+/// Ask hostd for a remote decision on a permission request: `Some(true)` allow,
+/// `Some(false)` deny, `None` no answer (no phone connected, timeout, no Atlas).
+pub(super) fn ask_decision(harness: Harness, stdin: &str) -> Option<bool> {
+    let input = serde_json::from_str::<Value>(stdin).ok()?;
+    let payload = serde_json::json!({
+        "tool_name": input.get("tool_name"),
+        "tool_input": input.get("tool_input"),
+        "cwd": input.get("cwd"),
+    });
+    let body = post(
+        harness,
+        "/decision",
+        payload,
+        hook_server::DECISION_WAIT + std::time::Duration::from_secs(2),
+    )?;
+    hook_server::parse_decision(&body)
+}
+
+/// POST `{pane_key,…, payload}` to `/hook/<agent><suffix>`; the response body, if any.
+fn post(
+    harness: Harness,
+    suffix: &str,
+    payload: Value,
+    timeout: std::time::Duration,
+) -> Option<String> {
+    let endpoint = std::env::var("ATLAS_HOOK_ENDPOINT").ok()?;
+    let file = std::fs::read_to_string(endpoint).ok()?;
     let get = |k: &str| {
         file.lines()
             .find_map(|l| l.strip_prefix(k)?.strip_prefix('='))
             .map(str::trim)
             .map(str::to_string)
     };
-    let (Some(port), Some(token)) = (get("ATLAS_HOOK_PORT"), get("ATLAS_HOOK_TOKEN")) else {
-        return;
-    };
+    let (port, token) = (get("ATLAS_HOOK_PORT")?, get("ATLAS_HOOK_TOKEN")?);
     let env = |k: &str| std::env::var(k).ok();
     let body = serde_json::json!({
         "pane_key": env("ATLAS_PANE_KEY"),
@@ -86,20 +110,19 @@ pub(super) fn report_status(harness: Harness, event: Event, stdin: &str) {
     })
     .to_string();
     let req = format!(
-        "POST /hook/{} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nX-Atlas-Hook-Token: {token}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "POST /hook/{}{suffix} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nX-Atlas-Hook-Token: {token}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         harness.agent_id(),
         body.len()
     );
-    let Ok(addr) = format!("127.0.0.1:{port}").parse() else {
-        return;
-    };
-    let timeout = std::time::Duration::from_secs(1);
-    if let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, timeout) {
-        use std::io::Write;
-        let _ = s.set_read_timeout(Some(timeout));
-        let _ = s.write_all(req.as_bytes());
-        let _ = s.read(&mut [0u8; 64]);
-    }
+    let addr = format!("127.0.0.1:{port}").parse().ok()?;
+    let mut s =
+        std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1)).ok()?;
+    use std::io::Write;
+    let _ = s.set_read_timeout(Some(timeout));
+    s.write_all(req.as_bytes()).ok()?;
+    let mut resp = String::new();
+    let _ = s.take(1 << 20).read_to_string(&mut resp);
+    resp.split_once("\r\n\r\n").map(|(_, b)| b.to_string())
 }
 
 #[cfg(test)]

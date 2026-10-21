@@ -1,0 +1,165 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'fake_transport.dart';
+
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+
+void main() {
+  group('Multiplexer', () {
+    late FakeTransport ft;
+    late Multiplexer mux;
+
+    setUp(() {
+      ft = FakeTransport();
+      mux = Multiplexer(ft);
+    });
+
+    tearDown(() async {
+      await mux.close();
+    });
+
+    // ── Reply routing ─────────────────────────────────────────────────────────
+
+    test('routes reply to the matching pending call by id', () async {
+      final future = mux.call('ping');
+      // The call allocates id=1; inject the matching response.
+      ft.injectLine('{"id":1,"ok":true,"data":{}}');
+      final resp = await future;
+      expect(resp['ok'], isTrue);
+    });
+
+    test('routes two concurrent calls to their respective ids', () async {
+      final f1 = mux.call('ping');
+      final f2 = mux.call('pong');
+      // id=2 resolves first; id=1 resolves after.
+      ft.injectLine('{"id":2,"ok":true,"data":{"seq":2}}');
+      ft.injectLine('{"id":1,"ok":true,"data":{"seq":1}}');
+      final r1 = await f1;
+      final r2 = await f2;
+      expect(r1['data']['seq'], 1);
+      expect(r2['data']['seq'], 2);
+    });
+
+    // ── Push events ───────────────────────────────────────────────────────────
+
+    test('push events reach pushEvents stream', () async {
+      final eventFuture = mux.pushEvents.first;
+      ft.injectLine(
+        '{"ev":"agent_status","pane_key":"p1","status":{"state":"idle"}}',
+      );
+      final event = await eventFuture;
+      expect(event['ev'], 'agent_status');
+      expect(event['pane_key'], 'p1');
+    });
+
+    test('push events and replies are dispatched independently', () async {
+      final pushes = <Map<String, dynamic>>[];
+      final sub = mux.pushEvents.listen(pushes.add);
+
+      final callFuture = mux.call('ping'); // id=1
+
+      ft.injectLine('{"ev":"agent_status","pane_key":"p","status":{}}');
+      ft.injectLine('{"id":1,"ok":true,"data":{}}');
+
+      await callFuture;
+      await Future.delayed(Duration.zero);
+
+      expect(pushes, hasLength(1));
+      expect(pushes.first['ev'], 'agent_status');
+      await sub.cancel();
+    });
+
+    // ── Line size limit (>1 MiB rejected) ────────────────────────────────────
+
+    test('drops lines longer than 1 MiB and does not route them', () async {
+      final pushes = <Map<String, dynamic>>[];
+      final sub = mux.pushEvents.listen(pushes.add);
+
+      // Inject an oversized "push" line — it must be silently dropped.
+      final giant = '{"ev":"too_big","data":"${'x' * (1024 * 1024)}"}';
+      expect(giant.length, greaterThan(Multiplexer.maxLineBytes));
+      ft.injectLine(giant);
+
+      // Inject a normal push event; it must arrive.
+      ft.injectLine('{"ev":"ok_event"}');
+      await Future.delayed(Duration.zero);
+
+      expect(pushes, hasLength(1));
+      expect(pushes.first['ev'], 'ok_event');
+
+      await sub.cancel();
+    });
+
+    test('oversized line does not resolve a pending call; subsequent valid '
+        'response does', () async {
+      final callFuture = mux.call('ping'); // id=1
+      final giant = 'x' * (Multiplexer.maxLineBytes + 1);
+      ft.injectLine(giant); // dropped
+      ft.injectLine('{"id":1,"ok":true,"data":{}}');
+      final resp = await callFuture;
+      expect(resp['ok'], isTrue);
+    });
+
+    // Guards the endless pull-to-refresh spinner: a call whose reply never came
+    // (connection dead without closing) waited forever.
+    test(
+      'a call with no reply fails with a timeout instead of hanging',
+      () async {
+        final m = Multiplexer(ft, timeout: const Duration(milliseconds: 50));
+        final resp = await m
+            .call('project_detail')
+            .timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => {'hung': true},
+            );
+        expect(resp['hung'], isNull, reason: 'call never completed');
+        expect(resp['ok'], isFalse);
+        expect(resp['error'], contains('did not answer'));
+        // A reply that turns up late is dropped, not delivered to a finished call.
+        ft.injectLine('{"id":1,"ok":true,"data":{}}');
+        await Future<void>.delayed(Duration.zero);
+      },
+    );
+
+    // Guards the disabled send button: when the transport was closed, call() was
+    // throwing instead of returning an error map, so `_sending` was never reset.
+    test(
+      'a call on a closed transport returns an error map, not a thrown error',
+      () async {
+        await ft.simulateRemoteClose();
+        // Attempting to call after the transport closes must never throw.
+        Map<String, dynamic>? resp;
+        Object? thrown;
+        try {
+          resp = await mux.call('ping');
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown, isNull, reason: 'must not throw');
+        expect(resp, isNotNull);
+        expect(resp!['ok'], isFalse);
+      },
+    );
+
+    // Guards the same spinner bug via the _onDone path: transport closes while a
+    // call is in flight.  The completer must complete (not completeError).
+    test(
+      'a pending call whose transport closes mid-flight returns an error map',
+      () async {
+        final callFuture = mux.call('ping'); // id=1, now in-flight
+        // Close the transport before the reply arrives.
+        await ft.simulateRemoteClose();
+        Map<String, dynamic>? resp;
+        Object? thrown;
+        try {
+          resp = await callFuture;
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown, isNull, reason: 'must not throw');
+        expect(resp, isNotNull);
+        expect(resp!['ok'], isFalse);
+      },
+    );
+  });
+}

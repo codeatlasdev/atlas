@@ -45,9 +45,9 @@ pub const PROTO: u32 = 2;
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
 #[cfg(unix)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp"];
+pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents"];
 #[cfg(windows)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "lsp"];
+pub const CAPS: &[&str] = &["pty_attach_raw", "lsp", "agents"];
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -122,6 +122,9 @@ fn default_lines() -> u32 {
 }
 fn default_log_lines() -> usize {
     80
+}
+fn default_history_limit() -> usize {
+    200
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -301,6 +304,76 @@ pub enum HostCmd {
     LspApplyEditResult {
         id: String,
         applied: bool,
+    },
+    /// Remember which pane runs `agent` in `cwd` (fallback for hooks without a pane key).
+    AgentBind {
+        pane: String,
+        agent: String,
+        cwd: String,
+    },
+    /// The pane's process exited: back to Idle.
+    AgentPaneExited {
+        pane: String,
+    },
+    /// `{panes: {pane_key: status}, hook_port, pending_approvals: [agent_approval event]}`.
+    AgentStatusAll {},
+    /// Answer a pending permission prompt (`agent_approval` push) by its `req`.
+    AgentApprove {
+        pane: String,
+        req: String,
+        allow: bool,
+    },
+    /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
+    AgentSend {
+        pane: String,
+        text: String,
+    },
+    /// The agent's conversation from its session file: `{messages: [{role, text}], truncated}`.
+    /// Takes the pane, never a path: the file is the one hostd recorded for that pane.
+    AgentHistory {
+        pane: String,
+        #[serde(default = "default_history_limit")]
+        limit: usize,
+    },
+    /// Local projects of the desktop registry with their live service state.
+    ProjectList {},
+    /// One project's status, config, last log line per service and recent error count.
+    ProjectDetail {
+        id: String,
+    },
+    /// Service logs (`query` = search, case-insensitive substring or `/regex/`).
+    ProjectLogs {
+        id: String,
+        #[serde(default)]
+        service: Option<String>,
+        #[serde(default)]
+        lines: Option<u64>,
+        #[serde(default)]
+        query: Option<String>,
+    },
+    /// `op`: `restart` | `start` | `stop` one service, or `up` (start the stack detached).
+    ProjectService {
+        id: String,
+        #[serde(default)]
+        service: Option<String>,
+        op: String,
+    },
+    /// Run an atlas.yaml action; ones with `confirm` need `confirmed: true`.
+    ProjectAction {
+        id: String,
+        key: String,
+        #[serde(default)]
+        confirmed: bool,
+    },
+    /// New one-time pairing code + this host's iroh address (desktop only).
+    MobilePairStart {},
+    MobileDevices {},
+    MobileRevoke {
+        node_id: String,
+    },
+    MobileSetScopes {
+        node_id: String,
+        scopes: Vec<crate::mobile::Scope>,
     },
 }
 

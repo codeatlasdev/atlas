@@ -240,6 +240,18 @@ impl HostHub {
             }
         }
     }
+
+    /// Run `cmd` on every connected host; failures (e.g. an older host) are skipped.
+    pub async fn call_all(&self, cmd: &str, args: Value) -> Vec<Value> {
+        let clients: Vec<HostClient> = self.clients.read().await.values().cloned().collect();
+        let mut out = Vec::new();
+        for c in clients {
+            if let Ok(v) = c.call(cmd, args.clone()).await {
+                out.push(v);
+            }
+        }
+        out
+    }
 }
 
 /// Filesystem helpers over hostd, so local and SSH checkouts share one code path.
@@ -324,6 +336,12 @@ fn forward(app: &AppHandle, ev: &Value) {
             let _ = app.emit(
                 &format!("pty://{pty}"),
                 json!({"data": ev["data"], "replay": k == "pty_replay"}),
+            );
+        }
+        Some("agent_status") => {
+            let _ = app.emit(
+                "agent://status",
+                json!({"pane_key": ev["pane_key"], "status": ev["status"]}),
             );
         }
         Some("disconnected") | None => {}
@@ -793,7 +811,7 @@ impl HostState {
     /// The state after the fake host was "restarted": a current daemon, same path as a real one.
     fn fake_current() -> Self {
         let info = json!({"version": APP_VERSION, "proto": atlas_host::protocol::PROTO,
-                          "caps": atlas_host::protocol::CAPS});
+                          "caps": ["pty_attach_raw", "upgrade", "lsp", "agents"]});
         state_for(&info, vec![], Decision::Current, Choice::Ask)
     }
 }
@@ -1039,7 +1057,7 @@ mod tests {
             (Some("outdated"), Some("needsRestart"))
         );
         assert_eq!(v["proto"], 1, "a daemon that reports no proto is proto 1");
-        assert_eq!(v["missing"], json!(["pty_attach_raw", "lsp"]));
+        assert_eq!(v["missing"], json!(atlas_host::upgrade::NEEDED));
         assert!(
             v["reason"]
                 .as_str()
@@ -1084,7 +1102,7 @@ mod tests {
     #[test]
     fn a_current_host_has_no_reason_and_nothing_missing() {
         let info = json!({"version": APP_VERSION, "pid": 1, "proto": 2,
-                          "caps": ["pty_attach_raw", "upgrade", "lsp"]});
+                          "caps": ["pty_attach_raw", "upgrade", "lsp", "agents"]});
         let s = state_for(&info, vec![], Decision::Current, Choice::Ask);
         assert_eq!((s.status, s.skew), ("current", "none"));
         assert!(s.reason.is_empty() && s.missing.is_empty());
@@ -1112,7 +1130,7 @@ mod tests {
     #[test]
     fn a_replacement_is_tried_once_per_session() {
         let upgradeable = json!({"version": "0.6.2", "pid": 7,
-                                 "caps": ["pty_attach_raw", "upgrade", "lsp"]});
+                                 "caps": ["pty_attach_raw", "upgrade", "lsp", "agents"]});
         assert_eq!(plan(&upgradeable, 3, Choice::Ask, false), Decision::Upgrade);
         // Same daemon still there: the CLI cannot make it current, so it is only reported.
         assert_eq!(plan(&upgradeable, 3, Choice::Ask, true), Decision::Passive);
@@ -1121,7 +1139,7 @@ mod tests {
         assert_eq!(plan(&old(), 0, Choice::Ask, true), Decision::Passive);
         // The daemon a handoff produced has a NEW pid and the CLI's version: still only reported.
         let product = json!({"version": "0.6.3", "pid": 8,
-                             "caps": ["pty_attach_raw", "upgrade", "lsp"]});
+                             "caps": ["pty_attach_raw", "upgrade", "lsp", "agents"]});
         assert_eq!(plan(&product, 3, Choice::Ask, true), Decision::Passive);
     }
 
@@ -1161,7 +1179,7 @@ mod tests {
         let mut attempted = false;
         let mut pid = 100;
         let mut info = json!({"version": "0.0.1", "pid": pid,
-                              "caps": ["pty_attach_raw", "upgrade", "lsp"], "live_ptys": 2});
+                              "caps": ["pty_attach_raw", "upgrade", "lsp", "agents"], "live_ptys": 2});
         let mut handoffs = 0;
         for _ in 0..50 {
             match plan(&info, 2, Choice::Ask, attempted) {
@@ -1170,7 +1188,7 @@ mod tests {
                     attempted = true;
                     pid += 1;
                     info = json!({"version": cli_version, "pid": pid,
-                                  "caps": ["pty_attach_raw", "upgrade", "lsp"], "live_ptys": 2});
+                                  "caps": ["pty_attach_raw", "upgrade", "lsp", "agents"], "live_ptys": 2});
                 }
                 _ => break,
             }

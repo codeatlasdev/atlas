@@ -11,6 +11,7 @@
 		Palette,
 		Server,
 		SlidersHorizontal,
+		Smartphone,
 		SquareTerminal,
 	} from "@lucide/svelte";
 	import SearchField from "#lib/components/SearchField.svelte";
@@ -27,6 +28,7 @@
 		git: GitBranch,
 		keyboard: Keyboard,
 		ssh: Server,
+		mobile: Smartphone,
 		help: CircleHelp,
 	};
 

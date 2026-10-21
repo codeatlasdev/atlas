@@ -13,6 +13,7 @@ export type SettingsSection =
 	| "git"
 	| "keyboard"
 	| "ssh"
+	| "mobile"
 	| "help";
 
 /** Tabs of the Editor section: everyday editor prefs, and the language-server manager. */
@@ -34,6 +35,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "git", label: "Git" },
 	{ id: "keyboard", label: "Keyboard shortcuts" },
 	{ id: "ssh", label: "SSH hosts" },
+	{ id: "mobile", label: "Mobile" },
 	{ id: "help", label: "Help & onboarding" },
 ];
 

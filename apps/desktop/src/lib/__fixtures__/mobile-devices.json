@@ -1,0 +1,9 @@
+[
+	{
+		"name": "iPhone",
+		"node_id": "n1",
+		"paired_at": 1700000000,
+		"revoked": false,
+		"scopes": ["read", "term_read"]
+	}
+]

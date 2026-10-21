@@ -1,0 +1,155 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:atlas_mobile/core/transport/transport.dart';
+
+/// NDJSON request/response multiplexer over a [Transport].
+///
+/// - Outgoing requests: `{"id":N,"cmd":"...","args":{...}}`
+/// - Incoming responses: `{"id":N,"ok":bool,"data":...}` or `{"id":N,"ok":false,"error":"..."}`
+/// - Incoming push events: `{"ev":"..."}` (no `id` field)
+///
+/// Lines longer than [maxLineBytes] are silently dropped per contract.
+class Multiplexer {
+  static const int maxLineBytes = 1024 * 1024; // 1 M UTF-16 code units (Dart String.length; not bytes for multi-byte chars)
+
+  final Transport _transport;
+  int _nextId = 1;
+  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+
+  /// One deadline per pending call; cancelled when its reply or the end arrives.
+  final Map<int, Timer> _deadlines = {};
+  bool _closed = false;
+
+  final StreamController<Map<String, dynamic>> _pushController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  final Completer<void> _doneCompleter = Completer<void>();
+
+  late final StreamSubscription<String> _sub;
+
+  /// Push events from the server (no `id` field, have `ev` field).
+  Stream<Map<String, dynamic>> get pushEvents => _pushController.stream;
+
+  /// Completes when the underlying transport closes.
+  Future<void> get done => _doneCompleter.future;
+
+  /// How long a call waits for its reply. A connection can die without closing
+  /// (the Mac sleeps, a network drops); without a limit the caller waited forever.
+  final Duration timeout;
+
+  Multiplexer(this._transport, {this.timeout = const Duration(seconds: 20)}) {
+    _sub = _transport.incomingLines.listen(
+      _onLine,
+      onDone: _onDone,
+      onError: _onError,
+      cancelOnError: false,
+    );
+  }
+
+  void _onLine(String line) {
+    // Drop lines exceeding 1 MiB (wire contract).
+    if (line.length > maxLineBytes) return;
+    Map<String, dynamic> msg;
+    try {
+      msg = jsonDecode(line) as Map<String, dynamic>;
+    } catch (_) {
+      return; // malformed JSON — drop
+    }
+    if (msg.containsKey('id')) {
+      final id = msg['id'] as int?;
+      if (id != null) {
+        _deadlines.remove(id)?.cancel();
+        _pending.remove(id)?.complete(msg);
+      }
+    } else if (msg.containsKey('ev')) {
+      _pushController.add(msg);
+    }
+  }
+
+  void _cancelDeadlines() {
+    for (final t in _deadlines.values) {
+      t.cancel();
+    }
+    _deadlines.clear();
+  }
+
+  void _onDone() {
+    _closed = true;
+    _cancelDeadlines();
+    for (final entry in _pending.entries) {
+      entry.value.complete({
+        'id': entry.key,
+        'ok': false,
+        'error': 'connection closed',
+      });
+    }
+    _pending.clear();
+    if (!_pushController.isClosed) {
+      _pushController.close();
+    }
+    if (!_doneCompleter.isCompleted) {
+      _doneCompleter.complete();
+    }
+  }
+
+  void _onError(Object error, StackTrace stack) {
+    // Propagate to pending completers as error maps, not thrown exceptions, so
+    // every caller can do `resp['ok'] == false` instead of try/catch.
+    _cancelDeadlines();
+    for (final entry in _pending.entries) {
+      if (!entry.value.isCompleted) {
+        entry.value.complete({
+          'id': entry.key,
+          'ok': false,
+          'error': error.toString(),
+        });
+      }
+    }
+    _pending.clear();
+  }
+
+  /// Send a request and wait for the matching response.
+  ///
+  /// Returns the full response map (contains `ok`, `data` or `error`).
+  Future<Map<String, dynamic>> call(
+    String cmd, [
+    Map<String, dynamic>? args,
+  ]) async {
+    final id = _nextId++;
+    final request = jsonEncode({'id': id, 'cmd': cmd, 'args': args ?? {}});
+    final completer = Completer<Map<String, dynamic>>();
+    _pending[id] = completer;
+    try {
+      await _transport.sendLine(request);
+    } catch (e) {
+      _pending.remove(id);
+      return {'id': id, 'ok': false, 'error': e.toString()};
+    }
+    // Closed while sending: nothing will answer, and a deadline now would outlive us.
+    if (_closed) {
+      _pending.remove(id);
+      return {'id': id, 'ok': false, 'error': 'connection closed'};
+    }
+    _deadlines[id] = Timer(timeout, () {
+      _deadlines.remove(id);
+      _pending.remove(id)?.complete({
+        'id': id,
+        'ok': false,
+        'error': 'Your Mac did not answer in ${timeout.inSeconds}s',
+      });
+    });
+    return completer.future;
+  }
+
+  /// Close the multiplexer and the underlying transport. The transport is closed first,
+  /// so its resources (sockets, timers) go even if cancelling the subscription is slow.
+  Future<void> close() async {
+    _closed = true;
+    _cancelDeadlines();
+    final closing = _transport.close();
+    await _sub.cancel();
+    await closing;
+    _onDone();
+  }
+}

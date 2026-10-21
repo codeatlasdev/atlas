@@ -6,6 +6,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+## [1.5.0-alpha.18] — 2026-10-21
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
+### Added
+
+- **Every agent shows in Atlas and Atlas Mobile, not only the ones Atlas started.** A terminal of a tab now gets `ATLAS_HOOK_ENDPOINT` and `ATLAS_PANE_KEY`, so `omp`, `claude` or `codex` typed into any terminal reports its state (before, only the agent launcher set them, and the phone listed no agents). Atlas also offers to turn on Claude Code's and Codex's hooks like omp's (a prompt in the workspace, or Settings → Agents), using the new `atlas setup <agent> --check`. Terminals opened before the update get it once reopened.
+- **Atlas Mobile says when an agent's integration is off.** The home screen names each agent installed on the computer (omp, Claude Code, Codex) whose hooks are off, and how to turn them on, so a missing agent is not a mystery. hostd answers it with the new `agent_integrations` command (read scope).
+
 ## [1.5.0-alpha.17] — 2026-10-20
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
@@ -19,8 +28,6 @@ Atlas is in **alpha**: expect bugs and breaking changes. Please [report what bre
 - **Agent state moved from the desktop app into `atlas hostd`.** The hook server (`~/.atlas/desktop/hook-endpoint.env`) and the per-tab state (working / needs you / done) now live in the terminal daemon, so they survive the window closing and an SSH host reports its own agents over the existing connection (the reverse port forward is gone). `atlas setup claude-code|codex --apply` registers `PermissionRequest` for both agents with a 60 s timeout; re-run it to pick that up. **SSH hosts:** update `atlas` on the host (`atlas update` or by placing a new build at `~/.atlas/remote/atlas-<arch>-linux`) and restart `atlas hostd` there so agent status and Atlas Mobile work over the connection.
 - **`atlas hostd` sends a long terminal replay in pieces.** Attaching sent the whole scrollback (up to 2 MiB) as one line, and a client that drops lines over 1 MiB, like the phone, got no history at all from a long-running agent. The first piece is still `pty_replay` (the screen reset), the rest arrive as `pty_output`. `pty_info` now also reports the terminal's `cols`/`rows`.
 - **Agents survive an `atlas hostd` upgrade.** Agent state (working / needs you / done, last message, cwd bindings) lived only in the old daemon's memory, so every upgrade forgot every agent until it next spoke; the phone, which reaches a terminal through its agent, showed "no agent running". The state now travels with the terminals in the handoff.
-- **Every agent shows in Atlas and Atlas Mobile, not only the ones Atlas started.** A terminal of a tab now gets `ATLAS_HOOK_ENDPOINT` and `ATLAS_PANE_KEY`, so `omp`, `claude` or `codex` typed into any terminal reports its state (before, only the agent launcher set them, and the phone listed no agents). Atlas also offers to turn on Claude Code's and Codex's hooks like omp's (a prompt in the workspace, or Settings → Agents), using the new `atlas setup <agent> --check`. Terminals opened before the update get it once reopened.
-- **Atlas Mobile says when an agent's integration is off.** The home screen names each agent installed on the computer (omp, Claude Code, Codex) whose hooks are off, and how to turn them on, so a missing agent is not a mystery. hostd answers it with the new `agent_integrations` command (read scope).
 
 ## [1.5.0-alpha.16] — 2026-10-20
 

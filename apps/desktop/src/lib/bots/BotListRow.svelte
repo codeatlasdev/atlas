@@ -5,6 +5,7 @@
 	import { roleTag, previewIcon } from "#lib/bots/botsLogic.ts";
 	import { rowIn } from "#lib/bots/motion.ts";
 	import { agentLogo } from "#lib/agentLogos.ts";
+	import { Check, CircleX, Ellipsis, TriangleAlert } from "@lucide/svelte";
 
 	let {
 		bot,
@@ -74,25 +75,32 @@
 				{/if}
 				<span class="time">{fmtTime(bot.last?.ts)}</span>
 			</div>
-			<div class="row-bottom">
-				{#if isWorking}
-					<span class="preview shimmer">working…</span>
-				{:else}
-					{#if icon}
-						<span class="preview-icon" aria-hidden="true">{icon}</span>
-					{/if}
-					<span class="preview" class:bold={unread}>{bot.last?.text ?? "No tasks yet"}</span>
+		<div class="row-bottom">
+			{#if isWorking}
+				<span class="preview shimmer">working…</span>
+			{:else}
+				{#if icon}
+					<span class="preview-icon" aria-hidden="true">
+						{#if icon === "needs_you"}
+							<TriangleAlert size={11} />
+						{:else if icon === "done"}
+							<Check size={11} />
+						{:else if icon === "failed"}
+							<CircleX size={11} />
+						{/if}
+					</span>
 				{/if}
-				{#if unread}
-					<span class="unread-badge" aria-label="Unread messages"></span>
-				{:else if bot.state === "needs_you"}
-					<span class="needs-badge" aria-label="Needs your attention">!</span>
-				{/if}
-			</div>
+				<span class="preview" class:bold={unread}>{bot.last?.text ?? "No tasks yet"}</span>
+			{/if}
+			{#if unread}
+				<span class="unread-badge" aria-label="Unread messages"></span>
+			{:else if bot.state === "needs_you"}
+				<span class="needs-badge" aria-label="Needs your attention">!</span>
+			{/if}
 		</div>
 	</button>
 
-	<!-- ⋯ context menu, shown on row hover -->
+	<!-- context menu, shown on row hover -->
 	{#if onContextAction}
 		<div class="menu-wrap">
 			<button
@@ -102,7 +110,7 @@
 				onclick={(e) => {
 					e.stopPropagation();
 					menuOpen = !menuOpen;
-				}}>⋯</button
+				}}><Ellipsis size={14} /></button
 			>
 			{#if menuOpen}
 				<div class="menu-dropdown" role="menu">
@@ -325,7 +333,7 @@
 		padding: 0 3px;
 	}
 
-	/* ⋯ context menu */
+	/* context menu */
 	.menu-wrap {
 		position: relative;
 		display: none;

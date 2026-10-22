@@ -1830,4 +1830,193 @@ exit 0"#;
         crate::bots::engine::set_test_engine_bin(None);
         client.call("shutdown", json!({})).await.ok();
     }
+
+    // ── Test: opencode + approval:ask rejected at BotCreate ─────────────────
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn opencode_bot_ask_approval_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let client = daemon(&dir).await;
+
+        let r = client
+            .call(
+                "bot_create",
+                json!({
+                    "name": "OCBot",
+                    "role": "r",
+                    "agent": "opencode",
+                    "approval": "ask",
+                    "engine": {"kind": "opencode"}
+                }),
+            )
+            .await;
+        let is_err = match &r {
+            Err(_) => true,
+            Ok(v) => v.get("error").is_some(),
+        };
+        assert!(is_err, "opencode+ask must be rejected; got: {r:?}");
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── Test: opencode bot_list exposes approval_supported:false ─────────────
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn opencode_bot_approval_supported_false_in_list() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let client = daemon(&dir).await;
+
+        let bot = client
+            .call(
+                "bot_create",
+                json!({
+                    "name": "OCBot2",
+                    "role": "r",
+                    "agent": "opencode",
+                    "approval": "auto",
+                    "engine": {"kind": "opencode"}
+                }),
+            )
+            .await
+            .unwrap();
+        let id = bot["id"].as_str().unwrap();
+
+        let list = client.call("bot_list", json!({})).await.unwrap();
+        let entry = list["bots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == id)
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            entry["approval_supported"].as_bool(),
+            Some(false),
+            "opencode bot must have approval_supported:false in bot_list: {entry}"
+        );
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── Test: omp + approval:ask is now ALLOWED (extension handles decisions) ─
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn omp_bot_ask_approval_allowed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let client = daemon(&dir).await;
+
+        // Previously rejected; must now succeed.
+        let r = client
+            .call(
+                "bot_create",
+                json!({"name": "OmpAsk", "role": "r", "agent": "omp", "approval": "ask"}),
+            )
+            .await;
+        assert!(r.is_ok(), "omp+ask must now be allowed; got: {r:?}");
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── Test: hook_server uses BOT_DECISION_WAIT for bot: panes ─────────────
+    // This is a pure-unit test of the wait-duration logic (no daemon needed).
+
+    #[test]
+    fn bot_pane_decision_wait_is_longer() {
+        use crate::agents::hook_server::{BOT_DECISION_WAIT, DECISION_WAIT};
+        assert!(
+            BOT_DECISION_WAIT > DECISION_WAIT,
+            "BOT_DECISION_WAIT ({:?}) must exceed DECISION_WAIT ({:?})",
+            BOT_DECISION_WAIT,
+            DECISION_WAIT,
+        );
+        // 30 minutes.
+        assert_eq!(BOT_DECISION_WAIT.as_secs(), 30 * 60);
+    }
+
+    // ── Test: omp extension file is written into bot_dir when approval==ask ──
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn omp_extension_written_for_ask_approval() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+
+        // Fake omp: just exit 0 immediately (no RPC protocol); we only care
+        // that the extension file is written before omp is called.
+        let script = r#"#!/bin/sh
+# Check that the extension flag is present and the file exists.
+ext_file=""
+prev=""
+for a in "$@"; do
+    [ "$prev" = "--extension" ] && ext_file="$a"
+    prev="$a"
+done
+if [ -n "$ext_file" ] && [ -f "$ext_file" ]; then
+    echo "extension_ok"
+fi
+exit 0
+"#;
+        let fake_bin = fake_agent(tmp.path(), "omp", script);
+        crate::bots::engine::set_test_engine_bin(Some(&fake_bin.to_string_lossy()));
+
+        let client = daemon(&dir).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({
+                    "name": "OmpExtBot",
+                    "role": "r",
+                    "agent": "omp",
+                    "approval": "ask",
+                    "engine": {"kind": "omp"}
+                }),
+            )
+            .await
+            .unwrap();
+        let id = bot["id"].as_str().unwrap().to_string();
+
+        let v = client
+            .call(
+                "bot_task",
+                json!({"id": id, "prompt": "test", "source": "test"}),
+            )
+            .await
+            .unwrap();
+        let task_id = v["task"]["id"].as_str().unwrap().to_string();
+        // Task may be done or failed — either is fine; we only care the extension file exists.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let v = client
+                .call("bot_tasks", json!({"id": id, "limit": 5}))
+                .await
+                .unwrap();
+            if let Some(t) = v["tasks"]
+                .as_array()
+                .and_then(|ts| ts.iter().find(|t| t["id"] == task_id))
+            {
+                let s = t["state"].as_str().unwrap_or("");
+                if matches!(s, "done" | "failed" | "cancelled") {
+                    break;
+                }
+            }
+            if std::time::Instant::now() > deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+
+        // Extension file must exist in the bot dir.
+        let ext_path = dir.join("bots").join(&id).join("omp-approval.ts");
+        assert!(
+            ext_path.exists(),
+            "omp-approval.ts extension must be written for approval:ask"
+        );
+
+        crate::bots::engine::set_test_engine_bin(None);
+        client.call("shutdown", json!({})).await.ok();
+    }
 }

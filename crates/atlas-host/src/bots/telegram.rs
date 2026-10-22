@@ -151,7 +151,7 @@ impl TelegramBridge {
         }
         let chats = self.config.lock().chats.clone();
         let text = format!(
-            "🤖 *{bot_name}* wants to run `{tool_name}`\n```\n{}\n```",
+            "*{bot_name}* wants to run `{tool_name}`\n```\n{}\n```",
             serde_json::to_string_pretty(tool_input).unwrap_or_default()
         );
         let req = req.to_string();
@@ -163,8 +163,8 @@ impl TelegramBridge {
             };
             let keyboard = json!({
                 "inline_keyboard": [[
-                    {"text": "✅ Allow", "callback_data": format!("a:{req}:1")},
-                    {"text": "❌ Deny",  "callback_data": format!("a:{req}:0")}
+                    {"text": "Allow", "callback_data": format!("a:{req}:1")},
+                    {"text": "Deny",  "callback_data": format!("a:{req}:0")}
                 ]]
             });
             for chat_id in &chats {

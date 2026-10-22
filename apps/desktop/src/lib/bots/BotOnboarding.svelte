@@ -488,12 +488,11 @@
 		max-height: 340px;
 		width: 100%;
 		max-width: 720px;
-		padding: 24px 24px 0;
+		padding: 0 0 0;
 		box-sizing: border-box;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		overflow: hidden;
 		position: relative;
 	}
 

@@ -36,11 +36,11 @@
 	<div class="bot-wrap" aria-hidden="true">
 		<!-- Bounce phase (0–65 %) -->
 		<div class="phase bounce-phase">
-			<BotActor seed="notif-bot" state="needs_you" size={96} {paused} />
+			<BotActor seed="notif-bot" state="needs_you" size={112} {paused} />
 		</div>
 		<!-- Cheer phase (65–95 %) -->
 		<div class="phase cheer-phase">
-			<BotActor seed="notif-bot" state="idle" action="cheer" size={96} {paused} />
+			<BotActor seed="notif-bot" state="idle" action="cheer" size={112} {paused} />
 		</div>
 	</div>
 
@@ -59,26 +59,24 @@
 		width: 100%;
 		height: 240px;
 		overflow: hidden;
-		background: var(--ca-surface-sunken);
-		border-radius: 12px;
 	}
 
 	/* Ground bar */
+	/* Ground line */
 	.ground {
 		position: absolute;
 		bottom: 0;
 		left: 0;
 		right: 0;
-		height: 40px;
-		background: var(--ca-surface-overlay, color-mix(in oklab, currentColor 8%, transparent));
-		border-top: 1px solid var(--ca-outline-subtle);
+		height: 1px;
+		background: var(--ca-outline-subtle);
 	}
 
 	/* ── phone ── (positioned at ~35 % from left) */
 	.phone-wrap {
 		position: absolute;
 		bottom: 40px;
-		left: 32%;
+		left: 28%;
 		color: var(--ca-text-secondary);
 		animation: phone-appear 9s linear infinite;
 	}
@@ -109,7 +107,7 @@
 	.bot-wrap {
 		position: absolute;
 		bottom: 40px;
-		left: 56%;
+		left: 52%;
 	}
 	.phase {
 		position: absolute;
@@ -195,15 +193,15 @@
 	/* ── confirm flash ── */
 	.confirm {
 		position: absolute;
-		left: calc(32% + 8px);
+		left: calc(28% + 8px);
 		bottom: 140px;
-		font-size: 11px;
-		font-weight: 600;
+		font-size: 14px;
+		font-weight: 700;
 		color: var(--ca-semantic-success);
 		background: color-mix(in oklab, var(--ca-semantic-success) 12%, transparent);
 		border: 1px solid color-mix(in oklab, var(--ca-semantic-success) 40%, transparent);
 		border-radius: 8px;
-		padding: 3px 8px;
+		padding: 5px 12px;
 		animation: confirm-pop 9s linear infinite;
 	}
 	@keyframes confirm-pop {

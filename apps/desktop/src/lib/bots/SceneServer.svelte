@@ -62,7 +62,7 @@
 			<Laptop size={60} open={reducedMotion ? true : macOpen} />
 		</div>
 		<!-- The bot that keeps going -->
-		<BotActor seed="server-bot" state="working" size={104} {paused} delay={200} />
+		<BotActor seed="server-bot" state="working" size={112} {paused} delay={200} />
 		<!-- Bot's own laptop -->
 		<div class="bot-laptop">
 			<Laptop size={64} open={true} glow={true} />
@@ -90,8 +90,6 @@
 		width: 100%;
 		height: 300px;
 		overflow: hidden;
-		border-radius: 12px;
-		isolation: isolate;
 	}
 
 	/* ── sky ── */

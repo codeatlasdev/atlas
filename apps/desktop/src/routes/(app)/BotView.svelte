@@ -606,43 +606,16 @@
 	{:else}
 		<!-- Header -->
 		<div class="header">
-			<div class="header-left">
-				<BotFace seed={bot.id} look={bot.look} state={faceState} size={30} />
-				<div class="header-title">
-					<span class="bot-name">{bot.name}</span>
-					{#if roleTag(bot.role)}
-						<span class="header-role-tag">{roleTag(bot.role)}</span>
-					{/if}
-					{#if bot.project}
-						<span class="header-project-chip">
-							{#if bot.project.kind === "git"}
-								<GitBranch size={12} aria-hidden="true" />
-							{:else}
-								<Folder size={12} aria-hidden="true" />
-							{/if}
-							{bot.project.name}
-							{#if bot.project.branch}
-								<span class="header-project-branch">{bot.project.branch}</span>
-							{/if}
-						</span>
-					{/if}
-					{#if bot.state === "working" && bot.running_task}
-						<span class="header-presence"
-							>working · {fmtElapsed(
-								bot.running_task
-									? now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at || now)
-									: 0,
-							)}</span
-						>
-					{:else if agentLabel}
-						<span class="header-sep">·</span>
-						<span class="header-meta">{agentLabel}</span>
-					{/if}
-					{#if displayServerName}
-						<span class="header-sep">·</span>
-						<span class="header-meta">{displayServerName}</span>
-					{/if}
-				</div>
+			<div class="header-pill">
+				<BotFace seed={bot.id} look={bot.look} state={faceState} size={28} />
+				<span class="pill-name">{bot.name}</span>
+				{#if bot.state === "working" && bot.running_task}
+					<span class="pill-elapsed"
+						>{fmtElapsed(
+							now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at ?? 0),
+						)}</span
+					>
+				{/if}
 			</div>
 			<div class="header-right">
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -717,6 +690,7 @@
 						{/if}
 					{/if}
 					<!-- Row: user prompt + bot response -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="msg-row"
 						class:group-start={groupedTasks[i]?.groupStart}
@@ -1088,7 +1062,7 @@
 					</button>
 					<div class="profile-name">{bot.name}</div>
 					<div class="profile-sub">
-						{agentLabel}{serverName ? ` · ${serverName}` : ""}
+						{agentLabel}{bots.selected?.hostKey ? ` · ${serverName}` : ""}
 					</div>
 				</div>
 
@@ -1514,56 +1488,37 @@
 		flex: none;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		padding: 10px 16px;
+		justify-content: center;
+		padding: 0 12px;
+		height: 44px;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
-		gap: 10px;
+		position: relative;
+		flex-shrink: 0;
 	}
-	.header-left {
+	.header-pill {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		min-width: 0;
-	}
-	.header-title {
-		display: flex;
-		align-items: baseline;
-		gap: 6px;
-		min-width: 0;
-		flex-wrap: wrap;
-	}
-	.bot-name {
-		font-size: 14px;
-		font-weight: 600;
-		white-space: nowrap;
-	}
-	.header-sep {
-		color: var(--ca-text-tertiary, var(--ca-text-secondary));
+		gap: 8px;
+		background: var(--ca-bg-secondary, var(--ca-surface-sunken));
+		border-radius: 999px;
+		padding: 4px 12px 4px 6px;
 		font-size: 13px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
 	}
-	.header-meta {
-		font-size: 12px;
+	.pill-name {
+		font-size: 13px;
+		font-weight: 600;
+	}
+	.pill-elapsed {
+		font-size: 11px;
 		color: var(--ca-text-secondary);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.header-role-tag {
-		font-size: 10.5px;
-		font-weight: 500;
-		color: var(--ca-text-secondary);
-		background: color-mix(in oklab, var(--ca-outline-subtle) 60%, transparent);
-		border-radius: 10px;
-		padding: 2px 7px;
-		margin-left: 4px;
-	}
-	.header-presence {
-		font-size: 12px;
-		color: var(--ca-semantic-warning, #e67700);
-		margin-left: 4px;
 	}
 	.header-right {
-		flex: none;
+		position: absolute;
+		right: 12px;
+		top: 50%;
+		transform: translateY(-50%);
 	}
 
 	/* context menu */
@@ -2361,25 +2316,6 @@
 	.usage-stat {
 		font-size: 11.5px;
 		color: var(--ca-text-secondary);
-	}
-	/* ── Project chip in header ─────────────────────────────────── */
-	.header-project-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		font-size: 10.5px;
-		font-weight: 500;
-		background: color-mix(in oklab, var(--ca-outline-subtle) 60%, transparent);
-		border-radius: 10px;
-		padding: 1px 7px;
-		color: var(--ca-text-secondary);
-		margin-left: 6px;
-		cursor: default;
-	}
-	.header-project-branch {
-		color: var(--ca-text-secondary);
-		opacity: 0.7;
-		font-size: 10px;
 	}
 	/* ── Project section in profile panel ───────────────────────── */
 	.project-linked {

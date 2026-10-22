@@ -29,38 +29,44 @@
 	}
 </script>
 
-<div class="meter" title={agentId}>
-	{#if logo}
+{#if logo && (todayTokens > 0 || todayCost > 0)}
+	<div class="meter" title={agentId}>
 		<span class="meter-logo">{@html logo.dark ?? logo.light}</span>
-	{/if}
-	<div class="meter-stats">
-		<span class="meter-tokens">{fmtTokens(todayTokens)}</span>
-		{#if todayCost > 0}
-			<span class="meter-cost">${todayCost.toFixed(2)}</span>
-		{/if}
-		{#if resetsAt}
-			<span class="meter-reset">resets {fmtResetsAt(resetsAt)}</span>
+		<div class="meter-stats">
+			<span class="meter-tokens">{fmtTokens(todayTokens)}</span>
+			{#if todayCost > 0}
+				<span class="meter-cost">${todayCost.toFixed(2)}</span>
+			{/if}
+			{#if resetsAt}
+				<span class="meter-reset">resets {fmtResetsAt(resetsAt)}</span>
+			{/if}
+		</div>
+		{#if limitPct !== null}
+			<div
+				class="meter-ring"
+				role="progressbar"
+				aria-valuenow={limitPct}
+				aria-valuemin={0}
+				aria-valuemax={100}
+			>
+				<svg viewBox="0 0 20 20" width="20" height="20">
+					<circle cx="10" cy="10" r="8" fill="none" stroke="var(--ca-outline-subtle)" stroke-width="2" />
+					<circle
+						cx="10"
+						cy="10"
+						r="8"
+						fill="none"
+						stroke={limitPct > 80 ? "var(--ca-semantic-warning, #e67700)" : "var(--ca-brand-main)"}
+						stroke-width="2"
+						stroke-dasharray="{(limitPct / 100) * 50.27} 50.27"
+						stroke-linecap="round"
+						transform="rotate(-90 10 10)"
+					/>
+				</svg>
+			</div>
 		{/if}
 	</div>
-	{#if limitPct !== null}
-		<div class="meter-ring" role="progressbar" aria-valuenow={limitPct} aria-valuemin={0} aria-valuemax={100}>
-			<svg viewBox="0 0 20 20" width="20" height="20">
-				<circle cx="10" cy="10" r="8" fill="none" stroke="var(--ca-outline-subtle)" stroke-width="2" />
-				<circle
-					cx="10"
-					cy="10"
-					r="8"
-					fill="none"
-					stroke={limitPct > 80 ? "var(--ca-semantic-warning, #e67700)" : "var(--ca-brand-main)"}
-					stroke-width="2"
-					stroke-dasharray="{(limitPct / 100) * 50.27} 50.27"
-					stroke-linecap="round"
-					transform="rotate(-90 10 10)"
-				/>
-			</svg>
-		</div>
-	{/if}
-</div>
+{/if}
 
 <style>
 	.meter {

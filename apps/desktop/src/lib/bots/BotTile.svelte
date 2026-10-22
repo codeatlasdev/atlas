@@ -73,7 +73,7 @@
 		cursor: default;
 		color: var(--ca-text-primary);
 		transition: background 150ms;
-		width: 100%;
+		width: 88px;
 		text-align: center;
 	}
 	.bot-tile:hover {

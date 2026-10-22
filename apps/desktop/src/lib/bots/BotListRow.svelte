@@ -2,19 +2,32 @@
 	import type { Bot } from "#lib/stores/bots.svelte.ts";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
+	import { roleTag, previewIcon } from "#lib/bots/botsLogic.ts";
+	import { rowIn } from "#lib/bots/motion.ts";
+
 	let {
 		bot,
 		active = false,
+		unread = false,
 		onclick,
+		onContextAction,
 	}: {
 		bot: Bot;
 		active?: boolean;
+		unread?: boolean;
 		onclick?: () => void;
+		onContextAction?: (action: "profile" | "routine" | "delete") => void;
 	} = $props();
 
 	const faceState = $derived<FaceState>(
 		bot.state === "needs_you" ? "needs_you" : bot.state === "working" ? "working" : "idle",
 	);
+
+	const tag = $derived(roleTag(bot.role));
+	const icon = $derived(previewIcon(bot.last, bot.state));
+	const isWorking = $derived(bot.state === "working");
+
+	let menuOpen = $state(false);
 
 	function fmtTime(ts?: number): string {
 		if (!ts) return "";
@@ -25,71 +38,198 @@
 		}
 		return d.toLocaleDateString([], { month: "short", day: "numeric" });
 	}
+
+	function handleContextAction(action: "profile" | "routine" | "delete") {
+		menuOpen = false;
+		onContextAction?.(action);
+	}
 </script>
 
-<button class="row" class:active {onclick}>
-	<BotFace seed={bot.id} look={bot.look} state={faceState} size={36} />
-	<div class="row-body">
-		<div class="row-top">
-			<span class="name">{bot.name}</span>
-			<span class="time">{fmtTime(bot.last?.ts)}</span>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="row-wrap" class:active class:unread onmouseleave={() => (menuOpen = false)} in:rowIn>
+	<button class="row" class:active class:unread {onclick} aria-current={active ? "page" : undefined}>
+		<!-- Avatar with presence badge -->
+		<div class="avatar-wrap">
+			<BotFace seed={bot.id} look={bot.look} state={faceState} size={32} />
+			<span
+				class="presence"
+				class:green={faceState === "working"}
+				class:amber={faceState === "needs_you"}
+				aria-hidden="true"
+			></span>
 		</div>
-		<div class="row-bottom">
-			<span class="preview">{bot.last?.text ?? "No tasks yet"}</span>
-			{#if bot.state === "needs_you"}
-				<span class="badge" aria-label="Needs your attention"></span>
+
+		<div class="row-body">
+			<div class="row-top">
+				<span class="name" class:bold={unread}>{bot.name}</span>
+				{#if tag}
+					<span class="role-tag">{tag}</span>
+				{/if}
+				<span class="time">{fmtTime(bot.last?.ts)}</span>
+			</div>
+			<div class="row-bottom">
+				{#if isWorking}
+					<span class="preview shimmer">working…</span>
+				{:else}
+					{#if icon}
+						<span class="preview-icon" aria-hidden="true">{icon}</span>
+					{/if}
+					<span class="preview" class:bold={unread}>{bot.last?.text ?? "No tasks yet"}</span>
+				{/if}
+				{#if unread}
+					<span class="unread-badge" aria-label="Unread messages"></span>
+				{:else if bot.state === "needs_you"}
+					<span class="needs-badge" aria-label="Needs your attention">!</span>
+				{/if}
+			</div>
+		</div>
+	</button>
+
+	<!-- ⋯ context menu, shown on row hover -->
+	{#if onContextAction}
+		<div class="menu-wrap">
+			<button
+				class="menu-btn"
+				aria-label="More options for {bot.name}"
+				aria-expanded={menuOpen}
+				onclick={(e) => {
+					e.stopPropagation();
+					menuOpen = !menuOpen;
+				}}>⋯</button
+			>
+			{#if menuOpen}
+				<div class="menu-dropdown" role="menu">
+					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}
+						>Profile</button
+					>
+					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("routine")}
+						>Run routine</button
+					>
+					<button role="menuitem" class="menu-item danger" onclick={() => handleContextAction("delete")}
+						>Delete</button
+					>
+				</div>
 			{/if}
 		</div>
-	</div>
-</button>
+	{/if}
+</div>
 
 <style>
+	.row-wrap {
+		position: relative;
+		display: flex;
+		align-items: center;
+		border-radius: 8px;
+		margin: 0 4px 1px;
+		transition: background 80ms;
+	}
+	.row-wrap:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.row-wrap.active {
+		background: color-mix(in oklab, var(--ca-brand-main) 15%, transparent);
+	}
+
 	.row {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 8px 12px;
-		width: 100%;
+		padding: 6px 8px;
 		text-align: left;
 		background: none;
 		border: none;
-		border-radius: 0;
+		border-radius: 8px;
 		cursor: default;
-		transition: background 80ms;
 	}
-	.row:hover {
-		background: var(--ca-vibrancy-fill);
+
+	/* Avatar wrapper with presence badge */
+	.avatar-wrap {
+		position: relative;
+		flex: none;
+		width: 32px;
+		height: 32px;
 	}
-	.row.active {
-		background: color-mix(in oklab, var(--ca-brand-main) 15%, transparent);
+
+	/* Presence dot: bottom-right of avatar, ring cut in sidebar color */
+	.presence {
+		position: absolute;
+		bottom: -1px;
+		right: -1px;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--ca-text-disabled, #888);
+		border: 2px solid var(--ca-surface-sunken);
+		pointer-events: none;
 	}
-	/* BotFace SVG replaces .avatar; keep flex sizing consistent */
+	.presence.green {
+		background: var(--ca-semantic-success, #2f9e44);
+	}
+	.presence.amber {
+		background: var(--ca-semantic-warning, #e67700);
+	}
+
 	.row-body {
 		flex: 1;
 		min-width: 0;
 	}
+
 	.row-top {
 		display: flex;
-		justify-content: space-between;
 		align-items: baseline;
-		margin-bottom: 2px;
+		gap: 4px;
+		margin-bottom: 1px;
 	}
+
 	.name {
 		font-size: 13px;
 		font-weight: 500;
 		color: var(--ca-text-primary);
+		flex: none;
+		max-width: 90px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
+	.name.bold {
+		font-weight: 700;
+	}
+
+	.role-tag {
+		font-size: 10px;
+		font-weight: 500;
+		color: var(--ca-text-secondary);
+		background: color-mix(in oklab, var(--ca-outline-subtle) 60%, transparent);
+		border-radius: 10px;
+		padding: 1px 5px;
+		white-space: nowrap;
+		flex: none;
+		max-width: 70px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
 	.time {
-		font-size: 11px;
+		font-size: 10.5px;
+		color: var(--ca-text-secondary);
+		margin-left: auto;
+		flex: none;
+	}
+
+	.row-bottom {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+	}
+
+	.preview-icon {
+		font-size: 10px;
 		color: var(--ca-text-secondary);
 		flex: none;
 	}
-	.row-bottom {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 6px;
-	}
+
 	.preview {
 		font-size: 12px;
 		color: var(--ca-text-secondary);
@@ -98,11 +238,125 @@
 		text-overflow: ellipsis;
 		flex: 1;
 	}
-	.badge {
+	.preview.bold {
+		color: var(--ca-text-primary);
+		font-weight: 500;
+	}
+
+	/* Shimmer "working…" animation */
+	.shimmer {
+		background: linear-gradient(
+			90deg,
+			var(--ca-text-secondary) 0%,
+			var(--ca-text-primary) 40%,
+			var(--ca-text-primary) 60%,
+			var(--ca-text-secondary) 100%
+		);
+		background-size: 200% 100%;
+		background-clip: text;
+		-webkit-background-clip: text;
+		color: transparent;
+		animation: shimmer 2s ease-in-out infinite;
+	}
+	@keyframes shimmer {
+		0% {
+			background-position: 200% 0;
+		}
+		100% {
+			background-position: -200% 0;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.shimmer {
+			animation: none;
+			color: var(--ca-text-secondary);
+			background: none;
+			-webkit-background-clip: initial;
+			background-clip: initial;
+		}
+	}
+
+	.unread-badge {
+		flex: none;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: var(--ca-semantic-warning);
+		background: var(--ca-brand-main, #228be6);
+	}
+
+	.needs-badge {
 		flex: none;
+		min-width: 16px;
+		height: 16px;
+		border-radius: 8px;
+		background: var(--ca-semantic-error, #e03131);
+		color: var(--ca-surface-base);
+		font-size: 9px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 3px;
+	}
+
+	/* ⋯ context menu */
+	.menu-wrap {
+		position: relative;
+		display: none;
+		flex: none;
+		margin-right: 4px;
+	}
+	.row-wrap:hover .menu-wrap {
+		display: flex;
+	}
+
+	.menu-btn {
+		width: 24px;
+		height: 24px;
+		border-radius: 6px;
+		border: none;
+		background: none;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		font-size: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.menu-btn:hover {
+		background: var(--ca-outline-subtle);
+		color: var(--ca-text-primary);
+	}
+
+	.menu-dropdown {
+		position: absolute;
+		right: 0;
+		top: 100%;
+		z-index: 50;
+		background: var(--ca-surface-overlay, #2a2a2a);
+		border: 0.5px solid var(--ca-outline-subtle);
+		border-radius: 8px;
+		padding: 4px;
+		min-width: 140px;
+		box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+	}
+
+	.menu-item {
+		display: block;
+		width: 100%;
+		padding: 6px 10px;
+		text-align: left;
+		border: none;
+		background: none;
+		border-radius: 5px;
+		font-size: 12.5px;
+		color: var(--ca-text-primary);
+		cursor: default;
+	}
+	.menu-item:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.menu-item.danger {
+		color: var(--ca-semantic-error, #e03131);
 	}
 </style>

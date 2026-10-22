@@ -1,26 +1,33 @@
 <script lang="ts">
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
+	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
+	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { Bot, Layers } from "@lucide/svelte";
 
+	// visible = rail is expanded (72px); false = collapsed (0px)
 	let visible = $state(false);
+	// pinned = keep expanded while tooltip/menu is open
+	let pinned = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const shortcut = $derived(shortcutFor("atlas::ToggleBotsWorkspace") ?? "⌘⇧B");
+	const needsYouCount = $derived(bots.needsYouCount);
 
 	function onHotZoneEnter() {
 		clearTimeout(hideTimer);
 		showTimer = setTimeout(() => {
 			visible = true;
-		}, 180);
+		}, SHOW_DELAY_MS);
 	}
 
 	function onRailLeave() {
 		clearTimeout(showTimer);
+		if (pinned) return;
 		hideTimer = setTimeout(() => {
 			visible = false;
-		}, 300);
+		}, HIDE_DELAY_MS);
 	}
 
 	function onRailEnter() {
@@ -30,13 +37,20 @@
 	function setMode(mode: "ide" | "bots") {
 		ws.appMode = mode;
 		visible = false;
+		pinned = false;
 	}
 </script>
 
-<!-- Hot-zone: thin strip at the very left edge that catches pointer events when rail is hidden -->
-<div class="hot-zone" aria-hidden="true" onmouseenter={onHotZoneEnter} onmouseleave={onRailLeave}></div>
+<!-- Hot-zone: thin fixed strip at left edge, only active when rail is hidden -->
+<div
+	class="hot-zone"
+	class:inactive={visible}
+	aria-hidden="true"
+	onmouseenter={onHotZoneEnter}
+	onmouseleave={onRailLeave}
+></div>
 
-<!-- Rail: slides in from left as a fixed overlay, never shifts layout -->
+<!-- Rail: real in-flow flex column, width 0 → 72px -->
 <div
 	class="rail"
 	class:visible
@@ -45,7 +59,7 @@
 	onmouseenter={onRailEnter}
 	onmouseleave={onRailLeave}
 >
-	<!-- IDE workspace item -->
+	<!-- IDE workspace -->
 	<button
 		class="item"
 		class:active={ws.appMode === "ide"}
@@ -54,10 +68,12 @@
 		title="IDE  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
-		<Layers size={20} />
+		<Layers size={22} />
 	</button>
 
-	<!-- Bots workspace item -->
+	<div class="separator" aria-hidden="true"></div>
+
+	<!-- Bots workspace -->
 	<button
 		class="item"
 		class:active={ws.appMode === "bots"}
@@ -66,11 +82,17 @@
 		title="Bots  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
-		<Bot size={20} />
+		<Bot size={22} />
+		{#if needsYouCount > 0}
+			<span class="needs-badge" aria-label="{needsYouCount} bots need your attention">
+				{needsYouCount > 9 ? "9+" : needsYouCount}
+			</span>
+		{/if}
 	</button>
 </div>
 
 <style>
+	/* Hot-zone: fixed thin strip at window left edge, triggers rail expand */
 	.hot-zone {
 		position: fixed;
 		left: 0;
@@ -82,34 +104,41 @@
 		cursor: default;
 	}
 
+	/* When rail is expanded, hot-zone becomes inactive so it doesn't steal events */
+	.hot-zone.inactive {
+		pointer-events: none;
+	}
+
+	/* Rail: real in-flow flex column — takes space and pushes sidebar+content right */
 	.rail {
-		position: fixed;
-		left: 0;
-		top: 0;
-		width: 56px;
+		/* Layout: in-flow, NOT position:fixed */
+		flex: none;
+		width: 0;
+		overflow: hidden;
 		height: 100%;
-		background: var(--ca-surface-sunken);
+		/* Animate width: 160ms ease-out for expand and collapse */
+		transition: width 160ms ease-out;
+
+		background: color-mix(in oklab, var(--ca-surface-sunken) 100%, black 4%);
 		border-right: 0.5px solid var(--ca-outline-subtle);
-		z-index: 200;
+
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		padding: 8px 0;
-		gap: 6px;
-		transform: translateX(-100%);
-		transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-		pointer-events: none;
+		gap: 8px;
 	}
 
 	.rail.visible {
-		transform: translateX(0);
-		pointer-events: all;
+		width: 72px;
 	}
 
+	/* Each workspace tile: 48x48, circle → rounded-square on hover/active */
 	.item {
 		position: relative;
-		width: 40px;
-		height: 40px;
+		width: 48px;
+		height: 48px;
+		flex: none;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -119,38 +148,73 @@
 		background: none;
 		color: var(--ca-text-secondary);
 		transition:
-			border-radius 200ms ease,
-			background 200ms ease,
-			color 200ms ease;
+			border-radius 150ms ease,
+			background 150ms ease,
+			color 150ms ease;
 	}
 
 	.item:hover {
-		border-radius: 12px;
+		border-radius: 16px;
 		background: var(--ca-vibrancy-fill);
 		color: var(--ca-text-primary);
 	}
 
 	.item.active {
-		border-radius: 12px;
+		border-radius: 16px;
 		background: var(--ca-brand-main);
 		color: var(--ca-surface-base);
 	}
 
+	/* Discord pill: on the rail's left edge */
 	.pill {
 		position: absolute;
-		left: -8px;
+		left: 0;
+		top: 50%;
+		transform: translateY(-50%) translateX(-50%);
 		width: 4px;
 		border-radius: 0 2px 2px 0;
 		background: var(--ca-text-primary);
-		transition: height 200ms ease;
+		transition: height 150ms ease;
 		height: 0;
+		/* The pill left half is clipped by rail overflow:hidden — appears as a bar on the left edge */
 	}
 
 	.item.active .pill {
-		height: 36px;
+		height: 40px;
 	}
 
 	.item:hover:not(.active) .pill {
+		height: 20px;
+	}
+
+	/* Separator line between IDE and Bots (32px wide, 2px tall, centered) */
+	.separator {
+		width: 32px;
+		height: 2px;
+		border-radius: 1px;
+		background: color-mix(in oklab, var(--ca-outline-subtle) 80%, transparent);
+		flex: none;
+		margin: 2px 0;
+	}
+
+	/* Needs-you badge: red circle at bottom-right of tile */
+	.needs-badge {
+		position: absolute;
+		bottom: 2px;
+		right: 2px;
+		min-width: 16px;
 		height: 16px;
+		border-radius: 8px;
+		background: var(--ca-semantic-error, #e03131);
+		/* Dark ring cut in the rail color */
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--ca-surface-sunken) 100%, black 4%);
+		color: var(--ca-surface-base);
+		font-size: 9px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 3px;
+		pointer-events: none;
 	}
 </style>

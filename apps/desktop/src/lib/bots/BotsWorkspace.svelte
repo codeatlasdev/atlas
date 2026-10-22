@@ -7,14 +7,17 @@
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import BotListRow from "#lib/bots/BotListRow.svelte";
-	import BotNewDialog from "#lib/components/BotNewDialog.svelte";
+	import { toast } from "@codeatlasdev/ui";
+	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
 	import { Settings } from "@lucide/svelte";
+	import { flip } from "svelte/animate";
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
 	let query = $state("");
-	let showNewBot = $state(false);
+	let creating = $state(false);
+	let selectedNav = $state<"bots" | "activity" | "routines" | "needs_you">("bots");
 
 	// ─── derived ──────────────────────────────────────────────────────────────
 
@@ -65,8 +68,31 @@
 		updates.show("bots");
 	}
 
-	function onBotCreated(hostKey: string, botId: string) {
-		void bots.select(hostKey, botId);
+	async function startNewBot() {
+		if (creating) return;
+		creating = true;
+		try {
+			const hostKey = bots.hosts[0]?.key ?? "";
+			const id = await bots.createBot(hostKey, {
+				name: "New Bot",
+				role: "",
+				agent: "",
+				approval: "auto",
+			});
+			await bots.select(hostKey, id);
+		} catch (e) {
+			toast.error(errText(e));
+		} finally {
+			creating = false;
+		}
+	}
+
+	function handleContextAction(hostKey: string, botId: string, action: "profile" | "routine" | "delete") {
+		if (action === "delete") {
+			if (confirm("Delete this bot?")) void bots.deleteBot(hostKey, botId);
+		} else {
+			void bots.select(hostKey, botId);
+		}
 	}
 </script>
 
@@ -86,11 +112,46 @@
 			/>
 		</div>
 
+		<!-- Nav rows (Activity, Routines, Needs you) -->
+		<div class="nav-rows">
+			<button
+				class="nav-row"
+				class:active={selectedNav === "activity"}
+				onclick={() => (selectedNav = "activity")}
+			>
+				<span class="nav-icon">◎</span>
+				<span class="nav-label">Activity</span>
+			</button>
+			<button
+				class="nav-row"
+				class:active={selectedNav === "routines"}
+				onclick={() => (selectedNav = "routines")}
+			>
+				<span class="nav-icon">⟳</span>
+				<span class="nav-label">Routines</span>
+			</button>
+			<button
+				class="nav-row"
+				class:active={selectedNav === "needs_you"}
+				onclick={() => (selectedNav = "needs_you")}
+			>
+				<span class="nav-icon">⚠</span>
+				<span class="nav-label">Needs you</span>
+				{#if bots.needsYouCount > 0}
+					<span class="nav-badge">{bots.needsYouCount}</span>
+				{/if}
+			</button>
+		</div>
+
 		<!-- Section header -->
 		<div class="section-hd">
 			<span class="section-label">BOTS</span>
-			<button class="section-add" onclick={() => (showNewBot = true)} aria-label="New bot" title="New bot"
-				>+</button
+			<button
+				class="section-add"
+				onclick={startNewBot}
+				aria-label="New bot"
+				title="New bot"
+				disabled={creating}>+</button
 			>
 		</div>
 
@@ -114,7 +175,15 @@
 						<div class="host-hd">{section.hostName}</div>
 					{/if}
 					{#each section.bots as { hostKey, bot } (bot.id)}
-						<BotListRow {bot} active={isActive(hostKey, bot.id)} onclick={() => selectBot(hostKey, bot.id)} />
+						<div animate:flip={{ duration: 200 }}>
+							<BotListRow
+								{bot}
+								active={isActive(hostKey, bot.id)}
+								unread={bots.hasUnread(hostKey, bot.id)}
+								onclick={() => selectBot(hostKey, bot.id)}
+								onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
+							/>
+						</div>
 					{/each}
 				{/each}
 			{/if}
@@ -165,10 +234,6 @@
 		{/if}
 	</div>
 </div>
-
-{#if showNewBot}
-	<BotNewDialog bind:open={showNewBot} onCreated={onBotCreated} />
-{/if}
 
 <style>
 	.bots-workspace {
@@ -433,5 +498,50 @@
 
 	.btn-primary:hover {
 		background: var(--ca-vibrancy-fill);
+	}
+
+	/* Nav rows */
+	.nav-rows {
+		padding: 0 4px 4px;
+		flex: none;
+	}
+	.nav-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 5px 8px;
+		border: none;
+		background: none;
+		border-radius: 4px;
+		font-size: 13px;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		text-align: left;
+	}
+	.nav-row:hover {
+		background: var(--ca-vibrancy-fill);
+		color: var(--ca-text-primary);
+	}
+	.nav-row.active {
+		background: color-mix(in oklab, var(--ca-brand-main) 15%, transparent);
+		color: var(--ca-text-primary);
+	}
+	.nav-icon {
+		font-size: 14px;
+		flex: none;
+	}
+	.nav-label {
+		flex: 1;
+	}
+	.nav-badge {
+		background: var(--ca-semantic-error, #e03131);
+		color: var(--ca-surface-base);
+		font-size: 10px;
+		font-weight: 700;
+		border-radius: 8px;
+		padding: 1px 5px;
+		min-width: 16px;
+		text-align: center;
 	}
 </style>

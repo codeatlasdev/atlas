@@ -1,3 +1,8 @@
+/** Delay (ms) before the rail expands when the pointer touches the hot zone. */
+export const SHOW_DELAY_MS = 120;
+/** Delay (ms) before the rail collapses after the pointer leaves. */
+export const HIDE_DELAY_MS = 300;
+
 /** Pure functions for rail show/hide decision — testable without DOM. */
 
 /** Returns true when the mouse x-coordinate is inside the left-edge hot zone. */

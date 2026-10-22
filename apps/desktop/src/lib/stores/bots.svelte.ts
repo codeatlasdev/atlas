@@ -41,6 +41,8 @@ class BotsStore {
 
 	private off: UnlistenFn[] = [];
 	private refreshTimers = new Map<string, TimerHandle>();
+	/** key = "${hostKey}:${botId}", value = last-seen task ts (ms) */
+	#lastSeen = $state<Map<string, number>>(new Map());
 
 	// ─── lifecycle ────────────────────────────────────────────────────────────
 
@@ -51,6 +53,7 @@ class BotsStore {
 			...remote.map((h) => ({ key: `ssh:${h.host}`, name: h.name, bots: [] as Bot[], ok: true })),
 		];
 
+		this.loadUnread();
 		await Promise.all(this.hosts.map((h) => this.refreshHost(h.key)));
 
 		this.off.push(
@@ -104,7 +107,8 @@ class BotsStore {
 		hostKey: string,
 		params: { name: string; role: string; agent: string; approval: string; look?: BotLook },
 	): Promise<string> {
-		const r = await hostCall<Bot>("bot_create", { ...hostArgs(hostKey), ...params });
+		const p = params.agent ? params : { ...params, agent: undefined };
+		const r = await hostCall<Bot>("bot_create", { ...hostArgs(hostKey), ...p });
 		await this.refreshHost(hostKey);
 		return r.id;
 	}
@@ -217,6 +221,7 @@ class BotsStore {
 		const entry = this.hosts.find((h) => h.key === hostKey);
 		this.selected = entry ? { hostKey, botId, hostName: entry.name } : null;
 		if (this.selected) await this.loadTasks();
+		if (this.selected) this.markRead(hostKey, botId);
 	}
 
 	get selectedBot(): Bot | undefined {
@@ -235,6 +240,68 @@ class BotsStore {
 		return this.allBots.filter((b) => b.bot.state === "needs_you").length;
 	}
 
+	/** Returns true when a bot has tasks newer than last seen. */
+	hasUnread(hostKey: string, botId: string): boolean {
+		const bot = this.hosts.find((h) => h.key === hostKey)?.bots.find((b) => b.id === botId);
+		if (!bot?.last?.ts) return false;
+		const seen = this.#lastSeen.get(`${hostKey}:${botId}`) ?? 0;
+		return bot.last.ts * 1000 > seen;
+	}
+
+	/** Call when the user opens a bot. Marks all current tasks as seen. */
+	markRead(hostKey: string, botId: string): void {
+		const bot = this.hosts.find((h) => h.key === hostKey)?.bots.find((b) => b.id === botId);
+		const ts = bot?.last?.ts ? bot.last.ts * 1000 : Date.now();
+		const mapKey = `${hostKey}:${botId}`;
+		this.#lastSeen.set(mapKey, ts);
+		try {
+			localStorage.setItem(this.lsKey(hostKey, botId), String(ts));
+		} catch {
+			/* storage full */
+		}
+	}
+
+	/** Last-seen ts (ms) for the selected bot — passed to BotView for the unread divider. */
+	get selectedLastSeen(): number {
+		if (!this.selected) return 0;
+		return this.#lastSeen.get(`${this.selected.hostKey}:${this.selected.botId}`) ?? 0;
+	}
+
+	/** Flat activity feed: all bots' last task, newest first, capped at 100. */
+	get activityFeed(): Array<{
+		botId: string;
+		botName: string;
+		hostKey: string;
+		hostName: string;
+		task: BotTask;
+	}> {
+		const entries: Array<{
+			botId: string;
+			botName: string;
+			hostKey: string;
+			hostName: string;
+			task: BotTask;
+		}> = [];
+		for (const { bot, hostKey, hostName } of this.allBots) {
+			if (!bot.last) continue;
+			entries.push({
+				botId: bot.id,
+				botName: bot.name,
+				hostKey,
+				hostName,
+				task: {
+					id: `${bot.id}:last`,
+					ts: bot.last.ts * 1000,
+					source: "desktop" as const,
+					prompt: "",
+					state: bot.last.state,
+					result: bot.last.text,
+				},
+			});
+		}
+		return entries.sort((a, b) => b.task.ts - a.task.ts).slice(0, 100);
+	}
+
 	/** Fetch agent integrations from a specific host (used by the New Bot dialog). */
 	async getHostIntegrations(hostKey: string): Promise<AgentIntegration[]> {
 		const r = await hostCall<{ agents: AgentIntegration[] }>("agent_integrations", hostArgs(hostKey));
@@ -246,7 +313,44 @@ class BotsStore {
 		return this.hosts.find((h) => h.key === hostKey)?.ok ?? false;
 	}
 
+	/**
+	 * Inject a synthetic ask-card task into the current bot's task list (for screenshot seeding).
+	 * Does NOT persist to hostd. Call from the desktop agent's seed script.
+	 */
+	injectAskTask(payload: {
+		id: string;
+		question: string;
+		options: Array<{ key: string; title: string; subtitle?: string }>;
+	}): void {
+		const synthetic: BotTask = {
+			id: payload.id,
+			ts: Date.now(),
+			source: "desktop",
+			prompt: "",
+			state: "done",
+			result: JSON.stringify({ ask: payload }),
+		};
+		this.tasks = [synthetic, ...this.tasks];
+	}
+
 	// ─── internal ─────────────────────────────────────────────────────────────
+
+	private lsKey(hostKey: string, botId: string): string {
+		return `bots:seen:${hostKey}:${botId}`;
+	}
+
+	private loadUnread(): void {
+		try {
+			for (let i = 0; i < localStorage.length; i++) {
+				const k = localStorage.key(i);
+				if (!k?.startsWith("bots:seen:")) continue;
+				const v = Number(localStorage.getItem(k));
+				if (v > 0) this.#lastSeen.set(k.slice("bots:seen:".length), v);
+			}
+		} catch {
+			/* private mode */
+		}
+	}
 
 	private async refreshHost(key: string): Promise<void> {
 		const idx = this.hosts.findIndex((h) => h.key === key);

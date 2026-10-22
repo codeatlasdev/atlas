@@ -11,7 +11,7 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Settings } from "@lucide/svelte";
+	import { Activity, Settings, TriangleAlert, Zap } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 
@@ -166,7 +166,7 @@
 				class:active={selectedNav === "activity"}
 				onclick={() => (selectedNav = "activity")}
 			>
-				<span class="nav-icon">◎</span>
+				<span class="nav-icon" aria-hidden="true"><Activity size={14} /></span>
 				<span class="nav-label">Activity</span>
 			</button>
 			<button
@@ -174,7 +174,7 @@
 				class:active={selectedNav === "triggers"}
 				onclick={() => (selectedNav = "triggers")}
 			>
-				<span class="nav-icon">⚡</span>
+				<span class="nav-icon" aria-hidden="true"><Zap size={14} /></span>
 				<span class="nav-label">Triggers</span>
 			</button>
 			<button
@@ -182,7 +182,7 @@
 				class:active={selectedNav === "needs_you"}
 				onclick={() => (selectedNav = "needs_you")}
 			>
-				<span class="nav-icon">⚠</span>
+				<span class="nav-icon" aria-hidden="true"><TriangleAlert size={14} /></span>
 				<span class="nav-label">Needs you</span>
 				{#if bots.needsYouCount > 0}
 					<span class="nav-badge">{bots.needsYouCount}</span>

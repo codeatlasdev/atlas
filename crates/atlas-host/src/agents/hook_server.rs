@@ -137,8 +137,12 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
     // pane key cannot be routed to a tab, so they get no remote answer.
     let answer = match v["pane_key"].as_str() {
         Some(pane) => {
-            hub.ask(pane, agent, &v["payload"], DECISION_WAIT, can_approve)
-                .await
+            let wait = if pane.starts_with("bot:") {
+                BOT_DECISION_WAIT
+            } else {
+                DECISION_WAIT
+            };
+            hub.ask(pane, agent, &v["payload"], wait, can_approve).await
         }
         None => None,
     };

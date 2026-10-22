@@ -20,9 +20,9 @@ export function roleTag(role: string): string {
  * Return icon prefix for list row preview.
  */
 export function previewIcon(last?: { state: TaskState; ts: number }, state?: string): string {
-	if (state === "needs_you") return "⚠";
-	if (last?.state === "done") return "✓";
-	if (last?.state === "failed") return "✕";
+	if (state === "needs_you") return "needs_you";
+	if (last?.state === "done") return "done";
+	if (last?.state === "failed") return "failed";
 	return "";
 }
 

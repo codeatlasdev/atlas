@@ -34,28 +34,28 @@ describe("roleTag", () => {
 });
 
 describe("previewIcon", () => {
-	test("needs_you state → ⚠", () => {
-		expect(previewIcon(undefined, "needs_you")).toBe("⚠");
+	test("needs_you state returns 'needs_you'", () => {
+		expect(previewIcon(undefined, "needs_you")).toBe("needs_you");
 	});
 
-	test("last done → ✓", () => {
-		expect(previewIcon({ state: "done", ts: 1 }, "idle")).toBe("✓");
+	test("last done returns 'done'", () => {
+		expect(previewIcon({ state: "done", ts: 1 }, "idle")).toBe("done");
 	});
 
-	test("last failed → ✕", () => {
-		expect(previewIcon({ state: "failed", ts: 1 }, "idle")).toBe("✕");
+	test("last failed returns 'failed'", () => {
+		expect(previewIcon({ state: "failed", ts: 1 }, "idle")).toBe("failed");
 	});
 
-	test("working state → empty string", () => {
+	test("working state returns empty string", () => {
 		expect(previewIcon(undefined, "working")).toBe("");
 	});
 
-	test("no last, no state → empty string", () => {
+	test("no last, no state returns empty string", () => {
 		expect(previewIcon()).toBe("");
 	});
 
 	test("needs_you takes priority over last.state", () => {
-		expect(previewIcon({ state: "done", ts: 1 }, "needs_you")).toBe("⚠");
+		expect(previewIcon({ state: "done", ts: 1 }, "needs_you")).toBe("needs_you");
 	});
 });
 

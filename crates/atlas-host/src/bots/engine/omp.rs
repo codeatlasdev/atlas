@@ -1,14 +1,16 @@
-//! omp engine — RPC mode (`omp --mode rpc --auto-approve`).
+//! omp engine — RPC mode.
 //!
 //! Protocol (per-turn):
-//! 1. Spawn `omp --mode rpc --auto-approve [--resume <session.jsonl>]` with piped stdin/stdout.
+//! 1. Spawn `omp --mode rpc [--auto-approve | --extension <path>] [--resume <session.jsonl>]`
+//!    with piped stdin/stdout.  When `yolo` (approval == Auto) we pass `--auto-approve`.
+//!    When `!yolo` (approval == Ask) we write a TypeScript extension to `<bot_dir>/omp-approval.ts`
+//!    and load it with `--extension`; it blocks tool_call events via hostd's /decision endpoint.
 //! 2. Send `{"id":"r1","type":"prompt","message":"<prompt>"}` on stdin.
 //! 3. Read stdout lines until `prompt_result` for id `r1` arrives.
 //!    Collect `agent_end` reply text and `message_end` usage along the way.
 //! 4. Send `{"id":"g","type":"get_state"}` and wait for the matching `response`
 //!    to learn the session file path for the next turn.
 //! 5. Kill the process.
-
 use std::collections::BTreeMap;
 
 use serde_json::Value;
@@ -19,15 +21,34 @@ use crate::bots::store::{BotSession, EngineConfig, UsageRecord};
 
 use super::{BOT_TASK_TIMEOUT, TurnResult};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run(
     _engine: &EngineConfig,
     session: BotSession,
     prompt: &str,
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
+    bot_dir: &std::path::Path,
+    hook_port: u16,
+    hook_token: &str,
+    pane_key: &str,
+    yolo: bool,
 ) -> Result<TurnResult, String> {
     let mut cmd = tokio::process::Command::new("omp");
-    cmd.arg("--mode").arg("rpc").arg("--auto-approve");
+    cmd.arg("--mode").arg("rpc");
+
+    if yolo {
+        cmd.arg("--auto-approve");
+    } else {
+        // Write the approval extension and load it.
+        let ext_path = bot_dir.join("omp-approval.ts");
+        write_approval_extension(&ext_path, hook_port, hook_token, pane_key)?;
+        cmd.arg("--extension").arg(&ext_path);
+        // Inject env so the extension can reach hostd.
+        cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
+        cmd.env("ATLAS_HOOK_TOKEN", hook_token);
+        cmd.env("ATLAS_PANE_KEY", pane_key);
+    }
 
     if let Some(session_file) = &session.session_file {
         cmd.arg("--resume").arg(session_file);
@@ -40,7 +61,6 @@ pub(super) async fn run(
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::null());
-
     let mut child = cmd.spawn().map_err(|e| format!("omp: spawn failed: {e}"))?;
 
     let mut stdin = child.stdin.take().ok_or("omp: no stdin pipe")?;
@@ -168,6 +188,74 @@ async fn drive_rpc(
     };
 
     Ok((reply, session_file, usage))
+}
+/// Public wrapper for use from runner.rs.
+pub(crate) fn write_approval_extension_pub(
+    path: &std::path::Path,
+    hook_port: u16,
+    hook_token: &str,
+    pane_key: &str,
+) -> Result<(), String> {
+    write_approval_extension(path, hook_port, hook_token, pane_key)
+}
+
+/// Write the TypeScript omp approval extension to `path`.
+/// The extension listens for `tool_call` events via the omp Extension API and
+/// POSTs to hostd's `/hook/omp/decision` endpoint, blocking until the user
+/// allows or denies the tool call (up to 30 minutes).
+fn write_approval_extension(
+    path: &std::path::Path,
+    hook_port: u16,
+    hook_token: &str,
+    pane_key: &str,
+) -> Result<(), String> {
+    // Embed hook coordinates directly so the extension works even if env vars
+    // are not propagated by the omp extension runtime.
+    let content = format!(
+        r#"// Atlas hostd approval extension — generated, do not edit.
+// Blocks omp tool_call events until the operator allows or denies via hostd.
+
+export default function atlasApproval(pi) {{
+    const PORT  = process.env.ATLAS_HOOK_PORT  || "{port}";
+    const TOKEN = process.env.ATLAS_HOOK_TOKEN || "{token}";
+    const PANE  = process.env.ATLAS_PANE_KEY   || "{pane}";
+
+    pi.on("tool_call", async (event) => {{
+        try {{
+            const resp = await fetch(
+                `http://127.0.0.1:${{PORT}}/hook/omp/decision`,
+                {{
+                    method: "POST",
+                    headers: {{
+                        "Content-Type": "application/json",
+                        "x-atlas-hook-token": TOKEN,
+                    }},
+                    body: JSON.stringify({{
+                        pane_key: PANE,
+                        payload: {{ tool_name: event.toolName, tool_input: event.input }},
+                    }}),
+                    signal: AbortSignal.timeout(1_800_000), // 30 min
+                }},
+            );
+            if (!resp.ok) return; // allow on HTTP error
+            const data = await resp.json();
+            if (data.decision === "deny") {{
+                return {{ block: true, reason: "operator denied" }};
+            }}
+        }} catch {{
+            // Network error or timeout — allow (don't block the agent indefinitely).
+        }}
+    }});
+}}
+"#,
+        port = hook_port,
+        token = hook_token,
+        pane = pane_key,
+    );
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("omp extension dir: {e}"))?;
+    }
+    std::fs::write(path, content).map_err(|e| format!("omp extension write: {e}"))
 }
 
 /// Extract plain text from an omp message object.

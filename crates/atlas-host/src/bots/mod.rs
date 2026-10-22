@@ -256,7 +256,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                         v["last"] = l;
                     }
                     if let Some(engine) = &b.engine {
+                        let approval_supported = engine.kind != "opencode";
                         v["engine"] = json!({"kind": engine.kind});
+                        v["approval_supported"] = json!(approval_supported);
                     }
                     if let Some(project) = &b.project {
                         v["project"] = json!(project);
@@ -287,6 +289,15 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             }
             let approval_enum: Approval = serde_json::from_value(json!(approval))
                 .map_err(|_| format!("invalid approval: {approval}"))?;
+            // opencode is forced --auto; reject ask at creation time.
+            if let Some(eng) = &engine
+                && eng.kind == "opencode"
+                && approval_enum == Approval::Ask
+            {
+                return Err(
+                    "OpenCode bots run without approval prompts (approval must be auto)".into(),
+                );
+            }
             if atlas_core::agents::get(&agent).is_none() {
                 return Err(format!("unknown agent '{agent}'"));
             }
@@ -357,6 +368,17 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             if let Some(ap) = approval {
                 let ap_enum: Approval = serde_json::from_value(json!(ap))
                     .map_err(|_| format!("invalid approval: {ap}"))?;
+                // Check updated engine kind too (engine may be set in this same call).
+                let effective_kind = engine
+                    .as_ref()
+                    .map(|e| e.kind.as_str())
+                    .or_else(|| bot.engine.as_ref().map(|e| e.kind.as_str()))
+                    .unwrap_or("");
+                if effective_kind == "opencode" && ap_enum == Approval::Ask {
+                    return Err(
+                        "OpenCode bots run without approval prompts (approval must be auto)".into(),
+                    );
+                }
                 bot.approval = ap_enum;
             }
             if let Some(l) = look {

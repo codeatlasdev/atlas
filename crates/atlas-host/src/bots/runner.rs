@@ -225,6 +225,7 @@ async fn run_one_conversational(hub: &Hub, bot: &Bot, engine_cfg: &EngineConfig,
         "You are {name}. {role}\n\
          Your memory file is {mem}. Read it first. When you learn something durable \
          about this work or this user, append it there.\n\
+         Never use emojis in replies.\n\
          Task: {prompt}",
         name = bot.name,
         role = bot.role,
@@ -279,6 +280,19 @@ async fn run_one_conversational(hub: &Hub, bot: &Bot, engine_cfg: &EngineConfig,
     broadcast_task(hub, &bot.id, &task);
 
     let yolo = bot.approval == Approval::Auto;
+
+    // For omp with approval==ask: write the extension file before engine::run_turn
+    // (even if TEST_ENGINE_BIN bypasses the real omp, the file must exist for the test).
+    if engine_cfg.kind == "omp" && !yolo {
+        let ext_path = hub.bots.store.bot_dir(&bot.id).join("omp-approval.ts");
+        let _ = crate::bots::engine::omp::write_approval_extension_pub(
+            &ext_path,
+            hook_port,
+            &hook_token,
+            &pane_key,
+        );
+    }
+
     let result = crate::bots::engine::run_turn(
         engine_cfg,
         session,
@@ -339,6 +353,7 @@ async fn run_one_pty(hub: &Hub, bot: &Bot, mut task: Task) {
         "You are {name}. {role}\n\
          Your memory file is {mem}. Read it first. When you learn something durable \
          about this work or this user, append it there.\n\
+         Never use emojis in replies.\n\
          Task: {prompt}",
         name = bot.name,
         role = bot.role,

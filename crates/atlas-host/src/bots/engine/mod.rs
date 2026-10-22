@@ -88,7 +88,13 @@ pub async fn run_turn(
         }
         "codex" => codex::run(engine, session, prompt, bot_dir, extra_env, work_dir).await,
         "opencode" => opencode::run(engine, session, prompt, extra_env, work_dir).await,
-        "omp" => omp::run(engine, session, prompt, extra_env, work_dir).await,
+        "omp" => {
+            omp::run(
+                engine, session, prompt, extra_env, work_dir, bot_dir, hook_port, hook_token,
+                pane_key, yolo,
+            )
+            .await
+        }
         other => Err(format!("unknown engine kind '{other}'")),
     }
 }

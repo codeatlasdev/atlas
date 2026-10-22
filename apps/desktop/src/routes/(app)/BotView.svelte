@@ -1,10 +1,35 @@
 <script lang="ts">
 	/**
-	 * BotView — D2+D3: chat layout with ⋯ menu and profile side panel.
+	 * BotView — D2+D3: chat layout with context menu and profile side panel.
 	 * Approval is inline in the thread; Telegram and Pair phone moved to D5 BotsSettings.
 	 */
 	import { onMount } from "svelte";
+	import type { Component } from "svelte";
 	import { Button, Spinner, toast } from "@codeatlasdev/ui";
+	import {
+		ArrowDown,
+		ArrowUp,
+		Check,
+		ChevronDown,
+		ChevronRight,
+		ChevronUp,
+		Clock,
+		Copy,
+		Ellipsis,
+		FileText,
+		Folder,
+		GitBranch,
+		Github,
+		Link,
+		Bot as BotIcon,
+		RotateCcw,
+		Settings2,
+		Terminal,
+		Timer,
+		TriangleAlert,
+		X,
+		Zap,
+	} from "@lucide/svelte";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
@@ -341,35 +366,29 @@
 
 	// ─── trigger helpers ──────────────────────────────────────────────────────
 
-	const TRIGGER_KINDS: Array<{ kind: TriggerKind; icon: string; label: string }> = [
-		{ kind: "schedule", icon: "🕐", label: "Schedule" },
-		{ kind: "interval", icon: "⏱", label: "Interval" },
-		{ kind: "webhook", icon: "🔗", label: "Webhook" },
-		{ kind: "github", icon: "⦿", label: "GitHub" },
-		{ kind: "file", icon: "📄", label: "File" },
-		{ kind: "bot", icon: "🤖", label: "Bot chain" },
-		{ kind: "service", icon: "⚙", label: "Service" },
+
+	const TRIGGER_ICONS: Record<TriggerKind, Component> = {
+		schedule: Clock,
+		interval: Timer,
+		webhook: Link,
+		github: Github,
+		file: FileText,
+		bot: BotIcon,
+		service: Settings2,
+	};
+
+	const TRIGGER_KINDS: Array<{ kind: TriggerKind; label: string }> = [
+		{ kind: "schedule", label: "Schedule" },
+		{ kind: "interval", label: "Interval" },
+		{ kind: "webhook", label: "Webhook" },
+		{ kind: "github", label: "GitHub" },
+		{ kind: "file", label: "File" },
+		{ kind: "bot", label: "Bot chain" },
+		{ kind: "service", label: "Service" },
 	];
 
-	const GITHUB_EVENTS: Array<{ ev: string; label: string }> = [
-		{ ev: "pr_opened", label: "PR opened" },
-		{ ev: "review_requested", label: "Review requested" },
-		{ ev: "issue_opened", label: "Issue opened" },
-		{ ev: "ci_failed", label: "CI failed" },
-		{ ev: "release", label: "Release" },
-	];
-
-	function triggerIcon(kind: TriggerKind): string {
-		const icons: Record<TriggerKind, string> = {
-			schedule: "🕐",
-			interval: "⏱",
-			webhook: "🔗",
-			github: "⦿",
-			file: "📄",
-			bot: "🤖",
-			service: "⚙",
-		};
-		return icons[kind] ?? "⚡";
+	function triggerIconComponent(kind: TriggerKind | string): Component {
+		return (TRIGGER_ICONS as Record<string, Component>)[kind] ?? Zap;
 	}
 
 	function triggerSummary(t: Trigger): string {
@@ -572,9 +591,9 @@
 					{#if bot.project}
 						<span class="header-project-chip">
 							{#if bot.project.kind === "git"}
-								<span aria-hidden="true">⑂</span>
+								<GitBranch size={12} aria-hidden="true" />
 							{:else}
-								<span aria-hidden="true">📁</span>
+								<Folder size={12} aria-hidden="true" />
 							{/if}
 							{bot.project.name}
 							{#if bot.project.branch}
@@ -608,7 +627,7 @@
 						aria-label="More options"
 						aria-expanded={menuOpen}
 						aria-haspopup="menu"
-						onclick={() => (menuOpen = !menuOpen)}>⋯</button
+						onclick={() => (menuOpen = !menuOpen)}><Ellipsis size={16} /></button
 					>
 					{#if menuOpen}
 						<div class="dropdown" role="menu">
@@ -646,7 +665,7 @@
 		<!-- Offline banner -->
 		{#if !hostOnline}
 			<div class="offline-banner" role="alert">
-				⚠ {displayServerName || "Server"} is offline
+				<TriangleAlert size={14} aria-hidden="true" /> {displayServerName || "Server"} is offline
 			</div>
 		{/if}
 
@@ -680,10 +699,11 @@
 					>
 						<!-- User bubble -->
 						{#if t.trigger_event}
-							<div class="trigger-event" role="note">
-								<span class="trigger-icon" aria-hidden="true">{triggerIcon(t.trigger_event.kind)}</span>
-								<span class="trigger-summary">{t.trigger_event.summary}</span>
-							</div>
+						<div class="trigger-event" role="note">
+							{@const TrigIcon = triggerIconComponent(t.trigger_event.kind)}
+							<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
+							<span class="trigger-summary">{t.trigger_event.summary}</span>
+						</div>
 						{/if}
 						<div class="msg-out" in:msgOut>
 							<div class="bubble out ca-selectable">{t.prompt}</div>
@@ -723,11 +743,15 @@
 												class="steps-btn"
 												aria-expanded={!!stepsOpen[t.id]}
 												onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-											>
-												{stepsOpen[t.id] ? "▾" : "▸"}
-												{t.steps.length}
-												{t.steps.length === 1 ? "step" : "steps"}
-											</button>
+										>
+											{#if stepsOpen[t.id]}
+												<ChevronDown size={12} aria-hidden="true" />
+											{:else}
+												<ChevronRight size={12} aria-hidden="true" />
+											{/if}
+											{t.steps.length}
+											{t.steps.length === 1 ? "step" : "steps"}
+										</button>
 											{#if stepsOpen[t.id]}
 												<div class="steps-list">
 													{#each t.steps as step, si (`${t.id}-${si}`)}
@@ -743,7 +767,7 @@
 									{#if bot.running_task?.id === t.id && bot.pending_approval}
 										{@const pa = bot.pending_approval}
 										{#if approvedReqs.has(pa.req)}
-											<div class="approval-answered" in:msgIn>✓ Allowed by you · {fmtTime(Date.now())}</div>
+											<div class="approval-answered" in:msgIn><Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}</div>
 										{:else}
 											<div class="approval-bubble" role="alert" in:embedIn>
 												<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
@@ -846,7 +870,8 @@
 														expandedResults = s;
 													}}
 												>
-													{collapsed ? "Show more ▾" : "Show less ▴"}
+						{collapsed ? "Show more" : "Show less"}
+						{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp size={12} aria-hidden="true" />{/if}
 												</button>
 											{/if}
 											{#if t.steps && t.steps.length > 0}
@@ -856,7 +881,11 @@
 														aria-expanded={!!stepsOpen[t.id]}
 														onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
 													>
-														{stepsOpen[t.id] ? "▾" : "▸"}
+														{#if stepsOpen[t.id]}
+															<ChevronDown size={12} aria-hidden="true" />
+														{:else}
+															<ChevronRight size={12} aria-hidden="true" />
+														{/if}
 														{t.steps.length}
 														{t.steps.length === 1 ? "step" : "steps"}
 													</button>

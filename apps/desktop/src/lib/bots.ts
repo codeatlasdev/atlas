@@ -21,63 +21,33 @@ export type TaskSource = "mobile" | "desktop" | "telegram" | "routine" | "trigge
 
 export type TriggerKind = "schedule" | "interval" | "webhook" | "github" | "file" | "bot" | "service";
 
-interface TriggerBase {
+/** Wire shape: kind is a nested object with a `type` discriminant. */
+export interface Trigger {
 	id: string;
-	kind: TriggerKind;
+	/** Nested kind object — e.g. `{ type: "schedule", cron: "0 9 * * 1-5" }` */
+	kind:
+		| { type: "schedule"; cron: string }
+		| { type: "interval"; every_secs: number }
+		| { type: "webhook"; token: string }
+		| { type: "github"; repo: string; events: string[] }
+		| { type: "file"; path: string; glob?: string }
+		| { type: "bot"; from_bot: string; on: "done" | "failed" | "both" }
+		| { type: "service"; project_dir: string; service: string; on: "failed" | "recovered" | "both" };
+	/** Top-level prompt (supports `{{event}}` substitution). */
+	prompt: string;
 	enabled: boolean;
 	last_fired?: number;
 	next_fire?: number;
 }
-export interface ScheduleTrigger extends TriggerBase {
-	kind: "schedule";
-	cron: string;
-	prompt: string;
-}
-export interface IntervalTrigger extends TriggerBase {
-	kind: "interval";
-	every: number;
-	unit: "minutes" | "hours" | "days";
-	prompt: string;
-}
-export interface WebhookTrigger extends TriggerBase {
-	kind: "webhook";
-	/** Hostd-generated URL; read-only. */
-	url: string;
-	/** Opaque token embedded in the URL; can be regenerated. */
-	token: string;
-	prompt_template: string;
-}
-export interface GithubTrigger extends TriggerBase {
-	kind: "github";
-	repo: string;
-	events: Array<"pr_opened" | "review_requested" | "issue_opened" | "ci_failed" | "release">;
-	prompt_template: string;
-}
-export interface FileTrigger extends TriggerBase {
-	kind: "file";
-	glob: string;
-	prompt_template: string;
-}
-export interface BotChainTrigger extends TriggerBase {
-	kind: "bot";
-	bot_id: string;
-	on: "done" | "failed" | "both";
-	prompt_template: string;
-}
-export interface ServiceTrigger extends TriggerBase {
-	kind: "service";
-	service: string;
-	on: "failed" | "recovered" | "both";
-	prompt_template: string;
-}
-export type Trigger =
-	| ScheduleTrigger
-	| IntervalTrigger
-	| WebhookTrigger
-	| GithubTrigger
-	| FileTrigger
-	| BotChainTrigger
-	| ServiceTrigger;
+
+/** Convenience alias — kind discriminant for UI switch statements. */
+export type ScheduleTrigger = Trigger & { kind: { type: "schedule" } };
+export type IntervalTrigger = Trigger & { kind: { type: "interval" } };
+export type WebhookTrigger = Trigger & { kind: { type: "webhook" } };
+export type GithubTrigger = Trigger & { kind: { type: "github" } };
+export type FileTrigger = Trigger & { kind: { type: "file" } };
+export type BotChainTrigger = Trigger & { kind: { type: "bot" } };
+export type ServiceTrigger = Trigger & { kind: { type: "service" } };
 
 // ─── Project linking ──────────────────────────────────────────────────────────
 
@@ -106,7 +76,7 @@ export interface AskCard {
 	/** Whether to show a free-text input. Default true. */
 	allow_text?: boolean;
 	/** Set by hostd once the user answers. */
-	answered?: boolean;
+	answered?: { kind: "key" | "text"; value: string } | null;
 }
 
 /** Engine configuration for a bot. */
@@ -170,9 +140,11 @@ export interface BotTask {
 	started_at?: number;
 	finished_at?: number;
 	steps?: BotStep[];
-	/** Interactive ask card, present when the bot is waiting for user input. */
+	/** Interactive ask card; present while bot waits for user input. */
 	ask?: AskCard;
-	/** Set when the task was fired by a trigger; rendered as a system event line. */
+	/** ID of the trigger that fired this task (links to bot.triggers[i].id). */
+	trigger_id?: string;
+	/** Resolved trigger event line for the chat thread (UI-computed). */
 	trigger_event?: { kind: TriggerKind; summary: string };
 	/** Per-turn usage data from the engine. */
 	usage?: {
@@ -184,6 +156,20 @@ export interface BotTask {
 		cost_usd?: number;
 		duration_ms?: number;
 	};
+}
+
+/** One per-turn row from the BotUsage response. */
+export interface BotUsageRecord {
+	bot_id: string;
+	engine: string;
+	ts: number;
+	model?: string;
+	input_tokens?: number;
+	output_tokens?: number;
+	cache_read?: number;
+	cache_write?: number;
+	cost_usd?: number;
+	duration_ms?: number;
 }
 
 export interface Routine {
@@ -201,4 +187,9 @@ export interface BotSelection {
 	/** Display name of the host. */
 	hostName: string;
 	botId: string;
+}
+
+/** Key name of a secret stored for a bot (value never returned by any command). */
+export interface BotSecretKey {
+	key: string;
 }

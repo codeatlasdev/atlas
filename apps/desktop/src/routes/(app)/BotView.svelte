@@ -336,7 +336,7 @@
 	}
 
 	async function loadRoutines() {
-		routinesList = allTriggers.filter((t): t is ScheduleTrigger => t.kind === "schedule");
+		routinesList = allTriggers.filter((t): t is ScheduleTrigger => t.kind.type === "schedule");
 	}
 
 	// ─── trigger helpers ──────────────────────────────────────────────────────
@@ -373,21 +373,24 @@
 	}
 
 	function triggerSummary(t: Trigger): string {
-		switch (t.kind) {
+		const k = t.kind;
+		switch (k.type) {
 			case "schedule":
-				return t.cron;
+				return k.cron;
 			case "interval":
-				return `Every ${t.every} ${t.unit}`;
+				return `Every ${k.every_secs}s`;
 			case "webhook":
-				return t.url ? t.url.split("/").slice(-1)[0] || "webhook" : "webhook";
+				return `webhook (token: ${k.token.slice(0, 6)}…)`;
 			case "github":
-				return `${t.repo} · ${t.events.length} event${t.events.length !== 1 ? "s" : ""}`;
+				return `${k.repo} · ${k.events.length} event${k.events.length !== 1 ? "s" : ""}`;
 			case "file":
-				return t.glob;
+				return k.glob ?? k.path;
 			case "bot":
-				return `${t.bot_id} · ${t.on}`;
+				return `${k.from_bot} · ${k.on}`;
 			case "service":
-				return `${t.service} · ${t.on}`;
+				return `${k.service} · ${k.on}`;
+			default:
+				return "";
 		}
 	}
 
@@ -420,72 +423,67 @@
 			if (!newRoutineCron.trim() || !newRoutinePrompt.trim()) return;
 			trig = {
 				id,
-				kind: "schedule",
-				enabled: true,
-				cron: newRoutineCron.trim(),
+				kind: { type: "schedule", cron: newRoutineCron.trim() },
 				prompt: newRoutinePrompt.trim(),
+				enabled: true,
 			};
 		} else if (k === "interval") {
-			const every = parseInt(f.every as string);
-			if (!every || !f.unit) return;
+			const secs = parseInt(f.every_secs as string);
+			if (!secs || secs < 60) return;
 			trig = {
 				id,
-				kind: "interval",
-				enabled: true,
-				every,
-				unit: f.unit as "minutes" | "hours" | "days",
+				kind: { type: "interval", every_secs: secs },
 				prompt: (f.prompt as string) ?? "",
+				enabled: true,
 			};
 		} else if (k === "webhook") {
 			trig = {
 				id,
-				kind: "webhook",
+				kind: { type: "webhook", token: crypto.randomUUID().replace(/-/g, "").slice(0, 24) },
+				prompt: (f.prompt as string) ?? "Webhook event: {{event}}",
 				enabled: true,
-				url: "",
-				token: "",
-				prompt_template: (f.prompt_template as string) ?? "",
 			};
 		} else if (k === "github") {
 			if (!f.repo) return;
-			const events = GITHUB_EVENTS.map((e) => e.ev).filter((ev) => !!f[ev]) as Array<
-				"pr_opened" | "review_requested" | "issue_opened" | "ci_failed" | "release"
-			>;
+			const events = GITHUB_EVENTS.map((e) => e.ev).filter((ev) => !!f[ev]);
 			trig = {
 				id,
-				kind: "github",
+				kind: { type: "github", repo: f.repo as string, events },
+				prompt: (f.prompt as string) ?? "GitHub: {{event}}",
 				enabled: true,
-				repo: f.repo as string,
-				events,
-				prompt_template: (f.prompt_template as string) ?? "",
 			};
 		} else if (k === "file") {
-			if (!f.glob) return;
+			if (!f.path && !f.glob) return;
 			trig = {
 				id,
-				kind: "file",
+				kind: { type: "file", path: (f.path as string) ?? "", glob: (f.glob as string) || undefined },
+				prompt: (f.prompt as string) ?? "File changed: {{event}}",
 				enabled: true,
-				glob: f.glob as string,
-				prompt_template: (f.prompt_template as string) ?? "",
 			};
 		} else if (k === "bot") {
-			if (!f.bot_id) return;
+			if (!f.from_bot) return;
 			trig = {
 				id,
-				kind: "bot",
+				kind: {
+					type: "bot",
+					from_bot: f.from_bot as string,
+					on: ((f.on as string) || "done") as "done" | "failed" | "both",
+				},
+				prompt: (f.prompt as string) ?? "Bot finished: {{event}}",
 				enabled: true,
-				bot_id: f.bot_id as string,
-				on: ((f.on as string) || "done") as "done" | "failed" | "both",
-				prompt_template: (f.prompt_template as string) ?? "",
 			};
 		} else {
 			if (!f.service) return;
 			trig = {
 				id,
-				kind: "service",
+				kind: {
+					type: "service",
+					project_dir: (f.project_dir as string) ?? "",
+					service: f.service as string,
+					on: ((f.on as string) || "failed") as "failed" | "recovered" | "both",
+				},
+				prompt: (f.prompt as string) ?? "Service {{event}}",
 				enabled: true,
-				service: f.service as string,
-				on: ((f.on as string) || "failed") as "failed" | "recovered" | "both",
-				prompt_template: (f.prompt_template as string) ?? "",
 			};
 		}
 
@@ -1105,7 +1103,9 @@
 					<div class="profile-section-title">Triggers</div>
 					{#each allTriggers as t, i (t.id)}
 						<div class="trigger-row" in:optionIn={{ index: i }}>
-							<span class="trigger-row-icon" aria-hidden="true">{triggerIcon(t.kind)}</span>
+							<span class="trigger-row-icon" aria-hidden="true"
+								>{triggerIcon(t.kind.type as TriggerKind)}</span
+							>
 							<span class="trigger-row-summary">{triggerSummary(t)}</span>
 							<input
 								type="checkbox"

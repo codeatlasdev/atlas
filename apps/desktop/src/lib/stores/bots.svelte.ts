@@ -10,9 +10,28 @@ import type { BotLook } from "#lib/bots/look.ts";
 import { hostCall } from "#lib/host.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
-import type { Bot, BotHost, BotProject, BotSelection, BotTask, Routine, Trigger } from "#lib/bots.ts";
+import type {
+	Bot,
+	BotHost,
+	BotProject,
+	BotSelection,
+	BotTask,
+	BotUsageRecord,
+	Routine,
+	Trigger,
+} from "#lib/bots.ts";
 
-export type { Bot, BotHost, BotProject, BotSelection, BotTask, Routine, Trigger, AgentIntegration };
+export type {
+	Bot,
+	BotHost,
+	BotProject,
+	BotSelection,
+	BotTask,
+	BotUsageRecord,
+	Routine,
+	Trigger,
+	AgentIntegration,
+};
 
 interface HostEntry {
 	/** `""` for local, `"ssh:atlas-bot@server"` for remote. */
@@ -208,15 +227,14 @@ class BotsStore {
 	// ─── ask answers ──────────────────────────────────────────────────────────
 
 	/**
-	 * Answer an ask card sent by the bot engine.
-	 * Pass either `key` (an option key) or `text` (free-text answer), or both.
+	 * Answer a pending ask card. Pass `key` (option key) XOR `text` (free-text).
+	 * Wire: BotAnswer { id, ask_id, key } or { id, ask_id, text }
 	 */
-	async botAnswer(taskId: string, askId: string, opts: { key?: string; text?: string }): Promise<void> {
+	async botAnswer(askId: string, opts: { key?: string; text?: string }): Promise<void> {
 		if (!this.selected) return;
 		await hostCall("bot_answer", {
 			...hostArgs(this.selected.hostKey),
 			id: this.selected.botId,
-			task: taskId,
 			ask_id: askId,
 			...opts,
 		});
@@ -225,12 +243,26 @@ class BotsStore {
 
 	// ─── usage ────────────────────────────────────────────────────────────────
 
-	async getUsage(opts?: { since?: number }): Promise<unknown> {
-		if (!this.selected) return null;
-		return hostCall("bot_usage", {
+	/** Returns `{ records: BotUsageRecord[] }`. `id` omitted = all bots on host. */
+	async getUsage(opts?: { since?: number }): Promise<{ records: BotUsageRecord[] }> {
+		if (!this.selected) return { records: [] };
+		return hostCall<{ records: BotUsageRecord[] }>("bot_usage", {
 			...hostArgs(this.selected.hostKey),
 			id: this.selected.botId,
 			...(opts?.since ? { since: opts.since } : {}),
+		});
+	}
+
+	// ─── secrets ──────────────────────────────────────────────────────────────
+
+	/** Set a secret env var for the bot engine subprocess (desktop-only). */
+	async setSecret(key: string, value: string): Promise<void> {
+		if (!this.selected) return;
+		await hostCall("bot_secret_set", {
+			...hostArgs(this.selected.hostKey),
+			id: this.selected.botId,
+			key,
+			value,
 		});
 	}
 

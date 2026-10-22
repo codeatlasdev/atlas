@@ -44,10 +44,15 @@ pub const PROTO: u32 = 2;
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
-#[cfg(unix)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents", "bots"];
-#[cfg(windows)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "lsp", "agents", "bots"];
+pub fn caps(bot_host: bool) -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents"];
+    #[cfg(unix)]
+    v.push("upgrade");
+    if bot_host {
+        v.push("bots");
+    }
+    v
+}
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -441,6 +446,14 @@ pub enum HostCmd {
         token: Option<String>,
     },
     BotTelegramLink {},
+    MobileInvite {
+        url: String,
+        name: String,
+    },
+    MobileInvites {},
+    MobileInviteDismiss {
+        url: String,
+    },
 }
 
 /// Build a response line.

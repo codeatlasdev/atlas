@@ -47,6 +47,7 @@ Wants=network-online.target\n\
 [Service]\n\
 User=atlas-bot\n\
 Environment=ATLAS_HOSTD_IDLE_SECS=never\n\
+Environment=ATLAS_BOT_HOST=1\n\
 ExecStart=/usr/local/lib/atlas-bot/atlas hostd\n\
 Restart=always\n\
 RestartSec=5\n\
@@ -280,6 +281,10 @@ mod tests {
         assert!(
             unit.contains("WantedBy=multi-user.target"),
             "missing WantedBy="
+        );
+        assert!(
+            unit.contains("ATLAS_BOT_HOST=1"),
+            "missing ATLAS_BOT_HOST=1"
         );
     }
 

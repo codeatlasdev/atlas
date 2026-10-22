@@ -35,6 +35,7 @@ export const DEFAULT_KEYMAP: Record<string, string> = {
 	"ctrl-shift-g": "git_panel::ToggleFocus",
 	"ctrl-`": "terminal_panel::ToggleFocus",
 	"cmd-?": "agent::Toggle",
+	"cmd-shift-b": "atlas::ToggleBotsWorkspace",
 	// Create
 	"cmd-n": "atlas::NewWorktree",
 	"cmd-t": "workspace::NewTerminal",

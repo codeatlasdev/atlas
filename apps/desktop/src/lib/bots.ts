@@ -24,6 +24,17 @@ export interface PendingApproval {
 	pane_key: string;
 }
 
+export interface BotStep {
+	ts: number;
+	text: string;
+}
+
+export interface BotLast {
+	text: string;
+	state: TaskState;
+	ts: number;
+}
+
 export interface Bot {
 	id: string;
 	name: string;
@@ -31,7 +42,9 @@ export interface Bot {
 	agent: string;
 	approval: ApprovalMode;
 	state: BotState;
-	running_task?: BotTask;
+	queued: number;
+	last?: BotLast;
+	running_task?: { id: string; pane?: string };
 	pending_approval?: PendingApproval;
 }
 
@@ -44,7 +57,9 @@ export interface BotTask {
 	pane?: string;
 	result?: string;
 	error?: string;
+	started_at?: number;
 	finished_at?: number;
+	steps?: BotStep[];
 }
 
 export interface Routine {

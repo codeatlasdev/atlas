@@ -43,7 +43,7 @@ pub(crate) struct Hub {
     /// Language servers (lazy: nothing runs until a document is opened).
     pub(crate) lsp: atlas_lsp::Manager,
     /// Live connections' outgoing queues: LSP pushes are broadcast to all of them.
-    subscribers: Mutex<HashMap<u64, Out>>,
+    pub(crate) subscribers: Mutex<HashMap<u64, Out>>,
     /// Open LSP documents → the connection that opened them last. A connection that drops
     /// without `lsp_close` has its documents closed, so idle servers can shut down; a document
     /// re-opened by a reconnected client now belongs to the new connection.
@@ -54,6 +54,8 @@ pub(crate) struct Hub {
     pub(crate) mobile: Arc<crate::mobile::Mobile>,
     /// Bot runner: manages bot definitions, task queues, push/telegram delivery.
     pub(crate) bots: Arc<crate::bots::BotHub>,
+    /// Whether this daemon was started as a bot server (`ATLAS_BOT_HOST=1`).
+    pub(crate) bot_host: bool,
 }
 
 impl Hub {
@@ -70,7 +72,7 @@ impl Hub {
         json!({
             "version": env!("CARGO_PKG_VERSION"),
             "proto": protocol::PROTO,
-            "caps": protocol::CAPS,
+            "caps": protocol::caps(self.bot_host),
             "pid": std::process::id(),
             "uptime_s": self.started.elapsed().as_secs(),
             "ptys": all.len(),
@@ -228,10 +230,20 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
+    /// Whether this daemon is a bot server (adds "bots" to caps, gates bot commands).
+    pub bot_host: bool,
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
-    serve_with(dir, ServeOpts::default()).await
+    let bot_host = std::env::var("ATLAS_BOT_HOST").as_deref() == Ok("1");
+    serve_with(
+        dir,
+        ServeOpts {
+            bot_host,
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
@@ -346,6 +358,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         agents,
         mobile,
         bots,
+        bot_host: opts.bot_host,
     });
     crate::mobile::start(&hub);
     hub.bots.start(Arc::downgrade(&hub));
@@ -855,6 +868,18 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::PushUnregister { .. }
         | HostCmd::BotTelegramSet { .. }
         | HostCmd::BotTelegramLink {}) => crate::bots::handle(hub, bot).await,
+        HostCmd::MobileInvite { url, name } => {
+            hub.mobile.mobile_invite(url, name, hub);
+            Ok(json!({}))
+        }
+        HostCmd::MobileInvites {} => {
+            let invites = hub.mobile.mobile_invites();
+            Ok(json!({ "invites": invites }))
+        }
+        HostCmd::MobileInviteDismiss { url } => {
+            hub.mobile.mobile_invite_dismiss(&url);
+            Ok(json!({}))
+        }
         lsp @ (HostCmd::LspOpen { .. }
         | HostCmd::LspChange { .. }
         | HostCmd::LspClose { .. }

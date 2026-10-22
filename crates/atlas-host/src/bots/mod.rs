@@ -137,7 +137,11 @@ impl BotHub {
     }
 
     pub(crate) fn can_answer_bot_pane(&self) -> bool {
-        self.telegram.has_linked_chat() || !self.push_tokens.lock().is_empty()
+        if self.telegram.has_linked_chat() || !self.push_tokens.lock().is_empty() {
+            return true;
+        }
+        self.hub_arc()
+            .is_some_and(|h| !h.subscribers.lock().is_empty())
     }
 
     /// Drop all push tokens for a revoked device.
@@ -156,6 +160,9 @@ impl BotHub {
 
 /// Route bot `HostCmd` variants. Called from `server.rs handle()`.
 pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
+    if !hub.bot_host {
+        return Err("this computer is not a bot server (atlas bot install)".into());
+    }
     match cmd {
         // ── BotList ─────────────────────────────────────────────────────────
         HostCmd::BotList {} => {
@@ -170,10 +177,31 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                             .map(|pk| pk.starts_with(&format!("bot:{}:", b.id)))
                             .unwrap_or(false)
                     });
-                    let state = if running_task.is_some() {
-                        "running"
+                    let state = if pending_approval.is_some() {
+                        "needs_you"
+                    } else if running_task.is_some() {
+                        "working"
                     } else {
                         "idle"
+                    };
+                    let queued = hub.bots.runners.queue_len(&b.id);
+                    let last: Option<Value> = {
+                        let tasks = hub.bots.store.read_tasks(&b.id, 1);
+                        tasks.first().map(|t| {
+                            let text: String = t
+                                .result
+                                .as_deref()
+                                .or(t.error.as_deref())
+                                .unwrap_or(&t.prompt)
+                                .chars()
+                                .take(140)
+                                .collect();
+                            json!({
+                                "text": text,
+                                "state": t.state,
+                                "ts": t.ts,
+                            })
+                        })
                     };
                     let mut v = json!({
                         "id": b.id,
@@ -182,12 +210,17 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                         "agent": b.agent,
                         "approval": b.approval,
                         "state": state,
+                        "queued": queued,
                     });
-                    if let Some(t) = running_task {
-                        v["running_task"] = json!(t);
+                    if let Some(task_id) = running_task {
+                        let pane_key = format!("bot:{}:{task_id}", b.id);
+                        v["running_task"] = json!({ "id": task_id, "pane": pane_key });
                     }
                     if let Some(pa) = pending_approval {
                         v["pending_approval"] = pa;
+                    }
+                    if let Some(l) = last {
+                        v["last"] = l;
                     }
                     v
                 })

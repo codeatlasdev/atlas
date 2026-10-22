@@ -11,7 +11,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use serde_json::json;
 
-use crate::bots::store::{Approval, Bot, BotStore, Task, TaskState};
+use crate::bots::store::{Approval, Bot, BotStore, Step, Task, TaskState};
 use crate::paths;
 use crate::protocol::{Mode, PtyCreate, Scope};
 use crate::pty::Session;
@@ -71,6 +71,15 @@ impl RunnerMap {
     /// Return the task_id currently running for `bot_id`, if any.
     pub fn running_task(&self, bot_id: &str) -> Option<String> {
         self.0.lock().get(bot_id)?.running.clone()
+    }
+
+    /// Count of tasks waiting in the queue for `bot_id` (not including the running one).
+    pub fn queue_len(&self, bot_id: &str) -> usize {
+        self.0
+            .lock()
+            .get(bot_id)
+            .map(|r| r.queue.len())
+            .unwrap_or(0)
     }
 }
 
@@ -223,6 +232,7 @@ async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
             bot,
             &mut task,
             Err(format!("unknown agent '{}'", bot.agent)),
+            vec![],
         );
         return;
     };
@@ -267,7 +277,13 @@ async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
     let session = match Session::spawn(req, &paths::scrollback_dir(&hub.dir)) {
         Ok(s) => s,
         Err(e) => {
-            finish_task(hub, bot, &mut task, Err(format!("spawn failed: {e:#}")));
+            finish_task(
+                hub,
+                bot,
+                &mut task,
+                Err(format!("spawn failed: {e:#}")),
+                vec![],
+            );
             return;
         }
     };
@@ -275,19 +291,20 @@ async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
     let pty_id = session.id.clone();
     hub.sessions.lock().insert(pty_id.clone(), session.clone());
 
-    // Mark task as running.
+    // Mark task as running and record start time.
     task.state = TaskState::Running;
+    task.started_at = Some(now_s());
     task.pane = Some(pane_key.clone());
     let _ = hub.bots.store.append_task(&bot.id, &task);
     broadcast_task(hub, &bot.id, &task);
 
     // Wait for completion.
-    let outcome = wait_for_outcome(hub, &session, &pane_key).await;
+    let (outcome, steps) = wait_for_outcome(hub, &session, &pane_key).await;
 
     // Clean up session.
     hub.sessions.lock().remove(&pty_id);
 
-    finish_task(hub, bot, &mut task, outcome);
+    finish_task(hub, bot, &mut task, outcome, steps);
 }
 
 /// Poll agent status events and pty exit to determine the task outcome.
@@ -295,17 +312,18 @@ async fn wait_for_outcome(
     hub: &Hub,
     session: &Arc<Session>,
     pane_key: &str,
-) -> Result<String, String> {
+) -> (Result<String, String>, Vec<Step>) {
     let mut agent_rx = hub.agents.subscribe();
     let deadline = tokio::time::sleep(BOT_TASK_TIMEOUT);
     tokio::pin!(deadline);
+    let mut steps: Vec<Step> = Vec::new();
 
     loop {
         tokio::select! {
             biased;
             _ = &mut deadline => {
                 session.kill().await;
-                return Err("timed out after 2h".to_string());
+                return (Err("timed out after 2h".to_string()), steps);
             }
             ev = agent_rx.recv() => {
                 match ev {
@@ -319,21 +337,37 @@ async fn wait_for_outcome(
                                 .unwrap_or("")
                                 .to_string();
                             session.kill().await;
-                            return Ok(result);
+                            return (Ok(result), steps);
+                        }
+                    }
+                    Ok(v) if v["ev"] == "agent_step"
+                        && v["pane_key"].as_str() == Some(pane_key) =>
+                    {
+                        if steps.len() < 50 {
+                            let tool_name = v["tool_name"].as_str().unwrap_or("?");
+                            let target = v["tool_input"]
+                                .as_object()
+                                .and_then(|m| m.values().find_map(|v| v.as_str()))
+                                .map(|s| s.chars().take(80).collect::<String>());
+                            let text = match target {
+                                Some(t) => format!("{tool_name} {t}"),
+                                None => tool_name.to_string(),
+                            };
+                            steps.push(Step { ts: now_s(), text });
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        return Err("agent hub closed".to_string());
+                        return (Err("agent hub closed".to_string()), steps);
                     }
                     _ => {}
                 }
             }
             _ = tokio::time::sleep(Duration::from_millis(250)) => {
                 if let Some(code) = session.exited() {
-                    return Err(format!(
+                    return (Err(format!(
                         "agent exited (code {})",
                         code.map_or_else(|| "?".to_string(), |c| c.to_string())
-                    ));
+                    )), steps);
                 }
             }
         }
@@ -342,8 +376,15 @@ async fn wait_for_outcome(
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-fn finish_task(hub: &Hub, bot: &Bot, task: &mut Task, outcome: Result<String, String>) {
+fn finish_task(
+    hub: &Hub,
+    bot: &Bot,
+    task: &mut Task,
+    outcome: Result<String, String>,
+    steps: Vec<Step>,
+) {
     task.finished_at = Some(now_s());
+    task.steps = steps;
     match outcome {
         Ok(result) => {
             task.state = TaskState::Done;

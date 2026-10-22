@@ -103,6 +103,11 @@ pub fn app_env(s: &Session, atlas_bin: &Path) -> Vec<(String, String)> {
         ("ATLAS_DEBUG_SOCK".into(), p(s.socket())),
         ("ATLAS_AGENT".into(), "1".into()),
         ("ATLAS_BIN".into(), p(atlas_bin.to_path_buf())),
+        // Pass through bot-server mode when the caller set it.
+        (
+            "ATLAS_BOT_HOST".into(),
+            std::env::var("ATLAS_BOT_HOST").unwrap_or_default(),
+        ),
     ]
 }
 

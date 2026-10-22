@@ -12,7 +12,7 @@ atlas bot install ubuntu@myserver.example.com
 atlas bot login ubuntu@myserver.example.com claude
 atlas bot login ubuntu@myserver.example.com omp
 
-# 3. Add the computer in Atlas Desktop → Bots, or use Atlas Mobile
+# 3. Add the computer in Atlas Desktop → Settings → Bots, or use Atlas Mobile
 ```
 
 ## Requirements
@@ -31,7 +31,7 @@ Turns a Linux server into a bot computer:
 2. Downloads and installs `atlas` to `/usr/local/lib/atlas-bot/`
 3. Creates the `atlas-bot` system user with home at `/var/lib/atlas-bot`
 4. Writes and enables `/etc/systemd/system/atlas-bot.service`
-5. Adds your SSH public key to `/var/lib/atlas-bot/.ssh/authorized_keys`
+5. Appends your SSH public key to `/var/lib/atlas-bot/.ssh/authorized_keys`
 
 The service starts automatically on boot. The `atlas-bot` user has no sudo.
 
@@ -43,9 +43,9 @@ Removes the service, the `atlas-bot` user and `/usr/local/lib/atlas-bot` from th
 
 Shows `systemctl status atlas-bot` and `atlas hostd --status` (as `atlas-bot`).
 
-### `atlas bot logs <ssh-target> [--follow]`
+### `atlas bot logs <ssh-target>`
 
-Streams `journalctl -u atlas-bot`. Add `--follow` / `-f` to tail live output.
+Streams the last 200 lines of `journalctl -u atlas-bot`.
 
 ### `atlas bot login <ssh-target> <agent>`
 
@@ -83,6 +83,7 @@ Wants=network-online.target
 [Service]
 User=atlas-bot
 Environment=ATLAS_HOSTD_IDLE_SECS=never
+Environment=ATLAS_BOT_HOST=1
 ExecStart=/usr/local/lib/atlas-bot/atlas hostd
 Restart=always
 RestartSec=5
@@ -95,7 +96,33 @@ PrivateTmp=true
 WantedBy=multi-user.target
 ```
 
-`ATLAS_HOSTD_IDLE_SECS=never` disables the 10-minute idle-exit that the daemon applies by default, so the service stays up even when no tasks are queued.
+`ATLAS_HOSTD_IDLE_SECS=never` disables the idle-exit that the daemon applies by default, so the service stays up even when no tasks are queued.
+
+`ATLAS_BOT_HOST=1` enables the bots subsystem. Without it every `bot_*` command returns an error and the `"bots"` capability does not appear in `info`. This variable is set automatically by the unit; you do not need to set it yourself.
+
+## Bot management
+
+Bots are managed through the hostd protocol, Atlas Desktop, or Atlas Mobile. Each bot has:
+
+- **name** (1–40 chars)
+- **role** (≤ 2000 chars) — prepended to every task as context
+- **agent** — one of `omp`, `claude`, `codex`, `opencode`
+- **approval** — `ask` (hold for your answer) or `auto` (allow all tool calls without prompting). omp bots always use `auto` because omp's hook protocol does not support remote decisions.
+- **workdir** — where the agent runs; defaults to `<bot-home>/work`
+- **memory** — a markdown file (≤ 64 KiB) the agent reads and edits across tasks
+- **routines** — scheduled tasks (5-field cron, server's local time)
+
+### Approvals
+
+When `approval: ask`, an approval prompt pauses the task and waits up to 30 minutes for an answer. The wait proceeds only when at least one of these is true:
+
+- A desktop client (unix socket) is connected
+- A push token is registered (phone exists)
+- A Telegram chat is linked
+
+If none of those are true the prompt times out immediately, so configure at least one before creating an `ask` bot.
+
+Approval answers use `agent_approve {pane, req, allow}`. The `pane_key` for a bot task is `bot:<bot_id>:<task_id>`.
 
 ## Security model
 
@@ -117,35 +144,125 @@ Then run `atlas bot install` normally. When `curl` fails on the server, the comm
 
 ## Protocol commands
 
-All commands go over the same NDJSON socket as other hostd commands (`~/.atlas/hostd.sock` or the bot computer's socket). Snake-case command names, JSON arguments and replies.
+All commands go over the same NDJSON socket as other hostd commands (`~/.atlas/hostd.sock` or the bot computer's socket). Snake-case command names, JSON arguments and replies. Every `bot_*` command requires `ATLAS_BOT_HOST=1`; otherwise the reply is `{"ok":false,"error":"this computer is not a bot server (atlas bot install)"}`.
+
+Clients detect bot-server support by checking `info.caps` for `"bots"` before calling these commands.
 
 | Command | Args | Reply |
 |---|---|---|
-| `bot_list` | `{}` | `{bots:[{id,name,role,agent,approval,state,running_task?,pending_approval?}]}` |
-| `bot_create` | `{name,role,agent,approval,workdir?}` | the bot object |
-| `bot_update` | `{id,name?,role?,agent?,approval?}` | the bot object |
-| `bot_delete` | `{id}` | `{}` |
-| `bot_task` | `{id,prompt,source}` | `{task}` — prompt 1..=20 000 chars |
-| `bot_tasks` | `{id,limit?}` | `{tasks:[…newest first]}` — default limit 50 |
-| `bot_cancel` | `{id,task}` | `{}` |
+| `bot_list` | `{}` | `{bots:[…]}` — see shape below |
+| `bot_create` | `{name, role, agent, approval, workdir?}` | the bot object |
+| `bot_update` | `{id, name?, role?, agent?, approval?}` | the bot object |
+| `bot_delete` | `{id}` | `{}` — cancels running and queued tasks first |
+| `bot_task` | `{id, prompt, source}` | `{task}` — prompt 1..=20 000 chars |
+| `bot_tasks` | `{id, limit?}` | `{tasks:[…newest first]}` — default limit 50 |
+| `bot_cancel` | `{id, task}` | `{}` |
 | `bot_memory` | `{id}` | `{text}` |
-| `bot_memory_set` | `{id,text}` | `{}` — ≤ 64 KiB |
-| `bot_routine_set` | `{id,routines}` | `{}` — replaces the whole list; invalid cron is rejected |
-| `push_register` | `{token,platform:"fcm"}` | `{}` |
+| `bot_memory_set` | `{id, text}` | `{}` — ≤ 64 KiB |
+| `bot_routine_set` | `{id, routines}` | `{}` — replaces the whole list; invalid cron is rejected |
+| `push_register` | `{token, platform:"fcm"}` | `{}` |
 | `push_unregister` | `{token}` | `{}` |
 | `bot_telegram_set` | `{token?}` | `{}` — set or clear; desktop only |
 | `bot_telegram_link` | `{}` | `{code}` — 6-digit code valid 10 min |
+| `mobile_invite` | `{url, name}` | `{}` — desktop only; pushes `computer_invite` event to phones |
+| `mobile_invites` | `{}` | `{invites:[{url,name,created_at}]}` — non-expired pending invites (TTL 120 s) |
+| `mobile_invite_dismiss` | `{url}` | `{}` — phone tells the Mac it dismissed the invite |
 
-Approval prompts use the existing `agent_approve` command; `bot_list` exposes `pending_approval` for each bot that is waiting.
+### `bot_list` bot object shape
+
+```json
+{
+  "id": "a1b2c3d4",
+  "name": "Reviewer",
+  "role": "Review PRs and leave inline comments.",
+  "agent": "claude",
+  "approval": "ask",
+  "state": "idle",
+  "queued": 0,
+  "running_task": { "id": "e5f6a7b8", "pane": "bot:a1b2c3d4:e5f6a7b8" },
+  "last": { "text": "Done. Left 3 comments.", "state": "done", "ts": 1729612800 },
+  "pending_approval": { "req": "r1", "tool_name": "Bash", "tool_input": {}, "pane_key": "bot:a1b2c3d4:e5f6a7b8" }
+}
+```
+
+- `state`: `idle` | `working` | `needs_you`
+- `running_task`: present only when a task is running; `pane` is the pane key for terminal attachment
+- `queued`: number of tasks waiting in the queue behind the running one
+- `last`: the most recent task's result/error/prompt (first 140 chars), its final state and timestamp
+- `pending_approval`: the pending `agent_approval` event; present only in `needs_you` state
+
+### Task object shape
+
+```json
+{
+  "id": "e5f6a7b8",
+  "ts": 1729612800,
+  "source": "mobile",
+  "prompt": "Review the open PRs.",
+  "state": "done",
+  "pane": "bot:a1b2c3d4:e5f6a7b8",
+  "result": "Left 3 comments on #42.",
+  "error": null,
+  "started_at": 1729612801,
+  "finished_at": 1729612900,
+  "steps": [
+    { "ts": 1729612820, "text": "Reading PR diff…" }
+  ]
+}
+```
+
+- `source`: `mobile` | `desktop` | `telegram` | `routine`
+- `state`: `queued` | `running` | `done` | `failed` | `cancelled`
+- `steps`: intermediate messages the agent emitted during the task (may be empty)
+- `started_at` / `finished_at`: Unix seconds; absent until the task reaches that milestone
+
+## Atlas Desktop
+
+Open the Bots workspace with **⌘⇧B** (command `atlas::ToggleBotsWorkspace`, remappable). This switches the app between the IDE view and the Bots view.
+
+The Bots workspace has two columns:
+
+- **Left column**: search box, list of all bots across bot servers, server status dots in the footer. Click a server dot or "Add bot server" to open **Settings → Bots**.
+- **Right panel**: chat view for the selected bot, or an empty state with "Add bot server" when none are configured.
+
+**Settings → Bots** is where you add bot servers (SSH target + name). Each server must already have `atlas bot install` completed.
+
+The chat view shows the task thread (oldest at top, newest at bottom), an inline approval card when `needs_you`, and a text composer that queues tasks even while another is running. A profile panel (⋯ menu) lets you edit the role, change the approval setting, manage routines and read or replace the memory file.
+
+## Atlas Mobile
+
+The **Bots** tab (bottom bar) lists every bot across all paired computers in a messenger-style list. Each row shows the bot's name, agent, server, last message preview, time, and a state dot.
+
+Bots whose `state` is `needs_you` appear as a card at the top of both the Computers and Bots tabs until the approval is answered.
+
+Tapping a bot opens the chat view:
+
+- Task thread with user prompt bubbles and bot reply bubbles (steps collapsed by default, tap to expand)
+- Inline approval card when the bot is waiting — **Allow** / **Deny** calls `agent_approve`
+- Composer at the bottom; queues tasks while one is running
+- Tap the bot name in the app bar to open the **profile screen**
+
+The profile screen covers:
+
+- **What it does** (role) — tap Edit to change
+- **Approval** — switch between `ask` and `auto`
+- **Routines** — list, toggle enabled/disabled, add (cron + prompt), delete
+- **Memory** — line count with a View / Edit button (full-screen text editor, saves with `bot_memory_set`)
+- **Delete bot** — destructive, asks for confirmation
+
+### Computer invite flow
+
+When you add a new Mac in Atlas Desktop → **Computers**, the Mac sends a `mobile_invite` push (`computer_invite` event) to all connected phones. A sheet appears on the phone with the computer's name and a **Pair** button. Tapping it completes pairing using the invite URL. Dismissing the sheet calls `mobile_invite_dismiss`, which removes the pending invite from the Mac.
 
 ## Telegram
 
 Link a Telegram chat to your bot computer:
 
 1. Create a Telegram bot at [t.me/BotFather](https://t.me/BotFather) and copy the token.
-2. In Atlas Desktop → Bots → your bot computer → Telegram, paste the token and click **Link chat**.
-3. A 6-digit code is shown. Start a chat with your bot and send `/start <code>`.
-4. The chat is now linked. Any linked chat receives task results and can create tasks.
+2. In Atlas Desktop → Bots workspace → your bot computer → Settings → Telegram, paste the token.
+3. Click **Link chat**. A 6-digit code is shown (`bot_telegram_link`).
+4. Start a chat with your Telegram bot and send `/start <code>`.
+5. The chat is now linked. Any linked chat receives task results and can create tasks.
 
 **Commands available in linked chats:**
 
@@ -155,13 +272,14 @@ Link a Telegram chat to your bot computer:
 | `/task <bot name> <text>` | Create a task for the named bot |
 | plain text | Sent to the only bot when exactly one exists; otherwise prompts for `/task` |
 
-Approval prompts appear as inline keyboard messages (Allow / Deny).
+Approval prompts appear as inline keyboard messages (Allow / Deny). The callback calls `agent_approve` on the bot's pane.
 
 ## Push notifications
 
 Atlas Bot can push a notification to your phone when a task finishes or a bot needs your approval.
 
-- After pairing your phone in Atlas Desktop → Settings → Mobile, push is automatic: Atlas registers your FCM token with each bot computer.
+- After pairing your phone, push is automatic: the mobile app registers its FCM token with each bot server (`push_register`).
 - The relay at `push.codeatlas.com.br` forwards only the event kind (`task_done` or `needs_you`), never any content.
-- To disable: set `ATLAS_PUSH_RELAY=off` in `/etc/systemd/system/atlas-bot.service` and restart.
-- Self-hosters can point `ATLAS_PUSH_RELAY` at their own relay instance.
+- Notifications are sent only to phones that are not actively connected at the time.
+- To disable: set `ATLAS_PUSH_RELAY=off` in the `[Service]` section of `/etc/systemd/system/atlas-bot.service` and run `sudo systemctl daemon-reload && sudo systemctl restart atlas-bot`.
+- Self-hosters can point `ATLAS_PUSH_RELAY` at their own relay instance (see `services/push-relay/`).

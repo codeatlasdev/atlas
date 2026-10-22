@@ -58,6 +58,12 @@ pub enum TaskState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Step {
+    pub ts: u64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub ts: u64,
@@ -72,6 +78,10 @@ pub struct Task {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<Step>,
 }
 
 impl Task {
@@ -86,6 +96,8 @@ impl Task {
             result: None,
             error: None,
             finished_at: None,
+            started_at: None,
+            steps: vec![],
         }
     }
 }

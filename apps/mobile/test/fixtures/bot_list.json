@@ -1,0 +1,36 @@
+{
+  "bots": [
+    {
+      "agent": "claude",
+      "approval": "ask",
+      "id": "bot-working",
+      "last": {
+        "state": "queued",
+        "text": "review PR",
+        "ts": 1700000001
+      },
+      "name": "Reviewer",
+      "queued": 0,
+      "role": "Reviews PRs",
+      "running_task": {
+        "id": "task-working",
+        "pane": "bot:bot-working:task-working"
+      },
+      "state": "working"
+    },
+    {
+      "agent": "claude",
+      "approval": "auto",
+      "id": "bot-done",
+      "last": {
+        "state": "done",
+        "text": "nightly done",
+        "ts": 1700000000
+      },
+      "name": "Nightly",
+      "queued": 0,
+      "role": "Nightly checks",
+      "state": "idle"
+    }
+  ]
+}

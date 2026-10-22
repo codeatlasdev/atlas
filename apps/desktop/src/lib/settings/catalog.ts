@@ -705,4 +705,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 		"Bring back the first steps card, or start over.",
 		"onboarding progress",
 	),
+	entry(
+		"bots",
+		"Bot servers",
+		"bots-add",
+		"Add server",
+		"Connect a bot computer running `atlas bot install`.",
+		"ssh bot server agent",
+	),
 ];

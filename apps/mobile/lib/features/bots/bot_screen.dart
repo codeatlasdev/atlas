@@ -1,17 +1,64 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
-import 'package:atlas_mobile/features/agents/approval_banner.dart';
 import 'package:atlas_mobile/features/bots/bots_provider.dart';
+import 'package:atlas_mobile/features/bots/bot_profile_screen.dart';
 
-/// Full-screen view of one bot: its task thread, pending approval, and composer.
+// ── stable avatar colors (same palette as bots_screen) ───────────────────────
+
+const _kPalette = [
+  Color(0xFF26A69A),
+  Color(0xFFFF7043),
+  Color(0xFF7E57C2),
+  Color(0xFF42A5F5),
+  Color(0xFF66BB6A),
+  Color(0xFFEC407A),
+  Color(0xFFFFCA28),
+  Color(0xFF26C6DA),
+];
+
+Color _avatarColor(String id) {
+  final h = id.codeUnits.fold(0, (a, u) => a ^ u);
+  return _kPalette[h.abs() % _kPalette.length];
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+String _elapsed(int startedAtMs) {
+  final d = DateTime.now()
+      .difference(DateTime.fromMillisecondsSinceEpoch(startedAtMs));
+  if (d.inSeconds < 60) return '${d.inSeconds}s';
+  return '${d.inMinutes}m';
+}
+
+String _chatTime(int tsMs) {
+  final dt = DateTime.fromMillisecondsSinceEpoch(tsMs);
+  final hh = dt.hour.toString().padLeft(2, '0');
+  final mm = dt.minute.toString().padLeft(2, '0');
+  return '$hh:$mm';
+}
+
+String _sourceLabel(String s) => switch (s) {
+      'routine' => 'routine',
+      'desktop' => 'desktop',
+      _ => 'mobile',
+    };
+
+// ── screen ────────────────────────────────────────────────────────────────────
+
 class BotScreen extends ConsumerStatefulWidget {
-  const BotScreen({super.key, required this.device, required this.botId});
+  const BotScreen({
+    super.key,
+    required this.device,
+    required this.botId,
+  });
+
   final MacDevice device;
   final String botId;
 
@@ -20,117 +67,231 @@ class BotScreen extends ConsumerStatefulWidget {
 }
 
 class _BotScreenState extends ConsumerState<BotScreen> {
-  final _ctrl = TextEditingController();
-  final _scrollCtrl = ScrollController();
+  final _msg = TextEditingController();
   bool _sending = false;
+  final Set<String> _expanded = {};
 
   @override
   void dispose() {
-    _ctrl.dispose();
-    _scrollCtrl.dispose();
+    _msg.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
-    final text = _ctrl.text.trim();
+    final text = _msg.text.trim();
     if (text.isEmpty) return;
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
     setState(() => _sending = true);
-    _ctrl.clear();
-    try {
-      final mux =
-          await ref.read(connectionNotifierProvider(widget.device).future);
-      if (mux == null) return;
-      await mux.call('bot_task', {
-        'id': widget.botId,
-        'prompt': text,
-        'source': 'mobile',
-      });
-      ref.invalidate(botTasksProvider((widget.device, widget.botId)));
-      ref.invalidate(botsProvider(widget.device));
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
+    final resp = await mux.call('bot_task', {
+      'id': widget.botId,
+      'prompt': text,
+      'source': 'mobile',
+    });
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (resp['ok'] == true) {
+        _msg.clear();
+        ref.invalidate(botTasksProvider((widget.device, widget.botId)));
+      }
+    });
   }
 
   Future<void> _approve(BotPendingApproval pa, bool allow) async {
-    final mux =
-        await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
     if (mux == null) return;
     await mux.call('agent_approve', {
       'pane': pa.paneKey,
       'req': pa.req,
       'allow': allow,
     });
-    ref.invalidate(botsProvider(widget.device));
+  }
+
+  void _openProfile(BotListEntry bot, String hostName) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => BotProfileScreen(device: widget.device, botId: widget.botId),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final botsAsync = ref.watch(botsProvider(widget.device));
-    final tasksAsync =
-        ref.watch(botTasksProvider((widget.device, widget.botId)));
     final c = AtlasColors.of(context);
 
-    final bot = botsAsync.value?.where((b) => b.id == widget.botId).firstOrNull;
+    ref.listen(devicePushEventsProvider(widget.device), (_, next) {
+      next.whenData((ev) {
+        if (ev['ev'] == 'bot_task' || ev['ev'] == 'bot_task_update') {
+          ref.invalidate(botTasksProvider((widget.device, widget.botId)));
+        }
+        if (ev['ev'] == 'agent_approval_done') {
+          ref.invalidate(botsProvider(widget.device));
+        }
+      });
+    });
+
+    final botsData = ref.watch(botsProvider(widget.device)).value;
+    final bot = botsData?.bots.where((b) => b.id == widget.botId).firstOrNull;
+    final tasks = ref.watch(botTasksProvider((widget.device, widget.botId))).value ?? [];
+    final online = ref.watch(connectionNotifierProvider(widget.device)).value != null;
+    final pa = bot?.pendingApproval;
+    final queued = bot?.queued ?? 0;
+
+    // Derive approval task id from pane key.
+    String? approvalTaskId;
+    if (pa != null) {
+      final parts = pa.paneKey.split(':');
+      if (parts.length >= 3) approvalTaskId = parts[2];
+    }
+
+    final avatarColor = _avatarColor(widget.botId);
+    final botName = bot?.name ?? '';
+    final initial = botName.isNotEmpty ? botName[0].toUpperCase() : '?';
+    final hostName = botsData?.hostName ?? widget.device.name;
+    final agentLabel = bot?.agent ?? '';
 
     return Scaffold(
+      backgroundColor: c.ground,
       appBar: AppBar(
-        title: Text(bot?.name ?? 'Bot'),
+        backgroundColor: c.base,
+        titleSpacing: 0,
+        title: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: bot != null ? () => _openProfile(bot, hostName) : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: Row(
+              children: [
+                // Avatar
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: avatarColor.withValues(alpha: .22),
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      color: avatarColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        botName,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: c.text,
+                        ),
+                      ),
+                      if (agentLabel.isNotEmpty)
+                        Text(
+                          '$agentLabel · $hostName',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: c.muted),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         actions: [
-          if (bot != null) _BotMenu(device: widget.device, bot: bot),
+          if (bot != null)
+            StatusDot(
+              color: switch (bot.state) {
+                'working' => c.accent,
+                'needs_you' => c.warning,
+                _ => c.faint,
+              },
+              pulse: bot.state == 'working' || bot.state == 'needs_you',
+              size: 7,
+            ),
+          const SizedBox(width: 16),
         ],
       ),
       body: Column(
         children: [
-          // Task thread.
-          Expanded(
-            child: tasksAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Text('$e', style: TextStyle(color: c.error)),
+          // ── offline banner ─────────────────────────────────────────────
+          if (!online)
+            Container(
+              width: double.infinity,
+              color: c.warning.withValues(alpha: .12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.wifi_off_rounded, size: 14, color: c.warning),
+                  const SizedBox(width: 6),
+                  Flexible(child: Text(
+                    '\${widget.device.name} is offline · history shown',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: c.warning),
+                  )),
+                ],
               ),
-              data: (tasks) {
-                if (tasks.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'No tasks yet. Send a prompt below.',
-                      style: TextStyle(color: c.muted),
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  controller: _scrollCtrl,
-                  reverse: true,
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.lg,
-                    Space.md,
-                    Space.lg,
-                    Space.sm,
-                  ),
-                  itemCount: tasks.length,
-                  itemBuilder: (_, i) => _TaskTile(task: tasks[i]),
-                );
-              },
             ),
+
+          // ── message list ───────────────────────────────────────────────
+          Expanded(
+            child: tasks.isEmpty
+                ? Center(
+                    child: Text(
+                      'Send a message to start',
+                      style: TextStyle(color: c.faint),
+                    ),
+                  )
+                : ListView.builder(
+                    reverse: true,
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    itemCount: tasks.length,
+                    itemBuilder: (_, i) {
+                      final task = tasks[i];
+                      final isApprovalTask = approvalTaskId != null &&
+                          task.id == approvalTaskId &&
+                          pa != null;
+                      return _TaskPair(
+                        task: task,
+                        botId: widget.botId,
+                        botName: botName,
+                        avatarColor: avatarColor,
+                        initial: initial,
+                        pendingApproval: isApprovalTask ? pa : null,
+                        expanded: _expanded.contains(task.id),
+                        onToggle: () => setState(() {
+                          _expanded.contains(task.id)
+                              ? _expanded.remove(task.id)
+                              : _expanded.add(task.id);
+                        }),
+                        onApprove: isApprovalTask
+                            ? (allow) => _approve(pa, allow)
+                            : null,
+                      );
+                    },
+                  ),
           ),
 
-          // Pending approval banner.
-          if (bot?.pendingApproval != null)
-            ApprovalBanner(
-              approval: AgentApproval(
-                paneKey: bot!.pendingApproval!.paneKey,
-                req: bot.pendingApproval!.req,
-                toolName: bot.pendingApproval!.toolName,
-                toolInput: bot.pendingApproval!.toolInput,
-              ),
-              onAnswer: (allow) => _approve(bot.pendingApproval!, allow),
+          // ── global approval banner (if not matched to a task) ──────────
+          if (pa != null && approvalTaskId == null)
+            _ApprovalBubble(
+              botName: botName,
+              avatarColor: avatarColor,
+              initial: initial,
+              approval: pa,
+              onApprove: (allow) => _approve(pa, allow),
             ),
 
-          // Composer.
+          // ── composer ──────────────────────────────────────────────────
           _Composer(
-            ctrl: _ctrl,
+            controller: _msg,
             sending: _sending,
+            online: online,
+            queued: queued,
+            hintName: botName,
             onSend: _send,
           ),
         ],
@@ -139,166 +300,122 @@ class _BotScreenState extends ConsumerState<BotScreen> {
   }
 }
 
-// ─── Task tile ───────────────────────────────────────────────────────────────
+// ── Task pair: user prompt + bot reply ────────────────────────────────────────
 
-class _TaskTile extends StatelessWidget {
-  const _TaskTile({required this.task});
+class _TaskPair extends StatelessWidget {
+  const _TaskPair({
+    required this.task,
+    required this.botId,
+    required this.botName,
+    required this.avatarColor,
+    required this.initial,
+    required this.expanded,
+    required this.onToggle,
+    this.pendingApproval,
+    this.onApprove,
+  });
+
   final BotTask task;
+  final String botId;
+  final String botName;
+  final Color avatarColor;
+  final String initial;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final BotPendingApproval? pendingApproval;
+  final void Function(bool)? onApprove;
 
   @override
   Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // User prompt bubble (right-aligned).
-        _Bubble(text: task.prompt, mine: true),
-        const SizedBox(height: 6),
-        // Assistant response or state indicator.
-        if (task.result != null)
-          _Bubble(text: task.result!, mine: false)
-        else if (task.error != null)
-          _Bubble(
-            text: task.error!,
-            mine: false,
-            color: c.error,
-          )
-        else
-          _StateChip(state: task.state),
+        // ── timestamp ──────────────────────────────────────────────────
+        _Timestamp(tsMs: task.ts),
+
+        // ── user bubble (right) ────────────────────────────────────────
+        _UserBubble(task: task),
+        const SizedBox(height: 4),
+
+        // ── bot reply (left) ──────────────────────────────────────────
+        _BotBubble(
+          task: task,
+          avatarColor: avatarColor,
+          initial: initial,
+          expanded: expanded,
+          onToggle: onToggle,
+        ),
+
+        // ── approval bubble (inline with task) ─────────────────────────
+        if (pendingApproval != null) ...[
+          const SizedBox(height: 4),
+          _ApprovalBubble(
+            botName: botName,
+            avatarColor: avatarColor,
+            initial: initial,
+            approval: pendingApproval!,
+            onApprove: onApprove ?? (_) {},
+          ),
+        ],
         const SizedBox(height: 16),
       ],
     );
   }
 }
 
-class _StateChip extends StatelessWidget {
-  const _StateChip({required this.state});
-  final String state;
+// ── Centered timestamp separator ──────────────────────────────────────────────
+
+class _Timestamp extends StatelessWidget {
+  const _Timestamp({required this.tsMs});
+  final int tsMs;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final (label, color) = switch (state) {
-      'running' => ('running…', c.accent),
-      'queued' => ('queued', c.muted),
-      'cancelled' => ('cancelled', c.muted),
-      _ => (state, c.muted),
-    };
     return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Pill(label, color: color),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: Text(
+          _chatTime(tsMs),
+          style: TextStyle(fontSize: 11, color: c.faint),
+        ),
       ),
     );
   }
 }
 
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.text, required this.mine, this.color});
-  final String text;
-  final bool mine;
-  final Color? color;
+// ── User bubble (right side) ──────────────────────────────────────────────────
+
+class _UserBubble extends StatelessWidget {
+  const _UserBubble({required this.task});
+  final BotTask task;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     const r = Radius.circular(18);
     return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.82,
-        ),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: mine
-              ? c.accent.withValues(alpha: .2)
-              : (color ?? c.base).withValues(
-                  alpha: color != null ? .15 : 1,
-                ),
-          border: mine
-              ? null
-              : Border.all(
-                  color: (color ?? c.borderSubtle).withValues(
-                    alpha: color != null ? .5 : 1,
-                  ),
-                ),
-          borderRadius: BorderRadius.only(
-            topLeft: r,
-            topRight: r,
-            bottomLeft: mine ? r : const Radius.circular(4),
-            bottomRight: mine ? const Radius.circular(4) : r,
+          color: c.accent.withValues(alpha: .22),
+          borderRadius: const BorderRadius.only(
+            topLeft: r, topRight: r, bottomLeft: r, bottomRight: Radius.circular(4),
           ),
         ),
-        child: SelectableText(
-          text,
-          style: TextStyle(
-            color: color ?? c.text,
-            height: 1.4,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Composer ────────────────────────────────────────────────────────────────
-
-class _Composer extends StatelessWidget {
-  const _Composer({
-    required this.ctrl,
-    required this.sending,
-    required this.onSend,
-  });
-  final TextEditingController ctrl;
-  final bool sending;
-  final VoidCallback onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          Space.lg,
-          Space.sm,
-          Space.lg,
-          Space.md,
-        ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Expanded(
-              child: TextField(
-                controller: ctrl,
-                decoration: InputDecoration(
-                  hintText: 'Send a task…',
-                  hintStyle: TextStyle(color: c.muted),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                ),
-                minLines: 1,
-                maxLines: 5,
-                textCapitalization: TextCapitalization.sentences,
-                onSubmitted: (_) => onSend(),
-              ),
+            Text(
+              task.prompt,
+              style: TextStyle(color: c.text, height: 1.4, fontSize: 14),
             ),
-            const SizedBox(width: Space.sm),
-            IconButton.filled(
-              icon: sending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send_rounded),
-              onPressed: sending ? null : onSend,
-              tooltip: 'Send',
+            const SizedBox(height: 3),
+            Text(
+              _sourceLabel(task.source),
+              style: TextStyle(fontSize: 10, color: c.muted),
             ),
           ],
         ),
@@ -307,590 +424,360 @@ class _Composer extends StatelessWidget {
   }
 }
 
-// ─── AppBar menu ─────────────────────────────────────────────────────────────
+// ── Bot bubble (left side) ────────────────────────────────────────────────────
 
-class _BotMenu extends ConsumerWidget {
-  const _BotMenu({required this.device, required this.bot});
-  final MacDevice device;
-  final Bot bot;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return PopupMenuButton<_MenuAction>(
-      icon: const Icon(Icons.more_vert_rounded),
-      onSelected: (action) => _handle(context, ref, action),
-      itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: _MenuAction.memory,
-          child: Text('Memory'),
-        ),
-        const PopupMenuItem(
-          value: _MenuAction.routines,
-          child: Text('Routines'),
-        ),
-        const PopupMenuItem(
-          value: _MenuAction.settings,
-          child: Text('Settings'),
-        ),
-        if (bot.state == 'working' && bot.runningTask?.pane != null)
-          const PopupMenuItem(
-            value: _MenuAction.terminal,
-            child: Text('Terminal'),
-          ),
-      ],
-    );
-  }
-
-  void _handle(BuildContext context, WidgetRef ref, _MenuAction action) {
-    switch (action) {
-      case _MenuAction.memory:
-        _openMemory(context, ref);
-      case _MenuAction.routines:
-        _openRoutines(context, ref);
-      case _MenuAction.settings:
-        _openSettings(context, ref);
-      case _MenuAction.terminal:
-        context.push('/terminal', extra: {
-          'device': device,
-          'pty': bot.runningTask!.pane!,
-          'title': bot.name,
-          'pane': bot.runningTask!.pane,
-        });
-    }
-  }
-
-  Future<void> _openMemory(BuildContext context, WidgetRef ref) async {
-    final mux =
-        await ref.read(connectionNotifierProvider(device).future);
-    if (mux == null || !context.mounted) return;
-    final resp = await mux.call('bot_memory', {'id': bot.id});
-    if (!context.mounted) return;
-    final current = resp['ok'] == true
-        ? (resp['data']['text'] as String? ?? '')
-        : '';
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => _MemoryDialog(
-        device: device,
-        botId: bot.id,
-        initial: current,
-      ),
-    );
-  }
-
-  Future<void> _openRoutines(BuildContext context, WidgetRef ref) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _RoutinesSheet(device: device, bot: bot),
-    );
-  }
-
-  Future<void> _openSettings(BuildContext context, WidgetRef ref) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _SettingsDialog(device: device, bot: bot),
-    );
-  }
-}
-
-enum _MenuAction { memory, routines, settings, terminal }
-
-// ─── Memory dialog ───────────────────────────────────────────────────────────
-
-class _MemoryDialog extends ConsumerStatefulWidget {
-  const _MemoryDialog({
-    required this.device,
-    required this.botId,
+class _BotBubble extends StatelessWidget {
+  const _BotBubble({
+    required this.task,
+    required this.avatarColor,
     required this.initial,
+    required this.expanded,
+    required this.onToggle,
   });
-  final MacDevice device;
-  final String botId;
+
+  final BotTask task;
+  final Color avatarColor;
   final String initial;
-
-  @override
-  ConsumerState<_MemoryDialog> createState() => _MemoryDialogState();
-}
-
-class _MemoryDialogState extends ConsumerState<_MemoryDialog> {
-  late final TextEditingController _ctrl =
-      TextEditingController(text: widget.initial);
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      final mux =
-          await ref.read(connectionNotifierProvider(widget.device).future);
-      if (mux == null) throw Exception('Not connected');
-      final resp = await mux.call('bot_memory_set', {
-        'id': widget.botId,
-        'text': _ctrl.text,
-      });
-      if (resp['ok'] != true) throw Exception(resp['error'] ?? 'Failed');
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return AlertDialog(
-      title: const Text('Bot memory'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _ctrl,
-            decoration: const InputDecoration(
-              hintText: 'Persistent context for this bot…',
-            ),
-            minLines: 5,
-            maxLines: 12,
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: TextStyle(color: c.error, fontSize: 13)),
-          ],
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
 
-// ─── Routines sheet ──────────────────────────────────────────────────────────
+    Widget content;
+    switch (task.state) {
+      case 'queued':
+        content = Text('Queued…', style: TextStyle(color: c.faint, fontSize: 14));
 
-class _RoutinesSheet extends ConsumerStatefulWidget {
-  const _RoutinesSheet({required this.device, required this.bot});
-  final MacDevice device;
-  final Bot bot;
-
-  @override
-  ConsumerState<_RoutinesSheet> createState() => _RoutinesSheetState();
-}
-
-class _RoutinesSheetState extends ConsumerState<_RoutinesSheet> {
-  late List<Routine> _routines;
-  bool _saving = false;
-
-  // Preset cron expressions shown as quick options.
-  static const _presets = <(String, String)>[
-    ('Every hour', '0 * * * *'),
-    ('Every day at 9 am', '0 9 * * *'),
-    ('Every Monday', '0 9 * * 1'),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _routines = List.of(widget.bot.routines);
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    try {
-      final mux =
-          await ref.read(connectionNotifierProvider(widget.device).future);
-      if (mux == null) return;
-      await mux.call('bot_routine_set', {
-        'id': widget.bot.id,
-        'routines': _routines
-            .map((r) => {
-                  'id': r.id,
-                  'cron': r.cron,
-                  'prompt': r.prompt,
-                  'enabled': r.enabled,
-                })
-            .toList(),
-      });
-      ref.invalidate(botsProvider(widget.device));
-      if (mounted) Navigator.of(context).pop();
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  void _add() {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => _AddRoutineDialog(
-        presets: _presets,
-        onAdd: (r) => setState(() => _routines.add(r)),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 8,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      case 'running':
+        content = GestureDetector(
+          onTap: task.steps.isNotEmpty ? onToggle : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Routines',
-                style: Theme.of(context).textTheme.titleLarge,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    task.startedAt != null
+                        ? 'Working · ${_elapsed(task.startedAt!)}'
+                        : 'Working…',
+                    style: TextStyle(color: c.accent, fontSize: 14),
+                  ),
+                  if (task.steps.isNotEmpty) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                      size: 16,
+                      color: c.faint,
+                    ),
+                  ],
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.add_rounded),
-                onPressed: _add,
-                tooltip: 'Add routine',
-              ),
+              if (expanded && task.steps.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                for (final step in task.steps)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Text(
+                      '· ${step.text}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: c.muted,
+                        fontFamily: 'Menlo',
+                        fontFamilyFallback: const ['SF Mono', 'RobotoMono', 'monospace'],
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
-          if (_routines.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Space.xl),
-              child: Text(
-                'No routines. Tap + to add one.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: c.muted),
+        );
+
+      case 'failed':
+        content = Text(
+          task.error ?? 'Task failed',
+          style: TextStyle(color: c.error, fontSize: 14),
+        );
+
+      case 'cancelled':
+        content = Text('Cancelled', style: TextStyle(color: c.faint, fontSize: 14));
+
+      default: // done
+        content = Text(
+          task.result ?? '',
+          style: TextStyle(color: c.text, fontSize: 14, height: 1.4),
+        );
+    }
+
+    const r = Radius.circular(18);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Small avatar
+        CircleAvatar(
+          radius: 14,
+          backgroundColor: avatarColor.withValues(alpha: .22),
+          child: Text(initial,
+              style: TextStyle(color: avatarColor, fontSize: 11, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.72,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: c.base,
+              border: Border.all(color: c.borderSubtle),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(4), topRight: r, bottomLeft: r, bottomRight: r,
               ),
-            )
-          else
-            for (var i = 0; i < _routines.length; i++)
-              _RoutineTile(
-                routine: _routines[i],
-                onToggle: (v) => setState(
-                  () => _routines[i] = Routine(
-                    id: _routines[i].id,
-                    cron: _routines[i].cron,
-                    prompt: _routines[i].prompt,
-                    enabled: v,
-                    lastRun: _routines[i].lastRun,
-                  ),
-                ),
-                onDelete: () => setState(() => _routines.removeAt(i)),
-              ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save'),
+            ),
+            child: content,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _RoutineTile extends StatelessWidget {
-  const _RoutineTile({
-    required this.routine,
-    required this.onToggle,
-    required this.onDelete,
+// ── Approval bubble (bot-side, with Deny/Allow) ───────────────────────────────
+
+class _ApprovalBubble extends StatelessWidget {
+  const _ApprovalBubble({
+    required this.botName,
+    required this.avatarColor,
+    required this.initial,
+    required this.approval,
+    required this.onApprove,
   });
-  final Routine routine;
-  final ValueChanged<bool> onToggle;
-  final VoidCallback onDelete;
+
+  final String botName;
+  final Color avatarColor;
+  final String initial;
+  final BotPendingApproval approval;
+  final void Function(bool) onApprove;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        routine.prompt,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        routine.cron,
-        style: TextStyle(
-          fontFamily: monoFamily,
-          fontFamilyFallback: monoFallback,
-          fontSize: 12,
-          color: c.muted,
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+    final input = approval.toolInput;
+    final cmd = input is Map && input['command'] is String ? input['command'] as String : null;
+
+    const r = Radius.circular(18);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Switch(value: routine.enabled, onChanged: onToggle),
-          IconButton(
-            icon: Icon(Icons.delete_outline_rounded, color: c.error),
-            onPressed: onDelete,
-            tooltip: 'Delete',
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: avatarColor.withValues(alpha: .22),
+            child: Text(initial,
+                style: TextStyle(color: avatarColor, fontSize: 11, fontWeight: FontWeight.w700)),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AddRoutineDialog extends StatefulWidget {
-  const _AddRoutineDialog({required this.presets, required this.onAdd});
-  final List<(String, String)> presets;
-  final ValueChanged<Routine> onAdd;
-
-  @override
-  State<_AddRoutineDialog> createState() => _AddRoutineDialogState();
-}
-
-class _AddRoutineDialogState extends State<_AddRoutineDialog> {
-  final _cronCtrl = TextEditingController();
-  final _promptCtrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _cronCtrl.dispose();
-    _promptCtrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final cron = _cronCtrl.text.trim();
-    final prompt = _promptCtrl.text.trim();
-    if (cron.isEmpty || prompt.isEmpty) return;
-    widget.onAdd(
-      Routine(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        cron: cron,
-        prompt: prompt,
-        enabled: true,
-      ),
-    );
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add routine'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _promptCtrl,
-            decoration: const InputDecoration(labelText: 'Prompt'),
-            minLines: 2,
-            maxLines: 4,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _cronCtrl,
-            decoration: InputDecoration(
-              labelText: 'Cron',
-              hintText: '0 9 * * *',
-              suffixIcon: PopupMenuButton<String>(
-                icon: const Icon(Icons.schedule_rounded),
-                tooltip: 'Presets',
-                onSelected: (v) =>
-                    setState(() => _cronCtrl.text = v),
-                itemBuilder: (_) => [
-                  for (final (label, cron) in widget.presets)
-                    PopupMenuItem(value: cron, child: Text(label)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.8,
+              ),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.warning.withValues(alpha: .1),
+                border: Border.all(color: c.warning.withValues(alpha: .4)),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(4), topRight: r, bottomLeft: r, bottomRight: r,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.shield_outlined, size: 14, color: c.warning),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          'Wants to run ${approval.toolName ?? 'a tool'}',
+                          style: TextStyle(color: c.warning, fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (cmd != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: c.ground,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        cmd,
+                        style: TextStyle(
+                          fontFamily: 'Menlo',
+                          fontFamilyFallback: const ['SF Mono', 'RobotoMono', 'monospace'],
+                          fontSize: 12,
+                          color: c.text,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => onApprove(false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: c.error,
+                          side: BorderSide(color: c.error.withValues(alpha: .5)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                        child: const Text('Deny'),
+                      ),
+                      const SizedBox(width: 6),
+                      FilledButton(
+                        onPressed: () => onApprove(true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: c.warning,
+                          foregroundColor: c.ground,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                        child: const Text('Allow'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Add')),
-      ],
     );
   }
 }
 
-// ─── Settings dialog ─────────────────────────────────────────────────────────
+// ── iMessage-style composer ───────────────────────────────────────────────────
 
-class _SettingsDialog extends ConsumerStatefulWidget {
-  const _SettingsDialog({required this.device, required this.bot});
-  final MacDevice device;
-  final Bot bot;
+class _Composer extends StatelessWidget {
+  const _Composer({
+    required this.controller,
+    required this.sending,
+    required this.online,
+    required this.queued,
+    required this.hintName,
+    required this.onSend,
+  });
 
-  @override
-  ConsumerState<_SettingsDialog> createState() => _SettingsDialogState();
-}
-
-class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
-  late final TextEditingController _nameCtrl =
-      TextEditingController(text: widget.bot.name);
-  late final TextEditingController _roleCtrl =
-      TextEditingController(text: widget.bot.role);
-  late String _agent = widget.bot.agent;
-  late String _approval = widget.bot.approval;
-  bool _saving = false;
-  String? _error;
-
-  static const _agents = ['claude', 'codex', 'opencode', 'omp'];
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _roleCtrl.dispose();
-    super.dispose();
-  }
-
-  void _onAgentChanged(String agent) {
-    setState(() {
-      _agent = agent;
-      if (agent == 'omp') _approval = 'auto';
-    });
-  }
-
-  Future<void> _save() async {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = 'Name is required.');
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      final mux =
-          await ref.read(connectionNotifierProvider(widget.device).future);
-      if (mux == null) throw Exception('Not connected');
-      final resp = await mux.call('bot_update', {
-        'id': widget.bot.id,
-        'name': name,
-        'role': _roleCtrl.text.trim(),
-        'agent': _agent,
-        'approval': _approval,
-      });
-      if (resp['ok'] != true) throw Exception(resp['error'] ?? 'Failed');
-      ref.invalidate(botsProvider(widget.device));
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
+  final TextEditingController controller;
+  final bool sending;
+  final bool online;
+  final int queued;
+  final String hintName;
+  final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final isOmp = _agent == 'omp';
-
-    return AlertDialog(
-      title: const Text('Bot settings'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _roleCtrl,
-              decoration: const InputDecoration(labelText: 'Role'),
-              minLines: 2,
-              maxLines: 4,
-            ),
-            const SizedBox(height: 16),
-            Text('Agent', style: TextStyle(color: c.muted, fontSize: 13)),
-            const SizedBox(height: 6),
-            DropdownButtonFormField<String>(
-              initialValue: _agent,
-              decoration: const InputDecoration(isDense: true),
-              items: [
-                for (final a in _agents)
-                  DropdownMenuItem(value: a, child: Text(a)),
-              ],
-              onChanged: (a) {
-                if (a != null) _onAgentChanged(a);
-              },
-            ),
-            const SizedBox(height: 16),
-            Text('Approval', style: TextStyle(color: c.muted, fontSize: 13)),
-            const SizedBox(height: 6),
-            SegmentedButton<String>(
-              selected: {_approval},
-              onSelectionChanged: isOmp
-                  ? null
-                  : (s) => setState(() => _approval = s.first),
-              segments: const [
-                ButtonSegment(value: 'ask', label: Text('Ask me')),
-                ButtonSegment(value: 'auto', label: Text('Auto')),
-              ],
-            ),
-            if (isOmp) ...[
-              const SizedBox(height: 6),
-              Text(
-                'omp bots run without approval prompts.',
-                style: TextStyle(color: c.muted, fontSize: 12),
+    return Container(
+      color: c.base,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Pill with send icon inside
+              Container(
+                decoration: BoxDecoration(
+                  color: c.ground,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: c.borderSubtle),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        minLines: 1,
+                        maxLines: 5,
+                        style: TextStyle(fontSize: 14, color: c.text),
+                        decoration: InputDecoration(
+                          hintText: online
+                              ? 'Message $hintName'
+                              : 'Offline — queued when back',
+                          hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: GestureDetector(
+                        onTap: sending ? null : onSend,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: c.accent.withValues(alpha: sending ? .4 : 1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: sending
+                              ? Padding(
+                                  padding: const EdgeInsets.all(7),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: c.onAccent,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.arrow_upward_rounded,
+                                  size: 18,
+                                  color: c.onAccent,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              if (queued > 0) ...[
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: Text(
+                    queued == 1 ? '1 task queued' : '$queued tasks queued',
+                    style: TextStyle(fontSize: 11, color: c.faint),
+                  ),
+                ),
+              ],
             ],
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: c.error, fontSize: 13)),
-            ],
-          ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Save'),
-        ),
-      ],
     );
   }
 }

@@ -293,6 +293,11 @@ export function shellCommands(): Command[] {
 		},
 		{ id: "atlas::Dashboard", label: "Dashboard", run: () => (ws.view = "dashboard") },
 		{
+			id: "atlas::ToggleBotsWorkspace",
+			label: "Bots",
+			run: () => (ws.appMode = ws.appMode === "bots" ? "ide" : "bots"),
+		},
+		{
 			id: "atlas::NewWorktree",
 			label: "New worktree…",
 			run: () => (worktrees.newDialog = { open: true, repoId: null }),

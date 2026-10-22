@@ -140,12 +140,14 @@ class MacDevice {
   final String name;
   final List<String> addrs;
   final String? relay;
+  final List<String> caps;
 
   const MacDevice({
     required this.nodeId,
     required this.name,
     this.addrs = const [],
     this.relay,
+    this.caps = const [],
   });
 
   factory MacDevice.fromJson(Map<String, dynamic> j) => MacDevice(
@@ -153,6 +155,7 @@ class MacDevice {
     name: j['name'] as String? ?? '',
     addrs: (j['addrs'] as List<dynamic>?)?.cast<String>() ?? [],
     relay: j['relay'] as String?,
+    caps: (j['caps'] as List<dynamic>?)?.cast<String>() ?? [],
   );
 
   Map<String, dynamic> toJson() => {
@@ -160,6 +163,7 @@ class MacDevice {
     'name': name,
     'addrs': addrs,
     if (relay != null) 'relay': relay,
+    if (caps.isNotEmpty) 'caps': caps,
   };
 
   @override
@@ -245,50 +249,6 @@ bool canSendChat(AgentStatus? status) {
   return status.state == 'idle' || status.state == 'done';
 }
 
-/// A bot on a bot computer.
-class Bot {
-  final String id;
-  final String name;
-  final String role;
-  final String agent;
-  final String approval; // "ask" | "auto"
-  final String state; // "idle" | "working" | "needs_you"
-  final List<Routine> routines;
-  final BotTask? runningTask;
-  final BotPendingApproval? pendingApproval;
-
-  const Bot({
-    required this.id,
-    required this.name,
-    required this.role,
-    required this.agent,
-    required this.approval,
-    required this.state,
-    this.routines = const [],
-    this.runningTask,
-    this.pendingApproval,
-  });
-
-  factory Bot.fromJson(Map<String, dynamic> j) => Bot(
-    id: j['id'] as String? ?? '',
-    name: j['name'] as String? ?? '',
-    role: j['role'] as String? ?? '',
-    agent: j['agent'] as String? ?? '',
-    approval: j['approval'] as String? ?? 'ask',
-    state: j['state'] as String? ?? 'idle',
-    routines: (j['routines'] as List<dynamic>?)
-            ?.map((e) => Routine.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        const [],
-    runningTask: j['running_task'] == null
-        ? null
-        : BotTask.fromJson((j['running_task'] as Map).cast<String, dynamic>()),
-    pendingApproval: j['pending_approval'] == null
-        ? null
-        : BotPendingApproval.fromJson(
-            (j['pending_approval'] as Map).cast<String, dynamic>()),
-  );
-}
 
 /// A task enqueued or completed on a bot.
 class BotTask {
@@ -300,7 +260,9 @@ class BotTask {
   final String? pane;
   final String? result;
   final String? error;
+  final int? startedAt;
   final int? finishedAt;
+  final List<BotStep> steps;
 
   const BotTask({
     required this.id,
@@ -311,7 +273,9 @@ class BotTask {
     this.pane,
     this.result,
     this.error,
+    this.startedAt,
     this.finishedAt,
+    this.steps = const [],
   });
 
   factory BotTask.fromJson(Map<String, dynamic> j) => BotTask(
@@ -323,7 +287,12 @@ class BotTask {
     pane: j['pane'] as String?,
     result: j['result'] as String?,
     error: j['error'] as String?,
+    startedAt: (j['started_at'] as num?)?.toInt(),
     finishedAt: (j['finished_at'] as num?)?.toInt(),
+    steps: [
+      for (final s in (j['steps'] as List<dynamic>?) ?? const [])
+        BotStep.fromJson((s as Map).cast<String, dynamic>()),
+    ],
   );
 }
 
@@ -381,4 +350,120 @@ class BotPendingApproval {
         toolInput: j['tool_input'],
         paneKey: j['pane_key'] as String? ?? '',
       );
+}
+
+class BotStep {
+  const BotStep({required this.ts, required this.text});
+  final int ts;
+  final String text;
+  factory BotStep.fromJson(Map<String, dynamic> j) => BotStep(
+    ts: (j['ts'] as num?)?.toInt() ?? 0,
+    text: j['text'] as String? ?? '',
+  );
+}
+
+class BotRoutine {
+  const BotRoutine({
+    required this.id,
+    required this.cron,
+    required this.prompt,
+    required this.enabled,
+  });
+  final String id;
+  final String cron;
+  final String prompt;
+  final bool enabled;
+  factory BotRoutine.fromJson(Map<String, dynamic> j) => BotRoutine(
+    id: j['id'] as String? ?? '',
+    cron: j['cron'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
+    enabled: j['enabled'] as bool? ?? true,
+  );
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'cron': cron,
+    'prompt': prompt,
+    'enabled': enabled,
+  };
+}
+
+class BotLast {
+  const BotLast({required this.text, required this.state, required this.ts});
+  final String text;
+  final String state;
+  final int ts;
+  factory BotLast.fromJson(Map<String, dynamic> j) => BotLast(
+    text: j['text'] as String? ?? '',
+    state: j['state'] as String? ?? '',
+    ts: (j['ts'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// Running task reference from bot_list: {id, pane} object.
+/// The real producer (bots/mod.rs BotList) emits this as an object,
+/// never a bare string.
+class BotRunningTask {
+  const BotRunningTask({required this.id, required this.pane});
+  final String id;
+  final String pane;
+  factory BotRunningTask.fromJson(Map<String, dynamic> j) => BotRunningTask(
+    id: j['id'] as String? ?? '',
+    pane: j['pane'] as String? ?? '',
+  );
+}
+
+class BotListEntry {
+  const BotListEntry({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.agent,
+    required this.approval,
+    required this.state,
+    this.runningTask,
+    this.queued = 0,
+    this.last,
+    this.pendingApproval,
+    this.routines = const [],
+  });
+  final String id;
+  final String name;
+  final String role;
+  final String agent;
+  final String approval; // ask | auto
+  final String state;    // idle | working | needs_you
+  final BotRunningTask? runningTask;
+  final int queued;
+  final BotLast? last;
+  final BotPendingApproval? pendingApproval;
+  final List<Routine> routines;
+  factory BotListEntry.fromJson(Map<String, dynamic> j) => BotListEntry(
+    id: j['id'] as String? ?? '',
+    name: j['name'] as String? ?? '',
+    role: j['role'] as String? ?? '',
+    agent: j['agent'] as String? ?? '',
+    approval: j['approval'] as String? ?? 'ask',
+    state: j['state'] as String? ?? 'idle',
+    runningTask: j['running_task'] == null
+        ? null
+        : BotRunningTask.fromJson((j['running_task'] as Map).cast()),
+    queued: (j['queued'] as num?)?.toInt() ?? 0,
+    last: j['last'] == null
+        ? null
+        : BotLast.fromJson((j['last'] as Map).cast()),
+    pendingApproval: j['pending_approval'] == null
+        ? null
+        : BotPendingApproval.fromJson(
+            (j['pending_approval'] as Map).cast()),
+    routines: [
+      for (final r in (j['routines'] as List<dynamic>?) ?? const [])
+        Routine.fromJson((r as Map).cast()),
+    ],
+  );
+}
+
+class ComputerInvite {
+  const ComputerInvite({required this.url, required this.name});
+  final String url;
+  final String name;
 }

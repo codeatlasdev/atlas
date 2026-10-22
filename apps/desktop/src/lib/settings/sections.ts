@@ -14,6 +14,7 @@ export type SettingsSection =
 	| "keyboard"
 	| "ssh"
 	| "mobile"
+	| "bots"
 	| "help";
 
 /** Tabs of the Editor section: everyday editor prefs, and the language-server manager. */
@@ -36,6 +37,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "keyboard", label: "Keyboard shortcuts" },
 	{ id: "ssh", label: "SSH hosts" },
 	{ id: "mobile", label: "Mobile" },
+	{ id: "bots", label: "Bots" },
 	{ id: "help", label: "Help & onboarding" },
 ];
 

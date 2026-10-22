@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Contain from "#lib/errors/Contain.svelte";
 	import AgentsView from "#lib/components/AgentsView.svelte";
-	import BotView from "./BotView.svelte";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import ConfirmAction from "./ConfirmAction.svelte";
@@ -11,13 +10,9 @@
 	let spaces = $derived(ws.view === "worktree" && !!store.current);
 </script>
 
-<!-- The pager stays mounted under the agents/dashboard/bot view: coming back is a visibility flip, not a remount. -->
+<!-- The pager stays mounted under the agents/dashboard view: coming back is a visibility flip, not a remount. -->
 {#if store.current}<div class="host" hidden={!spaces}><SpacePager /></div>{/if}
-{#if ws.view === "bot"}
-	<Contain where="Bot view" title="This view hit an error" hint="The rest of Atlas is unaffected.">
-		<BotView />
-	</Contain>
-{:else if ws.view !== "worktree"}
+{#if ws.view !== "worktree"}
 	<Contain where="Agents view" title="This view hit an error" hint="The rest of Atlas is unaffected.">
 		<AgentsView mode={ws.view} />
 	</Contain>

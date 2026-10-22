@@ -7,9 +7,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { hostCall } from "#lib/host.ts";
+import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
+import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 import type { Bot, BotHost, BotSelection, BotTask, Routine } from "#lib/bots.ts";
 
-export type { Bot, BotHost, BotSelection, BotTask, Routine };
+export type { Bot, BotHost, BotSelection, BotTask, Routine, AgentIntegration };
 
 interface HostEntry {
 	/** `""` for local, `"ssh:atlas-bot@server"` for remote. */
@@ -77,6 +79,15 @@ class BotsStore {
 			this.hosts = [...this.hosts, { key, name, bots: [], ok: true }];
 		}
 		await this.refreshHost(key);
+		// Mac→phone invite: push a computer_invite event to paired phones so they can
+		// add the bot server without a QR code. Non-critical; ignore failures.
+		try {
+			const p = await hostCall<PairStart>("mobile_pair_start", { host: key });
+			const url = pairUrl(p);
+			await hostCall("mobile_invite", { url, name });
+		} catch {
+			// User can pair manually via Settings → Bots.
+		}
 	}
 
 	async removeHost(key: string): Promise<void> {
@@ -221,6 +232,17 @@ class BotsStore {
 
 	get needsYouCount(): number {
 		return this.allBots.filter((b) => b.bot.state === "needs_you").length;
+	}
+
+	/** Fetch agent integrations from a specific host (used by the New Bot dialog). */
+	async getHostIntegrations(hostKey: string): Promise<AgentIntegration[]> {
+		const r = await hostCall<{ agents: AgentIntegration[] }>("agent_integrations", hostArgs(hostKey));
+		return r.agents ?? [];
+	}
+
+	/** Whether the last refresh for a host succeeded. */
+	hostOk(hostKey: string): boolean {
+		return this.hosts.find((h) => h.key === hostKey)?.ok ?? false;
 	}
 
 	// ─── internal ─────────────────────────────────────────────────────────────

@@ -54,7 +54,7 @@ void main() {
     await t.pumpWidget(_wrap(const BotsScreen(), []));
     await _settle(t);
     // No devices paired → the screen says to pair a computer first.
-    expect(find.textContaining('No computers paired'), findsOneWidget);
+    expect(find.textContaining('No bots yet'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });
@@ -62,7 +62,7 @@ void main() {
   testWidgets('BotScreen: send task shows queued then done', (t) async {
     await t.binding.setSurfaceSize(const Size(393, 852));
     await t.pumpWidget(
-      _wrap(BotScreen(device: mac, botId: 'bot00001'), [mac]),
+      _wrap(BotScreen(device: mac, botId: 'bot-1'), [mac]),
     );
     await _settle(t);
     // Enter a prompt and send.
@@ -70,7 +70,7 @@ void main() {
     await t.enterText(field, 'Review this PR');
     await t.pump();
     // Tap send button.
-    await t.tap(find.byIcon(Icons.send_rounded));
+    await t.tap(find.byIcon(Icons.arrow_upward_rounded));
     await _settle(t);
     // Task prompt is visible in the task list.
     expect(find.text('Review this PR'), findsOneWidget);
@@ -90,7 +90,7 @@ void main() {
     await t.pumpWidget(_wrap(const BotsScreen(), [mac]));
     await _settle(t);
     // Demo bot has pending approval → inbox shows it.
-    expect(find.textContaining('needs approval'), findsOneWidget);
+    expect(find.text('Deny'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

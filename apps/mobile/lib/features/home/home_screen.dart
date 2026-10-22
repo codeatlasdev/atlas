@@ -318,12 +318,15 @@ class _DashboardState extends ConsumerState<_Dashboard> {
         .length;
 
     // Bot attention items for this computer (bots with pending approval).
-    final botAttentionItems = connected
-        ? (ref.watch(botsProvider(widget.device)).value ?? [])
+    final botsResult = connected
+        ? ref.watch(botsProvider(widget.device)).value
+        : null;
+    final isBotServer = botsResult?.isBotServer ?? false;
+    final botAttentionItems = botsResult?.bots
             .where((b) => b.pendingApproval != null)
             .map((b) => BotAttention(device: widget.device, bot: b))
-            .toList()
-        : <BotAttention>[];
+            .toList() ??
+        <BotAttention>[];
 
     return Stack(
       children: [
@@ -381,6 +384,7 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                           )
                         : ('All clear', c.success),
                     menu: _menu(),
+                    isBotServer: isBotServer,
                   ),
                 ),
               ),
@@ -532,6 +536,7 @@ class _Header extends StatelessWidget {
     required this.onSwitch,
     required this.status,
     required this.menu,
+    this.isBotServer = false,
   });
 
   final MacDevice device;
@@ -542,6 +547,7 @@ class _Header extends StatelessWidget {
   /// (label, colour) once connected and loaded; null shows the connection state.
   final (String, Color)? status;
   final Widget menu;
+  final bool isBotServer;
 
   @override
   Widget build(BuildContext context) {
@@ -564,6 +570,17 @@ class _Header extends StatelessWidget {
                 ?.copyWith(fontSize: 22, letterSpacing: -.4),
           ),
         ),
+        if (isBotServer) ...[
+          const SizedBox(width: 4),
+          Text(
+            '· bot server',
+            style: TextStyle(
+              color: c.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
         if (others.isNotEmpty)
           Icon(Icons.unfold_more_rounded, color: c.muted, size: 20),
       ],

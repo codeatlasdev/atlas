@@ -68,12 +68,116 @@ class _Service {
   String line;
 }
 
+class _DemoBot {
+  _DemoBot(this.id, this.name, this.agent, this.role);
+  final String id;
+  final String name;
+  final String agent;
+  final String role;
+  String state = 'idle'; // idle | working | needs_you
+  final List<Map<String, dynamic>> tasks = [];
+  int queued = 0;
+  Map<String, dynamic>? pendingApproval;
+  Map<String, dynamic>? lastEntry;
+  String? memory;
+
+  Map<String, Object?> toListEntry() => {
+    'id': id,
+    'name': name,
+    'role': role,
+    'agent': agent,
+    'approval': 'ask',
+    'state': state,
+    'running_task': null,
+    'queued': queued,
+    'last': lastEntry,
+    'pending_approval': pendingApproval,
+  };
+}
+
 class _DemoComputer implements Transport {
   /// `agent_integrations` agents, in hostd's shape (`{id, label, state}`).
   final List<Map<String, String>> _integrations;
 
   _DemoComputer(this._integrations) {
     _tick = Timer.periodic(const Duration(seconds: 3), (_) => _jitter());
+    // Initialize demo bots
+    _bots['bot-1'] = _DemoBot('bot-1', 'Reviewer', 'claude', 'Reviews PRs in this project');
+    _bots['bot-2'] = _DemoBot('bot-2', 'Nightly', 'codex', 'Runs nightly checks and tests');
+    // Set Nightly to needs_you for demo
+    _bots['bot-2']!.state = 'needs_you';
+    _bots['bot-2']!.pendingApproval = {
+      'req': 'bot-approval-1',
+      'tool_name': 'Bash',
+      'tool_input': {'command': 'rm -rf dist'},
+      'pane_key': 'bot:bot-2:task-n2',
+    };
+    _bots['bot-2']!.lastEntry = {'text': 'Nightly check found issues', 'state': 'needs_you', 'ts': _now()};
+    // Seed Nightly task history (newest first in list)
+    final n2ts = _now() - 55000;
+    _bots['bot-2']!.tasks.addAll([
+      {
+        'id': 'task-n2', 'ts': n2ts, 'source': 'routine',
+        'prompt': 'Run nightly checks and clean up dist/',
+        'state': 'running',
+        'started_at': n2ts,
+        'finished_at': null, 'result': null, 'error': null,
+        'steps': [
+          {'ts': n2ts + 3000, 'text': 'Bash: bun test'},
+          {'ts': n2ts + 9000, 'text': 'Bash: bun run lint'},
+          {'ts': n2ts + 18000, 'text': 'Read dist/ directory'},
+        ],
+      },
+      {
+        'id': 'task-n1', 'ts': n2ts - 3600000, 'source': 'routine',
+        'prompt': 'Check for dependency updates',
+        'state': 'done',
+        'started_at': n2ts - 3600000,
+        'finished_at': n2ts - 3540000,
+        'result': 'All dependencies up to date. bun.lockb unchanged.',
+        'error': null, 'steps': [],
+      },
+    ]);
+    // Set Reviewer to working
+    _bots['bot-1']!.state = 'working';
+    _bots['bot-1']!.lastEntry = {'text': 'Reviewing PR #118', 'state': 'working', 'ts': _now()};
+    // Seed Reviewer task history
+    final r3ts = _now() - 90000;
+    _bots['bot-1']!.tasks.addAll([
+      {
+        'id': 'task-r3', 'ts': r3ts, 'source': 'mobile',
+        'prompt': 'Review PR #118 — auth middleware refactor',
+        'state': 'running',
+        'started_at': r3ts,
+        'finished_at': null, 'result': null, 'error': null,
+        'steps': [
+          {'ts': r3ts + 2000, 'text': 'Read src/middleware/auth.ts'},
+          {'ts': r3ts + 8000, 'text': 'Read src/middleware/auth.test.ts'},
+          {'ts': r3ts + 15000, 'text': 'Read src/routes/user.ts'},
+          {'ts': r3ts + 28000, 'text': 'Bash: bun test --filter auth'},
+        ],
+      },
+      {
+        'id': 'task-r2', 'ts': r3ts - 180000, 'source': 'desktop',
+        'prompt': 'Why is the payments service failing?',
+        'state': 'done',
+        'started_at': r3ts - 180000,
+        'finished_at': r3ts - 120000,
+        'result': 'payments exits with code 2: connects to a ledger service not in this project. Add LEDGER_URL to .env or stub with LEDGER_MOCK=1.',
+        'error': null, 'steps': [],
+      },
+      {
+        'id': 'task-r1', 'ts': r3ts - 720000, 'source': 'routine',
+        'prompt': 'Review open PRs and leave comments',
+        'state': 'done',
+        'started_at': r3ts - 720000,
+        'finished_at': r3ts - 660000,
+        'result': 'Found 2 issues in PR #115: missing null check on line 42 and an unused import. Left inline comments.',
+        'error': null, 'steps': [],
+      },
+    ]);
+    // Add pending invite
+    _pendingInvites.add({'url': 'atlas-mobile://pair?node=bot-server-1&code=BOTCODE&name=myserver&addr=192.168.1.10:4040', 'name': 'myserver'});
   }
 
   final _lines = StreamController<String>.broadcast();
@@ -134,11 +238,9 @@ class _DemoComputer implements Transport {
   /// The pending approval of `demo-claude`, until answered.
   String? _approvalReq = 'demo-1';
 
-  // Demo bots.
-  final _demoBotId = 'bot00001';
-  String? _pendingBotTaskId;
-  final _botNeedsApproval = true; // starts with a pending approval
-  final _botTasks = <Map<String, Object?>>[];
+  // Bot server demo data
+  final _bots = <String, _DemoBot>{};
+  final _pendingInvites = <Map<String, String>>[];
 
   @override
   Stream<String> get incomingLines => _lines.stream;
@@ -238,66 +340,52 @@ class _DemoComputer implements Transport {
         data = <String, Object?>{};
       case 'bot_list':
         data = {
-          'bots': [
-            {
-              'id': _demoBotId,
-              'name': 'Reviewer',
-              'role': 'You review code changes and provide feedback.',
-              'agent': 'claude',
-              'approval': 'ask',
-              'state': _pendingBotTaskId != null ? 'working' : (_botNeedsApproval ? 'needs_you' : 'idle'),
-              'running_task': null,
-              'pending_approval': _botNeedsApproval
-                  ? {
-                      'req': 'bot-req-1',
-                      'tool_name': 'Bash',
-                      'tool_input': {'command': 'git diff HEAD'},
-                      'pane_key': 'bot:$_demoBotId:task-1',
-                    }
-                  : null,
-            },
-          ],
+          'host_name': 'demo-mac',
+          'bots': [for (final b in _bots.values) b.toListEntry()],
         };
       case 'bot_tasks':
-        data = {'tasks': [..._botTasks.reversed]};
+        final botId = args['id'] as String?;
+        final bot = _bots[botId];
+        data = {'tasks': bot?.tasks ?? const []};
       case 'bot_task':
-        final taskId = 'task-${_botTasks.length + 1}';
-        final prompt = args['prompt'] as String? ?? '';
-        final source = args['source'] as String? ?? 'mobile';
-        final task = {
-          'id': taskId,
-          'ts': _now(),
-          'source': source,
-          'prompt': prompt,
-          'state': 'queued',
-          'result': null,
-          'error': null,
-          'finished_at': null,
-        };
-        _botTasks.add({...task});
-        _pendingBotTaskId = taskId;
-        data = {'task': task};
-        // Push task state: queued → running → done.
-        _later(const Duration(milliseconds: 300), () {
-          _updateBotTask(taskId, 'running', null, null);
-        });
-        _later(const Duration(milliseconds: 1800), () {
-          _pendingBotTaskId = null;
-          _updateBotTask(taskId, 'done',
-              'This is a demo. On a real bot computer, claude would run here.',
-              null);
-        });
+        error = _createBotTask(
+          args['id'] as String?,
+          args['prompt'] as String? ?? '',
+          args['source'] as String? ?? 'mobile',
+        );
+        data = error == null ? {'task': {'id': 'task-$_seq', 'state': 'queued'}} : null;
       case 'bot_memory':
-        data = {'text': '# Reviewer Memory\n\nNo notes yet.'};
+        final bot = _bots[args['id'] as String?];
+        data = {'text': bot?.memory ?? '# Memory\nNothing saved yet.'};
       case 'bot_memory_set':
+        final bot = _bots[args['id'] as String?];
+        bot?.memory = args['text'] as String? ?? '';
         data = <String, Object?>{};
       case 'bot_routine_set':
+        data = <String, Object?>{};
+      case 'bot_create':
+        final newId = 'bot-${_bots.length + 1}';
+        _bots[newId] = _DemoBot(
+          newId,
+          args['name'] as String? ?? 'Bot',
+          args['agent'] as String? ?? 'claude',
+          args['role'] as String? ?? '',
+        );
+        data = _bots[newId]!.toListEntry();
+      case 'bot_delete':
+        _bots.remove(args['id'] as String?);
+        data = <String, Object?>{};
+      case 'bot_cancel':
+        data = <String, Object?>{};
+      case 'mobile_invites':
+        data = {'invites': _pendingInvites};
+      case 'mobile_invite_dismiss':
+        final url = args['url'] as String?;
+        _pendingInvites.removeWhere((i) => i['url'] == url);
         data = <String, Object?>{};
       case 'push_register':
         data = <String, Object?>{};
       case 'push_unregister':
-        data = <String, Object?>{};
-      case 'bot_cancel':
         data = <String, Object?>{};
       case 'info':
         data = {
@@ -346,6 +434,20 @@ class _DemoComputer implements Transport {
   };
 
   String? _approve(String? pane, String? req, bool allow) {
+    // Handle bot panes (pane_key = "bot:<botId>:<taskId>")
+    if (pane != null && pane.startsWith('bot:')) {
+      final parts = pane.split(':');
+      if (parts.length < 2) return 'invalid bot pane';
+      final botId = parts[1];
+      final bot = _bots[botId];
+      if (bot == null || req == null || bot.pendingApproval?['req'] != req) {
+        return 'no such pending request';
+      }
+      bot.pendingApproval = null;
+      bot.state = 'idle';
+      _emit({'ev': 'agent_approval_done', 'req': req, 'pane_key': pane});
+      return null;
+    }
     final a = _agents[pane];
     if (a == null || req == null || req != _approvalReq) {
       return 'no such pending request';
@@ -369,25 +471,53 @@ class _DemoComputer implements Transport {
     return null;
   }
 
-  void _updateBotTask(
-      String taskId, String state, String? result, String? error) {
-    final idx = _botTasks.indexWhere((t) => t['id'] == taskId);
-    if (idx < 0) return;
-    _botTasks[idx] = {
-      ..._botTasks[idx],
-      'state': state,
-      'result': ?result,
-      'error': ?error,
-      if (state == 'done' || state == 'failed') 'finished_at': _now(),
+  String? _createBotTask(String? botId, String prompt, String source) {
+    final bot = _bots[botId];
+    if (bot == null) return 'bot not found';
+    final taskId = 'task-${++_seq}';
+    final ts = _now();
+    final task = <String, dynamic>{
+      'id': taskId,
+      'ts': ts,
+      'source': source,
+      'prompt': prompt,
+      'state': 'queued',
+      'result': null,
+      'error': null,
+      'started_at': null,
+      'finished_at': null,
+      'steps': <Object?>[],
     };
+    bot.tasks.insert(0, task);
+    bot.queued++;
+    // Simulate task running then done.
+    _later(const Duration(milliseconds: 500), () {
+      task['state'] = 'running';
+      task['started_at'] = _now();
+      bot.state = 'working';
+      bot.queued = (bot.queued - 1).clamp(0, 999);
+      _pushBotTask(bot, task);
+    });
+    _later(const Duration(milliseconds: 2800), () {
+      task['state'] = 'done';
+      task['finished_at'] = _now();
+      task['result'] = 'This is a demo. On your real bot server, ${bot.agent} would run and return the result here.';
+      bot.state = 'idle';
+      bot.lastEntry = {'text': task['result'], 'state': 'done', 'ts': _now()};
+      _pushBotTask(bot, task);
+    });
+    return null;
+  }
+
+  void _pushBotTask(_DemoBot bot, Map<String, dynamic> task) {
     _emit({
       'ev': 'bot_task',
-      'bot': _demoBotId,
+      'bot': {'id': bot.id},
       'task': {
-        'id': taskId,
-        'state': state,
-        'result': ?result,
-        'error': ?error,
+        'id': task['id'],
+        'state': task['state'],
+        'result': task['result'],
+        'error': task['error'],
       },
     });
   }

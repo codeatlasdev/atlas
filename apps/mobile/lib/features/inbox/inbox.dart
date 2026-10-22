@@ -35,7 +35,7 @@ class ServiceAttention extends Attention {
 class BotAttention {
   const BotAttention({required this.device, required this.bot});
   final MacDevice device;
-  final Bot bot;
+  final BotListEntry bot;
 }
 
 /// All items that need the user across every paired computer.
@@ -60,7 +60,7 @@ final inboxProvider = FutureProvider.autoDispose<List<Object>>((ref) async {
       }
     }
     // Bot attention: bots with a pending approval.
-    final bots = ref.watch(botsProvider(device)).value ?? [];
+    final bots = ref.watch(botsProvider(device)).value?.bots ?? [];
     for (final bot in bots) {
       if (bot.pendingApproval != null) {
         items.add(BotAttention(device: device, bot: bot));

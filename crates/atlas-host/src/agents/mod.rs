@@ -196,6 +196,15 @@ impl AgentHub {
         st.updated_at = now;
         let out = (pane, st.clone());
         drop(panes);
+        let payload_ev = p["event"].as_str().unwrap_or("");
+        if payload_ev == "pre_tool_use" || payload_ev == "post_tool_use" {
+            let _ = self.tx.send(json!({
+                "ev": "agent_step",
+                "pane_key": out.0,
+                "tool_name": p["tool_name"],
+                "tool_input": p["tool_input"],
+            }));
+        }
         self.push_status(&out.0, &out.1);
         Some(out)
     }

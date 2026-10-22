@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { fly } from "svelte/transition";
-	import { cubicOut } from "svelte/easing";
+	import { cubicOut, cubicIn } from "svelte/easing";
+	import type { TransitionConfig } from "svelte/transition";
 	import BotFace from "#lib/bots/BotFace.svelte";
+	import BotActor from "#lib/bots/BotActor.svelte";
+	import CoffeeCup from "#lib/bots/props/CoffeeCup.svelte";
+	import SceneServer from "#lib/bots/SceneServer.svelte";
+	import SceneChat from "#lib/bots/SceneChat.svelte";
+	import SceneNotif from "#lib/bots/SceneNotif.svelte";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { randomLook } from "#lib/bots/look.ts";
@@ -15,7 +21,7 @@
 		isEngineReady,
 		type OnboardingStep,
 	} from "#lib/bots/botsOnboarding.ts";
-	import { Server, MessageSquare, BellRing, Copy, Check, ChevronLeft } from "@lucide/svelte";
+	import { Copy, Check, ChevronLeft } from "@lucide/svelte";
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 
@@ -34,13 +40,63 @@
 	// engine step
 	let selectedEngine = $state("");
 
-	// Floating faces for intro (fixed seeds for determinism)
+	// slide direction: 1 = forward (right-to-left), -1 = backward
+	let direction = $state(1);
+
+	// ─── intro faces with per-character actions ────────────────────────────────
+	// face-a waves at the cursor (top-left), face-c is asleep (bottom-left),
+	// face-d sips coffee (bottom-right), the rest drift idly.
 	const INTRO_FACES = [
-		{ seed: "face-a", size: 72, x: 8, y: 18, phase: 0 },
-		{ seed: "face-b", size: 56, x: 76, y: 10, phase: 0.5 },
-		{ seed: "face-c", size: 88, x: 5, y: 62, phase: 0.9 },
-		{ seed: "face-d", size: 64, x: 80, y: 65, phase: 1.4 },
-		{ seed: "face-e", size: 48, x: 44, y: 6, phase: 1.9 },
+		{
+			seed: "face-a",
+			size: 72,
+			x: 8,
+			y: 18,
+			phase: 0,
+			action: "wave" as const,
+			state: "idle" as const,
+			hasCoffee: false,
+		},
+		{
+			seed: "face-b",
+			size: 56,
+			x: 76,
+			y: 10,
+			phase: 0.5,
+			action: "idle" as const,
+			state: "idle" as const,
+			hasCoffee: false,
+		},
+		{
+			seed: "face-c",
+			size: 88,
+			x: 5,
+			y: 62,
+			phase: 0.9,
+			action: "idle" as const,
+			state: "offline" as const,
+			hasCoffee: false,
+		},
+		{
+			seed: "face-d",
+			size: 64,
+			x: 80,
+			y: 65,
+			phase: 1.4,
+			action: "sip" as const,
+			state: "idle" as const,
+			hasCoffee: true,
+		},
+		{
+			seed: "face-e",
+			size: 48,
+			x: 44,
+			y: 6,
+			phase: 1.9,
+			action: "idle" as const,
+			state: "idle" as const,
+			hasCoffee: false,
+		},
 	];
 
 	// ─── computed ─────────────────────────────────────────────────────────────
@@ -48,14 +104,58 @@
 		agents.list.filter((a) => ["claude", "opencode", "codex", "omp"].includes(a.id)),
 	);
 
+	// Connect step: bot avatar state reflects connection status
+	const connectBotState = $derived(
+		connected
+			? ("needs_you" as const)
+			: connecting
+				? ("working" as const)
+				: connectError
+					? ("needs_you" as const)
+					: ("offline" as const),
+	);
+
+	// ─── parallax slide transitions ───────────────────────────────────────────
+	// Art moves ~half as far as text so it feels deeper / layered.
+	function artIn(_node: Element, { d }: { d: number }): TransitionConfig {
+		return {
+			duration: reducedMotion ? 0 : dur.slow,
+			easing: cubicOut,
+			css: (t) => `opacity:${t};transform:translateX(${(1 - t) * d * 56}px)`,
+		};
+	}
+	function artOut(_node: Element, { d }: { d: number }): TransitionConfig {
+		return {
+			duration: reducedMotion ? 0 : dur.base,
+			easing: cubicIn,
+			css: (t) => `opacity:${t};transform:translateX(${(1 - t) * -d * 56}px)`,
+		};
+	}
+	function textIn(_node: Element, { d }: { d: number }): TransitionConfig {
+		return {
+			duration: reducedMotion ? 0 : dur.slow,
+			easing: cubicOut,
+			css: (t) => `opacity:${t};transform:translateX(${(1 - t) * d * 112}px)`,
+		};
+	}
+	function textOut(_node: Element, { d }: { d: number }): TransitionConfig {
+		return {
+			duration: reducedMotion ? 0 : dur.base,
+			easing: cubicIn,
+			css: (t) => `opacity:${t};transform:translateX(${(1 - t) * -d * 112}px)`,
+		};
+	}
+
 	// ─── actions ──────────────────────────────────────────────────────────────
 	function advance() {
+		direction = 1;
 		const next = nextStep({ step, hasHost });
 		if (next === "done") finish();
 		else step = next;
 	}
 
 	function back() {
+		direction = -1;
 		const prev = prevStep({ step, hasHost });
 		if (prev) step = prev;
 	}
@@ -118,7 +218,7 @@
 	<!-- ─── Intro ──────────────────────────────────────────────────────────── -->
 	{#if step === "intro"}
 		<div class="step step-intro" in:fly={{ y: 24, duration: reducedMotion ? 0 : dur.slow, easing: cubicOut }}>
-			<!-- Floating faces -->
+			<!-- Floating bot characters with actions -->
 			{#each INTRO_FACES as f}
 				<div
 					class="float-face"
@@ -128,7 +228,17 @@
 					style:--phase="{f.phase}s"
 					aria-hidden="true"
 				>
-					<BotFace seed={f.seed} state="idle" size={f.size} />
+					{#if f.hasCoffee}
+						<!-- Sipping bot: face + coffee cup side by side -->
+						<div class="face-with-prop">
+							<BotActor seed={f.seed} state={f.state} size={f.size} action={f.action} />
+							<div class="prop-coffee" style:color="var(--ca-text-secondary)">
+								<CoffeeCup size={Math.round(f.size * 0.45)} />
+							</div>
+						</div>
+					{:else}
+						<BotActor seed={f.seed} state={f.state} size={f.size} action={f.action} />
+					{/if}
 				</div>
 			{/each}
 
@@ -145,29 +255,34 @@
 	{:else if step === "how1" || step === "how2" || step === "how3"}
 		{@const slideIdx = pagerIndex(step)}
 		<div class="step step-how" in:fly={{ y: 24, duration: reducedMotion ? 0 : dur.base, easing: cubicOut }}>
-			<div class="how-content">
-				<div class="how-icon">
+			<!-- Art zone: scene component with parallax in/out on step change -->
+			{#key step}
+				<div class="how-art" in:artIn={{ d: direction }} out:artOut={{ d: direction }}>
 					{#if step === "how1"}
-						<Server size={64} strokeWidth={1.25} />
+						<SceneServer />
 					{:else if step === "how2"}
-						<MessageSquare size={64} strokeWidth={1.25} />
+						<SceneChat />
 					{:else}
-						<BellRing size={64} strokeWidth={1.25} />
+						<SceneNotif />
 					{/if}
 				</div>
-				<h2 class="how-title">
-					{#if step === "how1"}It runs on your server
-					{:else if step === "how2"}You chat, it works
-					{:else}It calls you when it needs you{/if}
-				</h2>
-				<p class="how-body">
-					{#if step === "how1"}Your server never sleeps. Your Mac can be off — the bot keeps going.
-					{:else if step === "how2"}Continuous conversation. The bot remembers what it did last time.
-					{:else}Approvals and notifications on your phone, any time a bot needs a decision.{/if}
-				</p>
-			</div>
 
-			<!-- Pager dots -->
+				<!-- Text zone: slides faster than art for parallax depth -->
+				<div class="how-text" in:textIn={{ d: direction }} out:textOut={{ d: direction }}>
+					<h2 class="how-title">
+						{#if step === "how1"}It runs on your server
+						{:else if step === "how2"}You chat, it works
+						{:else}It calls you when it needs you{/if}
+					</h2>
+					<p class="how-body">
+						{#if step === "how1"}Your server never sleeps. Your Mac can be off — the bot keeps going.
+						{:else if step === "how2"}Continuous conversation. The bot remembers what it did last time.
+						{:else}Approvals and notifications on your phone, any time a bot needs a decision.{/if}
+					</p>
+				</div>
+			{/key}
+
+			<!-- Pager dots — outside key block, no transition -->
 			<div class="pager" aria-label="Step {slideIdx + 1} of 3">
 				{#each PAGER_STEPS as _, i}
 					<span class="dot" class:active={i === slideIdx}></span>
@@ -189,6 +304,11 @@
 			class="step step-connect"
 			in:fly={{ y: 24, duration: reducedMotion ? 0 : dur.base, easing: cubicOut }}
 		>
+			<!-- Reactive bot avatar: sleepy while idle, works while connecting, hops on success -->
+			<div class="step-avatar" aria-hidden="true">
+				<BotFace seed="onboarding-connect" state={connectBotState} size={72} />
+			</div>
+
 			{#if connected}
 				<div class="connect-success">
 					<span class="check-icon"><Check size={32} /></span>
@@ -223,6 +343,11 @@
 			class="step step-engine"
 			in:fly={{ y: 24, duration: reducedMotion ? 0 : dur.base, easing: cubicOut }}
 		>
+			<!-- Bot avatar: idle until an engine is selected, then working -->
+			<div class="step-avatar" aria-hidden="true">
+				<BotFace seed="onboarding-engine" state={selectedEngine ? "working" : "idle"} size={72} />
+			</div>
+
 			<h2 class="step-title">Choose an engine</h2>
 			<p class="step-sub">Select the AI agent your bot will use.</p>
 			<div class="engine-grid">
@@ -277,6 +402,7 @@
 		cursor: pointer;
 		padding: 4px 8px;
 		border-radius: 6px;
+		z-index: 1;
 	}
 	.skip-btn:hover {
 		background: var(--ca-vibrancy-fill);
@@ -310,6 +436,16 @@
 		}
 	}
 
+	/* coffee cup sits beside the sipping bot */
+	.face-with-prop {
+		display: flex;
+		align-items: flex-end;
+		gap: 4px;
+	}
+	.prop-coffee {
+		margin-bottom: 6px;
+	}
+
 	.intro-center {
 		position: relative;
 		z-index: 1;
@@ -336,30 +472,52 @@
 	}
 
 	/* ─── How slides ─────────────────────────────────────────── */
+	/* Full-screen flex column: art fills upper half, text+nav anchors bottom */
 	.step-how {
+		position: absolute;
+		inset: 0;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 24px;
-		max-width: 480px;
-		padding: 0 24px;
+		overflow: hidden;
+	}
+
+	.how-art {
+		flex: 1 1 0;
+		min-height: 200px;
+		max-height: 360px;
+		width: 100%;
+		max-width: 720px;
+		padding: 16px 16px 0;
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.how-text {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		padding: 20px 24px 4px;
+		max-width: 520px;
+		width: 100%;
 		text-align: center;
 	}
 
-	.how-icon {
-		color: var(--ca-text-primary);
-		opacity: 0.85;
-	}
-
 	.how-title {
-		font-size: 24px;
+		font-size: 22px;
 		font-weight: 700;
 		color: var(--ca-text-primary);
 		margin: 0;
 	}
 
 	.how-body {
-		font-size: 15px;
+		font-size: 14px;
 		color: var(--ca-text-secondary);
 		line-height: 1.6;
 		margin: 0;
@@ -368,6 +526,7 @@
 	.pager {
 		display: flex;
 		gap: 6px;
+		padding: 12px 0 4px;
 	}
 
 	.pager .dot {
@@ -391,6 +550,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
+		padding: 8px 0 20px;
 	}
 
 	/* ─── Connect + Engine ───────────────────────────────────── */
@@ -404,6 +564,11 @@
 		width: 100%;
 		padding: 0 24px;
 		text-align: center;
+	}
+
+	/* Reactive bot avatar at top of form steps */
+	.step-avatar {
+		margin-bottom: 4px;
 	}
 
 	.step-title {

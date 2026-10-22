@@ -419,7 +419,7 @@ fn setup_detection_lists_all_agents_when_present() {
     let sb = Sandbox::new();
     let bin = sb.home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    for b in ["claude", "codex"] {
+    for b in ["claude", "codex", "opencode"] {
         let p = bin.join(b);
         std::fs::write(&p, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -485,7 +485,7 @@ fn setup_detection_lists_all_agents_when_present() {
     assert_eq!(text.matches("set up, up to date").count(), 1, "{text}");
     assert_eq!(
         text.matches("not set up (or outdated)").count(),
-        2,
+        3,
         "{text}"
     );
 }

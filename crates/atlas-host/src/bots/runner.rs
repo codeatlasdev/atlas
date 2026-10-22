@@ -22,7 +22,7 @@ const BOT_TASK_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 
 /// Test-only: serialise tests that need to override the spawned agent binary.
 /// Hold via `.lock()` for the entire test to prevent races between parallel tests.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) static TEST_BIN_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> =
     std::sync::OnceLock::new();
 
@@ -32,7 +32,7 @@ static TEST_AGENT_BIN: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::
 
 /// Set (or clear) the per-test agent binary override.  Always acquire
 /// `TEST_BIN_LOCK` first to prevent concurrent tests from racing.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn set_test_agent_bin(bin: Option<&str>) {
     *TEST_AGENT_BIN.lock() = bin.map(str::to_string);
 }

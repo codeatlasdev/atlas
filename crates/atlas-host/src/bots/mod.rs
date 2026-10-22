@@ -1,5 +1,8 @@
 //! Bot subsystem: hub, public API, and HostCmd routing.
 
+pub(crate) mod engine;
+pub mod mcp;
+pub(crate) mod project;
 pub(crate) mod push;
 pub(crate) mod runner;
 pub(crate) mod schedule;
@@ -7,6 +10,7 @@ pub(crate) mod store;
 pub(crate) mod telegram;
 #[cfg(test)]
 mod tests;
+pub(crate) mod triggers;
 
 use std::sync::Arc;
 
@@ -37,6 +41,10 @@ pub(crate) struct BotHub {
     /// Runner state per bot.
     pub(crate) runners: Arc<runner::RunnerMap>,
     hub_ref: std::sync::OnceLock<std::sync::Weak<Hub>>,
+    /// Pending ask_user waiters keyed by ask_id.
+    pub(crate) ask_waiters: parking_lot::Mutex<
+        std::collections::HashMap<String, tokio::sync::oneshot::Sender<store::AskAnswer>>,
+    >,
 }
 
 impl BotHub {
@@ -50,6 +58,7 @@ impl BotHub {
             telegram,
             runners: Arc::new(runner::RunnerMap::new()),
             hub_ref: std::sync::OnceLock::new(),
+            ask_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -58,6 +67,7 @@ impl BotHub {
         self.telegram.set_hub(hub.clone());
         self.telegram.clone().start();
         schedule::start(hub.clone());
+        triggers::start(hub.clone());
 
         // Subscribe to agent_approval events for bot panes → telegram + push.
         {
@@ -154,6 +164,26 @@ impl BotHub {
     pub(crate) fn hub_arc(&self) -> Option<Arc<Hub>> {
         self.hub_ref.get()?.upgrade()
     }
+
+    /// Wake a blocked ask_user call with its answer. Returns true if someone was waiting.
+    pub(crate) fn answer_ask(&self, ask_id: &str, answer: store::AskAnswer) -> bool {
+        if let Some(tx) = self.ask_waiters.lock().remove(ask_id) {
+            let _ = tx.send(answer);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Register a waiter for an ask_user call; returns a receiver to await.
+    pub(crate) fn wait_ask(
+        &self,
+        ask_id: String,
+    ) -> tokio::sync::oneshot::Receiver<store::AskAnswer> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.ask_waiters.lock().insert(ask_id, tx);
+        rx
+    }
 }
 
 // ─── handle() ────────────────────────────────────────────────────────────────
@@ -225,6 +255,12 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                     if let Some(l) = last {
                         v["last"] = l;
                     }
+                    if let Some(engine) = &b.engine {
+                        v["engine"] = json!({"kind": engine.kind});
+                    }
+                    if let Some(project) = &b.project {
+                        v["project"] = json!(project);
+                    }
                     v
                 })
                 .collect();
@@ -239,6 +275,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             approval,
             workdir,
             look,
+            engine,
+            project,
         } => {
             let name = name.trim().to_string();
             if name.is_empty() || name.len() > 40 {
@@ -249,9 +287,6 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             }
             let approval_enum: Approval = serde_json::from_value(json!(approval))
                 .map_err(|_| format!("invalid approval: {approval}"))?;
-            if agent == "omp" && approval_enum == Approval::Ask {
-                return Err("omp bots run with approval: auto".into());
-            }
             if atlas_core::agents::get(&agent).is_none() {
                 return Err(format!("unknown agent '{agent}'"));
             }
@@ -270,7 +305,10 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                 workdir,
                 approval: approval_enum,
                 routines: vec![],
+                triggers: vec![],
                 look,
+                engine,
+                project,
                 created_at: now_s(),
             };
             hub.bots
@@ -289,6 +327,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             agent,
             approval,
             look,
+            engine,
+            project,
         } => {
             let mut bot = hub
                 .bots
@@ -317,14 +357,17 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             if let Some(ap) = approval {
                 let ap_enum: Approval = serde_json::from_value(json!(ap))
                     .map_err(|_| format!("invalid approval: {ap}"))?;
-                if bot.agent == "omp" && ap_enum == Approval::Ask {
-                    return Err("omp bots run with approval: auto".into());
-                }
                 bot.approval = ap_enum;
             }
             if let Some(l) = look {
                 l.validate()?;
                 bot.look = Some(l);
+            }
+            if let Some(e) = engine {
+                bot.engine = Some(e);
+            }
+            if let Some(p) = project {
+                bot.project = Some(p);
             }
             hub.bots
                 .store
@@ -455,6 +498,94 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             let code = hub.bots.telegram.start_link();
             Ok(json!({ "code": code }))
         }
+
+        // ── BotTriggersSet ──────────────────────────────────────────────────
+        HostCmd::BotTriggersSet { id, triggers } => {
+            let mut bot = hub
+                .bots
+                .store
+                .load_bot(&id)
+                .map_err(|_| format!("bot {id} not found"))?;
+            bot.triggers = triggers
+                .into_iter()
+                .map(|v| {
+                    serde_json::from_value::<crate::bots::store::Trigger>(v)
+                        .map_err(|e| format!("invalid trigger: {e}"))
+                        .and_then(|t| {
+                            crate::bots::triggers::validate_trigger(&t)?;
+                            Ok(t)
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            hub.bots
+                .store
+                .save_bot(&bot)
+                .map_err(|e| format!("save_bot: {e}"))?;
+            Ok(json!({}))
+        }
+
+        // ── BotSecretSet ────────────────────────────────────────────────────
+        HostCmd::BotSecretSet { id, key, value } => {
+            // Validate bot exists before storing secret.
+            hub.bots
+                .store
+                .load_bot(&id)
+                .map_err(|_| format!("bot {id} not found"))?;
+            hub.bots
+                .store
+                .set_secret(&id, &key, &value)
+                .map_err(|e| format!("set_secret: {e}"))?;
+            Ok(json!({}))
+        }
+
+        // ── BotAnswer ───────────────────────────────────────────────────────
+        HostCmd::BotAnswer {
+            id,
+            ask_id,
+            key,
+            text,
+        } => {
+            use crate::bots::store::AskAnswer;
+            let answer = if let Some(k) = key {
+                AskAnswer::Key { value: k }
+            } else if let Some(t) = text {
+                AskAnswer::Text { value: t }
+            } else {
+                return Err("key or text required".into());
+            };
+            let tasks = hub.bots.store.read_tasks(&id, usize::MAX);
+            let mut updated = false;
+            for mut task in tasks {
+                if task.ask.as_ref().map(|a| a.id == ask_id).unwrap_or(false) {
+                    if let Some(ask) = &mut task.ask {
+                        ask.answered = Some(answer.clone());
+                    }
+                    hub.bots
+                        .store
+                        .append_task(&id, &task)
+                        .map_err(|e| format!("append_task: {e}"))?;
+                    updated = true;
+                    break;
+                }
+            }
+            if !updated {
+                return Err(format!("ask {ask_id} not found for bot {id}"));
+            }
+            hub.bots.answer_ask(&ask_id, answer);
+            Ok(json!({}))
+        }
+
+        // ── BotUsage ────────────────────────────────────────────────────────
+        HostCmd::BotUsage { id, since } => {
+            let records = hub.bots.store.read_usage(id.as_deref(), since.unwrap_or(0));
+            Ok(json!({ "records": records }))
+        }
+
+        // ── EngineLimits ────────────────────────────────────────────────────
+        HostCmd::EngineLimits {} => Ok(json!({
+            "message": "no machine-readable quota or rate-limit information is exposed by any supported engine CLI",
+            "limits": {}
+        })),
 
         _ => Err("not a bot command".into()),
     }

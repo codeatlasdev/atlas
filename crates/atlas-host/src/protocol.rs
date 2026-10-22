@@ -396,6 +396,10 @@ pub enum HostCmd {
         workdir: Option<String>,
         #[serde(default)]
         look: Option<crate::bots::store::BotLook>,
+        #[serde(default)]
+        engine: Option<crate::bots::store::EngineConfig>,
+        #[serde(default)]
+        project: Option<crate::bots::store::ProjectRef>,
     },
     BotUpdate {
         id: String,
@@ -409,6 +413,10 @@ pub enum HostCmd {
         approval: Option<String>,
         #[serde(default)]
         look: Option<crate::bots::store::BotLook>,
+        #[serde(default)]
+        engine: Option<crate::bots::store::EngineConfig>,
+        #[serde(default)]
+        project: Option<crate::bots::store::ProjectRef>,
     },
     BotDelete {
         id: String,
@@ -458,6 +466,30 @@ pub enum HostCmd {
     MobileInviteDismiss {
         url: String,
     },
+    BotTriggersSet {
+        id: String,
+        triggers: Vec<serde_json::Value>,
+    },
+    BotSecretSet {
+        id: String,
+        key: String,
+        value: String,
+    },
+    BotAnswer {
+        id: String,
+        ask_id: String,
+        #[serde(default)]
+        key: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    BotUsage {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        since: Option<u64>,
+    },
+    EngineLimits {},
 }
 
 /// Build a response line.

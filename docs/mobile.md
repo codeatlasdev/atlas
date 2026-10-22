@@ -36,7 +36,7 @@ Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iro
 
 ## Building the app
 
-Needs Flutter stable and a Rust toolchain (the transport is the `apps/mobile/native` crate, bound through flutter_rust_bridge). `scripts/mobile-check.sh` (part of `bun run check`) runs `flutter analyze` and `flutter test`. It is skipped with a notice when Flutter is not installed.
+Needs the Flutter version pinned in `apps/mobile/pubspec.yaml` (`environment.flutter`, always the newest stable; the gate fails with `flutter upgrade` when yours is older, see `apps/mobile/AGENTS.md`) and a Rust toolchain (the transport is the `apps/mobile/native` crate, bound through flutter_rust_bridge). `scripts/mobile-check.sh` (part of `bun run check`) runs `flutter analyze` and `flutter test`. It is skipped with a notice when Flutter is not installed.
 
 ## End-to-end test (iOS Simulator, Android emulator)
 

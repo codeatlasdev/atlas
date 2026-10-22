@@ -20,6 +20,9 @@ version: 1.0.0+1
 
 environment:
   sdk: ^3.13.5
+  # The one Flutter pin: CI reads it (flutter-version-file), scripts/mobile-check.sh
+  # refuses an older local SDK. Bump to the newest stable when one ships (see AGENTS.md).
+  flutter: 3.47.7
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions

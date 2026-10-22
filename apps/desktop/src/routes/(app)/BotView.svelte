@@ -10,7 +10,9 @@
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import type { BotTask, Routine } from "#lib/bots.ts";
+	import BotEditor from "#lib/bots/BotEditor.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
+	import { normalizeLook, type BotLook } from "#lib/bots/look.ts";
 	import TypingIndicator from "#lib/bots/TypingIndicator.svelte";
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 
@@ -151,24 +153,6 @@
 			.join("\n");
 	}
 
-	const AVATAR_COLORS = [
-		"#6366f1",
-		"#8b5cf6",
-		"#ec4899",
-		"#f43f5e",
-		"#f97316",
-		"#eab308",
-		"#22c55e",
-		"#14b8a6",
-		"#3b82f6",
-	];
-
-	function avatarColor(name: string): string {
-		let h = 0;
-		for (let i = 0; i < name.length; i++) h = ((h * 31 + name.charCodeAt(i)) >>> 0) % AVATAR_COLORS.length;
-		return AVATAR_COLORS[h];
-	}
-
 	function sourceLabel(source: string): string {
 		if (source === "mobile") return "· mobile";
 		if (source === "desktop") return "· desktop";
@@ -223,6 +207,17 @@
 			toast.error(errText(e));
 		} finally {
 			roleSaving = false;
+		}
+	}
+
+	let editingLook = $state<BotLook | null>(null);
+	async function saveLook() {
+		if (!bots.selected || !bot || !editingLook) return;
+		try {
+			await bots.updateBot(bots.selected.hostKey, bot.id, { look: editingLook });
+			editingLook = null;
+		} catch (e) {
+			toast.error(errText(e));
 		}
 	}
 
@@ -349,7 +344,7 @@
 		<!-- Header -->
 		<div class="header">
 			<div class="header-left">
-				<BotFace seed={bot.id} state={faceState} size={30} />
+				<BotFace seed={bot.id} look={bot.look} state={faceState} size={30} />
 				<div class="header-title">
 					<span class="bot-name">{bot.name}</span>
 					{#if agentLabel}
@@ -439,7 +434,7 @@
 						{#if t.state === "running"}
 							{@const elapsedMs = t.started_at ? now - t.started_at * 1000 : 0}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state="working" size={24} />
+								<BotFace seed={bot.id} look={bot.look} state="working" size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in working">
 										<Spinner size={12} />
@@ -496,7 +491,7 @@
 							</div>
 						{:else if t.state === "done"}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state={faceState} size={24} />
+								<BotFace seed={bot.id} look={bot.look} state={faceState} size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in ca-selectable">{t.result ?? "Done"}</div>
 									{#if t.steps && t.steps.length > 0}
@@ -526,14 +521,14 @@
 							</div>
 						{:else if t.state === "failed"}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state="offline" size={24} />
+								<BotFace seed={bot.id} look={bot.look} state="offline" size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 								</div>
 							</div>
 						{:else if t.state === "cancelled"}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state="idle" size={24} />
+								<BotFace seed={bot.id} look={bot.look} state="idle" size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in muted">Cancelled</div>
 								</div>
@@ -585,19 +580,28 @@
 				<button class="close-btn" onclick={() => (panel = "none")} aria-label="Close panel">✕</button>
 
 				<div class="profile-header">
-					<div
+					<button
 						class="profile-avatar"
-						style:background={avatarColor(bot.name)}
-						style:color={"#fff"}
-						aria-hidden="true"
+						aria-label="Customize look"
+						onclick={() => (editingLook = normalizeLook(bot.look, bot.id))}
 					>
-						{bot.name[0].toUpperCase()}
-					</div>
+						<BotFace seed={bot.id} look={bot.look} state={faceState} size={72} track />
+					</button>
 					<div class="profile-name">{bot.name}</div>
 					<div class="profile-sub">
 						{agentLabel}{serverName ? ` · ${serverName}` : ""}
 					</div>
 				</div>
+
+				{#if editingLook}
+					<div class="profile-section">
+						<BotEditor bind:look={editingLook} seed={bot.id} />
+						<div class="profile-foot">
+							<Button size="sm" onclick={() => (editingLook = null)}>Cancel</Button>
+							<Button size="sm" onclick={saveLook}>Save look</Button>
+						</div>
+					</div>
+				{/if}
 
 				<!-- What it does -->
 				<div class="profile-section">
@@ -1093,14 +1097,10 @@
 		margin-bottom: 4px;
 	}
 	.profile-avatar {
-		width: 48px;
-		height: 48px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 20px;
-		font-weight: 700;
+		padding: 0;
+		border: 0;
+		background: none;
+		cursor: pointer;
 	}
 	.profile-name {
 		font-size: 15px;

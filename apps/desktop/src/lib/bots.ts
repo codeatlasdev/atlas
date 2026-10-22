@@ -46,6 +46,8 @@ export interface Bot {
 	last?: BotLast;
 	running_task?: { id: string; pane?: string };
 	pending_approval?: PendingApproval;
+	/** Unvalidated wire value; render through `normalizeLook`. */
+	look?: unknown;
 }
 
 export interface BotTask {

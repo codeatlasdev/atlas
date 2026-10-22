@@ -6,6 +6,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { BotLook } from "#lib/bots/look.ts";
 import { hostCall } from "#lib/host.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
@@ -101,7 +102,7 @@ class BotsStore {
 
 	async createBot(
 		hostKey: string,
-		params: { name: string; role: string; agent: string; approval: string },
+		params: { name: string; role: string; agent: string; approval: string; look?: BotLook },
 	): Promise<string> {
 		const r = await hostCall<Bot>("bot_create", { ...hostArgs(hostKey), ...params });
 		await this.refreshHost(hostKey);
@@ -111,7 +112,7 @@ class BotsStore {
 	async updateBot(
 		hostKey: string,
 		id: string,
-		patch: Partial<{ name: string; role: string; agent: string; approval: string }>,
+		patch: Partial<{ name: string; role: string; agent: string; approval: string; look: BotLook }>,
 	): Promise<void> {
 		await hostCall("bot_update", { ...hostArgs(hostKey), id, ...patch });
 		await this.refreshHost(hostKey);

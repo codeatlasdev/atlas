@@ -1,4 +1,6 @@
 <script lang="ts">
+	import BotEditor from "#lib/bots/BotEditor.svelte";
+	import { randomLook, type BotLook } from "#lib/bots/look.ts";
 	import { Button, Dialog, Select, TextField, TextArea, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
@@ -17,6 +19,7 @@
 	let selectedHostKey = $state("");
 	let approval = $state<"ask" | "auto">("ask");
 	let creating = $state(false);
+	let look = $state<BotLook>(randomLook());
 	let integrations = $state<AgentIntegration[]>([]);
 
 	let remoteHosts = $derived(bots.hosts.filter((h) => h.key !== ""));
@@ -71,6 +74,7 @@
 				role: role.trim(),
 				agent: selectedAgent,
 				approval,
+				look,
 			});
 			open = false;
 			onCreated?.(selectedHostKey, id);
@@ -82,7 +86,7 @@
 	}
 </script>
 
-<Dialog bind:open title="New bot" size="md">
+<Dialog bind:open title="New bot" size="lg">
 	{#if okAgents.length === 0 && integrations.length > 0}
 		<p class="empty">
 			No agents are set up on this server. Run <code>atlas bot login &lt;server&gt; &lt;agent&gt;</code> to sign
@@ -104,6 +108,7 @@
 					onchange={(v) => (selectedHostKey = v)}
 				/>
 			{/if}
+			<BotEditor bind:look seed={name || "new"} />
 			<TextField label="Name" bind:value={name} placeholder="My bot" />
 			<TextArea label="Role" bind:value={role} placeholder="Reviews PRs, checks test results…" rows={3} />
 			{#if agentOptions.length > 0}

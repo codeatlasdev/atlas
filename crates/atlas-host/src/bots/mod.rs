@@ -219,6 +219,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                     if let Some(pa) = pending_approval {
                         v["pending_approval"] = pa;
                     }
+                    if let Some(look) = &b.look {
+                        v["look"] = json!(look);
+                    }
                     if let Some(l) = last {
                         v["last"] = l;
                     }
@@ -235,6 +238,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             agent,
             approval,
             workdir,
+            look,
         } => {
             let name = name.trim().to_string();
             if name.is_empty() || name.len() > 40 {
@@ -251,6 +255,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             if atlas_core::agents::get(&agent).is_none() {
                 return Err(format!("unknown agent '{agent}'"));
             }
+            if let Some(l) = &look {
+                l.validate()?;
+            }
             let id = paths::new_id();
             if let Some(ref wd) = workdir {
                 std::fs::create_dir_all(wd).map_err(|e| format!("cannot create workdir: {e}"))?;
@@ -263,6 +270,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                 workdir,
                 approval: approval_enum,
                 routines: vec![],
+                look,
                 created_at: now_s(),
             };
             hub.bots
@@ -280,6 +288,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             role,
             agent,
             approval,
+            look,
         } => {
             let mut bot = hub
                 .bots
@@ -312,6 +321,10 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
                     return Err("omp bots run with approval: auto".into());
                 }
                 bot.approval = ap_enum;
+            }
+            if let Some(l) = look {
+                l.validate()?;
+                bot.look = Some(l);
             }
             hub.bots
                 .store

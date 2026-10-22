@@ -394,6 +394,8 @@ pub enum HostCmd {
         approval: String,
         #[serde(default)]
         workdir: Option<String>,
+        #[serde(default)]
+        look: Option<crate::bots::store::BotLook>,
     },
     BotUpdate {
         id: String,
@@ -405,6 +407,8 @@ pub enum HostCmd {
         agent: Option<String>,
         #[serde(default)]
         approval: Option<String>,
+        #[serde(default)]
+        look: Option<crate::bots::store::BotLook>,
     },
     BotDelete {
         id: String,

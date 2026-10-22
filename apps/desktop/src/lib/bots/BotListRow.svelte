@@ -28,7 +28,7 @@
 </script>
 
 <button class="row" class:active {onclick}>
-	<BotFace seed={bot.id} state={faceState} size={32} />
+	<BotFace seed={bot.id} look={bot.look} state={faceState} size={32} />
 	<div class="row-body">
 		<div class="row-top">
 			<span class="name">{bot.name}</span>

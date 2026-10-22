@@ -31,6 +31,36 @@ pub struct Routine {
     pub last_run: Option<u64>,
 }
 
+/// Avatar the user picks in the bot editor. Clients own the catalogue of eye
+/// styles and hats (an unknown id renders as the default), so hostd only
+/// checks shape: the values land in SVG attributes on every client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BotLook {
+    pub color: String,
+    pub eyes: String,
+    pub hat: String,
+}
+
+impl BotLook {
+    pub fn validate(&self) -> Result<(), String> {
+        let hex = self.color.len() == 7
+            && self.color.starts_with('#')
+            && self.color[1..].bytes().all(|b| b.is_ascii_hexdigit());
+        if !hex {
+            return Err(format!("look.color must be #rrggbb, got '{}'", self.color));
+        }
+        for (field, v) in [("eyes", &self.eyes), ("hat", &self.hat)] {
+            let ok = (1..=24).contains(&v.len())
+                && v.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+            if !ok {
+                return Err(format!("look.{field} must be 1–24 of [a-z0-9_], got '{v}'"));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bot {
     pub id: String,
@@ -44,6 +74,8 @@ pub struct Bot {
     pub approval: Approval,
     #[serde(default)]
     pub routines: Vec<Routine>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<BotLook>,
     pub created_at: u64,
 }
 

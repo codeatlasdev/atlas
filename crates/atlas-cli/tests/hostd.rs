@@ -434,10 +434,20 @@ async fn agent_integrations_report_installed_agents_and_whether_hooks_are_on() {
     ];
     let _d = spawn_with(&dir, &env);
     let c = connect_when_up(&dir).await;
-    let agents = async || c.call("agent_integrations", json!({})).await.unwrap()["agents"].clone();
+    // hostd resolves agents through the login PATH, so a dev machine with omp or codex in
+    // /opt/homebrew/bin lists them too: check claude by id, not the whole list.
+    let claude = async || {
+        c.call("agent_integrations", json!({})).await.unwrap()["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == "claude")
+            .cloned()
+            .expect("claude on PATH is listed")
+    };
     assert_eq!(
-        agents().await,
-        json!([{"id": "claude", "label": "Claude Code", "setup": "claude-code", "state": "missing"}])
+        claude().await,
+        json!({"id": "claude", "label": "Claude Code", "setup": "claude-code", "state": "missing"})
     );
     let mut setup = Command::new(BIN);
     setup
@@ -448,7 +458,7 @@ async fn agent_integrations_report_installed_agents_and_whether_hooks_are_on() {
     }
     let o = setup.output().unwrap();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    assert_eq!(agents().await[0]["state"], "ok");
+    assert_eq!(claude().await["state"], "ok");
 }
 
 // Guards agents invisible to Atlas and the phone: only the app's agent launcher set

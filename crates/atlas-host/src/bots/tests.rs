@@ -916,4 +916,72 @@ exit 0"#;
         crate::bots::runner::set_test_agent_bin(None);
         client.call("shutdown", json!({})).await.ok();
     }
+
+    // The avatar look the user picks in the editor must survive create, update
+    // and a daemon restart, and reach every client through bot_list.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bot_look_persists_and_rejects_bad_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let client = daemon(&dir).await;
+        let look = json!({"color": "#38bdf8", "eyes": "visor", "hat": "wizard"});
+        let v = client
+            .call(
+                "bot_create",
+                json!({"name": "Looky", "role": "", "agent": "claude", "approval": "auto", "look": look}),
+            )
+            .await
+            .unwrap();
+        let id = v["id"].as_str().unwrap().to_string();
+        let listed = |v: &Value| {
+            v["bots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|b| b["id"] == id.as_str())
+                .unwrap()["look"]
+                .clone()
+        };
+        assert_eq!(
+            listed(&client.call("bot_list", json!({})).await.unwrap()),
+            look
+        );
+
+        // A patch without `look` keeps it; a patch with one replaces it.
+        client
+            .call("bot_update", json!({"id": id, "name": "Looky2"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            listed(&client.call("bot_list", json!({})).await.unwrap()),
+            look
+        );
+        let look2 = json!({"color": "#22c55e", "eyes": "round", "hat": "none"});
+        client
+            .call("bot_update", json!({"id": id, "look": look2}))
+            .await
+            .unwrap();
+
+        // Colours end up in SVG fill attributes on every client: only #rrggbb.
+        for bad in [
+            json!({"color": "url(#x)", "eyes": "round", "hat": "none"}),
+            json!({"color": "#abc", "eyes": "round", "hat": "none"}),
+            json!({"color": "#22c55e", "eyes": "Round Eyes", "hat": "none"}),
+            json!({"color": "#22c55e", "eyes": "round", "hat": "x".repeat(40)}),
+        ] {
+            let r = client
+                .call("bot_update", json!({"id": id, "look": bad}))
+                .await;
+            assert!(r.is_err(), "accepted bad look {bad}");
+        }
+
+        client.call("shutdown", json!({})).await.ok();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let client = daemon(&dir).await;
+        assert_eq!(
+            listed(&client.call("bot_list", json!({})).await.unwrap()),
+            look2
+        );
+        client.call("shutdown", json!({})).await.ok();
+    }
 }

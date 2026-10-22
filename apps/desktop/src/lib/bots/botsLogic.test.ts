@@ -122,27 +122,27 @@ describe("firstUnreadIndex", () => {
 	});
 
 	test("all tasks seen → -1", () => {
-		expect(firstUnreadIndex(tasks, 300)).toBe(-1);
+		expect(firstUnreadIndex(tasks, 300 * 1000)).toBe(-1);
 	});
 
 	test("all tasks seen (ts > max) → -1", () => {
-		expect(firstUnreadIndex(tasks, 9999)).toBe(-1);
+		expect(firstUnreadIndex(tasks, 9999 * 1000)).toBe(-1);
 	});
 
 	test("first task unread → 0", () => {
-		expect(firstUnreadIndex(tasks, 50)).toBe(0);
+		expect(firstUnreadIndex(tasks, 50 * 1000)).toBe(0);
 	});
 
 	test("middle task unread → correct index", () => {
-		expect(firstUnreadIndex(tasks, 150)).toBe(1);
+		expect(firstUnreadIndex(tasks, 150 * 1000)).toBe(1);
 	});
 
 	test("last task unread → 2", () => {
-		expect(firstUnreadIndex(tasks, 250)).toBe(2);
+		expect(firstUnreadIndex(tasks, 250 * 1000)).toBe(2);
 	});
 
 	test("empty tasks → -1", () => {
-		expect(firstUnreadIndex([], 100)).toBe(-1);
+		expect(firstUnreadIndex([], 100 * 1000)).toBe(-1);
 	});
 });
 

@@ -11,6 +11,7 @@ mod codex_toml;
 mod hooks_json;
 mod json_merge;
 mod omp;
+mod opencode;
 mod plan;
 mod shared;
 
@@ -45,6 +46,9 @@ pub enum Harness {
     ClaudeCode(HarnessArgs),
     /// Set up Codex: MCP server entry and hooks (skills are shared with OMP)
     Codex(HarnessArgs),
+    /// Set up OpenCode: a global plugin for status events and remote permission approval
+    #[command(name = "opencode")]
+    OpenCode(HarnessArgs),
 }
 
 #[derive(Debug, Args)]
@@ -72,10 +76,11 @@ pub enum Agent {
     Omp,
     ClaudeCode,
     Codex,
+    OpenCode,
 }
 
 impl Agent {
-    const ALL: [Agent; 3] = [Agent::Omp, Agent::ClaudeCode, Agent::Codex];
+    const ALL: [Agent; 4] = [Agent::Omp, Agent::ClaudeCode, Agent::Codex, Agent::OpenCode];
 
     /// Subcommand name (`atlas setup <name>`).
     fn name(self) -> &'static str {
@@ -83,6 +88,7 @@ impl Agent {
             Agent::Omp => "omp",
             Agent::ClaudeCode => "claude-code",
             Agent::Codex => "codex",
+            Agent::OpenCode => "opencode",
         }
     }
 
@@ -92,6 +98,7 @@ impl Agent {
             Agent::Omp => "omp",
             Agent::ClaudeCode => "claude",
             Agent::Codex => "codex",
+            Agent::OpenCode => "opencode",
         }
     }
 
@@ -100,6 +107,7 @@ impl Agent {
             Agent::Omp => "OMP",
             Agent::ClaudeCode => "Claude Code",
             Agent::Codex => "Codex",
+            Agent::OpenCode => "OpenCode",
         }
     }
 
@@ -109,6 +117,7 @@ impl Agent {
             Agent::Omp => &env.agent_dir,
             Agent::ClaudeCode => &env.claude_dir,
             Agent::Codex => &env.codex_home,
+            Agent::OpenCode => &env.opencode_config_dir,
         }
     }
 
@@ -117,25 +126,31 @@ impl Agent {
             Agent::Omp => ".omp/",
             Agent::ClaudeCode => ".mcp.json + .claude/",
             Agent::Codex => ".codex/",
+            Agent::OpenCode => "(user-scope only)",
         }
     }
 
-    fn next_steps(self) -> [&'static str; 3] {
+    fn next_steps(self) -> &'static [&'static str] {
         match self {
-            Agent::Omp => [
+            Agent::Omp => &[
                 "Restart omp (the hook loads at session start); \x1b[1m/reload-plugins\x1b[0m refreshes skills and MCP in a running session",
                 "Verify: \x1b[1m/mcp list\x1b[0m should show `atlas`, \x1b[1momp plugin list\x1b[0m should show `atlas-omp`",
                 "In an atlas project, the agent now gets `atlas dev --status` at session start",
             ],
-            Agent::ClaudeCode => [
+            Agent::ClaudeCode => &[
                 "Restart Claude Code (project `.mcp.json` servers ask for approval on first use)",
                 "Verify: \x1b[1mclaude mcp get atlas\x1b[0m should say Connected, or run \x1b[1m/mcp\x1b[0m",
                 "In an atlas project, the agent now gets `atlas dev --status` at session start",
             ],
-            Agent::Codex => [
+            Agent::Codex => &[
                 "Restart Codex, then run \x1b[1m/hooks\x1b[0m once and trust the atlas hooks (Codex skips unreviewed hooks)",
                 "Verify: \x1b[1mcodex mcp get atlas\x1b[0m, or \x1b[1m/mcp\x1b[0m in the TUI",
                 "In an atlas project, the agent now gets `atlas dev --status` at session start",
+            ],
+            Agent::OpenCode => &[
+                "Restart opencode so it picks up the plugin from `~/.config/opencode/plugins/`",
+                "Verify: Atlas Desktop shows agent state changes when opencode runs in its terminal",
+                "For bot computers: the plugin proxies remote permission approvals via Atlas",
             ],
         }
     }
@@ -145,6 +160,7 @@ impl Agent {
             Agent::Omp => "Restart omp for the removal to take effect.",
             Agent::ClaudeCode => "Restart Claude Code for the removal to take effect.",
             Agent::Codex => "Restart Codex for the removal to take effect.",
+            Agent::OpenCode => "Restart opencode for the removal to take effect.",
         }
     }
 
@@ -155,6 +171,7 @@ impl Agent {
                 AgentPaths::ClaudeCode(claude_code::Paths::resolve(env, scope, root)?)
             }
             Agent::Codex => AgentPaths::Codex(codex::Paths::resolve(env, scope, root)?),
+            Agent::OpenCode => AgentPaths::OpenCode(opencode::Paths::resolve(env, scope, root)?),
         })
     }
 }
@@ -164,6 +181,7 @@ enum AgentPaths {
     Omp(omp::Paths),
     ClaudeCode(claude_code::Paths),
     Codex(codex::Paths),
+    OpenCode(opencode::Paths),
 }
 
 impl AgentPaths {
@@ -172,6 +190,7 @@ impl AgentPaths {
             AgentPaths::Omp(p) => &p.skills,
             AgentPaths::ClaudeCode(p) => &p.skills,
             AgentPaths::Codex(p) => &p.skills,
+            AgentPaths::OpenCode(p) => &p.skills,
         }
     }
 
@@ -180,6 +199,13 @@ impl AgentPaths {
             AgentPaths::Omp(p) => omp::plan_install(p, scope, force, command),
             AgentPaths::ClaudeCode(p) => claude_code::plan_install(p, scope, force, command),
             AgentPaths::Codex(p) => codex::plan_install(p, scope, force, command),
+            AgentPaths::OpenCode(p) => {
+                if force {
+                    opencode::plan_install_force(p)
+                } else {
+                    opencode::plan_install(p, scope, force, command)
+                }
+            }
         }
     }
 
@@ -188,6 +214,7 @@ impl AgentPaths {
             AgentPaths::Omp(p) => omp::plan_uninstall(env, p, force),
             AgentPaths::ClaudeCode(p) => claude_code::plan_uninstall(p, force),
             AgentPaths::Codex(p) => codex::plan_uninstall(env, p, force),
+            AgentPaths::OpenCode(p) => opencode::plan_uninstall(p, force),
         }
     }
 
@@ -197,6 +224,7 @@ impl AgentPaths {
             AgentPaths::Omp(p) => omp::installed(p),
             AgentPaths::ClaudeCode(p) => claude_code::hooks_installed(p),
             AgentPaths::Codex(p) => codex::hooks_installed(p),
+            AgentPaths::OpenCode(p) => opencode::installed(p),
         }
     }
 
@@ -206,6 +234,7 @@ impl AgentPaths {
             AgentPaths::Omp(p) => &p.plugin_dir,
             AgentPaths::ClaudeCode(p) => &p.settings,
             AgentPaths::Codex(p) => &p.hooks,
+            AgentPaths::OpenCode(p) => &p.plugin_file,
         }
     }
 }
@@ -223,6 +252,8 @@ pub struct Env {
     pub claude_json: PathBuf,
     /// Codex home: `$CODEX_HOME`, else `~/.codex`.
     pub codex_home: PathBuf,
+    /// OpenCode config dir: `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`.
+    pub opencode_config_dir: PathBuf,
     pub cwd: PathBuf,
     pub atlas_on_path: bool,
     /// The `omp` binary on `PATH`, when present.
@@ -248,11 +279,14 @@ impl Env {
         };
         let codex_home = dir_from_env("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
         Ok(Self {
-            home,
+            home: home.clone(),
             agent_dir,
             claude_dir,
             claude_json,
             codex_home,
+            opencode_config_dir: dir_from_env("XDG_CONFIG_HOME")
+                .unwrap_or_else(|| home.join(".config"))
+                .join("opencode"),
             cwd: std::env::current_dir().context("cannot read current directory")?,
             atlas_on_path: which("atlas").is_some(),
             omp_bin: which("omp"),
@@ -270,6 +304,7 @@ impl Env {
             claude_dir: tmp.join("claude"),
             claude_json: tmp.join("claude/.claude.json"),
             codex_home: tmp.join("codex"),
+            opencode_config_dir: tmp.join("config/opencode"),
             cwd: tmp.join("proj"),
             atlas_on_path: true,
             omp_bin: None,
@@ -295,6 +330,7 @@ impl AtlasCommand for SetupArgs {
             Some(Harness::Omp(args)) => run_agent(Agent::Omp, args),
             Some(Harness::ClaudeCode(args)) => run_agent(Agent::ClaudeCode, args),
             Some(Harness::Codex(args)) => run_agent(Agent::Codex, args),
+            Some(Harness::OpenCode(args)) => run_agent(Agent::OpenCode, args),
         }
     }
 }

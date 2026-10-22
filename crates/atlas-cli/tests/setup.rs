@@ -394,7 +394,7 @@ fn setup_without_harness_reports_status() {
 
 /// Fake agent binaries on PATH make detection report them and print per-agent commands.
 #[test]
-fn setup_detection_lists_all_three_agents_when_present() {
+fn setup_detection_lists_all_agents_when_present() {
     use std::os::unix::fs::PermissionsExt;
     let sb = Sandbox::new();
     let bin = sb.home.join("bin");
@@ -429,12 +429,13 @@ fn setup_detection_lists_all_three_agents_when_present() {
         "atlas setup omp --apply",
         "atlas setup claude-code --apply",
         "atlas setup codex --apply",
+        "atlas setup opencode --apply",
     ] {
         assert!(text.contains(cmd), "{text}");
     }
     assert_eq!(
         text.matches("not set up (or outdated)").count(),
-        3,
+        4,
         "{text}"
     );
     // Applying one of them flips only that one.

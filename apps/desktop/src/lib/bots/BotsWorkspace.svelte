@@ -15,6 +15,7 @@
 	import { flip } from "svelte/animate";
 	import BotTile from "#lib/bots/BotTile.svelte";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
+	import BotOnboarding from "#lib/bots/BotOnboarding.svelte";
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,21 @@
 	let colWidth = $state(0);
 	let searchOpen = $state(false);
 	const tileMode = $derived(colWidth < 280 || bots.allBots.length <= 2);
+	let selectedNav = $state<"bots" | "activity" | "triggers" | "needs_you">("bots");
+
+	// ─── onboarding ───────────────────────────────────────────────────────────
+
+	const seenOnboarding =
+		typeof localStorage !== "undefined" && !!localStorage.getItem("bots:onboarding:seen");
+	let showOnboarding = $state(!seenOnboarding && bots.allBots.length === 0);
+
+	function closeOnboarding() {
+		showOnboarding = false;
+	}
+
+	function openOnboarding() {
+		showOnboarding = true;
+	}
 
 	// ─── derived ──────────────────────────────────────────────────────────────
 
@@ -261,6 +277,14 @@
 			>
 				<Settings size={14} />
 			</button>
+			<button
+				class="footer-help"
+				onclick={openOnboarding}
+				title="How Atlas Bot works"
+				aria-label="How Atlas Bot works"
+			>
+				How Atlas Bot works
+			</button>
 		</div>
 	</div>
 
@@ -280,6 +304,10 @@
 			</div>
 		{/if}
 	</div>
+
+	{#if showOnboarding}
+		<BotOnboarding ondone={closeOnboarding} />
+	{/if}
 </div>
 
 <style>
@@ -567,5 +595,21 @@
 	.bot-list.tile-mode .host-hd,
 	.bot-list.tile-mode .project-hd {
 		width: 100%;
+	}
+
+	.footer-help {
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 2px 4px;
+		margin-top: 2px;
+		border-radius: 4px;
+		align-self: flex-start;
+	}
+	.footer-help:hover {
+		color: var(--ca-text-primary);
+		background: var(--ca-vibrancy-fill);
 	}
 </style>

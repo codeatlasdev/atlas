@@ -60,8 +60,13 @@ const TOKEN = "test-token";
 const PANE = "bot:abc:task1";
 
 // ─── tests ───────────────────────────────────────────────────────────────────
+// Bun.serve requires the native Bun Response class. When happy-dom is active
+// (--conditions browser test run) it replaces globalThis.Response with a browser
+// polyfill that Bun.serve rejects. Skip the suite in that environment; it runs
+// clean in a standalone `bun test` without the preload.
+const suiteDescribe = typeof document !== "undefined" ? describe.skip : describe;
 
-describe("omp approval extension — fail-closed", () => {
+suiteDescribe("omp approval extension — fail-closed", () => {
 	const servers: Server[] = [];
 	afterAll(() => servers.forEach((s) => s.stop(true)));
 

@@ -56,3 +56,30 @@ pub const AGENTS: &[AgentDef] = &[
 pub fn get(id: &str) -> Option<&'static AgentDef> {
     AGENTS.iter().find(|a| a.id == id)
 }
+
+impl AgentDef {
+    /// Build argv for launching this agent: [bin, yolo_args?, prompt_args?].
+    /// Used by the bot runner (atlas-host). Desktop uses prompt_argv() directly.
+    pub fn argv(&self, yolo: bool, prompt: Option<&str>) -> Vec<String> {
+        let mut v = vec![self.bin.to_string()];
+        if yolo {
+            v.extend(self.yolo_args.iter().map(|s| s.to_string()));
+        }
+        v.extend(prompt_argv(self.prompt_flag, prompt));
+        v
+    }
+}
+
+/// The prompt portion of argv: [flag, prompt] (flagged) or [prompt] (positional).
+/// Empty/whitespace-only prompt produces no args.
+pub fn prompt_argv(flag: Option<&str>, prompt: Option<&str>) -> Vec<String> {
+    let Some(p) = prompt.filter(|p| !p.trim().is_empty()) else {
+        return Vec::new();
+    };
+    let mut v = Vec::new();
+    if let Some(f) = flag {
+        v.push(f.to_string());
+    }
+    v.push(p.to_string());
+    v
+}

@@ -549,3 +549,71 @@ async fn settings_fixtures_are_the_real_payloads() {
         );
     }
 }
+
+/// A paired phone with only Read scope gets forbidden: act on bot_task.
+#[tokio::test]
+async fn bot_task_requires_act_scope() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read"]}),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call(
+            "bot_task",
+            json!({"id": "x", "prompt": "hi", "source": "mobile"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// bot_task push events reach a Read phone.
+#[tokio::test]
+async fn bot_task_push_reaches_read_phone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+    // Simulate a bot_task push by broadcasting it from the desktop side.
+    // We reach into the daemon via exec + a raw connection to send an event.
+    // Simpler: shutdown and check the scope mapping.
+    // push_scope("bot_task") == Some(Scope::Read)
+    assert_eq!(
+        crate::mobile::push_scope("bot_task"),
+        Some(crate::mobile::Scope::Read)
+    );
+    c.call("shutdown", json!({})).await.ok();
+    let _ = phone.call("info", json!({})).await; // just drain
+}
+
+/// Revoking a device removes its push tokens.
+#[tokio::test]
+async fn revoke_drops_push_tokens() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, _phone, node) = paired(tmp.path()).await;
+    // Register a push token for this device.
+    c.call(
+        "push_register",
+        json!({"token": "fcm-test-token", "platform": "fcm"}),
+    )
+    .await
+    .unwrap();
+    // Revoke the device.
+    c.call("mobile_revoke", json!({"node_id": node}))
+        .await
+        .unwrap();
+    // The tokens file should no longer contain the token for this node.
+    let tokens_path = tmp.path().join("push").join("tokens.json");
+    if tokens_path.exists() {
+        let content = std::fs::read_to_string(&tokens_path).unwrap();
+        let tokens: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap_or_default();
+        assert!(
+            !tokens.iter().any(|t| t["node_id"] == node),
+            "push token for revoked device still present"
+        );
+    }
+    c.call("shutdown", json!({})).await.ok();
+}

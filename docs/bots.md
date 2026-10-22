@@ -114,3 +114,54 @@ atlas update  # ensures ~/.atlas/remote/atlas-x86_64-linux is up to date
 ```
 
 Then run `atlas bot install` normally. When `curl` fails on the server, the command falls back to uploading the cached binary automatically.
+
+## Protocol commands
+
+All commands go over the same NDJSON socket as other hostd commands (`~/.atlas/hostd.sock` or the bot computer's socket). Snake-case command names, JSON arguments and replies.
+
+| Command | Args | Reply |
+|---|---|---|
+| `bot_list` | `{}` | `{bots:[{id,name,role,agent,approval,state,running_task?,pending_approval?}]}` |
+| `bot_create` | `{name,role,agent,approval,workdir?}` | the bot object |
+| `bot_update` | `{id,name?,role?,agent?,approval?}` | the bot object |
+| `bot_delete` | `{id}` | `{}` |
+| `bot_task` | `{id,prompt,source}` | `{task}` — prompt 1..=20 000 chars |
+| `bot_tasks` | `{id,limit?}` | `{tasks:[…newest first]}` — default limit 50 |
+| `bot_cancel` | `{id,task}` | `{}` |
+| `bot_memory` | `{id}` | `{text}` |
+| `bot_memory_set` | `{id,text}` | `{}` — ≤ 64 KiB |
+| `bot_routine_set` | `{id,routines}` | `{}` — replaces the whole list; invalid cron is rejected |
+| `push_register` | `{token,platform:"fcm"}` | `{}` |
+| `push_unregister` | `{token}` | `{}` |
+| `bot_telegram_set` | `{token?}` | `{}` — set or clear; desktop only |
+| `bot_telegram_link` | `{}` | `{code}` — 6-digit code valid 10 min |
+
+Approval prompts use the existing `agent_approve` command; `bot_list` exposes `pending_approval` for each bot that is waiting.
+
+## Telegram
+
+Link a Telegram chat to your bot computer:
+
+1. Create a Telegram bot at [t.me/BotFather](https://t.me/BotFather) and copy the token.
+2. In Atlas Desktop → Bots → your bot computer → Telegram, paste the token and click **Link chat**.
+3. A 6-digit code is shown. Start a chat with your bot and send `/start <code>`.
+4. The chat is now linked. Any linked chat receives task results and can create tasks.
+
+**Commands available in linked chats:**
+
+| Command | What it does |
+|---|---|
+| `/bots` | List all bots and their current state |
+| `/task <bot name> <text>` | Create a task for the named bot |
+| plain text | Sent to the only bot when exactly one exists; otherwise prompts for `/task` |
+
+Approval prompts appear as inline keyboard messages (Allow / Deny).
+
+## Push notifications
+
+Atlas Bot can push a notification to your phone when a task finishes or a bot needs your approval.
+
+- After pairing your phone in Atlas Desktop → Settings → Mobile, push is automatic: Atlas registers your FCM token with each bot computer.
+- The relay at `push.codeatlas.com.br` forwards only the event kind (`task_done` or `needs_you`), never any content.
+- To disable: set `ATLAS_PUSH_RELAY=off` in `/etc/systemd/system/atlas-bot.service` and restart.
+- Self-hosters can point `ATLAS_PUSH_RELAY` at their own relay instance.

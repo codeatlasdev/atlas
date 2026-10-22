@@ -6,6 +6,12 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Atlas Bot v1 (phases 3–6): bots in hostd, push notifications and Telegram.** `atlas hostd` gains a `bots` module: named bots with an engine (omp, Claude Code, Codex, OpenCode), a role, memory, a task queue and scheduled routines. Bots run one task at a time in a pty; the agent's lifecycle hooks feed done/failed state. Push notifications are forwarded by a minimal relay at `push.codeatlas.com.br` (event kind only, never content; set `ATLAS_PUSH_RELAY=off` to disable). A Telegram bot bridge lets linked chats create tasks and answer approval prompts. New hostd commands: `bot_list`, `bot_create`, `bot_update`, `bot_delete`, `bot_task`, `bot_tasks`, `bot_cancel`, `bot_memory`, `bot_memory_set`, `bot_routine_set`, `push_register`, `push_unregister`, `bot_telegram_set`, `bot_telegram_link`.
+- **Bot panes wait 30 minutes for a remote approval** instead of 55 s; non-bot panes keep the 55 s wait. `atlas setup claude-code|codex --apply` now registers `PermissionRequest` with a 1805 s timeout to accommodate both.
+- **`AgentDef::argv`** in `atlas_core::agents` builds the full launch argv for a built-in agent, used by the bot runner. `atlas-desktop` registry uses the shared `prompt_argv` helper to avoid duplicated flag logic.
+
 ## [1.5.0-alpha.17] — 2026-10-20
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

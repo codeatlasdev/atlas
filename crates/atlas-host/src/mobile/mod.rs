@@ -304,6 +304,7 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         // The prompt carries the tool input (a shell command, a file path).
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
+        "bot_task" => Scope::Read,
         _ => return None,
     })
 }
@@ -323,6 +324,15 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
+        C::BotList {} | C::BotTasks { .. } | C::BotMemory { .. } => Scope::Read,
+        C::BotTask { .. } | C::BotCancel { .. } => Scope::Act,
+        C::BotCreate { .. }
+        | C::BotUpdate { .. }
+        | C::BotDelete { .. }
+        | C::BotMemorySet { .. }
+        | C::BotRoutineSet { .. } => Scope::Act,
+        C::PushRegister { .. } | C::PushUnregister { .. } => Scope::Read,
+        C::BotTelegramSet { .. } | C::BotTelegramLink {} => return Err("not available on mobile"),
         _ => return Err("not available on mobile"),
     })
 }
@@ -386,6 +396,11 @@ impl Mobile {
         self.devices.lock().iter().any(|d| {
             !d.revoked && d.scopes.contains(&Scope::Approve) && live.contains_key(&d.node_id)
         })
+    }
+
+    /// Node IDs of phones currently connected (at least one live stream).
+    pub fn live_node_ids(&self) -> Vec<String> {
+        self.live.lock().keys().cloned().collect()
     }
 
     fn track(&self, node: &str, c: &Connection) {

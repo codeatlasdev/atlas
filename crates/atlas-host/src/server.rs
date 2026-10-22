@@ -25,7 +25,7 @@ use crate::protocol::{self, Hello, HostCmd, MAX_LINE_BYTES, Request};
 use crate::pty::{Out, Session};
 
 pub(crate) struct Hub {
-    sessions: Mutex<HashMap<String, Arc<Session>>>,
+    pub(crate) sessions: Mutex<HashMap<String, Arc<Session>>>,
     scroll_dir: PathBuf,
     /// Read by the Unix live upgrade only.
     #[cfg_attr(windows, allow(dead_code))]
@@ -52,6 +52,8 @@ pub(crate) struct Hub {
     pub(crate) agents: Arc<crate::agents::AgentHub>,
     /// Atlas Mobile: identity, paired phones, pairing codes (`crate::mobile`).
     pub(crate) mobile: Arc<crate::mobile::Mobile>,
+    /// Bot runner: manages bot definitions, task queues, push/telegram delivery.
+    pub(crate) bots: Arc<crate::bots::BotHub>,
 }
 
 impl Hub {
@@ -325,6 +327,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         }
     }
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
+    let agents = Arc::new(crate::agents::AgentHub::default());
+    let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
+    let bots = crate::bots::BotHub::new(dir);
     let hub = Arc::new(Hub {
         sessions: Mutex::new(sessions),
         scroll_dir,
@@ -338,10 +343,17 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         lsp: atlas_lsp::Manager::new(dir, atlas_lsp::Config::default(), lsp_tx),
         subscribers: Mutex::new(HashMap::new()),
         lsp_docs: Mutex::new(HashMap::new()),
-        agents: Arc::new(crate::agents::AgentHub::default()),
-        mobile: Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?),
+        agents,
+        mobile,
+        bots,
     });
     crate::mobile::start(&hub);
+    hub.bots.start(Arc::downgrade(&hub));
+    {
+        let bots = hub.bots.clone();
+        hub.agents
+            .set_bot_pane_can_answer(Box::new(move |_pane| bots.can_answer_bot_pane()));
+    }
     // Adopted terminals (live handoff) keep idling their agent when they exit.
     for s in hub.sessions_snapshot() {
         idle_agent_on_exit(&hub, &s);
@@ -690,10 +702,25 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     });
 }
 
+/// Inject hook-server env vars into a PtyCreate request.
+/// Agents learn the hook server address from ATLAS_HOOK_ENDPOINT; bots also read
+/// ATLAS_PANE_KEY for routing.
+pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
+    let endpoint = crate::paths::hook_endpoint(&hub.dir);
+    req.env.insert(
+        "ATLAS_HOOK_ENDPOINT".into(),
+        endpoint.to_string_lossy().into_owned(),
+    );
+    if let Some(pane) = &req.scope.pane_key {
+        req.env.insert("ATLAS_PANE_KEY".into(), pane.clone());
+    }
+}
+
 pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
-        HostCmd::PtyCreate(req) => {
+        HostCmd::PtyCreate(mut req) => {
+            hook_env(hub, &mut req);
             let s = Session::spawn(req, &hub.scroll_dir).map_err(e)?;
             let id = s.id.clone();
             idle_agent_on_exit(hub, &s);
@@ -797,7 +824,10 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             hub.mobile.pair_start()
         }
         HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
-        HostCmd::MobileRevoke { node_id } => hub.mobile.revoke(&node_id).map(|()| json!({})),
+        HostCmd::MobileRevoke { node_id } => {
+            hub.bots.revoke_device_tokens(&node_id);
+            hub.mobile.revoke(&node_id).map(|()| json!({}))
+        }
         HostCmd::MobileSetScopes { node_id, scopes } => {
             hub.mobile.set_scopes(&node_id, scopes).map(|()| json!({}))
         }
@@ -810,6 +840,20 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             "pending_approvals": hub.agents.pending_approvals(),
         })),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
+        bot @ (HostCmd::BotList {}
+        | HostCmd::BotCreate { .. }
+        | HostCmd::BotUpdate { .. }
+        | HostCmd::BotDelete { .. }
+        | HostCmd::BotTask { .. }
+        | HostCmd::BotTasks { .. }
+        | HostCmd::BotCancel { .. }
+        | HostCmd::BotMemory { .. }
+        | HostCmd::BotMemorySet { .. }
+        | HostCmd::BotRoutineSet { .. }
+        | HostCmd::PushRegister { .. }
+        | HostCmd::PushUnregister { .. }
+        | HostCmd::BotTelegramSet { .. }
+        | HostCmd::BotTelegramLink {}) => crate::bots::handle(hub, bot).await,
         lsp @ (HostCmd::LspOpen { .. }
         | HostCmd::LspChange { .. }
         | HostCmd::LspClose { .. }

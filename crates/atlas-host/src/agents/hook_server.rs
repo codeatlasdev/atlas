@@ -22,6 +22,8 @@ const MAX_BODY: usize = 1024 * 1024;
 /// How long a permission prompt waits for a phone. Below the 60 s timeout the hook is
 /// registered with (`atlas setup`); `atlas hook` waits this plus a margin.
 pub const DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(55);
+/// How long a bot-pane permission prompt waits (30 min). Read from ATLAS_HOOK_DECISION_SECS in the pty env.
+pub const BOT_DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 fn write_endpoint(dir: &Path, port: u16, token: &str) -> std::io::Result<()> {
     paths::write_private(

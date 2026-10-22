@@ -46,6 +46,8 @@ pub struct AgentStatus {
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
 type Pending = (String, Value, oneshot::Sender<bool>);
 
+type BotAnswerFn = Box<dyn Fn(&str) -> bool + Send>;
+
 pub struct AgentHub {
     panes: Mutex<HashMap<String, AgentStatus>>,
     /// `agent|cwd` → pane key, for hooks that arrive without one (Codex runs
@@ -59,6 +61,8 @@ pub struct AgentHub {
     /// event as pushed, answer channel). The event is kept so a client that subscribes
     /// after the push can still list it.
     pending: Mutex<HashMap<String, Pending>>,
+    /// For bot panes: callback that returns true when telegram or push tokens can receive approvals.
+    bot_pane_can_answer: Mutex<Option<BotAnswerFn>>,
 }
 
 impl Default for AgentHub {
@@ -69,6 +73,7 @@ impl Default for AgentHub {
             port: Mutex::new(0),
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
+            bot_pane_can_answer: Mutex::new(None),
         }
     }
 }
@@ -227,10 +232,22 @@ impl AgentHub {
         wait: Duration,
         someone_can_answer: bool,
     ) -> Option<bool> {
-        // Never make an agent wait on a phone that is not there or may not approve.
-        if !someone_can_answer {
+        // Bot panes can also be answered by telegram or push.
+        let is_bot = pane.starts_with("bot:");
+        let bot_can = is_bot
+            && self
+                .bot_pane_can_answer
+                .lock()
+                .as_deref()
+                .is_some_and(|f| f(pane));
+        if !someone_can_answer && !bot_can {
             return None;
         }
+        let wait = if is_bot {
+            std::time::Duration::from_secs(30 * 60) // BOT_DECISION_WAIT
+        } else {
+            wait
+        };
         let req = crate::paths::random_hex(6).ok()?;
         let (otx, orx) = oneshot::channel();
         let event = json!({
@@ -288,5 +305,9 @@ impl AgentHub {
 
     pub fn all(&self) -> HashMap<String, AgentStatus> {
         self.panes.lock().clone()
+    }
+
+    pub fn set_bot_pane_can_answer(&self, f: BotAnswerFn) {
+        *self.bot_pane_can_answer.lock() = Some(f);
     }
 }

@@ -45,9 +45,9 @@ pub const PROTO: u32 = 2;
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
 #[cfg(unix)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents"];
+pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents", "bots"];
 #[cfg(windows)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "lsp", "agents"];
+pub const CAPS: &[&str] = &["pty_attach_raw", "lsp", "agents", "bots"];
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,6 +125,9 @@ fn default_log_lines() -> usize {
 }
 fn default_history_limit() -> usize {
     200
+}
+fn default_bot_task_limit() -> usize {
+    50
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -375,6 +378,66 @@ pub enum HostCmd {
         node_id: String,
         scopes: Vec<crate::mobile::Scope>,
     },
+    BotList {},
+    BotCreate {
+        name: String,
+        role: String,
+        agent: String,
+        approval: String,
+        #[serde(default)]
+        workdir: Option<String>,
+    },
+    BotUpdate {
+        id: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        role: Option<String>,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        approval: Option<String>,
+    },
+    BotDelete {
+        id: String,
+    },
+    BotTask {
+        id: String,
+        prompt: String,
+        source: String,
+    },
+    BotTasks {
+        id: String,
+        #[serde(default = "default_bot_task_limit")]
+        limit: usize,
+    },
+    BotCancel {
+        id: String,
+        task: String,
+    },
+    BotMemory {
+        id: String,
+    },
+    BotMemorySet {
+        id: String,
+        text: String,
+    },
+    BotRoutineSet {
+        id: String,
+        routines: Vec<serde_json::Value>,
+    },
+    PushRegister {
+        token: String,
+        platform: String,
+    },
+    PushUnregister {
+        token: String,
+    },
+    BotTelegramSet {
+        #[serde(default)]
+        token: Option<String>,
+    },
+    BotTelegramLink {},
 }
 
 /// Build a response line.

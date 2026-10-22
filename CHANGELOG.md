@@ -8,7 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Changed
 
-- **App id is now `br.com.codeatlas.atlas`** (was `dev.codeatlas.atlas`). On first launch the app copies its saved UI preferences (theme, layout) from the old id, and on Linux `atlas desktop` replaces the old menu entry and icon. macOS may ask once more for notification permission.
+- **App id is now `br.com.codeatlas.atlas`** (was `dev.codeatlas.atlas`). On first launch the app copies the old id's webview data (where theme and UI preferences live) to the new id, and on Linux `atlas desktop` replaces the old menu entry and icon. macOS may ask once more for notification permission.
 
 ### Added
 

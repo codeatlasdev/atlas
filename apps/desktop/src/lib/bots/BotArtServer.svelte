@@ -93,17 +93,17 @@
 		{/each}
 
 		<!-- ─── Server (left) ─────────────────────────────── -->
-		<rect x="60" y="95" width="140" height="90" rx="8" fill="var(--ca-surface-sunken)" />
 		<rect
 			x="60"
 			y="95"
 			width="140"
 			height="90"
 			rx="8"
-			fill="none"
+			fill="rgba(255,255,255,0.07)"
 			stroke="var(--ca-border-subtle)"
 			stroke-width="1.5"
 		/>
+		<!-- border drawn above -->
 		<!-- Drive bays -->
 		<rect x="72" y="110" width="80" height="7" rx="3" fill="var(--ca-border-subtle)" opacity="0.7" />
 		<rect x="72" y="123" width="80" height="7" rx="3" fill="var(--ca-border-subtle)" opacity="0.7" />
@@ -150,17 +150,17 @@
 		<!-- ─── Mac (right) ───────────────────────────────── -->
 		<g opacity={macOpacity}>
 			<!-- Screen -->
-			<rect x="305" y="88" width="130" height="88" rx="7" fill="var(--ca-surface-sunken)" />
 			<rect
 				x="305"
 				y="88"
 				width="130"
 				height="88"
 				rx="7"
-				fill="none"
+				fill="rgba(255,255,255,0.05)"
 				stroke="var(--ca-border-subtle)"
 				stroke-width="1.5"
 			/>
+			<!-- border drawn above -->
 			<!-- Screen content glow -->
 			<rect
 				x="315"
@@ -204,7 +204,7 @@
 	}
 
 	.scene {
-		width: min(460px, 92%);
+		width: min(90%, 600px);
 		height: auto;
 		overflow: visible;
 	}

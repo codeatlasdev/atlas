@@ -581,16 +581,22 @@
 	/* ─── Left panel ─────────────────────────────────────────────── */
 	.left-panel {
 		position: relative;
-		display: flex;
-		align-items: center;
+		display: grid;
+		align-content: center;
 		overflow: hidden;
-		padding: 0 48px 0 72px;
+		padding: 64px 48px 64px 72px;
 	}
 
 	@media (max-width: 1200px) {
 		.left-panel {
-			padding: 0 32px 0 48px;
+			padding: 48px 32px 48px 48px;
 		}
+	}
+
+	/* entering + exiting text-blocks both live in cell 1/1 — no width competition */
+	.left-panel > * {
+		grid-area: 1 / 1;
+		min-width: 0;
 	}
 
 	.text-block {
@@ -640,7 +646,7 @@
 
 	/* Headline */
 	.headline {
-		font-size: 46px;
+		font-size: 44px;
 		font-weight: 700;
 		line-height: 1.08;
 		letter-spacing: -0.03em;
@@ -648,9 +654,9 @@
 		margin: 0 0 20px;
 	}
 
-	@media (max-width: 1300px) {
+	@media (max-width: 1100px) {
 		.headline {
-			font-size: 38px;
+			font-size: 36px;
 		}
 	}
 
@@ -660,12 +666,12 @@
 		line-height: 1.6;
 		color: var(--ca-text-secondary);
 		margin: 0 0 24px;
-		max-width: 420px;
+		max-width: 440px;
 	}
 
-	@media (max-width: 1300px) {
+	@media (max-width: 1100px) {
 		.body-text {
-			font-size: 16px;
+			font-size: 15px;
 		}
 	}
 
@@ -1030,9 +1036,15 @@
 		position: relative;
 		overflow: hidden;
 		background: var(--ca-surface-sunken);
-		display: flex;
-		align-items: center;
-		justify-content: center;
+		display: grid;
+		place-items: center;
+	}
+
+	/* entering + exiting art-zones both live in cell 1/1 */
+	.right-panel > * {
+		grid-area: 1 / 1;
+		width: 100%;
+		height: 100%;
 	}
 
 	.art-zone {
@@ -1042,7 +1054,7 @@
 		align-items: center;
 		justify-content: center;
 		/* Per-step accent glow */
-		background: radial-gradient(ellipse 70% 60% at 50% 55%, var(--art-glow, transparent), transparent 70%);
+		background: radial-gradient(ellipse 80% 70% at 50% 55%, var(--art-glow, transparent), transparent 75%);
 	}
 
 	/* ─── Terminal art (connect step) ────────────────────────────── */
@@ -1194,7 +1206,12 @@
 
 	/* ─── Ready art ──────────────────────────────────────────────── */
 	.ready-art {
-		width: min(380px, 88%);
+		width: min(480px, 90%);
+		background: var(--ca-surface-base);
+		border: 1.5px solid var(--ca-border-subtle);
+		border-radius: 12px;
+		padding: 6px;
+		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
 		animation: ready-spring 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 	}
 

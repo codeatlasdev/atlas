@@ -118,12 +118,12 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 16px;
+		padding: 24px 16px;
 		box-sizing: border-box;
 	}
 
 	.thread {
-		width: min(380px, 100%);
+		width: min(480px, 92%);
 		display: flex;
 		flex-direction: column;
 		gap: 8px;

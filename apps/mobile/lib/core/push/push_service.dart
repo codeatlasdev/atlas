@@ -34,10 +34,16 @@ class PushService {
       _available = true;
       final messaging = FirebaseMessaging.instance;
       await messaging.requestPermission(alert: true, badge: true, sound: true);
+      // firebase_messaging 17 deprecates getToken/onTokenRefresh for register()/onRegistered,
+      // which yield a Firebase Installation ID, not the FCM registration token that
+      // atlas-host's push sender (bots/push.rs, FCM HTTP v1 `token`) targets. Moving needs
+      // the sender changed and real FCM delivery verified together.
+      // ignore: deprecated_member_use
       final token = await messaging.getToken();
       if (token != null && ref != null && ref.context.mounted) {
         ref.read(fcmTokenProvider.notifier).state = token;
       }
+      // ignore: deprecated_member_use
       messaging.onTokenRefresh.listen((newToken) {
         if (ref != null && ref.context.mounted) {
           ref.read(fcmTokenProvider.notifier).state = newToken;

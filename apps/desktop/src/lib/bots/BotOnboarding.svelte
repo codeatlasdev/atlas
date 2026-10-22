@@ -36,11 +36,11 @@
 
 	// Floating faces for intro (fixed seeds for determinism)
 	const INTRO_FACES = [
-		{ seed: "face-a", size: 40, x: 18, y: 22, phase: 0 },
-		{ seed: "face-b", size: 32, x: 72, y: 15, phase: 0.4 },
-		{ seed: "face-c", size: 48, x: 12, y: 58, phase: 0.7 },
-		{ seed: "face-d", size: 28, x: 80, y: 62, phase: 1.1 },
-		{ seed: "face-e", size: 36, x: 50, y: 12, phase: 1.6 },
+		{ seed: "face-a", size: 72, x: 8, y: 18, phase: 0 },
+		{ seed: "face-b", size: 56, x: 76, y: 10, phase: 0.5 },
+		{ seed: "face-c", size: 88, x: 5, y: 62, phase: 0.9 },
+		{ seed: "face-d", size: 64, x: 80, y: 65, phase: 1.4 },
+		{ seed: "face-e", size: 48, x: 44, y: 6, phase: 1.9 },
 	];
 
 	// ─── computed ─────────────────────────────────────────────────────────────
@@ -294,7 +294,7 @@
 
 	.float-face {
 		position: absolute;
-		animation: bob 4s ease-in-out infinite;
+		animation: bob 5s ease-in-out infinite;
 		animation-delay: var(--phase, 0s);
 	}
 	.float-face.reduced {
@@ -303,10 +303,10 @@
 	@keyframes bob {
 		0%,
 		100% {
-			transform: translateY(0);
+			transform: translateY(0px) rotate(-2deg);
 		}
 		50% {
-			transform: translateY(-10px);
+			transform: translateY(-12px) rotate(2deg);
 		}
 	}
 
@@ -316,6 +316,9 @@
 		text-align: center;
 		max-width: 480px;
 		padding: 0 24px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 
 	.intro-title {
@@ -560,6 +563,7 @@
 	.pill-btn {
 		display: flex;
 		align-items: center;
+		justify-content: center;
 		gap: 6px;
 		background: var(--ca-accent, #4f8ef7);
 		color: var(--ca-surface-base);
@@ -570,6 +574,7 @@
 		font-weight: 600;
 		cursor: pointer;
 		transition: opacity 150ms;
+		width: min(440px, 90%);
 	}
 	.pill-btn:hover {
 		opacity: 0.85;

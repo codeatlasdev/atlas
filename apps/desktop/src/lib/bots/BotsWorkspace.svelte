@@ -11,7 +11,7 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Plus, Search, Settings } from "@lucide/svelte";
+	import { Plus, Search, Settings, CircleHelp } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
 	import BotTile from "#lib/bots/BotTile.svelte";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
@@ -240,51 +240,54 @@
 		</div>
 
 		<!-- Server status footer (Discord user-bar style) -->
+		<!-- Footer (Discord user-bar) -->
 		<div class="dm-footer">
+			<!-- Left: server status -->
 			<div class="footer-servers">
 				{#each remoteHosts as h (h.key)}
 					<button
 						class="footer-server"
 						onclick={openBotsSettings}
-						title="Settings → Bots"
+						title={h.name}
 						aria-label="{h.name} — {bots.hostOk(h.key) ? 'online' : 'offline'}"
 					>
 						<span class="server-dot" class:online={bots.hostOk(h.key)} aria-hidden="true"></span>
 						<span class="server-name">{h.name}</span>
 					</button>
-				{:else}
-					<button class="footer-server muted" onclick={openBotsSettings}>+ Add bot server</button>
 				{/each}
 			</div>
-			{#if agentUsages.length > 0}
-				<div class="footer-meters">
-					{#each agentUsages as usage (usage.agentId)}
-						<UsageMeter
-							agentId={usage.agentId}
-							todayTokens={usage.todayTokens}
-							todayCost={usage.todayCost}
-							limitPct={usage.limitPct}
-							resetsAt={usage.resetsAt}
-						/>
-					{/each}
-				</div>
-			{/if}
-			<button
-				class="footer-gear"
-				onclick={openBotsSettings}
-				title="Settings → Bots"
-				aria-label="Bots settings"
-			>
-				<Settings size={14} />
-			</button>
-			<button
-				class="footer-help"
-				onclick={openOnboarding}
-				title="How Atlas Bot works"
-				aria-label="How Atlas Bot works"
-			>
-				How Atlas Bot works
-			</button>
+			<!-- Right: meters + help + gear -->
+			<div class="footer-actions">
+				{#if agentUsages.length > 0}
+					<div class="footer-meters">
+						{#each agentUsages as usage (usage.agentId)}
+							<UsageMeter
+								agentId={usage.agentId}
+								todayTokens={usage.todayTokens}
+								todayCost={usage.todayCost}
+								limitPct={usage.limitPct}
+								resetsAt={usage.resetsAt}
+							/>
+						{/each}
+					</div>
+				{/if}
+				<button
+					class="footer-icon-btn"
+					onclick={openOnboarding}
+					title="How Atlas Bot works"
+					aria-label="How Atlas Bot works"
+				>
+					<CircleHelp size={14} />
+				</button>
+				<button
+					class="footer-icon-btn"
+					onclick={openBotsSettings}
+					title="Settings"
+					aria-label="Bots settings"
+				>
+					<Settings size={14} />
+				</button>
+			</div>
 		</div>
 	</div>
 
@@ -455,56 +458,46 @@
 		background: var(--ca-vibrancy-fill);
 	}
 
-	/* Footer (Discord user bar style) */
+	/* Footer (Discord user-bar style) */
 	.dm-footer {
 		flex: none;
 		display: flex;
+		flex-direction: row;
 		align-items: center;
-		gap: 4px;
+		justify-content: space-between;
 		padding: 6px 8px;
-		border-top: 0.5px solid var(--ca-outline-subtle);
-		min-height: 36px;
-	}
-
-	.footer-meters {
-		display: flex;
-		align-items: center;
 		gap: 6px;
-		flex-wrap: wrap;
-		flex: none;
+		min-height: 40px;
+		border-top: 1px solid var(--ca-border, rgba(255, 255, 255, 0.06));
 	}
 
 	.footer-servers {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		flex: 1;
 		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
+		overflow: hidden;
 	}
 
 	.footer-server {
 		display: flex;
 		align-items: center;
-		gap: 5px;
-		font-size: 11px;
-		color: var(--ca-text-secondary);
-		padding: 2px 4px;
-		border-radius: 4px;
-		width: 100%;
-		text-align: left;
+		gap: 4px;
 		background: none;
 		border: none;
-		cursor: default;
-		min-width: 0;
+		cursor: pointer;
+		color: var(--ca-text-secondary);
+		font-size: 11px;
+		padding: 2px 4px;
+		border-radius: 4px;
+		max-width: 120px;
+		overflow: hidden;
 	}
 
 	.footer-server:hover {
-		background: var(--ca-vibrancy-fill);
+		background: var(--ca-bg-hover, var(--ca-vibrancy-fill));
 		color: var(--ca-text-primary);
-	}
-
-	.footer-server.muted {
-		color: var(--ca-brand-main);
 	}
 
 	.server-dot {
@@ -512,38 +505,48 @@
 		height: 7px;
 		border-radius: 50%;
 		background: var(--ca-text-secondary);
-		flex: none;
+		flex-shrink: 0;
 	}
 
 	.server-dot.online {
-		background: var(--ca-semantic-success);
+		background: #22c55e;
 	}
 
 	.server-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		flex: 1;
-		min-width: 0;
 	}
 
-	.footer-gear {
-		width: 24px;
-		height: 24px;
-		border-radius: 6px;
-		border: none;
-		background: none;
-		color: var(--ca-text-secondary);
-		cursor: default;
+	.footer-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+
+	.footer-meters {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.footer-icon-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		flex: none;
-		padding: 0;
+		width: 26px;
+		height: 26px;
+		border-radius: 6px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--ca-text-secondary);
+		flex-shrink: 0;
 	}
 
-	.footer-gear:hover {
-		background: var(--ca-vibrancy-fill);
+	.footer-icon-btn:hover {
+		background: var(--ca-bg-hover, var(--ca-vibrancy-fill));
 		color: var(--ca-text-primary);
 	}
 
@@ -588,28 +591,13 @@
 		display: flex;
 		flex-direction: row;
 		flex-wrap: wrap;
+		justify-content: center;
 		align-content: flex-start;
-		gap: 0;
-		padding: 4px;
+		gap: 4px;
+		padding: 8px 4px;
 	}
 	.bot-list.tile-mode .host-hd,
 	.bot-list.tile-mode .project-hd {
 		width: 100%;
-	}
-
-	.footer-help {
-		font-size: 11px;
-		color: var(--ca-text-secondary);
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 2px 4px;
-		margin-top: 2px;
-		border-radius: 4px;
-		align-self: flex-start;
-	}
-	.footer-help:hover {
-		color: var(--ca-text-primary);
-		background: var(--ca-vibrancy-fill);
 	}
 </style>

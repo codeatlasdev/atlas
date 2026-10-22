@@ -49,7 +49,7 @@ class Workspace {
 	/** The terminal host did not answer the last `syncPtys`: `ptys` is what we knew, not what is true. */
 	hostDown = $state(false);
 	/** Main area: the selected worktree, or a global agents view. */
-	view = $state<"worktree" | "agents" | "dashboard">("worktree");
+	view = $state<"worktree" | "agents" | "dashboard" | "bot">("worktree");
 	#persist = new WorkspacePersist(this);
 
 	get selected(): Worktree | undefined {

@@ -3,6 +3,7 @@
 	import { IconButton, Kbd, Skeleton, Spinner } from "@codeatlasdev/ui";
 	import { primaryKey } from "#lib/keys.ts";
 	import {
+		Server,
 		Bot,
 		ChevronRight,
 		LayoutDashboard,
@@ -25,6 +26,7 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
+	import { bots } from "#lib/stores/bots.svelte.ts";
 	import DeleteDialog from "./sidebar/DeleteDialog.svelte";
 	import DiscoverDialog from "./sidebar/DiscoverDialog.svelte";
 	import ProjectHead from "./sidebar/ProjectHead.svelte";
@@ -59,6 +61,32 @@
 	let hasArchived = $derived(ws.doc.worktrees.some((w) => w.archived));
 	/** Any row survives the filter (drives the "no match" hint). */
 	let visible = $derived(repos.some(sidebar.repoMatches));
+
+	let botsOpen = $state(false);
+	let botHostInput = $state("");
+	let botHostName = $state("");
+	let addingBotHost = $state(false);
+	let showAddBot = $state(false);
+
+	async function addBotHost() {
+		if (!botHostInput.trim()) return;
+		addingBotHost = true;
+		try {
+			await bots.addHost(botHostInput.trim(), botHostName.trim() || botHostInput.trim());
+			botHostInput = "";
+			botHostName = "";
+			showAddBot = false;
+		} catch (e) {
+			// ignore; host.ts captureHost handles the toast
+		} finally {
+			addingBotHost = false;
+		}
+	}
+
+	function selectBot(hostKey: string, botId: string) {
+		void bots.select(hostKey, botId);
+		ws.view = "bot";
+	}
 
 	let refreshing = $state(false);
 	async function refresh() {
@@ -232,6 +260,68 @@
 			<p class="hint">No projects yet. Add a folder with an <code>atlas.yaml</code>.</p>
 		{:else if filtering && !visible}
 			<p class="hint">No worktree matches “{sidebar.filter.trim()}”.</p>
+		{/if}
+
+		<!-- Bots section -->
+		<button class="section" aria-expanded={botsOpen} onclick={() => (botsOpen = !botsOpen)}>
+			<ChevronRight size={11} class="chev {botsOpen ? 'open' : ''}" />
+			<Server size={11} />
+			<span>Bots</span>
+			{#if bots.needsYouCount}<span class="count">{bots.needsYouCount}</span>{/if}
+		</button>
+		{#if botsOpen}
+			{#each bots.hosts as h (h.key)}
+				{#if h.bots.length > 0 || !h.key}
+					{#each h.bots as b (b.id)}
+						<button
+							class="item fixed bot-row"
+							class:active={ws.view === "bot" &&
+								bots.selected?.hostKey === h.key &&
+								bots.selected?.botId === b.id}
+							onclick={() => selectBot(h.key, b.id)}
+							aria-label="{b.name} — {b.state}"
+						>
+							<span class="bot-dot dot-{b.state}" aria-hidden="true"></span>
+							<span class="name">{b.name}</span>
+							{#if h.key}<span class="chip">{h.name}</span>{/if}
+						</button>
+					{/each}
+					{#if h.bots.length === 0}
+						<p class="hint" style:padding-left="32px">No bots yet.</p>
+					{/if}
+				{/if}
+			{/each}
+			{#if showAddBot}
+				<div class="add-bot-form">
+					<input
+						class="bot-input"
+						bind:value={botHostInput}
+						placeholder="atlas-bot@server"
+						aria-label="SSH target"
+						onkeydown={(e) => e.key === "Enter" && void addBotHost()}
+					/>
+					<input
+						class="bot-input"
+						bind:value={botHostName}
+						placeholder="Display name (optional)"
+						aria-label="Host display name"
+						onkeydown={(e) => e.key === "Enter" && void addBotHost()}
+					/>
+					<div class="add-bot-hint">
+						Run <code>atlas bot install {botHostInput || "user@host"}</code> first.
+					</div>
+					<div class="add-bot-actions">
+						<button class="item fixed" disabled={addingBotHost || !botHostInput.trim()} onclick={addBotHost}>
+							{addingBotHost ? "Adding…" : "Add"}
+						</button>
+						<button class="item fixed" onclick={() => (showAddBot = false)}>Cancel</button>
+					</div>
+				</div>
+			{:else}
+				<button class="item fixed bot-add-btn" onclick={() => (showAddBot = true)}>
+					+ Add bot computer…
+				</button>
+			{/if}
 		{/if}
 	</nav>
 	{#if hasArchived}
@@ -475,5 +565,62 @@
 	.list :global(.hover-btn:hover) {
 		background: var(--ca-brand-fill);
 		color: var(--ca-brand-contrast);
+	}
+	.bot-row {
+		padding-left: 28px;
+	}
+	.bot-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex: none;
+		background: var(--ca-text-disabled);
+	}
+	.bot-dot.dot-working {
+		background: var(--ca-brand-main);
+	}
+	.bot-dot.dot-needs_you {
+		background: var(--ca-semantic-warning);
+	}
+	.bot-dot.dot-idle {
+		background: var(--dot-ok, var(--ca-text-disabled));
+	}
+	.bot-add-btn {
+		color: var(--ca-text-secondary);
+		font-size: 12px;
+		padding-left: 28px;
+	}
+	.bot-add-btn:hover {
+		color: var(--ca-text-primary);
+	}
+	.add-bot-form {
+		padding: 6px 8px 6px 28px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.bot-input {
+		font-size: 12px;
+		padding: 4px 7px;
+		border-radius: 5px;
+		border: 0.5px solid var(--ca-outline-subtle);
+		background: var(--ca-surface-base);
+		color: var(--ca-text-primary);
+	}
+	.add-bot-hint {
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+		line-height: 1.4;
+	}
+	.add-bot-hint code {
+		font-family: var(--ca-font-mono, monospace);
+		background: var(--ca-vibrancy-fill);
+		padding: 0 3px;
+		border-radius: 3px;
+	}
+	.add-bot-actions {
+		display: flex;
+		gap: 6px;
+		margin-top: 2px;
 	}
 </style>

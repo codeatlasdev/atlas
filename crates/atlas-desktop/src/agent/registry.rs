@@ -136,14 +136,10 @@ pub fn tail_args(
     match resume.filter(|r| !r.is_empty() && !a.resume.is_empty()) {
         Some(r) => argv.extend(a.resume.iter().map(|t| t.replace("{session}", &r))),
         None => {
-            if let Some(flag) = a.prompt_flag.as_deref() {
-                if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
-                    argv.push(flag.to_string());
-                    argv.push(p);
-                }
-            } else {
-                argv.extend(prompt.filter(|p| !p.trim().is_empty()));
-            }
+            argv.extend(atlas_core::agents::prompt_argv(
+                a.prompt_flag.as_deref(),
+                prompt.as_deref(),
+            ));
         }
     }
     argv

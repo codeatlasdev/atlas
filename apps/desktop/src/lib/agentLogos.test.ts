@@ -9,10 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { LOGO_FILES, agentLogo } from "./agentLogos.ts";
 
-const registry = readFileSync(
-	join(import.meta.dir, "../../../../crates/atlas-core/src/agents.rs"),
-	"utf8",
-);
+const registry = readFileSync(join(import.meta.dir, "../../../../crates/atlas-core/src/agents.rs"), "utf8");
 const ids = [...registry.matchAll(/^\s*id:\s*"([^"]+)",/gm)].map((m) => m[1]);
 const dir = join(import.meta.dir, "agent-logos");
 

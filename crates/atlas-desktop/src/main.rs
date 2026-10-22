@@ -37,6 +37,7 @@ mod page_layers;
 #[path = "page_layers_stub.rs"]
 mod page_layers;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
+mod bots;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod page_stage;
 mod registry;
@@ -197,6 +198,9 @@ macro_rules! handlers {
             remote::ssh_forward,
             remote::ssh_forwards,
             remote::projects_add_remote,
+            bots::bot_hosts_list,
+            bots::bot_hosts_add,
+            bots::bot_hosts_remove,
             menu::menu_sync,
             zoom::zoom_set,
             live_server::live_open,

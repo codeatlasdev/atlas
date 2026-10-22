@@ -182,14 +182,20 @@ class BotsStore {
 				id: this.selected.botId,
 				limit: 100,
 			});
-			this.tasks = r.tasks;
+			// Convert unix-second timestamps to ms at the store boundary.
+			this.tasks = r.tasks.map((t) => ({
+				...t,
+				ts: t.ts * 1000,
+				started_at: t.started_at != null ? t.started_at * 1000 : t.started_at,
+				finished_at: t.finished_at != null ? t.finished_at * 1000 : t.finished_at,
+				steps: t.steps?.map((s) => ({ ...s, ts: s.ts * 1000 })),
+			}));
 		} catch {
 			// keep stale tasks on error
 		} finally {
 			this.tasksLoading = false;
 		}
 	}
-
 	// ─── memory ───────────────────────────────────────────────────────────────
 
 	async getMemory(): Promise<string> {
@@ -317,13 +323,13 @@ class BotsStore {
 		const bot = this.hosts.find((h) => h.key === hostKey)?.bots.find((b) => b.id === botId);
 		if (!bot?.last?.ts) return false;
 		const seen = this.#lastSeen.get(`${hostKey}:${botId}`) ?? 0;
-		return bot.last.ts * 1000 > seen;
+		return bot.last.ts > seen;
 	}
 
 	/** Call when the user opens a bot. Marks all current tasks as seen. */
 	markRead(hostKey: string, botId: string): void {
 		const bot = this.hosts.find((h) => h.key === hostKey)?.bots.find((b) => b.id === botId);
-		const ts = bot?.last?.ts ? bot.last.ts * 1000 : Date.now();
+		const ts = bot?.last?.ts ?? Date.now();
 		const mapKey = `${hostKey}:${botId}`;
 		this.#lastSeen.set(mapKey, ts);
 		try {
@@ -363,7 +369,7 @@ class BotsStore {
 				hostName,
 				task: {
 					id: `${bot.id}:last`,
-					ts: bot.last.ts * 1000,
+					ts: bot.last.ts,
 					source: "desktop" as const,
 					prompt: "",
 					state: bot.last.state,
@@ -429,7 +435,12 @@ class BotsStore {
 		if (idx < 0) return;
 		try {
 			const r = await hostCall<{ bots: Bot[] }>("bot_list", hostArgs(key));
-			this.hosts[idx] = { ...this.hosts[idx], bots: r.bots, ok: true };
+			// Convert bot.last.ts from unix seconds to ms at the store boundary.
+			const bots = r.bots.map((bot) => {
+				if (bot.last) return { ...bot, last: { ...bot.last, ts: bot.last.ts * 1000 } };
+				return bot;
+			});
+			this.hosts[idx] = { ...this.hosts[idx], bots, ok: true };
 		} catch {
 			this.hosts[idx] = { ...this.hosts[idx], ok: false };
 		}

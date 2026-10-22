@@ -42,8 +42,8 @@ class _NewBotSheetState extends ConsumerState<NewBotSheet> {
   void _onAgentChanged(String agent) {
     setState(() {
       _agent = agent;
-      // omp forces auto-approval.
-      if (agent == 'omp') _approval = 'auto';
+      // opencode forces auto-approval (server rejects ask).
+      if (agent == 'opencode') _approval = 'auto';
     });
   }
 
@@ -81,7 +81,7 @@ class _NewBotSheetState extends ConsumerState<NewBotSheet> {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final isOmp = _agent == 'omp';
+    final isOpencode = _agent == 'opencode';
 
     return Padding(
       padding: EdgeInsets.only(
@@ -163,7 +163,7 @@ class _NewBotSheetState extends ConsumerState<NewBotSheet> {
           const SizedBox(height: 6),
           SegmentedButton<String>(
             selected: {_approval},
-            onSelectionChanged: isOmp
+            onSelectionChanged: isOpencode
                 ? null
                 : (s) => setState(() => _approval = s.first),
             segments: const [
@@ -171,10 +171,10 @@ class _NewBotSheetState extends ConsumerState<NewBotSheet> {
               ButtonSegment(value: 'auto', label: Text('Auto')),
             ],
           ),
-          if (isOmp) ...[
+          if (isOpencode) ...[
             const SizedBox(height: 6),
             Text(
-              'omp bots run without approval prompts.',
+              'OpenCode bots run without approval prompts.',
               style: TextStyle(color: c.muted, fontSize: 12),
             ),
           ],

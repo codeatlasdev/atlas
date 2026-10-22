@@ -741,6 +741,20 @@ exit 0"#;
 
         let client = daemon(&dir).await;
 
+        // ── Bot C: opencode engine (idle) — produces approval_supported:false ─
+        let bot_c = client
+            .call(
+                "bot_create",
+                json!({
+                    "name": "Deployer", "role": "Deploys releases",
+                    "agent": "opencode", "approval": "auto",
+                    "engine": {"kind": "opencode"}
+                }),
+            )
+            .await
+            .expect("bot_create C");
+        let bot_c_id = bot_c["id"].as_str().unwrap().to_string();
+
         let bot_b = client
             .call(
                 "bot_create",
@@ -833,6 +847,10 @@ exit 0"#;
             .iter()
             .find(|b| b["id"] == bot_b_id)
             .expect("bot B in list");
+        let c = bots
+            .iter()
+            .find(|b| b["id"] == bot_c_id)
+            .expect("bot C in list");
 
         // ── Assert the REAL shape ─────────────────────────────────────────────
         // working bot: running_task is an OBJECT {id, pane}, not a string
@@ -862,6 +880,19 @@ exit 0"#;
             "idle bot must have no running_task: {b}"
         );
 
+        // opencode bot: approval_supported must be false
+        assert_eq!(c["state"], "idle", "bot C must be idle: {c}");
+        assert_eq!(
+            c["approval_supported"].as_bool(),
+            Some(false),
+            "opencode bot must have approval_supported:false in bot_list: {c}"
+        );
+        assert_eq!(
+            c["engine"]["kind"].as_str(),
+            Some("opencode"),
+            "bot C must have engine.kind=opencode: {c}"
+        );
+
         // ── Build deterministic fixture ───────────────────────────────────────
         // Normalise volatile fields (random UUIDs, real timestamps) so the
         // stored fixture has a stable diff.
@@ -878,7 +909,11 @@ exit 0"#;
         b_fix["last"]["ts"] = json!(1700000000u64);
         b_fix["queued"] = json!(0);
 
-        let fixture = json!({ "bots": [a_fix, b_fix] });
+        let mut c_fix = c.clone();
+        c_fix["id"] = json!("bot-opencode");
+        c_fix["queued"] = json!(0);
+
+        let fixture = json!({ "bots": [a_fix, b_fix, c_fix] });
 
         let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/mobile/test/fixtures/bot_list.json");
@@ -915,6 +950,17 @@ exit 0"#;
         assert!(
             sw["running_task"]["pane"].is_string(),
             "running_task.pane must be string"
+        );
+
+        // Structural invariant: stored fixture must include approval_supported:false for opencode.
+        let sc = sb
+            .iter()
+            .find(|b| b["engine"]["kind"] == "opencode")
+            .expect("opencode bot must be in fixture");
+        assert_eq!(
+            sc["approval_supported"].as_bool(),
+            Some(false),
+            "fixture opencode bot must have approval_supported:false: {sc}"
         );
 
         assert_eq!(
@@ -2017,6 +2063,241 @@ exit 0
         );
 
         crate::bots::engine::set_test_engine_bin(None);
+        client.call("shutdown", json!({})).await.ok();
+    }
+    // ── Tests: codex exec_args builder ──────────────────────────────────────
+    // These test the argv builder (codex::exec_args) that constructs the
+    // actual command passed to the codex binary — no source-text inspection.
+
+    #[test]
+    fn codex_argv_first_turn_has_required_flags() {
+        use crate::bots::engine::codex::exec_args;
+        let args = exec_args(None, std::path::Path::new("/tmp/out.txt"), "hello");
+        // First turn: exec (no resume)
+        assert_eq!(
+            &args[0..2],
+            &["exec", "--json"][..],
+            "first two: exec --json"
+        );
+        // Required flags must be present.
+        assert!(
+            args.iter().any(|a| a == "--skip-git-repo-check"),
+            "--skip-git-repo-check must appear, got: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "--dangerously-bypass-hook-trust"),
+            "--dangerously-bypass-hook-trust must appear, got: {args:?}"
+        );
+        // No "resume" on first turn.
+        assert!(
+            !args.iter().any(|a| a == "resume"),
+            "first turn must not contain 'resume', got: {args:?}"
+        );
+        // Prompt is last.
+        assert_eq!(args.last().map(|s| s.as_str()), Some("hello"));
+    }
+
+    #[test]
+    fn codex_argv_resume_has_required_flags() {
+        use crate::bots::engine::codex::exec_args;
+        let args = exec_args(
+            Some("thread-abc"),
+            std::path::Path::new("/tmp/out.txt"),
+            "hi",
+        );
+        // Resume turn: exec resume <id>
+        assert_eq!(
+            &args[0..3],
+            &["exec", "resume", "thread-abc"][..],
+            "resume argv prefix wrong: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "--skip-git-repo-check"),
+            "--skip-git-repo-check must appear in resume, got: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "--dangerously-bypass-hook-trust"),
+            "--dangerously-bypass-hook-trust must appear in resume, got: {args:?}"
+        );
+    }
+
+    // ── bot_tasks JSON contract — fixture for apps/desktop ts-unit check ─────
+    //
+    // Verifies that bot_tasks returns ts/started_at/finished_at as unix seconds.
+    // Regenerate: UPDATE_FIXTURES=1 cargo test -p atlas-host bot_tasks_json_contract
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bot_tasks_json_contract() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd-tasks-contract");
+
+        // Instant-finish agent — produces a done task.
+        let stop_script = concat!(
+            "#!/bin/sh\nset -e\n",
+            "if [ -f \"$ATLAS_HOOK_ENDPOINT\" ]; then\n",
+            "  . \"$ATLAS_HOOK_ENDPOINT\"\n",
+            "  curl -s -X POST \"http://127.0.0.1:${ATLAS_HOOK_PORT}/hook/claude\"",
+            " -H \"X-Atlas-Hook-Token: ${ATLAS_HOOK_TOKEN}\"",
+            " -H \"Content-Type: application/json\"",
+            " -d \"{\\\"pane_key\\\":\\\"${ATLAS_PANE_KEY}\\\",\\\"payload\\\":{\\\"event\\\":\\\"agent_end\\\",\\\"will_continue\\\":false,\\\"text\\\":\\\"LGTM\\\"}}\"",
+            " || true\n",
+            "fi\n",
+            "exit 0\n",
+        );
+        let stop_bin = fake_agent(tmp.path(), "claude", stop_script);
+        crate::bots::runner::set_test_agent_bin(Some(&stop_bin.to_string_lossy()));
+
+        let client = daemon(&dir).await;
+
+        let bot = client
+            .call(
+                "bot_create",
+                json!({
+                    "name": "Reviewer", "role": "Reviews PRs",
+                    "agent": "claude", "approval": "auto"
+                }),
+            )
+            .await
+            .expect("bot_create");
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+
+        let vt = client
+            .call(
+                "bot_task",
+                json!({"id": bot_id, "prompt": "review the PR", "source": "desktop"}),
+            )
+            .await
+            .expect("bot_task");
+        let task_id = vt["task"]["id"].as_str().unwrap().to_string();
+
+        wait_task_state(&client, &bot_id, &task_id, "done", Duration::from_secs(15)).await;
+
+        // Capture real bot_tasks reply.
+        let reply = client
+            .call("bot_tasks", json!({"id": bot_id, "limit": 10}))
+            .await
+            .expect("bot_tasks");
+        let tasks = reply["tasks"].as_array().expect("tasks array");
+        let t = tasks
+            .iter()
+            .find(|t| t["id"] == task_id)
+            .expect("task in reply");
+
+        // ── Assert ts fields are unix SECONDS (< 2e10, > 1e9) ─────────────────
+        let ts = t["ts"].as_u64().expect("ts must be a number");
+        assert!(
+            ts > 1_000_000_000,
+            "ts must be a sane unix second epoch: {ts}"
+        );
+        assert!(ts < 20_000_000_000, "ts must be seconds not ms: {ts}");
+
+        let started = t["started_at"]
+            .as_u64()
+            .expect("started_at must be present");
+        assert!(
+            started > 1_000_000_000,
+            "started_at must be unix seconds: {started}"
+        );
+        assert!(
+            started < 20_000_000_000,
+            "started_at must not be ms: {started}"
+        );
+
+        let finished = t["finished_at"]
+            .as_u64()
+            .expect("finished_at must be present");
+        assert!(
+            finished > 1_000_000_000,
+            "finished_at must be unix seconds: {finished}"
+        );
+        assert!(
+            finished < 20_000_000_000,
+            "finished_at must not be ms: {finished}"
+        );
+
+        // finished_at >= started_at
+        assert!(finished >= started, "finished_at must be >= started_at");
+
+        // ── Build deterministic fixture ───────────────────────────────────────
+        let mut fix = t.clone();
+        fix["id"] = json!("task-done");
+        fix["ts"] = json!(1761213000u64);
+        fix["started_at"] = json!(1761212900u64);
+        fix["finished_at"] = json!(1761213000u64);
+        fix["prompt"] = json!("review the PR");
+        fix["result"] = json!("LGTM");
+
+        // running task: use a static shape (no live running task in this test)
+        let running_fix = json!({
+            "id": "task-running",
+            "ts": 1761213100u64,
+            "source": "desktop",
+            "prompt": "write tests",
+            "state": "running",
+            "started_at": 1761213090u64,
+            "steps": [
+                { "ts": 1761213092u64, "text": "Reading files" },
+                { "ts": 1761213095u64, "text": "Writing tests" }
+            ]
+        });
+
+        let fixture = json!({ "tasks": [fix, running_fix] });
+
+        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/__fixtures__/bot_tasks.json");
+
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(
+                &fixture_path,
+                serde_json::to_string_pretty(&fixture).unwrap() + "\n",
+            )
+            .unwrap();
+        }
+
+        let stored: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&fixture_path).expect(
+                "fixture missing — run: UPDATE_FIXTURES=1 cargo test -p atlas-host bot_tasks_json_contract",
+            ),
+        )
+        .unwrap();
+
+        // Structural invariant: stored fixture has ts fields as numbers.
+        let stored_tasks = stored["tasks"].as_array().unwrap();
+        let done_fix = stored_tasks
+            .iter()
+            .find(|t| t["state"] == "done")
+            .expect("done task in fixture");
+        assert!(done_fix["ts"].is_number(), "fixture ts must be a number");
+        assert!(
+            done_fix["started_at"].is_number(),
+            "fixture started_at must be a number"
+        );
+        assert!(
+            done_fix["finished_at"].is_number(),
+            "fixture finished_at must be a number"
+        );
+
+        let running_fix_stored = stored_tasks
+            .iter()
+            .find(|t| t["state"] == "running")
+            .expect("running task in fixture");
+        assert!(
+            running_fix_stored["ts"].is_number(),
+            "running fixture ts must be a number"
+        );
+        assert!(
+            running_fix_stored["started_at"].is_number(),
+            "running fixture started_at must be a number"
+        );
+        for step in running_fix_stored["steps"].as_array().unwrap() {
+            assert!(step["ts"].is_number(), "step ts must be a number");
+        }
+
+        crate::bots::runner::set_test_agent_bin(None);
         client.call("shutdown", json!({})).await.ok();
     }
 }

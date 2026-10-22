@@ -244,14 +244,29 @@
 		background: var(--ca-text-secondary);
 		animation: dot-bounce 1.2s ease-in-out infinite;
 	}
-	.dot:nth-child(2) { animation-delay: 0.15s; }
-	.dot:nth-child(3) { animation-delay: 0.3s; }
+	.dot:nth-child(2) {
+		animation-delay: 0.15s;
+	}
+	.dot:nth-child(3) {
+		animation-delay: 0.3s;
+	}
 	@keyframes dot-bounce {
-		0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-		40% { transform: scale(1.1); opacity: 1; }
+		0%,
+		80%,
+		100% {
+			transform: scale(0.8);
+			opacity: 0.5;
+		}
+		40% {
+			transform: scale(1.1);
+			opacity: 1;
+		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.dot { animation: none; opacity: 0.8; }
+		.dot {
+			animation: none;
+			opacity: 0.8;
+		}
 	}
 
 	.row-body {

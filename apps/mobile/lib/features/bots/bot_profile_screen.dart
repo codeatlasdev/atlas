@@ -258,6 +258,7 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
                   title: 'Approval',
                   child: _ApprovalPicker(
                     value: bot.approval,
+                    enabled: bot.approvalSupported,
                     onChanged: (val) async {
                       final mux = ref
                           .read(connectionNotifierProvider(widget.device))
@@ -423,20 +424,38 @@ class _Section extends StatelessWidget {
 // ── approval picker ───────────────────────────────────────────────────────────
 
 class _ApprovalPicker extends StatelessWidget {
-  const _ApprovalPicker({required this.value, required this.onChanged});
+  const _ApprovalPicker({
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
   final String value; // 'ask' | 'auto'
   final void Function(String) onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<String>(
-      segments: const [
-        ButtonSegment(value: 'ask',  label: Text('Ask before acting')),
-        ButtonSegment(value: 'auto', label: Text('Auto-approve')),
+    final c = AtlasColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'ask',  label: Text('Ask before acting')),
+            ButtonSegment(value: 'auto', label: Text('Auto-approve')),
+          ],
+          selected: {value},
+          onSelectionChanged: enabled ? (s) => onChanged(s.first) : null,
+          showSelectedIcon: false,
+        ),
+        if (!enabled) ...[
+          const SizedBox(height: 6),
+          Text(
+            'OpenCode bots run without approval prompts.',
+            style: TextStyle(color: c.muted, fontSize: 12),
+          ),
+        ],
       ],
-      selected: {value},
-      onSelectionChanged: (s) => onChanged(s.first),
-      showSelectedIcon: false,
     );
   }
 }

@@ -75,5 +75,9 @@
 	<string>Used to scan QR codes when pairing a Mac.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Used to unlock terminal write access.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

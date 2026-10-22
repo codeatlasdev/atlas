@@ -130,6 +130,12 @@ class _DemoComputer implements Transport {
   /// The pending approval of `demo-claude`, until answered.
   String? _approvalReq = 'demo-1';
 
+  // Demo bots.
+  final _demoBotId = 'bot00001';
+  String? _pendingBotTaskId;
+  final _botNeedsApproval = true; // starts with a pending approval
+  final _botTasks = <Map<String, Object?>>[];
+
   @override
   Stream<String> get incomingLines => _lines.stream;
 
@@ -224,6 +230,75 @@ class _DemoComputer implements Transport {
           'data': base64.encode(utf8.encode(text.replaceAll('\r', '\r\n'))),
         });
         data = <String, Object?>{};
+      case 'bot_list':
+        data = {
+          'bots': [
+            {
+              'id': _demoBotId,
+              'name': 'Reviewer',
+              'role': 'You review code changes and provide feedback.',
+              'agent': 'claude',
+              'approval': 'ask',
+              'state': _pendingBotTaskId != null ? 'working' : (_botNeedsApproval ? 'needs_you' : 'idle'),
+              'running_task': null,
+              'pending_approval': _botNeedsApproval
+                  ? {
+                      'req': 'bot-req-1',
+                      'tool_name': 'Bash',
+                      'tool_input': {'command': 'git diff HEAD'},
+                      'pane_key': 'bot:$_demoBotId:task-1',
+                    }
+                  : null,
+            },
+          ],
+        };
+      case 'bot_tasks':
+        data = {'tasks': [..._botTasks.reversed]};
+      case 'bot_task':
+        final taskId = 'task-${_botTasks.length + 1}';
+        final prompt = args['prompt'] as String? ?? '';
+        final source = args['source'] as String? ?? 'mobile';
+        final task = {
+          'id': taskId,
+          'ts': _now(),
+          'source': source,
+          'prompt': prompt,
+          'state': 'queued',
+          'result': null,
+          'error': null,
+          'finished_at': null,
+        };
+        _botTasks.add({...task});
+        _pendingBotTaskId = taskId;
+        data = {'task': task};
+        // Push task state: queued → running → done.
+        _later(const Duration(milliseconds: 300), () {
+          _updateBotTask(taskId, 'running', null, null);
+        });
+        _later(const Duration(milliseconds: 1800), () {
+          _pendingBotTaskId = null;
+          _updateBotTask(taskId, 'done',
+              'This is a demo. On a real bot computer, claude would run here.',
+              null);
+        });
+      case 'bot_memory':
+        data = {'text': '# Reviewer Memory\n\nNo notes yet.'};
+      case 'bot_memory_set':
+        data = <String, Object?>{};
+      case 'bot_routine_set':
+        data = <String, Object?>{};
+      case 'push_register':
+        data = <String, Object?>{};
+      case 'push_unregister':
+        data = <String, Object?>{};
+      case 'bot_cancel':
+        data = <String, Object?>{};
+      case 'info':
+        data = {
+          'caps': ['mobile', 'bots'],
+          'version': '1.0.0',
+          'hostname': 'Demo MacBook',
+        };
       default:
         data = <String, Object?>{};
     }
@@ -286,6 +361,29 @@ class _DemoComputer implements Transport {
       _pushStatus(a);
     });
     return null;
+  }
+
+  void _updateBotTask(
+      String taskId, String state, String? result, String? error) {
+    final idx = _botTasks.indexWhere((t) => t['id'] == taskId);
+    if (idx < 0) return;
+    _botTasks[idx] = {
+      ..._botTasks[idx],
+      'state': state,
+      'result': ?result,
+      'error': ?error,
+      if (state == 'done' || state == 'failed') 'finished_at': _now(),
+    };
+    _emit({
+      'ev': 'bot_task',
+      'bot': _demoBotId,
+      'task': {
+        'id': taskId,
+        'state': state,
+        'result': ?result,
+        'error': ?error,
+      },
+    });
   }
 
   Map<String, Object?> _service(String? name, String op) {

@@ -225,3 +225,141 @@ bool canSendChat(AgentStatus? status) {
   if (status == null) return false;
   return status.state == 'idle' || status.state == 'done';
 }
+
+/// A bot on a bot computer.
+class Bot {
+  final String id;
+  final String name;
+  final String role;
+  final String agent;
+  final String approval; // "ask" | "auto"
+  final String state; // "idle" | "working" | "needs_you"
+  final List<Routine> routines;
+  final BotTask? runningTask;
+  final BotPendingApproval? pendingApproval;
+
+  const Bot({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.agent,
+    required this.approval,
+    required this.state,
+    this.routines = const [],
+    this.runningTask,
+    this.pendingApproval,
+  });
+
+  factory Bot.fromJson(Map<String, dynamic> j) => Bot(
+    id: j['id'] as String? ?? '',
+    name: j['name'] as String? ?? '',
+    role: j['role'] as String? ?? '',
+    agent: j['agent'] as String? ?? '',
+    approval: j['approval'] as String? ?? 'ask',
+    state: j['state'] as String? ?? 'idle',
+    routines: (j['routines'] as List<dynamic>?)
+            ?.map((e) => Routine.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    runningTask: j['running_task'] == null
+        ? null
+        : BotTask.fromJson((j['running_task'] as Map).cast<String, dynamic>()),
+    pendingApproval: j['pending_approval'] == null
+        ? null
+        : BotPendingApproval.fromJson(
+            (j['pending_approval'] as Map).cast<String, dynamic>()),
+  );
+}
+
+/// A task enqueued or completed on a bot.
+class BotTask {
+  final String id;
+  final int ts;
+  final String source;
+  final String prompt;
+  final String state; // queued|running|done|failed|cancelled
+  final String? pane;
+  final String? result;
+  final String? error;
+  final int? finishedAt;
+
+  const BotTask({
+    required this.id,
+    required this.ts,
+    required this.source,
+    required this.prompt,
+    required this.state,
+    this.pane,
+    this.result,
+    this.error,
+    this.finishedAt,
+  });
+
+  factory BotTask.fromJson(Map<String, dynamic> j) => BotTask(
+    id: j['id'] as String? ?? '',
+    ts: (j['ts'] as num?)?.toInt() ?? 0,
+    source: j['source'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
+    state: j['state'] as String? ?? 'queued',
+    pane: j['pane'] as String?,
+    result: j['result'] as String?,
+    error: j['error'] as String?,
+    finishedAt: (j['finished_at'] as num?)?.toInt(),
+  );
+}
+
+/// A cron routine for a bot.
+class Routine {
+  final String id;
+  final String cron;
+  final String prompt;
+  final bool enabled;
+  final int? lastRun;
+
+  const Routine({
+    required this.id,
+    required this.cron,
+    required this.prompt,
+    required this.enabled,
+    this.lastRun,
+  });
+
+  factory Routine.fromJson(Map<String, dynamic> j) => Routine(
+    id: j['id'] as String? ?? '',
+    cron: j['cron'] as String? ?? '',
+    prompt: j['prompt'] as String? ?? '',
+    enabled: j['enabled'] as bool? ?? true,
+    lastRun: (j['last_run'] as num?)?.toInt(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'cron': cron,
+    'prompt': prompt,
+    'enabled': enabled,
+    if (lastRun != null) 'last_run': lastRun,
+  };
+}
+
+/// Pending approval on a bot (from BotList pending_approval field).
+class BotPendingApproval {
+  final String req;
+  final String? toolName;
+  final dynamic toolInput;
+  final String paneKey;
+
+  const BotPendingApproval({
+    required this.req,
+    this.toolName,
+    this.toolInput,
+    required this.paneKey,
+  });
+
+  factory BotPendingApproval.fromJson(Map<String, dynamic> j) =>
+      BotPendingApproval(
+        req: j['req'] as String? ?? '',
+        toolName: j['tool_name'] as String?,
+        toolInput: j['tool_input'],
+        paneKey: j['pane_key'] as String? ?? '',
+      );
+}

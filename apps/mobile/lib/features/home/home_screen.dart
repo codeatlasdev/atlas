@@ -15,8 +15,10 @@ import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
+import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
+import 'package:atlas_mobile/features/bots/bots_provider.dart';
 
 /// While the home is not ready: (stage caption, or null while reading storage).
 typedef _Loading = ({String? caption});
@@ -30,10 +32,6 @@ const _alwaysOnboard =
 /// Onboarding was finished in this launch (debug: lets the dashboard show afterwards).
 final onboardingSeenProvider = StateProvider<bool>((ref) => false);
 
-/// Paired computers from secure storage.
-final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
-  (ref) => ref.read(macStorageProvider).loadDevices(),
-);
 
 /// Home: onboarding until a computer is paired, then that computer's dashboard.
 class HomeScreen extends ConsumerStatefulWidget {
@@ -182,23 +180,6 @@ class _Splash extends StatelessWidget {
   }
 }
 
-/// One thing on the computer that needs the user, most urgent first.
-sealed class _Attention {
-  const _Attention(this.project);
-  final ProjectInfo project;
-}
-
-class _AgentAttention extends _Attention {
-  const _AgentAttention(super.project, this.pane, this.status);
-  final String pane;
-  final AgentStatus status;
-}
-
-class _ServiceAttention extends _Attention {
-  const _ServiceAttention(super.project, this.service);
-  final ServiceInfo service;
-}
-
 class _Dashboard extends ConsumerStatefulWidget {
   const _Dashboard({
     super.key,
@@ -294,26 +275,26 @@ class _DashboardState extends ConsumerState<_Dashboard> {
         : const <String, AgentStatus>{};
 
     final list = projects?.value ?? const <ProjectInfo>[];
-    final attention = <_Attention>[];
+    final attention = <Attention>[];
     final agentsOf = <String, List<(String, AgentStatus)>>{};
     for (final p in list) {
       for (final (pane, s0) in p.agents) {
         final s = live[pane] ?? s0;
         (agentsOf[p.id] ??= []).add((pane, s));
         if (s.state == 'blocked' || s.state == 'waiting') {
-          attention.add(_AgentAttention(p, pane, s));
+          attention.add(AgentAttention(p, pane, s));
         }
       }
       if (p.running) {
         for (final svc in p.services.where((s) => s.state == 'failed')) {
-          attention.add(_ServiceAttention(p, svc));
+          attention.add(ServiceAttention(p, svc));
         }
       }
     }
     // Agent prompts first (someone is waiting), then failures.
     attention.sort(
-      (a, b) => (a is _AgentAttention ? 0 : 1).compareTo(
-        b is _AgentAttention ? 0 : 1,
+      (a, b) => (a is AgentAttention ? 0 : 1).compareTo(
+        b is AgentAttention ? 0 : 1,
       ),
     );
     // Projects that need you, then running, then stopped.
@@ -331,6 +312,14 @@ class _DashboardState extends ConsumerState<_Dashboard> {
         .expand((v) => v)
         .where((a) => a.$2.state == 'working')
         .length;
+
+    // Bot attention items for this computer (bots with pending approval).
+    final botAttentionItems = connected
+        ? (ref.watch(botsProvider(widget.device)).value ?? [])
+            .where((b) => b.pendingApproval != null)
+            .map((b) => BotAttention(device: widget.device, bot: b))
+            .toList()
+        : <BotAttention>[];
 
     return Stack(
       children: [
@@ -407,18 +396,25 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                     else ...[
                       if (attention.isNotEmpty) ...[
                         EnterFade(
-                          child: _Hero(item: attention.first, onOpen: _open),
+                          child: AttentionHero(item: attention.first, onOpen: _open),
                         ),
                         for (var i = 1; i < attention.length; i++)
                           EnterFade(
                             index: i,
-                            child: _MoreAttention(
+                            child: AttentionMore(
                               item: attention[i],
                               onOpen: _open,
                             ),
                           ),
                         const SizedBox(height: Space.md),
                       ],
+                      for (final ba in botAttentionItems)
+                        EnterFade(
+                          child: _BotAttentionCard(
+                            item: ba,
+                            onOpen: _openBot,
+                          ),
+                        ),
                       SectionHeader('Projects', count: list.length),
                       if (list.isEmpty)
                         Text(
@@ -448,14 +444,21 @@ class _DashboardState extends ConsumerState<_Dashboard> {
     );
   }
 
-  void _open(_Attention a) => switch (a) {
-    _AgentAttention(:final project, :final pane, :final status) => _openAgent(
+  void _open(Attention a) => switch (a) {
+    AgentAttention(:final project, :final pane, :final status) => _openAgent(
       pane,
       status,
       project,
     ),
-    _ServiceAttention(:final project) => _openProject(project),
+    ServiceAttention(:final project) => _openProject(project),
   };
+
+  void _openBot(BotAttention ba) {
+    context.push(
+      '/bots/${ba.device.nodeId}/${ba.bot.id}',
+      extra: {'device': ba.device},
+    );
+  }
 
   /// Settings, behind a gear: the paired computer on top, then what you can do
   /// with it, in a sheet instead of a bare ⋯ menu.
@@ -619,148 +622,6 @@ class _Header extends StatelessWidget {
           ),
           menu,
         ],
-      ),
-    );
-  }
-}
-
-/// The most urgent thing, front and centre, with one obvious action.
-class _Hero extends StatelessWidget {
-  const _Hero({required this.item, required this.onOpen});
-  final _Attention item;
-  final void Function(_Attention) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final (color, icon, kicker, title, detail, action) = switch (item) {
-      _AgentAttention(:final project, :final status) => (
-        c.warning,
-        Icons.front_hand_rounded,
-        '${status.agent} · ${project.name}',
-        status.state == 'blocked'
-            ? 'Waiting for your approval'
-            : 'Asked you something',
-        status.lastMessage ?? status.prompt,
-        status.state == 'blocked' ? 'Review' : 'Answer',
-      ),
-      _ServiceAttention(:final project, :final service) => (
-        c.error,
-        Icons.error_outline_rounded,
-        project.name,
-        '${service.name} stopped working',
-        'Open the project to see its logs and restart it.',
-        'View',
-      ),
-    };
-    return Semantics(
-      button: true,
-      label: title,
-      child: GestureDetector(
-        onTap: () => onOpen(item),
-        child: Container(
-          padding: const EdgeInsets.all(Space.lg),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withValues(alpha: .45)),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [color.withValues(alpha: .16), c.base],
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, color: color, size: 18),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      kicker,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Space.sm),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge
-                    ?.copyWith(fontSize: 20),
-              ),
-              if (detail != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  detail.replaceAll('\n', ' '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: c.muted, height: 1.35),
-                ),
-              ],
-              const SizedBox(height: Space.md),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: color,
-                    foregroundColor: c.onAccent,
-                    minimumSize: const Size(0, 40),
-                  ),
-                  onPressed: () => onOpen(item),
-                  child: Text(action),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The other things that need you, one line each.
-class _MoreAttention extends StatelessWidget {
-  const _MoreAttention({required this.item, required this.onOpen});
-  final _Attention item;
-  final void Function(_Attention) onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    final (color, text) = switch (item) {
-      _AgentAttention(:final project, :final status) => (
-        c.warning,
-        '${status.agent} needs you · ${project.name}',
-      ),
-      _ServiceAttention(:final project, :final service) => (
-        c.error,
-        '${service.name} failed · ${project.name}',
-      ),
-    };
-    return Padding(
-      padding: const EdgeInsets.only(top: Space.sm),
-      child: AtlasCard(
-        margin: EdgeInsets.zero,
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.md,
-          vertical: Space.sm + 2,
-        ),
-        accent: color,
-        onTap: () => onOpen(item),
-        child: Row(
-          children: [
-            const SizedBox(width: Space.xs),
-            Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
-            Icon(Icons.chevron_right_rounded, color: c.muted),
-          ],
-        ),
       ),
     );
   }
@@ -936,4 +797,39 @@ class _Offline extends ConsumerWidget {
             ),
     ),
   );
+}
+
+class _BotAttentionCard extends StatelessWidget {
+  const _BotAttentionCard({required this.item, required this.onOpen});
+  final BotAttention item;
+  final void Function(BotAttention) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.sm),
+      child: AtlasCard(
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.sm + 2,
+        ),
+        accent: c.warning,
+        onTap: () => onOpen(item),
+        child: Row(
+          children: [
+            const SizedBox(width: Space.xs),
+            Expanded(
+              child: Text(
+                '${item.bot.name} needs approval',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: c.muted),
+          ],
+        ),
+      ),
+    );
+  }
 }

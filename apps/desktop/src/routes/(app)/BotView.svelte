@@ -439,7 +439,7 @@
 						{#if t.state === "running"}
 							{@const elapsedMs = t.started_at ? now - t.started_at * 1000 : 0}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state="working" size={24} />
+								<BotFace seed={bot.id} state="working" size={40} />
 								<div class="msg-in-body">
 									<div class="bubble in working">
 										<Spinner size={12} />
@@ -496,7 +496,7 @@
 							</div>
 						{:else if t.state === "done"}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state={faceState} size={24} />
+								<BotFace seed={bot.id} state={faceState} size={40} />
 								<div class="msg-in-body">
 									<div class="bubble in ca-selectable">{t.result ?? "Done"}</div>
 									{#if t.steps && t.steps.length > 0}
@@ -526,14 +526,14 @@
 							</div>
 						{:else if t.state === "failed"}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state="offline" size={24} />
+								<BotFace seed={bot.id} state="offline" size={40} />
 								<div class="msg-in-body">
 									<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 								</div>
 							</div>
 						{:else if t.state === "cancelled"}
 							<div class="msg-in">
-								<BotFace seed={bot.id} state="idle" size={24} />
+								<BotFace seed={bot.id} state="idle" size={40} />
 								<div class="msg-in-body">
 									<div class="bubble in muted">Cancelled</div>
 								</div>
@@ -892,6 +892,11 @@
 		color: var(--ca-text-primary);
 	}
 	.bubble.in.working {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		white-space: nowrap;
+		word-break: normal;
 		color: var(--ca-text-secondary);
 		font-style: italic;
 	}

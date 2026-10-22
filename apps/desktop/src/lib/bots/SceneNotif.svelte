@@ -57,24 +57,27 @@
 	.scene {
 		position: relative;
 		width: 100%;
-		height: 300px;
+		height: 240px;
 		overflow: hidden;
+		background: var(--ca-surface-sunken);
+		border-radius: 12px;
 	}
 
-	/* Ground line */
+	/* Ground bar */
 	.ground {
 		position: absolute;
-		bottom: 28px;
-		left: 5%;
-		right: 5%;
-		height: 1px;
-		background: color-mix(in oklab, currentColor 12%, transparent);
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 40px;
+		background: var(--ca-surface-overlay, color-mix(in oklab, currentColor 8%, transparent));
+		border-top: 1px solid var(--ca-outline-subtle);
 	}
 
 	/* ── phone ── (positioned at ~35 % from left) */
 	.phone-wrap {
 		position: absolute;
-		bottom: 30px;
+		bottom: 40px;
 		left: 32%;
 		color: var(--ca-text-secondary);
 		animation: phone-appear 9s linear infinite;
@@ -105,7 +108,7 @@
 	/* ── bot ── (positioned at ~58 % from left — close to phone) */
 	.bot-wrap {
 		position: absolute;
-		bottom: 30px;
+		bottom: 40px;
 		left: 56%;
 	}
 	.phase {

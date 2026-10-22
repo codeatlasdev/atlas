@@ -158,8 +158,10 @@
 	.scene {
 		position: relative;
 		width: 100%;
-		height: 300px;
+		height: 240px;
 		overflow: hidden;
+		background: var(--ca-surface-sunken);
+		border-radius: 12px;
 	}
 
 	.ground {

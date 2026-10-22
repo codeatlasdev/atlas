@@ -50,7 +50,7 @@
 	</div>
 
 	<!-- "Allowed" confirm flash — appears after tap -->
-	<div class="confirm" aria-hidden="true">Allowed ✓</div>
+	<div class="confirm" aria-hidden="true">Allowed</div>
 </div>
 
 <style>
@@ -77,22 +77,28 @@
 		bottom: 30px;
 		left: 32%;
 		color: var(--ca-text-secondary);
-		animation: phone-appear 9s ease-in-out infinite;
+		animation: phone-appear 9s linear infinite;
 	}
 	@keyframes phone-appear {
 		0% {
 			opacity: 0;
-			transform: translateY(44px);
+			transform: translateY(48px);
+			animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
 		}
-		20%,
-		93% {
+		18% {
 			opacity: 1;
 			transform: translateY(0);
 		}
-		97%,
+		18%,
+		90% {
+			opacity: 1;
+			transform: translateY(0);
+			animation-timing-function: ease-in;
+		}
+		95%,
 		100% {
 			opacity: 0;
-			transform: translateY(44px);
+			transform: translateY(48px);
 		}
 	}
 
@@ -109,31 +115,45 @@
 	}
 	.bounce-phase {
 		position: relative; /* anchors wrapper height */
-		animation: bounce-show 9s ease-in-out infinite;
+		animation: bounce-show 9s linear infinite;
 	}
 	.cheer-phase {
-		animation: cheer-show 9s ease-in-out infinite;
+		animation: cheer-show 9s linear infinite;
 	}
 	@keyframes bounce-show {
 		0%,
-		63% {
+		61% {
 			opacity: 1;
 		}
-		67%,
+		61% {
+			animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+		}
+		65%,
 		100% {
 			opacity: 0;
 		}
 	}
+
 	@keyframes cheer-show {
 		0%,
-		65%,
-		97%,
+		63%,
+		95%,
 		100% {
 			opacity: 0;
 		}
-		69%,
-		93% {
+		63% {
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+		}
+		67% {
 			opacity: 1;
+		}
+		67%,
+		92% {
+			opacity: 1;
+			animation-timing-function: ease-in;
+		}
+		95% {
+			opacity: 0;
 		}
 	}
 
@@ -144,18 +164,28 @@
 		left: 56%;
 		z-index: 1;
 		color: var(--ca-accent);
-		animation: sparkles-show 9s ease-in-out infinite;
+		animation: sparkles-show 9s linear infinite;
 	}
 	@keyframes sparkles-show {
 		0%,
-		66%,
-		96%,
+		65%,
+		94%,
 		100% {
 			opacity: 0;
 		}
-		71%,
-		93% {
+		65% {
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+		}
+		70% {
 			opacity: 1;
+		}
+		70%,
+		91% {
+			opacity: 1;
+			animation-timing-function: ease-in;
+		}
+		94% {
+			opacity: 0;
 		}
 	}
 
@@ -171,20 +201,36 @@
 		border: 1px solid color-mix(in oklab, var(--ca-semantic-success) 40%, transparent);
 		border-radius: 8px;
 		padding: 3px 8px;
-		animation: confirm-pop 9s ease-in-out infinite;
+		animation: confirm-pop 9s linear infinite;
 	}
 	@keyframes confirm-pop {
 		0%,
-		54%,
-		76%,
-		100% {
+		54% {
 			opacity: 0;
-			transform: scale(0.8) translateY(4px);
+			transform: scale(0.6) translateY(6px);
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
 		}
-		58%,
-		72% {
+		58% {
+			opacity: 1;
+			transform: scale(1.05) translateY(0);
+			animation-timing-function: ease-in-out;
+		}
+		60% {
 			opacity: 1;
 			transform: scale(1) translateY(0);
+		}
+		60%,
+		73% {
+			opacity: 1;
+			animation-timing-function: ease-in;
+		}
+		76% {
+			opacity: 0;
+			transform: scale(0.85) translateY(3px);
+		}
+		100% {
+			opacity: 0;
+			transform: scale(0.85) translateY(3px);
 		}
 	}
 

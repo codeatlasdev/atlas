@@ -68,101 +68,207 @@
 	}
 
 	/* ── wave ── */
-	/* Rocks the whole body side-to-side like an enthusiastic greeting */
+	/* Anticipation lean before first swing, overshoot + follow-through settle */
 	.wave {
-		animation: wave 2.6s ease-in-out infinite;
+		animation: wave 2.8s linear infinite;
 		animation-delay: var(--delay, 0ms);
 	}
 	@keyframes wave {
-		0%,
-		100% {
+		/* anticipation: lean slightly opposite before swinging */
+		0% {
+			transform: rotate(0deg) translateY(0);
+			animation-timing-function: cubic-bezier(0.3, 0, 0.7, 0);
+		}
+		8% {
+			transform: rotate(6deg) translateY(0);
+			animation-timing-function: cubic-bezier(0.2, 0, 0, 1.4);
+		}
+		/* swing out — spring overshoot */
+		20% {
+			transform: rotate(-18deg) translateY(-5px);
+			animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+		}
+		32% {
+			transform: rotate(10deg) translateY(-2px);
+			animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+		}
+		42% {
+			transform: rotate(-12deg) translateY(-4px);
+			animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
+		}
+		/* settle with follow-through */
+		54% {
+			transform: rotate(2deg) translateY(0);
+			animation-timing-function: ease-in-out;
+		}
+		/* HOLD */
+		64% {
 			transform: rotate(0deg) translateY(0);
 		}
-		12% {
-			transform: rotate(-14deg) translateY(-4px);
-		}
-		24% {
-			transform: rotate(8deg) translateY(-2px);
-		}
-		36% {
-			transform: rotate(-10deg) translateY(-4px);
-		}
-		50% {
+		100% {
 			transform: rotate(0deg) translateY(0);
 		}
 	}
 
 	/* ── sip ── */
-	/* Leans forward (toward the cup), lingers, sits back up */
+	/* Lean back (anticipation), lean forward, linger (hold), sit back (follow-through) */
 	.sip {
-		animation: sip 4.8s ease-in-out infinite;
+		animation: sip 5.2s linear infinite;
 		animation-delay: var(--delay, 0ms);
 	}
 	@keyframes sip {
-		0%,
-		100% {
+		/* anticipation: lean back slightly */
+		0% {
+			transform: rotate(0deg) translateY(0);
+			animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+		}
+		6% {
+			transform: rotate(5deg) translateY(0);
+			animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+		}
+		/* lean forward to sip */
+		20% {
+			transform: rotate(-24deg) translateY(-8px);
+			animation-timing-function: cubic-bezier(0.4, 0, 0.6, 0);
+		}
+		/* HOLD at sip position */
+		35% {
+			transform: rotate(-24deg) translateY(-8px);
+			animation-timing-function: cubic-bezier(0.4, 0, 1, 0.8);
+		}
+		/* sit back with follow-through */
+		48% {
+			transform: rotate(3deg) translateY(0);
+			animation-timing-function: ease-in-out;
+		}
+		55% {
 			transform: rotate(0deg) translateY(0);
 		}
-		18%,
-		32% {
-			transform: rotate(-22deg) translateY(-6px);
-		}
-		52% {
+		/* HOLD */
+		100% {
 			transform: rotate(0deg) translateY(0);
 		}
 	}
 
 	/* ── shake ── */
-	/* Rapid lateral vibration (laughing, excited) */
+	/* Burst 0-50%, then HOLD 50-100% — no constant jiggle */
 	.shake {
-		animation: shake 0.32s ease-in-out infinite;
+		animation: shake-burst 3.2s linear infinite;
 		animation-delay: var(--delay, 0ms);
 	}
-	@keyframes shake {
-		0%,
-		100% {
+	@keyframes shake-burst {
+		0% {
 			transform: translateX(0) rotate(0deg);
 		}
-		25% {
-			transform: translateX(-5px) rotate(-2.5deg);
+		5% {
+			transform: translateX(-6px) rotate(-3deg);
 		}
-		75% {
-			transform: translateX(5px) rotate(2.5deg);
+		10% {
+			transform: translateX(6px) rotate(3deg);
+		}
+		15% {
+			transform: translateX(-6px) rotate(-3deg);
+		}
+		20% {
+			transform: translateX(6px) rotate(3deg);
+		}
+		25% {
+			transform: translateX(-5px) rotate(-2deg);
+		}
+		30% {
+			transform: translateX(5px) rotate(2deg);
+		}
+		35% {
+			transform: translateX(-4px) rotate(-1.5deg);
+		}
+		40% {
+			transform: translateX(4px) rotate(1.5deg);
+		}
+		45% {
+			transform: translateX(-2px) rotate(-1deg);
+		}
+		/* settle + HOLD */
+		50% {
+			transform: translateX(0) rotate(0deg);
+		}
+		100% {
+			transform: translateX(0) rotate(0deg);
 		}
 	}
 
 	/* ── cheer ── */
-	/* Energetic jump with squash on landing */
+	/* Anticipation squash → spring jump → land squash → follow-through bounce → settle */
 	.cheer {
-		animation: cheer 0.7s cubic-bezier(0.3, 0, 0.3, 1) infinite;
+		animation: cheer 1.1s linear infinite;
 		animation-delay: var(--delay, 0ms);
 	}
 	@keyframes cheer {
-		0%,
-		100% {
-			transform: translateY(0) scaleX(1.06) scaleY(0.94);
+		/* anticipation: sink + squash */
+		0% {
+			transform: translateY(0) scaleX(1) scaleY(1);
+			animation-timing-function: cubic-bezier(0.6, 0, 0.4, 1);
 		}
-		38% {
-			transform: translateY(-22px) scaleX(0.94) scaleY(1.06);
+		8% {
+			transform: translateY(4px) scaleX(1.12) scaleY(0.88);
+			animation-timing-function: cubic-bezier(0.2, 0, 0, 1.6);
 		}
-		70% {
+		/* spring up — overshoot */
+		32% {
+			transform: translateY(-30px) scaleX(0.9) scaleY(1.1);
+			animation-timing-function: cubic-bezier(0.8, 0, 1, 0.5);
+		}
+		/* land squash */
+		52% {
+			transform: translateY(0) scaleX(1.14) scaleY(0.86);
+			animation-timing-function: cubic-bezier(0.2, 0, 0.4, 1.4);
+		}
+		/* follow-through: small bounce */
+		68% {
+			transform: translateY(-10px) scaleX(0.96) scaleY(1.04);
+			animation-timing-function: ease-in-out;
+		}
+		/* secondary settle */
+		82% {
 			transform: translateY(0) scaleX(1.03) scaleY(0.97);
+			animation-timing-function: ease-in-out;
+		}
+		/* HOLD */
+		90% {
+			transform: translateY(0) scaleX(1) scaleY(1);
+		}
+		100% {
+			transform: translateY(0) scaleX(1) scaleY(1);
 		}
 	}
 
 	/* ── carry ── */
-	/* A slight forward tilt and gentle bob — loaded with a package */
+	/* Weighted bob with squash on down-beat */
 	.carry {
-		animation: carry 1.6s ease-in-out infinite;
+		animation: carry 2.4s linear infinite;
 		animation-delay: var(--delay, 0ms);
 	}
 	@keyframes carry {
-		0%,
-		100% {
-			transform: rotate(-6deg) translateY(0);
+		0% {
+			transform: rotate(-6deg) translateY(0) scaleX(1) scaleY(1);
+			animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
 		}
-		50% {
-			transform: rotate(-6deg) translateY(-8px);
+		/* HOLD weight at top */
+		28% {
+			transform: rotate(-8deg) translateY(-10px) scaleX(0.97) scaleY(1.03);
+			animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+		}
+		/* land squash — secondary motion */
+		52% {
+			transform: rotate(-5deg) translateY(0) scaleX(1.06) scaleY(0.94);
+			animation-timing-function: cubic-bezier(0, 0, 0.4, 1);
+		}
+		/* float back up */
+		76% {
+			transform: rotate(-7deg) translateY(-6px) scaleX(0.98) scaleY(1.02);
+			animation-timing-function: ease-in-out;
+		}
+		100% {
+			transform: rotate(-6deg) translateY(0) scaleX(1) scaleY(1);
 		}
 	}
 

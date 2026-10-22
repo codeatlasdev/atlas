@@ -484,11 +484,11 @@
 
 	.how-art {
 		flex: 1 1 0;
-		min-height: 200px;
-		max-height: 360px;
+		min-height: 220px;
+		max-height: 340px;
 		width: 100%;
 		max-width: 720px;
-		padding: 16px 16px 0;
+		padding: 24px 24px 0;
 		box-sizing: border-box;
 		display: flex;
 		align-items: center;
@@ -503,7 +503,7 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 10px;
-		padding: 20px 24px 4px;
+		padding: 48px 24px 4px;
 		max-width: 520px;
 		width: 100%;
 		text-align: center;
@@ -519,7 +519,7 @@
 	.how-body {
 		font-size: 14px;
 		color: var(--ca-text-secondary);
-		line-height: 1.6;
+		line-height: 1.7;
 		margin: 0;
 	}
 

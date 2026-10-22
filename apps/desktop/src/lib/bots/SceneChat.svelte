@@ -188,7 +188,7 @@
 		position: absolute;
 		bottom: 112px; /* 40 px character base + 48 px avatar + 24 px gap */
 		left: 8%;
-		animation: user-bubble-fly 9s ease-in-out infinite;
+		animation: user-bubble-fly 9s linear infinite;
 	}
 	.bubble-pill {
 		background: var(--ca-accent);
@@ -199,25 +199,36 @@
 		line-height: 0; /* collapse SVG whitespace */
 	}
 	@keyframes user-bubble-fly {
+		/* pop in with spring */
 		0% {
 			opacity: 0;
 			transform: translateX(0);
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
 		}
 		4% {
 			opacity: 1;
 			transform: translateX(0);
+			animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
 		}
+		/* fly to bot — ease-out arrival */
 		14% {
 			opacity: 1;
-			transform: translateX(160px);
+			transform: translateX(155px);
 		}
+		/* HOLD 1 beat */
 		18% {
+			opacity: 1;
+			transform: translateX(155px);
+			animation-timing-function: ease-in;
+		}
+		/* fade out */
+		20% {
 			opacity: 0;
-			transform: translateX(180px);
+			transform: translateX(165px);
 		}
 		100% {
 			opacity: 0;
-			transform: translateX(180px);
+			transform: translateX(165px);
 		}
 	}
 
@@ -235,21 +246,30 @@
 		position: absolute;
 		bottom: calc(100% + 8px);
 		left: 50%;
-		animation: typing-bubble-anim 9s ease-in-out infinite;
+		animation: typing-bubble-anim 9s linear infinite;
 		white-space: nowrap;
 	}
 	@keyframes typing-bubble-anim {
 		0%,
-		15% {
+		14% {
 			opacity: 0;
-			transform: translateX(-50%) scale(0.85);
+			transform: translateX(-50%) scale(0.7);
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
 		}
-		20%,
-		42% {
+		18% {
 			opacity: 1;
 			transform: translateX(-50%) scale(1);
 		}
-		46%,
+		/* HOLD */
+		43% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1);
+			animation-timing-function: ease-in;
+		}
+		47% {
+			opacity: 0;
+			transform: translateX(-50%) scale(0.85);
+		}
 		100% {
 			opacity: 0;
 			transform: translateX(-50%) scale(0.85);
@@ -261,24 +281,37 @@
 		position: absolute;
 		bottom: calc(100% + 8px);
 		left: 50%;
-		animation: laugh-bubble-anim 9s ease-in-out infinite;
+		animation: laugh-bubble-anim 9s linear infinite;
 		white-space: nowrap;
 	}
 	@keyframes laugh-bubble-anim {
 		0%,
-		43% {
+		44% {
 			opacity: 0;
-			transform: translateX(-50%) scale(0.85);
+			transform: translateX(-50%) scale(0.7);
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
 		}
-		47%,
-		64% {
+		48% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1.05);
+			animation-timing-function: ease-in-out;
+		}
+		50% {
 			opacity: 1;
 			transform: translateX(-50%) scale(1);
 		}
-		68%,
+		/* HOLD */
+		64% {
+			opacity: 1;
+			animation-timing-function: ease-in;
+		}
+		68% {
+			opacity: 0;
+			transform: translateX(-50%) scale(0.8);
+		}
 		100% {
 			opacity: 0;
-			transform: translateX(-50%) scale(0.85);
+			transform: translateX(-50%) scale(0.8);
 		}
 	}
 
@@ -291,7 +324,7 @@
 
 	/* Bot A phase 1: working  0–4 s = 0–44.4 % */
 	.bot-a-work {
-		animation: bot-a-work-anim 9s ease-in-out infinite;
+		animation: bot-a-work-anim 9s linear infinite;
 	}
 	@keyframes bot-a-work-anim {
 		0%,
@@ -306,7 +339,7 @@
 
 	/* Bot A phase 2: laughing  4–6 s = 44.4–66.7 % */
 	.bot-a-laugh {
-		animation: bot-a-laugh-anim 9s ease-in-out infinite;
+		animation: bot-a-laugh-anim 9s linear infinite;
 	}
 	@keyframes bot-a-laugh-anim {
 		0%,
@@ -325,7 +358,7 @@
 
 	/* Bot A phase 3: idle  6–9 s = 66.7–100 % */
 	.bot-a-idle {
-		animation: bot-a-idle-anim 9s ease-in-out infinite;
+		animation: bot-a-idle-anim 9s linear infinite;
 	}
 	@keyframes bot-a-idle-anim {
 		0%,
@@ -348,27 +381,44 @@
 		bottom: 72px; /* roughly hand height above ground */
 		left: 33%;
 		color: var(--ca-text-secondary);
-		animation: pkg-slide 9s ease-in-out infinite;
+		animation: pkg-slide 9s linear infinite;
 	}
 	@keyframes pkg-slide {
 		0%,
-		65% {
+		64% {
 			opacity: 0;
-			transform: translateX(0);
+			transform: translateX(0) translateY(0);
+			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
 		}
-		68% {
+		/* pop up with spring (anticipation arc) */
+		67% {
 			opacity: 1;
-			transform: translateX(0);
+			transform: translateX(0) translateY(-12px);
+			animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
 		}
-		88%,
-		93% {
+		/* fly across — ease-out deceleration */
+		86% {
 			opacity: 1;
-			transform: translateX(220px);
+			transform: translateX(200px) translateY(-4px);
+			animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
 		}
-		96%,
+		/* land squash (handled by Bot B carry) */
+		91% {
+			opacity: 1;
+			transform: translateX(215px) translateY(0);
+		}
+		/* HOLD briefly then fade */
+		94% {
+			opacity: 1;
+			animation-timing-function: ease-in;
+		}
+		97% {
+			opacity: 0;
+			transform: translateX(220px) translateY(0);
+		}
 		100% {
 			opacity: 0;
-			transform: translateX(240px);
+			transform: translateX(220px) translateY(0);
 		}
 	}
 
@@ -383,7 +433,7 @@
 
 	/* Bot B phase 1: idle  0–6 s = 0–66.7 % */
 	.bot-b-idle {
-		animation: bot-b-idle-anim 9s ease-in-out infinite;
+		animation: bot-b-idle-anim 9s linear infinite;
 	}
 	@keyframes bot-b-idle-anim {
 		0%,
@@ -398,7 +448,7 @@
 
 	/* Bot B phase 2: carry  6–8.5 s = 66.7–94.4 % */
 	.bot-b-carry {
-		animation: bot-b-carry-anim 9s ease-in-out infinite;
+		animation: bot-b-carry-anim 9s linear infinite;
 	}
 	@keyframes bot-b-carry-anim {
 		0%,

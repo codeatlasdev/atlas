@@ -15,6 +15,29 @@
 	import { normalizeLook, type BotLook } from "#lib/bots/look.ts";
 	import TypingIndicator from "#lib/bots/TypingIndicator.svelte";
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
+	import { renderMarkdown } from "#lib/viewers/markdown.ts";
+	import { groupTasks, firstUnreadIndex, roleTag } from "#lib/bots/botsLogic.ts";
+	import { msgIn, msgOut, embedIn } from "#lib/bots/motion.ts";
+
+	// ─── ask card ─────────────────────────────────────────────────────────────
+
+	interface AskPayload {
+		id: string;
+		question: string;
+		options: Array<{ key: string; title: string; subtitle?: string }>;
+		allow_text?: boolean;
+	}
+
+	function parseAsk(result?: string): AskPayload | null {
+		if (!result?.trimStart().startsWith("{")) return null;
+		try {
+			const v = JSON.parse(result);
+			if (v && typeof v === "object" && "ask" in v) return v.ask as AskPayload;
+		} catch {
+			/* not JSON */
+		}
+		return null;
+	}
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
@@ -47,6 +70,18 @@
 	/** Actual hostname of the local hostd, fetched on first selection of a local bot. */
 	let localHostname = $state("");
 
+	// markdown collapse
+	const COLLAPSE_LINES = 12;
+	let expandedResults = $state<Set<string>>(new Set());
+
+	// hover toolbar (CSS-driven)
+	let hoveredTask = $state<string | null>(null);
+
+	// jump to present
+	let threadEl = $state<HTMLElement | null>(null);
+	let atBottom = $state(true);
+	let jumpVisible = $state(false);
+
 	// ─── derived ──────────────────────────────────────────────────────────────
 
 	const bot = $derived(bots.selectedBot);
@@ -61,22 +96,10 @@
 		bot?.state === "needs_you" ? "needs_you" : bot?.state === "working" ? "working" : "idle",
 	);
 
-	/** Flat list of thread items: timestamp separators interleaved with tasks. Keyed by `key`. */
-	const threadItems = $derived.by(() => {
-		type Sep = { type: "sep"; key: string; ts: number };
-		type TaskItem = { type: "task"; key: string; t: BotTask };
-		const items: Array<Sep | TaskItem> = [];
-		const reversed = [...tasks].reverse();
-		let lastSepTs = -Infinity;
-		for (const t of reversed) {
-			if (t.ts - lastSepTs > 5 * 60 * 1000) {
-				items.push({ type: "sep", key: `sep:${t.ts}:${t.id}`, ts: t.ts });
-				lastSepTs = t.ts;
-			}
-			items.push({ type: "task", key: t.id, t });
-		}
-		return items;
-	});
+	const orderedTasks = $derived([...tasks].reverse()); // oldest first
+	const groupedTasks = $derived(groupTasks(orderedTasks));
+	const lastSeenTs = $derived(bots.selectedLastSeen);
+	const unreadIdx = $derived(firstUnreadIndex(orderedTasks, lastSeenTs));
 
 	const AGENT_LABELS: Record<string, string> = {
 		omp: "omp",
@@ -123,6 +146,14 @@
 		return () => clearInterval(timer);
 	});
 
+	// Auto-scroll to bottom when new tasks arrive, if already at bottom
+	$effect(() => {
+		const _ = orderedTasks.length;
+		if (atBottom && threadEl) {
+			setTimeout(() => threadEl?.scrollTo({ top: threadEl.scrollHeight }), 0);
+		}
+	});
+
 	// ─── helpers ──────────────────────────────────────────────────────────────
 
 	function fmtTime(tsMs: number): string {
@@ -133,6 +164,35 @@
 		const s = Math.floor(ms / 1000);
 		if (s < 60) return `${s}s`;
 		return `${Math.floor(s / 60)}m`;
+	}
+
+	function fmtDate(tsMs: number): string {
+		const d = new Date(tsMs);
+		const today = new Date();
+		if (d.toDateString() === today.toDateString()) return "Today";
+		const yesterday = new Date(today);
+		yesterday.setDate(today.getDate() - 1);
+		if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+		return d.toLocaleDateString([], { month: "long", day: "numeric" });
+	}
+
+	function shouldCollapse(text: string): boolean {
+		return text.split("\n").length > COLLAPSE_LINES;
+	}
+
+	function resultHtml(text: string): string {
+		return renderMarkdown(text, "", false);
+	}
+
+	function onThreadScroll() {
+		if (!threadEl) return;
+		const { scrollTop, scrollHeight, clientHeight } = threadEl;
+		atBottom = scrollHeight - scrollTop - clientHeight < 60;
+		jumpVisible = !atBottom;
+	}
+
+	function jumpToBottom() {
+		threadEl?.scrollTo({ top: threadEl.scrollHeight, behavior: "smooth" });
 	}
 
 	function noop() {}
@@ -347,7 +407,18 @@
 				<BotFace seed={bot.id} look={bot.look} state={faceState} size={30} />
 				<div class="header-title">
 					<span class="bot-name">{bot.name}</span>
-					{#if agentLabel}
+					{#if roleTag(bot.role)}
+						<span class="header-role-tag">{roleTag(bot.role)}</span>
+					{/if}
+					{#if bot.state === "working" && bot.running_task}
+						<span class="header-presence"
+							>working · {fmtElapsed(
+								bot.running_task
+									? now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at ?? 0) * 1000
+									: 0,
+							)}</span
+						>
+					{:else if agentLabel}
 						<span class="header-sep">·</span>
 						<span class="header-meta">{agentLabel}</span>
 					{/if}
@@ -408,34 +479,62 @@
 		{/if}
 
 		<!-- Task thread -->
-		<div class="thread" aria-label="Task history">
+		<div class="thread" bind:this={threadEl} onscroll={onThreadScroll} aria-label="Task history">
 			{#if bots.tasksLoading && tasks.length === 0}
 				<div class="loading">Loading…</div>
 			{:else if tasks.length === 0}
 				<div class="empty-thread">No tasks yet. Send one below.</div>
 			{:else}
-				{#each threadItems as item (item.key)}
-					{#if item.type === "sep"}
-						<div class="msg-ts">{fmtTime(item.ts)}</div>
-					{:else}
-						{@const t = item.t}
-						<!-- User bubble (right) -->
-						<div class="msg-out">
+				{#each orderedTasks as t, i (t.id)}
+					<!-- Unread divider -->
+					{#if i === unreadIdx}
+						<div class="unread-divider" role="separator">
+							<span class="unread-label">NEW</span>
+						</div>
+					{/if}
+					<!-- Date separator on group start + day change -->
+					{#if groupedTasks[i]?.groupStart && i > 0}
+						{@const prev = orderedTasks[i - 1]}
+						{#if new Date(t.ts).toDateString() !== new Date(prev.ts).toDateString()}
+							<div class="msg-ts">{fmtDate(t.ts)}</div>
+						{/if}
+					{/if}
+					<!-- Row: user prompt + bot response -->
+					<div
+						class="msg-row"
+						class:group-start={groupedTasks[i]?.groupStart}
+						onmouseenter={() => (hoveredTask = t.id)}
+						onmouseleave={() => (hoveredTask = null)}
+					>
+						<!-- User bubble -->
+						<div class="msg-out" in:msgOut>
 							<div class="bubble out ca-selectable">{t.prompt}</div>
 							{#if t.source !== "desktop"}
 								<div class="msg-meta">· {t.source}</div>
 							{/if}
 							{#if t.state === "queued"}
-								<div class="msg-meta">Queued</div>
+								<div class="msg-meta muted">Queued</div>
 							{/if}
 						</div>
 
-						<!-- Bot response bubble (left) with avatar -->
+						<!-- Bot response: running -->
 						{#if t.state === "running"}
 							{@const elapsedMs = t.started_at ? now - t.started_at * 1000 : 0}
-							<div class="msg-in">
-								<BotFace seed={bot.id} look={bot.look} state="working" size={40} />
+							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+								{#if groupedTasks[i]?.groupStart}
+									<div class="msg-avatar">
+										<BotFace seed={bot.id} look={bot.look} state="working" size={40} />
+									</div>
+								{:else}
+									<div class="msg-avatar-gap"></div>
+								{/if}
 								<div class="msg-in-body">
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-author">
+											<span class="author-name">{bot.name}</span>
+											<span class="author-time">{fmtTime(t.ts)}</span>
+										</div>
+									{/if}
 									<div class="bubble in working">
 										<Spinner size={12} />
 										Working · {fmtElapsed(elapsedMs)}
@@ -466,9 +565,9 @@
 									{#if bot.running_task?.id === t.id && bot.pending_approval}
 										{@const pa = bot.pending_approval}
 										{#if approvedReqs.has(pa.req)}
-											<div class="approval-answered">✓ Allowed by you</div>
+											<div class="approval-answered" in:msgIn>✓ Allowed by you · {fmtTime(Date.now())}</div>
 										{:else}
-											<div class="approval-bubble" role="alert">
+											<div class="approval-bubble" role="alert" in:embedIn>
 												<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
 												<pre class="approval-input">{formatApprovalInput(
 														pa.tool_name ?? "",
@@ -489,55 +588,190 @@
 									{/if}
 								</div>
 							</div>
+							<!-- Bot response: done -->
 						{:else if t.state === "done"}
-							<div class="msg-in">
-								<BotFace seed={bot.id} look={bot.look} state={faceState} size={40} />
+							{@const raw = t.result ?? "Done"}
+							{@const collapsed = shouldCollapse(raw) && !expandedResults.has(t.id)}
+							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+								{#if groupedTasks[i]?.groupStart}
+									<div class="msg-avatar">
+										<BotFace seed={bot.id} look={bot.look} state={faceState} size={40} />
+									</div>
+								{:else}
+									<div class="msg-avatar-gap"></div>
+								{/if}
 								<div class="msg-in-body">
-									<div class="bubble in ca-selectable">{t.result ?? "Done"}</div>
-									{#if t.steps && t.steps.length > 0}
-										<div class="steps-wrap">
-											<button
-												class="steps-btn"
-												aria-expanded={!!stepsOpen[t.id]}
-												onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-											>
-												{stepsOpen[t.id] ? "▾" : "▸"}
-												{t.steps.length}
-												{t.steps.length === 1 ? "step" : "steps"}
-											</button>
-											{#if stepsOpen[t.id]}
-												<div class="steps-list">
-													{#each t.steps as step, si (`${t.id}-${si}`)}
-														<div class="step-row">
-															<span class="step-ts">{fmtTime(step.ts)}</span>
-															<span>{step.text}</span>
-														</div>
-													{/each}
-												</div>
-											{/if}
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-author">
+											<span class="author-name">{bot.name}</span>
+											<span class="author-time">{fmtTime(t.ts)}</span>
 										</div>
 									{/if}
+									{#each [parseAsk(t.result)] as ask}
+										{#if ask && !expandedResults.has(t.id + ":dismissed")}
+											<!-- Ask card -->
+											<div class="ask-card">
+												<div class="ask-question">
+													<span>{ask.question}</span>
+													<button
+														class="ask-dismiss"
+														aria-label="Dismiss"
+														onclick={() => {
+															const s = new Set(expandedResults);
+															s.add(t.id + ":dismissed");
+															expandedResults = s;
+														}}>×</button
+													>
+												</div>
+												{#each ask.options as opt, oi (opt.key)}
+													<button
+														class="ask-option"
+														onclick={() => {
+															prompt = opt.title;
+															void send();
+														}}
+													>
+														<span class="ask-key">{String.fromCharCode(65 + oi)}</span>
+														<div class="ask-opt-body">
+															<span class="ask-opt-title">{opt.title}</span>
+															{#if opt.subtitle}<span class="ask-opt-sub">{opt.subtitle}</span>{/if}
+														</div>
+													</button>
+												{/each}
+												{#if ask.allow_text !== false}
+													<input
+														class="ask-text"
+														placeholder="Type your own answer"
+														onkeydown={(e) => {
+															if (e.key === "Enter" && (e.currentTarget as HTMLInputElement).value.trim()) {
+																prompt = (e.currentTarget as HTMLInputElement).value.trim();
+																void send();
+															}
+														}}
+													/>
+												{/if}
+											</div>
+										{:else if !expandedResults.has(t.id + ":dismissed")}
+											<!-- Normal markdown result -->
+											<div class="md-result ca-selectable" class:collapsed>
+												{@html resultHtml(
+													collapsed ? raw.split("\n").slice(0, COLLAPSE_LINES).join("\n") : raw,
+												)}
+											</div>
+											{#if shouldCollapse(raw)}
+												<button
+													class="show-more"
+													onclick={() => {
+														const s = new Set(expandedResults);
+														if (collapsed) s.add(t.id);
+														else s.delete(t.id);
+														expandedResults = s;
+													}}
+												>
+													{collapsed ? "Show more ▾" : "Show less ▴"}
+												</button>
+											{/if}
+											{#if t.steps && t.steps.length > 0}
+												<div class="steps-wrap">
+													<button
+														class="steps-btn"
+														aria-expanded={!!stepsOpen[t.id]}
+														onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
+													>
+														{stepsOpen[t.id] ? "▾" : "▸"}
+														{t.steps.length}
+														{t.steps.length === 1 ? "step" : "steps"}
+													</button>
+													{#if stepsOpen[t.id]}
+														<div class="steps-list">
+															{#each t.steps as step, si (`${t.id}-${si}`)}
+																<div class="step-row">
+																	<span class="step-ts">{fmtTime(step.ts)}</span>
+																	<span>{step.text}</span>
+																</div>
+															{/each}
+														</div>
+													{/if}
+												</div>
+											{/if}
+										{/if}
+									{/each}
 								</div>
 							</div>
+							<!-- Bot response: failed -->
 						{:else if t.state === "failed"}
-							<div class="msg-in">
-								<BotFace seed={bot.id} look={bot.look} state="offline" size={40} />
+							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+								{#if groupedTasks[i]?.groupStart}
+									<div class="msg-avatar">
+										<BotFace seed={bot.id} look={bot.look} state="offline" size={40} />
+									</div>
+								{:else}
+									<div class="msg-avatar-gap"></div>
+								{/if}
 								<div class="msg-in-body">
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-author">
+											<span class="author-name">{bot.name}</span>
+											<span class="author-time">{fmtTime(t.ts)}</span>
+										</div>
+									{/if}
 									<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 								</div>
 							</div>
+							<!-- Bot response: cancelled -->
 						{:else if t.state === "cancelled"}
-							<div class="msg-in">
-								<BotFace seed={bot.id} look={bot.look} state="idle" size={40} />
+							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+								{#if groupedTasks[i]?.groupStart}
+									<div class="msg-avatar">
+										<BotFace seed={bot.id} look={bot.look} state="idle" size={40} />
+									</div>
+								{:else}
+									<div class="msg-avatar-gap"></div>
+								{/if}
 								<div class="msg-in-body">
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-author">
+											<span class="author-name">{bot.name}</span>
+											<span class="author-time">{fmtTime(t.ts)}</span>
+										</div>
+									{/if}
 									<div class="bubble in muted">Cancelled</div>
 								</div>
 							</div>
 						{/if}
-					{/if}
+
+						<!-- Hover toolbar (shown via CSS .msg-row:hover) -->
+						<div class="msg-toolbar">
+							<button
+								class="tb-btn"
+								title="Copy"
+								onclick={() =>
+									navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}>⎘</button
+							>
+							{#if t.state === "failed" || t.state === "cancelled"}
+								<button
+									class="tb-btn"
+									title="Retry"
+									onclick={() => {
+										prompt = t.prompt;
+										void send();
+									}}>↺</button
+								>
+							{/if}
+							{#if t.state === "running" && bot.running_task?.pane}
+								<button class="tb-btn" title="Open terminal" onclick={openTerminal}>⌨</button>
+							{/if}
+						</div>
+					</div>
 				{/each}
 			{/if}
 		</div>
+
+		{#if jumpVisible}
+			<div class="jump-present" role="status">
+				<button class="jump-btn" onclick={jumpToBottom}>Jump to present ↓</button>
+			</div>
+		{/if}
 
 		{#if bot.state === "working"}
 			<TypingIndicator bots={[{ id: bot.id, name: bot.name }]} />
@@ -766,6 +1000,20 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	.header-role-tag {
+		font-size: 10.5px;
+		font-weight: 500;
+		color: var(--ca-text-secondary);
+		background: color-mix(in oklab, var(--ca-outline-subtle) 60%, transparent);
+		border-radius: 10px;
+		padding: 2px 7px;
+		margin-left: 4px;
+	}
+	.header-presence {
+		font-size: 12px;
+		color: var(--ca-semantic-warning, #e67700);
+		margin-left: 4px;
+	}
 	.header-right {
 		flex: none;
 	}
@@ -856,26 +1104,71 @@
 		text-align: center;
 		font-size: 11px;
 		color: var(--ca-text-secondary);
-		margin: 12px 0 8px;
+		margin: 12px 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.msg-ts::before,
+	.msg-ts::after {
+		content: "";
+		flex: 1;
+		height: 0.5px;
+		background: var(--ca-outline-subtle);
 	}
 	.msg-out {
 		display: flex;
 		flex-direction: column;
 		align-items: flex-end;
-		margin-bottom: 4px;
+		margin-bottom: 2px;
+		padding: 1px 16px;
 	}
 	.msg-in {
 		display: flex;
-		flex-direction: row;
 		align-items: flex-start;
-		gap: 6px;
-		margin-bottom: 8px;
+		gap: 12px;
+		padding: 1px 16px;
+		position: relative;
+	}
+	.msg-in.group-start {
+		margin-top: 8px;
+		padding-top: 1px;
+	}
+	.msg-avatar {
+		width: 40px;
+		flex: none;
+	}
+	.msg-avatar-gap {
+		width: 40px;
+		flex: none;
 	}
 	.msg-in-body {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
-		min-width: 0;
+	}
+	.msg-author {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		margin-bottom: 2px;
+	}
+	.author-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+	}
+	.author-time {
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+	}
+	/* msg-row wraps user + bot bubbles for a single task */
+	.msg-row {
+		position: relative;
+		display: flex;
+		flex-direction: column;
 	}
 	.bubble {
 		max-width: 72%;
@@ -917,6 +1210,136 @@
 		padding: 0 4px;
 	}
 
+	/* ─── markdown result ────────────────────────────────────── */
+	.md-result {
+		font-size: 13px;
+		line-height: 1.6;
+		color: var(--ca-text-primary);
+		word-break: break-word;
+		max-width: 72%;
+	}
+	.md-result :global(h1),
+	.md-result :global(h2),
+	.md-result :global(h3) {
+		font-size: 14px;
+		font-weight: 600;
+		margin: 0.8em 0 0.4em;
+	}
+	.md-result :global(p) {
+		margin: 0.4em 0;
+	}
+	.md-result :global(ul),
+	.md-result :global(ol) {
+		padding-left: 1.4em;
+		margin: 0.4em 0;
+	}
+	.md-result :global(li) {
+		margin: 0.2em 0;
+	}
+	.md-result :global(pre.code) {
+		position: relative;
+		background: color-mix(in oklab, var(--ca-surface-sunken) 80%, transparent);
+		border-radius: 6px;
+		padding: 10px 12px;
+		overflow-x: auto;
+		font-size: 12px;
+		margin: 0.6em 0;
+	}
+	.md-result :global(code) {
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 12px;
+		background: color-mix(in oklab, var(--ca-outline-subtle) 50%, transparent);
+		border-radius: 3px;
+		padding: 1px 4px;
+	}
+	.md-result :global(pre.code code) {
+		background: none;
+		padding: 0;
+	}
+	.md-result :global(table) {
+		border-collapse: collapse;
+		width: 100%;
+		font-size: 12px;
+		margin: 0.6em 0;
+	}
+	.md-result :global(th),
+	.md-result :global(td) {
+		border: 0.5px solid var(--ca-outline-subtle);
+		padding: 4px 8px;
+		text-align: left;
+	}
+	.md-result :global(th) {
+		background: color-mix(in oklab, var(--ca-surface-sunken) 60%, transparent);
+		font-weight: 600;
+	}
+	.show-more {
+		font-size: 11.5px;
+		color: var(--ca-brand-main);
+		background: none;
+		border: none;
+		padding: 2px 0;
+		cursor: default;
+		margin-top: 2px;
+	}
+
+	/* ─── unread divider ─────────────────────────────────────── */
+	.unread-divider {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 12px 16px;
+		color: var(--ca-semantic-error, #e03131);
+	}
+	.unread-divider::before,
+	.unread-divider::after {
+		content: "";
+		flex: 1;
+		height: 1px;
+		background: var(--ca-semantic-error, #e03131);
+		opacity: 0.5;
+	}
+	.unread-label {
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+	}
+
+	/* ─── hover toolbar ──────────────────────────────────────── */
+	.msg-toolbar {
+		position: absolute;
+		top: -10px;
+		right: 8px;
+		display: none;
+		background: var(--ca-surface-overlay, #2a2a2a);
+		border: 0.5px solid var(--ca-outline-subtle);
+		border-radius: 8px;
+		padding: 2px 4px;
+		gap: 2px;
+		flex-direction: row;
+		align-items: center;
+		z-index: 10;
+		box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+	}
+	.msg-row:hover .msg-toolbar {
+		display: flex;
+	}
+	.tb-btn {
+		width: 26px;
+		height: 26px;
+		border: none;
+		background: none;
+		border-radius: 5px;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		font-size: 14px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.tb-btn:hover {
+		background: var(--ca-vibrancy-fill);
+		color: var(--ca-text-primary);
+	}
 	/* steps */
 	.steps-wrap {
 		margin: 2px 0 4px 2px;
@@ -983,6 +1406,27 @@
 		color: var(--ca-text-secondary);
 		padding: 2px 4px;
 		margin-top: 2px;
+	}
+
+	/* ─── jump to present ────────────────────────────────────── */
+	.jump-present {
+		position: absolute;
+		bottom: 120px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 20;
+		pointer-events: none;
+	}
+	.jump-btn {
+		pointer-events: all;
+		background: var(--ca-brand-main);
+		color: var(--ca-surface-base);
+		border: none;
+		border-radius: 20px;
+		padding: 5px 14px;
+		font-size: 12px;
+		cursor: default;
+		box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
 	}
 
 	/* ─── composer ───────────────────────────────────────────── */
@@ -1265,5 +1709,102 @@
 	}
 	.delete-btn:hover {
 		background: color-mix(in oklab, var(--ca-semantic-error) 10%, transparent);
+	}
+
+	/* ─── ask card ───────────────────────────────────────────── */
+	.ask-card {
+		border: 0.5px solid var(--ca-outline-subtle);
+		border-radius: 12px;
+		overflow: hidden;
+		margin: 4px 0;
+		background: color-mix(in oklab, var(--ca-surface-sunken) 60%, transparent);
+	}
+	.ask-question {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 14px 8px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ca-text-primary);
+		border-bottom: 0.5px solid var(--ca-outline-subtle);
+	}
+	.ask-dismiss {
+		background: none;
+		border: none;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		font-size: 16px;
+		line-height: 1;
+		padding: 0 2px;
+		flex: none;
+	}
+	.ask-dismiss:hover {
+		color: var(--ca-text-primary);
+	}
+	.ask-option {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		padding: 10px 14px;
+		background: none;
+		border: none;
+		border-bottom: 0.5px solid var(--ca-outline-subtle);
+		text-align: left;
+		cursor: default;
+		transition: background 80ms;
+	}
+	.ask-option:last-of-type {
+		border-bottom: none;
+	}
+	.ask-option:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.ask-key {
+		width: 22px;
+		height: 22px;
+		border-radius: 6px;
+		background: color-mix(in oklab, var(--ca-outline-subtle) 80%, transparent);
+		color: var(--ca-text-secondary);
+		font-size: 11px;
+		font-weight: 600;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: none;
+	}
+	.ask-opt-body {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+	.ask-opt-title {
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ca-text-primary);
+	}
+	.ask-opt-sub {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+	}
+	.ask-text {
+		display: block;
+		width: 100%;
+		padding: 10px 14px;
+		background: none;
+		border: none;
+		border-top: 0.5px solid var(--ca-outline-subtle);
+		font-size: 13px;
+		color: var(--ca-text-secondary);
+		outline: none;
+		box-sizing: border-box;
+	}
+	.ask-text::placeholder {
+		color: var(--ca-text-secondary);
+		opacity: 0.6;
+	}
+	.ask-text:focus {
+		color: var(--ca-text-primary);
 	}
 </style>

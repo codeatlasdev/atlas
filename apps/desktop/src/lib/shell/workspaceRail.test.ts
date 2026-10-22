@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, test, expect } from "bun:test";
-import { inHotZone, leftRail, railToggleKey } from "./workspaceRail.ts";
+import { inHotZone, leftRail, railToggleKey, SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
 
 describe("workspaceRail", () => {
 	test("inHotZone: 0–6px triggers, 7px does not", () => {
@@ -22,4 +22,6 @@ describe("workspaceRail", () => {
 		const input = document.createElement("input");
 		expect(railToggleKey({ ...base, target: input })).toBe(false);
 	});
+	test("SHOW_DELAY_MS is 120", () => expect(SHOW_DELAY_MS).toBe(120));
+	test("HIDE_DELAY_MS is 300", () => expect(HIDE_DELAY_MS).toBe(300));
 });

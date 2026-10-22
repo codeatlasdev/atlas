@@ -174,6 +174,16 @@ export interface BotTask {
 	ask?: AskCard;
 	/** Set when the task was fired by a trigger; rendered as a system event line. */
 	trigger_event?: { kind: TriggerKind; summary: string };
+	/** Per-turn usage data from the engine. */
+	usage?: {
+		model?: string;
+		input_tokens?: number;
+		output_tokens?: number;
+		cache_read?: number;
+		cache_write?: number;
+		cost_usd?: number;
+		duration_ms?: number;
+	};
 }
 
 export interface Routine {

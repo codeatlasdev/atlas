@@ -13,12 +13,13 @@
 	import BotView from "../../routes/(app)/BotView.svelte";
 	import { Settings } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
+	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
 	let query = $state("");
 	let creating = $state(false);
-	let selectedNav = $state<"bots" | "activity" | "routines" | "needs_you">("bots");
+	let selectedNav = $state<"bots" | "activity" | "triggers" | "needs_you">("bots");
 
 	// ─── derived ──────────────────────────────────────────────────────────────
 
@@ -36,10 +37,15 @@
 
 	// ─── sections: group by host when there are multiple hosts ────────────────
 
+	type ProjectGroup = {
+		projectName: string | null;
+		bots: { hostKey: string; bot: (typeof bots.allBots)[number]["bot"] }[];
+	};
+
 	type Section = {
 		hostKey: string;
 		hostName: string;
-		bots: { hostKey: string; bot: (typeof bots.allBots)[number]["bot"] }[];
+		projects: ProjectGroup[];
 	};
 
 	const sections = $derived.by<Section[]>(() => {
@@ -48,9 +54,43 @@
 			const host = bots.hosts.find((h) => h.key === entry.hostKey);
 			const hostName = host?.name ?? "This computer";
 			if (!map.has(entry.hostKey)) {
-				map.set(entry.hostKey, { hostKey: entry.hostKey, hostName, bots: [] });
+				map.set(entry.hostKey, { hostKey: entry.hostKey, hostName, projects: [] });
 			}
-			map.get(entry.hostKey)!.bots.push({ hostKey: entry.hostKey, bot: entry.bot });
+			const section = map.get(entry.hostKey)!;
+			const projectName = entry.bot.project?.name ?? null;
+			let pg = section.projects.find((p) => p.projectName === projectName);
+			if (!pg) {
+				pg = { projectName, bots: [] };
+				section.projects.push(pg);
+			}
+			pg.bots.push({ hostKey: entry.hostKey, bot: entry.bot });
+		}
+		return [...map.values()];
+	});
+
+	/** Per-agent usage summary for bottom bar meters. */
+	const agentUsages = $derived.by(() => {
+		const map = new Map<
+			string,
+			{
+				agentId: string;
+				todayTokens: number;
+				todayCost: number;
+				limitPct: number | null;
+				resetsAt: string | null;
+			}
+		>();
+		for (const { bot } of bots.allBots) {
+			if (!bot.agent) continue;
+			if (!map.has(bot.agent)) {
+				map.set(bot.agent, {
+					agentId: bot.agent,
+					todayTokens: 0,
+					todayCost: 0,
+					limitPct: null,
+					resetsAt: null,
+				});
+			}
 		}
 		return [...map.values()];
 	});
@@ -72,15 +112,20 @@
 	async function startNewBot() {
 		if (creating) return;
 		creating = true;
+		const pending = bots.pendingProjectLink;
 		try {
 			const hostKey = bots.hosts[0]?.key ?? "";
 			const id = await bots.createBot(hostKey, {
-				name: "New Bot",
+				name: pending ? `${pending.name} Bot` : "New Bot",
 				role: "",
 				agent: "",
 				approval: "auto",
 				look: randomLook(),
 			});
+			if (pending) {
+				await bots.updateBot(hostKey, id, { project: pending });
+				bots.pendingProjectLink = null;
+			}
 			await bots.select(hostKey, id);
 		} catch (e) {
 			toast.error(errText(e));
@@ -126,11 +171,11 @@
 			</button>
 			<button
 				class="nav-row"
-				class:active={selectedNav === "routines"}
-				onclick={() => (selectedNav = "routines")}
+				class:active={selectedNav === "triggers"}
+				onclick={() => (selectedNav = "triggers")}
 			>
-				<span class="nav-icon">⟳</span>
-				<span class="nav-label">Routines</span>
+				<span class="nav-icon">⚡</span>
+				<span class="nav-label">Triggers</span>
 			</button>
 			<button
 				class="nav-row"
@@ -176,16 +221,23 @@
 					{#if sections.length > 1}
 						<div class="host-hd">{section.hostName}</div>
 					{/if}
-					{#each section.bots as { hostKey, bot } (bot.id)}
-						<div animate:flip={{ duration: 200 }}>
-							<BotListRow
-								{bot}
-								active={isActive(hostKey, bot.id)}
-								unread={bots.hasUnread(hostKey, bot.id)}
-								onclick={() => selectBot(hostKey, bot.id)}
-								onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
-							/>
-						</div>
+					{#each section.projects as pg (pg.projectName ?? "__none__")}
+						{#if pg.projectName}
+							<div class="project-hd">
+								<span>{pg.projectName}</span>
+							</div>
+						{/if}
+						{#each pg.bots as { hostKey, bot } (bot.id)}
+							<div animate:flip={{ duration: 200 }}>
+								<BotListRow
+									{bot}
+									active={isActive(hostKey, bot.id)}
+									unread={bots.hasUnread(hostKey, bot.id)}
+									onclick={() => selectBot(hostKey, bot.id)}
+									onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
+								/>
+							</div>
+						{/each}
 					{/each}
 				{/each}
 			{/if}
@@ -208,6 +260,19 @@
 					<button class="footer-server muted" onclick={openBotsSettings}>+ Add bot server</button>
 				{/each}
 			</div>
+			{#if agentUsages.length > 0}
+				<div class="footer-meters">
+					{#each agentUsages as usage (usage.agentId)}
+						<UsageMeter
+							agentId={usage.agentId}
+							todayTokens={usage.todayTokens}
+							todayCost={usage.todayCost}
+							limitPct={usage.limitPct}
+							resetsAt={usage.resetsAt}
+						/>
+					{/each}
+				</div>
+			{/if}
 			<button
 				class="footer-gear"
 				onclick={openBotsSettings}
@@ -337,6 +402,16 @@
 		padding: 10px 12px 2px;
 	}
 
+	/* Project sub-header within a host section */
+	.project-hd {
+		font-size: 10.5px;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		color: var(--ca-text-secondary);
+		padding: 8px 12px 2px;
+		text-transform: uppercase;
+	}
+
 	/* Bot list */
 	.bot-list {
 		flex: 1;
@@ -391,6 +466,14 @@
 		padding: 6px 8px;
 		border-top: 0.5px solid var(--ca-outline-subtle);
 		min-height: 36px;
+	}
+
+	.footer-meters {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+		flex: none;
 	}
 
 	.footer-servers {

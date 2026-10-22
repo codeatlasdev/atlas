@@ -10,9 +10,9 @@ import type { BotLook } from "#lib/bots/look.ts";
 import { hostCall } from "#lib/host.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
-import type { Bot, BotHost, BotSelection, BotTask, Routine, Trigger } from "#lib/bots.ts";
+import type { Bot, BotHost, BotProject, BotSelection, BotTask, Routine, Trigger } from "#lib/bots.ts";
 
-export type { Bot, BotHost, BotSelection, BotTask, Routine, Trigger, AgentIntegration };
+export type { Bot, BotHost, BotProject, BotSelection, BotTask, Routine, Trigger, AgentIntegration };
 
 interface HostEntry {
 	/** `""` for local, `"ssh:atlas-bot@server"` for remote. */
@@ -35,6 +35,8 @@ class BotsStore {
 	hosts = $state<HostEntry[]>([{ key: "", name: "This computer", bots: [], ok: true }]);
 	/** Currently selected bot. */
 	selected = $state<BotSelection | null>(null);
+	/** When set, the next bot creation should link this project automatically. */
+	pendingProjectLink = $state<BotProject | null>(null);
 	/** Tasks for the selected bot, newest first. */
 	tasks = $state<BotTask[]>([]);
 	tasksLoading = $state(false);
@@ -116,7 +118,14 @@ class BotsStore {
 	async updateBot(
 		hostKey: string,
 		id: string,
-		patch: Partial<{ name: string; role: string; agent: string; approval: string; look: BotLook }>,
+		patch: Partial<{
+			name: string;
+			role: string;
+			agent: string;
+			approval: string;
+			look: BotLook;
+			project: BotProject | null;
+		}>,
 	): Promise<void> {
 		await hostCall("bot_update", { ...hostArgs(hostKey), id, ...patch });
 		await this.refreshHost(hostKey);

@@ -10,6 +10,9 @@
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import type { BotTask, Routine } from "#lib/bots.ts";
+	import BotFace from "#lib/bots/BotFace.svelte";
+	import TypingIndicator from "#lib/bots/TypingIndicator.svelte";
+	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,9 @@
 	/** Show actual hostname for local; server name label for remote. */
 	const displayServerName = $derived(bots.selected?.hostKey ? serverName : localHostname || serverName);
 	const queuedCount = $derived(tasks.filter((t) => t.state === "queued").length);
+	const faceState = $derived<FaceState>(
+		bot?.state === "needs_you" ? "needs_you" : bot?.state === "working" ? "working" : "idle",
+	);
 
 	/** Flat list of thread items: timestamp separators interleaved with tasks. Keyed by `key`. */
 	const threadItems = $derived.by(() => {
@@ -343,9 +349,7 @@
 		<!-- Header -->
 		<div class="header">
 			<div class="header-left">
-				<div class="avatar" style:background={avatarColor(bot.name)} style:color={"#fff"} aria-hidden="true">
-					{bot.name[0].toUpperCase()}
-				</div>
+				<BotFace seed={bot.id} state={faceState} size={30} />
 				<div class="header-title">
 					<span class="bot-name">{bot.name}</span>
 					{#if agentLabel}
@@ -435,14 +439,7 @@
 						{#if t.state === "running"}
 							{@const elapsedMs = t.started_at ? now - t.started_at * 1000 : 0}
 							<div class="msg-in">
-								<div
-									class="bot-av"
-									style:background={avatarColor(bot.name)}
-									style:color={"#fff"}
-									aria-hidden="true"
-								>
-									{bot.name[0].toUpperCase()}
-								</div>
+								<BotFace seed={bot.id} state="working" size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in working">
 										<Spinner size={12} />
@@ -499,14 +496,7 @@
 							</div>
 						{:else if t.state === "done"}
 							<div class="msg-in">
-								<div
-									class="bot-av"
-									style:background={avatarColor(bot.name)}
-									style:color={"#fff"}
-									aria-hidden="true"
-								>
-									{bot.name[0].toUpperCase()}
-								</div>
+								<BotFace seed={bot.id} state={faceState} size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in ca-selectable">{t.result ?? "Done"}</div>
 									{#if t.steps && t.steps.length > 0}
@@ -536,28 +526,14 @@
 							</div>
 						{:else if t.state === "failed"}
 							<div class="msg-in">
-								<div
-									class="bot-av"
-									style:background={avatarColor(bot.name)}
-									style:color={"#fff"}
-									aria-hidden="true"
-								>
-									{bot.name[0].toUpperCase()}
-								</div>
+								<BotFace seed={bot.id} state="offline" size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 								</div>
 							</div>
 						{:else if t.state === "cancelled"}
 							<div class="msg-in">
-								<div
-									class="bot-av"
-									style:background={avatarColor(bot.name)}
-									style:color={"#fff"}
-									aria-hidden="true"
-								>
-									{bot.name[0].toUpperCase()}
-								</div>
+								<BotFace seed={bot.id} state="idle" size={24} />
 								<div class="msg-in-body">
 									<div class="bubble in muted">Cancelled</div>
 								</div>
@@ -567,6 +543,10 @@
 				{/each}
 			{/if}
 		</div>
+
+		{#if bot.state === "working"}
+			<TypingIndicator bots={[{ id: bot.id, name: bot.name }]} />
+		{/if}
 
 		<!-- Composer -->
 		<div class="composer">
@@ -759,18 +739,6 @@
 		gap: 10px;
 		min-width: 0;
 	}
-	.avatar {
-		width: 30px;
-		height: 30px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 13px;
-		font-weight: 700;
-		flex: none;
-		letter-spacing: 0;
-	}
 	.header-title {
 		display: flex;
 		align-items: baseline;
@@ -898,18 +866,6 @@
 		align-items: flex-start;
 		gap: 6px;
 		margin-bottom: 8px;
-	}
-	.bot-av {
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		flex: none;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 11px;
-		font-weight: 700;
-		margin-top: 2px;
 	}
 	.msg-in-body {
 		display: flex;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Bot } from "#lib/stores/bots.svelte.ts";
-
+	import BotFace from "#lib/bots/BotFace.svelte";
+	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 	let {
 		bot,
 		active = false,
@@ -11,23 +12,9 @@
 		onclick?: () => void;
 	} = $props();
 
-	const AVATAR_COLORS = [
-		"#6366f1",
-		"#8b5cf6",
-		"#ec4899",
-		"#f43f5e",
-		"#f97316",
-		"#eab308",
-		"#22c55e",
-		"#14b8a6",
-		"#3b82f6",
-	];
-
-	function avatarColor(name: string): string {
-		let h = 0;
-		for (let i = 0; i < name.length; i++) h = ((h * 31 + name.charCodeAt(i)) >>> 0) % AVATAR_COLORS.length;
-		return AVATAR_COLORS[h];
-	}
+	const faceState = $derived<FaceState>(
+		bot.state === "needs_you" ? "needs_you" : bot.state === "working" ? "working" : "idle",
+	);
 
 	function fmtTime(ts?: number): string {
 		if (!ts) return "";
@@ -41,9 +28,7 @@
 </script>
 
 <button class="row" class:active {onclick}>
-	<span class="avatar" style:background={avatarColor(bot.name)} style:color={"#fff"} aria-hidden="true">
-		{bot.name[0].toUpperCase()}
-	</span>
+	<BotFace seed={bot.id} state={faceState} size={32} />
 	<div class="row-body">
 		<div class="row-top">
 			<span class="name">{bot.name}</span>
@@ -78,17 +63,7 @@
 	.row.active {
 		background: color-mix(in oklab, var(--ca-brand-main) 15%, transparent);
 	}
-	.avatar {
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		flex: none;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 15px;
-		font-weight: 600;
-	}
+	/* BotFace SVG replaces .avatar; keep flex sizing consistent */
 	.row-body {
 		flex: 1;
 		min-width: 0;

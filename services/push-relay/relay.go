@@ -57,8 +57,7 @@ func newRelay(project, fcmBase string, getToken func() (string, error)) *relay {
 	}
 }
 
-// allow returns false and leaves the bucket unchanged when the token has
-// exhausted its 60-request-per-minute allowance.
+// allow returns false when the token has exhausted its 60-request-per-minute allowance.
 func (r *relay) allow(token string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -75,8 +74,36 @@ func (r *relay) allow(token string) bool {
 	return true
 }
 
-// forward sends one FCM HTTP v1 message and returns the FCM status code.
-func (r *relay) forward(token, kind string) (int, error) {
+// fcmErrorBody is the subset of the FCM HTTP v1 error response we inspect.
+type fcmErrorBody struct {
+	Error struct {
+		Details []struct {
+			Type      string `json:"@type"`
+			ErrorCode string `json:"errorCode"`
+		} `json:"details"`
+	} `json:"error"`
+}
+
+// isUnregistered returns true when the FCM error body carries errorCode "UNREGISTERED"
+// in a google.firebase.fcm.v1.FcmError detail entry.
+func isUnregistered(body []byte) bool {
+	var e fcmErrorBody
+	if err := json.Unmarshal(body, &e); err != nil {
+		return false
+	}
+	for _, d := range e.Error.Details {
+		if d.Type == "type.googleapis.com/google.firebase.fcm.v1.FcmError" &&
+			d.ErrorCode == "UNREGISTERED" {
+			return true
+		}
+	}
+	return false
+}
+
+// forward sends one FCM HTTP v1 message.
+// Returns (fcmStatus, unregistered, err).
+// unregistered is true only when FCM explicitly says the token is UNREGISTERED.
+func (r *relay) forward(token, kind string) (int, bool, error) {
 	msg := map[string]any{
 		"message": map[string]any{
 			"token": token,
@@ -92,24 +119,31 @@ func (r *relay) forward(token, kind string) (int, error) {
 
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if r.getToken != nil {
 		tok, err := r.getToken()
 		if err != nil {
-			return 0, fmt.Errorf("auth token: %w", err)
+			return 0, false, fmt.Errorf("auth token: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck
-	return resp.StatusCode, nil
+
+	// Read body only when we need to inspect it (non-2xx).
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		io.Copy(io.Discard, resp.Body) //nolint:errcheck
+		return resp.StatusCode, false, nil
+	}
+
+	respBody, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, isUnregistered(respBody), nil
 }
 
 // ServeHTTP handles POST /v1/notify.
@@ -134,26 +168,23 @@ func (r *relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	code, err := r.forward(body.Token, body.Kind)
+	code, unreg, err := r.forward(body.Token, body.Kind)
 	if err != nil {
 		log.Printf("fcm error: %v", err)
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
 
-	log.Printf("notify kind=%s fcm_status=%d", body.Kind, code)
+	log.Printf("notify kind=%s fcm_status=%d unregistered=%v", body.Kind, code, unreg)
 
-	// Map FCM HTTP v1 outcomes to our contract:
-	//   200/204 → 204 (sent)
-	//   404     → 410 (token unregistered)
-	//   anything else → 502
 	switch {
-	case code == http.StatusOK || code == http.StatusNoContent:
+	case code >= 200 && code < 300:
 		w.WriteHeader(http.StatusNoContent)
-	case code == http.StatusNotFound:
-		// FCM HTTP v1 returns 404 for UNREGISTERED tokens.
+	case unreg:
+		// Token explicitly marked UNREGISTERED by FCM — safe to drop.
 		w.WriteHeader(http.StatusGone)
 	default:
+		// All other non-2xx (wrong project ID, auth error, quota, etc.) → 502.
 		http.Error(w, "fcm error", http.StatusBadGateway)
 	}
 }

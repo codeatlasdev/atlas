@@ -483,12 +483,11 @@
 	}
 
 	.how-art {
-		flex: 1 1 0;
-		min-height: 220px;
-		max-height: 340px;
+		flex: 0 0 auto;
+		height: 280px;
 		width: 100%;
 		max-width: 720px;
-		padding: 0 0 0;
+		padding: 0;
 		box-sizing: border-box;
 		display: flex;
 		align-items: center;

@@ -194,7 +194,7 @@
 	.confirm {
 		position: absolute;
 		left: calc(28% + 8px);
-		bottom: 140px;
+		bottom: 82px;
 		font-size: 14px;
 		font-weight: 700;
 		color: var(--ca-semantic-success);

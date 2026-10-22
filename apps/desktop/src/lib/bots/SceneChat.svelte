@@ -141,17 +141,8 @@
 		animation: typing-bubble-anim 9s linear infinite;
 	}
 	@keyframes typing-bubble-anim {
+		/* visible from the start so scene reads immediately */
 		0%,
-		15% {
-			opacity: 0;
-			transform: translateX(-50%) scale(0.7);
-			animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
-		}
-		19% {
-			opacity: 1;
-			transform: translateX(-50%) scale(1);
-		}
-		19%,
 		44% {
 			opacity: 1;
 			transform: translateX(-50%) scale(1);

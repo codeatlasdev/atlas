@@ -91,6 +91,7 @@
 		height: 300px;
 		overflow: hidden;
 		border-radius: 12px;
+		isolation: isolate;
 	}
 
 	/* ── sky ── */
@@ -163,7 +164,7 @@
 		width: 3px;
 		height: 3px;
 		border-radius: 50%;
-		background: #fff;
+		background: currentColor;
 		opacity: 0;
 		animation: star-twinkle 9s ease-in-out infinite;
 		animation-delay: var(--sd, 0s);

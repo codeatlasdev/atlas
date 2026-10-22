@@ -9,7 +9,7 @@
 	import { hostCall } from "#lib/host.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
-	import type { BotTask, Routine } from "#lib/bots.ts";
+	import type { BotTask, ScheduleTrigger } from "#lib/bots.ts";
 	import BotEditor from "#lib/bots/BotEditor.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import { normalizeLook, type BotLook } from "#lib/bots/look.ts";
@@ -60,7 +60,7 @@
 	let memorySaving = $state(false);
 
 	// routines
-	let routinesList = $state<Routine[]>([]);
+	let routinesList = $state<ScheduleTrigger[]>([]);
 	let newRoutineCron = $state("");
 	let newRoutinePrompt = $state("");
 
@@ -308,22 +308,23 @@
 		if (!bots.selected || !bot) return;
 		const entry = bots.hosts.find((h) => h.key === bots.selected!.hostKey);
 		const fullBot = entry?.bots.find((b) => b.id === bot!.id);
-		routinesList = (fullBot as unknown as { routines?: Routine[] })?.routines ?? [];
+		routinesList = (fullBot?.triggers ?? []).filter((t): t is ScheduleTrigger => t.kind === "schedule");
 	}
 
 	async function addRoutine() {
 		if (!newRoutineCron.trim() || !newRoutinePrompt.trim()) return;
-		const updated: Routine[] = [
+		const updated: ScheduleTrigger[] = [
 			...routinesList,
 			{
 				id: crypto.randomUUID(),
+				kind: "schedule" as const,
 				cron: newRoutineCron.trim(),
 				prompt: newRoutinePrompt.trim(),
 				enabled: true,
 			},
 		];
 		try {
-			await bots.setRoutines(updated);
+			await bots.setTriggers(updated);
 			routinesList = updated;
 			newRoutineCron = "";
 			newRoutinePrompt = "";
@@ -335,7 +336,7 @@
 	async function toggleRoutine(id: string, enabled: boolean) {
 		const updated = routinesList.map((r) => (r.id === id ? { ...r, enabled } : r));
 		try {
-			await bots.setRoutines(updated);
+			await bots.setTriggers(updated);
 			routinesList = updated;
 		} catch (e) {
 			toast.error(errText(e));
@@ -345,7 +346,7 @@
 	async function removeRoutine(id: string) {
 		const updated = routinesList.filter((r) => r.id !== id);
 		try {
-			await bots.setRoutines(updated);
+			await bots.setTriggers(updated);
 			routinesList = updated;
 		} catch (e) {
 			toast.error(errText(e));

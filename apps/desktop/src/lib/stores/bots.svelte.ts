@@ -10,9 +10,9 @@ import type { BotLook } from "#lib/bots/look.ts";
 import { hostCall } from "#lib/host.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
-import type { Bot, BotHost, BotSelection, BotTask, Routine } from "#lib/bots.ts";
+import type { Bot, BotHost, BotSelection, BotTask, Routine, Trigger } from "#lib/bots.ts";
 
-export type { Bot, BotHost, BotSelection, BotTask, Routine, AgentIntegration };
+export type { Bot, BotHost, BotSelection, BotTask, Routine, Trigger, AgentIntegration };
 
 interface HostEntry {
 	/** `""` for local, `"ssh:atlas-bot@server"` for remote. */
@@ -182,16 +182,47 @@ class BotsStore {
 		});
 	}
 
-	// ─── routines ─────────────────────────────────────────────────────────────
+	// ─── triggers ─────────────────────────────────────────────────────────────
 
-	async setRoutines(routines: Routine[]): Promise<void> {
+	async setTriggers(triggers: Trigger[]): Promise<void> {
 		if (!this.selected) return;
-		await hostCall("bot_routine_set", {
+		await hostCall("bot_triggers_set", {
 			...hostArgs(this.selected.hostKey),
 			id: this.selected.botId,
-			routines,
+			triggers,
 		});
 		await this.refreshHost(this.selected.hostKey);
+	}
+
+	// (setRoutines removed — call setTriggers with ScheduleTrigger[] instead)
+
+	// ─── ask answers ──────────────────────────────────────────────────────────
+
+	/**
+	 * Answer an ask card sent by the bot engine.
+	 * Pass either `key` (an option key) or `text` (free-text answer), or both.
+	 */
+	async botAnswer(taskId: string, askId: string, opts: { key?: string; text?: string }): Promise<void> {
+		if (!this.selected) return;
+		await hostCall("bot_answer", {
+			...hostArgs(this.selected.hostKey),
+			id: this.selected.botId,
+			task: taskId,
+			ask_id: askId,
+			...opts,
+		});
+		void this.loadTasks();
+	}
+
+	// ─── usage ────────────────────────────────────────────────────────────────
+
+	async getUsage(opts?: { since?: number }): Promise<unknown> {
+		if (!this.selected) return null;
+		return hostCall("bot_usage", {
+			...hostArgs(this.selected.hostKey),
+			id: this.selected.botId,
+			...(opts?.since ? { since: opts.since } : {}),
+		});
 	}
 
 	// ─── approvals ────────────────────────────────────────────────────────────
@@ -394,6 +425,14 @@ class BotsStore {
 			const ownerKey = this.allBots.find((b) => b.bot.id === botId)?.hostKey ?? "";
 			this.scheduleRefresh(ownerKey, 200);
 			if (this.selected?.botId === botId) void this.loadTasks();
+			return;
+		}
+
+		if (payload.ev === "bot_updated") {
+			// Bot self-updated via set_bot (e.g. engine onboarding changed name/look).
+			const ownerKey = this.allBots.find((b) => b.bot.id === payload.bot_id)?.hostKey ?? "";
+			this.scheduleRefresh(ownerKey, 100);
+			if (this.selected?.botId === payload.bot_id) void this.loadTasks();
 			return;
 		}
 

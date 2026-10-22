@@ -11,7 +11,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use serde_json::json;
 
-use crate::bots::store::{Approval, Bot, BotStore, Step, Task, TaskState};
+use crate::bots::store::{Approval, Bot, BotStore, EngineConfig, Step, Task, TaskState};
 use crate::paths;
 use crate::protocol::{Mode, PtyCreate, Scope};
 use crate::pty::Session;
@@ -209,7 +209,128 @@ async fn run_worker(hub: Arc<Hub>, bot: Bot) {
     }
 }
 
-async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
+async fn run_one(hub: &Hub, bot: &Bot, task: Task) {
+    if let Some(engine_cfg) = &bot.engine {
+        run_one_conversational(hub, bot, engine_cfg, task).await;
+    } else {
+        run_one_pty(hub, bot, task).await;
+    }
+}
+
+async fn run_one_conversational(hub: &Hub, bot: &Bot, engine_cfg: &EngineConfig, mut task: Task) {
+    let pane_key = format!("bot:{}:{}", bot.id, task.id);
+
+    let memory_path = hub.bots.store.memory_path(&bot.id);
+    let full_prompt = format!(
+        "You are {name}. {role}\n\
+         Your memory file is {mem}. Read it first. When you learn something durable \
+         about this work or this user, append it there.\n\
+         Task: {prompt}",
+        name = bot.name,
+        role = bot.role,
+        mem = memory_path.display(),
+        prompt = task.prompt,
+    );
+
+    // Resolve working directory, optionally via project checkout.
+    let work_dir = if let Some(proj) = &bot.project {
+        match crate::bots::project::prepare(proj, &bot.id, &hub.bots.dir).await {
+            Ok(p) => {
+                let _ = crate::bots::project::fetch(&p).await; // non-fatal
+                p.to_string_lossy().to_string()
+            }
+            Err(e) => {
+                finish_task(
+                    hub,
+                    bot,
+                    &mut task,
+                    Err(format!("project prepare: {e}")),
+                    vec![],
+                );
+                crate::bots::triggers::on_task_finished(hub, &bot.id, &task.id, task.state);
+                return;
+            }
+        }
+    } else {
+        bot.workdir.clone().unwrap_or_else(|| {
+            hub.bots
+                .store
+                .bot_dir(&bot.id)
+                .join("work")
+                .to_string_lossy()
+                .to_string()
+        })
+    };
+    // Ensure the working directory exists before running the engine.
+    let _ = std::fs::create_dir_all(&work_dir);
+
+    // Load prior session and bot secrets.
+    let session = hub.bots.store.load_session(&bot.id);
+    let extra_env = hub.bots.store.secret_env(&bot.id);
+
+    // Hook endpoint from desktop env file.
+    let (hook_port, hook_token) = load_hook_endpoint(&hub.dir);
+
+    // Mark running.
+    task.state = TaskState::Running;
+    task.started_at = Some(now_s());
+    task.pane = Some(pane_key.clone());
+    let _ = hub.bots.store.append_task(&bot.id, &task);
+    broadcast_task(hub, &bot.id, &task);
+
+    let yolo = bot.approval == Approval::Auto;
+    let result = crate::bots::engine::run_turn(
+        engine_cfg,
+        session,
+        &full_prompt,
+        &hub.bots.store.bot_dir(&bot.id),
+        &bot.id,
+        hook_port,
+        &hook_token,
+        &pane_key,
+        &extra_env,
+        &work_dir,
+        yolo,
+    )
+    .await;
+
+    match result {
+        Ok(turn) => {
+            let _ = hub.bots.store.save_session(&bot.id, &turn.session);
+            if let Some(u) = &turn.usage {
+                let _ = hub
+                    .bots
+                    .store
+                    .append_usage(&bot.id, &engine_cfg.kind, now_s(), u);
+            }
+            task.reply = Some(turn.reply.clone());
+            task.usage = turn.usage;
+            finish_task(hub, bot, &mut task, Ok(turn.reply), vec![]);
+        }
+        Err(e) => {
+            finish_task(hub, bot, &mut task, Err(e), vec![]);
+        }
+    }
+    crate::bots::triggers::on_task_finished(hub, &bot.id, &task.id, task.state);
+}
+
+fn load_hook_endpoint(dir: &std::path::Path) -> (u16, String) {
+    let env_path = dir.join("desktop").join("hook-endpoint.env");
+    let content = std::fs::read_to_string(env_path).unwrap_or_default();
+    let mut port = 0u16;
+    let mut token = String::new();
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("ATLAS_HOOK_PORT=") {
+            port = v.parse().unwrap_or(0);
+        }
+        if let Some(v) = line.strip_prefix("ATLAS_HOOK_TOKEN=") {
+            token = v.to_string();
+        }
+    }
+    (port, token)
+}
+
+async fn run_one_pty(hub: &Hub, bot: &Bot, mut task: Task) {
     let pane_key = format!("bot:{}:{}", bot.id, task.id);
 
     // Build the full prompt.
@@ -234,6 +355,7 @@ async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
             Err(format!("unknown agent '{}'", bot.agent)),
             vec![],
         );
+        crate::bots::triggers::on_task_finished(hub, &bot.id, &task.id, task.state);
         return;
     };
 
@@ -284,6 +406,7 @@ async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
                 Err(format!("spawn failed: {e:#}")),
                 vec![],
             );
+            crate::bots::triggers::on_task_finished(hub, &bot.id, &task.id, task.state);
             return;
         }
     };
@@ -305,6 +428,7 @@ async fn run_one(hub: &Hub, bot: &Bot, mut task: Task) {
     hub.sessions.lock().remove(&pty_id);
 
     finish_task(hub, bot, &mut task, outcome, steps);
+    crate::bots::triggers::on_task_finished(hub, &bot.id, &task.id, task.state);
 }
 
 /// Poll agent status events and pty exit to determine the task outcome.

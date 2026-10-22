@@ -376,8 +376,13 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     if let Some(t) = &takeover {
         hub.agents.restore(&t.agents);
     }
-    if let Err(e) =
-        crate::agents::hook_server::start(dir, hub.agents.clone(), hub.mobile.clone()).await
+    if let Err(e) = crate::agents::hook_server::start(
+        dir,
+        hub.agents.clone(),
+        hub.mobile.clone(),
+        Some(Arc::downgrade(&hub)),
+    )
+    .await
     {
         eprintln!("hostd: agent hook server: {e}");
     }
@@ -864,6 +869,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::BotMemory { .. }
         | HostCmd::BotMemorySet { .. }
         | HostCmd::BotRoutineSet { .. }
+        | HostCmd::BotTriggersSet { .. }
+        | HostCmd::BotSecretSet { .. }
+        | HostCmd::BotAnswer { .. }
+        | HostCmd::BotUsage { .. }
+        | HostCmd::EngineLimits {}
         | HostCmd::PushRegister { .. }
         | HostCmd::PushUnregister { .. }
         | HostCmd::BotTelegramSet { .. }

@@ -11,15 +11,18 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Activity, Settings, TriangleAlert, Zap } from "@lucide/svelte";
+	import { Plus, Search, Settings } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
+	import BotTile from "#lib/bots/BotTile.svelte";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
 	let query = $state("");
 	let creating = $state(false);
-	let selectedNav = $state<"bots" | "activity" | "triggers" | "needs_you">("bots");
+	let colWidth = $state(0);
+	let searchOpen = $state(false);
+	const tileMode = $derived(colWidth < 280 || bots.allBots.length <= 2);
 
 	// ─── derived ──────────────────────────────────────────────────────────────
 
@@ -145,65 +148,31 @@
 
 <div class="bots-workspace">
 	<!-- Left column -->
-	<div class="col-left">
+	<div class="col-left" bind:clientWidth={colWidth}>
 		<!-- Drag region -->
 		<div class="col-drag" data-tauri-drag-region aria-hidden="true"></div>
 
-		<!-- Search pill -->
-		<div class="search-wrap">
-			<input
-				class="search"
-				bind:value={query}
-				placeholder="Find or start a conversation…"
-				aria-label="Search bots"
-			/>
-		</div>
-
-		<!-- Nav rows (Activity, Routines, Needs you) -->
-		<div class="nav-rows">
-			<button
-				class="nav-row"
-				class:active={selectedNav === "activity"}
-				onclick={() => (selectedNav = "activity")}
-			>
-				<span class="nav-icon" aria-hidden="true"><Activity size={14} /></span>
-				<span class="nav-label">Activity</span>
+		<!-- Top bar: search + add -->
+		<div class="top-bar">
+			{#if searchOpen}
+				<input
+					class="search"
+					bind:value={query}
+					placeholder="Find a bot…"
+					aria-label="Search bots"
+					onblur={() => { if (!query) searchOpen = false; }}
+				/>
+			{/if}
+			<button class="icon-btn-round" onclick={() => (searchOpen = !searchOpen)} aria-label="Search">
+				<Search size={14} />
 			</button>
-			<button
-				class="nav-row"
-				class:active={selectedNav === "triggers"}
-				onclick={() => (selectedNav = "triggers")}
-			>
-				<span class="nav-icon" aria-hidden="true"><Zap size={14} /></span>
-				<span class="nav-label">Triggers</span>
+			<button class="icon-btn-round" onclick={startNewBot} aria-label="New bot" disabled={creating}>
+				<Plus size={14} />
 			</button>
-			<button
-				class="nav-row"
-				class:active={selectedNav === "needs_you"}
-				onclick={() => (selectedNav = "needs_you")}
-			>
-				<span class="nav-icon" aria-hidden="true"><TriangleAlert size={14} /></span>
-				<span class="nav-label">Needs you</span>
-				{#if bots.needsYouCount > 0}
-					<span class="nav-badge">{bots.needsYouCount}</span>
-				{/if}
-			</button>
-		</div>
-
-		<!-- Section header -->
-		<div class="section-hd">
-			<span class="section-label">BOTS</span>
-			<button
-				class="section-add"
-				onclick={startNewBot}
-				aria-label="New bot"
-				title="New bot"
-				disabled={creating}>+</button
-			>
 		</div>
 
 		<!-- Bot list -->
-		<div class="bot-list" role="list">
+		<div class="bot-list" class:tile-mode={tileMode} role="list">
 			{#if sections.length === 0}
 				{#if bots.allBots.length === 0}
 					<div class="empty-state">
@@ -228,7 +197,15 @@
 							</div>
 						{/if}
 						{#each pg.bots as { hostKey, bot } (bot.id)}
-							<div animate:flip={{ duration: 200 }}>
+						<div animate:flip={{ duration: 200 }}>
+							{#if tileMode}
+								<BotTile
+									{bot}
+									active={isActive(hostKey, bot.id)}
+									unread={bots.hasUnread(hostKey, bot.id)}
+									onclick={() => selectBot(hostKey, bot.id)}
+								/>
+							{:else}
 								<BotListRow
 									{bot}
 									active={isActive(hostKey, bot.id)}
@@ -236,7 +213,8 @@
 									onclick={() => selectBot(hostKey, bot.id)}
 									onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
 								/>
-							</div>
+							{/if}
+						</div>
 						{/each}
 					{/each}
 				{/each}
@@ -327,14 +305,43 @@
 		flex: none;
 	}
 
-	/* Search */
-	.search-wrap {
-		padding: 0 10px 8px;
+	/* Top bar */
+	.top-bar {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 4px;
+		padding: 4px 8px;
 		flex: none;
 	}
 
+	.icon-btn-round {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		border: none;
+		background: transparent;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		flex: none;
+		transition: background 150ms;
+		padding: 0;
+	}
+	.icon-btn-round:hover {
+		background: var(--ca-vibrancy-fill);
+		color: var(--ca-text-primary);
+	}
+	.icon-btn-round:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
 	.search {
-		width: 100%;
+		flex: 1;
+		min-width: 0;
 		height: 28px;
 		border-radius: 14px;
 		border: none;
@@ -352,45 +359,6 @@
 
 	.search::placeholder {
 		color: var(--ca-text-secondary);
-	}
-
-	/* Section header */
-	.section-hd {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 6px 10px 4px 12px;
-		flex: none;
-	}
-
-	.section-label {
-		font-size: 10.5px;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		color: var(--ca-text-secondary);
-	}
-
-	.section-add {
-		width: 16px;
-		height: 16px;
-		border-radius: 4px;
-		border: none;
-		background: none;
-		color: var(--ca-text-secondary);
-		font-size: 16px;
-		font-weight: 300;
-		line-height: 1;
-		cursor: default;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex: none;
-		padding: 0;
-	}
-
-	.section-add:hover {
-		background: var(--ca-vibrancy-fill);
-		color: var(--ca-text-primary);
 	}
 
 	/* Host header (multi-host only) */
@@ -585,48 +553,17 @@
 		background: var(--ca-vibrancy-fill);
 	}
 
-	/* Nav rows */
-	.nav-rows {
-		padding: 0 4px 4px;
-		flex: none;
-	}
-	.nav-row {
+	/* Tile mode */
+	.bot-list.tile-mode {
 		display: flex;
-		align-items: center;
-		gap: 8px;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-content: flex-start;
+		gap: 0;
+		padding: 4px;
+	}
+	.bot-list.tile-mode .host-hd,
+	.bot-list.tile-mode .project-hd {
 		width: 100%;
-		padding: 5px 8px;
-		border: none;
-		background: none;
-		border-radius: 4px;
-		font-size: 13px;
-		color: var(--ca-text-secondary);
-		cursor: default;
-		text-align: left;
-	}
-	.nav-row:hover {
-		background: var(--ca-vibrancy-fill);
-		color: var(--ca-text-primary);
-	}
-	.nav-row.active {
-		background: color-mix(in oklab, var(--ca-brand-main) 15%, transparent);
-		color: var(--ca-text-primary);
-	}
-	.nav-icon {
-		font-size: 14px;
-		flex: none;
-	}
-	.nav-label {
-		flex: 1;
-	}
-	.nav-badge {
-		background: var(--ca-semantic-error, #e03131);
-		color: var(--ca-surface-base);
-		font-size: 10px;
-		font-weight: 700;
-		border-radius: 8px;
-		padding: 1px 5px;
-		min-width: 16px;
-		text-align: center;
 	}
 </style>

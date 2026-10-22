@@ -106,7 +106,7 @@
 	<Group title={h.name}>
 		<Row id="bots-status-{h.key}" label="Status">
 			<span class="status" class:online>
-				{online ? "● Online" : "○ Offline"}
+				{online ? "Online" : "Offline"}
 			</span>
 		</Row>
 
@@ -115,7 +115,7 @@
 				<div class="integrations">
 					{#each integrations as a (a.id)}
 						<span class="integration" class:ok={a.state === "ok"}>
-							{a.label}{a.state === "ok" ? ": ✓" : ": not logged in"}
+							{a.label}{a.state === "ok" ? ": logged in" : ": not logged in"}
 						</span>
 					{/each}
 				</div>

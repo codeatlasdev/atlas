@@ -19,7 +19,7 @@
 		FileText,
 		Folder,
 		GitBranch,
-		Github,
+		GitPullRequest,
 		Link,
 		Bot as BotIcon,
 		RotateCcw,
@@ -179,12 +179,31 @@
 			void loadRoutines();
 			void bots
 				.getUsage()
-				.then((r) => {
-					if (r && typeof r === "object") {
-						const u = r as { sparkline?: number[]; today?: number; week?: number; month?: number };
-						usageData = u.sparkline ?? [];
-						usageTotals = { today: u.today ?? 0, week: u.week ?? 0, month: u.month ?? 0 };
+				.then(({ records }) => {
+					const now2 = Date.now();
+					const todayStart = new Date();
+					todayStart.setHours(0, 0, 0, 0);
+					const weekStart = now2 - 7 * 24 * 60 * 60 * 1000;
+					const monthStart = now2 - 30 * 24 * 60 * 60 * 1000;
+					const buckets = new Array(30).fill(0);
+					for (const rec of records) {
+						const tsMs = rec.ts * 1000;
+						const dayIdx = Math.floor((now2 - tsMs) / (24 * 60 * 60 * 1000));
+						if (dayIdx >= 0 && dayIdx < 30)
+							buckets[29 - dayIdx] += (rec.input_tokens ?? 0) + (rec.output_tokens ?? 0);
 					}
+					usageData = buckets;
+					usageTotals = {
+						today: records
+							.filter((r) => r.ts * 1000 >= todayStart.getTime())
+							.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0),
+						week: records
+							.filter((r) => r.ts * 1000 >= weekStart)
+							.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0),
+						month: records
+							.filter((r) => r.ts * 1000 >= monthStart)
+							.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0),
+					};
 				})
 				.catch(() => {});
 		}
@@ -366,12 +385,11 @@
 
 	// ─── trigger helpers ──────────────────────────────────────────────────────
 
-
 	const TRIGGER_ICONS: Record<TriggerKind, Component> = {
 		schedule: Clock,
 		interval: Timer,
 		webhook: Link,
-		github: Github,
+		github: GitPullRequest,
 		file: FileText,
 		bot: BotIcon,
 		service: Settings2,
@@ -385,6 +403,13 @@
 		{ kind: "file", label: "File" },
 		{ kind: "bot", label: "Bot chain" },
 		{ kind: "service", label: "Service" },
+	];
+	const GITHUB_EVENTS: Array<{ ev: string; label: string }> = [
+		{ ev: "pr_opened", label: "PR opened" },
+		{ ev: "pr_review_requested", label: "Review requested" },
+		{ ev: "issue_opened", label: "Issue opened" },
+		{ ev: "ci_failed", label: "CI failed" },
+		{ ev: "release", label: "Release" },
 	];
 
 	function triggerIconComponent(kind: TriggerKind | string): Component {
@@ -604,9 +629,9 @@
 					{#if bot.state === "working" && bot.running_task}
 						<span class="header-presence"
 							>working · {fmtElapsed(
-								bot.running_task
-									? now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at ?? 0) * 1000
-									: 0,
+							bot.running_task
+								? now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at || now)
+								: 0,
 							)}</span
 						>
 					{:else if agentLabel}
@@ -665,7 +690,8 @@
 		<!-- Offline banner -->
 		{#if !hostOnline}
 			<div class="offline-banner" role="alert">
-				<TriangleAlert size={14} aria-hidden="true" /> {displayServerName || "Server"} is offline
+				<TriangleAlert size={14} aria-hidden="true" />
+				{displayServerName || "Server"} is offline
 			</div>
 		{/if}
 
@@ -699,11 +725,11 @@
 					>
 						<!-- User bubble -->
 						{#if t.trigger_event}
-						<div class="trigger-event" role="note">
 							{@const TrigIcon = triggerIconComponent(t.trigger_event.kind)}
-							<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
-							<span class="trigger-summary">{t.trigger_event.summary}</span>
-						</div>
+							<div class="trigger-event" role="note">
+								<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
+								<span class="trigger-summary">{t.trigger_event.summary}</span>
+							</div>
 						{/if}
 						<div class="msg-out" in:msgOut>
 							<div class="bubble out ca-selectable">{t.prompt}</div>
@@ -717,7 +743,7 @@
 
 						<!-- Bot response: running -->
 						{#if t.state === "running"}
-							{@const elapsedMs = t.started_at ? now - t.started_at * 1000 : 0}
+							{@const elapsedMs = t.started_at ? now - t.started_at : 0}
 							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
 								{#if groupedTasks[i]?.groupStart}
 									<div class="msg-avatar">
@@ -743,15 +769,15 @@
 												class="steps-btn"
 												aria-expanded={!!stepsOpen[t.id]}
 												onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-										>
-											{#if stepsOpen[t.id]}
-												<ChevronDown size={12} aria-hidden="true" />
-											{:else}
-												<ChevronRight size={12} aria-hidden="true" />
-											{/if}
-											{t.steps.length}
-											{t.steps.length === 1 ? "step" : "steps"}
-										</button>
+											>
+												{#if stepsOpen[t.id]}
+													<ChevronDown size={12} aria-hidden="true" />
+												{:else}
+													<ChevronRight size={12} aria-hidden="true" />
+												{/if}
+												{t.steps.length}
+												{t.steps.length === 1 ? "step" : "steps"}
+											</button>
 											{#if stepsOpen[t.id]}
 												<div class="steps-list">
 													{#each t.steps as step, si (`${t.id}-${si}`)}
@@ -767,7 +793,9 @@
 									{#if bot.running_task?.id === t.id && bot.pending_approval}
 										{@const pa = bot.pending_approval}
 										{#if approvedReqs.has(pa.req)}
-											<div class="approval-answered" in:msgIn><Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}</div>
+											<div class="approval-answered" in:msgIn>
+												<Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}
+											</div>
 										{:else}
 											<div class="approval-bubble" role="alert" in:embedIn>
 												<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
@@ -870,8 +898,11 @@
 														expandedResults = s;
 													}}
 												>
-						{collapsed ? "Show more" : "Show less"}
-						{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp size={12} aria-hidden="true" />{/if}
+													{collapsed ? "Show more" : "Show less"}
+													{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp
+															size={12}
+															aria-hidden="true"
+														/>{/if}
 												</button>
 											{/if}
 											{#if t.steps && t.steps.length > 0}
@@ -973,7 +1004,8 @@
 								class="tb-btn"
 								title="Copy"
 								onclick={() =>
-									navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}>⎘</button
+									navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}
+								><Copy size={14} /></button
 							>
 							{#if t.state === "failed" || t.state === "cancelled"}
 								<button
@@ -982,11 +1014,13 @@
 									onclick={() => {
 										prompt = t.prompt;
 										void send();
-									}}>↺</button
+									}}><RotateCcw size={14} /></button
 								>
 							{/if}
 							{#if t.state === "running" && bot.running_task?.pane}
-								<button class="tb-btn" title="Open terminal" onclick={openTerminal}>⌨</button>
+								<button class="tb-btn" title="Open terminal" onclick={openTerminal}
+									><Terminal size={14} /></button
+								>
 							{/if}
 						</div>
 					</div>
@@ -996,7 +1030,9 @@
 
 		{#if jumpVisible}
 			<div class="jump-present" role="status">
-				<button class="jump-btn" onclick={jumpToBottom}>Jump to present ↓</button>
+				<button class="jump-btn" onclick={jumpToBottom}
+					>Jump to present <ArrowDown size={12} aria-hidden="true" /></button
+				>
 			</div>
 		{/if}
 
@@ -1025,7 +1061,7 @@
 					class:active={!!prompt.trim()}
 					aria-label="Send"
 					disabled={!prompt.trim() || sending}
-					onclick={send}>↑</button
+					onclick={send}><ArrowUp size={14} /></button
 				>
 			</div>
 			{#if queuedCount > 0}
@@ -1038,7 +1074,9 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 			<div class="panel-overlay" role="presentation" onclick={() => (panel = "none")}></div>
 			<div class="profile-panel" role="complementary" aria-label="Bot profile">
-				<button class="close-btn" onclick={() => (panel = "none")} aria-label="Close panel">✕</button>
+				<button class="close-btn" onclick={() => (panel = "none")} aria-label="Close panel"
+					><X size={14} /></button
+				>
 
 				<div class="profile-header">
 					<button
@@ -1083,18 +1121,23 @@
 				<!-- Approval -->
 				<div class="profile-section">
 					<div class="profile-section-title">Approval</div>
-					<select class="profile-select" bind:value={settingsApproval} aria-label="Approval mode">
+					<select
+						class="profile-select"
+						bind:value={settingsApproval}
+						disabled={bot.approval_supported === false}
+						aria-label="Approval mode">
 						<option value="ask">Ask before acting</option>
 						<option value="auto">Automatic (no prompts)</option>
 					</select>
-					{#if settingsAgent === "omp" && settingsApproval === "ask"}
-						<p class="hint">omp bots run with auto-approval only.</p>
+					{#if bot.approval_supported === false}
+						<p class="hint">OpenCode bots run without approval prompts.</p>
+					{:else}
+						<div class="profile-foot">
+							<Button size="sm" disabled={approvalSaving} onclick={saveApproval}>
+								{approvalSaving ? "Saving…" : "Save"}
+							</Button>
+						</div>
 					{/if}
-					<div class="profile-foot">
-						<Button size="sm" disabled={approvalSaving} onclick={saveApproval}>
-							{approvalSaving ? "Saving…" : "Save"}
-						</Button>
-					</div>
 				</div>
 
 				<!-- Project -->
@@ -1102,21 +1145,28 @@
 					<div class="profile-section-title">Project</div>
 					{#if bot.project}
 						<div class="project-linked">
-							<span class="project-kind-icon">{bot.project.kind === "git" ? "⑂" : "📁"}</span>
+							<span class="project-kind-icon">
+								{#if bot.project.kind === "git"}
+									<GitBranch size={13} aria-hidden="true" />
+								{:else}
+									<Folder size={13} aria-hidden="true" />
+								{/if}
+							</span>
 							<div class="project-details">
 								<span class="project-name">{bot.project.name}</span>
 								{#if bot.project.url}<span class="project-url">{bot.project.url}</span>{/if}
 								{#if bot.project.branch}<span class="project-branch">@ {bot.project.branch}</span>{/if}
 							</div>
-							<button class="close-btn" onclick={() => void unlinkProject()} aria-label="Unlink project"
-								>✕</button
+							<button class="close-btn" onclick={() => void unlinkProject()} aria-label="Unlink project">
+								<X size={14} /></button
 							>
 						</div>
 					{:else}
 						<div class="project-link-options">
 							{#each ideProjects as p (p.id)}
 								<button class="project-option" onclick={() => void linkProject(p)}>
-									⑂ {p.name}
+									<GitBranch size={12} aria-hidden="true" />
+									{p.name}
 									{#if p.branch}<span class="muted">{p.branch}</span>{/if}
 								</button>
 							{/each}
@@ -1131,10 +1181,9 @@
 				<div class="profile-section">
 					<div class="profile-section-title">Triggers</div>
 					{#each allTriggers as t, i (t.id)}
+						{@const TrigIcon = triggerIconComponent(t.kind.type as TriggerKind)}
 						<div class="trigger-row" in:optionIn={{ index: i }}>
-							<span class="trigger-row-icon" aria-hidden="true"
-								>{triggerIcon(t.kind.type as TriggerKind)}</span
-							>
+							<span class="trigger-row-icon" aria-hidden="true"><TrigIcon size={14} /></span>
 							<span class="trigger-row-summary">{triggerSummary(t)}</span>
 							<input
 								type="checkbox"
@@ -1142,8 +1191,8 @@
 								aria-label="Enable trigger"
 								onchange={(e) => void toggleTrigger(t.id, (e.currentTarget as HTMLInputElement).checked)}
 							/>
-							<button class="close-btn" onclick={() => void removeTrigger(t.id)} aria-label="Remove trigger"
-								>✕</button
+							<button class="close-btn" onclick={() => void removeTrigger(t.id)} aria-label="Remove trigger">
+								<X size={14} /></button
 							>
 						</div>
 					{:else}
@@ -1154,12 +1203,13 @@
 						<div class="add-trigger-picker">
 							<span class="hint">Add trigger:</span>
 							{#each TRIGGER_KINDS as tk}
+								{@const TkIcon = triggerIconComponent(tk.kind)}
 								<button
 									class="trigger-kind-btn"
 									onclick={() => {
 										newTriggerKind = tk.kind;
 										newTriggerForm = {};
-									}}>{tk.icon} {tk.label}</button
+									}}><TkIcon size={13} aria-hidden="true" /> {tk.label}</button
 								>
 							{/each}
 						</div>
@@ -1515,7 +1565,7 @@
 		flex: none;
 	}
 
-	/* ─── ⋯ menu ──────────────────────────────────────────────── */
+	/* context menu */
 	.menu-wrap {
 		position: relative;
 	}

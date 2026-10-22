@@ -43,12 +43,12 @@ export function groupTasks(tasks: BotTask[]): Array<{ task: BotTask; groupStart:
 /**
  * Find the first unread task index.
  * Tasks must be ordered oldest-first.
- * `lastSeenTs` is in milliseconds (from markRead / #lastSeen); `t.ts` is in seconds.
+ * Both `t.ts` and `lastSeenTs` are in milliseconds (converted at the store boundary).
  * Returns -1 if lastSeenTs === 0 or all tasks are seen.
  */
 export function firstUnreadIndex(tasks: BotTask[], lastSeenTs: number): number {
 	if (lastSeenTs === 0) return -1;
-	const idx = tasks.findIndex((t) => t.ts * 1000 > lastSeenTs);
+	const idx = tasks.findIndex((t) => t.ts > lastSeenTs);
 	return idx;
 }
 

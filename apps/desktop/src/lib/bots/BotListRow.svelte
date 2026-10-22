@@ -4,6 +4,8 @@
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 	import { roleTag, previewIcon } from "#lib/bots/botsLogic.ts";
 	import { rowIn } from "#lib/bots/motion.ts";
+	import { crossfade } from "svelte/transition";
+	import { cubicOut } from "svelte/easing";
 	import { agentLogo } from "#lib/agentLogos.ts";
 	import { Check, CircleX, Ellipsis, TriangleAlert } from "@lucide/svelte";
 
@@ -30,6 +32,14 @@
 	const isWorking = $derived(bot.state === "working");
 	const logo = $derived(agentLogo(bot.agent));
 
+	const [send, receive] = crossfade({
+		duration: 200,
+		easing: cubicOut,
+		fallback(node) {
+			return { duration: 150, css: (t) => `opacity: ${t}` };
+		},
+	});
+
 	let menuOpen = $state(false);
 
 	function fmtTime(ts?: number): string {
@@ -53,11 +63,21 @@
 	<button class="row" class:active class:unread {onclick} aria-current={active ? "page" : undefined}>
 		<!-- Avatar with presence badge -->
 		<div class="avatar-wrap">
-			<BotFace seed={bot.id} look={bot.look} state={faceState} size={32} />
-			{#if logo}
-				<span class="engine-badge" aria-label="{bot.agent} engine">
-					{@html logo.dark ?? logo.light}
-				</span>
+			{#if isWorking}
+				<div class="avatar-dots" in:receive={{ key: bot.id }} out:send={{ key: bot.id }}>
+					<span class="dot"></span>
+					<span class="dot"></span>
+					<span class="dot"></span>
+				</div>
+			{:else}
+				<div in:receive={{ key: bot.id }} out:send={{ key: bot.id }}>
+					<BotFace seed={bot.id} look={bot.look} state={faceState} size={32} />
+					{#if logo}
+						<span class="engine-badge" aria-label="{bot.agent} engine">
+							{@html logo.dark ?? logo.light}
+						</span>
+					{/if}
+				</div>
 			{/if}
 			<span
 				class="presence"
@@ -75,30 +95,31 @@
 				{/if}
 				<span class="time">{fmtTime(bot.last?.ts)}</span>
 			</div>
-		<div class="row-bottom">
-			{#if isWorking}
-				<span class="preview shimmer">working…</span>
-			{:else}
-				{#if icon}
-					<span class="preview-icon" aria-hidden="true">
-						{#if icon === "needs_you"}
-							<TriangleAlert size={11} />
-						{:else if icon === "done"}
-							<Check size={11} />
-						{:else if icon === "failed"}
-							<CircleX size={11} />
-						{/if}
-					</span>
+			<div class="row-bottom">
+				{#if isWorking}
+					<span class="preview shimmer">working…</span>
+				{:else}
+					{#if icon}
+						<span class="preview-icon" aria-hidden="true">
+							{#if icon === "needs_you"}
+								<TriangleAlert size={11} />
+							{:else if icon === "done"}
+								<Check size={11} />
+							{:else if icon === "failed"}
+								<CircleX size={11} />
+							{/if}
+						</span>
+					{/if}
+					<span class="preview" class:bold={unread}>{bot.last?.text ?? "No tasks yet"}</span>
 				{/if}
-				<span class="preview" class:bold={unread}>{bot.last?.text ?? "No tasks yet"}</span>
-			{/if}
-			{#if unread}
-				<span class="unread-badge" aria-label="Unread messages"></span>
-			{:else if bot.state === "needs_you"}
-				<span class="needs-badge" aria-label="Needs your attention">!</span>
-			{/if}
-		</div>
-	</button>
+				{#if unread}
+					<span class="unread-badge" aria-label="Unread messages"></span>
+				{:else if bot.state === "needs_you"}
+					<span class="needs-badge" aria-label="Needs your attention">!</span>
+				{/if}
+			</div>
+		</div></button
+	>
 
 	<!-- context menu, shown on row hover -->
 	{#if onContextAction}
@@ -203,6 +224,34 @@
 	}
 	.presence.amber {
 		background: var(--ca-semantic-warning, #e67700);
+	}
+
+	/* Dots shown while working (crossfade with face) */
+	.avatar-dots {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		border-radius: 8px;
+		background: color-mix(in oklab, var(--ca-outline-subtle) 40%, transparent);
+	}
+	.dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--ca-text-secondary);
+		animation: dot-bounce 1.2s ease-in-out infinite;
+	}
+	.dot:nth-child(2) { animation-delay: 0.15s; }
+	.dot:nth-child(3) { animation-delay: 0.3s; }
+	@keyframes dot-bounce {
+		0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+		40% { transform: scale(1.1); opacity: 1; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.dot { animation: none; opacity: 0.8; }
 	}
 
 	.row-body {

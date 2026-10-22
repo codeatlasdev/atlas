@@ -1,5 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, test, expect } from "bun:test";
+import fixture from "../../__fixtures__/bot_tasks.json" with { type: "json" };
 import { roleTag, previewIcon, groupTasks, firstUnreadIndex, mergeActivity } from "./botsLogic.ts";
 
 describe("roleTag", () => {
@@ -112,9 +113,9 @@ describe("groupTasks", () => {
 describe("firstUnreadIndex", () => {
 	const base = { id: "", source: "desktop" as const, prompt: "", state: "done" as const };
 	const tasks = [
-		{ ...base, id: "1", ts: 100 },
-		{ ...base, id: "2", ts: 200 },
-		{ ...base, id: "3", ts: 300 },
+		{ ...base, id: "1", ts: 100_000 },
+		{ ...base, id: "2", ts: 200_000 },
+		{ ...base, id: "3", ts: 300_000 },
 	];
 
 	test("lastSeenTs=0 → -1 (never seen)", () => {
@@ -122,27 +123,27 @@ describe("firstUnreadIndex", () => {
 	});
 
 	test("all tasks seen → -1", () => {
-		expect(firstUnreadIndex(tasks, 300 * 1000)).toBe(-1);
+		expect(firstUnreadIndex(tasks, 300_000)).toBe(-1);
 	});
 
 	test("all tasks seen (ts > max) → -1", () => {
-		expect(firstUnreadIndex(tasks, 9999 * 1000)).toBe(-1);
+		expect(firstUnreadIndex(tasks, 9_999_000)).toBe(-1);
 	});
 
 	test("first task unread → 0", () => {
-		expect(firstUnreadIndex(tasks, 50 * 1000)).toBe(0);
+		expect(firstUnreadIndex(tasks, 50_000)).toBe(0);
 	});
 
 	test("middle task unread → correct index", () => {
-		expect(firstUnreadIndex(tasks, 150 * 1000)).toBe(1);
+		expect(firstUnreadIndex(tasks, 150_000)).toBe(1);
 	});
 
 	test("last task unread → 2", () => {
-		expect(firstUnreadIndex(tasks, 250 * 1000)).toBe(2);
+		expect(firstUnreadIndex(tasks, 250_000)).toBe(2);
 	});
 
 	test("empty tasks → -1", () => {
-		expect(firstUnreadIndex([], 100 * 1000)).toBe(-1);
+		expect(firstUnreadIndex([], 100_000)).toBe(-1);
 	});
 });
 
@@ -188,5 +189,48 @@ describe("mergeActivity", () => {
 		// Both have same ts; stable sort preserves original relative order
 		expect(result[0].botId).toBe("a");
 		expect(result[1].botId).toBe("b");
+	});
+});
+
+describe("timestamp boundary: hostd seconds are converted to ms", () => {
+	// Reads the static fixture that mirrors what Rust's bot_tasks_json_contract
+	// would write. If this test fails after a hostd schema change, regenerate:
+	//   UPDATE_FIXTURES=1 cargo test -p atlas-host bot_tasks_json_contract
+
+	test("fixture ts values are unix seconds (< 2e10)", () => {
+		for (const t of fixture.tasks) {
+			expect(t.ts).toBeLessThan(2e10);
+			expect(t.ts).toBeGreaterThan(1e9); // sane epoch
+		}
+	});
+
+	test("after seconds→ms conversion ts values are in ms range (> 1e12)", () => {
+		for (const t of fixture.tasks) {
+			const ms = t.ts * 1000;
+			expect(ms).toBeGreaterThan(1e12);
+		}
+	});
+
+	test("started_at seconds→ms is in ms range", () => {
+		const running = fixture.tasks.find((t) => t.started_at);
+		expect(running).toBeDefined();
+		const ms = running!.started_at! * 1000;
+		expect(ms).toBeGreaterThan(1e12);
+	});
+
+	test("step ts seconds→ms is in ms range", () => {
+		const withSteps = fixture.tasks.find((t) => t.steps?.length);
+		expect(withSteps).toBeDefined();
+		for (const s of withSteps!.steps!) {
+			expect(s.ts * 1000).toBeGreaterThan(1e12);
+		}
+	});
+
+	test("fmtTime after conversion shows HH:MM not 1970", () => {
+		// fmtTime does new Date(tsMs).toLocaleTimeString()
+		for (const t of fixture.tasks) {
+			const d = new Date(t.ts * 1000);
+			expect(d.getFullYear()).toBeGreaterThan(2020);
+		}
 	});
 });

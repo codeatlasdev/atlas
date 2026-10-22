@@ -12,7 +12,7 @@
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const shortcut = $derived(shortcutFor("atlas::ToggleBotsWorkspace") ?? "⌘⇧B");
+	const shortcut = $derived(shortcutFor("atlas::ToggleBotsWorkspace") ?? "Cmd+Shift+B");
 	const needsYouCount = $derived(bots.needsYouCount);
 
 	function onHotZoneEnter() {

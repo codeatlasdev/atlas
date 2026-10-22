@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { randomLook } from "#lib/bots/look.ts";
 	/**
 	 * BotsWorkspace — full-window messenger layout (Discord DM style).
 	 * Left column: drag region + search + bot list + server status footer.
@@ -78,6 +79,7 @@
 				role: "",
 				agent: "",
 				approval: "auto",
+				look: randomLook(),
 			});
 			await bots.select(hostKey, id);
 		} catch (e) {

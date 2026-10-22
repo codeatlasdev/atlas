@@ -801,7 +801,13 @@ exit 0"#;
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|b| b["id"] == bot_a_id && b["state"] == "working")
+                // The runner reports "working" a beat before the task log records `running`; CI caught
+                // the fixture with last.state "queued" (PR #106, Rust (Linux)). Wait for both.
+                .any(|b| {
+                    b["id"] == bot_a_id
+                        && b["state"] == "working"
+                        && b["last"]["state"] == "running"
+                })
             {
                 break;
             }

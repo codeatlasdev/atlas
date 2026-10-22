@@ -5,7 +5,7 @@
       "approval": "ask",
       "id": "bot-working",
       "last": {
-        "state": "queued",
+        "state": "running",
         "text": "review PR",
         "ts": 1700000001
       },

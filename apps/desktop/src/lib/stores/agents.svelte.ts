@@ -10,6 +10,7 @@ import { titleState } from "#lib/title.ts";
 import { noticeText, shouldNotify, type TermNotice } from "#lib/termNotice.ts";
 import { uid, ws, type Tab } from "#lib/stores/workspace.svelte.ts";
 import { activityTracker } from "#lib/stores/agentActivity.ts";
+import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 
 interface AgentInfo {
 	id: string;
@@ -66,7 +67,8 @@ class Agents {
 	status = $state<Record<string, AgentStatus>>({});
 	inbox = $state<Inbox[]>([]);
 	notify = $state<NotifySettings>({ enabled: true, sound: true, suppressWhenFocused: true });
-	ompIntegration = $state<"ok" | "missing" | "unknown">("unknown");
+	/** Installed agents and whether their hooks are on (hostd `agent_integrations`). */
+	integrations = $state<AgentIntegration[]>([]);
 	private focused = true;
 	private off: UnlistenFn[] = [];
 	/** Working/idle from terminal output, for custom agents (no hooks unless they call `atlas hook`). */
@@ -119,7 +121,7 @@ class Agents {
 				if (state) this.fallback(t, state);
 			}
 		this.list = await invoke<AgentInfo[]>("agent_list");
-		void this.checkOmp();
+		void this.checkIntegrations();
 	}
 
 	dispose() {
@@ -291,28 +293,26 @@ class Agents {
 			.sort((a, b) => (recent.indexOf(a.id) + 1 || 99) - (recent.indexOf(b.id) + 1 || 99));
 	}
 
-	async checkOmp() {
-		if (!this.list.find((a) => a.id === "omp")?.installed) return;
-		const r = await host
-			.exec("/", [
-				"sh",
-				"-c",
-				'test -f "$HOME/.omp/plugins/node_modules/atlas-omp/extensions/atlas-status.ts"',
-			])
-			.catch(() => null);
-		this.ompIntegration = r?.code === 0 ? "ok" : "missing";
+	/** Ask hostd which installed agents have their hooks on. */
+	async checkIntegrations() {
+		const r = await invoke<{ agents: AgentIntegration[] }>("agent_integrations").catch(() => null);
+		if (r) this.integrations = r.agents;
 	}
 
-	async enableOmp() {
+	/** Turn an agent's hooks on (`atlas setup <agent> --apply`), then check again. */
+	async enableIntegration(id: string) {
+		const a = this.integrations.find((a) => a.id === id);
+		if (!a) return;
 		const r = await host
-			.exec("/", ["atlas", "setup", "omp", "--apply"], { timeout_ms: 120_000 })
+			.exec("/", ["atlas", "setup", a.setup, "--apply"], { timeout_ms: 120_000 })
 			.catch((e) => {
 				toast.error(errText(e));
 				return null;
 			});
-		if (r && r.code !== 0) toast.error(r.stderr || "atlas setup omp failed");
-		await this.checkOmp();
-		if (this.ompIntegration === "ok") toast.success("omp integration enabled");
+		if (r && r.code !== 0) toast.error(r.stderr || `atlas setup ${a.setup} failed`);
+		await this.checkIntegrations();
+		if (this.integrations.find((x) => x.id === id)?.state === "ok")
+			toast.success(`${a.label} integration enabled`);
 	}
 }
 

@@ -702,17 +702,17 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     });
 }
 
-/// Inject hook-server env vars into a PtyCreate request.
-/// Agents learn the hook server address from ATLAS_HOOK_ENDPOINT; bots also read
-/// ATLAS_PANE_KEY for routing.
+/// Any agent started in a terminal of a pane reports to the hook server (the omp extension and
+/// `atlas hook` need both); a launcher's own values win. Shared by `PtyCreate` and the bot runner.
 pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
-    let endpoint = crate::paths::hook_endpoint(&hub.dir);
-    req.env.insert(
-        "ATLAS_HOOK_ENDPOINT".into(),
-        endpoint.to_string_lossy().into_owned(),
-    );
-    if let Some(pane) = &req.scope.pane_key {
-        req.env.insert("ATLAS_PANE_KEY".into(), pane.clone());
+    if let Some(pane) = req.scope.pane_key.clone() {
+        let endpoint = paths::hook_endpoint(&hub.dir)
+            .to_string_lossy()
+            .into_owned();
+        req.env.entry("ATLAS_PANE_KEY".into()).or_insert(pane);
+        req.env
+            .entry("ATLAS_HOOK_ENDPOINT".into())
+            .or_insert(endpoint);
     }
 }
 
@@ -839,6 +839,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             "hook_port": *hub.agents.port.lock(),
             "pending_approvals": hub.agents.pending_approvals(),
         })),
+        HostCmd::AgentIntegrations {} => Ok(crate::agents::integrations::all().await),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
         bot @ (HostCmd::BotList {}
         | HostCmd::BotCreate { .. }

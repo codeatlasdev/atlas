@@ -12,6 +12,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Bot panes wait 30 minutes for a remote approval** instead of 55 s; non-bot panes keep the 55 s wait. `atlas setup claude-code|codex --apply` now registers `PermissionRequest` with a 1805 s timeout to accommodate both.
 - **`AgentDef::argv`** in `atlas_core::agents` builds the full launch argv for a built-in agent, used by the bot runner. `atlas-desktop` registry uses the shared `prompt_argv` helper to avoid duplicated flag logic.
 
+## [1.5.0-alpha.18] — 2026-10-21
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
+### Added
+
+- **Every agent shows in Atlas and Atlas Mobile, not only the ones Atlas started.** A terminal of a tab now gets `ATLAS_HOOK_ENDPOINT` and `ATLAS_PANE_KEY`, so `omp`, `claude` or `codex` typed into any terminal reports its state (before, only the agent launcher set them, and the phone listed no agents). Atlas also offers to turn on Claude Code's and Codex's hooks like omp's (a prompt in the workspace, or Settings → Agents), using the new `atlas setup <agent> --check`. Terminals opened before the update get it once reopened.
+- **Atlas Mobile says when an agent's integration is off.** The home screen names each agent installed on the computer (omp, Claude Code, Codex) whose hooks are off, and how to turn them on, so a missing agent is not a mystery. hostd answers it with the new `agent_integrations` command (read scope).
+
 ## [1.5.0-alpha.17] — 2026-10-20
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

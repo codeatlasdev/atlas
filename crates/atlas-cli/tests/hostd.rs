@@ -403,6 +403,101 @@ fn post_hook(dir: &Path, agent: &str, body: &Value, token: Option<&str>) -> Stri
     r
 }
 
+// Guards a phone that cannot tell why an agent never shows: hooks off is invisible from
+// the phone, so hostd reports per installed agent whether its integration is on.
+#[tokio::test]
+async fn agent_integrations_report_installed_agents_and_whether_hooks_are_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (dir, home, bin) = (
+        tmp.path().join("d"),
+        tmp.path().join("home"),
+        tmp.path().join("bin"),
+    );
+    for d in [&dir, &home, &bin] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    // A fake `claude` on PATH; no omp, no codex.
+    let claude = bin.join("claude");
+    std::fs::write(&claude, "#!/bin/sh\necho 2.0.0\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = format!("{}:/usr/bin:/bin", bin.display());
+    let cfg = home.join(".claude");
+    let env = [
+        ("HOME", home.to_str().unwrap()),
+        ("PATH", path.as_str()),
+        ("SHELL", "/bin/sh"),
+        ("CLAUDE_CONFIG_DIR", cfg.to_str().unwrap()),
+    ];
+    let _d = spawn_with(&dir, &env);
+    let c = connect_when_up(&dir).await;
+    let agents = async || c.call("agent_integrations", json!({})).await.unwrap()["agents"].clone();
+    assert_eq!(
+        agents().await,
+        json!([{"id": "claude", "label": "Claude Code", "setup": "claude-code", "state": "missing"}])
+    );
+    let mut setup = Command::new(BIN);
+    setup
+        .args(["setup", "claude-code", "--apply"])
+        .current_dir(&home);
+    for (k, v) in env {
+        setup.env(k, v);
+    }
+    let o = setup.output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(agents().await[0]["state"], "ok");
+}
+
+// Guards agents invisible to Atlas and the phone: only the app's agent launcher set
+// ATLAS_HOOK_ENDPOINT / ATLAS_PANE_KEY, so omp or claude typed into a plain terminal sent
+// no status at all (the omp extension returns without ATLAS_HOOK_ENDPOINT).
+#[tokio::test]
+async fn every_terminal_of_a_pane_can_report_its_agent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    let mut ev = c.events();
+    let out = |pane: Option<&str>, env: Value| {
+        let mut args = json!({"cwd": dir, "argv": ["sh", "-c", "echo \"[$ATLAS_PANE_KEY|$ATLAS_HOOK_ENDPOINT]\"; sleep 1"], "env": env});
+        if let Some(p) = pane {
+            args["scope"] = json!({"pane_key": p});
+        }
+        args
+    };
+    let mut read = async |args: Value| {
+        let pty = c.call("pty_create", args).await.unwrap()["pty"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        c.call("pty_attach", json!({"pty": pty, "replay": true}))
+            .await
+            .unwrap();
+        let mut text = String::new();
+        while !text.contains(']') {
+            let e = tokio::time::timeout(Duration::from_secs(5), ev.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            if e["pty"] == pty && matches!(e["ev"].as_str(), Some("pty_output" | "pty_replay")) {
+                text.push_str(&b64(&e["data"]));
+            }
+        }
+        text
+    };
+    let endpoint = paths::hook_endpoint(dir).to_string_lossy().into_owned();
+    let t = read(out(Some("tab-1"), json!({}))).await;
+    assert!(t.contains(&format!("[tab-1|{endpoint}]")), "{t:?}");
+    // The launcher's own values win (an agent tab of another pane key).
+    let t = read(out(Some("tab-2"), json!({"ATLAS_PANE_KEY": "agent-9"}))).await;
+    assert!(t.contains("[agent-9|"), "{t:?}");
+    // No pane, nothing to report to.
+    let t = read(out(None, json!({}))).await;
+    assert!(t.contains("[|]"), "{t:?}");
+}
+
 // Guards a phone showing a dead agent as working forever: only the desktop told hostd
 // a pane's process exited (`agent_pane_exited`), so with the app closed, the case agent
 // state moved to hostd for, the pane never went back to idle.

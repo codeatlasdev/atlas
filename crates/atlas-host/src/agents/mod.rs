@@ -7,6 +7,7 @@
 
 pub mod history;
 pub mod hook_server;
+pub mod integrations;
 #[cfg(test)]
 mod tests;
 

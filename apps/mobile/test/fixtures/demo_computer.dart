@@ -12,7 +12,8 @@ bool isDemo(MacDevice d) => d.nodeId == demoDevice.nodeId;
 /// A computer that lives in the app: it answers the same protocol as `atlas hostd`
 /// (replies by id, pushes with `ev`), so every screen runs its real code against it.
 /// Used by tests that need a self-contained Transport without a real host.
-Transport demoTransport() => _DemoComputer();
+Transport demoTransport({List<Map<String, String>> integrations = const []}) =>
+    _DemoComputer(integrations);
 
 int _now() => DateTime.now().millisecondsSinceEpoch;
 
@@ -68,7 +69,10 @@ class _Service {
 }
 
 class _DemoComputer implements Transport {
-  _DemoComputer() {
+  /// `agent_integrations` agents, in hostd's shape (`{id, label, state}`).
+  final List<Map<String, String>> _integrations;
+
+  _DemoComputer(this._integrations) {
     _tick = Timer.periodic(const Duration(seconds: 3), (_) => _jitter());
   }
 
@@ -181,6 +185,8 @@ class _DemoComputer implements Transport {
           'hook_port': 0,
           'pending_approvals': [if (_approvalReq != null) _approvalEvent()],
         };
+      case 'agent_integrations':
+        data = {'agents': _integrations};
       case 'agent_history':
         final a = _agents[args['pane']];
         data = {'messages': a?.history ?? const [], 'truncated': false};

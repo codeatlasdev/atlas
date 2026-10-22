@@ -313,9 +313,11 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
 pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
     use HostCmd as C;
     Ok(match cmd {
-        C::PtyList {} | C::PtyInfo { .. } | C::AgentStatusAll {} | C::AgentHistory { .. } => {
-            Scope::Read
-        }
+        C::PtyList {}
+        | C::PtyInfo { .. }
+        | C::AgentStatusAll {}
+        | C::AgentIntegrations {}
+        | C::AgentHistory { .. } => Scope::Read,
         C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
             Scope::Read
         }

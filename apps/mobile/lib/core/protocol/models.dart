@@ -1,6 +1,25 @@
 /// Atlas Mobile protocol models — plain Dart, no codegen.
 library;
 
+/// An agent installed on the computer and whether its hooks report to Atlas
+/// (hostd `agent_integrations`). `state`: `ok` | `missing` | `unknown`.
+class AgentIntegration {
+  const AgentIntegration({
+    required this.id,
+    required this.label,
+    required this.state,
+  });
+  final String id;
+  final String label;
+  final String state;
+
+  factory AgentIntegration.fromJson(Map<String, dynamic> j) => AgentIntegration(
+    id: j['id'] as String,
+    label: j['label'] as String? ?? j['id'] as String,
+    state: j['state'] as String? ?? 'unknown',
+  );
+}
+
 /// Agent state as pushed by hostd `agent_status` events.
 class AgentStatus {
   final String state;

@@ -301,15 +301,15 @@ mod tests {
 
     #[test]
     fn prepare_path_rejects_file() {
-        // /etc/hosts exists but is not a directory
-        let r = prepare_path("/etc/hosts");
-        assert!(r.is_err());
+        // A file that exists but is not a directory (temp paths: /etc/hosts is not on Windows).
+        let f = tempfile::NamedTempFile::new().unwrap();
+        assert!(prepare_path(f.path().to_str().unwrap()).is_err());
     }
 
     #[test]
     fn prepare_path_accepts_dir() {
-        let r = prepare_path("/tmp");
-        assert!(r.is_ok());
+        let d = tempfile::tempdir().unwrap();
+        assert!(prepare_path(d.path().to_str().unwrap()).is_ok());
     }
 
     #[test]

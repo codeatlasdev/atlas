@@ -11,7 +11,9 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, bail};
 
 /// Menu entry and icon id; the same reverse-DNS id as the macOS bundle (`tauri.conf.json`).
-const APP_ID: &str = "dev.codeatlas.atlas";
+const APP_ID: &str = "br.com.codeatlas.atlas";
+/// The id before 1.6; its menu entry and icon are removed when the new ones are written.
+const LEGACY_APP_ID: &str = "dev.codeatlas.atlas";
 const ICON: &[u8] = include_bytes!("../../../atlas-desktop/icons/128x128.png");
 
 /// The AppImage carries no readable version, so the install records it next to atlas's other
@@ -101,6 +103,9 @@ fn write_menu_entry(home: &Path, exec: &Path) -> Result<()> {
     }
     std::fs::write(&icon, ICON)?;
     std::fs::write(&entry, desktop_entry(exec))?;
+    let _ =
+        std::fs::remove_file(share.join(format!("icons/hicolor/128x128/apps/{LEGACY_APP_ID}.png")));
+    let _ = std::fs::remove_file(share.join(format!("applications/{LEGACY_APP_ID}.desktop")));
     Ok(())
 }
 
@@ -200,8 +205,34 @@ mod tests {
         let e = desktop_entry(Path::new("/home/a b/.local/bin/atlas-desktop"));
         assert!(e.starts_with("[Desktop Entry]\n"));
         assert!(e.contains("\nExec=\"/home/a b/.local/bin/atlas-desktop\"\n"));
-        assert!(e.contains("\nIcon=dev.codeatlas.atlas\n"));
+        assert!(e.contains("\nIcon=br.com.codeatlas.atlas\n"));
         let odd = desktop_entry(Path::new("/h/$x\"`y\\z"));
         assert!(odd.contains(r#"Exec="/h/\$x\"\`y\\z""#), "{odd}");
+    }
+
+    /// The app id moved from dev.codeatlas.atlas (≤ 1.5): an update must not leave two "Atlas"
+    /// entries in the launcher, the old one pointing at a stale icon.
+    #[test]
+    fn menu_entry_replaces_the_pre_rename_entry_and_icon() {
+        let tmp = tempfile::tempdir().unwrap();
+        let share = tmp.path().join(".local/share");
+        let old_entry = share.join("applications/dev.codeatlas.atlas.desktop");
+        let old_icon = share.join("icons/hicolor/128x128/apps/dev.codeatlas.atlas.png");
+        for f in [&old_entry, &old_icon] {
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, "old").unwrap();
+        }
+        write_menu_entry(tmp.path(), Path::new("/bin/atlas-desktop")).unwrap();
+        assert!(!old_entry.exists() && !old_icon.exists());
+        assert!(
+            share
+                .join("applications/br.com.codeatlas.atlas.desktop")
+                .is_file()
+        );
+        assert!(
+            share
+                .join("icons/hicolor/128x128/apps/br.com.codeatlas.atlas.png")
+                .is_file()
+        );
     }
 }

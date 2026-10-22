@@ -182,9 +182,20 @@ fn link_desktop(workspace: &Path, build: bool) -> Result<()> {
         if !st.success() {
             bail!("setup failed");
         }
-        println!("\n\x1b[2m$ cargo tauri build --debug --bundles app\x1b[0m");
+        println!(
+            "\n\x1b[2m$ cargo tauri build --debug --bundles app --config tauri.dev.conf.json\x1b[0m"
+        );
         let st = std::process::Command::new("cargo")
-            .args(["tauri", "build", "--debug", "--bundles", "app"])
+            // tauri.dev.conf.json: the orange Atlas Dev icon and id, so a linked build never looks like a release.
+            .args([
+                "tauri",
+                "build",
+                "--debug",
+                "--bundles",
+                "app",
+                "--config",
+                "tauri.dev.conf.json",
+            ])
             .current_dir(workspace.join("crates/atlas-desktop"))
             .status()
             .context("failed to run cargo tauri (install: cargo install tauri-cli)")?;

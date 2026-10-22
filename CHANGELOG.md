@@ -6,6 +6,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **App id is now `br.com.codeatlas.atlas`** (was `dev.codeatlas.atlas`). On first launch the app copies its saved UI preferences (theme, layout) from the old id, and on Linux `atlas desktop` replaces the old menu entry and icon. macOS may ask once more for notification permission.
+
+### Added
+
+- **Atlas Dev looks different.** Debug builds (`desktop:dev`, `atlas link --desktop`, agent instances) carry an orange icon and their own id `br.com.codeatlas.atlas.dev`, so they never pass for the installed Atlas in the Dock, taskbar or launcher.
+
 ## [1.5.0-alpha.18] — 2026-10-21
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

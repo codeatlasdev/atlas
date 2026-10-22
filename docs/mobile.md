@@ -63,7 +63,7 @@ Android: `bun run mobile:e2e:android` / `bun run mobile:watch:android` (`--andro
 | `GOOGLE_SERVICES_JSON`                                                                              | `google-services.json` for Android Firebase push notifications. Without it the app builds without push.                                                                                   |
 | `GOOGLE_SERVICE_INFO_PLIST`                                                                         | `GoogleService-Info.plist` for iOS Firebase push notifications. Without it the app builds without push.                                                                                    |
 
-Once per store, by hand: create the app record (`br.com.codeatlas.atlas.mobile` on both; `dev.codeatlas.atlas` is the desktop app), and upload the first Android bundle through Play Console (the API cannot create an app's first release). Testers: an internal TestFlight group (up to 100 team members, no review) and the Play internal testing list (up to 100 emails); each tester gets an invitation link.
+Once per store, by hand: create the app record (`br.com.codeatlas.atlas.mobile` on both; `br.com.codeatlas.atlas` is the desktop app), and upload the first Android bundle through Play Console (the API cannot create an app's first release). Testers: an internal TestFlight group (up to 100 team members, no review) and the Play internal testing list (up to 100 emails); each tester gets an invitation link.
 
 ### Store dashboards from an agent (optional)
 

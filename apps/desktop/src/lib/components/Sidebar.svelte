@@ -190,22 +190,6 @@
 		</div>
 	{/if}
 	<nav class="list">
-		<div class="mode-switch">
-			<button
-				class="mode-btn"
-				class:active={ws.appMode === "ide"}
-				onclick={() => (ws.appMode = "ide")}
-				aria-label="IDE workspace"
-				title="IDE">IDE</button
-			>
-			<button
-				class="mode-btn"
-				class:active={ws.appMode === "bots"}
-				onclick={() => (ws.appMode = "bots")}
-				aria-label="Bots workspace (⌘⇧B)"
-				title="Bots (⌘⇧B)">Bots</button
-			>
-		</div>
 		<button class="item fixed" class:active={ws.view === "agents"} onclick={() => (ws.view = "agents")}>
 			<Bot size={13} /><span class="name">Agents</span>
 			{#if workingCount}<span class="count">{workingCount}</span>{/if}
@@ -491,33 +475,5 @@
 	.list :global(.hover-btn:hover) {
 		background: var(--ca-brand-fill);
 		color: var(--ca-brand-contrast);
-	}
-	.mode-switch {
-		display: flex;
-		gap: 3px;
-		padding: 4px 2px 6px;
-	}
-	.mode-btn {
-		flex: 1;
-		height: 24px;
-		border: 0;
-		border-radius: 6px;
-		background: none;
-		font: inherit;
-		font-size: 11.5px;
-		font-weight: 550;
-		color: var(--ca-text-secondary);
-		cursor: pointer;
-		transition:
-			background 120ms ease-out,
-			color 120ms ease-out;
-	}
-	.mode-btn:hover {
-		background: var(--ca-vibrancy-fill);
-		color: var(--ca-text-primary);
-	}
-	.mode-btn.active {
-		background: color-mix(in oklab, var(--ca-text-primary) 11%, transparent);
-		color: var(--ca-text-primary);
 	}
 </style>

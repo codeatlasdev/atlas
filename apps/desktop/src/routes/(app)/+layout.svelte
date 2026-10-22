@@ -46,6 +46,7 @@
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import BotsWorkspace from "#lib/bots/BotsWorkspace.svelte";
+	import WorkspaceRail from "#lib/shell/WorkspaceRail.svelte";
 
 	let { children }: { children: Snippet } = $props();
 
@@ -92,6 +93,7 @@
 	style:--space-accent={shell.active ? shell.accent(shell.active.id) : undefined}
 	style:--space-tint={shell.active ? shell.tint(shell.active.id) : undefined}
 >
+	<WorkspaceRail />
 	{#if ws.appMode === "bots"}
 		<BotsWorkspace />
 	{:else}

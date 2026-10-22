@@ -10,7 +10,7 @@
 	import { Check, Bell } from "@lucide/svelte";
 
 	const PERIOD = 8000;
-	let t = $state(reducedMotion ? 0.55 : 0);
+	let t = $state(reducedMotion ? 0.55 : 0.76);
 	let paused = $state(false);
 
 	function seg(x: number, a: number, b: number): number {
@@ -53,7 +53,7 @@
 
 	onMount(() => {
 		if (reducedMotion) return;
-		const startTime = performance.now();
+		const startTime = performance.now() - PERIOD * 0.76;
 		const id = setInterval(() => {
 			if (paused) return;
 			t = ((performance.now() - startTime) % PERIOD) / PERIOD;

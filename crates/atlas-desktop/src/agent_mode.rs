@@ -338,9 +338,83 @@ pub fn backing_pixels(size: (u32, u32), scale: u32) -> (u32, u32) {
     (size.0 * scale, size.1 * scale)
 }
 
+/// Which WebKit data store a webview gets. WKWebView ignores `HOME`: its default store is
+/// `~/Library/WebKit/<bundle id>` of the real user, so an agent instance on the default store reads and writes the
+/// user's own localStorage (incident 2026-10-22: an instance rewrote the installed app's store).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Store {
+    /// The bundle's default store: the user's app only.
+    Default,
+    /// A persistent store of its own (`WKWebsiteDataStore(forIdentifier:)`, macOS 14+), stable per instance.
+    Isolated([u8; 16]),
+    /// In memory, gone at exit: an agent instance on a macOS without custom stores.
+    Ephemeral,
+}
+
+/// `instance` = something unique and stable per agent instance (its debug socket path); `macos_major` = 0 off macOS.
+pub fn webview_store(mode: Mode, instance: &str, macos_major: u32) -> Store {
+    match mode {
+        Mode::User => Store::Default,
+        Mode::Agent if macos_major >= 14 || macos_major == 0 => Store::Isolated(store_id(instance)),
+        Mode::Agent => Store::Ephemeral,
+    }
+}
+
+/// The store for this process's webviews.
+pub fn current_store() -> Store {
+    #[cfg(target_os = "macos")]
+    let major = objc2_foundation::NSProcessInfo::processInfo()
+        .operatingSystemVersion()
+        .majorVersion as u32;
+    #[cfg(not(target_os = "macos"))]
+    let major = 0; // WebKitGTK and WebView2 keep data under HOME / the instance's dirs already
+    webview_store(
+        Mode::current(),
+        &std::env::var("ATLAS_DEBUG_SOCK").unwrap_or_default(),
+        major,
+    )
+}
+
+/// 128-bit FNV-1a: deterministic across runs and builds, so an instance finds its store again after a restart.
+fn store_id(s: &str) -> [u8; 16] {
+    let mut h: u128 = 0x6c62272e07bb014262b821756295c58d;
+    for b in s.bytes() {
+        h ^= b as u128;
+        h = h.wrapping_mul(0x0000000001000000000000000000013b);
+    }
+    h.to_be_bytes()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_agent_instance_never_gets_the_users_default_webkit_store() {
+        // Regression: 2026-10-22, the `lab` instance wrote into ~/Library/WebKit/<the installed app's id>.
+        for major in [0, 13, 14, 15, 26] {
+            assert_ne!(
+                webview_store(Mode::Agent, "/tmp/atlas-agent-a/debug.sock", major),
+                Store::Default,
+                "{major}"
+            );
+        }
+        assert_eq!(webview_store(Mode::Agent, "x", 13), Store::Ephemeral);
+        assert_eq!(webview_store(Mode::User, "x", 26), Store::Default);
+    }
+
+    #[test]
+    fn each_instance_has_its_own_store_and_keeps_it_across_restarts() {
+        let a = webview_store(Mode::Agent, "/tmp/atlas-agent-a/debug.sock", 26);
+        assert_eq!(
+            a,
+            webview_store(Mode::Agent, "/tmp/atlas-agent-a/debug.sock", 26)
+        );
+        assert_ne!(
+            a,
+            webview_store(Mode::Agent, "/tmp/atlas-agent-b/debug.sock", 26)
+        );
+    }
 
     const PANEL: Rect = Rect {
         x: 0.0,

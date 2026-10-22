@@ -220,7 +220,14 @@ pub async fn browser_open(
         tab.clone(),
         tab.clone(),
     );
-    let builder = WebviewBuilder::new(label(&tab), WebviewUrl::External(u))
+    let mut builder = WebviewBuilder::new(label(&tab), WebviewUrl::External(u));
+    // An agent instance's tabs must not share the user's cookies and logins either.
+    match crate::agent_mode::current_store() {
+        crate::agent_mode::Store::Default => {}
+        crate::agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
+        crate::agent_mode::Store::Ephemeral => builder = builder.incognito(true),
+    }
+    let builder = builder
         .initialization_script(GRAB_JS)
         .on_navigation(move |u| {
             let ok = matches!(u.scheme(), "http" | "https" | "about");

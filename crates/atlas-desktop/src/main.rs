@@ -332,7 +332,13 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .find(|w| w.label == "main")
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
     let (theme, script) = boot::window_boot(cache.as_ref());
-    let win = tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?;
+    match agent_mode::current_store() {
+        agent_mode::Store::Default => {}
+        agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
+        agent_mode::Store::Ephemeral => builder = builder.incognito(true),
+    }
+    let win = builder
         .visible(false)
         .theme(theme)
         .initialization_script(script)

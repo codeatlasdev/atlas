@@ -9,7 +9,8 @@
 	import { hostCall } from "#lib/host.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
-	import type { BotTask, Routine } from "#lib/bots.ts";
+	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import type { BotProject, BotTask, ScheduleTrigger, Trigger, TriggerKind } from "#lib/bots.ts";
 	import BotEditor from "#lib/bots/BotEditor.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import { normalizeLook, type BotLook } from "#lib/bots/look.ts";
@@ -17,7 +18,8 @@
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 	import { renderMarkdown } from "#lib/viewers/markdown.ts";
 	import { groupTasks, firstUnreadIndex, roleTag } from "#lib/bots/botsLogic.ts";
-	import { msgIn, msgOut, embedIn } from "#lib/bots/motion.ts";
+	import { msgIn, msgOut, embedIn, optionIn } from "#lib/bots/motion.ts";
+	import UsageSparkline from "#lib/bots/UsageSparkline.svelte";
 
 	// ─── ask card ─────────────────────────────────────────────────────────────
 
@@ -59,10 +61,18 @@
 	let memoryLoading = $state(false);
 	let memorySaving = $state(false);
 
+	// usage (lazy-loaded when profile opens)
+	let usageData = $state<number[]>([]);
+	let usageTotals = $state({ today: 0, week: 0, month: 0 });
+
 	// routines
-	let routinesList = $state<Routine[]>([]);
+	let routinesList = $state<ScheduleTrigger[]>([]);
 	let newRoutineCron = $state("");
 	let newRoutinePrompt = $state("");
+
+	// triggers (new trigger form)
+	let newTriggerKind = $state<TriggerKind | null>(null);
+	let newTriggerForm = $state<Record<string, string | boolean>>({});
 
 	// thread
 	let stepsOpen = $state<Record<string, boolean>>({});
@@ -100,6 +110,7 @@
 	const groupedTasks = $derived(groupTasks(orderedTasks));
 	const lastSeenTs = $derived(bots.selectedLastSeen);
 	const unreadIdx = $derived(firstUnreadIndex(orderedTasks, lastSeenTs));
+	const allTriggers = $derived(bot?.triggers ?? []);
 
 	const AGENT_LABELS: Record<string, string> = {
 		omp: "omp",
@@ -110,6 +121,11 @@
 
 	const agentLabel = $derived(
 		bot ? (agents.list.find((a) => a.id === bot.agent)?.label ?? AGENT_LABELS[bot.agent] ?? bot.agent) : "",
+	);
+
+	// IDE projects for project linking
+	const ideProjects = $derived(
+		ws.doc.worktrees.map((w) => ({ id: w.id, name: w.name ?? w.id, branch: w.branch ?? "" })),
 	);
 
 	// Reset approvedReqs when the selected bot changes
@@ -136,6 +152,16 @@
 			settingsAgent = bot.agent;
 			void loadMemory();
 			void loadRoutines();
+			void bots
+				.getUsage()
+				.then((r) => {
+					if (r && typeof r === "object") {
+						const u = r as { sparkline?: number[]; today?: number; week?: number; month?: number };
+						usageData = u.sparkline ?? [];
+						usageTotals = { today: u.today ?? 0, week: u.week ?? 0, month: u.month ?? 0 };
+					}
+				})
+				.catch(() => {});
 		}
 	});
 
@@ -164,6 +190,11 @@
 		const s = Math.floor(ms / 1000);
 		if (s < 60) return `${s}s`;
 		return `${Math.floor(s / 60)}m`;
+	}
+
+	function fmtTokens(n: number): string {
+		if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+		return String(n);
 	}
 
 	function fmtDate(tsMs: number): string {
@@ -305,48 +336,165 @@
 	}
 
 	async function loadRoutines() {
-		if (!bots.selected || !bot) return;
-		const entry = bots.hosts.find((h) => h.key === bots.selected!.hostKey);
-		const fullBot = entry?.bots.find((b) => b.id === bot!.id);
-		routinesList = (fullBot as unknown as { routines?: Routine[] })?.routines ?? [];
+		routinesList = allTriggers.filter((t): t is ScheduleTrigger => t.kind === "schedule");
 	}
 
-	async function addRoutine() {
-		if (!newRoutineCron.trim() || !newRoutinePrompt.trim()) return;
-		const updated: Routine[] = [
-			...routinesList,
-			{
-				id: crypto.randomUUID(),
+	// ─── trigger helpers ──────────────────────────────────────────────────────
+
+	const TRIGGER_KINDS: Array<{ kind: TriggerKind; icon: string; label: string }> = [
+		{ kind: "schedule", icon: "🕐", label: "Schedule" },
+		{ kind: "interval", icon: "⏱", label: "Interval" },
+		{ kind: "webhook", icon: "🔗", label: "Webhook" },
+		{ kind: "github", icon: "⦿", label: "GitHub" },
+		{ kind: "file", icon: "📄", label: "File" },
+		{ kind: "bot", icon: "🤖", label: "Bot chain" },
+		{ kind: "service", icon: "⚙", label: "Service" },
+	];
+
+	const GITHUB_EVENTS: Array<{ ev: string; label: string }> = [
+		{ ev: "pr_opened", label: "PR opened" },
+		{ ev: "review_requested", label: "Review requested" },
+		{ ev: "issue_opened", label: "Issue opened" },
+		{ ev: "ci_failed", label: "CI failed" },
+		{ ev: "release", label: "Release" },
+	];
+
+	function triggerIcon(kind: TriggerKind): string {
+		const icons: Record<TriggerKind, string> = {
+			schedule: "🕐",
+			interval: "⏱",
+			webhook: "🔗",
+			github: "⦿",
+			file: "📄",
+			bot: "🤖",
+			service: "⚙",
+		};
+		return icons[kind] ?? "⚡";
+	}
+
+	function triggerSummary(t: Trigger): string {
+		switch (t.kind) {
+			case "schedule":
+				return t.cron;
+			case "interval":
+				return `Every ${t.every} ${t.unit}`;
+			case "webhook":
+				return t.url ? t.url.split("/").slice(-1)[0] || "webhook" : "webhook";
+			case "github":
+				return `${t.repo} · ${t.events.length} event${t.events.length !== 1 ? "s" : ""}`;
+			case "file":
+				return t.glob;
+			case "bot":
+				return `${t.bot_id} · ${t.on}`;
+			case "service":
+				return `${t.service} · ${t.on}`;
+		}
+	}
+
+	async function toggleTrigger(id: string, enabled: boolean) {
+		const updated = allTriggers.map((t) => (t.id === id ? { ...t, enabled } : t));
+		try {
+			await bots.setTriggers(updated);
+		} catch (e) {
+			toast.error(errText(e));
+		}
+	}
+
+	async function removeTrigger(id: string) {
+		const updated = allTriggers.filter((t) => t.id !== id);
+		try {
+			await bots.setTriggers(updated);
+		} catch (e) {
+			toast.error(errText(e));
+		}
+	}
+
+	async function addTrigger() {
+		if (!newTriggerKind) return;
+		const id = crypto.randomUUID();
+		let trig: Trigger;
+		const k = newTriggerKind;
+		const f = newTriggerForm;
+
+		if (k === "schedule") {
+			if (!newRoutineCron.trim() || !newRoutinePrompt.trim()) return;
+			trig = {
+				id,
+				kind: "schedule",
+				enabled: true,
 				cron: newRoutineCron.trim(),
 				prompt: newRoutinePrompt.trim(),
+			};
+		} else if (k === "interval") {
+			const every = parseInt(f.every as string);
+			if (!every || !f.unit) return;
+			trig = {
+				id,
+				kind: "interval",
 				enabled: true,
-			},
-		];
+				every,
+				unit: f.unit as "minutes" | "hours" | "days",
+				prompt: (f.prompt as string) ?? "",
+			};
+		} else if (k === "webhook") {
+			trig = {
+				id,
+				kind: "webhook",
+				enabled: true,
+				url: "",
+				token: "",
+				prompt_template: (f.prompt_template as string) ?? "",
+			};
+		} else if (k === "github") {
+			if (!f.repo) return;
+			const events = GITHUB_EVENTS.map((e) => e.ev).filter((ev) => !!f[ev]) as Array<
+				"pr_opened" | "review_requested" | "issue_opened" | "ci_failed" | "release"
+			>;
+			trig = {
+				id,
+				kind: "github",
+				enabled: true,
+				repo: f.repo as string,
+				events,
+				prompt_template: (f.prompt_template as string) ?? "",
+			};
+		} else if (k === "file") {
+			if (!f.glob) return;
+			trig = {
+				id,
+				kind: "file",
+				enabled: true,
+				glob: f.glob as string,
+				prompt_template: (f.prompt_template as string) ?? "",
+			};
+		} else if (k === "bot") {
+			if (!f.bot_id) return;
+			trig = {
+				id,
+				kind: "bot",
+				enabled: true,
+				bot_id: f.bot_id as string,
+				on: ((f.on as string) || "done") as "done" | "failed" | "both",
+				prompt_template: (f.prompt_template as string) ?? "",
+			};
+		} else {
+			if (!f.service) return;
+			trig = {
+				id,
+				kind: "service",
+				enabled: true,
+				service: f.service as string,
+				on: ((f.on as string) || "failed") as "failed" | "recovered" | "both",
+				prompt_template: (f.prompt_template as string) ?? "",
+			};
+		}
+
 		try {
-			await bots.setRoutines(updated);
-			routinesList = updated;
+			await bots.setTriggers([...allTriggers, trig]);
+			newTriggerKind = null;
+			newTriggerForm = {};
 			newRoutineCron = "";
 			newRoutinePrompt = "";
-		} catch (e) {
-			toast.error(errText(e));
-		}
-	}
-
-	async function toggleRoutine(id: string, enabled: boolean) {
-		const updated = routinesList.map((r) => (r.id === id ? { ...r, enabled } : r));
-		try {
-			await bots.setRoutines(updated);
-			routinesList = updated;
-		} catch (e) {
-			toast.error(errText(e));
-		}
-	}
-
-	async function removeRoutine(id: string) {
-		const updated = routinesList.filter((r) => r.id !== id);
-		try {
-			await bots.setRoutines(updated);
-			routinesList = updated;
 		} catch (e) {
 			toast.error(errText(e));
 		}
@@ -395,6 +543,19 @@
 			toast.error(errText(e));
 		}
 	}
+
+	async function linkProject(p: { id: string; name: string; branch: string }) {
+		if (!bots.selected || !bot) return;
+		const project: BotProject = { name: p.name, kind: "path", branch: p.branch || undefined };
+		await bots.updateBot(bots.selected.hostKey, bot.id, { project }).catch((e) => toast.error(errText(e)));
+	}
+
+	async function unlinkProject() {
+		if (!bots.selected || !bot) return;
+		await bots
+			.updateBot(bots.selected.hostKey, bot.id, { project: null })
+			.catch((e) => toast.error(errText(e)));
+	}
 </script>
 
 <div class="bot-view">
@@ -409,6 +570,19 @@
 					<span class="bot-name">{bot.name}</span>
 					{#if roleTag(bot.role)}
 						<span class="header-role-tag">{roleTag(bot.role)}</span>
+					{/if}
+					{#if bot.project}
+						<span class="header-project-chip">
+							{#if bot.project.kind === "git"}
+								<span aria-hidden="true">⑂</span>
+							{:else}
+								<span aria-hidden="true">📁</span>
+							{/if}
+							{bot.project.name}
+							{#if bot.project.branch}
+								<span class="header-project-branch">{bot.project.branch}</span>
+							{/if}
+						</span>
 					{/if}
 					{#if bot.state === "working" && bot.running_task}
 						<span class="header-presence"
@@ -507,6 +681,12 @@
 						onmouseleave={() => (hoveredTask = null)}
 					>
 						<!-- User bubble -->
+						{#if t.trigger_event}
+							<div class="trigger-event" role="note">
+								<span class="trigger-icon" aria-hidden="true">{triggerIcon(t.trigger_event.kind)}</span>
+								<span class="trigger-summary">{t.trigger_event.summary}</span>
+							</div>
+						{/if}
 						<div class="msg-out" in:msgOut>
 							<div class="bubble out ca-selectable">{t.prompt}</div>
 							{#if t.source !== "desktop"}
@@ -696,6 +876,26 @@
 											{/if}
 										{/if}
 									{/each}
+									{#if t.usage}
+										<div class="usage-footer">
+											{#if t.usage.input_tokens || t.usage.output_tokens}
+												<span
+													>{fmtTokens(t.usage.input_tokens ?? 0)}in · {fmtTokens(
+														t.usage.output_tokens ?? 0,
+													)}out</span
+												>
+											{/if}
+											{#if t.usage.cost_usd}
+												<span>${t.usage.cost_usd.toFixed(4)}</span>
+											{/if}
+											{#if t.usage.duration_ms}
+												<span>{fmtElapsed(t.usage.duration_ms)}</span>
+											{/if}
+											{#if t.usage.model}
+												<span class="usage-model">{t.usage.model}</span>
+											{/if}
+										</div>
+									{/if}
 								</div>
 							</div>
 							<!-- Bot response: failed -->
@@ -870,47 +1070,304 @@
 					</div>
 				</div>
 
-				<!-- Routines -->
+				<!-- Project -->
 				<div class="profile-section">
-					<div class="profile-section-title">Routines</div>
-					{#each routinesList as r (r.id)}
-						<div class="routine-row">
-							<input
-								type="checkbox"
-								checked={r.enabled}
-								aria-label="Enable {r.cron}"
-								onchange={(e) => void toggleRoutine(r.id, (e.currentTarget as HTMLInputElement).checked)}
-							/>
-							<span class="routine-cron">{r.cron}</span>
-							<span class="routine-prompt">{r.prompt}</span>
-							<button class="close-btn" onclick={() => void removeRoutine(r.id)} aria-label="Remove routine"
+					<div class="profile-section-title">Project</div>
+					{#if bot.project}
+						<div class="project-linked">
+							<span class="project-kind-icon">{bot.project.kind === "git" ? "⑂" : "📁"}</span>
+							<div class="project-details">
+								<span class="project-name">{bot.project.name}</span>
+								{#if bot.project.url}<span class="project-url">{bot.project.url}</span>{/if}
+								{#if bot.project.branch}<span class="project-branch">@ {bot.project.branch}</span>{/if}
+							</div>
+							<button class="close-btn" onclick={() => void unlinkProject()} aria-label="Unlink project"
 								>✕</button
 							>
 						</div>
 					{:else}
-						<p class="hint">No routines yet.</p>
+						<div class="project-link-options">
+							{#each ideProjects as p (p.id)}
+								<button class="project-option" onclick={() => void linkProject(p)}>
+									⑂ {p.name}
+									{#if p.branch}<span class="muted">{p.branch}</span>{/if}
+								</button>
+							{/each}
+							{#if ideProjects.length === 0}
+								<p class="hint">No IDE projects found. Open a project in the IDE first.</p>
+							{/if}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Triggers -->
+				<div class="profile-section">
+					<div class="profile-section-title">Triggers</div>
+					{#each allTriggers as t, i (t.id)}
+						<div class="trigger-row" in:optionIn={{ index: i }}>
+							<span class="trigger-row-icon" aria-hidden="true">{triggerIcon(t.kind)}</span>
+							<span class="trigger-row-summary">{triggerSummary(t)}</span>
+							<input
+								type="checkbox"
+								checked={t.enabled}
+								aria-label="Enable trigger"
+								onchange={(e) => void toggleTrigger(t.id, (e.currentTarget as HTMLInputElement).checked)}
+							/>
+							<button class="close-btn" onclick={() => void removeTrigger(t.id)} aria-label="Remove trigger"
+								>✕</button
+							>
+						</div>
+					{:else}
+						<p class="hint">No triggers yet.</p>
 					{/each}
-					<div class="add-routine">
-						<input
-							class="cron-input"
-							bind:value={newRoutineCron}
-							placeholder="0 9 * * 1-5"
-							aria-label="Cron expression"
-						/>
-						<input
-							class="prompt-input"
-							bind:value={newRoutinePrompt}
-							placeholder="Daily standup summary"
-							aria-label="Routine prompt"
-						/>
-						<Button size="sm" onclick={addRoutine}>Add</Button>
-					</div>
-					<div class="cron-presets">
-						<button class="preset" onclick={() => (newRoutineCron = "0 8 * * *")}>
-							Every morning 8:00
-						</button>
-						<button class="preset" onclick={() => (newRoutineCron = "0 9 * * 1-5")}> Weekdays 9:00 </button>
-					</div>
+
+					{#if newTriggerKind === null}
+						<div class="add-trigger-picker">
+							<span class="hint">Add trigger:</span>
+							{#each TRIGGER_KINDS as tk}
+								<button
+									class="trigger-kind-btn"
+									onclick={() => {
+										newTriggerKind = tk.kind;
+										newTriggerForm = {};
+									}}>{tk.icon} {tk.label}</button
+								>
+							{/each}
+						</div>
+					{:else}
+						<div class="add-trigger-form">
+							{#if newTriggerKind === "schedule"}
+								<input
+									class="cron-input"
+									bind:value={newRoutineCron}
+									placeholder="0 9 * * 1-5"
+									aria-label="Cron expression"
+								/>
+								<textarea
+									class="profile-textarea ca-selectable"
+									bind:value={newRoutinePrompt}
+									rows={3}
+									placeholder="Daily standup summary"
+									aria-label="Prompt"></textarea>
+								<div class="cron-presets">
+									<button class="preset" onclick={() => (newRoutineCron = "0 8 * * *")}
+										>Every morning 8:00</button
+									>
+									<button class="preset" onclick={() => (newRoutineCron = "0 9 * * 1-5")}
+										>Weekdays 9:00</button
+									>
+								</div>
+							{:else if newTriggerKind === "interval"}
+								<div class="add-routine">
+									<input
+										class="cron-input"
+										type="number"
+										min="1"
+										value={newTriggerForm.every ?? ""}
+										oninput={(e) => {
+											newTriggerForm = {
+												...newTriggerForm,
+												every: (e.currentTarget as HTMLInputElement).value,
+											};
+										}}
+										placeholder="30"
+										aria-label="Interval amount"
+									/>
+									<select
+										class="profile-select"
+										value={newTriggerForm.unit ?? "minutes"}
+										onchange={(e) => {
+											newTriggerForm = {
+												...newTriggerForm,
+												unit: (e.currentTarget as HTMLSelectElement).value,
+											};
+										}}
+										aria-label="Interval unit"
+									>
+										<option value="minutes">minutes</option>
+										<option value="hours">hours</option>
+										<option value="days">days</option>
+									</select>
+								</div>
+								<textarea
+									class="profile-textarea ca-selectable"
+									value={String(newTriggerForm.prompt ?? "")}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											prompt: (e.currentTarget as HTMLTextAreaElement).value,
+										};
+									}}
+									rows={3}
+									placeholder="Prompt"
+									aria-label="Prompt"></textarea>
+							{:else if newTriggerKind === "webhook"}
+								<textarea
+									class="profile-textarea ca-selectable"
+									value={String(newTriggerForm.prompt_template ?? "")}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
+										};
+									}}
+									rows={3}
+									placeholder="Prompt template"
+									aria-label="Prompt template"></textarea>
+							{:else if newTriggerKind === "github"}
+								<input
+									class="prompt-input"
+									value={newTriggerForm.repo ?? ""}
+									oninput={(e) => {
+										newTriggerForm = { ...newTriggerForm, repo: (e.currentTarget as HTMLInputElement).value };
+									}}
+									placeholder="owner/repo"
+									aria-label="GitHub repo"
+								/>
+								<div class="github-events">
+									{#each GITHUB_EVENTS as ev}
+										<label class="event-check">
+											<input
+												type="checkbox"
+												checked={!!newTriggerForm[ev.ev]}
+												onchange={(e) => {
+													newTriggerForm = {
+														...newTriggerForm,
+														[ev.ev]: (e.currentTarget as HTMLInputElement).checked,
+													};
+												}}
+												aria-label={ev.label}
+											/>
+											{ev.label}
+										</label>
+									{/each}
+								</div>
+								<textarea
+									class="profile-textarea ca-selectable"
+									value={String(newTriggerForm.prompt_template ?? "")}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
+										};
+									}}
+									rows={3}
+									placeholder="Prompt template"
+									aria-label="Prompt template"></textarea>
+							{:else if newTriggerKind === "file"}
+								<input
+									class="prompt-input"
+									value={newTriggerForm.glob ?? ""}
+									oninput={(e) => {
+										newTriggerForm = { ...newTriggerForm, glob: (e.currentTarget as HTMLInputElement).value };
+									}}
+									placeholder="**/*.ts"
+									aria-label="File glob"
+								/>
+								<textarea
+									class="profile-textarea ca-selectable"
+									value={String(newTriggerForm.prompt_template ?? "")}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
+										};
+									}}
+									rows={3}
+									placeholder="Prompt template"
+									aria-label="Prompt template"></textarea>
+							{:else if newTriggerKind === "bot"}
+								<select
+									class="profile-select"
+									value={newTriggerForm.bot_id ?? ""}
+									onchange={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											bot_id: (e.currentTarget as HTMLSelectElement).value,
+										};
+									}}
+									aria-label="Bot"
+								>
+									<option value="">Select bot…</option>
+									{#each bots.allBots as { bot: b }}
+										<option value={b.id}>{b.name}</option>
+									{/each}
+								</select>
+								<select
+									class="profile-select"
+									value={newTriggerForm.on ?? "done"}
+									onchange={(e) => {
+										newTriggerForm = { ...newTriggerForm, on: (e.currentTarget as HTMLSelectElement).value };
+									}}
+									aria-label="On event"
+								>
+									<option value="done">Done</option>
+									<option value="failed">Failed</option>
+									<option value="both">Both</option>
+								</select>
+								<textarea
+									class="profile-textarea ca-selectable"
+									value={String(newTriggerForm.prompt_template ?? "")}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
+										};
+									}}
+									rows={3}
+									placeholder="Prompt template"
+									aria-label="Prompt template"></textarea>
+							{:else if newTriggerKind === "service"}
+								<input
+									class="prompt-input"
+									value={newTriggerForm.service ?? ""}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											service: (e.currentTarget as HTMLInputElement).value,
+										};
+									}}
+									placeholder="Service name"
+									aria-label="Service name"
+								/>
+								<select
+									class="profile-select"
+									value={newTriggerForm.on ?? "failed"}
+									onchange={(e) => {
+										newTriggerForm = { ...newTriggerForm, on: (e.currentTarget as HTMLSelectElement).value };
+									}}
+									aria-label="On event"
+								>
+									<option value="failed">Failed</option>
+									<option value="recovered">Recovered</option>
+									<option value="both">Both</option>
+								</select>
+								<textarea
+									class="profile-textarea ca-selectable"
+									value={String(newTriggerForm.prompt_template ?? "")}
+									oninput={(e) => {
+										newTriggerForm = {
+											...newTriggerForm,
+											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
+										};
+									}}
+									rows={3}
+									placeholder="Prompt template"
+									aria-label="Prompt template"></textarea>
+							{/if}
+							<div class="profile-foot">
+								<Button
+									size="sm"
+									variant="ghost"
+									onclick={() => {
+										newTriggerKind = null;
+										newTriggerForm = {};
+									}}>Cancel</Button
+								>
+								<Button size="sm" onclick={addTrigger}>Add</Button>
+							</div>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Memory -->
@@ -930,6 +1387,17 @@
 							</Button>
 						</div>
 					{/if}
+				</div>
+
+				<!-- Usage -->
+				<div class="profile-section">
+					<div class="profile-section-title">Usage</div>
+					<UsageSparkline data={usageData} />
+					<div class="usage-totals">
+						<span class="usage-stat">Today: {fmtTokens(usageTotals.today)}</span>
+						<span class="usage-stat">7d: {fmtTokens(usageTotals.week)}</span>
+						<span class="usage-stat">30d: {fmtTokens(usageTotals.month)}</span>
+					</div>
 				</div>
 
 				<!-- Delete bot -->
@@ -1613,24 +2081,7 @@
 		margin: 0;
 	}
 
-	/* routines (inside profile panel) */
-	.routine-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 12px;
-	}
-	.routine-cron {
-		font-family: var(--ca-font-mono, monospace);
-		color: var(--ca-text-secondary);
-		white-space: nowrap;
-	}
-	.routine-prompt {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+	/* routines (inside profile panel) — add-routine/cron-input/prompt-input kept for schedule form */
 	.add-routine {
 		display: flex;
 		gap: 6px;
@@ -1806,5 +2257,185 @@
 	}
 	.ask-text:focus {
 		color: var(--ca-text-primary);
+	}
+	.usage-footer {
+		display: none;
+		align-items: center;
+		gap: 8px;
+		font-size: 10.5px;
+		color: var(--ca-text-secondary);
+		padding: 2px 0;
+		flex-wrap: wrap;
+	}
+	.msg-in:hover .usage-footer {
+		display: flex;
+	}
+	.usage-model {
+		font-style: italic;
+	}
+	.usage-totals {
+		display: flex;
+		gap: 12px;
+		padding: 4px 0;
+	}
+	.usage-stat {
+		font-size: 11.5px;
+		color: var(--ca-text-secondary);
+	}
+	/* ── Project chip in header ─────────────────────────────────── */
+	.header-project-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 10.5px;
+		font-weight: 500;
+		background: color-mix(in oklab, var(--ca-outline-subtle) 60%, transparent);
+		border-radius: 10px;
+		padding: 1px 7px;
+		color: var(--ca-text-secondary);
+		margin-left: 6px;
+		cursor: default;
+	}
+	.header-project-branch {
+		color: var(--ca-text-secondary);
+		opacity: 0.7;
+		font-size: 10px;
+	}
+	/* ── Project section in profile panel ───────────────────────── */
+	.project-linked {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 0;
+	}
+	.project-kind-icon {
+		font-size: 16px;
+		flex: none;
+	}
+	.project-details {
+		flex: 1;
+		min-width: 0;
+	}
+	.project-name {
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ca-text-primary);
+		display: block;
+	}
+	.project-url {
+		font-size: 10.5px;
+		color: var(--ca-text-secondary);
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.project-branch {
+		font-size: 10.5px;
+		color: var(--ca-text-secondary);
+	}
+	.project-link-options {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.project-option {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 8px;
+		border: none;
+		background: none;
+		border-radius: 6px;
+		text-align: left;
+		font-size: 12.5px;
+		color: var(--ca-text-primary);
+		cursor: default;
+	}
+	.project-option:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.muted {
+		color: var(--ca-text-secondary);
+		font-size: 11px;
+	}
+
+	/* ─── trigger event line (in thread) ────────────────────── */
+	.trigger-event {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 3px 16px 3px 68px;
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+		margin-top: 8px;
+	}
+	.trigger-icon {
+		font-size: 12px;
+		flex: none;
+	}
+	.trigger-summary {
+		font-style: italic;
+	}
+
+	/* ─── trigger rows (inside profile panel) ───────────────── */
+	.trigger-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		padding: 2px 0;
+	}
+	.trigger-row-icon {
+		font-size: 14px;
+		flex: none;
+	}
+	.trigger-row-summary {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--ca-text-secondary);
+	}
+
+	/* ─── add trigger picker ─────────────────────────────────── */
+	.add-trigger-picker {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		align-items: center;
+	}
+	.trigger-kind-btn {
+		font-size: 11px;
+		padding: 2px 7px;
+		border-radius: 5px;
+		border: 0.5px solid var(--ca-outline-subtle);
+		background: none;
+		color: var(--ca-text-secondary);
+		cursor: default;
+	}
+	.trigger-kind-btn:hover {
+		background: var(--ca-vibrancy-fill);
+		color: var(--ca-text-primary);
+	}
+
+	/* ─── add trigger form ───────────────────────────────────── */
+	.add-trigger-form {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.github-events {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.event-check {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--ca-text-primary);
+		cursor: default;
 	}
 </style>

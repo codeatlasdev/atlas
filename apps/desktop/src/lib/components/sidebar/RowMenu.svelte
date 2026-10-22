@@ -9,6 +9,8 @@
 	import { ws, type Worktree } from "#lib/stores/workspace.svelte.ts";
 	import { sidebar } from "./state.svelte.ts";
 	import type { ProjectView } from "#lib/api.ts";
+	import { bots } from "#lib/stores/bots.svelte.ts";
+	import type { BotProject } from "#lib/bots.ts";
 
 	let { p, w, onAgent }: { p: ProjectView; w: Worktree | undefined; onAgent?: (worktreeId: string) => void } =
 		$props();
@@ -28,6 +30,16 @@
 	function toggleStack() {
 		store.run(`stack:${p.id}`, () => (p.running ? api.stop(p.id) : api.start(p.id)));
 	}
+
+	function createBotForProject() {
+		ws.appMode = "bots";
+		const project: BotProject = {
+			name: p.name,
+			kind: "path",
+			branch: w?.branch || undefined,
+		};
+		bots.pendingProjectLink = project;
+	}
 </script>
 
 {#if p.missing}
@@ -44,6 +56,7 @@
 	<DropdownMenuItem onclick={() => store.run("reveal", () => api.reveal(p.id))}
 		>Reveal in Finder</DropdownMenuItem
 	>
+	<DropdownMenuItem onclick={createBotForProject}>Create bot for this project</DropdownMenuItem>
 {/if}
 <DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
 	{p.pinned ? "Unpin" : "Pin to top"}

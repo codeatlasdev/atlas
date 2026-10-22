@@ -4,6 +4,7 @@
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 	import { roleTag, previewIcon } from "#lib/bots/botsLogic.ts";
 	import { rowIn } from "#lib/bots/motion.ts";
+	import { agentLogo } from "#lib/agentLogos.ts";
 
 	let {
 		bot,
@@ -26,6 +27,7 @@
 	const tag = $derived(roleTag(bot.role));
 	const icon = $derived(previewIcon(bot.last, bot.state));
 	const isWorking = $derived(bot.state === "working");
+	const logo = $derived(agentLogo(bot.agent));
 
 	let menuOpen = $state(false);
 
@@ -51,6 +53,11 @@
 		<!-- Avatar with presence badge -->
 		<div class="avatar-wrap">
 			<BotFace seed={bot.id} look={bot.look} state={faceState} size={32} />
+			{#if logo}
+				<span class="engine-badge" aria-label="{bot.agent} engine">
+					{@html logo.dark ?? logo.light}
+				</span>
+			{/if}
 			<span
 				class="presence"
 				class:green={faceState === "working"}
@@ -150,6 +157,25 @@
 		flex: none;
 		width: 32px;
 		height: 32px;
+	}
+	.engine-badge {
+		position: absolute;
+		top: -2px;
+		right: -2px;
+		width: 12px;
+		height: 12px;
+		border-radius: 3px;
+		overflow: hidden;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--ca-surface-sunken);
+		border: 1.5px solid var(--ca-surface-sunken);
+		pointer-events: none;
+	}
+	.engine-badge :global(svg) {
+		width: 10px;
+		height: 10px;
 	}
 
 	/* Presence dot: bottom-right of avatar, ring cut in sidebar color */

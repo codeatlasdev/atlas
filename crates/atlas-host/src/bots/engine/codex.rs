@@ -11,6 +11,25 @@ use crate::paths;
 
 use super::{BOT_TASK_TIMEOUT, TurnResult};
 
+/// Build the codex argv (excluding the binary name) for one turn.
+///
+/// `session_id` is the prior `thread_id`; `None` for first turn.
+/// `result_file` receives the final assistant message text.
+pub(crate) fn exec_args(session_id: Option<&str>, result_file: &Path, prompt: &str) -> Vec<String> {
+    let mut v = vec!["exec".to_string()];
+    if let Some(id) = session_id {
+        v.push("resume".to_string());
+        v.push(id.to_string());
+    }
+    v.push("--json".to_string());
+    v.push("--output-last-message".to_string());
+    v.push(result_file.to_string_lossy().to_string());
+    v.push("--dangerously-bypass-hook-trust".to_string());
+    v.push("--skip-git-repo-check".to_string());
+    v.push(prompt.to_string());
+    v
+}
+
 pub(super) async fn run(
     engine: &EngineConfig,
     session: BotSession,
@@ -25,19 +44,9 @@ pub(super) async fn run(
     let result_file = bot_dir.join(format!("codex-out-{}.txt", paths::new_id()));
 
     let mut cmd = tokio::process::Command::new("codex");
-    cmd.arg("exec");
-
-    // Resume takes a positional subcommand before the flags.
-    if let Some(thread_id) = &session.session_id {
-        cmd.arg("resume").arg(thread_id);
+    for arg in exec_args(session.session_id.as_deref(), &result_file, prompt) {
+        cmd.arg(arg);
     }
-
-    cmd.arg("--json")
-        .arg("--output-last-message")
-        .arg(&result_file)
-        .arg("--dangerously-bypass-hook-trust")
-        .arg("--skip-git-repo-check")
-        .arg(prompt);
 
     cmd.current_dir(work_dir);
     for (k, v) in extra_env {

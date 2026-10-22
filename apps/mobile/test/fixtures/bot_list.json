@@ -31,6 +31,19 @@
       "queued": 0,
       "role": "Nightly checks",
       "state": "idle"
+    },
+    {
+      "agent": "opencode",
+      "approval": "auto",
+      "approval_supported": false,
+      "engine": {
+        "kind": "opencode"
+      },
+      "id": "bot-opencode",
+      "name": "Deployer",
+      "queued": 0,
+      "role": "Deploys releases",
+      "state": "idle"
     }
   ]
 }

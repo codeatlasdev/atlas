@@ -55,19 +55,35 @@ void main() {
 
     // ── idle bot with done task: last present, no running_task ────────────────
     test('parses idle bot: last present, running_task absent', () {
-      final raw = bots.firstWhere((b) => (b as Map)['state'] == 'idle')
-          as Map<String, dynamic>;
+      final raw = bots.firstWhere(
+              (b) => (b as Map)['id'] == 'bot-done') as Map<String, dynamic>;
       final entry = BotListEntry.fromJson(raw);
 
       expect(entry.id, 'bot-done');
       expect(entry.state, 'idle');
-      // real daemon: last is present because a task completed
       expect(entry.last, isNotNull);
       expect(entry.last!.text, 'nightly done');
       expect(entry.last!.ts, 1700000000);
-      // absent running_task must be null, not crash
       expect(entry.runningTask, isNull);
       expect(entry.queued, 0);
+      // No engine key → approvalSupported defaults to true.
+      expect(entry.approvalSupported, isTrue,
+          reason: 'claude bot without engine key defaults approvalSupported to true');
+    });
+
+    // ── opencode bot: approval_supported:false ───────────────────────────────
+    test('parses opencode bot: approvalSupported is false', () {
+      final raw = bots.firstWhere(
+              (b) => (b as Map)['id'] == 'bot-opencode') as Map<String, dynamic>;
+      final entry = BotListEntry.fromJson(raw);
+
+      expect(entry.id, 'bot-opencode');
+      expect(entry.agent, 'opencode');
+      expect(entry.state, 'idle');
+      // Real Rust producer emits approval_supported:false for opencode bots.
+      expect(entry.approvalSupported, isFalse,
+          reason: 'opencode bot must have approvalSupported=false from the real producer');
+      expect(entry.runningTask, isNull);
     });
   });
 }

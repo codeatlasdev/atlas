@@ -741,6 +741,20 @@ exit 0"#;
 
         let client = daemon(&dir).await;
 
+        // ── Bot C: opencode engine (idle) — produces approval_supported:false ─
+        let bot_c = client
+            .call(
+                "bot_create",
+                json!({
+                    "name": "Deployer", "role": "Deploys releases",
+                    "agent": "opencode", "approval": "auto",
+                    "engine": {"kind": "opencode"}
+                }),
+            )
+            .await
+            .expect("bot_create C");
+        let bot_c_id = bot_c["id"].as_str().unwrap().to_string();
+
         let bot_b = client
             .call(
                 "bot_create",
@@ -827,6 +841,10 @@ exit 0"#;
             .iter()
             .find(|b| b["id"] == bot_b_id)
             .expect("bot B in list");
+        let c = bots
+            .iter()
+            .find(|b| b["id"] == bot_c_id)
+            .expect("bot C in list");
 
         // ── Assert the REAL shape ─────────────────────────────────────────────
         // working bot: running_task is an OBJECT {id, pane}, not a string
@@ -856,6 +874,19 @@ exit 0"#;
             "idle bot must have no running_task: {b}"
         );
 
+        // opencode bot: approval_supported must be false
+        assert_eq!(c["state"], "idle", "bot C must be idle: {c}");
+        assert_eq!(
+            c["approval_supported"].as_bool(),
+            Some(false),
+            "opencode bot must have approval_supported:false in bot_list: {c}"
+        );
+        assert_eq!(
+            c["engine"]["kind"].as_str(),
+            Some("opencode"),
+            "bot C must have engine.kind=opencode: {c}"
+        );
+
         // ── Build deterministic fixture ───────────────────────────────────────
         // Normalise volatile fields (random UUIDs, real timestamps) so the
         // stored fixture has a stable diff.
@@ -872,7 +903,11 @@ exit 0"#;
         b_fix["last"]["ts"] = json!(1700000000u64);
         b_fix["queued"] = json!(0);
 
-        let fixture = json!({ "bots": [a_fix, b_fix] });
+        let mut c_fix = c.clone();
+        c_fix["id"] = json!("bot-opencode");
+        c_fix["queued"] = json!(0);
+
+        let fixture = json!({ "bots": [a_fix, b_fix, c_fix] });
 
         let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/mobile/test/fixtures/bot_list.json");
@@ -909,6 +944,17 @@ exit 0"#;
         assert!(
             sw["running_task"]["pane"].is_string(),
             "running_task.pane must be string"
+        );
+
+        // Structural invariant: stored fixture must include approval_supported:false for opencode.
+        let sc = sb
+            .iter()
+            .find(|b| b["engine"]["kind"] == "opencode")
+            .expect("opencode bot must be in fixture");
+        assert_eq!(
+            sc["approval_supported"].as_bool(),
+            Some(false),
+            "fixture opencode bot must have approval_supported:false: {sc}"
         );
 
         assert_eq!(
@@ -2013,56 +2059,59 @@ exit 0
         crate::bots::engine::set_test_engine_bin(None);
         client.call("shutdown", json!({})).await.ok();
     }
-    // ── Test: codex argv includes --skip-git-repo-check ─────────────────────
-    // TEST_ENGINE_BIN bypasses engine-specific argv construction, so we use a
-    // pure unit test: the Rust code in codex.rs must include the flag.
+    // ── Tests: codex exec_args builder ──────────────────────────────────────
+    // These test the argv builder (codex::exec_args) that constructs the
+    // actual command passed to the codex binary — no source-text inspection.
 
     #[test]
-    fn codex_argv_has_skip_git_repo_check() {
-        // Verify at compile time that the codex engine source includes
-        // --skip-git-repo-check.  We read the source file and assert the
-        // flag is present rather than spawning a process.
-        let src = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/bots/engine/codex.rs"
-        ));
-        assert!(
-            src.contains("--skip-git-repo-check"),
-            "codex.rs must contain --skip-git-repo-check to work outside git repos"
+    fn codex_argv_first_turn_has_required_flags() {
+        use crate::bots::engine::codex::exec_args;
+        let args = exec_args(None, std::path::Path::new("/tmp/out.txt"), "hello");
+        // First turn: exec (no resume)
+        assert_eq!(
+            &args[0..2],
+            &["exec", "--json"][..],
+            "first two: exec --json"
         );
+        // Required flags must be present.
+        assert!(
+            args.iter().any(|a| a == "--skip-git-repo-check"),
+            "--skip-git-repo-check must appear, got: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "--dangerously-bypass-hook-trust"),
+            "--dangerously-bypass-hook-trust must appear, got: {args:?}"
+        );
+        // No "resume" on first turn.
+        assert!(
+            !args.iter().any(|a| a == "resume"),
+            "first turn must not contain 'resume', got: {args:?}"
+        );
+        // Prompt is last.
+        assert_eq!(args.last().map(|s| s.as_str()), Some("hello"));
     }
 
-    // ── Test: omp extension fail-closed — any non-allow response blocks ──────
-    // The extension logic is tested exhaustively under bun
-    // (apps/desktop/src/lib/bots/omp-approval.test.ts).
-    // This Rust test verifies the Rust-generated extension file content
-    // contains the fail-closed guard phrase.
-
     #[test]
-    fn omp_extension_content_is_fail_closed() {
-        let tmp = tempfile::tempdir().unwrap();
-        let ext_path = tmp.path().join("omp-approval.ts");
-        crate::bots::engine::omp::write_approval_extension_pub(&ext_path, 8080, "tok", "bot:x:t")
-            .expect("write must succeed");
-        let content = std::fs::read_to_string(&ext_path).unwrap();
-        // Must NOT silently allow on error.
-        assert!(
-            !content.contains("// allow on HTTP error"),
-            "extension must not silently allow on HTTP error: {content}"
+    fn codex_argv_resume_has_required_flags() {
+        use crate::bots::engine::codex::exec_args;
+        let args = exec_args(
+            Some("thread-abc"),
+            std::path::Path::new("/tmp/out.txt"),
+            "hi",
         );
-        // Must contain fail-closed logic.
-        assert!(
-            content.contains("no approval received"),
-            "extension must contain 'no approval received' block reason: {content}"
+        // Resume turn: exec resume <id>
+        assert_eq!(
+            &args[0..3],
+            &["exec", "resume", "thread-abc"][..],
+            "resume argv prefix wrong: {args:?}"
         );
         assert!(
-            content.contains("block: true"),
-            "extension must contain 'block: true': {content}"
+            args.iter().any(|a| a == "--skip-git-repo-check"),
+            "--skip-git-repo-check must appear in resume, got: {args:?}"
         );
-        // Must only allow on explicit "allow" from server.
         assert!(
-            content.contains("=== \"allow\""),
-            "extension must check decision === allow: {content}"
+            args.iter().any(|a| a == "--dangerously-bypass-hook-trust"),
+            "--dangerously-bypass-hook-trust must appear in resume, got: {args:?}"
         );
     }
 

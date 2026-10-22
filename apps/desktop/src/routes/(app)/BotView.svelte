@@ -629,9 +629,9 @@
 					{#if bot.state === "working" && bot.running_task}
 						<span class="header-presence"
 							>working · {fmtElapsed(
-							bot.running_task
-								? now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at || now)
-								: 0,
+								bot.running_task
+									? now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at || now)
+									: 0,
 							)}</span
 						>
 					{:else if agentLabel}
@@ -1125,7 +1125,8 @@
 						class="profile-select"
 						bind:value={settingsApproval}
 						disabled={bot.approval_supported === false}
-						aria-label="Approval mode">
+						aria-label="Approval mode"
+					>
 						<option value="ask">Ask before acting</option>
 						<option value="auto">Automatic (no prompts)</option>
 					</select>

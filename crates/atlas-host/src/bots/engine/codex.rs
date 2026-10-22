@@ -36,6 +36,7 @@ pub(super) async fn run(
         .arg("--output-last-message")
         .arg(&result_file)
         .arg("--dangerously-bypass-hook-trust")
+        .arg("--skip-git-repo-check")
         .arg(prompt);
 
     cmd.current_dir(work_dir);

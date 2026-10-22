@@ -1,0 +1,26 @@
+{
+	"tasks": [
+		{
+			"id": "task-done",
+			"ts": 1761213000,
+			"source": "desktop",
+			"prompt": "review the PR",
+			"state": "done",
+			"result": "LGTM",
+			"started_at": 1761212900,
+			"finished_at": 1761213000
+		},
+		{
+			"id": "task-running",
+			"ts": 1761213100,
+			"source": "desktop",
+			"prompt": "write tests",
+			"state": "running",
+			"started_at": 1761213090,
+			"steps": [
+				{ "ts": 1761213092, "text": "Reading files" },
+				{ "ts": 1761213095, "text": "Writing tests" }
+			]
+		}
+	]
+}

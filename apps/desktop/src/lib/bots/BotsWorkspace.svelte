@@ -160,7 +160,9 @@
 					bind:value={query}
 					placeholder="Find a bot…"
 					aria-label="Search bots"
-					onblur={() => { if (!query) searchOpen = false; }}
+					onblur={() => {
+						if (!query) searchOpen = false;
+					}}
 				/>
 			{/if}
 			<button class="icon-btn-round" onclick={() => (searchOpen = !searchOpen)} aria-label="Search">
@@ -197,24 +199,24 @@
 							</div>
 						{/if}
 						{#each pg.bots as { hostKey, bot } (bot.id)}
-						<div animate:flip={{ duration: 200 }}>
-							{#if tileMode}
-								<BotTile
-									{bot}
-									active={isActive(hostKey, bot.id)}
-									unread={bots.hasUnread(hostKey, bot.id)}
-									onclick={() => selectBot(hostKey, bot.id)}
-								/>
-							{:else}
-								<BotListRow
-									{bot}
-									active={isActive(hostKey, bot.id)}
-									unread={bots.hasUnread(hostKey, bot.id)}
-									onclick={() => selectBot(hostKey, bot.id)}
-									onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
-								/>
-							{/if}
-						</div>
+							<div animate:flip={{ duration: 200 }}>
+								{#if tileMode}
+									<BotTile
+										{bot}
+										active={isActive(hostKey, bot.id)}
+										unread={bots.hasUnread(hostKey, bot.id)}
+										onclick={() => selectBot(hostKey, bot.id)}
+									/>
+								{:else}
+									<BotListRow
+										{bot}
+										active={isActive(hostKey, bot.id)}
+										unread={bots.hasUnread(hostKey, bot.id)}
+										onclick={() => selectBot(hostKey, bot.id)}
+										onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
+									/>
+								{/if}
+							</div>
 						{/each}
 					{/each}
 				{/each}

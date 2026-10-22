@@ -124,6 +124,12 @@ export interface Bot {
 	project?: BotProject;
 	/** Triggers configured for this bot. */
 	triggers?: Trigger[];
+	/**
+	 * Whether this bot's engine supports approval prompts.
+	 * Present only when `engine` is set. False for opencode; true for claude/codex/omp.
+	 * When false: approval must be "auto"; UI shows a hint and disables the selector.
+	 */
+	approval_supported?: boolean;
 }
 
 export interface BotTask {

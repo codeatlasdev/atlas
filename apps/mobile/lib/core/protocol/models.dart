@@ -420,6 +420,7 @@ class BotListEntry {
     required this.agent,
     required this.approval,
     required this.state,
+    this.approvalSupported = true,
     this.runningTask,
     this.queued = 0,
     this.last,
@@ -432,6 +433,7 @@ class BotListEntry {
   final String agent;
   final String approval; // ask | auto
   final String state;    // idle | working | needs_you
+  final bool approvalSupported;
   final BotRunningTask? runningTask;
   final int queued;
   final BotLast? last;
@@ -444,6 +446,7 @@ class BotListEntry {
     agent: j['agent'] as String? ?? '',
     approval: j['approval'] as String? ?? 'ask',
     state: j['state'] as String? ?? 'idle',
+    approvalSupported: j['approval_supported'] as bool? ?? true,
     runningTask: j['running_task'] == null
         ? null
         : BotRunningTask.fromJson((j['running_task'] as Map).cast()),

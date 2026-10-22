@@ -213,7 +213,7 @@ fn write_approval_extension(
     // are not propagated by the omp extension runtime.
     let content = format!(
         r#"// Atlas hostd approval extension — generated, do not edit.
-// Blocks omp tool_call events until the operator allows or denies via hostd.
+// FAIL-CLOSED: any error, timeout, non-2xx, or malformed reply blocks the tool call.
 
 export default function atlasApproval(pi) {{
     const PORT  = process.env.ATLAS_HOOK_PORT  || "{port}";
@@ -221,6 +221,7 @@ export default function atlasApproval(pi) {{
     const PANE  = process.env.ATLAS_PANE_KEY   || "{pane}";
 
     pi.on("tool_call", async (event) => {{
+        let decision = null;
         try {{
             const resp = await fetch(
                 `http://127.0.0.1:${{PORT}}/hook/omp/decision`,
@@ -237,13 +238,19 @@ export default function atlasApproval(pi) {{
                     signal: AbortSignal.timeout(1_800_000), // 30 min
                 }},
             );
-            if (!resp.ok) return; // allow on HTTP error
-            const data = await resp.json();
-            if (data.decision === "deny") {{
-                return {{ block: true, reason: "operator denied" }};
+            if (resp.ok) {{
+                const data = await resp.json();
+                // Only "allow" when we get an explicit allow decision.
+                if (data && data.decision === "allow") {{
+                    decision = "allow";
+                }}
             }}
         }} catch {{
-            // Network error or timeout — allow (don't block the agent indefinitely).
+            // Network error, timeout, malformed JSON — fall through to block.
+        }}
+        // Fail-closed: block unless we received an explicit "allow".
+        if (decision !== "allow") {{
+            return {{ block: true, reason: "no approval received" }};
         }}
     }});
 }}

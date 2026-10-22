@@ -1206,30 +1206,34 @@
 
 	/* ─── Ready art ──────────────────────────────────────────────── */
 	.ready-art {
-		width: min(480px, 90%);
+		width: min(320px, 88%);
 		background: var(--ca-surface-base);
 		border: 1.5px solid var(--ca-border-subtle);
 		border-radius: 12px;
 		padding: 6px;
 		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
-		animation: ready-spring 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		animation: ready-spring 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 	}
 
 	@keyframes ready-spring {
 		from {
 			opacity: 0;
-			transform: translateY(20px) scale(0.94);
+			transform: translateY(24px) scale(1.35);
 		}
 		to {
 			opacity: 1;
-			transform: none;
+			transform: scale(1.5);
 		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.ready-art {
 			animation: none;
+			transform: scale(1.5);
 		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
 		.cursor-block {
 			animation: none;
 		}

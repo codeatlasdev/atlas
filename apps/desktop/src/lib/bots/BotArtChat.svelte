@@ -7,6 +7,7 @@
 	import { onMount } from "svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
 	import { Check } from "@lucide/svelte";
+	import BotFace from "#lib/bots/BotFace.svelte";
 
 	const PERIOD = 8000;
 	let t = $state(reducedMotion ? 0.75 : 0.75);
@@ -46,68 +47,70 @@
 </script>
 
 <div class="art-chat" aria-hidden="true">
-	<div class="thread">
-		<!-- User message -->
-		{#if showUserMsg}
-			<div class="msg-row user-row">
-				<div class="bubble user-bubble">
-					Create a migration for<br />users.email_idx
-				</div>
-			</div>
-		{/if}
-
-		<!-- Bot row: avatar + content -->
-		{#if showTyping || showStep1}
-			<div class="msg-row bot-row">
-				<div class="avatar-col">
-					<div class="avatar-dot"></div>
-				</div>
-				<div class="bot-content">
-					<div class="author-line">
-						<span class="author-name">Reviewer</span>
-						<span class="author-time">11:24 PM</span>
+	<div class="chat-panel">
+		<div class="thread">
+			<!-- User message -->
+			{#if showUserMsg}
+				<div class="msg-row user-row">
+					<div class="bubble user-bubble">
+						Create a migration for<br />users.email_idx
 					</div>
-
-					<!-- Typing indicator -->
-					{#if showTyping}
-						<div class="typing-dots">
-							<span class="dot" class:active={dotPhase === 0}></span>
-							<span class="dot" class:active={dotPhase === 1}></span>
-							<span class="dot" class:active={dotPhase === 2}></span>
-						</div>
-					{/if}
-
-					<!-- Steps tick in -->
-					{#if showStep1}
-						<div class="step-row">
-							<span class="step-icon done"><Check size={10} /></span>
-							<span class="step-text">Reading schema…</span>
-						</div>
-					{/if}
-					{#if showStep2}
-						<div class="step-row">
-							<span class="step-icon done"><Check size={10} /></span>
-							<span class="step-text">Writing migration…</span>
-						</div>
-					{/if}
-					{#if showStep3}
-						<div class="step-row">
-							<span class="step-icon done"><Check size={10} /></span>
-							<span class="step-text">Done in 340 ms</span>
-						</div>
-					{/if}
-
-					<!-- Markdown reply -->
-					{#if showReply}
-						<div class="reply">
-							Migration created:<br />
-							<code>20241022_add_users_email_idx.sql</code><br /><br />
-							Ready to run <code>bun run db:migrate</code>
-						</div>
-					{/if}
 				</div>
-			</div>
-		{/if}
+			{/if}
+
+			<!-- Bot row: avatar + content -->
+			{#if showTyping || showStep1}
+				<div class="msg-row bot-row">
+					<div class="avatar-col">
+						<BotFace seed="art-reviewer" state="working" size={32} />
+					</div>
+					<div class="bot-content">
+						<div class="author-line">
+							<span class="author-name">Reviewer</span>
+							<span class="author-time">11:24 PM</span>
+						</div>
+
+						<!-- Typing indicator -->
+						{#if showTyping}
+							<div class="typing-dots">
+								<span class="dot" class:active={dotPhase === 0}></span>
+								<span class="dot" class:active={dotPhase === 1}></span>
+								<span class="dot" class:active={dotPhase === 2}></span>
+							</div>
+						{/if}
+
+						<!-- Steps tick in -->
+						{#if showStep1}
+							<div class="step-row">
+								<span class="step-icon done"><Check size={10} /></span>
+								<span class="step-text">Reading schema…</span>
+							</div>
+						{/if}
+						{#if showStep2}
+							<div class="step-row">
+								<span class="step-icon done"><Check size={10} /></span>
+								<span class="step-text">Writing migration…</span>
+							</div>
+						{/if}
+						{#if showStep3}
+							<div class="step-row">
+								<span class="step-icon done"><Check size={10} /></span>
+								<span class="step-text">Done in 340 ms</span>
+							</div>
+						{/if}
+
+						<!-- Markdown reply -->
+						{#if showReply}
+							<div class="reply">
+								Migration created:<br />
+								<code>20241022_add_users_email_idx.sql</code><br /><br />
+								Ready to run <code>bun run db:migrate</code>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 
@@ -123,7 +126,7 @@
 	}
 
 	.thread {
-		width: min(480px, 92%);
+		width: 100%;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -174,16 +177,8 @@
 
 	.avatar-col {
 		flex-shrink: 0;
-		width: 28px;
+		width: 34px;
 		padding-top: 2px;
-	}
-
-	.avatar-dot {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--ca-surface-sunken);
-		border: 1.5px solid var(--ca-border-subtle);
 	}
 
 	.bot-content {
@@ -280,5 +275,14 @@
 		.reply {
 			animation: none;
 		}
+	}
+
+	.chat-panel {
+		width: min(420px, 92%);
+		background: var(--ca-surface-base);
+		border: 1px solid var(--ca-border-subtle);
+		border-radius: 12px;
+		padding: 16px 14px;
+		zoom: 1.25;
 	}
 </style>

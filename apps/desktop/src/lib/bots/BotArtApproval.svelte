@@ -8,6 +8,7 @@
 	import { onMount } from "svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
 	import { Check, Bell } from "@lucide/svelte";
+	import BotFace from "#lib/bots/BotFace.svelte";
 
 	const PERIOD = 8000;
 	let t = $state(reducedMotion ? 0.55 : 0.76);
@@ -70,69 +71,71 @@
 </script>
 
 <div class="art-approval" aria-hidden="true">
-	<div class="thread">
-		<!-- User message -->
-		{#if showUserMsg}
-			<div class="msg-row user-row">
-				<div class="bubble user-bubble">Run the pending migrations</div>
-			</div>
-		{/if}
-
-		<!-- Bot row with approval or result -->
-		{#if showApproval || showAllowed || showTyping2 || showResult}
-			<div class="msg-row bot-row">
-				<div class="avatar-col">
-					<div class="avatar-dot"></div>
+	<div class="chat-panel">
+		<div class="thread">
+			<!-- User message -->
+			{#if showUserMsg}
+				<div class="msg-row user-row">
+					<div class="bubble user-bubble">Run the pending migrations</div>
 				</div>
-				<div class="bot-content">
-					<div class="author-line">
-						<span class="author-name">Reviewer</span>
-						<span class="author-time">11:24 PM</span>
+			{/if}
+
+			<!-- Bot row with approval or result -->
+			{#if showApproval || showAllowed || showTyping2 || showResult}
+				<div class="msg-row bot-row">
+					<div class="avatar-col">
+						<BotFace seed="art-reviewer" state="working" size={32} />
 					</div>
+					<div class="bot-content">
+						<div class="author-line">
+							<span class="author-name">Reviewer</span>
+							<span class="author-time">11:24 PM</span>
+						</div>
 
-					<!-- Approval card -->
-					{#if showApproval}
-						<div
-							class="approval-card"
-							style:transform="translateX({approvalX * 20}px)"
-							style:opacity={approvalOpacity}
-						>
-							<div class="approval-label">Wants to run</div>
-							<code class="approval-cmd">bun run db:migrate</code>
-							<div class="approval-btns">
-								<button class="btn-deny" tabindex="-1">Deny</button>
-								<button class="btn-allow" tabindex="-1" style:transform="scale({allowScale})">Allow</button>
+						<!-- Approval card -->
+						{#if showApproval}
+							<div
+								class="approval-card"
+								style:transform="translateX({approvalX * 20}px)"
+								style:opacity={approvalOpacity}
+							>
+								<div class="approval-label">Wants to run</div>
+								<code class="approval-cmd">bun run db:migrate</code>
+								<div class="approval-btns">
+									<button class="btn-deny" tabindex="-1">Deny</button>
+									<button class="btn-allow" tabindex="-1" style:transform="scale({allowScale})">Allow</button>
+								</div>
 							</div>
-						</div>
-					{/if}
+						{/if}
 
-					<!-- Allowed confirmation -->
-					{#if showAllowed}
-						<div class="allowed-row">
-							<span class="allowed-icon"><Check size={11} /></span>
-							<span class="allowed-text">Allowed by you · now</span>
-						</div>
-					{/if}
+						<!-- Allowed confirmation -->
+						{#if showAllowed}
+							<div class="allowed-row">
+								<span class="allowed-icon"><Check size={11} /></span>
+								<span class="allowed-text">Allowed by you · now</span>
+							</div>
+						{/if}
 
-					<!-- Typing dots -->
-					{#if showTyping2}
-						<div class="typing-dots">
-							<span class="dot" class:active={dotPhase === 0}></span>
-							<span class="dot" class:active={dotPhase === 1}></span>
-							<span class="dot" class:active={dotPhase === 2}></span>
-						</div>
-					{/if}
+						<!-- Typing dots -->
+						{#if showTyping2}
+							<div class="typing-dots">
+								<span class="dot" class:active={dotPhase === 0}></span>
+								<span class="dot" class:active={dotPhase === 1}></span>
+								<span class="dot" class:active={dotPhase === 2}></span>
+							</div>
+						{/if}
 
-					<!-- Result -->
-					{#if showResult}
-						<div class="reply">
-							Migration applied.<br />
-							<span class="perf">840 ms → 9 ms</span>
-						</div>
-					{/if}
+						<!-- Result -->
+						{#if showResult}
+							<div class="reply">
+								Migration applied.<br />
+								<span class="perf">840 ms → 9 ms</span>
+							</div>
+						{/if}
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 
 	<!-- Phone notification card (top-right corner) -->
@@ -162,7 +165,7 @@
 	}
 
 	.thread {
-		width: min(480px, 92%);
+		width: 100%;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
@@ -209,16 +212,8 @@
 
 	.avatar-col {
 		flex-shrink: 0;
-		width: 28px;
+		width: 34px;
 		padding-top: 2px;
-	}
-
-	.avatar-dot {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--ca-surface-sunken);
-		border: 1.5px solid var(--ca-border-subtle);
 	}
 
 	.bot-content {
@@ -407,5 +402,14 @@
 		.reply {
 			animation: none;
 		}
+	}
+
+	.chat-panel {
+		width: min(420px, 92%);
+		background: var(--ca-surface-base);
+		border: 1px solid var(--ca-border-subtle);
+		border-radius: 12px;
+		padding: 16px 14px;
+		zoom: 1.25;
 	}
 </style>

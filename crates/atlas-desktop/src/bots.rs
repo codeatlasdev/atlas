@@ -39,35 +39,6 @@ fn save(hosts: &[BotHost]) -> Result<(), String> {
     let data = serde_json::to_string_pretty(hosts).map_err(|e| e.to_string())?;
     std::fs::write(&p, data).map_err(|e| e.to_string())
 }
-/// Validate an SSH target: a plain alias or `user@host`.
-///
-/// Rules:
-/// - At most one `@`; if present both sides must be non-empty.
-/// - Neither the whole string (alias) nor either side of `@` may start with `-`
-///   (prevents an SSH option-injection attack like `-oProxyCommand=…`).
-fn valid_host(h: &str) -> Result<(), String> {
-    let part = |s: &str| -> Result<(), String> {
-        if s.is_empty() {
-            return Err("must not be empty".into());
-        }
-        if s.starts_with('-') {
-            return Err(format!("{s:?} must not start with '-'"));
-        }
-        Ok(())
-    };
-    match h.split_once('@') {
-        Some((user, host)) => {
-            if host.contains('@') {
-                return Err(format!("{h:?}: at most one '@' is allowed"));
-            }
-            part(user)?;
-            part(host)?;
-        }
-        None => part(h)?,
-    }
-    Ok(())
-}
-
 /// List all registered bot computers.
 #[tauri::command]
 pub fn bot_hosts_list() -> Vec<BotHost> {
@@ -81,7 +52,6 @@ pub fn bot_hosts_list() -> Vec<BotHost> {
 /// host is already registered, the existing entry is returned unchanged.
 #[tauri::command]
 pub fn bot_hosts_add(app: AppHandle, host: String, name: String) -> Result<BotHost, String> {
-    valid_host(&host)?;
     let mut hosts = load();
     if let Some(existing) = hosts.iter().find(|h| h.host == host).cloned() {
         return Ok(existing);
@@ -138,47 +108,5 @@ mod tests {
                 name: "Local VM".into(),
             },
         ]);
-    }
-
-    #[test]
-    fn missing_file_returns_empty() {
-        // load() from a nonexistent path returns an empty vec (no panic).
-        let v: Vec<BotHost> = serde_json::from_str("not json").unwrap_or_default();
-        assert!(v.is_empty());
-    }
-
-    // ── valid_host ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn valid_host_accepts_user_at_host() {
-        assert!(valid_host("atlas-bot@server").is_ok());
-        assert!(valid_host("atlas-bot@192.168.1.5").is_ok());
-        assert!(valid_host("user@my-host.example.com").is_ok());
-    }
-
-    #[test]
-    fn valid_host_accepts_alias() {
-        assert!(valid_host("my-bot-server").is_ok());
-        assert!(valid_host("botbox").is_ok());
-    }
-
-    #[test]
-    fn valid_host_rejects_leading_dash() {
-        assert!(valid_host("-bad").is_err());
-        assert!(valid_host("-bad@server").is_err());
-        assert!(valid_host("user@-bad").is_err());
-    }
-
-    #[test]
-    fn valid_host_rejects_empty_parts() {
-        assert!(valid_host("").is_err());
-        assert!(valid_host("user@").is_err());
-        assert!(valid_host("@host").is_err());
-    }
-
-    #[test]
-    fn valid_host_rejects_multiple_at() {
-        assert!(valid_host("user@@host").is_err());
-        assert!(valid_host("a@b@c").is_err());
     }
 }

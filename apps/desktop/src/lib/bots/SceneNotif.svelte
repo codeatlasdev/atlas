@@ -3,17 +3,16 @@
 	 * Slide 4: "It calls you when it needs you"
 	 *
 	 * 9-second loop:
-	 *   0–2 s   bot bounces (state=needs_you), phone slides up
-	 *   2–5 s   notification holds, Allow button pulses
-	 *   5–6 s   tap animation, button press
-	 *   6–8 s   bot cheers with sparkles
-	 *   8–9 s   fade-reset
+	 *   0–2.5 s   bot bounces (state=needs_you), phone slides up from below
+	 *   2.5–5 s   notification card visible, Allow button pulses
+	 *   5–6.5 s   tap ring fires on Allow pill
+	 *   6.5–8.5 s bot cheers with sparkles burst
+	 *   8.5–9 s   reset
 	 */
 	import { onMount } from "svelte";
 	import BotActor from "#lib/bots/BotActor.svelte";
 	import PhoneNotif from "#lib/bots/props/PhoneNotif.svelte";
 	import Sparkles from "#lib/bots/props/Sparkles.svelte";
-	import { reducedMotion } from "#lib/bots/motion.ts";
 
 	let paused = $state(false);
 
@@ -25,45 +24,83 @@
 </script>
 
 <div class="scene" class:paused>
-	<!-- Bot that bounces → cheers -->
-	<div class="bot-wrap" aria-hidden="true">
-		<!-- Bouncing phase (state=needs_you gives built-in hop) -->
-		<div class="phase bounce-phase">
-			<BotActor seed="notif-bot" state="needs_you" size={88} {paused} />
-		</div>
-		<!-- Cheer phase -->
-		<div class="phase cheer-phase">
-			<BotActor seed="notif-bot" state="idle" size={88} action="cheer" {paused} />
-		</div>
-	</div>
+	<!-- Ground line -->
+	<div class="ground" aria-hidden="true"></div>
 
-	<!-- Sparkles that appear during cheer phase -->
-	<div class="sparkles-wrap" aria-hidden="true">
-		<Sparkles size={120} />
-	</div>
-
-	<!-- Phone with notification -->
+	<!-- Phone with notification — left-centre of stage -->
 	<div class="phone-wrap" aria-hidden="true">
-		<PhoneNotif size={76} />
+		<PhoneNotif size={84} />
+	</div>
+
+	<!-- Bot and sparkles — right-centre, close to phone -->
+	<div class="bot-wrap" aria-hidden="true">
+		<!-- Bounce phase (0–65 %) -->
+		<div class="phase bounce-phase">
+			<BotActor seed="notif-bot" state="needs_you" size={96} {paused} />
+		</div>
+		<!-- Cheer phase (65–95 %) -->
+		<div class="phase cheer-phase">
+			<BotActor seed="notif-bot" state="idle" action="cheer" size={96} {paused} />
+		</div>
+	</div>
+
+	<!-- Sparkles burst around the bot during cheer phase -->
+	<div class="sparkles-wrap" aria-hidden="true">
+		<Sparkles size={100} />
 	</div>
 
 	<!-- "Allowed" confirm flash — appears after tap -->
-	<div class="confirm" aria-hidden="true">Allowed</div>
+	<div class="confirm" aria-hidden="true">Allowed ✓</div>
 </div>
 
 <style>
 	.scene {
 		position: relative;
 		width: 100%;
-		height: 260px;
+		height: 300px;
 		overflow: hidden;
 	}
 
-	/* ── bot ── */
-	.bot-wrap {
+	/* Ground line */
+	.ground {
 		position: absolute;
 		bottom: 28px;
-		left: 22%;
+		left: 5%;
+		right: 5%;
+		height: 1px;
+		background: color-mix(in oklab, currentColor 12%, transparent);
+	}
+
+	/* ── phone ── (positioned at ~35 % from left) */
+	.phone-wrap {
+		position: absolute;
+		bottom: 30px;
+		left: 32%;
+		color: var(--ca-text-secondary);
+		animation: phone-appear 9s ease-in-out infinite;
+	}
+	@keyframes phone-appear {
+		0% {
+			opacity: 0;
+			transform: translateY(44px);
+		}
+		20%,
+		93% {
+			opacity: 1;
+			transform: translateY(0);
+		}
+		97%,
+		100% {
+			opacity: 0;
+			transform: translateY(44px);
+		}
+	}
+
+	/* ── bot ── (positioned at ~58 % from left — close to phone) */
+	.bot-wrap {
+		position: absolute;
+		bottom: 30px;
+		left: 56%;
 	}
 	.phase {
 		position: absolute;
@@ -71,7 +108,7 @@
 		left: 0;
 	}
 	.bounce-phase {
-		position: relative; /* keeps layout flow for the wrapper */
+		position: relative; /* anchors wrapper height */
 		animation: bounce-show 9s ease-in-out infinite;
 	}
 	.cheer-phase {
@@ -79,79 +116,54 @@
 	}
 	@keyframes bounce-show {
 		0%,
-		62%,
-		100% {
+		63% {
 			opacity: 1;
 		}
-		66%,
-		95% {
+		67%,
+		100% {
 			opacity: 0;
 		}
 	}
 	@keyframes cheer-show {
 		0%,
-		62%,
-		98%,
-		100% {
-			opacity: 0;
-		}
-		67%,
-		94% {
-			opacity: 1;
-		}
-	}
-
-	/* ── sparkles ── */
-	.sparkles-wrap {
-		position: absolute;
-		bottom: 60px;
-		left: 8%;
-		color: var(--ca-accent, #4f8ef7);
-		animation: sparkles-show 9s ease-in-out infinite;
-	}
-	@keyframes sparkles-show {
-		0%,
-		63%,
+		65%,
 		97%,
 		100% {
 			opacity: 0;
 		}
-		68%,
+		69%,
 		93% {
 			opacity: 1;
 		}
 	}
 
-	/* ── phone ── */
-	.phone-wrap {
+	/* ── sparkles ── (overlap the bot from above) */
+	.sparkles-wrap {
 		position: absolute;
-		bottom: 20px;
-		right: 16%;
-		color: var(--ca-text-secondary, #64748b);
-		animation: phone-appear 9s ease-in-out infinite;
+		bottom: 60px;
+		left: 56%;
+		z-index: 1;
+		color: var(--ca-accent);
+		animation: sparkles-show 9s ease-in-out infinite;
 	}
-	@keyframes phone-appear {
-		0% {
-			opacity: 0;
-			transform: translateY(40px);
-		}
-		16%,
-		90% {
-			opacity: 1;
-			transform: translateY(0);
-		}
-		97%,
+	@keyframes sparkles-show {
+		0%,
+		66%,
+		96%,
 		100% {
 			opacity: 0;
-			transform: translateY(40px);
+		}
+		71%,
+		93% {
+			opacity: 1;
 		}
 	}
 
 	/* ── confirm flash ── */
 	.confirm {
 		position: absolute;
-		right: calc(16% + 14px);
-		bottom: 110px;
+		left: calc(32% + 8px);
+		bottom: 140px;
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--ca-semantic-success);

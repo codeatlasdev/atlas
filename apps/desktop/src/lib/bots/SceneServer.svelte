@@ -62,10 +62,10 @@
 			<Laptop size={60} open={reducedMotion ? true : macOpen} />
 		</div>
 		<!-- The bot that keeps going -->
-		<BotActor seed="server-bot" state="working" size={88} {paused} delay={200} />
+		<BotActor seed="server-bot" state="working" size={104} {paused} delay={200} />
 		<!-- Bot's own laptop -->
 		<div class="bot-laptop">
-			<Laptop size={64} open={true} />
+			<Laptop size={64} open={true} glow={true} />
 		</div>
 	</div>
 
@@ -75,13 +75,20 @@
 			<div class="star" style:left="{s.x}%" style:top="{s.y}%" style:--sd="{s.d}s"></div>
 		{/each}
 	</div>
+
+	<!-- Moon — visible during night phase -->
+	<div class="moon" aria-hidden="true">
+		<svg viewBox="0 0 40 40" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+			<path d="M20 6 a14 14 0 1 0 0 28 a10 10 0 1 1 0 -28z" fill="var(--ca-text-primary)" opacity="0.55" />
+		</svg>
+	</div>
 </div>
 
 <style>
 	.scene {
 		position: relative;
 		width: 100%;
-		height: 260px;
+		height: 300px;
 		overflow: hidden;
 		border-radius: 12px;
 	}
@@ -170,7 +177,28 @@
 		}
 		50%,
 		68% {
-			opacity: 0.8;
+			opacity: 1;
+		}
+	}
+
+	/* ── moon ── */
+	.moon {
+		position: absolute;
+		top: 6%;
+		right: 18%;
+		opacity: 0;
+		animation: moon-appear 9s ease-in-out infinite;
+	}
+	@keyframes moon-appear {
+		0%,
+		35%,
+		85%,
+		100% {
+			opacity: 0;
+		}
+		48%,
+		70% {
+			opacity: 1;
 		}
 	}
 
@@ -180,8 +208,8 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
-		height: 40px;
-		background: var(--ca-surface-overlay, rgba(0, 0, 0, 0.06));
+		height: 48px;
+		background: var(--ca-surface-sunken);
 		border-top: 1px solid var(--ca-outline-subtle, rgba(0, 0, 0, 0.1));
 	}
 
@@ -189,7 +217,7 @@
 	.rack-wrap {
 		position: absolute;
 		bottom: 36px;
-		left: 12%;
+		left: 8%;
 		color: var(--ca-text-secondary, #64748b);
 	}
 
@@ -197,7 +225,7 @@
 	.bot-wrap {
 		position: absolute;
 		bottom: 32px;
-		right: 8%;
+		right: 14%;
 		display: flex;
 		align-items: flex-end;
 		gap: 8px;
@@ -205,24 +233,24 @@
 
 	.mac-wrap {
 		color: var(--ca-text-secondary, #94a3b8);
-		/* The Mac slides slightly off-screen as it closes */
+		/* The Mac slides off as it closes — driven by JS macOpen + CSS animation */
 		animation: mac-fade 9s ease-in-out infinite;
 	}
 	@keyframes mac-fade {
 		0%,
 		38% {
 			opacity: 1;
-			transform: translateX(0);
+			transform: translateX(0) scale(1);
 		}
 		48%,
-		88%,
-		100% {
-			opacity: 0.4;
-			transform: translateX(-8px);
+		88% {
+			opacity: 0.25;
+			transform: translateX(-16px) scale(0.92);
 		}
-		92% {
+		92%,
+		100% {
 			opacity: 1;
-			transform: translateX(0);
+			transform: translateX(0) scale(1);
 		}
 	}
 
@@ -252,7 +280,8 @@
 			opacity: 0;
 		}
 		.star,
-		.mac-wrap {
+		.mac-wrap,
+		.moon {
 			animation: none;
 		}
 	}

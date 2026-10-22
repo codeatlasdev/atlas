@@ -384,7 +384,7 @@
 	.onboarding-overlay {
 		position: fixed;
 		inset: 0;
-		z-index: 200;
+		z-index: 1600;
 		background: var(--ca-surface-base);
 		display: flex;
 		align-items: center;

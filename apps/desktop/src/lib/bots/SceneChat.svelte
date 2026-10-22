@@ -1,14 +1,16 @@
 <script lang="ts">
 	/**
-	 * Slide 3: "You chat, it works"
+	 * Slide 3: "You chat, bots collaborate"
 	 *
-	 * 9-second loop:
-	 *   0–1.5 s  user bubble flies in from right
-	 *   1.5–3 s  reader-bot's eyes scan (state=working)
-	 *   3–5 s    bot types — SpeechBubble with dots appears
-	 *   5–6.5 s  bot laughs (shake action, happy eyes)
-	 *   6.5–8 s  package slides from left-bot to right-bot
-	 *   8–9 s    right-bot carries it away; reset
+	 * 9-second loop story (CSS keyframes only, no JS timing):
+	 *   0–1.5 s   user bubble (squiggles, no text) flies from user toward Bot A
+	 *   1.5–4 s   Bot A processes: SpeechBubble typing dots visible, state=working
+	 *   4–6 s     Bot A laughs (shake action, happy eyes); laugh bubble (arcs, no text)
+	 *   6–8.5 s   Package slides from Bot A to Bot B; Bot B switches to carry action
+	 *   8.5–9 s   reset / fade
+	 *
+	 * Key frame: at t≈6–7 s Bot A (idle), Package (in flight), and Bot B (carry) are
+	 * all simultaneously visible — the "handoff moment".
 	 */
 	import { onMount } from "svelte";
 	import BotActor from "#lib/bots/BotActor.svelte";
@@ -26,281 +28,391 @@
 </script>
 
 <div class="scene" class:paused>
-	<!-- User bubble — flies in from the right -->
-	<div class="user-bubble" aria-hidden="true">
-		<div class="bubble-body">Task: refactor auth module</div>
+	<!-- Ground line -->
+	<div class="ground" aria-hidden="true"></div>
+
+	<!-- User avatar: 48 px circle with a single squiggly line (~10 % from left) -->
+	<div class="user-avatar" aria-hidden="true">
+		<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<circle
+				cx="24"
+				cy="24"
+				r="22"
+				fill="var(--ca-surface-raised)"
+				stroke="var(--ca-outline-subtle)"
+				stroke-width="1.5"
+			/>
+			<!-- Squiggly line = user/person indicator, no bot face -->
+			<path
+				d="M11 27 Q15 20 19 27 Q23 34 27 27 Q31 20 37 27"
+				stroke="var(--ca-text-tertiary)"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				fill="none"
+			/>
+		</svg>
 	</div>
 
-	<!-- Left bot: reads → types → laughs -->
-	<div class="bot-left" aria-hidden="true">
-		<!-- Typing bubble — appears after reading phase -->
-		<div class="typing-bubble">
+	<!-- User chat bubble: 3 squiggly SVG paths, NO text — flies toward Bot A -->
+	<div class="user-bubble" aria-hidden="true">
+		<div class="bubble-pill">
+			<svg width="52" height="22" viewBox="0 0 52 22" fill="none" aria-hidden="true">
+				<path
+					d="M4 6 Q8 2 12 6 Q16 10 20 6 Q24 2 28 6"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					fill="none"
+				/>
+				<path
+					d="M4 12 Q8 8 12 12 Q16 16 20 12 Q24 8 28 12"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					fill="none"
+				/>
+				<path
+					d="M4 18 Q8 14 12 18 Q16 22 20 18"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					fill="none"
+				/>
+			</svg>
+		</div>
+	</div>
+
+	<!-- Bot A (~28 % from left): working → laughing → idle -->
+	<div class="bot-a" aria-hidden="true">
+		<!-- Typing dots bubble: 1.5–4 s -->
+		<div class="typing-bubble" aria-hidden="true">
 			<SpeechBubble typing={true} />
 		</div>
-		<!-- Laugh bubble — appears after typing phase -->
-		<div class="laugh-bubble">
+
+		<!-- Laugh bubble: 4–6 s — 3 curved arcs, NO words -->
+		<div class="laugh-bubble" aria-hidden="true">
 			<SpeechBubble>
-				{#snippet children()}ha ha{/snippet}
+				{#snippet children()}
+					<svg width="46" height="22" viewBox="0 0 46 22" fill="none" aria-hidden="true">
+						<path
+							d="M2 18 Q8 5 14 18"
+							stroke="var(--ca-text-primary)"
+							stroke-width="2"
+							stroke-linecap="round"
+							fill="none"
+						/>
+						<path
+							d="M16 18 Q22 5 28 18"
+							stroke="var(--ca-text-primary)"
+							stroke-width="2"
+							stroke-linecap="round"
+							fill="none"
+						/>
+						<path
+							d="M30 18 Q38 5 46 18"
+							stroke="var(--ca-text-primary)"
+							stroke-width="2"
+							stroke-linecap="round"
+							fill="none"
+						/>
+					</svg>
+				{/snippet}
 			</SpeechBubble>
 		</div>
 
-		<!-- The actor — switches action via CSS phase class on parent -->
-		<div class="actor-phase">
-			<!-- reading phase: state=working, idle action -->
-			<div class="phase reading">
-				<BotActor seed="chat-bot-a" state="working" size={84} {paused} />
-			</div>
-			<!-- typing phase: state=working, idle action (face bobs) -->
-			<div class="phase typing-phase">
-				<BotActor seed="chat-bot-a" state="working" size={84} {paused} />
-			</div>
-			<!-- laugh phase: state=idle, shake action, happy eyes -->
-			<div class="phase laughing">
-				<BotActor
-					seed="chat-bot-a"
-					state="idle"
-					size={84}
-					look={{ eyes: "happy", color: "#3d5bff", hat: "none" }}
-					action="shake"
-					{paused}
-				/>
-			</div>
+		<!-- Phase 1: working  0–4 s -->
+		<div class="bot-a-work phase">
+			<BotActor seed="chat-bot-a" state="working" size={100} {paused} />
+		</div>
+		<!-- Phase 2: laughing  4–6 s -->
+		<div class="bot-a-laugh phase">
+			<BotActor seed="chat-bot-a" state="idle" size={100} look={{ eyes: "happy" }} action="shake" {paused} />
+		</div>
+		<!-- Phase 3: idle after laugh  6–9 s -->
+		<div class="bot-a-idle phase">
+			<BotActor seed="chat-bot-a" state="idle" size={100} {paused} />
 		</div>
 	</div>
 
-	<!-- Package — slides from left-bot to right-bot -->
-	<div class="package-transit" aria-hidden="true">
-		<Package size={32} />
+	<!-- Package: slides from Bot A toward Bot B  6–8.5 s -->
+	<div class="pkg" aria-hidden="true">
+		<Package size={36} />
 	</div>
 
-	<!-- Right bot: carries the package away -->
-	<div class="bot-right" aria-hidden="true">
-		<div class="carry-package">
-			<Package size={28} />
+	<!-- Bot B (~63 % from left): idle → carry -->
+	<div class="bot-b" aria-hidden="true">
+		<!-- Phase 1: idle  0–6 s -->
+		<div class="bot-b-idle phase">
+			<BotActor seed="chat-bot-b" state="idle" size={100} flipX={true} {paused} />
 		</div>
-		<BotActor seed="chat-bot-b" state="idle" size={72} action="carry" flipX={true} {paused} delay={300} />
+		<!-- Phase 2: carry  6–8.5 s -->
+		<div class="bot-b-carry phase">
+			<BotActor seed="chat-bot-b" state="idle" size={100} flipX={true} action="carry" {paused} />
+		</div>
 	</div>
 </div>
 
 <style>
+	/* ── layout ── */
 	.scene {
 		position: relative;
 		width: 100%;
-		height: 260px;
+		height: 300px;
 		overflow: hidden;
 	}
 
-	/* ── user bubble ── */
+	.ground {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 44px;
+		background: var(--ca-surface-sunken);
+		border-top: 1px solid var(--ca-outline-subtle);
+	}
+
+	/* ── user avatar ── */
+	.user-avatar {
+		position: absolute;
+		bottom: 40px;
+		left: 8%;
+	}
+
+	/* ── user chat bubble ── */
+	/*
+	 * Starts above the user avatar, then slides right to Bot A.
+	 * Timing: 0–1.5 s = 0–16.7 % of the 9 s loop.
+	 */
 	.user-bubble {
 		position: absolute;
-		top: 28px;
-		right: 10%;
-		animation: user-msg 9s ease-in-out infinite;
+		bottom: 112px; /* 40 px character base + 48 px avatar + 24 px gap */
+		left: 8%;
+		animation: user-bubble-fly 9s ease-in-out infinite;
 	}
-	.bubble-body {
-		background: var(--ca-accent, #4f8ef7);
+	.bubble-pill {
+		background: var(--ca-accent);
 		color: var(--ca-surface-base);
-		font-size: 11px;
 		padding: 7px 12px;
 		border-radius: 14px 14px 4px 14px;
-		white-space: nowrap;
-		box-shadow: 0 2px 8px rgba(79, 142, 247, 0.35);
+		box-shadow: 0 2px 10px color-mix(in srgb, var(--ca-accent) 35%, transparent);
+		line-height: 0; /* collapse SVG whitespace */
 	}
-	@keyframes user-msg {
+	@keyframes user-bubble-fly {
 		0% {
 			opacity: 0;
-			transform: translateX(60px);
+			transform: translateX(0);
 		}
-		12%,
-		88% {
+		4% {
 			opacity: 1;
 			transform: translateX(0);
 		}
-		98%,
+		14% {
+			opacity: 1;
+			transform: translateX(160px);
+		}
+		18% {
+			opacity: 0;
+			transform: translateX(180px);
+		}
 		100% {
 			opacity: 0;
-			transform: translateX(60px);
+			transform: translateX(180px);
 		}
 	}
 
-	/* ── left bot container ── */
-	.bot-left {
+	/* ── Bot A container ── */
+	.bot-a {
 		position: absolute;
-		bottom: 28px;
-		left: 16%;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+		bottom: 40px;
+		left: 28%;
+		width: 100px;
+		height: 100px;
 	}
 
-	/* Typing bubble: visible from 33%–55% of 9s loop */
+	/* Typing bubble above Bot A: 1.5–4 s = 16.7–44.4 % */
 	.typing-bubble {
 		position: absolute;
-		bottom: calc(100% + 6px);
+		bottom: calc(100% + 8px);
 		left: 50%;
-		transform: translateX(-50%);
-		animation: bubble-appear 9s ease-in-out infinite;
+		animation: typing-bubble-anim 9s ease-in-out infinite;
+		white-space: nowrap;
 	}
-	.laugh-bubble {
-		position: absolute;
-		bottom: calc(100% + 6px);
-		left: 50%;
-		transform: translateX(-50%);
-		animation: laugh-appear 9s ease-in-out infinite;
-	}
-	@keyframes bubble-appear {
+	@keyframes typing-bubble-anim {
 		0%,
-		30%,
-		57%,
-		100% {
+		15% {
 			opacity: 0;
 			transform: translateX(-50%) scale(0.85);
 		}
-		36%,
-		52% {
+		20%,
+		42% {
 			opacity: 1;
 			transform: translateX(-50%) scale(1);
 		}
-	}
-	@keyframes laugh-appear {
-		0%,
-		54%,
-		73%,
+		46%,
 		100% {
 			opacity: 0;
 			transform: translateX(-50%) scale(0.85);
-		}
-		58%,
-		70% {
-			opacity: 1;
-			transform: translateX(-50%) scale(1);
 		}
 	}
 
-	/* Actor phases — each fades in/out in sequence */
-	.actor-phase {
-		position: relative;
+	/* Laugh bubble above Bot A: 4–6 s = 44.4–66.7 % */
+	.laugh-bubble {
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 50%;
+		animation: laugh-bubble-anim 9s ease-in-out infinite;
+		white-space: nowrap;
 	}
+	@keyframes laugh-bubble-anim {
+		0%,
+		43% {
+			opacity: 0;
+			transform: translateX(-50%) scale(0.85);
+		}
+		47%,
+		64% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1);
+		}
+		68%,
+		100% {
+			opacity: 0;
+			transform: translateX(-50%) scale(0.85);
+		}
+	}
+
+	/* All phase divs stack in place inside their bot container */
 	.phase {
 		position: absolute;
 		bottom: 0;
-		left: 50%;
-		transform: translateX(-50%);
-	}
-	/* First phase (reading) is the "default" — sits in flow */
-	.reading {
-		position: relative;
-		transform: none;
+		left: 0;
 	}
 
-	.reading {
-		animation: phase-read 9s ease-in-out infinite;
+	/* Bot A phase 1: working  0–4 s = 0–44.4 % */
+	.bot-a-work {
+		animation: bot-a-work-anim 9s ease-in-out infinite;
 	}
-	.typing-phase {
-		animation: phase-type 9s ease-in-out infinite;
-	}
-	.laughing {
-		animation: phase-laugh 9s ease-in-out infinite;
+	@keyframes bot-a-work-anim {
+		0%,
+		42% {
+			opacity: 1;
+		}
+		46%,
+		100% {
+			opacity: 0;
+		}
 	}
 
-	@keyframes phase-read {
+	/* Bot A phase 2: laughing  4–6 s = 44.4–66.7 % */
+	.bot-a-laugh {
+		animation: bot-a-laugh-anim 9s ease-in-out infinite;
+	}
+	@keyframes bot-a-laugh-anim {
 		0%,
-		16%,
-		31%,
-		100% {
+		43% {
+			opacity: 0;
+		}
+		47%,
+		64% {
 			opacity: 1;
 		}
-		33%,
-		72% {
-			opacity: 0;
-		}
-		/* Show again after laugh phase resets */
-	}
-	@keyframes phase-type {
-		0%,
-		30%,
-		58%,
+		68%,
 		100% {
 			opacity: 0;
 		}
-		34%,
-		55% {
-			opacity: 1;
-		}
 	}
-	@keyframes phase-laugh {
+
+	/* Bot A phase 3: idle  6–9 s = 66.7–100 % */
+	.bot-a-idle {
+		animation: bot-a-idle-anim 9s ease-in-out infinite;
+	}
+	@keyframes bot-a-idle-anim {
 		0%,
-		56%,
-		75%,
-		100% {
+		64% {
 			opacity: 0;
 		}
-		59%,
-		72% {
+		68%,
+		100% {
 			opacity: 1;
 		}
 	}
 
-	/* ── package transit ── */
-	.package-transit {
+	/* ── Package ── */
+	/*
+	 * Starts near Bot A's right (left: 33 %), slides ~220 px right toward Bot B.
+	 * Timing: 6–8.5 s = 66.7–94.4 %.
+	 */
+	.pkg {
 		position: absolute;
-		/* starts at left-bot's hands, ends near right-bot */
-		bottom: 60px;
-		left: 30%;
-		color: var(--ca-text-secondary, #64748b);
-		animation: pkg-fly 9s ease-in-out infinite;
+		bottom: 72px; /* roughly hand height above ground */
+		left: 33%;
+		color: var(--ca-text-secondary);
+		animation: pkg-slide 9s ease-in-out infinite;
 	}
-	@keyframes pkg-fly {
+	@keyframes pkg-slide {
 		0%,
-		70% {
+		65% {
 			opacity: 0;
-			transform: translateX(0) translateY(0);
+			transform: translateX(0);
 		}
-		74% {
-			opacity: 1;
-			transform: translateX(0) translateY(-10px);
-		}
-		84%,
-		90% {
-			opacity: 1;
-			transform: translateX(140px) translateY(-4px);
-		}
-		95%,
-		100% {
-			opacity: 0;
-			transform: translateX(150px) translateY(0);
-		}
-	}
-
-	/* ── right bot ── */
-	.bot-right {
-		position: absolute;
-		bottom: 28px;
-		right: 10%;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		animation: right-bot-appear 9s ease-in-out infinite;
-	}
-	@keyframes right-bot-appear {
-		0%,
-		82%,
-		100% {
-			opacity: 0;
-			transform: translateX(24px);
-		}
-		88%,
-		97% {
+		68% {
 			opacity: 1;
 			transform: translateX(0);
 		}
+		88%,
+		93% {
+			opacity: 1;
+			transform: translateX(220px);
+		}
+		96%,
+		100% {
+			opacity: 0;
+			transform: translateX(240px);
+		}
 	}
 
-	.carry-package {
+	/* ── Bot B container ── */
+	.bot-b {
 		position: absolute;
-		top: -8px;
-		right: -8px;
-		color: var(--ca-text-secondary, #64748b);
+		bottom: 40px;
+		left: 63%;
+		width: 100px;
+		height: 100px;
+	}
+
+	/* Bot B phase 1: idle  0–6 s = 0–66.7 % */
+	.bot-b-idle {
+		animation: bot-b-idle-anim 9s ease-in-out infinite;
+	}
+	@keyframes bot-b-idle-anim {
+		0%,
+		64% {
+			opacity: 1;
+		}
+		68%,
+		100% {
+			opacity: 0;
+		}
+	}
+
+	/* Bot B phase 2: carry  6–8.5 s = 66.7–94.4 % */
+	.bot-b-carry {
+		animation: bot-b-carry-anim 9s ease-in-out infinite;
+	}
+	@keyframes bot-b-carry-anim {
+		0%,
+		64% {
+			opacity: 0;
+		}
+		68%,
+		93% {
+			opacity: 1;
+		}
+		96%,
+		100% {
+			opacity: 0;
+		}
 	}
 
 	/* ── pause ── */
@@ -308,8 +420,11 @@
 		animation-play-state: paused !important;
 	}
 
+	/*
+	 * Reduced-motion steady state:
+	 * Both bots visible, typing bubble showing, package hidden.
+	 */
 	@media (prefers-reduced-motion: reduce) {
-		/* Show the steady-state: reading bot visible, bubble visible */
 		.user-bubble {
 			animation: none;
 			opacity: 1;
@@ -324,26 +439,29 @@
 			animation: none;
 			opacity: 0;
 		}
-		.reading {
+		.bot-a-work {
 			animation: none;
 			opacity: 1;
 		}
-		.typing-phase {
+		.bot-a-laugh {
 			animation: none;
 			opacity: 0;
 		}
-		.laughing {
+		.bot-a-idle {
 			animation: none;
 			opacity: 0;
 		}
-		.package-transit {
+		.pkg {
 			animation: none;
 			opacity: 0;
 		}
-		.bot-right {
+		.bot-b-idle {
 			animation: none;
 			opacity: 1;
-			transform: translateX(0);
+		}
+		.bot-b-carry {
+			animation: none;
+			opacity: 0;
 		}
 	}
 </style>

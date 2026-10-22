@@ -968,7 +968,15 @@ async fn a_dependency_opened_after_the_project_file_uses_the_project_server_even
                 .await
         }
     );
-    assert_eq!((a.status, b.status), ("ready", "ready"));
+    // Failed once in the PR #106 gate as ("ready", "crashed") and never again in 120 stressed
+    // runs: keep the reasons in the message so the next failure names its cause.
+    assert_eq!(
+        (a.status, b.status),
+        ("ready", "ready"),
+        "reasons: a={:?} b={:?}",
+        a.reason,
+        b.reason
+    );
     tokio::time::sleep(Duration::from_millis(900)).await;
     let st = r.m.status();
     assert_eq!(st.len(), 1, "one TS server: {st:#?}");

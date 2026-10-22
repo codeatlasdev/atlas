@@ -469,9 +469,19 @@ mod tests {
             "received fd must be close-on-exec"
         );
         // A child started while we hold the received lock, like a pty shell after a takeover.
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
+        // Wait until it has exec'd: before `exec` a forked child still holds every fd (close-on-exec
+        // closes them AT exec), so checking earlier failed ~1 in 150 runs under load (PR #106 gate).
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "echo started; exec sleep 30"])
+            .stdout(std::process::Stdio::piped())
             .spawn()
+            .unwrap();
+        let mut started = [0u8; 1];
+        child
+            .stdout
+            .as_mut()
+            .unwrap()
+            .read_exact(&mut started)
             .unwrap();
         drop(fds);
         let again = std::fs::File::open(&path).unwrap();

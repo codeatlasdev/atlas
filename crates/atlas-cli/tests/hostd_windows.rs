@@ -79,7 +79,7 @@ async fn ptys_exec_fs_auth_and_cold_restore_over_the_named_pipe() {
     let caps = c.call("info", json!({})).await.unwrap()["caps"].clone();
     assert_eq!(
         caps,
-        json!(["pty_attach_raw", "lsp", "agents"]),
+        json!(["pty_attach_raw", "lsp", "agents", "bots"]),
         "no live upgrade on Windows"
     );
 

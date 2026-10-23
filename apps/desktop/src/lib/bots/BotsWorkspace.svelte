@@ -183,7 +183,7 @@
 		try {
 			const hostKey = bots.hosts[0]?.key ?? "";
 			const id = await bots.createBot(hostKey, {
-				name: pending ? `${pending.name} Bot` : "New Bot",
+				name: pending ? `${pending.name} Crewmate` : "New Crewmate",
 				role: "",
 				agent: "",
 				approval: "auto",
@@ -337,7 +337,7 @@
 				</div>
 			{:else if nonFavBots.length === 0 && query.trim()}
 				<div class="empty-state">
-					<p class="empty-sub">No bots match "{query}"</p>
+					<p class="empty-sub">No crewmates match "{query}"</p>
 				</div>
 			{:else}
 				{#each sections.filter( (s) => nonFavBots.some((nb) => nb.hostKey === s.hostKey) ) as section (section.hostKey)}

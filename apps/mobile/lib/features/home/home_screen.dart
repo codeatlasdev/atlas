@@ -573,7 +573,7 @@ class _Header extends StatelessWidget {
         if (isBotServer) ...[
           const SizedBox(width: 4),
           Text(
-            '· bot server',
+            '· ship',
             style: TextStyle(
               color: c.muted,
               fontSize: 13,

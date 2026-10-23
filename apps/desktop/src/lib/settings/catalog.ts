@@ -707,10 +707,10 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 	),
 	entry(
 		"bots",
-		"Bot servers",
+		"Ships",
 		"bots-add",
-		"Add server",
-		"Connect a bot computer running `atlas bot install`.",
-		"ssh bot server agent",
+		"Add ship",
+		"Connect a ship running `atlas bot install`.",
+		"ssh ship crew agent",
 	),
 ];

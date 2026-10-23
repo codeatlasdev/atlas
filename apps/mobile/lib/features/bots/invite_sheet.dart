@@ -136,7 +136,7 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
 
               // ── title ────────────────────────────────────────────────────
               Text(
-                'New bot server',
+                'New ship',
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
@@ -145,7 +145,7 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
               // ── body ─────────────────────────────────────────────────────
               Text(
                 '${widget.invite.name} was added on your Mac. '
-                'Add it to your phone? Its bots will work even with your Mac off.',
+                'Add it to your phone? Its crew will work even with your Mac off.',
                 style: TextStyle(color: c.muted, height: 1.5),
                 textAlign: TextAlign.center,
               ),

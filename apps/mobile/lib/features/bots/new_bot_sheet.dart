@@ -95,7 +95,7 @@ class _NewBotSheetState extends ConsumerState<NewBotSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'New bot',
+            'Recruit a crewmate',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 20),

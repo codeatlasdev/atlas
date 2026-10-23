@@ -13,7 +13,7 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Plus, Search, Settings, CircleHelp, Compass, TriangleAlert, Zap } from "@lucide/svelte";
+	import { Plus, Search, Settings, CircleHelp, Compass, BellRing, Telescope } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 	import BotOnboarding from "#lib/bots/BotOnboarding.svelte";
@@ -320,7 +320,7 @@
 				<span>Logbook</span>
 			</button>
 			<button class="nav-row" class:active={selectedNav === "triggers"} onclick={() => navClick("triggers")}>
-				<Zap size={15} aria-hidden="true" />
+				<Telescope size={15} aria-hidden="true" />
 				<span>Watches</span>
 			</button>
 			<button
@@ -328,7 +328,7 @@
 				class:active={selectedNav === "needs_you"}
 				onclick={() => navClick("needs_you")}
 			>
-				<TriangleAlert size={15} aria-hidden="true" />
+				<BellRing size={15} aria-hidden="true" />
 				<span>Captain's call</span>
 				{#if needsYouCount > 0}
 					<span class="nav-pill" aria-label="{needsYouCount} bots need attention">{needsYouCount}</span>

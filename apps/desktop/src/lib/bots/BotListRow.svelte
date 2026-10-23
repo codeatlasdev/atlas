@@ -7,7 +7,6 @@
 	import { rowIn } from "#lib/bots/motion.ts";
 	import { crossfade } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
-	import { agentLogo } from "#lib/agentLogos.ts";
 	import { Check, CircleX, Ellipsis, TriangleAlert } from "@lucide/svelte";
 
 	let {
@@ -35,7 +34,6 @@
 	const tag = $derived(roleTag(bot.role));
 	const icon = $derived(previewIcon(bot.last, bot.state));
 	const isWorking = $derived(bot.state === "working");
-	const logo = $derived(agentLogo(bot.agent));
 	const botColor = $derived(normalizeLook(bot.look, bot.id).color);
 
 	const [send, receive] = crossfade({
@@ -83,11 +81,6 @@
 			{:else}
 				<div in:receive={{ key: bot.id }} out:send={{ key: bot.id }}>
 					<BotFace seed={bot.id} look={bot.look} state={faceState} size={32} />
-					{#if logo}
-						<span class="engine-badge" aria-label="{bot.agent} engine">
-							{@html logo.dark ?? logo.light}
-						</span>
-					{/if}
 				</div>
 			{/if}
 			<span
@@ -218,25 +211,6 @@
 		width: 32px;
 		height: 32px;
 	}
-	.engine-badge {
-		position: absolute;
-		top: -2px;
-		right: -2px;
-		width: 12px;
-		height: 12px;
-		border-radius: 3px;
-		overflow: hidden;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--ca-surface-sunken);
-		border: 1.5px solid var(--ca-surface-sunken);
-		pointer-events: none;
-	}
-	.engine-badge :global(svg) {
-		width: 10px;
-		height: 10px;
-	}
 
 	/* Presence dot: bottom-right of avatar, ring cut in sidebar color */
 	.presence {
@@ -335,7 +309,7 @@
 		padding: 1px 5px;
 		white-space: nowrap;
 		flex: none;
-		max-width: 70px;
+		max-width: 120px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}

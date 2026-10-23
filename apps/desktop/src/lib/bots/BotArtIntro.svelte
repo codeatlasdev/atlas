@@ -1,10 +1,9 @@
 <!--
-  BotArtIntro — step 1 illustration.
-  A pirate tall ship (three masts, square sails, crow's nest, stern castle) at dusk.
-  4–5 BotFace crew clearly visible above the hull rail.
-  Three z-layers: bg SVG (sky/sails/rigging) / crew HTML / fg SVG (hull + near waves).
-  10 s scripted intro then calm idle loop.  Reduced-motion → still frame.
-  Pauses on document.hidden.
+  BotArtIntro — step 1 onboarding illustration.
+  Pirate tall ship: 3 masts, square sails, crow's nest, stern castle.
+  5 BotFace crew clearly above the hull rail.
+  Z-stack: bg SVG (z=1) sky/rigging/sails → crew HTML (z=2) → fg SVG (z=3) hull+waves.
+  10 s scripted intro then calm idle.  Reduced-motion → still frame.
 -->
 <script lang="ts">
 	import { onMount } from "svelte";
@@ -13,37 +12,35 @@
 	import { reducedMotion } from "#lib/bots/motion.ts";
 
 	// ─── Wave geometry ──────────────────────────────────────────────────────────
-	// Period 160 px × 16 half-periods = 1280 px (2 × viewBox).
+	// 16 half-periods × 80 px = 1280 px (2 × viewBox width).
 	// CSS animation shifts −640 px → seamless tile.
 
 	function waveD(y: number, amp: number): string {
-		const pts: string[] = [`M 0 ${y}`];
+		const pts = [`M 0 ${y}`];
 		for (let i = 0; i < 16; i++) {
 			const x0 = i * 80;
-			const cy = i % 2 === 0 ? y - amp : y + amp;
-			pts.push(`Q ${x0 + 40} ${cy} ${x0 + 80} ${y}`);
+			pts.push(`Q ${x0 + 40} ${i % 2 === 0 ? y - amp : y + amp} ${x0 + 80} ${y}`);
 		}
 		pts.push(`L 1280 440 L 0 440 Z`);
 		return pts.join(" ");
 	}
 
-	function waveTop(y: number, amp: number): string {
-		const pts: string[] = [`M 0 ${y}`];
+	function waveLine(y: number, amp: number): string {
+		const pts = [`M 0 ${y}`];
 		for (let i = 0; i < 16; i++) {
 			const x0 = i * 80;
-			const cy = i % 2 === 0 ? y - amp : y + amp;
-			pts.push(`Q ${x0 + 40} ${cy} ${x0 + 80} ${y}`);
+			pts.push(`Q ${x0 + 40} ${i % 2 === 0 ? y - amp : y + amp} ${x0 + 80} ${y}`);
 		}
 		return pts.join(" ");
 	}
 
-	// Waves all below the hull waterline (y ≥ 295)
-	const W4 = waveD(296, 4); // horizon shimmer
-	const W3 = waveD(312, 8);
-	const W2 = waveD(330, 12);
-	const W1 = waveD(350, 17);
-	const W1top = waveTop(350, 17);
-	const W2top = waveTop(330, 12);
+	// All waves below hull waterline (y ≥ 300)
+	const W4 = waveD(300, 4);
+	const W3 = waveD(316, 8);
+	const W2 = waveD(336, 12);
+	const W1 = waveD(356, 17);
+	const W1L = waveLine(356, 17);
+	const W2L = waveLine(336, 12);
 
 	// ─── Animation state ────────────────────────────────────────────────────────
 
@@ -70,14 +67,16 @@
 
 	// ─── Ship dynamics ──────────────────────────────────────────────────────────
 
-	// Deck bob centre (x=308, y=280) — slightly offset freqs for overlapping action
+	// Deck centre (308, 282) — two offset frequencies → overlapping action
 	const shipY = $derived(Math.sin(ph) * 7);
 	const shipRot = $derived(Math.cos(ph * 1.07) * 2.2);
 
-	// Crow's nest amplifies the mast-top sway (follow-through)
+	// Crow's nest sways more than deck (mast top amplification)
 	const nestSway = $derived(Math.sin(ph * 1.07) * 5);
 
-	// ─── Sail billow (0 = flat, 1 = full) ──────────────────────────────────────
+	// ─── Sail billow (0 = flat baseline, 1 = full wind) ─────────────────────────
+	// Sails always have a 10–14 px baseline bow-forward curve so they read as
+	// rounded cloth even before the intro beat runs.
 
 	const sailBillow = $derived(
 		t < 1
@@ -85,32 +84,20 @@
 			: 0.88 + Math.sin(ph * 0.58) * 0.07 + Math.sin(ph * 1.31) * 0.03,
 	);
 
-	// Per-sail derived control points (billow pushes leading / starboard edge forward)
-	// Main lower sail: yard y=122, x 256→360; foot y=282
-	const mlR = $derived(sailBillow * 30); // right edge bow-forward
-	const mlL = $derived(sailBillow * 6); // left edge slight concave
-
-	// Main topsail: yard y=78, x 272→344; foot y=122
+	// Per-sail additional billow on top of the permanent baseline
+	const mlR = $derived(sailBillow * 30); // main lower, right (forward) edge extra
+	const mlL = $derived(sailBillow * 6); // left (aft) edge extra concave
 	const mtR = $derived(sailBillow * 16);
 	const mtL = $derived(sailBillow * 3);
-
-	// Fore sail: yard y=136, x 363→467; foot y=283
 	const fsR = $derived(sailBillow * 26);
 	const fsL = $derived(sailBillow * 5);
-
-	// Mizzen sail: yard y=116, x 168→262; foot y=282
 	const mzR = $derived(sailBillow * 20);
 	const mzL = $derived(sailBillow * 4);
-
-	// Jib (triangular): fore-mast top → bowsprit tip → fore-mast foot
 	const jibCtrl = $derived(sailBillow * 24);
-
-	// ─── Pennant ────────────────────────────────────────────────────────────────
-
-	const pennantAngle = $derived(-16 + Math.sin(ph * 2.9) * 10 + Math.sin(ph * 5.3) * 3.5);
 
 	// ─── FX ─────────────────────────────────────────────────────────────────────
 
+	const pennantAngle = $derived(-16 + Math.sin(ph * 2.9) * 10 + Math.sin(ph * 5.3) * 3.5);
 	const routeW = $derived(t < 1 ? seg(t, 0.42, 0.8) * 175 : 175);
 	const compassOp = $derived(t < 1 ? seg(t, 0.65, 0.92) * 0.28 : 0.28);
 	const moonOp = $derived(t < 1 ? seg(t, 0, 0.22) : 1);
@@ -137,11 +124,10 @@
 		baseY: number,
 	): { x: number; y: number; vis: boolean } {
 		let p = -1;
-		if (t < 1) {
-			p = seg(t, iS, iE);
-		} else {
-			const cycle = ((ph * 0.19 + off) % (Math.PI * 2)) / (Math.PI * 2);
-			p = cycle < 0.38 ? cycle / 0.38 : -1;
+		if (t < 1) p = seg(t, iS, iE);
+		else {
+			const c = ((ph * 0.19 + off) % (Math.PI * 2)) / (Math.PI * 2);
+			p = c < 0.38 ? c / 0.38 : -1;
 		}
 		if (p < 0 || p > 1) return { x: -60, y: baseY, vis: false };
 		return { x: 700 - p * 770, y: baseY + Math.sin(p * Math.PI * 2.2) * 14, vis: true };
@@ -150,7 +136,7 @@
 	const gull1 = $derived(gullPos(0.48, 0.68, 0, 80));
 	const gull2 = $derived(gullPos(0.52, 0.72, 2.1, 65));
 
-	// Crew individual follow-through
+	// Crew follow-through
 	const crew0extra = $derived(-Math.abs(Math.sin(ph * 0.94 + 0.35)) * 6);
 	const crew1State = $derived(
 		!reducedMotion && t > 0.18 && t < 0.6 ? ("needs_you" as const) : ("idle" as const),
@@ -160,22 +146,21 @@
 
 	onMount(() => {
 		if (reducedMotion) return;
-		const introStart = performance.now();
-		let lastNow = introStart;
+		const t0 = performance.now();
+		let last = t0;
 		let raf: number;
 		const tick = (now: number) => {
 			if (!paused) {
-				const dt = (now - lastNow) / 1000;
-				ph += dt * Math.PI * 0.44;
-				t = Math.min(1, (now - introStart) / INTRO_MS);
+				ph += ((now - last) / 1000) * Math.PI * 0.44;
+				t = Math.min(1, (now - t0) / INTRO_MS);
 			}
-			lastNow = now;
+			last = now;
 			raf = requestAnimationFrame(tick);
 		};
 		raf = requestAnimationFrame(tick);
 		const onVis = () => {
 			paused = document.hidden;
-			if (!paused) lastNow = performance.now();
+			if (!paused) last = performance.now();
 		};
 		document.addEventListener("visibilitychange", onVis);
 		return () => {
@@ -187,93 +172,92 @@
 
 <div class="ship-scene" aria-hidden="true">
 	<div class="stage">
-		<!-- ═══ LAYER 1 — background SVG: sky · water · rigging · sails ═══ -->
+		<!-- ═══ LAYER 1 — bg SVG (z=1): sky · water · rigging · sails ═══════════ -->
 		<svg class="layer-svg" viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg" style:z-index="1">
 			<defs>
 				<linearGradient id="bai-sky" x1="0" y1="0" x2="0" y2="1">
 					<stop offset="0%" stop-color="#08102a" />
-					<stop offset="40%" stop-color="#121e50" />
-					<stop offset="75%" stop-color="#1a3272" />
+					<stop offset="40%" stop-color="#111e50" />
+					<stop offset="78%" stop-color="#1a3272" />
 					<stop offset="100%" stop-color="#1f3a7a" />
 				</linearGradient>
-				<radialGradient id="bai-horizon" cx="50%" cy="100%" r="68%">
-					<stop offset="0%" stop-color="#d06218" stop-opacity="0.42" />
-					<stop offset="55%" stop-color="#d06218" stop-opacity="0.10" />
-					<stop offset="100%" stop-color="#d06218" stop-opacity="0" />
+				<radialGradient id="bai-glow" cx="50%" cy="100%" r="68%">
+					<stop offset="0%" stop-color="#cc5f18" stop-opacity="0.44" />
+					<stop offset="55%" stop-color="#cc5f18" stop-opacity="0.10" />
+					<stop offset="100%" stop-color="#cc5f18" stop-opacity="0" />
 				</radialGradient>
-				<radialGradient id="bai-moon-h" cx="50%" cy="50%" r="50%">
+				<radialGradient id="bai-moonh" cx="50%" cy="50%" r="50%">
 					<stop offset="0%" stop-color="#fff8e4" stop-opacity="0.28" />
-					<stop offset="55%" stop-color="#ffc860" stop-opacity="0.10" />
-					<stop offset="100%" stop-color="#ffc860" stop-opacity="0" />
+					<stop offset="55%" stop-color="#ffcc60" stop-opacity="0.10" />
+					<stop offset="100%" stop-color="#ffcc60" stop-opacity="0" />
 				</radialGradient>
 				<linearGradient id="bai-water" x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stop-color="#0b1e42" />
-					<stop offset="100%" stop-color="#060e20" />
+					<stop offset="0%" stop-color="#0a1e42" />
+					<stop offset="100%" stop-color="#050e1e" />
 				</linearGradient>
-				<!-- Sail: horizontal gradient, brighter centre = light catching billow -->
+				<!-- Sail: centre-bright horizontal → suggests rounded billowed cloth -->
 				<linearGradient id="bai-sail" x1="0" y1="0" x2="1" y2="0">
-					<stop offset="0%" stop-color="#b6c8e8" />
-					<stop offset="40%" stop-color="#ddeafc" />
-					<stop offset="100%" stop-color="#c8d8f0" />
+					<stop offset="0%" stop-color="#b4c6e6" />
+					<stop offset="38%" stop-color="#ddeafe" />
+					<stop offset="100%" stop-color="#c6d6ee" />
 				</linearGradient>
 				<linearGradient id="bai-tsail" x1="0" y1="0" x2="1" y2="0">
-					<stop offset="0%" stop-color="#b0c2e0" />
-					<stop offset="50%" stop-color="#d4e4f8" />
-					<stop offset="100%" stop-color="#c2d2ec" />
+					<stop offset="0%" stop-color="#aebdda" />
+					<stop offset="50%" stop-color="#d2e2f6" />
+					<stop offset="100%" stop-color="#bfcfe8" />
 				</linearGradient>
 				<linearGradient id="bai-refl" x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stop-color="#ffc860" stop-opacity="0.22" />
-					<stop offset="100%" stop-color="#ffc860" stop-opacity="0" />
+					<stop offset="0%" stop-color="#ffcc60" stop-opacity="0.22" />
+					<stop offset="100%" stop-color="#ffcc60" stop-opacity="0" />
 				</linearGradient>
-				<!-- Lantern glow -->
 				<radialGradient id="bai-lantern" cx="50%" cy="50%" r="50%">
 					<stop offset="0%" stop-color="#ffb030" stop-opacity="0.85" />
 					<stop offset="60%" stop-color="#ff8820" stop-opacity="0.30" />
 					<stop offset="100%" stop-color="#ff6600" stop-opacity="0" />
 				</radialGradient>
 				<clipPath id="bai-route-clip">
-					<rect x="492" y="228" width={routeW} height="52" />
+					<rect x="496" y="228" width={routeW} height="52" />
 				</clipPath>
 			</defs>
 
-			<!-- ─── Sky ──────────────────────────────────────────────────── -->
+			<!-- Sky + horizon glow -->
 			<rect width="640" height="440" fill="url(#bai-sky)" />
-			<rect width="640" height="440" fill="url(#bai-horizon)" />
+			<rect width="640" height="440" fill="url(#bai-glow)" />
 
-			<!-- ─── Stars ────────────────────────────────────────────────── -->
+			<!-- Stars -->
 			{#each STARS as s}
 				<circle cx={s.x} cy={s.y} r={s.r} fill="white" opacity={reducedMotion ? 0.65 : starOp(s.p)} />
 			{/each}
 
-			<!-- ─── Moon ──────────────────────────────────────────────────── -->
+			<!-- Moon -->
 			<g transform="translate(538, 78)" opacity={moonOp}>
-				<circle r="58" fill="url(#bai-moon-h)" />
+				<circle r="58" fill="url(#bai-moonh)" />
 				<circle r="22" fill="#fff5da" />
 				<circle cx="6" cy="-5" r="5" fill="rgba(196,172,108,0.18)" />
 				<circle cx="-8" cy="7" r="3.5" fill="rgba(196,172,108,0.13)" />
 			</g>
 
-			<!-- ─── Water base ────────────────────────────────────────────── -->
-			<rect x="0" y="288" width="640" height="152" fill="url(#bai-water)" />
-			<rect x="518" y="288" width="42" height="152" fill="url(#bai-refl)" opacity={moonOp} />
+			<!-- Water base + moon reflection -->
+			<rect x="0" y="290" width="640" height="150" fill="url(#bai-water)" />
+			<rect x="518" y="290" width="42" height="150" fill="url(#bai-refl)" opacity={moonOp} />
 
-			<!-- ─── Far waves (behind ship) ───────────────────────────────── -->
-			<path d={W4} fill="#0d2348" class="wave4" class:paused={reducedMotion} />
-			<path d={W3} fill="#112b56" class="wave3" class:paused={reducedMotion} />
+			<!-- Far waves (behind ship) -->
+			<path d={W4} fill="#0d2248" class="wave4" class:paused={reducedMotion} />
+			<path d={W3} fill="#112a56" class="wave3" class:paused={reducedMotion} />
 
-			<!-- ─── Wake trail ─────────────────────────────────────────────── -->
+			<!-- Wake trail -->
 			<g transform="translate(0,{shipY})">
 				<path
-					d="M 148 300 Q 90 308 38 296 Q 14 292 4 288"
-					stroke="rgba(255,255,255,0.14)"
+					d="M 148 306 Q 90 314 36 302 Q 12 298 2 294"
+					stroke="rgba(255,255,255,0.13)"
 					stroke-width="3.5"
 					stroke-linecap="round"
 					fill="none"
 					stroke-dasharray="1 7"
 				/>
 				<path
-					d="M 148 310 Q 82 322 30 312 Q 10 308 2 302"
-					stroke="rgba(255,255,255,0.08)"
+					d="M 148 316 Q 80 328 28 318 Q 8 314 1 308"
+					stroke="rgba(255,255,255,0.07)"
 					stroke-width="2.5"
 					stroke-linecap="round"
 					fill="none"
@@ -281,9 +265,9 @@
 				/>
 			</g>
 
-			<!-- ─── Route line ahead of bow ───────────────────────────────── -->
+			<!-- Route line -->
 			<path
-				d="M 496 268 Q 548 256 590 248 Q 620 242 636 238"
+				d="M 496 274 Q 548 262 590 254 Q 620 248 636 244"
 				stroke="rgba(255,255,255,0.42)"
 				stroke-width="1.5"
 				fill="none"
@@ -291,215 +275,212 @@
 				clip-path="url(#bai-route-clip)"
 			/>
 			{#if routeW > 2}
-				<circle cx="496" cy="268" r="3" fill="rgba(255,255,255,0.36)" />
+				<circle cx="496" cy="274" r="3" fill="rgba(255,255,255,0.36)" />
 			{/if}
 
-			<!-- ═══ SHIP GROUP (bobs with hull) ═══════════════════════════════ -->
-			<g transform="translate(0,{shipY}) rotate({shipRot},308,280)">
-				<!-- ─── Bowsprit (forward spar, angled up-right) ──────────── -->
-				<line x1="490" y1="285" x2="540" y2="256" stroke="#1a2848" stroke-width="6" stroke-linecap="round" />
+			<!-- ══ SHIP GROUP (translates + rotates with bob) ══════════════════ -->
+			<g transform="translate(0,{shipY}) rotate({shipRot},308,285)">
+				<!-- Bowsprit -->
+				<line x1="488" y1="288" x2="540" y2="258" stroke="#1a2848" stroke-width="6" stroke-linecap="round" />
 				<line
-					x1="490"
-					y1="285"
+					x1="488"
+					y1="288"
 					x2="540"
-					y2="256"
+					y2="258"
 					stroke="#324e82"
 					stroke-width="2.5"
 					stroke-linecap="round"
 				/>
 
-				<!-- ─── Fore mast (x=415) ────────────────────────────────── -->
-				<line x1="415" y1="282" x2="415" y2="72" stroke="#1a2848" stroke-width="6" stroke-linecap="round" />
-				<line x1="415" y1="282" x2="415" y2="72" stroke="#324e82" stroke-width="2.5" stroke-linecap="round" />
+				<!-- ── Masts ── -->
+				<!-- Fore mast x=415 -->
+				<line x1="415" y1="284" x2="415" y2="72" stroke="#1a2848" stroke-width="6" stroke-linecap="round" />
+				<line x1="415" y1="284" x2="415" y2="72" stroke="#324e82" stroke-width="2.5" stroke-linecap="round" />
+				<!-- Main mast x=308 -->
+				<line x1="308" y1="282" x2="308" y2="50" stroke="#1a2848" stroke-width="7" stroke-linecap="round" />
+				<line x1="308" y1="282" x2="308" y2="50" stroke="#324e82" stroke-width="3" stroke-linecap="round" />
+				<!-- Mizzen mast x=215 -->
+				<line x1="215" y1="282" x2="215" y2="82" stroke="#1a2848" stroke-width="5.5" stroke-linecap="round" />
+				<line x1="215" y1="282" x2="215" y2="82" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
 
-				<!-- ─── Main mast (x=308) ────────────────────────────────── -->
-				<line x1="308" y1="280" x2="308" y2="52" stroke="#1a2848" stroke-width="7" stroke-linecap="round" />
-				<line x1="308" y1="280" x2="308" y2="52" stroke="#324e82" stroke-width="3" stroke-linecap="round" />
-
-				<!-- ─── Mizzen mast (x=215) ──────────────────────────────── -->
-				<line x1="215" y1="280" x2="215" y2="84" stroke="#1a2848" stroke-width="5.5" stroke-linecap="round" />
-				<line x1="215" y1="280" x2="215" y2="84" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-
-				<!-- ─── Yards (cross-spars) ──────────────────────────────── -->
-				<!-- Main lower yard (y=122) -->
+				<!-- ── Yards (cross-spars) ── -->
+				<!-- Main lower y=122 -->
 				<line
-					x1="256"
+					x1="254"
 					y1="122"
-					x2="360"
+					x2="362"
 					y2="122"
 					stroke="#1a2848"
 					stroke-width="5.5"
 					stroke-linecap="round"
 				/>
-				<line x1="256" y1="122" x2="360" y2="122" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-				<!-- Main topsail yard (y=78) -->
-				<line x1="272" y1="78" x2="344" y2="78" stroke="#1a2848" stroke-width="4.5" stroke-linecap="round" />
-				<line x1="272" y1="78" x2="344" y2="78" stroke="#324e82" stroke-width="1.8" stroke-linecap="round" />
-				<!-- Fore yard (y=136) -->
-				<line x1="363" y1="136" x2="467" y2="136" stroke="#1a2848" stroke-width="5" stroke-linecap="round" />
-				<line x1="363" y1="136" x2="467" y2="136" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-				<!-- Mizzen yard (y=116) -->
+				<line x1="254" y1="122" x2="362" y2="122" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
+				<!-- Main topsail y=78 -->
+				<line x1="270" y1="78" x2="346" y2="78" stroke="#1a2848" stroke-width="4.5" stroke-linecap="round" />
+				<line x1="270" y1="78" x2="346" y2="78" stroke="#324e82" stroke-width="1.8" stroke-linecap="round" />
+				<!-- Fore yard y=136 -->
+				<line x1="361" y1="136" x2="469" y2="136" stroke="#1a2848" stroke-width="5" stroke-linecap="round" />
+				<line x1="361" y1="136" x2="469" y2="136" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
+				<!-- Mizzen yard y=116 -->
 				<line
-					x1="168"
+					x1="166"
 					y1="116"
-					x2="262"
+					x2="264"
 					y2="116"
 					stroke="#1a2848"
 					stroke-width="4.5"
 					stroke-linecap="round"
 				/>
 				<line
-					x1="168"
+					x1="166"
 					y1="116"
-					x2="262"
+					x2="264"
 					y2="116"
 					stroke="#324e82"
 					stroke-width="1.8"
 					stroke-linecap="round"
 				/>
 
-				<!-- ─── Sails ─────────────────────────────────────────────── -->
-				<!-- Mizzen sail (stern-most) -->
+				<!-- ── Sails (always curved — 10–14 px baseline bow-forward billow) ── -->
+
+				<!-- Mizzen sail -->
 				<path
-					d="M 168 116 L 262 116
-             Q {262 + mzR} 196 {262 + mzR * 0.5} 282
-             L {168 + mzL} 282
-             Q {168 - mzL * 0.6} 196 168 116 Z"
+					d="M 166 116 L 264 116
+           Q {264 + 10 + mzR} 197 {264 + 6 + mzR * 0.5} 282
+           L {166 - 4 + mzL} 282
+           Q {166 - 4 - mzL * 0.6} 197 166 116 Z"
 					fill="url(#bai-tsail)"
-					opacity="0.85"
+					opacity="0.88"
 				/>
 
-				<!-- Main lower sail (biggest — has our emblem) -->
+				<!-- Main lower sail — has emblem -->
 				<path
-					d="M 256 122 L 360 122
-             Q {360 + mlR} 200 {360 + mlR * 0.5} 282
-             L {256 + mlL} 282
-             Q {256 - mlL * 0.6} 200 256 122 Z"
+					d="M 254 122 L 362 122
+           Q {362 + 14 + mlR} 200 {362 + 8 + mlR * 0.5} 282
+           L {254 - 5 + mlL} 282
+           Q {254 - 5 - mlL * 0.6} 200 254 122 Z"
 					fill="url(#bai-sail)"
 					opacity="0.93"
 				/>
-				<!-- Batten lines for texture -->
+				<!-- Batten lines -->
 				{#each [148, 174, 200, 228, 255] as by}
 					<line
-						x1={256 + (by - 122) * 0.06}
+						x1={254 + (by - 122) * 0.06}
 						y1={by}
-						x2={360 + (by - 122) * 0.14}
+						x2={362 + (by - 122) * 0.15}
 						y2={by}
 						stroke="rgba(160,188,228,0.20)"
 						stroke-width="0.9"
 					/>
 				{/each}
-				<!-- Globe + straw-hat emblem on main sail (our mark, not a skull) -->
-				<g transform="translate(308,200)" opacity="0.28">
-					<circle r="13" stroke="#c4d8f0" stroke-width="1.3" fill="none" />
-					<path d="M -13 0 Q -6 -2 0 -2 Q 6 -2 13 0" stroke="#c4d8f0" stroke-width="0.9" fill="none" />
-					<path d="M 0 -13 Q -3.5 0 -3.5 3 Q -3.5 6 0 13" stroke="#c4d8f0" stroke-width="0.8" fill="none" />
-					<ellipse cx="0" cy="-16" rx="10" ry="2.2" stroke="#c4d8f0" stroke-width="1.2" fill="none" />
-					<path d="M -7 -16 C -7 -22 7 -22 7 -16" stroke="#c4d8f0" stroke-width="1.2" fill="none" />
+
+				<!-- Globe + straw-hat emblem on main sail: our mark, not a skull -->
+				<g transform="translate(308,196)" opacity="0.55">
+					<circle r="16" stroke="#c6dcf5" stroke-width="1.8" fill="rgba(198,220,245,0.10)" />
+					<path d="M -16 0 Q -8 -3 0 -3 Q 8 -3 16 0" stroke="#c6dcf5" stroke-width="1.2" fill="none" />
+					<path d="M 0 -16 Q -4 -4 -4 2 Q -4 8 0 16" stroke="#c6dcf5" stroke-width="1.0" fill="none" />
+					<ellipse
+						cx="0"
+						cy="-21"
+						rx="12"
+						ry="3"
+						stroke="#c6dcf5"
+						stroke-width="1.5"
+						fill="rgba(198,220,245,0.12)"
+					/>
+					<path
+						d="M -8 -21 C -8 -29 8 -29 8 -21"
+						stroke="#c6dcf5"
+						stroke-width="1.5"
+						fill="rgba(198,220,245,0.08)"
+					/>
 				</g>
 
 				<!-- Main topsail -->
 				<path
-					d="M 272 78 L 344 78
-             Q {344 + mtR} 100 {344 + mtR * 0.5} 122
-             L {272 + mtL} 122
-             Q {272 - mtL * 0.5} 100 272 78 Z"
+					d="M 270 78 L 346 78
+           Q {346 + 10 + mtR} 100 {346 + 6 + mtR * 0.5} 122
+           L {270 - 4 + mtL} 122
+           Q {270 - 4 - mtL * 0.5} 100 270 78 Z"
 					fill="url(#bai-tsail)"
 					opacity="0.88"
 				/>
 
 				<!-- Fore lower sail -->
 				<path
-					d="M 363 136 L 467 136
-             Q {467 + fsR} 208 {467 + fsR * 0.5} 283
-             L {363 + fsL} 283
-             Q {363 - fsL * 0.6} 208 363 136 Z"
+					d="M 361 136 L 469 136
+           Q {469 + 12 + fsR} 208 {469 + 6 + fsR * 0.5} 284
+           L {361 - 4 + fsL} 284
+           Q {361 - 4 - fsL * 0.6} 208 361 136 Z"
 					fill="url(#bai-sail)"
 					opacity="0.90"
 				/>
 
-				<!-- Jib (triangular stay-sail, bowsprit to fore mast) -->
-				<path
-					d="M 415 72
-             Q {476 + jibCtrl} {163} 540 257
-             L 415 283 Z"
-					fill="url(#bai-tsail)"
-					opacity="0.72"
-				/>
+				<!-- Jib (triangular, bowsprit → fore mast) -->
+				<path d="M 415 72 Q {477 + jibCtrl} 162 540 257 L 415 284 Z" fill="url(#bai-tsail)" opacity="0.72" />
 
-				<!-- ─── Rigging ────────────────────────────────────────────── -->
-				<!-- Main mast: forestay to bowsprit tip -->
-				<line x1="308" y1="52" x2="540" y2="256" stroke="#324e82" stroke-width="1.2" opacity="0.55" />
-				<!-- Main mast: port shroud to hull left -->
-				<line x1="308" y1="52" x2="202" y2="280" stroke="#324e82" stroke-width="1.2" opacity="0.52" />
-				<!-- Main mast: starboard shroud to hull right -->
-				<line x1="308" y1="52" x2="415" y2="280" stroke="#324e82" stroke-width="1.2" opacity="0.52" />
-				<!-- Ratlines (horizontal rungs across main shrouds): 4 intervals -->
-				<!-- At y=125: port x≈277, stbd x≈338 -->
-				<line x1="277" y1="125" x2="338" y2="125" stroke="#324e82" stroke-width="0.9" opacity="0.40" />
-				<!-- At y=165 -->
-				<line x1="258" y1="165" x2="358" y2="165" stroke="#324e82" stroke-width="0.9" opacity="0.38" />
-				<!-- At y=205 -->
-				<line x1="240" y1="205" x2="376" y2="205" stroke="#324e82" stroke-width="0.9" opacity="0.35" />
-				<!-- At y=245 -->
-				<line x1="222" y1="245" x2="396" y2="245" stroke="#324e82" stroke-width="0.9" opacity="0.32" />
-				<!-- Fore mast: stay to bowsprit + shrouds -->
-				<line x1="415" y1="72" x2="540" y2="256" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-				<line x1="415" y1="72" x2="308" y2="62" stroke="#324e82" stroke-width="0.9" opacity="0.40" />
-				<line x1="415" y1="72" x2="490" y2="283" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-				<!-- Mizzen mast: shrouds -->
-				<line x1="215" y1="84" x2="148" y2="278" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-				<line x1="215" y1="84" x2="308" y2="280" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
+				<!-- ── Rigging ── -->
+				<line x1="308" y1="50" x2="540" y2="257" stroke="#324e82" stroke-width="1.2" opacity="0.55" />
+				<line x1="308" y1="50" x2="200" y2="282" stroke="#324e82" stroke-width="1.2" opacity="0.52" />
+				<line x1="308" y1="50" x2="415" y2="282" stroke="#324e82" stroke-width="1.2" opacity="0.52" />
+				<!-- Ratlines (horizontal rungs across main shrouds) -->
+				<line x1="275" y1="126" x2="340" y2="126" stroke="#324e82" stroke-width="0.9" opacity="0.40" />
+				<line x1="256" y1="166" x2="360" y2="166" stroke="#324e82" stroke-width="0.9" opacity="0.38" />
+				<line x1="238" y1="206" x2="378" y2="206" stroke="#324e82" stroke-width="0.9" opacity="0.35" />
+				<line x1="220" y1="246" x2="398" y2="246" stroke="#324e82" stroke-width="0.9" opacity="0.32" />
+				<!-- Fore mast stays -->
+				<line x1="415" y1="72" x2="540" y2="257" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
+				<line x1="415" y1="72" x2="308" y2="60" stroke="#324e82" stroke-width="0.9" opacity="0.40" />
+				<line x1="415" y1="72" x2="490" y2="285" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
+				<!-- Mizzen stays -->
+				<line x1="215" y1="82" x2="146" y2="280" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
+				<line x1="215" y1="82" x2="308" y2="282" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
 
-				<!-- ─── Crow's nest (main mast top, y≈82–96) ──────────────── -->
+				<!-- ── Crow's nest (main mast, y 80–96) ── -->
 				<rect
-					x="292"
-					y="80"
-					width="32"
-					height="16"
+					x="291"
+					y="79"
+					width="34"
+					height="17"
 					rx="3"
 					fill="#152038"
 					stroke="#324e82"
 					stroke-width="1.5"
 				/>
-				<!-- Platform floor line -->
-				<line x1="290" y1="96" x2="326" y2="96" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
+				<line x1="289" y1="96" x2="327" y2="96" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
 
-				<!-- ─── Stern castle details ───────────────────────────────── -->
-				<!-- Stern castle windows (porthole row) -->
-				<circle cx="158" cy="268" r="5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.2" />
-				<circle cx="172" cy="268" r="5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.2" />
-				<circle cx="186" cy="268" r="5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.2" />
-				<!-- Warm light in middle porthole -->
-				<circle cx="172" cy="268" r="3.5" fill="#ffa030" opacity="0.55" />
-
-				<!-- Steering wheel at stern castle deck -->
-				<g transform="translate(190,262)">
-					<circle r="11" stroke="#3e5882" stroke-width="2.2" fill="none" />
-					<line x1="-11" y1="0" x2="11" y2="0" stroke="#3e5882" stroke-width="1.4" />
-					<line x1="0" y1="-11" x2="0" y2="11" stroke="#3e5882" stroke-width="1.4" />
-					<line x1="-7.8" y1="-7.8" x2="7.8" y2="7.8" stroke="#3e5882" stroke-width="1.4" />
-					<line x1="7.8" y1="-7.8" x2="-7.8" y2="7.8" stroke="#3e5882" stroke-width="1.4" />
-					<circle r="3.5" fill="#3e5882" />
-					<circle cx="0" cy="-11" r="2.2" fill="#3e5882" />
-					<circle cx="7.8" cy="-7.8" r="2.2" fill="#3e5882" />
-					<circle cx="11" cy="0" r="2.2" fill="#3e5882" />
-					<circle cx="7.8" cy="7.8" r="2.2" fill="#3e5882" />
-					<circle cx="0" cy="11" r="2.2" fill="#3e5882" />
-					<circle cx="-7.8" cy="7.8" r="2.2" fill="#3e5882" />
-					<circle cx="-11" cy="0" r="2.2" fill="#3e5882" />
-					<circle cx="-7.8" cy="-7.8" r="2.2" fill="#3e5882" />
+				<!-- ── Stern castle details ── -->
+				<!-- Portholes -->
+				<circle cx="158" cy="266" r="5.5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.3" />
+				<circle cx="174" cy="266" r="5.5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.3" />
+				<circle cx="190" cy="266" r="5.5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.3" />
+				<circle cx="174" cy="266" r="3.8" fill="#ffa030" opacity="0.58" />
+				<!-- Steering wheel -->
+				<g transform="translate(192,258)">
+					<circle r="12" stroke="#3e5882" stroke-width="2.2" fill="none" />
+					<line x1="-12" y1="0" x2="12" y2="0" stroke="#3e5882" stroke-width="1.5" />
+					<line x1="0" y1="-12" x2="0" y2="12" stroke="#3e5882" stroke-width="1.5" />
+					<line x1="-8.5" y1="-8.5" x2="8.5" y2="8.5" stroke="#3e5882" stroke-width="1.5" />
+					<line x1="8.5" y1="-8.5" x2="-8.5" y2="8.5" stroke="#3e5882" stroke-width="1.5" />
+					<circle r="4" fill="#3e5882" />
+					<circle cx="0" cy="-12" r="2.5" fill="#3e5882" />
+					<circle cx="8.5" cy="-8.5" r="2.5" fill="#3e5882" />
+					<circle cx="12" cy="0" r="2.5" fill="#3e5882" />
+					<circle cx="8.5" cy="8.5" r="2.5" fill="#3e5882" />
+					<circle cx="0" cy="12" r="2.5" fill="#3e5882" />
+					<circle cx="-8.5" cy="8.5" r="2.5" fill="#3e5882" />
+					<circle cx="-12" cy="0" r="2.5" fill="#3e5882" />
+					<circle cx="-8.5" cy="-8.5" r="2.5" fill="#3e5882" />
 				</g>
-
-				<!-- Stern lanterns (amber glow halos) -->
-				<circle cx="153" cy="260" r="18" fill="url(#bai-lantern)" opacity="0.7" />
-				<circle cx="153" cy="260" r="5" fill="#ffa030" opacity="0.9" />
-				<circle cx="165" cy="256" r="14" fill="url(#bai-lantern)" opacity="0.5" />
-				<circle cx="165" cy="256" r="4" fill="#ffb840" opacity="0.85" />
+				<!-- Lanterns -->
+				<circle cx="152" cy="258" r="18" fill="url(#bai-lantern)" opacity="0.7" />
+				<circle cx="152" cy="258" r="5" fill="#ffa030" opacity="0.9" />
+				<circle cx="164" cy="254" r="14" fill="url(#bai-lantern)" opacity="0.5" />
+				<circle cx="164" cy="254" r="4" fill="#ffb840" opacity="0.85" />
 			</g>
 			<!-- end ship group -->
 
-			<!-- ─── Compass rose ──────────────────────────────────────────── -->
+			<!-- Compass rose -->
 			<g transform="translate(52,394)" opacity={compassOp}>
 				<circle r="20" stroke="rgba(255,255,255,0.28)" stroke-width="1" fill="none" />
 				{#each [0, 90, 180, 270] as ang}
@@ -531,7 +512,7 @@
 				>
 			</g>
 
-			<!-- ─── Seagulls ───────────────────────────────────────────────── -->
+			<!-- Seagulls -->
 			{#if gull1.vis}
 				<g transform="translate({gull1.x},{gull1.y})">
 					<path
@@ -570,23 +551,22 @@
 			{/if}
 		</svg>
 
-		<!-- ═══ LAYER 2 — crew HTML (z=2): BotFaces + pennant ═══ -->
-		<!--
-      Bob + roll matching the hull in layer 3.
-      Transform-origin aligns with ship's rotation centre (308, 280).
-      Percentages: 308/640 = 48.1%, 280/440 = 63.6%
+		<!-- ═══ LAYER 2 — crew HTML (z=2): above sails, below hull rail ═══════════
+         The crew-layer's z-index:2 in CSS places it above the bg SVG (z=1) and
+         below the fg SVG hull (z=3), so faces clear the sail surface and the hull
+         covers just the lower ~15 % of each face for a natural on-deck look.
 		-->
 		<div
 			class="crew-layer"
 			style:transform="translateY({shipY}px) rotate({shipRot}deg)"
-			style:transform-origin="48.1% 63.6%"
+			style:transform-origin="48.1% 64.8%"
 		>
-			<!-- ShipFlag pennant — our mark (globe + straw hat), NOT a skull -->
+			<!-- ShipFlag pennant at main-mast top: globe + straw hat (not a skull) -->
 			<div
 				class="pennant"
 				style:left="48.1%"
-				style:top="11.8%"
-				style:color="rgba(255,255,255,0.82)"
+				style:top="11.4%"
+				style:color="rgba(255,255,255,0.84)"
 				style="--color-accent:#ffd070"
 				style:transform="translateX(2px) translateY(-100%) rotate({pennantAngle}deg)"
 			>
@@ -594,108 +574,106 @@
 			</div>
 
 			<!--
-        Crew: all positioned so face-bottom sits ~10 px below hull-deck (y=282),
-        making hull fg-layer cover just the lower ~15% of each face.
-        Deck line → y=282, face-bottom target → y=292.
-        top = 292/440 × 100% = 66.4%.  transform: translateX(-50%) translateY(-100%).
-        Stern-castle crew at y=272 → top = 61.8%.
+        Crew positioning:
+          hull deck y=284.  face-bottom target = 284+10 = 294.
+          top% = 294/440 = 66.8%.  transform: translateX(-50%) translateY(-100%).
+          Stern-castle deck y=258; face-bottom 268; top% = 268/440 = 60.9%.
+          Crow's nest: centre at y=86; top% = 86/440 = 19.5%; translateY(-50%).
       -->
 
-			<!-- Crew A: crow's-nest lookout on main mast.
-           Crow's nest y=80–96; face centre at y=82 → top=18.6%.
-           Nest front-wall in fg-layer partially occludes lower portion. -->
+			<!-- A: crow's nest lookout — centre in the nest basket -->
 			<div
 				class="crew-face"
 				style:left="48.1%"
-				style:top="18.6%"
+				style:top="19.5%"
 				style:transform="translateX(-50%) translateY(-50%) translateY({nestSway}px)"
 			>
-				<BotFace seed="ship-crow" state="working" size={40} />
+				<BotFace seed="ship-crow" state="working" size={42} />
 			</div>
 
-			<!-- Crew B: bow lookout — leans forward scanning the horizon -->
+			<!-- B: bow lookout — scanning with working eyes -->
 			<div
 				class="crew-face"
 				style:left="70.3%"
-				style:top="66.4%"
+				style:top="66.8%"
 				style:transform="translateX(-50%) translateY(-100%) translateY({crew0extra}px)"
 			>
 				<BotFace seed="ship-a" state="working" size={62} />
 			</div>
 
-			<!-- Crew C: helmsman at stern castle (steering wheel) — excited during sails beat -->
+			<!-- C: helmsman at stern castle steering wheel -->
 			<div
 				class="crew-face"
 				style:left="29.7%"
-				style:top="61.8%"
+				style:top="60.9%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
 				<BotFace seed="ship-b" state={crew1State} size={60} />
 			</div>
 
-			<!-- Crew D: waving from midship rigging -->
+			<!-- D: waving from midship rigging -->
 			<div
 				class="crew-face"
-				style:left="55.3%"
-				style:top="66.4%"
+				style:left="55.5%"
+				style:top="66.8%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
 				<BotFace seed="ship-c" state={crew1State} size={58} />
 			</div>
 
-			<!-- Crew E: sleeping on a barrel near main mast -->
+			<!-- E: sleeping on a barrel (z's floating up) -->
 			<div
 				class="crew-face"
 				style:left="41.3%"
-				style:top="66.4%"
+				style:top="66.8%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
 				<BotFace seed="ship-d" state="offline" size={54} />
 			</div>
 		</div>
 
-		<!-- ═══ LAYER 3 — foreground SVG: hull occludes crew feet · near waves ═══ -->
+		<!-- ═══ LAYER 3 — fg SVG (z=3): hull occludes crew feet · near waves ═══════ -->
 		<svg class="layer-svg" viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg" style:z-index="3">
 			<defs>
 				<linearGradient id="bai-hull" x1="0" y1="0" x2="0" y2="1">
 					<stop offset="0%" stop-color="#1c2c54" />
-					<stop offset="100%" stop-color="#0d1834" />
+					<stop offset="100%" stop-color="#0c1730" />
 				</linearGradient>
 				<linearGradient id="bai-castle" x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stop-color="#1e3060" />
+					<stop offset="0%" stop-color="#1e3062" />
 					<stop offset="100%" stop-color="#162244" />
 				</linearGradient>
 			</defs>
 
-			<!-- ─── Hull + stern castle (bobs with ship) ──────────────────── -->
-			<g transform="translate(0,{shipY}) rotate({shipRot},308,280)">
-				<!-- Main hull body -->
+			<!-- Hull + stern castle, bob with same transform as rigging -->
+			<g transform="translate(0,{shipY}) rotate({shipRot},308,285)">
+				<!-- Main hull body: deck y≈272, keel y≈355 → 83 px deep -->
 				<path
-					d="M 148 278
-               Q 228 272 308 270
-               Q 388 272 488 278
-               L 494 288
-               Q 454 308 308 312
-               Q 162 308 148 290 Z"
+					d="M 146 280
+               Q 226 270 308 268
+               Q 390 270 488 280
+               L 496 292
+               Q 454 325 308 330
+               Q 162 325 146 294 Z"
 					fill="url(#bai-hull)"
 				/>
 
-				<!-- Stern castle (raised poop deck above main deck) -->
+				<!-- Stern castle (raised poop deck, y 258–280) -->
 				<path
-					d="M 148 278
-               L 148 258
-               Q 180 254 225 254
-               L 228 278 Q 188 280 148 278 Z"
+					d="M 146 280
+               L 146 258
+               Q 180 254 228 254
+               L 230 280
+               Q 188 282 146 280 Z"
 					fill="url(#bai-castle)"
 				/>
-				<!-- Stern castle wall (darker edge) -->
-				<path d="M 225 254 L 228 278" stroke="#2a3e68" stroke-width="1.5" fill="none" />
+				<line x1="228" y1="254" x2="230" y2="280" stroke="#2a3e68" stroke-width="1.5" fill="none" />
 
-				<!-- Crow's-nest front rim (occludes lower portion of crow's-nest crew) -->
+				<!-- Crow's-nest front rim in fg layer (occludes nest crew lower portion) -->
 				<rect
-					x="292"
-					y="90"
-					width="32"
+					x="291"
+					y="91"
+					width="34"
 					height="9"
 					rx="2"
 					fill="#152038"
@@ -703,50 +681,45 @@
 					stroke-width="1.2"
 				/>
 
-				<!-- Atlas-blue accent stripe (waterline) -->
+				<!-- Atlas-blue accent stripe at waterline -->
 				<path
-					d="M 152 286 Q 234 282 308 280 Q 382 282 484 286"
+					d="M 150 290 Q 234 286 308 284 Q 382 286 484 290"
 					stroke="#3d5bff"
-					stroke-width="2.5"
+					stroke-width="2.8"
 					fill="none"
-					opacity="0.75"
+					opacity="0.78"
 				/>
 
-				<!-- Deck surface (slightly lighter top face, shows sheer) -->
+				<!-- Deck surface (slightly lighter, shows sheer) -->
 				<path
-					d="M 148 278
-               Q 228 272 308 270
-               Q 388 272 488 278
-               L 490 284
-               Q 388 280 308 278
-               Q 228 280 150 284 Z"
-					fill="#1e2f5a"
+					d="M 146 280
+               Q 226 270 308 268
+               Q 390 270 488 280
+               L 490 287
+               Q 390 278 308 276
+               Q 226 278 148 287 Z"
+					fill="#1e2f5c"
 				/>
 
-				<!-- Deck rail cap line -->
+				<!-- Deck rail cap -->
 				<path
-					d="M 148 278 Q 228 272 308 270 Q 388 272 488 278"
-					stroke="#4a5e90"
+					d="M 146 280 Q 226 270 308 268 Q 390 270 488 280"
+					stroke="#4a5e92"
 					stroke-width="1.5"
 					fill="none"
 				/>
 
-				<!-- Cannon ports — row of 4 along hull -->
-				<rect x="202" y="293" width="18" height="11" rx="2" fill="#060f20" opacity="0.85" />
-				<rect x="266" y="294" width="18" height="11" rx="2" fill="#060f20" opacity="0.85" />
-				<rect x="330" y="294" width="18" height="11" rx="2" fill="#060f20" opacity="0.85" />
-				<rect x="394" y="294" width="18" height="11" rx="2" fill="#060f20" opacity="0.85" />
-				<!-- Port lids (slightly open) -->
-				<line x1="202" y1="293" x2="220" y2="293" stroke="#162040" stroke-width="1.5" />
-				<line x1="266" y1="294" x2="284" y2="294" stroke="#162040" stroke-width="1.5" />
-				<line x1="330" y1="294" x2="348" y2="294" stroke="#162040" stroke-width="1.5" />
-				<line x1="394" y1="294" x2="412" y2="294" stroke="#162040" stroke-width="1.5" />
+				<!-- 4 cannon ports -->
+				<rect x="204" y="298" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
+				<rect x="270" y="299" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
+				<rect x="336" y="299" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
+				<rect x="402" y="299" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
 			</g>
 
-			<!-- ─── Wave band 2 ────────────────────────────────────────────── -->
-			<path d={W2} fill="#163468" class="wave2" class:paused={reducedMotion} />
+			<!-- Wave band 2 -->
+			<path d={W2} fill="#153366" class="wave2" class:paused={reducedMotion} />
 			<path
-				d={W2top}
+				d={W2L}
 				stroke="rgba(255,255,255,0.09)"
 				stroke-width="1.5"
 				fill="none"
@@ -754,10 +727,10 @@
 				class:paused={reducedMotion}
 			/>
 
-			<!-- ─── Wave band 1 (nearest) ─────────────────────────────────── -->
-			<path d={W1} fill="#1c3f7c" class="wave1" class:paused={reducedMotion} />
+			<!-- Wave band 1 (nearest) -->
+			<path d={W1} fill="#1b3e7a" class="wave1" class:paused={reducedMotion} />
 			<path
-				d={W1top}
+				d={W1L}
 				stroke="rgba(255,255,255,0.18)"
 				stroke-width="2"
 				fill="none"
@@ -769,7 +742,6 @@
 </div>
 
 <style>
-	/* ─── Outer shell ──────────────────────────────────────────────── */
 	.ship-scene {
 		position: absolute;
 		inset: 0;
@@ -779,7 +751,7 @@
 		overflow: hidden;
 	}
 
-	/* Fixed-ratio stage: crew %-positions align with the SVG viewBox */
+	/* Fixed-ratio stage: crew % positions align with SVG 640×440 viewBox */
 	.stage {
 		position: relative;
 		width: min(96%, 640px);
@@ -796,17 +768,18 @@
 		pointer-events: none;
 	}
 
-	/* ─── Crew HTML layer ──────────────────────────────────────────── */
+	/* z-index: 2 places the crew ABOVE the bg SVG sails (z=1)
+     and BELOW the fg SVG hull rail (z=3). */
 	.crew-layer {
 		position: absolute;
 		inset: 0;
+		z-index: 2;
 		pointer-events: none;
 		will-change: transform;
 	}
 
 	.crew-face {
 		position: absolute;
-		/* x/y and transform set per-face via inline style */
 	}
 
 	.pennant {
@@ -815,7 +788,7 @@
 		will-change: transform;
 	}
 
-	/* ─── Wave animations (continuous drift — linear is correct) ───── */
+	/* Wave CSS drift — linear is correct for continuous translation */
 	@keyframes wave-scroll {
 		from {
 			transform: translateX(0);

@@ -122,7 +122,13 @@
 						</span>
 					{/if}
 					<span class="preview" class:bold={unread}
-						>{bot.last?.text ?? (bot.role ? bot.role.slice(0, 80) : "")}</span
+						>{bot.last?.text ??
+							(bot.role
+								? (tag && bot.role.startsWith(tag + ":")
+										? bot.role.slice(tag.length + 1).trimStart()
+										: bot.role
+									).slice(0, 80)
+								: "")}</span
 					>
 				{/if}
 				{#if unread}

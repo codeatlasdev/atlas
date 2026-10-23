@@ -92,12 +92,12 @@
 	const STEP_META: Record<string, StepMeta> = {
 		intro: {
 			label: "1 of 4",
-			headline: "Meet your crew",
+			headline: "Meet your Mugiwaras",
 			body: "Your crew sails while you sleep.",
 			bullets: [
-				"Your ship, your flag — self-hosted, your server",
-				"Every crewmate has a role and a dream",
-				"No one sails alone — crewmates hand tasks to each other",
+				"Your ship, your rules — runs on your server, no account",
+				"Hand it the wheel — it keeps working while your Mac sleeps",
+				"It flags you before anything risky",
 			],
 			glow: "rgba(61, 91, 255, 0.10)",
 		},
@@ -989,7 +989,7 @@
 		background: var(--ca-accent, #4f8ef7);
 		color: var(--ca-surface-base);
 		border: none;
-		border-radius: 10px;
+		border-radius: 999px;
 		font-size: 15px;
 		font-weight: 600;
 		cursor: pointer;

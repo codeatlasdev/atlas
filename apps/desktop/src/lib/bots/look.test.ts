@@ -27,6 +27,14 @@ describe("normalizeLook", () => {
 		for (const raw of [null, undefined, "crown", 3])
 			expect(normalizeLook(raw, "s")).toEqual(defaultLook("s"));
 	});
+
+	it("accepts straw hat", () => {
+		expect(normalizeLook({ color: "#3d5bff", eyes: "round", hat: "straw" }, "s")).toEqual({
+			color: "#3d5bff",
+			eyes: "round",
+			hat: "straw",
+		});
+	});
 });
 
 describe("defaultLook", () => {
@@ -34,6 +42,10 @@ describe("defaultLook", () => {
 		expect(defaultLook("abc")).toEqual(defaultLook("abc"));
 		const colors = new Set(Array.from({ length: 50 }, (_, i) => defaultLook(`bot-${i}`).color));
 		expect(colors.size).toBe(BOT_COLORS.length);
+	});
+
+	it("default hat is straw", () => {
+		expect(defaultLook("any-seed").hat).toBe("straw");
 	});
 });
 

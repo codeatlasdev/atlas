@@ -20,6 +20,7 @@ export type EyeStyle = (typeof EYE_STYLES)[number];
 
 export const HATS = [
 	"none",
+	"straw",
 	"cap",
 	"beanie",
 	"tophat",
@@ -48,6 +49,7 @@ export const EYE_LABELS: Record<EyeStyle, string> = {
 
 export const HAT_LABELS: Record<Hat, string> = {
 	none: "None",
+	straw: "Straw hat",
 	cap: "Cap",
 	beanie: "Beanie",
 	tophat: "Top hat",
@@ -68,7 +70,7 @@ function hash(seed: string): number {
 
 /** Stable look for a bot that never customised itself. */
 export function defaultLook(seed: string): BotLook {
-	return { color: BOT_COLORS[hash(seed) % BOT_COLORS.length], eyes: "round", hat: "none" };
+	return { color: BOT_COLORS[hash(seed) % BOT_COLORS.length], eyes: "round", hat: "straw" };
 }
 
 /**

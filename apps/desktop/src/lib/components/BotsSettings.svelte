@@ -92,8 +92,8 @@
 </script>
 
 <PageHead
-	title="Bots"
-	description="Bot computers run agents 24/7 on your own server. Add a server after running `atlas bot install user@host`."
+	title="Mugiwaras"
+	description="Bot computers run crewmates 24/7 on your own server. Add a ship after running `atlas bot install user@host`."
 />
 
 {#each remoteHosts as h (h.key)}

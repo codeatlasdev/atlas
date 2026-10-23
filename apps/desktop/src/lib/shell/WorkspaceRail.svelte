@@ -3,7 +3,8 @@
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
-	import { Bot, Layers } from "@lucide/svelte";
+	import { Layers } from "@lucide/svelte";
+	import ShipFlag from "#lib/bots/ShipFlag.svelte";
 
 	// visible = rail is expanded (72px); false = collapsed (0px)
 	let visible = $state(false);
@@ -73,16 +74,16 @@
 
 	<div class="separator" aria-hidden="true"></div>
 
-	<!-- Bots workspace -->
+	<!-- Mugiwaras workspace -->
 	<button
 		class="item"
 		class:active={ws.appMode === "bots"}
 		onclick={() => setMode("bots")}
-		aria-label="Crew workspace"
-		title="Crew  {shortcut}"
+		aria-label="Mugiwaras workspace"
+		title="Mugiwaras  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
-		<Bot size={22} />
+		<ShipFlag size={22} />
 		{#if needsYouCount > 0}
 			<span class="needs-badge" aria-label="{needsYouCount} crewmates need your attention">
 				{needsYouCount > 9 ? "9+" : needsYouCount}

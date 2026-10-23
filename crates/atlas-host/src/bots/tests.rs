@@ -1040,6 +1040,19 @@ exit 0"#;
         client.call("shutdown", json!({})).await.ok();
     }
 
+    // ── straw hat is a valid look hat value ───────────────────────────────────
+    #[test]
+    fn look_accepts_straw_hat() {
+        use crate::bots::store::BotLook;
+        let look = BotLook {
+            color: "#e8c36a".into(),
+            eyes: "round".into(),
+            hat: "straw".into(),
+        };
+        assert!(look.validate().is_ok(), "straw hat must pass look validation");
+    }
+
+
     // ── Test 15: mobile required_scope rejects BotSecretSet ─────────────────
 
     #[test]

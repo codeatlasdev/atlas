@@ -1,14 +1,15 @@
 <script lang="ts">
-	import { randomLook, normalizeLook } from "#lib/bots/look.ts";
 	/**
 	 * BotsWorkspace — full-window messenger layout (Discord DM style).
 	 * Left column: drag region + search + nav + bot list + server status footer.
 	 * Right panel: BotView chat for the selected bot, or activity/triggers/needs-you panels.
 	 */
+	import { randomLook, normalizeLook } from "#lib/bots/look.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import BotListRow from "#lib/bots/BotListRow.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
+	import ShipFlag from "#lib/bots/ShipFlag.svelte";
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
@@ -219,6 +220,64 @@
 		if (h < 24) return `${h}h ago`;
 		return new Date(tsMs).toLocaleDateString([], { month: "short", day: "numeric" });
 	}
+
+	/** Map an hour (0–23) to its watch name. */
+	function watchName(h: number): string {
+		if (h >= 4 && h < 8) return "Morning watch · 04–08";
+		if (h >= 8 && h < 12) return "Forenoon watch · 08–12";
+		if (h >= 12 && h < 16) return "Afternoon watch · 12–16";
+		if (h >= 16 && h < 20) return "Dog watches · 16–20";
+		if (h >= 20 && h < 24) return "First watch · 20–24";
+		return "Middle watch · 00–04";
+	}
+
+	/** Key for grouping activity entries: "YYYY-MM-DD·watch" */
+	function watchKey(tsMs: number): string {
+		const d = new Date(tsMs);
+		const ymd = d.toISOString().slice(0, 10);
+		return `${ymd}·${watchName(d.getHours())}`;
+	}
+
+	/** Ship-log time string "HH:MM" */
+	function logTime(tsMs: number): string {
+		return new Date(tsMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+	}
+
+	/** Format a logbook row as ship-log voice. */
+	function logEntry(botName: string, state: string, text: string): string {
+		const snippet = text.slice(0, 60);
+		if (state === "done") return `${botName} finished: ${snippet}`;
+		if (state === "failed") return `${botName} failed: ${snippet}`;
+		return `${botName}: ${snippet}`;
+	}
+
+	type WatchGroup = {
+		key: string;
+		label: string;
+		date: string;
+		entries: (typeof bots.activityFeed)[number][];
+	};
+
+	const watchGroups = $derived.by<WatchGroup[]>(() => {
+		const map = new Map<string, WatchGroup>();
+		for (const entry of bots.activityFeed) {
+			const tsMs = entry.task.ts * 1000;
+			const key = watchKey(tsMs);
+			const d = new Date(tsMs);
+			const isToday = d.toDateString() === new Date().toDateString();
+			const dateLabel = isToday ? "Today" : d.toLocaleDateString([], { month: "short", day: "numeric" });
+			if (!map.has(key)) {
+				map.set(key, {
+					key,
+					label: watchName(d.getHours()),
+					date: dateLabel,
+					entries: [],
+				});
+			}
+			map.get(key)!.entries.push(entry);
+		}
+		return [...map.values()];
+	});
 </script>
 
 <div class="bots-workspace">
@@ -226,7 +285,7 @@
 	<svg class="crew-grid-bg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
 		<defs>
 			<pattern id="crew-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-				<path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5" />
+				<path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="0.5" />
 			</pattern>
 		</defs>
 		<rect width="100%" height="100%" fill="url(#crew-grid)" />
@@ -279,7 +338,7 @@
 
 		<!-- BOTS section header -->
 		<div class="section-hd">
-			<span>CREW</span>
+			<span>MUGIWARAS</span>
 			<button class="section-add" onclick={startNewBot} aria-label="Recruit" disabled={creating}
 				><Plus size={12} /></button
 			>
@@ -366,21 +425,29 @@
 			{/if}
 		</div>
 
-		<!-- Server status footer (Discord user-bar style) -->
+		<!-- Server status footer -->
 		<div class="dm-footer">
-			<!-- Left: server status -->
+			<!-- Left: ShipFlag + ship status -->
 			<div class="footer-servers">
-				{#each remoteHosts as h (h.key)}
-					<button
-						class="footer-server"
-						onclick={openBotsSettings}
-						title={h.name}
-						aria-label="{h.name} — {bots.hostOk(h.key) ? 'online' : 'offline'}"
-					>
-						<span class="server-dot" class:online={bots.hostOk(h.key)} aria-hidden="true"></span>
-						<span class="server-name">{h.name}</span>
+				{#if remoteHosts.length === 0}
+					<button class="footer-no-ship" onclick={openBotsSettings} aria-label="No ship — launch one">
+						<ShipFlag size={14} />
+						<span>No ship yet · <span class="footer-launch">Launch</span></span>
 					</button>
-				{/each}
+				{:else}
+					{#each remoteHosts as h (h.key)}
+						<button
+							class="footer-server"
+							onclick={openBotsSettings}
+							title={h.name}
+							aria-label="{h.name} — {bots.hostOk(h.key) ? 'online' : 'offline'}"
+						>
+							<ShipFlag size={14} />
+							<span class="server-dot" class:online={bots.hostOk(h.key)} aria-hidden="true"></span>
+							<span class="server-name">{h.name}</span>
+						</button>
+					{/each}
+				{/if}
 			</div>
 			<!-- Right: meters + help + gear -->
 			<div class="footer-actions">
@@ -494,32 +561,82 @@
 			<div class="nav-view activity-view">
 				{#if bots.activityFeed.length === 0}
 					<div class="nav-view-empty">
-						<p>Nothing yet.</p>
-						<p class="nav-view-hint">What your bots do shows up here.</p>
-						<button class="btn-primary-pill" onclick={startNewBot} disabled={creating}>Recruit</button>
+						<svg
+							class="horizon-art"
+							width="120"
+							height="64"
+							viewBox="0 0 120 64"
+							fill="none"
+							xmlns="http://www.w3.org/2000/svg"
+							aria-hidden="true"
+						>
+							<path
+								d="M0 46 Q30 42 60 46 Q90 50 120 46"
+								stroke="currentColor"
+								stroke-width="1"
+								opacity="0.2"
+								fill="none"
+							/>
+							<path
+								d="M0 52 Q30 48 60 52 Q90 56 120 52"
+								stroke="currentColor"
+								stroke-width="1"
+								opacity="0.12"
+								fill="none"
+							/>
+							<line x1="0" y1="44" x2="120" y2="44" stroke="currentColor" stroke-width="1.5" opacity="0.28" />
+							<g transform="translate(46, 8)">
+								<line
+									x1="14"
+									y1="8"
+									x2="14"
+									y2="36"
+									stroke="currentColor"
+									stroke-width="1.5"
+									opacity="0.38"
+								/>
+								<path d="M14 10 L24 28 L14 28 Z" fill="currentColor" opacity="0.28" />
+								<path d="M2 36 Q14 40 26 36 L24 34 L4 34 Z" fill="currentColor" opacity="0.32" />
+							</g>
+						</svg>
+						<p class="empty-calm">Calm seas.</p>
+						<p class="nav-view-hint">Nothing logged yet.</p>
+						<button class="btn-primary-pill" onclick={startNewBot} disabled={creating}
+							>Recruit a crewmate</button
+						>
 					</div>
 				{:else}
 					<div class="activity-hd">Logbook</div>
 					<div class="activity-feed">
-						{#each bots.activityFeed as entry (entry.botId + entry.task.id)}
-							<button class="activity-row" onclick={() => selectBot(entry.hostKey, entry.botId)}>
-								<BotFace
-									seed={entry.botId}
-									look={bots.allBots.find((x) => x.bot.id === entry.botId)?.bot.look}
-									state="idle"
-									size={32}
-								/>
-								<div class="activity-body">
-									{#if entry.task.source === "trigger"}
-										<div class="route-line" aria-hidden="true"></div>
-									{/if}
-									<span class="activity-name">{entry.botName}</span>
-									<span class="activity-preview"
-										>{entry.task.result?.slice(0, 80) ?? entry.task.prompt.slice(0, 80)}</span
-									>
-								</div>
-								<span class="activity-time">{fmtActivityTime(entry.task.ts)}</span>
-							</button>
+						{#each watchGroups as wg (wg.key)}
+							<div class="watch-hd">
+								<span class="watch-label">{wg.label}</span>
+								<span class="watch-date">{wg.date}</span>
+							</div>
+							{#each wg.entries as entry (entry.botId + entry.task.id)}
+								<button class="activity-row" onclick={() => selectBot(entry.hostKey, entry.botId)}>
+									<BotFace
+										seed={entry.botId}
+										look={bots.allBots.find((x) => x.bot.id === entry.botId)?.bot.look}
+										state="idle"
+										size={32}
+									/>
+									<div class="activity-body">
+										{#if entry.task.source === "trigger"}
+											<div class="route-line" aria-hidden="true"></div>
+										{/if}
+										<span class="activity-log-time">{logTime(entry.task.ts * 1000)}</span>
+										<span class="activity-preview"
+											>{logEntry(
+												entry.botName,
+												entry.task.state,
+												entry.task.result ?? entry.task.prompt,
+											)}</span
+										>
+									</div>
+									<span class="activity-time">{fmtActivityTime(entry.task.ts * 1000)}</span>
+								</button>
+							{/each}
 						{/each}
 					</div>
 					{#if bots.allBots.some((b) => b.bot.state === "needs_you")}
@@ -1004,7 +1121,8 @@
 
 	.btn-primary-pill {
 		margin-top: 8px;
-		padding: 8px 20px;
+		height: 48px;
+		padding: 0 24px;
 		border-radius: 999px;
 		border: none;
 		background: var(--ca-brand-main);
@@ -1090,11 +1208,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
-	}
-	.activity-name {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--ca-text-primary);
 	}
 	.activity-preview {
 		font-size: 12px;
@@ -1225,7 +1338,7 @@
 	}
 	@media (prefers-color-scheme: light) {
 		.crew-grid-bg path {
-			stroke: rgba(0, 0, 0, 0.04);
+			stroke: rgba(0, 0, 0, 0.07);
 		}
 	}
 
@@ -1245,5 +1358,72 @@
 		to {
 			background-position: 16px 0;
 		}
+	}
+
+	/* ─── No-ship footer ──────────────────────────────────────── */
+	.footer-no-ship {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--ca-text-secondary);
+		font-size: 11px;
+		padding: 2px 4px;
+		border-radius: 4px;
+	}
+	.footer-no-ship:hover {
+		color: var(--ca-text-primary);
+		background: var(--ca-vibrancy-fill);
+	}
+	.footer-launch {
+		color: var(--ca-brand-main);
+	}
+
+	/* ─── Logbook watch section headers ──────────────────────── */
+	.watch-hd {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 10px 4px;
+		font-size: 10.5px;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		color: var(--ca-text-secondary);
+		text-transform: uppercase;
+		border-bottom: 0.5px solid var(--ca-outline-subtle);
+		margin-bottom: 2px;
+	}
+	.watch-date {
+		font-size: 10px;
+		font-weight: 400;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+
+	/* Ship-log timestamp inline in activity row */
+	.activity-log-time {
+		font-size: 10.5px;
+		color: var(--ca-text-secondary);
+		font-variant-numeric: tabular-nums;
+		flex: none;
+	}
+
+	/* Horizon empty state art */
+	.horizon-art {
+		color: var(--ca-text-secondary);
+		margin-bottom: 4px;
+	}
+	.empty-calm {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--ca-text-primary);
+		margin: 0;
+	}
+
+	/* Captain's call lantern glow when non-empty */
+	.nav-row:has(.nav-pill) {
+		background: color-mix(in oklab, var(--ca-semantic-warning) 8%, transparent);
 	}
 </style>

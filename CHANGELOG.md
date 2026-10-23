@@ -23,6 +23,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Telegram bridge for bots.** Paste a Telegram Bot token in Atlas Desktop → Settings → Telegram, then link a chat with `/start <code>`. Linked chats receive task results and can create tasks with `/task <bot name> <text>`. Approval prompts appear as inline keyboard messages (Allow / Deny).
 - **Bot approval prompts wait 30 minutes.** A bot pane with `approval: ask` holds the pending prompt for up to 30 minutes (non-bot panes keep the existing 55 s wait). `atlas setup claude-code|codex --apply` now registers `PermissionRequest` with a 1 805 s timeout to match; re-run it to pick that up.
 - **Atlas Crew theme.** The Bots workspace is now the Crew workspace (⌘⇧B). Navigation renamed: Activity → Logbook (compass icon), Triggers → Watches, Needs you → Captain's call. Favorites are now First mates. "New bot" is "Recruit"; connecting a server is "Launch your ship". Onboarding updated with crew copy and a ship flag mark. Settings section label updated to Crew. Mobile Crew tab and vocabulary updated to match.
+- **Mugiwaras.** The crew section is now called "Mugiwaras" (Japanese for straw hats) across Desktop (rail tooltip, MUGIWARAS sidebar header, Settings, empty states), Mobile (tab label), onboarding ("Meet your Mugiwaras"), and docs. Individual members stay "crewmate"; Ship/Logbook/Watches/Captain's call/Course unchanged.
+- **Straw hat (default).** Every new crewmate wears our own straw hat by default: wide flat brim, woven texture, bot-shell-coloured band, globe-meridian arc on crown, slight tilt with a secondary idle brim-tip animation. Existing bots with an explicit hat keep it. Scales from 24 px to 140 px.
+- **Logbook watches.** Activity entries are grouped by nautical watch period (Middle/Morning/Forenoon/Afternoon/Dog/First watch) with timestamps in ship-log voice ("06:12 · Aria finished: …").
+- **Logbook empty state.** "Calm seas. Nothing logged yet." with a small sea-horizon SVG and boat silhouette.
+- **Ship flag footer.** The Mugiwaras sidebar footer shows a ShipFlag icon next to each connected ship. When no ship is connected it shows "No ship yet · Launch".
+- **Cartography lines more visible.** Longitude grid raised from 4 % to 7 % opacity in both light and dark themes.
+- **Onboarding principles rewritten.** Replaced the cliché bullets with: "Your ship, your rules — runs on your server, no account", "Hand it the wheel — it keeps working while your Mac sleeps", "It flags you before anything risky".
+- **Row preview deduplication.** When a crewmate's role starts with a tag prefix (e.g. "Analyst: latency reports"), the tag pill and the preview no longer duplicate — the preview shows only the part after the colon.
+- **Primary buttons are full pills.** Continue / Connect / Open chat buttons in onboarding are now `border-radius: 999px`.
 
 ## [1.5.0-alpha.18] — 2026-10-21
 

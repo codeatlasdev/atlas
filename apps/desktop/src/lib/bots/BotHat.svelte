@@ -6,7 +6,67 @@
 	const glow = $derived(shade(color, 0.55));
 </script>
 
-{#if hat === "cap"}
+{#if hat === "straw"}
+	<!--
+		Our straw hat: wide flat brim, rounded dome crown, woven texture,
+		warm straw colour (#e8c36a), band in the bot's own shell colour,
+		thin globe-meridian arc on crown. Slight fixed tilt via CSS;
+		brim gets a secondary idle tip (.brim-tip). Scales 24–140 px.
+	-->
+	<g class="straw-hat">
+		<!-- Crown dome -->
+		<path d="M84 56 Q214 -72 344 56 Z" fill="#e8c36a" />
+		<!-- Woven texture: 3 diagonal stroke arcs across crown -->
+		<path
+			d="M114 42 Q152 -4 174 -44"
+			stroke="#b8872e"
+			stroke-width="3.5"
+			stroke-linecap="round"
+			fill="none"
+			opacity="0.42"
+		/>
+		<path
+			d="M162 22 Q200 -20 214 -58"
+			stroke="#b8872e"
+			stroke-width="3.5"
+			stroke-linecap="round"
+			fill="none"
+			opacity="0.42"
+		/>
+		<path
+			d="M210 12 Q250 -24 260 -54"
+			stroke="#b8872e"
+			stroke-width="3.5"
+			stroke-linecap="round"
+			fill="none"
+			opacity="0.42"
+		/>
+		<!-- Globe meridian arc on crown -->
+		<path
+			d="M214 -72 Q198 -24 196 56"
+			stroke="#b8872e"
+			stroke-width="2"
+			stroke-linecap="round"
+			fill="none"
+			opacity="0.32"
+		/>
+		<!-- Brim (flat wide ellipse) — darker edge stroke -->
+		<g class="brim-tip">
+			<ellipse cx="214" cy="56" rx="178" ry="24" fill="#e8c36a" stroke="#b8872e" stroke-width="3.5" />
+			<!-- Crown outline on top of brim -->
+			<path d="M84 56 Q214 -72 344 56" fill="none" stroke="#b8872e" stroke-width="3" />
+			<!-- Band in bot's own shell colour -->
+			<path
+				d="M92 46 Q214 16 336 46"
+				stroke={color}
+				stroke-width="11"
+				stroke-linecap="round"
+				fill="none"
+				opacity="0.88"
+			/>
+		</g>
+	</g>
+{:else if hat === "cap"}
 	<path d="M70 78 Q214 -96 358 78 Q214 46 70 78 Z" fill="#ef4444" />
 	<path d="M300 64 Q412 44 452 80 Q376 98 296 84 Z" fill="#b91c1c" />
 	<path d="M214 -8 L214 60" stroke="#b91c1c" stroke-width="6" opacity=".5" />
@@ -98,6 +158,41 @@
 		}
 		50% {
 			opacity: 0.45;
+		}
+	}
+	/* Straw hat: slight fixed tilt on the whole hat group */
+	.straw-hat {
+		transform-box: fill-box;
+		transform-origin: 50% 70%;
+		transform: rotate(-5deg);
+	}
+	/* Brim secondary idle tip: occasional gentle tilt, respects reduced-motion */
+	.brim-tip {
+		animation: brim-tip 9s ease-in-out infinite;
+		transform-box: fill-box;
+		transform-origin: 50% 100%;
+	}
+	@keyframes brim-tip {
+		0%,
+		18%,
+		100% {
+			transform: rotate(0deg);
+		}
+		8% {
+			transform: rotate(3deg);
+		}
+		13% {
+			transform: rotate(-1.5deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.straw-hat,
+		.brim-tip {
+			animation: none;
+			transform: none;
+		}
+		.straw-hat {
+			transform: rotate(-5deg);
 		}
 	}
 </style>

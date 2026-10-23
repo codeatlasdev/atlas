@@ -37,7 +37,7 @@ export const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "keyboard", label: "Keyboard shortcuts" },
 	{ id: "ssh", label: "SSH hosts" },
 	{ id: "mobile", label: "Mobile" },
-	{ id: "bots", label: "Crew" },
+	{ id: "bots", label: "Mugiwaras" },
 	{ id: "help", label: "Help & onboarding" },
 ];
 

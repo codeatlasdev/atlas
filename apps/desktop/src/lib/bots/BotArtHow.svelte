@@ -1,5 +1,5 @@
 <!--
-  BotArtHow — the one "how it works" screen of the Mugiwaras onboarding.
+  BotArtHow — the one "how it works" screen of the Crew onboarding.
 
   One night, told in ~14 s with the real pieces of the product: you give an order in the composer, a crewmate takes
   it and works on YOUR server while the sky turns to night and your Mac falls asleep, it stops to ask before

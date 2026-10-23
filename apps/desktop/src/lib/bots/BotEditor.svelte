@@ -8,7 +8,11 @@
 		EYE_STYLES,
 		HAT_LABELS,
 		HATS,
+		OUTFIT_LABELS,
+		OUTFITS,
 		randomLook,
+		TOOL_LABELS,
+		TOOLS,
 		type BotLook,
 	} from "#lib/bots/look.ts";
 
@@ -102,6 +106,42 @@
 						>
 							<BotFace {seed} look={{ ...look, hat: h }} state="idle" size={52} />
 							<span>{HAT_LABELS[h]}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+
+			<section>
+				<h4>Tool</h4>
+				<div class="grid" role="radiogroup" aria-label="Tool">
+					{#each TOOLS as x (x)}
+						<button
+							role="radio"
+							aria-checked={look.tool === x}
+							class="tile"
+							class:on={look.tool === x}
+							onclick={() => (look = { ...look, tool: x })}
+						>
+							<BotFace {seed} look={{ ...look, tool: x }} state="idle" size={52} />
+							<span>{TOOL_LABELS[x]}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+
+			<section>
+				<h4>Outfit</h4>
+				<div class="grid" role="radiogroup" aria-label="Outfit">
+					{#each OUTFITS as x (x)}
+						<button
+							role="radio"
+							aria-checked={look.outfit === x}
+							class="tile"
+							class:on={look.outfit === x}
+							onclick={() => (look = { ...look, outfit: x })}
+						>
+							<BotFace {seed} look={{ ...look, outfit: x }} state="idle" size={52} />
+							<span>{OUTFIT_LABELS[x]}</span>
 						</button>
 					{/each}
 				</div>

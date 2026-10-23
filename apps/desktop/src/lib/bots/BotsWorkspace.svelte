@@ -339,7 +339,7 @@
 
 		<!-- BOTS section header -->
 		<div class="section-hd">
-			<span>MUGIWARAS</span>
+			<span>CREW</span>
 			<button class="section-add" onclick={startNewBot} aria-label="Recruit" disabled={creating}
 				><Plus size={12} /></button
 			>

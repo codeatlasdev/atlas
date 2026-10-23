@@ -94,7 +94,7 @@
 </script>
 
 <PageHead
-	title="Mugiwaras"
+	title="Crew"
 	description="Bot computers run crewmates 24/7 on your own server. Add a ship after running `atlas bot install user@host`."
 />
 
@@ -187,7 +187,7 @@
 	<Row
 		id="bots-onboarding"
 		label="Replay onboarding"
-		description="Shows the Mugiwaras introduction again from the first step."
+		description="Shows the Crew introduction again from the first step."
 	>
 		<Button
 			size="sm"

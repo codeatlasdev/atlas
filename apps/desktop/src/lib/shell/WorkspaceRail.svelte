@@ -139,13 +139,13 @@
 
 	<div class="separator" aria-hidden="true"></div>
 
-	<!-- Mugiwaras workspace -->
+	<!-- Crew workspace -->
 	<button
 		class="item"
 		class:active={ws.appMode === "bots"}
 		onclick={() => setMode("bots")}
-		aria-label="Mugiwaras workspace"
-		title="Mugiwaras  {shortcut}"
+		aria-label="Crew workspace"
+		title="Crew  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
 		<ShipFlag size={34} />
@@ -232,7 +232,7 @@
 		top: 0;
 		width: 6px;
 		height: 100%;
-		/* Above full-window layers (the Mugiwaras onboarding, 1600) so the rail can always be summoned. */
+		/* Above full-window layers (the Crew onboarding, 1600) so the rail can always be summoned. */
 		z-index: 1701;
 		pointer-events: all;
 		cursor: default;

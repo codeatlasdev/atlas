@@ -34,8 +34,8 @@ enum Commands {
         command: commands::config::ConfigCommands,
     },
 
-    #[command(next_help_heading = "Bots")]
-    /// Manage atlas bot computers: install, login, status, logs
+    #[command(next_help_heading = "Crew")]
+    /// Manage Atlas Crew ships (bot servers): install, login, status, logs
     Bot(commands::bot::BotArgs),
 
     #[command(next_help_heading = "Deploy")]

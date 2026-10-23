@@ -1,5 +1,5 @@
 /**
- * Types for the Atlas Bots feature: bot hosts, bots, tasks, routines, and approvals.
+ * Types for the Atlas Crew feature: bot hosts, bots, tasks, routines, and approvals.
  * All bot commands go through `hostCall` with an optional `host` arg that routes to
  * the correct bot computer (e.g. `{ host: "ssh:atlas-bot@server" }`).
  */

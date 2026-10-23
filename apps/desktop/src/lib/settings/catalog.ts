@@ -718,7 +718,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 		"Onboarding",
 		"bots-onboarding",
 		"Replay onboarding",
-		"Shows the Mugiwaras introduction again from the first step.",
-		"onboarding intro tour crew mugiwaras",
+		"Shows the Crew introduction again from the first step.",
+		"onboarding intro tour crew",
 	),
 ];

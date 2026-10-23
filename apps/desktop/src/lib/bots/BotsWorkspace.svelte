@@ -1,19 +1,19 @@
 <script lang="ts">
-	import { randomLook } from "#lib/bots/look.ts";
+	import { randomLook, normalizeLook } from "#lib/bots/look.ts";
 	/**
 	 * BotsWorkspace — full-window messenger layout (Discord DM style).
-	 * Left column: drag region + search + bot list + server status footer.
-	 * Right panel: BotView chat for the selected bot, or an empty state.
+	 * Left column: drag region + search + nav + bot list + server status footer.
+	 * Right panel: BotView chat for the selected bot, or activity/triggers/needs-you panels.
 	 */
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import BotListRow from "#lib/bots/BotListRow.svelte";
+	import BotFace from "#lib/bots/BotFace.svelte";
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Plus, Search, Settings, CircleHelp } from "@lucide/svelte";
+	import { Plus, Search, Settings, CircleHelp, Activity, TriangleAlert, Zap } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
-	import BotTile from "#lib/bots/BotTile.svelte";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 	import BotOnboarding from "#lib/bots/BotOnboarding.svelte";
 
@@ -21,10 +21,8 @@
 
 	let query = $state("");
 	let creating = $state(false);
-	let colWidth = $state(0);
 	let searchOpen = $state(false);
-	const tileMode = $derived(colWidth < 280 || bots.allBots.length <= 2);
-	let selectedNav = $state<"bots" | "activity" | "triggers" | "needs_you">("bots");
+	let selectedNav = $state<"bots" | "activity" | "triggers" | "needs_you">("activity");
 
 	// ─── onboarding ───────────────────────────────────────────────────────────
 
@@ -40,6 +38,8 @@
 		showOnboarding = true;
 	}
 
+	// ─── favorite management ──────────────────────────────────────────────────
+
 	// ─── derived ──────────────────────────────────────────────────────────────
 
 	const remoteHosts = $derived(bots.hosts.filter((h) => h.key !== ""));
@@ -53,6 +53,48 @@
 				)
 			: bots.allBots,
 	);
+	function loadFav(): Map<string, string> {
+		try {
+			return new Map(Object.entries(JSON.parse(localStorage.getItem("bots:favorite") ?? "{}")));
+		} catch {
+			return new Map();
+		}
+	}
+
+	function saveFav(m: Map<string, string>) {
+		try {
+			localStorage.setItem("bots:favorite", JSON.stringify(Object.fromEntries(m)));
+		} catch {}
+	}
+
+	let favMap = $state(loadFav());
+
+	const favoriteEntry = $derived.by(() => {
+		for (const [hk, bid] of favMap) {
+			const e = bots.allBots.find((x) => x.hostKey === hk && x.bot.id === bid);
+			if (e) return e;
+		}
+		// default = first bot
+		return bots.allBots[0] ?? null;
+	});
+
+	const nonFavBots = $derived(
+		favoriteEntry
+			? filteredBots.filter(
+					(x) => !(x.hostKey === favoriteEntry!.hostKey && x.bot.id === favoriteEntry!.bot.id),
+				)
+			: filteredBots,
+	);
+
+	function setFavorite(hostKey: string, botId: string) {
+		const m = new Map(favMap);
+		m.delete(hostKey);
+		m.set(hostKey, botId);
+		favMap = m;
+		saveFav(m);
+	}
+
+	const needsYouCount = $derived(bots.needsYouCount);
 
 	// ─── sections: group by host when there are multiple hosts ────────────────
 
@@ -117,7 +159,13 @@
 	// ─── actions ──────────────────────────────────────────────────────────────
 
 	function selectBot(hostKey: string, botId: string) {
+		selectedNav = "bots";
 		void bots.select(hostKey, botId);
+	}
+
+	function navClick(nav: "activity" | "triggers" | "needs_you") {
+		selectedNav = nav;
+		bots.selected = null;
 	}
 
 	function isActive(hostKey: string, botId: string): boolean {
@@ -160,11 +208,21 @@
 			void bots.select(hostKey, botId);
 		}
 	}
+
+	function fmtActivityTime(tsMs: number): string {
+		const diff = Date.now() - tsMs;
+		const m = Math.floor(diff / 60000);
+		if (m < 1) return "just now";
+		if (m < 60) return `${m}m ago`;
+		const h = Math.floor(m / 60);
+		if (h < 24) return `${h}h ago`;
+		return new Date(tsMs).toLocaleDateString([], { month: "short", day: "numeric" });
+	}
 </script>
 
 <div class="bots-workspace">
 	<!-- Left column -->
-	<div class="col-left" bind:clientWidth={colWidth}>
+	<div class="col-left">
 		<!-- Drag region -->
 		<div class="col-drag" data-tauri-drag-region aria-hidden="true"></div>
 
@@ -184,54 +242,113 @@
 			<button class="icon-btn-round" onclick={() => (searchOpen = !searchOpen)} aria-label="Search">
 				<Search size={14} />
 			</button>
-			<button class="icon-btn-round" onclick={startNewBot} aria-label="New bot" disabled={creating}>
-				<Plus size={14} />
-			</button>
 		</div>
 
-		<!-- Bot list -->
-		<div class="bot-list" class:tile-mode={tileMode} role="list">
-			{#if sections.length === 0}
-				{#if bots.allBots.length === 0}
-					<div class="empty-state">
-						<p class="empty-title">No bots yet</p>
-						<p class="empty-sub">Add a bot server to get started.</p>
-						<button class="empty-add" onclick={openBotsSettings}>Add bot server</button>
-					</div>
-				{:else}
-					<div class="empty-state">
-						<p class="empty-sub">No bots match "{query}"</p>
-					</div>
+		<!-- Nav rows: Activity / Triggers / Needs you -->
+		<nav class="nav-list" aria-label="Bots navigation">
+			<button class="nav-row" class:active={selectedNav === "activity"} onclick={() => navClick("activity")}>
+				<Activity size={15} aria-hidden="true" />
+				<span>Activity</span>
+			</button>
+			<button class="nav-row" class:active={selectedNav === "triggers"} onclick={() => navClick("triggers")}>
+				<Zap size={15} aria-hidden="true" />
+				<span>Triggers</span>
+			</button>
+			<button
+				class="nav-row"
+				class:active={selectedNav === "needs_you"}
+				onclick={() => navClick("needs_you")}
+			>
+				<TriangleAlert size={15} aria-hidden="true" />
+				<span>Needs you</span>
+				{#if needsYouCount > 0}
+					<span class="nav-pill" aria-label="{needsYouCount} bots need attention">{needsYouCount}</span>
 				{/if}
+			</button>
+		</nav>
+
+		<!-- BOTS section header -->
+		<div class="section-hd">
+			<span>BOTS</span>
+			<button class="section-add" onclick={startNewBot} aria-label="New bot" disabled={creating}
+				><Plus size={12} /></button
+			>
+		</div>
+
+		<!-- Favorite hero -->
+		{#if favoriteEntry && !query.trim()}
+			{@const hero = favoriteEntry}
+			{@const heroLook = normalizeLook(hero.bot.look, hero.bot.id)}
+			<div class="hero-wrap">
+				<button
+					class="hero-btn"
+					class:active={isActive(hero.hostKey, hero.bot.id)}
+					onclick={() => selectBot(hero.hostKey, hero.bot.id)}
+					aria-label="{hero.bot.name} (favorite)"
+					aria-pressed={isActive(hero.hostKey, hero.bot.id)}
+				>
+					<div class="hero-face-wrap">
+						{#if hero.bot.state === "working"}
+							<div class="hero-dots" style:background={heroLook.color}>
+								<span class="dot"></span><span class="dot"></span><span class="dot"></span>
+							</div>
+						{:else}
+							<BotFace
+								seed={hero.bot.id}
+								look={hero.bot.look}
+								state={hero.bot.state === "needs_you" ? "needs_you" : "idle"}
+								size={80}
+							/>
+						{/if}
+						<span class="hero-star" aria-hidden="true">★</span>
+						<!-- presence badge -->
+						<span
+							class="hero-presence"
+							class:green={hero.bot.state === "working"}
+							class:amber={hero.bot.state === "needs_you"}
+							aria-hidden="true"
+						></span>
+						{#if bots.hasUnread(hero.hostKey, hero.bot.id)}
+							<span class="hero-unread" aria-label="Unread"></span>
+						{/if}
+					</div>
+					<span class="hero-name">{hero.bot.name}</span>
+				</button>
+			</div>
+		{/if}
+
+		<!-- Bot list (non-favorite) -->
+		<div class="bot-list" role="list">
+			{#if nonFavBots.length === 0 && bots.allBots.length === 0}
+				<div class="empty-state">
+					<p class="empty-title">No bots yet</p>
+					<p class="empty-sub">Add a bot server to get started.</p>
+					<button class="empty-add" onclick={openBotsSettings}>Add bot server</button>
+				</div>
+			{:else if nonFavBots.length === 0 && query.trim()}
+				<div class="empty-state">
+					<p class="empty-sub">No bots match "{query}"</p>
+				</div>
 			{:else}
-				{#each sections as section (section.hostKey)}
+				{#each sections.filter( (s) => nonFavBots.some((nb) => nb.hostKey === s.hostKey) ) as section (section.hostKey)}
 					{#if sections.length > 1}
 						<div class="host-hd">{section.hostName}</div>
 					{/if}
 					{#each section.projects as pg (pg.projectName ?? "__none__")}
 						{#if pg.projectName}
-							<div class="project-hd">
-								<span>{pg.projectName}</span>
-							</div>
+							<div class="project-hd"><span>{pg.projectName}</span></div>
 						{/if}
-						{#each pg.bots as { hostKey, bot } (bot.id)}
+						{#each pg.bots.filter( ({ hostKey, bot }) => nonFavBots.some((nb) => nb.hostKey === hostKey && nb.bot.id === bot.id) ) as { hostKey, bot } (bot.id)}
 							<div animate:flip={{ duration: 200 }}>
-								{#if tileMode}
-									<BotTile
-										{bot}
-										active={isActive(hostKey, bot.id)}
-										unread={bots.hasUnread(hostKey, bot.id)}
-										onclick={() => selectBot(hostKey, bot.id)}
-									/>
-								{:else}
-									<BotListRow
-										{bot}
-										active={isActive(hostKey, bot.id)}
-										unread={bots.hasUnread(hostKey, bot.id)}
-										onclick={() => selectBot(hostKey, bot.id)}
-										onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
-									/>
-								{/if}
+								<BotListRow
+									{bot}
+									active={isActive(hostKey, bot.id)}
+									unread={bots.hasUnread(hostKey, bot.id)}
+									isFavorite={favoriteEntry?.hostKey === hostKey && favoriteEntry?.bot.id === bot.id}
+									onclick={() => selectBot(hostKey, bot.id)}
+									onFavorite={() => setFavorite(hostKey, bot.id)}
+									onContextAction={(action) => handleContextAction(hostKey, bot.id, action)}
+								/>
 							</div>
 						{/each}
 					{/each}
@@ -240,7 +357,6 @@
 		</div>
 
 		<!-- Server status footer (Discord user-bar style) -->
-		<!-- Footer (Discord user-bar) -->
 		<div class="dm-footer">
 			<!-- Left: server status -->
 			<div class="footer-servers">
@@ -293,16 +409,136 @@
 
 	<!-- Right panel -->
 	<div class="col-right">
-		{#if bots.selectedBot}
+		{#if bots.selectedBot && selectedNav === "bots"}
 			<BotView />
-		{:else}
-			<div class="no-selection" aria-live="polite">
-				{#if bots.allBots.length > 0}
-					Select a bot to start chatting.
+		{:else if selectedNav === "needs_you"}
+			<!-- Needs-you screen -->
+			<div class="nav-view">
+				<div class="nav-view-hd">Needs you</div>
+				{#if bots.allBots.filter((b) => b.bot.state === "needs_you").length === 0}
+					<div class="nav-view-empty">No bots need attention right now.</div>
 				{:else}
-					<p class="empty-title">No bots yet</p>
-					<p class="empty-sub">Add a bot server in Settings → Bots,<br />then create your first bot.</p>
-					<button class="btn-primary" onclick={openBotsSettings}>Settings → Bots</button>
+					<div class="needs-list">
+						{#each bots.allBots.filter((b) => b.bot.state === "needs_you") as { hostKey, bot } (bot.id)}
+							<div class="needs-card">
+								<BotFace seed={bot.id} look={bot.look} state="needs_you" size={36} />
+								<div class="needs-body">
+									<span class="needs-name">{bot.name}</span>
+									{#if bot.pending_approval}
+										<span class="needs-tool">{bot.pending_approval.tool_name}</span>
+									{/if}
+								</div>
+								<div class="needs-btns">
+									{#if bot.pending_approval}
+										<button
+											class="needs-deny"
+											onclick={() =>
+												void bots
+													.approve(bot.pending_approval!.pane_key, bot.pending_approval!.req, false)
+													.catch(() => {})}>Deny</button
+										>
+										<button
+											class="needs-allow"
+											onclick={() => {
+												void bots
+													.approve(bot.pending_approval!.pane_key, bot.pending_approval!.req, true)
+													.catch(() => {});
+												selectBot(hostKey, bot.id);
+											}}>Allow</button
+										>
+									{/if}
+									<button class="needs-open" onclick={() => selectBot(hostKey, bot.id)}>Open</button>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{:else if selectedNav === "triggers"}
+			<!-- Triggers screen -->
+			<div class="nav-view">
+				<div class="nav-view-hd">Triggers</div>
+				{#if bots.allBots.filter((b) => (b.bot.triggers ?? []).length > 0).length === 0}
+					<div class="nav-view-empty">
+						<p>No triggers configured.</p>
+						<p class="nav-view-hint">Select a bot and open its profile to add triggers.</p>
+					</div>
+				{:else}
+					<div class="triggers-list">
+						{#each bots.allBots.filter((b) => (b.bot.triggers ?? []).length > 0) as { hostKey, bot } (bot.id)}
+							<div class="trigger-group">
+								<div class="trigger-group-name">{bot.name}</div>
+								{#each bot.triggers ?? [] as t (t.id)}
+									<div class="trigger-row">
+										<span class="trigger-kind">{t.kind.type}</span>
+										<span class="trigger-enabled" class:on={t.enabled}>{t.enabled ? "on" : "off"}</span>
+									</div>
+								{/each}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{:else}
+			<!-- Activity view (default when no bot selected) -->
+			<div class="nav-view activity-view">
+				{#if bots.activityFeed.length === 0}
+					<div class="nav-view-empty">
+						<p>Nothing yet.</p>
+						<button class="btn-primary" onclick={startNewBot} disabled={creating}>New bot</button>
+					</div>
+				{:else}
+					<div class="activity-hd">Activity</div>
+					<div class="activity-feed">
+						{#each bots.activityFeed as entry (entry.botId + entry.task.id)}
+							<button class="activity-row" onclick={() => selectBot(entry.hostKey, entry.botId)}>
+								<BotFace
+									seed={entry.botId}
+									look={bots.allBots.find((x) => x.bot.id === entry.botId)?.bot.look}
+									state="idle"
+									size={32}
+								/>
+								<div class="activity-body">
+									<span class="activity-name">{entry.botName}</span>
+									<span class="activity-preview"
+										>{entry.task.result?.slice(0, 80) ?? entry.task.prompt.slice(0, 80)}</span
+									>
+								</div>
+								<span class="activity-time">{fmtActivityTime(entry.task.ts)}</span>
+							</button>
+						{/each}
+					</div>
+					{#if bots.allBots.some((b) => b.bot.state === "needs_you")}
+						<div class="activity-needs-hd">Needs you</div>
+						{#each bots.allBots.filter((b) => b.bot.state === "needs_you") as { hostKey, bot } (bot.id)}
+							<div class="needs-card inline">
+								<BotFace seed={bot.id} look={bot.look} state="needs_you" size={32} />
+								<span class="needs-name">{bot.name}</span>
+								{#if bot.pending_approval}
+									<div class="needs-btns">
+										<button
+											class="needs-deny"
+											onclick={() =>
+												void bots
+													.approve(bot.pending_approval!.pane_key, bot.pending_approval!.req, false)
+													.catch(() => {})}>Deny</button
+										>
+										<button
+											class="needs-allow"
+											onclick={() => {
+												void bots
+													.approve(bot.pending_approval!.pane_key, bot.pending_approval!.req, true)
+													.catch(() => {});
+												selectBot(hostKey, bot.id);
+											}}>Allow</button
+										>
+									</div>
+								{:else}
+									<button class="needs-open" onclick={() => selectBot(hostKey, bot.id)}>Open</button>
+								{/if}
+							</div>
+						{/each}
+					{/if}
 				{/if}
 			</div>
 		{/if}
@@ -392,6 +628,199 @@
 
 	.search::placeholder {
 		color: var(--ca-text-secondary);
+	}
+
+	/* Nav rows */
+	.nav-list {
+		flex: none;
+		padding: 4px 6px;
+	}
+	.nav-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 7px 10px;
+		border: none;
+		background: transparent;
+		border-radius: 6px;
+		font-size: 13px;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		text-align: left;
+		transition:
+			background 80ms,
+			color 80ms;
+		margin-bottom: 1px;
+	}
+	.nav-row:hover {
+		background: var(--ca-vibrancy-fill);
+		color: var(--ca-text-primary);
+	}
+	.nav-row.active {
+		background: color-mix(in oklab, var(--ca-brand-main) 14%, transparent);
+		color: var(--ca-text-primary);
+		font-weight: 500;
+	}
+	.nav-pill {
+		margin-left: auto;
+		min-width: 18px;
+		height: 18px;
+		border-radius: 9px;
+		background: var(--ca-semantic-error, #e03131);
+		color: var(--ca-surface-base);
+		font-size: 10px;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 4px;
+	}
+
+	/* Section header */
+	.section-hd {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px 4px;
+		font-size: 10.5px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		color: var(--ca-text-secondary);
+		text-transform: uppercase;
+	}
+	.section-add {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: 4px;
+		border: none;
+		background: transparent;
+		color: var(--ca-text-secondary);
+		cursor: default;
+		padding: 0;
+	}
+	.section-add:hover {
+		color: var(--ca-text-primary);
+		background: var(--ca-vibrancy-fill);
+	}
+	.section-add:disabled {
+		opacity: 0.4;
+	}
+
+	/* Hero */
+	.hero-wrap {
+		flex: none;
+		display: flex;
+		justify-content: center;
+		padding: 12px 8px 8px;
+	}
+	.hero-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		background: transparent;
+		border: none;
+		border-radius: 12px;
+		padding: 8px;
+		cursor: default;
+		transition: background 150ms;
+	}
+	.hero-btn:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.hero-btn.active {
+		background: color-mix(in oklab, var(--ca-brand-main) 14%, transparent);
+	}
+	.hero-face-wrap {
+		position: relative;
+		width: 80px;
+		height: 80px;
+	}
+	.hero-dots {
+		width: 80px;
+		height: 80px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+	}
+	.hero-star {
+		position: absolute;
+		top: -2px;
+		right: -2px;
+		font-size: 13px;
+		color: var(--ca-warning, var(--ca-semantic-warning, oklch(75% 0.18 70)));
+		line-height: 1;
+		text-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+		pointer-events: none;
+	}
+	.hero-presence {
+		position: absolute;
+		bottom: 3px;
+		right: 3px;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--ca-text-disabled, #888);
+		border: 2px solid var(--ca-surface-sunken);
+		pointer-events: none;
+	}
+	.hero-presence.green {
+		background: var(--ca-semantic-success, #2f9e44);
+	}
+	.hero-presence.amber {
+		background: var(--ca-semantic-warning, #e67700);
+	}
+	.hero-unread {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: var(--ca-brand-main);
+		border: 2px solid var(--ca-surface-sunken);
+		pointer-events: none;
+	}
+	.hero-name {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+		max-width: 96px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	/* hero dots bounce */
+	.hero-dots .dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: rgba(255, 255, 255, 0.85);
+		animation: dot-bounce 1.2s ease-in-out infinite;
+	}
+	.hero-dots .dot:nth-child(2) {
+		animation-delay: 0.15s;
+	}
+	.hero-dots .dot:nth-child(3) {
+		animation-delay: 0.3s;
+	}
+	@keyframes dot-bounce {
+		0%,
+		80%,
+		100% {
+			transform: scale(0.8);
+			opacity: 0.5;
+		}
+		40% {
+			transform: scale(1.1);
+			opacity: 1;
+		}
 	}
 
 	/* Host header (multi-host only) */
@@ -558,19 +987,6 @@
 		flex-direction: column;
 	}
 
-	.no-selection {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		color: var(--ca-text-secondary);
-		font-size: 13px;
-		gap: 8px;
-		text-align: center;
-		padding: 40px;
-	}
-
 	.btn-primary {
 		margin-top: 8px;
 		font-size: 13px;
@@ -586,18 +1002,198 @@
 		background: var(--ca-vibrancy-fill);
 	}
 
-	/* Tile mode */
-	.bot-list.tile-mode {
+	/* nav-view panels */
+	.nav-view {
+		flex: 1;
 		display: flex;
-		flex-direction: row;
-		flex-wrap: wrap;
-		justify-content: center;
-		align-content: flex-start;
-		gap: 4px;
-		padding: 8px 4px;
+		flex-direction: column;
+		overflow-y: auto;
+		padding: 16px 24px;
 	}
-	.bot-list.tile-mode .host-hd,
-	.bot-list.tile-mode .project-hd {
+	.activity-view {
+		max-width: 760px;
 		width: 100%;
+		margin: 0 auto;
+		align-self: center;
+	}
+	.nav-view-hd,
+	.activity-hd,
+	.activity-needs-hd {
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+		margin-bottom: 12px;
+		padding-bottom: 8px;
+		border-bottom: 0.5px solid var(--ca-outline-subtle);
+	}
+	.activity-needs-hd {
+		margin-top: 20px;
+	}
+	.nav-view-empty {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		color: var(--ca-text-secondary);
+		font-size: 13px;
+		gap: 6px;
+		text-align: center;
+	}
+	.nav-view-hint {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		margin: 0;
+	}
+	.activity-feed {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.activity-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 8px 10px;
+		border: none;
+		background: transparent;
+		border-radius: 8px;
+		cursor: default;
+		text-align: left;
+		width: 100%;
+		transition: background 80ms;
+	}
+	.activity-row:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.activity-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+	.activity-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+	}
+	.activity-preview {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.activity-time {
+		font-size: 11px;
+		color: var(--ca-text-secondary);
+		flex: none;
+	}
+
+	/* needs-you cards */
+	.needs-list,
+	.triggers-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.needs-card {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 12px;
+		background: var(--ca-surface-sunken);
+		border-radius: 10px;
+		border: 0.5px solid var(--ca-outline-subtle);
+	}
+	.needs-card.inline {
+		background: color-mix(in oklab, var(--ca-semantic-warning) 8%, var(--ca-surface-sunken));
+		border-color: color-mix(in oklab, var(--ca-semantic-warning) 20%, transparent);
+	}
+	.needs-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.needs-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+	}
+	.needs-tool {
+		font-size: 11.5px;
+		color: var(--ca-text-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.needs-btns {
+		display: flex;
+		gap: 6px;
+		flex: none;
+	}
+	.needs-deny,
+	.needs-allow,
+	.needs-open {
+		padding: 4px 10px;
+		border-radius: 6px;
+		border: 0.5px solid var(--ca-outline-subtle);
+		font-size: 12px;
+		cursor: default;
+		background: none;
+		color: var(--ca-text-primary);
+	}
+	.needs-deny:hover {
+		background: var(--ca-vibrancy-fill);
+	}
+	.needs-allow {
+		background: var(--ca-brand-main);
+		color: var(--ca-surface-base);
+		border-color: transparent;
+	}
+	.needs-allow:hover {
+		opacity: 0.85;
+	}
+	.needs-open {
+		color: var(--ca-text-secondary);
+	}
+	.needs-open:hover {
+		color: var(--ca-text-primary);
+		background: var(--ca-vibrancy-fill);
+	}
+
+	/* triggers */
+	.trigger-group {
+		margin-bottom: 12px;
+	}
+	.trigger-group-name {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+		margin-bottom: 4px;
+	}
+	.trigger-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 0;
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+	}
+	.trigger-kind {
+		text-transform: capitalize;
+	}
+	.trigger-enabled {
+		font-size: 10px;
+		padding: 1px 5px;
+		border-radius: 8px;
+		background: var(--ca-vibrancy-fill);
+	}
+	.trigger-enabled.on {
+		background: color-mix(in oklab, var(--ca-semantic-success) 15%, transparent);
+		color: var(--ca-semantic-success);
 	}
 </style>

@@ -22,6 +22,7 @@
 		GitPullRequest,
 		Link,
 		Bot as BotIcon,
+		Plus,
 		RotateCcw,
 		Settings2,
 		Terminal,
@@ -116,6 +117,7 @@
 	let threadEl = $state<HTMLElement | null>(null);
 	let atBottom = $state(true);
 	let jumpVisible = $state(false);
+	let composerFocused = $state(false);
 
 	// ─── derived ──────────────────────────────────────────────────────────────
 
@@ -127,6 +129,10 @@
 	/** Show actual hostname for local; server name label for remote. */
 	const displayServerName = $derived(bots.selected?.hostKey ? serverName : localHostname || serverName);
 	const queuedCount = $derived(tasks.filter((t) => t.state === "queued").length);
+	/** True when the most recent task has an unanswered ask card. */
+	const hasPendingAsk = $derived(
+		tasks.length > 0 && parseAsk(tasks[0].result) !== null && !approvedReqs.has(tasks[0].id),
+	);
 	const faceState = $derived<FaceState>(
 		bot?.state === "needs_you" ? "needs_you" : bot?.state === "working" ? "working" : "idle",
 	);
@@ -271,6 +277,12 @@
 	}
 
 	function noop() {}
+
+	function autoGrow(el: HTMLTextAreaElement) {
+		el.style.height = "auto";
+		const maxH = parseInt(getComputedStyle(el).getPropertyValue("--composer-max-h") || "192");
+		el.style.height = Math.min(el.scrollHeight, maxH) + "px";
+	}
 
 	/**
 	 * Format tool_input for approval bubble: Bash → show command; Edit/Write → file path;
@@ -669,378 +681,387 @@
 		{/if}
 
 		<!-- Task thread -->
-		<div class="thread" bind:this={threadEl} onscroll={onThreadScroll} aria-label="Task history">
-			{#if bots.tasksLoading && tasks.length === 0}
-				<div class="loading">Loading…</div>
-			{:else if tasks.length === 0}
-				<div class="empty-thread">No tasks yet. Send one below.</div>
-			{:else}
-				{#each orderedTasks as t, i (t.id)}
-					<!-- Unread divider -->
-					{#if i === unreadIdx}
-						<div class="unread-divider" role="separator">
-							<span class="unread-label">NEW</span>
-						</div>
-					{/if}
-					<!-- Date separator on group start + day change -->
-					{#if groupedTasks[i]?.groupStart && i > 0}
-						{@const prev = orderedTasks[i - 1]}
-						{#if new Date(t.ts).toDateString() !== new Date(prev.ts).toDateString()}
-							<div class="msg-ts">{fmtDate(t.ts)}</div>
-						{/if}
-					{/if}
-					<!-- Row: user prompt + bot response -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="msg-row"
-						class:group-start={groupedTasks[i]?.groupStart}
-						onmouseenter={() => (hoveredTask = t.id)}
-						onmouseleave={() => (hoveredTask = null)}
-					>
-						<!-- User bubble -->
-						{#if t.trigger_event}
-							{@const TrigIcon = triggerIconComponent(t.trigger_event.kind)}
-							<div class="trigger-event" role="note">
-								<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
-								<span class="trigger-summary">{t.trigger_event.summary}</span>
+		<div class="chat-col">
+			<div class="thread" bind:this={threadEl} onscroll={onThreadScroll} aria-label="Task history">
+				{#if bots.tasksLoading && tasks.length === 0}
+					<div class="loading">Loading…</div>
+				{:else if tasks.length === 0}
+					<div class="empty-thread">No tasks yet. Send one below.</div>
+				{:else}
+					{#each orderedTasks as t, i (t.id)}
+						<!-- Unread divider -->
+						{#if i === unreadIdx}
+							<div class="unread-divider" role="separator">
+								<span class="unread-label">NEW</span>
 							</div>
 						{/if}
-						<div class="msg-out" in:msgOut>
-							<div class="bubble out ca-selectable">{t.prompt}</div>
-							{#if t.source !== "desktop"}
-								<div class="msg-meta">· {t.source}</div>
+						<!-- Date separator on group start + day change -->
+						{#if groupedTasks[i]?.groupStart && i > 0}
+							{@const prev = orderedTasks[i - 1]}
+							{#if new Date(t.ts).toDateString() !== new Date(prev.ts).toDateString()}
+								<div class="msg-ts">{fmtDate(t.ts)}</div>
 							{/if}
-							{#if t.state === "queued"}
-								<div class="msg-meta muted">Queued</div>
+						{/if}
+						<!-- Row: user prompt + bot response -->
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="msg-row"
+							class:group-start={groupedTasks[i]?.groupStart}
+							onmouseenter={() => (hoveredTask = t.id)}
+							onmouseleave={() => (hoveredTask = null)}
+						>
+							<!-- User bubble -->
+							{#if t.trigger_event}
+								{@const TrigIcon = triggerIconComponent(t.trigger_event.kind)}
+								<div class="trigger-event" role="note">
+									<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
+									<span class="trigger-summary">{t.trigger_event.summary}</span>
+								</div>
 							{/if}
-						</div>
-
-						<!-- Bot response: running -->
-						{#if t.state === "running"}
-							{@const elapsedMs = t.started_at ? now - t.started_at : 0}
-							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-								{#if groupedTasks[i]?.groupStart}
-									<div class="msg-avatar">
-										<BotFace seed={bot.id} look={bot.look} state="working" size={40} />
-									</div>
-								{:else}
-									<div class="msg-avatar-gap"></div>
+							<div class="msg-out" in:msgOut>
+								<div class="bubble out ca-selectable">{t.prompt}</div>
+								{#if t.source !== "desktop"}
+									<div class="msg-meta">· {t.source}</div>
 								{/if}
-								<div class="msg-in-body">
+								{#if t.state === "queued"}
+									<div class="msg-meta muted">Queued</div>
+								{/if}
+							</div>
+
+							<!-- Bot response: running -->
+							{#if t.state === "running"}
+								{@const elapsedMs = t.started_at ? now - t.started_at : 0}
+								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
 									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-author">
-											<span class="author-name">{bot.name}</span>
-											<span class="author-time">{fmtTime(t.ts)}</span>
+										<div class="msg-avatar">
+											<BotFace seed={bot.id} look={bot.look} state="working" size={40} />
 										</div>
+									{:else}
+										<div class="msg-avatar-gap"></div>
 									{/if}
-									<div class="bubble in working">
-										<Spinner size={12} />
-										Working · {fmtElapsed(elapsedMs)}
-									</div>
-									{#if t.steps && t.steps.length > 0}
-										<div class="steps-wrap">
-											<button
-												class="steps-btn"
-												aria-expanded={!!stepsOpen[t.id]}
-												onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-											>
-												{#if stepsOpen[t.id]}
-													<ChevronDown size={12} aria-hidden="true" />
-												{:else}
-													<ChevronRight size={12} aria-hidden="true" />
-												{/if}
-												{t.steps.length}
-												{t.steps.length === 1 ? "step" : "steps"}
-											</button>
-											{#if stepsOpen[t.id]}
-												<div class="steps-list">
-													{#each t.steps as step, si (`${t.id}-${si}`)}
-														<div class="step-row">
-															<span class="step-ts">{fmtTime(step.ts)}</span>
-															<span>{step.text}</span>
-														</div>
-													{/each}
-												</div>
-											{/if}
-										</div>
-									{/if}
-									{#if bot.running_task?.id === t.id && bot.pending_approval}
-										{@const pa = bot.pending_approval}
-										{#if approvedReqs.has(pa.req)}
-											<div class="approval-answered" in:msgIn>
-												<Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}
-											</div>
-										{:else}
-											<div class="approval-bubble" role="alert" in:embedIn>
-												<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
-												<pre class="approval-input">{formatApprovalInput(
-														pa.tool_name ?? "",
-														pa.tool_input,
-													)}</pre>
-												<div class="approval-btns">
-													<Button
-														size="sm"
-														variant="ghost"
-														onclick={() => void denyApproval(pa.pane_key, pa.req)}>Deny</Button
-													>
-													<Button size="sm" onclick={() => void allowApproval(pa.pane_key, pa.req)}
-														>Allow</Button
-													>
-												</div>
+									<div class="msg-in-body">
+										{#if groupedTasks[i]?.groupStart}
+											<div class="msg-author">
+												<span class="author-name">{bot.name}</span>
+												<span class="author-time">{fmtTime(t.ts)}</span>
 											</div>
 										{/if}
-									{/if}
-								</div>
-							</div>
-							<!-- Bot response: done -->
-						{:else if t.state === "done"}
-							{@const raw = t.result ?? "Done"}
-							{@const collapsed = shouldCollapse(raw) && !expandedResults.has(t.id)}
-							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-								{#if groupedTasks[i]?.groupStart}
-									<div class="msg-avatar">
-										<BotFace seed={bot.id} look={bot.look} state={faceState} size={40} />
-									</div>
-								{:else}
-									<div class="msg-avatar-gap"></div>
-								{/if}
-								<div class="msg-in-body">
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-author">
-											<span class="author-name">{bot.name}</span>
-											<span class="author-time">{fmtTime(t.ts)}</span>
+										<div class="bubble in working">
+											<Spinner size={12} />
+											Working · {fmtElapsed(elapsedMs)}
 										</div>
-									{/if}
-									{#each [parseAsk(t.result)] as ask}
-										{#if ask && !expandedResults.has(t.id + ":dismissed")}
-											<!-- Ask card -->
-											<div class="ask-card">
-												<div class="ask-question">
-													<span>{ask.question}</span>
-													<button
-														class="ask-dismiss"
-														aria-label="Dismiss"
-														onclick={() => {
-															const s = new Set(expandedResults);
-															s.add(t.id + ":dismissed");
-															expandedResults = s;
-														}}>×</button
-													>
-												</div>
-												{#each ask.options as opt, oi (opt.key)}
-													<button
-														class="ask-option"
-														onclick={() => {
-															prompt = opt.title;
-															void send();
-														}}
-													>
-														<span class="ask-key">{String.fromCharCode(65 + oi)}</span>
-														<div class="ask-opt-body">
-															<span class="ask-opt-title">{opt.title}</span>
-															{#if opt.subtitle}<span class="ask-opt-sub">{opt.subtitle}</span>{/if}
-														</div>
-													</button>
-												{/each}
-												{#if ask.allow_text !== false}
-													<input
-														class="ask-text"
-														placeholder="Type your own answer"
-														onkeydown={(e) => {
-															if (e.key === "Enter" && (e.currentTarget as HTMLInputElement).value.trim()) {
-																prompt = (e.currentTarget as HTMLInputElement).value.trim();
-																void send();
-															}
-														}}
-													/>
+										{#if t.steps && t.steps.length > 0}
+											<div class="steps-wrap">
+												<button
+													class="steps-btn"
+													aria-expanded={!!stepsOpen[t.id]}
+													onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
+												>
+													{#if stepsOpen[t.id]}
+														<ChevronDown size={12} aria-hidden="true" />
+													{:else}
+														<ChevronRight size={12} aria-hidden="true" />
+													{/if}
+													{t.steps.length}
+													{t.steps.length === 1 ? "step" : "steps"}
+												</button>
+												{#if stepsOpen[t.id]}
+													<div class="steps-list">
+														{#each t.steps as step, si (`${t.id}-${si}`)}
+															<div class="step-row">
+																<span class="step-ts">{fmtTime(step.ts)}</span>
+																<span>{step.text}</span>
+															</div>
+														{/each}
+													</div>
 												{/if}
 											</div>
-										{:else if !expandedResults.has(t.id + ":dismissed")}
-											<!-- Normal markdown result -->
-											<div class="md-result ca-selectable" class:collapsed>
-												{@html resultHtml(
-													collapsed ? raw.split("\n").slice(0, COLLAPSE_LINES).join("\n") : raw,
-												)}
-											</div>
-											{#if shouldCollapse(raw)}
-												<button
-													class="show-more"
-													onclick={() => {
-														const s = new Set(expandedResults);
-														if (collapsed) s.add(t.id);
-														else s.delete(t.id);
-														expandedResults = s;
-													}}
-												>
-													{collapsed ? "Show more" : "Show less"}
-													{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp
-															size={12}
-															aria-hidden="true"
-														/>{/if}
-												</button>
+										{/if}
+										{#if bot.running_task?.id === t.id && bot.pending_approval}
+											{@const pa = bot.pending_approval}
+											{#if approvedReqs.has(pa.req)}
+												<div class="approval-answered" in:msgIn>
+													<Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}
+												</div>
+											{:else}
+												<div class="approval-bubble" role="alert" in:embedIn>
+													<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
+													<pre class="approval-input">{formatApprovalInput(
+															pa.tool_name ?? "",
+															pa.tool_input,
+														)}</pre>
+													<div class="approval-btns">
+														<Button
+															size="sm"
+															variant="ghost"
+															onclick={() => void denyApproval(pa.pane_key, pa.req)}>Deny</Button
+														>
+														<Button size="sm" onclick={() => void allowApproval(pa.pane_key, pa.req)}
+															>Allow</Button
+														>
+													</div>
+												</div>
 											{/if}
-											{#if t.steps && t.steps.length > 0}
-												<div class="steps-wrap">
-													<button
-														class="steps-btn"
-														aria-expanded={!!stepsOpen[t.id]}
-														onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-													>
-														{#if stepsOpen[t.id]}
-															<ChevronDown size={12} aria-hidden="true" />
-														{:else}
-															<ChevronRight size={12} aria-hidden="true" />
-														{/if}
-														{t.steps.length}
-														{t.steps.length === 1 ? "step" : "steps"}
-													</button>
-													{#if stepsOpen[t.id]}
-														<div class="steps-list">
-															{#each t.steps as step, si (`${t.id}-${si}`)}
-																<div class="step-row">
-																	<span class="step-ts">{fmtTime(step.ts)}</span>
-																	<span>{step.text}</span>
-																</div>
-															{/each}
-														</div>
+										{/if}
+									</div>
+								</div>
+								<!-- Bot response: done -->
+							{:else if t.state === "done"}
+								{@const raw = t.result ?? "Done"}
+								{@const collapsed = shouldCollapse(raw) && !expandedResults.has(t.id)}
+								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-avatar">
+											<BotFace seed={bot.id} look={bot.look} state={faceState} size={40} />
+										</div>
+									{:else}
+										<div class="msg-avatar-gap"></div>
+									{/if}
+									<div class="msg-in-body">
+										{#if groupedTasks[i]?.groupStart}
+											<div class="msg-author">
+												<span class="author-name">{bot.name}</span>
+												<span class="author-time">{fmtTime(t.ts)}</span>
+											</div>
+										{/if}
+										{#each [parseAsk(t.result)] as ask}
+											{#if ask && !expandedResults.has(t.id + ":dismissed")}
+												<!-- Ask card -->
+												<div class="ask-card">
+													<div class="ask-question">
+														<span>{ask.question}</span>
+														<button
+															class="ask-dismiss"
+															aria-label="Dismiss"
+															onclick={() => {
+																const s = new Set(expandedResults);
+																s.add(t.id + ":dismissed");
+																expandedResults = s;
+															}}>×</button
+														>
+													</div>
+													{#each ask.options as opt, oi (opt.key)}
+														<button
+															class="ask-option"
+															onclick={() => {
+																prompt = opt.title;
+																void send();
+															}}
+														>
+															<span class="ask-key">{String.fromCharCode(65 + oi)}</span>
+															<div class="ask-opt-body">
+																<span class="ask-opt-title">{opt.title}</span>
+																{#if opt.subtitle}<span class="ask-opt-sub">{opt.subtitle}</span>{/if}
+															</div>
+														</button>
+													{/each}
+													{#if ask.allow_text !== false}
+														<input
+															class="ask-text"
+															placeholder="Type your own answer"
+															onkeydown={(e) => {
+																if (e.key === "Enter" && (e.currentTarget as HTMLInputElement).value.trim()) {
+																	prompt = (e.currentTarget as HTMLInputElement).value.trim();
+																	void send();
+																}
+															}}
+														/>
 													{/if}
 												</div>
+											{:else if !expandedResults.has(t.id + ":dismissed")}
+												<!-- Normal markdown result -->
+												<div class="md-result ca-selectable" class:collapsed>
+													{@html resultHtml(
+														collapsed ? raw.split("\n").slice(0, COLLAPSE_LINES).join("\n") : raw,
+													)}
+												</div>
+												{#if shouldCollapse(raw)}
+													<button
+														class="show-more"
+														onclick={() => {
+															const s = new Set(expandedResults);
+															if (collapsed) s.add(t.id);
+															else s.delete(t.id);
+															expandedResults = s;
+														}}
+													>
+														{collapsed ? "Show more" : "Show less"}
+														{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp
+																size={12}
+																aria-hidden="true"
+															/>{/if}
+													</button>
+												{/if}
+												{#if t.steps && t.steps.length > 0}
+													<div class="steps-wrap">
+														<button
+															class="steps-btn"
+															aria-expanded={!!stepsOpen[t.id]}
+															onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
+														>
+															{#if stepsOpen[t.id]}
+																<ChevronDown size={12} aria-hidden="true" />
+															{:else}
+																<ChevronRight size={12} aria-hidden="true" />
+															{/if}
+															{t.steps.length}
+															{t.steps.length === 1 ? "step" : "steps"}
+														</button>
+														{#if stepsOpen[t.id]}
+															<div class="steps-list">
+																{#each t.steps as step, si (`${t.id}-${si}`)}
+																	<div class="step-row">
+																		<span class="step-ts">{fmtTime(step.ts)}</span>
+																		<span>{step.text}</span>
+																	</div>
+																{/each}
+															</div>
+														{/if}
+													</div>
+												{/if}
 											{/if}
+										{/each}
+										{#if t.usage}
+											<div class="usage-footer">
+												{#if t.usage.input_tokens || t.usage.output_tokens}
+													<span
+														>{fmtTokens(t.usage.input_tokens ?? 0)}in · {fmtTokens(
+															t.usage.output_tokens ?? 0,
+														)}out</span
+													>
+												{/if}
+												{#if t.usage.cost_usd}
+													<span>${t.usage.cost_usd.toFixed(4)}</span>
+												{/if}
+												{#if t.usage.duration_ms}
+													<span>{fmtElapsed(t.usage.duration_ms)}</span>
+												{/if}
+												{#if t.usage.model}
+													<span class="usage-model">{t.usage.model}</span>
+												{/if}
+											</div>
 										{/if}
-									{/each}
-									{#if t.usage}
-										<div class="usage-footer">
-											{#if t.usage.input_tokens || t.usage.output_tokens}
-												<span
-													>{fmtTokens(t.usage.input_tokens ?? 0)}in · {fmtTokens(
-														t.usage.output_tokens ?? 0,
-													)}out</span
-												>
-											{/if}
-											{#if t.usage.cost_usd}
-												<span>${t.usage.cost_usd.toFixed(4)}</span>
-											{/if}
-											{#if t.usage.duration_ms}
-												<span>{fmtElapsed(t.usage.duration_ms)}</span>
-											{/if}
-											{#if t.usage.model}
-												<span class="usage-model">{t.usage.model}</span>
-											{/if}
-										</div>
-									{/if}
-								</div>
-							</div>
-							<!-- Bot response: failed -->
-						{:else if t.state === "failed"}
-							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-								{#if groupedTasks[i]?.groupStart}
-									<div class="msg-avatar">
-										<BotFace seed={bot.id} look={bot.look} state="offline" size={40} />
 									</div>
-								{:else}
-									<div class="msg-avatar-gap"></div>
-								{/if}
-								<div class="msg-in-body">
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-author">
-											<span class="author-name">{bot.name}</span>
-											<span class="author-time">{fmtTime(t.ts)}</span>
-										</div>
-									{/if}
-									<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 								</div>
-							</div>
-							<!-- Bot response: cancelled -->
-						{:else if t.state === "cancelled"}
-							<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-								{#if groupedTasks[i]?.groupStart}
-									<div class="msg-avatar">
-										<BotFace seed={bot.id} look={bot.look} state="idle" size={40} />
+								<!-- Bot response: failed -->
+							{:else if t.state === "failed"}
+								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-avatar">
+											<BotFace seed={bot.id} look={bot.look} state="offline" size={40} />
+										</div>
+									{:else}
+										<div class="msg-avatar-gap"></div>
+									{/if}
+									<div class="msg-in-body">
+										{#if groupedTasks[i]?.groupStart}
+											<div class="msg-author">
+												<span class="author-name">{bot.name}</span>
+												<span class="author-time">{fmtTime(t.ts)}</span>
+											</div>
+										{/if}
+										<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 									</div>
-								{:else}
-									<div class="msg-avatar-gap"></div>
-								{/if}
-								<div class="msg-in-body">
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-author">
-											<span class="author-name">{bot.name}</span>
-											<span class="author-time">{fmtTime(t.ts)}</span>
-										</div>
-									{/if}
-									<div class="bubble in muted">Cancelled</div>
 								</div>
-							</div>
-						{/if}
+								<!-- Bot response: cancelled -->
+							{:else if t.state === "cancelled"}
+								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+									{#if groupedTasks[i]?.groupStart}
+										<div class="msg-avatar">
+											<BotFace seed={bot.id} look={bot.look} state="idle" size={40} />
+										</div>
+									{:else}
+										<div class="msg-avatar-gap"></div>
+									{/if}
+									<div class="msg-in-body">
+										{#if groupedTasks[i]?.groupStart}
+											<div class="msg-author">
+												<span class="author-name">{bot.name}</span>
+												<span class="author-time">{fmtTime(t.ts)}</span>
+											</div>
+										{/if}
+										<div class="bubble in muted">Cancelled</div>
+									</div>
+								</div>
+							{/if}
 
-						<!-- Hover toolbar (shown via CSS .msg-row:hover) -->
-						<div class="msg-toolbar">
-							<button
-								class="tb-btn"
-								title="Copy"
-								onclick={() =>
-									navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}
-								><Copy size={14} /></button
-							>
-							{#if t.state === "failed" || t.state === "cancelled"}
+							<!-- Hover toolbar (shown via CSS .msg-row:hover) -->
+							<div class="msg-toolbar">
 								<button
 									class="tb-btn"
-									title="Retry"
-									onclick={() => {
-										prompt = t.prompt;
-										void send();
-									}}><RotateCcw size={14} /></button
+									title="Copy"
+									onclick={() =>
+										navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}
+									><Copy size={14} /></button
 								>
-							{/if}
-							{#if t.state === "running" && bot.running_task?.pane}
-								<button class="tb-btn" title="Open terminal" onclick={openTerminal}
-									><Terminal size={14} /></button
-								>
-							{/if}
+								{#if t.state === "failed" || t.state === "cancelled"}
+									<button
+										class="tb-btn"
+										title="Retry"
+										onclick={() => {
+											prompt = t.prompt;
+											void send();
+										}}><RotateCcw size={14} /></button
+									>
+								{/if}
+								{#if t.state === "running" && bot.running_task?.pane}
+									<button class="tb-btn" title="Open terminal" onclick={openTerminal}
+										><Terminal size={14} /></button
+									>
+								{/if}
+							</div>
 						</div>
-					</div>
-				{/each}
-			{/if}
-		</div>
-
-		{#if jumpVisible}
-			<div class="jump-present" role="status">
-				<button class="jump-btn" onclick={jumpToBottom}
-					>Jump to present <ArrowDown size={12} aria-hidden="true" /></button
-				>
+					{/each}
+				{/if}
 			</div>
-		{/if}
 
-		{#if bot.state === "working"}
-			<TypingIndicator bots={[{ id: bot.id, name: bot.name }]} />
-		{/if}
-
-		<!-- Composer -->
-		<div class="composer">
-			<div class="pill" role="group">
-				<button class="pill-add" aria-label="Attach" onclick={noop}>+</button>
-				<input
-					class="pill-input"
-					bind:value={prompt}
-					placeholder="Message {bot.name ?? 'bot'}…"
-					aria-label="Task prompt"
-					onkeydown={(e) => {
-						if (e.key === "Enter" && !e.shiftKey) {
-							e.preventDefault();
-							void send();
-						}
-					}}
-				/>
-				<button
-					class="pill-send"
-					class:active={!!prompt.trim()}
-					aria-label="Send"
-					disabled={!prompt.trim() || sending}
-					onclick={send}><ArrowUp size={14} /></button
-				>
-			</div>
-			{#if queuedCount > 0}
-				<div class="queue-hint">{queuedCount} task{queuedCount === 1 ? "" : "s"} in queue</div>
+			{#if jumpVisible}
+				<div class="jump-present" role="status">
+					<button class="jump-btn" onclick={jumpToBottom}
+						>Jump to present <ArrowDown size={12} aria-hidden="true" /></button
+					>
+				</div>
 			{/if}
+
+			{#if bot.state === "working"}
+				<TypingIndicator bots={[{ id: bot.id, name: bot.name }]} />
+			{/if}
+
+			<!-- Composer -->
+			<div class="composer">
+				<div class="pill" class:focused={composerFocused} role="group">
+					<button class="pill-add" aria-label="Attach" onclick={noop}>
+						<Plus size={16} />
+					</button>
+					<textarea
+						class="pill-input"
+						bind:value={prompt}
+						rows={1}
+						placeholder={hasPendingAsk
+							? "Type your answer or talk about something else"
+							: `Message ${bot.name ?? "bot"}…`}
+						aria-label="Task prompt"
+						onkeydown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault();
+								void send();
+							}
+						}}
+						oninput={(e) => autoGrow(e.currentTarget)}
+						onfocus={() => (composerFocused = true)}
+						onblur={() => (composerFocused = false)}></textarea>
+					<button
+						class="pill-send"
+						class:active={!!prompt.trim()}
+						aria-label="Send"
+						disabled={!prompt.trim() || sending}
+						onclick={send}><ArrowUp size={15} /></button
+					>
+				</div>
+				{#if queuedCount > 0}
+					<div class="queue-hint">{queuedCount} task{queuedCount === 1 ? "" : "s"} in queue</div>
+				{/if}
+			</div>
 		</div>
 
 		<!-- D3 Profile panel (right overlay) -->
@@ -1582,6 +1603,16 @@
 	}
 
 	/* ─── thread ─────────────────────────────────────────────── */
+	.chat-col {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		max-width: 760px;
+		width: 100%;
+		margin: 0 auto;
+		position: relative;
+	}
 	.thread {
 		flex: 1;
 		overflow-y: auto;
@@ -1914,7 +1945,7 @@
 	/* ─── jump to present ────────────────────────────────────── */
 	.jump-present {
 		position: absolute;
-		bottom: 120px;
+		bottom: 130px;
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 20;
@@ -1935,68 +1966,89 @@
 	/* ─── composer ───────────────────────────────────────────── */
 	.composer {
 		flex: none;
-		padding: 10px 16px 14px;
+		padding: 8px 16px 20px;
 	}
 	.pill {
 		display: flex;
-		align-items: center;
+		align-items: flex-end;
 		background: var(--ca-surface-sunken);
-		border-radius: 24px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		overflow: hidden;
+		border-radius: 999px;
+		border: 1px solid var(--ca-outline-subtle);
+		min-height: 52px;
+		padding: 8px 8px 8px 6px;
+		gap: 4px;
+		transition: border-color 120ms;
+		--composer-max-h: 192;
+	}
+	.pill.focused {
+		border-color: color-mix(in oklab, var(--ca-brand-main) 60%, transparent);
 	}
 	.pill-add {
 		flex: none;
 		width: 36px;
 		height: 36px;
+		min-height: 36px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: none;
+		background: color-mix(in oklab, var(--ca-outline-subtle) 50%, transparent);
 		border: none;
-		font-size: 18px;
-		font-weight: 300;
+		border-radius: 50%;
 		color: var(--ca-text-secondary);
 		cursor: default;
+		align-self: flex-end;
+		flex-shrink: 0;
 	}
 	.pill-add:hover {
+		background: color-mix(in oklab, var(--ca-outline-subtle) 80%, transparent);
 		color: var(--ca-text-primary);
 	}
 	.pill-input {
 		flex: 1;
+		min-width: 0;
 		background: none;
 		border: none;
 		outline: none;
-		font-size: 13.5px;
+		font-size: 14px;
 		color: var(--ca-text-primary);
-		padding: 0 4px;
-		line-height: 36px;
+		padding: 6px 4px;
+		line-height: 1.5;
+		resize: none;
+		overflow-y: auto;
+		min-height: 36px;
+		max-height: 192px;
+		align-self: flex-end;
+		font-family: inherit;
+		field-sizing: content;
 	}
 	.pill-input::placeholder {
 		color: var(--ca-text-secondary);
 	}
 	.pill-send {
 		flex: none;
-		width: 32px;
-		height: 32px;
-		margin: 2px;
+		width: 36px;
+		height: 36px;
+		min-height: 36px;
 		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: color-mix(in oklab, var(--ca-brand-main) 35%, transparent);
+		background: color-mix(in oklab, var(--ca-brand-main) 25%, transparent);
 		border: none;
-		color: var(--ca-text-secondary);
-		font-size: 15px;
+		color: var(--ca-text-disabled, #888);
 		cursor: default;
 		transition:
 			background 120ms,
 			color 120ms;
+		align-self: flex-end;
+		flex-shrink: 0;
 	}
 	.pill-send.active {
 		background: var(--ca-brand-main);
 		color: var(--ca-surface-base);
-		cursor: default;
+	}
+	.pill-send:disabled:not(.active) {
+		opacity: 0.5;
 	}
 	.queue-hint {
 		font-size: 11px;

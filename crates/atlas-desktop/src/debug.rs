@@ -331,6 +331,22 @@ async fn handle<R: Runtime>(app: &AppHandle<R>, raw: &Value) -> Result<Value, St
             window,
         } => shot(app, out, target, full, window).await,
         Req::Record { out, stop, fps } => record(app, out, stop, fps).await,
+        Req::Frame { since, wait_ms } => {
+            let real: &dyn std::any::Any = app;
+            let app = real
+                .downcast_ref::<AppHandle>()
+                .ok_or("live frames need the Wry runtime")?
+                .clone();
+            let (seq, jpeg, (w, h)) = tauri::async_runtime::spawn_blocking(move || {
+                crate::capture::live_frame(&app, since, Duration::from_millis(wait_ms))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            use base64::Engine;
+            Ok(
+                json!({ "seq": seq, "width": w, "height": h, "jpeg": base64::engine::general_purpose::STANDARD.encode(&*jpeg) }),
+            )
+        }
         Req::Resize { w, h } => {
             set_view_size(app, w, h).await?;
             let win = app.get_window("main").ok_or("main window not found")?;

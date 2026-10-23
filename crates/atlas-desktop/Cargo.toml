@@ -54,11 +54,12 @@ block2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSError", "NSURL", "NSArray", "NSDictionary", "NSProcessInfo", "NSData", "NSObject", "NSValue", "NSRunLoop", "NSDate"] }
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "SCStream", "SCShareableContent", "SCScreenshotManager", "SCRecordingOutput", "SCError", "objc2-core-media", "objc2-core-graphics", "objc2-av-foundation"] }
 objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMSampleBuffer", "CMTime", "CMSync", "objc2-core-video"] }
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGImage"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGImage", "CGColorSpace", "CGDataProvider"] }
+objc2-core-video = { version = "0.3", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVMediaFormat", "AVVideoSettings"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "WKWebView", "WKSnapshotConfiguration"] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CADisplayLink", "CALayer", "CATransaction", "CAAnimation", "objc2-core-graphics"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFData"] }
 dispatch2 = "0.3"
 atlas-term = { path = "../atlas-term" }
 

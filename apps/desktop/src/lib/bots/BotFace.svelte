@@ -8,6 +8,9 @@
 	import type { BotState } from "#lib/bots/botFace.ts";
 	import { normalizeLook, shade } from "#lib/bots/look.ts";
 	import { SHELL_PATHS } from "#lib/bots/shell.ts";
+	import BotOutfit from "#lib/bots/BotOutfit.svelte";
+	import BotTool from "#lib/bots/BotTool.svelte";
+	import { fromChannels, pose, spring, STIFFNESS, toChannels } from "#lib/bots/rig.ts";
 
 	let {
 		seed,
@@ -36,6 +39,11 @@
 	let blinking = $state(false);
 	let paused = $state(false);
 	let svg: SVGSVGElement;
+
+	// Hands, tool and outfit only read at avatar sizes and up; tiny list icons stay a clean face.
+	const detailed = $derived(size >= 40);
+	// Drawn pose, sprung toward rig.pose() every frame (see rig.ts).
+	let p = $state(pose("idle", "none", 0));
 
 	onMount(() => {
 		const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -93,6 +101,39 @@
 		};
 		const onVisibility = () => (paused = document.hidden);
 
+		// Motion: one rAF per face; springs give overshoot on state changes and lag on hands/hat.
+		let raf = 0;
+		let last = performance.now();
+		let lastState = botState;
+		const t0 = Math.random() * 10;
+		let ch = toChannels(pose(botState, l.tool, t0));
+		const vel = ch.map(() => 0);
+		const frame = (now: number) => {
+			raf = requestAnimationFrame(frame);
+			if (paused) {
+				last = now;
+				return;
+			}
+			const dt = Math.min(0.05, (now - last) / 1000);
+			last = now;
+			if (botState !== lastState) {
+				// Anticipation: a squash kick whenever the state changes.
+				vel[2] -= 2.4;
+				vel[1] += 1.2;
+				lastState = botState;
+			}
+			const target = toChannels(pose(botState, l.tool, t0 + now / 1000));
+			ch = ch.map((x, i) => {
+				const [k, c] = STIFFNESS[i];
+				const [nx, nv] = spring(x, vel[i], target[i], dt, k, c);
+				vel[i] = nv;
+				return nx;
+			});
+			p = fromChannels(ch);
+		};
+		if (reduce) p = fromChannels(ch);
+		else raf = requestAnimationFrame(frame);
+
 		if (!reduce) {
 			later(600 + Math.random() * 2000, blink);
 			later(800 + Math.random() * 1500, glance);
@@ -101,6 +142,7 @@
 		document.addEventListener("visibilitychange", onVisibility);
 		return () => {
 			for (const t of timers) clearTimeout(t);
+			cancelAnimationFrame(raf);
 			window.removeEventListener("pointermove", onPointer);
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
@@ -128,14 +170,32 @@
 		</radialGradient>
 	</defs>
 
-	<ellipse class="shadow" cx="214" cy="432" rx="150" ry="16" fill="#000" opacity=".22" />
+	<defs>
+		<clipPath id="{id}-clip"><circle cx="214" cy="213" r="206" /></clipPath>
+	</defs>
 
-	<g class="body body-{botState}">
+	<ellipse
+		cx="214"
+		cy="432"
+		rx={150 * (1 + p.y / 160)}
+		ry={16 * (1 + p.y / 160)}
+		fill="#000"
+		opacity={0.22 * (1 + p.y / 120)}
+	/>
+
+	<g
+		class="body"
+		transform="translate(0 {p.y}) rotate({p.r} 214 300) translate(214 426) scale({p.sx} {p.sy}) translate(-214 -426)"
+	>
 		<circle cx="214" cy="213" r="206" fill="url(#{id}-g)" />
 		{#if size >= 40}
 			<g fill={shade(l.color, 0.22)} opacity=".55">
 				{#each SHELL_PATHS as d (d)}<path {d} />{/each}
 			</g>
+		{/if}
+
+		{#if detailed && l.outfit !== "none"}
+			<BotOutfit outfit={l.outfit} color={l.color} clip="{id}-clip" />
 		{/if}
 
 		<!-- face -->
@@ -202,8 +262,32 @@
 			<path d="M190 262 Q214 286 238 262" stroke={ink} stroke-width="10" stroke-linecap="round" fill="none" />
 		{/if}
 
-		<g class="hat"><BotHat hat={l.hat} color={l.color} /></g>
+		<g transform="rotate({p.hat} 214 60)"><BotHat hat={l.hat} color={l.color} /></g>
 	</g>
+
+	{#if detailed}
+		<!-- Floating hands (no arms): they follow the body's lift, with their own lag. -->
+		<g transform="translate(0 {p.y})">
+			<g transform="translate({p.left.x} {p.left.y}) rotate({p.left.r})">
+				<circle r="34" fill={shade(l.color, -0.12)} />
+				<circle cx="-9" cy="-10" r="9" fill="#fff" opacity=".28" />
+			</g>
+			<g transform="translate({p.right.x} {p.right.y}) rotate({p.right.r})">
+				<BotTool tool={l.tool} t={p.tool} glow={shade(l.color, 0.55)} />
+				<circle r="34" fill={shade(l.color, -0.12)} />
+				<circle cx="-9" cy="-10" r="9" fill="#fff" opacity=".28" />
+				{#if l.tool !== "none"}
+					<path
+						d="M-26 6 q26 18 52 0"
+						stroke={shade(l.color, -0.35)}
+						stroke-width="6"
+						stroke-linecap="round"
+						fill="none"
+					/>
+				{/if}
+			</g>
+		</g>
+	{/if}
 
 	{#if asleep}
 		<g fill="currentColor" font-family="ui-rounded, system-ui" font-weight="700">
@@ -223,98 +307,6 @@
 	.asleep .body {
 		filter: grayscale(0.85);
 		opacity: 0.6;
-	}
-
-	/* Squash-and-stretch from the floor so it reads as a soft, living body. */
-	.body {
-		transform-origin: 214px 426px;
-	}
-	.body-idle {
-		animation: breathe 3.6s ease-in-out infinite;
-	}
-	.body-offline {
-		animation: breathe 5.5s ease-in-out infinite;
-	}
-	@keyframes breathe {
-		0%,
-		100% {
-			transform: scale(1, 1);
-		}
-		50% {
-			transform: scale(1.015, 1.035);
-		}
-	}
-	.body-working {
-		animation: bob 1.4s ease-in-out infinite;
-	}
-	@keyframes bob {
-		0%,
-		100% {
-			transform: translateY(0) rotate(0deg);
-		}
-		25% {
-			transform: translateY(-10px) rotate(-1.5deg);
-		}
-		75% {
-			transform: translateY(-10px) rotate(1.5deg);
-		}
-	}
-	.body-needs_you {
-		animation: hop 0.9s cubic-bezier(0.3, 0, 0.3, 1) infinite;
-	}
-	@keyframes hop {
-		0%,
-		100% {
-			transform: translateY(0) scale(1.06, 0.94);
-		}
-		40% {
-			transform: translateY(-46px) scale(0.96, 1.05);
-		}
-		70% {
-			transform: translateY(0) scale(1.04, 0.96);
-		}
-	}
-	.shadow {
-		transform-origin: 214px 432px;
-	}
-	svg:has(.body-needs_you) .shadow {
-		animation: shadow 0.9s cubic-bezier(0.3, 0, 0.3, 1) infinite;
-	}
-	@keyframes shadow {
-		40% {
-			transform: scale(0.7);
-			opacity: 0.12;
-		}
-	}
-
-	/* Hat lags the body a beat: secondary motion. */
-	.hat {
-		transform-origin: 214px 40px;
-		animation: sway 3.6s 0.25s ease-in-out infinite;
-	}
-	.body-needs_you .hat {
-		animation: flop 0.9s 0.08s ease-in-out infinite;
-	}
-	@keyframes sway {
-		0%,
-		100% {
-			transform: rotate(-1.5deg);
-		}
-		50% {
-			transform: rotate(1.5deg);
-		}
-	}
-	@keyframes flop {
-		0%,
-		100% {
-			transform: translateY(0) rotate(0deg);
-		}
-		45% {
-			transform: translateY(-14px) rotate(-5deg);
-		}
-		75% {
-			transform: translateY(4px) rotate(3deg);
-		}
 	}
 
 	.eyes {

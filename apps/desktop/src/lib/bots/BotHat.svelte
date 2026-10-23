@@ -116,6 +116,59 @@
 {:else if hat === "antenna"}
 	<path d="M214 14 Q210 -40 222 -92" stroke="#3f3f46" stroke-width="12" stroke-linecap="round" fill="none" />
 	<circle class="beacon" cx="222" cy="-100" r="24" fill={glow} />
+{:else if hat === "bicorne"}
+	<!--
+		Our pirate hat, Atlas style: a captain's bicorne folded from an old sea
+		chart. Paper colour, faded coastline, dashed route ending in an X.
+	-->
+	<g transform="rotate(-4 214 40)">
+		<path
+			d="M20 74 Q60 -40 214 -62 Q368 -40 408 74 Q300 30 214 34 Q128 30 20 74 Z"
+			fill="#f1e4c2"
+			stroke="#b89a5e"
+			stroke-width="5"
+			stroke-linejoin="round"
+		/>
+		<path d="M214 -62 L214 34" stroke="#d8c08a" stroke-width="4" />
+		<path
+			d="M70 40 Q120 -6 160 10 Q190 22 176 -20"
+			stroke="#b89a5e"
+			stroke-width="4"
+			fill="none"
+			opacity=".6"
+		/>
+		<path
+			d="M240 20 Q290 -30 330 0 Q350 14 372 -4"
+			stroke="#e5484d"
+			stroke-width="5"
+			stroke-dasharray="10 10"
+			stroke-linecap="round"
+			fill="none"
+		/>
+		<path d="M362 -16 l20 20 M382 -16 l-20 20" stroke="#e5484d" stroke-width="6" stroke-linecap="round" />
+		<path
+			d="M20 74 Q214 4 408 74"
+			stroke={color}
+			stroke-width="10"
+			stroke-linecap="round"
+			fill="none"
+			opacity=".9"
+		/>
+		<circle cx="214" cy="-10" r="20" fill={color} stroke="#fff" stroke-width="5" />
+		<path d="M214 -26 L220 -10 L214 6 L208 -10 Z" fill="#fff" />
+	</g>
+{:else if hat === "bandana"}
+	<g>
+		<path d="M40 110 Q50 -20 214 -26 Q378 -20 388 110 Q214 60 40 110 Z" fill={color} />
+		<path d="M40 110 Q50 -20 214 -26 Q378 -20 388 110 Q214 60 40 110 Z" fill="#000" opacity=".18" />
+		<g fill="#fff" opacity=".85">
+			<circle cx="120" cy="40" r="9" /><circle cx="180" cy="10" r="9" /><circle cx="250" cy="10" r="9" />
+			<circle cx="310" cy="40" r="9" /><circle cx="214" cy="60" r="9" /><circle cx="150" cy="70" r="7" />
+			<circle cx="280" cy="70" r="7" />
+		</g>
+		<circle cx="392" cy="96" r="20" fill={shade(color, -0.3)} />
+		<path d="M392 96 l70 -10 l-20 40 Z M392 96 l54 50 l-42 8 Z" fill={shade(color, -0.3)} />
+	</g>
 {/if}
 
 <style>

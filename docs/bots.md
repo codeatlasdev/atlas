@@ -1,6 +1,6 @@
-# Atlas Bot
+# Atlas Crew
 
-Atlas Bot lets you run AI agents 24/7 on your own server without your laptop. You install `atlas hostd` as a systemd service on a Linux box; agents run under a dedicated `atlas-bot` user, fully isolated from other workloads.
+Atlas Crew lets you run AI agents 24/7 on your own server without your laptop. You install `atlas hostd` as a systemd service on a Linux box; agents run under a dedicated `atlas-bot` user, fully isolated from other workloads.
 
 ## Quick start
 
@@ -76,7 +76,7 @@ The service runs as the unprivileged `atlas-bot` user with several systemd harde
 
 ```ini
 [Unit]
-Description=Atlas Bot (atlas hostd)
+Description=Atlas Crew (atlas hostd)
 After=network-online.target
 Wants=network-online.target
 
@@ -218,22 +218,22 @@ Clients detect bot-server support by checking `info.caps` for `"bots"` before ca
 
 ## Atlas Desktop
 
-Open the Mugiwaras workspace with **⌘⇧B** (command `atlas::ToggleBotsWorkspace`, remappable). This switches the app between the IDE view and the Mugiwaras view.
+Open the Crew workspace with **⌘⇧B** (command `atlas::ToggleBotsWorkspace`, remappable). This switches the app between the IDE view and the Crew view.
 
-The Mugiwaras workspace has two columns:
+The Crew workspace has two columns:
 
-- **Left column**: search box, list of all crewmates across bot servers, ship status in the footer. Click a ship dot or "No ship yet · Launch" to open **Settings → Mugiwaras**.
+- **Left column**: search box, list of all crewmates across bot servers, ship status in the footer. Click a ship dot or "No ship yet · Launch" to open **Settings → Crew**.
 - **Right panel**: chat view for the selected crewmate, or the Logbook when none is selected.
 
-**Settings → Mugiwaras** is where you add bot servers (SSH target + name). Each server must already have `atlas bot install` completed.
+**Settings → Crew** is where you add bot servers (SSH target + name). Each server must already have `atlas bot install` completed.
 
 The chat view shows the task thread (oldest at top, newest at bottom), an inline approval card when `needs_you`, and a text composer that queues tasks even while another is running. A profile panel (⋯ menu) lets you edit the role, change the approval setting, manage routines and read or replace the memory file.
 
 ## Atlas Mobile
 
-The **Mugiwaras** tab (bottom bar) lists every crewmate across all paired computers in a messenger-style list. Each row shows the crewmate's name, agent, server, last message preview, time, and a state dot.
+The **Crew** tab (bottom bar) lists every crewmate across all paired computers in a messenger-style list. Each row shows the crewmate's name, agent, server, last message preview, time, and a state dot.
 
-Crewmates whose `state` is `needs_you` appear as a card at the top of both the Computers and Mugiwaras tabs until the approval is answered.
+Crewmates whose `state` is `needs_you` appear as a card at the top of both the Computers and Crew tabs until the approval is answered.
 
 Tapping a bot opens the chat view:
 
@@ -276,7 +276,7 @@ Approval prompts appear as inline keyboard messages (Allow / Deny). The callback
 
 ## Push notifications
 
-Atlas Bot can push a notification to your phone when a task finishes or a bot needs your approval.
+Atlas Crew can push a notification to your phone when a task finishes or a bot needs your approval.
 
 - After pairing your phone, push is automatic: the mobile app registers its FCM token with each bot server (`push_register`).
 - The relay at `push.codeatlas.com.br` forwards only the event kind (`task_done` or `needs_you`), never any content.

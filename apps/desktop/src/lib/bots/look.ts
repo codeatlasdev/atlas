@@ -29,13 +29,35 @@ export const HATS = [
 	"wizard",
 	"headphones",
 	"antenna",
+	"bicorne",
+	"bandana",
 ] as const;
 export type Hat = (typeof HATS)[number];
+
+/** What the crewmate holds in its right hand. Each tool has its own "working" gesture (rig.ts). */
+export const TOOLS = [
+	"none",
+	"compass",
+	"spyglass",
+	"wrench",
+	"quill",
+	"magnifier",
+	"megaphone",
+	"pin",
+	"lantern",
+] as const;
+export type Tool = (typeof TOOLS)[number];
+
+/** Clothing drawn over the lower half of the shell. */
+export const OUTFITS = ["none", "scarf", "coat", "apron", "satchel", "tie"] as const;
+export type Outfit = (typeof OUTFITS)[number];
 
 export interface BotLook {
 	color: string;
 	eyes: EyeStyle;
 	hat: Hat;
+	tool: Tool;
+	outfit: Outfit;
 }
 
 export const EYE_LABELS: Record<EyeStyle, string> = {
@@ -58,6 +80,29 @@ export const HAT_LABELS: Record<Hat, string> = {
 	wizard: "Wizard",
 	headphones: "Headphones",
 	antenna: "Antenna",
+	bicorne: "Map bicorne",
+	bandana: "Bandana",
+};
+
+export const TOOL_LABELS: Record<Tool, string> = {
+	none: "None",
+	compass: "Compass",
+	spyglass: "Spyglass",
+	wrench: "Wrench",
+	quill: "Quill",
+	magnifier: "Magnifier",
+	megaphone: "Megaphone",
+	pin: "Map pin",
+	lantern: "Lantern",
+};
+
+export const OUTFIT_LABELS: Record<Outfit, string> = {
+	none: "None",
+	scarf: "Scarf",
+	coat: "Captain coat",
+	apron: "Tool apron",
+	satchel: "Satchel",
+	tie: "Tie",
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -70,7 +115,13 @@ function hash(seed: string): number {
 
 /** Stable look for a bot that never customised itself. */
 export function defaultLook(seed: string): BotLook {
-	return { color: BOT_COLORS[hash(seed) % BOT_COLORS.length], eyes: "round", hat: "straw" };
+	return {
+		color: BOT_COLORS[hash(seed) % BOT_COLORS.length],
+		eyes: "round",
+		hat: "straw",
+		tool: "none",
+		outfit: "none",
+	};
 }
 
 /**
@@ -85,12 +136,20 @@ export function normalizeLook(raw: unknown, seed: string): BotLook {
 		color: typeof r.color === "string" && HEX.test(r.color) ? r.color.toLowerCase() : d.color,
 		eyes: EYE_STYLES.includes(r.eyes as EyeStyle) ? (r.eyes as EyeStyle) : d.eyes,
 		hat: HATS.includes(r.hat as Hat) ? (r.hat as Hat) : d.hat,
+		tool: TOOLS.includes(r.tool as Tool) ? (r.tool as Tool) : d.tool,
+		outfit: OUTFITS.includes(r.outfit as Outfit) ? (r.outfit as Outfit) : d.outfit,
 	};
 }
 
 export function randomLook(rand: () => number = Math.random): BotLook {
 	const pick = <T>(xs: readonly T[]) => xs[Math.min(xs.length - 1, Math.floor(rand() * xs.length))];
-	return { color: pick(BOT_COLORS), eyes: pick(EYE_STYLES), hat: pick(HATS) };
+	return {
+		color: pick(BOT_COLORS),
+		eyes: pick(EYE_STYLES),
+		hat: pick(HATS),
+		tool: pick(TOOLS),
+		outfit: pick(OUTFITS),
+	};
 }
 
 /** Mix a #rrggbb colour toward white (amount > 0) or black (amount < 0); amount in [-1, 1]. */

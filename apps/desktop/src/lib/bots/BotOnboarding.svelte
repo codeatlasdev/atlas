@@ -99,7 +99,7 @@
 	const STEP_META: Record<string, StepMeta> = {
 		intro: {
 			label: "1 of 2",
-			headline: "Meet your Mugiwaras",
+			headline: "Meet your crew",
 			body: "Your crew sails while you sleep.",
 			bullets: [
 				"Your ship, your rules — runs on your server, no account",

@@ -147,7 +147,7 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mugiwaras', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('Crew', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),

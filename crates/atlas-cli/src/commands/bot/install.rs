@@ -41,7 +41,7 @@ pub fn host_from_target(target: &str) -> &str {
 /// The systemd unit file content (pure — testable without SSH).
 pub fn systemd_unit() -> &'static str {
     "[Unit]\n\
-Description=Atlas Bot (atlas hostd)\n\
+Description=Atlas Crew (atlas hostd)\n\
 After=network-online.target\n\
 Wants=network-online.target\n\
 [Service]\n\
@@ -138,7 +138,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
 
     println!(
         "\x1b[32m✓\x1b[0m Bot computer ready: atlas-bot@{host}. \
-Add it in Atlas Desktop → Bots, then sign the agents in (atlas bot login <agent>)."
+Add it in Atlas Desktop → Crew, then sign the agents in (atlas bot login <agent>)."
     );
     Ok(())
 }

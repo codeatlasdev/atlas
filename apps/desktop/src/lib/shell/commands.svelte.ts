@@ -295,10 +295,10 @@ export function shellCommands(): Command[] {
 		{ id: "atlas::Dashboard", label: "Dashboard", run: () => (ws.view = "dashboard") },
 		{
 			id: "atlas::ToggleBotsWorkspace",
-			label: "Mugiwaras",
+			label: "Crew",
 			run: () => (ws.appMode = ws.appMode === "bots" ? "ide" : "bots"),
 		},
-		{ id: "atlas::ReplayCrewOnboarding", label: "Mugiwaras: replay onboarding", run: replayCrewOnboarding },
+		{ id: "atlas::ReplayCrewOnboarding", label: "Crew: replay onboarding", run: replayCrewOnboarding },
 		{
 			id: "atlas::NewWorktree",
 			label: "New worktree…",

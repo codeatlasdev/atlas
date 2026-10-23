@@ -5,12 +5,12 @@ import { BOT_COLORS, defaultLook, normalizeLook, randomLook, shade } from "./loo
 describe("normalizeLook", () => {
 	it("keeps each valid field and replaces only the invalid ones", () => {
 		const d = defaultLook("bot-1");
-		expect(normalizeLook({ color: "#ABCDEF", eyes: "lasers", hat: "crown" }, "bot-1")).toEqual({
+		expect(normalizeLook({ color: "#ABCDEF", eyes: "lasers", hat: "crown" }, "bot-1")).toMatchObject({
 			color: "#abcdef",
 			eyes: d.eyes,
 			hat: "crown",
 		});
-		expect(normalizeLook({ color: "red", eyes: "visor", hat: 7 }, "bot-1")).toEqual({
+		expect(normalizeLook({ color: "red", eyes: "visor", hat: 7 }, "bot-1")).toMatchObject({
 			color: d.color,
 			eyes: "visor",
 			hat: d.hat,
@@ -29,7 +29,7 @@ describe("normalizeLook", () => {
 	});
 
 	it("accepts straw hat", () => {
-		expect(normalizeLook({ color: "#3d5bff", eyes: "round", hat: "straw" }, "s")).toEqual({
+		expect(normalizeLook({ color: "#3d5bff", eyes: "round", hat: "straw" }, "s")).toMatchObject({
 			color: "#3d5bff",
 			eyes: "round",
 			hat: "straw",
@@ -68,5 +68,23 @@ describe("shade", () => {
 		expect(shade("#3d5bff", 5)).toBe("#ffffff");
 		expect(shade("#3d5bff", 0)).toBe("#3d5bff");
 		expect(shade("#000000", 0.5)).toBe("#808080");
+	});
+});
+
+describe("tools and outfits", () => {
+	it("old looks without tool/outfit get none, invalid ones fall back without touching the rest", () => {
+		expect(normalizeLook({ color: "#3d5bff", eyes: "round", hat: "straw" }, "s")).toMatchObject({
+			tool: "none",
+			outfit: "none",
+		});
+		expect(
+			normalizeLook({ color: "#3d5bff", eyes: "round", hat: "bicorne", tool: "sword", outfit: "coat" }, "s"),
+		).toEqual({
+			color: "#3d5bff",
+			eyes: "round",
+			hat: "bicorne",
+			tool: "none",
+			outfit: "coat",
+		});
 	});
 });

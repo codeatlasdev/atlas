@@ -3,7 +3,7 @@
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
-	import { Layers } from "@lucide/svelte";
+	import { CodeXml } from "@lucide/svelte";
 	import ShipFlag from "#lib/bots/ShipFlag.svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
 
@@ -115,7 +115,7 @@
 		title="IDE  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
-		<Layers size={22} />
+		<CodeXml size={24} />
 	</button>
 
 	<div class="separator" aria-hidden="true"></div>
@@ -129,7 +129,7 @@
 		title="Mugiwaras  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
-		<ShipFlag size={22} />
+		<ShipFlag size={34} />
 		{#if needsYouCount > 0}
 			<span class="needs-badge" aria-label="{needsYouCount} crewmates need your attention">
 				{needsYouCount > 9 ? "9+" : needsYouCount}
@@ -225,18 +225,17 @@
 		color: var(--ca-surface-base);
 	}
 
-	/* Discord pill: on the rail's left edge */
+	/* Discord pill: flush with the window's left edge, with a gap before the tile (tile starts 12 px in). */
 	.pill {
 		position: absolute;
-		left: 0;
+		left: -12px;
 		top: 50%;
-		transform: translateY(-50%) translateX(-50%);
+		transform: translateY(-50%);
 		width: 4px;
-		border-radius: 0 2px 2px 0;
+		border-radius: 0 4px 4px 0;
 		background: var(--ca-text-primary);
 		transition: height 150ms ease;
 		height: 0;
-		/* The pill left half is clipped by rail overflow:hidden — appears as a bar on the left edge */
 	}
 
 	.item.active .pill {

@@ -158,6 +158,70 @@
 </div>
 
 <style>
+	/* A short pill at the left edge, under the traffic lights: always there, so the hidden rail is findable.
+	   It grows and brightens when the pointer reaches the edge (the hot-zone sits above it), and turns red
+	   when a crewmate needs you. */
+	.edge-handle {
+		position: fixed;
+		left: 2px;
+		top: 64px;
+		width: 3px;
+		height: 28px;
+		border-radius: 2px;
+		background: var(--ca-text-secondary);
+		opacity: 0.35;
+		z-index: 198;
+		pointer-events: none;
+		transition:
+			opacity 150ms ease,
+			height 150ms ease,
+			background 150ms ease;
+	}
+	.hot-zone:hover + .edge-handle {
+		opacity: 0.9;
+		height: 40px;
+	}
+	.edge-handle.alert {
+		background: var(--ca-semantic-error, #e03131);
+		opacity: 0.9;
+	}
+	.edge-handle.hidden {
+		opacity: 0;
+	}
+	/* First run only: names the handle. */
+	.edge-hint {
+		position: fixed;
+		left: 12px;
+		top: 62px;
+		z-index: 198;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 10px;
+		border: 0.5px solid var(--ca-outline-subtle);
+		border-radius: 999px;
+		background: var(--ca-surface-base);
+		color: var(--ca-text-secondary);
+		font-size: 11.5px;
+		box-shadow: var(--ca-shadow-sm);
+		cursor: default;
+		animation: hint-in 400ms ease-out 800ms both;
+	}
+	.edge-hint .kbd {
+		opacity: 0.7;
+		font-size: 10.5px;
+	}
+	@keyframes hint-in {
+		from {
+			opacity: 0;
+			transform: translateX(-6px);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.edge-hint {
+			animation: none;
+		}
+	}
 	/* Hot-zone: fixed thin strip at window left edge, triggers rail expand */
 	.hot-zone {
 		position: fixed;

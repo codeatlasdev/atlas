@@ -162,9 +162,6 @@
 					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}
 						>Profile</button
 					>
-					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("routine")}
-						>Run routine</button
-					>
 					<button role="menuitem" class="menu-item danger" onclick={() => handleContextAction("delete")}
 						>Delete</button
 					>

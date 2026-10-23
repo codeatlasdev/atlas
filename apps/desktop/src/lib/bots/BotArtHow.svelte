@@ -12,11 +12,11 @@
 	import { onMount } from "svelte";
 	import { Check, GitPullRequest, Laptop, Moon, Server, Smartphone } from "@lucide/svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
+	import BotTyping from "#lib/bots/BotTyping.svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
 	import { normalizeLook } from "#lib/bots/look.ts";
 
-	/** The typing dots take the crewmate's own colour. */
-	const crewColor = normalizeLook(undefined, "how-reviewer").color;
+
 
 	let { beat = $bindable(0) }: { beat?: number } = $props();
 
@@ -103,12 +103,8 @@
 {#snippet say(l: { text: string; typing: boolean; shown: string })}
 	{#if l.typing}
 		<!-- Typing, like the real chat: no bubble, the dots and the crewmate's little face take turns, then a shimmering label. -->
-		<div class="typing pop">
-			<span class="mark">
-				<span class="dots" style:--crew={crewColor}><i></i><i></i><i></i></span>
-				<span class="mini"><BotFace seed="how-reviewer" state="working" size={22} /></span>
-			</span>
-			<span class="shimmer">Thinking</span>
+		<div class="typing-wrap pop">
+			<BotTyping seed="how-reviewer" />
 		</div>
 	{:else}
 		<div class="bubble bot pop">{l.shown}</div>
@@ -352,138 +348,9 @@
 		border-bottom-left-radius: 0.35em;
 		backdrop-filter: blur(8px);
 	}
-	.typing {
+	.typing-wrap {
 		align-self: flex-start;
 		margin-left: 4.2em;
-		display: flex;
-		align-items: center;
-		gap: 0.55em;
-		font-size: 0.86em;
-		min-height: 2.1em;
-	}
-	.mark {
-		position: relative;
-		display: inline-grid;
-		place-items: center;
-		width: 2.4em;
-		height: 1.6em;
-	}
-	.mark > * {
-		grid-area: 1 / 1;
-	}
-	/* The dots gather into one point, the crewmate pops out of it, squashes, hops and wiggles, then splits back
-	   into dots. One 2.6 s loop, shared by every piece so they stay in step. */
-	.mark .dots i {
-		opacity: 1;
-		animation: 2.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
-	}
-	.mark .dots i:nth-child(1) {
-		--gx: 0.75em;
-		animation-name: gather;
-		animation-delay: 0s;
-	}
-	.mark .dots i:nth-child(2) {
-		--gx: 0em;
-		animation-name: gather;
-		animation-delay: 0s;
-		--lift: -0.22em;
-	}
-	.mark .dots i:nth-child(3) {
-		--gx: -0.75em;
-		animation-name: gather;
-		animation-delay: 0s;
-	}
-	@keyframes gather {
-		0%,
-		100% {
-			transform: none;
-		}
-		10% {
-			transform: translateY(-0.22em);
-		}
-		20% {
-			transform: none;
-		}
-		30% {
-			transform: translateY(var(--lift, 0));
-		}
-		38% {
-			transform: none;
-		}
-		46% {
-			opacity: 1;
-			transform: translateX(var(--gx));
-		}
-		48%,
-		88% {
-			opacity: 0;
-			transform: translateX(var(--gx));
-		}
-		95% {
-			opacity: 1;
-			transform: none;
-		}
-	}
-	.mark .mini {
-		display: inline-flex;
-		transform: scale(0);
-		animation: crew-hop 2.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
-	}
-	@keyframes crew-hop {
-		0%,
-		44% {
-			transform: scale(0);
-		}
-		50% {
-			transform: scale(1.3, 0.75);
-		}
-		56% {
-			transform: translateY(-0.35em) scale(0.85, 1.15);
-		}
-		62% {
-			transform: scale(1.1, 0.9);
-		}
-		68% {
-			transform: rotate(-14deg);
-		}
-		74% {
-			transform: rotate(12deg);
-		}
-		80% {
-			transform: rotate(-6deg);
-		}
-		85% {
-			transform: none;
-		}
-		90%,
-		100% {
-			transform: scale(0);
-		}
-	}
-	.dots {
-		display: inline-flex;
-		gap: 0.3em;
-		padding: 0.25em 0;
-	}
-	.dots i {
-		width: 0.55em;
-		height: 0.55em;
-		border-radius: 50%;
-		background: var(--crew, var(--ink-muted));
-		opacity: 1;
-		animation: dot 1.2s ease-in-out infinite;
-	}
-	.dots i:nth-child(2) {
-		animation-delay: 0.15s;
-	}
-	.dots i:nth-child(3) {
-		animation-delay: 0.3s;
-	}
-	@keyframes dot {
-		30% {
-			opacity: 1;
-			transform: translateY(-0.2em);
-		}
 	}
 	.crew {
 		display: flex;
@@ -722,14 +589,8 @@
 		.face.hop,
 		.shimmer,
 		.dot.live,
-		.caret,
-		.dots i,
-		.mark > *,
-		.mark .dots i {
+		.caret {
 			animation: none;
-		}
-		.mark .mini {
-			opacity: 0;
 		}
 	}
 </style>

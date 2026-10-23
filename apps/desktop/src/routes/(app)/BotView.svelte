@@ -732,20 +732,7 @@
 							{#if t.state === "running"}
 								{@const elapsedMs = t.started_at ? now - t.started_at : 0}
 								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-avatar">
-											<BotFace seed={bot.id} look={bot.look} state="working" size={40} />
-										</div>
-									{:else}
-										<div class="msg-avatar-gap"></div>
-									{/if}
 									<div class="msg-in-body">
-										{#if groupedTasks[i]?.groupStart}
-											<div class="msg-author">
-												<span class="author-name">{bot.name}</span>
-												<span class="author-time">{fmtTime(t.ts)}</span>
-											</div>
-										{/if}
 										<div class="bubble in working">
 											<Spinner size={12} />
 											Working · {fmtElapsed(elapsedMs)}
@@ -810,20 +797,7 @@
 								{@const raw = t.result ?? "Done"}
 								{@const collapsed = shouldCollapse(raw) && !expandedResults.has(t.id)}
 								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-avatar">
-											<BotFace seed={bot.id} look={bot.look} state={faceState} size={40} />
-										</div>
-									{:else}
-										<div class="msg-avatar-gap"></div>
-									{/if}
 									<div class="msg-in-body">
-										{#if groupedTasks[i]?.groupStart}
-											<div class="msg-author">
-												<span class="author-name">{bot.name}</span>
-												<span class="author-time">{fmtTime(t.ts)}</span>
-											</div>
-										{/if}
 										{#each [parseAsk(t.result)] as ask}
 											{#if ask && !expandedResults.has(t.id + ":dismissed")}
 												<!-- Ask card -->
@@ -946,40 +920,14 @@
 								<!-- Bot response: failed -->
 							{:else if t.state === "failed"}
 								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-avatar">
-											<BotFace seed={bot.id} look={bot.look} state="offline" size={40} />
-										</div>
-									{:else}
-										<div class="msg-avatar-gap"></div>
-									{/if}
 									<div class="msg-in-body">
-										{#if groupedTasks[i]?.groupStart}
-											<div class="msg-author">
-												<span class="author-name">{bot.name}</span>
-												<span class="author-time">{fmtTime(t.ts)}</span>
-											</div>
-										{/if}
 										<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
 									</div>
 								</div>
 								<!-- Bot response: cancelled -->
 							{:else if t.state === "cancelled"}
 								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									{#if groupedTasks[i]?.groupStart}
-										<div class="msg-avatar">
-											<BotFace seed={bot.id} look={bot.look} state="idle" size={40} />
-										</div>
-									{:else}
-										<div class="msg-avatar-gap"></div>
-									{/if}
 									<div class="msg-in-body">
-										{#if groupedTasks[i]?.groupStart}
-											<div class="msg-author">
-												<span class="author-name">{bot.name}</span>
-												<span class="author-time">{fmtTime(t.ts)}</span>
-											</div>
-										{/if}
 										<div class="bubble in muted">Cancelled</div>
 									</div>
 								</div>
@@ -1523,12 +1471,12 @@
 		background: var(--ca-bg-secondary, var(--ca-surface-sunken));
 		border-radius: 999px;
 		padding: 4px 12px 4px 6px;
-		font-size: 13px;
+		font-size: 14px;
 		font-weight: 600;
 		color: var(--ca-text-primary);
 	}
 	.pill-name {
-		font-size: 13px;
+		font-size: 14px;
 		font-weight: 600;
 	}
 	.pill-elapsed {
@@ -1623,13 +1571,13 @@
 	}
 	.empty-thread {
 		color: var(--ca-text-secondary);
-		font-size: 13px;
+		font-size: 14px;
 		text-align: center;
 		padding: 40px 0;
 	}
 	.loading {
 		color: var(--ca-text-secondary);
-		font-size: 13px;
+		font-size: 14px;
 		padding: 12px 0;
 	}
 
@@ -1668,36 +1616,6 @@
 		margin-top: 8px;
 		padding-top: 1px;
 	}
-	.msg-avatar {
-		width: 40px;
-		flex: none;
-	}
-	.msg-avatar-gap {
-		width: 40px;
-		flex: none;
-	}
-	.msg-in-body {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-	}
-	.msg-author {
-		display: flex;
-		align-items: baseline;
-		gap: 6px;
-		margin-bottom: 2px;
-	}
-	.author-name {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--ca-text-primary);
-	}
-	.author-time {
-		font-size: 11px;
-		color: var(--ca-text-secondary);
-	}
 	/* msg-row wraps user + bot bubbles for a single task */
 	.msg-row {
 		position: relative;
@@ -1706,9 +1624,9 @@
 	}
 	.bubble {
 		max-width: 72%;
-		padding: 10px 14px;
+		padding: 12px 16px;
 		border-radius: 18px;
-		font-size: 13.5px;
+		font-size: 15px;
 		line-height: 1.45;
 		word-break: break-word;
 		white-space: pre-wrap;
@@ -1746,7 +1664,7 @@
 
 	/* ─── markdown result ────────────────────────────────────── */
 	.md-result {
-		font-size: 13px;
+		font-size: 15px;
 		line-height: 1.6;
 		color: var(--ca-text-primary);
 		word-break: break-word;
@@ -2009,7 +1927,7 @@
 		background: none;
 		border: none;
 		outline: none;
-		font-size: 14px;
+		font-size: 15px;
 		color: var(--ca-text-primary);
 		padding: 6px 4px;
 		line-height: 1.5;
@@ -2252,17 +2170,18 @@
 	/* ─── ask card ───────────────────────────────────────────── */
 	.ask-card {
 		border: 0.5px solid var(--ca-outline-subtle);
-		border-radius: 12px;
+		border-radius: 16px;
 		overflow: hidden;
-		margin: 4px 0;
+		margin: 6px 0;
+		max-width: 480px;
 		background: color-mix(in oklab, var(--ca-surface-sunken) 60%, transparent);
 	}
 	.ask-question {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 10px 14px 8px;
-		font-size: 13px;
+		padding: 14px 18px 12px;
+		font-size: 15px;
 		font-weight: 500;
 		color: var(--ca-text-primary);
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
@@ -2283,9 +2202,10 @@
 	.ask-option {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 12px;
 		width: 100%;
-		padding: 10px 14px;
+		padding: 14px 18px;
+		min-height: 52px;
 		background: none;
 		border: none;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
@@ -2300,17 +2220,18 @@
 		background: var(--ca-vibrancy-fill);
 	}
 	.ask-key {
-		width: 22px;
-		height: 22px;
-		border-radius: 6px;
+		width: 26px;
+		height: 26px;
+		border-radius: 4px;
 		background: color-mix(in oklab, var(--ca-outline-subtle) 80%, transparent);
 		color: var(--ca-text-secondary);
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 600;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		flex: none;
+		border: 0.5px solid var(--ca-outline-subtle);
 	}
 	.ask-opt-body {
 		display: flex;
@@ -2318,7 +2239,7 @@
 		gap: 1px;
 	}
 	.ask-opt-title {
-		font-size: 13px;
+		font-size: 15px;
 		font-weight: 500;
 		color: var(--ca-text-primary);
 	}
@@ -2329,11 +2250,11 @@
 	.ask-text {
 		display: block;
 		width: 100%;
-		padding: 10px 14px;
+		padding: 12px 18px;
 		background: none;
 		border: none;
 		border-top: 0.5px solid var(--ca-outline-subtle);
-		font-size: 13px;
+		font-size: 14px;
 		color: var(--ca-text-secondary);
 		outline: none;
 		box-sizing: border-box;
@@ -2433,7 +2354,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 3px 16px 3px 68px;
+		padding: 3px 16px 3px 28px;
 		font-size: 11px;
 		color: var(--ca-text-secondary);
 		margin-top: 8px;

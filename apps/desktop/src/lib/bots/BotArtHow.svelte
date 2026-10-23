@@ -102,7 +102,7 @@
 		<div class="typing pop">
 			<span class="mark">
 				<span class="dots"><i></i><i></i><i></i></span>
-				<span class="mini"><BotFace seed="how-reviewer" state="working" size={18} /></span>
+				<span class="mini"><BotFace seed="how-reviewer" state="working" size={16} /></span>
 			</span>
 			<span class="shimmer">Thinking</span>
 		</div>
@@ -361,33 +361,96 @@
 		position: relative;
 		display: inline-grid;
 		place-items: center;
-		width: 2.2em;
+		width: 2em;
 		height: 1.4em;
 	}
 	.mark > * {
 		grid-area: 1 / 1;
 	}
-	.mark .dots {
-		animation: swap 2.4s ease-in-out infinite;
+	/* The dots gather into one point, the crewmate pops out of it, squashes, hops and wiggles, then splits back
+	   into dots. One 2.6 s loop, shared by every piece so they stay in step. */
+	.mark .dots i {
+		opacity: 1;
+		animation: 2.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+	}
+	.mark .dots i:nth-child(1) {
+		--gx: 0.75em;
+		animation-name: gather;
+		animation-delay: 0s;
+	}
+	.mark .dots i:nth-child(2) {
+		--gx: 0em;
+		animation-name: gather;
+		animation-delay: 0s;
+		--lift: -0.22em;
+	}
+	.mark .dots i:nth-child(3) {
+		--gx: -0.75em;
+		animation-name: gather;
+		animation-delay: 0s;
+	}
+	@keyframes gather {
+		0%,
+		100% {
+			transform: none;
+		}
+		10% {
+			transform: translateY(-0.22em);
+		}
+		20% {
+			transform: none;
+		}
+		30% {
+			transform: translateY(var(--lift, 0));
+		}
+		38% {
+			transform: none;
+		}
+		46% {
+			transform: translateX(var(--gx)) scale(0.4);
+		}
+		48%,
+		88% {
+			transform: translateX(var(--gx)) scale(0);
+		}
+		95% {
+			transform: scale(1.15);
+		}
 	}
 	.mark .mini {
 		display: inline-flex;
-		animation: swap 2.4s ease-in-out infinite reverse;
+		transform: scale(0);
+		animation: crew-hop 2.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 	}
-	@keyframes swap {
+	@keyframes crew-hop {
 		0%,
-		40% {
-			opacity: 1;
-			transform: scale(1);
+		44% {
+			transform: scale(0);
 		}
-		50%,
-		90% {
-			opacity: 0;
-			transform: scale(0.7);
+		50% {
+			transform: scale(1.3, 0.75);
 		}
+		56% {
+			transform: translateY(-0.35em) scale(0.85, 1.15);
+		}
+		62% {
+			transform: scale(1.1, 0.9);
+		}
+		68% {
+			transform: rotate(-14deg);
+		}
+		74% {
+			transform: rotate(12deg);
+		}
+		80% {
+			transform: rotate(-6deg);
+		}
+		85% {
+			transform: none;
+		}
+		90%,
 		100% {
-			opacity: 1;
-			transform: scale(1);
+			transform: scale(0);
 		}
 	}
 	.dots {
@@ -654,7 +717,8 @@
 		.dot.live,
 		.caret,
 		.dots i,
-		.mark > * {
+		.mark > *,
+		.mark .dots i {
 			animation: none;
 		}
 		.mark .mini {

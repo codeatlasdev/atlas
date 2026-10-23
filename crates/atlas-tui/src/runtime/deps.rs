@@ -538,7 +538,7 @@ mod tests {
             return;
         };
         let home = fixtures::fake_home();
-        install(probe_with(sh, home.path(), &fixtures::gui_env(home.path())));
+        let _env = install(probe_with(sh, home.path(), &fixtures::gui_env(home.path())));
         let dir = TempDir::new().unwrap();
         let out = ensure_deps(dir.path(), Some("bun install"), None, false).await;
         assert_eq!(out, DepsOutcome::Installed);

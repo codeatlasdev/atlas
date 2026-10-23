@@ -947,14 +947,14 @@ async fn action_guard_releases_on_panic() {
 /// Seed the shared login-shell probe the way a desktop-entry launch would produce it: bare PATH, the
 /// user's rc files add `~/.bun/bin`. Returns the fake HOME (keep it alive for the test).
 #[cfg(unix)]
-fn gui_login_env() -> Option<tempfile::TempDir> {
+fn gui_login_env() -> Option<(tempfile::TempDir, atlas_core::login_env::Installed)> {
     use atlas_core::login_env::{fixtures, probe_with};
     let sh = fixtures::some_shell()?;
     let home = fixtures::fake_home();
     let p = probe_with(sh, home.path(), &fixtures::gui_env(home.path()));
     assert!(p.error.is_none(), "{:?}", p.error);
-    atlas_core::login_env::install(p);
-    Some(home)
+    let installed = atlas_core::login_env::install(p);
+    Some((home, installed))
 }
 
 /// Incident (Linux, app launched from the menu): `exit 127: sh: 1: bun: not found`. Actions run with the
@@ -963,7 +963,7 @@ fn gui_login_env() -> Option<tempfile::TempDir> {
 #[cfg(unix)]
 #[tokio::test]
 async fn an_action_finds_binaries_the_login_shell_put_on_path() {
-    let Some(_home) = gui_login_env() else { return };
+    let Some(_env) = gui_login_env() else { return };
     let dir = tempfile::TempDir::new().unwrap();
     let (tx, mut rx) = mpsc::unbounded_channel();
     let ok = run_action_streaming(
@@ -990,7 +990,7 @@ async fn an_action_finds_binaries_the_login_shell_put_on_path() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_service_finds_binaries_the_login_shell_put_on_path() {
-    let Some(_home) = gui_login_env() else { return };
+    let Some(_env) = gui_login_env() else { return };
     let dir = tempfile::TempDir::new().unwrap();
     let (tx, mut rx) = mpsc::unbounded_channel();
     let cfg = one_service_cfg("bun dev; sleep 30", None);
@@ -1014,7 +1014,7 @@ async fn a_service_finds_binaries_the_login_shell_put_on_path() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_session_action_finds_binaries_the_login_shell_put_on_path() {
-    let Some(_home) = gui_login_env() else { return };
+    let Some(_env) = gui_login_env() else { return };
     let dir = tempfile::TempDir::new().unwrap();
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut cfg = one_service_cfg("sleep 30", None);
@@ -1046,7 +1046,8 @@ async fn a_session_action_finds_binaries_the_login_shell_put_on_path() {
 #[cfg(unix)]
 /// Seed the shared login-shell probe with a PATH that holds `bin` (a dir with a fake `docker`) and
 /// nothing else that could provide a real one.
-fn seed_docker_path(bin: &std::path::Path) {
+#[must_use = "the fake PATH is undone when the guard drops"]
+fn seed_docker_path(bin: &std::path::Path) -> atlas_core::login_env::Installed {
     use atlas_core::login_env::{Probe, install};
     install(Probe {
         shell: "/bin/sh".into(),
@@ -1058,7 +1059,7 @@ fn seed_docker_path(bin: &std::path::Path) {
             ("PATH".into(), format!("{}:/usr/bin:/bin", bin.display())),
             ("HOME".into(), bin.display().to_string()),
         ],
-    });
+    })
 }
 
 /// A project dir with `infra:` (compose file present) and two command-less services, `postgres` on
@@ -1136,7 +1137,7 @@ async fn a_failed_compose_up_leaves_the_reason_on_the_card_and_in_every_infra_lo
 echo 'permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: connect: permission denied' >&2
 exit 1"#,
     );
-    seed_docker_path(&bin);
+    let _env = seed_docker_path(&bin);
     let (dir, cfg) = infra_project(1, 2);
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
@@ -1169,7 +1170,7 @@ exit 1"#,
 async fn a_missing_docker_binary_is_reported_not_silent() {
     let empty = tempfile::TempDir::new().unwrap();
     // PATH with no docker anywhere (and no /usr/bin: a real docker there would defeat the test).
-    atlas_core::login_env::install(atlas_core::login_env::Probe {
+    let _env = atlas_core::login_env::install(atlas_core::login_env::Probe {
         shell: "/bin/sh".into(),
         source: "default",
         flags: None,
@@ -1197,7 +1198,7 @@ async fn a_missing_docker_binary_is_reported_not_silent() {
 async fn an_infra_port_that_never_opens_says_which_port_in_card_and_log() {
     let dir_bin = tempfile::TempDir::new().unwrap();
     let bin = fake_docker(dir_bin.path(), "exit 0");
-    seed_docker_path(&bin);
+    let _env = seed_docker_path(&bin);
     let (dir, cfg) = infra_project(1, 2);
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
@@ -1226,7 +1227,7 @@ async fn a_healthy_infra_start_writes_no_failure_lines() {
     );
     let dir_bin = tempfile::TempDir::new().unwrap();
     let bin = fake_docker(dir_bin.path(), "exit 0");
-    seed_docker_path(&bin);
+    let _env = seed_docker_path(&bin);
     let (dir, cfg) = infra_project(p1, p2);
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut mgr = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);

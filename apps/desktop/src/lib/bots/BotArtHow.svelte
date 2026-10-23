@@ -44,7 +44,7 @@
 		{ at: 0.62, text: "Thanks! Pushing it now." },
 		{ at: 0.8, text: "Good morning! I reviewed 3 PRs and pushed 1 fix." },
 	];
-	const TYPE = 0.035;
+	const TYPE = 0.08;
 	/** Every line said so far stays in the thread (a chat keeps its history); only the newest one is still typing. */
 	const spoken = $derived(
 		LINES.filter((l) => t >= l.at).map((l) => ({
@@ -97,9 +97,18 @@
 </script>
 
 {#snippet say(l: { text: string; typing: boolean; shown: string })}
-	<div class="bubble bot pop">
-		{#if l.typing}<span class="dots"><i></i><i></i><i></i></span>{:else}{l.shown}{/if}
-	</div>
+	{#if l.typing}
+		<!-- Typing, like the real chat: no bubble, the dots and the crewmate's little face take turns, then a shimmering label. -->
+		<div class="typing pop">
+			<span class="mark">
+				<span class="dots"><i></i><i></i><i></i></span>
+				<span class="mini"><BotFace seed="how-reviewer" state="working" size={18} /></span>
+			</span>
+			<span class="shimmer">Thinking</span>
+		</div>
+	{:else}
+		<div class="bubble bot pop">{l.shown}</div>
+	{/if}
 {/snippet}
 
 <div class="how" bind:clientWidth={w} aria-hidden="true">
@@ -338,6 +347,48 @@
 		border: 1px solid rgb(255 255 255 / 0.14);
 		border-bottom-left-radius: 0.35em;
 		backdrop-filter: blur(8px);
+	}
+	.typing {
+		align-self: flex-start;
+		margin-left: 4.2em;
+		display: flex;
+		align-items: center;
+		gap: 0.55em;
+		font-size: 0.86em;
+		min-height: 2.1em;
+	}
+	.mark {
+		position: relative;
+		display: inline-grid;
+		place-items: center;
+		width: 2.2em;
+		height: 1.4em;
+	}
+	.mark > * {
+		grid-area: 1 / 1;
+	}
+	.mark .dots {
+		animation: swap 2.4s ease-in-out infinite;
+	}
+	.mark .mini {
+		display: inline-flex;
+		animation: swap 2.4s ease-in-out infinite reverse;
+	}
+	@keyframes swap {
+		0%,
+		40% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		50%,
+		90% {
+			opacity: 0;
+			transform: scale(0.7);
+		}
+		100% {
+			opacity: 1;
+			transform: scale(1);
+		}
 	}
 	.dots {
 		display: inline-flex;
@@ -602,8 +653,12 @@
 		.shimmer,
 		.dot.live,
 		.caret,
-		.dots i {
+		.dots i,
+		.mark > * {
 			animation: none;
+		}
+		.mark .mini {
+			opacity: 0;
 		}
 	}
 </style>

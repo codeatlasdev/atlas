@@ -57,9 +57,7 @@
 	const routePhonePct = $derived(t < 1 ? seg(t, 0.08, 0.34) : 1);
 
 	// Mac lid: 0 = open, 1 = closed (0° → 80° rotation around hinge)
-	const macLidClose = $derived(
-		t < 1 ? (t < 0.25 ? 0 : t < 0.52 ? seg(t, 0.25, 0.52) : 1) : 1,
-	);
+	const macLidClose = $derived(t < 1 ? (t < 0.25 ? 0 : t < 0.52 ? seg(t, 0.25, 0.52) : 1) : 1);
 	const macLidDeg = $derived(macLidClose * 80);
 
 	// Mac overall dim (screen + body fade as lid closes)
@@ -74,25 +72,19 @@
 	);
 
 	// Server warm glow
-	const serverGlow = $derived(
-		t < 1 ? (t < 0.08 ? seg(t, 0, 0.08) : 1) : 0.82 + 0.18 * Math.sin(ph * 0.64),
-	);
+	const serverGlow = $derived(t < 1 ? (t < 0.08 ? seg(t, 0, 0.08) : 1) : 0.82 + 0.18 * Math.sin(ph * 0.64));
 
 	// LED activity pulse on server rack
 	const ledPulse = $derived(0.48 + 0.52 * (0.5 + 0.5 * Math.sin(ph * 2.6)));
 
 	// Three task checks
-	const check1 = $derived(t < 1 ? seg(t, 0.10, 0.22) : 1);
+	const check1 = $derived(t < 1 ? seg(t, 0.1, 0.22) : 1);
 	const check2 = $derived(t < 1 ? seg(t, 0.38, 0.52) : 1);
 	const check3 = $derived(t < 1 ? seg(t, 0.58, 0.72) : 1);
 
 	// "working…" fades out once all checks land
 	const workingOp = $derived(
-		t < 1
-			? t < 0.58
-				? 0.65 + 0.35 * Math.abs(Math.sin(ph * 3.5))
-				: 1 - seg(t, 0.58, 0.72)
-			: 0,
+		t < 1 ? (t < 0.58 ? 0.65 + 0.35 * Math.abs(Math.sin(ph * 3.5)) : 1 - seg(t, 0.58, 0.72)) : 0,
 	);
 
 	// Moon drifts in as Mac sleeps
@@ -327,7 +319,16 @@
 
 			<!-- ══ SERVER RACK ════════════════════════════════════════════════════ -->
 			<!-- Outer casing -->
-			<rect x="60" y="234" width="202" height="138" rx="6" fill="url(#bas-srv-body)" stroke="#2e3e70" stroke-width="1.5" />
+			<rect
+				x="60"
+				y="234"
+				width="202"
+				height="138"
+				rx="6"
+				fill="url(#bas-srv-body)"
+				stroke="#2e3e70"
+				stroke-width="1.5"
+			/>
 			<!-- Inner warmth overlay -->
 			<rect x="68" y="242" width="186" height="122" rx="4" fill="url(#bas-srv-inner)" />
 			<!-- Atlas-blue accent stripe at top of rack -->
@@ -338,13 +339,26 @@
 			<!-- Small display -->
 			<rect x="76" y="249" width="104" height="18" rx="2" fill="url(#bas-srv-screen)" />
 			<!-- Pulsing green activity dot -->
-			<circle cx="83" cy="258" r="3.6" fill="#22c55e" opacity={workingOp > 0 ? workingOp * ledPulse : ledPulse * 0.4} />
+			<circle
+				cx="83"
+				cy="258"
+				r="3.6"
+				fill="#22c55e"
+				opacity={workingOp > 0 ? workingOp * ledPulse : ledPulse * 0.4}
+			/>
 			<!-- "working…" -->
-			<text x="91" y="262" fill="rgba(134,239,172,0.88)" font-size="9" font-family="monospace" opacity={workingOp}>working…</text>
+			<text
+				x="91"
+				y="262"
+				fill="rgba(134,239,172,0.88)"
+				font-size="9"
+				font-family="monospace"
+				opacity={workingOp}>working…</text
+			>
 			<!-- Drive activity LEDs (right of unit 1) -->
 			<circle cx="216" cy="252" r="2.8" fill="#22c55e" opacity={ledPulse} />
 			<circle cx="226" cy="252" r="2.8" fill="#22c55e" opacity={ledPulse * 0.55} />
-			<circle cx="236" cy="252" r="2.8" fill="#f97316" opacity={ledPulse * 0.80} />
+			<circle cx="236" cy="252" r="2.8" fill="#f97316" opacity={ledPulse * 0.8} />
 
 			<!-- Rack unit separator -->
 			<line x1="68" y1="273" x2="260" y2="273" stroke="#1a2448" stroke-width="1" />
@@ -398,7 +412,16 @@
 			<!-- Globe on pole tip -->
 			<circle cx="76" cy="181" r="9.5" fill="#1a3272" stroke="#3d5bff" stroke-width="1.2" />
 			<!-- Meridian lines on globe -->
-			<ellipse cx="76" cy="181" rx="4.5" ry="9.5" fill="none" stroke="#4f8ef7" stroke-width="0.7" opacity="0.65" />
+			<ellipse
+				cx="76"
+				cy="181"
+				rx="4.5"
+				ry="9.5"
+				fill="none"
+				stroke="#4f8ef7"
+				stroke-width="0.7"
+				opacity="0.65"
+			/>
 			<line x1="66.5" y1="181" x2="85.5" y2="181" stroke="#4f8ef7" stroke-width="0.7" opacity="0.65" />
 			<!-- Straw hat on globe -->
 			<ellipse cx="76" cy="173.5" rx="8" ry="2.4" fill="#d4a827" />
@@ -408,30 +431,75 @@
 
 			<!-- ══ TASK LOG — floats between server and Mac, above crew ═══════════ -->
 			<!-- Subtle dark backdrop panel -->
-			<rect x="280" y="138" width="100" height="68" rx="5" fill="rgba(8,14,32,0.72)" stroke="rgba(60,90,180,0.28)" stroke-width="0.8" />
+			<rect
+				x="280"
+				y="138"
+				width="100"
+				height="68"
+				rx="5"
+				fill="rgba(8,14,32,0.72)"
+				stroke="rgba(60,90,180,0.28)"
+				stroke-width="0.8"
+			/>
 			<!-- Task 1: tests passing -->
 			<g opacity={check1}>
 				<circle cx="293" cy="155" r="6.5" fill="#14522e" stroke="#22c55e" stroke-width="1" />
-				<path d="M 289.5 155 L 292.5 158.5 L 297.5 151.5" stroke="#22c55e" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-				<text x="305" y="159" fill="rgba(134,239,172,0.82)" font-size="9.5" font-family="monospace">tests passing</text>
+				<path
+					d="M 289.5 155 L 292.5 158.5 L 297.5 151.5"
+					stroke="#22c55e"
+					stroke-width="1.5"
+					fill="none"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+				<text x="305" y="159" fill="rgba(134,239,172,0.82)" font-size="9.5" font-family="monospace"
+					>tests passing</text
+				>
 			</g>
 			<!-- Task 2: PR reviewed -->
 			<g opacity={check2}>
 				<circle cx="293" cy="175" r="6.5" fill="#14522e" stroke="#22c55e" stroke-width="1" />
-				<path d="M 289.5 175 L 292.5 178.5 L 297.5 171.5" stroke="#22c55e" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-				<text x="305" y="179" fill="rgba(134,239,172,0.82)" font-size="9.5" font-family="monospace">PR reviewed</text>
+				<path
+					d="M 289.5 175 L 292.5 178.5 L 297.5 171.5"
+					stroke="#22c55e"
+					stroke-width="1.5"
+					fill="none"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+				<text x="305" y="179" fill="rgba(134,239,172,0.82)" font-size="9.5" font-family="monospace"
+					>PR reviewed</text
+				>
 			</g>
 			<!-- Task 3: build done -->
 			<g opacity={check3}>
 				<circle cx="293" cy="195" r="6.5" fill="#14522e" stroke="#22c55e" stroke-width="1" />
-				<path d="M 289.5 195 L 292.5 198.5 L 297.5 191.5" stroke="#22c55e" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-				<text x="305" y="199" fill="rgba(134,239,172,0.82)" font-size="9.5" font-family="monospace">build done</text>
+				<path
+					d="M 289.5 195 L 292.5 198.5 L 297.5 191.5"
+					stroke="#22c55e"
+					stroke-width="1.5"
+					fill="none"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+				<text x="305" y="199" fill="rgba(134,239,172,0.82)" font-size="9.5" font-family="monospace"
+					>build done</text
+				>
 			</g>
 
 			<!-- ══ MAC LAPTOP ════════════════════════════════════════════════════ -->
 			<g opacity={macDim}>
 				<!-- Base / keyboard chassis -->
-				<rect x="364" y="268" width="172" height="82" rx="6" fill="url(#bas-mac-base)" stroke="#2a3860" stroke-width="1.2" />
+				<rect
+					x="364"
+					y="268"
+					width="172"
+					height="82"
+					rx="6"
+					fill="url(#bas-mac-base)"
+					stroke="#2a3860"
+					stroke-width="1.2"
+				/>
 				<!-- Hinge face -->
 				<rect x="368" y="268" width="164" height="5" rx="1.5" fill="#1a2244" />
 				<!-- Keyboard suggestion — 3 rows of key caps -->
@@ -448,7 +516,16 @@
 					{/each}
 				{/each}
 				<!-- Trackpad -->
-				<rect x="415" y="335" width="70" height="44" rx="5" fill="rgba(50,70,130,0.18)" stroke="rgba(70,95,155,0.18)" stroke-width="0.8" />
+				<rect
+					x="415"
+					y="335"
+					width="70"
+					height="44"
+					rx="5"
+					fill="rgba(50,70,130,0.18)"
+					stroke="rgba(70,95,155,0.18)"
+					stroke-width="0.8"
+				/>
 				<!-- Bottom chin -->
 				<rect x="368" y="346" width="164" height="4" rx="1.5" fill="#131b36" />
 
@@ -457,7 +534,16 @@
 				<!-- At macLidDeg=80: screen has swung ~flat onto keyboard.           -->
 				<g transform="rotate({macLidDeg}, 450, 268)">
 					<!-- Lid frame -->
-					<rect x="368" y="95" width="164" height="175" rx="8" fill="url(#bas-mac-base)" stroke="#2a3860" stroke-width="1.2" />
+					<rect
+						x="368"
+						y="95"
+						width="164"
+						height="175"
+						rx="8"
+						fill="url(#bas-mac-base)"
+						stroke="#2a3860"
+						stroke-width="1.2"
+					/>
 					<!-- Screen surface -->
 					<rect x="378" y="104" width="144" height="157" rx="5" fill="url(#bas-mac-screen)" />
 					<!-- Atlas-blue top bar accent -->
@@ -478,35 +564,96 @@
 
 			<!-- ══ PHONE ═════════════════════════════════════════════════════════ -->
 			<!-- Body always subtly visible; glows when notification arrives -->
-			<rect x="456" y="315" width="68" height="110" rx="10" fill="#131c36" stroke="#252e55" stroke-width="1.2" opacity={0.25 + phoneLit * 0.55} />
+			<rect
+				x="456"
+				y="315"
+				width="68"
+				height="110"
+				rx="10"
+				fill="#131c36"
+				stroke="#252e55"
+				stroke-width="1.2"
+				opacity={0.25 + phoneLit * 0.55}
+			/>
 			<!-- Screen -->
-			<rect x="463" y="325" width="54" height="86" rx="6" fill="url(#bas-phone-screen)" opacity={0.2 + phoneLit * 0.75} />
+			<rect
+				x="463"
+				y="325"
+				width="54"
+				height="86"
+				rx="6"
+				fill="url(#bas-phone-screen)"
+				opacity={0.2 + phoneLit * 0.75}
+			/>
 			<!-- Phone glow backdrop on notification -->
-			<rect x="456" y="315" width="68" height="110" rx="10" fill="url(#bas-phone-glow)" opacity={phoneLit * 0.55} />
+			<rect
+				x="456"
+				y="315"
+				width="68"
+				height="110"
+				rx="10"
+				fill="url(#bas-phone-glow)"
+				opacity={phoneLit * 0.55}
+			/>
 			<!-- Notch -->
 			<rect x="475" y="317" width="30" height="5" rx="2.5" fill="#0a1228" opacity={0.3 + phoneLit * 0.4} />
 
 			<!-- Notification card — slides up into view -->
 			<g transform="translate(0, {(1 - notifSlide) * 20})" opacity={notifSlide}>
 				<!-- Card background -->
-				<rect x="467" y="334" width="46" height="46" rx="5" fill="#1a2e5c" stroke="#3d5bff" stroke-width="0.8" />
+				<rect
+					x="467"
+					y="334"
+					width="46"
+					height="46"
+					rx="5"
+					fill="#1a2e5c"
+					stroke="#3d5bff"
+					stroke-width="0.8"
+				/>
 				<!-- App icon (square with Atlas blue) -->
 				<rect x="470" y="337" width="13" height="13" rx="3" fill="#3d5bff" />
 				<!-- Tiny globe on icon -->
 				<circle cx="476.5" cy="343.5" r="4" fill="#1a3272" />
 				<line x1="472.5" y1="343.5" x2="480.5" y2="343.5" stroke="#4f8ef7" stroke-width="0.6" opacity="0.7" />
-				<ellipse cx="476.5" cy="343.5" rx="2" ry="4" fill="none" stroke="#4f8ef7" stroke-width="0.6" opacity="0.7" />
+				<ellipse
+					cx="476.5"
+					cy="343.5"
+					rx="2"
+					ry="4"
+					fill="none"
+					stroke="#4f8ef7"
+					stroke-width="0.6"
+					opacity="0.7"
+				/>
 				<!-- Tiny straw hat on icon -->
 				<ellipse cx="476.5" cy="339.8" rx="4.5" ry="1.4" fill="#d4a827" />
 				<ellipse cx="476.5" cy="339.2" rx="2.5" ry="2" fill="#b88820" />
 				<!-- "Atlas Bot" header -->
-				<text x="486" y="346" fill="rgba(170,195,255,0.88)" font-size="7" font-family="inherit" font-weight="600">Atlas Bot</text>
+				<text
+					x="486"
+					y="346"
+					fill="rgba(170,195,255,0.88)"
+					font-size="7"
+					font-family="inherit"
+					font-weight="600">Atlas Bot</text
+				>
 				<!-- Notification body -->
-				<text x="470" y="360" fill="rgba(134,239,172,0.82)" font-size="7.5" font-family="inherit">Reviewer</text>
-				<text x="470" y="371" fill="rgba(134,239,172,0.72)" font-size="7" font-family="inherit">finished</text>
+				<text x="470" y="360" fill="rgba(134,239,172,0.82)" font-size="7.5" font-family="inherit"
+					>Reviewer</text
+				>
+				<text x="470" y="371" fill="rgba(134,239,172,0.72)" font-size="7" font-family="inherit">finished</text
+				>
 				<!-- Checkmark icon next to "finished" -->
 				<circle cx="503" cy="368" r="5" fill="#14522e" stroke="#22c55e" stroke-width="0.8" />
-				<path d="M 500.5 368 L 502.5 370.5 L 506 365.5" stroke="#22c55e" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+				<path
+					d="M 500.5 368 L 502.5 370.5 L 506 365.5"
+					stroke="#22c55e"
+					stroke-width="1.2"
+					fill="none"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</g>
 		</svg>
 	</div>

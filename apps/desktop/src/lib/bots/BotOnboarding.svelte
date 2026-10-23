@@ -509,9 +509,21 @@
 							{/each}
 						</div>
 					{:else if step === "ready"}
-						<!-- BotListRow appearing with spring -->
-						<div class="ready-art">
-							<BotListRow bot={mockBot} />
+						<!-- Hero bot card: large face + name -->
+						{@const readyLogo = agentLogo(selectedEngine || mockBot.agent)}
+						<div class="ready-hero">
+							<div class="hero-face-wrap">
+								<div class="hero-bob">
+									<BotFace seed={mockBot.id} look={previewLook} state="idle" size={140} />
+								</div>
+								{#if readyLogo}
+									<span class="hero-badge">{@html readyLogo.dark ?? readyLogo.light}</span>
+								{/if}
+							</div>
+							<div class="hero-info">
+								<span class="hero-name">{mockBot.name}</span>
+								<span class="hero-sub">No tasks yet</span>
+							</div>
 						</div>
 					{/if}
 				</div>
@@ -1204,32 +1216,101 @@
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 	}
 
-	/* ─── Ready art ──────────────────────────────────────────────── */
-	.ready-art {
-		width: min(320px, 88%);
+	/* ─── Ready hero card ────────────────────────────────────────── */
+	.ready-hero {
+		width: min(360px, 88%);
+		padding: 36px 32px 28px;
 		background: var(--ca-surface-base);
 		border: 1.5px solid var(--ca-border-subtle);
-		border-radius: 12px;
-		padding: 6px;
-		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
-		animation: ready-spring 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		border-radius: 20px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 20px;
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.28);
+		animation: hero-spring 560ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 	}
 
-	@keyframes ready-spring {
+	@keyframes hero-spring {
 		from {
 			opacity: 0;
-			transform: translateY(24px) scale(1.35);
+			transform: translateY(32px) scale(0.88);
 		}
 		to {
 			opacity: 1;
-			transform: scale(1.5);
+			transform: none;
 		}
 	}
 
+	.hero-face-wrap {
+		position: relative;
+		flex-shrink: 0;
+	}
+
+	/* periodic hop after the spring entrance */
+	.hero-bob {
+		animation: face-hop 3.6s ease-in-out infinite;
+		animation-delay: 700ms;
+	}
+
+	@keyframes face-hop {
+		0%,
+		75%,
+		100% {
+			transform: translateY(0);
+		}
+		88% {
+			transform: translateY(-9px);
+		}
+	}
+
+	.hero-badge {
+		position: absolute;
+		bottom: -4px;
+		right: -4px;
+		width: 30px;
+		height: 30px;
+		background: var(--ca-surface-base);
+		border: 2.5px solid var(--ca-surface-base);
+		border-radius: 9px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+	}
+
+	.hero-badge :global(svg) {
+		width: 22px;
+		height: 22px;
+	}
+
+	.hero-info {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 5px;
+		text-align: center;
+	}
+
+	.hero-name {
+		font-size: 26px;
+		font-weight: 700;
+		color: var(--ca-text-primary);
+		letter-spacing: -0.02em;
+	}
+
+	.hero-sub {
+		font-size: 14px;
+		color: var(--ca-text-secondary);
+	}
+
 	@media (prefers-reduced-motion: reduce) {
-		.ready-art {
+		.ready-hero {
 			animation: none;
-			transform: scale(1.5);
+		}
+		.hero-bob {
+			animation: none;
 		}
 	}
 

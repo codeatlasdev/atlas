@@ -55,6 +55,35 @@ pub fn set_frame(view: usize, x: f64, y: f64, w: f64, h: f64) {
     }
 }
 
+/// Slide the view into its (already set) frame from `dx` points to the left of it, over `ms`,
+/// on the compositor: the model is at rest at once, only the presentation travels. Matches the
+/// page's CSS slide so the terminal moves with its pane instead of being hidden for it.
+pub fn slide_from(view: usize, dx: f64, ms: f64) {
+    // SAFETY: retained in `create`, released only in `destroy`.
+    let view = unsafe { &*(view as *const NSView) };
+    let Some(layer) = view.layer() else {
+        return;
+    };
+    // SAFETY: CoreAnimation class methods and setters with matching argument types; the
+    // animation is retained by the layer once added.
+    unsafe {
+        let key = objc2_foundation::NSString::from_str("transform.translation.x");
+        let anim: *mut NSObject =
+            msg_send![objc2::class!(CABasicAnimation), animationWithKeyPath: &*key];
+        let from = objc2_foundation::NSNumber::new_f64(-dx);
+        let to = objc2_foundation::NSNumber::new_f64(0.0);
+        let _: () = msg_send![anim, setFromValue: &*from];
+        let _: () = msg_send![anim, setToValue: &*to];
+        let _: () = msg_send![anim, setDuration: ms / 1000.0];
+        // CoreAnimation's "easeOut" = cubic-bezier(0, 0, 0.58, 1), the page slide's CSS `ease-out`.
+        let name = objc2_foundation::NSString::from_str("easeOut");
+        let timing: *mut NSObject =
+            msg_send![objc2::class!(CAMediaTimingFunction), functionWithName: &*name];
+        let _: () = msg_send![anim, setTimingFunction: timing];
+        let _: () = msg_send![&*layer, addAnimation: anim, forKey: &*key];
+    }
+}
+
 pub fn destroy(view: usize) {
     // SAFETY: balances `Retained::into_raw` in `create`.
     if let Some(view) = unsafe { Retained::from_raw(view as *mut NSView) } {

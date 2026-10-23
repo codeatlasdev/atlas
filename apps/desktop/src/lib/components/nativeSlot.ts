@@ -66,5 +66,9 @@ export function overlayOpen(slot: Pick<DOMRect, "left" | "top" | "right" | "bott
 		const { offsetLeft: left, offsetTop: top } = p;
 		if (hits({ left, top, right: left + p.offsetWidth, bottom: top + p.offsetHeight }, slot)) return true;
 	}
+	// The corner stack (Getting started, integration offers, toasts, `shell/cornerStack.ts`) floats over the page
+	// too: a piece over the slot would otherwise sit behind the native view, invisible and unclickable.
+	for (const c of document.querySelectorAll("#atlas-corner > *"))
+		if (hits(c.getBoundingClientRect(), slot)) return true;
 	return false;
 }

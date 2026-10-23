@@ -22,9 +22,10 @@
 	const needsYouCount = $derived(bots.needsYouCount);
 
 	// "Push everything aside" without reflowing: animating a width relays out the sidebar, the page and every
-	// terminal on each frame (and re-syncs native views over IPC), which stuttered. The siblings slide by
-	// `translate` on the compositor instead; native views are parked for the slide (`data-swiping`, the same
-	// mark the space pager uses) and re-synced once at the resting, translated rect when it is lifted.
+	// terminal on each frame, which stuttered. The siblings slide by `translate` on the compositor instead.
+	// Native terminals can't follow a CSS transform, and parking them for the slide blinked: they are told
+	// (`atlas:rail-slide`) and play the same slide on their own layer (`term_slide`). Other native views
+	// (browser tabs) re-sync once at the end (a `resize` makes every `watchSlot` measure again).
 	let running: Animation[] = [];
 	let first = true;
 	$effect(() => {
@@ -39,13 +40,14 @@
 			(k): k is HTMLElement => k instanceof HTMLElement && k !== railEl && !k.classList.contains("hot-zone"),
 		);
 		const from = kids.map((k) => getComputedStyle(k).translate);
+		const ms = reducedMotion ? 0 : SLIDE_MS;
 		for (const a of running) a.cancel();
-		app.setAttribute("data-swiping", "rail");
 		const to = on ? `${RAIL_W}px 0` : "0px 0";
+		window.dispatchEvent(new CustomEvent("atlas:rail-slide", { detail: { dx: on ? RAIL_W : -RAIL_W, ms } }));
 		running = kids.map((k, i) =>
 			k.animate([{ translate: from[i] === "none" ? "0px 0" : from[i] }, { translate: to }], {
-				duration: reducedMotion ? 0 : SLIDE_MS,
-				easing: "cubic-bezier(.2,.8,.2,1)",
+				duration: ms,
+				easing: "ease-out",
 				fill: "forwards",
 			}),
 		);
@@ -53,8 +55,8 @@
 		void Promise.all(mine.map((a) => a.finished))
 			.then(() => {
 				if (running !== mine) return;
-				app.removeAttribute("data-swiping");
 				if (!on) for (const a of mine) a.cancel();
+				window.dispatchEvent(new Event("resize"));
 			})
 			.catch(() => {});
 	});
@@ -164,7 +166,8 @@
 		z-index: 1;
 		overflow: hidden;
 		transform: translateX(-100%);
-		transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+		/* ease-out = CoreAnimation's easeOut, which the native terminals use for the same slide (term_slide). */
+		transition: transform 180ms ease-out;
 
 		background: color-mix(in oklab, var(--ca-surface-sunken) 100%, black 4%);
 		border-right: 0.5px solid var(--ca-outline-subtle);

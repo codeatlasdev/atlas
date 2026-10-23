@@ -223,6 +223,7 @@ macro_rules! handlers {
             capture::capture_cmd,
             term::term_open,
             term::term_bounds,
+            term::term_slide,
             term::term_close,
             term::term_stats,
             term::term_stats_reset,

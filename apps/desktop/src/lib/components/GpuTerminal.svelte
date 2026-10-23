@@ -252,6 +252,12 @@
 			if (t) t.cwd = e.payload.cwd;
 		});
 		const unwatch = watchSlot(area!, view.sync);
+		// The workspace rail slides the whole page; the native view follows on its own layer.
+		const onRail = (e: Event) => {
+			const { dx, ms } = (e as CustomEvent<{ dx: number; ms: number }>).detail;
+			view.slide(dx, ms);
+		};
+		window.addEventListener("atlas:rail-slide", onRail);
 		// Title/exit events for the tab; bytes come over the raw stream.
 		void host.ptyAttach(pty, false, false).catch(quiet);
 		return () => {
@@ -259,6 +265,7 @@
 			void cwd.then((f) => f());
 			void osc52.then((f) => f());
 			unwatch();
+			window.removeEventListener("atlas:rail-slide", onRail);
 			if (document.activeElement === input) termFocus.on = false;
 			void host.ptyDetach(pty).catch(quiet);
 			void invoke("term_close", { tab }).catch(quiet);

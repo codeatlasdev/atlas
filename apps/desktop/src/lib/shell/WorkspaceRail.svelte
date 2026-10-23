@@ -164,7 +164,8 @@
 	.edge-handle {
 		position: fixed;
 		left: 2px;
-		top: 64px;
+		top: 50%;
+		translate: 0 -50%;
 		width: 3px;
 		height: 28px;
 		border-radius: 2px;
@@ -192,7 +193,8 @@
 	.edge-hint {
 		position: fixed;
 		left: 12px;
-		top: 62px;
+		top: 50%;
+		translate: 0 -50%;
 		z-index: 198;
 		display: flex;
 		align-items: center;
@@ -215,6 +217,7 @@
 		from {
 			opacity: 0;
 			transform: translateX(-6px);
+			/* keep the vertical centering: `translate` is separate from `transform` */
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

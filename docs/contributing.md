@@ -128,6 +128,10 @@ Most frontend work does not need the app on screen. Pick the lightest level that
 
 `bun run desktop:lab [--name lab] [--port 1421]` starts (or reuses) an invisible agent instance and serves the frontend with Vite on `http://localhost:1421`. Open that URL in any browser: every `invoke()` and event listener is forwarded through the instance's debug bridge (`apps/desktop/scripts/lab-bridge.ts`, `src/lib/debug/labShim.ts`), so the backend, hostd and data are real and isolated from your own Atlas. You and an agent can share the same URL: the agent drives it headless, you watch or click when you want, and no window ever appears on its own. `bun run desktop:lab --stop` stops the instance.
 
+**See the native parts too:** `bun run desktop:mirror [--name lab]` serves a live view of an agent instance's whole window (GPU terminal, page stage, embedded browser included: frames from ScreenCaptureKit, not the page snapshot) at the URL it prints. Click on it to click the app (DOM events through the debug bridge, never OS input); nothing appears on your screen. The URL carries a per-run token: without it every route answers 403. It pauses while `scripts/heavy.sh` holds its lock, so benches measure an unwatched app. Today about 5 frames per second, and clicks only (no keyboard yet).
+
+**Linux and Windows gaps.** Agent instances, so the Lab backend and the mirror, are macOS only (private virtual display, ScreenCaptureKit). On Linux and Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` and the repo `atlas.yaml` work everywhere.
+
 Limits: `Channel` streams (terminals, gestures) and `convertFileSrc` assets are not forwarded, and the browser is not WKWebView; use level 2 for those and for the CSP/IPC check before shipping. The bridge answers only its own page (per-run token, same Origin, JSON content type) and only when `ATLAS_DEBUG_SOCK` is an agent instance; it never talks to your own app.
 
 ## Code layout

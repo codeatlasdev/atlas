@@ -86,6 +86,26 @@ export function clickTarget(selector: string): Click {
 	return { clicked: true, tag: el.tagName.toLowerCase(), text: (el.textContent ?? "").trim().slice(0, 80) };
 }
 
+/**
+ * Click at CSS point (x, y) of the page, the way a pointer would: pointerdown/mousedown/pointerup/mouseup/click on
+ * the topmost element there (the live mirror of an agent instance forwards a human's clicks through this).
+ */
+export function clickAt(x: number, y: number): Click {
+	if (!Number.isFinite(x) || !Number.isFinite(y)) return { clicked: false, reason: "bad point" };
+	const el = document.elementFromPoint(x, y) as HTMLElement | null;
+	if (!el) return { clicked: false, reason: `nothing at ${x},${y}` };
+	const at = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+	el.dispatchEvent(
+		new PointerEvent("pointerdown", { ...at, buttons: 1, pointerType: "mouse", isPrimary: true }),
+	);
+	el.dispatchEvent(new MouseEvent("mousedown", { ...at, buttons: 1 }));
+	if (el.matches("input, textarea, select, [contenteditable], button, a, [tabindex]")) el.focus();
+	el.dispatchEvent(new PointerEvent("pointerup", { ...at, pointerType: "mouse", isPrimary: true }));
+	el.dispatchEvent(new MouseEvent("mouseup", at));
+	el.dispatchEvent(new MouseEvent("click", at));
+	return { clicked: true, tag: el.tagName.toLowerCase(), text: (el.textContent ?? "").trim().slice(0, 80) };
+}
+
 /** Types into the visible field at `selector`; returns the field's value afterwards. */
 export const typeTarget = (selector: string, text: string, delayMs: number) =>
 	typeInto(selector, text, delayMs);

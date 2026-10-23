@@ -14,6 +14,7 @@
     "desktop:dev": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri dev --config tauri.dev.conf.json",
     "desktop:agent": "scripts/desktop-agent.sh",
     "desktop:lab": "scripts/desktop-lab.sh",
+    "desktop:mirror": "bun scripts/desktop-mirror.ts",
     "icons:dev": "scripts/dev-icons.sh",
     "desktop:build": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri build --ci",
     "desktop:build:app": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri build --debug --bundles app --ci --config tauri.dev.conf.json",

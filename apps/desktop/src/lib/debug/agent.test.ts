@@ -3,7 +3,8 @@ import "../../../test/setup.ts";
 import { beforeEach, describe, expect, test } from "bun:test";
 
 const agent = await import("./agent.ts");
-const { a11yTree, clickTarget, elementShotRect, fullShotSize, stateSummary, typeTarget, waitFor } = agent;
+const { a11yTree, clickAt, clickTarget, elementShotRect, fullShotSize, stateSummary, typeTarget, waitFor } =
+	agent;
 
 const html = (s: string) => (document.body.innerHTML = s);
 /** happy-dom does no layout: give elements a rect and visibility the way WebKit would. */
@@ -77,6 +78,31 @@ describe("waitFor", () => {
 		await expect(waitFor({ selector: "a", expr: "b" }, { timeoutMs: 10, pollMs: 5 })).rejects.toThrow(
 			/selector or expr/,
 		);
+	});
+});
+
+describe("clickAt (the mirror's clicks)", () => {
+	test("hits the topmost element at the point with the pointer sequence and coordinates", () => {
+		html('<div class="card"><button class="go">Go</button></div>');
+		const b = document.querySelector(".go");
+		document.elementFromPoint = (x, y) => (x === 40 && y === 25 ? b : document.body);
+		const seen = [];
+		for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"])
+			document.querySelector(".card").addEventListener(t, (e) => seen.push(`${t}@${e.clientX},${e.clientY}`));
+		expect(clickAt(40, 25)).toMatchObject({ clicked: true, tag: "button", text: "Go" });
+		expect(seen).toEqual([
+			"pointerdown@40,25",
+			"mousedown@40,25",
+			"pointerup@40,25",
+			"mouseup@40,25",
+			"click@40,25",
+		]);
+	});
+
+	test("a point outside the page or not a number is reported, not clicked", () => {
+		document.elementFromPoint = () => null;
+		expect(clickAt(9999, 9999)).toEqual({ clicked: false, reason: "nothing at 9999,9999" });
+		expect(clickAt(Number.NaN, 1)).toEqual({ clicked: false, reason: "bad point" });
 	});
 });
 

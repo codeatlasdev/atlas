@@ -85,6 +85,17 @@
 		visible = false;
 		pinned = false;
 	}
+
+	// The rail is hidden until the pointer reaches the edge, so it must announce itself: a small handle always
+	// peeks at the left edge, and the first time, a hint says what it is (gone for good once the rail opens).
+	const HINT_KEY = "atlas.railHintSeen";
+	let hint = $state(localStorage.getItem(HINT_KEY) !== "1");
+	$effect(() => {
+		if (visible && hint) {
+			hint = false;
+			localStorage.setItem(HINT_KEY, "1");
+		}
+	});
 </script>
 
 <!-- Hot-zone: thin fixed strip at left edge, only active when rail is hidden -->
@@ -95,6 +106,14 @@
 	onmouseenter={onHotZoneEnter}
 	onmouseleave={onRailLeave}
 ></div>
+
+<!-- Always-visible handle: tells the user something lives at this edge. -->
+<div class="edge-handle" class:hidden={visible} class:alert={needsYouCount > 0} aria-hidden="true"></div>
+{#if hint && !visible}
+	<button class="edge-hint" onclick={() => (visible = true)} onmouseenter={onHotZoneEnter}>
+		Workspaces <span class="kbd">{shortcut}</span>
+	</button>
+{/if}
 
 <!-- Rail: a fixed column that slides in; the rest of the window slides aside by the same width -->
 <div

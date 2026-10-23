@@ -6,6 +6,7 @@
  */
 
 import { typeInto } from "../capture/dom.ts";
+import { type Key, keyBytes } from "./keys.ts";
 
 export { contrastAudit, nonTextAudit } from "./contrast.ts";
 
@@ -104,6 +105,82 @@ export function clickAt(x: number, y: number): Click {
 	el.dispatchEvent(new MouseEvent("mouseup", at));
 	el.dispatchEvent(new MouseEvent("click", at));
 	return { clicked: true, tag: el.tagName.toLowerCase(), text: (el.textContent ?? "").trim().slice(0, 80) };
+}
+
+type Pressed = { to: "terminal" | "field" | "page"; key: string };
+
+/** A terminal's own key sink (GpuTerminal's hidden textarea): it turns the real keydown into terminal input. */
+const terminalSink = (el: Element | null) => !!el?.matches('textarea[aria-label="Terminal input"]');
+
+/**
+ * One key from the live mirror. The focused terminal (no text field focused) gets the bytes a terminal sends;
+ * otherwise the focused element gets keydown/keyup, and a printable key or Backspace edits a focused text field.
+ * ⌘ shortcuts always go to the page, so the app's own bindings work from the mirror.
+ */
+export async function pressKey(k: Key): Promise<Pressed> {
+	const el = document.activeElement as HTMLElement | null;
+	if (terminalSink(el)) {
+		// The terminal maps the keydown itself (Option-as-Alt, ⌘ terminal actions); a printable key it leaves to the
+		// browser's default text insertion, which a synthetic event does not do: insert it the way the sink reads it.
+		const init = {
+			key: k.key,
+			ctrlKey: !!k.ctrl,
+			altKey: !!k.alt,
+			metaKey: !!k.meta,
+			shiftKey: !!k.shift,
+			bubbles: true,
+			cancelable: true,
+			composed: true,
+		};
+		const go = el!.dispatchEvent(new KeyboardEvent("keydown", init));
+		if (go && !k.ctrl && !k.meta && [...k.key].length === 1) {
+			(el as HTMLTextAreaElement).value += k.key;
+			el!.dispatchEvent(new InputEvent("input", { bubbles: true, data: k.key, inputType: "insertText" }));
+		}
+		el!.dispatchEvent(new KeyboardEvent("keyup", init));
+		return { to: "terminal", key: k.key };
+	}
+	const field = el?.matches("input, textarea") ? (el as HTMLInputElement) : null;
+	const editable = !!field || !!el?.isContentEditable;
+	if (!editable) {
+		const atlas = (window as unknown as { __atlas?: { ws?: any; host?: any } }).__atlas;
+		const ws = atlas?.ws;
+		const tab = ws?.selected ? ws.focusedTab(ws.selected.id) : undefined;
+		const bytes = keyBytes(k);
+		if (tab?.pty && bytes !== null) {
+			await atlas!.host.ptyWrite(tab.pty, bytes);
+			return { to: "terminal", key: k.key };
+		}
+	}
+	const target = el ?? document.body;
+	const init = {
+		key: k.key,
+		ctrlKey: !!k.ctrl,
+		altKey: !!k.alt,
+		metaKey: !!k.meta,
+		shiftKey: !!k.shift,
+		bubbles: true,
+		cancelable: true,
+		composed: true,
+	};
+	const go = target.dispatchEvent(new KeyboardEvent("keydown", init));
+	if (go && field && !k.ctrl && !k.meta) {
+		const [a, b] = [field.selectionStart ?? field.value.length, field.selectionEnd ?? field.value.length];
+		const printable = [...k.key].length === 1;
+		if (printable || (k.key === "Backspace" && (a > 0 || b > a))) {
+			if (printable) field.setRangeText(k.key, a, b, "end");
+			else field.setRangeText("", a === b ? a - 1 : a, b, "end");
+			field.dispatchEvent(
+				new InputEvent("input", {
+					bubbles: true,
+					data: printable ? k.key : null,
+					inputType: printable ? "insertText" : "deleteContentBackward",
+				}),
+			);
+		}
+	}
+	target.dispatchEvent(new KeyboardEvent("keyup", init));
+	return { to: editable ? "field" : "page", key: k.key };
 }
 
 /** Types into the visible field at `selector`; returns the field's value afterwards. */

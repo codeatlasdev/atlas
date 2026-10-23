@@ -13,6 +13,10 @@
 	import { Check, GitPullRequest, Laptop, Moon, Server, Smartphone } from "@lucide/svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
+	import { normalizeLook } from "#lib/bots/look.ts";
+
+	/** The typing dots take the crewmate's own colour. */
+	const crewColor = normalizeLook(undefined, "how-reviewer").color;
 
 	let { beat = $bindable(0) }: { beat?: number } = $props();
 
@@ -101,7 +105,7 @@
 		<!-- Typing, like the real chat: no bubble, the dots and the crewmate's little face take turns, then a shimmering label. -->
 		<div class="typing pop">
 			<span class="mark">
-				<span class="dots"><i></i><i></i><i></i></span>
+				<span class="dots" style:--crew={crewColor}><i></i><i></i><i></i></span>
 				<span class="mini"><BotFace seed="how-reviewer" state="working" size={22} /></span>
 			</span>
 			<span class="shimmer">Thinking</span>
@@ -465,7 +469,7 @@
 		width: 0.55em;
 		height: 0.55em;
 		border-radius: 50%;
-		background: var(--ink-muted);
+		background: var(--crew, var(--ink-muted));
 		opacity: 1;
 		animation: dot 1.2s ease-in-out infinite;
 	}

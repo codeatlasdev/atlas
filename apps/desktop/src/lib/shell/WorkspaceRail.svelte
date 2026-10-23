@@ -5,16 +5,59 @@
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { Layers } from "@lucide/svelte";
 	import ShipFlag from "#lib/bots/ShipFlag.svelte";
+	import { reducedMotion } from "#lib/bots/motion.ts";
 
-	// visible = rail is expanded (72px); false = collapsed (0px)
+	// visible = rail is shown; everything else in the window slides right by RAIL_W to make room
 	let visible = $state(false);
 	// pinned = keep expanded while tooltip/menu is open
 	let pinned = $state(false);
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
+	let railEl: HTMLElement | undefined;
+
+	const RAIL_W = 72;
+	const SLIDE_MS = 180;
 
 	const shortcut = $derived(shortcutFor("atlas::ToggleBotsWorkspace") ?? "Cmd+Shift+B");
 	const needsYouCount = $derived(bots.needsYouCount);
+
+	// "Push everything aside" without reflowing: animating a width relays out the sidebar, the page and every
+	// terminal on each frame (and re-syncs native views over IPC), which stuttered. The siblings slide by
+	// `translate` on the compositor instead; native views are parked for the slide (`data-swiping`, the same
+	// mark the space pager uses) and re-synced once at the resting, translated rect when it is lifted.
+	let running: Animation[] = [];
+	let first = true;
+	$effect(() => {
+		const on = visible;
+		const app = railEl?.parentElement;
+		if (!app) return;
+		if (first) {
+			first = false;
+			return;
+		}
+		const kids = [...app.children].filter(
+			(k): k is HTMLElement => k instanceof HTMLElement && k !== railEl && !k.classList.contains("hot-zone"),
+		);
+		const from = kids.map((k) => getComputedStyle(k).translate);
+		for (const a of running) a.cancel();
+		app.setAttribute("data-swiping", "rail");
+		const to = on ? `${RAIL_W}px 0` : "0px 0";
+		running = kids.map((k, i) =>
+			k.animate([{ translate: from[i] === "none" ? "0px 0" : from[i] }, { translate: to }], {
+				duration: reducedMotion ? 0 : SLIDE_MS,
+				easing: "cubic-bezier(.2,.8,.2,1)",
+				fill: "forwards",
+			}),
+		);
+		const mine = running;
+		void Promise.all(mine.map((a) => a.finished))
+			.then(() => {
+				if (running !== mine) return;
+				app.removeAttribute("data-swiping");
+				if (!on) for (const a of mine) a.cancel();
+			})
+			.catch(() => {});
+	});
 
 	function onHotZoneEnter() {
 		clearTimeout(hideTimer);
@@ -51,8 +94,9 @@
 	onmouseleave={onRailLeave}
 ></div>
 
-<!-- Rail: real in-flow flex column, width 0 → 72px -->
+<!-- Rail: a fixed column that slides in; the rest of the window slides aside by the same width -->
 <div
+	bind:this={railEl}
 	class="rail"
 	class:visible
 	role="navigation"
@@ -110,15 +154,17 @@
 		pointer-events: none;
 	}
 
-	/* Rail: real in-flow flex column — takes space and pushes sidebar+content right */
+	/* Rail: a fixed column under everything else's slide; it moves by transform only (no layout per frame). */
 	.rail {
-		/* Layout: in-flow, NOT position:fixed */
-		flex: none;
-		width: 0;
+		position: fixed;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 72px;
+		z-index: 1;
 		overflow: hidden;
-		height: 100%;
-		/* Animate width: 160ms ease-out for expand and collapse */
-		transition: width 160ms ease-out;
+		transform: translateX(-100%);
+		transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 
 		background: color-mix(in oklab, var(--ca-surface-sunken) 100%, black 4%);
 		border-right: 0.5px solid var(--ca-outline-subtle);
@@ -132,7 +178,12 @@
 	}
 
 	.rail.visible {
-		width: 72px;
+		transform: none;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rail {
+			transition: none;
+		}
 	}
 	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
 	:global(html.opaque-window) .rail {

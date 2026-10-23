@@ -12,7 +12,7 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Plus, Search, Settings, CircleHelp, Activity, TriangleAlert, Zap } from "@lucide/svelte";
+	import { Plus, Search, Settings, CircleHelp, Compass, TriangleAlert, Zap } from "@lucide/svelte";
 	import { flip } from "svelte/animate";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 	import BotOnboarding from "#lib/bots/BotOnboarding.svelte";
@@ -222,6 +222,15 @@
 </script>
 
 <div class="bots-workspace">
+	<!-- Cartography grid overlay -->
+	<svg class="crew-grid-bg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+		<defs>
+			<pattern id="crew-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+				<path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5" />
+			</pattern>
+		</defs>
+		<rect width="100%" height="100%" fill="url(#crew-grid)" />
+	</svg>
 	<!-- Left column -->
 	<div class="col-left">
 		<!-- Drag region -->
@@ -233,7 +242,7 @@
 				<input
 					class="search"
 					bind:value={query}
-					placeholder="Find a bot…"
+					placeholder="Find a crewmate…"
 					aria-label="Search bots"
 					onblur={() => {
 						if (!query) searchOpen = false;
@@ -246,14 +255,14 @@
 		</div>
 
 		<!-- Nav rows: Activity / Triggers / Needs you -->
-		<nav class="nav-list" aria-label="Bots navigation">
+		<nav class="nav-list" aria-label="Crew navigation">
 			<button class="nav-row" class:active={selectedNav === "activity"} onclick={() => navClick("activity")}>
-				<Activity size={15} aria-hidden="true" />
-				<span>Activity</span>
+				<Compass size={15} aria-hidden="true" />
+				<span>Logbook</span>
 			</button>
 			<button class="nav-row" class:active={selectedNav === "triggers"} onclick={() => navClick("triggers")}>
 				<Zap size={15} aria-hidden="true" />
-				<span>Triggers</span>
+				<span>Watches</span>
 			</button>
 			<button
 				class="nav-row"
@@ -261,7 +270,7 @@
 				onclick={() => navClick("needs_you")}
 			>
 				<TriangleAlert size={15} aria-hidden="true" />
-				<span>Needs you</span>
+				<span>Captain's call</span>
 				{#if needsYouCount > 0}
 					<span class="nav-pill" aria-label="{needsYouCount} bots need attention">{needsYouCount}</span>
 				{/if}
@@ -270,8 +279,8 @@
 
 		<!-- BOTS section header -->
 		<div class="section-hd">
-			<span>BOTS</span>
-			<button class="section-add" onclick={startNewBot} aria-label="New bot" disabled={creating}
+			<span>CREW</span>
+			<button class="section-add" onclick={startNewBot} aria-label="Recruit" disabled={creating}
 				><Plus size={12} /></button
 			>
 		</div>
@@ -285,7 +294,7 @@
 					class="hero-btn"
 					class:active={isActive(hero.hostKey, hero.bot.id)}
 					onclick={() => selectBot(hero.hostKey, hero.bot.id)}
-					aria-label="{hero.bot.name} (favorite)"
+					aria-label="{hero.bot.name} (first mate)"
 					aria-pressed={isActive(hero.hostKey, hero.bot.id)}
 				>
 					<div class="hero-face-wrap">
@@ -322,9 +331,9 @@
 		<div class="bot-list" role="list">
 			{#if nonFavBots.length === 0 && bots.allBots.length === 0}
 				<div class="empty-state">
-					<p class="empty-title">No bots yet</p>
-					<p class="empty-sub">Add a bot server to get started.</p>
-					<button class="empty-add" onclick={openBotsSettings}>Add bot server</button>
+					<p class="empty-title">No crew yet</p>
+					<p class="empty-sub">Launch your ship to get started.</p>
+					<button class="empty-add" onclick={openBotsSettings}>Launch your ship</button>
 				</div>
 			{:else if nonFavBots.length === 0 && query.trim()}
 				<div class="empty-state">
@@ -391,8 +400,8 @@
 				<button
 					class="footer-icon-btn"
 					onclick={openOnboarding}
-					title="How Atlas Bot works"
-					aria-label="How Atlas Bot works"
+					title="How Atlas Crew works"
+					aria-label="How Atlas Crew works"
 				>
 					<CircleHelp size={14} />
 				</button>
@@ -400,7 +409,7 @@
 					class="footer-icon-btn"
 					onclick={openBotsSettings}
 					title="Settings"
-					aria-label="Bots settings"
+					aria-label="Crew settings"
 				>
 					<Settings size={14} />
 				</button>
@@ -415,9 +424,9 @@
 		{:else if selectedNav === "needs_you"}
 			<!-- Needs-you screen -->
 			<div class="nav-view">
-				<div class="nav-view-hd">Needs you</div>
+				<div class="nav-view-hd">Captain's call</div>
 				{#if bots.allBots.filter((b) => b.bot.state === "needs_you").length === 0}
-					<div class="nav-view-empty">No bots need attention right now.</div>
+					<div class="nav-view-empty">No crewmates need your attention right now.</div>
 				{:else}
 					<div class="needs-list">
 						{#each bots.allBots.filter((b) => b.bot.state === "needs_you") as { hostKey, bot } (bot.id)}
@@ -458,11 +467,11 @@
 		{:else if selectedNav === "triggers"}
 			<!-- Triggers screen -->
 			<div class="nav-view">
-				<div class="nav-view-hd">Triggers</div>
+				<div class="nav-view-hd">Watches</div>
 				{#if bots.allBots.filter((b) => (b.bot.triggers ?? []).length > 0).length === 0}
 					<div class="nav-view-empty">
-						<p>No triggers configured.</p>
-						<p class="nav-view-hint">Select a bot and open its profile to add triggers.</p>
+						<p>No watches configured.</p>
+						<p class="nav-view-hint">Select a crewmate and open its profile to add watches.</p>
 					</div>
 				{:else}
 					<div class="triggers-list">
@@ -487,10 +496,10 @@
 					<div class="nav-view-empty">
 						<p>Nothing yet.</p>
 						<p class="nav-view-hint">What your bots do shows up here.</p>
-						<button class="btn-primary-pill" onclick={startNewBot} disabled={creating}>New bot</button>
+						<button class="btn-primary-pill" onclick={startNewBot} disabled={creating}>Recruit</button>
 					</div>
 				{:else}
-					<div class="activity-hd">Activity</div>
+					<div class="activity-hd">Logbook</div>
 					<div class="activity-feed">
 						{#each bots.activityFeed as entry (entry.botId + entry.task.id)}
 							<button class="activity-row" onclick={() => selectBot(entry.hostKey, entry.botId)}>
@@ -501,6 +510,9 @@
 									size={32}
 								/>
 								<div class="activity-body">
+									{#if entry.task.source === "trigger"}
+										<div class="route-line" aria-hidden="true"></div>
+									{/if}
 									<span class="activity-name">{entry.botName}</span>
 									<span class="activity-preview"
 										>{entry.task.result?.slice(0, 80) ?? entry.task.prompt.slice(0, 80)}</span
@@ -511,7 +523,7 @@
 						{/each}
 					</div>
 					{#if bots.allBots.some((b) => b.bot.state === "needs_you")}
-						<div class="activity-needs-hd">Needs you</div>
+						<div class="activity-needs-hd">Captain's call</div>
 						{#each bots.allBots.filter((b) => b.bot.state === "needs_you") as { hostKey, bot } (bot.id)}
 							<div class="needs-card inline">
 								<BotFace seed={bot.id} look={bot.look} state="needs_you" size={32} />
@@ -553,6 +565,7 @@
 
 <style>
 	.bots-workspace {
+		position: relative;
 		display: flex;
 		width: 100%;
 		height: 100%;
@@ -1200,5 +1213,37 @@
 	.trigger-enabled.on {
 		background: color-mix(in oklab, var(--ca-semantic-success) 15%, transparent);
 		color: var(--ca-semantic-success);
+	}
+	/* ─── Crew grid background ────────────────────────────────── */
+	.crew-grid-bg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		z-index: 0;
+	}
+	@media (prefers-color-scheme: light) {
+		.crew-grid-bg path {
+			stroke: rgba(0, 0, 0, 0.04);
+		}
+	}
+
+	/* ─── Route line (bot-chain trigger) ──────────────────────── */
+	.route-line {
+		width: 24px;
+		height: 2px;
+		border-top: 2px dashed currentColor;
+		opacity: 0.45;
+		flex: none;
+		animation: route-march 1.2s linear infinite;
+	}
+	@keyframes route-march {
+		from {
+			background-position: 0 0;
+		}
+		to {
+			background-position: 16px 0;
+		}
 	}
 </style>

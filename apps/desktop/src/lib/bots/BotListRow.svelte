@@ -157,7 +157,7 @@
 								onFavorite?.();
 							}}
 						>
-							{isFavorite ? "★ Favorite" : "☆ Set as favorite"}
+							{isFavorite ? "★ First mate" : "☆ Make first mate"}
 						</button>
 					{/if}
 					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}

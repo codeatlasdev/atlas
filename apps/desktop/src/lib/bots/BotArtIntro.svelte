@@ -8,7 +8,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
-	import ShipFlag from "#lib/bots/ShipFlag.svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
 
 	// ─── Wave geometry ──────────────────────────────────────────────────────────
@@ -71,9 +70,6 @@
 	const shipY = $derived(Math.sin(ph) * 7);
 	const shipRot = $derived(Math.cos(ph * 1.07) * 2.2);
 
-	// Crow's nest sways more than deck (mast top amplification)
-	const nestSway = $derived(Math.sin(ph * 1.07) * 5);
-
 	// ─── Sail billow (0 = flat baseline, 1 = full wind) ─────────────────────────
 	// Sails always have a 10–14 px baseline bow-forward curve so they read as
 	// rounded cloth even before the intro beat runs.
@@ -97,7 +93,6 @@
 
 	// ─── FX ─────────────────────────────────────────────────────────────────────
 
-	const pennantAngle = $derived(-16 + Math.sin(ph * 2.9) * 10 + Math.sin(ph * 5.3) * 3.5);
 	const routeW = $derived(t < 1 ? seg(t, 0.42, 0.8) * 175 : 175);
 	const compassOp = $derived(t < 1 ? seg(t, 0.65, 0.92) * 0.28 : 0.28);
 	const moonOp = $derived(t < 1 ? seg(t, 0, 0.22) : 1);
@@ -171,6 +166,9 @@
 </script>
 
 <div class="ship-scene" aria-hidden="true">
+	<!-- Sky above the stage and sea below it, so the scene fills the whole column: the stage spans the full width and
+	     this layer continues its top colour (the sky's) up and its front wave's colour down. -->
+	<div class="sea" style="--sky:#08102a; --deep:#1b3e7a"></div>
 	<div class="stage">
 		<!-- ═══ LAYER 1 — bg SVG (z=1): sky · water · rigging · sails ═══════════ -->
 		<svg class="layer-svg" viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg" style:z-index="1">
@@ -374,26 +372,18 @@
 					/>
 				{/each}
 
-				<!-- Globe + straw-hat emblem on main sail: our mark, not a skull -->
-				<g transform="translate(308,196)" opacity="0.55">
-					<circle r="16" stroke="#c6dcf5" stroke-width="1.8" fill="rgba(198,220,245,0.10)" />
-					<path d="M -16 0 Q -8 -3 0 -3 Q 8 -3 16 0" stroke="#c6dcf5" stroke-width="1.2" fill="none" />
-					<path d="M 0 -16 Q -4 -4 -4 2 Q -4 8 0 16" stroke="#c6dcf5" stroke-width="1.0" fill="none" />
-					<ellipse
-						cx="0"
-						cy="-21"
-						rx="12"
-						ry="3"
-						stroke="#c6dcf5"
-						stroke-width="1.5"
-						fill="rgba(198,220,245,0.12)"
-					/>
-					<path
-						d="M -8 -21 C -8 -29 8 -29 8 -21"
-						stroke="#c6dcf5"
-						stroke-width="1.5"
-						fill="rgba(198,220,245,0.08)"
-					/>
+				<!-- The crew's flag painted on the main sail: globe + straw hat (our mark, not a skull). Dark paint on
+				     the light cloth so it reads at a glance; it rides the sail's billow with the rest of the layer. -->
+				<g transform="translate({306 + mlR * 0.35},200) scale(1.55)">
+					<circle r="17" fill="#16224a" />
+					<circle r="17" stroke="#3d5bff" stroke-width="1.6" fill="none" />
+					<path d="M -17 0 Q -8 -3.5 0 -3.5 Q 8 -3.5 17 0" stroke="#7f95d6" stroke-width="1.3" fill="none" />
+					<path d="M -17 0 Q -8 3.5 0 3.5 Q 8 3.5 17 0" stroke="#7f95d6" stroke-width="1.1" fill="none" />
+					<ellipse cx="0" cy="0" rx="6.5" ry="17" stroke="#7f95d6" stroke-width="1.2" fill="none" />
+					<!-- straw hat sitting on the globe -->
+					<ellipse cx="0" cy="-15" rx="16" ry="4" fill="#e3b75a" stroke="#a87c2a" stroke-width="0.9" />
+					<path d="M -9 -15.5 C -9 -26 9 -26 9 -15.5 Z" fill="#ecc66c" stroke="#a87c2a" stroke-width="0.9" />
+					<path d="M -9 -17.5 L 9 -17.5" stroke="#3d5bff" stroke-width="2.4" />
 				</g>
 
 				<!-- Main topsail -->
@@ -561,24 +551,12 @@
 			style:transform="translateY({shipY}px) rotate({shipRot}deg)"
 			style:transform-origin="48.1% 64.8%"
 		>
-			<!-- ShipFlag pennant at main-mast top: globe + straw hat (not a skull) -->
-			<div
-				class="pennant"
-				style:left="48.1%"
-				style:top="11.4%"
-				style:color="rgba(255,255,255,0.84)"
-				style="--color-accent:#ffd070"
-				style:transform="translateX(2px) translateY(-100%) rotate({pennantAngle}deg)"
-			>
-				<ShipFlag size={24} />
-			</div>
-
 			<!--
-        Crew positioning:
-          hull deck y=284.  face-bottom target = 284+10 = 294.
-          top% = 294/440 = 66.8%.  transform: translateX(-50%) translateY(-100%).
+        Crew positioning (feet behind the rail, so the whole face and hat clear it):
+          hull rail y≈278; face-bottom target ≈ 278.  top% = 278/440 = 63.2%.  translateY(-100%).
           Stern-castle deck y=258; face-bottom 268; top% = 268/440 = 60.9%.
-          Crow's nest: centre at y=86; top% = 86/440 = 19.5%; translateY(-50%).
+          Crow's nest: centre at y=86; top% = 86/440 = 19.5%. No sway of its own: the basket's front rim is drawn
+          in the hull layer, which only moves with the ship, so a face swaying on its own floated out of it.
       -->
 
 			<!-- A: crow's nest lookout — centre in the nest basket -->
@@ -586,7 +564,7 @@
 				class="crew-face"
 				style:left="48.1%"
 				style:top="19.5%"
-				style:transform="translateX(-50%) translateY(-50%) translateY({nestSway}px)"
+				style:transform="translateX(-50%) translateY(-50%)"
 			>
 				<BotFace seed="ship-crow" state="working" size={42} />
 			</div>
@@ -595,7 +573,7 @@
 			<div
 				class="crew-face"
 				style:left="70.3%"
-				style:top="66.8%"
+				style:top="63.2%"
 				style:transform="translateX(-50%) translateY(-100%) translateY({crew0extra}px)"
 			>
 				<BotFace seed="ship-a" state="working" size={62} />
@@ -615,7 +593,7 @@
 			<div
 				class="crew-face"
 				style:left="55.5%"
-				style:top="66.8%"
+				style:top="63.2%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
 				<BotFace seed="ship-c" state={crew1State} size={58} />
@@ -625,7 +603,7 @@
 			<div
 				class="crew-face"
 				style:left="41.3%"
-				style:top="66.8%"
+				style:top="63.2%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
 				<BotFace seed="ship-d" state="offline" size={54} />
@@ -749,12 +727,26 @@
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
+		container-type: size;
 	}
 
-	/* Fixed-ratio stage: crew % positions align with SVG 640×440 viewBox */
+	/* Half the stage height (full width × 440/640 / 2). */
+	.sea {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to bottom,
+			var(--sky) calc(50% - 34.375cqw + 1px),
+			transparent calc(50% - 34.375cqw + 1px),
+			transparent calc(50% + 34.375cqw - 1px),
+			var(--deep) calc(50% + 34.375cqw - 1px)
+		);
+	}
+
+	/* Fixed-ratio stage: crew % positions align with SVG 640×440 viewBox; edge to edge across the column. */
 	.stage {
 		position: relative;
-		width: min(96%, 640px);
+		width: 100cqw;
 		aspect-ratio: 640 / 440;
 		flex-shrink: 0;
 	}
@@ -780,12 +772,6 @@
 
 	.crew-face {
 		position: absolute;
-	}
-
-	.pennant {
-		position: absolute;
-		transform-origin: 0 100%;
-		will-change: transform;
 	}
 
 	/* Wave CSS drift — linear is correct for continuous translation */

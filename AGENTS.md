@@ -1,6 +1,6 @@
 # Atlas — notes for coding agents
 
-Rust workspace (`crates/*`: `atlas-cli` = the `atlas` binary, `atlas-tui` = runtime/TUI/MCP/runner, `atlas-host` = `atlas hostd` (PTYs/exec/fs daemon behind the app), `atlas-core`, `atlas-skills`, `atlas-term` = the GPU terminal, `atlas-desktop` = Tauri 2 shell) plus the desktop frontend in `apps/desktop` (SvelteKit 3 + `@codeatlasdev/ui`) and the mobile app in `apps/mobile` (Flutter, iOS and Android; see [docs/mobile.md](docs/mobile.md)). Docs are plain markdown in `docs/`; the user-facing agent skills in `skills/` are embedded into the binary at build time.
+Rust workspace (`crates/*`: `atlas-cli` = the `atlas` binary, `atlas-tui` = runtime/TUI/MCP/runner, `atlas-host` = `atlas hostd` (PTYs/exec/fs daemon behind the app), `atlas-core`, `atlas-skills`, `atlas-term` = the GPU terminal, `atlas-desktop` = Tauri 2 shell) plus the desktop frontend in `apps/desktop` (SvelteKit 3 + `@codeatlasdev/ui`) and the mobile app in `apps/mobile` (Flutter, iOS and Android; see [docs/mobile.md](docs/mobile.md); read `apps/mobile/AGENTS.md` before touching it: Flutter, Dart and dependencies stay on the latest stable, one pin in `pubspec.yaml`). Docs are plain markdown in `docs/`; the user-facing agent skills in `skills/` are embedded into the binary at build time.
 
 ## Gate and workflow
 
@@ -42,7 +42,7 @@ Each instance has its own `HOME`, `ATLAS_HOSTD_DIR` and bridge socket under `/tm
 
 **Let the human watch:** `bun run desktop:mirror --name <instance>` prints a tokened URL with a live view of your instance (native layers included, ~30 fps) where the user can also click and type. Give him that URL instead of screenshots when he wants to follow along.
 
-**Prefer Atlas Lab for frontend work:** `bun run desktop:lab` serves the Svelte app with Vite/HMR on `http://localhost:1421` against an invisible agent instance (every `invoke()`/event goes through its bridge), so most UI work needs no app build and the user can open the same URL to watch or click. Levels and limits: docs/contributing.md "Atlas Lab". Native surfaces and the bundled CSP/IPC check still need the instance itself.
+**Prefer Atlas Lab for frontend work:** `bun run desktop:lab` serves the Svelte app with Vite/HMR on `http://localhost:1421` against an invisible agent instance (every `invoke()`/event goes through its bridge), so most UI work needs no app build and the user can open the same URL to watch or click. Levels and limits: docs/contributing.md "Atlas Lab". Native surfaces and the bundled CSP/IPC check still need the instance itself. Lab, mirror and agent instances are macOS only; Linux/Windows gaps: docs/contributing.md "Linux and Windows gaps". The app-id migration has a real-WebKit check: `scripts/migration-e2e.sh` (throwaway bundle ids, never the user's store). Dev builds carry the orange Atlas Dev icon and id `br.com.codeatlas.atlas.dev` (`tauri.dev.conf.json`; regenerate with `bun run icons:dev`).
 
 The bridge (`crates/atlas-desktop/src/debug.rs`, `debug_req.rs` validates every request; page side `apps/desktop/src/lib/debug/agent.ts` = `window.__atlasDebug`). Everything works while the window is unfocused or hidden-behind, and `click`/`type` are DOM events inside the webview, never OS input:
 

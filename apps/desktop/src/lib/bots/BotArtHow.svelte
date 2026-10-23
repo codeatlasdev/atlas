@@ -102,7 +102,7 @@
 		<div class="typing pop">
 			<span class="mark">
 				<span class="dots"><i></i><i></i><i></i></span>
-				<span class="mini"><BotFace seed="how-reviewer" state="working" size={16} /></span>
+				<span class="mini"><BotFace seed="how-reviewer" state="working" size={22} /></span>
 			</span>
 			<span class="shimmer">Thinking</span>
 		</div>
@@ -361,8 +361,8 @@
 		position: relative;
 		display: inline-grid;
 		place-items: center;
-		width: 2em;
-		height: 1.4em;
+		width: 2.4em;
+		height: 1.6em;
 	}
 	.mark > * {
 		grid-area: 1 / 1;
@@ -407,14 +407,17 @@
 			transform: none;
 		}
 		46% {
-			transform: translateX(var(--gx)) scale(0.4);
+			opacity: 1;
+			transform: translateX(var(--gx));
 		}
 		48%,
 		88% {
-			transform: translateX(var(--gx)) scale(0);
+			opacity: 0;
+			transform: translateX(var(--gx));
 		}
 		95% {
-			transform: scale(1.15);
+			opacity: 1;
+			transform: none;
 		}
 	}
 	.mark .mini {
@@ -459,11 +462,11 @@
 		padding: 0.25em 0;
 	}
 	.dots i {
-		width: 0.45em;
-		height: 0.45em;
+		width: 0.55em;
+		height: 0.55em;
 		border-radius: 50%;
-		background: var(--ink);
-		opacity: 0.4;
+		background: var(--ink-muted);
+		opacity: 1;
 		animation: dot 1.2s ease-in-out infinite;
 	}
 	.dots i:nth-child(2) {

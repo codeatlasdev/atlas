@@ -28,7 +28,7 @@ services:
     health: http://localhost:24310/health  # real GET; 2xx/3xx healthy; same number, no ${PORT}
     ready_log: 'listening on'   # regex; service stays `starting` until a line matches
     start_timeout: 60           # seconds; 0 disables; service is never killed for it
-    autostart: true             # false = stays stopped until started (menu, palette, atlas_start_service)
+    autostart: true             # false = stays stopped until started (menu, palette, atlas_start_service, or named: `atlas dev lab`)
     depends_on: { migrate: completed_successfully }
     restart: on_failure         # no | on_failure | always
     max_restarts: 5             # 0 = unlimited

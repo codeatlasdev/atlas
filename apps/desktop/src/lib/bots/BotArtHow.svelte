@@ -45,10 +45,13 @@
 		{ at: 0.8, text: "Good morning! I reviewed 3 PRs and pushed 1 fix." },
 	];
 	const TYPE = 0.035;
-	const line = $derived([...LINES].reverse().find((l) => t >= l.at));
-	const typing = $derived(!!line && t < line.at + TYPE);
-	const said = $derived(
-		line ? line.text.slice(0, Math.round(clamp01((t - line.at - TYPE) / 0.05) * line.text.length)) : "",
+	/** Every line said so far stays in the thread (a chat keeps its history); only the newest one is still typing. */
+	const spoken = $derived(
+		LINES.filter((l) => t >= l.at).map((l) => ({
+			text: l.text,
+			typing: t < l.at + TYPE,
+			shown: l.text.slice(0, Math.round(clamp01((t - l.at - TYPE) / 0.05) * l.text.length)),
+		})),
 	);
 	const asking = $derived(at(0.46) && !at(0.6));
 	const allowed = $derived(at(0.6));
@@ -93,6 +96,12 @@
 	});
 </script>
 
+{#snippet say(l: { text: string; typing: boolean; shown: string })}
+	<div class="bubble bot pop">
+		{#if l.typing}<span class="dots"><i></i><i></i><i></i></span>{:else}{l.shown}{/if}
+	</div>
+{/snippet}
+
 <div class="how" bind:clientWidth={w} aria-hidden="true">
 	<!-- Sky: three layers crossfaded, so time visibly passes while the crew works. -->
 	<div class="sky evening"></div>
@@ -124,18 +133,8 @@
 			<div class="bubble you pop">{ORDER}</div>
 		{/if}
 
-		<!-- The crewmate talks back -->
-		{#if line}
-			{#key line.text}
-				<div class="bubble bot pop">
-					{#if typing}
-						<span class="dots"><i></i><i></i><i></i></span>
-					{:else}
-						{said}
-					{/if}
-				</div>
-			{/key}
-		{/if}
+		<!-- The crewmate talks back: first reply above the work card, the rest below it, in order. -->
+		{#if spoken[0]}{@render say(spoken[0])}{/if}
 
 		<!-- 2. The crewmate takes it -->
 		{#if at(0.15)}
@@ -177,6 +176,7 @@
 				</div>
 			</div>
 		{/if}
+		{#each spoken.slice(1) as l (l.text)}{@render say(l)}{/each}
 	</div>
 
 	<!-- The phone that answers the ask. -->

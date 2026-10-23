@@ -101,7 +101,9 @@ pub fn reprobe() -> Probe {
 /// Replace the cached probe until the returned guard drops (tests of spawn paths seed a probe of a fake
 /// HOME; the real app never calls this). The probe is process-wide, so installs are serialized and the
 /// previous probe comes back on drop: tests that left a fake env behind (pointing at a deleted temp
-/// HOME) broke every other spawn test running in the same `cargo test` process.
+/// HOME) broke every other spawn test running in the same `cargo test` process. Only installers are
+/// serialized: a test that spawns without installing can still observe another test's fake probe, so
+/// tests that depend on the real environment must not run beside one that installs a fake one.
 #[must_use = "the probe is restored when the guard drops"]
 pub fn install(p: Probe) -> Installed {
     static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());

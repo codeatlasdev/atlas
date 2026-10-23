@@ -1,4 +1,4 @@
-import type { HandleClientError } from "@sveltejs/kit/hooks";
+import type { HandleClientError, ClientInit } from "@sveltejs/kit/hooks";
 import { messageOf } from "#lib/errors/report.ts";
 
 /**
@@ -11,5 +11,13 @@ export const handleError: HandleClientError = ({ error, kind }) => {
 	if (kind === "unknown") {
 		console.error("[atlas] unhandled route error:", error);
 		return { message: messageOf(error), stack: error instanceof Error ? error.stack : undefined };
+	}
+};
+
+/** Atlas Lab (dev only): in a plain browser tab, route IPC to an agent instance before any page code runs. */
+export const init: ClientInit = async () => {
+	if (import.meta.env.DEV && !("__TAURI_INTERNALS__" in window)) {
+		const { installLabShim } = await import("#lib/debug/labShim.ts");
+		await installLabShim();
 	}
 };

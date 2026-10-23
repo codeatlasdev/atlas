@@ -8,6 +8,7 @@ mod agent;
 mod agent_mode;
 mod boot;
 mod browser;
+mod id_migrate;
 // Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod browser_keys;
@@ -331,7 +332,13 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .find(|w| w.label == "main")
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
     let (theme, script) = boot::window_boot(cache.as_ref());
-    let win = tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?
+    let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), cfg)?;
+    match agent_mode::current_store() {
+        agent_mode::Store::Default => {}
+        agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
+        agent_mode::Store::Ephemeral => builder = builder.incognito(true),
+    }
+    let win = builder
         .visible(false)
         .theme(theme)
         .initialization_script(script)
@@ -477,6 +484,7 @@ fn main() {
     boot::mark("builder:configured");
     let ctx = tauri::generate_context!();
     boot::mark("context:generated");
+    id_migrate::run(&ctx.config().identifier);
     builder
         .build(ctx)
         .expect("error while building Atlas")

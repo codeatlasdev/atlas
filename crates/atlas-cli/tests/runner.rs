@@ -320,7 +320,12 @@ fn detach_status_attach_control_detach_down() {
     // 7. down: graceful, services gone, lock released, socket removed.
     let out = p.atlas_ok(&["down"]);
     assert!(out.contains("atlas stopped"), "{out}");
-    assert!(!alive(pid), "runner exited");
+    // `down` returns once the runner let go of its lock (what the next `atlas dev` needs); the
+    // process may still be finishing or an unreaped zombie for a moment, so asserting it dead at
+    // that instant failed under load (PR #106 gate, "runner exited").
+    wait_for("runner to exit", Duration::from_secs(10), || {
+        (!alive(pid)).then_some(())
+    });
     wait_for("services to be gone", Duration::from_secs(10), || {
         (p.pids("api").is_empty() && p.pids("web").is_empty()).then_some(())
     });

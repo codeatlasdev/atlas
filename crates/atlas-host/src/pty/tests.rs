@@ -233,7 +233,7 @@ async fn pty_and_exec_find_binaries_the_login_shell_put_on_path() {
         return;
     };
     let home = fixtures::fake_home();
-    install(probe_with(sh, home.path(), &fixtures::gui_env(home.path())));
+    let _env = install(probe_with(sh, home.path(), &fixtures::gui_env(home.path())));
     let dir = tempfile::tempdir().unwrap();
 
     let req = PtyCreate {

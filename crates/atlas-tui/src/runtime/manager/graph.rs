@@ -69,7 +69,7 @@ impl ServiceManager {
                         mem_over: 0,
                         mem_restarts: 0,
                         exit_code: None,
-                        autostart: def.is_autostart(),
+                        autostart: def.is_autostart() || selection.requested(name),
                         deselected: !selection.contains(name),
                         sched: types::Sched::from_def(def),
                     },

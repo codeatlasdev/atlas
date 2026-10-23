@@ -272,6 +272,10 @@ async fn pushes_follow_the_phone_scopes() {
     )
     .await
     .unwrap();
+    // Output sent while the phone still had `terminal` can be in flight when the call returns
+    // (PR #106 gate: "terminal kept streaming"). Drop it; the pty ticks every 100 ms, so a
+    // stream that really kept going still shows up in the window below.
+    phone.pushes(300).await;
     hook(tmp.path(), json!({"event": "agent_start"}));
     let got = evs(&phone.pushes(800).await);
     assert!(

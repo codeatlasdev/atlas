@@ -63,3 +63,5 @@ studio/.cache/
 studio/.build/
 studio/out/
 demo/.out/
+__pycache__/
+*.pyc

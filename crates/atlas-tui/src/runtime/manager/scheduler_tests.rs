@@ -687,3 +687,49 @@ async fn status_file_carries_exit_code_restarts_and_uptime() {
     assert_eq!(v["services"]["ok"]["restarts"], 0);
     m.stop_all().await;
 }
+
+/// `atlas dev lab` with `lab: { autostart: false }` booted nothing: naming a service on the command line
+/// is the manual start `autostart: false` waits for (found developing Atlas with its own atlas.yaml,
+/// PR #106). A lazy service only pulled in as a dependency still waits to be started by hand.
+#[tokio::test]
+async fn a_service_named_on_the_command_line_boots_despite_autostart_false() {
+    let dir = tempfile::tempdir().unwrap();
+    let lazy = |cmd: &str| ServiceDef {
+        autostart: Some(false),
+        ..svc(cmd)
+    };
+    let (mut m, mut rx) = manager_selected(
+        &dir,
+        vec![
+            ("lab", lazy("sleep 30")),
+            ("dep", lazy("sleep 30")),
+            (
+                "web",
+                ServiceDef {
+                    depends_on: deps(&[("dep", "started")]),
+                    ..lazy("sleep 30")
+                },
+            ),
+            ("other", lazy("sleep 30")),
+        ],
+        &["lab", "web"],
+        false,
+    );
+    m.start_all().await;
+    let app_names = loop {
+        match rx.recv().await {
+            Some(ManagerEvent::InfraReady { app_names }) => break app_names,
+            Some(_) => {}
+            None => panic!("no InfraReady"),
+        }
+    };
+    let mut booted = app_names.clone();
+    booted.sort();
+    assert_eq!(
+        booted,
+        names(&["lab", "web"]),
+        "named services boot, the lazy dependency does not"
+    );
+    assert!(m.is_manual_start("dep") && !m.is_manual_start("lab"));
+    m.stop_all().await;
+}

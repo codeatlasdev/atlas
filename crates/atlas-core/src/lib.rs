@@ -1,3 +1,4 @@
+pub mod agent_store;
 pub mod channel;
 pub mod crash;
 pub mod domain;

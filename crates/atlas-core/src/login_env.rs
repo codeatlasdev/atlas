@@ -98,10 +98,35 @@ pub fn reprobe() -> Probe {
     p
 }
 
-/// Replace the cached probe (tests of spawn paths seed a probe of a fake HOME; the real app never calls
-/// this).
-pub fn install(p: Probe) {
-    *CURRENT.lock() = p;
+/// Replace the cached probe until the returned guard drops (tests of spawn paths seed a probe of a fake
+/// HOME; the real app never calls this). The probe is process-wide, so installs are serialized and the
+/// previous probe comes back on drop: tests that left a fake env behind (pointing at a deleted temp
+/// HOME) broke every other spawn test running in the same `cargo test` process. Only installers are
+/// serialized: a test that spawns without installing can still observe another test's fake probe, so
+/// tests that depend on the real environment must not run beside one that installs a fake one.
+#[must_use = "the probe is restored when the guard drops"]
+pub fn install(p: Probe) -> Installed {
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let previous = std::mem::replace(&mut *CURRENT.lock(), p);
+    Installed {
+        previous: Some(previous),
+        _serial: serial,
+    }
+}
+
+/// Holds an [`install`]ed probe; restores the previous one on drop.
+pub struct Installed {
+    previous: Option<Probe>,
+    _serial: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Drop for Installed {
+    fn drop(&mut self) {
+        if let Some(p) = self.previous.take() {
+            *CURRENT.lock() = p;
+        }
+    }
 }
 
 /// The env to hand to every child via `.envs(...)`: the login shell's, or (probe failed) ours with the

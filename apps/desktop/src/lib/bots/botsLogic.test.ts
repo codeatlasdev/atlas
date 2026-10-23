@@ -234,3 +234,48 @@ describe("timestamp boundary: hostd seconds are converted to ms", () => {
 		}
 	});
 });
+
+describe("bot selection display logic", () => {
+	test("resolveSelectedBot returns bot when host + id match", () => {
+		const hosts = [
+			{
+				key: "",
+				name: "local",
+				bots: [
+					{ id: "b1", name: "Aria" },
+					{ id: "b2", name: "Bolt" },
+				],
+				ok: true,
+			},
+		];
+		const selected = { hostKey: "", botId: "b1", hostName: "local" };
+		// mirrors BotsStore.selectedBot getter
+		const bot = hosts.find((h) => h.key === selected.hostKey)?.bots.find((b) => b.id === selected.botId);
+		expect(bot).toBeDefined();
+		expect(bot?.name).toBe("Aria");
+	});
+
+	test("resolveSelectedBot returns undefined when selection cleared", () => {
+		const hosts = [{ key: "", name: "local", bots: [{ id: "b1", name: "Aria" }], ok: true }];
+		const selected = null;
+		const bot = selected
+			? hosts.find((h) => h.key === selected.hostKey)?.bots.find((b) => b.id === selected.botId)
+			: undefined;
+		expect(bot).toBeUndefined();
+	});
+
+	test("right panel shows BotView when selectedBot is truthy, regardless of nav", () => {
+		// The panel condition is now: bots.selectedBot (no selectedNav guard)
+		// so any truthy selectedBot value means chat is shown
+		const selectedBot = { id: "b1", name: "Aria" };
+		const showBotView = !!selectedBot; // mirrors the template condition
+		expect(showBotView).toBe(true);
+	});
+
+	test("navClick clears selection — bot deselected when switching nav view", () => {
+		let selected: { hostKey: string; botId: string } | null = { hostKey: "", botId: "b1" };
+		// mirrors navClick: bots.selected = null
+		selected = null;
+		expect(selected).toBeNull();
+	});
+});

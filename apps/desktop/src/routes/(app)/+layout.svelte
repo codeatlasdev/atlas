@@ -137,7 +137,7 @@
 <UpdatedCard />
 <GhosttyOffer />
 <DevLine />
-<Onboarding />
+{#if ws.appMode !== "bots"}<Onboarding />{/if}
 <AskDialog />
 <TabSwitcher />
 <CornerStack />

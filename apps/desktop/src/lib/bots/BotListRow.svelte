@@ -121,7 +121,9 @@
 							{/if}
 						</span>
 					{/if}
-					<span class="preview" class:bold={unread}>{bot.last?.text ?? "No tasks yet"}</span>
+					<span class="preview" class:bold={unread}
+						>{bot.last?.text ?? (bot.role ? bot.role.slice(0, 80) : "")}</span
+					>
 				{/if}
 				{#if unread}
 					<span class="unread-badge" aria-label="Unread messages"></span>

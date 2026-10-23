@@ -194,6 +194,7 @@
 				bots.pendingProjectLink = null;
 			}
 			await bots.select(hostKey, id);
+			selectedNav = "bots";
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
@@ -409,7 +410,7 @@
 
 	<!-- Right panel -->
 	<div class="col-right">
-		{#if bots.selectedBot && selectedNav === "bots"}
+		{#if bots.selectedBot}
 			<BotView />
 		{:else if selectedNav === "needs_you"}
 			<!-- Needs-you screen -->
@@ -485,7 +486,8 @@
 				{#if bots.activityFeed.length === 0}
 					<div class="nav-view-empty">
 						<p>Nothing yet.</p>
-						<button class="btn-primary" onclick={startNewBot} disabled={creating}>New bot</button>
+						<p class="nav-view-hint">What your bots do shows up here.</p>
+						<button class="btn-primary-pill" onclick={startNewBot} disabled={creating}>New bot</button>
 					</div>
 				{:else}
 					<div class="activity-hd">Activity</div>
@@ -570,7 +572,7 @@
 
 	/* Drag region at top */
 	.col-drag {
-		height: 52px;
+		height: 12px;
 		flex: none;
 	}
 
@@ -761,8 +763,8 @@
 	}
 	.hero-presence {
 		position: absolute;
-		bottom: 3px;
-		right: 3px;
+		bottom: 4px;
+		right: 14px;
 		width: 12px;
 		height: 12px;
 		border-radius: 50%;
@@ -987,19 +989,22 @@
 		flex-direction: column;
 	}
 
-	.btn-primary {
+	.btn-primary-pill {
 		margin-top: 8px;
+		padding: 8px 20px;
+		border-radius: 999px;
+		border: none;
+		background: var(--ca-brand-main);
+		color: var(--ca-surface-base);
 		font-size: 13px;
-		padding: 7px 16px;
-		border-radius: 8px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: none;
-		color: var(--ca-brand-main);
+		font-weight: 500;
 		cursor: default;
 	}
-
-	.btn-primary:hover {
-		background: var(--ca-vibrancy-fill);
+	.btn-primary-pill:hover {
+		opacity: 0.85;
+	}
+	.btn-primary-pill:disabled {
+		opacity: 0.4;
 	}
 
 	/* nav-view panels */

@@ -114,6 +114,8 @@ While editing, `bun run check:changed` (action `u`) runs only what your changes 
 
 Heavy actions run through `scripts/heavy.sh <cmd>`: one heavy job per machine at a time (worktrees and agents included), started only when the 5-minute load is below the CPU count (`ATLAS_HEAVY_MAXLOAD`), under `nice`. Use it for anything that builds or benchmarks outside `atlas dev` too.
 
+The app-id migration (`crates/atlas-desktop/src/id_migrate.rs`) has an end-to-end check with real WebKit: `scripts/migration-e2e.sh` builds the app under two throwaway bundle ids, writes `localStorage` in the "old" one, starts the "new" one and reads it back, then deletes both stores and rebuilds the normal dev app (macOS, about two minutes).
+
 ### Atlas Lab: the frontend in your browser, no Atlas window
 
 Most frontend work does not need the app on screen. Pick the lightest level that covers the change:

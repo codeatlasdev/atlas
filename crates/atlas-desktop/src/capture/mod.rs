@@ -8,6 +8,8 @@
 #[cfg(target_os = "macos")]
 mod chrome;
 #[cfg(target_os = "macos")]
+mod live;
+#[cfg(target_os = "macos")]
 pub(crate) mod occlusion;
 #[cfg(target_os = "macos")]
 mod png;
@@ -152,7 +154,7 @@ fn status(state: &Capture) -> Value {
 
 /// Logical size and display scale of `win`, after resizing it to `size` (logical px) if asked.
 #[cfg(target_os = "macos")]
-fn prepare_window(
+pub(crate) fn prepare_window(
     app: &AppHandle,
     label: &str,
     size: Option<(u32, u32)>,
@@ -361,6 +363,52 @@ fn shot(app: &AppHandle, req: request::Shot) -> Result<Value, String> {
     Ok(
         json!({ "out": req.out, "bytes": meta.len(), "mode": format!("{:?}", req.mode).to_lowercase() }),
     )
+}
+
+/// One live frame: sequence number, JPEG bytes, pixel size.
+pub type Frame = (u64, std::sync::Arc<Vec<u8>>, (usize, usize));
+
+/// The live stream behind `debug frame`, started on the first pull and stopped after `live::IDLE` without one.
+#[cfg(target_os = "macos")]
+static LIVE: parking_lot::Mutex<Option<live::Live>> = parking_lot::Mutex::new(None);
+
+/// Newest frame of the main window after `since`, waiting up to `wait` for one.
+#[cfg(target_os = "macos")]
+pub fn live_frame(app: &AppHandle, since: u64, wait: std::time::Duration) -> Result<Frame, String> {
+    require_permission()?;
+    let (_w, id, logical, scale) = prepare_window(app, "main", None)?;
+    let (pw, ph) = request::pixel_size(logical, scale);
+    let shared = {
+        let mut guard = LIVE.lock();
+        if guard.as_ref().is_none_or(|l| l.window() != id) {
+            if let Some(old) = guard.take() {
+                old.stop();
+            }
+            *guard = Some(live::Live::start(id, (pw as usize, ph as usize))?);
+            std::thread::spawn(|| {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    let mut g = LIVE.lock();
+                    if g.as_ref().is_none_or(|l| l.idle_for() >= live::IDLE) {
+                        if let Some(l) = g.take() {
+                            l.stop();
+                        }
+                        return;
+                    }
+                }
+            });
+        }
+        let l = guard.as_mut().expect("started above");
+        l.touch();
+        l.shared()
+    };
+    // Wait without the global lock: other pulls and the idle watcher keep going.
+    Ok(live::pull(&shared, since, wait))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn live_frame(_: &AppHandle, _: u64, _: std::time::Duration) -> Result<Frame, String> {
+    Err("live frames need macOS (ScreenCaptureKit)".into())
 }
 
 #[cfg(test)]

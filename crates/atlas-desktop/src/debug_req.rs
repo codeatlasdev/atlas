@@ -89,7 +89,15 @@ pub enum Req {
         w: f64,
         h: f64,
     },
+    /// The newest live frame of the main window newer than `since` (JPEG, base64), waiting up to `wait_ms`.
+    Frame {
+        since: u64,
+        wait_ms: u64,
+    },
 }
+
+/// The longest a frame pull may wait for a new picture.
+pub const MAX_FRAME_WAIT_MS: u64 = 2_000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stop {
@@ -242,6 +250,10 @@ pub fn parse(v: &Value) -> Result<Req, String> {
                 window,
             })
         }
+        "frame" => Ok(Req::Frame {
+            since: v["since"].as_u64().unwrap_or(0),
+            wait_ms: v["wait_ms"].as_u64().unwrap_or(500).min(MAX_FRAME_WAIT_MS),
+        }),
         "resize" => {
             let side = |k: &str| {
                 v[k].as_f64()
@@ -272,7 +284,7 @@ pub fn parse(v: &Value) -> Result<Req, String> {
             })
         }
         other => Err(format!(
-            "unknown cmd {other:?}; expected info|logs|eval|state|wait|click|type|a11y|contrast|perf|shot|record|resize|gesture_record|gesture_replay"
+            "unknown cmd {other:?}; expected info|logs|eval|state|wait|click|type|a11y|contrast|perf|shot|record|resize|frame|gesture_record|gesture_replay"
         )),
     }
 }
@@ -283,6 +295,25 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_frame_pull_defaults_and_caps_its_wait() {
+        assert_eq!(
+            parse(&json!({"cmd": "frame"})),
+            Ok(Req::Frame {
+                since: 0,
+                wait_ms: 500
+            })
+        );
+        assert_eq!(
+            parse(&json!({"cmd": "frame", "since": 7, "wait_ms": 999_999})),
+            Ok(Req::Frame {
+                since: 7,
+                wait_ms: MAX_FRAME_WAIT_MS
+            }),
+            "a client cannot park a bridge connection for minutes"
+        );
+    }
 
     #[test]
     fn gesture_requests_validate_their_paths_and_bound_the_recording() {

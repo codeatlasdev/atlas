@@ -6,18 +6,16 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
-### Changed
-
-- **`atlas dev <service>` starts a service even when it has `autostart: false`.** Naming it is the manual start it waits for; a lazy service pulled in only as a dependency still waits.
-- **App id is now `br.com.codeatlas.atlas`** (was `dev.codeatlas.atlas`). On first launch the app copies the old id's webview data (where theme and UI preferences live) to the new id, and on Linux `atlas desktop` replaces the old menu entry and icon. macOS may ask once more for notification permission.
-
 ### Added
 
 - **Atlas Bot: run agents 24/7 on your own server.** `atlas bot install user@host` turns a Linux x86_64 box into a bot computer: creates the `atlas-bot` system user, writes a hardened systemd service and registers your SSH key. `atlas bot uninstall`, `atlas bot status`, `atlas bot logs` and `atlas bot login <host> <agent>` manage it afterwards. Agents (omp, Claude Code, Codex, OpenCode) run on your own subscription; Atlas Bot never calls a model API. See [docs/bots.md](docs/bots.md).
 - **Named bots with memory, task queues and scheduled routines.** Each bot computer hosts named bots: name, role (≤ 2 000 chars prepended to every task), agent, and `ask`/`auto` approval. Bots run one task at a time in a pty; the agent's lifecycle hooks feed done/failed state. Memory is a markdown file (≤ 64 KiB) the agent reads and edits across tasks. Scheduled routines use 5-field cron. omp bots always use `auto` (omp's hook protocol does not support remote decisions).
 - **Atlas Mobile: Bots tab.** A messenger-style list shows all bots across paired computers with a state dot and last-message preview. Tapping a bot opens a chat thread (prompt bubbles, result bubbles, steps collapsible). Approval prompts appear inline with Allow / Deny. The profile screen covers role, approval setting, routines and memory. Bots waiting for approval appear in the "needs you" inbox at the top of both the Computers and Bots tabs.
 - **Atlas Desktop: Bots workspace (⌘⇧B).** A two-column messenger layout lists all bots on the left; the right panel shows the selected bot's task thread, an inline approval card and a composer. Settings → Bots manages bot server connections (SSH target + name). Shortcut is remappable (`atlas::ToggleBotsWorkspace`).
-- **Atlas Dev looks different.** Debug builds (`desktop:dev`, `atlas link --desktop`, agent instances) carry an orange icon and their own id `br.com.codeatlas.atlas.dev`, so they never pass for the installed Atlas in the Dock, taskbar or launcher.
+- **Bot characters.** Every bot is an animated character built from the Atlas globe: it blinks, glances around, breathes, hops when it needs you and dozes when offline. Pick its colour, eyes (6 styles) and hat (9) in the new-bot dialog or by clicking its avatar in the profile; the look is stored on the bot computer (`look` in `bot_create`/`bot_update`/`bot_list`).
+- **Push notifications for bot tasks.** When a task ends or a bot needs your approval, Atlas Bot pushes a notification to your phone. The relay at `push.codeatlas.com.br` forwards only the event kind (`task_done` or `needs_you`), never content. Set `ATLAS_PUSH_RELAY=off` in the service file to disable, or point it at a self-hosted relay (`services/push-relay/`).
+- **Telegram bridge for bots.** Paste a Telegram Bot token in Atlas Desktop → Settings → Telegram, then link a chat with `/start <code>`. Linked chats receive task results and can create tasks with `/task <bot name> <text>`. Approval prompts appear as inline keyboard messages (Allow / Deny).
+- **Bot approval prompts wait 30 minutes.** A bot pane with `approval: ask` holds the pending prompt for up to 30 minutes (non-bot panes keep the existing 55 s wait). `atlas setup claude-code|codex --apply` now registers `PermissionRequest` with a 1 805 s timeout to match; re-run it to pick that up.
 - **Bot characters.** Every bot is an animated character built from the Atlas globe: it blinks, glances around, breathes, hops when it needs you and dozes when offline. Pick its colour, eyes (6 styles) and hat (9) in the new-bot dialog or by clicking its avatar in the profile; the look is stored on the bot computer (`look` in `bot_create`/`bot_update`/`bot_list`).
 - **Push notifications for bot tasks.** When a task ends or a bot needs your approval, Atlas Bot pushes a notification to your phone. The relay at `push.codeatlas.com.br` forwards only the event kind (`task_done` or `needs_you`), never content. Set `ATLAS_PUSH_RELAY=off` in the service file to disable, or point it at a self-hosted relay (`services/push-relay/`).
 - **Telegram bridge for bots.** Paste a Telegram Bot token in Atlas Desktop → Settings → Telegram, then link a chat with `/start <code>`. Linked chats receive task results and can create tasks with `/task <bot name> <text>`. Approval prompts appear as inline keyboard messages (Allow / Deny).
@@ -32,6 +30,21 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Onboarding principles rewritten.** Replaced the cliché bullets with: "Your ship, your rules — runs on your server, no account", "Hand it the wheel — it keeps working while your Mac sleeps", "It flags you before anything risky".
 - **Row preview deduplication.** When a crewmate's role starts with a tag prefix (e.g. "Analyst: latency reports"), the tag pill and the preview no longer duplicate — the preview shows only the part after the colon.
 - **Primary buttons are full pills.** Continue / Connect / Open chat buttons in onboarding are now `border-radius: 999px`.
+
+## [1.5.0-alpha.19] — 2026-10-23
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
+### Changed
+
+- **`atlas dev <service>` starts a service even when it has `autostart: false`.** Naming it is the manual start it waits for; a lazy service pulled in only as a dependency still waits.
+- **App id is now `br.com.codeatlas.atlas`** (was `dev.codeatlas.atlas`). On first launch the app copies the old id's webview data (where theme and UI preferences live) to the new id, and on Linux `atlas desktop` replaces the old menu entry and icon. macOS may ask once more for notification permission.
+
+### Added
+
+- **For contributors: develop Atlas with Atlas.** The repo has its own `atlas.yaml` (Lab, docs site, gate and bench actions), `bun run desktop:lab` serves the desktop frontend in any browser against an invisible agent instance, `bun run check:changed` runs only what your edits affect, and `scripts/heavy.sh` keeps heavy jobs from overlapping. Agent instances get their own WebKit store (`atlas desktop --agent --gc` cleans leftovers). See `docs/contributing.md`.
+- **For contributors: live mirror of an agent instance.** `bun run desktop:mirror` shows the instance's whole window (GPU terminal included) at about 30 fps in your browser, and forwards your clicks and keys; nothing appears on your screen.
+- **Atlas Dev looks different.** Debug builds (`desktop:dev`, `atlas link --desktop`, agent instances) carry an orange icon and their own id `br.com.codeatlas.atlas.dev`, so they never pass for the installed Atlas in the Dock, taskbar or launcher.
 
 ## [1.5.0-alpha.18] — 2026-10-21
 

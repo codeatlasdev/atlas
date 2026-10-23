@@ -113,13 +113,14 @@ pub fn app_env(s: &Session, atlas_bin: &Path) -> Vec<(String, String)> {
 
 /// The caller's variables an instance inherits despite the cleared environment: what terminals inside it need, and
 /// the display scale knob. Everything else (tokens, the user's `ATLAS_*` paths, `HOME`) stays out.
-pub const FORWARDED: [&str; 6] = [
+pub const FORWARDED: [&str; 7] = [
     "PATH",
     "SHELL",
     "LANG",
     "TERM",
     "ATLAS_AGENT_SCALE",
     "ATLAS_AGENT_DRYRUN",
+    "ATLAS_MIGRATE_E2E_FROM", // scripts/migration-e2e.sh (debug builds only)
 ];
 
 pub fn forwarded_env(

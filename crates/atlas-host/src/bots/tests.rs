@@ -1049,9 +1049,11 @@ exit 0"#;
             eyes: "round".into(),
             hat: "straw".into(),
         };
-        assert!(look.validate().is_ok(), "straw hat must pass look validation");
+        assert!(
+            look.validate().is_ok(),
+            "straw hat must pass look validation"
+        );
     }
-
 
     // ── Test 15: mobile required_scope rejects BotSecretSet ─────────────────
 

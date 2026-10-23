@@ -6,7 +6,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
-## [1.5.0-alpha.19] — 2026-10-22
+## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
 
@@ -18,6 +18,7 @@ Atlas is in **alpha**: expect bugs and breaking changes. Please [report what bre
 ### Added
 
 - **For contributors: develop Atlas with Atlas.** The repo has its own `atlas.yaml` (Lab, docs site, gate and bench actions), `bun run desktop:lab` serves the desktop frontend in any browser against an invisible agent instance, `bun run check:changed` runs only what your edits affect, and `scripts/heavy.sh` keeps heavy jobs from overlapping. Agent instances get their own WebKit store (`atlas desktop --agent --gc` cleans leftovers). See `docs/contributing.md`.
+- **For contributors: live mirror of an agent instance.** `bun run desktop:mirror` shows the instance's whole window (GPU terminal included) at about 30 fps in your browser, and forwards your clicks and keys; nothing appears on your screen.
 - **Atlas Dev looks different.** Debug builds (`desktop:dev`, `atlas link --desktop`, agent instances) carry an orange icon and their own id `br.com.codeatlas.atlas.dev`, so they never pass for the installed Atlas in the Dock, taskbar or launcher.
 
 ## [1.5.0-alpha.18] — 2026-10-21

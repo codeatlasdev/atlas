@@ -1,5 +1,6 @@
-# Atlas, developed with Atlas. `atlas dev` in this repo starts the Lab; agents use the same services and actions
-# through MCP (atlas_status, atlas_run_action, atlas_logs_search) instead of remembering scripts.
+# Atlas, developed with Atlas. `atlas dev` starts the runner; `lab` and `site` start on demand (`l`/`w` in the TUI,
+# or atlas_start_service lab: `autostart: false` keeps them off even when named). Agents use the same services and
+# actions through MCP (atlas_status, atlas_run_action, atlas_logs_search) instead of remembering scripts.
 # Heavy actions go through scripts/heavy.sh: one at a time per machine, after the load drops, under nice.
 # Ports: block 13450-13459.
 name: atlas

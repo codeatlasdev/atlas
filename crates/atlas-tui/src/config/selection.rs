@@ -35,12 +35,23 @@ impl SelectionRequest {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Selection {
     names: Option<BTreeSet<String>>,
+    /// Asked for by name or profile (not pulled in as a dependency): that is the manual start an
+    /// `autostart: false` service waits for.
+    requested: BTreeSet<String>,
 }
 
 impl Selection {
     /// No narrowing: every service starts (the default).
     pub fn all() -> Self {
-        Self { names: None }
+        Self {
+            names: None,
+            requested: BTreeSet::new(),
+        }
+    }
+
+    /// Named on the command line, directly or through a profile.
+    pub fn requested(&self, name: &str) -> bool {
+        self.requested.contains(name)
     }
 
     pub fn contains(&self, name: &str) -> bool {
@@ -106,13 +117,16 @@ pub fn resolve(config: &ProjectConfig, req: &SelectionRequest) -> Result<Selecti
     }
 
     if req.no_deps {
-        return Ok(Selection { names: Some(roots) });
+        return Ok(Selection {
+            names: Some(roots.clone()),
+            requested: roots,
+        });
     }
 
     // Transitive depends_on closure (iterative; cycles are a config error
     // reported elsewhere, the visited set keeps this terminating regardless).
     let mut selected: BTreeSet<String> = BTreeSet::new();
-    let mut stack: Vec<String> = roots.into_iter().collect();
+    let mut stack: Vec<String> = roots.iter().cloned().collect();
     while let Some(name) = stack.pop() {
         if !selected.insert(name.clone()) {
             continue;
@@ -123,6 +137,7 @@ pub fn resolve(config: &ProjectConfig, req: &SelectionRequest) -> Result<Selecti
     }
     Ok(Selection {
         names: Some(selected),
+        requested: roots,
     })
 }
 

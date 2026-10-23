@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Changed
 
+- **`atlas dev <service>` starts a service even when it has `autostart: false`.** Naming it is the manual start it waits for; a lazy service pulled in only as a dependency still waits.
 - **App id is now `br.com.codeatlas.atlas`** (was `dev.codeatlas.atlas`). On first launch the app copies the old id's webview data (where theme and UI preferences live) to the new id, and on Linux `atlas desktop` replaces the old menu entry and icon. macOS may ask once more for notification permission.
 
 ### Added

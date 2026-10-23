@@ -3,7 +3,7 @@
  * Pure: no side effects, no imports from Svelte or the store.
  */
 
-export type OnboardingStep = "intro" | "how1" | "how2" | "how3" | "connect" | "engine" | "ready";
+export type OnboardingStep = "intro" | "how" | "connect" | "engine" | "ready";
 
 export interface OnboardingState {
 	step: OnboardingStep;
@@ -16,12 +16,8 @@ export const INITIAL_STEP: OnboardingStep = "intro";
 export function nextStep(state: OnboardingState): OnboardingStep | "done" {
 	switch (state.step) {
 		case "intro":
-			return "how1";
-		case "how1":
-			return "how2";
-		case "how2":
-			return "how3";
-		case "how3":
+			return "how";
+		case "how":
 			return state.hasHost ? "engine" : "connect";
 		case "connect":
 			return "engine";
@@ -37,16 +33,12 @@ export function nextStep(state: OnboardingState): OnboardingStep | "done" {
 /** Go back one step. Returns null if already at intro. */
 export function prevStep(state: OnboardingState): OnboardingStep | null {
 	switch (state.step) {
-		case "how1":
+		case "how":
 			return "intro";
-		case "how2":
-			return "how1";
-		case "how3":
-			return "how2";
 		case "connect":
-			return "how3";
+			return "how";
 		case "engine":
-			return state.hasHost ? "how3" : "connect";
+			return state.hasHost ? "how" : "connect";
 		case "ready":
 			return "engine";
 		default:
@@ -72,8 +64,8 @@ export function isEngineReady(agent: { id: string; label: string; installed: boo
 	return agent.installed;
 }
 
-/** The four informational content steps (labeled "N of 4"). */
-export const INFO_STEPS: OnboardingStep[] = ["intro", "how1", "how2", "how3"];
+/** The informational steps (labeled "N of 2"). */
+export const INFO_STEPS: OnboardingStep[] = ["intro", "how"];
 
 /** Index within INFO_STEPS (0-based), or -1 if not an info step. */
 export function infoStepIndex(step: OnboardingStep): number {
@@ -86,8 +78,8 @@ export function infoStepIndex(step: OnboardingStep): number {
  */
 export function stepProgress(state: OnboardingState): number {
 	const steps: OnboardingStep[] = state.hasHost
-		? ["intro", "how1", "how2", "how3", "engine", "ready"]
-		: ["intro", "how1", "how2", "how3", "connect", "engine", "ready"];
+		? ["intro", "how", "engine", "ready"]
+		: ["intro", "how", "connect", "engine", "ready"];
 	const idx = steps.indexOf(state.step);
 	if (idx < 0) return 1;
 	return (idx + 1) / steps.length;

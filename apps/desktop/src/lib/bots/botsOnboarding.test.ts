@@ -11,76 +11,49 @@ import {
 	stepProgress,
 	INFO_STEPS,
 	type OnboardingStep,
-	type OnboardingState,
 } from "./botsOnboarding.ts";
 
+// The three "how it works" screens became one (`how`): the user found three thin steps slow and unclear.
 describe("step machine", () => {
 	test("initial step is intro", () => {
 		expect(INITIAL_STEP).toBe("intro");
 	});
 
-	test("continue from intro → how1", () => {
-		expect(nextStep({ step: "intro", hasHost: false })).toBe("how1");
+	test("intro → how", () => {
+		expect(nextStep({ step: "intro", hasHost: false })).toBe("how");
 	});
 
-	test("continue from how1 → how2", () => {
-		expect(nextStep({ step: "how1", hasHost: false })).toBe("how2");
+	test("how → connect when there is no ship yet", () => {
+		expect(nextStep({ step: "how", hasHost: false })).toBe("connect");
 	});
 
-	test("continue from how2 → how3", () => {
-		expect(nextStep({ step: "how2", hasHost: false })).toBe("how3");
+	test("how → engine when a ship is already connected (connect skipped)", () => {
+		expect(nextStep({ step: "how", hasHost: true })).toBe("engine");
 	});
 
-	test("continue from how3 → connect (no host)", () => {
-		expect(nextStep({ step: "how3", hasHost: false })).toBe("connect");
-	});
-
-	test("step 5 skipped when host exists: how3 → engine", () => {
-		expect(nextStep({ step: "how3", hasHost: true })).toBe("engine");
-	});
-
-	test("continue from connect → engine", () => {
+	test("connect → engine → ready → done", () => {
 		expect(nextStep({ step: "connect", hasHost: false })).toBe("engine");
-	});
-
-	test("continue from engine → ready", () => {
 		expect(nextStep({ step: "engine", hasHost: false })).toBe("ready");
-	});
-
-	test("continue from ready → done (terminal)", () => {
 		expect(nextStep({ step: "ready", hasHost: false })).toBe("done");
 	});
 
-	test("back from how2 → how1", () => {
-		expect(prevStep({ step: "how2", hasHost: false })).toBe("how1");
+	test("back: how → intro, connect → how", () => {
+		expect(prevStep({ step: "how", hasHost: false })).toBe("intro");
+		expect(prevStep({ step: "connect", hasHost: false })).toBe("how");
 	});
 
-	test("back from how3 → how2", () => {
-		expect(prevStep({ step: "how3", hasHost: false })).toBe("how2");
-	});
-
-	test("back from connect → how3", () => {
-		expect(prevStep({ step: "connect", hasHost: false })).toBe("how3");
-	});
-
-	test("back from engine (no host) → connect", () => {
+	test("back from engine goes to connect, or to how when connect was skipped", () => {
 		expect(prevStep({ step: "engine", hasHost: false })).toBe("connect");
+		expect(prevStep({ step: "engine", hasHost: true })).toBe("how");
 	});
 
-	test("back from engine (has host) → how3", () => {
-		expect(prevStep({ step: "engine", hasHost: true })).toBe("how3");
-	});
-
-	test("back from ready → engine", () => {
+	test("back from ready → engine; nothing before intro", () => {
 		expect(prevStep({ step: "ready", hasHost: false })).toBe("engine");
-	});
-
-	test("back from intro returns null (no prev)", () => {
 		expect(prevStep({ step: "intro", hasHost: false })).toBeNull();
 	});
 
 	test("skip always returns done", () => {
-		for (const step of ["intro", "how1", "how2", "how3", "connect", "engine", "ready"] as OnboardingStep[]) {
+		for (const step of ["intro", "how", "connect", "engine", "ready"] as OnboardingStep[]) {
 			expect(skipToEnd(step)).toBe("done");
 		}
 	});
@@ -101,39 +74,32 @@ describe("seen flag", () => {
 });
 
 describe("engine readiness", () => {
-	test("step 6 disables unready engines", () => {
+	test("unready engines are disabled", () => {
 		expect(isEngineReady({ id: "claude", label: "Claude Code", installed: true })).toBe(true);
 		expect(isEngineReady({ id: "opencode", label: "OpenCode", installed: false })).toBe(false);
 	});
 });
 
 describe("step labels and progress", () => {
-	test("info steps are labeled 1–4", () => {
-		expect(INFO_STEPS).toHaveLength(4);
+	test("two info steps, labeled 1 and 2", () => {
+		expect(INFO_STEPS).toEqual(["intro", "how"]);
 		expect(infoStepIndex("intro")).toBe(0);
-		expect(infoStepIndex("how1")).toBe(1);
-		expect(infoStepIndex("how2")).toBe(2);
-		expect(infoStepIndex("how3")).toBe(3);
-	});
-
-	test("non-info steps return -1", () => {
+		expect(infoStepIndex("how")).toBe(1);
 		expect(infoStepIndex("connect")).toBe(-1);
 		expect(infoStepIndex("engine")).toBe(-1);
 		expect(infoStepIndex("ready")).toBe(-1);
 	});
 
-	test("progress fills across all steps (no host)", () => {
-		// 7 steps without skip
-		expect(stepProgress({ step: "intro", hasHost: false })).toBeCloseTo(1 / 7);
-		expect(stepProgress({ step: "how1", hasHost: false })).toBeCloseTo(2 / 7);
-		expect(stepProgress({ step: "connect", hasHost: false })).toBeCloseTo(5 / 7);
+	test("progress across 5 steps without a ship", () => {
+		expect(stepProgress({ step: "intro", hasHost: false })).toBeCloseTo(1 / 5);
+		expect(stepProgress({ step: "how", hasHost: false })).toBeCloseTo(2 / 5);
+		expect(stepProgress({ step: "connect", hasHost: false })).toBeCloseTo(3 / 5);
 		expect(stepProgress({ step: "ready", hasHost: false })).toBe(1);
 	});
 
-	test("progress fills across all steps (has host, connect skipped)", () => {
-		// 6 steps with skip
-		expect(stepProgress({ step: "intro", hasHost: true })).toBeCloseTo(1 / 6);
-		expect(stepProgress({ step: "engine", hasHost: true })).toBeCloseTo(5 / 6);
+	test("progress across 4 steps with a ship (connect skipped)", () => {
+		expect(stepProgress({ step: "intro", hasHost: true })).toBeCloseTo(1 / 4);
+		expect(stepProgress({ step: "engine", hasHost: true })).toBeCloseTo(3 / 4);
 		expect(stepProgress({ step: "ready", hasHost: true })).toBe(1);
 	});
 });

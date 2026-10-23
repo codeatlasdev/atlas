@@ -3,9 +3,7 @@
 	import type { TransitionConfig } from "svelte/transition";
 	import BotArtIntro from "#lib/bots/BotArtIntro.svelte";
 	import { SEEN_KEY } from "#lib/bots/crewOnboarding.svelte.ts";
-	import BotArtServer from "#lib/bots/BotArtServer.svelte";
-	import BotArtChat from "#lib/bots/BotArtChat.svelte";
-	import BotArtApproval from "#lib/bots/BotArtApproval.svelte";
+	import BotArtHow from "#lib/bots/BotArtHow.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import BotListRow from "#lib/bots/BotListRow.svelte";
 	import ShipFlag from "#lib/bots/ShipFlag.svelte";
@@ -33,6 +31,14 @@
 	// ─── step state ───────────────────────────────────────────────────────────
 	let step = $state<OnboardingStep>(INITIAL_STEP);
 	let direction = $state(1);
+	/** Which line of the how-it-works story the art is on (set by BotArtHow). */
+	let howBeat = $state(0);
+	const STORY = [
+		{ title: "You give the order", text: "Type what you want, like a message." },
+		{ title: "It works on your server", text: "All night, even with your Mac asleep." },
+		{ title: "It asks before anything risky", text: "Allow or deny from your Mac, phone or Telegram." },
+		{ title: "You wake up to results", text: "Every step is logged, ready to read." },
+	];
 	let hasHost = $derived(bots.hosts.some((h) => h.key !== ""));
 
 	// ─── connect step ─────────────────────────────────────────────────────────
@@ -92,7 +98,7 @@
 
 	const STEP_META: Record<string, StepMeta> = {
 		intro: {
-			label: "1 of 4",
+			label: "1 of 2",
 			headline: "Meet your Mugiwaras",
 			body: "Your crew sails while you sleep.",
 			bullets: [
@@ -102,26 +108,12 @@
 			],
 			glow: "rgba(61, 91, 255, 0.10)",
 		},
-		how1: {
-			label: "2 of 4",
-			headline: "Each crewmate has a job",
-			body: "Give each one a role and point it at a project. It picks up the work and shows you everything.",
-			bullets: undefined,
-			glow: "rgba(34, 197, 94, 0.08)",
-		},
-		how2: {
-			label: "3 of 4",
-			headline: "It keeps working while your Mac sleeps",
-			body: "Your crew runs on your server around the clock. Close the lid and come back to results.",
+		how: {
+			label: "2 of 2",
+			headline: "One night with your crew",
+			body: "This is what a crewmate does while you're away.",
 			bullets: undefined,
 			glow: "rgba(61, 91, 255, 0.10)",
-		},
-		how3: {
-			label: "4 of 4",
-			headline: "It asks before anything risky",
-			body: "Before running anything sensitive, the bot pauses and waits for your OK — on desktop, phone or Telegram.",
-			bullets: undefined,
-			glow: "rgba(245, 158, 11, 0.12)",
 		},
 		connect: {
 			headline: "Launch your ship",
@@ -287,7 +279,7 @@
 		<div class="left-panel">
 			{#key step}
 				<div class="text-block" in:textIn={{ d: direction }} out:textOut={{ d: direction }}>
-					<!-- Info step label "N of 4" -->
+					<!-- Info step label "N of 2" -->
 					{#if isInfoStep}
 						<span class="step-label" style:--stagger={0}>{meta?.label}</span>
 					{:else if step === "connect" || step === "engine"}
@@ -307,6 +299,18 @@
 								<li>{bullet}</li>
 							{/each}
 						</ul>
+					{/if}
+
+					<!-- The how-it-works story, lit in sync with the art -->
+					{#if step === "how"}
+						<ol class="story" style:--stagger={3}>
+							{#each STORY as line, i (line.title)}
+								<li class:on={howBeat === i} class:past={howBeat > i}>
+									<b>{line.title}</b>
+									<span>{line.text}</span>
+								</li>
+							{/each}
+						</ol>
 					{/if}
 
 					<!-- ── Connect step form ──────────────────────────────────── -->
@@ -451,12 +455,8 @@
 				>
 					{#if step === "intro"}
 						<BotArtIntro />
-					{:else if step === "how1"}
-						<BotArtServer />
-					{:else if step === "how2"}
-						<BotArtChat />
-					{:else if step === "how3"}
-						<BotArtApproval />
+					{:else if step === "how"}
+						<BotArtHow bind:beat={howBeat} />
 					{:else if step === "connect"}
 						<!-- Terminal art: install command -->
 						<div class="terminal-art">
@@ -665,6 +665,42 @@
 		color: var(--ca-text-secondary);
 		margin: 0 0 clamp(20px, 3cqi, 44px);
 		max-width: 34em;
+	}
+
+	.story {
+		list-style: none;
+		margin: 20px 0 36px;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.story li {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 10px 14px;
+		border-left: 2px solid var(--ca-border);
+		opacity: 0.45;
+		transition:
+			opacity 400ms ease,
+			border-color 400ms ease,
+			background 400ms ease;
+	}
+	.story li.past {
+		opacity: 0.75;
+	}
+	.story li.on {
+		opacity: 1;
+		border-left-color: #3d5bff;
+		background: rgb(61 91 255 / 0.08);
+	}
+	.story b {
+		font-size: 15px;
+	}
+	.story span {
+		font-size: 13px;
+		color: var(--ca-text-secondary);
 	}
 
 	/* Bullet list */

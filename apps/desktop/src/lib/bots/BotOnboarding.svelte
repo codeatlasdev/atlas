@@ -598,13 +598,10 @@
 		display: grid;
 		align-content: center;
 		overflow: hidden;
-		padding: 64px 48px 64px 72px;
-	}
-
-	@media (max-width: 1200px) {
-		.left-panel {
-			padding: 48px 32px 48px 48px;
-		}
+		/* Everything inside scales with the column (cqi), so a full-screen window gets a full-size page,
+		   not the laptop layout floating in a corner. */
+		container-type: inline-size;
+		padding: 64px clamp(32px, 6cqi, 96px) 64px clamp(48px, 9cqi, 140px);
 	}
 
 	/* entering + exiting text-blocks both live in cell 1/1 — no width competition */
@@ -615,7 +612,7 @@
 
 	.text-block {
 		width: 100%;
-		max-width: 480px;
+		max-width: clamp(420px, 62cqi, 760px);
 		display: flex;
 		flex-direction: column;
 		gap: 0;
@@ -646,12 +643,12 @@
 	/* Step label */
 	.step-label {
 		display: block;
-		font-size: 13px;
+		font-size: clamp(12px, 1.25cqi, 16px);
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--ca-accent, #4f8ef7);
-		margin-bottom: 14px;
+		margin-bottom: clamp(12px, 1.6cqi, 22px);
 	}
 
 	.step-label.setup {
@@ -660,47 +657,35 @@
 
 	/* Headline */
 	.headline {
-		font-size: 44px;
+		font-size: clamp(34px, 5.4cqi, 76px);
 		font-weight: 700;
-		line-height: 1.08;
+		line-height: 1.05;
 		letter-spacing: -0.03em;
 		color: var(--ca-text-primary);
-		margin: 0 0 20px;
-	}
-
-	@media (max-width: 1100px) {
-		.headline {
-			font-size: 36px;
-		}
+		margin: 0 0 clamp(16px, 2.2cqi, 32px);
 	}
 
 	/* Body text */
 	.body-text {
-		font-size: 18px;
-		line-height: 1.6;
+		font-size: clamp(16px, 1.9cqi, 26px);
+		line-height: 1.5;
 		color: var(--ca-text-secondary);
-		margin: 0 0 24px;
-		max-width: 440px;
-	}
-
-	@media (max-width: 1100px) {
-		.body-text {
-			font-size: 15px;
-		}
+		margin: 0 0 clamp(20px, 3cqi, 44px);
+		max-width: 34em;
 	}
 
 	/* Bullet list */
 	.bullets {
 		list-style: none;
 		padding: 0;
-		margin: 0 0 32px;
+		margin: 0 0 clamp(28px, 4cqi, 56px);
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: clamp(10px, 1.3cqi, 18px);
 	}
 
 	.bullets li {
-		font-size: 15px;
+		font-size: clamp(14px, 1.55cqi, 21px);
 		color: var(--ca-text-secondary);
 		display: flex;
 		align-items: flex-start;
@@ -711,11 +696,11 @@
 	.bullets li::before {
 		content: "";
 		flex-shrink: 0;
-		width: 5px;
-		height: 5px;
+		width: 0.35em;
+		height: 0.35em;
 		border-radius: 50%;
 		background: var(--ca-accent, #4f8ef7);
-		margin-top: 6px;
+		margin-top: 0.5em;
 		opacity: 0.7;
 	}
 

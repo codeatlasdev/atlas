@@ -70,6 +70,11 @@
 	const shipY = $derived(Math.sin(ph) * 7);
 	const shipRot = $derived(Math.cos(ph * 1.07) * 2.2);
 
+	// The stage scales with the column (640×440 is its design size); the crew are HTML faces with a px size,
+	// so they scale by the same factor or they shrink next to a bigger ship.
+	let stageW = $state(640);
+	const k = $derived(Math.max(0.6, stageW / 640));
+
 	// ─── Sail billow (0 = flat baseline, 1 = full wind) ─────────────────────────
 	// Sails always have a 10–14 px baseline bow-forward curve so they read as
 	// rounded cloth even before the intro beat runs.
@@ -169,7 +174,7 @@
 	<!-- Sky above the stage and sea below it, so the scene fills the whole column: the stage spans the full width and
 	     this layer continues its top colour (the sky's) up and its front wave's colour down. -->
 	<div class="sea" style="--sky:#08102a; --deep:#1b3e7a"></div>
-	<div class="stage">
+	<div class="stage" bind:clientWidth={stageW}>
 		<!-- ═══ LAYER 1 — bg SVG (z=1): sky · water · rigging · sails ═══════════ -->
 		<svg class="layer-svg" viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg" style:z-index="1">
 			<defs>
@@ -566,7 +571,7 @@
 				style:top="17.7%"
 				style:transform="translateX(-50%) translateY(-50%)"
 			>
-				<BotFace seed="ship-crow" state="working" size={42} />
+				<BotFace seed="ship-crow" state="working" size={Math.round(42 * k)} />
 			</div>
 
 			<!-- B: bow lookout — scanning with working eyes -->
@@ -576,7 +581,7 @@
 				style:top="63.2%"
 				style:transform="translateX(-50%) translateY(-100%) translateY({crew0extra}px)"
 			>
-				<BotFace seed="ship-a" state="working" size={62} />
+				<BotFace seed="ship-a" state="working" size={Math.round(62 * k)} />
 			</div>
 
 			<!-- C: helmsman at stern castle steering wheel -->
@@ -586,7 +591,7 @@
 				style:top="60.9%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
-				<BotFace seed="ship-b" state={crew1State} size={60} />
+				<BotFace seed="ship-b" state={crew1State} size={Math.round(60 * k)} />
 			</div>
 
 			<!-- D: waving from midship rigging -->
@@ -596,7 +601,7 @@
 				style:top="63.2%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
-				<BotFace seed="ship-c" state={crew1State} size={58} />
+				<BotFace seed="ship-c" state={crew1State} size={Math.round(58 * k)} />
 			</div>
 
 			<!-- E: sleeping on a barrel (z's floating up) -->
@@ -606,7 +611,7 @@
 				style:top="63.2%"
 				style:transform="translateX(-50%) translateY(-100%)"
 			>
-				<BotFace seed="ship-d" state="offline" size={54} />
+				<BotFace seed="ship-d" state="offline" size={Math.round(54 * k)} />
 			</div>
 		</div>
 

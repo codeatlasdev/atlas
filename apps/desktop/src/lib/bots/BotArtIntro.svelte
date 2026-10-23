@@ -9,6 +9,8 @@
 	import { onMount } from "svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import { reducedMotion } from "#lib/bots/motion.ts";
+	import ShipBg from "#lib/bots/scene/ShipBg.svelte";
+	import ShipFg from "#lib/bots/scene/ShipFg.svelte";
 
 	// ─── Wave geometry ──────────────────────────────────────────────────────────
 	// 16 half-periods × 80 px = 1280 px (2 × viewBox width).
@@ -196,26 +198,6 @@
 					<stop offset="0%" stop-color="#0a1e42" />
 					<stop offset="100%" stop-color="#050e1e" />
 				</linearGradient>
-				<!-- Sail: centre-bright horizontal → suggests rounded billowed cloth -->
-				<linearGradient id="bai-sail" x1="0" y1="0" x2="1" y2="0">
-					<stop offset="0%" stop-color="#b4c6e6" />
-					<stop offset="38%" stop-color="#ddeafe" />
-					<stop offset="100%" stop-color="#c6d6ee" />
-				</linearGradient>
-				<linearGradient id="bai-tsail" x1="0" y1="0" x2="1" y2="0">
-					<stop offset="0%" stop-color="#aebdda" />
-					<stop offset="50%" stop-color="#d2e2f6" />
-					<stop offset="100%" stop-color="#bfcfe8" />
-				</linearGradient>
-				<linearGradient id="bai-refl" x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stop-color="#ffcc60" stop-opacity="0.22" />
-					<stop offset="100%" stop-color="#ffcc60" stop-opacity="0" />
-				</linearGradient>
-				<radialGradient id="bai-lantern" cx="50%" cy="50%" r="50%">
-					<stop offset="0%" stop-color="#ffb030" stop-opacity="0.85" />
-					<stop offset="60%" stop-color="#ff8820" stop-opacity="0.30" />
-					<stop offset="100%" stop-color="#ff6600" stop-opacity="0" />
-				</radialGradient>
 				<clipPath id="bai-route-clip">
 					<rect x="496" y="228" width={routeW} height="52" />
 				</clipPath>
@@ -279,199 +261,8 @@
 				<circle cx="496" cy="274" r="3" fill="rgba(255,255,255,0.36)" />
 			{/if}
 
-			<!-- ══ SHIP GROUP (translates + rotates with bob) ══════════════════ -->
-			<g transform="translate(0,{shipY}) rotate({shipRot},308,285)">
-				<!-- Bowsprit -->
-				<line x1="488" y1="288" x2="540" y2="258" stroke="#1a2848" stroke-width="6" stroke-linecap="round" />
-				<line
-					x1="488"
-					y1="288"
-					x2="540"
-					y2="258"
-					stroke="#324e82"
-					stroke-width="2.5"
-					stroke-linecap="round"
-				/>
-
-				<!-- ── Masts ── -->
-				<!-- Fore mast x=415 -->
-				<line x1="415" y1="284" x2="415" y2="72" stroke="#1a2848" stroke-width="6" stroke-linecap="round" />
-				<line x1="415" y1="284" x2="415" y2="72" stroke="#324e82" stroke-width="2.5" stroke-linecap="round" />
-				<!-- Main mast x=308 -->
-				<line x1="308" y1="282" x2="308" y2="50" stroke="#1a2848" stroke-width="7" stroke-linecap="round" />
-				<line x1="308" y1="282" x2="308" y2="50" stroke="#324e82" stroke-width="3" stroke-linecap="round" />
-				<!-- Mizzen mast x=215 -->
-				<line x1="215" y1="282" x2="215" y2="82" stroke="#1a2848" stroke-width="5.5" stroke-linecap="round" />
-				<line x1="215" y1="282" x2="215" y2="82" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-
-				<!-- ── Yards (cross-spars) ── -->
-				<!-- Main lower y=122 -->
-				<line
-					x1="254"
-					y1="122"
-					x2="362"
-					y2="122"
-					stroke="#1a2848"
-					stroke-width="5.5"
-					stroke-linecap="round"
-				/>
-				<line x1="254" y1="122" x2="362" y2="122" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-				<!-- Main topsail y=78 -->
-				<line x1="270" y1="78" x2="346" y2="78" stroke="#1a2848" stroke-width="4.5" stroke-linecap="round" />
-				<line x1="270" y1="78" x2="346" y2="78" stroke="#324e82" stroke-width="1.8" stroke-linecap="round" />
-				<!-- Fore yard y=136 -->
-				<line x1="361" y1="136" x2="469" y2="136" stroke="#1a2848" stroke-width="5" stroke-linecap="round" />
-				<line x1="361" y1="136" x2="469" y2="136" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-				<!-- Mizzen yard y=116 -->
-				<line
-					x1="166"
-					y1="116"
-					x2="264"
-					y2="116"
-					stroke="#1a2848"
-					stroke-width="4.5"
-					stroke-linecap="round"
-				/>
-				<line
-					x1="166"
-					y1="116"
-					x2="264"
-					y2="116"
-					stroke="#324e82"
-					stroke-width="1.8"
-					stroke-linecap="round"
-				/>
-
-				<!-- ── Sails (always curved — 10–14 px baseline bow-forward billow) ── -->
-
-				<!-- Mizzen sail -->
-				<path
-					d="M 166 116 L 264 116
-           Q {264 + 10 + mzR} 197 {264 + 6 + mzR * 0.5} 282
-           L {166 - 4 + mzL} 282
-           Q {166 - 4 - mzL * 0.6} 197 166 116 Z"
-					fill="url(#bai-tsail)"
-					opacity="0.88"
-				/>
-
-				<!-- Main lower sail — has emblem -->
-				<path
-					d="M 254 122 L 362 122
-           Q {362 + 14 + mlR} 200 {362 + 8 + mlR * 0.5} 282
-           L {254 - 5 + mlL} 282
-           Q {254 - 5 - mlL * 0.6} 200 254 122 Z"
-					fill="url(#bai-sail)"
-					opacity="0.93"
-				/>
-				<!-- Batten lines -->
-				{#each [148, 174, 200, 228, 255] as by}
-					<line
-						x1={254 + (by - 122) * 0.06}
-						y1={by}
-						x2={362 + (by - 122) * 0.15}
-						y2={by}
-						stroke="rgba(160,188,228,0.20)"
-						stroke-width="0.9"
-					/>
-				{/each}
-
-				<!-- The crew's flag painted on the main sail: globe + straw hat (our mark, not a skull). Dark paint on
-				     the light cloth so it reads at a glance; it rides the sail's billow with the rest of the layer. -->
-				<g transform="translate({306 + mlR * 0.35},200) scale(1.55)">
-					<circle r="17" fill="#16224a" />
-					<circle r="17" stroke="#3d5bff" stroke-width="1.6" fill="none" />
-					<path d="M -17 0 Q -8 -3.5 0 -3.5 Q 8 -3.5 17 0" stroke="#7f95d6" stroke-width="1.3" fill="none" />
-					<path d="M -17 0 Q -8 3.5 0 3.5 Q 8 3.5 17 0" stroke="#7f95d6" stroke-width="1.1" fill="none" />
-					<ellipse cx="0" cy="0" rx="6.5" ry="17" stroke="#7f95d6" stroke-width="1.2" fill="none" />
-					<!-- straw hat sitting on the globe -->
-					<ellipse cx="0" cy="-15" rx="16" ry="4" fill="#e3b75a" stroke="#a87c2a" stroke-width="0.9" />
-					<path d="M -9 -15.5 C -9 -26 9 -26 9 -15.5 Z" fill="#ecc66c" stroke="#a87c2a" stroke-width="0.9" />
-					<path d="M -9 -17.5 L 9 -17.5" stroke="#3d5bff" stroke-width="2.4" />
-				</g>
-
-				<!-- Main topsail -->
-				<path
-					d="M 270 78 L 346 78
-           Q {346 + 10 + mtR} 100 {346 + 6 + mtR * 0.5} 122
-           L {270 - 4 + mtL} 122
-           Q {270 - 4 - mtL * 0.5} 100 270 78 Z"
-					fill="url(#bai-tsail)"
-					opacity="0.88"
-				/>
-
-				<!-- Fore lower sail -->
-				<path
-					d="M 361 136 L 469 136
-           Q {469 + 12 + fsR} 208 {469 + 6 + fsR * 0.5} 284
-           L {361 - 4 + fsL} 284
-           Q {361 - 4 - fsL * 0.6} 208 361 136 Z"
-					fill="url(#bai-sail)"
-					opacity="0.90"
-				/>
-
-				<!-- Jib (triangular, bowsprit → fore mast) -->
-				<path d="M 415 72 Q {477 + jibCtrl} 162 540 257 L 415 284 Z" fill="url(#bai-tsail)" opacity="0.72" />
-
-				<!-- ── Rigging ── -->
-				<line x1="308" y1="50" x2="540" y2="257" stroke="#324e82" stroke-width="1.2" opacity="0.55" />
-				<line x1="308" y1="50" x2="200" y2="282" stroke="#324e82" stroke-width="1.2" opacity="0.52" />
-				<line x1="308" y1="50" x2="415" y2="282" stroke="#324e82" stroke-width="1.2" opacity="0.52" />
-				<!-- Ratlines (horizontal rungs across main shrouds) -->
-				<line x1="275" y1="126" x2="340" y2="126" stroke="#324e82" stroke-width="0.9" opacity="0.40" />
-				<line x1="256" y1="166" x2="360" y2="166" stroke="#324e82" stroke-width="0.9" opacity="0.38" />
-				<line x1="238" y1="206" x2="378" y2="206" stroke="#324e82" stroke-width="0.9" opacity="0.35" />
-				<line x1="220" y1="246" x2="398" y2="246" stroke="#324e82" stroke-width="0.9" opacity="0.32" />
-				<!-- Fore mast stays -->
-				<line x1="415" y1="72" x2="540" y2="257" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-				<line x1="415" y1="72" x2="308" y2="60" stroke="#324e82" stroke-width="0.9" opacity="0.40" />
-				<line x1="415" y1="72" x2="490" y2="285" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-				<!-- Mizzen stays -->
-				<line x1="215" y1="82" x2="146" y2="280" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-				<line x1="215" y1="82" x2="308" y2="282" stroke="#324e82" stroke-width="1.0" opacity="0.45" />
-
-				<!-- ── Crow's nest (main mast, y 80–96) ── -->
-				<rect
-					x="291"
-					y="79"
-					width="34"
-					height="17"
-					rx="3"
-					fill="#152038"
-					stroke="#324e82"
-					stroke-width="1.5"
-				/>
-				<line x1="289" y1="96" x2="327" y2="96" stroke="#324e82" stroke-width="2" stroke-linecap="round" />
-
-				<!-- ── Stern castle details ── -->
-				<!-- Portholes -->
-				<circle cx="158" cy="266" r="5.5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.3" />
-				<circle cx="174" cy="266" r="5.5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.3" />
-				<circle cx="190" cy="266" r="5.5" fill="#0a1428" stroke="#2a3e6a" stroke-width="1.3" />
-				<circle cx="174" cy="266" r="3.8" fill="#ffa030" opacity="0.58" />
-				<!-- Steering wheel -->
-				<g transform="translate(192,258)">
-					<circle r="12" stroke="#3e5882" stroke-width="2.2" fill="none" />
-					<line x1="-12" y1="0" x2="12" y2="0" stroke="#3e5882" stroke-width="1.5" />
-					<line x1="0" y1="-12" x2="0" y2="12" stroke="#3e5882" stroke-width="1.5" />
-					<line x1="-8.5" y1="-8.5" x2="8.5" y2="8.5" stroke="#3e5882" stroke-width="1.5" />
-					<line x1="8.5" y1="-8.5" x2="-8.5" y2="8.5" stroke="#3e5882" stroke-width="1.5" />
-					<circle r="4" fill="#3e5882" />
-					<circle cx="0" cy="-12" r="2.5" fill="#3e5882" />
-					<circle cx="8.5" cy="-8.5" r="2.5" fill="#3e5882" />
-					<circle cx="12" cy="0" r="2.5" fill="#3e5882" />
-					<circle cx="8.5" cy="8.5" r="2.5" fill="#3e5882" />
-					<circle cx="0" cy="12" r="2.5" fill="#3e5882" />
-					<circle cx="-8.5" cy="8.5" r="2.5" fill="#3e5882" />
-					<circle cx="-12" cy="0" r="2.5" fill="#3e5882" />
-					<circle cx="-8.5" cy="-8.5" r="2.5" fill="#3e5882" />
-				</g>
-				<!-- Lanterns -->
-				<circle cx="152" cy="258" r="18" fill="url(#bai-lantern)" opacity="0.7" />
-				<circle cx="152" cy="258" r="5" fill="#ffa030" opacity="0.9" />
-				<circle cx="164" cy="254" r="14" fill="url(#bai-lantern)" opacity="0.5" />
-				<circle cx="164" cy="254" r="4" fill="#ffb840" opacity="0.85" />
-			</g>
-			<!-- end ship group -->
+			<!-- ══ SHIP (bg layer: masts · sails · rigging · wheel · lanterns) ══════ -->
+			<ShipBg {shipY} {shipRot} {sailBillow} />
 
 			<!-- Compass rose -->
 			<g transform="translate(52,394)" opacity={compassOp}>
@@ -615,87 +406,8 @@
 
 		<!-- ═══ LAYER 3 — fg SVG (z=3): hull occludes crew feet · near waves ═══════ -->
 		<svg class="layer-svg" viewBox="0 0 640 440" xmlns="http://www.w3.org/2000/svg" style:z-index="3">
-			<defs>
-				<linearGradient id="bai-hull" x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stop-color="#1c2c54" />
-					<stop offset="100%" stop-color="#0c1730" />
-				</linearGradient>
-				<linearGradient id="bai-castle" x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0%" stop-color="#1e3062" />
-					<stop offset="100%" stop-color="#162244" />
-				</linearGradient>
-			</defs>
-
-			<!-- Hull + stern castle, bob with same transform as rigging -->
-			<g transform="translate(0,{shipY}) rotate({shipRot},308,285)">
-				<!-- Main hull body: deck y≈272, keel y≈355 → 83 px deep -->
-				<path
-					d="M 146 280
-               Q 226 270 308 268
-               Q 390 270 488 280
-               L 496 292
-               Q 454 325 308 330
-               Q 162 325 146 294 Z"
-					fill="url(#bai-hull)"
-				/>
-
-				<!-- Stern castle (raised poop deck, y 258–280) -->
-				<path
-					d="M 146 280
-               L 146 258
-               Q 180 254 228 254
-               L 230 280
-               Q 188 282 146 280 Z"
-					fill="url(#bai-castle)"
-				/>
-				<line x1="228" y1="254" x2="230" y2="280" stroke="#2a3e68" stroke-width="1.5" fill="none" />
-
-				<!-- Crow's-nest front rim in fg layer (occludes nest crew lower portion) -->
-				<rect
-					x="291"
-					y="91"
-					width="34"
-					height="9"
-					rx="2"
-					fill="#152038"
-					stroke="#324e82"
-					stroke-width="1.2"
-				/>
-
-				<!-- Atlas-blue accent stripe at waterline -->
-				<path
-					d="M 150 290 Q 234 286 308 284 Q 382 286 484 290"
-					stroke="#3d5bff"
-					stroke-width="2.8"
-					fill="none"
-					opacity="0.78"
-				/>
-
-				<!-- Deck surface (slightly lighter, shows sheer) -->
-				<path
-					d="M 146 280
-               Q 226 270 308 268
-               Q 390 270 488 280
-               L 490 287
-               Q 390 278 308 276
-               Q 226 278 148 287 Z"
-					fill="#1e2f5c"
-				/>
-
-				<!-- Deck rail cap -->
-				<path
-					d="M 146 280 Q 226 270 308 268 Q 390 270 488 280"
-					stroke="#4a5e92"
-					stroke-width="1.5"
-					fill="none"
-				/>
-
-				<!-- 4 cannon ports -->
-				<rect x="204" y="298" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
-				<rect x="270" y="299" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
-				<rect x="336" y="299" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
-				<rect x="402" y="299" width="20" height="12" rx="2" fill="#060e1e" opacity="0.88" />
-			</g>
+			<!-- ══ SHIP (fg layer: hull · castle · cannon ports · crow's-nest rim) ══ -->
+			<ShipFg {shipY} {shipRot} />
 
 			<!-- Wave band 2 -->
 			<path d={W2} fill="#153366" class="wave2" class:paused={reducedMotion} />

@@ -546,6 +546,11 @@
 		align-items: center;
 		gap: 0;
 		height: 36px;
+		/* macOS: the traffic lights sit over the top ~40px of the window; keep the bar clear of them. */
+		margin-top: 40px;
+	}
+	:global(html.opaque-window) .top-bar {
+		margin-top: 0;
 	}
 
 	.progress-track {

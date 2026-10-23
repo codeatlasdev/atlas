@@ -126,12 +126,17 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 8px 0;
+		/* Below the macOS traffic lights, like the sidebar's 52 px drag band. */
+		padding: 52px 0 8px;
 		gap: 8px;
 	}
 
 	.rail.visible {
 		width: 72px;
+	}
+	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
+	:global(html.opaque-window) .rail {
+		padding-top: 8px;
 	}
 
 	/* Each workspace tile: 48x48, circle → rounded-square on hover/active */

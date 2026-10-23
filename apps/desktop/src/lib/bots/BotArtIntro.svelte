@@ -563,7 +563,7 @@
 			<div
 				class="crew-face"
 				style:left="48.1%"
-				style:top="19.5%"
+				style:top="17.7%"
 				style:transform="translateX(-50%) translateY(-50%)"
 			>
 				<BotFace seed="ship-crow" state="working" size={42} />

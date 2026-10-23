@@ -204,7 +204,7 @@
 		}
 	}
 
-	function handleContextAction(hostKey: string, botId: string, action: "profile" | "routine" | "delete") {
+	function handleContextAction(hostKey: string, botId: string, action: "profile" | "delete") {
 		if (action === "delete") {
 			if (confirm("Delete this bot?")) void bots.deleteBot(hostKey, botId);
 		} else {

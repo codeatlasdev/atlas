@@ -22,7 +22,7 @@
 		active?: boolean;
 		unread?: boolean;
 		onclick?: () => void;
-		onContextAction?: (action: "profile" | "routine" | "delete") => void;
+		onContextAction?: (action: "profile" | "delete") => void;
 		isFavorite?: boolean;
 		onFavorite?: () => void;
 	} = $props();
@@ -56,7 +56,7 @@
 		return d.toLocaleDateString([], { month: "short", day: "numeric" });
 	}
 
-	function handleContextAction(action: "profile" | "routine" | "delete") {
+	function handleContextAction(action: "profile" | "delete") {
 		menuOpen = false;
 		onContextAction?.(action);
 	}

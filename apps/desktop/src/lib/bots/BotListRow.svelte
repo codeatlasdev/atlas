@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Bot } from "#lib/stores/bots.svelte.ts";
+	import { normalizeLook } from "#lib/bots/look.ts";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 	import { roleTag, previewIcon } from "#lib/bots/botsLogic.ts";
@@ -15,12 +16,16 @@
 		unread = false,
 		onclick,
 		onContextAction,
+		isFavorite,
+		onFavorite,
 	}: {
 		bot: Bot;
 		active?: boolean;
 		unread?: boolean;
 		onclick?: () => void;
 		onContextAction?: (action: "profile" | "routine" | "delete") => void;
+		isFavorite?: boolean;
+		onFavorite?: () => void;
 	} = $props();
 
 	const faceState = $derived<FaceState>(
@@ -31,6 +36,7 @@
 	const icon = $derived(previewIcon(bot.last, bot.state));
 	const isWorking = $derived(bot.state === "working");
 	const logo = $derived(agentLogo(bot.agent));
+	const botColor = $derived(normalizeLook(bot.look, bot.id).color);
 
 	const [send, receive] = crossfade({
 		duration: 200,
@@ -64,7 +70,12 @@
 		<!-- Avatar with presence badge -->
 		<div class="avatar-wrap">
 			{#if isWorking}
-				<div class="avatar-dots" in:receive={{ key: bot.id }} out:send={{ key: bot.id }}>
+				<div
+					class="avatar-dots"
+					style:background={botColor}
+					in:receive={{ key: bot.id }}
+					out:send={{ key: bot.id }}
+				>
 					<span class="dot"></span>
 					<span class="dot"></span>
 					<span class="dot"></span>
@@ -135,6 +146,18 @@
 			>
 			{#if menuOpen}
 				<div class="menu-dropdown" role="menu">
+					{#if onFavorite}
+						<button
+							role="menuitem"
+							class="menu-item"
+							onclick={() => {
+								menuOpen = false;
+								onFavorite?.();
+							}}
+						>
+							{isFavorite ? "★ Favorite" : "☆ Set as favorite"}
+						</button>
+					{/if}
 					<button role="menuitem" class="menu-item" onclick={() => handleContextAction("profile")}
 						>Profile</button
 					>
@@ -234,7 +257,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 4px;
-		border-radius: 8px;
+		border-radius: 50%;
 		background: color-mix(in oklab, var(--ca-outline-subtle) 40%, transparent);
 	}
 	.dot {

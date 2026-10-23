@@ -171,7 +171,7 @@
 		border-radius: 2px;
 		background: var(--ca-text-secondary);
 		opacity: 0.35;
-		z-index: 198;
+		z-index: 1700;
 		pointer-events: none;
 		transition:
 			opacity 150ms ease,
@@ -195,7 +195,7 @@
 		left: 12px;
 		top: 50%;
 		translate: 0 -50%;
-		z-index: 198;
+		z-index: 1700;
 		display: flex;
 		align-items: center;
 		gap: 6px;
@@ -232,7 +232,8 @@
 		top: 0;
 		width: 6px;
 		height: 100%;
-		z-index: 199;
+		/* Above full-window layers (the Mugiwaras onboarding, 1600) so the rail can always be summoned. */
+		z-index: 1701;
 		pointer-events: all;
 		cursor: default;
 	}
@@ -249,7 +250,7 @@
 		top: 0;
 		bottom: 0;
 		width: 72px;
-		z-index: 1;
+		z-index: 1700;
 		overflow: hidden;
 		transform: translateX(-100%);
 		/* ease-out = CoreAnimation's easeOut, which the native terminals use for the same slide (term_slide). */

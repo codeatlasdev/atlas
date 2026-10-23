@@ -110,6 +110,8 @@ Debug builds also expose the live stores as `window.__atlas` (`ws`, `store`, `ag
 
 The repo has its own `atlas.yaml` (ports 13450-13459). `atlas dev` gives you the Lab (`l` opens http://localhost:13450) and the docs site (`w`, port 13451), both started on demand, plus actions for the gate (`c`), format (`F`), desktop tests (`d`), the debug app build (`b`), an agent instance (`A`), the flicker sweep (`x`), the selection and gesture benches (`B`, `H`), the dev icons (`I`) and a release dry run (`Y`). Agents reach the same things through MCP (`atlas_start_service lab`, `atlas_run_action c`, `atlas_logs_search`), so nobody has to remember which script does what.
 
+While editing, `bun run check:changed` (action `u`) runs only what your changes can affect: the changed crates and every crate that depends on them, plus the desktop, mobile, scripts, skills or workflow checks their paths touch (`--base <ref>`, default `origin/main`; `--dry-run` lists the commands). `bun run check` is still the gate before a push.
+
 Heavy actions run through `scripts/heavy.sh <cmd>`: one heavy job per machine at a time (worktrees and agents included), started only when the 5-minute load is below the CPU count (`ATLAS_HEAVY_MAXLOAD`), under `nice`. Use it for anything that builds or benchmarks outside `atlas dev` too.
 
 ### Atlas Lab: the frontend in your browser, no Atlas window

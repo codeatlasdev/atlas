@@ -61,6 +61,10 @@ pub struct DesktopArgs {
     #[arg(long, requires = "agent")]
     pub stop: bool,
 
+    /// With --agent: delete the WebKit stores left by agent instances that no longer exist
+    #[arg(long, requires = "agent", conflicts_with_all = ["stop", "name", "scratch"])]
+    pub gc: bool,
+
     /// Bring an installed app to this CLI's version (run by `atlas update`); never installs fresh
     #[arg(long, hide = true)]
     pub sync: bool,
@@ -90,7 +94,7 @@ impl AtlasCommand for DesktopArgs {
             None => {}
         }
         if self.agent {
-            return agent(self.stop, self.name, self.scratch);
+            return agent(self.stop, self.gc, self.name, self.scratch);
         }
         if self.dev {
             return dev();
@@ -422,13 +426,16 @@ fn open(app: &Path) -> Result<()> {
 /// `bun run desktop:dev` from the atlas workspace (hot-reloading frontend + Tauri shell).
 /// Agent instances live on a private macOS virtual display; there is no equivalent here.
 #[cfg(windows)]
-fn agent(_stop: bool, _name: Option<String>, _scratch: bool) -> Result<()> {
+fn agent(_stop: bool, _gc: bool, _name: Option<String>, _scratch: bool) -> Result<()> {
     bail!("agent instances (atlas desktop --agent) need macOS")
 }
 
 /// `atlas desktop --agent [--name N] [--scratch] [--stop]`: see `desktop_agent.rs`.
 #[cfg(unix)]
-fn agent(stop: bool, name: Option<String>, scratch: bool) -> Result<()> {
+fn agent(stop: bool, gc: bool, name: Option<String>, scratch: bool) -> Result<()> {
+    if gc {
+        return super::desktop_agent::gc();
+    }
     if stop {
         return super::desktop_agent::stop(name.as_deref());
     }

@@ -355,7 +355,9 @@ pub enum Store {
 pub fn webview_store(mode: Mode, instance: &str, macos_major: u32) -> Store {
     match mode {
         Mode::User => Store::Default,
-        Mode::Agent if macos_major >= 14 || macos_major == 0 => Store::Isolated(store_id(instance)),
+        Mode::Agent if macos_major >= 14 || macos_major == 0 => {
+            Store::Isolated(atlas_core::agent_store::id(instance))
+        }
         Mode::Agent => Store::Ephemeral,
     }
 }
@@ -373,16 +375,6 @@ pub fn current_store() -> Store {
         &std::env::var("ATLAS_DEBUG_SOCK").unwrap_or_default(),
         major,
     )
-}
-
-/// 128-bit FNV-1a: deterministic across runs and builds, so an instance finds its store again after a restart.
-fn store_id(s: &str) -> [u8; 16] {
-    let mut h: u128 = 0x6c62272e07bb014262b821756295c58d;
-    for b in s.bytes() {
-        h ^= b as u128;
-        h = h.wrapping_mul(0x0000000001000000000000000000013b);
-    }
-    h.to_be_bytes()
 }
 
 #[cfg(test)]

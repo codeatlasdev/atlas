@@ -443,6 +443,12 @@ fn stop_one(s: &Session) -> Result<()> {
             .stderr(Stdio::null())
             .status();
     }
+    // Its WebKit store: WKWebView keeps it in the real ~/Library, not in the instance's HOME.
+    if let Some(home) = dirs::home_dir() {
+        for p in atlas_core::agent_store::paths(&home, &s.socket().to_string_lossy()) {
+            let _ = std::fs::remove_dir_all(p);
+        }
+    }
     std::fs::remove_dir_all(&s.dir).or_else(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             Ok(())
@@ -450,6 +456,29 @@ fn stop_one(s: &Session) -> Result<()> {
             Err(e)
         }
     })?;
+    Ok(())
+}
+
+/// `--gc`: delete the WebKit stores of agent instances that no longer exist (left by crashes, or by
+/// instances stopped before `--stop` cleaned them up). Live instances and the user's own store are kept.
+pub fn gc() -> Result<()> {
+    let root = temp_root()?;
+    let live: Vec<String> = existing(&root)
+        .iter()
+        .filter_map(|n| session_in(&root, n).ok())
+        .map(|s| s.socket().to_string_lossy().into_owned())
+        .collect();
+    let home = dirs::home_dir().context("no home directory")?;
+    let gone = atlas_core::agent_store::orphans(&home, &live);
+    for p in &gone {
+        std::fs::remove_dir_all(p).with_context(|| format!("remove {}", p.display()))?;
+        println!("removed {}", p.display());
+    }
+    println!(
+        "{} leftover agent store(s) removed; {} live instance(s) kept",
+        gone.len(),
+        live.len()
+    );
     Ok(())
 }
 

@@ -176,7 +176,7 @@
 		position: relative;
 		display: flex;
 		align-items: center;
-		border-radius: 8px;
+		border-radius: 10px;
 		margin: 0 4px 1px;
 		transition: background 80ms;
 	}
@@ -193,11 +193,11 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 6px 8px;
+		padding: 10px 8px;
 		text-align: left;
 		background: none;
 		border: none;
-		border-radius: 8px;
+		border-radius: 10px;
 		cursor: default;
 	}
 
@@ -284,11 +284,11 @@
 	}
 
 	.name {
-		font-size: 13px;
-		font-weight: 500;
+		font-size: 15px;
+		font-weight: 600;
 		color: var(--ca-text-primary);
 		flex: none;
-		max-width: 90px;
+		max-width: 100px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

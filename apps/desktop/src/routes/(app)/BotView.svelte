@@ -618,7 +618,7 @@
 	{:else}
 		<!-- Header -->
 		<div class="header">
-			<div class="header-pill">
+			<button class="header-pill" onclick={() => (panel = 'profile')} aria-label="Bot profile: {bot.name}">
 				<BotFace seed={bot.id} look={bot.look} state={faceState} size={28} />
 				<span class="pill-name">{bot.name}</span>
 				{#if bot.state === "working" && bot.running_task}
@@ -628,7 +628,7 @@
 						)}</span
 					>
 				{/if}
-			</div>
+			</button>
 			<div class="header-right">
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="menu-wrap" onmouseleave={() => (menuOpen = false)}>
@@ -1474,6 +1474,12 @@
 		font-size: 14px;
 		font-weight: 600;
 		color: var(--ca-text-primary);
+		border: none;
+		cursor: default;
+		transition: opacity 120ms;
+	}
+	.header-pill:hover {
+		opacity: 0.8;
 	}
 	.pill-name {
 		font-size: 14px;

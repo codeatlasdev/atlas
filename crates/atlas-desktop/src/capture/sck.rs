@@ -149,7 +149,7 @@ pub struct Recorder {
 unsafe impl Send for Recorder {}
 
 /// The `SCWindow` for CGWindowID `id` among this process's windows (no extra permission to list).
-fn own_window(id: u32) -> Result<Retained<SCWindow>, String> {
+pub(super) fn own_window(id: u32) -> Result<Retained<SCWindow>, String> {
     let (tx, rx) = mpsc::channel();
     let block = RcBlock::new(move |c: *mut SCShareableContent, e: *mut NSError| {
         // SAFETY: SCK passes either a valid content object or a valid error.
@@ -176,7 +176,7 @@ fn own_window(id: u32) -> Result<Retained<SCWindow>, String> {
     }
 }
 
-fn permission_hint(e: &str) -> String {
+pub(super) fn permission_hint(e: &str) -> String {
     if permission_granted() {
         format!("ScreenCaptureKit: {e}")
     } else {
@@ -186,7 +186,11 @@ fn permission_hint(e: &str) -> String {
     }
 }
 
-fn config(size: (usize, usize), fps: u32, cursor: bool) -> Retained<SCStreamConfiguration> {
+pub(super) fn config(
+    size: (usize, usize),
+    fps: u32,
+    cursor: bool,
+) -> Retained<SCStreamConfiguration> {
     debug_assert!(FPS_CHOICES.contains(&fps));
     // SAFETY: plain property setters on a fresh configuration.
     unsafe {

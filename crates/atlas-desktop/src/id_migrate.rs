@@ -51,13 +51,54 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Debug builds only: run the migration from this id instead of the legacy one, inside an agent instance on
+/// the bundle's default store (`scripts/migration-e2e.sh`, with throwaway bundle ids).
+pub const E2E_FROM: &str = "ATLAS_MIGRATE_E2E_FROM";
+
+/// Which id to copy from, if any. An agent instance never migrates: it would copy the user's own store.
+pub fn source<'a>(
+    id: &str,
+    agent: bool,
+    e2e_from: Option<&'a str>,
+    debug: bool,
+) -> Option<&'a str> {
+    match (e2e_from.filter(|_| debug), agent) {
+        (Some(from), _) if from != id => Some(from),
+        (Some(_), _) => None,
+        (None, true) => None,
+        (None, false) if id == LEGACY_ID => None,
+        (None, false) => Some(LEGACY_ID),
+    }
+}
+
+/// The home WKWebView keeps its stores under: the account's, whatever `HOME` says (an agent instance's HOME
+/// is a temp dir, and WebKit still writes to the real ~/Library).
+fn webkit_home() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: getpwuid returns a pointer into static storage or null; read once, right away.
+        unsafe {
+            let pw = libc::getpwuid(libc::getuid());
+            if !pw.is_null() && !(*pw).pw_dir.is_null() {
+                let dir = std::ffi::CStr::from_ptr((*pw).pw_dir);
+                return Some(PathBuf::from(
+                    std::ffi::OsStr::from_encoded_bytes_unchecked(dir.to_bytes()),
+                ));
+            }
+        }
+    }
+    dirs::home_dir() // WebKitGTK and WebView2 follow the environment
+}
+
 /// Runs the migration for this build's `id`; never fails the launch.
 pub fn run(id: &str) {
-    if id == LEGACY_ID {
+    let e2e = std::env::var(E2E_FROM).ok();
+    let agent = crate::agent_mode::Mode::current() == crate::agent_mode::Mode::Agent;
+    let Some(from_id) = source(id, agent, e2e.as_deref(), cfg!(debug_assertions)) else {
         return;
-    }
-    let Some(home) = dirs::home_dir() else { return };
-    let (from, to) = (webview_dir(&home, LEGACY_ID), webview_dir(&home, id));
+    };
+    let Some(home) = webkit_home() else { return };
+    let (from, to) = (webview_dir(&home, from_id), webview_dir(&home, id));
     match migrate(&from, &to) {
         Ok(true) => eprintln!(
             "atlas: moved webview data {} -> {}",
@@ -72,6 +113,31 @@ pub fn run(id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_agent_instance_never_copies_the_users_store_and_e2e_needs_a_debug_build() {
+        assert_eq!(
+            source("br.com.codeatlas.atlas", false, None, false),
+            Some(LEGACY_ID)
+        );
+        assert_eq!(source(LEGACY_ID, false, None, false), None);
+        assert_eq!(
+            source("br.com.codeatlas.atlas.dev", true, None, true),
+            None,
+            "agent: never"
+        );
+        assert_eq!(
+            source("x.new", true, Some("x.old"), true),
+            Some("x.old"),
+            "e2e in a debug build"
+        );
+        assert_eq!(
+            source("x.new", true, Some("x.old"), false),
+            None,
+            "a release ignores the override"
+        );
+        assert_eq!(source("x.new", false, Some("x.new"), true), None);
+    }
 
     fn write(p: &Path, s: &str) {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();

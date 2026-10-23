@@ -136,8 +136,6 @@
 	const gull1 = $derived(gullPos(0.48, 0.68, 0, 80));
 	const gull2 = $derived(gullPos(0.52, 0.72, 2.1, 65));
 
-	// Crew follow-through
-	const crew0extra = $derived(-Math.abs(Math.sin(ph * 0.94 + 0.35)) * 6);
 	const crew1State = $derived(
 		!reducedMotion && t > 0.18 && t < 0.6 ? ("needs_you" as const) : ("idle" as const),
 	);
@@ -579,7 +577,7 @@
 				class="crew-face"
 				style:left="70.3%"
 				style:top="63.2%"
-				style:transform="translateX(-50%) translateY(-100%) translateY({crew0extra}px)"
+				style:transform="translateX(-50%) translateY(-100%)"
 			>
 				<BotFace seed="ship-a" state="working" size={Math.round(62 * k)} />
 			</div>

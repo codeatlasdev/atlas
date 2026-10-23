@@ -78,13 +78,13 @@
 		class="item"
 		class:active={ws.appMode === "bots"}
 		onclick={() => setMode("bots")}
-		aria-label="Bots workspace"
-		title="Bots  {shortcut}"
+		aria-label="Crew workspace"
+		title="Crew  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
 		<Bot size={22} />
 		{#if needsYouCount > 0}
-			<span class="needs-badge" aria-label="{needsYouCount} bots need your attention">
+			<span class="needs-badge" aria-label="{needsYouCount} crewmates need your attention">
 				{needsYouCount > 9 ? "9+" : needsYouCount}
 			</span>
 		{/if}

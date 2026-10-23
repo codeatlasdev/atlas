@@ -7,6 +7,7 @@
 	import BotArtApproval from "#lib/bots/BotArtApproval.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import BotListRow from "#lib/bots/BotListRow.svelte";
+	import ShipFlag from "#lib/bots/ShipFlag.svelte";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { randomLook, normalizeLook } from "#lib/bots/look.ts";
@@ -61,7 +62,7 @@
 
 	const mockBot = $derived({
 		id: "onb-preview",
-		name: "My First Bot",
+		name: "My First Crewmate",
 		agent: selectedEngine || "claude",
 		state: "idle" as const,
 		role: "",
@@ -91,19 +92,19 @@
 	const STEP_META: Record<string, StepMeta> = {
 		intro: {
 			label: "1 of 4",
-			headline: "Agents that keep working when you don't",
-			body: "Atlas Bot runs 24/7 on your own server. Talk to it from your desktop, phone or Telegram.",
+			headline: "Meet your crew",
+			body: "Your crew sails while you sleep.",
 			bullets: [
-				"Runs on your server, not CodeAtlas cloud",
-				"Any AI engine on your own subscription",
-				"Desktop, phone and Telegram",
+				"Your ship, your flag — self-hosted, your server",
+				"Every crewmate has a role and a dream",
+				"No one sails alone — crewmates hand tasks to each other",
 			],
 			glow: "rgba(61, 91, 255, 0.10)",
 		},
 		how1: {
 			label: "2 of 4",
-			headline: "Always on, even when your Mac is off",
-			body: "Your bot runs as a Linux service you control. Your laptop can sleep — the bot keeps going.",
+			headline: "Your ship, your flag",
+			body: "Runs on your own server, on your own subscription. No CodeAtlas cloud in the loop.",
 			bullets: [
 				"Never idle: systemd keeps it alive",
 				"Secure SSH tunnel back to your desktop",
@@ -113,14 +114,14 @@
 		},
 		how2: {
 			label: "3 of 4",
-			headline: "Send a task, get back a result",
-			body: "Type a task in plain language. The bot picks it up, works through it step by step, and shows you everything.",
+			headline: "Every crewmate has a role",
+			body: "Give each crewmate a clear role and a project to care about. They pick up tasks, work through them step by step, and show you everything.",
 			bullets: undefined,
 			glow: "rgba(61, 91, 255, 0.10)",
 		},
 		how3: {
 			label: "4 of 4",
-			headline: "You stay in control",
+			headline: "No one sails alone",
 			body: "When the bot needs to run something sensitive, it pauses and waits for your OK — on desktop, phone or Telegram.",
 			bullets: [
 				"Approval requests on all your devices",
@@ -130,7 +131,7 @@
 			glow: "rgba(245, 158, 11, 0.12)",
 		},
 		connect: {
-			headline: "Connect a bot server",
+			headline: "Launch your ship",
 			body: "Run this command on your Linux server, then enter its address below.",
 			glow: "rgba(61, 91, 255, 0.08)",
 		},
@@ -140,8 +141,8 @@
 			glow: "rgba(61, 91, 255, 0.10)",
 		},
 		ready: {
-			headline: "Your first bot is ready",
-			body: "Open a chat to send your first task. You can add more bots and customise them from the workspace.",
+			headline: "Your first crewmate is ready",
+			body: "Open a chat to send your first task. You can add more crewmates and customise them from the workspace.",
 			glow: "rgba(34, 197, 94, 0.12)",
 		},
 	};
@@ -254,7 +255,7 @@
 		try {
 			if (selectedEngine) {
 				const id = await bots.createBot(hostKey, {
-					name: "My First Bot",
+					name: "My First Crewmate",
 					role: "",
 					agent: selectedEngine,
 					approval: "auto",
@@ -276,7 +277,7 @@
 	class="overlay"
 	role="dialog"
 	aria-modal="true"
-	aria-label="Atlas Bot setup"
+	aria-label="Atlas Crew setup"
 	data-testid="bots-onboarding"
 >
 	<!-- Progress bar + Skip -->
@@ -346,6 +347,7 @@
 
 							{#if connected}
 								<div class="connect-success">
+									<ShipFlag size={18} />
 									<Check size={15} />
 									<span>Connected — continuing…</span>
 								</div>

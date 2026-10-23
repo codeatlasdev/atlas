@@ -147,11 +147,11 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bots', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('Crew', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: 'New bot',
+            tooltip: 'Recruit',
             onPressed: botServerDevices.isEmpty
                 ? null
                 : () => showModalBottomSheet<void>(
@@ -166,8 +166,8 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
       body: allEntries.isEmpty
           ? EmptyState(
               icon: Icon(Icons.smart_toy_outlined, size: 64, color: c.faint),
-              title: 'No bots yet',
-              message: 'Run atlas bot install on a server,\nthen add it in Atlas Desktop.',
+              title: 'No crew yet',
+              message: 'Launch your ship first, then recruit crewmates from Atlas Desktop.',
             )
           : ListView(
               children: [
@@ -176,7 +176,7 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
                     child: Text(
-                      'Needs you',
+                      'Captain\'s call',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -208,7 +208,7 @@ class _BotsScreenState extends ConsumerState<BotsScreen> {
                       backgroundColor: c.raised,
                       child: Icon(Icons.add, color: c.accent, size: 20),
                     ),
-                    title: Text('New bot', style: TextStyle(color: c.accent)),
+                    title: Text('Recruit', style: TextStyle(color: c.accent)),
                     onTap: () => showModalBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,

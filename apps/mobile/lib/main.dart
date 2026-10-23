@@ -101,7 +101,7 @@ class _AppShell extends StatelessWidget {
           ),
           NavigationDestination(
             icon: Icon(Icons.smart_toy_rounded),
-            label: 'Bots',
+            label: 'Crew',
           ),
         ],
       ),

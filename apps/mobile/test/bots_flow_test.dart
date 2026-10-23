@@ -54,7 +54,7 @@ void main() {
     await t.pumpWidget(_wrap(const BotsScreen(), []));
     await _settle(t);
     // No devices paired → the screen says to pair a computer first.
-    expect(find.textContaining('No bots yet'), findsOneWidget);
+    expect(find.textContaining('No crew yet'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

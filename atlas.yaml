@@ -29,6 +29,10 @@ actions:
     label: Gate (bun run check)
     group: check
     command: scripts/heavy.sh bun run check
+  - key: u
+    label: Changed checks (only what your edits affect)
+    group: check
+    command: scripts/heavy.sh bun run check:changed
   - key: F
     label: Format
     group: check

@@ -713,4 +713,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 		"Connect a ship running `atlas bot install`.",
 		"ssh ship crew agent",
 	),
+	entry(
+		"bots",
+		"Onboarding",
+		"bots-onboarding",
+		"Replay onboarding",
+		"Shows the Mugiwaras introduction again from the first step.",
+		"onboarding intro tour crew mugiwaras",
+	),
 ];

@@ -14,6 +14,7 @@
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
 	import { Plus, Search, Settings, CircleHelp, Compass, BellRing, Telescope } from "@lucide/svelte";
+	import { crewOnboarding, SEEN_KEY } from "#lib/bots/crewOnboarding.svelte.ts";
 	import { flip } from "svelte/animate";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 	import BotOnboarding from "#lib/bots/BotOnboarding.svelte";
@@ -27,16 +28,16 @@
 
 	// ─── onboarding ───────────────────────────────────────────────────────────
 
-	const seenOnboarding =
-		typeof localStorage !== "undefined" && !!localStorage.getItem("bots:onboarding:seen");
-	let showOnboarding = $state(!seenOnboarding && bots.allBots.length === 0);
+	// First run: no crew yet and never seen. Replays (the "?" button, the palette, Settings) set the same shared flag.
+	if (typeof localStorage !== "undefined" && !localStorage.getItem(SEEN_KEY) && bots.allBots.length === 0)
+		crewOnboarding.open = true;
 
 	function closeOnboarding() {
-		showOnboarding = false;
+		crewOnboarding.open = false;
 	}
 
 	function openOnboarding() {
-		showOnboarding = true;
+		crewOnboarding.open = true;
 	}
 
 	// ─── favorite management ──────────────────────────────────────────────────
@@ -675,7 +676,7 @@
 		{/if}
 	</div>
 
-	{#if showOnboarding}
+	{#if crewOnboarding.open}
 		<BotOnboarding ondone={closeOnboarding} />
 	{/if}
 </div>

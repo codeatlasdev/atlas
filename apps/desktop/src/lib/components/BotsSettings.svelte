@@ -9,6 +9,8 @@
 	import PairQr from "#lib/components/PairQr.svelte";
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
+	import { replayCrewOnboarding } from "#lib/bots/crewOnboarding.svelte.ts";
+	import { updates } from "#lib/stores/updates.svelte.ts";
 	import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 
 	type Device = { node_id: string; name: string; revoked: boolean };
@@ -178,6 +180,23 @@
 				{adding ? "Adding…" : "Add"}
 			</Button>
 		</div>
+	</Row>
+</Group>
+
+<Group title="Onboarding">
+	<Row
+		id="bots-onboarding"
+		label="Replay onboarding"
+		description="Shows the Mugiwaras introduction again from the first step."
+	>
+		<Button
+			size="sm"
+			variant="ghost"
+			onclick={() => {
+				updates.open = false;
+				replayCrewOnboarding();
+			}}>Replay</Button
+		>
 	</Row>
 </Group>
 

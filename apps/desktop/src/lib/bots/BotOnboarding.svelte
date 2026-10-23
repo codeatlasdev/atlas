@@ -2,6 +2,7 @@
 	import { cubicOut, cubicIn } from "svelte/easing";
 	import type { TransitionConfig } from "svelte/transition";
 	import BotArtIntro from "#lib/bots/BotArtIntro.svelte";
+	import { SEEN_KEY } from "#lib/bots/crewOnboarding.svelte.ts";
 	import BotArtServer from "#lib/bots/BotArtServer.svelte";
 	import BotArtChat from "#lib/bots/BotArtChat.svelte";
 	import BotArtApproval from "#lib/bots/BotArtApproval.svelte";
@@ -201,7 +202,7 @@
 
 	function finish() {
 		try {
-			localStorage.setItem("bots:onboarding:seen", "1");
+			localStorage.setItem(SEEN_KEY, "1");
 		} catch {
 			/* private browsing */
 		}

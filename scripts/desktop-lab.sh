@@ -20,12 +20,18 @@ done
 if [ "$stop" = 1 ]; then exec scripts/desktop-agent.sh --stop --name "$name"; fi
 
 # Reuse a running instance of that name, else start one; either way read its socket from the ready line.
-line=$(scripts/desktop-agent.sh --name "$name" 2>&1 | grep '^atlas-agent ready' || true)
+out=$(scripts/desktop-agent.sh --name "$name" 2>&1) || true
+line=$(printf '%s\n' "$out" | grep '^atlas-agent ready' || true)
 sock=${line##*ATLAS_DEBUG_SOCK=}
 if [ -z "$line" ]; then
 	sock=$(ls -d /private/tmp/atlas-agent-"$name"/debug.sock /tmp/atlas-agent-"$name"/debug.sock 2>/dev/null | head -1)
-	[ -S "$sock" ] || { echo "could not start agent instance $name" >&2; exit 1; }
+	[ -S "$sock" ] || { printf 'could not start agent instance %s:\n%s\n' "$name" "$out" >&2; exit 1; }
 fi
-echo "Atlas Lab: http://localhost:$port  (backend: agent instance $name; stop with: bun run desktop:lab --stop --name $name)"
+echo "Atlas Lab: http://localhost:$port  (backend: agent instance $name)"
+# The instance lives exactly as long as the Lab: stopping it (Ctrl-C, `atlas dev` stopping the service) stops both.
+repo=$(pwd)
+trap 'kill "$vite" 2>/dev/null; "$repo/scripts/desktop-agent.sh" --stop --name "$name" >/dev/null 2>&1' EXIT INT TERM
 cd apps/desktop
-ATLAS_DEBUG_SOCK=$sock ATLAS_LAB_INSTANCE=$name ATLAS_LAB_PORT=$port exec bunx vite dev
+ATLAS_DEBUG_SOCK=$sock ATLAS_LAB_INSTANCE=$name ATLAS_LAB_PORT=$port bunx vite dev &
+vite=$!
+wait "$vite"

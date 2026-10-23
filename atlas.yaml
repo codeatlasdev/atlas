@@ -1,0 +1,66 @@
+# Atlas, developed with Atlas. `atlas dev` in this repo starts the Lab; agents use the same services and actions
+# through MCP (atlas_status, atlas_run_action, atlas_logs_search) instead of remembering scripts.
+# Heavy actions go through scripts/heavy.sh: one at a time per machine, after the load drops, under nice.
+# Ports: block 13450-13459.
+name: atlas
+pre_command: "" # scripts/setup.sh is idempotent and runs inside the commands that need it
+
+services:
+  lab:
+    # The desktop frontend on Vite/HMR at http://localhost:13450, backed by an invisible agent instance.
+    # The first start builds the debug app (minutes); later starts reuse it.
+    command: scripts/desktop-lab.sh --name lab --port 13450
+    port: 13450
+    health: http://localhost:13450/
+    ready_log: "Local:.*13450"
+    start_timeout: 0
+    open_key: l
+    autostart: false
+  site:
+    command: cd site && bun install --frozen-lockfile && bunx astro dev --port 13451
+    port: 13451
+    health: http://localhost:13451/
+    open_key: w
+    autostart: false
+
+actions:
+  - key: c
+    label: Gate (bun run check)
+    group: check
+    command: scripts/heavy.sh bun run check
+  - key: F
+    label: Format
+    group: check
+    command: bun run fmt
+  - key: d
+    label: Desktop tests (frontend + svelte-check)
+    group: check
+    command: bun run desktop:check
+  - key: b
+    label: Build the debug app
+    group: build
+    command: scripts/heavy.sh bun run desktop:build:app
+  - key: A
+    label: Start an agent instance
+    group: build
+    command: scripts/heavy.sh bun run desktop:agent
+  - key: x
+    label: Flicker sweep
+    group: bench
+    command: scripts/heavy.sh bun scripts/flicker-sweep.ts
+  - key: B
+    label: Selection bench
+    group: bench
+    command: scripts/heavy.sh bun scripts/selection-bench.ts
+  - key: H
+    label: Gesture bench
+    group: bench
+    command: scripts/heavy.sh bun scripts/gesture-bench.ts
+  - key: I
+    label: Regenerate the Atlas Dev icons
+    group: build
+    command: bun run icons:dev
+  - key: Y
+    label: Release dry run (alpha)
+    group: release
+    command: bun run release alpha --dry-run

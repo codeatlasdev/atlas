@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, it } from "bun:test";
-import { BOT_COLORS, defaultLook, normalizeLook, randomLook, shade } from "./look.ts";
+import { BOT_COLORS, defaultLook, FACES, normalizeLook, randomLook, ROLE_KITS, shade } from "./look.ts";
 
 describe("normalizeLook", () => {
 	it("keeps each valid field and replaces only the invalid ones", () => {
@@ -85,6 +85,65 @@ describe("tools and outfits", () => {
 			hat: "bicorne",
 			tool: "none",
 			outfit: "coat",
+			face: "none",
 		});
+	});
+});
+
+describe("face (eyewear)", () => {
+	it("old looks without face get none", () => {
+		expect(
+			normalizeLook({ color: "#3d5bff", eyes: "round", hat: "straw", tool: "pin", outfit: "tie" }, "s").face,
+		).toBe("none");
+	});
+
+	it("invalid face falls back to the default without touching the other fields", () => {
+		for (const face of ["monocle2", 7, null, {}]) {
+			expect(
+				normalizeLook(
+					{ color: "#3d5bff", eyes: "visor", hat: "bicorne", tool: "compass", outfit: "coat", face },
+					"s",
+				),
+			).toEqual({
+				color: "#3d5bff",
+				eyes: "visor",
+				hat: "bicorne",
+				tool: "compass",
+				outfit: "coat",
+				face: defaultLook("s").face,
+			});
+		}
+	});
+
+	it("keeps every valid face", () => {
+		for (const face of FACES) expect(normalizeLook({ face }, "s").face).toBe(face);
+	});
+
+	it("randomLook can pick any face", () => {
+		const seen = new Set(
+			Array.from({ length: FACES.length }, (_, i) => randomLook(() => i / FACES.length).face),
+		);
+		expect(seen.size).toBe(FACES.length);
+	});
+});
+
+describe("role kits", () => {
+	it("every kit is a valid look once merged over a colour and eyes", () => {
+		const base = { color: "#22c55e", eyes: "happy" as const };
+		for (const k of ROLE_KITS) {
+			const merged = { ...base, ...k.kit };
+			expect(normalizeLook(merged, "s")).toEqual(merged);
+		}
+	});
+
+	it("ships the six requested roles", () => {
+		expect(ROLE_KITS.map((k) => k.label)).toEqual([
+			"Captain",
+			"Sales",
+			"Reviewer",
+			"Lookout",
+			"Scribe",
+			"Lighthouse keeper",
+		]);
 	});
 });

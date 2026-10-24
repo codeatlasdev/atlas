@@ -1,16 +1,27 @@
 <script lang="ts" module>
 	let uid = 0;
+	const PIECES = ["hat", "outfit", "tool", "face"] as const;
 </script>
 
 <script lang="ts">
 	import { onMount } from "svelte";
+	import BotFaceGear from "#lib/bots/BotFaceGear.svelte";
 	import BotHat from "#lib/bots/BotHat.svelte";
 	import type { BotState } from "#lib/bots/botFace.ts";
 	import { normalizeLook, shade } from "#lib/bots/look.ts";
 	import { SHELL_PATHS } from "#lib/bots/shell.ts";
 	import BotOutfit from "#lib/bots/BotOutfit.svelte";
 	import BotTool from "#lib/bots/BotTool.svelte";
-	import { fromChannels, pose, spring, STIFFNESS, toChannels } from "#lib/bots/rig.ts";
+	import {
+		type EquipPart,
+		equipEnter,
+		equipImpulse,
+		fromChannels,
+		pose,
+		spring,
+		STIFFNESS,
+		toChannels,
+	} from "#lib/bots/rig.ts";
 
 	let {
 		seed,
@@ -18,6 +29,7 @@
 		size = 36,
 		look,
 		track = false,
+		react,
 	}: {
 		seed: string;
 		state: BotState;
@@ -26,6 +38,11 @@
 		look?: unknown;
 		/** Eyes follow the pointer (editor preview). */
 		track?: boolean;
+		/**
+		 * Equip signal (editor): bump `n` to make the crewmate hop and the piece named by `part` animate in.
+		 * The value present at mount is ignored, so remounts never replay it.
+		 */
+		react?: { n: number; part: EquipPart };
 	} = $props();
 
 	const id = `bot${++uid}`;
@@ -44,6 +61,13 @@
 	const detailed = $derived(size >= 40);
 	// Drawn pose, sprung toward rig.pose() every frame (see rig.ts).
 	let p = $state(pose("idle", "none", 0));
+	// Freshly put-on pieces animate in from rig.equipEnter(); `null` = settled, nothing to draw specially.
+	let enter = $state<Record<"hat" | "outfit" | "tool" | "face", ReturnType<typeof equipEnter> | null>>({
+		hat: null,
+		outfit: null,
+		tool: null,
+		face: null,
+	});
 
 	onMount(() => {
 		const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -105,6 +129,8 @@
 		let raf = 0;
 		let last = performance.now();
 		let lastState = botState;
+		let lastReact = react?.n;
+		const equippedAt: Partial<Record<"hat" | "outfit" | "tool" | "face", number>> = {};
 		const t0 = Math.random() * 10;
 		let ch = toChannels(pose(botState, l.tool, t0));
 		const vel = ch.map(() => 0);
@@ -121,6 +147,22 @@
 				vel[2] -= 2.4;
 				vel[1] += 1.2;
 				lastState = botState;
+			}
+			if (react && react.n !== lastReact) {
+				lastReact = react.n;
+				const kick = equipImpulse(react.part);
+				for (let i = 0; i < vel.length; i++) vel[i] += kick[i];
+				// A kit swaps everything at once, so every piece animates in.
+				for (const part of PIECES) if (react.part === "kit" || react.part === part) equippedAt[part] = now;
+			}
+			for (const part of PIECES) {
+				const at = equippedAt[part];
+				if (at === undefined) continue;
+				const k = (now - at) / 1000;
+				const e = equipEnter(part, k);
+				const settled = e.dy === 0 && e.dx === 0 && e.reveal === 1 && e.scale === 1 && e.alpha === 1;
+				enter[part] = settled ? null : e;
+				if (settled) delete equippedAt[part];
 			}
 			const target = toChannels(pose(botState, l.tool, t0 + now / 1000));
 			ch = ch.map((x, i) => {
@@ -172,6 +214,10 @@
 
 	<defs>
 		<clipPath id="{id}-clip"><circle cx="214" cy="213" r="206" /></clipPath>
+		<!-- Outfit wipe: reveal the clothes top to bottom while they are being put on. -->
+		<clipPath id="{id}-wipe">
+			<rect x="-90" y="-170" width="608" height={(enter.outfit?.reveal ?? 1) * 640} />
+		</clipPath>
 	</defs>
 
 	<ellipse
@@ -195,7 +241,9 @@
 		{/if}
 
 		{#if detailed && l.outfit !== "none"}
-			<BotOutfit outfit={l.outfit} color={l.color} clip="{id}-clip" />
+			<g clip-path={enter.outfit ? `url(#${id}-wipe)` : undefined}>
+				<BotOutfit outfit={l.outfit} color={l.color} clip="{id}-clip" />
+			</g>
 		{/if}
 
 		<!-- face -->
@@ -254,6 +302,15 @@
 			{/if}
 		</g>
 
+		{#if l.face !== "none"}
+			<g
+				transform="translate(214 195) scale({enter.face?.scale ?? 1}) translate(-214 -195)"
+				opacity={enter.face?.alpha ?? 1}
+			>
+				<BotFaceGear face={l.face} {px} {py} />
+			</g>
+		{/if}
+
 		{#if botState === "needs_you"}
 			<ellipse cx="214" cy="272" rx="14" ry="17" fill={ink} />
 		{:else if asleep}
@@ -262,7 +319,9 @@
 			<path d="M190 262 Q214 286 238 262" stroke={ink} stroke-width="10" stroke-linecap="round" fill="none" />
 		{/if}
 
-		<g transform="rotate({p.hat} 214 60)"><BotHat hat={l.hat} color={l.color} /></g>
+		<g transform="translate(0 {enter.hat?.dy ?? 0}) rotate({p.hat} 214 60)" opacity={enter.hat?.alpha ?? 1}>
+			<BotHat hat={l.hat} color={l.color} />
+		</g>
 	</g>
 
 	{#if detailed}
@@ -273,7 +332,12 @@
 				<circle cx="-9" cy="-10" r="9" fill="#fff" opacity=".28" />
 			</g>
 			<g transform="translate({p.right.x} {p.right.y}) rotate({p.right.r})">
-				<BotTool tool={l.tool} t={p.tool} glow={shade(l.color, 0.55)} />
+				<g
+					transform="translate({enter.tool?.dx ?? 0} {enter.tool?.dy ?? 0}) scale({enter.tool?.scale ?? 1})"
+					opacity={enter.tool?.alpha ?? 1}
+				>
+					<BotTool tool={l.tool} t={p.tool} glow={shade(l.color, 0.55)} />
+				</g>
 				<circle r="34" fill={shade(l.color, -0.12)} />
 				<circle cx="-9" cy="-10" r="9" fill="#fff" opacity=".28" />
 				{#if l.tool !== "none"}

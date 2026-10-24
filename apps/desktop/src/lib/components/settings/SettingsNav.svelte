@@ -29,6 +29,7 @@
 		keyboard: Keyboard,
 		ssh: Server,
 		mobile: Smartphone,
+		bots: Server,
 		help: CircleHelp,
 	};
 

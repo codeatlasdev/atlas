@@ -126,6 +126,8 @@ export function showWelcome(
 	projectCount: number,
 	phase: Phase,
 ): boolean {
+	// Agent instances never need the onboarding flow.
+	if (typeof window !== "undefined" && "__ATLAS_AGENT__" in window && window.__ATLAS_AGENT__) return false;
 	if (!loaded || phase === "done") return false;
 	if (phase === "starting" || phase === "up") return !state.done;
 	return projectCount === 0 && !state.done;

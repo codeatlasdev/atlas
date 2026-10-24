@@ -1,20 +1,13 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Button, Switch, toast } from "@codeatlasdev/ui";
-	import { renderSVG } from "uqr";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
 	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
-	import {
-		pairUrl,
-		SCOPES,
-		secondsLeft,
-		toggleScope,
-		type Device,
-		type PairStart,
-	} from "#lib/settings/mobile.ts";
+	import PairQr from "#lib/components/PairQr.svelte";
+	import { SCOPES, secondsLeft, toggleScope, type Device, type PairStart } from "#lib/settings/mobile.ts";
 
 	let devices = $state<Device[]>([]);
 	let pairing = $state<{ p: PairStart; at: number } | null>(null);
@@ -75,16 +68,8 @@
 	>
 		<Button size="sm" onclick={pair}>{pairing && left > 0 ? "New code" : "Pair a phone"}</Button>
 		{#snippet below()}
-			{#if pairing && left > 0}
-				<div class="pair">
-					<div class="qr" aria-label="Pairing QR code" role="img">{@html renderSVG(pairUrl(pairing.p))}</div>
-					<div>
-						<div class="code ca-selectable">{pairing.p.code}</div>
-						<div class="muted">Expires in {left}s</div>
-					</div>
-				</div>
-			{:else if pairing}
-				<div class="muted">The code expired. Make a new one.</div>
+			{#if pairing}
+				<PairQr {pairing} {now} />
 			{/if}
 		{/snippet}
 	</Row>
@@ -118,31 +103,6 @@
 </Group>
 
 <style>
-	.pair {
-		display: flex;
-		gap: 16px;
-		align-items: center;
-		margin-top: 8px;
-	}
-	.qr {
-		width: 180px;
-		height: 180px;
-		background: #fff;
-		padding: 8px;
-		border-radius: 8px;
-	}
-	.qr :global(svg) {
-		width: 100%;
-		height: 100%;
-	}
-	.code {
-		font: 600 22px/1 var(--ca-font-mono, monospace);
-		letter-spacing: 0.15em;
-	}
-	.muted {
-		font-size: 11.5px;
-		opacity: 0.7;
-	}
 	.scopes {
 		display: flex;
 		flex-direction: column;

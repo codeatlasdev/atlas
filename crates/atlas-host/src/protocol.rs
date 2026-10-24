@@ -44,10 +44,15 @@ pub const PROTO: u32 = 2;
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
-#[cfg(unix)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents"];
-#[cfg(windows)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "lsp", "agents"];
+pub fn caps(bot_host: bool) -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents"];
+    #[cfg(unix)]
+    v.push("upgrade");
+    if bot_host {
+        v.push("bots");
+    }
+    v
+}
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,6 +130,9 @@ fn default_log_lines() -> usize {
 }
 fn default_history_limit() -> usize {
     200
+}
+fn default_bot_task_limit() -> usize {
+    50
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -378,6 +386,110 @@ pub enum HostCmd {
         node_id: String,
         scopes: Vec<crate::mobile::Scope>,
     },
+    BotList {},
+    BotCreate {
+        name: String,
+        role: String,
+        agent: String,
+        approval: String,
+        #[serde(default)]
+        workdir: Option<String>,
+        #[serde(default)]
+        look: Option<crate::bots::store::BotLook>,
+        #[serde(default)]
+        engine: Option<crate::bots::store::EngineConfig>,
+        #[serde(default)]
+        project: Option<crate::bots::store::ProjectRef>,
+    },
+    BotUpdate {
+        id: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        role: Option<String>,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        approval: Option<String>,
+        #[serde(default)]
+        look: Option<crate::bots::store::BotLook>,
+        #[serde(default)]
+        engine: Option<crate::bots::store::EngineConfig>,
+        #[serde(default)]
+        project: Option<crate::bots::store::ProjectRef>,
+    },
+    BotDelete {
+        id: String,
+    },
+    BotTask {
+        id: String,
+        prompt: String,
+        source: String,
+    },
+    BotTasks {
+        id: String,
+        #[serde(default = "default_bot_task_limit")]
+        limit: usize,
+    },
+    BotCancel {
+        id: String,
+        task: String,
+    },
+    BotMemory {
+        id: String,
+    },
+    BotMemorySet {
+        id: String,
+        text: String,
+    },
+    BotRoutineSet {
+        id: String,
+        routines: Vec<serde_json::Value>,
+    },
+    PushRegister {
+        token: String,
+        platform: String,
+    },
+    PushUnregister {
+        token: String,
+    },
+    BotTelegramSet {
+        #[serde(default)]
+        token: Option<String>,
+    },
+    BotTelegramLink {},
+    MobileInvite {
+        url: String,
+        name: String,
+    },
+    MobileInvites {},
+    MobileInviteDismiss {
+        url: String,
+    },
+    BotTriggersSet {
+        id: String,
+        triggers: Vec<serde_json::Value>,
+    },
+    BotSecretSet {
+        id: String,
+        key: String,
+        value: String,
+    },
+    BotAnswer {
+        id: String,
+        ask_id: String,
+        #[serde(default)]
+        key: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    BotUsage {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        since: Option<u64>,
+    },
+    EngineLimits {},
 }
 
 /// Build a response line.

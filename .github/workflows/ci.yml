@@ -146,6 +146,26 @@ jobs:
       - name: analyze, flutter test
         run: scripts/mobile-check.sh
 
+  push-relay:
+    name: Push relay (Go)
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: services/push-relay/go.mod
+          cache: false
+
+      - name: gofmt, go vet, go test
+        run: scripts/push-relay-check.sh
+
   site:
     name: Site build
     needs: plan
@@ -245,7 +265,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, rust-windows, frontend, mobile, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, rust-windows, frontend, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

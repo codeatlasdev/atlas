@@ -10,11 +10,19 @@ pub struct McpArgs {
     /// the current directory that has one (falls back to the current directory).
     #[arg(short, long)]
     pub dir: Option<String>,
+
+    /// Serve the bot MCP protocol for the given bot ID instead of the project MCP server.
+    #[arg(long)]
+    pub bot: Option<String>,
 }
 
 impl AtlasCommand for McpArgs {
     /// Serve MCP over stdio. stdout is reserved for protocol messages.
     async fn run(self) -> Result<()> {
+        if let Some(bot_id) = self.bot {
+            return atlas_host::bots::mcp::serve(&bot_id).await;
+        }
+
         let root = match &self.dir {
             Some(d) => std::path::PathBuf::from(expand_tilde(d)),
             None => {

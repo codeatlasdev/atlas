@@ -1,10 +1,10 @@
 {
 	"customAgents": [
 		{
-			"id": "opencode",
-			"label": "OpenCode",
-			"command": "opencode",
-			"args": ["run", "--model", "x"],
+			"id": "gemini-cli",
+			"label": "Gemini CLI",
+			"command": "gemini",
+			"args": ["--model", "gemini-2.5-pro"],
 			"resume": ["--session", "{session}"],
 			"env": {
 				"FOO": "1"

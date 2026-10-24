@@ -45,6 +45,8 @@
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
+	import BotsWorkspace from "#lib/bots/BotsWorkspace.svelte";
+	import WorkspaceRail from "#lib/shell/WorkspaceRail.svelte";
 
 	let { children }: { children: Snippet } = $props();
 
@@ -91,19 +93,24 @@
 	style:--space-accent={shell.active ? shell.accent(shell.active.id) : undefined}
 	style:--space-tint={shell.active ? shell.tint(shell.active.id) : undefined}
 >
-	<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
-		<div class="sidebar-panel">{@render sidebar()}</div>
-	</div>
-	<EdgePeek edge="left" size={260} label="Sidebar" active={!docks.sidebar}>{@render sidebar()}</EdgePeek>
-	<main class="content" class:full={!docks.sidebar} use:swipe={historySwipe()}>
-		<div class="space-edge" aria-hidden="true"></div>
-		<div class="nav-chip nav-chip-prev" aria-hidden="true"><ChevronLeft size={18} /></div>
-		<div class="nav-chip nav-chip-next" aria-hidden="true"><ChevronRight size={18} /></div>
-		<div class="space-view">
-			<CrashProbe id="app" />
-			{@render children()}
+	<WorkspaceRail />
+	{#if ws.appMode === "bots"}
+		<BotsWorkspace />
+	{:else}
+		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
+			<div class="sidebar-panel">{@render sidebar()}</div>
 		</div>
-	</main>
+		<EdgePeek edge="left" size={260} label="Sidebar" active={!docks.sidebar}>{@render sidebar()}</EdgePeek>
+		<main class="content" class:full={!docks.sidebar} use:swipe={historySwipe()}>
+			<div class="space-edge" aria-hidden="true"></div>
+			<div class="nav-chip nav-chip-prev" aria-hidden="true"><ChevronLeft size={18} /></div>
+			<div class="nav-chip nav-chip-next" aria-hidden="true"><ChevronRight size={18} /></div>
+			<div class="space-view">
+				<CrashProbe id="app" />
+				{@render children()}
+			</div>
+		</main>
+	{/if}
 </div>
 
 <Palette
@@ -130,7 +137,7 @@
 <UpdatedCard />
 <GhosttyOffer />
 <DevLine />
-<Onboarding />
+{#if ws.appMode !== "bots"}<Onboarding />{/if}
 <AskDialog />
 <TabSwitcher />
 <CornerStack />

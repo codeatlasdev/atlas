@@ -5,7 +5,7 @@
   },
   {
     "title": "Guides",
-    "items": ["desktop", "editor", "terminal", "tui", "logs", "agents", "mobile", "mcp", "deploy"]
+    "items": ["desktop", "editor", "terminal", "tui", "logs", "agents", "bots", "mobile", "mcp", "deploy"]
   },
   {
     "title": "Reference",
@@ -17,6 +17,6 @@
   },
   {
     "title": "Project",
-    "items": ["architecture", "contributing", "build-perf", "release", "versioning", "deprecation", "supply-chain", "labels", "site"]
+    "items": ["architecture", "contributing", "build-perf", "release", "versioning", "deprecation", "supply-chain", "labels", "site", "crew-character"]
   }
 ]

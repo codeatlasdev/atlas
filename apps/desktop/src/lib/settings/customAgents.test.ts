@@ -46,13 +46,13 @@ describe("custom agent form → customAgents entry (#56)", () => {
 test("the saved entry matches the fixture Rust reads", async () => {
 	const r = customAgentEntry(
 		{
-			name: "OpenCode",
-			command: "opencode run",
-			args: "--model x",
+			name: "Gemini CLI",
+			command: "gemini --model gemini-2.5-pro",
+			args: "",
 			resume: "--session {session}",
 			env: "FOO=1",
 		},
-		["omp", "claude", "codex"],
+		["omp", "claude", "codex", "opencode"],
 	);
 	const path = new URL("../__fixtures__/custom-agent.json", import.meta.url).pathname;
 	const saved = { customAgents: [r.entry] };

@@ -414,12 +414,12 @@ fn setup_without_harness_reports_status() {
 
 /// Fake agent binaries on PATH make detection report them and print per-agent commands.
 #[test]
-fn setup_detection_lists_all_three_agents_when_present() {
+fn setup_detection_lists_all_agents_when_present() {
     use std::os::unix::fs::PermissionsExt;
     let sb = Sandbox::new();
     let bin = sb.home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
-    for b in ["claude", "codex"] {
+    for b in ["claude", "codex", "opencode"] {
         let p = bin.join(b);
         std::fs::write(&p, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -449,12 +449,13 @@ fn setup_detection_lists_all_three_agents_when_present() {
         "atlas setup omp --apply",
         "atlas setup claude-code --apply",
         "atlas setup codex --apply",
+        "atlas setup opencode --apply",
     ] {
         assert!(text.contains(cmd), "{text}");
     }
     assert_eq!(
         text.matches("not set up (or outdated)").count(),
-        3,
+        4,
         "{text}"
     );
     // Applying one of them flips only that one.
@@ -484,7 +485,7 @@ fn setup_detection_lists_all_three_agents_when_present() {
     assert_eq!(text.matches("set up, up to date").count(), 1, "{text}");
     assert_eq!(
         text.matches("not set up (or outdated)").count(),
-        2,
+        3,
         "{text}"
     );
 }

@@ -116,6 +116,16 @@ Heavy actions run through `scripts/heavy.sh <cmd>`: one heavy job per machine at
 
 The app-id migration (`crates/atlas-desktop/src/id_migrate.rs`) has an end-to-end check with real WebKit: `scripts/migration-e2e.sh` builds the app under two throwaway bundle ids, writes `localStorage` in the "old" one, starts the "new" one and reads it back, then deletes both stores and rebuilds the normal dev app (macOS, about two minutes).
 
+### Three ways to look at the app you are changing
+
+| Mode | Start | You see | Use it for |
+|---|---|---|---|
+| Lab | `atlas dev lab` / `bun run desktop:lab` | the frontend in your browser, HMR | most UI work; agents work here |
+| Mirror | `bun run desktop:mirror` | the whole real window of an invisible instance, live, click + type | following an agent, native parts without a window |
+| Desktop | `atlas dev desktop` / `bun run desktop:dev` | the real **Atlas Dev** window on your screen (orange icon, own id), HMR + Rust rebuilds | native layout: title bar, toolbar buttons, traffic lights, terminal, gestures, menus |
+
+Atlas Dev runs beside your installed Atlas without touching it (own bundle id and WebKit store). An agent starts the Desktop mode only when you ask it to (`atlas_start_service desktop`, `atlas_stop_service desktop` to go back to headless); on its own it stays on Lab and the mirror.
+
 ### Atlas Lab: the frontend in your browser, no Atlas window
 
 Most frontend work does not need the app on screen. Pick the lightest level that covers the change:

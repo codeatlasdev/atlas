@@ -599,7 +599,7 @@ fn installed() -> Vec<&'static str> {
     ["omp", "claude", "codex"]
         .into_iter()
         .filter(|a| {
-            crate::agent::registry::get(a)
+            atlas_core::agents::get(a)
                 .and_then(|d| crate::agent::registry::which(d.bin))
                 .is_some()
         })
@@ -744,7 +744,7 @@ pub async fn commit_msg_generate(
         .collect();
     // The agent's own binary path (login-shell PATH), not whatever the app inherited.
     if let Some(bin) =
-        crate::agent::registry::get(agent).and_then(|a| crate::agent::registry::which(a.bin))
+        atlas_core::agents::get(agent).and_then(|a| crate::agent::registry::which(a.bin))
     {
         argv[0] = bin.to_string_lossy().into_owned();
     }

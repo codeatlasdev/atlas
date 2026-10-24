@@ -12,8 +12,10 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/features/home/home_screen.dart';
+import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/push/push_service.dart';
+import 'package:atlas_mobile/core/push/push_registration.dart';
 
 /// State for the pairing flow.
 enum PairStatus { idle, connecting, success, error }
@@ -107,9 +109,36 @@ class _PairScreenState extends ConsumerState<PairScreen> {
   }
 
   void _done() {
-    // Home lists paired Macs from storage: reload it.
     ref.invalidate(pairedDevicesProvider);
+    // If a push token is already available, try to register it with the new
+    // computer (best effort; no await — the user is already on the home screen).
+    final token = ref.read(fcmTokenProvider);
+    if (token != null) {
+      _registerTokenWithNewComputer(token);
+    }
     context.pop();
+  }
+
+  Future<void> _registerTokenWithNewComputer(String token) async {
+    // Pairing stores the device; we need to connect to it to register.
+    // We look up the new device from paired devices after invalidation.
+    final devices = await ref.read(pairedDevicesProvider.future);
+    final secretKey = await ref.read(macStorageProvider).loadSecretKey() ?? '';
+    for (final device in devices) {
+      try {
+        final transport = await ref.read(transportFactoryProvider)(device, secretKey);
+        final mux = Multiplexer(transport);
+        try {
+          if (await checkBotsCap(mux)) {
+            await PushService.registerWithComputer(mux, token);
+          }
+        } finally {
+          await mux.close();
+        }
+      } catch (_) {
+        // Best effort: ignore failures.
+      }
+    }
   }
 
   void _retry() {

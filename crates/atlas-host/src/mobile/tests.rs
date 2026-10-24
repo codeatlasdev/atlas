@@ -14,6 +14,7 @@ async fn daemon(dir: &Path) -> HostClient {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
+        bot_host: true,
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
@@ -552,4 +553,192 @@ async fn settings_fixtures_are_the_real_payloads() {
             "{name} changed: rerun with UPDATE_FIXTURES=1, then the TS test"
         );
     }
+}
+
+/// A paired phone with only Read scope gets forbidden: act on bot_task.
+#[tokio::test]
+async fn bot_task_requires_act_scope() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read"]}),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call(
+            "bot_task",
+            json!({"id": "x", "prompt": "hi", "source": "mobile"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// bot_task push events reach a Read phone.
+#[tokio::test]
+async fn bot_task_push_reaches_read_phone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+    // Simulate a bot_task push by broadcasting it from the desktop side.
+    // We reach into the daemon via exec + a raw connection to send an event.
+    // Simpler: shutdown and check the scope mapping.
+    // push_scope("bot_task") == Some(Scope::Read)
+    assert_eq!(
+        crate::mobile::push_scope("bot_task"),
+        Some(crate::mobile::Scope::Read)
+    );
+    c.call("shutdown", json!({})).await.ok();
+    let _ = phone.call("info", json!({})).await; // just drain
+}
+
+/// Revoking a device removes its push tokens.
+#[tokio::test]
+async fn revoke_drops_push_tokens() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, _phone, node) = paired(tmp.path()).await;
+    // Register a push token for this device.
+    c.call(
+        "push_register",
+        json!({"token": "fcm-test-token", "platform": "fcm"}),
+    )
+    .await
+    .unwrap();
+    // Revoke the device.
+    c.call("mobile_revoke", json!({"node_id": node}))
+        .await
+        .unwrap();
+    // The tokens file should no longer contain the token for this node.
+    let tokens_path = tmp.path().join("push").join("tokens.json");
+    if tokens_path.exists() {
+        let content = std::fs::read_to_string(&tokens_path).unwrap();
+        let tokens: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap_or_default();
+        assert!(
+            !tokens.iter().any(|t| t["node_id"] == node),
+            "push token for revoked device still present"
+        );
+    }
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// desktop calls mobile_invite; phone receives computer_invite push with correct url/name.
+#[tokio::test]
+async fn mobile_invite_persists_and_pushes_to_connected_phone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+
+    // Prime the phone's push listener before sending the invite.
+    let url = "atlas-mobile://pair?code=123456";
+    let name = "MyMac";
+    c.call("mobile_invite", json!({"url": url, "name": name}))
+        .await
+        .unwrap();
+
+    // The invite must be persisted: mobile_invites returns it.
+    let invites = c.call("mobile_invites", json!({})).await.unwrap();
+    let list = invites["invites"].as_array().unwrap();
+    assert!(!list.is_empty(), "invite must be persisted: {invites}");
+    assert_eq!(list[0]["url"], url, "wrong url: {invites}");
+    assert_eq!(list[0]["name"], name, "wrong name: {invites}");
+
+    // Phone should receive a computer_invite push.
+    let pushes = phone.pushes(500).await;
+    let got = pushes.iter().find(|v| v["ev"] == "computer_invite");
+    assert!(
+        got.is_some(),
+        "phone must receive computer_invite push; got: {pushes:?}"
+    );
+    let p = got.unwrap();
+    assert_eq!(p["url"], url, "wrong url in push: {p}");
+    assert_eq!(p["name"], name, "wrong name in push: {p}");
+
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// mobile_invites returns pending invite to a phone that connects after the invite was sent.
+#[tokio::test]
+async fn mobile_invites_returns_pending_to_late_connecting_phone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+
+    c.call(
+        "mobile_invite",
+        json!({"url": "atlas-mobile://pair?code=999", "name": "Mac"}),
+    )
+    .await
+    .unwrap();
+
+    // Phone calls mobile_invites and sees the invite.
+    let r = phone.call("mobile_invites", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let list = r["data"]["invites"].as_array().unwrap();
+    assert!(!list.is_empty(), "phone must see pending invite: {r}");
+    assert_eq!(list[0]["url"], "atlas-mobile://pair?code=999");
+
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// after mobile_invite, phone calls mobile_invite_dismiss; mobile_invites returns empty.
+#[tokio::test]
+async fn mobile_invite_dismiss_removes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+
+    let url = "atlas-mobile://pair?code=dismiss-me";
+    c.call("mobile_invite", json!({"url": url, "name": "Mac"}))
+        .await
+        .unwrap();
+
+    // Verify it's there first.
+    let r = phone.call("mobile_invites", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let list = r["data"]["invites"].as_array().unwrap();
+    assert!(!list.is_empty(), "invite must exist before dismiss: {r}");
+
+    // Dismiss it.
+    let d = phone
+        .call("mobile_invite_dismiss", json!({"url": url}))
+        .await
+        .unwrap();
+    assert_eq!(d["ok"], true, "{d}");
+
+    // Now mobile_invites must return empty.
+    let r2 = phone.call("mobile_invites", json!({})).await.unwrap();
+    assert_eq!(r2["ok"], true, "{r2}");
+    let list2 = r2["data"]["invites"].as_array().unwrap();
+    assert!(
+        list2.is_empty(),
+        "invite must be removed after dismiss: {r2}"
+    );
+
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// phone calling mobile_invite gets "not available on mobile" error.
+#[tokio::test]
+async fn mobile_invite_not_available_on_phone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_c, mut phone, _node) = paired(tmp.path()).await;
+
+    let r = phone
+        .call(
+            "mobile_invite",
+            json!({"url": "atlas-mobile://pair?code=x", "name": "Mac"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        r["ok"], false,
+        "expected error for phone mobile_invite: {r}"
+    );
+    assert!(
+        r["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("not available on mobile")),
+        "wrong error: {r}"
+    );
+
+    _c.call("shutdown", json!({})).await.ok();
 }

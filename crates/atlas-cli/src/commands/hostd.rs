@@ -53,14 +53,15 @@ impl AtlasCommand for HostdArgs {
     async fn run(self) -> Result<()> {
         let explicit_dir = self.dir.is_some();
         let dir = self.dir.unwrap_or_else(paths::base);
-        // `ATLAS_MOBILE_RELAY=0`: Atlas Mobile on direct addresses only (LAN, tests).
         let no_mobile_relay = std::env::var("ATLAS_MOBILE_RELAY").is_ok_and(|v| v == "0");
+        let bot_host = std::env::var("ATLAS_BOT_HOST").as_deref() == Ok("1");
         if let Some(sock) = self.takeover {
             return atlas_host::server::serve_with(
                 &dir,
                 atlas_host::server::ServeOpts {
                     takeover: Some(sock),
                     no_mobile_relay,
+                    bot_host,
                 },
             )
             .await;
@@ -123,6 +124,7 @@ impl AtlasCommand for HostdArgs {
             atlas_host::server::ServeOpts {
                 takeover: None,
                 no_mobile_relay,
+                bot_host,
             },
         )
         .await

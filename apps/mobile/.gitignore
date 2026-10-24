@@ -51,3 +51,7 @@ app.*.map.json
 fastlane/report.xml
 fastlane/README.md
 build/fastlane/
+
+# Firebase config files (written from CI secrets, never committed)
+google-services.json
+GoogleService-Info.plist

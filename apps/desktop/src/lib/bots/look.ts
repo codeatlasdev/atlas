@@ -1,5 +1,5 @@
 /**
- * What a bot looks like: body colour, eye style and hat. Pure data, no DOM,
+ * What a bot looks like: body colour, eye style, hat, tool, outfit and eyewear. Pure data, no DOM,
  * so the editor, the avatar and persisted settings share one definition.
  */
 
@@ -52,12 +52,17 @@ export type Tool = (typeof TOOLS)[number];
 export const OUTFITS = ["none", "scarf", "coat", "apron", "satchel", "tie"] as const;
 export type Outfit = (typeof OUTFITS)[number];
 
+/** Eyewear drawn over the eyes (BotFaceGear.svelte); shown at every size. */
+export const FACES = ["none", "eyepatch", "monocle", "round-glasses", "sunglasses", "goggles"] as const;
+export type Face = (typeof FACES)[number];
+
 export interface BotLook {
 	color: string;
 	eyes: EyeStyle;
 	hat: Hat;
 	tool: Tool;
 	outfit: Outfit;
+	face: Face;
 }
 
 export const EYE_LABELS: Record<EyeStyle, string> = {
@@ -105,6 +110,41 @@ export const OUTFIT_LABELS: Record<Outfit, string> = {
 	tie: "Tie",
 };
 
+export const FACE_LABELS: Record<Face, string> = {
+	none: "None",
+	eyepatch: "Eyepatch",
+	monocle: "Monocle",
+	"round-glasses": "Glasses",
+	sunglasses: "Sunglasses",
+	goggles: "Goggles",
+};
+
+/** One-click presets: dress for a job, keep the crewmate's own colour and eyes. */
+export const ROLE_KITS: {
+	id: string;
+	label: string;
+	kit: Pick<BotLook, "hat" | "tool" | "outfit" | "face">;
+}[] = [
+	{ id: "captain", label: "Captain", kit: { hat: "bicorne", tool: "compass", outfit: "coat", face: "none" } },
+	{ id: "sales", label: "Sales", kit: { hat: "straw", tool: "pin", outfit: "satchel", face: "none" } },
+	{
+		id: "reviewer",
+		label: "Reviewer",
+		kit: { hat: "none", tool: "magnifier", outfit: "tie", face: "round-glasses" },
+	},
+	{
+		id: "lookout",
+		label: "Lookout",
+		kit: { hat: "bandana", tool: "spyglass", outfit: "none", face: "eyepatch" },
+	},
+	{ id: "scribe", label: "Scribe", kit: { hat: "beanie", tool: "quill", outfit: "scarf", face: "monocle" } },
+	{
+		id: "keeper",
+		label: "Lighthouse keeper",
+		kit: { hat: "wizard", tool: "lantern", outfit: "coat", face: "none" },
+	},
+];
+
 const HEX = /^#[0-9a-f]{6}$/i;
 
 function hash(seed: string): number {
@@ -121,6 +161,7 @@ export function defaultLook(seed: string): BotLook {
 		hat: "straw",
 		tool: "none",
 		outfit: "none",
+		face: "none",
 	};
 }
 
@@ -138,6 +179,7 @@ export function normalizeLook(raw: unknown, seed: string): BotLook {
 		hat: HATS.includes(r.hat as Hat) ? (r.hat as Hat) : d.hat,
 		tool: TOOLS.includes(r.tool as Tool) ? (r.tool as Tool) : d.tool,
 		outfit: OUTFITS.includes(r.outfit as Outfit) ? (r.outfit as Outfit) : d.outfit,
+		face: FACES.includes(r.face as Face) ? (r.face as Face) : d.face,
 	};
 }
 
@@ -149,6 +191,7 @@ export function randomLook(rand: () => number = Math.random): BotLook {
 		hat: pick(HATS),
 		tool: pick(TOOLS),
 		outfit: pick(OUTFITS),
+		face: pick(FACES),
 	};
 }
 

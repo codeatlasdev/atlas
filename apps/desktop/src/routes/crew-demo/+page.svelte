@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BotEditor from "#lib/bots/BotEditor.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import type { BotState } from "#lib/bots/botFace.ts";
 	import type { BotLook } from "#lib/bots/look.ts";
@@ -9,57 +10,125 @@
 	const CREW: { name: string; look: BotLook }[] = [
 		{
 			name: "Atlas",
-			look: { color: "#3d5bff", eyes: "round", hat: "bicorne", tool: "compass", outfit: "coat" },
+			look: {
+				color: "#3d5bff",
+				eyes: "round",
+				hat: "bicorne",
+				tool: "compass",
+				outfit: "coat",
+				face: "none",
+			},
 		},
 		{
 			name: "Koatla",
-			look: { color: "#22c55e", eyes: "happy", hat: "cap", tool: "wrench", outfit: "apron" },
+			look: { color: "#22c55e", eyes: "happy", hat: "cap", tool: "wrench", outfit: "apron", face: "goggles" },
 		},
 		{
 			name: "Zelvo",
-			look: { color: "#f97316", eyes: "round", hat: "straw", tool: "pin", outfit: "satchel" },
+			look: {
+				color: "#f97316",
+				eyes: "round",
+				hat: "straw",
+				tool: "pin",
+				outfit: "satchel",
+				face: "sunglasses",
+			},
 		},
 		{
 			name: "Analisa",
-			look: { color: "#3d5bff", eyes: "visor", hat: "none", tool: "magnifier", outfit: "tie" },
+			look: {
+				color: "#3d5bff",
+				eyes: "round",
+				hat: "none",
+				tool: "magnifier",
+				outfit: "tie",
+				face: "round-glasses",
+			},
 		},
 		{
 			name: "atla.bio",
-			look: { color: "#8b5cf6", eyes: "round", hat: "bandana", tool: "megaphone", outfit: "scarf" },
+			look: {
+				color: "#8b5cf6",
+				eyes: "round",
+				hat: "bandana",
+				tool: "megaphone",
+				outfit: "scarf",
+				face: "none",
+			},
 		},
 		{
 			name: "Promptin",
-			look: { color: "#eab308", eyes: "happy", hat: "beanie", tool: "quill", outfit: "scarf" },
+			look: {
+				color: "#eab308",
+				eyes: "round",
+				hat: "beanie",
+				tool: "quill",
+				outfit: "scarf",
+				face: "monocle",
+			},
 		},
 		{
 			name: "Vigia",
-			look: { color: "#14b8a6", eyes: "cyclops", hat: "bandana", tool: "spyglass", outfit: "none" },
+			look: {
+				color: "#14b8a6",
+				eyes: "round",
+				hat: "bandana",
+				tool: "spyglass",
+				outfit: "none",
+				face: "eyepatch",
+			},
 		},
 		{
 			name: "Noite",
-			look: { color: "#8b5cf6", eyes: "sleepy", hat: "wizard", tool: "lantern", outfit: "coat" },
+			look: {
+				color: "#8b5cf6",
+				eyes: "sleepy",
+				hat: "wizard",
+				tool: "lantern",
+				outfit: "coat",
+				face: "none",
+			},
 		},
 	];
 
-	let state = $state<BotState>("idle");
+	let crewState = $state<BotState>("idle");
+	let building = $state(false);
+	let draft = $state<BotLook>({
+		color: "#38bdf8",
+		eyes: "round",
+		hat: "none",
+		tool: "none",
+		outfit: "none",
+		face: "none",
+	});
 </script>
 
 <div class="page">
 	<div class="states" role="radiogroup" aria-label="State">
 		{#each STATES as s (s)}
-			<button role="radio" aria-checked={state === s} class:on={state === s} onclick={() => (state = s)}
-				>{s}</button
+			<button
+				role="radio"
+				aria-checked={crewState === s}
+				class:on={crewState === s}
+				onclick={() => (crewState = s)}>{s}</button
 			>
 		{/each}
+		<button class="build" aria-pressed={building} onclick={() => (building = !building)}>
+			{building ? "Back to the crew" : "Build a crewmate"}
+		</button>
 	</div>
-	<div class="grid">
-		{#each CREW as c (c.name)}
-			<div class="cell">
-				<BotFace seed={c.name} look={c.look} {state} size={150} track />
-				<span class="lbl">{c.name}</span>
-			</div>
-		{/each}
-	</div>
+	{#if building}
+		<div class="editor"><BotEditor bind:look={draft} seed="builder" /></div>
+	{:else}
+		<div class="grid">
+			{#each CREW as c (c.name)}
+				<div class="cell">
+					<BotFace seed={c.name} look={c.look} state={crewState} size={150} track />
+					<span class="lbl">{c.name}</span>
+				</div>
+			{/each}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -92,6 +161,13 @@
 	.states .on {
 		background: var(--ca-text-primary, #111);
 		color: var(--ca-surface-base, #fff);
+	}
+	.states .build {
+		margin-left: 16px;
+		border-color: var(--ca-brand-main, #3d5bff);
+	}
+	.editor {
+		width: min(960px, 100%);
 	}
 	.grid {
 		display: grid;

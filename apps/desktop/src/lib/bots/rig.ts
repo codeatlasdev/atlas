@@ -193,6 +193,91 @@ export function fromChannels(c: readonly number[]): Pose {
 	};
 }
 
+/** Which piece was just put on (BotFace `react`). `kit` = several at once. */
+export type EquipPart = "hat" | "outfit" | "tool" | "face" | "kit" | "color" | "eyes";
+
+/**
+ * Velocity kicks added to the sprung channels (index-aligned with toChannels) when
+ * something is put on: a small happy hop with a squash on landing, hands flapping up.
+ * Kicks, not targets, so the hop overlays whatever the state is doing.
+ */
+export function equipImpulse(part: EquipPart): number[] {
+	const kick = new Array<number>(STIFFNESS.length).fill(0);
+	const big = part === "kit" ? 1.35 : 1;
+	kick[0] = -1500 * big; // body y: up
+	kick[1] = -1.1 * big; // sx: stretch thin on the way up
+	kick[2] = 1.5 * big; // sy: and tall
+	kick[4] = part === "hat" ? 900 : 260 * big; // hat trails (and bounces hardest when it is the new piece)
+	kick[6] = -900 * big; // left hand
+	kick[9] = part === "tool" ? -1400 : -900 * big; // right hand: tossed up when the tool is new
+	kick[11] = part === "tool" ? 500 : 0; // tool swings from the catch
+	return kick;
+}
+
+/**
+ * Entry animation of a freshly put-on piece, `k` = seconds since it was equipped.
+ * Pure, in SVG units/fractions, so BotFace only samples it each frame.
+ *  - hat: drops in from above with a bounce
+ *  - outfit: wipes on top to bottom (fraction revealed, 0..1)
+ *  - tool: tossed in from above-right, settling into the hand
+ *  - face: snaps on (scale overshoot) with a small fade
+ */
+export function equipEnter(
+	part: "hat" | "outfit" | "tool" | "face",
+	k: number,
+): { dy: number; dx: number; reveal: number; scale: number; alpha: number } {
+	const out = { dy: 0, dx: 0, reveal: 1, scale: 1, alpha: 1 };
+	if (k < 0) return out;
+	switch (part) {
+		case "hat": {
+			const dur = 0.7;
+			if (k >= dur) return out;
+			const u = k / dur;
+			// Fall with gravity, bounce twice with decaying height.
+			const fall = 0.4;
+			if (u < fall) {
+				const f = u / fall;
+				out.dy = -300 * (1 - f * f);
+			} else {
+				const b = (u - fall) / (1 - fall);
+				out.dy = -40 * Math.abs(Math.sin(b * Math.PI * 2)) * (1 - b);
+			}
+			out.alpha = Math.min(1, k / 0.08);
+			return out;
+		}
+		case "outfit": {
+			const dur = 0.5;
+			if (k >= dur) return out;
+			const u = k / dur;
+			out.reveal = 1 - (1 - u) ** 3;
+			return out;
+		}
+		case "tool": {
+			const dur = 0.65;
+			if (k >= dur) return out;
+			const u = k / dur;
+			const e = 1 - (1 - u) ** 3;
+			// Arc in from above-right, tiny overshoot via the sin term.
+			out.dx = 160 * (1 - e);
+			out.dy = -260 * (1 - e) - Math.sin(u * Math.PI) * 50;
+			out.scale = 0.4 + 0.6 * e;
+			out.alpha = Math.min(1, k / 0.06);
+			return out;
+		}
+		case "face": {
+			const dur = 0.4;
+			if (k >= dur) return out;
+			const u = k / dur;
+			// Back-ease: overshoots past 1 then settles.
+			const c = 2.4;
+			const e = 1 + (c + 1) * (u - 1) ** 3 + c * (u - 1) ** 2;
+			out.scale = 1.6 - 0.6 * e;
+			out.alpha = Math.min(1, k / 0.05);
+			return out;
+		}
+	}
+}
+
 /** Body channels are snappy; hands and hat trail behind (follow-through). Index-aligned with toChannels. */
 export const STIFFNESS: readonly [number, number][] = [
 	[260, 18],

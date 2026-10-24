@@ -286,12 +286,8 @@
 
 		<!-- Bot list (non-favorite) -->
 		<div class="bot-list" role="list">
-			{#if nonFavBots.length === 0 && bots.allBots.length === 0}
-				<div class="empty-state">
-					<p class="empty-title">No crew yet</p>
-					<p class="empty-sub">Launch your ship to get started.</p>
-					<button class="empty-add" onclick={openBotsSettings}>Launch your ship</button>
-				</div>
+		{#if nonFavBots.length === 0 && bots.allBots.length === 0}
+			<!-- empty — footer "Launch your ship" is the CTA -->
 			{:else if nonFavBots.length === 0 && query.trim()}
 				<div class="empty-state">
 					<p class="empty-sub">No crewmates match "{query}"</p>
@@ -329,21 +325,27 @@
 				<User size={15} />
 			</button>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="footer-pill-wrap" onmouseleave={() => (footerOpen = false)}>
+		<div class="footer-pill-wrap" onmouseleave={() => (footerOpen = false)}>
+			{#if remoteHosts.length === 0}
+				<button
+					class="footer-pill footer-pill--launch"
+					onclick={openOnboarding}
+					aria-label="Launch your ship"
+				>
+					<ShipFlag size={13} />
+					<span>Launch your ship</span>
+				</button>
+			{:else}
 				<button
 					class="footer-pill"
 					onclick={() => (footerOpen = !footerOpen)}
-					aria-label={remoteHosts.length === 0 ? 'Connect ship' : remoteHosts[0].name}
+					aria-label={remoteHosts[0].name}
 					aria-expanded={footerOpen}
 					aria-haspopup="menu"
 				>
 					<ShipFlag size={13} />
-					{#if remoteHosts.length === 0}
-						<span>Connect ship</span>
-					{:else}
-						<span class="server-dot" class:online={bots.hostOk(remoteHosts[0].key)} aria-hidden="true"></span>
-						<span class="footer-ship-name">{remoteHosts[0].name}</span>
-					{/if}
+					<span class="server-dot" class:online={bots.hostOk(remoteHosts[0].key)} aria-hidden="true"></span>
+					<span class="footer-ship-name">{remoteHosts[0].name}</span>
 				</button>
 				{#if footerOpen}
 					<div class="footer-popover" role="menu">
@@ -365,8 +367,9 @@
 						</button>
 					</div>
 				{/if}
-			</div>
+			{/if}
 		</div>
+	</div>
 	</div>
 
 	<!-- Right panel -->
@@ -449,7 +452,7 @@
 		height: 36px;
 		border-radius: 50%;
 		border: none;
-		background: transparent;
+		background: var(--ca-surface-raised, var(--ca-vibrancy-fill));
 		color: var(--ca-text-secondary);
 		cursor: default;
 		flex: none;
@@ -636,12 +639,6 @@
 		text-align: center;
 	}
 
-	.empty-title {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ca-text-primary);
-		margin: 0;
-	}
 
 	.empty-sub {
 		font-size: 12px;
@@ -650,20 +647,6 @@
 		line-height: 1.5;
 	}
 
-	.empty-add {
-		margin-top: 8px;
-		font-size: 12px;
-		padding: 5px 12px;
-		border-radius: 6px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: none;
-		color: var(--ca-brand-main);
-		cursor: default;
-	}
-
-	.empty-add:hover {
-		background: var(--ca-vibrancy-fill);
-	}
 
 	/* Footer (Discord user-bar style) */
 	/* ─── Footer: user + ship pill ────────────────────────────── */
@@ -722,6 +705,18 @@
 	.footer-pill:hover {
 		background: var(--ca-vibrancy-fill);
 		color: var(--ca-text-primary);
+	}
+	.footer-pill--launch {
+		background: var(--ca-brand-main);
+		color: var(--ca-surface-base);
+		height: 40px;
+		font-weight: 600;
+		border-color: transparent;
+	}
+	.footer-pill--launch:hover {
+		opacity: 0.88;
+		color: var(--ca-surface-base);
+		background: var(--ca-brand-main);
 	}
 	.footer-ship-name {
 		overflow: hidden;

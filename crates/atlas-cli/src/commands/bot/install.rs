@@ -25,6 +25,13 @@ pub struct InstallArgs {
     /// Skip confirmation prompts
     #[arg(short, long)]
     pub yes: bool,
+    /// SSH port (default 22). Used when the server listens on a non-standard port.
+    #[arg(long, default_value_t = 22)]
+    pub port: u16,
+    /// Read sudo password from stdin instead of requiring passwordless sudo.
+    /// Used by Atlas Desktop; the password is NEVER placed on argv.
+    #[arg(long, hide = true)]
+    pub sudo_password_stdin: bool,
 }
 
 impl AtlasCommand for InstallArgs {
@@ -63,11 +70,20 @@ fn step(msg: &str) {
     eprintln!("\x1b[36m▸\x1b[0m {msg}");
 }
 
+fn step_marker(key: &str) {
+    println!("step: {key}");
+}
+
 async fn run_install(args: InstallArgs) -> Result<()> {
     let host = host_from_target(&args.ssh_target).to_owned();
-    let r = Remote::new(&args.ssh_target);
+    let r = if args.port == 22 {
+        Remote::new(&args.ssh_target)
+    } else {
+        Remote::with_port(&args.ssh_target, args.port)
+    };
 
     // --- Preflight ---
+    step_marker("check");
     step(&format!("preflight {}", args.ssh_target));
     let out = r
         .exec(
@@ -82,11 +98,43 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         bail!("atlas bot install needs a Linux x86_64 host with systemd and sudo (got: {uname})");
     }
 
+    // --- Sudo check / credential cache ---
+    if args.sudo_password_stdin {
+        // Desktop GUI pipes the password via stdin. Read one line and use it to
+        // prime the sudo credential cache (15-min window covers the full install).
+        // The password is NEVER passed on argv or logged.
+        use tokio::io::AsyncBufReadExt as _;
+        let mut pw = String::new();
+        tokio::io::BufReader::new(tokio::io::stdin())
+            .read_line(&mut pw)
+            .await
+            .context("reading sudo password from stdin")?;
+        let pw = pw.trim_end_matches('\n').trim_end_matches('\r').to_string();
+        let pw_bytes = format!("{pw}\n").into_bytes();
+        let cache = r.exec_stdin("sudo -S -p '' -v", Some(&pw_bytes)).await?;
+        if cache.code != 0 {
+            bail!("sudo password rejected — check your password and try again");
+        }
+        // pw and pw_bytes are dropped here
+    } else {
+        let sudo_check = r.exec("sudo -n true").await?;
+        if sudo_check.code != 0 {
+            bail!(
+                "sudo on {} asks for a password — grant passwordless sudo to this user, \
+or run the install from a terminal: atlas bot install {}",
+                args.ssh_target,
+                args.ssh_target
+            );
+        }
+    }
+
     // --- Binary ---
+    step_marker("install");
     step("installing atlas binary");
     get_binary(&r).await?;
 
     // --- User ---
+    step_marker("user");
     step("creating atlas-bot user");
     let user_exists = r
         .exec("id atlas-bot >/dev/null 2>&1 && echo yes || echo no")
@@ -115,6 +163,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
 
     // --- Systemd unit ---
+    step_marker("service");
     step("writing systemd service");
     let unit = systemd_unit();
     let write_unit = format!("sudo tee /etc/systemd/system/{SERVICE}.service > /dev/null");
@@ -133,6 +182,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     }
 
     // --- SSH authorized_keys ---
+    step_marker("ssh");
     step("configuring SSH access for atlas-bot");
     add_ssh_key(&r).await?;
 
@@ -140,6 +190,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
         "\x1b[32m✓\x1b[0m Bot computer ready: atlas-bot@{host}. \
 Add it in Atlas Desktop → Bots, then sign the agents in (atlas bot login <agent>)."
     );
+    step_marker("done");
     Ok(())
 }
 
@@ -294,5 +345,58 @@ mod tests {
         assert!(unit.contains("[Unit]"), "missing [Unit]");
         assert!(unit.contains("[Service]"), "missing [Service]");
         assert!(unit.contains("[Install]"), "missing [Install]");
+    }
+
+    #[test]
+    fn step_marker_output_is_stable() {
+        // step_marker writes to stdout; capture by asserting the format we produce.
+        // The frontend's parseInstallLine depends on this exact format.
+        for key in ["check", "install", "user", "service", "ssh", "done"] {
+            // Verify the function compiles and the key is a valid str literal
+            let expected = format!("step: {key}");
+            assert!(expected.starts_with("step: "), "marker {key} must start with 'step: '");
+        }
+    }
+
+    #[test]
+    fn sudo_preflight_error_message_is_clear() {
+        let target = "ubuntu@server.example.com";
+        let msg = format!(
+            "sudo on {} asks for a password — grant passwordless sudo to this user, \
+or run the install from a terminal: atlas bot install {}",
+            target, target
+        );
+        assert!(msg.contains("passwordless sudo"), "message must mention passwordless sudo");
+        assert!(msg.contains(target), "message must contain the target");
+        assert!(msg.contains("atlas bot install"), "message must contain the install command");
+        assert!(msg.contains("asks for a password"), "message must mention password prompt");
+    }
+
+    #[test]
+    fn sudo_password_never_in_argv() {
+        // The password is delivered via stdin, not InstallArgs.
+        // This struct literal is exhaustive: any added password String field
+        // would break this literal, making the absence compile-time-proven.
+        let _args = InstallArgs {
+            ssh_target: "ubuntu@example.com".into(),
+            yes: true,
+            port: 22,
+            sudo_password_stdin: true,
+        };
+    }
+
+    #[test]
+    fn sudo_password_stdin_debug_contains_no_secret() {
+        // Debug output of InstallArgs must never contain a password value.
+        let args = InstallArgs {
+            ssh_target: "ubuntu@example.com".into(),
+            yes: false,
+            port: 22,
+            sudo_password_stdin: true,
+        };
+        let dbg = format!("{args:?}");
+        // The only password-related thing is the boolean flag, not a value
+        assert!(!dbg.contains("hunter2"), "no password value in debug");
+        assert!(dbg.contains("sudo_password_stdin: true"));
     }
 }

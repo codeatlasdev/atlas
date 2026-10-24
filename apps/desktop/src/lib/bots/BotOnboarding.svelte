@@ -24,6 +24,10 @@
 	} from "#lib/bots/botsOnboarding.ts";
 	import { Copy, Check, ChevronLeft } from "@lucide/svelte";
 	import { toast } from "@codeatlasdev/ui";
+	import { invoke } from "@tauri-apps/api/core";
+	import { listen } from "@tauri-apps/api/event";
+	import { parseInstallLine, INSTALL_STEPS, type InstallPhase } from "#lib/bots/installSteps.ts";
+	import { parseSSHTarget } from "#lib/bots/sshTarget.ts";
 	import { errText } from "#lib/api.ts";
 
 	let { ondone }: { ondone: () => void } = $props();
@@ -43,10 +47,32 @@
 
 	// ─── connect step ─────────────────────────────────────────────────────────
 	let sshTarget = $state("");
-	let connecting = $state(false);
-	let connectError = $state("");
-	let connected = $state(false);
+	let sshPort = $state(22);
+	/** Phases that have completed (ticked in the checklist). */
+	let installedPhases = $state(new Set<InstallPhase>());
+	/** The phase currently running (spinner). */
+	let activePhase = $state<InstallPhase | null>(null);
+	/** Phase that failed (shown in red). */
+	let failedPhase = $state<InstallPhase | null>(null);
+	/** Last error line from stderr. */
+	let lastErrLine = $state("");
+	let installRunning = $state(false);
+	let installDone = $state(false);
 	let fieldShake = $state(false);
+
+	// ─── connect step: SSH key ────────────────────────────────────────────────
+	let keyChecked = $state(false);
+	let hasKey = $state(false);
+	let creatingKey = $state(false);
+	let keyError = $state("");
+
+	// ─── connect step: auth flows ─────────────────────────────────────────────
+	/** "authorize" = Permission denied → copy key via password.
+	 *  "sudo" = sudo needs password. "none" = not in an auth flow. */
+	let authMode = $state<"none" | "authorize" | "sudo">("none");
+	let authPassword = $state("");
+	let authRunning = $state(false);
+	let authError = $state("");
 
 	// ─── engine step ──────────────────────────────────────────────────────────
 	let selectedEngine = $state("");
@@ -61,6 +87,10 @@
 	);
 
 	const signInHost = $derived(sshTarget.trim() || "user@host");
+
+	const targetValid = $derived(
+		sshTarget.trim() === "" ? false : parseSSHTarget(`${sshTarget.trim()}:${sshPort}`).ok
+	);
 
 	const progress = $derived(stepProgress({ step, hasHost }));
 
@@ -117,7 +147,7 @@
 		},
 		connect: {
 			headline: "Launch your ship",
-			body: "Run this command on your Linux server, then enter its address below.",
+		body: "You need a Linux server you can SSH into.",
 			glow: "rgba(61, 91, 255, 0.08)",
 		},
 		engine: {
@@ -193,27 +223,108 @@
 		ondone();
 	}
 
+	// Detect SSH key when the connect step becomes active
+	$effect(() => {
+		if (step === "connect" && !keyChecked) {
+			invoke<string | null>("ssh_key_find").then((p) => {
+				hasKey = p !== null;
+				keyChecked = true;
+			});
+		}
+	});
+
 	// ─── connect step actions ─────────────────────────────────────────────────
 
-	async function connectHost() {
-		const target = sshTarget.trim();
-		if (!target) return;
-		connecting = true;
-		connectError = "";
+	async function createSshKey() {
+		creatingKey = true;
+		keyError = "";
 		try {
-			await bots.addHost(target, target);
-			connected = true;
-			setTimeout(advance, 900);
+			await invoke("ssh_keygen");
+			hasKey = true;
 		} catch (e) {
-			connectError = errText(e);
-			fieldShake = true;
-			setTimeout(() => (fieldShake = false), 500);
+			keyError = errText(e);
 		} finally {
-			connecting = false;
+			creatingKey = false;
 		}
 	}
 
-	async function copyInstall() {
+	/** Core install runner. Accepts an optional sudo password (piped securely). */
+	async function launchShip(sudoPassword?: string) {
+		const target = sshTarget.trim();
+		if (!target) {
+			fieldShake = true;
+			setTimeout(() => (fieldShake = false), 500);
+			return;
+		}
+		installRunning = true;
+		installDone = false;
+		failedPhase = null;
+		lastErrLine = "";
+		installedPhases = new Set<InstallPhase>();
+		activePhase = null;
+		authMode = "none";
+		authError = "";
+
+		const unlisten = await listen<{ line: string; is_err: boolean }>(
+			"bot://install-line",
+			(e) => {
+				const phase = parseInstallLine(e.payload.line);
+				if (!phase) return;
+				if (phase === "done") {
+					installedPhases = new Set(INSTALL_STEPS.map((s) => s.phase));
+					activePhase = null;
+				} else {
+					if (activePhase) installedPhases = new Set([...installedPhases, activePhase]);
+					activePhase = phase;
+				}
+			},
+		);
+
+		try {
+			const args: Record<string, unknown> = { target, port: sshPort !== 22 ? sshPort : null };
+			if (sudoPassword !== undefined) args.sudoPassword = sudoPassword;
+			await invoke("bot_install", args);
+			await bots.addHost(target, target);
+			installedPhases = new Set(INSTALL_STEPS.map((s) => s.phase));
+			activePhase = null;
+			installDone = true;
+			setTimeout(advance, 900);
+		} catch (e) {
+			const err = errText(e);
+			failedPhase = activePhase;
+			lastErrLine = err;
+			if (err.includes("Permission denied (publickey)")) {
+				authMode = "authorize";
+			} else if (err.includes("asks for a password") || err.includes("passwordless sudo") || err.includes("sudo password rejected")) {
+				authMode = "sudo";
+			}
+			fieldShake = true;
+			setTimeout(() => (fieldShake = false), 500);
+		} finally {
+			unlisten();
+			installRunning = false;
+		}
+	}
+
+	/** Authorize this Mac's key on the server via password, then retry install. */
+	async function authorizeAndRetry() {
+		authRunning = true;
+		authError = "";
+		const pw = authPassword;
+		authPassword = ""; // clear from state immediately
+		try {
+			await invoke("ssh_authorize_key", { target: sshTarget.trim(), port: sshPort !== 22 ? sshPort : null, password: pw });
+			authMode = "none";
+			await launchShip();
+		} catch (e) {
+			authError = errText(e);
+			authMode = "authorize"; // stay in auth mode so user can retry
+		} finally {
+			authRunning = false;
+		}
+	}
+
+	async function copyInstallCmd() {
 		await navigator.clipboard
 			.writeText(`atlas bot install ${sshTarget.trim() || "user@host"}`)
 			.catch(() => {});
@@ -314,43 +425,111 @@
 					{/if}
 
 					<!-- ── Connect step form ──────────────────────────────────── -->
-					{#if step === "connect"}
-						<div class="form-block" style:--stagger={3}>
-							<!-- Install command code block -->
-							<div class="code-block">
-								<code>atlas bot install {sshTarget.trim() || "user@host"}</code>
-								<button class="copy-btn" onclick={copyInstall} aria-label="Copy install command">
-									<Copy size={13} />
-								</button>
+				{#if step === "connect"}
+					<div class="form-block" style:--stagger={3}>
+						{#if !keyChecked}
+							<div class="key-checking">
+								<span class="spin-dot" aria-hidden="true"></span>
+								<span>Checking SSH key…</span>
 							</div>
-
-							<!-- SSH target input -->
-							<label class="field-label" for="ssh-target">Server address</label>
+						{:else if !hasKey}
+							<!-- No SSH key found -->
+							<p class="key-missing-text">
+								Atlas signs in to your server with an SSH key, like a password
+								that never leaves your Mac. You don't have one yet.
+							</p>
+							{#if keyError}
+								<p class="field-error" role="alert">{keyError}</p>
+							{/if}
+						{:else}
+							<!-- Has SSH key: show address field -->
+							<label class="field-label" for="ssh-target">SSH address</label>
 							<div class="field-wrap" class:shake={fieldShake}>
 								<input
 									id="ssh-target"
 									class="ssh-input"
 									bind:value={sshTarget}
-									placeholder="user@host"
-									aria-label="SSH target"
-									disabled={connecting || connected}
-									onkeydown={(e) => e.key === "Enter" && connectHost()}
+									placeholder="ubuntu@my-server.com"
+									aria-label="SSH address"
+									disabled={installRunning || installDone || authRunning}
+									onkeydown={(e) => e.key === "Enter" && launchShip()}
+								/>
+							</div>
+							<p class="field-hint">Uses your Mac's SSH key, the same way <code>ssh {sshTarget.trim() || "user@host"}</code> does.</p>
+
+							<div class="port-row">
+								<label class="field-label" for="ssh-port">Port</label>
+								<input
+									id="ssh-port"
+									class="port-input"
+									type="number"
+									min={1}
+									max={65535}
+									bind:value={sshPort}
+									disabled={installRunning || installDone || authRunning}
 								/>
 							</div>
 
-							{#if connectError}
-								<p class="field-error" role="alert">{connectError}</p>
+							{#if authMode === "authorize"}
+								<!-- Permission denied: offer to copy key via password -->
+								<div class="auth-block">
+									<p class="auth-desc">Your Mac's SSH key isn't authorized on this server yet. Enter the server user's password to add it.</p>
+									<input
+										type="password"
+										class="ssh-input"
+										bind:value={authPassword}
+										placeholder="Server password"
+										aria-label="Server password for SSH key authorization"
+										disabled={authRunning}
+										onkeydown={(e) => e.key === "Enter" && authorizeAndRetry()}
+									/>
+									{#if authError}
+										<p class="field-error" role="alert">{authError}</p>
+									{/if}
+								</div>
+							{:else if authMode === "sudo"}
+								<!-- sudo needs password -->
+								<div class="auth-block">
+									<p class="auth-desc">This user's sudo needs a password. Enter it to continue the install.</p>
+									<input
+										type="password"
+										class="ssh-input"
+										bind:value={authPassword}
+										placeholder="Sudo password"
+										aria-label="Sudo password"
+										disabled={authRunning}
+										onkeydown={(e) => e.key === "Enter" && launchShip(authPassword)}
+									/>
+									{#if authError}
+										<p class="field-error" role="alert">{authError}</p>
+									{/if}
+								</div>
+							{:else if failedPhase}
+								<p class="field-error" role="alert">{lastErrLine}</p>
 							{/if}
 
-							{#if connected}
+							{#if installDone}
 								<div class="connect-success">
 									<ShipFlag size={18} />
 									<Check size={15} />
-									<span>Connected — continuing…</span>
+									<span>Installed — connecting…</span>
 								</div>
 							{/if}
-						</div>
-					{/if}
+
+							<!-- Disclosure: prefer terminal -->
+							<details class="terminal-disclosure">
+								<summary>Prefer the terminal?</summary>
+								<div class="code-block">
+									<code>atlas bot install {sshTarget.trim() || "user@host"}</code>
+									<button class="copy-btn" onclick={copyInstallCmd} aria-label="Copy install command">
+										<Copy size={13} />
+									</button>
+								</div>
+								<p class="disclosure-hint">Run on your Mac. It SSHes into the server and sets everything up.</p>
+							</details>
+						{/if}
+					</div>
+				{/if}
 
 					<!-- ── Engine step form ───────────────────────────────────── -->
 					{#if step === "engine"}
@@ -416,17 +595,48 @@
 
 						{#if step === "intro" || isInfoStep}
 							<button class="primary-btn" onclick={advance}>Continue</button>
-						{:else if step === "connect"}
-							<div class="action-group">
+					{:else if step === "connect"}
+						<div class="action-group">
+							{#if !keyChecked}
+								<!-- waiting for key check -->
+							{:else if !hasKey}
+								<button class="primary-btn" onclick={createSshKey} disabled={creatingKey}>
+									{creatingKey ? "Creating…" : "Create SSH key"}
+								</button>
+							{:else if authMode === "authorize"}
 								<button
 									class="primary-btn"
-									onclick={connectHost}
-									disabled={connecting || !sshTarget.trim() || connected}
+									onclick={authorizeAndRetry}
+									disabled={authRunning || !authPassword.trim()}
 								>
-									{connecting ? "Connecting…" : "Connect"}
+									{authRunning ? "Authorizing…" : "Authorize this Mac"}
 								</button>
-								<button class="text-link" onclick={advance}>Skip for now</button>
-							</div>
+								<button class="text-link" onclick={() => { authMode = "none"; authPassword = ""; }}>Cancel</button>
+							{:else if authMode === "sudo"}
+								<button
+									class="primary-btn"
+									onclick={() => launchShip(authPassword)}
+									disabled={installRunning || !authPassword.trim()}
+								>
+									{installRunning ? "Installing…" : "Retry with password"}
+								</button>
+								<button class="text-link" onclick={() => { authMode = "none"; authPassword = ""; }}>Cancel</button>
+							{:else}
+								<button
+									class="primary-btn"
+									onclick={() => launchShip()}
+								disabled={installRunning || installDone || !targetValid}
+								>
+									{installRunning ? "Installing…" : "Launch ship"}
+								</button>
+								{#if failedPhase && !installRunning && !installDone}
+									<button class="text-link" onclick={() => launchShip()}>Retry</button>
+								{/if}
+								{#if !installRunning && !installDone}
+									<button class="text-link" onclick={advance}>Skip for now</button>
+								{/if}
+							{/if}
+						</div>
 						{:else if step === "engine"}
 							<div class="action-group">
 								<button class="text-link" onclick={finish}>Skip for now</button>
@@ -458,30 +668,32 @@
 					{:else if step === "how"}
 						<BotArtHow bind:beat={howBeat} />
 					{:else if step === "connect"}
-						<!-- Terminal art: install command -->
-						<div class="terminal-art">
-							<div class="terminal-chrome">
-								<span class="tc-dot r"></span><span class="tc-dot y"></span><span class="tc-dot g"></span>
-								<span class="tc-title">Terminal</span>
-							</div>
-							<div class="terminal-body">
-								<div class="terminal-line">
-									<span class="t-prompt">$ </span><span class="t-cmd"
-										>atlas bot install {sshTarget.trim() || "user@host"}</span
-									>
+						<!-- Progress checklist -->
+						<div class="install-checklist">
+							{#each INSTALL_STEPS as s (s.phase)}
+								{@const done = installedPhases.has(s.phase)}
+								{@const active = activePhase === s.phase}
+								{@const failed = failedPhase === s.phase}
+								<div
+									class="checklist-row"
+									class:done
+									class:active
+									class:failed
+								>
+									<span class="checklist-icon" aria-hidden="true">
+										{#if done}
+											<Check size={14} />
+										{:else if failed}
+											<span class="fail-dot"></span>
+										{:else if active}
+											<span class="spin-dot"></span>
+										{:else}
+											<span class="idle-dot"></span>
+										{/if}
+									</span>
+									<span class="checklist-label">{s.label}</span>
 								</div>
-								{#if connecting}
-									<div class="terminal-line t-muted">Connecting…</div>
-								{:else if connected}
-									<div class="terminal-line t-success">Bot computer ready.</div>
-								{:else if connectError}
-									<div class="terminal-line t-error">{connectError}</div>
-								{:else}
-									<div class="terminal-line t-muted terminal-cursor">
-										<span class="cursor-block"></span>
-									</div>
-								{/if}
-							</div>
+							{/each}
 						</div>
 					{:else if step === "engine"}
 						<!-- Engine logo showcase -->
@@ -843,6 +1055,48 @@
 		margin: 0;
 	}
 
+	.field-hint {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	.port-row {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.port-input {
+		width: 90px;
+		padding: 8px 10px;
+		border-radius: 8px;
+		border: 1.5px solid var(--ca-border-subtle);
+		background: var(--ca-surface-base);
+		color: var(--ca-text-primary);
+		font-size: 14px;
+		outline: none;
+		transition: border-color 150ms;
+	}
+
+	.port-input:focus {
+		border-color: var(--ca-accent, #4f8ef7);
+	}
+
+	.port-input:disabled {
+		opacity: 0.5;
+	}
+
+
+	.field-hint code {
+		font-family: monospace;
+		font-size: 11.5px;
+		background: var(--ca-surface-sunken);
+		padding: 1px 4px;
+		border-radius: 3px;
+	}
+
 	.connect-success {
 		display: flex;
 		align-items: center;
@@ -850,6 +1104,137 @@
 		font-size: 14px;
 		color: var(--ca-semantic-success);
 	}
+
+	/* ─── SSH key missing ────────────────────────────────────────── */
+	.key-checking {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 14px;
+		color: var(--ca-text-secondary);
+		padding: 8px 0;
+	}
+
+	.key-missing-text {
+		font-size: 15px;
+		line-height: 1.55;
+		color: var(--ca-text-secondary);
+		margin: 0 0 20px;
+	}
+
+	/* ─── Auth block (password fields for key-copy / sudo) ─────── */
+	.auth-block {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.auth-desc {
+		font-size: 13px;
+		color: var(--ca-text-secondary);
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	/* ─── Install progress checklist ─────────────────────────────── */
+	.install-checklist {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		width: min(340px, 88%);
+	}
+
+	.checklist-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		font-size: 15px;
+		color: var(--ca-text-secondary);
+		transition: color 250ms;
+	}
+
+	.checklist-row.done {
+		color: var(--ca-text-primary);
+	}
+
+	.checklist-row.active {
+		color: var(--ca-text-primary);
+	}
+
+	.checklist-row.failed {
+		color: var(--ca-danger, #ef4444);
+	}
+
+	.checklist-icon {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.checklist-row.done .checklist-icon {
+		color: var(--ca-semantic-success);
+	}
+
+	.idle-dot,
+	.spin-dot,
+	.fail-dot {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+
+	.idle-dot {
+		background: var(--ca-outline-subtle);
+	}
+
+	.spin-dot {
+		border: 2px solid var(--ca-accent, #4f8ef7);
+		border-top-color: transparent;
+		animation: checklist-spin 700ms linear infinite;
+	}
+
+	.fail-dot {
+		background: var(--ca-danger, #ef4444);
+	}
+
+	@keyframes checklist-spin {
+		to { transform: rotate(360deg); }
+	}
+
+	/* ─── Disclosure ─────────────────────────────────────────────── */
+	.terminal-disclosure {
+		margin-top: 4px;
+	}
+
+	.terminal-disclosure summary {
+		font-size: 12.5px;
+		color: var(--ca-text-secondary);
+		cursor: pointer;
+		user-select: none;
+		list-style: none;
+		padding: 4px 0;
+	}
+
+	.terminal-disclosure summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.terminal-disclosure[open] summary {
+		color: var(--ca-text-primary);
+		margin-bottom: 8px;
+	}
+
+	.disclosure-hint {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		margin: 6px 0 0;
+		line-height: 1.5;
+	}
+
 
 	/* ─── Engine list ─────────────────────────────────────────────── */
 	.engine-list {
@@ -1090,97 +1475,6 @@
 		background: radial-gradient(ellipse 80% 70% at 50% 55%, var(--art-glow, transparent), transparent 75%);
 	}
 
-	/* ─── Terminal art (connect step) ────────────────────────────── */
-	.terminal-art {
-		width: min(520px, 90%);
-		border-radius: 10px;
-		background: #0d0d0d;
-		box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
-		overflow: hidden;
-	}
-
-	.terminal-chrome {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 10px 14px;
-		background: #1a1a1a;
-		border-bottom: 1px solid #2a2a2a;
-	}
-
-	.tc-dot {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-	}
-	.tc-dot.r {
-		background: #ff5f57;
-	}
-	.tc-dot.y {
-		background: #febc2e;
-	}
-	.tc-dot.g {
-		background: #28c840;
-	}
-
-	.tc-title {
-		flex: 1;
-		text-align: center;
-		font-size: 12px;
-		color: var(--ca-text-secondary);
-	}
-
-	.terminal-body {
-		padding: 18px 20px 24px;
-		font-family: monospace;
-		font-size: 13px;
-		line-height: 1.7;
-		min-height: 80px;
-	}
-
-	.terminal-line {
-		color: var(--ca-text-primary);
-		margin: 0;
-	}
-
-	.t-prompt {
-		color: var(--ca-semantic-success);
-	}
-
-	.t-cmd {
-		color: var(--ca-text-primary);
-	}
-
-	.t-muted {
-		color: var(--ca-text-secondary);
-	}
-
-	.t-success {
-		color: var(--ca-semantic-success);
-	}
-
-	.t-error {
-		color: var(--ca-status-error, var(--ca-semantic-error));
-	}
-
-	.cursor-block {
-		display: inline-block;
-		width: 8px;
-		height: 14px;
-		background: #e2e8f0;
-		vertical-align: text-bottom;
-		animation: cursor-blink 1s step-end infinite;
-	}
-
-	@keyframes cursor-blink {
-		0%,
-		100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: 0;
-		}
-	}
 
 	/* ─── Engine art ─────────────────────────────────────────────── */
 	.engine-art {
@@ -1335,9 +1629,4 @@
 		}
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.cursor-block {
-			animation: none;
-		}
-	}
 </style>

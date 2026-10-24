@@ -17,6 +17,8 @@ pub fn shq(s: &str) -> String {
 
 pub struct Remote {
     pub host: String,
+    /// Non-default SSH port; `None` means standard port 22.
+    pub port: Option<u16>,
 }
 
 pub struct Output {
@@ -27,7 +29,12 @@ pub struct Output {
 
 impl Remote {
     pub fn new(host: &str) -> Self {
-        Self { host: host.into() }
+        Self { host: host.into(), port: None }
+    }
+
+    /// Create with an explicit port. `port` of 22 is stored as-is.
+    pub fn with_port(host: &str, port: u16) -> Self {
+        Self { host: host.into(), port: Some(port) }
     }
 
     fn is_local(&self) -> bool {
@@ -56,8 +63,12 @@ impl Remote {
             "ControlPath=~/.ssh/atlas-%C",
             "-o",
             "ControlPersist=120",
-        ])
-        .arg(&self.host)
+        ]);
+        if let Some(p) = self.port {
+            let port_s = p.to_string();
+            c.args(["-p", &port_s]);
+        }
+        c.arg(&self.host)
         .arg("--")
         .arg(format!("bash -c {}", shq(script)));
         c

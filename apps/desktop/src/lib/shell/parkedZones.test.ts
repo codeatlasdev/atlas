@@ -107,6 +107,8 @@ test("scrollerRects does not measure elements of a parked layer (it would cost O
 		l.append(body);
 		for (let i = 0; i < n; i++) {
 			const e = document.createElement("div");
+			// scrollable in x, so the scan reaches its `scrollWidth` read (an `overflow-x: visible` node is skipped before it)
+			e.style.overflowX = "auto";
 			Object.defineProperty(e, "scrollWidth", {
 				get() {
 					reads.push(role);

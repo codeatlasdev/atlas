@@ -72,11 +72,12 @@
 		void untrack(load);
 	});
 
+	// Same rule as the load above: the commit list for the base picker depends on these values, not on a re-spread.
+	let commitsFor = $derived(curMode === "base" && !only ? worktreeId : null);
 	$effect(() => {
-		if (curMode === "base" && !only)
-			git
-				.run(worktreeId, ["log", "--oneline", "-50"])
-				.then((r) => (commits = r.stdout.split("\n").filter(Boolean)));
+		const id = commitsFor;
+		if (id)
+			git.run(id, ["log", "--oneline", "-50"]).then((r) => (commits = r.stdout.split("\n").filter(Boolean)));
 	});
 
 	async function stage(f: FileDiff, h?: DiffHunk) {

@@ -13,6 +13,7 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 window.__TAURI_INTERNALS__ = { invoke: async () => null, transformCallback: () => 0 };
 
 let diffCalls: string[][];
+let logCalls: string[];
 // Keep every other export of the real module (the stores import `api`); replace only the two calls the view makes.
 const realApi = await import("#lib/api.ts");
 mock.module("#lib/api.ts", () => ({
@@ -23,7 +24,10 @@ mock.module("#lib/api.ts", () => ({
 			diffCalls.push([id, mode, base ?? ""]);
 			return { base: "main", files: [] };
 		},
-		run: async () => ({ code: 0, stdout: "", stderr: "" }),
+		run: async (id: string, args: string[]) => {
+			if (args[0] === "log") logCalls.push(id);
+			return { code: 0, stdout: "", stderr: "" };
+		},
 	},
 }));
 mock.module("#lib/components/diff/highlight.ts", () => ({ highlightFile: async () => {} }));
@@ -36,7 +40,7 @@ const { default: Harness } = await import("../../../test/DiffViewHarness.svelte"
 await import("#lib/components/DiffView.svelte");
 
 let done: (() => void) | undefined;
-beforeEach(() => (diffCalls = []));
+beforeEach(() => ((diffCalls = []), (logCalls = [])));
 afterEach(() => {
 	done?.();
 	done = undefined;
@@ -80,4 +84,14 @@ test("flipping `focused` through a rebuilt props object does not reload the diff
 		await settle();
 	}
 	expect(diffCalls).toHaveLength(1);
+});
+
+test("flipping `focused` does not refetch the commit list either (the base picker's `git log`)", async () => {
+	const set = await setup("w1");
+	expect(logCalls).toEqual(["w1"]);
+	for (const f of [true, false, true, false]) {
+		set.focused(f);
+		await settle();
+	}
+	expect(logCalls).toEqual(["w1"]);
 });

@@ -443,7 +443,6 @@ class Workspace {
 				created_at: Date.now() / 1000,
 				exited: null,
 				pid: null,
-				fg: null,
 			};
 			return this.openTab(
 				worktreeId,

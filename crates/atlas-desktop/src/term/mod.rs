@@ -124,6 +124,18 @@ fn targets(tab: Option<&str>) -> Result<Vec<Arc<Shared>>, String> {
     }
 }
 
+/// Every open terminal with its tab id, as owned handles. The registry lock is held only for
+/// the clone: anything slow (the VT lock a feeding reader holds, a render thread's state) must
+/// be taken from these handles, never under `TERMS`, or one busy terminal stalls every
+/// `term_*` command (`with_term` and `targets` queue on the same mutex).
+fn open_terms() -> Vec<(String, Arc<Shared>)> {
+    TERMS
+        .lock()
+        .iter()
+        .map(|(tab, t)| (tab.clone(), t.shared.clone()))
+        .collect()
+}
+
 /// The general pasteboard as a paste decision (⌘V). Read natively because the webview's paste
 /// event only exposes text: a screenshot or a Finder file copy arrives as nothing.
 fn read_clipboard() -> atlas_term::input::Clipboard {

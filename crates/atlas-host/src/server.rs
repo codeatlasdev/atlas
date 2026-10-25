@@ -741,7 +741,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         }
         HostCmd::PtyInfo { pty } => {
             let s = hub.get(&pty)?;
-            let mut v = s.summary();
+            // `ps` is a blocking fork: not on a runtime worker.
+            let sc = s.clone();
+            let mut v = tokio::task::spawn_blocking(move || sc.info_summary())
+                .await
+                .map_err(|e| e.to_string())?;
             v["cwd_now"] = json!(s.cwd_now().await);
             Ok(v)
         }

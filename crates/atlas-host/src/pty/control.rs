@@ -157,6 +157,8 @@ impl Session {
         Some((pid, name))
     }
 
+    /// The `pty_list` entry. No foreground program: that costs a `ps` per session, and the list is
+    /// asked for on every connect, tab operation and sidebar refresh (#110); `pty_info` has it.
     pub fn summary(&self) -> Value {
         let (cols, rows) = *self.size.lock();
         json!({
@@ -170,8 +172,14 @@ impl Session {
             "created_at": self.meta.created_at,
             "exited": self.exited().map(|c| json!({"code": c})),
             "pid": self.pid,
-            "fg": self.foreground().map(|(pid, name)| json!({"pid": pid, "name": name})),
         })
+    }
+
+    /// [`summary`](Self::summary) plus the foreground program (`pty_info`, one terminal).
+    pub fn info_summary(&self) -> Value {
+        let mut v = self.summary();
+        v["fg"] = json!(self.foreground().map(|(pid, name)| json!({"pid": pid, "name": name})));
+        v
     }
 
     /// Current working directory of the child (macOS/Linux via `lsof`). Windows does not expose

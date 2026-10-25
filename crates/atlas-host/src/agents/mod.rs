@@ -44,6 +44,26 @@ pub struct AgentStatus {
     pub tab_id: Option<String>,
 }
 
+/// An unchanged agent is still heard from this often: the desktop trusts hooks over a terminal's title
+/// while `updated_at` is under 5 s old (`HOOK_GRACE_MS` in `agents.svelte.ts`), so this stays well below it.
+pub const HEARTBEAT_MS: u64 = 1_000;
+
+impl AgentStatus {
+    /// Everything a client shows is equal (`updated_at` is the heartbeat, not a change; `state_started_at`
+    /// only moves with `state`).
+    fn same_view(&self, o: &Self) -> bool {
+        self.state == o.state
+            && self.agent == o.agent
+            && self.session_id == o.session_id
+            && self.session_file == o.session_file
+            && self.model == o.model
+            && self.prompt == o.prompt
+            && self.last_message == o.last_message
+            && self.worktree_id == o.worktree_id
+            && self.tab_id == o.tab_id
+    }
+}
+
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
 type Pending = (String, Value, oneshot::Sender<bool>);
 
@@ -60,6 +80,8 @@ pub struct AgentHub {
     /// event as pushed, answer channel). The event is kept so a client that subscribes
     /// after the push can still list it.
     pending: Mutex<HashMap<String, Pending>>,
+    /// Pane → when its last `agent_status` was pushed (ms), for the [`HEARTBEAT_MS`] throttle.
+    pushed: Mutex<HashMap<String, u64>>,
 }
 
 impl Default for AgentHub {
@@ -70,6 +92,7 @@ impl Default for AgentHub {
             port: Mutex::new(0),
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
+            pushed: Mutex::default(),
         }
     }
 }
@@ -141,6 +164,17 @@ impl AgentHub {
     }
 
     pub fn apply(&self, agent: &str, body: &Value) -> Option<(String, AgentStatus)> {
+        self.apply_at(agent, body, now_ms())
+    }
+
+    /// [`apply`](Self::apply) at an explicit time (ms), so the push throttle is testable without a clock.
+    ///
+    /// omp posts every tool event, so most hooks change nothing a client shows. The stored status
+    /// always takes the event (`updated_at` stays fresh for `agent_status_all`), but the `agent_status`
+    /// push, which costs the desktop a Tauri event, store writes and sidebar/tray recomputation and
+    /// every phone a frame, goes out when something visible changed or, as the liveness heartbeat the
+    /// desktop's title fallback reads from `updated_at`, once per [`HEARTBEAT_MS`] per pane (#110).
+    pub fn apply_at(&self, agent: &str, body: &Value, now: u64) -> Option<(String, AgentStatus)> {
         let pane = match body["pane_key"].as_str() {
             Some(p) => p.to_string(),
             None => {
@@ -149,8 +183,8 @@ impl AgentHub {
             }
         };
         let p = &body["payload"];
-        let now = now_ms();
         let mut panes = self.panes.lock();
+        let known = panes.contains_key(&pane);
         let st = panes.entry(pane.clone()).or_insert_with(|| AgentStatus {
             state: State::Idle,
             agent: agent.to_string(),
@@ -164,6 +198,7 @@ impl AgentHub {
             worktree_id: None,
             tab_id: None,
         });
+        let before = st.clone();
         let str_of = |k: &str| p[k].as_str().filter(|s| !s.is_empty()).map(str::to_string);
         st.worktree_id = body["worktree_id"]
             .as_str()
@@ -189,10 +224,21 @@ impl AgentHub {
             st.state_started_at = now;
         }
         st.updated_at = now;
+        let changed = !known || !before.same_view(st);
         let out = (pane, st.clone());
         drop(panes);
-        self.push_status(&out.0, &out.1);
+        if changed || self.heartbeat_due(&out.0, now) {
+            self.push_status(&out.0, &out.1, now);
+        }
         Some(out)
+    }
+
+    /// This pane has not been pushed for a full [`HEARTBEAT_MS`] (never pushed counts as due).
+    fn heartbeat_due(&self, pane: &str, now: u64) -> bool {
+        self.pushed
+            .lock()
+            .get(pane)
+            .is_none_or(|last| now.saturating_sub(*last) >= HEARTBEAT_MS)
     }
 
     /// The pane's program exited: back to Idle (the pane stays listed).
@@ -203,11 +249,14 @@ impl AgentHub {
         st.state_started_at = now_ms();
         let st = st.clone();
         drop(panes);
-        self.push_status(pane, &st);
+        self.push_status(pane, &st, now_ms());
         Some(st)
     }
 
-    fn push_status(&self, pane: &str, st: &AgentStatus) {
+    /// Push one `agent_status` at `now` (ms) and restart the pane's heartbeat clock. Every push goes
+    /// through here, so [`apply_at`](Self::apply_at)'s throttle also sees the `idle` pushes.
+    fn push_status(&self, pane: &str, st: &AgentStatus, now: u64) {
+        self.pushed.lock().insert(pane.to_string(), now);
         let _ = self
             .tx
             .send(json!({"ev": "agent_status", "pane_key": pane, "status": st}));

@@ -6,6 +6,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Less work for the app with many agents running (#110).** omp redraws its terminal title on every spinner frame and posts a hook for every tool event; each used to become a push to the app and every phone even when nothing had changed. The terminal host now pushes a title only when it changes, and an agent's status when something shown changed (otherwise one heartbeat a second). `pty_list` no longer runs `ps` for every terminal on every refresh (the foreground program stays in `pty_info`), and `term_stats` no longer holds the terminal registry while it waits on a terminal that is busy printing, which stalled every other terminal command.
+
+### Added
+
+- **`scripts/agents-load-bench.ts`**: opens N synthetic agents (a 30 Hz TUI redraw, streaming output, a spinner title and hook posts) in an agent instance and judges main-thread stalls, page frame gaps, frames per terminal, memory growth and event rate against a budget. See [GPU terminal](docs/terminal.md#many-busy-agents-110).
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

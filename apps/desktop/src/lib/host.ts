@@ -44,7 +44,6 @@ export interface PtySummary {
 	created_at: number;
 	exited: { code: number | null } | null;
 	pid: number | null;
-	fg: { pid: number; name: string } | null;
 }
 
 interface ExecResult {

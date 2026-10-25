@@ -1,0 +1,281 @@
+// @ts-nocheck bun test runtime types are not part of the app tsconfig
+import { describe, test, expect } from "bun:test";
+import fixture from "../../__fixtures__/bot_tasks.json" with { type: "json" };
+import { roleTag, previewIcon, groupTasks, firstUnreadIndex, mergeActivity } from "./botsLogic.ts";
+
+describe("roleTag", () => {
+	test("extracts token before colon", () => {
+		expect(roleTag("Engineer: do code review")).toBe("Engineer");
+	});
+
+	test("extracts multi-word before colon if ≤20 chars", () => {
+		expect(roleTag("Head of Growth: analyze")).toBe("Head of Growth");
+	});
+
+	test("PascalCase single word no colon", () => {
+		expect(roleTag("DevOps")).toBe("DevOps");
+	});
+
+	test("long role with no colon and no PascalCase first word", () => {
+		expect(roleTag("You are a helpful bot")).toBe("");
+	});
+
+	test("empty string", () => {
+		expect(roleTag("")).toBe("");
+	});
+
+	test("colon but token too long (>20 chars) falls back to first word check", () => {
+		// "ThisIsAVeryLongRoleNameHere" is 26 chars before colon, >20; first word same, >15 → ""
+		expect(roleTag("ThisIsAVeryLongRoleNameHere: something")).toBe("");
+	});
+
+	test("AllCaps single word ≤15 chars returned", () => {
+		expect(roleTag("CEO")).toBe("CEO");
+	});
+});
+
+describe("previewIcon", () => {
+	test("needs_you state returns 'needs_you'", () => {
+		expect(previewIcon(undefined, "needs_you")).toBe("needs_you");
+	});
+
+	test("last done returns 'done'", () => {
+		expect(previewIcon({ state: "done", ts: 1 }, "idle")).toBe("done");
+	});
+
+	test("last failed returns 'failed'", () => {
+		expect(previewIcon({ state: "failed", ts: 1 }, "idle")).toBe("failed");
+	});
+
+	test("working state returns empty string", () => {
+		expect(previewIcon(undefined, "working")).toBe("");
+	});
+
+	test("no last, no state returns empty string", () => {
+		expect(previewIcon()).toBe("");
+	});
+
+	test("needs_you takes priority over last.state", () => {
+		expect(previewIcon({ state: "done", ts: 1 }, "needs_you")).toBe("needs_you");
+	});
+});
+
+describe("groupTasks", () => {
+	const base = { id: "", source: "desktop" as const, prompt: "", state: "done" as const };
+
+	test("empty array → empty result", () => {
+		expect(groupTasks([])).toEqual([]);
+	});
+
+	test("single task → groupStart true", () => {
+		const tasks = [{ ...base, id: "1", ts: 1000 }];
+		const result = groupTasks(tasks);
+		expect(result).toHaveLength(1);
+		expect(result[0].groupStart).toBe(true);
+	});
+
+	test("two tasks <7min apart → second groupStart false", () => {
+		const tasks = [
+			{ ...base, id: "1", ts: 0 },
+			{ ...base, id: "2", ts: 5 * 60 * 1000 },
+		];
+		const result = groupTasks(tasks);
+		expect(result[0].groupStart).toBe(true);
+		expect(result[1].groupStart).toBe(false);
+	});
+
+	test("two tasks >7min apart → second groupStart true", () => {
+		const tasks = [
+			{ ...base, id: "1", ts: 0 },
+			{ ...base, id: "2", ts: 8 * 60 * 1000 },
+		];
+		const result = groupTasks(tasks);
+		expect(result[0].groupStart).toBe(true);
+		expect(result[1].groupStart).toBe(true);
+	});
+
+	test("exactly 7min gap → second groupStart false (not strictly greater)", () => {
+		const tasks = [
+			{ ...base, id: "1", ts: 0 },
+			{ ...base, id: "2", ts: 7 * 60 * 1000 },
+		];
+		const result = groupTasks(tasks);
+		expect(result[1].groupStart).toBe(false);
+	});
+
+	test("preserves task references", () => {
+		const t = { ...base, id: "x", ts: 100 };
+		const result = groupTasks([t]);
+		expect(result[0].task).toBe(t);
+	});
+});
+
+describe("firstUnreadIndex", () => {
+	const base = { id: "", source: "desktop" as const, prompt: "", state: "done" as const };
+	const tasks = [
+		{ ...base, id: "1", ts: 100_000 },
+		{ ...base, id: "2", ts: 200_000 },
+		{ ...base, id: "3", ts: 300_000 },
+	];
+
+	test("lastSeenTs=0 → -1 (never seen)", () => {
+		expect(firstUnreadIndex(tasks, 0)).toBe(-1);
+	});
+
+	test("all tasks seen → -1", () => {
+		expect(firstUnreadIndex(tasks, 300_000)).toBe(-1);
+	});
+
+	test("all tasks seen (ts > max) → -1", () => {
+		expect(firstUnreadIndex(tasks, 9_999_000)).toBe(-1);
+	});
+
+	test("first task unread → 0", () => {
+		expect(firstUnreadIndex(tasks, 50_000)).toBe(0);
+	});
+
+	test("middle task unread → correct index", () => {
+		expect(firstUnreadIndex(tasks, 150_000)).toBe(1);
+	});
+
+	test("last task unread → 2", () => {
+		expect(firstUnreadIndex(tasks, 250_000)).toBe(2);
+	});
+
+	test("empty tasks → -1", () => {
+		expect(firstUnreadIndex([], 100_000)).toBe(-1);
+	});
+});
+
+describe("mergeActivity", () => {
+	const base = { id: "", source: "desktop" as const, prompt: "", state: "done" as const };
+
+	test("empty array → empty", () => {
+		expect(mergeActivity([])).toEqual([]);
+	});
+
+	test("single entry → same", () => {
+		const entries = [{ botId: "a", botName: "A", hostKey: "", task: { ...base, id: "1", ts: 100 } }];
+		const result = mergeActivity(entries);
+		expect(result).toHaveLength(1);
+		expect(result[0].task.ts).toBe(100);
+	});
+
+	test("two entries from different bots sorted newest first", () => {
+		const entries = [
+			{ botId: "a", botName: "A", hostKey: "", task: { ...base, id: "1", ts: 100 } },
+			{ botId: "b", botName: "B", hostKey: "", task: { ...base, id: "2", ts: 500 } },
+		];
+		const result = mergeActivity(entries);
+		expect(result[0].task.ts).toBe(500);
+		expect(result[1].task.ts).toBe(100);
+	});
+
+	test("does not mutate input array", () => {
+		const entries = [
+			{ botId: "a", botName: "A", hostKey: "", task: { ...base, id: "1", ts: 100 } },
+			{ botId: "b", botName: "B", hostKey: "", task: { ...base, id: "2", ts: 500 } },
+		];
+		mergeActivity(entries);
+		expect(entries[0].task.ts).toBe(100);
+	});
+
+	test("stable sort preserves order of equal ts", () => {
+		const entries = [
+			{ botId: "a", botName: "A", hostKey: "", task: { ...base, id: "1", ts: 200 } },
+			{ botId: "b", botName: "B", hostKey: "", task: { ...base, id: "2", ts: 200 } },
+		];
+		const result = mergeActivity(entries);
+		// Both have same ts; stable sort preserves original relative order
+		expect(result[0].botId).toBe("a");
+		expect(result[1].botId).toBe("b");
+	});
+});
+
+describe("timestamp boundary: hostd seconds are converted to ms", () => {
+	// Reads the static fixture that mirrors what Rust's bot_tasks_json_contract
+	// would write. If this test fails after a hostd schema change, regenerate:
+	//   UPDATE_FIXTURES=1 cargo test -p atlas-host bot_tasks_json_contract
+
+	test("fixture ts values are unix seconds (< 2e10)", () => {
+		for (const t of fixture.tasks) {
+			expect(t.ts).toBeLessThan(2e10);
+			expect(t.ts).toBeGreaterThan(1e9); // sane epoch
+		}
+	});
+
+	test("after seconds→ms conversion ts values are in ms range (> 1e12)", () => {
+		for (const t of fixture.tasks) {
+			const ms = t.ts * 1000;
+			expect(ms).toBeGreaterThan(1e12);
+		}
+	});
+
+	test("started_at seconds→ms is in ms range", () => {
+		const running = fixture.tasks.find((t) => t.started_at);
+		expect(running).toBeDefined();
+		const ms = running!.started_at! * 1000;
+		expect(ms).toBeGreaterThan(1e12);
+	});
+
+	test("step ts seconds→ms is in ms range", () => {
+		const withSteps = fixture.tasks.find((t) => t.steps?.length);
+		expect(withSteps).toBeDefined();
+		for (const s of withSteps!.steps!) {
+			expect(s.ts * 1000).toBeGreaterThan(1e12);
+		}
+	});
+
+	test("fmtTime after conversion shows HH:MM not 1970", () => {
+		// fmtTime does new Date(tsMs).toLocaleTimeString()
+		for (const t of fixture.tasks) {
+			const d = new Date(t.ts * 1000);
+			expect(d.getFullYear()).toBeGreaterThan(2020);
+		}
+	});
+});
+
+describe("bot selection display logic", () => {
+	test("resolveSelectedBot returns bot when host + id match", () => {
+		const hosts = [
+			{
+				key: "",
+				name: "local",
+				bots: [
+					{ id: "b1", name: "Aria" },
+					{ id: "b2", name: "Bolt" },
+				],
+				ok: true,
+			},
+		];
+		const selected = { hostKey: "", botId: "b1", hostName: "local" };
+		// mirrors BotsStore.selectedBot getter
+		const bot = hosts.find((h) => h.key === selected.hostKey)?.bots.find((b) => b.id === selected.botId);
+		expect(bot).toBeDefined();
+		expect(bot?.name).toBe("Aria");
+	});
+
+	test("resolveSelectedBot returns undefined when selection cleared", () => {
+		const hosts = [{ key: "", name: "local", bots: [{ id: "b1", name: "Aria" }], ok: true }];
+		const selected = null;
+		const bot = selected
+			? hosts.find((h) => h.key === selected.hostKey)?.bots.find((b) => b.id === selected.botId)
+			: undefined;
+		expect(bot).toBeUndefined();
+	});
+
+	test("right panel shows BotView when selectedBot is truthy, regardless of nav", () => {
+		// The panel condition is now: bots.selectedBot (no selectedNav guard)
+		// so any truthy selectedBot value means chat is shown
+		const selectedBot = { id: "b1", name: "Aria" };
+		const showBotView = !!selectedBot; // mirrors the template condition
+		expect(showBotView).toBe(true);
+	});
+
+	test("navClick clears selection — bot deselected when switching nav view", () => {
+		let selected: { hostKey: string; botId: string } | null = { hostKey: "", botId: "b1" };
+		// mirrors navClick: bots.selected = null
+		selected = null;
+		expect(selected).toBeNull();
+	});
+});

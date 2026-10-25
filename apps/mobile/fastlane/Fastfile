@@ -49,6 +49,11 @@ lane :ios_beta do |options|
   # xcodebuild signs with the same key (automatic signing, no certificates in the repo).
   p8 = File.join(Dir.tmpdir, "AuthKey_#{ENV['ASC_KEY_ID']}.p8")
   File.write(p8, ENV["ASC_KEY_P8"])
+  # Write the Firebase config from the secret if available.
+  plist_path = File.join(APP, "ios/Runner/GoogleService-Info.plist")
+  if ENV["GOOGLE_SERVICE_INFO_PLIST"] && !ENV["GOOGLE_SERVICE_INFO_PLIST"].empty?
+    File.write(plist_path, ENV["GOOGLE_SERVICE_INFO_PLIST"])
+  end
   Dir.chdir(APP) { flutter("build", "ios", "--release", "--no-codesign", "--build-number=#{n}") }
   # Archive and export both sign through the API key (role Admin: creating the cloud-managed
   # distribution certificate needs it): with -allowProvisioningUpdates Xcode
@@ -83,6 +88,7 @@ lane :ios_beta do |options|
   )
 ensure
   File.delete(p8) if p8 && File.exist?(p8)
+  File.delete(plist_path) if plist_path && File.exist?(plist_path)
 end
 
 lane :android_beta do |options|
@@ -98,6 +104,11 @@ lane :android_beta do |options|
     keyAlias=#{ENV['ANDROID_KEY_ALIAS']}
     keyPassword=#{ENV['ANDROID_KEY_PASSWORD'] || ENV['ANDROID_KEYSTORE_PASSWORD']}
   PROPS
+  # Write the Firebase config from the secret if available.
+  services_path = File.join(APP, "android/app/google-services.json")
+  if ENV["GOOGLE_SERVICES_JSON"] && !ENV["GOOGLE_SERVICES_JSON"].empty?
+    File.write(services_path, ENV["GOOGLE_SERVICES_JSON"])
+  end
   Dir.chdir(APP) { flutter("build", "appbundle", "--release", "--build-number=#{n}") }
   upload_to_play_store(
     package_name: ANDROID_PACKAGE,
@@ -109,7 +120,7 @@ lane :android_beta do |options|
     skip_upload_screenshots: true,
   )
 ensure
-  [props, jks].each { |f| File.delete(f) if f && File.exist?(f) }
+  [props, jks, services_path].each { |f| File.delete(f) if f && File.exist?(f) }
 end
 
 # Hand an already uploaded iOS build to the TestFlight groups (e.g. after fixing what blocked

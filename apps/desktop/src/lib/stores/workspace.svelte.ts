@@ -50,6 +50,8 @@ class Workspace {
 	hostDown = $state(false);
 	/** Main area: the selected worktree, or a global agents view. */
 	view = $state<"worktree" | "agents" | "dashboard">("worktree");
+	/** Top-level workspace mode: "ide" is everything today; "bots" is the full-window messenger. */
+	appMode = $state<"ide" | "bots">("ide");
 	#persist = new WorkspacePersist(this);
 
 	get selected(): Worktree | undefined {

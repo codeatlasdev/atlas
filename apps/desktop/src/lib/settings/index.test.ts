@@ -186,6 +186,7 @@ describe("settings index", () => {
 			"keyboard",
 			"ssh",
 			"mobile",
+			"bots",
 			"help",
 		]);
 	});

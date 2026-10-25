@@ -74,6 +74,13 @@ pub struct Device {
     pub revoked: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invite {
+    pub url: String,
+    pub name: String,
+    pub created_at: u64,
+}
+
 struct PairCode {
     code: String,
     expires: std::time::Instant,
@@ -94,6 +101,8 @@ pub struct Mobile {
     relay: bool,
     /// The daemon, for the sessions the endpoint accepts (set once it exists).
     hub: std::sync::OnceLock<std::sync::Weak<Hub>>,
+    /// Pending mobile invites (url, name, created_at); pruned on expiry.
+    invites: Mutex<Vec<Invite>>,
 }
 
 fn now_s() -> u64 {
@@ -143,6 +152,10 @@ impl Mobile {
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default();
+        let invites = std::fs::read_to_string(mobile_dir(dir).join("invites.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
         Ok(Self {
             dir: dir.to_path_buf(),
             key,
@@ -153,6 +166,7 @@ impl Mobile {
             binding: tokio::sync::Mutex::new(()),
             relay,
             hub: std::sync::OnceLock::new(),
+            invites: Mutex::new(invites),
         })
     }
 
@@ -294,6 +308,47 @@ impl Mobile {
             let _ = writeln!(f, "{line}");
         }
     }
+
+    fn save_invites(&self, invites: &[Invite]) {
+        if let Ok(text) = serde_json::to_string_pretty(invites) {
+            let _ =
+                paths::write_private(&mobile_dir(&self.dir).join("invites.json"), text.as_bytes());
+        }
+    }
+
+    /// Desktop-only: store a pending invite and push it to connected phones.
+    pub(crate) fn mobile_invite(&self, url: String, name: String, hub: &crate::server::Hub) {
+        let now = now_s();
+        let ttl = CODE_TTL.as_secs();
+        let mut invites = self.invites.lock();
+        invites.retain(|i| now.saturating_sub(i.created_at) < ttl);
+        invites.push(Invite {
+            url: url.clone(),
+            name: name.clone(),
+            created_at: now,
+        });
+        self.save_invites(&invites);
+        drop(invites);
+        hub.broadcast(json!({"ev": "computer_invite", "url": url, "name": name}).to_string());
+    }
+
+    /// Phone-facing: return non-expired pending invites (pruning as a side-effect).
+    pub fn mobile_invites(&self) -> Vec<Invite> {
+        let now = now_s();
+        let ttl = CODE_TTL.as_secs();
+        let mut invites = self.invites.lock();
+        invites.retain(|i| now.saturating_sub(i.created_at) < ttl);
+        let out = invites.clone();
+        self.save_invites(&invites);
+        out
+    }
+
+    /// Phone-facing: remove a specific invite by url.
+    pub fn mobile_invite_dismiss(&self, url: &str) {
+        let mut invites = self.invites.lock();
+        invites.retain(|i| i.url != url);
+        self.save_invites(&invites);
+    }
 }
 
 /// The scope a push needs to reach a phone; `None` = never sent to one (the desktop's
@@ -304,6 +359,8 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         // The prompt carries the tool input (a shell command, a file path).
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
+        "bot_task" => Scope::Read,
+        "computer_invite" => Scope::Read,
         _ => return None,
     })
 }
@@ -325,6 +382,23 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
+        C::BotList {} | C::BotTasks { .. } | C::BotMemory { .. } => Scope::Read,
+        C::BotTask { .. } | C::BotCancel { .. } => Scope::Act,
+        C::BotCreate { .. }
+        | C::BotUpdate { .. }
+        | C::BotDelete { .. }
+        | C::BotMemorySet { .. }
+        | C::BotRoutineSet { .. } => Scope::Act,
+        C::PushRegister { .. } | C::PushUnregister { .. } => Scope::Read,
+        C::BotTelegramSet { .. } | C::BotTelegramLink {} => return Err("not available on mobile"),
+        C::BotTriggersSet { .. } => Scope::Act,
+        C::BotAnswer { .. } => Scope::Act,
+        C::BotUsage { .. } => Scope::Read,
+        C::EngineLimits {} => Scope::Read,
+        C::BotSecretSet { .. } => return Err("not available on mobile"),
+        C::MobileInvite { .. } => return Err("not available on mobile"),
+        C::MobileInvites {} => Scope::Read,
+        C::MobileInviteDismiss { .. } => Scope::Act,
         _ => return Err("not available on mobile"),
     })
 }
@@ -388,6 +462,11 @@ impl Mobile {
         self.devices.lock().iter().any(|d| {
             !d.revoked && d.scopes.contains(&Scope::Approve) && live.contains_key(&d.node_id)
         })
+    }
+
+    /// Node IDs of phones currently connected (at least one live stream).
+    pub fn live_node_ids(&self) -> Vec<String> {
+        self.live.lock().keys().cloned().collect()
     }
 
     fn track(&self, node: &str, c: &Connection) {

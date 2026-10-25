@@ -124,6 +124,26 @@ export class NativeView {
 		}
 	}
 
+	/**
+	 * The page is about to slide right by `dx` CSS px over `ms` (the workspace rail): put the view at the
+	 * rect it will rest at and play the same slide on its layer, so it travels with its pane instead of
+	 * being parked for the slide (which blinked).
+	 */
+	slide(dx: number, ms: number) {
+		this.#chain = this.#chain.then(async () => {
+			const area = this.area();
+			if (!area || this.#failed || !this.opened || !this.visible()) return;
+			const r = area.getBoundingClientRect();
+			if (!(r.width > 0 && r.height > 0) || overlayOpen(r, area)) return;
+			const { tab } = this.ids();
+			const { padding_x: px, padding_y: py } = prefs.value.terminal;
+			const rect = nativeRect(insetRect(r, px, py));
+			const shift = nativeRect({ x: dx, y: 0, w: 0, h: 0 }).x;
+			await invoke("term_bounds", { tab, ...rect, x: rect.x + shift, visible: true }).catch(() => {});
+			await invoke("term_slide", { tab, dx: shift, ms }).catch(() => {});
+		});
+	}
+
 	/** Recolor live after a theme switch. */
 	recolor() {
 		const area = this.area();

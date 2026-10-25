@@ -60,3 +60,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// Apply the google-services plugin only when the config file is present.
+// This lets the app build without Firebase config (push is disabled).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}

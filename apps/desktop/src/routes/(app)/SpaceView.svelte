@@ -44,7 +44,9 @@
 	{/if}
 
 	<div class="rule"></div>
-	{#if offer}
+	<!-- `corner` moves the card into the one window-wide corner column: only the space on screen may put it there,
+	     or every mounted space adds its own copy (three projects open = three identical cards). -->
+	{#if offer && space.current}
 		{@const o = offer}
 		<div use:corner class="floating">
 			<Alert severity="info" title="Enable {o.label} integration">

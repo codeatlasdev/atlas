@@ -113,6 +113,32 @@ test("a closed dialog never parks", () => {
 	expect(overlayOpen(SLOT)).toBe(false);
 });
 
+// Incident (2026-10-23): the "Enable Claude Code integration" card in the bottom-right corner stack was drawn BEHIND
+// the native terminal (a sibling NSView above the webview), invisible and unclickable over a terminal tab. A corner
+// piece over the slot must park the view like a dialog does; one that misses it must not.
+function cornerPiece(at: DOMRect) {
+	let host = document.getElementById("atlas-corner");
+	if (!host) {
+		host = document.createElement("div");
+		host.id = "atlas-corner";
+		document.body.append(host);
+	}
+	const p = document.createElement("div");
+	p.getBoundingClientRect = () => at;
+	host.append(p);
+	return p;
+}
+
+test("a corner card over the terminal parks the native view", () => {
+	cornerPiece(rect(560, 380, 230, 110));
+	expect(overlayOpen(SLOT)).toBe(true);
+});
+
+test("a corner card outside the terminal leaves it alone", () => {
+	cornerPiece(rect(900, 520, 230, 110));
+	expect(overlayOpen(SLOT)).toBe(false);
+});
+
 test("a full-window modal (palette scrim, first run) parks every slot", () => {
 	dialog(rect(0, 0, 1280, 800));
 	expect(overlayOpen(SLOT)).toBe(true);

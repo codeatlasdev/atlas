@@ -312,6 +312,22 @@ pub async fn term_bounds(
     Ok(())
 }
 
+/// The pane slid right by `dx` points over `ms` (the workspace rail, `WorkspaceRail.svelte`): the
+/// view's frame is already at the new rect (`term_bounds`); play the same slide on its layer so it
+/// travels with the page instead of being parked (which blinked).
+#[tauri::command]
+pub async fn term_slide(app: AppHandle, tab: String, dx: f64, ms: f64) -> Result<(), String> {
+    let view = TERMS
+        .lock()
+        .get(&tab)
+        .map(|t| t.view)
+        .ok_or_else(|| format!("no terminal for tab {tab}"))?;
+    on_main(&app, move || {
+        mac::slide_from(view, dx, ms.clamp(0.0, 1000.0));
+        Ok(())
+    })
+}
+
 #[tauri::command]
 pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
     let Some(mut t) = TERMS.lock().remove(&tab) else {

@@ -5,6 +5,7 @@
 //! [`protocol`]); the same binary runs on SSH hosts.
 
 pub mod agents;
+pub mod bots;
 pub mod client;
 mod exec;
 mod fs;

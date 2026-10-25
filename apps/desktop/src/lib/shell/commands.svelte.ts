@@ -13,6 +13,7 @@ import { projectCommands } from "#lib/shell/projectCommands.svelte.ts";
 import { shell } from "#lib/shell/shell.svelte.ts";
 import { switchTab } from "#lib/shell/switcher.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
+import { replayCrewOnboarding } from "#lib/bots/crewOnboarding.svelte.ts";
 import {
 	docks,
 	toggleAllDocks,
@@ -292,6 +293,12 @@ export function shellCommands(): Command[] {
 			run: () => (ws.view = ws.view === "agents" ? "worktree" : "agents"),
 		},
 		{ id: "atlas::Dashboard", label: "Dashboard", run: () => (ws.view = "dashboard") },
+		{
+			id: "atlas::ToggleBotsWorkspace",
+			label: "Crew",
+			run: () => (ws.appMode = ws.appMode === "bots" ? "ide" : "bots"),
+		},
+		{ id: "atlas::ReplayCrewOnboarding", label: "Crew: replay onboarding", run: replayCrewOnboarding },
 		{
 			id: "atlas::NewWorktree",
 			label: "New worktree…",

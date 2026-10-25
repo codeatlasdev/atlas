@@ -705,4 +705,20 @@ export const SETTINGS_INDEX: SettingEntry[] = [
 		"Bring back the first steps card, or start over.",
 		"onboarding progress",
 	),
+	entry(
+		"bots",
+		"Ships",
+		"bots-add",
+		"Add ship",
+		"Connect a ship running `atlas bot install`.",
+		"ssh ship crew agent",
+	),
+	entry(
+		"bots",
+		"Onboarding",
+		"bots-onboarding",
+		"Replay onboarding",
+		"Shows the Crew introduction again from the first step.",
+		"onboarding intro tour crew",
+	),
 ];

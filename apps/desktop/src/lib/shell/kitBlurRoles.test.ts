@@ -23,12 +23,18 @@ const roles = Object.fromEntries([
 	["regular", surface.match(/\.ca-icon-btn--glass\s*\{\s*--ca-blur-role:\s*var\((--[\w-]+)\)/)?.[1]],
 ]);
 
-/** Declarations of `--token: value` inside the `[data-style="<style>"]` block of materials.css. */
+/**
+ * Declarations of `--token: value` in every rule whose selector LIST contains `[data-style="<style>"]` (kit 4.6.0 groups
+ * the opaque styles in one rule: `[data-style="solid"], :root:not([data-style]), …, [data-style="tonal"] { … }`). A later
+ * rule of the same list wins, as in the cascade.
+ */
 function styleBlock(style: string) {
-	const m = materials.match(new RegExp(`\\[data-style="${style}"\\]\\s*\\{([^}]*)\\}`));
-	return Object.fromEntries(
-		[...(m?.[1] ?? "").matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((d) => [d[1], d[2].trim()]),
-	);
+	const out: Record<string, string> = {};
+	const flat = materials.replace(/\/\*[\s\S]*?\*\//g, "");
+	for (const m of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+		if (m[1].split(",").some((sel) => sel.trim() === `[data-style="${style}"]`))
+			for (const d of m[2].matchAll(/(--[\w-]+):\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+	return out;
 }
 /** Atlas's unlayered `:root` declarations of blur tokens (they win over the kit's layers). */
 const atlasRoot = Object.fromEntries(

@@ -314,27 +314,6 @@ html.opaque-window .peek-panel {
 	cursor: text;
 }
 
-/* Clickable things get the hand. `html, body` above makes the arrow the inherited default and the kit's native-feel
-   base (`@layer ca.base`) resets buttons to it, so a custom-styled control (the project avatars in SpaceDots, icon
-   buttons) had the arrow unless it wrote its own `cursor: pointer`. This unlayered rule outranks the kit's layer, and
-   the `:where()` around the whole list keeps it at zero specificity: a component that sets `cursor` itself (text,
-   grab, resize, a disabled look) still wins. Disabled controls keep the arrow. */
-:where(
-	button:not(:disabled, [aria-disabled="true"]),
-	summary,
-	[role="button"]:not([aria-disabled="true"]),
-	[role="tab"]:not([aria-disabled="true"]),
-	[role="menuitem"]:not([aria-disabled="true"]),
-	[role="menuitemradio"]:not([aria-disabled="true"]),
-	[role="menuitemcheckbox"]:not([aria-disabled="true"]),
-	[role="option"]:not([aria-disabled="true"]),
-	[role="switch"]:not([aria-disabled="true"]),
-	[role="checkbox"]:not([aria-disabled="true"]),
-	[role="radio"]:not([aria-disabled="true"])
-) {
-	cursor: pointer;
-}
-
 .mono {
 	font-family: var(--mono);
 }

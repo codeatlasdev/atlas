@@ -144,6 +144,39 @@ void main() {
       expect((fixer.failed, fixer.durationMs), (true, 65000));
     });
 
+    test('the hub fields of the producer output parse', () {
+      final t = AgentTree.fromJson(_treeFixture());
+      final root = t.node('')!;
+      expect((root.thinking, root.agentType, root.requests), ('high', null, 1));
+      final todos = root.todos!;
+      expect((todos.done, todos.total), (1, 3));
+      expect(todos.current!.content, 'Write the hub');
+      expect(todos.phases.map((p) => p.name), ['Map', 'Ship']);
+      final scout = t.node('Scout')!;
+      expect(
+        (scout.agentType, scout.thinking, scout.requests, scout.activeMs),
+        ('scout', 'low', 2, 9000),
+      );
+      expect((scout.contextTokens, scout.contextWindow), (292000, 1000000));
+      expect(scout.contextShare, closeTo(0.292, 1e-9));
+      expect(scout.recent.map((r) => (r.tool, r.status)), [
+        ('task', 'ok'),
+        ('read', 'running'),
+      ]);
+      expect(scout.recent.last.intent, 'Reading server.rs');
+      expect(scout.recent.last.at, greaterThan(0));
+      // A node without figures has no context bar.
+      expect(t.node('Fixer')!.contextShare, isNull);
+      // An older hostd sends none of it: the defaults hold.
+      final old = AgentNode.fromJson({
+        'id': 'A',
+        'parent': '',
+        'status': 'done',
+      });
+      expect(old.recent, isEmpty);
+      expect((old.todos, old.contextShare, old.requests), (null, null, 0));
+    });
+
     test('flat is depth-first with depths; path walks to the root', () {
       final t = AgentTree.fromJson(_treeFixture());
       expect(
@@ -305,30 +338,31 @@ void main() {
           reason: 'the nested id goes to hostd as one dotted name',
         );
         expect(find.text('ledger url: localhost:4300'), findsOneWidget);
-        // omp › LedgerScout › Deep
+        // Main › LedgerScout › Deep, always on screen.
         final crumbs = find.descendant(
           of: find.byType(Breadcrumb),
           matching: find.byType(Text),
         );
         expect(
           [for (final w in crumbs.evaluate()) (w.widget as Text).data],
-          ['omp', 'LedgerScout', 'Deep'],
+          ['Main', 'LedgerScout', 'Deep'],
         );
         expect(
-          find.byType(TextField),
-          findsNothing,
-          reason: 'a subagent has no composer',
+          find.text('Message Main about Deep'),
+          findsOneWidget,
+          reason: 'the composer says who it reaches',
         );
 
         // A crumb goes back up.
-        await t.tap(
-          find.descendant(
-            of: find.byType(Breadcrumb),
-            matching: find.text('LedgerScout'),
-          ),
-        );
+        await t.tap(find.byKey(const ValueKey('crumb-LedgerScout')));
         await _settle(t, 800);
         expect(pc.sent('agent_history').last['sub'], 'LedgerScout');
+        // One tap on Main returns to the main agent, whose composer is plain again.
+        await t.tap(find.byKey(const ValueKey('crumb-')));
+        await _settle(t, 800);
+        expect(find.byType(Breadcrumb), findsNothing);
+        expect(pc.sent('agent_history').last.containsKey('sub'), isFalse);
+        expect(find.text('Message'), findsOneWidget);
         await _unmount(t);
       },
     );
@@ -349,7 +383,7 @@ void main() {
       await _unmount(t);
     });
 
-    testWidgets('long-press shows the task and report', (t) async {
+    testWidgets('long-press opens the agent detail', (t) async {
       final pc = _Spy(demoTransport());
       await _pump(t, pc, _chat('demo-omp', _st('omp', 'done')));
 
@@ -363,36 +397,40 @@ void main() {
         find.text('Read payments/atlas.yaml and report the ledger URL'),
         findsOneWidget,
       );
+      expect(find.text('Usage'), findsOneWidget);
+      expect(find.text('Lineage'), findsOneWidget);
       expect(find.text('Report'), findsOneWidget);
-      expect(find.text('Open transcript'), findsOneWidget);
+      expect(find.text('Open conversation'), findsOneWidget);
       await _unmount(t);
     });
 
-    testWidgets('the map shows the progress and the live line of what runs', (
-      t,
-    ) async {
+    testWidgets('the hub opens from the app bar and lists the crew', (t) async {
       final pc = _Spy(
         demoTransport(),
         replies: {'agent_tree': (_) => _treeFixture()},
       );
       await _pump(t, pc, _chat('demo-omp', _st('omp', 'working')));
 
-      await t.tap(find.byTooltip('Agent map').first);
+      await t.tap(find.byTooltip('Agent hub').first);
       await _settle(t, 600);
-      expect(find.text('Agent map'), findsOneWidget);
+      expect(find.text('Agent hub'), findsOneWidget);
+      // Root and Scout run; Fixer failed and Deep is done: 2 running, 2 parked.
+      expect(find.text('2 running · 2 parked'), findsOneWidget);
+      expect(find.byKey(const ValueKey('hub-Scout')), findsOneWidget);
       expect(
-        find.textContaining('1/3 done · 1 running · 1 failed'),
+        find.descendant(
+          of: find.byKey(const ValueKey('hub-Scout')),
+          matching: find.textContaining('Reading server.rs'),
+        ),
         findsOneWidget,
+        reason: 'the live line of what runs',
       );
-      expect(
-        find.text('Reading server.rs'),
-        findsWidgets,
-        reason: 'live now line',
-      );
-      expect(find.text('Fixer'), findsOneWidget);
 
-      await t.tap(find.text('Deep'));
+      await t.tap(find.byKey(const ValueKey('hub-Scout.Deep')));
+      await _settle(t, 500);
+      await t.tap(find.byKey(const ValueKey('detail-open')));
       await _settle(t, 800);
+      expect(find.text('Agent hub'), findsNothing, reason: 'back to the chat');
       expect(pc.sent('agent_history').last['sub'], 'Scout.Deep');
       await _unmount(t);
     });
@@ -406,13 +444,13 @@ void main() {
       );
       await _pump(t, pc, _chat('demo-omp', _st('omp', 'working')));
       expect(
-        find.text('task'),
-        findsWidgets,
-        reason: 'root now: its running tool',
+        find.byKey(const ValueKey('jobs-title')),
+        findsOneWidget,
+        reason: 'the main agent waits on Scout',
       );
       await t.tap(find.byKey(const ValueKey('crew-Scout')));
       await _settle(t, 800);
-      expect(find.text('Reading server.rs'), findsOneWidget);
+      expect(find.text('Reading server.rs'), findsWidgets);
       await _unmount(t);
     });
 
@@ -432,13 +470,115 @@ void main() {
       await _unmount(t);
     });
 
+    testWidgets('the main agent shows what it waits on and its todos', (
+      t,
+    ) async {
+      final pc = _Spy(
+        demoTransport(),
+        replies: {'agent_tree': (_) => _treeFixture()},
+      );
+      await _pump(t, pc, _chat('demo-omp', _st('omp', 'working')));
+      expect(find.text('Waiting on 1 job'), findsOneWidget);
+      expect(find.byKey(const ValueKey('job-Scout')), findsOneWidget);
+      // Collapsed: the task in progress and the count.
+      expect(find.text('1/3'), findsOneWidget);
+      expect(find.text('Write the hub'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('todo-toggle')));
+      await _settle(t, 300);
+      expect(find.text('Read hostd'), findsOneWidget);
+
+      // A job is a link into that agent; on a subagent the root strips are gone.
+      await t.tap(find.byKey(const ValueKey('job-Scout')));
+      await _settle(t, 800);
+      expect(pc.sent('agent_history').last['sub'], 'Scout');
+      expect(find.textContaining('Waiting on'), findsNothing);
+      expect(find.byKey(const ValueKey('todo-toggle')), findsNothing);
+      await _unmount(t);
+    });
+
+    testWidgets('an omp subagent message goes to the main agent, labelled', (
+      t,
+    ) async {
+      final pc = _Spy(
+        demoTransport(),
+        replies: {
+          'agent_tree': (_) => _treeFixture(),
+          'agent_send': (_) => <String, Object?>{},
+        },
+      );
+      await _pump(
+        t,
+        pc,
+        _chat('demo-omp', _st('omp', 'done'), sub: 'Scout.Deep'),
+      );
+      expect(find.text('Message Main about Deep'), findsOneWidget);
+      await t.enterText(find.byType(TextField), 'also check the lock');
+      await t.tap(find.byTooltip('Send message'));
+      await _settle(t, 400);
+      expect(pc.sent('agent_send').single, {
+        'pane': 'demo-omp',
+        'text': 'Tell Scout.Deep: also check the lock',
+      });
+      await _unmount(t);
+    });
+
+    testWidgets('Claude has no composer on a subagent', (t) async {
+      final pc = _Spy(
+        demoTransport(),
+        replies: {
+          'agent_tree': (_) => {
+            'nodes': [
+              {'id': '', 'parent': null, 'status': 'done', 'agent': 'claude'},
+              {
+                'id': 'agent-1',
+                'parent': '',
+                'status': 'done',
+                'name': 'Explore',
+              },
+            ],
+          },
+        },
+      );
+      await _pump(
+        t,
+        pc,
+        _chat('demo-claude', _st('claude', 'done'), sub: 'agent-1'),
+      );
+      expect(find.byType(TextField), findsNothing, reason: 'nothing relays it');
+      expect(find.byKey(const ValueKey('crumb-')), findsOneWidget);
+      await _unmount(t);
+    });
+
+    testWidgets(
+      'the hub, opened from the chat, can start a message about a node',
+      (t) async {
+        final pc = _Spy(
+          demoTransport(),
+          replies: {'agent_tree': (_) => _treeFixture()},
+        );
+        await _pump(t, pc, _chat('demo-omp', _st('omp', 'done')));
+        await t.tap(find.byTooltip('Agent hub').first);
+        await _settle(t, 600);
+        await t.tap(find.byKey(const ValueKey('hub-Scout')));
+        await _settle(t, 600);
+        await t.tap(find.byKey(const ValueKey('detail-message')));
+        await _settle(t, 1500);
+        expect(find.text('Agent hub'), findsNothing);
+        expect(pc.sent('agent_history').last['sub'], 'Scout');
+        expect(find.text('Message Main about Scout'), findsOneWidget);
+        final field = t.widget<TextField>(find.byType(TextField));
+        expect(field.focusNode!.hasFocus, isTrue, reason: 'ready to type');
+        await _unmount(t);
+      },
+    );
+
     testWidgets('a Claude agent without subagents has no crew chrome', (
       t,
     ) async {
       final pc = _Spy(demoTransport());
       await _pump(t, pc, _chat('demo-claude', _st('claude', 'blocked')));
       expect(find.byType(CrewRail), findsNothing);
-      expect(find.byTooltip('Agent map'), findsOneWidget);
+      expect(find.byTooltip('Agent hub'), findsOneWidget);
       await _unmount(t);
     });
 

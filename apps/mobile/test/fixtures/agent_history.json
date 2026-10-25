@@ -5,6 +5,21 @@
       "text": "O sheet fica sob a nav. Corrige?"
     },
     {
+      "agent": "Main",
+      "from": "parent",
+      "kind": "irc",
+      "text": "Use z-50 no sheet."
+    },
+    {
+      "kind": "notice",
+      "text": "Background job CssScout has completed."
+    },
+    {
+      "kind": "advisor",
+      "severity": "concern",
+      "text": "Medir antes de mudar."
+    },
+    {
       "kind": "thinking",
       "text": "Compare z-index of nav and sheet."
     },

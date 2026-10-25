@@ -15,6 +15,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
+import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
 
 class _Storage extends MacStorage {
@@ -148,20 +149,34 @@ void main() {
       expect(h.truncated, isFalse);
       expect(h.items.map((i) => i.runtimeType.toString()), [
         'UserItem',
+        'IrcItem',
+        'NoticeItem',
+        'AdvisorItem',
         'ThinkingItem',
         'AssistantItem',
         'ToolItem',
         'ToolItem',
         'AssistantItem',
       ]);
-      final bash = h.items[3] as ToolItem;
+      final irc = h.items[1] as IrcItem;
+      expect(
+        (irc.from, irc.agent, irc.sender, irc.text),
+        ('parent', 'Main', 'Main', 'Use z-50 no sheet.'),
+      );
+      expect(
+        (h.items[2] as NoticeItem).text,
+        'Background job CssScout has completed.',
+      );
+      final adv = h.items[3] as AdvisorItem;
+      expect((adv.severity, adv.text), ('concern', 'Medir antes de mudar.'));
+      final bash = h.items[6] as ToolItem;
       expect(
         (bash.id, bash.name, bash.status, bash.output),
         ('a', 'bash', 'error', '1 error'),
       );
       expect(bash.summary, 'Running biome', reason: 'the intent wins');
       expect(bash.detail, 'bunx biome check --write');
-      final task = h.items[4] as ToolItem;
+      final task = h.items[7] as ToolItem;
       expect(task.isTask, isTrue);
       expect(
         task.summary,
@@ -189,11 +204,14 @@ void main() {
           'ItemBlock',
           'ItemBlock',
           'ItemBlock',
+          'ItemBlock',
+          'ItemBlock',
+          'ItemBlock',
           'ToolGroup',
           'SubagentsBlock',
           'ItemBlock',
         ]);
-        final group = blocks[3] as ToolGroup;
+        final group = blocks[6] as ToolGroup;
         expect(group.calls.single.name, 'bash');
         expect((group.errors, group.running), (1, false));
 
@@ -247,8 +265,27 @@ void main() {
     expect(find.text('Fix the sheet z-index'), findsOneWidget);
     expect(find.byType(AgentLogo), findsWidgets);
 
-    // The user's prompt is a bubble; the thought is collapsed to one line.
+    // The user's prompt is a bubble; a message from the parent agent, a harness notice
+    // and an advisor note are cards of their own, never user bubbles.
+    // Newest-at-the-bottom is a reversed list: dragging down reaches the oldest turns.
+    await t.fling(find.byType(ListView).last, const Offset(0, 3000), 4000);
+    await _settle(t, 400);
     expect(find.text('O sheet fica sob a nav. Corrige?'), findsOneWidget);
+    expect(find.text('Message from Main (parent)'), findsOneWidget);
+    expect(find.text('Use z-50 no sheet.'), findsOneWidget);
+    expect(
+      find.byType(UserBubble),
+      findsOneWidget,
+      reason: 'only the real prompt',
+    );
+    expect(
+      find.textContaining('<irc'),
+      findsNothing,
+      reason: 'the raw tag never reaches the screen',
+    );
+    expect(find.text('Background job CssScout has completed.'), findsOneWidget);
+    expect(find.text('Advisor · concern'), findsOneWidget);
+    expect(find.text('Medir antes de mudar.'), findsOneWidget);
     expect(find.text('Thought'), findsOneWidget);
     expect(find.text('Compare z-index of nav and sheet.'), findsNothing);
     await t.tap(find.text('Thought'));
@@ -275,41 +312,67 @@ void main() {
     expect(find.text('nav z-40, sheet z-50'), findsOneWidget);
 
     // Both assistant texts rendered, not squeezed into bubbles.
+    await t.fling(find.byType(ListView).last, const Offset(0, -3000), 4000);
+    await _settle(t, 400);
     expect(find.textContaining('Pronto'), findsOneWidget);
     await _unmount(t);
   });
 
-  testWidgets('tapping a subagent opens its transcript read-only', (t) async {
-    final pc = _Computer({
-      ..._base(),
-      'agent_history': (a) => a['sub'] == 'CssScout'
-          ? {
-              'items': [
-                {'kind': 'user', 'text': 'Find z-index rules'},
-                {'kind': 'assistant', 'text': 'nav z-40, sheet z-50'},
-              ],
-              'messages': <Object>[],
-              'title': null,
-              'truncated': false,
-            }
-          : _fixture(),
-    });
-    await _pump(t, pc, _chat());
-    await t.ensureVisible(find.text('CssScout'));
-    await t.tap(find.text('CssScout'));
-    await _settle(t, 800);
+  testWidgets(
+    'tapping a subagent opens its transcript and keeps Main one tap away',
+    (t) async {
+      final pc = _Computer({
+        ..._base(),
+        'agent_history': (a) => a['sub'] == 'CssScout'
+            ? {
+                'items': [
+                  {'kind': 'user', 'text': 'Find z-index rules'},
+                  {'kind': 'assistant', 'text': 'nav z-40, sheet z-50'},
+                ],
+                'messages': <Object>[],
+                'title': null,
+                'truncated': false,
+              }
+            : _fixture(),
+      });
+      await _pump(t, pc, _chat());
+      await t.fling(find.byType(ListView).last, const Offset(0, -3000), 4000);
+      await _settle(t, 300);
+      await t.ensureVisible(find.text('CssScout'));
+      await t.tap(find.text('CssScout'));
+      await _settle(t, 800);
 
-    expect(
-      pc.sent('agent_history').any((a) => a['sub'] == 'CssScout'),
-      isTrue,
-      reason: 'the transcript is asked for by subagent name',
-    );
-    expect(find.text('omp · subagent'), findsOneWidget);
-    expect(find.text('Find z-index rules'), findsWidgets);
-    expect(find.byType(TextField), findsNothing, reason: 'no composer');
-    expect(find.byTooltip('Stop'), findsNothing);
-    await _unmount(t);
-  });
+      expect(
+        pc.sent('agent_history').any((a) => a['sub'] == 'CssScout'),
+        isTrue,
+        reason: 'the transcript is asked for by subagent name',
+      );
+      expect(find.text('omp · subagent'), findsOneWidget);
+      expect(find.text('Find z-index rules'), findsWidgets);
+      expect(find.byTooltip('Stop'), findsNothing);
+      // Main stays reachable: a chip in the always-visible breadcrumb.
+      expect(find.byKey(const ValueKey('crumb-')), findsOneWidget);
+      // The composer talks to Main about this subagent.
+      expect(
+        find.text('Message Main about CssScout'),
+        findsOneWidget,
+        reason: 'the hint names who it goes to',
+      );
+      await t.enterText(find.byType(TextField), 'use z-60');
+      await t.tap(find.byTooltip('Send message'));
+      await _settle(t, 400);
+      expect(pc.sent('agent_send').single, {
+        'pane': 'p1',
+        'text': 'Tell CssScout: use z-60',
+      }, reason: 'hostd reaches only the main agent; omp relays');
+      // One tap on Main goes back.
+      await t.tap(find.byKey(const ValueKey('crumb-')));
+      await _settle(t, 800);
+      expect(find.byKey(const ValueKey('crumb-')), findsNothing);
+      expect(find.text('Message'), findsOneWidget);
+      await _unmount(t);
+    },
+  );
 
   testWidgets('Stop interrupts the working agent; it replaces send', (t) async {
     final pc = _Computer({

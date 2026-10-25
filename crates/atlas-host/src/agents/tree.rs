@@ -16,12 +16,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use super::State;
+use super::history::text_of;
 
 /// A transcript that changed this recently, without a lock file to say otherwise, is alive.
 const RUNNING_WINDOW_MS: u64 = 60_000;
 const TASK_CHARS: usize = 300;
 const NOW_CHARS: usize = 160;
 const REPORT_CHARS: usize = 600;
+/// Rows of a node's own recent activity.
+const RECENT_ROWS: usize = 8;
+/// A gap between two transcript entries longer than this is the agent being parked, not working.
+const ACTIVE_GAP_MS: u64 = 5 * 60_000;
 
 /// `[A-Za-z0-9_-]`, non-empty: one segment of a dotted subagent id.
 fn segment_ok(s: &str) -> bool {
@@ -173,18 +178,26 @@ struct Facts {
     /// First user message: the assignment, for agents whose parent does not carry it.
     first_user: Option<String>,
     agent: Option<String>,
+    /// Last `thinking_level_change` (`high`, `off`, …).
+    thinking: Option<String>,
+    /// Assistant messages: one model request each.
+    requests: u64,
+    /// Time spent working: the sum of gaps between consecutive entries, parked gaps cut.
+    active_ms: u64,
+    /// Prompt size of the last request (input + cache read + cache write tokens).
+    context_tokens: Option<u64>,
+    /// The window omp reported for this agent (`contextWindow` of the parent's progress).
+    context_window: Option<u64>,
+    /// Last [`RECENT_ROWS`] tool calls: `{at, tool, intent, status}`.
+    recent: Vec<Value>,
 }
 
-fn text_of(content: &Value) -> String {
-    match content {
-        Value::String(s) => s.clone(),
-        Value::Array(a) => a
-            .iter()
-            .filter_map(|b| b["text"].as_str())
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
+/// When an entry was written, epoch ms: omp's RFC 3339 `timestamp`, else the message's own ms.
+fn entry_ms(v: &Value) -> Option<u64> {
+    v["timestamp"]
+        .as_str()
+        .and_then(parse_rfc3339_ms)
+        .or_else(|| v["message"]["timestamp"].as_u64())
 }
 
 /// A tool call as one line: its intent, else `name: detail`.
@@ -229,17 +242,42 @@ fn call_line(b: &Value, intents: &HashMap<String, String>) -> String {
     clip(s.trim(), NOW_CHARS)
 }
 
+/// One tool call of the recent list.
+struct Call {
+    id: String,
+    at: Option<u64>,
+    tool: String,
+    status: &'static str,
+}
+
 fn facts(entries: &[Value]) -> Facts {
     let mut f = Facts::default();
     // Calls without a result yet: id → one-line description, in call order.
     let mut open: Vec<(String, String)> = Vec::new();
     // `tool_execution_start` carries the intent omp left out of the call.
     let mut intents: HashMap<String, String> = HashMap::new();
+    let mut calls: Vec<Call> = Vec::new();
+    let mut lines: HashMap<String, String> = HashMap::new();
+    let mut prev_ms: Option<u64> = None;
     for v in entries {
+        if let Some(ms) = entry_ms(v) {
+            if let Some(p) = prev_ms
+                && let Some(gap) = ms.checked_sub(p)
+                && gap <= ACTIVE_GAP_MS
+            {
+                f.active_ms += gap;
+            }
+            prev_ms = Some(ms);
+        }
         match v["type"].as_str() {
             Some("model_change") => {
                 if let Some(m) = v["model"].as_str() {
                     f.model = Some(m.to_string());
+                }
+            }
+            Some("thinking_level_change") => {
+                if let Some(t) = v["thinkingLevel"].as_str() {
+                    f.thinking = Some(t.to_string());
                 }
             }
             Some("session_init") => {
@@ -259,6 +297,7 @@ fn facts(entries: &[Value]) -> Facts {
                 let m = &v["message"];
                 match m["role"].as_str() {
                     Some("assistant") => {
+                        f.requests += 1;
                         if let Some(model) = m["model"].as_str() {
                             f.model = Some(model.to_string());
                         }
@@ -268,21 +307,43 @@ fn facts(entries: &[Value]) -> Facts {
                                 .filter_map(|k| m["usage"][*k].as_u64())
                                 .sum()
                         });
+                        // The prompt of this request is what sits in the window now.
+                        let prompt: u64 = [
+                            "input",
+                            "cacheRead",
+                            "cacheWrite",
+                            "input_tokens",
+                            "cache_read_input_tokens",
+                            "cache_creation_input_tokens",
+                        ]
+                        .iter()
+                        .filter_map(|k| m["usage"][*k].as_u64())
+                        .sum();
+                        if prompt > 0 {
+                            f.context_tokens = Some(prompt);
+                        }
                         f.cost += m["usage"]["cost"]["total"].as_f64().unwrap_or(0.0);
                         f.stop = m["stopReason"].as_str().map(str::to_string);
                         for b in m["content"].as_array().into_iter().flatten() {
                             if matches!(b["type"].as_str(), Some("toolCall" | "tool_use")) {
                                 f.tools += 1;
-                                open.push((
-                                    b["id"].as_str().unwrap_or_default().to_string(),
-                                    call_line(b, &intents),
-                                ));
+                                let id = b["id"].as_str().unwrap_or_default().to_string();
+                                let line = call_line(b, &intents);
+                                lines.insert(id.clone(), line.clone());
+                                calls.push(Call {
+                                    id: id.clone(),
+                                    at: entry_ms(v),
+                                    tool: b["name"].as_str().unwrap_or("tool").to_string(),
+                                    status: "running",
+                                });
+                                open.push((id, line));
                             }
                         }
                     }
                     Some("toolResult") => {
                         let id = m["toolCallId"].as_str().unwrap_or_default();
                         open.retain(|(i, _)| i != id);
+                        close_call(&mut calls, id, m["isError"] == true);
                     }
                     Some("user") => {
                         for b in m["content"].as_array().into_iter().flatten() {
@@ -290,6 +351,7 @@ fn facts(entries: &[Value]) -> Facts {
                                 && let Some(id) = b["tool_use_id"].as_str()
                             {
                                 open.retain(|(i, _)| i != id);
+                                close_call(&mut calls, id, b["is_error"] == true);
                             }
                         }
                         if f.first_user.is_none() {
@@ -306,12 +368,28 @@ fn facts(entries: &[Value]) -> Facts {
         }
     }
     // The intent can arrive after the call was seen: refresh from the full map.
-    f.now = open.last().map(|(id, line)| {
+    let refresh = |id: &str, line: &str| {
         intents
             .get(id)
-            .map_or_else(|| line.clone(), |i| clip(i.trim(), NOW_CHARS))
-    });
+            .map_or_else(|| line.to_string(), |i| clip(i.trim(), NOW_CHARS))
+    };
+    f.now = open.last().map(|(id, line)| refresh(id, line));
+    let skip = calls.len().saturating_sub(RECENT_ROWS);
+    f.recent = calls
+        .iter()
+        .skip(skip)
+        .map(|c| {
+            let line = lines.get(&c.id).map_or("", String::as_str);
+            json!({"at": c.at, "tool": c.tool, "intent": refresh(&c.id, line), "status": c.status})
+        })
+        .collect();
     f
+}
+
+fn close_call(calls: &mut [Call], id: &str, error: bool) {
+    if let Some(c) = calls.iter_mut().rev().find(|c| c.id == id) {
+        c.status = if error { "error" } else { "ok" };
+    }
 }
 
 /// A subagent's status from the files, before its parent's verdict: completed once its
@@ -378,6 +456,71 @@ fn duration_ms(s: &str) -> Option<u64> {
     num.is_empty().then_some(total as u64)
 }
 
+/// What the parent's `task` tool result says about each subagent it started: id → progress
+/// entry (`contextWindow`, `contextTokens`, `requests`, `resolvedThinkingLevel`). Present only
+/// for synchronous spawns; async ones are measured from their own transcript instead.
+fn progress_of(parent: &[Value]) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    for v in parent {
+        let m = &v["message"];
+        if m["role"] != "toolResult" || !matches!(m["toolName"].as_str(), Some("task" | "Task")) {
+            continue;
+        }
+        for key in ["progress", "results"] {
+            for p in m["details"][key].as_array().into_iter().flatten() {
+                if let Some(id) = p["id"].as_str() {
+                    out.insert(id.to_string(), p.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The latest todo state of a transcript, as omp keeps it (`todo-tracker.ts` rehydrates from
+/// the branch the same way): the last `user_todo_edit` entry's `data.phases`, or the last
+/// successful non-`view` `todo` tool result's `details.phases`. `None` when it never had one.
+fn todos(entries: &[Value]) -> Option<Value> {
+    let phases = entries.iter().rev().find_map(|v| {
+        if v["type"] == "custom" && v["customType"] == "user_todo_edit" {
+            return v["data"]["phases"].as_array();
+        }
+        let m = &v["message"];
+        if v["type"] == "message"
+            && m["role"] == "toolResult"
+            && m["toolName"] == "todo"
+            && m["isError"] != true
+            && m["details"]["op"] != "view"
+        {
+            return m["details"]["phases"].as_array();
+        }
+        None
+    })?;
+    let phases: Vec<Value> = phases
+        .iter()
+        .map(|p| {
+            let tasks: Vec<Value> = p["tasks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|t| {
+                    json!({"content": t["content"].as_str().unwrap_or_default(),
+                                "status": t["status"].as_str().unwrap_or("pending")})
+                })
+                .collect();
+            json!({"name": p["name"].as_str().unwrap_or_default(), "tasks": tasks})
+        })
+        .collect();
+    let all = || {
+        phases
+            .iter()
+            .flat_map(|p| p["tasks"].as_array().into_iter().flatten())
+    };
+    let total = all().count();
+    let done = all().filter(|t| t["status"] == "completed").count();
+    Some(json!({"phases": phases, "done": done, "total": total}))
+}
+
 /// A node as the phone reads it.
 #[allow(clippy::too_many_arguments)]
 fn node(
@@ -397,6 +540,10 @@ fn node(
         "status": status, "task": task.map(|t| clip(&t, TASK_CHARS)),
         "duration_ms": duration, "tokens": f.tokens, "cost": f.cost,
         "tool_count": f.tools, "now": f.now, "report": report, "updated_at": updated_at,
+        "agent_type": if parent.is_some() { agent.clone() } else { None }, "thinking": f.thinking,
+        "requests": f.requests, "active_ms": f.active_ms,
+        "context_tokens": f.context_tokens, "context_window": f.context_window,
+        "recent": f.recent,
     })
 }
 
@@ -436,7 +583,7 @@ pub fn build(session_file: &str, agent: &str, state: State, title: Option<String
         rf.now = None;
     }
     let root_updated = mtime_ms(Path::new(session_file)).map(|(ms, _)| ms);
-    let mut nodes = vec![node(
+    let mut root = node(
         "",
         None,
         title,
@@ -447,7 +594,13 @@ pub fn build(session_file: &str, agent: &str, state: State, title: Option<String
         None,
         None,
         root_updated,
-    )];
+    );
+    root["todos"] = if agent == "omp" {
+        todos(&root_entries).unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    let mut nodes = vec![root];
     match agent {
         "omp" => omp_children(session_dir(session_file), "", &root_entries, &mut nodes),
         "claude" => claude_children(session_dir(session_file), &mut nodes),
@@ -460,6 +613,7 @@ pub fn build(session_file: &str, agent: &str, state: State, title: Option<String
 /// into each child's own directory.
 fn omp_children(holder: &Path, parent_id: &str, parent: &[Value], nodes: &mut Vec<Value>) {
     let done = finished(parent);
+    let progress = progress_of(parent);
     let spawned = assignments(parent);
     let tasks: HashMap<&str, (&str, Option<&str>)> = spawned
         .iter()
@@ -508,7 +662,17 @@ fn omp_children(holder: &Path, parent_id: &str, parent: &[Value], nodes: &mut Ve
         let short = id.rsplit('.').next().unwrap_or(&id);
         let file = holder.join(format!("{id}.jsonl"));
         let entries = lines(&file);
-        let f = facts(&entries);
+        let mut f = facts(&entries);
+        // Omp's own figures, when the parent kept them, beat what the transcript implies.
+        if let Some(p) = progress.get(short) {
+            f.context_window = p["contextWindow"].as_u64().or(f.context_window);
+            if let Some(c) = p["contextTokens"].as_u64() {
+                f.context_tokens = Some(c);
+            }
+            if f.thinking.is_none() {
+                f.thinking = p["resolvedThinkingLevel"].as_str().map(str::to_string);
+            }
+        }
         let (task, agent) = tasks.get(short).copied().unzip();
         let task = task
             .filter(|t| !t.is_empty())
@@ -1089,5 +1253,154 @@ mod tests {
             Some(1_792_956_468_388)
         );
         assert_eq!(parse_rfc3339_ms("not a date"), None);
+    }
+
+    /// What the hub shows per agent, read from its own transcript: model requests, time spent
+    /// working (parked gaps cut), the last request's prompt as context, thinking level, and the
+    /// last tool calls with their outcome.
+    #[test]
+    fn hub_figures_come_from_the_nodes_own_transcript() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("s.jsonl");
+        write(
+            &root,
+            &[
+                json!({"type": "session", "id": "a"}),
+                task_call(&[("Scout", "map")]),
+            ],
+        );
+        let ts = |sec: u64| format!("2026-10-25T10:{:02}:{:02}.000Z", sec / 60, sec % 60);
+        let at = |v: Value, t: &str| {
+            let mut v = v;
+            v["timestamp"] = json!(t);
+            v
+        };
+        let calls: Vec<Value> = (0..10)
+            .map(|i| json!({"type": "toolCall", "id": format!("c{i}"), "name": "read",
+                            "arguments": {"path": format!("f{i}.rs"), "i": format!("Reading f{i}")}}))
+            .collect();
+        let mut asst1 = assistant(Value::Array(calls), usage(100, 0.1), "toolUse");
+        asst1["message"]["usage"] = json!({"input": 10, "cacheRead": 5000, "cacheWrite": 200,
+                                           "output": 30, "totalTokens": 5240, "cost": {"total": 0.1}});
+        let result = |id: &str, err: bool| json!({"type": "message", "message": {"role": "toolResult", "toolCallId": id, "isError": err}});
+        write(
+            &tmp.path().join("s").join("Scout.jsonl"),
+            &[
+                at(
+                    json!({"type": "thinking_level_change", "thinkingLevel": "high"}),
+                    &ts(0),
+                ),
+                at(json!({"type": "session_init", "agent": "scout"}), &ts(0)),
+                at(asst1, &ts(10)),
+                at(result("c8", true), &ts(20)),
+                at(result("c9", false), &ts(30)),
+                // Parked for 20 minutes: not working time.
+                at(
+                    assistant(
+                        json!([{"type": "text", "text": "done"}]),
+                        usage(10, 0.0),
+                        "stop",
+                    ),
+                    &ts(30 + 20 * 60),
+                ),
+            ],
+        );
+        let v = build(&root.to_string_lossy(), "omp", State::Working, None);
+        let n = by_id(&v, "Scout");
+        assert_eq!(n["thinking"], "high");
+        assert_eq!(n["agent_type"], "scout");
+        assert_eq!(n["requests"], 2);
+        assert_eq!(n["active_ms"], 30_000);
+        // The prompt of the LAST request (`usage(10)` → input 5), not the biggest one.
+        assert_eq!(n["context_tokens"], 5);
+        assert_eq!(n["context_window"], Value::Null);
+        let recent = n["recent"].as_array().unwrap();
+        assert_eq!(recent.len(), RECENT_ROWS);
+        assert_eq!(recent[0]["intent"], "Reading f2");
+        assert_eq!(recent[7]["intent"], "Reading f9");
+        assert_eq!(
+            (recent[6]["status"].as_str(), recent[7]["status"].as_str()),
+            (Some("error"), Some("ok"))
+        );
+        assert_eq!(recent[0]["status"], "running");
+        assert_eq!(recent[7]["tool"], "read");
+        assert!(recent[7]["at"].as_u64().is_some());
+        // The root has no agent type and carries todos (null here).
+        assert_eq!(by_id(&v, "")["agent_type"], Value::Null);
+        assert_eq!(by_id(&v, "")["todos"], Value::Null);
+    }
+
+    /// A synchronous spawn leaves omp's own figures in the parent's `task` result; they win.
+    #[test]
+    fn the_parents_progress_supplies_the_context_window() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("s.jsonl");
+        write(
+            &root,
+            &[
+                task_call(&[("Scout", "map")]),
+                json!({"type": "message", "message": {"role": "toolResult", "toolName": "task",
+                    "details": {"progress": [{"id": "Scout", "contextWindow": 1_000_000,
+                        "contextTokens": 292_000, "resolvedThinkingLevel": "medium"}]}}}),
+            ],
+        );
+        write(
+            &tmp.path().join("s").join("Scout.jsonl"),
+            &[assistant(json!([]), usage(10, 0.0), "stop")],
+        );
+        let v = build(&root.to_string_lossy(), "omp", State::Idle, None);
+        let n = by_id(&v, "Scout");
+        assert_eq!(
+            (n["context_window"].as_u64(), n["context_tokens"].as_u64()),
+            (Some(1_000_000), Some(292_000))
+        );
+        assert_eq!(n["thinking"], "medium");
+    }
+
+    /// The root carries omp's latest todo state: a user edit or a todo result, a `view` never.
+    #[test]
+    fn the_root_carries_the_latest_todo_phases() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("s.jsonl");
+        let phases = |a: &str, b: &str| {
+            json!([{"name": "Build", "tasks": [{"content": "one", "status": a}, {"content": "two", "status": b}]},
+                   {"name": "Ship", "tasks": [{"content": "three", "status": "pending"}]}])
+        };
+        let result = |op: &str, phases: Value, err: bool| {
+            json!({"type": "message", "message": {"role": "toolResult", "toolName": "todo",
+                   "isError": err, "details": {"op": op, "phases": phases}}})
+        };
+        write(
+            &root,
+            &[
+                result("init", phases("in_progress", "pending"), false),
+                result("update", phases("completed", "in_progress"), false),
+                // Not canonical: a view and a failed call.
+                result("view", phases("pending", "pending"), false),
+                result("update", phases("pending", "pending"), true),
+            ],
+        );
+        let t = build(&root.to_string_lossy(), "omp", State::Working, None);
+        let todos = &by_id(&t, "")["todos"];
+        assert_eq!(
+            (todos["done"].as_u64(), todos["total"].as_u64()),
+            (Some(1), Some(3))
+        );
+        assert_eq!(todos["phases"][0]["name"], "Build");
+        assert_eq!(todos["phases"][0]["tasks"][1]["status"], "in_progress");
+        // A later user edit wins.
+        let mut lines: Vec<Value> = std::fs::read_to_string(&root)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        lines.push(json!({"type": "custom", "customType": "user_todo_edit",
+                          "data": {"phases": phases("completed", "completed")}}));
+        write(&root, &lines);
+        let t = build(&root.to_string_lossy(), "omp", State::Working, None);
+        assert_eq!(by_id(&t, "")["todos"]["done"], 2);
+        // Other agents never have todos.
+        let t = build(&root.to_string_lossy(), "claude", State::Working, None);
+        assert_eq!(by_id(&t, "")["todos"], Value::Null);
     }
 }

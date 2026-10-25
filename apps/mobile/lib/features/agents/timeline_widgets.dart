@@ -757,18 +757,184 @@ class _CompactionDividerState extends State<CompactionDivider> {
   }
 }
 
-/// One timeline block, in order.
+/// A message another agent sent this one (omp's IRC): a compact card with the sender, never
+/// the user's bubble.
+class IrcCard extends StatelessWidget {
+  const IrcCard(this.item, {super.key, this.onOpen});
+  final IrcItem item;
+
+  /// Opens the sender's conversation (`''` = the main agent); null = not a link.
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final fromParent = item.from == 'parent';
+    return Material(
+      color: c.info.withValues(alpha: .08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Space.radius),
+        side: BorderSide(color: c.info.withValues(alpha: .3)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        onLongPress: () => copyText(context, item.text),
+        child: Padding(
+          padding: const EdgeInsets.all(Space.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.forum_outlined, size: 15, color: c.info),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      fromParent
+                          ? 'Message from ${item.sender} (parent)'
+                          : 'Message from ${item.sender}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: c.info,
+                      ),
+                    ),
+                  ),
+                  if (onOpen != null)
+                    Icon(Icons.chevron_right, size: 16, color: c.faint),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                item.text,
+                style: TextStyle(color: c.text, height: 1.4, fontSize: 13.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A notice the harness injected: one muted line, expands to the whole text.
+class NoticeRow extends StatefulWidget {
+  const NoticeRow(this.text, {super.key});
+  final String text;
+
+  @override
+  State<NoticeRow> createState() => _NoticeRowState();
+}
+
+class _NoticeRowState extends State<NoticeRow> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final first = widget.text.split('\n').first;
+    return InkWell(
+      onTap: () => setState(() => _open = !_open),
+      onLongPress: () => copyText(context, widget.text),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline_rounded, size: 14, color: c.faint),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                _open ? widget.text : first,
+                maxLines: _open ? null : 1,
+                overflow: _open ? null : TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: c.faint,
+                  fontStyle: FontStyle.italic,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// omp's advisor note, coloured by severity: blocker red, concern amber, anything else grey.
+class AdvisorCard extends StatelessWidget {
+  const AdvisorCard(this.item, {super.key});
+  final AdvisorItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final (color, icon) = switch (item.severity) {
+      'blocker' => (c.error, Icons.report_rounded),
+      'concern' => (c.warning, Icons.warning_amber_rounded),
+      _ => (c.muted, Icons.lightbulb_outline_rounded),
+    };
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(Space.radius),
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      padding: const EdgeInsets.all(Space.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 6),
+              Text(
+                'Advisor · ${item.severity}',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            item.text,
+            style: TextStyle(color: c.text, height: 1.4, fontSize: 13.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One timeline block, in order. [onOpenSubagent] focuses an agent by id (`''` = main);
+/// an IRC card from `parent` opens [parentId], the focused agent's parent (the main agent
+/// when null).
 Widget timelineBlock(
   BuildContext context,
   TimelineBlock b, {
   required AgentHistory history,
   required void Function(String name) onOpenSubagent,
+  String? parentId,
 }) => switch (b) {
   ItemBlock(item: UserItem(:final text)) => UserBubble(text),
   ItemBlock(item: AssistantItem(:final text)) => AssistantText(text),
   ItemBlock(item: ThinkingItem(:final text)) => ThinkingRow(text),
   ItemBlock(item: final ResultItem r) => ResultCard(r, onOpen: onOpenSubagent),
   ItemBlock(item: CompactionItem(:final text)) => CompactionDivider(text),
+  ItemBlock(item: final IrcItem i) => IrcCard(
+    i,
+    onOpen: i.from == 'parent' ? () => onOpenSubagent(parentId ?? '') : null,
+  ),
+  ItemBlock(item: NoticeItem(:final text)) => NoticeRow(text),
+  ItemBlock(item: final AdvisorItem a) => AdvisorCard(a),
   ItemBlock() => const SizedBox.shrink(),
   ToolGroup() => ToolGroupCard(b),
   SubagentsBlock(:final call) => SubagentsCard(

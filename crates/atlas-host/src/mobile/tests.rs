@@ -654,6 +654,10 @@ async fn agent_history_fixture_is_the_real_payload() {
         json!({"type": "title", "title": "\u{f011c} Fix the sheet z-index"}).to_string(),
         json!({"type": "session", "id": "x"}).to_string(),
         msg("user", json!("O sheet fica sob a nav. Corrige?")),
+        msg("user", json!("[Wait interrupted by message]\n<irc from=\"parent\" agent=\"Main\">\nUse z-50 no sheet.\n</irc>")),
+        msg("user", json!("<system-notice>\nBackground job CssScout has completed.\n</system-notice>")),
+        json!({"type": "custom_message", "customType": "advisor", "content": "x",
+               "details": {"notes": [{"note": "Medir antes de mudar.", "severity": "concern"}]}}).to_string(),
         msg("assistant", json!([
             {"type": "thinking", "thinking": "Compare z-index of nav and sheet."},
             {"type": "text", "text": "Vou medir.\n\n| Camada | z |\n|---|---|\n| nav | 40 |\n| sheet | 50 |"},
@@ -765,13 +769,31 @@ async fn agent_tree_fixture_is_the_real_payload() {
             "toolUse",
         )
     };
+    let stamp = |line: String, at: &str| {
+        let mut v: Value = serde_json::from_str(&line).unwrap();
+        v["timestamp"] = json!(at);
+        v.to_string()
+    };
+    let todo_result =
+        json!({"type": "message", "message": {"role": "toolResult", "toolName": "todo",
+        "toolCallId": "td", "details": {"op": "init", "phases": [
+            {"name": "Map", "tasks": [{"content": "Read hostd", "status": "completed"},
+                                      {"content": "Write the hub", "status": "in_progress"}]},
+            {"name": "Ship", "tasks": [{"content": "Release", "status": "pending"}]}]}}})
+        .to_string();
     let lines = [
         json!({"type": "title", "title": "\u{f011c} Map the host"}).to_string(),
         json!({"type": "session", "id": "x"}).to_string(),
+        json!({"type": "thinking_level_change", "thinkingLevel": "high"}).to_string(),
         spawn(json!([
             {"name": "Scout", "agent": "scout", "task": "Map hostd"},
             {"name": "Fixer", "agent": "task", "task": "Fix the sheet"},
         ])),
+        todo_result,
+        // A synchronous spawn keeps omp's own figures for the context bar.
+        json!({"type": "message", "message": {"role": "toolResult", "toolName": "task", "toolCallId": "t",
+               "details": {"progress": [{"id": "Scout", "contextWindow": 1_000_000, "contextTokens": 292_000}]}}})
+        .to_string(),
         json!({"type": "custom_message", "customType": "async-result",
                "content": "<task-result id=\"Fixer\" agent=\"task\" status=\"failed\" duration=\"1m5s\">\n<output>boom</output>"})
         .to_string(),
@@ -782,14 +804,16 @@ async fn agent_tree_fixture_is_the_real_payload() {
     std::fs::write(
         dir.join("Scout.jsonl"),
         [
-            spawn(json!([{"name": "Deep", "agent": "scout", "task": "Read server.rs"}])),
-            json!({"type": "message", "message": {"role": "toolResult", "toolCallId": "t"}}).to_string(),
-            asst(
+            json!({"type": "thinking_level_change", "thinkingLevel": "low"}).to_string(),
+            json!({"type": "session_init", "agent": "scout"}).to_string(),
+            stamp(spawn(json!([{"name": "Deep", "agent": "scout", "task": "Read server.rs"}])), "2026-10-25T10:00:00.000Z"),
+            stamp(json!({"type": "message", "message": {"role": "toolResult", "toolCallId": "t"}}).to_string(), "2026-10-25T10:00:05.000Z"),
+            stamp(asst(
                 json!([{"type": "toolCall", "id": "r", "name": "read", "arguments": {"path": "server.rs", "i": "Reading server.rs"}}]),
                 300,
                 0.01,
                 "toolUse",
-            ),
+            ), "2026-10-25T10:00:09.000Z"),
         ]
         .join("\n"),
     )
@@ -835,10 +859,31 @@ async fn agent_tree_fixture_is_the_real_payload() {
     assert_eq!(node(&v, "Scout.Deep")["status"], "completed");
     assert_eq!(node(&v, "Fixer")["status"], "failed");
     // Timestamps and the order of siblings follow the disk: pin them for the fixture.
+    assert_eq!(node(&v, "")["thinking"], "high");
+    assert_eq!(node(&v, "")["todos"]["done"], 1);
+    assert_eq!(node(&v, "")["todos"]["total"], 3);
+    assert_eq!(node(&v, "Scout")["agent_type"], "scout");
+    assert_eq!(node(&v, "Scout")["thinking"], "low");
+    assert_eq!(node(&v, "Scout")["requests"], 2);
+    assert_eq!(node(&v, "Scout")["context_window"], 1_000_000);
+    assert_eq!(node(&v, "Scout")["context_tokens"], 292_000);
+    assert_eq!(node(&v, "Scout")["active_ms"], 9_000);
+    assert!(node(&v, "Scout")["recent"][1]["at"].as_u64().is_some());
+    assert_eq!(node(&v, "Scout")["recent"][0]["tool"], "task");
+    assert_eq!(
+        node(&v, "Scout")["recent"][1]["intent"],
+        "Reading server.rs"
+    );
+    assert_eq!(node(&v, "Scout")["recent"][1]["status"], "running");
+    assert_eq!(node(&v, "Scout")["recent"][0]["status"], "ok");
     let nodes = v["nodes"].as_array_mut().unwrap();
     nodes.sort_by_key(|n| n["id"].as_str().unwrap().to_string());
     for n in nodes.iter_mut() {
         n["updated_at"] = json!(1_700_000_000_000u64);
+        // Without the parent's figure it is "transcript start → last write": the clock.
+        if n["id"] == "Scout" {
+            n["duration_ms"] = json!(60_000);
+        }
     }
     // Phones read a nested transcript through the same dotted id.
     let deep = c

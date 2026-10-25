@@ -278,6 +278,34 @@ class _DemoComputer implements Transport {
       'now': running ? 'Reading the payments log' : null,
       'report': null,
       'updated_at': a.updatedAt,
+      'agent_type': null,
+      'thinking': 'high',
+      'requests': 6,
+      'active_ms': 61000,
+      'context_tokens': 292000,
+      'context_window': 1000000,
+      'recent': <Object>[],
+      'todos': a.subagents.isEmpty
+          ? null
+          : {
+              'phases': [
+                {
+                  'name': 'Investigate',
+                  'tasks': [
+                    {
+                      'content': 'Find the ledger config',
+                      'status': 'completed',
+                    },
+                    {
+                      'content': 'Report the ledger URL',
+                      'status': 'in_progress',
+                    },
+                  ],
+                },
+              ],
+              'done': 1,
+              'total': 2,
+            },
     };
     if (a.subagents.isEmpty) return [root];
     return [
@@ -298,6 +326,21 @@ class _DemoComputer implements Transport {
         'report':
             'payments/atlas.yaml points at localhost:4300; nothing starts it.',
         'updated_at': a.updatedAt,
+        'agent_type': 'scout',
+        'thinking': 'low',
+        'requests': 3,
+        'active_ms': 38000,
+        'context_tokens': 9100,
+        'context_window': 200000,
+        'recent': [
+          {
+            'at': a.updatedAt - 5000,
+            'tool': 'read',
+            'intent': 'Reading payments/atlas.yaml',
+            'status': 'ok',
+          },
+        ],
+        'todos': null,
       },
       {
         'id': 'LedgerScout.Deep',
@@ -314,6 +357,14 @@ class _DemoComputer implements Transport {
         'now': null,
         'report': 'ledger url: localhost:4300',
         'updated_at': a.updatedAt,
+        'agent_type': 'scout',
+        'thinking': 'off',
+        'requests': 1,
+        'active_ms': 9000,
+        'context_tokens': null,
+        'context_window': null,
+        'recent': <Object>[],
+        'todos': null,
       },
     ];
   }

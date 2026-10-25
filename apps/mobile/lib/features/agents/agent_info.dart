@@ -59,3 +59,34 @@ String tokensText(int n) =>
 String costText(double usd) => usd <= 0
     ? ''
     : '\$${usd < 0.1 ? usd.toStringAsFixed(3) : usd.toStringAsFixed(2)}';
+
+/// `292K`, `1M`, `812`: a context size.
+String windowText(int n) {
+  if (n >= 1000000) {
+    final m = n / 1000000;
+    return '${m == m.roundToDouble() ? m.toStringAsFixed(0) : m.toStringAsFixed(1)}M';
+  }
+  if (n >= 1000) return '${(n / 1000).round()}K';
+  return '$n';
+}
+
+/// `12s ago`, `4m ago`; empty when [atMs] is unknown or in the future.
+String agoText(int atMs, {int? nowMs}) {
+  if (atMs <= 0) return '';
+  final s = (((nowMs ?? DateTime.now().millisecondsSinceEpoch) - atMs) / 1000)
+      .floor();
+  if (s < 0) return '';
+  if (s < 5) return 'just now';
+  if (s < 60) return '${s}s ago';
+  if (s < 3600) return '${s ~/ 60}m ago';
+  if (s < 86400) return '${s ~/ 3600}h ago';
+  return '${s ~/ 86400}d ago';
+}
+
+/// `HH:MM:SS` of an epoch-ms instant in local time; empty when unknown.
+String clockText(int atMs) {
+  if (atMs <= 0) return '';
+  final d = DateTime.fromMillisecondsSinceEpoch(atMs);
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+}

@@ -1,23 +1,69 @@
 {
   "nodes": [
     {
+      "active_ms": 0,
       "agent": "omp",
+      "agent_type": null,
+      "context_tokens": null,
+      "context_window": null,
       "cost": 0.04,
       "duration_ms": null,
       "id": "",
       "model": "cc/claude-sonnet-5-5",
       "name": "Map the host",
-      "now": "task",
+      "now": null,
       "parent": null,
+      "recent": [
+        {
+          "at": null,
+          "intent": "task",
+          "status": "ok",
+          "tool": "task"
+        }
+      ],
       "report": null,
+      "requests": 1,
       "status": "running",
       "task": null,
+      "thinking": "high",
+      "todos": {
+        "done": 1,
+        "phases": [
+          {
+            "name": "Map",
+            "tasks": [
+              {
+                "content": "Read hostd",
+                "status": "completed"
+              },
+              {
+                "content": "Write the hub",
+                "status": "in_progress"
+              }
+            ]
+          },
+          {
+            "name": "Ship",
+            "tasks": [
+              {
+                "content": "Release",
+                "status": "pending"
+              }
+            ]
+          }
+        ],
+        "total": 3
+      },
       "tokens": 1200,
       "tool_count": 1,
       "updated_at": 1700000000000
     },
     {
+      "active_ms": 0,
       "agent": "task",
+      "agent_type": "task",
+      "context_tokens": null,
+      "context_window": null,
       "cost": 0.001,
       "duration_ms": 65000,
       "id": "Fixer",
@@ -25,31 +71,58 @@
       "name": "Fixer",
       "now": null,
       "parent": "",
+      "recent": [],
       "report": null,
+      "requests": 1,
       "status": "failed",
       "task": "Fix the sheet",
+      "thinking": null,
       "tokens": 50,
       "tool_count": 0,
       "updated_at": 1700000000000
     },
     {
+      "active_ms": 9000,
       "agent": "scout",
+      "agent_type": "scout",
+      "context_tokens": 292000,
+      "context_window": 1000000,
       "cost": 0.05,
-      "duration_ms": null,
+      "duration_ms": 60000,
       "id": "Scout",
       "model": "cc/claude-sonnet-5-5",
       "name": "Scout",
       "now": "Reading server.rs",
       "parent": "",
+      "recent": [
+        {
+          "at": 1792922400000,
+          "intent": "task",
+          "status": "ok",
+          "tool": "task"
+        },
+        {
+          "at": 1792922409000,
+          "intent": "Reading server.rs",
+          "status": "running",
+          "tool": "read"
+        }
+      ],
       "report": null,
+      "requests": 2,
       "status": "running",
       "task": "Map hostd",
+      "thinking": "low",
       "tokens": 1500,
       "tool_count": 2,
       "updated_at": 1700000000000
     },
     {
+      "active_ms": 0,
       "agent": "scout",
+      "agent_type": "scout",
+      "context_tokens": null,
+      "context_window": null,
       "cost": 0.002,
       "duration_ms": null,
       "id": "Scout.Deep",
@@ -57,9 +130,12 @@
       "name": "Deep",
       "now": null,
       "parent": "Scout",
+      "recent": [],
       "report": "server.rs routes every command",
+      "requests": 1,
       "status": "completed",
       "task": "Read server.rs",
+      "thinking": null,
       "tokens": 100,
       "tool_count": 0,
       "updated_at": 1700000000000

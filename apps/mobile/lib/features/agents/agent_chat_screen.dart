@@ -15,7 +15,7 @@ import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_switcher.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
-import 'package:atlas_mobile/features/agents/agent_map_screen.dart';
+import 'package:atlas_mobile/features/agents/agent_hub_screen.dart';
 import 'package:atlas_mobile/features/agents/crew_widgets.dart';
 import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
 
@@ -66,6 +66,7 @@ class AgentChatScreen extends ConsumerStatefulWidget {
 
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   final _msg = TextEditingController();
+  final _composerFocus = FocusNode();
   final _scroll = ScrollController();
   bool _sending = false;
   bool _stopping = false;
@@ -94,6 +95,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   bool _atBottom = true;
 
   String? get _sub => _focus.isEmpty ? null : _focus;
+
+  /// Terminal and approvals belong to the main agent's pane; a subagent has neither.
   bool get _readOnly => _sub != null;
 
   @override
@@ -264,6 +267,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     _treeTimer?.cancel();
     _tree.dispose();
     _msg.dispose();
+    _composerFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -273,6 +277,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   /// omp queues a typed message as steering while it works; nothing else takes one.
   bool _canSteer(AgentStatus s) => s.agent == 'omp' && s.state == 'working';
+
+  /// What goes to the main agent for [text] typed on the focused agent: its own text on
+  /// the main agent, else a line that names the subagent (hostd only reaches the main
+  /// agent's terminal, and omp relays it).
+  String _outgoing(String text) => _sub == null ? text : 'Tell $_sub: $text';
 
   Future<bool> _sendText(String text) async {
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
@@ -284,7 +293,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     });
     final resp = await mux.call('agent_send', {
       'pane': widget.paneKey,
-      'text': text,
+      'text': _outgoing(text),
       if (steer) 'steer': true,
     });
     if (!mounted) return false;
@@ -392,16 +401,26 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     }
   }
 
-  void _openMap(AgentStatus status) => Navigator.of(context).push(
+  void _openHub(AgentStatus status) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => AgentMapScreen(
+      builder: (_) => AgentHubScreen(
         tree: _tree,
         focus: _focus,
         fallbackAgent: status.agent,
         onFocus: _focusNode,
+        onMessage: status.agent == 'omp' ? _messageAbout : null,
       ),
     ),
   );
+
+  /// Focuses [n] and puts the cursor in the composer: on the main agent that is a message
+  /// to it, on a subagent one to the main agent about it.
+  void _messageAbout(AgentNode n) {
+    _focusNode(n.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _composerFocus.requestFocus();
+    });
+  }
 
   Future<void> _switch(Map<String, AgentStatus> all) async {
     final pane = await showAgentSwitcher(
@@ -420,6 +439,25 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
         ),
       ),
     );
+  }
+
+  /// Main › … › the focused agent. When the tree does not list it (yet, or at all on an
+  /// older hostd) the path is built from its dotted id, so Main is always one tap away.
+  List<AgentNode> _crumbPath(AgentTree tree) {
+    final listed = tree.path(_focus);
+    if (listed.isNotEmpty && listed.first.isRoot) return listed;
+    final segs = _focus.split('.');
+    return [
+      tree.node('') ?? const AgentNode(id: '', status: 'idle'),
+      for (var i = 0; i < segs.length; i++)
+        tree.node(segs.sublist(0, i + 1).join('.')) ??
+            AgentNode(
+              id: segs.sublist(0, i + 1).join('.'),
+              parent: i == 0 ? '' : segs.sublist(0, i).join('.'),
+              name: segs[i],
+              status: 'pending',
+            ),
+    ];
   }
 
   void _jumpToBottom() {
@@ -520,9 +558,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.account_tree_outlined),
-          tooltip: 'Agent map',
-          onPressed: _tree.value.subs.isEmpty ? null : () => _openMap(status),
+          icon: const Icon(Icons.hub_outlined),
+          tooltip: 'Agent hub',
+          onPressed: _tree.value.subs.isEmpty ? null : () => _openHub(status),
         ),
         if (!_readOnly)
           IconButton(
@@ -613,7 +651,6 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     if (_atBottom) _seenBlocks = shown.length;
     final fresh = !_atBottom && shown.length > _seenBlocks;
 
-    final rootLabel = agentLabel(status.agent);
     return Scaffold(
       appBar: _appBar(status, all),
       body: Column(
@@ -624,19 +661,31 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
               focus: _focus,
               fallbackAgent: status.agent,
               onFocus: _focusNode,
-              onInspect: (n) => showNodeSheet(
+              onInspect: (n) => showAgentDetail(
                 context,
-                n,
+                tree: _tree,
+                id: n.id,
                 fallbackAgent: status.agent,
-                onFocus: () => _focusNode(n.id),
+                onOpen: _focusNode,
+                onJump: (id) => showAgentDetail(
+                  context,
+                  tree: _tree,
+                  id: id,
+                  fallbackAgent: status.agent,
+                  onOpen: _focusNode,
+                  onJump: _focusNode,
+                  onMessage: status.agent == 'omp' ? _messageAbout : null,
+                ),
+                onMessage: status.agent == 'omp' ? _messageAbout : null,
               ),
             ),
-            if (_focus.isNotEmpty)
-              Breadcrumb(
-                path: tree.path(_focus),
-                rootLabel: rootLabel,
-                onTap: _focusNode,
-              ),
+          ],
+          if (_focus.isNotEmpty)
+            Breadcrumb(path: _crumbPath(tree), onTap: _focusNode),
+          if (_focus.isEmpty) ...[
+            JobsStrip(tree: tree, onOpen: _focusNode),
+            if (tree.node('')?.todos case final todos? when todos.total > 0)
+              TodoCard(todos),
           ],
           if (focusNode != null && (focusNode.running || tree.subs.isNotEmpty))
             NowStrip(
@@ -680,6 +729,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                               b,
                               history: _history,
                               onOpenSubagent: _focusNode,
+                              parentId: focusNode?.parent,
                             ),
                           ),
                         if (_history.truncated)
@@ -732,7 +782,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                 style: TextStyle(color: c.error, fontSize: 12),
               ),
             ),
-          if (!_readOnly) _composer(status),
+          _composer(status),
         ],
       ),
     );
@@ -742,6 +792,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     final c = AtlasColors.of(context);
     final steer = _canSteer(status);
     final canType = canSendChat(status) || steer;
+    final sub = _sub;
+    // Only omp relays a line addressed to one of its subagents.
+    if (sub != null && status.agent != 'omp') return const SizedBox.shrink();
+    final subLabel = sub?.split('.').last;
     final canSend = canType && !_sending;
     final working = status.state == 'working';
     OutlineInputBorder border([Color? color]) => OutlineInputBorder(
@@ -760,7 +814,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (status.agent == 'omp')
+              if (status.agent == 'omp' && sub == null)
                 IconButton(
                   tooltip: 'Commands',
                   onPressed: canSendChat(status) && !_sending ? _command : null,
@@ -779,11 +833,16 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
               Expanded(
                 child: TextField(
                   controller: _msg,
+                  focusNode: _composerFocus,
                   minLines: 1,
                   maxLines: 5,
                   enabled: canType,
                   decoration: InputDecoration(
-                    hintText: steer
+                    hintText: sub != null && canType
+                        ? (steer
+                              ? 'Steer Main about $subLabel…'
+                              : 'Message Main about $subLabel')
+                        : steer
                         ? 'Steer the agent…'
                         : canType
                         ? 'Message'

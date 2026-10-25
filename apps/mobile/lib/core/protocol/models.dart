@@ -263,8 +263,44 @@ sealed class TimelineItem {
     'tool' => ToolItem.fromJson(j),
     'result' => ResultItem.fromJson(j),
     'compaction' => CompactionItem(j['text'] as String? ?? ''),
+    'irc' => IrcItem(
+      from: j['from'] as String? ?? '',
+      agent: j['agent'] as String? ?? '',
+      text: j['text'] as String? ?? '',
+    ),
+    'notice' => NoticeItem(j['text'] as String? ?? ''),
+    'advisor' => AdvisorItem(
+      severity: j['severity'] as String? ?? 'note',
+      text: j['text'] as String? ?? '',
+    ),
     _ => null,
   };
+}
+
+/// A message another agent sent this one (omp's IRC): [from] is `parent` or an agent
+/// name, [agent] the sender's display name (`Main`). Never something the user typed.
+class IrcItem extends TimelineItem {
+  const IrcItem({required this.from, required this.agent, required this.text});
+  final String from;
+  final String agent;
+  final String text;
+
+  /// Who to show: the sender's name, else its role.
+  String get sender => agent.isNotEmpty ? agent : from;
+}
+
+/// Something the harness injected into the conversation (a system notice), not a turn.
+class NoticeItem extends TimelineItem {
+  const NoticeItem(this.text);
+  final String text;
+}
+
+/// omp's advisor: other models reviewing the agent. [severity]: `blocker` | `concern` |
+/// `nit` | `note`.
+class AdvisorItem extends TimelineItem {
+  const AdvisorItem({required this.severity, required this.text});
+  final String severity;
+  final String text;
 }
 
 /// A subagent finished (omp's `async-result`): [id] is its dotted name, [status]
@@ -569,8 +605,87 @@ class Recap {
   }
 }
 
+/// A todo of the root agent's list; [status]: `pending` | `in_progress` | `completed` |
+/// `abandoned` | `blocked`.
+class TodoTask {
+  const TodoTask({required this.content, required this.status});
+  final String content;
+  final String status;
+  bool get done => status == 'completed';
+  bool get active => status == 'in_progress';
+}
+
+class TodoPhase {
+  const TodoPhase({required this.name, required this.tasks});
+  final String name;
+  final List<TodoTask> tasks;
+}
+
+/// The root agent's todo list (omp's todo tool), as phases of tasks.
+class TodoList {
+  const TodoList({required this.phases, this.done = 0, this.total = 0});
+  final List<TodoPhase> phases;
+  final int done;
+  final int total;
+
+  /// The task omp is on now, if any.
+  TodoTask? get current {
+    for (final p in phases) {
+      for (final t in p.tasks) {
+        if (t.active) return t;
+      }
+    }
+    return null;
+  }
+
+  static TodoList? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final phases = [
+      for (final p in (j['phases'] as List?) ?? const [])
+        TodoPhase(
+          name: (p as Map)['name'] as String? ?? '',
+          tasks: [
+            for (final t in (p['tasks'] as List?) ?? const [])
+              TodoTask(
+                content: (t as Map)['content'] as String? ?? '',
+                status: t['status'] as String? ?? 'pending',
+              ),
+          ],
+        ),
+    ];
+    return TodoList(
+      phases: phases,
+      done: (j['done'] as num?)?.toInt() ?? 0,
+      total: (j['total'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// One tool call of a node's own recent activity: [at] epoch ms (0 = unknown), [status]
+/// `running` | `ok` | `error`.
+class RecentCall {
+  const RecentCall({
+    required this.at,
+    required this.tool,
+    required this.intent,
+    required this.status,
+  });
+  final int at;
+  final String tool;
+  final String intent;
+  final String status;
+
+  factory RecentCall.fromJson(Map<String, dynamic> j) => RecentCall(
+    at: (j['at'] as num?)?.toInt() ?? 0,
+    tool: j['tool'] as String? ?? 'tool',
+    intent: j['intent'] as String? ?? '',
+    status: j['status'] as String? ?? 'ok',
+  );
+}
+
 /// One node of `agent_tree`: the root agent (`id == ''`) or a subagent.
 /// [status]: `pending` | `running` | `completed` | `failed` | `aborted` | `idle`.
+/// The hub's figures ([agentType] … [recent]) are absent from an older hostd.
 class AgentNode {
   const AgentNode({
     required this.id,
@@ -587,6 +702,14 @@ class AgentNode {
     this.now,
     this.report,
     this.updatedAt = 0,
+    this.agentType,
+    this.thinking,
+    this.requests = 0,
+    this.activeMs = 0,
+    this.contextTokens,
+    this.contextWindow,
+    this.recent = const [],
+    this.todos,
   });
   final String id;
   final String? parent;
@@ -605,10 +728,35 @@ class AgentNode {
   final String? report;
   final int updatedAt;
 
+  /// omp's agent definition (`task`, `scout`); null for the root and for other agents.
+  final String? agentType;
+
+  /// The thinking level (`high`, `off`, …).
+  final String? thinking;
+  final int requests;
+
+  /// Time spent working, parked gaps left out.
+  final int activeMs;
+  final int? contextTokens;
+  final int? contextWindow;
+
+  /// Its last tool calls, oldest first.
+  final List<RecentCall> recent;
+
+  /// The root's todo list; null when it has none.
+  final TodoList? todos;
+
   bool get isRoot => parent == null;
   bool get running => status == 'running';
   bool get failed => status == 'failed' || status == 'aborted';
   bool get done => status == 'completed';
+
+  /// Share of the context window in use, 0..1; null when either figure is unknown.
+  double? get contextShare {
+    final t = contextTokens, w = contextWindow;
+    if (t == null || w == null || w <= 0) return null;
+    return (t / w).clamp(0.0, 1.0);
+  }
 
   /// What to call the node: its `name` (`Deep`), else the last dotted segment of its
   /// id; the session title for the root.
@@ -633,6 +781,17 @@ class AgentNode {
     now: j['now'] as String?,
     report: j['report'] as String?,
     updatedAt: (j['updated_at'] as num?)?.toInt() ?? 0,
+    agentType: j['agent_type'] as String?,
+    thinking: j['thinking'] as String?,
+    requests: (j['requests'] as num?)?.toInt() ?? 0,
+    activeMs: (j['active_ms'] as num?)?.toInt() ?? 0,
+    contextTokens: (j['context_tokens'] as num?)?.toInt(),
+    contextWindow: (j['context_window'] as num?)?.toInt(),
+    recent: [
+      for (final r in (j['recent'] as List?) ?? const [])
+        RecentCall.fromJson((r as Map).cast<String, dynamic>()),
+    ],
+    todos: TodoList.fromJson(j['todos']),
   );
 }
 

@@ -7,9 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
-import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
 
 Color nodeColor(AtlasColors c, AgentNode n) => switch (n.status) {
   'running' => c.accent,
@@ -383,46 +381,36 @@ class _CrewChipState extends State<_CrewChip> {
   }
 }
 
-/// `omp › Scout › Deep`; each crumb but the last is a button back up.
+/// `Main › Scout › Deep`, always on screen while a subagent is focused: every crumb but the
+/// last is a chip that goes back up in one tap, `Main` first.
 class Breadcrumb extends StatelessWidget {
-  const Breadcrumb({
-    super.key,
-    required this.path,
-    required this.rootLabel,
-    required this.onTap,
-  });
+  const Breadcrumb({super.key, required this.path, required this.onTap});
 
   final List<AgentNode> path;
-  final String rootLabel;
   final void Function(String id) onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.base,
+        border: Border(bottom: BorderSide(color: c.borderSubtle)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 6),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        reverse: true,
         child: Row(
           children: [
             for (var i = 0; i < path.length; i++) ...[
               if (i > 0) Icon(Icons.chevron_right, size: 16, color: c.faint),
-              InkWell(
+              _Crumb(
+                key: ValueKey('crumb-${path[i].id}'),
+                label: path[i].isRoot ? 'Main' : path[i].label,
+                current: i == path.length - 1,
+                home: path[i].isRoot,
                 onTap: i == path.length - 1 ? null : () => onTap(path[i].id),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(
-                    path[i].isRoot ? rootLabel : path[i].label,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: i == path.length - 1
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: i == path.length - 1 ? c.text : c.muted,
-                    ),
-                  ),
-                ),
               ),
             ],
           ],
@@ -432,95 +420,62 @@ class Breadcrumb extends StatelessWidget {
   }
 }
 
-/// A node's task and report, from a long-press.
-Future<void> showNodeSheet(
-  BuildContext context,
-  AgentNode node, {
-  required String fallbackAgent,
-  required VoidCallback onFocus,
-}) => showModalBottomSheet<void>(
-  context: context,
-  showDragHandle: true,
-  isScrollControlled: true,
-  backgroundColor: AtlasColors.of(context).overlay,
-  builder: (ctx) {
-    final c = AtlasColors.of(ctx);
-    final stats = statsLine(node);
-    final dur = durationText(node.durationMs);
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(ctx).height * .8,
+class _Crumb extends StatelessWidget {
+  const _Crumb({
+    super.key,
+    required this.label,
+    required this.current,
+    required this.home,
+    required this.onTap,
+  });
+  final String label;
+  final bool current;
+  final bool home;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Material(
+      color: current ? c.accent.withValues(alpha: .15) : c.raised,
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: current ? c.accent.withValues(alpha: .5) : c.borderSubtle,
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  NodeRing(node: node, fallbackAgent: fallbackAgent),
-                  const SizedBox(width: Space.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          node.isRoot ? 'Main agent' : node.id,
-                          style: Theme.of(ctx).textTheme.titleMedium,
-                        ),
-                        Text(
-                          [
-                            nodeStatusLabel(node),
-                            ?node.model,
-                            if (dur.isNotEmpty) dur,
-                          ].join(' · '),
-                          style: TextStyle(fontSize: 12.5, color: c.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (stats.isNotEmpty) ...[
-                const SizedBox(height: Space.sm),
-                Text(stats, style: TextStyle(fontSize: 12.5, color: c.muted)),
+              if (home) ...[
+                Icon(Icons.arrow_back_rounded, size: 13, color: c.accent),
+                const SizedBox(width: 4),
               ],
-              if (node.now != null && node.running) ...[
-                const SizedBox(height: Space.md),
-                Pill(node.now!, color: c.accent),
-              ],
-              if ((node.task ?? '').isNotEmpty) ...[
-                const SizedBox(height: Space.lg),
-                Text('Task', style: Theme.of(ctx).textTheme.titleSmall),
-                const SizedBox(height: 4),
-                SelectableText(
-                  node.task!,
-                  style: TextStyle(color: c.text, height: 1.4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: current || home
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: current
+                      ? c.text
+                      : home
+                      ? c.accent
+                      : c.muted,
                 ),
-              ],
-              if ((node.report ?? '').isNotEmpty) ...[
-                const SizedBox(height: Space.lg),
-                Text('Report', style: Theme.of(ctx).textTheme.titleSmall),
-                const SizedBox(height: 4),
-                AssistantText(node.report!),
-              ],
-              const SizedBox(height: Space.lg),
-              FilledButton.tonal(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  onFocus();
-                },
-                child: const Text('Open transcript'),
               ),
             ],
           ),
         ),
       ),
     );
-  },
-);
+  }
+}
 
 /// One live line under the app bar: what the focused agent is doing right now, a ticking
 /// timer, tokens and cost. A soft shimmer sweeps it while it runs.
@@ -656,6 +611,238 @@ class _NowStripState extends State<NowStrip>
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Waiting on 2 jobs": the main agent's running subagents with a tiny progress bar each
+/// (how much of their context window is used, else just a pulse). Tap one to open it.
+class JobsStrip extends StatelessWidget {
+  const JobsStrip({super.key, required this.tree, required this.onOpen});
+
+  final AgentTree tree;
+  final void Function(String id) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final jobs = [
+      for (final n in tree.subs)
+        if (n.running || n.status == 'pending') n,
+    ];
+    if (jobs.isEmpty) return const SizedBox.shrink();
+    final c = AtlasColors.of(context);
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.base,
+        border: Border(bottom: BorderSide(color: c.borderSubtle)),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        Space.lg,
+        Space.sm,
+        Space.lg,
+        Space.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Waiting on ${jobs.length} ${jobs.length == 1 ? 'job' : 'jobs'}',
+            key: const ValueKey('jobs-title'),
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: c.accent,
+            ),
+          ),
+          for (final j in jobs.take(5))
+            InkWell(
+              key: ValueKey('job-${j.id}'),
+              onTap: () => onOpen(j.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: Text(
+                        [
+                          j.id,
+                          if (j.now != null && j.now!.isNotEmpty) j.now!,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, color: c.muted),
+                      ),
+                    ),
+                    const SizedBox(width: Space.sm),
+                    Expanded(
+                      flex: 2,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: j.contextShare,
+                          minHeight: 3,
+                          color: c.accent,
+                          backgroundColor: c.borderSubtle,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (jobs.length > 5)
+            Text(
+              '+${jobs.length - 5} more',
+              style: TextStyle(fontSize: 11.5, color: c.faint),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The main agent's todo list (omp's todo tool): collapsed to the task in progress and a
+/// count, expands to the phases with their tasks ticked.
+class TodoCard extends StatefulWidget {
+  const TodoCard(this.todos, {super.key});
+  final TodoList todos;
+
+  @override
+  State<TodoCard> createState() => _TodoCardState();
+}
+
+class _TodoCardState extends State<TodoCard> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final t = widget.todos;
+    final current = t.current;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.base,
+        border: Border(bottom: BorderSide(color: c.borderSubtle)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            key: const ValueKey('todo-toggle'),
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Space.lg,
+                vertical: Space.sm,
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.checklist_rounded, size: 16, color: c.muted),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${t.done}/${t.total}',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: c.text,
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(
+                      current?.content ?? 'Todos',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: c.muted),
+                    ),
+                  ),
+                  Icon(
+                    _open ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: c.faint,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_open)
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * .35,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.lg,
+                  0,
+                  Space.lg,
+                  Space.sm,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final p in t.phases) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          p.name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: c.muted,
+                          ),
+                        ),
+                      ),
+                      for (final k in p.tasks) _TodoRow(k),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodoRow extends StatelessWidget {
+  const _TodoRow(this.task);
+  final TodoTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final (icon, color) = switch (task.status) {
+      'completed' => (Icons.check_box_rounded, c.success),
+      'in_progress' => (Icons.timelapse_rounded, c.accent),
+      'blocked' => (Icons.block_rounded, c.error),
+      'abandoned' => (Icons.indeterminate_check_box_outlined, c.faint),
+      _ => (Icons.check_box_outline_blank_rounded, c.faint),
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              task.content,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.3,
+                color: task.done || task.status == 'abandoned'
+                    ? c.faint
+                    : c.text,
+                decoration: task.done ? TextDecoration.lineThrough : null,
+              ),
+            ),
+          ),
         ],
       ),
     );

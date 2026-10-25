@@ -13,6 +13,9 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
+const TITLE_CHARS: usize = 80;
+const NOTICE_CHARS: usize = 600;
+
 /// Longest tool output kept per call; the phone shows a preview, the terminal has the rest.
 const OUTPUT_CHARS: usize = 1500;
 const THINKING_CHARS: usize = 4000;
@@ -42,6 +45,13 @@ pub fn read(path: &str, limit: usize) -> Result<Value, String> {
                     title = Some(t);
                 }
             }
+            Some("session") => {
+                if title.is_none()
+                    && let Some(t) = clean_title(v["title"].as_str().unwrap_or_default())
+                {
+                    title = Some(t);
+                }
+            }
             Some("message" | "user" | "assistant") => {
                 push_message(&v["message"], &mut items, &mut calls)
             }
@@ -57,6 +67,7 @@ pub fn read(path: &str, limit: usize) -> Result<Value, String> {
             Some("custom_message") if v["customType"] == "async-result" => {
                 push_results(&v, &mut items)
             }
+            Some("custom_message") if v["customType"] == "advisor" => push_advisor(&v, &mut items),
             Some("compaction") => {
                 let t = v["shortSummary"]
                     .as_str()
@@ -76,6 +87,8 @@ pub fn read(path: &str, limit: usize) -> Result<Value, String> {
             item["intent"] = json!(i);
         }
     }
+    // No title entry yet: the first thing the user typed, never an injected block.
+    let title = title.or_else(|| first_prompt_title(path));
     let truncated = items.len() > limit;
     if truncated {
         items.drain(..items.len() - limit);
@@ -100,7 +113,12 @@ fn push_message(m: &Value, items: &mut Vec<Value>, calls: &mut HashMap<String, u
             let flush = |text: &mut Vec<String>, items: &mut Vec<Value>| {
                 let t = text.join("\n").trim().to_string();
                 text.clear();
-                if !t.is_empty() {
+                if t.is_empty() {
+                    return;
+                }
+                if role == "user" {
+                    items.push(classify_user(&t));
+                } else {
                     items.push(json!({"kind": role, "text": t}));
                 }
             };
@@ -290,6 +308,116 @@ fn clip(s: &str, max: usize) -> String {
     }
 }
 
+/// Text of a message `content` (string or blocks).
+pub fn text_of(content: &Value) -> String {
+    match content {
+        Value::String(s) => s.clone(),
+        Value::Array(a) => a
+            .iter()
+            .filter_map(|b| b["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// `value` of attribute `name` in an opening tag (`from="parent"`).
+fn attr(tag: &str, name: &str) -> Option<String> {
+    let key = format!(" {name}=\"");
+    let from = tag.find(&key)? + key.len();
+    let to = tag[from..].find('"')?;
+    Some(tag[from..from + to].to_string())
+}
+
+/// `Some((from, agent, text))` when `t` is an omp IRC message: `<irc from=".." agent="..">…</irc>`,
+/// optionally behind the `[Wait interrupted by message]` marker omp prepends when it woke the
+/// turn. Anything around the block means the user typed it: not IRC.
+fn parse_irc(t: &str) -> Option<(String, String, String)> {
+    let t = t.trim();
+    let t = t
+        .strip_prefix("[Wait interrupted by message]")
+        .unwrap_or(t)
+        .trim_start();
+    let rest = t.strip_prefix("<irc")?;
+    let open_end = rest.find('>')?;
+    let tag = &rest[..open_end];
+    let body = rest[open_end + 1..].strip_suffix("</irc>")?;
+    Some((
+        attr(tag, "from").unwrap_or_default(),
+        attr(tag, "agent").unwrap_or_default(),
+        body.trim().to_string(),
+    ))
+}
+
+/// Text of an injected `<system-notice>`/`<system-injection>`/`<system-reminder>` block, tags
+/// stripped; `None` when `t` is not one.
+fn parse_notice(t: &str) -> Option<String> {
+    let t = t.trim();
+    for tag in ["system-notice", "system-injection", "system-reminder"] {
+        if let Some(rest) = t.strip_prefix(&format!("<{tag}>")) {
+            let body = rest.split(&format!("</{tag}>")).next().unwrap_or(rest);
+            return Some(clip(body.trim(), NOTICE_CHARS));
+        }
+    }
+    None
+}
+
+/// A user message as the timeline shows it: an IRC card, a notice card, or what the user typed.
+fn classify_user(t: &str) -> Value {
+    if let Some((from, agent, text)) = parse_irc(t) {
+        return json!({"kind": "irc", "from": from, "agent": agent, "text": text});
+    }
+    if let Some(text) = parse_notice(t) {
+        return json!({"kind": "notice", "text": text});
+    }
+    json!({"kind": "user", "text": t})
+}
+
+/// A session title taken from the first prompt: one line, cut short.
+fn prompt_title(t: &str) -> Option<String> {
+    let line = t.lines().map(str::trim).find(|l| !l.is_empty())?;
+    Some(clip(line, TITLE_CHARS))
+}
+
+/// omp's `advisor` custom message: one `advisor` item per note (`details.notes[]`, each with a
+/// severity), else the text inside `<advisory severity="..">`.
+fn push_advisor(v: &Value, items: &mut Vec<Value>) {
+    let notes = v["details"]["notes"].as_array();
+    if let Some(notes) = notes.filter(|n| !n.is_empty()) {
+        for n in notes {
+            let text = n["note"].as_str().unwrap_or_default().trim();
+            if !text.is_empty() {
+                items.push(json!({"kind": "advisor",
+                    "severity": n["severity"].as_str().unwrap_or("note"),
+                    "text": clip(text, NOTICE_CHARS)}));
+            }
+        }
+        return;
+    }
+    let content = v["content"].as_str().unwrap_or_default();
+    let Some(start) = content.find("<advisory") else {
+        return;
+    };
+    let rest = &content[start + "<advisory".len()..];
+    let Some(open_end) = rest.find('>') else {
+        return;
+    };
+    let severity = attr(&rest[..open_end], "severity").unwrap_or_else(|| "note".into());
+    let body = rest[open_end + 1..]
+        .split("</advisory>")
+        .next()
+        .unwrap_or_default()
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">");
+    let body = body.trim();
+    if !body.is_empty() {
+        items.push(
+            json!({"kind": "advisor", "severity": severity, "text": clip(body, NOTICE_CHARS)}),
+        );
+    }
+}
+
 /// A title without the leading icon glyphs omp puts in it (private-use code points).
 fn clean_title(t: &str) -> Option<String> {
     let t = t
@@ -306,12 +434,57 @@ pub fn title(path: &str) -> Option<String> {
     use std::io::Read;
     let mut head = vec![0; 8192];
     let n = std::fs::File::open(path).ok()?.read(&mut head).ok()?;
-    String::from_utf8_lossy(&head[..n])
+    let head: Vec<Value> = String::from_utf8_lossy(&head[..n])
         .lines()
         .take(4)
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .find(|v| v["type"] == "title")
-        .and_then(|v| clean_title(v["title"].as_str()?))
+        .collect();
+    let named = |kind: &str, key: &str| {
+        head.iter()
+            .find(|v| v["type"] == kind)
+            .and_then(|v| clean_title(v[key].as_str()?))
+    };
+    named("title", "title")
+        .or_else(|| named("session", "title"))
+        .or_else(|| first_prompt_title(path))
+}
+
+/// The first thing the user typed in the transcript, as a one-line title: never an injected
+/// block (irc, notice, attachment, context) and never the assignment omp gives a subagent.
+/// Reads at most the first 256 KiB: the opening prompt is always there.
+fn first_prompt_title(path: &str) -> Option<String> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(256 * 1024)
+        .read_to_end(&mut buf)
+        .ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    // A cut last line is not JSON and is skipped by the parse.
+    let is_sub = text
+        .lines()
+        .take(8)
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .any(|v| {
+            v["type"] == "session_init"
+                || v["role"]
+                    .as_str()
+                    .is_some_and(|r| r.starts_with("subagent:"))
+        });
+    if is_sub {
+        return None;
+    }
+    text.lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|v| v["message"]["role"] == "user")
+        .find_map(|v| {
+            let t = text_of(&v["message"]["content"]);
+            match classify_user(&t) {
+                c if c["kind"] == "user" => prompt_title(c["text"].as_str()?),
+                _ => None,
+            }
+        })
 }
 
 /// omp's `async-result`: one `result` item per finished task, `{id, status, duration}`
@@ -635,5 +808,138 @@ mod tests {
         let v = read(&p, 200).unwrap();
         assert_eq!(v["items"][0]["intent"], "Listing files");
         assert_eq!(v["items"][1]["intent"], "Own intent");
+    }
+
+    /// omp wakes a turn with a peer's message as a user turn: `<irc from agent>` behind an
+    /// optional marker. It is a card, never what the user typed; text around it is typed.
+    #[test]
+    fn irc_user_turns_become_irc_items() {
+        let irc = "[Wait interrupted by message]\n<irc from=\"parent\" agent=\"Main\">\nFYI: use SCORE_TIER_LABEL\n</irc>";
+        let plain = "<irc from=\"Scout\" agent=\"Scout\">pong</irc>";
+        let typed = "olha <irc from=\"x\" agent=\"y\">isso</irc> aqui";
+        let (_d, p) = session(&[
+            msg("message", "user", json!(irc)),
+            msg("message", "user", json!([{"type": "text", "text": plain}])),
+            msg("message", "user", json!(typed)),
+        ]);
+        let v = read(&p, 200).unwrap();
+        assert_eq!(kinds(&v), ["irc", "irc", "user"]);
+        let it = &v["items"];
+        assert_eq!(
+            (
+                it[0]["from"].as_str(),
+                it[0]["agent"].as_str(),
+                it[0]["text"].as_str()
+            ),
+            (
+                Some("parent"),
+                Some("Main"),
+                Some("FYI: use SCORE_TIER_LABEL")
+            )
+        );
+        assert_eq!(
+            (it[1]["from"].as_str(), it[1]["text"].as_str()),
+            (Some("Scout"), Some("pong"))
+        );
+        assert_eq!(it[2]["text"], typed);
+        // Older phones read `messages`: only the typed turn is a user message there.
+        assert_eq!(v["messages"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn injected_system_blocks_become_notice_items() {
+        let (_d, p) = session(&[
+            msg(
+                "message",
+                "user",
+                json!("<system-notice>\nBackground job X has completed.\n</system-notice>"),
+            ),
+            msg(
+                "message",
+                "user",
+                json!([{"type": "text", "text": "<system-reminder>Plan mode is on</system-reminder>"}]),
+            ),
+            msg("message", "user", json!("oi")),
+        ]);
+        let v = read(&p, 200).unwrap();
+        assert_eq!(kinds(&v), ["notice", "notice", "user"]);
+        assert_eq!(v["items"][0]["text"], "Background job X has completed.");
+        assert_eq!(v["items"][1]["text"], "Plan mode is on");
+    }
+
+    /// omp's advisor note carries a severity per note; without `details`, the tag has it.
+    #[test]
+    fn advisor_messages_carry_severity_and_unescaped_text() {
+        let (_d, p) = session(&[
+            json!({"type": "custom_message", "customType": "advisor", "content": "x",
+                   "details": {"notes": [{"note": "Ask the user first", "severity": "blocker"},
+                                         {"note": "Nit: naming", "severity": "nit"}]}})
+            .to_string(),
+            json!({"type": "custom_message", "customType": "advisor",
+                   "content": "review...\n<advisory severity=\"concern\" turns_ago=\"6\" guidance=\"weigh\">\nrun `a &amp;&amp; b`\n</advisory>"})
+            .to_string(),
+            json!({"type": "custom_message", "customType": "advisor", "content": "no tag"}).to_string(),
+        ]);
+        let v = read(&p, 200).unwrap();
+        assert_eq!(kinds(&v), ["advisor", "advisor", "advisor"]);
+        let it = &v["items"];
+        assert_eq!(
+            (it[0]["severity"].as_str(), it[0]["text"].as_str()),
+            (Some("blocker"), Some("Ask the user first"))
+        );
+        assert_eq!(it[1]["severity"], "nit");
+        assert_eq!(
+            (it[2]["severity"].as_str(), it[2]["text"].as_str()),
+            (Some("concern"), Some("run `a && b`"))
+        );
+    }
+
+    /// The root's title: omp's slot, else the session header, else the first real prompt;
+    /// never an irc/notice turn, never the assignment of a subagent transcript.
+    #[test]
+    fn title_falls_back_to_the_first_real_prompt_never_an_injection_or_an_assignment() {
+        let (_d, p) = session(&[
+            json!({"type": "title", "title": ""}).to_string(),
+            json!({"type": "session", "id": "x"}).to_string(),
+            msg(
+                "message",
+                "user",
+                json!("<system-notice>boot</system-notice>"),
+            ),
+            msg(
+                "message",
+                "user",
+                json!("<irc from=\"parent\" agent=\"Main\">psst</irc>"),
+            ),
+            msg(
+                "message",
+                "user",
+                json!("  \nCorrige o sheet\nmais detalhes"),
+            ),
+        ]);
+        assert_eq!(title(&p).as_deref(), Some("Corrige o sheet"));
+        assert_eq!(read(&p, 10).unwrap()["title"], "Corrige o sheet");
+        let long = "a".repeat(200);
+        let (_d2, p2) = session(&[msg("message", "user", json!(long))]);
+        assert_eq!(title(&p2).unwrap().chars().count(), TITLE_CHARS + 1);
+        // A session header title wins over the prompt.
+        let (_d3, p3) = session(&[
+            json!({"type": "session", "id": "x", "title": "From header"}).to_string(),
+            msg("message", "user", json!("prompt")),
+        ]);
+        assert_eq!(title(&p3).as_deref(), Some("From header"));
+        // A subagent transcript's first user turn is its assignment: no title.
+        let (_d4, p4) = session(&[
+            json!({"type": "session", "id": "x", "parentSession": "/p.jsonl"}).to_string(),
+            json!({"type": "session_init", "agent": "task", "task": "Complete assignment"})
+                .to_string(),
+            msg(
+                "message",
+                "user",
+                json!("Complete assignment thoroughly: do X"),
+            ),
+        ]);
+        assert_eq!(title(&p4), None);
+        assert_eq!(read(&p4, 10).unwrap()["title"], Value::Null);
     }
 }

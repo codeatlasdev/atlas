@@ -6,6 +6,12 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **The edge peek no longer opens under a dialog.** With Settings, a dialog or the command palette open, moving the pointer to the window edge slid the sidebar in underneath it. A peek now stays shut while any modal layer is open (read from the kit's `layerchange`, not a per-dialog flag), and one already open closes when the modal opens.
+- **Project avatars and custom-styled buttons show the pointer.** The app inherited the arrow cursor everywhere and the kit's native-feel base resets buttons to it, so the project tiles at the bottom of the sidebar (and every custom button without its own rule) looked unclickable. One zero-specificity rule in `app.css` gives enabled buttons and `role` controls the hand; disabled ones and tree rows keep the arrow.
+- **Changing the code font size or line spacing no longer desyncs the editor.** The active-line highlight drifted off the line the gutter marks (and the caret) until the next scroll or edit, because the editor never re-measured after the font variables changed. Open editors now re-measure when the code font, size or line spacing changes.
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

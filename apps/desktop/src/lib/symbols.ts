@@ -109,12 +109,3 @@ export function unregisterEditor(key: string, view: EditorView) {
 	editors.delete(key);
 	savers.delete(key);
 }
-
-/**
- * The code font, size or line spacing changed (CSS variables on `:root`, no transaction): make every live editor
- * re-read its line height and character width. Without it the gutter, the caret layer and the height map keep the old
- * metrics and the active-line band drifts off the line the gutter marks.
- */
-export function remeasureEditors() {
-	for (const view of editors.values()) view.requestMeasure();
-}

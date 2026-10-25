@@ -13,11 +13,13 @@
 //! - [`control`]: write/resize/signal/kill, scrollback maintenance, inspection
 //! - [`master`]: the pty master (spawned or adopted fd)
 //! - [`title`]: OSC 0/2 window-title parser
+//! - [`out`]: a connection's outgoing queue, bounded in bytes (a client that stops reading is dropped, not buffered)
 
 mod attach;
 mod control;
 mod lifecycle;
 mod master;
+mod out;
 mod spawn;
 mod stream;
 mod title;
@@ -41,7 +43,9 @@ use master::Master;
 
 const RING_MAX: usize = 2 * 1024 * 1024;
 
-pub type Out = mpsc::UnboundedSender<String>;
+pub use out::{OUT_CAP, Out, OutRx, Refused, channel as out_channel};
+#[cfg(test)]
+pub(crate) use out::with_cap as out_channel_with_cap;
 /// Bounded: a raw reader that falls behind blocks the pty reader (backpressure to
 /// the program, as in a native terminal) instead of hostd buffering without limit.
 pub type RawOut = mpsc::Sender<Vec<u8>>;
@@ -92,13 +96,30 @@ impl Buf {
     }
 
     /// Title/exit: every attached connection.
-    fn notify(&mut self, line: &str) {
-        Self::broadcast(&mut self.attachers, line);
-        Self::broadcast(&mut self.listeners, line);
+    fn notify(&mut self, pty: &str, line: &str) {
+        Self::broadcast(pty, &mut self.attachers, line);
+        Self::broadcast(pty, &mut self.listeners, line);
     }
 
-    fn broadcast(conns: &mut HashMap<u64, Out>, line: &str) {
-        conns.retain(|_, out| out.send(line.to_string()).is_ok());
+    /// `pty_exit`: delivered past the cap (one short line per connection, once per session),
+    /// so a client that was behind still learns the program ended.
+    fn notify_force(&mut self, line: &str) {
+        for out in self.attachers.values().chain(self.listeners.values()) {
+            let _ = out.force(line.to_string());
+        }
+    }
+
+    /// Feed `line` to every connection; one over its byte cap (a client that does not
+    /// read) is dropped with a `pty_dropped` notice, the others are untouched. Never blocks.
+    fn broadcast(pty: &str, conns: &mut HashMap<u64, Out>, line: &str) {
+        conns.retain(|_, out| match out.send(line.to_string()) {
+            Ok(()) => true,
+            Err(Refused::Closed) => false,
+            Err(Refused::Full) => {
+                let _ = out.force(dropped_line(pty));
+                false
+            }
+        });
     }
 }
 
@@ -158,6 +179,20 @@ fn now_s() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// Connections dropped for not reading fast enough since this daemon started (shown by `info`).
+static DROPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn dropped_total() -> u64 {
+    DROPPED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// What a client that fell behind is told, in place of the output it will not get: it
+/// reattaches with `replay: true` (the ring holds the last 2 MiB) and carries on.
+fn dropped_line(pty: &str) -> String {
+    DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    serde_json::json!({"ev": "pty_dropped", "pty": pty, "reason": "slow_client"}).to_string()
 }
 
 fn bin_path(dir: &Path, id: &str) -> PathBuf {

@@ -4,13 +4,20 @@
 //!   reply `{"ok":true,"data":{..info}}` or `{"ok":false,"error":"unauthorized"}` + close.
 //! - Request `{"id":n,"cmd":"..","args":{..}}` → `{"id":n,"ok":true,"data":{..}}` |
 //!   `{"id":n,"ok":false,"error":".."}`.
-//! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"fs_event",..}`.
+//! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"pty_dropped"|"fs_event",..}`.
 //!   `pty_activity {pty}` goes to every attached connection (listeners too) at most once a second while the
 //!   program prints; an older daemon simply never sends it.
+//! - Every connection's outgoing queue is capped at 8 MiB (`pty::OUT_CAP`). A client that stops reading
+//!   past that gets `{"ev":"pty_dropped","pty":"..","reason":"slow_client"}` and no more output for that pty
+//!   (the pty reader and other clients are never held up); it re-sends `pty_attach` with `replay: true`
+//!   (the last 2 MiB) and carries on. `pty_exit` and replies always get through. A broadcast (`lsp_*`,
+//!   `agent_*`) skips a connection over the cap; that client re-syncs on reconnect.
 //! - `pty_attach_raw` (first and only command on a connection): after its reply line the
 //!   connection carries the pty's raw output bytes (replay first), no framing, until the pty
 //!   exits (hostd closes) or the client closes. Terminal renderers use it: no JSON, no base64.
-//! - `info` (and the handshake reply) reports `{version, proto, caps, pid, ..}`. `caps` lists
+//! - `info` (and the handshake reply) reports `{version, proto, caps, pid, queued, ..}`; `queued` is
+//!   `{total_bytes, cap_bytes, dropped, connections: [{conn, bytes}]}`: what is waiting to be written to each
+//!   connection and how many clients were dropped for not reading. `caps` lists
 //!   what this daemon can do (`pty_attach_raw`, `upgrade`); clients check it instead of
 //!   guessing from error strings. A proto 1 daemon has no `caps` and cannot `upgrade`.
 //! - `upgrade {exe}`: live takeover. hostd starts `exe hostd --takeover`, hands it every live pty
@@ -404,8 +411,8 @@ pub fn hello_line(token: &str, client: &str) -> String {
 
 /// Write each queued line (plus `\n`) to `w` until the queue closes or the peer is gone;
 /// returns the writer so a connection can be taken over afterwards.
-pub async fn write_lines<W: tokio::io::AsyncWrite + Unpin>(
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<String>,
+pub(crate) async fn write_lines<W: tokio::io::AsyncWrite + Unpin>(
+    mut rx: crate::pty::OutRx,
     mut w: W,
 ) -> W {
     use tokio::io::AsyncWriteExt;

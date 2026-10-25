@@ -300,7 +300,9 @@ impl Mobile {
 /// editor and file watching).
 pub fn push_scope(ev: &str) -> Option<Scope> {
     Some(match ev {
-        "pty_output" | "pty_replay" | "pty_title" | "pty_activity" | "pty_exit" => Scope::TermRead,
+        "pty_output" | "pty_replay" | "pty_title" | "pty_activity" | "pty_exit" | "pty_dropped" => {
+            Scope::TermRead
+        }
         // The prompt carries the tool input (a shell command, a file path).
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,

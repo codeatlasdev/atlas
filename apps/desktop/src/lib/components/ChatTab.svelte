@@ -9,6 +9,7 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { SquareTerminal } from "@lucide/svelte";
 	import { host, b64bytes } from "#lib/host.ts";
+	import { droppedPty } from "#lib/ptyStream.ts";
 	import { errText } from "#lib/api.ts";
 	import { apply, emptyChat, LineBuffer, type ChatState, type UiRequest } from "#lib/rpc.ts";
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
@@ -80,6 +81,10 @@
 				.catch(() => {});
 		attach();
 		listen("host://reconnected", attach).then((u) => (alive ? offs.push(u) : u()));
+		// hostd dropped this view for not reading (a hidden webview); the replay redraws the transcript.
+		listen("host://event", (e) => {
+			if (droppedPty(e.payload) === tab.pty) attach();
+		}).then((u) => (alive ? offs.push(u) : u()));
 		const poll = () => send({ type: "get_state", id: "state" });
 		const t = window.setInterval(poll, STATE_POLL_MS);
 		window.setTimeout(poll, 1500);

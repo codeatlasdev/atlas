@@ -63,6 +63,27 @@ impl Hub {
             .ok_or_else(|| format!("unknown pty {id}"))
     }
 
+    /// Pending output per live JSON connection plus how many were dropped for not reading, so a
+    /// client that stopped reading shows up here before [`crate::pty::OUT_CAP`] cuts it.
+    fn queued(&self) -> Value {
+        let mut conns: Vec<(u64, usize)> = self
+            .subscribers
+            .lock()
+            .iter()
+            .map(|(id, out)| (*id, out.pending()))
+            .collect();
+        conns.sort_unstable();
+        json!({
+            "total_bytes": conns.iter().map(|(_, n)| n).sum::<usize>(),
+            "cap_bytes": crate::pty::OUT_CAP,
+            "dropped": crate::pty::dropped_total(),
+            "connections": conns
+                .iter()
+                .map(|(id, n)| json!({"conn": id, "bytes": n}))
+                .collect::<Vec<_>>(),
+        })
+    }
+
     fn info(&self) -> Value {
         let all = self.sessions.lock();
         json!({
@@ -74,6 +95,7 @@ impl Hub {
             "ptys": all.len(),
             "live_ptys": all.values().filter(|s| s.exited().is_none()).count(),
             "hostname": hostname(),
+            "queued": self.queued(),
         })
     }
 
@@ -125,6 +147,9 @@ impl Hub {
         self.subscribers.lock().remove(&id);
     }
 
+    /// Push `line` to every connection. One over its byte cap (it stopped reading) misses this
+    /// line: a stuck client loses broadcasts (it re-syncs on reconnect) instead of hostd queueing
+    /// them for it. Nothing here blocks, and the other connections are untouched.
     pub(crate) fn broadcast(&self, line: String) {
         for tx in self.subscribers.lock().values() {
             let _ = tx.send(line.clone());
@@ -470,7 +495,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let conn_id = hub.next_conn.fetch_add(1, Ordering::Relaxed);
     let (r, w) = ipc::split(stream);
     let mut lines = BufReader::new(r);
-    let (tx, rx) = mpsc::unbounded_channel::<String>();
+    let (tx, rx) = crate::pty::out_channel();
     // Returns the write half so `pty_attach_raw` can take the socket over.
     let writer = tokio::spawn(protocol::write_lines(rx, w));
 
@@ -482,12 +507,12 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
         None => false,
     };
     if !authed {
-        let _ = tx.send(json!({"ok": false, "error": "unauthorized"}).to_string());
+        let _ = tx.force(json!({"ok": false, "error": "unauthorized"}).to_string());
         drop(tx);
         let _ = writer.await;
         return;
     }
-    let _ = tx.send(json!({"ok": true, "data": hub.info()}).to_string());
+    let _ = tx.force(json!({"ok": true, "data": hub.info()}).to_string());
     hub.subscribers.lock().insert(conn_id, tx.clone());
 
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
@@ -497,7 +522,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
         // carry the failure: tell the client.
         if line.is_empty() {
             let msg = format!("request over {MAX_LINE_BYTES} bytes dropped");
-            let _ = tx.send(json!({"ev": "error", "message": msg}).to_string());
+            let _ = tx.force(json!({"ev": "error", "message": msg}).to_string());
             continue;
         }
         let req: Request = match serde_json::from_str(&line) {
@@ -507,7 +532,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                     .ok()
                     .and_then(|v| v.get("id")?.as_u64())
                     .unwrap_or(0);
-                let _ = tx.send(protocol::reply(id, Err(format!("bad request: {e}"))));
+                let _ = tx.force(protocol::reply(id, Err(format!("bad request: {e}"))));
                 continue;
             }
         };
@@ -542,7 +567,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 }
             }
             HostCmd::Shutdown {} => {
-                let _ = tx.send(protocol::reply(id, Ok(json!({}))));
+                let _ = tx.force(protocol::reply(id, Ok(json!({}))));
                 hub.stop.notify_one();
                 break;
             }
@@ -555,12 +580,12 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 let hub = hub.clone();
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let _ = tx.send(protocol::reply(id, handle(&hub, cmd, conn_id).await));
+                    let _ = tx.force(protocol::reply(id, handle(&hub, cmd, conn_id).await));
                 });
                 continue;
             }
         };
-        let _ = tx.send(protocol::reply(id, res));
+        let _ = tx.force(protocol::reply(id, res));
     }
     for s in attached {
         s.detach(conn_id);
@@ -671,7 +696,7 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     if s.exited().is_some() {
         return;
     }
-    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    let (tx, mut rx) = crate::pty::out_channel();
     s.attach(
         hub.next_conn.fetch_add(1, Ordering::Relaxed),
         tx,
@@ -859,7 +884,7 @@ async fn raw(
     let (rtx, mut rrx) = mpsc::channel::<Vec<u8>>(crate::pty::RAW_QUEUE);
     // Subscribe before replying: output produced meanwhile queues in `rrx`.
     let info = s.attach_raw(conn_id, rtx, replay);
-    let _ = tx.send(protocol::reply(id, Ok(info)));
+    let _ = tx.force(protocol::reply(id, Ok(info)));
     drop(tx);
     // In-flight slow commands hold `tx` clones; the writer ends after their replies.
     let Ok(mut w) = writer.await else {

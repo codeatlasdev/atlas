@@ -1310,3 +1310,114 @@ async fn hook_events_drive_agent_status_pushed_to_clients() {
     assert_eq!(all["panes"]["p1"]["state"], "idle");
     assert_eq!(all["hook_port"].to_string(), port);
 }
+
+// Regression: #109. A client that stopped reading (a phone on a bad network, a paused webview) made
+// hostd queue every `pty_output` without limit; hostd is the process that keeps the agents alive.
+// Real daemon: the stuck client is a raw socket that attaches and never reads again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const CAP: u64 = 8 * 1024 * 1024;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let (_d, c) = start(dir).await;
+    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty.
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": dir, "argv": ["sh", "-c",
+                "head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // The stuck client: hello + pty_attach, then silence (its socket buffer fills, hostd's queue grows).
+    let token = paths::read_token(dir).unwrap();
+    let mut stuck = tokio::net::UnixStream::connect(paths::socket(dir))
+        .await
+        .unwrap();
+    let req = json!({"id": 1, "cmd": "pty_attach", "args": {"pty": pty, "replay": false}});
+    stuck
+        .write_all(format!("{}\n{req}\n", atlas_host::protocol::hello_line(&token, "stuck")).as_bytes())
+        .await
+        .unwrap();
+
+    // A healthy client keeps receiving the whole time.
+    let mut ev = c.events();
+    c.call("pty_attach", json!({"pty": pty, "replay": false}))
+        .await
+        .unwrap();
+    let mut healthy_bytes = 0usize;
+    let mut max_queued = 0u64;
+    let t0 = std::time::Instant::now();
+    let mut saw_end = false;
+    while !saw_end {
+        assert!(t0.elapsed() < Duration::from_secs(90), "healthy client stalled at {healthy_bytes} bytes");
+        match tokio::time::timeout(Duration::from_millis(100), ev.recv()).await {
+            Ok(Ok(e)) if e["pty"] == pty.as_str() && e["ev"] == "pty_output" => {
+                let b = B64.decode(e["data"].as_str().unwrap()).unwrap();
+                healthy_bytes += b.len();
+                saw_end |= String::from_utf8_lossy(&b).contains("END");
+            }
+            Ok(_) => {}
+            Err(_) => {}
+        }
+        let info = c.call("info", json!({})).await.unwrap();
+        max_queued = max_queued.max(info["queued"]["total_bytes"].as_u64().unwrap_or(u64::MAX));
+    }
+    assert!(healthy_bytes >= 100_000_000, "healthy client got {healthy_bytes} bytes");
+    // What hostd held for the stuck connection never went past the cap (plus the healthy client's
+    // own small backlog and one coalesced chunk), where it used to be ~100 MiB.
+    assert!(
+        max_queued < CAP + 4 * 1024 * 1024,
+        "hostd queued {max_queued} bytes for clients (cap {CAP})"
+    );
+    let info = c.call("info", json!({})).await.unwrap();
+    assert_eq!(info["queued"]["cap_bytes"], CAP);
+    assert!(info["queued"]["dropped"].as_u64().unwrap() >= 1, "{info}");
+
+    // Reading the stuck socket now: its backlog ends with the reason it was dropped.
+    let mut all = Vec::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        match tokio::time::timeout(Duration::from_millis(500), stuck.read(&mut buf)).await {
+            Ok(Ok(n)) if n > 0 => all.extend_from_slice(&buf[..n]),
+            _ => break,
+        }
+    }
+    let text = String::from_utf8_lossy(&all);
+    let dropped = text
+        .lines()
+        .rev()
+        .find(|l| l.contains(r#""ev":"pty_dropped""#))
+        .unwrap_or_else(|| panic!("no pty_dropped among {} bytes", all.len()));
+    let dropped: Value = serde_json::from_str(dropped).unwrap();
+    assert_eq!((&dropped["pty"], &dropped["reason"]), (&json!(pty), &json!("slow_client")));
+
+    // Reattach with replay: the ring comes back, ends at the program's last output, and the
+    // pty is still running (the program was never held up).
+    let c2 = HostClient::connect_dir(dir, "again").await.unwrap();
+    let mut ev2 = c2.events();
+    c2.call("pty_attach", json!({"pty": pty, "replay": true}))
+        .await
+        .unwrap();
+    let (mut replayed, mut kinds) = (String::new(), Vec::new());
+    while !replayed.contains("END") {
+        let e = tokio::time::timeout(Duration::from_secs(5), ev2.recv())
+            .await
+            .expect("replay")
+            .unwrap();
+        let k = e["ev"].as_str().unwrap_or_default().to_string();
+        if k == "pty_replay" || k == "pty_output" {
+            replayed.push_str(&b64(&e["data"]));
+            kinds.push(k);
+        }
+    }
+    assert_eq!(kinds[0], "pty_replay");
+    assert!(replayed.len() > 1_000_000, "replay was {} bytes", replayed.len());
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+}

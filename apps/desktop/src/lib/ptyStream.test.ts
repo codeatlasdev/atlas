@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import { ptyStream } from "./ptyStream.ts";
+import { droppedPty, ptyStream } from "./ptyStream.ts";
 
 const enc = (s) => new TextEncoder().encode(s);
 const dec = (b) => new TextDecoder().decode(b);
@@ -96,5 +96,36 @@ describe("ptyStream", () => {
 		h.emit("late", true);
 		expect(h.attaches).toBe(0);
 		expect(s.out.text).toBe("");
+	});
+});
+
+// hostd stops feeding a client that does not read (a webview paused in the background) and says so with
+// `pty_dropped` on `host://event`; the terminal must reattach, whose replay redraws what it missed.
+describe("droppedPty", () => {
+	test("names the pty only for a pty_dropped event", () => {
+		expect(droppedPty({ ev: "pty_dropped", pty: "p1", reason: "slow_client" })).toBe("p1");
+		expect(droppedPty({ ev: "pty_exit", pty: "p1" })).toBeUndefined();
+		expect(droppedPty({ ev: "pty_dropped" })).toBeUndefined();
+		expect(droppedPty({ ev: "pty_dropped", pty: 7 })).toBeUndefined();
+		expect(droppedPty(null)).toBeUndefined();
+		expect(droppedPty("pty_dropped")).toBeUndefined();
+	});
+
+	test("a drop followed by reattach redraws from the replay and keeps streaming", async () => {
+		const h = fakeHost("screen@100MB");
+		const s = sink();
+		const p = ptyStream({ listen: h.listen, attach: h.attach, decode: enc, ...s });
+		h.register();
+		await tick();
+		await tick();
+		h.emit("old");
+		// What the component does on the event:
+		if (droppedPty({ ev: "pty_dropped", pty: "p1", reason: "slow_client" }) === "p1") p.reattach();
+		await tick();
+		await tick();
+		expect(s.out.text).toBe("screen@100MB");
+		h.emit("+live");
+		expect(s.out.text).toBe("screen@100MB+live");
+		expect(h.attaches).toBe(2);
 	});
 });

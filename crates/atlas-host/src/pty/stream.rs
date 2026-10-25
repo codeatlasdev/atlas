@@ -117,7 +117,7 @@ impl Session {
             }
             if !pending.is_empty() && activity.due(std::time::Instant::now()) {
                 let line = json!({"ev": "pty_activity", "pty": self.id}).to_string();
-                self.buf.lock().notify(&line);
+                self.buf.lock().notify(&self.id, &line);
             }
             for (conn, out) in self.output(&pending) {
                 if !send_raw(&out, &pending).await {
@@ -180,7 +180,7 @@ impl Session {
         if !b.attachers.is_empty() {
             let line =
                 json!({"ev": "pty_output", "pty": self.id, "data": B64.encode(bytes)}).to_string();
-            Buf::broadcast(&mut b.attachers, &line);
+            Buf::broadcast(&self.id, &mut b.attachers, &line);
         }
         raw
     }
@@ -188,7 +188,7 @@ impl Session {
     fn set_title(&self, t: String) {
         *self.title.lock() = t.clone();
         let line = json!({"ev": "pty_title", "pty": self.id, "title": t}).to_string();
-        self.buf.lock().notify(&line);
+        self.buf.lock().notify(&self.id, &line);
     }
 
     /// ConPTY keeps the output pipe open after the child exits until the pseudo console is
@@ -226,7 +226,7 @@ impl Session {
         // Raw streams end with the pty: dropping the senders closes those connections.
         self.buf.lock().raw.clear();
         let line = json!({"ev": "pty_exit", "pty": self.id, "code": code}).to_string();
-        self.buf.lock().notify(&line);
+        self.buf.lock().notify_force(&line);
     }
 }
 

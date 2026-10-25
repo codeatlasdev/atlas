@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`atlas hostd` no longer grows without limit for a client that stops reading** (#109). A phone on a bad network, a paused webview or a suspended process, with an agent printing non-stop, made hostd queue every terminal chunk in memory, and hostd is the process that keeps every agent alive. Each connection now holds at most 8 MiB unwritten; past that hostd stops feeding it, sends `pty_dropped` (`reason: slow_client`), and the app or phone reattaches with replay (the last 2 MiB) by itself. The program, the other clients and `pty_exit` are never held up. `info` shows the bytes queued per connection (`queued`) and how many clients were dropped.
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

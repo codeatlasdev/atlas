@@ -46,6 +46,42 @@ struct Phone {
     next: u64,
 }
 
+/// The published ports on loopback. These tests cover pairing, scopes and prompts, not reachability: dialing the
+/// published LAN/tunnel addresses made five of them time out for 30 s on a Mac with Cloudflare WARP (codeatlasdev/atlas#118,
+/// reachability itself: #113), while the same endpoint answers at once on loopback.
+fn loopback_addrs(info: &Value) -> Vec<std::net::SocketAddr> {
+    let mut ports: Vec<(bool, u16)> = info["addrs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap().parse::<std::net::SocketAddr>().unwrap())
+        .map(|a| (a.is_ipv6(), a.port()))
+        .collect();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+        .into_iter()
+        .map(|(v6, port)| {
+            let ip: std::net::IpAddr = if v6 {
+                std::net::Ipv6Addr::LOCALHOST.into()
+            } else {
+                std::net::Ipv4Addr::LOCALHOST.into()
+            };
+            (ip, port).into()
+        })
+        .collect()
+}
+
+#[test]
+fn loopback_addrs_keeps_only_the_published_ports_on_loopback() {
+    let info = json!({"addrs": ["192.168.68.50:4433", "100.96.0.1:4433", "[2606:4700::1]:4434", "[fe80::1]:4434"]});
+    let got: Vec<String> = loopback_addrs(&info)
+        .iter()
+        .map(|a| a.to_string())
+        .collect();
+    assert_eq!(got, ["127.0.0.1:4433", "[::1]:4434"]);
+}
+
 impl Phone {
     async fn dial(info: &Value) -> Self {
         Self::dial_as(info, iroh::SecretKey::generate()).await
@@ -60,8 +96,8 @@ impl Phone {
             .unwrap();
         let id: PublicKey = info["node_id"].as_str().unwrap().parse().unwrap();
         let mut addr = EndpointAddr::new(id);
-        for a in info["addrs"].as_array().unwrap() {
-            addr = addr.with_ip_addr(a.as_str().unwrap().parse().unwrap());
+        for a in loopback_addrs(info) {
+            addr = addr.with_ip_addr(a);
         }
         let conn = ep.connect(addr, super::ALPN).await.unwrap();
         let (send, recv) = conn.open_bi().await.unwrap();

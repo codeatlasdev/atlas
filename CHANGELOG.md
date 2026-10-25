@@ -6,6 +6,16 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **A GPU terminal that went blank after sleep, lid close or a display change draws again** ([#104](https://github.com/codeatlasdev/atlas/issues/104)). Atlas now rebuilds every terminal's surface when the Mac wakes or a display changes, keeping its screen and scrollback.
+- **A terminal that stops drawing recovers by itself** ([#108](https://github.com/codeatlasdev/atlas/issues/108)). A frame that could not be presented is retried without waiting for new output, and a surface that stays dead for 2 s is replaced. Recoveries show up in the diagnostics report.
+- **Background terminals no longer draw on every burst of output.** With many agents streaming, each hidden tab used to queue GPU work; now it draws once when shown.
+
+### Added
+
+- **Reload terminal** (⌘⇧P, and the `+` menu of a terminal tab) rebuilds a blank or stuck terminal view without restarting the app or losing scrollback.
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

@@ -14,6 +14,7 @@ import { themes } from "#lib/stores/theme.svelte.ts";
 import { nativeRect } from "#lib/zoom.ts";
 import { overlayOpen } from "../nativeSlot.ts";
 import { fontCandidates, insetRect } from "./fonts.ts";
+import { isViewDropped } from "./viewDropped.ts";
 
 /** Theme color as #rrggbb (the kit uses oklch; a canvas normalizes any CSS color). */
 function hex(el: Element, cssVar: string, fallback: string): string {
@@ -110,7 +111,16 @@ export class NativeView {
 				await invoke("term_open", { tab, pty, ...rect, ...termColors(area), prefs: termPrefs() });
 				bootMark("term_open:done");
 			}
-			await invoke("term_bounds", { tab, ...rect, visible: show });
+			try {
+				await invoke("term_bounds", { tab, ...rect, visible: show });
+			} catch (e) {
+				if (!isViewDropped(e)) throw e;
+				// The native view is gone (its render thread ended): open it again over the same
+				// pty, which hostd kept alive with its scrollback (it replays into the new view).
+				if (!show) return void (this.opened = false);
+				await invoke("term_open", { tab, pty, ...rect, ...termColors(area), prefs: termPrefs() });
+				await invoke("term_bounds", { tab, ...rect, visible: show });
+			}
 		} catch (e) {
 			this.#failed = true;
 			const msg = errText(e);
@@ -122,6 +132,15 @@ export class NativeView {
 				gpu.hostTooOld = true;
 			} else toast.error(msg);
 		}
+	}
+
+	/**
+	 * "Reload terminal": the backend replaces this tab's surface and renderer; the pty, screen and
+	 * scrollback stay. No-op before the view is opened.
+	 */
+	async reload() {
+		if (!this.opened) return;
+		await invoke("term_reload", { tab: this.ids().tab });
 	}
 
 	/** Recolor live after a theme switch. */

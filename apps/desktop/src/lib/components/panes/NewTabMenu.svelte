@@ -1,7 +1,7 @@
 <script lang="ts">
 	import AgentLogo from "#lib/components/AgentLogo.svelte";
 	/** The "+" menu of a tab strip: new terminal/agent/panel/changes/PR tabs, split, rename, close. */
-	import { DropdownMenu, DropdownMenuItem } from "@codeatlasdev/ui";
+	import { DropdownMenu, DropdownMenuItem, toast } from "@codeatlasdev/ui";
 	import {
 		FileCode2,
 		FileDiff,
@@ -11,11 +11,13 @@
 		ScrollText,
 		SquareTerminal,
 	} from "@lucide/svelte";
+	import { errText } from "#lib/api.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { openDiff } from "#lib/stores/files.svelte.ts";
 	import { pr } from "#lib/stores/pr.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
+	import { hasTermView, reloadTermView } from "#lib/stores/termViews.ts";
 	import { pinned } from "#lib/stores/tabs.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 
@@ -89,6 +91,12 @@
 	{#if active}
 		{#if !pinned(active)}<DropdownMenuItem onclick={() => onrename(active.id)}>Rename tab</DropdownMenuItem
 			>{/if}
+		{#if hasTermView(active.id)}
+			<DropdownMenuItem
+				onclick={() => void reloadTermView(active.id).catch((e) => toast.error(errText(e)))}
+				>Reload terminal</DropdownMenuItem
+			>
+		{/if}
 		<DropdownMenuItem onclick={() => ws.closeMany(groupId, active.id)}>
 			Close others <span class="kbd">{shortcutFor("pane::CloseOtherItems") ?? ""}</span>
 		</DropdownMenuItem>

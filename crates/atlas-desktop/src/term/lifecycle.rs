@@ -13,9 +13,10 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncReadExt;
 
 use super::mac;
-use super::render_loop::render_loop;
+use super::render_loop::{Hooks, render_loop};
 use super::shared::{BELL, Placement, Shared, State};
-use super::{APP, TERMS, Term, TermPrefs, on_main, pty_writer, write_clipboard};
+use super::watchdog::Why;
+use super::{APP, TERMS, Term, TermPrefs, on_main, pty_writer, with_term, write_clipboard};
 use crate::host::HostHub;
 
 /// Where a hidden terminal's view is parked.
@@ -107,6 +108,11 @@ pub async fn term_open(
     selection_bg: Option<String>,
     selection_fg: Option<String>,
 ) -> Result<(), String> {
+    // A terminal whose render thread died (a panic in wgpu, say) keeps its registry entry but
+    // never draws again: drop it and open a fresh one (the pty and its output live in hostd).
+    if dropped(&tab) {
+        let _ = term_close(app.clone(), tab.clone()).await;
+    }
     if TERMS.lock().contains_key(&tab) {
         return term_bounds(app, tab, x, y, w, h, true).await;
     }
@@ -192,6 +198,7 @@ pub async fn term_open(
                 font_new: None,
                 font_spec: spec.clone(),
                 dirty: false,
+                rebuild: None,
                 reset: false,
                 closed: false,
                 stats: Stats::default(),
@@ -202,6 +209,7 @@ pub async fn term_open(
             osc52: Mutex::new(prefs.osc52.clone()),
             wake: Condvar::new(),
             placement: Mutex::new(Placement::default()),
+            view: std::sync::atomic::AtomicUsize::new(0),
             writer: writer_tx,
         }
     });
@@ -214,58 +222,25 @@ pub async fn term_open(
     let spec_open = spec.clone();
     let (view, renderer, resolution) = on_main(&app, move || {
         // Parked: it is moved over the pane when the first frame is drawn (`Placement`).
-        let view = mac::create(ns_win, OFFSCREEN, OFFSCREEN, w, h)?;
-        let ptr = std::ptr::NonNull::new(view as *mut std::ffi::c_void).ok_or("null view")?;
-        let (pw, ph) = ((w * scale) as u32, (h * scale) as u32);
-        // SAFETY: the view stays retained until `term_close` joins the render thread.
-        match unsafe { Renderer::new(ptr, pw, ph, font_pt, scale as f32, spec_open) } {
-            Ok((r, res)) => Ok((view, r, res)),
-            Err(e) => {
-                mac::destroy(view);
-                Err(e)
-            }
-        }
+        new_surface(
+            ns_win,
+            (w, h),
+            ((w * scale) as u32, (h * scale) as u32),
+            font_pt,
+            scale as f32,
+            spec_open,
+        )
     })?;
+    shared.set_view(view);
     emit_font_event(&app, &tab, &spec, &resolution);
-    let tab_for_render = tab.clone();
-    let (sh, a, p) = (shared.clone(), app.clone(), pty.clone());
     shared.placement.lock().request((x, y, w, h), true);
-    let first = (shared.clone(), app.clone(), view);
-    let render = thread::Builder::new()
-        .name("atlas-term-render".into())
-        .spawn(move || {
-            let (on_resize_app, font_app, tab) = (a.clone(), a, tab_for_render);
-            render_loop(
-                renderer,
-                sh,
-                move |cols, rows| {
-                    let hub = on_resize_app.state::<Arc<HostHub>>().inner().clone();
-                    let args = json!({"pty": p, "cols": cols, "rows": rows});
-                    tauri::async_runtime::spawn(async move {
-                        let _ = hub.call("pty_resize", args).await;
-                    });
-                },
-                move |spec, res| emit_font_event(&font_app, &tab, spec, res),
-                move || {
-                    let (sh, app, view) = first;
-                    let frame = sh.placement.lock().drawn();
-                    if let Some((x, y, w, h)) = frame {
-                        let _ = on_main(&app, move || {
-                            mac::set_frame(view, x, y, w, h);
-                            Ok(())
-                        });
-                    }
-                },
-            )
-        })
-        .map_err(|e| e.to_string())?;
+    let render = spawn_render(&app, &tab, &pty, &shared, renderer, ns_win, scale)?;
     let reader = spawn_reader(shared.clone(), raw);
     let _ = APP.set(app.clone());
     TERMS.lock().insert(
         tab,
         Term {
             pty,
-            view,
             shared,
             render: Some(render),
             reader,
@@ -275,7 +250,138 @@ pub async fn term_open(
     Ok(())
 }
 
-/// Move/resize over the pane; `visible: false` parks it offscreen.
+/// A parked native view and a `Renderer` drawing into it. Main thread only. `logical` is the
+/// view's size in points, `pixels` the surface's physical size.
+fn new_surface(
+    ns_win: usize,
+    logical: (f64, f64),
+    pixels: (u32, u32),
+    font_pt: f32,
+    scale: f32,
+    spec: atlas_term::FontSpec,
+) -> Result<(usize, Renderer, atlas_term::FontResolution), String> {
+    let view = mac::create(ns_win, OFFSCREEN, OFFSCREEN, logical.0, logical.1)?;
+    let ptr = std::ptr::NonNull::new(view as *mut std::ffi::c_void).ok_or("null view")?;
+    // SAFETY: the view stays retained until its renderer is dropped (`term_close` joins the
+    // render thread first; a rebuild drops the old renderer before destroying the old view).
+    match unsafe { Renderer::new(ptr, pixels.0, pixels.1, font_pt, scale, spec) } {
+        Ok((r, res)) => Ok((view, r, res)),
+        Err(e) => {
+            mac::destroy(view);
+            Err(e)
+        }
+    }
+}
+
+/// The render thread of `tab`: draws `renderer` and, when asked or stalled, replaces its surface.
+fn spawn_render(
+    app: &AppHandle,
+    tab: &str,
+    pty: &str,
+    shared: &Arc<Shared>,
+    renderer: Renderer,
+    ns_win: usize,
+    scale: f64,
+) -> Result<thread::JoinHandle<()>, String> {
+    let (sh, a, p, tab) = (shared.clone(), app.clone(), pty.to_string(), tab.to_string());
+    thread::Builder::new()
+        .name("atlas-term-render".into())
+        .spawn(move || {
+            let (resize_app, font_app, first_app, rebuild_app) =
+                (a.clone(), a.clone(), a.clone(), a);
+            let (font_tab, incident_tab) = (tab.clone(), tab);
+            let (first_sh, rebuild_sh) = (sh.clone(), sh.clone());
+            render_loop(
+                renderer,
+                sh,
+                Hooks {
+                    on_resize: Box::new(move |cols, rows| {
+                        let hub = resize_app.state::<Arc<HostHub>>().inner().clone();
+                        let args = json!({"pty": p, "cols": cols, "rows": rows});
+                        tauri::async_runtime::spawn(async move {
+                            let _ = hub.call("pty_resize", args).await;
+                        });
+                    }),
+                    on_font: Box::new(move |spec, res| {
+                        emit_font_event(&font_app, &font_tab, spec, res)
+                    }),
+                    on_first_frame: Box::new(move || {
+                        let view = first_sh.view();
+                        let frame = first_sh.placement.lock().drawn();
+                        if let Some((x, y, w, h)) = frame {
+                            let _ = on_main(&first_app, move || {
+                                mac::set_frame(view, x, y, w, h);
+                                Ok(())
+                            });
+                        }
+                    }),
+                    rebuild: Box::new(move |old: Renderer, pixels, _why| {
+                        rebuild_surface(&rebuild_app, &rebuild_sh, ns_win, scale, old, pixels)
+                    }),
+                    incident: Box::new(move |kind, detail| {
+                        crate::diag::incident(kind, &format!("tab {incident_tab}: {detail}"))
+                    }),
+                },
+            )
+        })
+        .map_err(|e| e.to_string())
+}
+
+/// Replace `old`'s view and surface with new ones at `pixels` (the screen and scrollback live in
+/// the `Vt` and are untouched). Runs on the render thread; the AppKit work hops to the main thread.
+/// The new view is parked until its first frame, like a new terminal's (`Placement`). `Err(old)`:
+/// the new surface could not be made, the old one stays.
+fn rebuild_surface(
+    app: &AppHandle,
+    sh: &Arc<Shared>,
+    ns_win: usize,
+    scale: f64,
+    old: Renderer,
+    pixels: (u32, u32),
+) -> Result<Renderer, Renderer> {
+    let (font_pt, spec) = {
+        let s = sh.state.lock();
+        (s.font_cur, s.font_spec.clone())
+    };
+    let ligatures = old.ligatures();
+    let logical = (pixels.0 as f64 / scale, pixels.1 as f64 / scale);
+    let made = on_main(app, move || {
+        new_surface(ns_win, logical, pixels, font_pt, scale as f32, spec)
+    });
+    let (view, mut renderer, _) = match made {
+        Ok(v) => v,
+        Err(e) => {
+            crate::diag::incident("terminal-rebuild-failed", &e);
+            return Err(old);
+        }
+    };
+    renderer.set_ligatures(ligatures);
+    // Parked again: `on_first_frame` shows the new view over the pane once it has drawn.
+    sh.placement.lock().parked();
+    let old_view = sh.set_view(view);
+    // The old surface must be gone before its view is released.
+    drop(old);
+    let _ = on_main(app, move || {
+        mac::destroy(old_view);
+        Ok(())
+    });
+    Ok(renderer)
+}
+
+/// What `term_bounds` answers for a terminal whose view is gone (its render thread ended without
+/// `term_close`); the frontend re-runs `term_open` on it (`nativeView.ts`).
+pub const VIEW_DROPPED: &str = "terminal view dropped";
+
+/// Has `tab`'s render thread ended while the tab is still open?
+fn dropped(tab: &str) -> bool {
+    TERMS
+        .lock()
+        .get(tab)
+        .is_some_and(|t| t.render.as_ref().is_some_and(|r| r.is_finished()))
+}
+
+/// Move/resize over the pane; `visible: false` parks it offscreen. Errors with [`VIEW_DROPPED`]
+/// when the view is gone, so the frontend opens it again.
 #[tauri::command]
 pub async fn term_bounds(
     app: AppHandle,
@@ -286,18 +392,19 @@ pub async fn term_bounds(
     h: f64,
     visible: bool,
 ) -> Result<(), String> {
-    let (view, shared) = {
-        let t = TERMS.lock();
-        let t = t
-            .get(&tab)
-            .ok_or_else(|| format!("no terminal for tab {tab}"))?;
-        (t.view, t.shared.clone())
-    };
+    if dropped(&tab) {
+        crate::diag::incident("terminal-dropped", &format!("tab {tab}: render thread ended"));
+        return Err(VIEW_DROPPED.into());
+    }
+    let shared = with_term(&tab)?;
     // Before the first frame is drawn the view stays parked; the rect is applied when it is (`Placement`).
     let (vx, vy) = match shared.placement.lock().request((x, y, w, h), visible) {
         Some((x, y, _, _)) => (x, y),
         None => (OFFSCREEN, OFFSCREEN),
     };
+    // Read after the placement is recorded: a rebuild swaps the view, and one that lands between
+    // here and the move still shows at the right place (`Placement` is what its first frame uses).
+    let view = shared.view();
     on_main(&app, move || {
         mac::set_frame(view, vx, vy, w, h);
         Ok(())
@@ -309,6 +416,16 @@ pub async fn term_bounds(
             .unwrap_or(2.0);
         shared.update(|s| s.size = Some(((w * scale) as u32, (h * scale) as u32)));
     }
+    Ok(())
+}
+
+/// "Reload terminal": replace `tab`'s surface and renderer by hand, as the watchdog does when a tab
+/// stalls. The pty, its screen and its scrollback are untouched (nothing is reattached or
+/// replayed). Rebuilds on the tab's render thread, so a stuck renderer does not block this call.
+#[tauri::command]
+pub fn term_reload(tab: String) -> Result<(), String> {
+    let sh = with_term(&tab)?;
+    sh.rebuild(Why::Manual);
     Ok(())
 }
 
@@ -324,8 +441,9 @@ pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
     if let Some(r) = t.render.take() {
         let _ = r.join();
     }
+    let view = t.shared.view();
     on_main(&app, move || {
-        mac::destroy(t.view);
+        mac::destroy(view);
         Ok(())
     })?;
     Ok(())

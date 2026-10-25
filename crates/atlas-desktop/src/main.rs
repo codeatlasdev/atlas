@@ -220,6 +220,7 @@ macro_rules! handlers {
             term::term_open,
             term::term_bounds,
             term::term_close,
+            term::term_reload,
             term::term_stats,
             term::term_stats_reset,
             swipe_mac::swipe_zones,
@@ -419,6 +420,8 @@ fn main() {
 
             #[cfg(target_os = "macos")]
             swipe_mac::install(&handle);
+            // Wake from sleep / display changes rebuild every GPU terminal's surface (#104).
+            term::install_system_observers();
             #[cfg(target_os = "macos")]
             browser_keys_mac::install(&handle);
             #[cfg(target_os = "macos")]

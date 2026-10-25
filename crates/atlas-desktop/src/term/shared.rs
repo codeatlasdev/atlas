@@ -1,5 +1,8 @@
 //! State shared between a terminal's reader task, its render thread and the Tauri commands.
 
+#[cfg(test)]
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use atlas_term::Stats;
@@ -7,10 +10,15 @@ use atlas_term::Vt;
 use atlas_term::colors::Palette;
 use parking_lot::{Condvar, Mutex};
 
+use super::watchdog::Why;
+
 pub(super) struct State {
     /// Pending physical size for the render thread.
     pub(super) size: Option<(u32, u32)>,
     pub(super) dirty: bool,
+    /// The render thread must replace its surface and renderer (wake, display change, "Reload
+    /// terminal"); the first reason asked wins until it has done so.
+    pub(super) rebuild: Option<Why>,
     pub(super) reset: bool,
     pub(super) closed: bool,
     pub(super) stats: Stats,
@@ -46,6 +54,10 @@ pub(super) struct Shared {
     pub(super) wake: Condvar,
     /// Where the native view belongs, and whether its first frame is drawn yet.
     pub(super) placement: Mutex<Placement>,
+    /// Retained `NSView*` the renderer draws into; touched only on the main thread. Here, not in
+    /// `Term`, so the render thread can swap it when it rebuilds the surface without ever
+    /// taking the `TERMS` registry lock (see `render_loop`).
+    pub(super) view: AtomicUsize,
     /// Bytes for the pty, sent in order by one drain task (`super::drain`).
     pub(super) writer: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
 }
@@ -54,9 +66,24 @@ pub(super) struct Shared {
 const WRITE_CHUNK: usize = 512 * 1024;
 
 impl Shared {
+    pub(super) fn view(&self) -> usize {
+        self.view.load(Ordering::Acquire)
+    }
+
+    pub(super) fn set_view(&self, v: usize) -> usize {
+        self.view.swap(v, Ordering::AcqRel)
+    }
+
     /// Ask the render thread for a new frame.
     pub(super) fn redraw(&self) {
         self.update(|s| s.dirty = true);
+    }
+
+    /// Ask the render thread to replace its surface and renderer, keeping the screen and scrollback.
+    pub(super) fn rebuild(&self, why: Why) {
+        self.update(|s| {
+            s.rebuild.get_or_insert(why);
+        });
     }
 
     pub(super) fn update(&self, f: impl FnOnce(&mut State)) {
@@ -107,6 +134,17 @@ impl Placement {
         self.frame()
     }
 
+    /// The page wants the view on screen (as opposed to parked under a dialog or in a hidden tab),
+    /// whether or not its first frame is drawn yet.
+    pub(super) fn is_shown(&self) -> bool {
+        self.shown
+    }
+
+    /// A new view replaced the old one: it is empty until its first frame, so it is parked again.
+    pub(super) fn parked(&mut self) {
+        self.drawn = false;
+    }
+
     /// The first frame is on the layer. Returns the frame to apply now (`None`: still parked).
     pub(super) fn drawn(&mut self) -> Option<(f64, f64, f64, f64)> {
         self.drawn = true;
@@ -119,10 +157,71 @@ impl Placement {
 }
 
 #[cfg(test)]
+impl Shared {
+    /// A terminal with no pty, GPU or app: what the render-loop tests drive.
+    pub(super) fn for_test(cols: u16, rows: u16) -> Arc<Shared> {
+        let (writer, _rx) = tokio::sync::mpsc::unbounded_channel();
+        Arc::new(Shared {
+            vt: Vt::new(cols, rows, |_| {}),
+            state: Mutex::new(State {
+                size: None,
+                dirty: false,
+                rebuild: None,
+                reset: false,
+                closed: false,
+                stats: Stats::default(),
+                cell: [0.0; 2],
+                focused: false,
+                bell_until: None,
+                pal: Palette::new(
+                    atlas_term::colors::parse_hex("#c8c8c8").unwrap(),
+                    atlas_term::colors::parse_hex("#0a0a0a").unwrap(),
+                    None,
+                ),
+                pal_new: false,
+                font_pt: None,
+                ligatures: None,
+                font_cur: 12.5,
+                font_new: None,
+                font_spec: Default::default(),
+            }),
+            osc52: Mutex::new("ask".into()),
+            wake: Condvar::new(),
+            placement: Mutex::new(Placement::default()),
+            view: AtomicUsize::new(0),
+            writer,
+        })
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     const R: (f64, f64, f64, f64) = (10.0, 20.0, 300.0, 200.0);
+
+    // A wake and a display change arriving together are one rebuild, attributed to the first.
+    #[test]
+    fn rebuild_requests_coalesce_and_keep_the_first_reason() {
+        let sh = Shared::for_test(10, 2);
+        sh.rebuild(Why::Wake);
+        sh.rebuild(Why::Screens);
+        assert_eq!(sh.state.lock().rebuild, Some(Why::Wake));
+        assert_eq!(sh.state.lock().rebuild.take(), Some(Why::Wake));
+        sh.rebuild(Why::Manual);
+        assert_eq!(sh.state.lock().rebuild, Some(Why::Manual));
+    }
+
+    #[test]
+    fn a_rebuilt_view_is_parked_again_until_its_first_frame_but_stays_wanted() {
+        let mut p = Placement::default();
+        p.request(R, true);
+        assert_eq!(p.drawn(), Some(R));
+        p.parked();
+        assert!(p.is_shown(), "the page still wants it on screen");
+        assert_eq!(p.request(R, true), None, "blank layer stays off screen");
+        assert_eq!(p.drawn(), Some(R));
+    }
 
     /// Incident (desktop flicker): the native view was placed over the pane the moment it was created, before its
     /// first frame, so the empty layer flashed over the terminal.

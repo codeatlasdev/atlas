@@ -3,6 +3,7 @@
  * composed with the project commands (`projectCommands.svelte.ts`) in palette order.
  */
 import { toast } from "@codeatlasdev/ui";
+import { errText } from "#lib/api.ts";
 import type { Command } from "#lib/keymap.svelte.ts";
 import { focusSearch } from "#lib/search/search.svelte.ts";
 import { closeActive } from "#lib/shell/closeTab.ts";
@@ -25,6 +26,7 @@ import { openBranchPicker } from "#lib/stores/branch.svelte.ts";
 import { openDiff } from "#lib/stores/files.svelte.ts";
 import { isHtml } from "#lib/stores/preview.ts";
 import { previewHtml } from "#lib/stores/preview.svelte.ts";
+import { hasTermView, reloadTermView } from "#lib/stores/termViews.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
 import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 import { stepZoom } from "#lib/stores/zoom.svelte.ts";
@@ -160,6 +162,15 @@ function tabCommands(): Command[] {
 				const t = w && ws.tab(ws.focusedGroup(w.id).activeTab);
 				return t?.kind === "editor" && isHtml(t.path);
 			},
+		},
+		{
+			id: "terminal::Reload",
+			label: "Reload terminal",
+			run: () => {
+				const tab = ws.focusedGroup(ws.selected!.id).activeTab;
+				void reloadTermView(tab).catch((e) => toast.error(errText(e)));
+			},
+			when: () => !!ws.selected && hasTermView(ws.focusedGroup(ws.selected.id).activeTab),
 		},
 		{ id: "pane::CloseActiveItem", label: "Close tab", run: () => void closeActive(), when: hasWt },
 		{

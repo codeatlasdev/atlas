@@ -307,7 +307,6 @@
 		border-radius: 6px;
 		font-size: 12px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		flex-shrink: 0;
 	}
 	.tab.pinned {

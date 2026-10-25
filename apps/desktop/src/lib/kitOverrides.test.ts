@@ -26,8 +26,8 @@ test("app.css has no per-component disabled rule for the kit's buttons", () => {
 	expect(css).not.toMatch(/\.ca-btn[^{]*aria-disabled/);
 });
 
-// `nativeFeel()` (kit) sets `html[data-ca-native]`, and base.css then owns: no outline without `data-kbd`, `cursor: default`
-// on chrome, no link/image drag, no overscroll. app.css kept its own copies from before the kit had them; only the
+// `nativeFeel()` (kit) sets `html[data-ca-native]`, and base.css then owns: no outline without `data-kbd`, no link/image drag,
+// no overscroll. app.css kept its own copies from before the kit had them; only the
 // keyboard ring's look (Atlas's offset) is ours.
 test("app.css leaves the native-feel rules the kit now owns to the kit", () => {
 	expect(css).not.toMatch(/html:not\(\[data-kbd\]\)/);

@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Settings, Agents: the Environment field of a custom agent spans the full width of the form.** The rule that did it named a class the UI kit never rendered, so the field sat in one column; the new kit 4.6.0 is adopted and a test now rejects any app selector that is not a documented kit part.
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

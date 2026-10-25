@@ -589,3 +589,138 @@ async fn settings_fixtures_are_the_real_payloads() {
         );
     }
 }
+
+/// Escape stops a running turn; it is refused while the agent is idle or done, where it
+/// would only clear what the user is typing on the desktop.
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_interrupt_sends_escape_only_while_the_agent_works() {
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    let stop = || c.call("agent_interrupt", json!({"pane": "p1"}));
+    assert_eq!(stop().await.unwrap_err().to_string(), "unknown agent pane");
+    hook(tmp.path(), json!({"event": "agent_end"}));
+    assert_eq!(
+        stop().await.unwrap_err().to_string(),
+        "agent is not working"
+    );
+    hook(tmp.path(), json!({"event": "agent_start"}));
+    assert_eq!(
+        stop().await.unwrap_err().to_string(),
+        "no terminal for pane"
+    );
+    // `od -c` shows the byte the agent would read.
+    let pty = c
+        .call(
+            "pty_create",
+            json!({"cwd": tmp.path(), "argv": ["sh", "-c", "stty raw -echo; head -c1 | od -c; sleep 5"], "scope": {"pane_key": "p1"}}),
+        )
+        .await
+        .unwrap()["pty"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    stop().await.unwrap();
+    let mut text = String::new();
+    for _ in 0..50 {
+        text = c
+            .call("pty_read", json!({"pty": pty, "lines": 10}))
+            .await
+            .unwrap()["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        if text.contains("033") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(text.contains("033"), "{text:?}");
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// Contract with the phone's chat (`agent_history_test.dart`): `apps/mobile/test/fixtures/
+/// agent_history.json` is this producer's output for an omp session with a tool call, an
+/// error, thinking and a finished subagent. `UPDATE_FIXTURES=1` rewrites it.
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_history_fixture_is_the_real_payload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    let file = tmp.path().join("s.jsonl");
+    let msg = |role: &str, content: Value| {
+        json!({"type": "message", "message": {"role": role, "content": content}}).to_string()
+    };
+    let lines = [
+        json!({"type": "title", "title": "\u{f011c} Fix the sheet z-index"}).to_string(),
+        json!({"type": "session", "id": "x"}).to_string(),
+        msg("user", json!("O sheet fica sob a nav. Corrige?")),
+        msg("assistant", json!([
+            {"type": "thinking", "thinking": "Compare z-index of nav and sheet."},
+            {"type": "text", "text": "Vou medir.\n\n| Camada | z |\n|---|---|\n| nav | 40 |\n| sheet | 50 |"},
+            {"type": "toolCall", "id": "a", "name": "bash", "intent": "Running biome", "arguments": {"command": "bunx biome check --write"}},
+            {"type": "toolCall", "id": "b", "name": "task", "arguments": {"tasks": [{"name": "CssScout", "agent": "scout", "task": "Find z-index rules"}]}},
+        ])),
+        json!({"type": "message", "message": {"role": "toolResult", "toolCallId": "a", "isError": true, "content": [{"type": "text", "text": "1 error"}]}}).to_string(),
+        json!({"type": "message", "message": {"role": "toolResult", "toolCallId": "b", "content": [{"type": "text", "text": "Spawned 1 agent"}]}}).to_string(),
+        msg("assistant", json!([{"type": "text", "text": "Pronto: o sheet agora fica acima da nav."}])),
+    ];
+    std::fs::write(&file, lines.join("\n")).unwrap();
+    let sub = tmp.path().join("s");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(
+        sub.join("CssScout.jsonl"),
+        msg("assistant", json!([{"type": "text", "text": "nav z-40"}])),
+    )
+    .unwrap();
+    std::fs::write(sub.join("CssScout.md"), "nav z-40, sheet z-50").unwrap();
+    hook(
+        tmp.path(),
+        json!({"event": "session_start", "session_file": file.to_string_lossy()}),
+    );
+    let mut v = c
+        .call("agent_history", json!({"pane": "p1"}))
+        .await
+        .unwrap();
+    assert_eq!(v["title"], "Fix the sheet z-index");
+    v["subagents"][0]["updated_at"] = json!(1_700_000_000_000u64);
+    let s = c
+        .call("agent_history", json!({"pane": "p1", "sub": "CssScout"}))
+        .await
+        .unwrap();
+    assert_eq!(s["items"][0]["text"], "nav z-40");
+    assert!(
+        c.call("agent_history", json!({"pane": "p1", "sub": "../s"}))
+            .await
+            .is_err()
+    );
+    let status = c.call("agent_status_all", json!({})).await.unwrap();
+    assert_eq!(status["panes"]["p1"]["title"], "Fix the sheet z-index");
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/mobile/test/fixtures/agent_history.json");
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
+    }
+    let want: Value = serde_json::from_str(
+        &std::fs::read_to_string(&p)
+            .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+    )
+    .unwrap();
+    assert_eq!(
+        want, v,
+        "agent_history.json changed: rerun with UPDATE_FIXTURES=1, then the Dart test"
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A phone without `act` may watch agents but never start or stop one.
+#[test]
+fn starting_and_stopping_agents_need_act() {
+    use crate::protocol::HostCmd;
+    for cmd in [
+        json!({"cmd": "agent_interrupt", "args": {"pane": "p"}}),
+        json!({"cmd": "agent_launch", "args": {"project": "a", "agent": "omp"}}),
+    ] {
+        let c: HostCmd = serde_json::from_value(cmd).unwrap();
+        assert_eq!(super::required_scope(&c), Ok(super::Scope::Act));
+    }
+}

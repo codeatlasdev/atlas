@@ -68,4 +68,65 @@ void main() {
       expect(busy['error'], 'agent is working');
     },
   );
+
+  // The demo is the only way a reviewer sees the timeline: it must serve the same
+  // `agent_history` shape hostd does, or the new UI renders empty.
+  test(
+    'demo serves a timeline, subagents, a title, interrupt and launch',
+    () async {
+      final mux = Multiplexer(demoTransport());
+      addTearDown(mux.close);
+
+      final r = await mux.call('agent_history', {'pane': 'demo-omp'});
+      final h = AgentHistory.fromJson(
+        (r['data'] as Map).cast<String, dynamic>(),
+      );
+      expect(h.title, 'Why is payments failing?');
+      expect(
+        h.items.whereType<ToolItem>().any((i) => i.status == 'error'),
+        isTrue,
+      );
+      final blocks = groupTimeline(h.items);
+      expect(blocks.whereType<ToolGroup>(), isNotEmpty);
+      expect(
+        blocks.whereType<SubagentsBlock>().single.call.agents.single.name,
+        'LedgerScout',
+      );
+      expect(h.subagent('LedgerScout')!.report, contains('4300'));
+
+      final sub = await mux.call('agent_history', {
+        'pane': 'demo-omp',
+        'sub': 'LedgerScout',
+      });
+      expect(sub['data']['subagents'], isNull, reason: 'a subagent has none');
+      expect(
+        AgentHistory.fromJson((sub['data'] as Map).cast<String, dynamic>())
+            .items
+            .last,
+        isA<AssistantItem>(),
+      );
+
+      final all = await mux.call('agent_status_all');
+      expect(
+        all['data']['panes']['demo-omp']['title'],
+        'Why is payments failing?',
+      );
+
+      expect(
+        (await mux.call('agent_interrupt', {'pane': 'demo-omp'}))['error'],
+        'agent is not working',
+      );
+      final launched = await mux.call('agent_launch', {
+        'project': 'demo-shop',
+        'agent': 'codex',
+        'prompt': 'hello',
+      });
+      final pane = launched['data']['pane'] as String;
+      expect(
+        (await mux.call('agent_interrupt', {'pane': pane}))['ok'],
+        isTrue,
+        reason: 'the launched agent took the prompt and is working',
+      );
+    },
+  );
 }

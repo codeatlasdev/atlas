@@ -331,12 +331,29 @@ pub enum HostCmd {
         pane: String,
         text: String,
     },
-    /// The agent's conversation from its session file: `{messages: [{role, text}], truncated}`.
-    /// Takes the pane, never a path: the file is the one hostd recorded for that pane.
+    /// The agent's conversation from its session file as a timeline:
+    /// `{items, messages, title, truncated, subagents}` (`agents::history`). Takes the pane,
+    /// never a path: the file is the one hostd recorded for that pane; `sub` names one of
+    /// its `subagents` to read that transcript instead.
     AgentHistory {
         pane: String,
         #[serde(default = "default_history_limit")]
         limit: usize,
+        #[serde(default)]
+        sub: Option<String>,
+    },
+    /// Interrupt the agent's running turn: Escape into its terminal, as a person would.
+    AgentInterrupt {
+        pane: String,
+    },
+    /// Start `agent` (a registry id: omp, claude, codex…) in a new terminal of project
+    /// `project` (an id of `project_list`), optionally with a first prompt. The desktop owns
+    /// tabs, so this goes through its control socket: `{pane}` of the new tab.
+    AgentLaunch {
+        project: String,
+        agent: String,
+        #[serde(default)]
+        prompt: Option<String>,
     },
     /// Local projects of the desktop registry with their live service state.
     ProjectList {},

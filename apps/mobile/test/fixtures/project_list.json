@@ -14,6 +14,7 @@
             "state": "blocked",
             "state_started_at": 1700000000000,
             "tab_id": null,
+            "title": null,
             "updated_at": 1700000000000,
             "worktree_id": null
           }

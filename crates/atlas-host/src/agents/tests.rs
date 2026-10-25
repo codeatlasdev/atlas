@@ -170,3 +170,57 @@ async fn pending_prompts_can_be_listed_after_their_push() {
         "answered prompts are not listed"
     );
 }
+
+/// Regression (2026-10-25, phone screenshots): omp loads the status extension in its subagents
+/// too, in the same terminal, so their hooks arrive with the parent's pane key. Each subagent's
+/// `before_agent_start` replaced the pane's prompt ("Complete assignment thoroughly: …" became
+/// the agent's name on the phone), its `session_file` pointed the chat at the subagent's
+/// transcript, and its `agent_end` marked the parent done while it was still working.
+#[test]
+fn subagent_hooks_never_take_over_the_parent_pane() {
+    let hub = AgentHub::default();
+    let send = |p: Value| hub.apply("omp", &json!({"pane_key": "t1", "payload": p}));
+    let parent = "/s/2026-10-25_abc.jsonl";
+    send(json!({"event": "session_start", "session_file": parent, "model": "opus"}));
+    send(json!({"event": "before_agent_start", "prompt": "fix the sheet", "session_file": parent}));
+    let sub = "/s/2026-10-25_abc/HostScout.jsonl";
+    send(
+        json!({"event": "before_agent_start", "prompt": "Complete assignment thoroughly: x", "session_file": sub, "model": "haiku"}),
+    );
+    send(json!({"event": "message_end", "text": "scout notes", "session_file": sub}));
+    let (_, st) = send(json!({"event": "agent_end", "session_file": sub})).unwrap();
+    assert_eq!(st.prompt.as_deref(), Some("fix the sheet"));
+    assert_eq!(st.session_file.as_deref(), Some(parent));
+    assert_eq!(st.model.as_deref(), Some("opus"));
+    assert_eq!(st.last_message, None);
+    assert_eq!(st.state, State::Working);
+    // A nested subagent (a subagent's own task) is still not the parent.
+    let nested = "/s/2026-10-25_abc/HostScout/Deep.jsonl";
+    let (_, st) = send(json!({"event": "agent_end", "session_file": nested})).unwrap();
+    assert_eq!(st.state, State::Working);
+    // The parent's own events still land.
+    let (_, st) = send(json!({"event": "agent_end", "session_file": parent})).unwrap();
+    assert_eq!(st.state, State::Done);
+}
+
+/// A subagent asking for approval still blocks the pane: the human must answer it.
+#[test]
+fn a_subagent_approval_still_blocks_the_pane() {
+    let hub = AgentHub::default();
+    let send = |p: Value| hub.apply("omp", &json!({"pane_key": "t1", "payload": p}));
+    send(json!({"event": "agent_start", "session_file": "/s/a.jsonl"}));
+    let (_, st) =
+        send(json!({"event": "tool_approval_requested", "session_file": "/s/a/Sub.jsonl"}))
+            .unwrap();
+    assert_eq!(st.state, State::Blocked);
+}
+
+/// A new session in the same pane (`/new`) is not a subagent: it replaces the file.
+#[test]
+fn a_new_session_in_the_pane_replaces_the_file() {
+    let hub = AgentHub::default();
+    let send = |p: Value| hub.apply("omp", &json!({"pane_key": "t1", "payload": p}));
+    send(json!({"event": "session_start", "session_file": "/s/a.jsonl"}));
+    let (_, st) = send(json!({"event": "session_start", "session_file": "/s/b.jsonl"})).unwrap();
+    assert_eq!(st.session_file.as_deref(), Some("/s/b.jsonl"));
+}

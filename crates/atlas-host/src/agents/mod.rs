@@ -42,6 +42,9 @@ pub struct AgentStatus {
     pub state_started_at: u64,
     pub worktree_id: Option<String>,
     pub tab_id: Option<String>,
+    /// The session's title as the agent named it (omp's `title` entry), for lists.
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
@@ -127,6 +130,17 @@ pub fn normalize(cur: Option<State>, p: &Value) -> Option<State> {
     }
 }
 
+/// A subagent's transcript lives under its parent's session dir (`<parent>.jsonl` →
+/// `<parent>/<Name>.jsonl`, nested ones deeper).
+fn is_subagent_file(parent: Option<&str>, file: Option<&str>) -> bool {
+    let (Some(parent), Some(file)) = (parent, file) else {
+        return false;
+    };
+    let dir = parent.strip_suffix(".jsonl").unwrap_or(parent);
+    file.strip_prefix(dir)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
+
 /// `/private/tmp/x/` and `/tmp/x` are the same directory on macOS.
 fn norm_cwd(p: &str) -> String {
     let p = p.trim_end_matches('/');
@@ -163,6 +177,7 @@ impl AgentHub {
             state_started_at: now,
             worktree_id: None,
             tab_id: None,
+            title: None,
         });
         let str_of = |k: &str| p[k].as_str().filter(|s| !s.is_empty()).map(str::to_string);
         st.worktree_id = body["worktree_id"]
@@ -173,20 +188,41 @@ impl AgentHub {
             .as_str()
             .map(str::to_string)
             .or(st.tab_id.take());
-        st.session_id = str_of("session_id").or(st.session_id.take());
-        st.session_file = str_of("session_file").or(st.session_file.take());
-        st.model = str_of("model").or(st.model.take());
-        if let Some(pr) = str_of("prompt") {
-            st.prompt = Some(pr);
-        }
-        if let Some(t) = str_of("text") {
-            st.last_message = Some(t.chars().take(2000).collect());
-        }
-        if let Some(next) = normalize(Some(st.state), p)
-            && next != st.state
-        {
-            st.state = next;
-            st.state_started_at = now;
+        let file = str_of("session_file");
+        // omp runs this extension in its subagents too, in the same terminal: their hooks
+        // carry the parent's pane key and a session file inside the parent's session dir.
+        // They must not rename, retarget or finish the pane; only a prompt that needs the
+        // human (an approval) gets through.
+        let sub = is_subagent_file(st.session_file.as_deref(), file.as_deref());
+        if sub {
+            if normalize(Some(st.state), p) == Some(State::Blocked) && st.state != State::Blocked {
+                st.state = State::Blocked;
+                st.state_started_at = now;
+            }
+        } else {
+            st.session_id = str_of("session_id").or(st.session_id.take());
+            if file.is_some() && file != st.session_file {
+                st.title = None;
+            }
+            st.session_file = file.or(st.session_file.take());
+            st.model = str_of("model").or(st.model.take());
+            if let Some(pr) = str_of("prompt") {
+                st.prompt = Some(pr);
+            }
+            if let Some(t) = str_of("text") {
+                st.last_message = Some(t.chars().take(2000).collect());
+            }
+            if let Some(next) = normalize(Some(st.state), p)
+                && next != st.state
+            {
+                st.state = next;
+                st.state_started_at = now;
+            }
+            if let Some(f) = &st.session_file
+                && (st.title.is_none() || matches!(p["event"].as_str(), Some("agent_end" | "stop")))
+            {
+                st.title = history::title(f).or(st.title.take());
+            }
         }
         st.updated_at = now;
         let out = (pane, st.clone());

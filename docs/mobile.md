@@ -30,6 +30,10 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 
 Claude Code and Codex run `atlas hook … permission-request` before showing their own prompt. While a phone is connected, hostd shows the prompt on the phone and waits up to 55 s for Allow or Deny. With no phone connected, it answers nothing at once, and the agent asks in the terminal as usual. Re-run `atlas setup claude-code --apply` / `atlas setup codex --apply` once so the hook is registered with its 60 s timeout. omp approvals are shown as "needs you" but answered on the computer.
 
+## Agents on the phone
+
+An agent's chat is read from its session file (`agent_history`, `crates/atlas-host/src/agents/history.rs`): omp, Claude Code and Codex transcripts become one timeline of turns, thinking, tool steps (intent, status, clipped output) and, for omp, the subagents a `task` call started, each read from `<session>/<Name>.jsonl` (the phone names a subagent, never a path). omp subagents load the status extension in the parent's terminal; hostd recognizes their session files under the parent's session dir and never lets them rename, retarget or finish the pane (an approval still blocks it). The title is omp's session title. Stop sends Escape (`agent_interrupt`, only while the agent works); slash commands are typed like any message. **New agent** (`agent_launch`) asks Atlas Desktop over `~/.atlas/desktop.sock` for `terminal_create` in the project, so it needs the desktop running. Both need the **act** permission.
+
 ## Files
 
 Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iroh identity, 0600), `devices.json` (paired phones and their permissions), `audit.log` (one JSON line per non-read request from a phone, with typed text logged as a length only). `ATLAS_MOBILE_RELAY=0` turns relays and address lookup off (LAN only).

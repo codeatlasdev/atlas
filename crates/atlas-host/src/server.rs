@@ -774,14 +774,28 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             Ok(json!({}))
         }
         HostCmd::AgentSend { pane, text } => agent_send(hub, &pane, &text).await,
-        HostCmd::AgentHistory { pane, limit } => {
+        HostCmd::AgentHistory { pane, limit, sub } => {
+            use crate::agents::history;
             let file = hub
                 .agents
                 .session_file(&pane)
                 .ok_or("no session for pane")?;
-            let (messages, truncated) = crate::agents::history::read(&file, limit.min(1000))?;
-            Ok(json!({"messages": messages, "truncated": truncated}))
+            let path = match &sub {
+                Some(name) => history::subagent_file(&file, name)?,
+                None => file.clone(),
+            };
+            let mut v = history::read(&path, limit.min(1000))?;
+            if sub.is_none() {
+                v["subagents"] = json!(history::subagents(&file));
+            }
+            Ok(v)
         }
+        HostCmd::AgentInterrupt { pane } => agent_interrupt(hub, &pane),
+        HostCmd::AgentLaunch {
+            project,
+            agent,
+            prompt,
+        } => agent_launch(hub, &project, &agent, prompt).await,
         HostCmd::ProjectList {} => {
             let (panes, status) = agent_panes(hub);
             crate::projects::list(&hub.dir, &panes, &status).await
@@ -905,15 +919,58 @@ async fn agent_send(hub: &Hub, pane: &str, text: &str) -> Result<Value, String> 
         None => return Err("unknown agent pane".into()),
         Some(_) => return Err("agent is working".into()),
     }
-    let s = hub
-        .sessions_snapshot()
-        .into_iter()
-        .find(|s| s.meta.scope.pane_key.as_deref() == Some(pane) && s.exited().is_none())
-        .ok_or("no terminal for pane")?;
+    let s = agent_pty(hub, pane)?;
     s.write(text.as_bytes()).map_err(|e| format!("{e:#}"))?;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     s.write(b"\r").map_err(|e| format!("{e:#}"))?;
     Ok(json!({}))
+}
+
+/// The live terminal of an agent pane.
+fn agent_pty(hub: &Hub, pane: &str) -> Result<Arc<Session>, String> {
+    hub.sessions_snapshot()
+        .into_iter()
+        .find(|s| s.meta.scope.pane_key.as_deref() == Some(pane) && s.exited().is_none())
+        .ok_or_else(|| "no terminal for pane".to_string())
+}
+
+/// Escape stops a running turn in omp, Claude Code and Codex alike. Refused unless the agent
+/// works, so a stale tap never clears a prompt the user is typing on the desktop.
+fn agent_interrupt(hub: &Hub, pane: &str) -> Result<Value, String> {
+    use crate::agents::State;
+    match hub.agents.state_of(pane) {
+        Some(State::Working | State::Blocked | State::Waiting) => {}
+        None => return Err("unknown agent pane".into()),
+        Some(_) => return Err("agent is not working".into()),
+    }
+    agent_pty(hub, pane)?
+        .write(b"\x1b")
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(json!({}))
+}
+
+/// A new agent tab in a project, made by the desktop (it owns tabs, worktrees and the
+/// agent's launch env): `terminal_create` on its control socket.
+async fn agent_launch(
+    hub: &Hub,
+    project: &str,
+    agent: &str,
+    prompt: Option<String>,
+) -> Result<Value, String> {
+    let root = crate::projects::root_of(&hub.dir, project)?;
+    let args = json!({
+        "worktree": root.to_string_lossy(),
+        "agent": agent,
+        "prompt": prompt.filter(|p| !p.trim().is_empty()),
+    });
+    // Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
+    let tab = tokio::task::spawn_blocking(move || {
+        atlas_core::desktop_ctl::call("terminal_create", &args, std::time::Duration::from_secs(60))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))?;
+    Ok(json!({"pane": tab["tab"], "pty": tab["pty"]}))
 }
 
 #[cfg(all(test, unix))]

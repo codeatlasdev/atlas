@@ -34,6 +34,9 @@ class AgentStatus {
   final String? worktreeId;
   final String? tabId;
 
+  /// The session's title (omp names it; null until it has one).
+  final String? title;
+
   const AgentStatus({
     required this.state,
     required this.agent,
@@ -46,6 +49,7 @@ class AgentStatus {
     required this.stateStartedAt,
     this.worktreeId,
     this.tabId,
+    this.title,
   });
 
   factory AgentStatus.fromJson(Map<String, dynamic> j) => AgentStatus(
@@ -60,16 +64,18 @@ class AgentStatus {
     stateStartedAt: (j['state_started_at'] as num?)?.toInt() ?? 0,
     worktreeId: j['worktree_id'] as String?,
     tabId: j['tab_id'] as String?,
+    title: j['title'] as String?,
   );
 
   @override
   bool operator ==(Object other) =>
       other is AgentStatus &&
       other.state == state &&
-      other.updatedAt == updatedAt;
+      other.updatedAt == updatedAt &&
+      other.title == title;
 
   @override
-  int get hashCode => Object.hash(state, updatedAt);
+  int get hashCode => Object.hash(state, updatedAt, title);
 }
 
 /// One service entry from `project_list`.
@@ -243,4 +249,212 @@ class PairInfo {
 bool canSendChat(AgentStatus? status) {
   if (status == null) return false;
   return status.state == 'idle' || status.state == 'done';
+}
+
+/// One entry of an agent's conversation, as `agent_history` returns it.
+sealed class TimelineItem {
+  const TimelineItem();
+
+  /// Null for a kind this app does not know (a newer hostd), so it is skipped.
+  static TimelineItem? fromJson(Map<String, dynamic> j) => switch (j['kind']) {
+    'user' => UserItem(j['text'] as String? ?? ''),
+    'assistant' => AssistantItem(j['text'] as String? ?? ''),
+    'thinking' => ThinkingItem(j['text'] as String? ?? ''),
+    'tool' => ToolItem.fromJson(j),
+    _ => null,
+  };
+}
+
+class UserItem extends TimelineItem {
+  const UserItem(this.text);
+  final String text;
+}
+
+class AssistantItem extends TimelineItem {
+  const AssistantItem(this.text);
+  final String text;
+}
+
+class ThinkingItem extends TimelineItem {
+  const ThinkingItem(this.text);
+  final String text;
+}
+
+/// A subagent a `task` call started.
+class SpawnedAgent {
+  const SpawnedAgent({required this.name, this.agent, required this.task});
+  final String name;
+  final String? agent;
+  final String task;
+
+  factory SpawnedAgent.fromJson(Map<String, dynamic> j) => SpawnedAgent(
+    name: j['name'] as String? ?? '',
+    agent: j['agent'] as String?,
+    task: j['task'] as String? ?? '',
+  );
+}
+
+/// A tool call. [status]: `running` | `ok` | `error`.
+class ToolItem extends TimelineItem {
+  const ToolItem({
+    required this.id,
+    required this.name,
+    this.intent,
+    this.detail,
+    required this.status,
+    this.output,
+    this.agents = const [],
+  });
+  final String id;
+  final String name;
+  final String? intent;
+  final String? detail;
+  final String status;
+  final String? output;
+
+  /// Subagents started by this call (omp `task` only).
+  final List<SpawnedAgent> agents;
+
+  bool get isTask => agents.isNotEmpty;
+
+  /// What the row says: the agent's own words for the step, else the raw command/path.
+  String get summary {
+    final i = intent?.trim();
+    if (i != null && i.isNotEmpty) return i;
+    final d = detail?.trim();
+    return d != null && d.isNotEmpty ? d : name;
+  }
+
+  factory ToolItem.fromJson(Map<String, dynamic> j) => ToolItem(
+    id: j['id'] as String? ?? '',
+    name: j['name'] as String? ?? 'tool',
+    intent: j['intent'] as String?,
+    detail: j['detail'] as String?,
+    status: j['status'] as String? ?? 'ok',
+    output: j['output'] as String?,
+    agents: [
+      for (final a in (j['agents'] as List?) ?? const [])
+        SpawnedAgent.fromJson((a as Map).cast<String, dynamic>()),
+    ],
+  );
+}
+
+/// A subagent's live state in the parent's `agent_history.subagents`.
+/// [state]: `running` | `done`.
+class SubagentInfo {
+  const SubagentInfo({
+    required this.name,
+    required this.state,
+    required this.updatedAt,
+    this.report,
+  });
+  final String name;
+  final String state;
+  final int updatedAt;
+  final String? report;
+
+  bool get running => state == 'running';
+
+  factory SubagentInfo.fromJson(Map<String, dynamic> j) => SubagentInfo(
+    name: j['name'] as String? ?? '',
+    state: j['state'] as String? ?? 'done',
+    updatedAt: (j['updated_at'] as num?)?.toInt() ?? 0,
+    report: j['report'] as String?,
+  );
+}
+
+/// `agent_history`: the conversation as a timeline, the session title and the
+/// subagents (absent when reading a subagent's own transcript).
+class AgentHistory {
+  const AgentHistory({
+    this.items = const [],
+    this.title,
+    this.truncated = false,
+    this.subagents = const [],
+  });
+  final List<TimelineItem> items;
+  final String? title;
+  final bool truncated;
+  final List<SubagentInfo> subagents;
+
+  SubagentInfo? subagent(String name) {
+    for (final s in subagents) {
+      if (s.name == name) return s;
+    }
+    return null;
+  }
+
+  factory AgentHistory.fromJson(Map<String, dynamic> j) {
+    final items = [
+      for (final i in (j['items'] as List?) ?? const [])
+        ?TimelineItem.fromJson((i as Map).cast<String, dynamic>()),
+    ];
+    return AgentHistory(
+      // An older hostd has no `items`: fall back to its plain messages.
+      items: items.isNotEmpty || j['items'] != null
+          ? items
+          : [
+              for (final m in (j['messages'] as List?) ?? const [])
+                if ((m as Map)['role'] == 'user')
+                  UserItem(m['text'] as String? ?? '')
+                else
+                  AssistantItem(m['text'] as String? ?? ''),
+            ],
+      title: j['title'] as String?,
+      truncated: j['truncated'] == true,
+      subagents: [
+        for (final s in (j['subagents'] as List?) ?? const [])
+          SubagentInfo.fromJson((s as Map).cast<String, dynamic>()),
+      ],
+    );
+  }
+}
+
+/// What the timeline renders: user/assistant/thinking items as they are, and each run of
+/// consecutive plain tool calls folded into one [ToolGroup]; `task` calls stay apart as
+/// [SubagentsBlock]s.
+sealed class TimelineBlock {
+  const TimelineBlock();
+}
+
+class ItemBlock extends TimelineBlock {
+  const ItemBlock(this.item);
+  final TimelineItem item;
+}
+
+class ToolGroup extends TimelineBlock {
+  const ToolGroup(this.calls);
+  final List<ToolItem> calls;
+
+  bool get running => calls.any((c) => c.status == 'running');
+  int get errors => calls.where((c) => c.status == 'error').length;
+
+  /// Distinct tool names in order of first use: `bash, read, edit`.
+  List<String> get names => {for (final c in calls) c.name}.toList();
+}
+
+class SubagentsBlock extends TimelineBlock {
+  const SubagentsBlock(this.call);
+  final ToolItem call;
+}
+
+List<TimelineBlock> groupTimeline(List<TimelineItem> items) {
+  final out = <TimelineBlock>[];
+  final run = <ToolItem>[];
+  void flush() {
+    if (run.isEmpty) return;
+    out.add(ToolGroup(List.of(run)));
+    run.clear();
+  }
+
+  for (final i in items) {
+    if (i is ToolItem && !i.isTask) {
+      run.add(i);
+      continue;
+    }
+    flush();
+    out.add(i is ToolItem ? SubagentsBlock(i) : ItemBlock(i));
+  }
+  flush();
+  return out;
 }

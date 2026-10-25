@@ -4,18 +4,30 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 
-/// Installed agents whose hooks are off on [device]: their state never reaches Atlas.
-/// Empty on an older Atlas without `agent_integrations`.
-final missingIntegrationsProvider = FutureProvider.autoDispose
+/// Agents installed on [device] (`agent_integrations`), the ones whose hooks report to
+/// Atlas first. Empty on an older Atlas without that command.
+final installedAgentsProvider = FutureProvider.autoDispose
     .family<List<AgentIntegration>, MacDevice>((ref, device) async {
       final mux = await ref.watch(connectionNotifierProvider(device).future);
       if (mux == null) return const [];
       final resp = await mux.call('agent_integrations');
       if (resp['ok'] != true) return const [];
-      return [
+      final all = [
         for (final a in (resp['data']['agents'] as List?) ?? const [])
           AgentIntegration.fromJson((a as Map).cast<String, dynamic>()),
-      ].where((a) => a.state == 'missing').toList();
+      ];
+      return [
+        ...all.where((a) => a.state == 'ok'),
+        ...all.where((a) => a.state != 'ok'),
+      ];
+    });
+
+/// Installed agents whose hooks are off on [device]: their state never reaches Atlas.
+/// Empty on an older Atlas without `agent_integrations`.
+final missingIntegrationsProvider = FutureProvider.autoDispose
+    .family<List<AgentIntegration>, MacDevice>((ref, device) async {
+      final all = await ref.watch(installedAgentsProvider(device).future);
+      return all.where((a) => a.state == 'missing').toList();
     });
 
 /// Tracks agent statuses for all panes on [device].

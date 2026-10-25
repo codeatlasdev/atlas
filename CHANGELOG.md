@@ -6,6 +6,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Atlas Mobile: agents you can follow and drive from the phone.** The chat is a live timeline: Markdown (tables with a chart toggle, code blocks with copy), the model's thinking, every tool step with its intent, status and output, and the subagents an omp `task` started, each opening its own transcript. Agents show their logo and session title, a switcher jumps between them, Stop interrupts a running turn, omp's `/compact`, `/new`, `/goal` and `/export` are one tap, and **New agent** starts omp, Claude Code or Codex in a project (through Atlas Desktop). Codex rollouts are read as well as omp and Claude Code sessions.
+
+### Fixed
+
+- **omp subagents no longer take over their parent agent.** Their hooks share the parent's terminal, so a subagent's prompt ("Complete assignment thoroughly: …") became the agent's name on the phone, its transcript replaced the chat and its end marked the parent done while it still worked.
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

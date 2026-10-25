@@ -1,60 +1,18 @@
 //! `atlas wt`, `atlas term`, `atlas browser`, `atlas file` — control a running
 //! Atlas Desktop window over the control socket (`~/.atlas/desktop.sock`).
 
-use std::io::{BufRead, BufReader, Write};
 use std::time::Duration;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 
 use super::AtlasCommand;
 
-pub const NOT_RUNNING: &str = "Atlas Desktop is not running; launch it with `atlas desktop`";
-
-/// True when an Atlas Desktop window owns the control socket.
-pub fn desktop_running() -> bool {
-    atlas_core::ipc::connect_sync(&atlas_core::paths::desktop_socket()).is_ok()
-}
-
-fn token() -> Result<String> {
-    let p = atlas_core::paths::desktop_token();
-    let t = std::fs::read_to_string(&p)
-        .with_context(|| format!("{}: {}", p.display(), NOT_RUNNING))?
-        .trim()
-        .to_string();
-    anyhow::ensure!(!t.is_empty(), NOT_RUNNING);
-    Ok(t)
-}
+pub use atlas_core::desktop_ctl::running as desktop_running;
 
 pub fn call(cmd: &str, args: Value, timeout: Duration) -> Result<Value> {
-    let sock = atlas_core::paths::desktop_socket();
-    let mut s = atlas_core::ipc::connect_sync(&sock).map_err(|_| anyhow!(NOT_RUNNING))?;
-    s.set_write_timeout(Some(Duration::from_secs(5)))?;
-    s.set_read_timeout(Some(timeout.saturating_add(Duration::from_secs(5))))?;
-    let token = token()?;
-    writeln!(s, r#"{{"token":"{token}"}}"#)?;
-    writeln!(
-        s,
-        r#"{{"cmd":{c},"args":{a}}}"#,
-        c = serde_json::to_string(cmd)?,
-        a = args
-    )?;
-    let reply: Value = serde_json::from_str(
-        BufReader::new(s)
-            .lines()
-            .next()
-            .ok_or_else(|| anyhow!("empty reply"))??
-            .as_str(),
-    )?;
-    if reply["ok"] == true {
-        Ok(reply["data"].clone())
-    } else {
-        Err(anyhow!(
-            "{}",
-            reply["error"].as_str().unwrap_or("desktop error")
-        ))
-    }
+    atlas_core::desktop_ctl::call(cmd, &args, timeout)
 }
 
 fn jprint(v: &Value, json: bool) {

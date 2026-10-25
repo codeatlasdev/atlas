@@ -10,6 +10,7 @@ pub mod hook_server;
 pub mod integrations;
 #[cfg(test)]
 mod tests;
+pub mod tree;
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -145,6 +146,18 @@ fn is_subagent_file(parent: Option<&str>, file: Option<&str>) -> bool {
 fn norm_cwd(p: &str) -> String {
     let p = p.trim_end_matches('/');
     p.strip_prefix("/private").unwrap_or(p).to_string()
+}
+
+/// Whether a phone may type into an agent in `state`: idle or done, always; while the agent
+/// works only as steering (`steer`) and only for omp, which queues a message typed mid-turn
+/// for the running turn. Claude Code and Codex would take it as the next prompt or garble
+/// the turn, so they keep the old rule. `Err` is the refusal text.
+pub fn send_allowed(state: State, agent: &str, steer: bool) -> Result<(), &'static str> {
+    match state {
+        State::Idle | State::Done => Ok(()),
+        _ if steer && agent == "omp" => Ok(()),
+        _ => Err("agent is working"),
+    }
 }
 
 impl AgentHub {
@@ -321,6 +334,10 @@ impl AgentHub {
 
     pub fn state_of(&self, pane: &str) -> Option<State> {
         self.panes.lock().get(pane).map(|s| s.state)
+    }
+
+    pub fn status_of(&self, pane: &str) -> Option<AgentStatus> {
+        self.panes.lock().get(pane).cloned()
     }
 
     pub fn all(&self) -> HashMap<String, AgentStatus> {

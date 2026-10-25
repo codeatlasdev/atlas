@@ -712,6 +712,165 @@ async fn agent_history_fixture_is_the_real_payload() {
     c.call("shutdown", json!({})).await.ok();
 }
 
+/// A turn in flight takes a typed message as steering in omp (it queues it); Claude Code and
+/// Codex do not, so `steer` changes nothing for them, and omp without `steer` still refuses.
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_send_steer_reaches_only_a_working_omp() {
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    hook(tmp.path(), json!({"event": "agent_start"}));
+    let plain = c
+        .call("agent_send", json!({"pane": "p1", "text": "hi"}))
+        .await;
+    assert_eq!(plain.unwrap_err().to_string(), "agent is working");
+    // Allowed: it gets past the state check and fails only for lack of a terminal.
+    let steer = c
+        .call(
+            "agent_send",
+            json!({"pane": "p1", "text": "hi", "steer": true}),
+        )
+        .await;
+    assert_eq!(steer.unwrap_err().to_string(), "no terminal for pane");
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A phone reads the tree of any agent it may read; `agent_tree` needs only `read`.
+#[test]
+fn agent_tree_needs_read() {
+    use crate::protocol::HostCmd;
+    let c: HostCmd =
+        serde_json::from_value(json!({"cmd": "agent_tree", "args": {"pane": "p"}})).unwrap();
+    assert_eq!(super::required_scope(&c), Ok(super::Scope::Read));
+}
+
+/// Contract with the phone's agent tree (`agent_tree_test.dart`): `apps/mobile/test/fixtures/
+/// agent_tree.json` is this producer's output for an omp session with a nested subagent,
+/// one that failed and one still running. `UPDATE_FIXTURES=1` rewrites it.
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_tree_fixture_is_the_real_payload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let c = daemon(tmp.path()).await;
+    let file = tmp.path().join("s.jsonl");
+    let asst = |content: Value, total: u64, cost: f64, stop: &str| {
+        json!({"type": "message", "message": {"role": "assistant", "content": content,
+               "model": "cc/claude-sonnet-5-5", "stopReason": stop,
+               "usage": {"totalTokens": total, "cost": {"total": cost}}}})
+        .to_string()
+    };
+    let spawn = |tasks: Value| {
+        asst(
+            json!([{"type": "toolCall", "id": "t", "name": "task", "arguments": {"tasks": tasks}}]),
+            1200,
+            0.04,
+            "toolUse",
+        )
+    };
+    let lines = [
+        json!({"type": "title", "title": "\u{f011c} Map the host"}).to_string(),
+        json!({"type": "session", "id": "x"}).to_string(),
+        spawn(json!([
+            {"name": "Scout", "agent": "scout", "task": "Map hostd"},
+            {"name": "Fixer", "agent": "task", "task": "Fix the sheet"},
+        ])),
+        json!({"type": "custom_message", "customType": "async-result",
+               "content": "<task-result id=\"Fixer\" agent=\"task\" status=\"failed\" duration=\"1m5s\">\n<output>boom</output>"})
+        .to_string(),
+    ];
+    std::fs::write(&file, lines.join("\n")).unwrap();
+    let dir = tmp.path().join("s");
+    std::fs::create_dir_all(dir.join("Scout")).unwrap();
+    std::fs::write(
+        dir.join("Scout.jsonl"),
+        [
+            spawn(json!([{"name": "Deep", "agent": "scout", "task": "Read server.rs"}])),
+            json!({"type": "message", "message": {"role": "toolResult", "toolCallId": "t"}}).to_string(),
+            asst(
+                json!([{"type": "toolCall", "id": "r", "name": "read", "arguments": {"path": "server.rs", "i": "Reading server.rs"}}]),
+                300,
+                0.01,
+                "toolUse",
+            ),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    std::fs::write(dir.join(".Scout.jsonl.lock.os"), "").unwrap();
+    std::fs::write(
+        dir.join("Scout").join("Scout.Deep.jsonl"),
+        asst(json!([{"type": "text", "text": "ok"}]), 100, 0.002, "stop"),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("Scout").join("Scout.Deep.md"),
+        "server.rs routes every command",
+    )
+    .unwrap();
+    std::fs::write(dir.join("Fixer.jsonl"), asst(json!([]), 50, 0.001, "error")).unwrap();
+    // `Deep` finished long ago: a fresh transcript alone would still read as running.
+    std::fs::File::options()
+        .write(true)
+        .open(dir.join("Scout").join("Scout.Deep.jsonl"))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(3600))
+        .unwrap();
+    hook(
+        tmp.path(),
+        json!({"event": "agent_start", "session_file": file.to_string_lossy()}),
+    );
+    let mut v = c.call("agent_tree", json!({"pane": "p1"})).await.unwrap();
+    let node = |v: &Value, id: &str| {
+        v["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == id)
+            .unwrap_or_else(|| panic!("no node {id}: {v}"))
+            .clone()
+    };
+    assert_eq!(node(&v, "")["status"], "running");
+    assert_eq!(node(&v, "")["name"], "Map the host");
+    assert_eq!(node(&v, "Scout")["status"], "running");
+    assert_eq!(node(&v, "Scout")["now"], "Reading server.rs");
+    assert_eq!(node(&v, "Scout.Deep")["parent"], "Scout");
+    assert_eq!(node(&v, "Scout.Deep")["status"], "completed");
+    assert_eq!(node(&v, "Fixer")["status"], "failed");
+    // Timestamps and the order of siblings follow the disk: pin them for the fixture.
+    let nodes = v["nodes"].as_array_mut().unwrap();
+    nodes.sort_by_key(|n| n["id"].as_str().unwrap().to_string());
+    for n in nodes.iter_mut() {
+        n["updated_at"] = json!(1_700_000_000_000u64);
+    }
+    // Phones read a nested transcript through the same dotted id.
+    let deep = c
+        .call("agent_history", json!({"pane": "p1", "sub": "Scout.Deep"}))
+        .await
+        .unwrap();
+    assert_eq!(deep["items"][0]["text"], "ok");
+    for bad in ["..", "Scout/../Scout", "", "Scout..Deep", "a/b"] {
+        assert!(
+            c.call("agent_history", json!({"pane": "p1", "sub": bad}))
+                .await
+                .is_err(),
+            "{bad:?}"
+        );
+    }
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/mobile/test/fixtures/agent_tree.json");
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
+    }
+    let want: Value = serde_json::from_str(
+        &std::fs::read_to_string(&p)
+            .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+    )
+    .unwrap();
+    assert_eq!(
+        want, v,
+        "agent_tree.json changed: rerun with UPDATE_FIXTURES=1, then the Dart test"
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
 /// A phone without `act` may watch agents but never start or stop one.
 #[test]
 fn starting_and_stopping_agents_need_act() {

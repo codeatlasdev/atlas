@@ -229,6 +229,21 @@ class _DemoComputer implements Transport {
             },
           ],
         },
+        {
+          'kind': 'result',
+          'id': 'LedgerScout',
+          'status': 'completed',
+          'duration': '41s',
+        },
+        {
+          'kind': 'tool',
+          'id': 'o4',
+          'name': 'edit',
+          'intent': 'Pointing payments at the mock ledger',
+          'detail': 'payments/atlas.yaml',
+          'status': 'ok',
+          'output': 'Updated 1 line',
+        },
       ],
       subagents: [
         {
@@ -240,6 +255,68 @@ class _DemoComputer implements Transport {
       ],
     ),
   };
+
+  /// `agent_tree` of `demo-omp`: a scout that spawned a deeper one.
+  List<Map<String, Object?>> _tree(_Agent a) {
+    final running = a.state == 'working';
+    final root = {
+      'id': '',
+      'parent': null,
+      'name': a.title,
+      'agent': a.agent,
+      'model': 'gpt-5.5',
+      'status': switch (a.state) {
+        'working' || 'blocked' || 'waiting' => 'running',
+        'done' => 'completed',
+        _ => 'idle',
+      },
+      'task': a.history.firstOrNull?['text'],
+      'duration_ms': 90000,
+      'tokens': 48200,
+      'cost': 0.31,
+      'tool_count': a.steps.length,
+      'now': running ? 'Reading the payments log' : null,
+      'report': null,
+      'updated_at': a.updatedAt,
+    };
+    if (a.subagents.isEmpty) return [root];
+    return [
+      root,
+      {
+        'id': 'LedgerScout',
+        'parent': '',
+        'name': 'LedgerScout',
+        'agent': 'scout',
+        'model': 'claude-haiku',
+        'status': 'completed',
+        'task': 'Find where the ledger service is configured',
+        'duration_ms': 41000,
+        'tokens': 9100,
+        'cost': 0.02,
+        'tool_count': 4,
+        'now': null,
+        'report':
+            'payments/atlas.yaml points at localhost:4300; nothing starts it.',
+        'updated_at': a.updatedAt,
+      },
+      {
+        'id': 'LedgerScout.Deep',
+        'parent': 'LedgerScout',
+        'name': 'LedgerScout.Deep',
+        'agent': 'scout',
+        'model': 'claude-haiku',
+        'status': 'completed',
+        'task': 'Read payments/atlas.yaml and report the ledger URL',
+        'duration_ms': 12000,
+        'tokens': 2300,
+        'cost': 0.004,
+        'tool_count': 1,
+        'now': null,
+        'report': 'ledger url: localhost:4300',
+        'updated_at': a.updatedAt,
+      },
+    ];
+  }
 
   /// The pending approval of `demo-claude`, until answered.
   String? _approvalReq = 'demo-1';
@@ -293,6 +370,9 @@ class _DemoComputer implements Transport {
         data = {'agents': _integrations};
       case 'agent_history':
         data = _history(args['pane'] as String?, args['sub'] as String?);
+      case 'agent_tree':
+        final a = _agents[args['pane']];
+        data = a == null ? {'nodes': <Object>[]} : {'nodes': _tree(a)};
       case 'agent_interrupt':
         error = _interrupt(args['pane'] as String?);
         data = error == null ? <String, Object?>{} : null;
@@ -302,7 +382,11 @@ class _DemoComputer implements Transport {
           args['prompt'] as String?,
         );
       case 'agent_send':
-        error = _send(args['pane'] as String?, args['text'] as String? ?? '');
+        error = _send(
+          args['pane'] as String?,
+          args['text'] as String? ?? '',
+          steer: args['steer'] == true,
+        );
         data = error == null ? <String, Object?>{} : null;
       case 'agent_approve':
         error = _approve(
@@ -356,10 +440,13 @@ class _DemoComputer implements Transport {
     scheduleMicrotask(() => _emit(reply));
   }
 
-  String? _send(String? pane, String text) {
+  String? _send(String? pane, String text, {bool steer = false}) {
     final a = _agents[pane];
     if (a == null) return 'unknown agent pane';
-    if (a.state != 'idle' && a.state != 'done') return 'agent is working';
+    final canSteer = steer && a.agent == 'omp' && a.state == 'working';
+    if (a.state != 'idle' && a.state != 'done' && !canSteer) {
+      return 'agent is working';
+    }
     a.history.add({'role': 'user', 'text': text});
     a.state = 'working';
     a.startedAt = a.updatedAt = _now();
@@ -384,9 +471,17 @@ class _DemoComputer implements Transport {
     final a = _agents[pane];
     if (a == null) return {'items': [], 'messages': [], 'truncated': false};
     if (sub != null) {
-      final s = a.subagents.where((x) => x['name'] == sub).firstOrNull;
+      final s = a.subagents
+          .where((x) => x['name'] == sub || sub.startsWith('${x['name']}.'))
+          .firstOrNull;
+      final deep = sub.contains('.');
       final items = <Map<String, Object?>>[
-        {'kind': 'user', 'text': s?['task'] ?? ''},
+        {
+          'kind': 'user',
+          'text': deep
+              ? 'Read payments/atlas.yaml and report the ledger URL'
+              : s?['task'] ?? '',
+        },
         {
           'kind': 'tool',
           'id': 's1',
@@ -396,13 +491,24 @@ class _DemoComputer implements Transport {
           'status': 'ok',
           'output': 'nav.css:12: z-index: 40\nsheet.css:4: z-index: 50',
         },
-        {'kind': 'assistant', 'text': s?['report'] ?? ''},
+        if (!deep)
+          {
+            'kind': 'result',
+            'id': '$sub.Deep',
+            'status': 'completed',
+            'duration': '12s',
+          },
+        {
+          'kind': 'assistant',
+          'text': deep ? 'ledger url: localhost:4300' : s?['report'] ?? '',
+        },
       ];
       return {
         'items': items,
         'messages': [
           for (final i in items)
-            if (i['kind'] != 'tool') {'role': i['kind'], 'text': i['text']},
+            if (i['kind'] == 'user' || i['kind'] == 'assistant')
+              {'role': i['kind'], 'text': i['text']},
         ],
         'title': sub,
         'truncated': false,

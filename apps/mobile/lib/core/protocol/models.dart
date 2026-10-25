@@ -261,8 +261,31 @@ sealed class TimelineItem {
     'assistant' => AssistantItem(j['text'] as String? ?? ''),
     'thinking' => ThinkingItem(j['text'] as String? ?? ''),
     'tool' => ToolItem.fromJson(j),
+    'result' => ResultItem.fromJson(j),
+    'compaction' => CompactionItem(j['text'] as String? ?? ''),
     _ => null,
   };
+}
+
+/// A subagent finished (omp's `async-result`): [id] is its dotted name, [status]
+/// `completed` | `failed` | `aborted`, [duration] hostd's text (`27m20s`).
+class ResultItem extends TimelineItem {
+  const ResultItem({required this.id, required this.status, this.duration});
+  final String id;
+  final String status;
+  final String? duration;
+
+  factory ResultItem.fromJson(Map<String, dynamic> j) => ResultItem(
+    id: j['id'] as String? ?? '',
+    status: j['status'] as String? ?? 'completed',
+    duration: j['duration'] as String?,
+  );
+}
+
+/// The session was compacted: a short summary of what was folded away.
+class CompactionItem extends TimelineItem {
+  const CompactionItem(this.text);
+  final String text;
 }
 
 class UserItem extends TimelineItem {
@@ -438,7 +461,19 @@ class SubagentsBlock extends TimelineBlock {
   final ToolItem call;
 }
 
-List<TimelineBlock> groupTimeline(List<TimelineItem> items) {
+/// The summary card at the top of a finished turn.
+class RecapBlock extends TimelineBlock {
+  const RecapBlock(this.recap);
+  final Recap recap;
+}
+
+/// Groups [items] for display. With [recapLast] the last turn also gets its recap
+/// (the agent finished it); earlier turns always do, as they are over.
+List<TimelineBlock> groupTimeline(
+  List<TimelineItem> items, {
+  bool recapLast = false,
+  Duration? lastDuration,
+}) {
   final out = <TimelineBlock>[];
   final run = <ToolItem>[];
   void flush() {
@@ -447,14 +482,241 @@ List<TimelineBlock> groupTimeline(List<TimelineItem> items) {
     run.clear();
   }
 
-  for (final i in items) {
-    if (i is ToolItem && !i.isTask) {
-      run.add(i);
-      continue;
+  final turns = splitTurns(items);
+  // A turn's tool run never continues into the next turn: its user item flushes it.
+  for (var t = 0; t < turns.length; t++) {
+    final turn = turns[t];
+    final last = t == turns.length - 1;
+    final recap = last && !recapLast
+        ? null
+        : Recap.of(turn, duration: last ? lastDuration : null);
+    for (var k = 0; k < turn.length; k++) {
+      final i = turn[k];
+      if (i is ToolItem && !i.isTask) {
+        run.add(i);
+        continue;
+      }
+      flush();
+      out.add(i is ToolItem ? SubagentsBlock(i) : ItemBlock(i));
+      // The recap sits right under the prompt that started the turn.
+      if (k == 0 && i is UserItem && recap != null && !recap.isEmpty) {
+        out.add(RecapBlock(recap));
+      }
     }
-    flush();
-    out.add(i is ToolItem ? SubagentsBlock(i) : ItemBlock(i));
   }
   flush();
   return out;
+}
+
+/// [items] cut into turns: each starts at a [UserItem] (the first may start without).
+List<List<TimelineItem>> splitTurns(List<TimelineItem> items) {
+  final turns = <List<TimelineItem>>[];
+  for (final i in items) {
+    if (i is UserItem || turns.isEmpty) turns.add([]);
+    turns.last.add(i);
+  }
+  return turns;
+}
+
+/// What one turn did, computed from its items alone.
+class Recap {
+  const Recap({
+    this.files = const [],
+    this.commands = 0,
+    this.finished = 0,
+    this.failed = 0,
+    this.duration,
+  });
+
+  /// Distinct paths touched by `edit`/`write`/`ast_edit`, in order.
+  final List<String> files;
+
+  /// `bash` calls.
+  final int commands;
+
+  /// Subagents that finished well / badly (`result` items).
+  final int finished;
+  final int failed;
+  final Duration? duration;
+
+  bool get isEmpty =>
+      files.isEmpty && commands == 0 && finished == 0 && failed == 0;
+
+  static const _writers = {'edit', 'write', 'ast_edit'};
+
+  factory Recap.of(List<TimelineItem> turn, {Duration? duration}) {
+    final files = <String>{};
+    var commands = 0, finished = 0, failed = 0;
+    for (final i in turn) {
+      if (i is ToolItem) {
+        if (_writers.contains(i.name) && i.status != 'error') {
+          final p = i.detail?.trim();
+          if (p != null && p.isNotEmpty) files.add(p);
+        } else if (i.name == 'bash') {
+          commands++;
+        }
+      } else if (i is ResultItem) {
+        i.status == 'completed' ? finished++ : failed++;
+      }
+    }
+    return Recap(
+      files: files.toList(),
+      commands: commands,
+      finished: finished,
+      failed: failed,
+      duration: duration,
+    );
+  }
+}
+
+/// One node of `agent_tree`: the root agent (`id == ''`) or a subagent.
+/// [status]: `pending` | `running` | `completed` | `failed` | `aborted` | `idle`.
+class AgentNode {
+  const AgentNode({
+    required this.id,
+    this.parent,
+    this.name,
+    this.agent,
+    this.model,
+    required this.status,
+    this.task,
+    this.durationMs = 0,
+    this.tokens = 0,
+    this.cost = 0,
+    this.toolCount = 0,
+    this.now,
+    this.report,
+    this.updatedAt = 0,
+  });
+  final String id;
+  final String? parent;
+  final String? name;
+  final String? agent;
+  final String? model;
+  final String status;
+  final String? task;
+  final int durationMs;
+  final int tokens;
+  final double cost;
+  final int toolCount;
+
+  /// What the node is doing this moment (its running tool), if anything.
+  final String? now;
+  final String? report;
+  final int updatedAt;
+
+  bool get isRoot => parent == null;
+  bool get running => status == 'running';
+  bool get failed => status == 'failed' || status == 'aborted';
+  bool get done => status == 'completed';
+
+  /// What to call the node: its `name` (`Deep`), else the last dotted segment of its
+  /// id; the session title for the root.
+  String get label {
+    final n = name?.trim();
+    if (isRoot) return n ?? '';
+    return n != null && n.isNotEmpty ? n.split('.').last : id.split('.').last;
+  }
+
+  factory AgentNode.fromJson(Map<String, dynamic> j) => AgentNode(
+    id: j['id'] as String? ?? '',
+    parent: j['parent'] as String?,
+    name: j['name'] as String?,
+    agent: j['agent'] as String?,
+    model: j['model'] as String?,
+    status: j['status'] as String? ?? 'pending',
+    task: j['task'] as String?,
+    durationMs: (j['duration_ms'] as num?)?.toInt() ?? 0,
+    tokens: (j['tokens'] as num?)?.toInt() ?? 0,
+    cost: (j['cost'] as num?)?.toDouble() ?? 0,
+    toolCount: (j['tool_count'] as num?)?.toInt() ?? 0,
+    now: j['now'] as String?,
+    report: j['report'] as String?,
+    updatedAt: (j['updated_at'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// `agent_tree`: the agent and its nested subagents.
+class AgentTree {
+  const AgentTree(this.nodes);
+  static const empty = AgentTree([]);
+  final List<AgentNode> nodes;
+
+  factory AgentTree.fromJson(Map<String, dynamic> j) => AgentTree([
+    for (final n in (j['nodes'] as List?) ?? const [])
+      AgentNode.fromJson((n as Map).cast<String, dynamic>()),
+  ]);
+
+  AgentNode? node(String id) {
+    for (final n in nodes) {
+      if (n.id == id) return n;
+    }
+    return null;
+  }
+
+  List<AgentNode> children(String id) => [
+    for (final n in nodes)
+      if (!n.isRoot && n.parent == id) n,
+  ];
+
+  /// Nodes in depth-first order, each with its depth (root 0); orphans (a parent the
+  /// tree does not list) hang off the root.
+  List<(AgentNode, int)> get flat {
+    final out = <(AgentNode, int)>[];
+    final known = {for (final n in nodes) n.id};
+    void walk(AgentNode n, int depth) {
+      out.add((n, depth));
+      for (final c in children(n.id)) {
+        walk(c, depth + 1);
+      }
+    }
+
+    final root = node('');
+    if (root != null) walk(root, 0);
+    for (final n in nodes) {
+      if (!n.isRoot &&
+          !known.contains(n.parent) &&
+          !out.any((e) => e.$1 == n)) {
+        walk(n, 1);
+      }
+    }
+    return out;
+  }
+
+  /// The chain from the root to [id]: `[root, Scout, Scout.Deep]`.
+  List<AgentNode> path(String id) {
+    final out = <AgentNode>[];
+    var cur = node(id);
+    while (cur != null && out.length <= nodes.length) {
+      out.insert(0, cur);
+      final p = cur.parent;
+      cur = p == null ? null : node(p);
+    }
+    return out;
+  }
+
+  /// Subagents (not the root).
+  Iterable<AgentNode> get subs => nodes.where((n) => !n.isRoot);
+  int get done => subs.where((n) => n.done).length;
+  int get running => subs.where((n) => n.running).length;
+  int get failed => subs.where((n) => n.failed).length;
+  bool get anyRunning => nodes.any((n) => n.running);
+
+  /// `3/5 done · 2 running`; empty when there are no subagents.
+  String get summary {
+    final n = subs.length;
+    if (n == 0) return '';
+    return [
+      '$done/$n done',
+      if (running > 0) '$running running',
+      if (failed > 0) '$failed failed',
+    ].join(' · ');
+  }
+
+  /// Siblings of [id] in tree order (same parent, itself included).
+  List<AgentNode> siblings(String id) {
+    final n = node(id);
+    if (n == null) return const [];
+    return n.isRoot ? [n] : children(n.parent!);
+  }
 }

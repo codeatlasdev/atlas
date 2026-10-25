@@ -224,3 +224,24 @@ fn a_new_session_in_the_pane_replaces_the_file() {
     let (_, st) = send(json!({"event": "session_start", "session_file": "/s/b.jsonl"})).unwrap();
     assert_eq!(st.session_file.as_deref(), Some("/s/b.jsonl"));
 }
+
+/// Typing while the agent works is only for omp and only as steering: omp queues it for the
+/// running turn. Claude Code and Codex, and any send without `steer`, keep the old refusal.
+#[test]
+fn steering_is_allowed_only_for_a_working_omp() {
+    use State::*;
+    for st in [Idle, Done] {
+        for agent in ["omp", "claude", "codex"] {
+            assert_eq!(send_allowed(st, agent, false), Ok(()));
+            assert_eq!(send_allowed(st, agent, true), Ok(()));
+        }
+    }
+    for st in [Working, Blocked, Waiting] {
+        assert_eq!(send_allowed(st, "omp", true), Ok(()));
+        assert_eq!(send_allowed(st, "omp", false), Err("agent is working"));
+        for agent in ["claude", "codex", ""] {
+            assert_eq!(send_allowed(st, agent, true), Err("agent is working"));
+            assert_eq!(send_allowed(st, agent, false), Err("agent is working"));
+        }
+    }
+}

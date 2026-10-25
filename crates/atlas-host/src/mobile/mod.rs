@@ -316,6 +316,7 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::PtyInfo { .. }
         | C::AgentStatusAll {}
         | C::AgentIntegrations {}
+        | C::AgentTree { .. }
         | C::AgentHistory { .. } => Scope::Read,
         C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
             Scope::Read

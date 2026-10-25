@@ -10,7 +10,7 @@
 //! session (`<session>/<Name>.jsonl`, its final report in `<Name>.md`).
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -20,16 +20,22 @@ const OUTPUT_CHARS: usize = 1500;
 const THINKING_CHARS: usize = 4000;
 /// A subagent whose transcript changed this recently, with no report yet, is running.
 const RUNNING_WINDOW_MS: u64 = 60_000;
+const COMPACTION_CHARS: usize = 400;
 
 /// The conversation: `{items, messages, title, truncated}`, newest `limit` items, oldest first.
 /// `messages` (`[{role, text}]`, user and assistant text only) is what phones before the
-/// timeline read.
+/// timeline read. omp's `async-result` (a subagent finished) becomes a `result` item and a
+/// `compaction` a short `compaction` item; a tool call without an intent of its own takes
+/// the one omp logged when it started it (`tool_execution_start`).
 pub fn read(path: &str, limit: usize) -> Result<Value, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let mut items: Vec<Value> = Vec::new();
     // Tool call id → index in `items`, to attach its result.
     let mut calls: HashMap<String, usize> = HashMap::new();
     let mut title = None;
+    // `tool_execution_start` intents by call id, applied to tool items once all is read: the
+    // entry follows the call in the file, so it is not known while the call is pushed.
+    let mut intents: HashMap<String, String> = HashMap::new();
     for v in text
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
@@ -44,7 +50,34 @@ pub fn read(path: &str, limit: usize) -> Result<Value, String> {
                 push_message(&v["message"], &mut items, &mut calls)
             }
             Some("response_item") => push_codex(&v["payload"], &mut items, &mut calls),
+            Some("custom") if v["customType"] == "tool_execution_start" => {
+                if let (Some(id), Some(i)) = (
+                    v["data"]["toolCallId"].as_str(),
+                    v["data"]["intent"].as_str(),
+                ) {
+                    intents.insert(id.to_string(), i.to_string());
+                }
+            }
+            Some("custom_message") if v["customType"] == "async-result" => {
+                push_results(&v, &mut items)
+            }
+            Some("compaction") => {
+                let t = v["shortSummary"]
+                    .as_str()
+                    .or_else(|| v["summary"].as_str())
+                    .unwrap_or_default()
+                    .trim();
+                items.push(json!({"kind": "compaction", "text": clip(t, COMPACTION_CHARS)}));
+            }
             _ => {}
+        }
+    }
+    for item in &mut items {
+        if item["kind"] == "tool"
+            && item["intent"].is_null()
+            && let Some(i) = item["id"].as_str().and_then(|id| intents.get(id))
+        {
+            item["intent"] = json!(i);
         }
     }
     let truncated = items.len() > limit;
@@ -324,23 +357,25 @@ pub fn subagents(session_file: &str) -> Vec<Value> {
     out.into_iter().map(|(_, v)| v).collect()
 }
 
-/// The transcript of subagent `name` of `session_file`. `name` is a bare file stem: a phone
-/// never names a path, only an entry of [`subagents`].
-pub fn subagent_file(session_file: &str, name: &str) -> Result<String, String> {
-    let ok = !name.is_empty()
-        && !name.starts_with('.')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-    if !ok {
-        return Err("bad subagent name".into());
+/// omp's `async-result`: one `result` item per finished task, `{id, status, duration}`
+/// (`duration` as omp wrote it, `27m20s`; a bare `details.jobs[]` entry carries ms).
+fn push_results(v: &Value, items: &mut Vec<Value>) {
+    let text = v["content"].as_str().unwrap_or_default();
+    let from_text = super::tree::task_results(text);
+    if !from_text.is_empty() {
+        for (id, status, duration) in from_text {
+            items.push(json!({"kind": "result", "id": id, "status": status, "duration": duration}));
+        }
+        return;
     }
-    let dir = Path::new(session_file.strip_suffix(".jsonl").unwrap_or(session_file));
-    let p = dir.join(format!("{name}.jsonl"));
-    if !p.is_file() {
-        return Err("no such subagent".into());
+    for j in v["details"]["jobs"].as_array().into_iter().flatten() {
+        if j["type"] == "task"
+            && let (Some(id), Some(status)) = (j["jobId"].as_str(), j["status"].as_str())
+        {
+            let duration = j["durationMs"].as_u64().map(|ms| format!("{}s", ms / 1000));
+            items.push(json!({"kind": "result", "id": id, "status": status, "duration": duration}));
+        }
     }
-    Ok(p.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]
@@ -605,21 +640,78 @@ mod tests {
         assert!(subagents("/nope/x.jsonl").is_empty());
     }
 
-    /// The phone names a subagent, never a path: anything that could leave the session dir
-    /// is refused.
+    /// A subagent that ended shows in its parent's timeline as a `result`, whether omp wrote
+    /// the `<task-result>` wrapper or only the `details.jobs[]` entry; a bash job is not one.
     #[test]
-    fn subagent_file_refuses_paths() {
-        let (d, p) = session(&[]);
-        let dir = d.path().join("s");
-        std::fs::create_dir(&dir).unwrap();
-        std::fs::write(dir.join("Scout.jsonl"), "").unwrap();
-        assert!(
-            subagent_file(&p, "Scout")
-                .unwrap()
-                .ends_with("s/Scout.jsonl")
+    fn async_results_become_result_items() {
+        let (_d, p) = session(&[
+            json!({"type": "custom_message", "customType": "async-result",
+                   "content": "<system-notice>\nBackground job Scout has completed.\n<task-result id=\"Scout\" agent=\"scout\" status=\"completed\" duration=\"27m20s\">\n<output>x</output>"})
+            .to_string(),
+            json!({"type": "custom_message", "customType": "async-result", "content": "done",
+                   "details": {"jobs": [
+                       {"jobId": "Fixer", "type": "task", "status": "failed", "durationMs": 4200},
+                       {"jobId": "bg_240", "type": "bash", "status": "completed", "durationMs": 9}]}})
+            .to_string(),
+            json!({"type": "custom_message", "customType": "atlas-context", "content": "ctx"}).to_string(),
+        ]);
+        let v = read(&p, 200).unwrap();
+        assert_eq!(kinds(&v), ["result", "result"]);
+        let it = &v["items"];
+        assert_eq!(
+            (
+                it[0]["id"].as_str(),
+                it[0]["status"].as_str(),
+                it[0]["duration"].as_str()
+            ),
+            (Some("Scout"), Some("completed"), Some("27m20s"))
         );
-        for bad in ["../s", "a/b", "", "..", ".hidden", "Missing", "x\\y"] {
-            assert!(subagent_file(&p, bad).is_err(), "{bad} must be refused");
-        }
+        assert_eq!(
+            (
+                it[1]["id"].as_str(),
+                it[1]["status"].as_str(),
+                it[1]["duration"].as_str()
+            ),
+            (Some("Fixer"), Some("failed"), Some("4s"))
+        );
+        assert!(v["messages"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_compaction_becomes_a_short_item() {
+        let (_d, p) = session(&[
+            json!({"type": "compaction", "summary": "long long summary", "shortSummary": "Mapped hostd",
+                   "firstKeptEntryId": "a", "tokensBefore": 9000})
+            .to_string(),
+            json!({"type": "compaction", "summary": "only the long one"}).to_string(),
+        ]);
+        let v = read(&p, 200).unwrap();
+        assert_eq!(kinds(&v), ["compaction", "compaction"]);
+        assert_eq!(v["items"][0]["text"], "Mapped hostd");
+        assert_eq!(v["items"][1]["text"], "only the long one");
+    }
+
+    /// omp logs the intent of a call in `tool_execution_start`, after the call itself.
+    #[test]
+    fn a_tool_without_an_intent_takes_the_one_omp_logged_at_start() {
+        let (_d, p) = session(&[
+            msg(
+                "message",
+                "assistant",
+                json!([
+                    {"type": "toolCall", "id": "a", "name": "bash", "arguments": {"command": "ls"}},
+                    {"type": "toolCall", "id": "b", "name": "read", "intent": "Own intent", "arguments": {"path": "x"}},
+                ]),
+            ),
+            json!({"type": "custom", "customType": "tool_execution_start",
+                   "data": {"toolCallId": "a", "toolName": "bash", "intent": "Listing files"}})
+            .to_string(),
+            json!({"type": "custom", "customType": "tool_execution_start",
+                   "data": {"toolCallId": "b", "toolName": "read", "intent": "Logged intent"}})
+            .to_string(),
+        ]);
+        let v = read(&p, 200).unwrap();
+        assert_eq!(v["items"][0]["intent"], "Listing files");
+        assert_eq!(v["items"][1]["intent"], "Own intent");
     }
 }

@@ -42,3 +42,20 @@ String elapsed(int sinceMs, {int? nowMs}) {
 /// States that can still produce new timeline items.
 bool agentActive(String state) =>
     state == 'working' || state == 'blocked' || state == 'waiting';
+
+/// `41s`, `3m 4s`, `1h 2m` from milliseconds; empty for none.
+String durationText(int ms) {
+  final s = ms ~/ 1000;
+  if (ms <= 0) return '';
+  if (s < 60) return '${s}s';
+  if (s < 3600) return '${s ~/ 60}m ${s % 60}s';
+  return '${s ~/ 3600}h ${(s % 3600) ~/ 60}m';
+}
+
+/// `48.2k`, `9.1k`, `812`.
+String tokensText(int n) =>
+    n >= 1000 ? '${(n / 1000).toStringAsFixed(n >= 100000 ? 0 : 1)}k' : '$n';
+
+String costText(double usd) => usd <= 0
+    ? ''
+    : '\$${usd < 0.1 ? usd.toStringAsFixed(3) : usd.toStringAsFixed(2)}';

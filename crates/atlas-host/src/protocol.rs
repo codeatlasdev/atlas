@@ -327,9 +327,19 @@ pub enum HostCmd {
         allow: bool,
     },
     /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
+    /// With `steer` and an omp agent it is also allowed while the agent works: omp queues
+    /// what is typed mid-turn as steering for the running turn.
     AgentSend {
         pane: String,
         text: String,
+        #[serde(default)]
+        steer: bool,
+    },
+    /// The pane's agent and every subagent it started, however deep, as flat nodes:
+    /// `{nodes: [{id, parent, name, agent, model, status, task, duration_ms, tokens, cost,
+    /// tool_count, now, report, updated_at}]}` (`agents::tree`). The root is `id: ""`.
+    AgentTree {
+        pane: String,
     },
     /// The agent's conversation from its session file as a timeline:
     /// `{items, messages, title, truncated, subagents}` (`agents::history`). Takes the pane,

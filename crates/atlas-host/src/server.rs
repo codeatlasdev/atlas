@@ -773,7 +773,15 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             hub.agents.idle(&pane);
             Ok(json!({}))
         }
-        HostCmd::AgentSend { pane, text } => agent_send(hub, &pane, &text).await,
+        HostCmd::AgentSend { pane, text, steer } => agent_send(hub, &pane, &text, steer).await,
+        HostCmd::AgentTree { pane } => {
+            let st = hub.agents.status_of(&pane).ok_or("unknown agent pane")?;
+            let file = st.session_file.ok_or("no session for pane")?;
+            let title = crate::agents::history::title(&file);
+            Ok(crate::agents::tree::build(
+                &file, &st.agent, st.state, title,
+            ))
+        }
         HostCmd::AgentHistory { pane, limit, sub } => {
             use crate::agents::history;
             let file = hub
@@ -781,7 +789,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
                 .session_file(&pane)
                 .ok_or("no session for pane")?;
             let path = match &sub {
-                Some(name) => history::subagent_file(&file, name)?,
+                Some(name) => crate::agents::tree::subagent_file(&file, name)?,
                 None => file.clone(),
             };
             let mut v = history::read(&path, limit.min(1000))?;
@@ -911,14 +919,11 @@ fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
 
 /// Type a prompt into an agent's terminal: text, then Enter as a separate write (TUI
 /// agents such as omp treat a pasted `\r` inside the text as part of it). Refused while
-/// the agent works, so a phone never interleaves keystrokes with a running turn.
-async fn agent_send(hub: &Hub, pane: &str, text: &str) -> Result<Value, String> {
-    use crate::agents::State;
-    match hub.agents.state_of(pane) {
-        Some(State::Idle | State::Done) => {}
-        None => return Err("unknown agent pane".into()),
-        Some(_) => return Err("agent is working".into()),
-    }
+/// the agent works, so a phone never interleaves keystrokes with a running turn, except as
+/// `steer` to omp, which queues it for the turn ([`crate::agents::send_allowed`]).
+async fn agent_send(hub: &Hub, pane: &str, text: &str, steer: bool) -> Result<Value, String> {
+    let st = hub.agents.status_of(pane).ok_or("unknown agent pane")?;
+    crate::agents::send_allowed(st.state, &st.agent, steer).map_err(str::to_string)?;
     let s = agent_pty(hub, pane)?;
     s.write(text.as_bytes()).map_err(|e| format!("{e:#}"))?;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;

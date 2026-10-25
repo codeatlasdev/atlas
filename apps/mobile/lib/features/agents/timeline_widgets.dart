@@ -5,6 +5,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
+import 'package:atlas_mobile/features/agents/agent_info.dart';
 
 /// Copies [text] on long-press, with a haptic tick and a short confirmation.
 Future<void> copyText(BuildContext context, String text) async {
@@ -532,6 +533,230 @@ class _SubagentRow extends StatelessWidget {
   }
 }
 
+/// The summary at the top of a turn: files touched, commands, subagents, time.
+class RecapCard extends StatelessWidget {
+  const RecapCard(this.recap, {super.key});
+  final Recap recap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final r = recap;
+    final files = r.files.length;
+    final parts = <(IconData, String, Color)>[
+      if (files > 0)
+        (
+          Icons.edit_note_rounded,
+          '$files ${files == 1 ? 'file' : 'files'} changed',
+          c.text,
+        ),
+      if (r.commands > 0)
+        (
+          Icons.terminal,
+          '${r.commands} ${r.commands == 1 ? 'command' : 'commands'}',
+          c.text,
+        ),
+      if (r.finished > 0)
+        (
+          Icons.hub_outlined,
+          '${r.finished} ${r.finished == 1 ? 'subagent' : 'subagents'} done',
+          c.success,
+        ),
+      if (r.failed > 0)
+        (Icons.error_outline_rounded, '${r.failed} failed', c.error),
+      if (r.duration != null && r.duration!.inSeconds > 0)
+        (
+          Icons.timer_outlined,
+          durationText(r.duration!.inMilliseconds),
+          c.muted,
+        ),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(Space.md),
+      decoration: BoxDecoration(
+        color: c.accent.withValues(alpha: .07),
+        border: Border.all(color: c.accent.withValues(alpha: .25)),
+        borderRadius: BorderRadius.circular(Space.radius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 14, color: c.accent),
+              const SizedBox(width: 6),
+              Text(
+                'Recap',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: c.accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: Space.sm),
+          Wrap(
+            spacing: Space.md,
+            runSpacing: 4,
+            children: [
+              for (final (icon, label, color) in parts)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 15, color: color),
+                    const SizedBox(width: 4),
+                    Text(label, style: TextStyle(fontSize: 13, color: color)),
+                  ],
+                ),
+            ],
+          ),
+          if (files > 0) ...[
+            const SizedBox(height: Space.sm),
+            for (final f in r.files.take(4))
+              Text(
+                f,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: monoFamily,
+                  fontFamilyFallback: monoFallback,
+                  fontSize: 12,
+                  color: c.muted,
+                ),
+              ),
+            if (files > 4)
+              Text(
+                '+${files - 4} more',
+                style: TextStyle(fontSize: 12, color: c.faint),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Scout finished · 41s": the subagent's result landed; tap opens its transcript.
+class ResultCard extends StatelessWidget {
+  const ResultCard(this.item, {super.key, required this.onOpen});
+  final ResultItem item;
+  final void Function(String id) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final (icon, color, verb) = switch (item.status) {
+      'completed' => (Icons.check_circle_rounded, c.success, 'finished'),
+      'failed' => (Icons.cancel_rounded, c.error, 'failed'),
+      _ => (Icons.stop_circle_rounded, c.warning, 'stopped'),
+    };
+    return Material(
+      color: color.withValues(alpha: .08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Space.radius),
+        side: BorderSide(color: color.withValues(alpha: .3)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => onOpen(item.id),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.md,
+            vertical: Space.sm + 2,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: item.id,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: c.text,
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' $verb',
+                        style: TextStyle(color: color),
+                      ),
+                      if (item.duration != null)
+                        TextSpan(
+                          text: ' · ${item.duration}',
+                          style: TextStyle(color: c.muted),
+                        ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: c.faint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The context was compacted here: a hairline with the summary on tap.
+class CompactionDivider extends StatefulWidget {
+  const CompactionDivider(this.text, {super.key});
+  final String text;
+
+  @override
+  State<CompactionDivider> createState() => _CompactionDividerState();
+}
+
+class _CompactionDividerState extends State<CompactionDivider> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Column(
+      children: [
+        InkWell(
+          onTap: widget.text.isEmpty
+              ? null
+              : () => setState(() => _open = !_open),
+          child: Row(
+            children: [
+              Expanded(child: Divider(color: c.borderSubtle)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                child: Text(
+                  'context compacted',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: c.faint,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+              Expanded(child: Divider(color: c.borderSubtle)),
+            ],
+          ),
+        ),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              widget.text,
+              style: TextStyle(fontSize: 12.5, color: c.faint, height: 1.4),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// One timeline block, in order.
 Widget timelineBlock(
   BuildContext context,
@@ -542,6 +767,8 @@ Widget timelineBlock(
   ItemBlock(item: UserItem(:final text)) => UserBubble(text),
   ItemBlock(item: AssistantItem(:final text)) => AssistantText(text),
   ItemBlock(item: ThinkingItem(:final text)) => ThinkingRow(text),
+  ItemBlock(item: final ResultItem r) => ResultCard(r, onOpen: onOpenSubagent),
+  ItemBlock(item: CompactionItem(:final text)) => CompactionDivider(text),
   ItemBlock() => const SizedBox.shrink(),
   ToolGroup() => ToolGroupCard(b),
   SubagentsBlock(:final call) => SubagentsCard(
@@ -549,4 +776,5 @@ Widget timelineBlock(
     history: history,
     onOpen: onOpenSubagent,
   ),
+  RecapBlock(:final recap) => RecapCard(recap),
 };

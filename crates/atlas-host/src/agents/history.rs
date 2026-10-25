@@ -10,16 +10,12 @@
 //! session (`<session>/<Name>.jsonl`, its final report in `<Name>.md`).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
 /// Longest tool output kept per call; the phone shows a preview, the terminal has the rest.
 const OUTPUT_CHARS: usize = 1500;
 const THINKING_CHARS: usize = 4000;
-/// A subagent whose transcript changed this recently, with no report yet, is running.
-const RUNNING_WINDOW_MS: u64 = 60_000;
 const COMPACTION_CHARS: usize = 400;
 
 /// The conversation: `{items, messages, title, truncated}`, newest `limit` items, oldest first.
@@ -318,45 +314,6 @@ pub fn title(path: &str) -> Option<String> {
         .and_then(|v| clean_title(v["title"].as_str()?))
 }
 
-/// The subagents of a session: `[{name, state: running|done, updated_at, report?}]`, newest
-/// first. `report` is the head of `<Name>.md`, the final answer omp writes when one ends.
-pub fn subagents(session_file: &str) -> Vec<Value> {
-    let dir = PathBuf::from(session_file.strip_suffix(".jsonl").unwrap_or(session_file));
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let now = SystemTime::now();
-    let mut out: Vec<(u64, Value)> = rd
-        .filter_map(Result::ok)
-        .filter_map(|e| {
-            let p = e.path();
-            let name = p.file_name()?.to_str()?.strip_suffix(".jsonl")?.to_string();
-            // `__advisor.jsonl` and the like are omp's own side channels, not subagents.
-            if name.starts_with("__") {
-                return None;
-            }
-            let modified = e.metadata().ok()?.modified().ok()?;
-            let ms = modified.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64;
-            let report = std::fs::read_to_string(dir.join(format!("{name}.md"))).ok();
-            let fresh = now
-                .duration_since(modified)
-                .is_ok_and(|d| (d.as_millis() as u64) < RUNNING_WINDOW_MS);
-            let state = if report.is_none() && fresh {
-                "running"
-            } else {
-                "done"
-            };
-            Some((
-                ms,
-                json!({"name": name, "state": state, "updated_at": ms,
-                       "report": report.map(|r| clip(r.trim(), 600))}),
-            ))
-        })
-        .collect();
-    out.sort_by_key(|(ms, _)| std::cmp::Reverse(*ms));
-    out.into_iter().map(|(_, v)| v).collect()
-}
-
 /// omp's `async-result`: one `result` item per finished task, `{id, status, duration}`
 /// (`duration` as omp wrote it, `27m20s`; a bare `details.jobs[]` entry carries ms).
 fn push_results(v: &Value, items: &mut Vec<Value>) {
@@ -605,41 +562,6 @@ mod tests {
     }
 
     /// Subagents are listed from the session dir: a report means done, a fresh transcript
-    /// without one means running; omp's `__` side files are not subagents.
-    #[test]
-    fn subagents_are_listed_with_state_and_report() {
-        let (d, p) = session(&[]);
-        let dir = d.path().join("s");
-        std::fs::create_dir(&dir).unwrap();
-        std::fs::write(dir.join("Done.jsonl"), "").unwrap();
-        std::fs::write(dir.join("Done.md"), "all good").unwrap();
-        std::fs::write(dir.join("Live.jsonl"), "").unwrap();
-        std::fs::write(dir.join("__advisor.jsonl"), "").unwrap();
-        let subs = subagents(&p);
-        let mut got: Vec<(String, String)> = subs
-            .iter()
-            .map(|s| {
-                (
-                    s["name"].as_str().unwrap().into(),
-                    s["state"].as_str().unwrap().into(),
-                )
-            })
-            .collect();
-        got.sort();
-        assert_eq!(
-            got,
-            [
-                ("Done".into(), "done".into()),
-                ("Live".into(), "running".into())
-            ]
-        );
-        assert_eq!(
-            subs.iter().find(|s| s["name"] == "Done").unwrap()["report"],
-            "all good"
-        );
-        assert!(subagents("/nope/x.jsonl").is_empty());
-    }
-
     /// A subagent that ended shows in its parent's timeline as a `result`, whether omp wrote
     /// the `<task-result>` wrapper or only the `details.jobs[]` entry; a bash job is not one.
     #[test]

@@ -411,6 +411,24 @@ fn root_status(state: State) -> &'static str {
 
 /// `{nodes: [Node]}` for the pane: the root (`id: ""`) first, then its subagents depth
 /// first. `title` is the session title, `agent` the registry id (`omp`, `claude`, `codex`).
+/// The root's direct subagents as `agent_history.subagents` (`{name, state: running|done,
+/// updated_at, report}`): the same verdict as [`build`], never a second guess.
+pub fn direct_children(tree: &Value) -> Vec<Value> {
+    tree["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|n| n["parent"] == "")
+        .map(|n| {
+            let state = match n["status"].as_str() {
+                Some("running" | "pending") => "running",
+                _ => "done",
+            };
+            json!({"name": n["id"], "state": state, "updated_at": n["updated_at"], "report": n["report"]})
+        })
+        .collect()
+}
+
 pub fn build(session_file: &str, agent: &str, state: State, title: Option<String>) -> Value {
     let root_entries = lines(Path::new(session_file));
     let mut rf = facts(&root_entries);

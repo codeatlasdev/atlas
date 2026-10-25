@@ -794,7 +794,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             };
             let mut v = history::read(&path, limit.min(1000))?;
             if sub.is_none() {
-                v["subagents"] = json!(history::subagents(&file));
+                let st = hub.agents.status_of(&pane).ok_or("unknown agent pane")?;
+                let tree = crate::agents::tree::build(&file, &st.agent, st.state, None);
+                v["subagents"] = json!(crate::agents::tree::direct_children(&tree));
             }
             Ok(v)
         }

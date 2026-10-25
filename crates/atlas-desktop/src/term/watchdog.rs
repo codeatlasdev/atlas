@@ -118,11 +118,14 @@ impl Watchdog {
     pub(super) fn next_check(&self, now: Instant) -> Option<Instant> {
         let since = self.owed_since?;
         let redraw = self.last_redraw.map_or(now, |r| r + REDRAW_EVERY);
-        let rebuild = [Some(since + REBUILD_AFTER), self.last_rebuild.map(|r| r + REBUILD_AFTER)]
-            .into_iter()
-            .flatten()
-            .max()
-            .expect("since is always present");
+        let rebuild = [
+            Some(since + REBUILD_AFTER),
+            self.last_rebuild.map(|r| r + REBUILD_AFTER),
+        ]
+        .into_iter()
+        .flatten()
+        .max()
+        .expect("since is always present");
         Some(redraw.min(rebuild).max(now))
     }
 
@@ -159,7 +162,11 @@ mod tests {
         w.owe(t0);
         assert_eq!(w.poll(t0), Action::Redraw, "first attempt is immediate");
         assert_eq!(w.poll(ms(t0, 100)), Action::None, "no busy loop");
-        assert_eq!(w.poll(ms(t0, 250)), Action::Redraw, "then every REDRAW_EVERY");
+        assert_eq!(
+            w.poll(ms(t0, 250)),
+            Action::Redraw,
+            "then every REDRAW_EVERY"
+        );
         assert_eq!(w.poll(ms(t0, 500)), Action::Redraw);
     }
 
@@ -170,7 +177,11 @@ mod tests {
         w.owe(t0);
         assert_eq!(w.poll(t0), Action::Redraw);
         w.presented(ms(t0, 260));
-        assert_eq!(w.poll(ms(t0, 3_000)), Action::None, "never rebuilds a healthy terminal");
+        assert_eq!(
+            w.poll(ms(t0, 3_000)),
+            Action::None,
+            "never rebuilds a healthy terminal"
+        );
         // A later stall starts a fresh budget.
         w.owe(ms(t0, 10_000));
         assert_eq!(w.poll(ms(t0, 10_000)), Action::Redraw);

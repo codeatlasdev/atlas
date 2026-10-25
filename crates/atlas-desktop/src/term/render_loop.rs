@@ -26,7 +26,6 @@ const SEARCH_CURRENT: [u8; 4] = [255, 140, 0, 200];
 /// What the loop needs from a renderer; `Renderer` is the real one, tests supply a fake.
 pub(super) trait Present {
     fn set_ligatures(&mut self, on: bool);
-    fn ligatures(&self) -> bool;
     fn font_spec(&self) -> &FontSpec;
     fn set_font(&mut self, pt: f32, spec: &FontSpec) -> ((u16, u16), FontResolution);
     fn resize(&mut self, w: u32, h: u32) -> (u16, u16);
@@ -41,9 +40,6 @@ pub(super) trait Present {
 impl Present for Renderer {
     fn set_ligatures(&mut self, on: bool) {
         Renderer::set_ligatures(self, on)
-    }
-    fn ligatures(&self) -> bool {
-        Renderer::ligatures(self)
     }
     fn font_spec(&self) -> &FontSpec {
         Renderer::font_spec(self)
@@ -71,19 +67,27 @@ impl Present for Renderer {
     }
 }
 
+/// Told when the font request resolved to a family other than the one asked for.
+pub(super) type FontHook = Box<dyn Fn(&FontSpec, &FontResolution) + Send>;
+/// Replaces a renderer by one at `(physical w, h)`; `Err` gives the old one back, boxed so the
+/// failure path stays small (a `Renderer` is kilobytes).
+pub(super) type RebuildHook<R> = Box<dyn FnMut(R, (u32, u32), Why) -> Result<R, Box<R>> + Send>;
+/// Records an incident: `(kind, detail)`.
+pub(super) type IncidentHook = Box<dyn Fn(&str, &str) + Send>;
+
 /// The side effects of a terminal's render thread, so the loop itself is plain logic.
 pub(super) struct Hooks<R> {
     pub(super) on_resize: Box<dyn Fn(u16, u16) + Send>,
-    pub(super) on_font: Box<dyn Fn(&FontSpec, &FontResolution) + Send>,
+    pub(super) on_font: FontHook,
     /// A frame is on the layer: the native view may be shown (see `Placement`).
     pub(super) on_first_frame: Box<dyn FnMut() + Send>,
     /// Build a replacement surface and renderer at `(physical w, h)` (a new native view, so it
     /// runs on the main thread) and retire the old one, which it drops before releasing the old
-    /// view (a surface must be gone before its view). `Err` gives the old renderer back: the
-    /// replacement could not be made.
-    pub(super) rebuild: Box<dyn FnMut(R, (u32, u32), Why) -> Result<R, R> + Send>,
+    /// view (a surface must be gone before its view). `Err` gives the old renderer back (boxed):
+    /// the replacement could not be made.
+    pub(super) rebuild: RebuildHook<R>,
     /// An incident for the diagnostics report: `(kind detail)`.
-    pub(super) incident: Box<dyn Fn(&str, &str) + Send>,
+    pub(super) incident: IncidentHook,
 }
 
 pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hooks<R>) {
@@ -201,7 +205,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
                 }
                 // Could not (no main thread, no GPU): keep the old one and try again on the
                 // watchdog's schedule.
-                Err(old) => old,
+                Err(old) => *old,
             };
             dog.rebuilt(Instant::now());
         }
@@ -322,9 +326,6 @@ mod tests {
 
     impl Present for Fake {
         fn set_ligatures(&mut self, _: bool) {}
-        fn ligatures(&self) -> bool {
-            true
-        }
         fn font_spec(&self) -> &FontSpec {
             &self.spec
         }
@@ -452,7 +453,9 @@ mod tests {
         rig.show();
         rig.sh.vt.feed(b"hello");
         rig.sh.redraw();
-        rig.until("first failed attempt", |l| l.renders.load(Ordering::SeqCst) >= 1);
+        rig.until("first failed attempt", |l| {
+            l.renders.load(Ordering::SeqCst) >= 1
+        });
         assert_eq!(rig.log.presented.load(Ordering::SeqCst), 0);
         // The layer recovers; no byte arrives, no resize, nothing asks for a frame.
         *rig.mode.lock() = Mode::Draw;
@@ -473,8 +476,17 @@ mod tests {
         rig.until("watchdog rebuilds", |l| !l.rebuilds.lock().is_empty());
         assert_eq!(rig.log.rebuilds.lock()[0], Why::Stalled);
         *rig.mode.lock() = Mode::Draw;
-        rig.until("new surface presents", |l| l.presented.load(Ordering::SeqCst) >= 1);
-        assert!(rig.log.seen.lock().last().unwrap().contains("scrollback line"));
+        rig.until("new surface presents", |l| {
+            l.presented.load(Ordering::SeqCst) >= 1
+        });
+        assert!(
+            rig.log
+                .seen
+                .lock()
+                .last()
+                .unwrap()
+                .contains("scrollback line")
+        );
         assert!(
             rig.log
                 .incidents
@@ -485,7 +497,10 @@ mod tests {
             rig.log.incidents.lock()
         );
         rig.until("recovery is recorded", |l| {
-            l.incidents.lock().iter().any(|i| i.starts_with("terminal-recovered"))
+            l.incidents
+                .lock()
+                .iter()
+                .any(|i| i.starts_with("terminal-recovered"))
         });
         rig.stop();
     }
@@ -502,7 +517,10 @@ mod tests {
         rig.sh.redraw();
         rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
         let (before_scroll, before_text) = (rig.sh.vt.scrollbar(), rig.sh.vt.text());
-        assert!(before_scroll.1 > 4, "the test needs scrollback: {before_scroll:?}");
+        assert!(
+            before_scroll.1 > 4,
+            "the test needs scrollback: {before_scroll:?}"
+        );
         let n = rig.log.presented.load(Ordering::SeqCst);
         rig.sh.rebuild(Why::Manual);
         rig.until("rebuilt and redrawn", |l| {
@@ -522,7 +540,9 @@ mod tests {
         let stuck = Rig::start(Mode::Hang);
         stuck.show();
         stuck.sh.redraw();
-        stuck.until("it is inside the hung render", |l| l.renders.load(Ordering::SeqCst) >= 1);
+        stuck.until("it is inside the hung render", |l| {
+            l.renders.load(Ordering::SeqCst) >= 1
+        });
         let healthy = Rig::start(Mode::Draw);
         healthy.show();
         healthy.sh.vt.feed(b"still alive");
@@ -549,7 +569,10 @@ mod tests {
         rig.show();
         rig.sh.redraw();
         rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
-        rig.sh.placement.lock().request((0.0, 0.0, 160.0, 64.0), false);
+        rig.sh
+            .placement
+            .lock()
+            .request((0.0, 0.0, 160.0, 64.0), false);
         let drawn = rig.log.renders.load(Ordering::SeqCst);
         for i in 0..40 {
             rig.sh.vt.feed(format!("burst {i}\r\n").as_bytes());
@@ -559,12 +582,21 @@ mod tests {
         // A failing renderer would be rebuilt if parked frames counted as owed.
         *rig.mode.lock() = Mode::NoTexture;
         std::thread::sleep(crate::term::watchdog::REBUILD_AFTER + Duration::from_millis(600));
-        assert_eq!(rig.log.renders.load(Ordering::SeqCst), drawn, "parked: nothing drawn");
-        assert!(rig.log.rebuilds.lock().is_empty(), "parked: nothing to rebuild");
+        assert_eq!(
+            rig.log.renders.load(Ordering::SeqCst),
+            drawn,
+            "parked: nothing drawn"
+        );
+        assert!(
+            rig.log.rebuilds.lock().is_empty(),
+            "parked: nothing to rebuild"
+        );
         *rig.mode.lock() = Mode::Draw;
         rig.show();
         rig.sh.update(|s| s.size = Some((160, 64)));
-        rig.until("one draw on show", |l| l.renders.load(Ordering::SeqCst) == drawn + 1);
+        rig.until("one draw on show", |l| {
+            l.renders.load(Ordering::SeqCst) == drawn + 1
+        });
         assert!(rig.log.seen.lock().last().unwrap().contains("burst 39"));
         rig.stop();
     }
@@ -572,7 +604,10 @@ mod tests {
     #[test]
     fn a_terminal_parked_before_its_first_frame_still_draws_that_frame() {
         let rig = Rig::start(Mode::Draw);
-        rig.sh.placement.lock().request((0.0, 0.0, 160.0, 64.0), false);
+        rig.sh
+            .placement
+            .lock()
+            .request((0.0, 0.0, 160.0, 64.0), false);
         rig.sh.redraw();
         rig.until("first frame despite being parked", |l| {
             l.first_frames.load(Ordering::SeqCst) == 1
@@ -597,8 +632,10 @@ mod tests {
             r.until("rebuilt", |l| !l.rebuilds.lock().is_empty());
             assert_eq!(r.log.rebuilds.lock()[0], Why::Wake);
         }
-        on_system_event(SystemEvent::ScreensChanged, &[a.sh.clone()]);
-        a.until("rebuilt for the screen change", |l| l.rebuilds.lock().len() == 2);
+        on_system_event(SystemEvent::ScreensChanged, std::slice::from_ref(&a.sh));
+        a.until("rebuilt for the screen change", |l| {
+            l.rebuilds.lock().len() == 2
+        });
         assert_eq!(a.log.rebuilds.lock()[1], Why::Screens);
         a.stop();
         b.stop();

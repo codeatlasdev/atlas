@@ -283,7 +283,12 @@ fn spawn_render(
     ns_win: usize,
     scale: f64,
 ) -> Result<thread::JoinHandle<()>, String> {
-    let (sh, a, p, tab) = (shared.clone(), app.clone(), pty.to_string(), tab.to_string());
+    let (sh, a, p, tab) = (
+        shared.clone(),
+        app.clone(),
+        pty.to_string(),
+        tab.to_string(),
+    );
     thread::Builder::new()
         .name("atlas-term-render".into())
         .spawn(move || {
@@ -338,7 +343,7 @@ fn rebuild_surface(
     scale: f64,
     old: Renderer,
     pixels: (u32, u32),
-) -> Result<Renderer, Renderer> {
+) -> Result<Renderer, Box<Renderer>> {
     let (font_pt, spec) = {
         let s = sh.state.lock();
         (s.font_cur, s.font_spec.clone())
@@ -352,7 +357,7 @@ fn rebuild_surface(
         Ok(v) => v,
         Err(e) => {
             crate::diag::incident("terminal-rebuild-failed", &e);
-            return Err(old);
+            return Err(Box::new(old));
         }
     };
     renderer.set_ligatures(ligatures);
@@ -393,7 +398,10 @@ pub async fn term_bounds(
     visible: bool,
 ) -> Result<(), String> {
     if dropped(&tab) {
-        crate::diag::incident("terminal-dropped", &format!("tab {tab}: render thread ended"));
+        crate::diag::incident(
+            "terminal-dropped",
+            &format!("tab {tab}: render thread ended"),
+        );
         return Err(VIEW_DROPPED.into());
     }
     let shared = with_term(&tab)?;

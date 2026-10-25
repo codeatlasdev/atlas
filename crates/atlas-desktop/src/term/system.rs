@@ -49,12 +49,16 @@ pub fn install() {
         // The registry lock is held only to clone the `Arc`s, never across the asks.
         let terms = super::all_shared();
         let n = on_system_event(ev, &terms);
-        crate::diag::incident("terminal-system-event", &format!("{ev:?}: rebuilding {n} terminal(s)"));
+        crate::diag::incident(
+            "terminal-system-event",
+            &format!("{ev:?}: rebuilding {n} terminal(s)"),
+        );
     }
 
     let wake = RcBlock::new(|_: NonNull<objc2_foundation::NSNotification>| fire(SystemEvent::Wake));
-    let screens =
-        RcBlock::new(|_: NonNull<objc2_foundation::NSNotification>| fire(SystemEvent::ScreensChanged));
+    let screens = RcBlock::new(|_: NonNull<objc2_foundation::NSNotification>| {
+        fire(SystemEvent::ScreensChanged)
+    });
     // SAFETY: the blocks are `Fn` and touch only process-wide statics (`Send + Sync`); `queue:
     // None` runs them on the posting thread, and they only flip flags and notify condvars. The
     // returned observer tokens are leaked on purpose: the observation lasts as long as the app.

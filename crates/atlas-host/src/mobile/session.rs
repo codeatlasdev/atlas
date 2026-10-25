@@ -85,6 +85,7 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
     };
     let conn_id = hub.add_subscriber(push.clone());
     let mut attached = Vec::new();
+    let mut link = crate::lab::Link::default();
     while let Some(line) = read_line(&mut lines, LongLine::Close).await {
         let raw: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
         let id = raw["id"].as_u64().unwrap_or(0);
@@ -119,6 +120,37 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
         }
         if scope != Scope::Read && scope != Scope::TermRead {
             m.audit(&node, raw["cmd"].as_str().unwrap_or_default(), &raw["args"]);
+        }
+        // The lab lane (`atlas hostd --lab`): terminals and agent actions belong to the main
+        // hostd, reached through this phone's own link; what `Route::Local` leaves runs here.
+        if let Some(lab) = &hub.lab {
+            let args = &raw["args"];
+            match &req.cmd {
+                HostCmd::PtyAttach { .. } => {
+                    let res = link.attach(lab, args.clone(), push.clone()).await;
+                    let _ = tx.send(protocol::reply(id, res));
+                    continue;
+                }
+                HostCmd::PtyDetach { .. } => {
+                    let _ = tx.send(protocol::reply(id, link.detach(args.clone()).await));
+                    continue;
+                }
+                cmd if !matches!(crate::lab::route(cmd), crate::lab::Route::Local) => {
+                    let (lab, tx) = (lab.clone(), tx.clone());
+                    let (name, args) = (
+                        raw["cmd"].as_str().unwrap_or_default().to_string(),
+                        args.clone(),
+                    );
+                    let cmd = req.cmd;
+                    tokio::spawn(async move {
+                        if let Some(res) = crate::lab::dispatch(&lab, &cmd, &name, &args).await {
+                            let _ = tx.send(protocol::reply(id, res));
+                        }
+                    });
+                    continue;
+                }
+                _ => {}
+            }
         }
         match req.cmd {
             HostCmd::PtyAttach {

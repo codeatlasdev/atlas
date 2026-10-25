@@ -18,7 +18,7 @@
 mod session;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::HashMap;
 use std::io::Write;

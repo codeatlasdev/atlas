@@ -11,6 +11,7 @@ mod fs;
 #[cfg(unix)]
 pub mod handoff;
 mod idle;
+pub mod lab;
 mod lsp;
 pub mod mobile;
 pub mod paths;

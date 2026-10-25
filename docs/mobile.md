@@ -36,6 +36,32 @@ An agent's chat is read from its session file (`agent_history`, `crates/atlas-ho
 
 **The hub on the phone** (`apps/mobile/lib/features/agents/agent_hub_screen.dart`) is omp's Agent Hub: the app-bar button opens the roster of the pane's agents (a long-press on a crew chip opens that agent's detail directly) with `N running · M parked`, the totals (cost, active time, requests, tools, tokens), a **Flat / By parent** switch (the tree indents; flat names `↳ parent` on each row) and **All / Running / Done / Failed** filters. A row is the status ring, the dotted name, type · model · thinking, the task in one line and its numbers with the last activity. Tapping it opens the **detail**: Task, Current (the running tool), Usage with the context bar (`292K/1M 29%`, only when omp reported a window), Lineage (spawned by, children: each a link that opens that agent's detail), the todos for the main agent, Recent activity (timestamped tool rows with their outcome) and the report. Its buttons stay pinned under the scrolling content: **Open conversation**, **Back to parent** (or Main) and **Message**. In the chat, a persistent breadcrumb (`Main › Scout › Deep`, every crumb a chip, `Main` first) is on screen while a subagent is focused. The main agent shows a **Waiting on N jobs** strip (running subagents, a tiny bar of each one's context use, each a link) and a collapsible **todo card**; IRC, notice and advisor items render as compact cards (advisor by severity: blocker red, concern amber), never as the user's bubbles. hostd can only type into the main agent's terminal, so a message written while a subagent is focused is labelled *Message Main about <name>* and sent to the main agent as `Tell <id>: …` (as a steer while it works); only omp relays it, so Claude Code and Codex show no composer on a subagent. Claude Code and Codex degrade to what they have: a Claude agent's subagents list flat, a Codex agent is the root alone.
 
+## Lab lane (validate a branch without touching your install)
+
+Validating a change to hostd or to the phone app used to mean replacing your installed Atlas and restarting your hostd in the middle of real work. The lab lane runs the branch **beside** your installation, on your real agents:
+
+```bash
+bun run mobile:lab                     # build, start the lab hostd, install Atlas Lab on your iPhone, print the pairing QR
+bun run mobile:lab --device "<name>"   # a specific device (id or name)    --android | --sim: a physical Android phone, a booted simulator
+bun run mobile:lab --watch             # + rebuild and restart the lab hostd on crates/ changes; `flutter run` (debug, hot reload) stays attached
+bun run mobile:lab --status            # is the lab running, and what does it follow
+bun run mobile:lab --stop              # stops the LAB hostd only
+```
+
+**The shadow hostd** (`atlas hostd --lab`, from `target/debug/atlas`; `--dir` overrides the folder) keeps every file under `~/.atlas/lab` (`$ATLAS_HOSTD_DIR/lab`): socket, pid, token, `mobile/key`, `devices.json`, invites and `audit.log`. It never writes under your real directory. It is a *client* of your real hostd's socket:
+
+| It does | How |
+|---|---|
+| show your real agents | seeds from `agent_status_all` and follows `agent_status` / `agent_approval*` pushes into its own agent hub |
+| run the branch's code | `agent_tree`, `agent_history` and `project_*` run in the lab over the same session files and project registry (read only) |
+| act on your terminals | `pty_list`, `pty_read`, `pty_write`, `pty_signal`, `agent_send`, `agent_interrupt`, `agent_approve`, `agent_launch` are forwarded to your hostd; a phone's terminal gets its own connection to it, relayed back, and released when the phone leaves |
+
+It never starts the hook server (that would steal the endpoint your agents read), never adopts or hands off terminals, and refuses to create, kill or resize one. Your hostd holds a permission prompt only for *its own* phones, so an experimental phone never makes a real agent wait. If your hostd restarts (`atlas update`), forwarded calls fail with a clear message and the lab reconnects and re-seeds on its own; with no hostd at all it exits at start with an error. It has no idle timeout: it stops with `--stop`.
+
+**Atlas Lab** is the same app built with `--dart-define=ATLAS_LAB=1 --dart-define=ATLAS_SHA=<git sha>` under its own identity: bundle id `br.com.codeatlas.atlas.mobile.lab` (iOS scheme `lab`, Android gradle property `atlas.lab=1` giving the id `….mobile.lab`), the name "Atlas Lab", an orange icon (`bun run mobile:lab:icons`, the phone twin of `icons:dev`) and a slim `LAB · <sha>` strip on top. Secure storage is isolated by the bundle id (no keychain or app group is shared), and the app has no push (no Firebase or APNs identity), so nothing in it depends on one. The lab pairs with its own code and key; your real app and its pairings are untouched. The real app's build, id, name, icon and output paths are unchanged.
+
+Notes: build and install go through `scripts/heavy.sh`; the one-shot path is `flutter build` + `flutter install` (an attached `flutter run --release` hangs, so `--watch` attaches a debug run). A phone must be unlocked and trusted for `flutter install`. `atlas.yaml` action `M` runs it.
+
 ## Files
 
 Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iroh identity, 0600), `devices.json` (paired phones and their permissions), `audit.log` (one JSON line per non-read request from a phone, with typed text logged as a length only). `ATLAS_MOBILE_RELAY=0` turns relays and address lookup off (LAN only).

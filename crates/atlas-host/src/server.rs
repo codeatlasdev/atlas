@@ -52,9 +52,18 @@ pub(crate) struct Hub {
     pub(crate) agents: Arc<crate::agents::AgentHub>,
     /// Atlas Mobile: identity, paired phones, pairing codes (`crate::mobile`).
     pub(crate) mobile: Arc<crate::mobile::Mobile>,
+    /// `Some` when this is the lab lane's shadow daemon (`atlas hostd --lab`): it mirrors and
+    /// forwards to the main hostd instead of owning terminals (`crate::lab`).
+    pub(crate) lab: Option<Arc<crate::lab::Lab>>,
 }
 
 impl Hub {
+    /// Where the desktop's project registry lives: this daemon's dir, or, in a lab, the main
+    /// daemon's (read only).
+    pub(crate) fn data_dir(&self) -> &Path {
+        self.lab.as_ref().map_or(&self.dir, |l| l.main_dir())
+    }
+
     pub(crate) fn get(&self, id: &str) -> Result<Arc<Session>, String> {
         self.sessions
             .lock()
@@ -73,6 +82,10 @@ impl Hub {
             "uptime_s": self.started.elapsed().as_secs(),
             "ptys": all.len(),
             "live_ptys": all.values().filter(|s| s.exited().is_none()).count(),
+            // Connected clients (desktop, CLI, phones; a lab's phone link counts on main).
+            "clients": self.subscribers.lock().len(),
+            // Set on a lab lane daemon: the main hostd dir it follows.
+            "lab": self.lab.as_ref().map(|l| l.main_dir().to_string_lossy().into_owned()),
             "hostname": hostname(),
         })
     }
@@ -226,6 +239,9 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
+    /// Run as the lab lane's shadow daemon following the main hostd in this directory
+    /// (`atlas hostd --lab`, see [`crate::lab`]). `serve_with`'s `dir` is then the lab's own.
+    pub lab: Option<PathBuf>,
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
@@ -233,6 +249,17 @@ pub async fn serve(dir: &Path) -> Result<()> {
 }
 
 pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
+    // A lab checks everything it depends on before it creates a file: it follows a main hostd
+    // that must be there, in a directory that is not its own.
+    let lab = match &opts.lab {
+        Some(_) if opts.takeover.is_some() => {
+            return Err(anyhow!(
+                "a lab hostd owns no terminals: it cannot take over a daemon"
+            ));
+        }
+        Some(main) => Some(crate::lab::connect(main, dir).await?),
+        None => None,
+    };
     std::fs::create_dir_all(dir)?;
     // Successor: receive the sessions and the pid lock while the old daemon still serves.
     // The lock fd is the old daemon's open file description, so the singleton lock never
@@ -314,7 +341,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             Err(e) => eprintln!("hostd: could not adopt pty {id}: {e:#}"),
         }
     }
-    for e in std::fs::read_dir(&scroll_dir)?.flatten() {
+    // A lab owns no terminal, so there is no scrollback of its own to bring back.
+    for e in std::fs::read_dir(&scroll_dir)?
+        .flatten()
+        .filter(|_| lab.is_none())
+    {
         let p = e.path();
         if p.extension().is_some_and(|x| x == "bin")
             && let Some(id) = p.file_stem().and_then(|s| s.to_str())
@@ -340,6 +371,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         lsp_docs: Mutex::new(HashMap::new()),
         agents: Arc::new(crate::agents::AgentHub::default()),
         mobile: Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?),
+        lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
     crate::mobile::start(&hub);
     // Adopted terminals (live handoff) keep idling their agent when they exit.
@@ -351,10 +383,16 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     if let Some(t) = &takeover {
         hub.agents.restore(&t.agents);
     }
-    if let Err(e) =
-        crate::agents::hook_server::start(dir, hub.agents.clone(), hub.mobile.clone()).await
+    // The lab never starts the hook server: it would replace the endpoint file the user's agents
+    // read (`ATLAS_HOOK_ENDPOINT`) and steal their events from the real hostd.
+    if lab.is_none()
+        && let Err(e) =
+            crate::agents::hook_server::start(dir, hub.agents.clone(), hub.mobile.clone()).await
     {
         eprintln!("hostd: agent hook server: {e}");
+    }
+    if let Some((l, first)) = lab {
+        tokio::spawn(l.follow(Arc::downgrade(&hub), first));
     }
     {
         let mut rx = hub.agents.subscribe();
@@ -380,6 +418,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         std::process::id(),
         if opts.takeover.is_some() {
             format!(", took over {adopted} pty(s)")
+        } else if let Some(main) = &opts.lab {
+            format!(", LAB following {}", main.display())
         } else {
             String::new()
         }
@@ -407,7 +447,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 let (live, clients) = hub.activity();
                 if live > 0 || clients > 0 {
                     idle_since = None;
-                } else {
+                } else if hub.lab.is_none() {
+                    // A lab has no terminal by design, so "idle" is its resting state between
+                    // phone sessions: it stops with `--stop`, never on a timer.
                     let since = *idle_since.get_or_insert_with(Instant::now);
                     if crate::idle::idle_expired(live, clients, since.elapsed(), limit) {
                         eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", limit.as_secs());
@@ -492,6 +534,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
 
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
     let mut attached: Vec<Arc<Session>> = Vec::new();
+    let mut link = crate::lab::Link::default();
     while let Some(line) = read_line(&mut lines, LongLine::Skip).await {
         // `""` is a line over the limit, skipped. Its id is unreadable, so no reply can
         // carry the failure: tell the client.
@@ -512,6 +555,24 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
             }
         };
         let id = req.id;
+        // The lab lane: forward to main, refuse, or relay a pty attach; `Route::Local` falls
+        // through to this daemon's own code. Answered inline, so pty input keeps its order.
+        if let Some(lab) = &hub.lab {
+            let raw_req: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
+            let args = &raw_req["args"];
+            let handled = match &req.cmd {
+                HostCmd::PtyAttach { .. } => Some(link.attach(lab, args.clone(), tx.clone()).await),
+                HostCmd::PtyDetach { .. } => Some(link.detach(args.clone()).await),
+                cmd => {
+                    let name = raw_req["cmd"].as_str().unwrap_or_default();
+                    crate::lab::dispatch(lab, cmd, name, args).await
+                }
+            };
+            if let Some(res) = handled {
+                let _ = tx.send(protocol::reply(id, res));
+                continue;
+            }
+        }
         let res = match req.cmd {
             HostCmd::FsWatch { path, id: wid } => watch(&tx, &mut watchers, path, wid),
             HostCmd::FsUnwatch { id: wid } => {
@@ -807,24 +868,24 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             prompt,
         } => agent_launch(hub, &project, &agent, prompt).await,
         HostCmd::ProjectList {} => {
-            let (panes, status) = agent_panes(hub);
-            crate::projects::list(&hub.dir, &panes, &status).await
+            let (panes, status) = agent_panes(hub).await;
+            crate::projects::list(hub.data_dir(), &panes, &status).await
         }
         HostCmd::ProjectDetail { id } => {
-            let (panes, status) = agent_panes(hub);
-            crate::projects::detail(&hub.dir, &id, &panes, &status).await
+            let (panes, status) = agent_panes(hub).await;
+            crate::projects::detail(hub.data_dir(), &id, &panes, &status).await
         }
         HostCmd::ProjectLogs {
             id,
             service,
             lines,
             query,
-        } => crate::projects::logs(&hub.dir, &id, service, lines, query).await,
+        } => crate::projects::logs(hub.data_dir(), &id, service, lines, query).await,
         HostCmd::ProjectService { id, service, op } => {
-            crate::projects::service(&hub.dir, &id, service, &op).await
+            crate::projects::service(hub.data_dir(), &id, service, &op).await
         }
         HostCmd::ProjectAction { id, key, confirmed } => {
-            crate::projects::action(&hub.dir, &id, &key, confirmed).await
+            crate::projects::action(hub.data_dir(), &id, &key, confirmed).await
         }
         HostCmd::MobilePairStart {} => {
             hub.mobile.ensure_endpoint().await?;
@@ -905,14 +966,18 @@ async fn raw(
 }
 
 /// `(pane_key, cwd)` of every live terminal that belongs to a pane, and the agent status
-/// of all panes: what [`crate::projects`] needs to attach agents to projects.
-fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
-    let panes = hub
-        .sessions_snapshot()
-        .into_iter()
-        .filter(|s| s.exited().is_none())
-        .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
-        .collect();
+/// of all panes: what [`crate::projects`] needs to attach agents to projects. A lab owns no
+/// terminal, so it asks the main hostd for its terminals.
+async fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
+    let panes = match &hub.lab {
+        Some(lab) => lab.panes().await,
+        None => hub
+            .sessions_snapshot()
+            .into_iter()
+            .filter(|s| s.exited().is_none())
+            .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
+            .collect(),
+    };
     (
         panes,
         serde_json::to_value(hub.agents.all()).unwrap_or_default(),

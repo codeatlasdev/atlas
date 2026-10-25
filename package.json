@@ -23,6 +23,8 @@
     "mobile:watch": "bun scripts/mobile-e2e.ts --watch",
     "mobile:e2e:android": "bun scripts/mobile-e2e.ts --android",
     "mobile:watch:android": "bun scripts/mobile-e2e.ts --android --watch",
+    "mobile:lab": "bun scripts/mobile-lab.ts",
+    "mobile:lab:icons": "scripts/mobile-lab-icons.sh",
     "mobile:beta": "cd apps/mobile && bundle exec fastlane beta",
     "desktop:check": "cd apps/desktop && bun install --frozen-lockfile && bun run check",
     "desktop:link": "cargo run -q -p atlas-cli -- link --desktop",
@@ -51,5 +53,8 @@
   },
   "workspaces": [
     "studio"
-  ]
+  ],
+  "devDependencies": {
+    "uqr": "^0.1.3"
+  }
 }

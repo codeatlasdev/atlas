@@ -64,6 +64,10 @@ pub struct AgentHub {
     /// event as pushed, answer channel). The event is kept so a client that subscribes
     /// after the push can still list it.
     pending: Mutex<HashMap<String, Pending>>,
+    /// Prompts raised by ANOTHER hostd that this one mirrors (the lab lane, [`crate::lab`]):
+    /// `req` → its `agent_approval` event. Listed and pushed like a local one, but answered
+    /// through that daemon, so there is no answer channel here.
+    mirrored: Mutex<HashMap<String, Value>>,
 }
 
 impl Default for AgentHub {
@@ -74,6 +78,7 @@ impl Default for AgentHub {
             port: Mutex::new(0),
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
+            mirrored: Mutex::default(),
         }
     }
 }
@@ -319,13 +324,85 @@ impl AgentHub {
             .map_err(|_| "no such pending request".to_string())
     }
 
-    /// Prompts still waiting, as the `agent_approval` events that announced them.
+    /// Prompts still waiting, as the `agent_approval` events that announced them (this daemon's
+    /// own, and the ones it mirrors).
     pub fn pending_approvals(&self) -> Vec<Value> {
-        self.pending
+        let mut all: Vec<Value> = self
+            .pending
             .lock()
             .values()
             .map(|(_, ev, _)| ev.clone())
-            .collect()
+            .collect();
+        all.extend(self.mirrored.lock().values().cloned());
+        all
+    }
+
+    /// Mirror one pane's status from the daemon this one follows (the lab lane): stored and
+    /// pushed as `agent_status`. An older update never replaces a newer one, so events that
+    /// were buffered while the seed was read cannot roll a pane back.
+    pub fn mirror_status(&self, pane: &str, st: AgentStatus) {
+        let mut panes = self.panes.lock();
+        if panes
+            .get(pane)
+            .is_some_and(|cur| cur.updated_at > st.updated_at)
+        {
+            return;
+        }
+        panes.insert(pane.to_string(), st.clone());
+        drop(panes);
+        self.push_status(pane, &st);
+    }
+
+    /// Replace everything with the followed daemon's snapshot (`agent_status_all`): panes that
+    /// are gone there are gone here (a status push has no removal event, so this is how they
+    /// leave), and prompts it no longer holds are dropped (their `agent_approval_done` is
+    /// pushed, so a phone clears them).
+    pub fn mirror_all(&self, panes: HashMap<String, AgentStatus>, approvals: Vec<Value>) {
+        self.panes.lock().retain(|k, _| panes.contains_key(k));
+        for (pane, st) in panes {
+            self.mirror_status(&pane, st);
+        }
+        let keep: Vec<String> = approvals
+            .iter()
+            .filter_map(|e| e["req"].as_str().map(str::to_string))
+            .collect();
+        let stale: Vec<(String, Value)> = self
+            .mirrored
+            .lock()
+            .iter()
+            .filter(|(r, _)| !keep.contains(r))
+            .map(|(r, e)| (r.clone(), e.clone()))
+            .collect();
+        for (req, ev) in stale {
+            self.mirror_approval_done(&req, ev["pane_key"].as_str().unwrap_or_default());
+        }
+        for ev in approvals {
+            self.mirror_approval(ev);
+        }
+    }
+
+    /// A prompt raised by the followed daemon: list it and push it.
+    pub fn mirror_approval(&self, ev: Value) {
+        let Some(req) = ev["req"].as_str() else {
+            return;
+        };
+        if self
+            .mirrored
+            .lock()
+            .insert(req.to_string(), ev.clone())
+            .is_none()
+        {
+            let _ = self.tx.send(ev);
+        }
+    }
+
+    /// The followed daemon's prompt `req` was answered, timed out or withdrawn.
+    pub fn mirror_approval_done(&self, req: &str, pane: &str) {
+        if self.mirrored.lock().remove(req).is_some() {
+            let _ = self
+                .tx
+                .send(json!({"ev": "agent_approval_done", "req": req, "pane_key": pane}));
+        }
     }
 
     pub fn session_file(&self, pane: &str) -> Option<String> {

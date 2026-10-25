@@ -47,12 +47,28 @@ pub struct HostdArgs {
     /// Restart the daemon now, ending its terminals, and verify the new one
     #[arg(long, conflicts_with_all = ["stop", "status", "upgrade"])]
     pub restart: bool,
+    /// Lab lane: run a SHADOW hostd that follows your real one (read-only) so a branch can be
+    /// validated, with its own pairing and a Lab phone app, without touching your installation. Its
+    /// files live in `<main dir>/lab` (override with --dir); combine with --stop/--status to manage it
+    #[arg(long, conflicts_with_all = ["takeover", "upgrade", "check", "reconcile", "restart"])]
+    pub lab: bool,
+}
+
+/// The lab's own directory under the main hostd dir, unless `--dir` names one.
+fn lab_dir(main: &std::path::Path, explicit: Option<PathBuf>) -> PathBuf {
+    explicit.unwrap_or_else(|| main.join(atlas_host::lab::DIR_NAME))
 }
 
 impl AtlasCommand for HostdArgs {
     async fn run(self) -> Result<()> {
         let explicit_dir = self.dir.is_some();
-        let dir = self.dir.unwrap_or_else(paths::base);
+        let main_dir = paths::base();
+        // `--lab`: this command's dir is the lab's (`<main>/lab`); the main one is `$ATLAS_HOSTD_DIR`/`~/.atlas`.
+        let dir = if self.lab {
+            lab_dir(&main_dir, self.dir)
+        } else {
+            self.dir.unwrap_or(main_dir.clone())
+        };
         // `ATLAS_MOBILE_RELAY=0`: Atlas Mobile on direct addresses only (LAN, tests).
         let no_mobile_relay = std::env::var("ATLAS_MOBILE_RELAY").is_ok_and(|v| v == "0");
         if let Some(sock) = self.takeover {
@@ -60,6 +76,7 @@ impl AtlasCommand for HostdArgs {
                 &dir,
                 atlas_host::server::ServeOpts {
                     takeover: Some(sock),
+                    lab: None,
                     no_mobile_relay,
                 },
             )
@@ -123,6 +140,7 @@ impl AtlasCommand for HostdArgs {
             atlas_host::server::ServeOpts {
                 takeover: None,
                 no_mobile_relay,
+                lab: self.lab.then_some(main_dir),
             },
         )
         .await

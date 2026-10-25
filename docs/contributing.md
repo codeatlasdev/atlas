@@ -62,6 +62,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
 | `bun run mobile:check` | `scripts/mobile-check.sh` — Flutter analyze and test for `apps/mobile` (also part of `bun run check`; skipped when Flutter is absent) |
+| `bun run mobile:lab` | validate a branch on your phone beside your real Atlas: a shadow hostd plus the Atlas Lab app, never touching your install (see [Atlas Mobile](mobile.md#lab-lane-validate-a-branch-without-touching-your-install)) |
 | `bun run desktop:lab` | the desktop frontend in your browser with HMR, backed by an invisible agent instance (see Atlas Lab below) |
 | `bun run desktop:agent` | start your own agent instance of the desktop app (see [AGENTS.md](https://github.com/codeatlasdev/atlas/blob/main/AGENTS.md)) |
 | `bun run site:dev` / `site:build` / `site:check` / `site:deploy` | the website: dev server, static build, `astro check` plus script/function type-checks, Cloudflare deploy |

@@ -27,7 +27,7 @@ async fn daemon(dir: &Path) -> HostClient {
 }
 
 /// `mobile_pair_start` once the endpoint has bound (it binds in the background).
-async fn pair_start(c: &HostClient) -> Value {
+pub(crate) async fn pair_start(c: &HostClient) -> Value {
     for _ in 0..100 {
         let v = c.call("mobile_pair_start", json!({})).await.unwrap();
         if v["addrs"].as_array().is_some_and(|a| !a.is_empty()) {
@@ -38,7 +38,7 @@ async fn pair_start(c: &HostClient) -> Value {
     panic!("mobile endpoint did not bind");
 }
 
-struct Phone {
+pub(crate) struct Phone {
     _ep: Endpoint,
     conn: Connection,
     send: SendStream,
@@ -83,7 +83,7 @@ fn loopback_addrs_keeps_only_the_published_ports_on_loopback() {
 }
 
 impl Phone {
-    async fn dial(info: &Value) -> Self {
+    pub(crate) async fn dial(info: &Value) -> Self {
         Self::dial_as(info, iroh::SecretKey::generate()).await
     }
 
@@ -111,7 +111,7 @@ impl Phone {
     }
 
     /// Send one request and return its reply (skipping pushes). `None` = stream closed.
-    async fn call(&mut self, cmd: &str, args: Value) -> Option<Value> {
+    pub(crate) async fn call(&mut self, cmd: &str, args: Value) -> Option<Value> {
         let id = self.next;
         self.next += 1;
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string() + "\n";
@@ -127,6 +127,41 @@ impl Phone {
                 if v["id"] == id {
                     return Some(v);
                 }
+            }
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    /// The phone's connection ends (the app is killed or loses the network).
+    pub(crate) fn hang_up(&self) {
+        self.conn.close(0u32.into(), b"bye");
+    }
+
+    /// [`call`](Self::call), but also returns the pushes that arrived before the reply (a
+    /// `pty_attach` replay is pushed ahead of its reply, and `call` drops it).
+    pub(crate) async fn call_with_pushes(
+        &mut self,
+        cmd: &str,
+        args: Value,
+    ) -> Option<(Value, Vec<Value>)> {
+        let id = self.next;
+        self.next += 1;
+        let line = json!({"id": id, "cmd": cmd, "args": args}).to_string() + "\n";
+        self.send.write_all(line.as_bytes()).await.ok()?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let (mut buf, mut pushes) = (String::new(), Vec::new());
+            loop {
+                buf.clear();
+                if self.recv.read_line(&mut buf).await.ok()? == 0 {
+                    return None;
+                }
+                let v: Value = serde_json::from_str(&buf).ok()?;
+                if v["id"] == id {
+                    return Some((v, pushes));
+                }
+                pushes.push(v);
             }
         })
         .await
@@ -233,7 +268,7 @@ async fn pairing_scopes_and_revocation() {
 
 impl Phone {
     /// Pushes (lines without an `id`) that arrive within `ms`.
-    async fn pushes(&mut self, ms: u64) -> Vec<Value> {
+    pub(crate) async fn pushes(&mut self, ms: u64) -> Vec<Value> {
         let mut out = Vec::new();
         let mut buf = String::new();
         let end = tokio::time::Instant::now() + Duration::from_millis(ms);

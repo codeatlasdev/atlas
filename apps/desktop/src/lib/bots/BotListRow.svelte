@@ -201,7 +201,6 @@
 		background: none;
 		border: none;
 		border-radius: 8px;
-		cursor: default;
 	}
 
 	/* Avatar wrapper with presence badge */
@@ -420,7 +419,6 @@
 		border: none;
 		background: none;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		font-size: 14px;
 		display: flex;
 		align-items: center;
@@ -454,7 +452,6 @@
 		border-radius: 5px;
 		font-size: 12.5px;
 		color: var(--ca-text-primary);
-		cursor: default;
 	}
 	.menu-item:hover {
 		background: var(--ca-vibrancy-fill);

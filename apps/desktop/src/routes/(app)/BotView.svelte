@@ -1554,7 +1554,6 @@
 		color: var(--ca-text-secondary);
 		padding: 4px 6px;
 		border-radius: 6px;
-		cursor: default;
 		letter-spacing: 2px;
 	}
 	.icon-btn:hover {
@@ -1583,7 +1582,6 @@
 		padding: 7px 14px;
 		font-size: 13px;
 		color: var(--ca-text-primary);
-		cursor: default;
 	}
 	.menu-item:hover {
 		background: var(--ca-vibrancy-fill);
@@ -1812,7 +1810,6 @@
 		background: none;
 		border: none;
 		padding: 2px 0;
-		cursor: default;
 		margin-top: 2px;
 	}
 
@@ -1864,7 +1861,6 @@
 		background: none;
 		border-radius: 5px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		font-size: 14px;
 		display: flex;
 		align-items: center;
@@ -1883,7 +1879,6 @@
 		border: none;
 		font-size: 11.5px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		padding: 2px 4px;
 	}
 	.steps-btn:hover {
@@ -1959,7 +1954,6 @@
 		border-radius: 20px;
 		padding: 5px 14px;
 		font-size: 12px;
-		cursor: default;
 		box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
 	}
 
@@ -1995,7 +1989,6 @@
 		border: none;
 		border-radius: 50%;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		align-self: flex-end;
 		flex-shrink: 0;
 	}
@@ -2036,7 +2029,6 @@
 		background: color-mix(in oklab, var(--ca-brand-main) 25%, transparent);
 		border: none;
 		color: var(--ca-text-disabled, #888);
-		cursor: default;
 		transition:
 			background 120ms,
 			color 120ms;
@@ -2083,7 +2075,6 @@
 		border: none;
 		font-size: 13px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		padding: 2px 4px;
 		align-self: flex-end;
 		margin-bottom: 8px;
@@ -2205,7 +2196,6 @@
 		border: 0.5px solid var(--ca-outline-subtle);
 		background: none;
 		color: var(--ca-text-secondary);
-		cursor: default;
 	}
 	.preset:hover {
 		background: var(--ca-vibrancy-fill);
@@ -2241,7 +2231,6 @@
 		border: none;
 		font-size: 13px;
 		color: var(--ca-semantic-error);
-		cursor: default;
 		padding: 4px 8px;
 		border-radius: 5px;
 	}
@@ -2271,7 +2260,6 @@
 		background: none;
 		border: none;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		font-size: 16px;
 		line-height: 1;
 		padding: 0 2px;
@@ -2290,7 +2278,6 @@
 		border: none;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
 		text-align: left;
-		cursor: default;
 		transition: background 80ms;
 	}
 	.ask-option:last-of-type {
@@ -2480,7 +2467,6 @@
 		border: 0.5px solid var(--ca-outline-subtle);
 		background: none;
 		color: var(--ca-text-secondary);
-		cursor: default;
 	}
 	.trigger-kind-btn:hover {
 		background: var(--ca-vibrancy-fill);

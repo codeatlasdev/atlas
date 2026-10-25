@@ -131,7 +131,6 @@
 		font-weight: 500;
 		color: var(--ca-text-primary);
 		background: var(--ca-action-hover);
-		cursor: default;
 	}
 	.details:hover {
 		background: var(--ca-action-selected, var(--ca-action-hover));
@@ -154,7 +153,6 @@
 		border-radius: 5px;
 		background: none;
 		color: var(--ca-text-secondary);
-		cursor: default;
 	}
 	.x:hover {
 		color: var(--ca-text-primary);

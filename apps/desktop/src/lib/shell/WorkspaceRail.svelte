@@ -206,7 +206,6 @@
 		color: var(--ca-text-secondary);
 		font-size: 11.5px;
 		box-shadow: var(--ca-shadow-sm);
-		cursor: default;
 		animation: hint-in 400ms ease-out 800ms both;
 	}
 	.edge-hint .kbd {
@@ -289,7 +288,6 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		cursor: default;
 		border-radius: 50%;
 		border: none;
 		background: none;

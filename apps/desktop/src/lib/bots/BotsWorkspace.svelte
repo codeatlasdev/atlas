@@ -727,7 +727,6 @@
 		border: none;
 		background: transparent;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		flex: none;
 		transition: background 150ms;
 		padding: 0;
@@ -779,7 +778,6 @@
 		border-radius: 6px;
 		font-size: 13px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		text-align: left;
 		transition:
 			background 80ms,
@@ -832,7 +830,6 @@
 		border: none;
 		background: transparent;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		padding: 0;
 	}
 	.section-add:hover {
@@ -859,7 +856,6 @@
 		border: none;
 		border-radius: 12px;
 		padding: 8px;
-		cursor: default;
 		transition: background 150ms;
 	}
 	.hero-btn:hover {
@@ -1013,7 +1009,6 @@
 		border: 0.5px solid var(--ca-outline-subtle);
 		background: none;
 		color: var(--ca-brand-main);
-		cursor: default;
 	}
 
 	.empty-add:hover {
@@ -1130,7 +1125,6 @@
 		color: var(--ca-surface-base);
 		font-size: 13px;
 		font-weight: 500;
-		cursor: default;
 	}
 	.btn-primary-pill:hover {
 		opacity: 0.85;
@@ -1195,7 +1189,6 @@
 		border: none;
 		background: transparent;
 		border-radius: 8px;
-		cursor: default;
 		text-align: left;
 		width: 100%;
 		transition: background 80ms;
@@ -1274,7 +1267,6 @@
 		border-radius: 6px;
 		border: 0.5px solid var(--ca-outline-subtle);
 		font-size: 12px;
-		cursor: default;
 		background: none;
 		color: var(--ca-text-primary);
 	}

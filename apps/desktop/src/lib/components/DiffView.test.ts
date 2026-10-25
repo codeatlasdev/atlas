@@ -11,15 +11,22 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test";
 // The stores a lazily loaded view pulls in call Tauri at import time; there is no Tauri in a test.
 // Set before the dynamic imports below (a static import would run first).
 window.__TAURI_INTERNALS__ = { invoke: async () => null, transformCallback: () => 0 };
+// `agents.svelte.ts` (imported by the view) loads the real `@tauri-apps/api/window`, whose `dpi.js` links
+// `SERIALIZE_TO_IPC_FN` from `api/core`: any other test's `core` mock (`{ invoke }` only, module mocks are process-wide)
+// makes that link fail, in either file order. This view never touches the window, so the window module is replaced.
+mock.module("@tauri-apps/api/window", () => ({
+	getCurrentWindow: () => ({ onFocusChanged: async () => () => {} }),
+}));
 
 let diffCalls: string[][];
 let logCalls: string[];
-// Keep every other export of the real module (the stores import `api`); replace only the two calls the view makes.
-const realApi = await import("#lib/api.ts");
+// A complete stand-in instead of the real module: workspace.test.ts replaces `#lib/api.ts` with `{ errText }` for the whole
+// process, so whether `import("#lib/api.ts")` yields the real one depends on file order. These are the three names the
+// view and the stores it pulls in import; `api` is only called from `init()`s this test never runs.
 mock.module("#lib/api.ts", () => ({
-	...realApi,
+	api: {},
+	errText: String,
 	git: {
-		...realApi.git,
 		diff: async (id: string, mode: string, base?: string) => {
 			diffCalls.push([id, mode, base ?? ""]);
 			return { base: "main", files: [] };
@@ -30,6 +37,14 @@ mock.module("#lib/api.ts", () => ({
 		},
 	},
 }));
+// Terminal.test.ts and editor/settings.test.ts replace the prefs store with only the parts they read (process-wide), so
+// the view's `prefs.value.diff.view` and its `savePref` -> `setPref` link depend on file order. This test owns both.
+mock.module("#lib/stores/prefs.svelte.ts", () => ({
+	prefs: { value: { diff: { view: "unified" } } },
+	setPref: async () => {},
+	loadPrefs: async () => {},
+}));
+mock.module("#lib/settings/savePref.ts", () => ({ savePref: () => {} }));
 mock.module("#lib/components/diff/highlight.ts", () => ({ highlightFile: async () => {} }));
 
 // Dynamic imports on purpose: the Svelte loader registered by test/setup.ts must exist before these modules load.

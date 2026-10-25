@@ -117,6 +117,12 @@ test("app.html selects the solid style before first paint (the style every blur 
 });
 
 test("the kit's solid recipe is the one that zeroes the tier blurs (so selecting it is what removes them)", () => {
-	for (const t of ["--ca-blur-ultra-thin", "--ca-blur-thin", "--ca-blur-regular", "--ca-blur-thick", "--ca-blur-chrome"])
+	for (const t of [
+		"--ca-blur-ultra-thin",
+		"--ca-blur-thin",
+		"--ca-blur-regular",
+		"--ca-blur-thick",
+		"--ca-blur-chrome",
+	])
 		expect(solid[t]).toBe("none");
 });

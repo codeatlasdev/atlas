@@ -13,7 +13,7 @@ export function mountedTabs({
 }: {
 	/** Tab ids in strip order. */
 	tabs: string[];
-	active: string | undefined;
+	active: string | null | undefined;
 	/** Tabs shown, or filled in, at least once. */
 	seen: Set<string>;
 }): Set<string> {

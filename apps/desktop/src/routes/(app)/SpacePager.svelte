@@ -2,19 +2,22 @@
 	/**
 	 * The content area as a pager: the current space and its previous/next neighbours are mounted
 	 * as full-width layers. A switch never mounts the incoming space; it only moves transforms
-	 * (`spacePager`, pager.ts) and flips roles. Neighbours rest hidden (`content-visibility`,
-	 * `inert`) so they cost no layout or paint until a gesture (or `warm`) shows them.
+	 * (`spacePager`, pager.ts) and flips roles (`SpaceLayer`). A neighbour rests parked one page away, laid out and
+	 * painted, so a gesture only moves a transform; what keeps it out of reach is in `parkedLayer.ts`. A role flip
+	 * changes nothing the layer's subtree inherits (#121), so it restyles no descendant.
 	 */
 	import { invoke } from "@tauri-apps/api/core";
 	import { onMount, tick } from "svelte";
 	import { spacePager } from "#lib/shell/pager.ts";
 	import { engineGo, nativeActive, initNativeSwipe, pushZones } from "#lib/shell/nativeSwipe.ts";
+	import { guardFocus } from "#lib/shell/parkedLayer.ts";
 	import { createStageSync } from "#lib/shell/stageSync.ts";
 	import { dirtyPage, pagesChanged, type PagesState } from "#lib/shell/pageDirty.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { neighbour } from "#lib/shell/space.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { nativeRect } from "#lib/zoom.ts";
+	import SpaceLayer from "./SpaceLayer.svelte";
 	import SpaceSlot from "./SpaceSlot.svelte";
 
 	let root: HTMLElement | undefined = $state();
@@ -148,6 +151,7 @@
 			ack: (seq) => void painted().then(() => invoke("pager_ready", { seq })),
 			engineGo: (dir) => engineGo("space", dir),
 		});
+		const unguard = root ? guardFocus(root) : () => {};
 		let stopped = false;
 		void initNativeSwipe().then(async () => {
 			if (stopped || !nativeActive()) return;
@@ -190,6 +194,7 @@
 			stopped = true;
 			ro.disconnect();
 			mo.disconnect();
+			unguard();
 			detach();
 		};
 	});
@@ -214,22 +219,9 @@
 <div class="pager" bind:this={root} class:moving>
 	{#each ids as id (id)}
 		{@const current = id === shell.activeId}
-		{@const v = shell.layerVars(id)}
-		<div
-			class="space-layer"
-			style:--space-accent={v.accent}
-			style:--space-accent-text={v.text}
-			style:--space-on-accent={v.onAccent}
-			style:--space-tint={v.tint}
-			data-space={id}
-			data-role={current ? "current" : "near"}
-			data-side={current ? undefined : side(id)}
-			inert={!current}
-			aria-hidden={current ? undefined : true}
-			use:layer={id}
-		>
+		<SpaceLayer {id} {current} side={side(id)} vars={shell.layerVars(id)} {layer}>
 			<SpaceSlot {id} {current} {moving} />
-		</div>
+		</SpaceLayer>
 	{/each}
 </div>
 
@@ -241,29 +233,8 @@
 		min-width: 0;
 		overflow: hidden;
 	}
-	/* Layers are stacked, each the size of the pager; position comes from `translate3d`, written
-	   by pager.ts only while a switch runs. At rest the current layer has no transform at all. */
-	.space-layer {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-	}
-	/* At rest a neighbour is parked one page away, laid out and composited but out of reach (inert,
-	   no hit-testing, not in the a11y tree), so a gesture only has to move a transform: no layout
-	   or first paint at gesture start. `contain` keeps its updates from touching the current layer. */
-	.space-layer[data-role="near"] {
-		contain: layout paint style;
-		pointer-events: none;
-		will-change: transform;
-		transform: translate3d(100%, 0, 0);
-	}
-	.space-layer[data-side="prev"] {
-		transform: translate3d(-100%, 0, 0);
-	}
 	/* Inline `transform` (pager.ts) wins over the parked offset while a switch runs. */
-	.pager.moving .space-layer {
+	.pager.moving :global(.space-layer) {
 		will-change: transform;
 	}
 </style>

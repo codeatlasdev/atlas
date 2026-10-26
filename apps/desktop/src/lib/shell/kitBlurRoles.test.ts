@@ -23,12 +23,18 @@ const roles = Object.fromEntries([
 	["regular", surface.match(/\.ca-icon-btn--glass\s*\{\s*--ca-blur-role:\s*var\((--[\w-]+)\)/)?.[1]],
 ]);
 
-/** Declarations of `--token: value` inside the `[data-style="<style>"]` block of materials.css. */
+/**
+ * Declarations of `--token: value` in every rule whose selector LIST contains `[data-style="<style>"]` (kit 4.6.0 groups
+ * the opaque styles in one rule: `[data-style="solid"], :root:not([data-style]), …, [data-style="tonal"] { … }`). A later
+ * rule of the same list wins, as in the cascade.
+ */
 function styleBlock(style: string) {
-	const m = materials.match(new RegExp(`\\[data-style="${style}"\\]\\s*\\{([^}]*)\\}`));
-	return Object.fromEntries(
-		[...(m?.[1] ?? "").matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((d) => [d[1], d[2].trim()]),
-	);
+	const out: Record<string, string> = {};
+	const flat = materials.replace(/\/\*[\s\S]*?\*\//g, "");
+	for (const m of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+		if (m[1].split(",").some((sel) => sel.trim() === `[data-style="${style}"]`))
+			for (const d of m[2].matchAll(/(--[\w-]+):\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+	return out;
 }
 /** Atlas's unlayered `:root` declarations of blur tokens (they win over the kit's layers). */
 const atlasRoot = Object.fromEntries(
@@ -99,4 +105,24 @@ test("no Atlas component asks the kit for an explicit glass/frosted/liquid mater
 	};
 	walk(new URL("../..", import.meta.url).pathname);
 	expect(hits).toEqual([]);
+});
+
+// Incident (space switch lag): the tests above model `data-style="solid"`, but nothing set it. `app.html`'s own
+// pre-hydration script wrote `data-preset` and `data-ca-scheme` and never `data-style`, so `[data-style="solid"]` never
+// matched at runtime and 25 chips inside the pager painted `blur(14px) saturate(1.65)`. Measured on the agent instance,
+// 4 switches each: p95 frame gap 23-33 ms without it, 18-20 ms with it.
+test("app.html selects the solid style before first paint (the style every blur test above assumes)", () => {
+	const html = readFileSync(new URL("../../app.html", import.meta.url), "utf8");
+	expect(html).toMatch(/setAttribute\(\s*["']data-style["']\s*,\s*["']solid["']\s*\)/);
+});
+
+test("the kit's solid recipe is the one that zeroes the tier blurs (so selecting it is what removes them)", () => {
+	for (const t of [
+		"--ca-blur-ultra-thin",
+		"--ca-blur-thin",
+		"--ca-blur-regular",
+		"--ca-blur-thick",
+		"--ca-blur-chrome",
+	])
+		expect(solid[t]).toBe("none");
 });

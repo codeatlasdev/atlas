@@ -118,7 +118,6 @@
 		font-weight: 600;
 		color: var(--ca-text-secondary);
 		outline: none;
-		cursor: default;
 		transition:
 			background var(--dur-fast) var(--ease),
 			color var(--dur-fast) var(--ease);

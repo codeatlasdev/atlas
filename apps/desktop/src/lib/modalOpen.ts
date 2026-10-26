@@ -20,3 +20,14 @@ export function startModalWatch(): () => void {
 		open = false;
 	};
 }
+
+/**
+ * Follow modal state from the same `layerchange` event: `fn(true)` when a modal opens, `fn(false)` when the last one
+ * closes (called on every layer change, so keep it idempotent). Returns the teardown. For a surface that must not
+ * appear behind a dialog (the edge peek).
+ */
+export function onModalChange(fn: (modal: boolean) => void): () => void {
+	const on = (e: Event) => fn(!!(e as CustomEvent<{ modal?: boolean }>).detail?.modal);
+	document.addEventListener("layerchange", on);
+	return () => document.removeEventListener("layerchange", on);
+}

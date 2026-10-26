@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { DropdownMenu, DropdownMenuItem, toast } from "@codeatlasdev/ui";
 	import { Plus, Minus, Send, RefreshCw } from "@lucide/svelte";
 	import { git, errText, type FileDiff, type DiffHunk } from "#lib/api.ts";
@@ -62,16 +63,21 @@
 		}
 	}
 
+	// What a load depends on, as ONE string: `$derived` compares by value, so a parent that re-spreads its props (a
+	// space switch flips `focused` and rebuilds the `<Lazy props>` object) cannot re-run the load. Each reload is a
+	// `git diff`, a reset of every highlighted row and a rewrite of the whole table.
+	let source = $derived(JSON.stringify([worktreeId, curMode, baseRef]));
 	$effect(() => {
-		void [worktreeId, curMode, baseRef];
-		void load();
+		void source;
+		void untrack(load);
 	});
 
+	// Same rule as the load above: the commit list for the base picker depends on these values, not on a re-spread.
+	let commitsFor = $derived(curMode === "base" && !only ? worktreeId : null);
 	$effect(() => {
-		if (curMode === "base" && !only)
-			git
-				.run(worktreeId, ["log", "--oneline", "-50"])
-				.then((r) => (commits = r.stdout.split("\n").filter(Boolean)));
+		const id = commitsFor;
+		if (id)
+			git.run(id, ["log", "--oneline", "-50"]).then((r) => (commits = r.stdout.split("\n").filter(Boolean)));
 	});
 
 	async function stage(f: FileDiff, h?: DiffHunk) {

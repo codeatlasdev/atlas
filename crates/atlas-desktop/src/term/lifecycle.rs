@@ -545,9 +545,8 @@ type Planned = (Arc<Shared>, Target, Option<(u32, u32)>);
 /// with the view pointer crashed the app when a tab closed before WebKit's next present (SIGTRAP in
 /// `superview`, 2026-10-25).
 fn resolve(planned: Vec<Planned>) -> Vec<mac::Move> {
-    planned
+    still_open(planned)
         .into_iter()
-        .filter(|(sh, _, _)| !sh.state.lock().closed)
         .filter_map(|(sh, target, pixels)| {
             Some(mac::Move {
                 view: mac::retain_view(sh.view())?,
@@ -555,6 +554,14 @@ fn resolve(planned: Vec<Planned>) -> Vec<mac::Move> {
                 pixels,
             })
         })
+        .collect()
+}
+
+/// The planned moves whose terminal was not closed while the batch waited for WebKit.
+fn still_open(planned: Vec<Planned>) -> Vec<Planned> {
+    planned
+        .into_iter()
+        .filter(|(sh, _, _)| !sh.state.lock().closed)
         .collect()
 }
 
@@ -674,6 +681,24 @@ mod tests {
             selection_bg: o(sb),
             selection_fg: o(sf),
         }
+    }
+
+    // Regression (2026-10-25, SIGTRAP in `superview` from `is_layered`, atlas-desktop-2026-10-25-234703.ips):
+    // a layout batch planned before a tab closed ran after WebKit's next present and touched the closed
+    // terminal's released view. A batch must never yield a move for a terminal closed meanwhile, nor for
+    // a terminal whose view is already gone.
+    #[test]
+    fn a_batch_skips_terminals_closed_before_it_applies() {
+        let open = Shared::for_test(80, 24);
+        let closed = Shared::for_test(80, 24);
+        let target = Target::Park(10.0, 10.0);
+        closed.update(|s| s.closed = true);
+        let planned = vec![(closed, target, None), (open.clone(), target, None)];
+        let kept = still_open(planned);
+        assert_eq!(kept.len(), 1);
+        assert!(Arc::ptr_eq(&kept[0].0, &open));
+        // View 0 (never created or already released) is never retained.
+        assert!(resolve(kept).is_empty());
     }
 
     #[test]

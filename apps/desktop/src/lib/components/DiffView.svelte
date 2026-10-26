@@ -39,7 +39,7 @@
 	let tokens = $state<Record<string, string[]>>({});
 	let draft = $state<Draft | null>(null);
 	let commits = $state<string[]>([]);
-	let list: VirtualList<DiffRow> | undefined = $state();
+	let list: ReturnType<typeof VirtualList<DiffRow>> | undefined = $state();
 	let firstVisible = $state(0);
 
 	$effect(() => {

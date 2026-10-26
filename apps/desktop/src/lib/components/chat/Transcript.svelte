@@ -20,7 +20,7 @@
 		onanswer: (u: UiRequest, value: unknown) => void;
 	} = $props();
 
-	let list: VirtualList<ChatState["items"][number]> | undefined = $state();
+	let list: ReturnType<typeof VirtualList<ChatState["items"][number]>> | undefined = $state();
 	let open = $state<Record<string, boolean>>({});
 
 	const md = (s: string) => marked.parse(s, { async: false, breaks: true });

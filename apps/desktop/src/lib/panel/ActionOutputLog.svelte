@@ -32,7 +32,7 @@
 		return { items: [...run.lines.items], first: run.lines.base };
 	});
 
-	let list: VirtualList<RunLine> | undefined = $state();
+	let list: ReturnType<typeof VirtualList<RunLine>> | undefined = $state();
 
 	// Switching runs starts at the end (what just happened), following again.
 	$effect(() => {

@@ -4,7 +4,6 @@
 		DropdownMenu,
 		DropdownMenuItem,
 		DropdownMenuLabel,
-		Dialog,
 		NotificationBell,
 		Spinner,
 	} from "@codeatlasdev/ui";
@@ -22,6 +21,7 @@
 	} from "@lucide/svelte";
 	import { api, type ProjectView } from "#lib/api.ts";
 	import Tip from "#lib/components/Tip.svelte";
+	import { removeProject } from "#lib/components/sidebar/projects.ts";
 	import PanelOps from "#lib/panel/PanelOps.svelte";
 	import Crumbs from "#lib/shell/Crumbs.svelte";
 	import RightToggle from "#lib/shell/RightToggle.svelte";
@@ -44,7 +44,6 @@
 			p.running,
 		),
 	);
-	let removeOpen = $state(false);
 
 	const DOCKS = [
 		{ side: "left", label: "Left dock", command: "workspace::ToggleLeftDock", icon: PanelLeft },
@@ -114,9 +113,11 @@
 			<DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
 				{#if p.pinned}<PinOff size={14} /> Unpin{:else}<Pin size={14} /> Pin to top{/if}
 			</DropdownMenuItem>
-			<DropdownMenuItem variant="destructive" onclick={() => (removeOpen = true)}>
-				<Trash2 size={14} /> Remove from Atlas
-			</DropdownMenuItem>
+			{#if !p.parent}
+				<DropdownMenuItem variant="destructive" onclick={() => removeProject(p.id)}>
+					<Trash2 size={14} /> Remove from Atlas…
+				</DropdownMenuItem>
+			{/if}
 		</DropdownMenu>
 		{#if p.running}
 			<Button
@@ -161,24 +162,6 @@
 		{/if}
 	</div>
 </header>
-
-<Dialog
-	bind:open={removeOpen}
-	title="Remove {p.name}?"
-	description="Only removes it from the sidebar. Files and running stacks are untouched."
-	size="sm"
->
-	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (removeOpen = false)}>Cancel</Button>
-		<Button
-			variant="destructive"
-			onclick={() => {
-				removeOpen = false;
-				store.run("rm", () => api.remove(p.id));
-			}}>Remove</Button
-		>
-	{/snippet}
-</Dialog>
 
 <style>
 	/* One row, --title-row tall (app.css): the same band as the macOS traffic lights, whose centre is that row's

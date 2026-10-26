@@ -360,7 +360,6 @@
 		align-items: center;
 		gap: 6px;
 		padding: 2px 10px;
-		cursor: default;
 	}
 	.entry:hover {
 		background: var(--ca-action-hover);

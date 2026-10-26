@@ -425,3 +425,93 @@ fn pty_exit_is_delivered_even_to_a_connection_over_its_cap() {
     assert_eq!(rx.try_recv().as_deref(), Some("fill"));
     assert!(rx.try_recv().unwrap().contains("pty_exit"));
 }
+
+/// Every `pty_title` line a listener got, in order.
+#[cfg(unix)]
+fn titles(rx: &mut super::OutRx) -> Vec<String> {
+    let mut got = Vec::new();
+    while let Some(l) = rx.try_recv() {
+        let v: serde_json::Value = serde_json::from_str(&l).unwrap();
+        if v["ev"] == "pty_title" {
+            got.push(v["title"].as_str().unwrap_or_default().to_string());
+        }
+    }
+    got
+}
+
+// Incident (#110, "terminal freezes with 7+ agents"): omp redraws its title on every spinner frame, usually
+// with the same text as the frame before. Each OSC became a `pty_title` push to every attached client, and
+// each push became a Tauri event for ~4 webview listeners: hundreds of identical events a second across the
+// agents, all on the UI thread. Only a title that differs from the current one is news.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_title_repeated_by_the_program_is_pushed_once() {
+    let dir = tempfile::tempdir().unwrap();
+    // `sleep 0.02` keeps each OSC in its own 8 ms coalescing window, so the parser sees every one.
+    let script = "for t in a a a b b a a a; do printf '\\033]0;%s\\007' $t; sleep 0.02; done";
+    let s = Session::spawn(shell_req(script), dir.path()).unwrap();
+    let (tx, mut rx) = super::out_channel();
+    s.attach(1, tx, false, false);
+    until_exited(&s).await;
+    assert_eq!(titles(&mut rx), ["a", "b", "a"], "one push per change");
+    assert_eq!(
+        *s.title.lock(),
+        "a",
+        "the stored title is still the last one"
+    );
+}
+
+// Class of the incident above: a title set again to what it already is must not even wake the clients, but one
+// that goes back to an EARLIER title is a change (a -> b -> a is two pushes after the first).
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_title_that_returns_to_an_earlier_value_is_a_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = "for t in x y x; do printf '\\033]0;%s\\007' $t; sleep 0.02; done";
+    let s = Session::spawn(shell_req(script), dir.path()).unwrap();
+    let (tx, mut rx) = super::out_channel();
+    s.attach(1, tx, false, false);
+    until_exited(&s).await;
+    assert_eq!(titles(&mut rx), ["x", "y", "x"]);
+}
+
+// Incident (#110, "terminal freezes with many agents"): `pty_list` built every session's `summary()`, and the summary
+// asked `ps` for the foreground program: one blocking fork+exec per terminal, serially, on a runtime worker. The
+// desktop calls `pty_list` on every connect, tab operation and sidebar refresh, so with 30 terminals that was
+// ~100+ ms of blocked worker each time. Nothing reads `fg` from the list (only `pty_info` shows it), so the list
+// no longer pays for it. The keys everything else reads must stay.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_pty_list_summary_does_not_fork_ps_for_the_foreground_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("sleep 30"), dir.path()).unwrap();
+    let list = s.summary();
+    assert!(
+        list.get("fg").is_none(),
+        "pty_list entries carry no fg: {list}"
+    );
+    for k in [
+        "pty",
+        "cwd",
+        "argv",
+        "scope",
+        "title",
+        "created_at",
+        "exited",
+        "pid",
+        "cols",
+        "rows",
+    ] {
+        assert!(list.get(k).is_some(), "pty_list lost `{k}`: {list}");
+    }
+    let info = s.info_summary();
+    assert!(
+        info["fg"]["pid"].as_i64().is_some(),
+        "pty_info still names the foreground program: {info}"
+    );
+    assert!(
+        info["fg"]["name"].as_str().is_some_and(|n| !n.is_empty()),
+        "{info}"
+    );
+    s.kill().await;
+}

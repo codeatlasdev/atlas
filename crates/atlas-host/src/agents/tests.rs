@@ -245,3 +245,145 @@ fn steering_is_allowed_only_for_a_working_omp() {
         }
     }
 }
+
+/// Pushes of `agent_status` for `pane` the hub made so far (drained from `rx`).
+fn pushes(rx: &mut broadcast::Receiver<Value>, pane: &str) -> usize {
+    let mut n = 0;
+    while let Ok(ev) = rx.try_recv() {
+        n += (ev["ev"] == "agent_status" && ev["pane_key"] == pane) as usize;
+    }
+    n
+}
+
+// Incident (#110, "terminal freezes with 7+ agents"): omp posts every tool event, and each hook became an
+// `agent_status` push to the desktop (a Tauri event, a store write, tray/sidebar/feed recomputation) and to every
+// phone, whether or not anything a client shows had changed. 7 agents x a few tool events a second is a steady
+// stream of identical statuses on the UI thread.
+#[test]
+fn a_hook_that_changes_nothing_is_not_pushed_every_time() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let send = |t: u64, p: Value| hub.apply_at("omp", &json!({"pane_key": "t1", "payload": p}), t);
+    send(
+        1_000,
+        json!({"event": "agent_start", "session_file": "/s/a.jsonl", "model": "m"}),
+    );
+    assert_eq!(pushes(&mut rx, "t1"), 1, "the first status is news");
+    for i in 1..=20 {
+        send(
+            1_000 + i * 10,
+            json!({"event": "tool_execution_start", "session_file": "/s/a.jsonl", "model": "m"}),
+        );
+    }
+    assert_eq!(
+        pushes(&mut rx, "t1"),
+        0,
+        "20 identical events in 200 ms: nothing to say"
+    );
+}
+
+// The desktop falls back to the terminal title once `updated_at` is `HOOK_GRACE_MS` (5 s) old, so a working agent
+// whose hooks are all no-ops must still be heard from: at most once per `HEARTBEAT_MS`, always below the grace.
+#[test]
+fn an_unchanged_agent_still_heartbeats_inside_the_desktops_grace_period() {
+    use super::HEARTBEAT_MS;
+    const { assert!(HEARTBEAT_MS < 5_000, "the desktop trusts hooks for 5 s") };
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let send = |t: u64| {
+        hub.apply_at(
+            "omp",
+            &json!({"pane_key": "t1", "payload": {"event": "tool_execution_start"}}),
+            t,
+        )
+    };
+    send(10_000);
+    assert_eq!(pushes(&mut rx, "t1"), 1);
+    send(10_000 + HEARTBEAT_MS - 1);
+    assert_eq!(pushes(&mut rx, "t1"), 0, "just inside the interval");
+    send(10_000 + HEARTBEAT_MS);
+    assert_eq!(
+        pushes(&mut rx, "t1"),
+        1,
+        "a full interval later: the heartbeat"
+    );
+    send(10_000 + HEARTBEAT_MS + 1);
+    assert_eq!(
+        pushes(&mut rx, "t1"),
+        0,
+        "the interval restarts at each push"
+    );
+}
+
+// Class of the incident above: every field a client shows must still push at once. A throttle keyed on the state
+// alone would swallow a new prompt, a model switch, the assistant's message or a session change.
+#[test]
+fn every_visible_change_is_pushed_at_once_not_held_for_the_heartbeat() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let send = |t: u64, p: Value| hub.apply_at("omp", &json!({"pane_key": "t1", "payload": p}), t);
+    send(
+        1_000,
+        json!({"event": "agent_start", "session_file": "/s/a.jsonl", "model": "m1"}),
+    );
+    pushes(&mut rx, "t1");
+    let cases = [
+        ("state", json!({"event": "tool_call", "tool_name": "ask"})),
+        (
+            "model",
+            json!({"event": "tool_call", "tool_name": "ask", "model": "m2"}),
+        ),
+        (
+            "prompt",
+            json!({"event": "before_agent_start", "prompt": "do it"}),
+        ),
+        (
+            "message",
+            json!({"event": "message_end", "text": "done with step one"}),
+        ),
+        (
+            "session",
+            json!({"event": "session_start", "session_file": "/s/b.jsonl"}),
+        ),
+    ];
+    for (i, (what, p)) in cases.into_iter().enumerate() {
+        send(1_001 + i as u64, p);
+        assert_eq!(
+            pushes(&mut rx, "t1"),
+            1,
+            "a changed {what} must push at once"
+        );
+    }
+}
+
+// A pane is throttled on its own: one agent's chatter must not swallow another's first status or heartbeat.
+#[test]
+fn the_heartbeat_interval_is_per_pane() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let ev = |pane: &str| json!({"pane_key": pane, "payload": {"event": "agent_start"}});
+    let drain = |rx: &mut broadcast::Receiver<Value>| {
+        let mut panes = Vec::new();
+        while let Ok(e) = rx.try_recv() {
+            if e["ev"] == "agent_status" {
+                panes.push(e["pane_key"].as_str().unwrap().to_string());
+            }
+        }
+        panes
+    };
+    hub.apply_at("omp", &ev("a"), 1_000);
+    hub.apply_at("omp", &ev("b"), 1_001);
+    assert_eq!(
+        drain(&mut rx),
+        ["a", "b"],
+        "each pane's first status is pushed"
+    );
+    hub.apply_at("omp", &ev("a"), 1_002);
+    hub.apply_at("omp", &ev("b"), 1_003);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "both are inside their own interval"
+    );
+    hub.apply_at("omp", &ev("b"), 1_001 + super::HEARTBEAT_MS);
+    assert_eq!(drain(&mut rx), ["b"], "b is due, a is on its own clock");
+}

@@ -185,8 +185,16 @@ impl Session {
         raw
     }
 
+    /// Store the program's title and tell every attached client, unless it is the title already
+    /// shown: omp redraws its spinner title on every frame, mostly with the text it had (#110).
     fn set_title(&self, t: String) {
-        *self.title.lock() = t.clone();
+        {
+            let mut cur = self.title.lock();
+            if *cur == t {
+                return;
+            }
+            cur.clone_from(&t);
+        }
         let line = json!({"ev": "pty_title", "pty": self.id, "title": t}).to_string();
         self.buf.lock().notify(&self.id, &line);
     }

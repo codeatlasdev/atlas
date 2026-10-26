@@ -188,6 +188,34 @@ vtebench, `--max-secs 3` (median ms per 1 MiB sample, 97–429 samples per cell;
 
 Parser throughput (`Vt::feed`, 64 KiB chunks) is about 170 MB/s optimized and 14 MB/s in a debug build, so measure with an optimized build.
 
+### Many busy agents (#110)
+
+One terminal at 8 ms a frame says nothing about seven of them drawing a TUI at 30 Hz while their hooks, titles and tool output all land on one UI thread, which is how people actually use Atlas. `scripts/agents-load-bench.ts` runs that shape in an agent instance (never your app; `bun run desktop:agent` first builds the debug app):
+
+```bash
+scripts/heavy.sh bun scripts/agents-load-bench.ts [--agents 7] [--seconds 30] [--warmup 5] [--save docs/perf/agents-7.json] [--keep]
+bun scripts/agents-load-bench.ts --judge docs/perf/agents-7.json      # re-judge a saved report, no app
+```
+
+It opens N terminal tabs in one worktree, each running `scripts/agents-load-gen.ts`, a synthetic omp: a full-screen alternate-screen redraw (`--hz`, default 30), streaming lines (`--lines`, 40/s), a spinner in the OSC 0 title (`--title-hz`, 10/s, mostly the text it already had) and a hook post to the real hook server (`--hook-every`, 150 ms). The tabs are agent tabs, so the status events, sidebar, tray and feed react as they do with real agents. After the warmup it measures, once a second for `--seconds`:
+
+| Measure | How | Budget (`scripts/agents-load-judge.ts`) |
+|---|---|---|
+| main-thread stall | longest gap between two `MessageChannel` turns each second (WKWebView has no `longtask`) | p95 ≤ 16 ms, max ≤ 100 ms |
+| page frame gap | `requestAnimationFrame` gaps | p95 ≤ 34 ms |
+| terminal frames | `term_stats` `frames` over the window, for every terminal whose program printed | ≥ 20 fps each |
+| memory | RSS of the app, hostd and WebContent of the instance, last minus first | ≤ 400 MB growth each |
+| event storm | `agent://status` + `host://event` the page received, per agent per second | ≤ 8 |
+
+It exits 1 over any budget, and also when nothing was measured (no terminals opened, no samples, or a report that is not a report: a crashed app is not a pass). The instance is stopped explicitly at the end, also on failure. `atlas desktop debug perf --seconds 3` is the same stall and frame-gap measurement of whatever is on screen, for a manual look.
+
+What the bench exists to catch, and what keeps each from coming back:
+
+- **Registry lock held across a slow lock.** `term_stats` locked every terminal's VT (`FairMutex`, queued behind its feeding reader) while holding the registry every `term_*` command takes first, so one busy terminal stalled all of them, including pointer handling. It reads handles first now (`open_terms`).
+- **Identical title pushes.** omp redraws its spinner title every frame, mostly with the same text; each OSC became a `pty_title` push, a Tauri event and four webview listeners. hostd pushes a title only when it changes.
+- **Identical status pushes.** omp posts every tool event, and each became an `agent_status` push. hostd pushes when something a client shows changed, and otherwise once a second per pane (`HEARTBEAT_MS`; the desktop trusts hooks over the title while `updated_at` is under 5 s old).
+- **`ps` per terminal in `pty_list`.** The list asked for each session's foreground program with a blocking `ps`, on every connect, tab operation and sidebar refresh. Only `pty_info` has it now.
+
 ## Debugging
 
 With a debug build running (`atlas link --desktop`), the debug bridge drives it without input:

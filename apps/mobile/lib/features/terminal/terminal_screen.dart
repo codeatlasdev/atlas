@@ -115,7 +115,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       case 'pty_replay':
         // The start of a replay: the screen is rebuilt from it (a no-op on the first attach, the
         // clean slate after a reattach), not appended to what was there.
-        _terminal.write('\x1bc');
+        // Through the same sink as the output, so it lands in order; xterm.dart ignores RIS (ESC c).
+        _utf8.add(utf8.encode('\x1b[H\x1b[2J\x1b[3J'));
         _utf8.add(base64.decode(event['data'] as String));
       case 'pty_output':
         _utf8.add(base64.decode(event['data'] as String));

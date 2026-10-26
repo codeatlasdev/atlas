@@ -7,7 +7,9 @@ export type PtyEvent = { data: string; replay: boolean };
 /** The pty hostd stopped feeding because this client did not read (`pty_dropped` on `host://event`), else undefined. */
 export function droppedPty(ev: unknown): string | undefined {
 	const e = ev as { ev?: unknown; pty?: unknown } | null;
-	return e && typeof e === "object" && e.ev === "pty_dropped" && typeof e.pty === "string" ? e.pty : undefined;
+	return e && typeof e === "object" && e.ev === "pty_dropped" && typeof e.pty === "string"
+		? e.pty
+		: undefined;
 }
 
 export function ptyStream(o: {

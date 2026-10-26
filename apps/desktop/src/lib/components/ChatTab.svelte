@@ -3,6 +3,7 @@
 	 * Native chat for an omp pipe-mode agent: reads the pty's JSONL stream into `ChatState`
 	 * (see `rpc.ts`) and writes commands back. The transcript and composer are in `chat/`.
 	 */
+	import { usePoll } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { listen } from "@tauri-apps/api/event";
@@ -64,6 +65,9 @@
 		}
 	}
 
+	const poll = () => send({ type: "get_state", id: "state" });
+	usePoll(STATE_POLL_MS, () => focused, poll);
+
 	onMount(() => {
 		let alive = true;
 		const offs: (() => void)[] = [];
@@ -83,13 +87,10 @@
 		listen("host://event", (e) => {
 			if (droppedPty(e.payload) === tab.pty) attach();
 		}).then((u) => (alive ? offs.push(u) : u()));
-		const poll = () => send({ type: "get_state", id: "state" });
-		const t = window.setInterval(poll, STATE_POLL_MS);
 		window.setTimeout(poll, 1500);
 		void worktreeFiles(tab.worktreeId).then((f) => (atFiles = f));
 		return () => {
 			alive = false;
-			clearInterval(t);
 			offs.forEach((u) => u());
 			if (tab.pty) void host.ptyDetach(tab.pty).catch(() => {});
 		};

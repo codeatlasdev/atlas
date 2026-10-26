@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { usePoll } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { kbd, primaryKey } from "#lib/keys.ts";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, TextArea, toast } from "@codeatlasdev/ui";
@@ -51,6 +52,8 @@
 		});
 	}
 
+	usePoll(5000, () => true, refresh);
+
 	onMount(() => {
 		void refresh();
 		void commitMessages.loadProvider();
@@ -58,10 +61,8 @@
 		const off = listen<{ ev: string }>("host://event", (e) => {
 			if (e.payload.ev === "fs_event") void refresh();
 		});
-		const t = window.setInterval(refresh, 5000);
 		return () => {
 			detach();
-			clearInterval(t);
 			void off.then((u) => u());
 		};
 	});

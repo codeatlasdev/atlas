@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { usePoll, useNow } from "#lib/clock.svelte.ts";
 	import { Button, Spinner, Tooltip, toast } from "@codeatlasdev/ui";
 	import { Check, CircleAlert, Download, Info, RotateCw } from "@lucide/svelte";
 	import { listen } from "@tauri-apps/api/event";
@@ -17,7 +18,7 @@
 	let info = $state<SetupStatus | null>(null);
 	let full = $state(false);
 	let starting = $state(false);
-	let now = $state(Date.now());
+	const clk = useNow(15_000);
 
 	let st = $derived(info?.status ?? null);
 	let running = $derived(starting || st?.state === "running");
@@ -59,7 +60,7 @@
 
 	/** `3m ago` from a unix-seconds timestamp. */
 	function ago(secs: number): string {
-		const d = Math.max(0, Math.round(now / 1000 - secs));
+		const d = Math.max(0, Math.round(clk.now / 1000 - secs));
 		if (d < 60) return `${d}s ago`;
 		if (d < 3600) return `${Math.floor(d / 60)}m ago`;
 		if (d < 86_400) return `${Math.floor(d / 3600)}h ago`;
@@ -73,17 +74,15 @@
 	});
 
 	// Live tail: poll the log while it runs (the stack's own start also runs setup).
-	$effect(() => {
-		if (!running) return;
-		const t = setInterval(refresh, POLL_MS);
-		return () => clearInterval(t);
-	});
+	usePoll(
+		POLL_MS,
+		() => running,
+		() => void refresh(),
+	);
 
 	onMount(() => {
-		const tick = setInterval(() => (now = Date.now()), 15_000);
 		const off = listen<string>("projects://setup", (e) => e.payload === id && refresh());
 		return () => {
-			clearInterval(tick);
 			off.then((f) => f());
 		};
 	});

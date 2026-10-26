@@ -1,6 +1,5 @@
 <script lang="ts">
 	/** The chat transcript: user/assistant/note/error messages, folded thinking and tool calls, ask prompts. */
-	import { tick } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { Spinner } from "@codeatlasdev/ui";
 	import { ChevronDown, ChevronRight, Wrench } from "@lucide/svelte";
@@ -8,6 +7,7 @@
 	import type { ChatState, UiRequest } from "#lib/rpc.ts";
 	import { argsLine } from "./composer.ts";
 	import ChatTextarea from "./ChatTextarea.svelte";
+	import VirtualList from "../VirtualList.svelte";
 
 	let {
 		chat,
@@ -20,24 +20,20 @@
 		onanswer: (u: UiRequest, value: unknown) => void;
 	} = $props();
 
-	let scroller: HTMLDivElement | undefined = $state();
+	let list: VirtualList<ChatState["items"][number]> | undefined = $state();
 	let open = $state<Record<string, boolean>>({});
 
 	const md = (s: string) => marked.parse(s, { async: false, breaks: true });
 
-	/** Is the view within reach of the end (so new content should keep following)? */
-	export const nearBottom = () =>
-		!scroller || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
-
-	export async function scrollDown() {
-		await tick();
-		if (scroller) scroller.scrollTop = scroller.scrollHeight;
-	}
+	/** Jump to the newest message and follow it again (the list follows appends by itself while pinned). */
+	export const scrollDown = () => list?.scrollToEnd();
 </script>
 
-<div class="transcript" bind:this={scroller}>
-	{#if !chat.ready}<div class="center"><Spinner /> Starting omp…</div>{/if}
-	{#each items as it (it.id)}
+<VirtualList bind:this={list} class="transcript" {items} key={(it) => it.id} estimate={72} stickBottom>
+	{#snippet header()}
+		{#if !chat.ready}<div class="center"><Spinner /> Starting omp…</div>{/if}
+	{/snippet}
+	{#snippet item(it)}
 		{#if it.kind === "user"}
 			<div class="msg user ca-selectable">
 				{it.text}{#if it.images}<span class="dim"> · {it.images} image(s)</span>{/if}
@@ -70,44 +66,50 @@
 		{:else}
 			<div class="msg error ca-selectable">{it.text}</div>
 		{/if}
-	{/each}
-	{#each chat.ui as u (u.id)}
-		<div class="ask">
-			<b>{u.title}</b>
-			{#if u.message}<p>{u.message}</p>{/if}
-			{#if u.method === "select"}
-				<div class="opts">
-					{#each u.options ?? [] as o (o)}<button onclick={() => onanswer(u, o)}>{o}</button>{/each}
+	{/snippet}
+	{#snippet footer()}
+		<div class="asks">
+			{#each chat.ui as u (u.id)}
+				<div class="ask">
+					<b>{u.title}</b>
+					{#if u.message}<p>{u.message}</p>{/if}
+					{#if u.method === "select"}
+						<div class="opts">
+							{#each u.options ?? [] as o (o)}<button onclick={() => onanswer(u, o)}>{o}</button>{/each}
+						</div>
+					{:else if u.method === "confirm"}
+						<div class="opts">
+							<button onclick={() => onanswer(u, true)}>Yes</button>
+							<button onclick={() => onanswer(u, false)}>No</button>
+						</div>
+					{:else}
+						<ChatTextarea
+							placeholder={u.placeholder ?? ""}
+							onkeydown={(e) => {
+								if (e.key === "Enter" && (primaryKey(e) || u.method === "input")) {
+									e.preventDefault();
+									onanswer(u, e.currentTarget.value);
+								}
+							}}
+						/>
+					{/if}
+					<button class="cancel" onclick={() => onanswer(u, undefined)}>Dismiss</button>
 				</div>
-			{:else if u.method === "confirm"}
-				<div class="opts">
-					<button onclick={() => onanswer(u, true)}>Yes</button>
-					<button onclick={() => onanswer(u, false)}>No</button>
-				</div>
-			{:else}
-				<ChatTextarea
-					placeholder={u.placeholder ?? ""}
-					onkeydown={(e) => {
-						if (e.key === "Enter" && (primaryKey(e) || u.method === "input")) {
-							e.preventDefault();
-							onanswer(u, e.currentTarget.value);
-						}
-					}}
-				/>
-			{/if}
-			<button class="cancel" onclick={() => onanswer(u, undefined)}>Dismiss</button>
+			{/each}
 		</div>
-	{/each}
-</div>
+	{/snippet}
+</VirtualList>
 
 <style>
-	.transcript {
+	:global(.vl.transcript) {
 		flex: 1;
-		overflow-y: auto;
 		padding: 12px 16px;
+	}
+	/* Rows are wrapped by VirtualList: the gap and the right-aligned user bubble live on the row. */
+	:global(.transcript .vl-row) {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		padding-bottom: 10px;
 	}
 	.center {
 		display: flex;
@@ -184,6 +186,11 @@
 	.dim {
 		color: var(--ca-text-secondary);
 		font-size: 11.5px;
+	}
+	.asks {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
 	}
 	.ask {
 		display: flex;

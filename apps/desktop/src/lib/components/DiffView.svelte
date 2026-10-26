@@ -12,6 +12,8 @@
 	import { savePref } from "#lib/settings/savePref.ts";
 	import PathText from "./PathText.svelte";
 	import { highlightFile } from "./diff/highlight.ts";
+	import { diffRows, fileRowIndex, type DiffRow } from "./diff/diffRows.ts";
+	import VirtualList from "./VirtualList.svelte";
 
 	let {
 		worktreeId,
@@ -37,7 +39,8 @@
 	let tokens = $state<Record<string, string[]>>({});
 	let draft = $state<Draft | null>(null);
 	let commits = $state<string[]>([]);
-	let fileEls: Record<string, HTMLElement> = {};
+	let list: VirtualList<DiffRow> | undefined = $state();
+	let firstVisible = $state(0);
 
 	$effect(() => {
 		curMode = mode;
@@ -47,6 +50,16 @@
 	let comments = $derived(ws.doc.diffComments[worktreeId] ?? []);
 	let shown = $derived(only ? files.filter((f) => f.path === only) : files);
 	let open = $derived(comments.filter((c) => !c.resolved));
+	/** The files flattened into windowed rows: the DOM holds the screen, not the diff. */
+	let rows = $derived(diffRows(shown, tokens));
+
+	/** The file whose rows are at the top edge: its header stays pinned (a row inside a window cannot be `sticky`). */
+	let current = $derived(rows[firstVisible]?.f);
+
+	function reveal(path: string) {
+		selected = path;
+		void list?.scrollToIndex(fileRowIndex(rows, path), "start");
+	}
 
 	async function load() {
 		loading = true;
@@ -129,8 +142,7 @@
 			shown.findIndex((f) => f.path === selected),
 		);
 		const next = shown[(i + delta + shown.length) % shown.length];
-		selected = next.path;
-		fileEls[next.path]?.scrollIntoView({ block: "start" });
+		reveal(next.path);
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -191,14 +203,7 @@
 		{#if !only}
 			<nav class="tree">
 				{#each files as f (f.path)}
-					<button
-						class="file {f.status}"
-						class:on={selected === f.path}
-						onclick={() => {
-							selected = f.path;
-							fileEls[f.path]?.scrollIntoView({ block: "start" });
-						}}
-					>
+					<button class="file {f.status}" class:on={selected === f.path} onclick={() => reveal(f.path)}>
 						<span class="st">{f.status[0].toUpperCase()}</span>
 						<PathText path={f.path} />
 						{#if comments.some((c) => c.path === f.path && !c.resolved)}<span class="dot"></span>{/if}
@@ -208,63 +213,77 @@
 				{/each}
 			</nav>
 		{/if}
-		<div class="files">
-			{#each shown as f (f.path)}
-				<section bind:this={fileEls[f.path]}>
-					<header>
-						<span class="mono">{f.old_path ? `${f.old_path} → ` : ""}{f.path}</span>
-						<span class="dim">{f.status}</span>
-						<button class="act" onclick={() => stage(f)}
-							>{curMode === "staged" ? "Unstage file" : "Stage file"}</button
-						>
-					</header>
-					{#if f.binary}
-						{#if IMAGE.test(f.path)}
+		{#if rows.length}
+			<VirtualList
+				bind:this={list}
+				bind:firstVisible
+				class="files"
+				items={rows}
+				key={(r) => r.key}
+				estimate={20}
+				overscan={4}
+			>
+				{#snippet header()}
+					{#if current && rows[firstVisible]?.kind !== "file"}
+						<div class="pin">
+							<span class="mono">{current.path}</span>
+						</div>
+					{/if}
+				{/snippet}
+				{#snippet item(r)}
+					{#if r.kind === "file"}
+						<header>
+							<span class="mono">{r.f.old_path ? `${r.f.old_path} → ` : ""}{r.f.path}</span>
+							<span class="dim">{r.f.status}</span>
+							<button class="act" onclick={() => stage(r.f)}
+								>{curMode === "staged" ? "Unstage file" : "Stage file"}</button
+							>
+						</header>
+					{:else if r.kind === "binary"}
+						{#if IMAGE.test(r.f.path)}
 							<p class="dim pad">Image changed (open the file to view).</p>
 						{:else}
 							<p class="dim pad">Binary file</p>
 						{/if}
-					{/if}
-					{#each f.hunks as h, hi (h.header + hi)}
+					{:else if r.kind === "hunk"}
 						<div class="hunk-head">
-							<span class="mono">{h.header}</span>
-							{#if f.status !== "untracked"}
+							<span class="mono">{r.hunk.header}</span>
+							{#if r.f.status !== "untracked"}
 								<button
 									class="act"
-									onclick={() => stage(f, h)}
+									onclick={() => stage(r.f, r.hunk)}
 									title={curMode === "staged" ? "Unstage hunk" : "Stage hunk"}
 								>
 									{#if curMode === "staged"}<Minus size={11} />{:else}<Plus size={11} />{/if}
 								</button>
 							{/if}
 						</div>
-						{#if view === "split"}
-							<SplitTable
-								path={f.path}
-								hunk={h}
-								tokens={tokens[`${f.path}#${hi}`]}
-								{comments}
-								bind:draft
-								onsave={addComment}
-								onresolve={setResolved}
-							/>
-						{:else}
-							<DiffTable
-								path={f.path}
-								hunk={h}
-								tokens={tokens[`${f.path}#${hi}`]}
-								{comments}
-								bind:draft
-								onsave={addComment}
-								onresolve={setResolved}
-							/>
-						{/if}
-					{/each}
-				</section>
-			{:else}
-				{#if only}<p class="empty">{loading ? "Loading…" : "No changes in this file"}</p>{/if}
-			{/each}
-		</div>
+					{:else if view === "split"}
+						<SplitTable
+							path={r.f.path}
+							hunk={r.hunk}
+							tokens={r.tokens}
+							{comments}
+							bind:draft
+							onsave={addComment}
+							onresolve={setResolved}
+						/>
+					{:else}
+						<DiffTable
+							path={r.f.path}
+							hunk={r.hunk}
+							tokens={r.tokens}
+							{comments}
+							bind:draft
+							onsave={addComment}
+							onresolve={setResolved}
+						/>
+					{/if}
+				{/snippet}
+			</VirtualList>
+		{:else if only}
+			<p class="empty">{loading ? "Loading…" : "No changes in this file"}</p>
+		{/if}
 	</div>
 </div>
 
@@ -361,15 +380,24 @@
 		border-radius: 3px;
 		background: var(--ca-brand-main);
 	}
-	.files {
+	:global(.vl.files) {
 		flex: 1;
-		overflow: auto;
-		min-width: 0;
 	}
-	section header {
+	.pin {
 		position: sticky;
 		top: 0;
-		z-index: 1;
+		z-index: 2;
+		height: 0;
+		overflow: visible;
+	}
+	.pin > span {
+		display: block;
+		padding: 6px 10px;
+		background: var(--ca-surface-base);
+		border-bottom: 0.5px solid var(--ca-outline-subtle);
+		font-weight: 600;
+	}
+	header {
 		display: flex;
 		align-items: center;
 		gap: 10px;

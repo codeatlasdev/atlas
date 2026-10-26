@@ -51,7 +51,6 @@
 			lines.reset();
 			askedHistory = false;
 		}
-		const follow = transcript?.nearBottom() ?? true;
 		for (const l of lines.push(dec.decode(bytes, { stream: !replay }))) apply(chat, l);
 		chat = chat;
 		if (chat.ready && !askedHistory) {
@@ -63,7 +62,6 @@
 			tab.pendingPrompt = undefined;
 			submit(p);
 		}
-		if (follow) void transcript?.scrollDown();
 	}
 
 	onMount(() => {

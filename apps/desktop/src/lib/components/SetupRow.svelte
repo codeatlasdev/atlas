@@ -5,6 +5,7 @@
 	import { onMount } from "svelte";
 	import { api, errText, type SetupConfig, type SetupStatus } from "#lib/api.ts";
 	import { css, parseAnsi } from "#lib/ansi.ts";
+	import VirtualList from "./VirtualList.svelte";
 
 	let { id, setup }: { id: string; setup: SetupConfig } = $props();
 
@@ -17,7 +18,6 @@
 	let full = $state(false);
 	let starting = $state(false);
 	let now = $state(Date.now());
-	let pre = $state<HTMLElement | null>(null);
 
 	let st = $derived(info?.status ?? null);
 	let running = $derived(starting || st?.state === "running");
@@ -72,12 +72,6 @@
 		refresh();
 	});
 
-	// Keep the newest output in view while it streams.
-	$effect(() => {
-		void lines.length;
-		if (pre && running) pre.scrollTop = pre.scrollHeight;
-	});
-
 	// Live tail: poll the log while it runs (the stack's own start also runs setup).
 	$effect(() => {
 		if (!running) return;
@@ -94,6 +88,9 @@
 		};
 	});
 </script>
+
+{#snippet ansi(l: string)}{#each parseAnsi(l) as r, j (j)}<span style={css(r.style)}>{r.text}</span
+		>{/each}{/snippet}
 
 {#if setup.command}
 	<div class="strip" class:running class:failed data-setup={running ? "running" : (st?.state ?? "never")}>
@@ -138,13 +135,20 @@
 			{/if}
 		</div>
 		{#if failed && st?.reason}<div class="reason">{st.reason}</div>{/if}
-		{#if showLines.length}
-			<pre
-				class="out mono"
-				class:tail={!full}
-				bind:this={pre}>{#each showLines as l, i (i)}{#each parseAnsi(l) as r, j (j)}<span
-							style={css(r.style)}>{r.text}</span
-						>{/each}{"\n"}{/each}</pre>
+		{#if full && lines.length}
+			<VirtualList
+				class="setup-out mono"
+				items={lines}
+				key={(_, i) => String(i)}
+				estimate={17}
+				stickBottom={running}
+			>
+				{#snippet item(l)}
+					<div class="ln">{@render ansi(l)}</div>
+				{/snippet}
+			</VirtualList>
+		{:else if showLines.length}
+			<pre class="out mono tail">{#each showLines as l, i (i)}{@render ansi(l)}{"\n"}{/each}</pre>
 		{/if}
 	</div>
 {/if}
@@ -258,7 +262,8 @@
 		padding: 0 0 6px 21px;
 		word-break: break-word;
 	}
-	.out {
+	.out,
+	:global(.vl.setup-out) {
 		margin: 0;
 		padding: 8px 10px;
 		max-height: 260px;
@@ -273,7 +278,13 @@
 	.out.tail {
 		max-height: 130px;
 	}
-	.strip:not(.running):not(.failed) .out {
+	.ln {
+		white-space: pre-wrap;
+		word-break: break-all;
+		min-height: 1.45em;
+	}
+	.strip:not(.running):not(.failed) .out,
+	.strip:not(.running):not(.failed) :global(.vl.setup-out) {
 		margin-bottom: 8px;
 	}
 </style>

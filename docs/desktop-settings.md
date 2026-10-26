@@ -89,7 +89,7 @@ Settings → Editor.
 | `editor.trim_trailing_whitespace_on_save` | `true` | |
 | `editor.insert_final_newline_on_save` | `true` | |
 | `editor.large_file_threshold_bytes` | `2000000` | 100000–100000000; bigger files open in a light mode without language features |
-| `editor.scroll_past_end` | `true` | |
+| `editor.scroll_past_end` | `false` | |
 | `editor.smooth_scrolling` | `true` | |
 | `editor.auto_reload` | `true` | reload a file changed on disk when it has no unsaved edits |
 

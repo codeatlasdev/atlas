@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **The editor shows the text pointer, and a file ends at its last line.** The mouse pointer over code was the arrow (the app's native-feel `cursor: default` reached the editor); it is the I-beam now. Scrolling no longer runs a whole empty screen past the last line by default; turn **Scroll past the last line** on in Settings › Editor to get it back.
 - **Clicking a terminal or a browser tab after closing a menu gives it the keyboard again.** With the `+` menu (or any menu or popover) open over a terminal, a click on the terminal closed the menu, and the menu then handed focus back to its own button (or dropped it), so everything you typed went nowhere. A press on any native view (terminal, browser page, any future kind) now gives it focus, and a closing overlay's focus restore right after that press is handed back to it.
 
 ## [1.5.0-alpha.20] — 2026-10-26

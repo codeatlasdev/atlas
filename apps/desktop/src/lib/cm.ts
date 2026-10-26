@@ -192,6 +192,8 @@ const theme = EditorView.theme({
 		boxSizing: "border-box",
 		userSelect: "text",
 		"-webkit-user-select": "text",
+		// The app's `cursor: default` (native feel) is inherited; text you can type in shows the I-beam.
+		cursor: "text",
 	},
 	"&.cm-focused": { outline: "none" },
 	".cm-cursor, .cm-dropCursor": {

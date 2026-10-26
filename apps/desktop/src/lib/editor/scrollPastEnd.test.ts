@@ -44,3 +44,10 @@ test("the extension pads the content bottom with a finite px value and never the
 	view.destroy();
 	parent.remove();
 });
+
+// Incident (2026-10-26, screenshot): a 54-line file showed a whole screen of empty space below its last line, which read
+// as an endless editor. The document ends at its last line unless the user turns "Scroll past the last line" on.
+test("scrolling past the last line is off by default", async () => {
+	const { DEFAULT_PREFS } = await import("#lib/prefs.ts");
+	expect(DEFAULT_PREFS.editor.scroll_past_end).toBe(false);
+});

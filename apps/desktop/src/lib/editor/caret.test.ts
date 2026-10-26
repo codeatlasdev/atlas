@@ -66,3 +66,12 @@ test("nothing in the theme hides the drawn cursor layer or its blink", () => {
 	view.destroy();
 	parent.remove();
 });
+
+// Incident (2026-10-26, screenshot of a .mjs file): the mouse pointer over the code was the arrow, not the I-beam. The
+// app sets `cursor: default` on html/body (native feel) and the editor's text never set it back.
+test("the mouse pointer over the editable text is the I-beam", () => {
+	const { view, parent } = mount();
+	expect(rule(css(), ".cm-content")).toMatch(/(^|;|\s)cursor:\s*text/);
+	view.destroy();
+	parent.remove();
+});

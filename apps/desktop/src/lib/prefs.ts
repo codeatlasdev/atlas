@@ -120,7 +120,7 @@ export const DEFAULT_PREFS: Prefs = {
 		trim_trailing_whitespace_on_save: true,
 		insert_final_newline_on_save: true,
 		large_file_threshold_bytes: 2_000_000,
-		scroll_past_end: true,
+		scroll_past_end: false,
 		smooth_scrolling: true,
 		auto_reload: true,
 	},

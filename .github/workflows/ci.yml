@@ -35,10 +35,30 @@ jobs:
       pull-requests: read
     outputs:
       tested: ${{ steps.tested.outputs.tested }}
+      rust: ${{ steps.paths.outputs.rust }}
+      front: ${{ steps.paths.outputs.front }}
+      mobile: ${{ steps.paths.outputs.mobile }}
+      site: ${{ steps.paths.outputs.site }}
+      relay: ${{ steps.paths.outputs.relay }}
+      workflows: ${{ steps.paths.outputs.workflows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      # Which areas the change touches (scripts/ci-paths.sh): a docs-only commit skips the Rust, mobile and
+      # frontend jobs. Compared with the pull request base, or the commit this push replaced.
+      - name: Changed areas
+        id: paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            git diff --name-only "$BASE" HEAD | scripts/ci-paths.sh
+          else
+            scripts/ci-paths.sh </dev/null
+          fi | tee -a "$GITHUB_OUTPUT"
 
       - name: Already tested in its pull request?
         id: tested
@@ -52,6 +72,7 @@ jobs:
   rust-macos:
     name: Rust (macOS)
     needs: plan
+    if: ${{ needs.plan.outputs.rust == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -67,6 +88,7 @@ jobs:
   rust-linux:
     name: Rust (Linux)
     needs: plan
+    if: ${{ needs.plan.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -89,7 +111,7 @@ jobs:
   rust-windows:
     name: Rust (Windows, full workspace)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -104,7 +126,7 @@ jobs:
   frontend:
     name: Desktop frontend + skills
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -126,7 +148,7 @@ jobs:
   mobile:
     name: Mobile app
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.mobile == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -149,7 +171,7 @@ jobs:
   site:
     name: Site build
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.site == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -179,7 +201,7 @@ jobs:
   duplication:
     name: Duplication (jscpd, <= 1.5%)
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && (needs.plan.outputs.rust == 'true' || needs.plan.outputs.front == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -199,7 +221,7 @@ jobs:
   deny:
     name: cargo-deny
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -217,7 +239,7 @@ jobs:
   workflows:
     name: Workflow lint
     needs: plan
-    if: ${{ needs.plan.outputs.tested != 'true' }}
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.workflows == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -254,9 +276,11 @@ jobs:
       - name: Every job passed
         env:
           NEEDS: ${{ toJson(needs) }}
-          TESTED: ${{ needs.plan.outputs.tested }}
         run: |
           jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
-          jq -e --arg tested "$TESTED" 'to_entries | all(
+          # A job may be skipped only when plan decided so: the tree was already tested, or the change does not
+          # touch its area. Plan itself must succeed, and nothing may fail or be cancelled.
+          jq -e 'to_entries | all(
             .value.result == "success"
-            or (.value.result == "skipped" and .key != "plan" and $tested == "true"))' <<<"$NEEDS" >/dev/null
+            or (.value.result == "skipped" and .key != "plan"))' <<<"$NEEDS" >/dev/null
+          [ "$(jq -r .plan.result <<<"$NEEDS")" = success ]

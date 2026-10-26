@@ -191,7 +191,7 @@ export const SURFACES: Surface[] = [
 			await d.sleep(1800);
 			await d.eval(`${A}.discovery.close(); return 1`);
 			await d.sleep(1200);
-			await d.eval(`${A}.confirmDialog({ title: "Sweep", message: "Confirm?" }); return 1`);
+			await d.eval(`${A}.confirmDialog("Sweep", { description: "Confirm?" }); return 1`);
 			await d.sleep(1800);
 			await d.eval(key("escape"));
 			await d.sleep(1200);

@@ -7,6 +7,7 @@
 	import { api, errText, type SetupConfig, type SetupStatus } from "#lib/api.ts";
 	import { css, parseAnsi } from "#lib/ansi.ts";
 	import VirtualList from "./VirtualList.svelte";
+	import { guarded } from "./tooltipGuard.ts";
 
 	let { id, setup }: { id: string; setup: SetupConfig } = $props();
 
@@ -103,7 +104,7 @@
 			<code class="cmd mono" title={setup.command}>{setup.command}</code>
 			<Tooltip content="{schedule} {origin}" side="bottom" delay={200}>
 				{#snippet triggerChild(props)}
-					<button {...props} class="info" aria-label="When does setup run? {schedule}">
+					<button {...guarded(props)} class="info" aria-label="When does setup run? {schedule}">
 						<Info size={12} />
 					</button>
 				{/snippet}

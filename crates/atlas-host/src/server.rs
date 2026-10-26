@@ -560,6 +560,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     }
     let _ = tx.force(json!({"ok": true, "data": hub.info()}).to_string());
     hub.subscribers.lock().insert(conn_id, tx.clone());
+    let mut shutdown = false;
 
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
     let mut attached: Vec<Arc<Session>> = Vec::new();
@@ -633,7 +634,9 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
             }
             HostCmd::Shutdown {} => {
                 let _ = tx.force(protocol::reply(id, Ok(json!({}))));
-                hub.stop.notify_one();
+                // The daemon stops only once this connection's writer has flushed the reply (below): woken here,
+                // the accept loop could end the process first and the client saw "hostd disconnected".
+                shutdown = true;
                 break;
             }
             // Input to a pty must reach it in request order: answered inline.
@@ -659,6 +662,9 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     crate::lsp::connection_closed(&hub, conn_id).await;
     drop(tx);
     let _ = writer.await;
+    if shutdown {
+        hub.stop.notify_one();
+    }
 }
 
 /// What to do with a line over `MAX_LINE_BYTES`.

@@ -1578,3 +1578,19 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     );
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
 }
+
+// Incident (CI 45b9bd74, Linux): `atlas hostd --lab --stop` failed with "hostd disconnected". The daemon queued the
+// shutdown reply and woke the accept loop, which ended the process before the connection's writer flushed it. A
+// shutdown must always be answered before the daemon exits. Many rounds: the race is a timing window.
+#[tokio::test]
+async fn shutdown_is_always_answered_before_the_daemon_exits() {
+    let mut lost = 0;
+    for _ in 0..30 {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_d, c) = start(tmp.path()).await;
+        if c.call("shutdown", json!({})).await.is_err() {
+            lost += 1;
+        }
+    }
+    assert_eq!(lost, 0, "{lost}/30 shutdown replies lost");
+}

@@ -46,8 +46,9 @@ pub fn host_from_target(target: &str) -> &str {
 }
 
 /// The systemd unit file content (pure — testable without SSH).
-pub fn systemd_unit() -> &'static str {
-    "[Unit]\n\
+pub fn systemd_unit() -> String {
+    format!(
+        "[Unit]\n\
 Description=Atlas Bot (atlas hostd)\n\
 After=network-online.target\n\
 Wants=network-online.target\n\
@@ -55,6 +56,7 @@ Wants=network-online.target\n\
 User=atlas-bot\n\
 Environment=ATLAS_HOSTD_IDLE_SECS=never\n\
 Environment=ATLAS_BOT_HOST=1\n\
+Environment=PATH={h}/.bun/bin:{h}/.local/bin:{h}/.opencode/bin:{h}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin\n\
 ExecStart=/usr/local/lib/atlas-bot/atlas hostd\n\
 Restart=always\n\
 RestartSec=5\n\
@@ -63,7 +65,9 @@ ProtectSystem=strict\n\
 ReadWritePaths=/var/lib/atlas-bot\n\
 PrivateTmp=true\n\
 [Install]\n\
-WantedBy=multi-user.target\n"
+WantedBy=multi-user.target\n",
+        h = BOT_HOME
+    )
 }
 
 fn step(msg: &str) {
@@ -411,5 +415,14 @@ or run the install from a terminal: atlas bot install {}",
         // The only password-related thing is the boolean flag, not a value
         assert!(!dbg.contains("hunter2"), "no password value in debug");
         assert!(dbg.contains("sudo_password_stdin: true"));
+    }
+
+    #[test]
+    fn systemd_unit_path_contains_agent_bins() {
+        let unit = systemd_unit();
+        assert!(unit.contains(".bun/bin"), "missing .bun/bin in PATH");
+        assert!(unit.contains(".local/bin"), "missing .local/bin in PATH");
+        assert!(unit.contains(".opencode/bin"), "missing .opencode/bin in PATH");
+        assert!(unit.contains(".npm-global/bin"), "missing .npm-global/bin in PATH");
     }
 }

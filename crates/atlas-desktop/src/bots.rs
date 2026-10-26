@@ -295,6 +295,112 @@ pub async fn ssh_authorize_key(target: String, port: Option<u16>, password: Stri
     }
 }
 
+// ─── per-agent ship helpers ───────────────────────────────────────────────────
+
+/// Per-agent installation and authentication status on a bot ship.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentShipStatus {
+    pub installed: bool,
+    pub signed_in: bool,
+}
+
+/// Check whether an agent is installed and signed in on a bot ship.
+/// `host_key` is the full key, e.g. `"ssh:atlas-bot@136.148.72.141"`.
+/// The SSH target is derived by stripping the `"ssh:"` prefix.
+#[tauri::command]
+pub async fn bot_agent_check(host_key: String, agent_id: String) -> Result<AgentShipStatus, String> {
+    let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
+    let script = check_script(&agent_id).ok_or_else(|| format!("unknown agent {agent_id:?}"))?;
+    let out = tokio::process::Command::new("ssh")
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15"])
+        .arg(ssh_target)
+        .arg(&script)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .map_err(|e| format!("ssh: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut parts = stdout.trim().splitn(2, '\t');
+    let installed = parts.next().unwrap_or("0") == "1";
+    let signed_in = parts.next().unwrap_or("0") == "1";
+    Ok(AgentShipStatus { installed, signed_in })
+}
+
+/// Install an agent on a bot ship, streaming each line as `bot://install-line` event.
+/// `host_key` is the full key, e.g. `"ssh:atlas-bot@136.148.72.141"`.
+#[tauri::command]
+pub async fn bot_agent_install(app: AppHandle, host_key: String, agent_id: String) -> Result<(), String> {
+    let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
+    let script = install_script(&agent_id).ok_or_else(|| format!("no installer for {agent_id:?}"))?;
+    // Wrap in an interactive-login shell so ~/.bashrc / installers that source it work.
+    let full_cmd = format!("bash -lc {}", shq(script));
+    let mut child = tokio::process::Command::new("ssh")
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15"])
+        .arg(ssh_target)
+        .arg(&full_cmd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("ssh: {e}"))?;
+    let stdout = child.stdout.take().expect("piped");
+    let stderr = child.stderr.take().expect("piped");
+    let app2 = app.clone();
+    tokio::spawn(pump_install(stdout, app2, false));
+    tokio::spawn(pump_install(stderr, app.clone(), true));
+    let status = child.wait().await.map_err(|e| format!("ssh wait: {e}"))?;
+    if !status.success() {
+        return Err(format!("agent install exited {}", status.code().unwrap_or(-1)));
+    }
+    Ok(())
+}
+
+/// Shell script that checks install+auth for `agent_id`. Returns tab-separated "0/1\t0/1\n".
+fn check_script(agent_id: &str) -> Option<String> {
+    let (bin, auth_check) = match agent_id {
+        "omp" => ("omp",
+            r#"omp auth export 2>/dev/null | grep -q '"providerType"' && signed_in=1 || true"#),
+        "claude" => ("claude",
+            r#"claude auth status >/dev/null 2>&1 && signed_in=1 || true"#),
+        "codex" => ("codex",
+            r#"codex login status >/dev/null 2>&1 && signed_in=1 || true"#),
+        "opencode" => ("opencode",
+            r#"_oc=$(opencode auth list 2>/dev/null); [ -n "$_oc" ] && ! echo "$_oc" | grep -q '0 credentials' && signed_in=1 || true"#),
+        _ => return None,
+    };
+    Some(format!(
+        concat!(
+            r#"export PATH="$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH"; "#,
+            r#"bin=0; command -v {bin} >/dev/null 2>&1 && bin=1; "#,
+            r#"signed_in=0; "#,
+            r#"if [ "$bin" = "1" ]; then {auth_check}; "#,
+            r#"  ef="$HOME/.atlas/agent-env/{id}.env"; "#,
+            r#"  [ "$signed_in" = "0" ] && [ -f "$ef" ] && grep -qE '^[A-Z_]+=.' "$ef" 2>/dev/null && signed_in=1 || true; "#,
+            r#"fi; "#,
+            r#"printf '%s\t%s\n' "$bin" "$signed_in""#
+        ),
+        bin = bin,
+        auth_check = auth_check,
+        id = agent_id,
+    ))
+}
+
+fn install_script(agent_id: &str) -> Option<&'static str> {
+    match agent_id {
+        "omp" => Some("curl -fsSL https://omp.sh/install | sh"),
+        "claude" => Some("curl -fsSL https://claude.ai/install.sh | bash"),
+        "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
+        "codex" => Some(r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#),
+        _ => None,
+    }
+}
+
+/// Shell-quote a string for use as a single argument.
+fn shq(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -327,5 +433,16 @@ mod tests {
                 name: "Local VM".into(),
             },
         ]);
+    }
+
+    #[test]
+    fn check_script_covers_all_agents() {
+        for id in ["omp", "claude", "codex", "opencode"] {
+            let s = check_script(id).unwrap();
+            assert!(s.contains(".bun/bin"), "{id}: missing .bun/bin in PATH");
+            assert!(s.contains(".local/bin"), "{id}: missing .local/bin in PATH");
+            assert!(s.contains(id), "{id}: missing bin name in script");
+        }
+        assert!(check_script("unknown").is_none());
     }
 }

@@ -168,9 +168,9 @@ impl AtlasCommand for LogsArgs {
 fn agent_install_hint(id: &str) -> Option<&'static str> {
     match id {
         "omp" => Some("curl -fsSL https://omp.sh/install | sh"),
-        "claude" => Some("npm install -g @anthropic-ai/claude-code"),
-        "codex" => Some("npm install -g @openai/codex"),
-        "opencode" => Some("curl -fsSL https://opencode.ai/install | sh"),
+        "claude" => Some("curl -fsSL https://claude.ai/install.sh | bash"),
+        "codex" => Some(r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#),
+        "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
         _ => None,
     }
 }

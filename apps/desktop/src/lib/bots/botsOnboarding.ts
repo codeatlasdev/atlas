@@ -59,11 +59,6 @@ export function shouldShow(seen: boolean, hasBots: boolean): boolean {
 	return !seen && !hasBots;
 }
 
-/** Whether a given engine integration is ready (installed). */
-export function isEngineReady(agent: { id: string; label: string; installed: boolean }): boolean {
-	return agent.installed;
-}
-
 /** The informational steps (labeled "N of 2"). */
 export const INFO_STEPS: OnboardingStep[] = ["intro", "how"];
 

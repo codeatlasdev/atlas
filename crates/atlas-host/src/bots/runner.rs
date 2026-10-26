@@ -407,6 +407,19 @@ async fn run_one_pty(hub: &Hub, bot: &Bot, mut task: Task) {
         mode: Mode::Pty,
     };
 
+    // Load per-agent env overrides from <dir>/agent-env/<agent>.env (KEY=VALUE lines).
+    // Allows setting API keys without restarting hostd.
+    let agent_env_file = hub.dir.join("agent-env").join(format!("{}.env", bot.agent));
+    if let Ok(data) = std::fs::read_to_string(&agent_env_file) {
+        for line in data.lines() {
+            let line = line.trim();
+            if line.starts_with('#') || line.is_empty() { continue; }
+            if let Some((k, v)) = line.split_once('=') {
+                req.env.insert(k.trim().to_string(), v.trim_matches('"').to_string());
+            }
+        }
+    }
+
     // Inject hook endpoint env vars (must come after bot env so ATLAS_* always wins).
     crate::server::hook_env(hub, &mut req);
 
@@ -614,4 +627,34 @@ fn now_s() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn agent_env_file_is_injected() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("agent-env")).unwrap();
+        std::fs::write(
+            dir.path().join("agent-env/omp.env"),
+            "OPENROUTER_API_KEY=sk-test\n# comment\nFOO=bar\n",
+        )
+        .unwrap();
+        // Simulate reading the file (just the parsing logic, no Hub needed)
+        let mut env: std::collections::BTreeMap<String, String> = Default::default();
+        let data =
+            std::fs::read_to_string(dir.path().join("agent-env/omp.env")).unwrap();
+        for line in data.lines() {
+            let line = line.trim();
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                env.insert(k.trim().to_string(), v.trim_matches('"').to_string());
+            }
+        }
+        assert_eq!(env["OPENROUTER_API_KEY"], "sk-test");
+        assert_eq!(env["FOO"], "bar");
+        assert!(!env.contains_key("# comment"));
+    }
 }

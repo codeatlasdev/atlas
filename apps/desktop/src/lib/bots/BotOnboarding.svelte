@@ -5,27 +5,25 @@
 	import { SEEN_KEY } from "#lib/bots/crewOnboarding.svelte.ts";
 	import BotArtHow from "#lib/bots/BotArtHow.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
-	import BotListRow from "#lib/bots/BotListRow.svelte";
 	import ShipFlag from "#lib/bots/ShipFlag.svelte";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
-	import { randomLook, normalizeLook } from "#lib/bots/look.ts";
+	import { randomLook } from "#lib/bots/look.ts";
 	import { reducedMotion } from "#lib/bots/motion.ts";
 	import { agentLogo } from "#lib/agentLogos.ts";
 	import {
 		INITIAL_STEP,
-		INFO_STEPS,
 		nextStep,
 		prevStep,
 		infoStepIndex,
 		stepProgress,
-		isEngineReady,
 		type OnboardingStep,
 	} from "#lib/bots/botsOnboarding.ts";
 	import { Copy, Check, ChevronLeft } from "@lucide/svelte";
 	import { toast } from "@codeatlasdev/ui";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
+	import { b64decode } from "#lib/b64.ts";
 	import { parseInstallLine, INSTALL_STEPS, type InstallPhase } from "#lib/bots/installSteps.ts";
 	import { botTarget, parseSSHTarget } from "#lib/bots/sshTarget.ts";
 	import { errText } from "#lib/api.ts";
@@ -77,6 +75,27 @@
 	let authError = $state("");
 
 	// ─── engine step ──────────────────────────────────────────────────────────
+	type EnginePhase =
+		| 'idle'
+		| 'checking'
+		| 'not_installed'
+		| 'installing'
+		| 'install_error'
+		| 'needs_signin'
+		| 'ready';
+
+	interface EngineStatus { phase: EnginePhase; error?: string; log?: string }
+
+	let engineStatus = $state<Record<string, EngineStatus>>({});
+	let installLog = $state(""); // accumulated install stdout/stderr
+	let signinActive = $state<string | null>(null); // agent being signed in
+	let signinPtyId = $state<string | null>(null);
+	let signinOutput = $state(""); // accumulated PTY output (ANSI stripped)
+	let signinInput = $state(""); // current text field value
+	let apiKeyValue = $state("");
+	let apiKeyApplying = $state(false);
+	let apiKeyError = $state("");
+	let apiKeyMode = $state(false); // true = show key field
 	let selectedEngine = $state("");
 
 	// ─── ready step ───────────────────────────────────────────────────────────
@@ -88,7 +107,16 @@
 		agents.list.filter((a) => ["claude", "opencode", "codex", "omp"].includes(a.id)),
 	);
 
-	const signInHost = $derived(sshTarget.trim() || "user@host");
+	const engineReady = $derived(
+		selectedEngine !== "" && engineStatus[selectedEngine]?.phase === "ready"
+	);
+
+	const shipSshTarget = $derived(
+		launchedKey ? launchedKey.replace(/^ssh:/, "") : ""
+	);
+
+	const installingAny = $derived(Object.values(engineStatus).some(s => s.phase === 'installing'));
+
 
 	const targetValid = $derived(
 		sshTarget.trim() === "" ? false : parseSSHTarget(`${sshTarget.trim()}:${sshPort}`).ok
@@ -111,12 +139,24 @@
 		look: previewLook,
 	});
 
-	// ─── engine auth hints ────────────────────────────────────────────────────
-	const ENGINE_HINTS: Record<string, string> = {
-		claude: "Your Claude subscription",
-		codex: "Your ChatGPT subscription",
-		omp: "API key or OpenRouter",
-		opencode: "Open source",
+	// ─── engine auth constants ────────────────────────────────────────────────
+	const AGENT_AUTH_TYPE: Record<string, 'apikey' | 'both'> = {
+		omp:      'apikey',
+		claude:   'both',
+		codex:    'both',
+		opencode: 'both',
+	};
+	const AGENT_KEY_LABEL: Record<string, string> = {
+		omp:      'OpenRouter or OpenAI key',
+		claude:   'Anthropic API key (optional)',
+		codex:    'OpenAI API key',
+		opencode: 'Provider API key',
+	};
+	const AGENT_KEY_ENV: Record<string, string> = {
+		omp:      'OPENROUTER_API_KEY',
+		claude:   'ANTHROPIC_API_KEY',
+		codex:    'OPENAI_API_KEY',
+		opencode: 'OPENAI_API_KEY',
 	};
 
 	// ─── per-step content ─────────────────────────────────────────────────────
@@ -335,9 +375,200 @@
 		toast.success("Copied");
 	}
 
-	async function copySignIn(agentId: string) {
-		await navigator.clipboard.writeText(`atlas bot login ${signInHost} ${agentId}`).catch(() => {});
-		toast.success("Copied");
+	// ─── engine step: check agents on ship ───────────────────────────────────
+	$effect(() => {
+		if (step !== 'engine' || !launchedKey) return;
+		for (const agent of integrations) {
+			const cur = engineStatus[agent.id];
+			if (!cur || cur.phase === 'idle') {
+				engineStatus[agent.id] = { phase: 'checking' };
+				invoke<{ installed: boolean; signed_in: boolean }>('bot_agent_check', {
+					hostKey: launchedKey,
+					agentId: agent.id,
+				}).then((r) => {
+					engineStatus[agent.id] = {
+						phase: r.installed ? (r.signed_in ? 'ready' : 'needs_signin') : 'not_installed',
+					};
+				}).catch((e) => {
+					engineStatus[agent.id] = { phase: 'not_installed', error: errText(e) };
+				});
+			}
+		}
+	});
+
+	async function installEngine(agentId: string) {
+		engineStatus[agentId] = { phase: 'installing' };
+		installLog = '';
+		const unlisten = await listen<{ line: string; is_err: boolean }>('bot://install-line', (e) => {
+			installLog += (installLog ? '\n' : '') + e.payload.line;
+		});
+		try {
+			await invoke('bot_agent_install', { hostKey: launchedKey, agentId });
+			const r = await invoke<{ installed: boolean; signed_in: boolean }>('bot_agent_check', {
+				hostKey: launchedKey,
+				agentId,
+			});
+			engineStatus[agentId] = {
+				phase: r.installed ? (r.signed_in ? 'ready' : 'needs_signin') : 'install_error',
+				error: r.installed ? undefined : 'Install finished but binary not found',
+			};
+		} catch (e) {
+			engineStatus[agentId] = { phase: 'install_error', error: errText(e) };
+		} finally {
+			unlisten();
+		}
+	}
+
+	async function openSignInTerminal(agentId: string) {
+		if (!shipSshTarget || signinPtyId) return;
+		signinActive = agentId;
+		apiKeyMode = false;
+		signinOutput = '';
+		signinInput = '';
+		signinPtyId = null;
+		const authCmd: Record<string, string> = {
+			claude: 'claude',
+			codex: 'codex',
+			opencode: 'opencode',
+			omp: 'omp',
+		};
+		const cmd = authCmd[agentId] ?? agentId;
+		try {
+			const r = await invoke<{ pty: string }>('host_call', {
+				cmd: 'pty_create',
+				args: { argv: ['ssh', '-t', shipSshTarget, cmd], cwd: '/' },
+			});
+			signinPtyId = r.pty;
+			await invoke('host_call', { cmd: 'pty_attach', args: { pty: r.pty } });
+		} catch (e) {
+			signinOutput = errText(e);
+		}
+	}
+
+	function stripAnsi(s: string): string {
+		return s.replace(/\x1b(?:\[[\d;]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\))/g, '')
+		        .replace(/[^\n]*\r([^\n])/g, '$1');
+	}
+
+	$effect(() => {
+		if (!signinPtyId) return;
+		const id = signinPtyId;
+		let off: (() => void) | null = null;
+		listen<{ data: string; replay?: boolean }>(`pty://${id}`, (e) => {
+			const text = b64decode(e.payload.data);
+			signinOutput += stripAnsi(text);
+		}).then(fn => { off = fn; });
+		const exitOff = listen<{ ev: string; pty?: string }>('host://event', (e) => {
+			if (e.payload.ev === 'pty_exit' && e.payload.pty === id) {
+				void recheckSignin();
+			}
+		});
+		return () => {
+			off?.();
+			exitOff.then(fn => fn());
+		};
+	});
+
+	async function recheckSignin() {
+		if (!signinActive || !launchedKey) return;
+		const r = await invoke<{ installed: boolean; signed_in: boolean }>('bot_agent_check', {
+			hostKey: launchedKey,
+			agentId: signinActive,
+		}).catch(() => ({ installed: true, signed_in: false }));
+		if (r.signed_in) {
+			engineStatus[signinActive] = { phase: 'ready' };
+			signinPtyId = null;
+			signinActive = null;
+		}
+	}
+
+	async function sendSigninKey(e: KeyboardEvent) {
+		if (!signinPtyId) return;
+		if (e.key === 'Enter') {
+			await invoke('host_call', { cmd: 'pty_write', args: { pty: signinPtyId, data: btoa(signinInput + '\r') } });
+			signinInput = '';
+		}
+	}
+
+	async function applyApiKey() {
+		if (!apiKeyValue.trim() || !signinActive || !launchedKey) return;
+		apiKeyApplying = true;
+		apiKeyError = '';
+		const agentId = signinActive;
+		const envVar = AGENT_KEY_ENV[agentId] ?? 'API_KEY';
+		const content = `${envVar}=${apiKeyValue.trim()}\n`;
+		const dir = '/var/lib/atlas-bot/.atlas/agent-env';
+		try {
+			await invoke('host_call', { cmd: 'fs_mkdir', args: { host: launchedKey, path: dir } });
+			const { b64encode } = await import('#lib/b64.ts');
+			await invoke('host_call', { cmd: 'fs_write', args: { host: launchedKey, path: `${dir}/${agentId}.env`, data: b64encode(content) } });
+			if (agentId === 'codex') {
+				await invoke('host_call', { cmd: 'exec', args: {
+					host: launchedKey, cwd: '/',
+					argv: ['sh', '-c', `export PATH="$HOME/.npm-global/bin:$PATH"; echo "${apiKeyValue.trim()}" | codex login --with-api-key`],
+					timeout_ms: 30000,
+				}});
+			}
+			apiKeyValue = '';
+			const r = await invoke<{ installed: boolean; signed_in: boolean }>('bot_agent_check', {
+				hostKey: launchedKey,
+				agentId,
+			});
+			if (r.signed_in) {
+				engineStatus[agentId] = { phase: 'ready' };
+				signinActive = null;
+				apiKeyMode = false;
+			} else {
+				apiKeyError = 'Key set but agent does not recognise it yet. Try the interactive flow.';
+			}
+		} catch (e) {
+			apiKeyError = errText(e);
+		} finally {
+			apiKeyApplying = false;
+		}
+	}
+
+	function handleEngineCardClick(agentId: string) {
+		const status = engineStatus[agentId];
+		if (!status) return;
+		switch (status.phase) {
+			case 'not_installed':
+			case 'install_error':
+				void installEngine(agentId);
+				break;
+			case 'needs_signin':
+				signinActive = agentId;
+				signinPtyId = null;
+				signinOutput = '';
+				signinInput = '';
+				apiKeyValue = '';
+				apiKeyError = '';
+				if (AGENT_AUTH_TYPE[agentId] === 'apikey') {
+					apiKeyMode = true;
+				} else {
+					apiKeyMode = false;
+					void openSignInTerminal(agentId);
+				}
+				break;
+			case 'ready':
+				selectEngine(agentId);
+				break;
+			case 'checking':
+			case 'installing':
+				break;
+		}
+	}
+
+	function engineStatusLabel(phase: EnginePhase): string {
+		switch (phase) {
+			case 'idle': return 'Checking…';
+			case 'checking': return 'Checking…';
+			case 'not_installed': return 'Install';
+			case 'installing': return 'Installing…';
+			case 'install_error': return 'Retry';
+			case 'needs_signin': return 'Sign in';
+			case 'ready': return 'Ready';
+		}
 	}
 
 	// ─── engine / ready step actions ─────────────────────────────────────────
@@ -538,17 +769,19 @@
 				{/if}
 
 					<!-- ── Engine step form ───────────────────────────────────── -->
-					{#if step === "engine"}
+					{#if step === 'engine'}
 						<div class="engine-list" style:--stagger={3}>
 							{#each integrations as agent (agent.id)}
-								{@const ready = isEngineReady(agent)}
+								{@const status = engineStatus[agent.id] ?? { phase: 'idle' }}
 								{@const logo = agentLogo(agent.id)}
+								{@const isSel = selectedEngine === agent.id}
+								{@const isActive = signinActive === agent.id}
 								<button
 									class="engine-card"
-									class:selected={selectedEngine === agent.id}
-									onclick={() => ready && selectEngine(agent.id)}
-									disabled={!ready}
-									aria-pressed={selectedEngine === agent.id}
+									class:selected={isSel || isActive}
+									onclick={() => handleEngineCardClick(agent.id)}
+									aria-pressed={isSel}
+									aria-label="{agent.label} – {engineStatusLabel(status.phase)}"
 								>
 									<div class="engine-logo">
 										{#if logo}
@@ -559,34 +792,27 @@
 									</div>
 									<div class="engine-info">
 										<span class="engine-name">{agent.label}</span>
-										<span class="engine-auth">{ENGINE_HINTS[agent.id] ?? "Your subscription"}</span>
+										{#if status.phase === 'install_error'}
+											<span class="engine-auth err-text">{status.error?.slice(0,60)}</span>
+										{:else}
+											<span class="engine-auth">{AGENT_KEY_LABEL[agent.id] ?? ''}</span>
+										{/if}
 									</div>
-									{#if ready}
-										<span class="engine-status ready">Ready</span>
-									{:else}
-										<span
-											class="engine-status sign-in"
-											role="button"
-											tabindex={ready ? -1 : 0}
-											onclick={(e) => {
-												e.stopPropagation();
-												copySignIn(agent.id);
-											}}
-											onkeydown={(e) => e.key === "Enter" && (e.stopPropagation(), copySignIn(agent.id))}
-											aria-label="Copy sign-in command for {agent.label}"
-										>
-											<Copy size={10} />
-											<span>atlas bot login {signInHost} {agent.id}</span>
-										</span>
-									{/if}
+									<span
+										class="engine-status"
+										class:badge-ready={status.phase === 'ready'}
+										class:badge-action={status.phase === 'not_installed' || status.phase === 'needs_signin'}
+										class:badge-busy={status.phase === 'installing' || status.phase === 'checking' || status.phase === 'idle'}
+										class:badge-error={status.phase === 'install_error'}
+										aria-hidden="true"
+									>
+										{#if status.phase === 'installing' || status.phase === 'checking' || status.phase === 'idle'}
+											<span class="spin-dot"></span>
+										{/if}
+										{engineStatusLabel(status.phase)}
+									</span>
 								</button>
 							{/each}
-
-							{#if integrations.length === 0}
-								<p class="engine-empty">
-									No agents found. Install one with <code>atlas setup</code>.
-								</p>
-							{/if}
 						</div>
 					{/if}
 
@@ -643,12 +869,15 @@
 								{/if}
 							{/if}
 						</div>
-						{:else if step === "engine"}
-							<div class="action-group">
-								<button class="text-link" onclick={finish}>Skip for now</button>
-							</div>
+					{:else if step === 'engine'}
+						<div class="action-group">
+							{#if signinActive}
+								<button class="primary-btn" onclick={() => { signinActive = null; signinPtyId = null; apiKeyMode = false; }}>Back</button>
+							{/if}
+							<button class="text-link" onclick={finish}>Skip for now</button>
+						</div>
 						{:else if step === "ready"}
-							<button class="primary-btn" onclick={openChat} disabled={creatingBot}>
+							<button class="primary-btn" onclick={openChat} disabled={creatingBot || !engineReady}>
 								{creatingBot ? "Opening…" : "Open chat"}
 							</button>
 							<button class="back-btn" onclick={back}>
@@ -701,26 +930,77 @@
 								</div>
 							{/each}
 						</div>
-					{:else if step === "engine"}
-						<!-- Engine logo showcase -->
-						<div class="engine-art">
-							{#each integrations as agent (agent.id)}
-								{@const logo = agentLogo(agent.id)}
-								{@const sel = selectedEngine === agent.id}
-								<div class="ea-card" class:sel>
-									<div class="ea-logo">
-										{#if logo}
-											{@html logo.dark ?? logo.light}
-										{:else}
-											<span class="ea-fallback">{agent.label[0]}</span>
+					{:else if step === 'engine'}
+						{#if signinActive && (signinPtyId || apiKeyMode)}
+							<div class="signin-panel">
+								{#if apiKeyMode}
+									<div class="signin-key-form">
+										<p class="signin-title">Paste your {AGENT_KEY_LABEL[signinActive] ?? 'API key'}</p>
+										<p class="signin-hint">It's stored on your ship only, never sent anywhere else.</p>
+										<input
+											class="ssh-input"
+											type="password"
+											placeholder="sk-…"
+											bind:value={apiKeyValue}
+											onkeydown={(e) => e.key === 'Enter' && applyApiKey()}
+											aria-label="API key"
+										/>
+										{#if apiKeyError}<p class="field-error">{apiKeyError}</p>{/if}
+										<button class="primary-btn" onclick={applyApiKey} disabled={apiKeyApplying || !apiKeyValue.trim()}>
+											{apiKeyApplying ? 'Applying…' : 'Apply'}
+										</button>
+									</div>
+								{:else}
+									<div class="signin-terminal">
+										<div class="signin-term-output" aria-live="polite" aria-label="Terminal output">
+											<pre>{signinOutput || 'Connecting…'}</pre>
+										</div>
+										<div class="signin-term-input-row">
+											<input
+												class="signin-term-input"
+												type="text"
+												placeholder="Type here and press Enter…"
+												bind:value={signinInput}
+												onkeydown={sendSigninKey}
+												aria-label="Terminal input"
+											/>
+										</div>
+									</div>
+								{/if}
+								{#if AGENT_AUTH_TYPE[signinActive] === 'both'}
+									<button class="text-link" onclick={() => { apiKeyMode = !apiKeyMode; }}
+										style="font-size:12px;margin-top:8px">
+										{apiKeyMode ? 'Use interactive sign-in instead' : 'Paste API key instead'}
+									</button>
+								{/if}
+								<button class="text-link" onclick={recheckSignin} style="font-size:12px">
+									Check again
+								</button>
+							</div>
+						{:else if installingAny}
+							<div class="engine-install-log">
+								<pre>{installLog || 'Starting…'}</pre>
+							</div>
+						{:else}
+							<div class="engine-art">
+								{#each integrations as agent (agent.id)}
+									{@const logo = agentLogo(agent.id)}
+									{@const sel = selectedEngine === agent.id}
+									<div class="ea-card" class:sel>
+										<div class="ea-logo">
+											{#if logo}
+												{@html logo.dark ?? logo.light}
+											{:else}
+												<span class="ea-fallback">{agent.label[0]}</span>
+											{/if}
+										</div>
+										{#if sel}
+											<div class="ea-check"><Check size={14} /></div>
 										{/if}
 									</div>
-									{#if sel}
-										<div class="ea-check"><Check size={14} /></div>
-									{/if}
-								</div>
-							{/each}
-						</div>
+								{/each}
+							</div>
+						{/if}
 					{:else if step === "ready"}
 						<!-- Hero bot card: large face + name -->
 						{@const readyLogo = agentLogo(selectedEngine || mockBot.agent)}
@@ -1344,40 +1624,15 @@
 		cursor: default;
 	}
 
-	.engine-status.ready {
-		background: rgba(34, 197, 94, 0.12);
-		color: var(--ca-semantic-success);
-	}
+	/* ─── Engine status badges ──────────────────────────────────── */
+	.engine-status.badge-ready { background: rgba(34,197,94,0.12); color: var(--ca-semantic-success); }
+	.engine-status.badge-action { background: rgba(79,142,247,0.12); color: var(--ca-accent, #4f8ef7); cursor: pointer; }
+	.engine-status.badge-busy { background: var(--ca-surface-sunken); color: var(--ca-text-secondary); display: inline-flex; align-items: center; gap: 5px; }
+	.engine-status.badge-error { background: rgba(239,68,68,0.12); color: var(--ca-danger, #ef4444); cursor: pointer; }
+	.engine-card.selected .engine-status.badge-action { background: rgba(79,142,247,0.2); }
 
-	.engine-status.sign-in {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		background: rgba(245, 158, 11, 0.1);
-		color: var(--ca-warning, #f59e0b);
-		cursor: pointer;
-		font-family: monospace;
-		font-size: 10.5px;
-		font-weight: 500;
-		max-width: 220px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
+	.err-text { color: var(--ca-danger, #ef4444) !important; }
 
-	.engine-empty {
-		font-size: 14px;
-		color: var(--ca-text-secondary);
-		text-align: center;
-		padding: 20px;
-	}
-
-	.engine-empty code {
-		background: var(--ca-surface-sunken);
-		padding: 1px 5px;
-		border-radius: 3px;
-		font-size: 12px;
-	}
 
 	/* ─── Actions row ────────────────────────────────────────────── */
 	.actions {
@@ -1635,4 +1890,58 @@
 		}
 	}
 
+
+	/* ─── Engine install log ──────────────────────────────────────────── */
+	.engine-install-log {
+		width: 90%; height: 100%;
+		display: flex; align-items: center; justify-content: center;
+		overflow: hidden;
+	}
+	.engine-install-log pre {
+		width: 100%; max-height: 80%;
+		overflow-y: auto;
+		font-family: monospace; font-size: 11.5px; line-height: 1.6;
+		color: var(--ca-text-secondary); white-space: pre-wrap; word-break: break-all;
+		background: var(--ca-surface-sunken); border-radius: 8px; padding: 12px 14px;
+	}
+
+	/* ─── Sign-in panel ──────────────────────────────────────────────── */
+	.signin-panel {
+		width: min(380px, 90%);
+		display: flex; flex-direction: column; gap: 10px;
+		align-items: flex-start;
+	}
+	.signin-title {
+		font-size: 15px; font-weight: 600;
+		color: var(--ca-text-primary); margin: 0;
+	}
+	.signin-hint {
+		font-size: 12px; color: var(--ca-text-secondary); margin: 0 0 4px;
+	}
+	.signin-key-form {
+		display: flex; flex-direction: column; gap: 10px; width: 100%;
+	}
+	.signin-terminal {
+		width: 100%; display: flex; flex-direction: column;
+		border: 1.5px solid var(--ca-border-subtle); border-radius: 8px; overflow: hidden;
+	}
+	.signin-term-output {
+		background: var(--ca-surface-sunken); min-height: 160px; max-height: 260px;
+		overflow-y: auto; padding: 10px 12px;
+	}
+	.signin-term-output pre {
+		font-family: monospace; font-size: 11.5px; line-height: 1.6;
+		color: var(--ca-text-primary); white-space: pre-wrap; word-break: break-all;
+		margin: 0;
+	}
+	.signin-term-input-row {
+		border-top: 1px solid var(--ca-border-subtle);
+		background: var(--ca-surface-base);
+	}
+	.signin-term-input {
+		width: 100%; box-sizing: border-box;
+		padding: 8px 12px;
+		background: none; border: none; outline: none;
+		font-family: monospace; font-size: 12px; color: var(--ca-text-primary);
+	}
 </style>

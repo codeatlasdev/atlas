@@ -206,6 +206,8 @@ macro_rules! handlers {
             bots::ssh_key_find,
             bots::ssh_keygen,
             bots::ssh_authorize_key,
+            bots::bot_agent_check,
+            bots::bot_agent_install,
             menu::menu_sync,
             zoom::zoom_set,
             live_server::live_open,

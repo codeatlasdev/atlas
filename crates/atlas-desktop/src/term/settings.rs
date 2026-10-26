@@ -159,7 +159,10 @@ mod tests {
         let v = stats_row(s, [16.0, 34.0], (144, 44), 2.0);
         assert_eq!(v["cell_w"], 8.0);
         assert_eq!(v["cell_h"], 17.0);
-        assert_eq!((v["cols"].as_u64(), v["rows"].as_u64()), (Some(144), Some(44)));
+        assert_eq!(
+            (v["cols"].as_u64(), v["rows"].as_u64()),
+            (Some(144), Some(44))
+        );
         for (k, want) in [
             ("frames", 7),
             ("work_p50_us", 220),
@@ -176,7 +179,10 @@ mod tests {
     #[test]
     fn a_terminal_that_never_drew_reports_a_zero_cell_not_nan() {
         let v = stats_row(atlas_term::Stats::default(), [0.0, 0.0], (80, 24), 2.0);
-        assert_eq!((v["cell_w"].as_f64(), v["cell_h"].as_f64()), (Some(0.0), Some(0.0)));
+        assert_eq!(
+            (v["cell_w"].as_f64(), v["cell_h"].as_f64()),
+            (Some(0.0), Some(0.0))
+        );
         assert_eq!(v["frames"].as_u64(), Some(0));
     }
 }

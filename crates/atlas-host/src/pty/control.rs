@@ -178,7 +178,10 @@ impl Session {
     /// [`summary`](Self::summary) plus the foreground program (`pty_info`, one terminal).
     pub fn info_summary(&self) -> Value {
         let mut v = self.summary();
-        v["fg"] = json!(self.foreground().map(|(pid, name)| json!({"pid": pid, "name": name})));
+        v["fg"] = json!(
+            self.foreground()
+                .map(|(pid, name)| json!({"pid": pid, "name": name}))
+        );
         v
     }
 

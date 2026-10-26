@@ -313,7 +313,11 @@ async fn a_title_repeated_by_the_program_is_pushed_once() {
     s.attach(1, tx, false, false);
     until_exited(&s).await;
     assert_eq!(titles(&mut rx), ["a", "b", "a"], "one push per change");
-    assert_eq!(*s.title.lock(), "a", "the stored title is still the last one");
+    assert_eq!(
+        *s.title.lock(),
+        "a",
+        "the stored title is still the last one"
+    );
 }
 
 // Class of the incident above: a title set again to what it already is must not even wake the clients, but one
@@ -341,12 +345,32 @@ async fn the_pty_list_summary_does_not_fork_ps_for_the_foreground_program() {
     let dir = tempfile::tempdir().unwrap();
     let s = Session::spawn(shell_req("sleep 30"), dir.path()).unwrap();
     let list = s.summary();
-    assert!(list.get("fg").is_none(), "pty_list entries carry no fg: {list}");
-    for k in ["pty", "cwd", "argv", "scope", "title", "created_at", "exited", "pid", "cols", "rows"] {
+    assert!(
+        list.get("fg").is_none(),
+        "pty_list entries carry no fg: {list}"
+    );
+    for k in [
+        "pty",
+        "cwd",
+        "argv",
+        "scope",
+        "title",
+        "created_at",
+        "exited",
+        "pid",
+        "cols",
+        "rows",
+    ] {
         assert!(list.get(k).is_some(), "pty_list lost `{k}`: {list}");
     }
     let info = s.info_summary();
-    assert!(info["fg"]["pid"].as_i64().is_some(), "pty_info still names the foreground program: {info}");
-    assert!(info["fg"]["name"].as_str().is_some_and(|n| !n.is_empty()), "{info}");
+    assert!(
+        info["fg"]["pid"].as_i64().is_some(),
+        "pty_info still names the foreground program: {info}"
+    );
+    assert!(
+        info["fg"]["name"].as_str().is_some_and(|n| !n.is_empty()),
+        "{info}"
+    );
     s.kill().await;
 }

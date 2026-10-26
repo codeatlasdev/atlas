@@ -189,7 +189,10 @@ fn a_hook_that_changes_nothing_is_not_pushed_every_time() {
     let hub = AgentHub::default();
     let mut rx = hub.subscribe();
     let send = |t: u64, p: Value| hub.apply_at("omp", &json!({"pane_key": "t1", "payload": p}), t);
-    send(1_000, json!({"event": "agent_start", "session_file": "/s/a.jsonl", "model": "m"}));
+    send(
+        1_000,
+        json!({"event": "agent_start", "session_file": "/s/a.jsonl", "model": "m"}),
+    );
     assert_eq!(pushes(&mut rx, "t1"), 1, "the first status is news");
     for i in 1..=20 {
         send(
@@ -197,7 +200,11 @@ fn a_hook_that_changes_nothing_is_not_pushed_every_time() {
             json!({"event": "tool_execution_start", "session_file": "/s/a.jsonl", "model": "m"}),
         );
     }
-    assert_eq!(pushes(&mut rx, "t1"), 0, "20 identical events in 200 ms: nothing to say");
+    assert_eq!(
+        pushes(&mut rx, "t1"),
+        0,
+        "20 identical events in 200 ms: nothing to say"
+    );
 }
 
 // The desktop falls back to the terminal title once `updated_at` is `HOOK_GRACE_MS` (5 s) old, so a working agent
@@ -205,7 +212,7 @@ fn a_hook_that_changes_nothing_is_not_pushed_every_time() {
 #[test]
 fn an_unchanged_agent_still_heartbeats_inside_the_desktops_grace_period() {
     use super::HEARTBEAT_MS;
-    assert!(HEARTBEAT_MS < 5_000, "the desktop trusts hooks for 5 s");
+    const { assert!(HEARTBEAT_MS < 5_000, "the desktop trusts hooks for 5 s") };
     let hub = AgentHub::default();
     let mut rx = hub.subscribe();
     let send = |t: u64| {
@@ -220,9 +227,17 @@ fn an_unchanged_agent_still_heartbeats_inside_the_desktops_grace_period() {
     send(10_000 + HEARTBEAT_MS - 1);
     assert_eq!(pushes(&mut rx, "t1"), 0, "just inside the interval");
     send(10_000 + HEARTBEAT_MS);
-    assert_eq!(pushes(&mut rx, "t1"), 1, "a full interval later: the heartbeat");
+    assert_eq!(
+        pushes(&mut rx, "t1"),
+        1,
+        "a full interval later: the heartbeat"
+    );
     send(10_000 + HEARTBEAT_MS + 1);
-    assert_eq!(pushes(&mut rx, "t1"), 0, "the interval restarts at each push");
+    assert_eq!(
+        pushes(&mut rx, "t1"),
+        0,
+        "the interval restarts at each push"
+    );
 }
 
 // Class of the incident above: every field a client shows must still push at once. A throttle keyed on the state
@@ -232,18 +247,37 @@ fn every_visible_change_is_pushed_at_once_not_held_for_the_heartbeat() {
     let hub = AgentHub::default();
     let mut rx = hub.subscribe();
     let send = |t: u64, p: Value| hub.apply_at("omp", &json!({"pane_key": "t1", "payload": p}), t);
-    send(1_000, json!({"event": "agent_start", "session_file": "/s/a.jsonl", "model": "m1"}));
+    send(
+        1_000,
+        json!({"event": "agent_start", "session_file": "/s/a.jsonl", "model": "m1"}),
+    );
     pushes(&mut rx, "t1");
     let cases = [
         ("state", json!({"event": "tool_call", "tool_name": "ask"})),
-        ("model", json!({"event": "tool_call", "tool_name": "ask", "model": "m2"})),
-        ("prompt", json!({"event": "before_agent_start", "prompt": "do it"})),
-        ("message", json!({"event": "message_end", "text": "done with step one"})),
-        ("session", json!({"event": "session_start", "session_file": "/s/b.jsonl"})),
+        (
+            "model",
+            json!({"event": "tool_call", "tool_name": "ask", "model": "m2"}),
+        ),
+        (
+            "prompt",
+            json!({"event": "before_agent_start", "prompt": "do it"}),
+        ),
+        (
+            "message",
+            json!({"event": "message_end", "text": "done with step one"}),
+        ),
+        (
+            "session",
+            json!({"event": "session_start", "session_file": "/s/b.jsonl"}),
+        ),
     ];
     for (i, (what, p)) in cases.into_iter().enumerate() {
         send(1_001 + i as u64, p);
-        assert_eq!(pushes(&mut rx, "t1"), 1, "a changed {what} must push at once");
+        assert_eq!(
+            pushes(&mut rx, "t1"),
+            1,
+            "a changed {what} must push at once"
+        );
     }
 }
 
@@ -264,10 +298,17 @@ fn the_heartbeat_interval_is_per_pane() {
     };
     hub.apply_at("omp", &ev("a"), 1_000);
     hub.apply_at("omp", &ev("b"), 1_001);
-    assert_eq!(drain(&mut rx), ["a", "b"], "each pane's first status is pushed");
+    assert_eq!(
+        drain(&mut rx),
+        ["a", "b"],
+        "each pane's first status is pushed"
+    );
     hub.apply_at("omp", &ev("a"), 1_002);
     hub.apply_at("omp", &ev("b"), 1_003);
-    assert!(drain(&mut rx).is_empty(), "both are inside their own interval");
+    assert!(
+        drain(&mut rx).is_empty(),
+        "both are inside their own interval"
+    );
     hub.apply_at("omp", &ev("b"), 1_001 + super::HEARTBEAT_MS);
     assert_eq!(drain(&mut rx), ["b"], "b is due, a is on its own clock");
 }

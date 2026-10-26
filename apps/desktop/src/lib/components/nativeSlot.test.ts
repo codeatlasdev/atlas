@@ -24,6 +24,7 @@ beforeEach(() => {
 			resizeCb = cb;
 		}
 		observe() {}
+		unobserve() {}
 		disconnect() {}
 	};
 });

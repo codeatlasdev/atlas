@@ -182,6 +182,7 @@ const { proxy } = await import("svelte/internal/client");
 const { default: Terminal } = await import("./Terminal.svelte");
 
 const realOffset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+const realRO = globalThis.ResizeObserver;
 beforeEach(() => {
 	log.length = 0;
 	// laid out: the host element has a size when the component mounts
@@ -189,10 +190,13 @@ beforeEach(() => {
 	Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 400 });
 	globalThis.ResizeObserver = class {
 		observe() {}
+		unobserve() {}
 		disconnect() {}
 	};
 });
 afterEach(() => {
+	// The stub must not outlive this file: later suites (VirtualList) need the full observer API.
+	globalThis.ResizeObserver = realRO;
 	if (realOffset) Object.defineProperty(HTMLElement.prototype, "offsetWidth", realOffset);
 	document.body.innerHTML = "";
 });

@@ -55,7 +55,7 @@ The terminal host's own lifecycle is documented in [Desktop app](desktop.md#keep
 
 ### Configure a server
 
-Settings → Appearance → **Languages** lists every server with its state, version and whether it is on your `PATH` or managed by Atlas, and lets you install, update, uninstall, restart it and open its log. For each language you can set a custom `command`, `args`, `initialization_options` and `settings`, or turn it off.
+Settings → Editor → **Languages** lists every server with its state, version and whether it is on your `PATH` or managed by Atlas, and lets you install, update, uninstall, restart it and open its log. For each language you can set a custom `command`, `args`, `initialization_options` and `settings`, or turn it off.
 
 The same settings can live in the project, in `.atlas/settings.json` at the worktree root:
 

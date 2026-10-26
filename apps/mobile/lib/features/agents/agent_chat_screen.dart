@@ -1,28 +1,45 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/features/agents/agents_provider.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/agents/approval_banner.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/features/agents/agent_info.dart';
+import 'package:atlas_mobile/features/agents/agent_switcher.dart';
+import 'package:atlas_mobile/features/agents/agents_provider.dart';
+import 'package:atlas_mobile/features/agents/agent_hub_screen.dart';
+import 'package:atlas_mobile/features/agents/crew_widgets.dart';
+import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
 
-/// Agent states as the desktop labels them.
-String agentStateLabel(String state) => switch (state) {
-  'working' => 'working',
-  'blocked' => 'needs you',
-  'waiting' => 'asked you',
-  'done' => 'done',
-  _ => 'idle',
-};
+export 'package:atlas_mobile/features/agents/agent_info.dart'
+    show agentStateLabel;
 
-/// One agent: its conversation (read from its session file), its state (pushed live by
-/// hostd), the pending permission prompt, a box to send the next prompt while it is idle
-/// or done, and a button to its terminal.
+/// How often the timeline is re-read while the agent can still add to it.
+const historyPoll = Duration(seconds: 2);
+
+/// omp's slash commands the phone can send; `/goal` needs text.
+const _ompCommands = <(String, String, bool)>[
+  ('/compact', 'Compact the context', false),
+  ('/new', 'Start a new session', false),
+  ('/goal', 'Set a goal for the agent', true),
+  ('/export', 'Export the session', false),
+];
+
+/// One agent: its conversation as a timeline (read from its session file, polled while it
+/// works), its state (pushed live by hostd), the pending permission prompt, a box to send
+/// the next prompt, a Stop button while it works, and a button to its terminal.
+///
+/// Above the timeline sits the crew: the agent and its nested subagents (`agent_tree`,
+/// polled while anything runs). Focusing a node switches the timeline to that agent's
+/// transcript (`agent_history` with `sub`); only the main agent has a composer.
 class AgentChatScreen extends ConsumerStatefulWidget {
   const AgentChatScreen({
     super.key,
@@ -30,6 +47,7 @@ class AgentChatScreen extends ConsumerStatefulWidget {
     required this.paneKey,
     required this.initial,
     required this.title,
+    this.sub,
   });
 
   final MacDevice device;
@@ -39,36 +57,172 @@ class AgentChatScreen extends ConsumerStatefulWidget {
   final AgentStatus initial;
   final String title;
 
+  /// A subagent's dotted name to open focused on (its transcript, read-only).
+  final String? sub;
+
   @override
   ConsumerState<AgentChatScreen> createState() => _AgentChatScreenState();
 }
 
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   final _msg = TextEditingController();
+  final _composerFocus = FocusNode();
+  final _scroll = ScrollController();
   bool _sending = false;
+  bool _stopping = false;
   String? _error;
 
-  /// Turns from the agent's session file; reloaded whenever its state changes.
-  List<({String role, String text})> _history = const [];
-  bool _truncated = false;
+  AgentHistory _history = const AgentHistory();
+  bool _loaded = false;
   String? _historyKey;
+  Timer? _timer;
+  bool _inFlight = false;
+
+  /// The crew, refreshed by [_loadTree]; the map screen listens to it.
+  final _tree = ValueNotifier<AgentTree>(AgentTree.empty);
+  Timer? _treeTimer;
+  bool _treeInFlight = false;
+
+  /// Which agent the timeline shows: `''` is the main one, else a dotted subagent id.
+  late String _focus = widget.sub ?? '';
+
+  /// Last seen status per node, to buzz when one finishes, fails or needs the user.
+  final _seen = <String, String>{};
+  String? _seenState;
+
+  /// Blocks in the timeline when the user last sat at the bottom; more now = new activity.
+  int _seenBlocks = 0;
+  bool _atBottom = true;
+
+  String? get _sub => _focus.isEmpty ? null : _focus;
+
+  /// Terminal and approvals belong to the main agent's pane; a subagent has neither.
+  bool get _readOnly => _sub != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final at = !_scroll.hasClients || _scroll.offset < 80;
+    if (at != _atBottom) setState(() => _atBottom = at);
+  }
 
   Future<void> _loadHistory() async {
+    if (_inFlight) return;
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
     if (mux == null) return;
-    final resp = await mux.call('agent_history', {
-      'pane': widget.paneKey,
-      'limit': 200,
-    });
-    if (!mounted || resp['ok'] != true) return;
-    final data = (resp['data'] as Map).cast<String, dynamic>();
+    _inFlight = true;
+    final asked = _focus;
+    try {
+      final resp = await mux.call('agent_history', {
+        'pane': widget.paneKey,
+        'limit': 200,
+        'sub': ?_sub,
+      });
+      if (!mounted || resp['ok'] != true) return;
+      final h = AgentHistory.fromJson(
+        (resp['data'] as Map).cast<String, dynamic>(),
+      );
+      // The user focused another agent while this was in flight: its reply is stale.
+      if (asked != _focus) return;
+      setState(() {
+        _history = h;
+        _loaded = true;
+      });
+    } finally {
+      _inFlight = false;
+      // A focus change during the call left its own load waiting on this one.
+      if (mounted && asked != _focus) _loadHistory();
+    }
+  }
+
+  Future<void> _loadTree() async {
+    if (_treeInFlight) return;
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    _treeInFlight = true;
+    try {
+      final resp = await mux.call('agent_tree', {'pane': widget.paneKey});
+      // An older hostd has no `agent_tree`: the crew stays empty, the chat works.
+      if (!mounted || resp['ok'] != true) return;
+      final t = AgentTree.fromJson(
+        (resp['data'] as Map).cast<String, dynamic>(),
+      );
+      _buzzOnTransitions(t);
+      _tree.value = t;
+      if (mounted) setState(() {});
+    } finally {
+      _treeInFlight = false;
+    }
+  }
+
+  /// A tick when a node ends well, a heavier one when it fails; the first read only
+  /// records, so opening the screen never buzzes for old news.
+  void _buzzOnTransitions(AgentTree t) {
+    final first = _seen.isEmpty;
+    var failed = false, done = false;
+    for (final n in t.nodes) {
+      final before = _seen[n.id];
+      if (!first && before != null && before != n.status) {
+        if (n.failed) failed = true;
+        if (n.done && !n.isRoot) done = true;
+      }
+      _seen[n.id] = n.status;
+    }
+    if (failed) {
+      HapticFeedback.heavyImpact();
+    } else if (done) {
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  /// Moves the timeline to [id] (`''` = the main agent).
+  void _focusNode(String id) {
+    if (id == _focus) return;
+    HapticFeedback.selectionClick();
     setState(() {
-      _history = [
-        for (final m in (data['messages'] as List? ?? const []))
-          (role: (m as Map)['role'] as String, text: m['text'] as String),
-      ];
-      _truncated = data['truncated'] == true;
+      _focus = id;
+      _history = const AgentHistory();
+      _loaded = false;
+      _seenBlocks = 0;
+      _atBottom = true;
+      _error = null;
     });
+    _loadHistory();
+  }
+
+  /// Swipe on the timeline: to the next or previous sibling of the focused agent.
+  void _swipe(double velocity) {
+    if (velocity.abs() < 300) return;
+    final sibs = _tree.value.siblings(_focus);
+    final at = sibs.indexWhere((n) => n.id == _focus);
+    if (sibs.length < 2 || at < 0) return;
+    final to = at + (velocity < 0 ? 1 : -1);
+    if (to < 0 || to >= sibs.length) return;
+    _focusNode(sibs[to].id);
+  }
+
+  /// Poll while the agent (or the subagent being read) can still produce steps.
+  void _syncPolling(bool active) {
+    if (active && _timer == null) {
+      _timer = Timer.periodic(historyPoll, (_) => _loadHistory());
+    } else if (!active && _timer != null) {
+      _timer!.cancel();
+      _timer = null;
+    }
+  }
+
+  /// The crew is read while anything runs (and once more when it stops, to show the end).
+  void _syncTreePolling(bool active) {
+    if (active && _treeTimer == null) {
+      _treeTimer = Timer.periodic(historyPoll, (_) => _loadTree());
+    } else if (!active && _treeTimer != null) {
+      _treeTimer!.cancel();
+      _treeTimer = null;
+    }
   }
 
   /// The agent's own terminal: the live pty whose scope is this pane.
@@ -109,32 +263,128 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   @override
   void dispose() {
+    _timer?.cancel();
+    _treeTimer?.cancel();
+    _tree.dispose();
     _msg.dispose();
+    _composerFocus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
-    final text = _msg.text.trim();
+  /// The newest status for this pane, kept by [build] for the handlers.
+  AgentStatus? _status;
+
+  /// omp queues a typed message as steering while it works; nothing else takes one.
+  bool _canSteer(AgentStatus s) => s.agent == 'omp' && s.state == 'working';
+
+  /// What goes to the main agent for [text] typed on the focused agent: its own text on
+  /// the main agent, else a line that names the subagent (hostd only reaches the main
+  /// agent's terminal, and omp relays it).
+  String _outgoing(String text) => _sub == null ? text : 'Tell $_sub: $text';
+
+  Future<bool> _sendText(String text) async {
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (text.isEmpty || mux == null) return;
+    if (text.isEmpty || mux == null) return false;
+    final steer = _status != null && _canSteer(_status!);
     setState(() {
       _sending = true;
       _error = null;
     });
     final resp = await mux.call('agent_send', {
       'pane': widget.paneKey,
-      'text': text,
+      'text': _outgoing(text),
+      if (steer) 'steer': true,
     });
-    if (!mounted) return;
+    if (!mounted) return false;
+    final ok = resp['ok'] == true;
     setState(() {
       _sending = false;
-      if (resp['ok'] == true) {
-        _msg.clear();
-      } else {
-        _error = resp['error'] as String? ?? 'error';
+      if (!ok) _error = resp['error'] as String? ?? 'error';
+    });
+    if (ok) {
+      HapticFeedback.lightImpact();
+      _loadHistory();
+    }
+    return ok;
+  }
+
+  Future<void> _send() async {
+    if (await _sendText(_msg.text.trim())) _msg.clear();
+  }
+
+  Future<void> _stop() async {
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null || _stopping) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _stopping = true;
+      _error = null;
+    });
+    final resp = await mux.call('agent_interrupt', {'pane': widget.paneKey});
+    if (!mounted) return;
+    setState(() {
+      _stopping = false;
+      if (resp['ok'] != true) {
+        _error = resp['error'] as String? ?? 'Could not stop the agent';
       }
     });
   }
+
+  Future<void> _command() async {
+    final pick = await showModalBottomSheet<(String, bool)>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AtlasColors.of(context).overlay,
+      builder: (ctx) {
+        final c = AtlasColors.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Commands', style: Theme.of(ctx).textTheme.titleMedium),
+                const SizedBox(height: Space.md),
+                Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.sm,
+                  children: [
+                    for (final (cmd, hint, arg) in _ompCommands)
+                      ActionChip(
+                        label: Text(arg ? '$cmd …' : cmd),
+                        tooltip: hint,
+                        backgroundColor: c.base,
+                        side: BorderSide(color: c.borderSubtle),
+                        labelStyle: const TextStyle(
+                          fontFamily: monoFamily,
+                          fontFamilyFallback: monoFallback,
+                          fontSize: 13,
+                        ),
+                        onPressed: () => Navigator.pop(ctx, (cmd, arg)),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (pick == null || !mounted) return;
+    final (cmd, needsText) = pick;
+    if (!needsText) {
+      await _sendText(cmd);
+      return;
+    }
+    final text = await _ask('Goal');
+    if (text == null || text.isEmpty) return;
+    await _sendText('$cmd $text');
+  }
+
+  Future<String?> _ask(String label) =>
+      showDialog<String>(context: context, builder: (_) => _AskDialog(label));
 
   Future<void> _approve(AgentApproval a, bool allow) async {
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
@@ -151,88 +401,368 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
-      if (prev?.value == null && next.value != null) _loadHistory();
-    });
-    final live = ref
-        .watch(agentStatusMapNotifierProvider(widget.device))
-        .value?[widget.paneKey];
-    final status = live ?? widget.initial;
-    // A new state (turn started or ended) may mean new turns in the session file.
-    final key = '${status.state}:${status.updatedAt}';
-    if (key != _historyKey) {
-      _historyKey = key;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadHistory());
-    }
-    final approval = ref.watch(
-      pendingApprovalNotifierProvider((widget.device, widget.paneKey)),
-    );
-    final canSend = canSendChat(status) && !_sending;
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+  void _openHub(AgentStatus status) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => AgentHubScreen(
+        tree: _tree,
+        focus: _focus,
+        fallbackAgent: status.agent,
+        onFocus: _focusNode,
+        onMessage: status.agent == 'omp' ? _messageAbout : null,
+      ),
+    ),
+  );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        actions: [
+  /// Focuses [n] and puts the cursor in the composer: on the main agent that is a message
+  /// to it, on a subagent one to the main agent about it.
+  void _messageAbout(AgentNode n) {
+    _focusNode(n.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _composerFocus.requestFocus();
+    });
+  }
+
+  Future<void> _switch(Map<String, AgentStatus> all) async {
+    final pane = await showAgentSwitcher(
+      context,
+      agents: all,
+      current: widget.paneKey,
+    );
+    if (pane == null || pane == widget.paneKey || !mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => AgentChatScreen(
+          device: widget.device,
+          paneKey: pane,
+          initial: all[pane]!,
+          title: agentTitle(all[pane]!),
+        ),
+      ),
+    );
+  }
+
+  /// Main › … › the focused agent. When the tree does not list it (yet, or at all on an
+  /// older hostd) the path is built from its dotted id, so Main is always one tap away.
+  List<AgentNode> _crumbPath(AgentTree tree) {
+    final listed = tree.path(_focus);
+    if (listed.isNotEmpty && listed.first.isRoot) return listed;
+    final segs = _focus.split('.');
+    return [
+      tree.node('') ?? const AgentNode(id: '', status: 'idle'),
+      for (var i = 0; i < segs.length; i++)
+        tree.node(segs.sublist(0, i + 1).join('.')) ??
+            AgentNode(
+              id: segs.sublist(0, i + 1).join('.'),
+              parent: i == 0 ? '' : segs.sublist(0, i).join('.'),
+              name: segs[i],
+              status: 'pending',
+            ),
+    ];
+  }
+
+  void _jumpToBottom() {
+    if (!_scroll.hasClients) return;
+    _scroll.animateTo(0, duration: Motion.slow, curve: Motion.ease);
+  }
+
+  String _firstPrompt() {
+    for (final i in _history.items) {
+      if (i is UserItem) return i.text;
+    }
+    return '';
+  }
+
+  PreferredSizeWidget _appBar(
+    AgentStatus status,
+    Map<String, AgentStatus> all,
+  ) {
+    final c = AtlasColors.of(context);
+    final sub = _sub;
+    final title =
+        sub?.split('.').last ??
+        agentTitle(
+          status,
+          historyTitle: _history.title,
+          firstPrompt: _firstPrompt(),
+        );
+    final inState = agentActive(status.state)
+        ? elapsed(status.stateStartedAt)
+        : '';
+    final subtitle = sub != null
+        ? '${agentLabel(status.agent)} · subagent'
+        : [
+            agentStateLabel(status.state),
+            ?status.model,
+            if (inState.isNotEmpty) inState,
+          ].join(' · ');
+    final canSwitch = sub == null && all.length > 1;
+    return AppBar(
+      titleSpacing: 0,
+      title: InkWell(
+        borderRadius: BorderRadius.circular(Space.radiusSm),
+        onTap: canSwitch ? () => _switch(all) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+          child: Row(
+            children: [
+              AgentLogo(status.agent, size: 30),
+              const SizedBox(width: Space.sm + 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (canSwitch)
+                          Icon(Icons.unfold_more, size: 16, color: c.faint),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        if (sub == null)
+                          StatusDot(
+                            color: c.agentState(status.state),
+                            pulse:
+                                status.state == 'working' ||
+                                status.state == 'blocked',
+                            size: 6,
+                          ),
+                        Flexible(
+                          child: Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: c.muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.hub_outlined),
+          tooltip: 'Agent hub',
+          onPressed: _tree.value.subs.isEmpty ? null : () => _openHub(status),
+        ),
+        if (!_readOnly)
           IconButton(
             icon: const Icon(Icons.terminal),
             tooltip: 'Terminal',
             onPressed: _openTerminal,
           ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(28),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 8),
-            child: Row(
-              children: [
-                StatusDot(
-                  color: AtlasColors.of(context).agentState(status.state),
-                  pulse: status.state == 'working' || status.state == 'blocked',
-                  size: 7,
-                ),
-                Text(
-                  '${status.agent} · ${agentStateLabel(status.state)}'
-                  '${status.model != null ? ' · ${status.model}' : ''}',
-                  style: TextStyle(fontSize: 12, color: muted),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
+      if (prev?.value == null && next.value != null) {
+        _loadHistory();
+        _loadTree();
+      }
+    });
+    final all =
+        ref.watch(agentStatusMapNotifierProvider(widget.device)).value ??
+        const <String, AgentStatus>{};
+    final status = all[widget.paneKey] ?? widget.initial;
+    // A new state (turn started or ended) may mean new turns in the session file.
+    _status = status;
+    final key = '${status.state}:${status.updatedAt}';
+    if (key != _historyKey) {
+      _historyKey = key;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadHistory();
+        _loadTree();
+      });
+    }
+    final tree = _tree.value;
+    final focusNode = tree.node(_focus);
+    // A subagent is read while it runs; the agent while it can still add steps.
+    final active = _sub != null
+        ? (_history.items.isEmpty ||
+              agentActive(status.state) ||
+              (focusNode?.running ?? false) ||
+              _history.items.any((i) => i is ToolItem && i.status == 'running'))
+        : agentActive(status.state);
+    final treeActive = agentActive(status.state) || tree.anyRunning;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _syncPolling(active);
+      _syncTreePolling(treeActive);
+    });
+    // Buzz when the main agent itself ends a turn or needs the user.
+    if (_seenState != null && _seenState != status.state) {
+      if (status.state == 'done') {
+        HapticFeedback.lightImpact();
+      } else if (needsYou(status)) {
+        HapticFeedback.heavyImpact();
+      }
+    }
+    _seenState = status.state;
+
+    final approval = _readOnly
+        ? null
+        : ref.watch(
+            pendingApprovalNotifierProvider((widget.device, widget.paneKey)),
+          );
+    final c = AtlasColors.of(context);
+    final turnOver = !agentActive(status.state);
+    final blocks = groupTimeline(
+      _history.items,
+      recapLast: turnOver || _sub != null && !(focusNode?.running ?? false),
+      lastDuration: _sub == null && status.stateStartedAt > 0 && turnOver
+          ? Duration(
+              milliseconds: (status.updatedAt - status.stateStartedAt).clamp(
+                0,
+                1 << 40,
+              ),
+            )
+          : null,
+    );
+    // Without session turns yet: what the hooks reported.
+    final fallback = <TimelineBlock>[
+      if (blocks.isEmpty && status.prompt != null)
+        ItemBlock(UserItem(status.prompt!)),
+      if (blocks.isEmpty &&
+          status.lastMessage != null &&
+          status.state != 'working')
+        ItemBlock(AssistantItem(status.lastMessage!)),
+    ];
+    final shown = blocks.isEmpty ? fallback : blocks;
+    if (_atBottom) _seenBlocks = shown.length;
+    final fresh = !_atBottom && shown.length > _seenBlocks;
+
+    return Scaffold(
+      appBar: _appBar(status, all),
       body: Column(
         children: [
+          if (tree.subs.isNotEmpty) ...[
+            CrewRail(
+              tree: tree,
+              focus: _focus,
+              fallbackAgent: status.agent,
+              onFocus: _focusNode,
+              onInspect: (n) => showAgentDetail(
+                context,
+                tree: _tree,
+                id: n.id,
+                fallbackAgent: status.agent,
+                onOpen: _focusNode,
+                onJump: (id) => showAgentDetail(
+                  context,
+                  tree: _tree,
+                  id: id,
+                  fallbackAgent: status.agent,
+                  onOpen: _focusNode,
+                  onJump: _focusNode,
+                  onMessage: status.agent == 'omp' ? _messageAbout : null,
+                ),
+                onMessage: status.agent == 'omp' ? _messageAbout : null,
+              ),
+            ),
+          ],
+          if (_focus.isNotEmpty)
+            Breadcrumb(path: _crumbPath(tree), onTap: _focusNode),
+          if (_focus.isEmpty) ...[
+            JobsStrip(tree: tree, onOpen: _focusNode),
+            if (tree.node('')?.todos case final todos? when todos.total > 0)
+              TodoCard(todos),
+          ],
+          if (focusNode != null && (focusNode.running || tree.subs.isNotEmpty))
+            NowStrip(
+              node: focusNode,
+              since: focusNode.isRoot
+                  ? status.stateStartedAt
+                  : DateTime.now().millisecondsSinceEpoch -
+                        focusNode.durationMs,
+            ),
           Expanded(
-            child: ListView(
-              // Newest at the bottom, scrolled there on open.
-              reverse: true,
-              padding: const EdgeInsets.all(16),
+            child: Stack(
               children: [
-                if (status.state == 'working')
-                  const Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _Typing(),
+                RefreshIndicator(
+                  color: c.accent,
+                  onRefresh: () async {
+                    await Future.wait([_loadHistory(), _loadTree()]);
+                  },
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragEnd: (d) => _swipe(d.primaryVelocity ?? 0),
+                    child: ListView(
+                      controller: _scroll,
+                      // Newest at the bottom, scrolled there on open.
+                      reverse: true,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(Space.lg),
+                      children: [
+                        if (status.state == 'working' && !_readOnly)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 10),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: _Typing(),
+                            ),
+                          ),
+                        for (final b in shown.reversed)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: timelineBlock(
+                              context,
+                              b,
+                              history: _history,
+                              onOpenSubagent: _focusNode,
+                              parentId: focusNode?.parent,
+                            ),
+                          ),
+                        if (_history.truncated)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Center(
+                              child: Text(
+                                'older messages not shown',
+                                style: TextStyle(fontSize: 11, color: c.muted),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                // No session turns yet: show what the hooks reported.
-                if (_history.isEmpty) ...[
-                  if (status.lastMessage != null && status.state != 'working')
-                    _turn('assistant', status.lastMessage!),
-                  if (status.prompt != null) _turn('user', status.prompt!),
-                ] else
-                  for (final m in _history.reversed) _turn(m.role, m.text),
-                if (_truncated)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
+                ),
+                if (shown.isEmpty && _loaded)
+                  Center(
+                    child: Text(
+                      'Nothing here yet',
+                      style: TextStyle(color: c.faint),
+                    ),
+                  ),
+                if (fresh)
+                  Positioned(
+                    bottom: Space.md,
+                    left: 0,
+                    right: 0,
                     child: Center(
-                      child: Text(
-                        'older messages not shown',
-                        style: TextStyle(fontSize: 11, color: muted),
+                      child: FilledButton.tonalIcon(
+                        onPressed: _jumpToBottom,
+                        icon: const Icon(Icons.arrow_downward, size: 16),
+                        label: const Text('New activity'),
                       ),
                     ),
                   ),
@@ -249,117 +779,132 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
                 _error!,
-                style: TextStyle(
-                  color: AtlasColors.of(context).error,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: c.error, fontSize: 12),
               ),
             ),
-          Container(
-            decoration: BoxDecoration(
-              color: AtlasColors.of(context).base,
-              border: Border(
-                top: BorderSide(color: AtlasColors.of(context).borderSubtle),
-              ),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _msg,
-                        minLines: 1,
-                        maxLines: 5,
-                        enabled: canSendChat(status),
-                        decoration: InputDecoration(
-                          hintText: canSendChat(status)
-                              ? 'Message'
-                              : switch (status.state) {
-                                  'working' => 'Wait for the agent to finish',
-                                  'blocked' => 'Answer the request above first',
-                                  'waiting' => 'The agent asked you something in its terminal',
-                                  _ => 'The agent cannot take a message now',
-                                },
-                          fillColor: AtlasColors.of(context).ground,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide.none,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide.none,
-                          ),
-                          disabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: BorderSide(
-                              color: AtlasColors.of(context).accent,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      tooltip: 'Send message',
-                      onPressed: canSend ? _send : null,
-                      icon: _sending
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.arrow_upward_rounded),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          _composer(status),
         ],
       ),
     );
   }
-}
 
-Widget _turn(String role, String text) => Padding(
-  padding: const EdgeInsets.only(top: 10),
-  child: Align(
-    alignment: role == 'user' ? Alignment.centerRight : Alignment.centerLeft,
-    child: _Bubble(text: text, mine: role == 'user'),
-  ),
-);
-
-class _Bubble extends StatelessWidget {
-  const _Bubble({required this.text, required this.mine});
-  final String text;
-  final bool mine;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _composer(AgentStatus status) {
     final c = AtlasColors.of(context);
-    const r = Radius.circular(18);
+    final steer = _canSteer(status);
+    final canType = canSendChat(status) || steer;
+    final sub = _sub;
+    // Only omp relays a line addressed to one of its subagents.
+    if (sub != null && status.agent != 'omp') return const SizedBox.shrink();
+    final subLabel = sub?.split('.').last;
+    final canSend = canType && !_sending;
+    final working = status.state == 'working';
+    OutlineInputBorder border([Color? color]) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(22),
+      borderSide: color == null ? BorderSide.none : BorderSide(color: color),
+    );
     return Container(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.of(context).size.width * 0.82,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: mine ? c.accent.withValues(alpha: .2) : c.base,
-        border: mine ? null : Border.all(color: c.borderSubtle),
-        borderRadius: BorderRadius.only(
-          topLeft: r,
-          topRight: r,
-          bottomLeft: mine ? r : const Radius.circular(4),
-          bottomRight: mine ? const Radius.circular(4) : r,
+        color: c.base,
+        border: Border(top: BorderSide(color: c.borderSubtle)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (status.agent == 'omp' && sub == null)
+                IconButton(
+                  tooltip: 'Commands',
+                  onPressed: canSendChat(status) && !_sending ? _command : null,
+                  icon: const Text(
+                    '/',
+                    style: TextStyle(
+                      fontFamily: monoFamily,
+                      fontFamilyFallback: monoFallback,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _msg,
+                  focusNode: _composerFocus,
+                  minLines: 1,
+                  maxLines: 5,
+                  enabled: canType,
+                  decoration: InputDecoration(
+                    hintText: sub != null && canType
+                        ? (steer
+                              ? 'Steer Main about $subLabel…'
+                              : 'Message Main about $subLabel')
+                        : steer
+                        ? 'Steer the agent…'
+                        : canType
+                        ? 'Message'
+                        : switch (status.state) {
+                            'working' => 'Working… tap stop to interrupt',
+                            'blocked' => 'Answer the request above first',
+                            'waiting' =>
+                              'The agent asked you something in its terminal',
+                            _ => 'The agent cannot take a message now',
+                          },
+                    fillColor: c.ground,
+                    border: border(),
+                    enabledBorder: border(),
+                    disabledBorder: border(),
+                    focusedBorder: border(c.accent),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (steer) ...[
+                IconButton.filled(
+                  tooltip: 'Steer',
+                  onPressed: canSend ? _send : null,
+                  icon: _sending
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded, size: 18),
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (working)
+                IconButton.filled(
+                  tooltip: 'Stop',
+                  style: IconButton.styleFrom(
+                    backgroundColor: c.error.withValues(alpha: .2),
+                    foregroundColor: c.error,
+                  ),
+                  onPressed: _stopping ? null : _stop,
+                  icon: _stopping
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.stop_rounded),
+                )
+              else
+                IconButton.filled(
+                  tooltip: 'Send message',
+                  onPressed: canSend ? _send : null,
+                  icon: _sending
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.arrow_upward_rounded),
+                ),
+            ],
+          ),
         ),
       ),
-      child: SelectableText(text, style: TextStyle(color: c.text, height: 1.4)),
     );
   }
 }
@@ -423,4 +968,46 @@ class _TypingState extends State<_Typing> with SingleTickerProviderStateMixin {
       ),
     );
   }
+}
+
+/// A one-field prompt; it owns its controller so the dialog's exit animation never
+/// paints a disposed one.
+class _AskDialog extends StatefulWidget {
+  const _AskDialog(this.label);
+  final String label;
+
+  @override
+  State<_AskDialog> createState() => _AskDialogState();
+}
+
+class _AskDialogState extends State<_AskDialog> {
+  final _ctl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.label),
+    content: TextField(
+      controller: _ctl,
+      autofocus: true,
+      minLines: 1,
+      maxLines: 4,
+      textCapitalization: TextCapitalization.sentences,
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _ctl.text.trim()),
+        child: const Text('Send'),
+      ),
+    ],
+  );
 }

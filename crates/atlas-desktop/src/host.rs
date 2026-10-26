@@ -153,7 +153,9 @@ impl HostHub {
             if let Some(c) = self.clients.read().await.get(host).cloned() {
                 return Ok(c);
             }
-            return Err(format!("{host} is not connected (Settings → SSH)"));
+            return Err(format!(
+                "{host} is not connected (Settings → Integrations → SSH hosts)"
+            ));
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {

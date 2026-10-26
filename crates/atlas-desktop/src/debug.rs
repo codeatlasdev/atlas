@@ -356,7 +356,48 @@ async fn handle<R: Runtime>(app: &AppHandle<R>, raw: &Value) -> Result<Value, St
                 json!({ "width": f64::from(inner.width) / scale, "height": f64::from(inner.height) / scale }),
             )
         }
+        Req::Hide { on } => hide(app, on).await,
     }
+}
+
+/// `hide`: order the main window out, or show it again through the agent's guarded placement (`park_and_show`
+/// re-checks that the frame is wholly on our own virtual display). Agent instances only.
+#[cfg(target_os = "macos")]
+async fn hide<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<Value, String> {
+    use objc2::{msg_send, runtime::AnyObject};
+    if crate::agent_mode::Mode::current() != crate::agent_mode::Mode::Agent {
+        return Err("hide works only in an agent instance (atlas desktop --agent)".into());
+    }
+    let real: &dyn std::any::Any = app;
+    let real = real
+        .downcast_ref::<AppHandle>()
+        .ok_or("hide needs the Wry runtime")?
+        .clone();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let a = real.clone();
+    real.run_on_main_thread(move || {
+        let r = a.get_window("main").ok_or("main window not found").map(|win| {
+            if on {
+                if let Ok(ns) = win.ns_window() {
+                    // SAFETY: Tauri's live NSWindow on the main thread; `orderOut:` takes a sender or nil.
+                    unsafe {
+                        let _: () = msg_send![ns as *mut AnyObject, orderOut: std::ptr::null::<AnyObject>()];
+                    }
+                }
+            } else {
+                crate::agent_display::park_and_show(&a, &win);
+            }
+        });
+        let _ = tx.send(r);
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|e| e.to_string())??;
+    Ok(json!({ "hidden": on }))
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn hide<R: Runtime>(_: &AppHandle<R>, _: bool) -> Result<Value, String> {
+    Err("hide is macOS only".into())
 }
 
 /// `gesture-record`: arm the swipe monitor's recorder, wait, write what the trackpad did to `out` as a trace the

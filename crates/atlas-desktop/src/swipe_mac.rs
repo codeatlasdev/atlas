@@ -47,8 +47,7 @@ pub struct Zone {
     pinned: bool,
 }
 
-/// Every frame of a gesture, to the frontend. `seq` grows once per claimed gesture. `native`: the stage draws
-/// the slide from snapshots, so the frontend must not move layers for this generation.
+/// Every frame of a gesture, to the frontend. `seq` grows once per claimed gesture.
 #[derive(Serialize, Clone)]
 struct FrameMsg<'a> {
     zone: &'a str,
@@ -56,7 +55,6 @@ struct FrameMsg<'a> {
     seq: u64,
     amount: f64,
     stage: crate::swipe_engine::Stage,
-    native: bool,
 }
 
 /// The release decision, once per `seq`.
@@ -109,8 +107,9 @@ pub fn enabled() -> bool {
     NSEvent::isSwipeTrackingFromScrollEventsEnabled()
 }
 
-/// The zones the engine hit-tests right now (the bench aims its traces at these).
-pub fn zones_json() -> serde_json::Value {
+/// The zones the engine hit-tests right now (the gesture bench aims its traces at these).
+#[tauri::command]
+pub fn swipe_zones_now() -> serde_json::Value {
     serde_json::to_value(&*ZONES.lock()).unwrap_or_default()
 }
 
@@ -306,9 +305,7 @@ pub fn on_tick(app: &AppHandle, now_ms: f64) -> bool {
     let busy = a.engine.busy();
     drop(guard);
     publish(app, zone.as_ref(), &step);
-    crate::page_layers::on_tick(app, now_ms);
-    // The overlay's ack watchdog keeps the clock running until the overlay is down.
-    busy || crate::page_layers::is_up()
+    busy
 }
 
 fn publish(app: &AppHandle, zone: Option<&Zone>, step: &Step) {
@@ -317,24 +314,7 @@ fn publish(app: &AppHandle, zone: Option<&Zone>, step: &Step) {
     if step.threshold.is_some() {
         tick_haptic();
     }
-    let space = z.zone == "space";
-    let mut native = false;
-    if let Some(c) = step.commit
-        && space
-    {
-        crate::page_layers::on_commit(c.seq, c.dir);
-    }
     if let Some(f) = step.frame {
-        if space {
-            native = crate::page_layers::on_frame(
-                app,
-                f.seq,
-                f.amount,
-                f.stage == crate::swipe_engine::Stage::Rest,
-                None,
-                crate::swipe_clock::now_ms(),
-            );
-        }
         let _ = app.emit(
             "swipe://frame",
             FrameMsg {
@@ -343,7 +323,6 @@ fn publish(app: &AppHandle, zone: Option<&Zone>, step: &Step) {
                 seq: f.seq,
                 amount: f.amount,
                 stage: f.stage,
-                native,
             },
         );
     }

@@ -97,6 +97,7 @@
 	{#if ws.appMode === "bots"}
 		<BotsWorkspace />
 	{:else}
+		<div class="window-ground" aria-hidden="true"></div>
 		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
 			<div class="sidebar-panel">{@render sidebar()}</div>
 		</div>

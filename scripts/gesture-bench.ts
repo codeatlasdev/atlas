@@ -108,7 +108,7 @@ export function seed(): void {
 function zonesNow(): LiveZone[] {
 	return (
 		(evalIn(
-			`return (await window.__TAURI_INTERNALS__.invoke("pager_state")).zones`,
+			`return await window.__TAURI_INTERNALS__.invoke("swipe_zones_now")`,
 		) as LiveZone[]) ?? []
 	);
 }

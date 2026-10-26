@@ -15,10 +15,11 @@
 //! pairs never touches the network. `ServeOpts::no_mobile_relay` (`ATLAS_MOBILE_RELAY=0`
 //! for `atlas hostd`) turns relays and address lookup off (LAN, tests).
 
+mod addrs;
 mod session;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -201,9 +202,11 @@ impl Mobile {
             bad: 0,
         });
         let addr = self.endpoint.lock().as_ref().map(|e| e.addr());
-        let addrs: Vec<String> = addr
+        let direct: Vec<std::net::SocketAddr> =
+            addr.iter().flat_map(|a| a.ip_addrs().copied()).collect();
+        let published: Vec<String> = addrs::publishable(&direct, &addrs::local_interfaces())
             .iter()
-            .flat_map(|a| a.ip_addrs().map(|a| a.to_string()))
+            .map(|a| a.to_string())
             .collect();
         let relay = addr
             .as_ref()
@@ -212,7 +215,7 @@ impl Mobile {
             "node_id": self.node_id(),
             "code": code,
             "expires_in_s": CODE_TTL.as_secs(),
-            "addrs": addrs,
+            "addrs": published,
             "relay_url": relay,
             "hostname": crate::server::hostname(),
         }))
@@ -355,7 +358,9 @@ impl Mobile {
 /// editor and file watching).
 pub fn push_scope(ev: &str) -> Option<Scope> {
     Some(match ev {
-        "pty_output" | "pty_replay" | "pty_title" | "pty_activity" | "pty_exit" => Scope::TermRead,
+        "pty_output" | "pty_replay" | "pty_title" | "pty_activity" | "pty_exit" | "pty_dropped" => {
+            Scope::TermRead
+        }
         // The prompt carries the tool input (a shell command, a file path).
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
@@ -373,11 +378,16 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::PtyInfo { .. }
         | C::AgentStatusAll {}
         | C::AgentIntegrations {}
+        | C::AgentTree { .. }
         | C::AgentHistory { .. } => Scope::Read,
         C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
             Scope::Read
         }
-        C::ProjectService { .. } | C::ProjectAction { .. } | C::AgentSend { .. } => Scope::Act,
+        C::ProjectService { .. }
+        | C::ProjectAction { .. }
+        | C::AgentSend { .. }
+        | C::AgentInterrupt { .. }
+        | C::AgentLaunch { .. } => Scope::Act,
         C::AgentApprove { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,

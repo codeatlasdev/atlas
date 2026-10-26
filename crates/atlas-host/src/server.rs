@@ -56,15 +56,45 @@ pub(crate) struct Hub {
     pub(crate) bots: Arc<crate::bots::BotHub>,
     /// Whether this daemon was started as a bot server (`ATLAS_BOT_HOST=1`).
     pub(crate) bot_host: bool,
+    /// `Some` when this is the lab lane's shadow daemon (`atlas hostd --lab`): it mirrors and
+    /// forwards to the main hostd instead of owning terminals (`crate::lab`).
+    pub(crate) lab: Option<Arc<crate::lab::Lab>>,
 }
 
 impl Hub {
+    /// Where the desktop's project registry lives: this daemon's dir, or, in a lab, the main
+    /// daemon's (read only).
+    pub(crate) fn data_dir(&self) -> &Path {
+        self.lab.as_ref().map_or(&self.dir, |l| l.main_dir())
+    }
+
     pub(crate) fn get(&self, id: &str) -> Result<Arc<Session>, String> {
         self.sessions
             .lock()
             .get(id)
             .cloned()
             .ok_or_else(|| format!("unknown pty {id}"))
+    }
+
+    /// Pending output per live JSON connection plus how many were dropped for not reading, so a
+    /// client that stopped reading shows up here before [`crate::pty::OUT_CAP`] cuts it.
+    fn queued(&self) -> Value {
+        let mut conns: Vec<(u64, usize)> = self
+            .subscribers
+            .lock()
+            .iter()
+            .map(|(id, out)| (*id, out.pending()))
+            .collect();
+        conns.sort_unstable();
+        json!({
+            "total_bytes": conns.iter().map(|(_, n)| n).sum::<usize>(),
+            "cap_bytes": crate::pty::OUT_CAP,
+            "dropped": crate::pty::dropped_total(),
+            "connections": conns
+                .iter()
+                .map(|(id, n)| json!({"conn": id, "bytes": n}))
+                .collect::<Vec<_>>(),
+        })
     }
 
     fn info(&self) -> Value {
@@ -77,7 +107,12 @@ impl Hub {
             "uptime_s": self.started.elapsed().as_secs(),
             "ptys": all.len(),
             "live_ptys": all.values().filter(|s| s.exited().is_none()).count(),
+            // Connected clients (desktop, CLI, phones; a lab's phone link counts on main).
+            "clients": self.subscribers.lock().len(),
+            // Set on a lab lane daemon: the main hostd dir it follows.
+            "lab": self.lab.as_ref().map(|l| l.main_dir().to_string_lossy().into_owned()),
             "hostname": hostname(),
+            "queued": self.queued(),
         })
     }
 
@@ -129,6 +164,9 @@ impl Hub {
         self.subscribers.lock().remove(&id);
     }
 
+    /// Push `line` to every connection. One over its byte cap (it stopped reading) misses this
+    /// line: a stuck client loses broadcasts (it re-syncs on reconnect) instead of hostd queueing
+    /// them for it. Nothing here blocks, and the other connections are untouched.
     pub(crate) fn broadcast(&self, line: String) {
         for tx in self.subscribers.lock().values() {
             let _ = tx.send(line.clone());
@@ -232,6 +270,9 @@ pub struct ServeOpts {
     pub no_mobile_relay: bool,
     /// Whether this daemon is a bot server (adds "bots" to caps, gates bot commands).
     pub bot_host: bool,
+    /// Run as the lab lane's shadow daemon following the main hostd in this directory
+    /// (`atlas hostd --lab`, see [`crate::lab`]). `serve_with`'s `dir` is then the lab's own.
+    pub lab: Option<PathBuf>,
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
@@ -247,6 +288,17 @@ pub async fn serve(dir: &Path) -> Result<()> {
 }
 
 pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
+    // A lab checks everything it depends on before it creates a file: it follows a main hostd
+    // that must be there, in a directory that is not its own.
+    let lab = match &opts.lab {
+        Some(_) if opts.takeover.is_some() => {
+            return Err(anyhow!(
+                "a lab hostd owns no terminals: it cannot take over a daemon"
+            ));
+        }
+        Some(main) => Some(crate::lab::connect(main, dir).await?),
+        None => None,
+    };
     std::fs::create_dir_all(dir)?;
     // Successor: receive the sessions and the pid lock while the old daemon still serves.
     // The lock fd is the old daemon's open file description, so the singleton lock never
@@ -273,6 +325,10 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         f.rewind()?;
         f.write_all(std::process::id().to_string().as_bytes())?;
     }
+    // Read the login shell's environment now, off the runtime, while the first client connects: the
+    // first terminal or `exec` otherwise pays for the shell's rc files (0.3 s for fish, 6 s+ when
+    // one hangs). Later spawns read the cache.
+    tokio::task::spawn_blocking(atlas_core::login_env::warm);
     let token = paths::ensure_token(dir)?;
     let sock = paths::socket(dir);
     // Bind beside the live socket and rename over it: the path is never missing, and the
@@ -328,7 +384,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             Err(e) => eprintln!("hostd: could not adopt pty {id}: {e:#}"),
         }
     }
-    for e in std::fs::read_dir(&scroll_dir)?.flatten() {
+    // A lab owns no terminal, so there is no scrollback of its own to bring back.
+    for e in std::fs::read_dir(&scroll_dir)?
+        .flatten()
+        .filter(|_| lab.is_none())
+    {
         let p = e.path();
         if p.extension().is_some_and(|x| x == "bin")
             && let Some(id) = p.file_stem().and_then(|s| s.to_str())
@@ -359,6 +419,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         mobile,
         bots,
         bot_host: opts.bot_host,
+        lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
     crate::mobile::start(&hub);
     hub.bots.start(Arc::downgrade(&hub));
@@ -376,7 +437,10 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     if let Some(t) = &takeover {
         hub.agents.restore(&t.agents);
     }
-    if let Err(e) = crate::agents::hook_server::start(
+    // The lab never starts the hook server: it would replace the endpoint file the user's agents
+    // read (`ATLAS_HOOK_ENDPOINT`) and steal their events from the real hostd.
+    if lab.is_none()
+        && let Err(e) = crate::agents::hook_server::start(
         dir,
         hub.agents.clone(),
         hub.mobile.clone(),
@@ -385,6 +449,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     .await
     {
         eprintln!("hostd: agent hook server: {e}");
+    }
+    if let Some((l, first)) = lab {
+        tokio::spawn(l.follow(Arc::downgrade(&hub), first));
     }
     {
         let mut rx = hub.agents.subscribe();
@@ -410,6 +477,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         std::process::id(),
         if opts.takeover.is_some() {
             format!(", took over {adopted} pty(s)")
+        } else if let Some(main) = &opts.lab {
+            format!(", LAB following {}", main.display())
         } else {
             String::new()
         }
@@ -438,11 +507,15 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 let (live, clients) = hub.activity();
                 if live > 0 || clients > 0 {
                     idle_since = None;
-                } else if let Some(lim) = limit {
-                    let since = *idle_since.get_or_insert_with(Instant::now);
-                    if crate::idle::idle_expired(live, clients, since.elapsed(), lim) {
-                        eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", lim.as_secs());
-                        break;
+                } else if hub.lab.is_none() {
+                    // A lab has no terminal by design, so "idle" is its resting state between
+                    // phone sessions: it stops with `--stop`, never on a timer.
+                    if let Some(lim) = limit {
+                        let since = *idle_since.get_or_insert_with(Instant::now);
+                        if crate::idle::idle_expired(live, clients, since.elapsed(), lim) {
+                            eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", lim.as_secs());
+                            break;
+                        }
                     }
                 }
                 if crate::idle::dir_gone(dir) {
@@ -501,7 +574,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let conn_id = hub.next_conn.fetch_add(1, Ordering::Relaxed);
     let (r, w) = ipc::split(stream);
     let mut lines = BufReader::new(r);
-    let (tx, rx) = mpsc::unbounded_channel::<String>();
+    let (tx, rx) = crate::pty::out_channel();
     // Returns the write half so `pty_attach_raw` can take the socket over.
     let writer = tokio::spawn(protocol::write_lines(rx, w));
 
@@ -513,22 +586,23 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
         None => false,
     };
     if !authed {
-        let _ = tx.send(json!({"ok": false, "error": "unauthorized"}).to_string());
+        let _ = tx.force(json!({"ok": false, "error": "unauthorized"}).to_string());
         drop(tx);
         let _ = writer.await;
         return;
     }
-    let _ = tx.send(json!({"ok": true, "data": hub.info()}).to_string());
+    let _ = tx.force(json!({"ok": true, "data": hub.info()}).to_string());
     hub.subscribers.lock().insert(conn_id, tx.clone());
 
     let mut watchers: HashMap<String, notify::RecommendedWatcher> = HashMap::new();
     let mut attached: Vec<Arc<Session>> = Vec::new();
+    let mut link = crate::lab::Link::default();
     while let Some(line) = read_line(&mut lines, LongLine::Skip).await {
         // `""` is a line over the limit, skipped. Its id is unreadable, so no reply can
         // carry the failure: tell the client.
         if line.is_empty() {
             let msg = format!("request over {MAX_LINE_BYTES} bytes dropped");
-            let _ = tx.send(json!({"ev": "error", "message": msg}).to_string());
+            let _ = tx.force(json!({"ev": "error", "message": msg}).to_string());
             continue;
         }
         let req: Request = match serde_json::from_str(&line) {
@@ -538,11 +612,29 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                     .ok()
                     .and_then(|v| v.get("id")?.as_u64())
                     .unwrap_or(0);
-                let _ = tx.send(protocol::reply(id, Err(format!("bad request: {e}"))));
+                let _ = tx.force(protocol::reply(id, Err(format!("bad request: {e}"))));
                 continue;
             }
         };
         let id = req.id;
+        // The lab lane: forward to main, refuse, or relay a pty attach; `Route::Local` falls
+        // through to this daemon's own code. Answered inline, so pty input keeps its order.
+        if let Some(lab) = &hub.lab {
+            let raw_req: Value = serde_json::from_str(&line).unwrap_or(Value::Null);
+            let args = &raw_req["args"];
+            let handled = match &req.cmd {
+                HostCmd::PtyAttach { .. } => Some(link.attach(lab, args.clone(), tx.clone()).await),
+                HostCmd::PtyDetach { .. } => Some(link.detach(args.clone()).await),
+                cmd => {
+                    let name = raw_req["cmd"].as_str().unwrap_or_default();
+                    crate::lab::dispatch(lab, cmd, name, args).await
+                }
+            };
+            if let Some(res) = handled {
+                let _ = tx.send(protocol::reply(id, res));
+                continue;
+            }
+        }
         let res = match req.cmd {
             HostCmd::FsWatch { path, id: wid } => watch(&tx, &mut watchers, path, wid),
             HostCmd::FsUnwatch { id: wid } => {
@@ -573,7 +665,7 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 }
             }
             HostCmd::Shutdown {} => {
-                let _ = tx.send(protocol::reply(id, Ok(json!({}))));
+                let _ = tx.force(protocol::reply(id, Ok(json!({}))));
                 hub.stop.notify_one();
                 break;
             }
@@ -586,12 +678,12 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
                 let hub = hub.clone();
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let _ = tx.send(protocol::reply(id, handle(&hub, cmd, conn_id).await));
+                    let _ = tx.force(protocol::reply(id, handle(&hub, cmd, conn_id).await));
                 });
                 continue;
             }
         };
-        let _ = tx.send(protocol::reply(id, res));
+        let _ = tx.force(protocol::reply(id, res));
     }
     for s in attached {
         s.detach(conn_id);
@@ -702,7 +794,7 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     if s.exited().is_some() {
         return;
     }
-    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+    let (tx, mut rx) = crate::pty::out_channel();
     s.attach(
         hub.next_conn.fetch_add(1, Ordering::Relaxed),
         tx,
@@ -738,8 +830,24 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
         HostCmd::PtyCreate(mut req) => {
-            hook_env(hub, &mut req);
-            let s = Session::spawn(req, &hub.scroll_dir).map_err(e)?;
+            // Any agent started in a terminal of a pane reports to the hook server (the omp
+            // extension and `atlas hook` need both); a launcher's own values win.
+            if let Some(pane) = req.scope.pane_key.clone() {
+                let endpoint = paths::hook_endpoint(&hub.dir)
+                    .to_string_lossy()
+                    .into_owned();
+                req.env.entry("ATLAS_PANE_KEY".into()).or_insert(pane);
+                req.env
+                    .entry("ATLAS_HOOK_ENDPOINT".into())
+                    .or_insert(endpoint);
+            }
+            // Off the runtime: the first spawn of a daemon whose probe has not finished waits for the
+            // login shell's rc files, and forking a pty blocks too; neither may stall other requests.
+            let scroll = hub.scroll_dir.clone();
+            let s = tokio::task::spawn_blocking(move || Session::spawn(req, &scroll))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(e)?;
             let id = s.id.clone();
             idle_agent_on_exit(hub, &s);
             hub.sessions.lock().insert(id.clone(), s);
@@ -776,7 +884,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         }
         HostCmd::PtyInfo { pty } => {
             let s = hub.get(&pty)?;
-            let mut v = s.summary();
+            // `ps` is a blocking fork: not on a runtime worker.
+            let sc = s.clone();
+            let mut v = tokio::task::spawn_blocking(move || sc.info_summary())
+                .await
+                .map_err(|e| e.to_string())?;
             v["cwd_now"] = json!(s.cwd_now().await);
             Ok(v)
         }
@@ -808,34 +920,58 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             hub.agents.idle(&pane);
             Ok(json!({}))
         }
-        HostCmd::AgentSend { pane, text } => agent_send(hub, &pane, &text).await,
-        HostCmd::AgentHistory { pane, limit } => {
+        HostCmd::AgentSend { pane, text, steer } => agent_send(hub, &pane, &text, steer).await,
+        HostCmd::AgentTree { pane } => {
+            let st = hub.agents.status_of(&pane).ok_or("unknown agent pane")?;
+            let file = st.session_file.ok_or("no session for pane")?;
+            let title = crate::agents::history::title(&file);
+            Ok(crate::agents::tree::build(
+                &file, &st.agent, st.state, title,
+            ))
+        }
+        HostCmd::AgentHistory { pane, limit, sub } => {
+            use crate::agents::history;
             let file = hub
                 .agents
                 .session_file(&pane)
                 .ok_or("no session for pane")?;
-            let (messages, truncated) = crate::agents::history::read(&file, limit.min(1000))?;
-            Ok(json!({"messages": messages, "truncated": truncated}))
+            let path = match &sub {
+                Some(name) => crate::agents::tree::subagent_file(&file, name)?,
+                None => file.clone(),
+            };
+            let mut v = history::read(&path, limit.min(1000))?;
+            if sub.is_none() {
+                let st = hub.agents.status_of(&pane).ok_or("unknown agent pane")?;
+                let tree = crate::agents::tree::build(&file, &st.agent, st.state, None);
+                v["subagents"] = json!(crate::agents::tree::direct_children(&tree));
+            }
+            Ok(v)
         }
+        HostCmd::AgentInterrupt { pane } => agent_interrupt(hub, &pane),
+        HostCmd::AgentLaunch {
+            project,
+            agent,
+            prompt,
+        } => agent_launch(hub, &project, &agent, prompt).await,
         HostCmd::ProjectList {} => {
-            let (panes, status) = agent_panes(hub);
-            crate::projects::list(&hub.dir, &panes, &status).await
+            let (panes, status) = agent_panes(hub).await;
+            crate::projects::list(hub.data_dir(), &panes, &status).await
         }
         HostCmd::ProjectDetail { id } => {
-            let (panes, status) = agent_panes(hub);
-            crate::projects::detail(&hub.dir, &id, &panes, &status).await
+            let (panes, status) = agent_panes(hub).await;
+            crate::projects::detail(hub.data_dir(), &id, &panes, &status).await
         }
         HostCmd::ProjectLogs {
             id,
             service,
             lines,
             query,
-        } => crate::projects::logs(&hub.dir, &id, service, lines, query).await,
+        } => crate::projects::logs(hub.data_dir(), &id, service, lines, query).await,
         HostCmd::ProjectService { id, service, op } => {
-            crate::projects::service(&hub.dir, &id, service, &op).await
+            crate::projects::service(hub.data_dir(), &id, service, &op).await
         }
         HostCmd::ProjectAction { id, key, confirmed } => {
-            crate::projects::action(&hub.dir, &id, &key, confirmed).await
+            crate::projects::action(hub.data_dir(), &id, &key, confirmed).await
         }
         HostCmd::MobilePairStart {} => {
             hub.mobile.ensure_endpoint().await?;
@@ -928,7 +1064,7 @@ async fn raw(
     let (rtx, mut rrx) = mpsc::channel::<Vec<u8>>(crate::pty::RAW_QUEUE);
     // Subscribe before replying: output produced meanwhile queues in `rrx`.
     let info = s.attach_raw(conn_id, rtx, replay);
-    let _ = tx.send(protocol::reply(id, Ok(info)));
+    let _ = tx.force(protocol::reply(id, Ok(info)));
     drop(tx);
     // In-flight slow commands hold `tx` clones; the writer ends after their replies.
     let Ok(mut w) = writer.await else {
@@ -950,14 +1086,18 @@ async fn raw(
 }
 
 /// `(pane_key, cwd)` of every live terminal that belongs to a pane, and the agent status
-/// of all panes: what [`crate::projects`] needs to attach agents to projects.
-fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
-    let panes = hub
-        .sessions_snapshot()
-        .into_iter()
-        .filter(|s| s.exited().is_none())
-        .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
-        .collect();
+/// of all panes: what [`crate::projects`] needs to attach agents to projects. A lab owns no
+/// terminal, so it asks the main hostd for its terminals.
+async fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
+    let panes = match &hub.lab {
+        Some(lab) => lab.panes().await,
+        None => hub
+            .sessions_snapshot()
+            .into_iter()
+            .filter(|s| s.exited().is_none())
+            .filter_map(|s| Some((s.meta.scope.pane_key.clone()?, s.meta.cwd.clone())))
+            .collect(),
+    };
     (
         panes,
         serde_json::to_value(hub.agents.all()).unwrap_or_default(),
@@ -966,23 +1106,63 @@ fn agent_panes(hub: &Hub) -> (Vec<(String, String)>, Value) {
 
 /// Type a prompt into an agent's terminal: text, then Enter as a separate write (TUI
 /// agents such as omp treat a pasted `\r` inside the text as part of it). Refused while
-/// the agent works, so a phone never interleaves keystrokes with a running turn.
-async fn agent_send(hub: &Hub, pane: &str, text: &str) -> Result<Value, String> {
-    use crate::agents::State;
-    match hub.agents.state_of(pane) {
-        Some(State::Idle | State::Done) => {}
-        None => return Err("unknown agent pane".into()),
-        Some(_) => return Err("agent is working".into()),
-    }
-    let s = hub
-        .sessions_snapshot()
-        .into_iter()
-        .find(|s| s.meta.scope.pane_key.as_deref() == Some(pane) && s.exited().is_none())
-        .ok_or("no terminal for pane")?;
+/// the agent works, so a phone never interleaves keystrokes with a running turn, except as
+/// `steer` to omp, which queues it for the turn ([`crate::agents::send_allowed`]).
+async fn agent_send(hub: &Hub, pane: &str, text: &str, steer: bool) -> Result<Value, String> {
+    let st = hub.agents.status_of(pane).ok_or("unknown agent pane")?;
+    crate::agents::send_allowed(st.state, &st.agent, steer).map_err(str::to_string)?;
+    let s = agent_pty(hub, pane)?;
     s.write(text.as_bytes()).map_err(|e| format!("{e:#}"))?;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     s.write(b"\r").map_err(|e| format!("{e:#}"))?;
     Ok(json!({}))
+}
+
+/// The live terminal of an agent pane.
+fn agent_pty(hub: &Hub, pane: &str) -> Result<Arc<Session>, String> {
+    hub.sessions_snapshot()
+        .into_iter()
+        .find(|s| s.meta.scope.pane_key.as_deref() == Some(pane) && s.exited().is_none())
+        .ok_or_else(|| "no terminal for pane".to_string())
+}
+
+/// Escape stops a running turn in omp, Claude Code and Codex alike. Refused unless the agent
+/// works, so a stale tap never clears a prompt the user is typing on the desktop.
+fn agent_interrupt(hub: &Hub, pane: &str) -> Result<Value, String> {
+    use crate::agents::State;
+    match hub.agents.state_of(pane) {
+        Some(State::Working | State::Blocked | State::Waiting) => {}
+        None => return Err("unknown agent pane".into()),
+        Some(_) => return Err("agent is not working".into()),
+    }
+    agent_pty(hub, pane)?
+        .write(b"\x1b")
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(json!({}))
+}
+
+/// A new agent tab in a project, made by the desktop (it owns tabs, worktrees and the
+/// agent's launch env): `terminal_create` on its control socket.
+async fn agent_launch(
+    hub: &Hub,
+    project: &str,
+    agent: &str,
+    prompt: Option<String>,
+) -> Result<Value, String> {
+    let root = crate::projects::root_of(&hub.dir, project)?;
+    let args = json!({
+        "worktree": root.to_string_lossy(),
+        "agent": agent,
+        "prompt": prompt.filter(|p| !p.trim().is_empty()),
+    });
+    // Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
+    let tab = tokio::task::spawn_blocking(move || {
+        atlas_core::desktop_ctl::call("terminal_create", &args, std::time::Duration::from_secs(60))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))?;
+    Ok(json!({"pane": tab["tab"], "pty": tab["pty"]}))
 }
 
 #[cfg(all(test, unix))]

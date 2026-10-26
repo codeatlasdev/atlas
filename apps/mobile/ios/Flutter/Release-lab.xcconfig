@@ -1,0 +1,3 @@
+// Atlas Lab (`flutter build ios --flavor lab`): the stock Release settings plus the lab's own name.
+#include "Release.xcconfig"
+ATLAS_DISPLAY_NAME = Atlas Lab

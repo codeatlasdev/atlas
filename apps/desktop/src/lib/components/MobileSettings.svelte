@@ -1,17 +1,17 @@
 <script lang="ts">
+	import { usePoll, useNow } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import PairQr from "#lib/components/PairQr.svelte";
 	import { SCOPES, secondsLeft, toggleScope, type Device, type PairStart } from "#lib/settings/mobile.ts";
 
 	let devices = $state<Device[]>([]);
 	let pairing = $state<{ p: PairStart; at: number } | null>(null);
-	let now = $state(Date.now());
+	const clk = useNow(1000);
 
 	async function load() {
 		const prevIds = new Set(devices.filter((d) => !d.revoked).map((d) => d.node_id));
@@ -25,13 +25,14 @@
 
 	onMount(() => {
 		load().catch((e) => toast.error(errText(e)));
-		const t = setInterval(() => {
-			now = Date.now();
-			// Poll only while a code is live; stop once it expires.
-			if (pairing && left > 0) void load().catch(() => {});
-		}, 1000);
-		return () => clearInterval(t);
 	});
+
+	// Poll only while a code is live; stop once it expires.
+	usePoll(
+		1000,
+		() => !!pairing && left > 0,
+		() => void load().catch(() => {}),
+	);
 
 	async function pair() {
 		try {
@@ -51,14 +52,9 @@
 		await load();
 	}
 
-	const left = $derived(pairing ? secondsLeft(pairing.p, pairing.at, now) : 0);
+	const left = $derived(pairing ? secondsLeft(pairing.p, pairing.at, clk.now) : 0);
 	const active = $derived(devices.filter((d) => !d.revoked));
 </script>
-
-<PageHead
-	title="Mobile"
-	description="See and control this computer's projects, agents and terminals from Atlas Mobile. No account: the phone connects straight to this computer (through an encrypted relay when a direct path is blocked). The computer must be awake."
-/>
 
 <Group title="Pair a phone">
 	<Row
@@ -69,7 +65,7 @@
 		<Button size="sm" onclick={pair}>{pairing && left > 0 ? "New code" : "Pair a phone"}</Button>
 		{#snippet below()}
 			{#if pairing}
-				<PairQr {pairing} {now} />
+				<PairQr {pairing} now={clk.now} />
 			{/if}
 		{/snippet}
 	</Row>

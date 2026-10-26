@@ -11,6 +11,7 @@
 
 mod find;
 mod frame;
+mod history;
 mod images;
 mod scan;
 mod shell;
@@ -18,6 +19,7 @@ mod shell;
 mod tests;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
@@ -118,10 +120,15 @@ pub struct Vt {
     term: FairMutex<Term<Proxy>>,
     parser: Mutex<Processor>,
     shell: Mutex<Shell>,
+    /// The user's scrollback line cap, before the byte budget tightens it (`history`).
+    scrollback: AtomicUsize,
     on_event: OnEvent,
     win: SizeCell,
     pal: PalCell,
 }
+
+/// Default scrollback line cap.
+const SCROLLBACK: usize = 10_000;
 
 impl Vt {
     /// `on_event` is called with the VT locks held: it must never call back into this `Vt`.
@@ -131,7 +138,7 @@ impl Vt {
             rows: rows.max(1) as usize,
         };
         let config = Config {
-            scrolling_history: 10_000,
+            scrolling_history: history::history_lines(SCROLLBACK, size.cols, history::BYTE_BUDGET),
             kitty_keyboard: true,
             ..Config::default()
         };
@@ -143,6 +150,7 @@ impl Vt {
             cell_height: 16,
         }));
         let pal: PalCell = Arc::default();
+        let scrollback = AtomicUsize::new(SCROLLBACK);
         Self {
             term: FairMutex::new(Term::new(
                 config,
@@ -151,6 +159,7 @@ impl Vt {
             )),
             parser: Mutex::new(Processor::new()),
             shell: Mutex::new(Shell::default()),
+            scrollback,
             on_event,
             win,
             pal,
@@ -163,10 +172,31 @@ impl Vt {
     /// Inside a synchronized update (mode 2026) the parser buffers until the update
     /// ends or `sync_deadline` passes (then call `flush_sync`).
     pub fn feed(&self, bytes: &[u8]) {
+        // `clear` (ED3 + home + ED2) must end with an empty history: cut the chunk after each one.
+        let cuts = self.shell.lock().clear.scan(bytes);
+        let mut from = 0;
+        for end in cuts {
+            self.feed_part(&bytes[from..end]);
+            self.purge_history();
+            from = end;
+        }
+        self.feed_part(&bytes[from..]);
+    }
+
+    /// ED 3 again, after the whole `clear` ran: its ED 2 pushed the old screen into history.
+    fn purge_history(&self) {
+        let mut p = self.parser.lock();
+        let mut t = self.term.lock();
+        p.advance(&mut *t, b"\x1b[3J");
+        Self::reclaim(&mut t);
+    }
+
+    fn feed_part(&self, bytes: &[u8]) {
         let mut p = self.parser.lock();
         let mut t = self.term.lock();
         let mut sh = self.shell.lock();
         let mut at = 0;
+        let had_history = t.grid().history_size() > 0;
         for (end, seq) in sh.scan.scan(bytes) {
             p.advance(&mut *t, &bytes[at..end]);
             at = end;
@@ -200,6 +230,10 @@ impl Vt {
         }
         p.advance(&mut *t, &bytes[at..]);
         self.track_alt(&t, &mut sh);
+        // ED3 / RIS emptied the history: free the rows alacritty keeps as spare.
+        if had_history && t.grid().history_size() == 0 {
+            Self::reclaim(&mut t);
+        }
         if let Some(s) = sh.search.as_mut() {
             s.stale = true;
         }
@@ -216,6 +250,7 @@ impl Vt {
         let mut p = self.parser.lock();
         let mut t = self.term.lock();
         t.reset_state();
+        Self::reclaim(&mut t);
         *p = Processor::new();
         *self.shell.lock() = Shell::default();
     }
@@ -229,12 +264,17 @@ impl Vt {
             "hollow" => CursorShape::HollowBlock,
             _ => CursorShape::Block,
         };
-        self.term.lock().set_options(Config {
-            scrolling_history: scrollback.min(100_000),
+        let scrollback = scrollback.min(100_000);
+        self.scrollback.store(scrollback, Ordering::Relaxed);
+        let mut t = self.term.lock();
+        let cap = history::history_lines(scrollback, t.columns(), history::BYTE_BUDGET);
+        t.set_options(Config {
+            scrolling_history: cap,
             kitty_keyboard: true,
             default_cursor_style: CursorStyle { shape, blinking },
             ..Config::default()
         });
+        Self::reclaim(&mut t);
     }
 
     /// When a pending synchronized update must be force-ended.
@@ -257,10 +297,13 @@ impl Vt {
 
     pub fn resize(&self, cols: u16, rows: u16) {
         let (cols, rows) = (cols.max(1), rows.max(1));
-        self.term.lock().resize(Size {
+        let mut t = self.term.lock();
+        t.resize(Size {
             cols: cols as usize,
             rows: rows as usize,
         });
+        // The byte budget buys fewer lines at a wider grid.
+        self.apply_history(&mut t);
         let mut s = self.win.lock();
         (s.num_cols, s.num_lines) = (cols, rows);
     }

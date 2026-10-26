@@ -77,7 +77,7 @@
 
 <style>
 	.drag-strip {
-		height: 40px;
+		height: var(--title-row);
 	}
 	.wrap {
 		flex: 1;

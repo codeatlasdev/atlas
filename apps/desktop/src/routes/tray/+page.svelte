@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useNow } from "#lib/clock.svelte.ts";
 	import { colorScheme } from "@codeatlasdev/ui";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
@@ -45,7 +46,7 @@
 	const SPARK_H = 28;
 
 	let snap = $state<TraySnapshot>(EMPTY_SNAPSHOT);
-	let now = $state(Date.now());
+	const clk = useNow(15_000);
 	let busy = $state<Record<string, boolean>>({});
 	let error = $state<string | null>(null);
 	let root = $state<HTMLDivElement>();
@@ -55,7 +56,7 @@
 	let status = $derived(overall(snap.projects));
 	let cards = $derived(runningCards(snap.projects));
 	let idle = $derived(idleProjects(snap.projects));
-	let rec = $derived(recommend(snap, now));
+	let rec = $derived(recommend(snap, clk.now));
 	/** A failure card already says what failed; the recommendation then only adds what it does not (update, host). */
 	let recShown = $derived(rec && rec.icon !== "fail" ? rec : null);
 
@@ -121,18 +122,16 @@
 		keep(
 			listen("tray://shown", async () => {
 				syncTheme();
-				now = Date.now();
+				clk.refresh();
 				const fresh = await invoke<TraySnapshot | null>("tray_snapshot");
 				if (fresh) snap = fresh;
 			}),
 		);
 		void invoke<TraySnapshot | null>("tray_snapshot").then((s) => s && (snap = s));
 		syncTheme();
-		const clock = setInterval(() => (now = Date.now()), 15_000);
 		window.addEventListener("keydown", onKey);
 		return () => {
 			offs.forEach((f) => f());
-			clearInterval(clock);
 			window.removeEventListener("keydown", onKey);
 		};
 	});
@@ -445,15 +444,25 @@
 	}
 	/* The only looping motion: a slow halo on an unhealthy dot. Off for reduced motion. */
 	.dot.live {
+		position: relative;
+	}
+	.dot.live::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: color-mix(in oklab, currentColor 45%, transparent);
 		animation: halo 2.4s ease-out infinite;
 	}
 	@keyframes halo {
 		0% {
-			box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+			transform: scale(1);
+			opacity: 1;
 		}
 		70%,
 		100% {
-			box-shadow: 0 0 0 6px transparent;
+			transform: scale(3);
+			opacity: 0;
 		}
 	}
 	.state.fail .dot.live {

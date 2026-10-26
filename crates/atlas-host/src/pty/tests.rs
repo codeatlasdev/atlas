@@ -52,7 +52,7 @@ async fn listeners_get_activity_only_from_output() {
     std::fs::create_dir_all(&dir).unwrap();
     for (cmd, want) in [("printf hello", true), ("sleep 0.2", false)] {
         let s = Session::spawn(sh(cmd), &dir).unwrap();
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = super::out_channel();
         s.attach(1, tx, false, false);
         let t0 = std::time::Instant::now();
         while s.exited().is_none() {
@@ -60,7 +60,7 @@ async fn listeners_get_activity_only_from_output() {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         let mut got = false;
-        while let Ok(l) = rx.try_recv() {
+        while let Some(l) = rx.try_recv() {
             got |= l.contains(r#""ev":"pty_activity""#);
         }
         assert_eq!(got, want, "{cmd}");
@@ -109,7 +109,7 @@ async fn a_title_set_before_attach_comes_back_as_a_title_event() {
     };
     let s = Session::spawn(shell_req(script), &dir).unwrap();
     until_exited(&s).await;
-    let (tx, _rx) = mpsc::unbounded_channel();
+    let (tx, _rx) = super::out_channel();
     let info = s.attach(1, tx, true, true);
     let ev = crate::protocol::title_event(&s.id, &info).expect("a title event");
     assert_eq!(
@@ -283,4 +283,282 @@ async fn pty_and_exec_find_binaries_the_login_shell_put_on_path() {
         stdout.contains("bun-ran from-exec") && stdout.contains("mine"),
         "{r}"
     );
+}
+
+/// Incident (maintainer, `bun run desktop:dev`): `bun run` runs scripts under `/bin/bash`, so the hostd
+/// inherited SHELL=/bin/bash and every new terminal tab (no argv) started bash, while the account's login
+/// shell is fish. A tab with no argv starts the shell the probe resolved, whatever `$SHELL` says. The
+/// stand-in shell prints its own name and flags, so the test sees which program the tab ran and how.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tab_without_argv_starts_the_probed_login_shell_not_the_inherited_one() {
+    use atlas_core::login_env::{fixtures, install, probe_with};
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = fixtures::fake_home();
+    let fake = home.path().join("loginsh");
+    std::fs::write(&fake, "#!/bin/sh\necho \"ran-login-shell $0 $*\"\n").unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut p = probe_with("/bin/sh", home.path(), &fixtures::gui_env(home.path()));
+    p.shell = fake.display().to_string();
+    let _env = install(p);
+    // The launcher's value that used to win. Set before any thread of this test reads it.
+    // SAFETY: only this serialized (`install`) test touches SHELL.
+    unsafe { std::env::set_var("SHELL", "/bin/bash") };
+
+    let dir = tempfile::tempdir().unwrap();
+    let req = PtyCreate {
+        cwd: "/".into(),
+        argv: vec![],
+        env: Default::default(),
+        cols: 80,
+        rows: 24,
+        scope: Default::default(),
+        title: None,
+        mode: Default::default(),
+    };
+    let s = Session::spawn(req, dir.path()).unwrap();
+    let t0 = std::time::Instant::now();
+    while s.exited().is_none() {
+        assert!(t0.elapsed() < Duration::from_secs(10), "pty did not exit");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let out = String::from_utf8_lossy(&s.buf.lock().ring_bytes()).into_owned();
+    assert!(
+        out.contains(&format!("ran-login-shell {} -l", fake.display())),
+        "{out:?}"
+    );
+    assert_eq!(s.meta.argv, [fake.display().to_string(), "-l".into()]);
+}
+
+/// A client that never reads while a program prints far more than the cap: hostd's queue for it
+/// stays bounded, the program is not slowed, a healthy attacher misses nothing, and a reattach
+/// with replay continues. Unix only: it needs a fast byte source.
+// Regression: #109, hostd queued every `pty_output` for a client that stopped reading, without limit.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming() {
+    use super::OUT_CAP;
+    use base64::Engine;
+
+    const TOTAL: usize = 40 * 1024 * 1024;
+    let dir = tempfile::tempdir().unwrap();
+    let script = format!("head -c {TOTAL} /dev/zero | tr '\\0' a; echo END; sleep 30");
+    let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
+
+    let (stuck, mut stuck_rx) = super::out_channel();
+    let (healthy, mut healthy_rx) = super::out_channel();
+    s.attach(1, stuck.clone(), false, true);
+    s.attach(2, healthy, false, true);
+
+    let decode = |line: &str| -> Option<Vec<u8>> {
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        matches!(v["ev"].as_str(), Some("pty_output" | "pty_replay")).then(|| {
+            base64::engine::general_purpose::STANDARD
+                .decode(v["data"].as_str().unwrap())
+                .unwrap()
+        })
+    };
+    let (mut text_tail, mut seen, mut stuck_max) = (String::new(), 0usize, 0usize);
+    let t0 = std::time::Instant::now();
+    while !text_tail.contains("END") {
+        assert!(
+            t0.elapsed() < Duration::from_secs(60),
+            "the program froze behind a client that does not read (saw {seen} bytes)"
+        );
+        while let Some(line) = healthy_rx.try_recv() {
+            if let Some(b) = decode(&line) {
+                seen += b.len();
+                text_tail.push_str(&String::from_utf8_lossy(&b));
+                let keep = text_tail.len().saturating_sub(16);
+                text_tail.drain(..keep);
+            }
+        }
+        stuck_max = stuck_max.max(stuck.pending());
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    // Bounded: the cap plus the one line that crossed it (a coalesced chunk is at most 64 KiB,
+    // 4/3 of that as base64, plus the JSON envelope).
+    assert!(
+        stuck_max <= OUT_CAP + 128 * 1024,
+        "queued {stuck_max} bytes for a client that never reads"
+    );
+    assert!(
+        seen >= TOTAL,
+        "the healthy attacher saw {seen} of {TOTAL} bytes"
+    );
+    // The stuck one is unsubscribed, and its queue ends with the reason.
+    {
+        let b = s.buf.lock();
+        assert!(
+            !b.attachers.contains_key(&1),
+            "stuck attacher still subscribed"
+        );
+        assert!(b.attachers.contains_key(&2), "healthy attacher was dropped");
+    }
+    let mut last = None;
+    while let Some(line) = stuck_rx.try_recv() {
+        last = Some(line);
+    }
+    let notice: serde_json::Value = serde_json::from_str(&last.unwrap()).unwrap();
+    assert_eq!(notice["ev"], "pty_dropped", "{notice}");
+    assert_eq!(notice["reason"], "slow_client");
+    assert_eq!(notice["pty"], s.id.as_str());
+    assert!(super::dropped_total() >= 1);
+
+    // Reattach with replay: the ring (2 MiB) comes back and ends where the program is.
+    let (again, mut again_rx) = super::out_channel();
+    s.attach(3, again, true, true);
+    let mut replay = Vec::new();
+    while let Some(line) = again_rx.try_recv() {
+        replay.extend(decode(&line).unwrap_or_default());
+    }
+    assert!(
+        replay.len() > 1024 * 1024,
+        "replay came back with {} bytes",
+        replay.len()
+    );
+    assert!(String::from_utf8_lossy(&replay).contains("END"));
+    s.signal("KILL").unwrap();
+}
+
+/// The notice a dropped client gets names the pty and the reason, the others are untouched.
+// Regression: #109
+#[test]
+fn a_connection_over_its_cap_is_told_why_and_unsubscribed() {
+    use super::{Buf, out_channel_with_cap};
+    use std::collections::HashMap;
+
+    let (slow, mut slow_rx) = out_channel_with_cap(8);
+    let (fast, mut fast_rx) = out_channel_with_cap(1 << 20);
+    let mut conns = HashMap::from([(1u64, slow), (2u64, fast)]);
+    // The cap is checked before a line is added: the first line fits, the next does not.
+    Buf::broadcast("p1", &mut conns, "0123456789");
+    assert_eq!(conns.len(), 2);
+    Buf::broadcast("p1", &mut conns, "next");
+    assert_eq!(
+        conns.keys().copied().collect::<Vec<_>>(),
+        vec![2],
+        "slow one removed"
+    );
+    assert_eq!(slow_rx.try_recv().as_deref(), Some("0123456789"));
+    let notice: serde_json::Value = serde_json::from_str(&slow_rx.try_recv().unwrap()).unwrap();
+    assert_eq!(
+        (&notice["ev"], &notice["pty"], &notice["reason"]),
+        (
+            &serde_json::json!("pty_dropped"),
+            &serde_json::json!("p1"),
+            &serde_json::json!("slow_client")
+        )
+    );
+    assert!(slow_rx.try_recv().is_none(), "nothing after the notice");
+    assert_eq!(fast_rx.try_recv().as_deref(), Some("0123456789"));
+    assert_eq!(fast_rx.try_recv().as_deref(), Some("next"));
+}
+
+/// `pty_exit` reaches a client that is over its cap: it must learn the program ended.
+// Regression: #109 (dropping over-cap output must not drop the exit)
+#[test]
+fn pty_exit_is_delivered_even_to_a_connection_over_its_cap() {
+    use super::{Buf, out_channel_with_cap};
+
+    let (out, mut rx) = out_channel_with_cap(1);
+    out.send("fill".into()).unwrap();
+    let mut b = Buf::new(Default::default(), None, 0);
+    b.attachers.insert(1, out);
+    b.notify_force(r#"{"ev":"pty_exit","pty":"p","code":0}"#);
+    assert_eq!(rx.try_recv().as_deref(), Some("fill"));
+    assert!(rx.try_recv().unwrap().contains("pty_exit"));
+}
+
+/// Every `pty_title` line a listener got, in order.
+#[cfg(unix)]
+fn titles(rx: &mut super::OutRx) -> Vec<String> {
+    let mut got = Vec::new();
+    while let Some(l) = rx.try_recv() {
+        let v: serde_json::Value = serde_json::from_str(&l).unwrap();
+        if v["ev"] == "pty_title" {
+            got.push(v["title"].as_str().unwrap_or_default().to_string());
+        }
+    }
+    got
+}
+
+// Incident (#110, "terminal freezes with 7+ agents"): omp redraws its title on every spinner frame, usually
+// with the same text as the frame before. Each OSC became a `pty_title` push to every attached client, and
+// each push became a Tauri event for ~4 webview listeners: hundreds of identical events a second across the
+// agents, all on the UI thread. Only a title that differs from the current one is news.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_title_repeated_by_the_program_is_pushed_once() {
+    let dir = tempfile::tempdir().unwrap();
+    // `sleep 0.02` keeps each OSC in its own 8 ms coalescing window, so the parser sees every one.
+    let script = "for t in a a a b b a a a; do printf '\\033]0;%s\\007' $t; sleep 0.02; done";
+    let s = Session::spawn(shell_req(script), dir.path()).unwrap();
+    let (tx, mut rx) = super::out_channel();
+    s.attach(1, tx, false, false);
+    until_exited(&s).await;
+    assert_eq!(titles(&mut rx), ["a", "b", "a"], "one push per change");
+    assert_eq!(
+        *s.title.lock(),
+        "a",
+        "the stored title is still the last one"
+    );
+}
+
+// Class of the incident above: a title set again to what it already is must not even wake the clients, but one
+// that goes back to an EARLIER title is a change (a -> b -> a is two pushes after the first).
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_title_that_returns_to_an_earlier_value_is_a_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = "for t in x y x; do printf '\\033]0;%s\\007' $t; sleep 0.02; done";
+    let s = Session::spawn(shell_req(script), dir.path()).unwrap();
+    let (tx, mut rx) = super::out_channel();
+    s.attach(1, tx, false, false);
+    until_exited(&s).await;
+    assert_eq!(titles(&mut rx), ["x", "y", "x"]);
+}
+
+// Incident (#110, "terminal freezes with many agents"): `pty_list` built every session's `summary()`, and the summary
+// asked `ps` for the foreground program: one blocking fork+exec per terminal, serially, on a runtime worker. The
+// desktop calls `pty_list` on every connect, tab operation and sidebar refresh, so with 30 terminals that was
+// ~100+ ms of blocked worker each time. Nothing reads `fg` from the list (only `pty_info` shows it), so the list
+// no longer pays for it. The keys everything else reads must stay.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_pty_list_summary_does_not_fork_ps_for_the_foreground_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("sleep 30"), dir.path()).unwrap();
+    let list = s.summary();
+    assert!(
+        list.get("fg").is_none(),
+        "pty_list entries carry no fg: {list}"
+    );
+    for k in [
+        "pty",
+        "cwd",
+        "argv",
+        "scope",
+        "title",
+        "created_at",
+        "exited",
+        "pid",
+        "cols",
+        "rows",
+    ] {
+        assert!(list.get(k).is_some(), "pty_list lost `{k}`: {list}");
+    }
+    let info = s.info_summary();
+    assert!(
+        info["fg"]["pid"].as_i64().is_some(),
+        "pty_info still names the foreground program: {info}"
+    );
+    assert!(
+        info["fg"]["name"].as_str().is_some_and(|n| !n.is_empty()),
+        "{info}"
+    );
+    s.kill().await;
 }

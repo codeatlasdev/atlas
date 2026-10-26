@@ -4,13 +4,20 @@
 //!   reply `{"ok":true,"data":{..info}}` or `{"ok":false,"error":"unauthorized"}` + close.
 //! - Request `{"id":n,"cmd":"..","args":{..}}` → `{"id":n,"ok":true,"data":{..}}` |
 //!   `{"id":n,"ok":false,"error":".."}`.
-//! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"fs_event",..}`.
+//! - Push (no `id`): `{"ev":"pty_output"|"pty_replay"|"pty_title"|"pty_activity"|"pty_exit"|"pty_dropped"|"fs_event",..}`.
 //!   `pty_activity {pty}` goes to every attached connection (listeners too) at most once a second while the
 //!   program prints; an older daemon simply never sends it.
+//! - Every connection's outgoing queue is capped at 8 MiB (`pty::OUT_CAP`). A client that stops reading
+//!   past that gets `{"ev":"pty_dropped","pty":"..","reason":"slow_client"}` and no more output for that pty
+//!   (the pty reader and other clients are never held up); it re-sends `pty_attach` with `replay: true`
+//!   (the last 2 MiB) and carries on. `pty_exit` and replies always get through. A broadcast (`lsp_*`,
+//!   `agent_*`) skips a connection over the cap; that client re-syncs on reconnect.
 //! - `pty_attach_raw` (first and only command on a connection): after its reply line the
 //!   connection carries the pty's raw output bytes (replay first), no framing, until the pty
 //!   exits (hostd closes) or the client closes. Terminal renderers use it: no JSON, no base64.
-//! - `info` (and the handshake reply) reports `{version, proto, caps, pid, ..}`. `caps` lists
+//! - `info` (and the handshake reply) reports `{version, proto, caps, pid, queued, ..}`; `queued` is
+//!   `{total_bytes, cap_bytes, dropped, connections: [{conn, bytes}]}`: what is waiting to be written to each
+//!   connection and how many clients were dropped for not reading. `caps` lists
 //!   what this daemon can do (`pty_attach_raw`, `upgrade`); clients check it instead of
 //!   guessing from error strings. A proto 1 daemon has no `caps` and cannot `upgrade`.
 //! - `upgrade {exe}`: live takeover. hostd starts `exe hostd --takeover`, hands it every live pty
@@ -288,7 +295,7 @@ pub enum HostCmd {
     /// Install or reinstall a managed server now (progress arrives as `lsp_status` pushes).
     LspInstall {
         name: String,
-        /// Remove Atlas's managed copy first (Settings → Languages → Update).
+        /// Remove Atlas's managed copy first (Settings → Editor → Languages → Update).
         #[serde(default)]
         reinstall: bool,
     },
@@ -335,16 +342,43 @@ pub enum HostCmd {
         allow: bool,
     },
     /// Type `text` into the pane's terminal, then Enter, only while the agent is idle/done.
+    /// With `steer` and an omp agent it is also allowed while the agent works: omp queues
+    /// what is typed mid-turn as steering for the running turn.
     AgentSend {
         pane: String,
         text: String,
+        #[serde(default)]
+        steer: bool,
     },
-    /// The agent's conversation from its session file: `{messages: [{role, text}], truncated}`.
-    /// Takes the pane, never a path: the file is the one hostd recorded for that pane.
+    /// The pane's agent and every subagent it started, however deep, as flat nodes:
+    /// `{nodes: [{id, parent, name, agent, model, status, task, duration_ms, tokens, cost,
+    /// tool_count, now, report, updated_at}]}` (`agents::tree`). The root is `id: ""`.
+    AgentTree {
+        pane: String,
+    },
+    /// The agent's conversation from its session file as a timeline:
+    /// `{items, messages, title, truncated, subagents}` (`agents::history`). Takes the pane,
+    /// never a path: the file is the one hostd recorded for that pane; `sub` names one of
+    /// its `subagents` to read that transcript instead.
     AgentHistory {
         pane: String,
         #[serde(default = "default_history_limit")]
         limit: usize,
+        #[serde(default)]
+        sub: Option<String>,
+    },
+    /// Interrupt the agent's running turn: Escape into its terminal, as a person would.
+    AgentInterrupt {
+        pane: String,
+    },
+    /// Start `agent` (a registry id: omp, claude, codex…) in a new terminal of project
+    /// `project` (an id of `project_list`), optionally with a first prompt. The desktop owns
+    /// tabs, so this goes through its control socket: `{pane}` of the new tab.
+    AgentLaunch {
+        project: String,
+        agent: String,
+        #[serde(default)]
+        prompt: Option<String>,
     },
     /// Local projects of the desktop registry with their live service state.
     ProjectList {},
@@ -516,8 +550,8 @@ pub fn hello_line(token: &str, client: &str) -> String {
 
 /// Write each queued line (plus `\n`) to `w` until the queue closes or the peer is gone;
 /// returns the writer so a connection can be taken over afterwards.
-pub async fn write_lines<W: tokio::io::AsyncWrite + Unpin>(
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<String>,
+pub(crate) async fn write_lines<W: tokio::io::AsyncWrite + Unpin>(
+    mut rx: crate::pty::OutRx,
     mut w: W,
 ) -> W {
     use tokio::io::AsyncWriteExt;

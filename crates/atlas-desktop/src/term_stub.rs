@@ -11,6 +11,14 @@ macro_rules! unsupported {
     )*};
 }
 
+/// No native terminal views exist off macOS (listed for the registration test:
+///     term_list,
+/// returns an empty list instead of refusing).
+#[tauri::command]
+pub fn term_list() -> Vec<String> {
+    Vec::new()
+}
+
 const UNSUPPORTED: &str = "the GPU terminal needs macOS; this build uses xterm.js";
 
 unsupported!(
@@ -18,6 +26,7 @@ unsupported!(
     term_bounds,
     term_slide,
     term_close,
+    term_reload,
     term_stats,
     term_stats_reset,
     term_key,
@@ -51,3 +60,6 @@ unsupported!(
 
 /// No GPU terminals to reattach after a hostd restart.
 pub async fn reattach_all() {}
+
+/// No native terminals to rebuild on wake.
+pub fn install_system_observers() {}

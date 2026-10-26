@@ -8,6 +8,9 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
+import 'package:atlas_mobile/features/agents/agent_info.dart';
+import 'package:atlas_mobile/features/agents/agent_launcher.dart';
+import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -154,10 +157,30 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         device: widget.device,
         paneKey: pane,
         initial: a,
-        title: '${a.agent} · ${widget.project.name}',
+        title: agentTitle(a),
       ),
     ),
   );
+
+  /// Pick an agent and a first prompt, launch it here, then open its chat.
+  Future<void> _newAgent() async {
+    final launched = await showAgentLauncher(
+      context,
+      device: widget.device,
+      projectId: widget.project.id,
+    );
+    if (launched == null || !mounted) return;
+    _openAgent(
+      launched.pane,
+      AgentStatus(
+        state: 'working',
+        agent: launched.agent,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        stateStartedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    _refresh();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -328,32 +351,45 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     ];
   }
 
-  /// Every agent of the project, one line each; the ones waiting on you first.
+  /// Every agent of the project, one line each; the ones waiting on you first. A
+  /// prominent button starts a new one.
   Widget _agents(ProjectSnapshot s) {
+    final c = AtlasColors.of(context);
     final list = [
-      ...s.agents.where((e) => _needsYou(e.$2)),
-      ...s.agents.where((e) => !_needsYou(e.$2)),
+      ...s.agents.where((e) => needsYou(e.$2)),
+      ...s.agents.where((e) => !needsYou(e.$2)),
     ];
-    if (list.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: Space.xl),
-        child: Text(
-          'No agent running in this project.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AtlasColors.of(context).muted),
-        ),
-      );
-    }
     return Padding(
       padding: const EdgeInsets.only(top: Space.md),
-      child: AtlasCard(
-        padding: EdgeInsets.zero,
-        child: Column(
-          children: [
-            for (final (pane, a) in list)
-              _AgentLine(status: a, onTap: () => _openAgent(pane, a)),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            onPressed: _newAgent,
+            icon: const Icon(Icons.add_rounded, size: 20),
+            label: const Text('New agent'),
+          ),
+          const SizedBox(height: Space.md),
+          if (list.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Space.lg),
+              child: Text(
+                'No agent running in this project.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.muted),
+              ),
+            )
+          else
+            AtlasCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  for (final (pane, a) in list)
+                    _AgentLine(status: a, onTap: () => _openAgent(pane, a)),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1371,9 +1407,7 @@ class _LogRow extends StatelessWidget {
   }
 }
 
-bool _needsYou(AgentStatus a) => a.state == 'blocked' || a.state == 'waiting';
-
-/// One agent as a line: state dot, name, state, last message.
+/// One agent as a row: logo, session title, state, model, time in state, last message.
 class _AgentLine extends StatelessWidget {
   const _AgentLine({required this.status, required this.onTap});
   final AgentStatus status;
@@ -1386,6 +1420,14 @@ class _AgentLine extends StatelessWidget {
     final line = status.state == 'working'
         ? (status.prompt ?? '')
         : (status.lastMessage ?? status.prompt ?? '');
+    final since = agentActive(status.state) || status.state == 'done'
+        ? elapsed(status.stateStartedAt)
+        : '';
+    final meta = [
+      agentStateLabel(status.state),
+      ?status.model,
+      if (since.isNotEmpty) since,
+    ];
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -1395,25 +1437,35 @@ class _AgentLine extends StatelessWidget {
         ),
         child: Row(
           children: [
-            StatusDot(color: k, pulse: status.state == 'working'),
-            const SizedBox(width: Space.sm),
+            AgentLogo(status.agent, size: 34),
+            const SizedBox(width: Space.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    agentTitle(status),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   Row(
                     children: [
-                      Text(
-                        status.agent,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      StatusDot(
+                        color: k,
+                        pulse: status.state == 'working' || needsYou(status),
+                        size: 6,
                       ),
-                      const SizedBox(width: Space.sm),
-                      Text(
-                        agentStateLabel(status.state),
-                        style: TextStyle(
-                          color: k,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          meta.join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: k,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],

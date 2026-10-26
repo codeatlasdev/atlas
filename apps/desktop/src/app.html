@@ -21,6 +21,10 @@
 					if (resolved === "dark") h.classList.add("dark");
 					h.setAttribute("data-preset", preset);
 					h.setAttribute("data-ca-scheme", scheme);
+					// The kit's blur tiers are glass unless a style is selected. The window is see-through and the pager
+					// translates content under floating chips, so a backdrop blur re-renders every frame of a swipe:
+					// "solid" zeroes every tier (kitBlurRoles.test.ts).
+					h.setAttribute("data-style", "solid");
 					requestAnimationFrame(function () {
 						requestAnimationFrame(function () {
 							h.classList.remove("ca-init");

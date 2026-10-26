@@ -17,7 +17,7 @@
 
 	const space = useSpace();
 	let p = $derived(space.project);
-	// One agent's integration at a time. "Not now" hides it on this computer; Settings → Agents
+	// One agent's integration at a time. "Not now" hides it on this computer; Settings → Integrations → Agent hooks
 	// still turns it on.
 	let hidden = $state(new Set<string>());
 	let offer = $derived(

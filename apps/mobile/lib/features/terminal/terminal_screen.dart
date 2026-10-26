@@ -90,11 +90,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // Listen first: hostd sends the replay before it answers pty_attach, so a
     // listener added after the reply misses the whole screen (it showed blank).
     _pushSub = mux.pushEvents.listen(_onPush);
-    final resp = await mux.call('pty_attach', {
-      'pty': widget.pty,
-      'replay': true,
-      'output': true,
-    });
+    final resp = await _sendAttach(mux);
     // The widget may have been disposed while pty_attach was in flight.
     if (!mounted) {
       mux.call('pty_detach', {'pty': widget.pty}).ignore();
@@ -107,15 +103,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     }
   }
 
+  Future<Map<String, dynamic>> _sendAttach(Multiplexer mux) => mux.call(
+    'pty_attach',
+    {'pty': widget.pty, 'replay': true, 'output': true},
+  );
+
   void _onPush(Map<String, dynamic> event) {
     final ev = event['ev'] as String?;
     if (event['pty'] != widget.pty) return;
     switch (ev) {
-      case 'pty_output':
       case 'pty_replay':
+        // The start of a replay: the screen is rebuilt from it (a no-op on the first attach, the
+        // clean slate after a reattach), not appended to what was there.
+        // Through the same sink as the output, so it lands in order; xterm.dart ignores RIS (ESC c).
+        _utf8.add(utf8.encode('\x1b[H\x1b[2J\x1b[3J'));
+        _utf8.add(base64.decode(event['data'] as String));
+      case 'pty_output':
         _utf8.add(base64.decode(event['data'] as String));
       case 'pty_title':
         if (mounted) setState(() => _title = event['title'] as String? ?? '');
+      case 'pty_dropped':
+        // hostd stopped feeding this phone because it did not read fast enough: the replay
+        // (its last 2 MiB) redraws what was missed, then live output goes on.
+        final mux = _mux;
+        if (mux != null && mounted) _sendAttach(mux).ignore();
       case 'pty_exit':
         if (mounted) setState(() => _exited = true);
     }

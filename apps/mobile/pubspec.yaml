@@ -47,6 +47,7 @@ dependencies:
   url_launcher: ^6.3.3
   firebase_core: ^5.0.0
   firebase_messaging: ^17.0.0
+  markdown: ^7.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

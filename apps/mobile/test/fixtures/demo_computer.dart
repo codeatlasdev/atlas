@@ -18,20 +18,54 @@ Transport demoTransport({List<Map<String, String>> integrations = const []}) =>
 int _now() => DateTime.now().millisecondsSinceEpoch;
 
 class _Agent {
-  _Agent(this.pane, this.agent, this.state, this.history);
+  _Agent(
+    this.pane,
+    this.agent,
+    this.state,
+    this.history, {
+    this.title,
+    this.steps = const [],
+    this.subagents = const [],
+  });
   final String pane;
   final String agent;
   String state;
   final List<Map<String, String>> history;
+  String? title;
+
+  /// Tool calls and subagent calls shown between the first prompt and the answer, in
+  /// hostd's `agent_history` item shape.
+  final List<Map<String, Object?>> steps;
+  final List<Map<String, Object?>> subagents;
   int updatedAt = _now();
   int startedAt = _now();
+
+  /// `agent_history`'s `items`: the conversation plus its tool steps. The steps sit
+  /// before the last assistant message, like a real turn.
+  List<Map<String, Object?>> items() {
+    final msgs = [
+      for (final m in history) {'kind': m['role'], 'text': m['text']},
+    ];
+    if (steps.isEmpty || msgs.isEmpty) return msgs;
+    final at = msgs.lastIndexWhere((m) => m['kind'] == 'user') + 1;
+    return [
+      ...msgs.take(at),
+      {'kind': 'thinking', 'text': 'Look at the code before changing it.'},
+      ...steps,
+      ...msgs.skip(at),
+    ];
+  }
 
   Map<String, Object?> status() => {
     'state': state,
     'agent': agent,
     'session_id': null,
     'session_file': null,
-    'model': agent == 'claude' ? 'claude-sonnet' : null,
+    'model': switch (agent) {
+      'claude' => 'claude-sonnet',
+      'omp' => 'gpt-5.5',
+      _ => null,
+    },
     'prompt': history.lastWhere(
       (m) => m['role'] == 'user',
       orElse: () => const {},
@@ -46,6 +80,7 @@ class _Agent {
     'state_started_at': startedAt,
     'worktree_id': null,
     'tab_id': null,
+    'title': title,
   };
 }
 
@@ -214,26 +249,229 @@ class _DemoComputer implements Transport {
   ];
 
   late final _agents = {
-    'demo-claude': _Agent('demo-claude', 'claude', 'blocked', [
-      {
-        'role': 'user',
-        'text': 'Add an index on orders.created_at and run the migration',
-      },
-      {
-        'role': 'assistant',
-        'text': 'I wrote migration 0042_orders_created_at. I need your approval to run it.',
-      },
-    ]),
-    'demo-omp': _Agent('demo-omp', 'omp', 'done', [
-      {'role': 'user', 'text': 'Why is payments failing?'},
-      {
-        'role': 'assistant',
-        'text':
-            'payments exits with code 2: its command connects to a ledger service that '
-            'is not part of this project, so the connection is refused on start.',
-      },
-    ]),
+    'demo-claude': _Agent(
+      'demo-claude',
+      'claude',
+      'blocked',
+      [
+        {
+          'role': 'user',
+          'text': 'Add an index on orders.created_at and run the migration',
+        },
+        {
+          'role': 'assistant',
+          'text': 'I wrote migration `0042_orders_created_at`. I need your approval to run it.',
+        },
+      ],
+      title: 'Index orders.created_at',
+      steps: [
+        {
+          'kind': 'tool',
+          'id': 'c1',
+          'name': 'read',
+          'intent': 'Reading the schema',
+          'detail': 'db/schema.sql',
+          'status': 'ok',
+          'output': 'Read 214 lines',
+        },
+        {
+          'kind': 'tool',
+          'id': 'c2',
+          'name': 'write',
+          'intent': 'Writing migration 0042',
+          'detail': 'db/migrations/0042_orders_created_at.sql',
+          'status': 'ok',
+          'output': 'CREATE INDEX CONCURRENTLY orders_created_at_idx ON orders (created_at);',
+        },
+      ],
+    ),
+    'demo-omp': _Agent(
+      'demo-omp',
+      'omp',
+      'done',
+      [
+        {'role': 'user', 'text': 'Why is payments failing?'},
+        {
+          'role': 'assistant',
+          'text':
+              'payments exits with code 2: its command connects to a ledger service that '
+              'is not part of this project, so the connection is refused on start.\n\n'
+              '| Service | State |\n|---|---|\n| payments | failed |\n| api | running |',
+        },
+      ],
+      title: 'Why is payments failing?',
+      steps: [
+        {
+          'kind': 'tool',
+          'id': 'o1',
+          'name': 'bash',
+          'intent': 'Reading the payments log',
+          'detail': 'atlas logs payments',
+          'status': 'ok',
+          'output': 'ERROR ledger refused connection',
+        },
+        {
+          'kind': 'tool',
+          'id': 'o2',
+          'name': 'bash',
+          'intent': 'Checking the ledger service',
+          'detail': 'curl -sf localhost:4300/health',
+          'status': 'error',
+          'output': 'curl: (7) Failed to connect to localhost port 4300',
+        },
+        {
+          'kind': 'tool',
+          'id': 'o3',
+          'name': 'task',
+          'status': 'ok',
+          'output': 'Spawned 1 agent',
+          'agents': [
+            {
+              'name': 'LedgerScout',
+              'agent': 'scout',
+              'task': 'Find where the ledger service is configured',
+            },
+          ],
+        },
+        {
+          'kind': 'result',
+          'id': 'LedgerScout',
+          'status': 'completed',
+          'duration': '41s',
+        },
+        {
+          'kind': 'tool',
+          'id': 'o4',
+          'name': 'edit',
+          'intent': 'Pointing payments at the mock ledger',
+          'detail': 'payments/atlas.yaml',
+          'status': 'ok',
+          'output': 'Updated 1 line',
+        },
+      ],
+      subagents: [
+        {
+          'name': 'LedgerScout',
+          'task': 'Find where the ledger service is configured',
+          'state': 'done',
+          'report': 'payments/atlas.yaml points at localhost:4300; nothing starts it.',
+        },
+      ],
+    ),
   };
+
+  /// `agent_tree` of `demo-omp`: a scout that spawned a deeper one.
+  List<Map<String, Object?>> _tree(_Agent a) {
+    final running = a.state == 'working';
+    final root = {
+      'id': '',
+      'parent': null,
+      'name': a.title,
+      'agent': a.agent,
+      'model': 'gpt-5.5',
+      'status': switch (a.state) {
+        'working' || 'blocked' || 'waiting' => 'running',
+        'done' => 'completed',
+        _ => 'idle',
+      },
+      'task': a.history.firstOrNull?['text'],
+      'duration_ms': 90000,
+      'tokens': 48200,
+      'cost': 0.31,
+      'tool_count': a.steps.length,
+      'now': running ? 'Reading the payments log' : null,
+      'report': null,
+      'updated_at': a.updatedAt,
+      'agent_type': null,
+      'thinking': 'high',
+      'requests': 6,
+      'active_ms': 61000,
+      'context_tokens': 292000,
+      'context_window': 1000000,
+      'recent': <Object>[],
+      'todos': a.subagents.isEmpty
+          ? null
+          : {
+              'phases': [
+                {
+                  'name': 'Investigate',
+                  'tasks': [
+                    {
+                      'content': 'Find the ledger config',
+                      'status': 'completed',
+                    },
+                    {
+                      'content': 'Report the ledger URL',
+                      'status': 'in_progress',
+                    },
+                  ],
+                },
+              ],
+              'done': 1,
+              'total': 2,
+            },
+    };
+    if (a.subagents.isEmpty) return [root];
+    return [
+      root,
+      {
+        'id': 'LedgerScout',
+        'parent': '',
+        'name': 'LedgerScout',
+        'agent': 'scout',
+        'model': 'claude-haiku',
+        'status': 'completed',
+        'task': 'Find where the ledger service is configured',
+        'duration_ms': 41000,
+        'tokens': 9100,
+        'cost': 0.02,
+        'tool_count': 4,
+        'now': null,
+        'report':
+            'payments/atlas.yaml points at localhost:4300; nothing starts it.',
+        'updated_at': a.updatedAt,
+        'agent_type': 'scout',
+        'thinking': 'low',
+        'requests': 3,
+        'active_ms': 38000,
+        'context_tokens': 9100,
+        'context_window': 200000,
+        'recent': [
+          {
+            'at': a.updatedAt - 5000,
+            'tool': 'read',
+            'intent': 'Reading payments/atlas.yaml',
+            'status': 'ok',
+          },
+        ],
+        'todos': null,
+      },
+      {
+        'id': 'LedgerScout.Deep',
+        'parent': 'LedgerScout',
+        'name': 'LedgerScout.Deep',
+        'agent': 'scout',
+        'model': 'claude-haiku',
+        'status': 'completed',
+        'task': 'Read payments/atlas.yaml and report the ledger URL',
+        'duration_ms': 12000,
+        'tokens': 2300,
+        'cost': 0.004,
+        'tool_count': 1,
+        'now': null,
+        'report': 'ledger url: localhost:4300',
+        'updated_at': a.updatedAt,
+        'agent_type': 'scout',
+        'thinking': 'off',
+        'requests': 1,
+        'active_ms': 9000,
+        'context_tokens': null,
+        'context_window': null,
+        'recent': <Object>[],
+        'todos': null,
+      },
+    ];
+  }
 
   /// The pending approval of `demo-claude`, until answered.
   String? _approvalReq = 'demo-1';
@@ -290,10 +528,24 @@ class _DemoComputer implements Transport {
       case 'agent_integrations':
         data = {'agents': _integrations};
       case 'agent_history':
+        data = _history(args['pane'] as String?, args['sub'] as String?);
+      case 'agent_tree':
         final a = _agents[args['pane']];
-        data = {'messages': a?.history ?? const [], 'truncated': false};
+        data = a == null ? {'nodes': <Object>[]} : {'nodes': _tree(a)};
+      case 'agent_interrupt':
+        error = _interrupt(args['pane'] as String?);
+        data = error == null ? <String, Object?>{} : null;
+      case 'agent_launch':
+        data = _launch(
+          args['agent'] as String? ?? 'omp',
+          args['prompt'] as String?,
+        );
       case 'agent_send':
-        error = _send(args['pane'] as String?, args['text'] as String? ?? '');
+        error = _send(
+          args['pane'] as String?,
+          args['text'] as String? ?? '',
+          steer: args['steer'] == true,
+        );
         data = error == null ? <String, Object?>{} : null;
       case 'agent_approve':
         error = _approve(
@@ -402,10 +654,13 @@ class _DemoComputer implements Transport {
     scheduleMicrotask(() => _emit(reply));
   }
 
-  String? _send(String? pane, String text) {
+  String? _send(String? pane, String text, {bool steer = false}) {
     final a = _agents[pane];
     if (a == null) return 'unknown agent pane';
-    if (a.state != 'idle' && a.state != 'done') return 'agent is working';
+    final canSteer = steer && a.agent == 'omp' && a.state == 'working';
+    if (a.state != 'idle' && a.state != 'done' && !canSteer) {
+      return 'agent is working';
+    }
     a.history.add({'role': 'user', 'text': text});
     a.state = 'working';
     a.startedAt = a.updatedAt = _now();
@@ -422,6 +677,92 @@ class _DemoComputer implements Transport {
       _pushStatus(a);
     });
     return null;
+  }
+
+  /// `agent_history` in hostd's shape: items, title, and the subagents (or one
+  /// subagent's own transcript with `sub`).
+  Map<String, Object?> _history(String? pane, String? sub) {
+    final a = _agents[pane];
+    if (a == null) return {'items': [], 'messages': [], 'truncated': false};
+    if (sub != null) {
+      final s = a.subagents
+          .where((x) => x['name'] == sub || sub.startsWith('${x['name']}.'))
+          .firstOrNull;
+      final deep = sub.contains('.');
+      final items = <Map<String, Object?>>[
+        {
+          'kind': 'user',
+          'text': deep
+              ? 'Read payments/atlas.yaml and report the ledger URL'
+              : s?['task'] ?? '',
+        },
+        {
+          'kind': 'tool',
+          'id': 's1',
+          'name': 'grep',
+          'intent': 'Searching for z-index rules',
+          'detail': 'z-index',
+          'status': 'ok',
+          'output': 'nav.css:12: z-index: 40\nsheet.css:4: z-index: 50',
+        },
+        if (!deep)
+          {
+            'kind': 'result',
+            'id': '$sub.Deep',
+            'status': 'completed',
+            'duration': '12s',
+          },
+        {
+          'kind': 'assistant',
+          'text': deep ? 'ledger url: localhost:4300' : s?['report'] ?? '',
+        },
+      ];
+      return {
+        'items': items,
+        'messages': [
+          for (final i in items)
+            if (i['kind'] == 'user' || i['kind'] == 'assistant')
+              {'role': i['kind'], 'text': i['text']},
+        ],
+        'title': sub,
+        'truncated': false,
+      };
+    }
+    return {
+      'items': a.items(),
+      'messages': a.history,
+      'title': a.title,
+      'truncated': false,
+      'subagents': [
+        for (final s in a.subagents)
+          {
+            'name': s['name'],
+            'state': s['state'],
+            'updated_at': _now(),
+            'report': s['report'],
+          },
+      ],
+    };
+  }
+
+  String? _interrupt(String? pane) {
+    final a = _agents[pane];
+    if (a == null) return 'unknown agent pane';
+    if (a.state != 'working') return 'agent is not working';
+    a.state = 'idle';
+    a.updatedAt = _now();
+    _pushStatus(a);
+    return null;
+  }
+
+  /// A new agent in a demo project: it takes the first prompt and answers like the others.
+  Map<String, Object?> _launch(String agent, String? prompt) {
+    final pane = 'demo-new-${_agents.length}';
+    final a = _Agent(pane, agent, 'idle', []);
+    _agents[pane] = a;
+    _pushStatus(a);
+    if (prompt != null) _send(pane, prompt);
+    return {'pane': pane, 'pty': 'pty-$pane'};
   }
 
   Map<String, Object?> _approvalEvent() => {

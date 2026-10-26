@@ -36,9 +36,25 @@ impl Gui {
         std::fs::set_permissions(&bun, std::fs::Permissions::from_mode(0o755)).unwrap();
         if with_bun {
             let rc = "echo 'welcome banner from rc'\nexport PATH=\"$HOME/.bun/bin:$PATH\"\n";
-            for f in [".bashrc", ".bash_profile", ".profile"] {
+            // Every login shell the probe may run: it takes the user's shell from the user database (`getpwuid`),
+            // not from `$SHELL`, so on a machine whose login shell is zsh or fish the bash files alone are never read
+            // (2026-10-26: the gate went red on a fish user, the real `bun` from /etc/paths.d won).
+            for f in [
+                ".bashrc",
+                ".bash_profile",
+                ".profile",
+                ".zshrc",
+                ".zprofile",
+            ] {
                 std::fs::write(home.join(f), rc).unwrap();
             }
+            let fish = home.join(".config/fish");
+            std::fs::create_dir_all(&fish).unwrap();
+            std::fs::write(
+                fish.join("config.fish"),
+                "echo 'welcome banner from rc'\nset -gx PATH $HOME/.bun/bin $PATH\n",
+            )
+            .unwrap();
         }
         std::fs::write(proj.join("atlas.yaml"), yaml).unwrap();
         Self {

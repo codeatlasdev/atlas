@@ -67,6 +67,11 @@ pub enum DebugCmd {
     },
     /// Resize the main window (logical px) and print the size the page view ended up with
     Resize { width: f64, height: f64 },
+    /// Hide the main window (agent instances only), or show it again with --restore: the window-restore transition
+    Hide {
+        #[arg(long)]
+        restore: bool,
+    },
     /// Block until a selector is visible, or a JS expression is truthy
     Wait {
         /// CSS selector, or (with --expr) a JS expression
@@ -189,6 +194,7 @@ pub fn to_request(cmd: &DebugCmd) -> Result<(Value, Duration)> {
             json!({ "cmd": "resize", "width": width, "height": height }),
             Duration::ZERO,
         ),
+        DebugCmd::Hide { restore } => (json!({ "cmd": "hide", "on": !restore }), Duration::ZERO),
         DebugCmd::Wait {
             target,
             expr,

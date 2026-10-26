@@ -11,7 +11,7 @@ It works while the Atlas window is closed, because hostd keeps running. The comp
 
 ## Pairing
 
-1. On your computer: **Settings → Mobile → Pair a phone**. A QR code and a 6-digit code appear for two minutes.
+1. On your computer: **Settings → Integrations → Mobile → Pair a phone**. A QR code and a 6-digit code appear for two minutes.
 2. In Atlas Mobile: **Add a computer**, then scan the code.
 
 The code works once. Five wrong attempts cancel it. After pairing, the phone is recognised by its own key. Each paired phone is listed under **Paired phones** with what it may do:
@@ -26,9 +26,51 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 
 **Revoke** cuts the phone off immediately and forgets it. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
 
+### Pairing fails with a VPN or WARP on
+
+The pairing code carries this computer's key, its relay and its direct addresses (`addrs`). hostd publishes only the addresses of real LAN interfaces, private IPv4 first, then ULA and global IPv6. It leaves out loopback, link-local (`fe80::`, `169.254.`), CGNAT `100.64.0.0/10` and any address that only a tunnel owns (a `utun`/`tun`/`wg`/`tailscale` interface, or any interface flagged point-to-point), because a phone on the LAN cannot reach those (`crates/atlas-host/src/mobile/addrs.rs`, #113). If every address is a tunnel's, they are published anyway rather than an empty list; the relay still connects.
+
+What this does **not** settle: whether a phone on the same Wi-Fi reaches the computer's LAN address while a full-tunnel VPN is on. Packets from the phone arrive on `en0`, but the replies leave by the route the VPN installed; a VPN that captures the default route (WARP in its default mode) can send them into the tunnel, so the direct path never completes. That depends on the VPN's routing and split-tunnel rules and needs a phone on the network to check. Until it is measured, expect the relay (`ATLAS_MOBILE_RELAY` unset) to carry the connection, and if pairing does not complete:
+
+1. Make sure `ATLAS_MOBILE_RELAY=0` is **not** set (it turns the relay off, so only the LAN addresses remain).
+2. Pause the VPN, or add the LAN (`192.168.0.0/16`, your Wi-Fi subnet) to its split-tunnel exclusions, then pair again.
+3. Check what is published: Settings → Integrations → Mobile shows the addresses in the pairing link (`addr=` parameters).
+
 ## Approvals
 
 Claude Code and Codex run `atlas hook … permission-request` before showing their own prompt. While a phone is connected, hostd shows the prompt on the phone and waits up to 55 s for Allow or Deny. With no phone connected, it answers nothing at once, and the agent asks in the terminal as usual. Re-run `atlas setup claude-code --apply` / `atlas setup codex --apply` once so the hook is registered with its 60 s timeout. omp approvals are shown as "needs you" but answered on the computer.
+
+## Agents on the phone
+
+An agent's chat is read from its session file (`agent_history`, `crates/atlas-host/src/agents/history.rs`): omp, Claude Code and Codex transcripts become one timeline of turns, thinking, tool steps (intent, status, clipped output) and, for omp, the subagents a `task` call started, each read from `<session>/<Name>.jsonl` (the phone names a subagent, never a path). omp subagents load the status extension in the parent's terminal; hostd recognizes their session files under the parent's session dir and never lets them rename, retarget or finish the pane (an approval still blocks it). The title is omp's session title (the `title` slot, else the session header's, else the first thing the user typed, one line: never an injected block and never a subagent's assignment). **The tree** (`agent_tree`, `crates/atlas-host/src/agents/tree.rs`) lists the agent and every subagent, however deep, as flat nodes `{id, parent, name, agent, model, status, task, duration_ms, tokens, cost, tool_count, now, report, updated_at, agent_type, thinking, requests, active_ms, context_tokens, context_window, recent}` (the root is `id: ""`, and also carries `todos`). omp ids are the dotted names omp uses on disk (`Scout`, `Scout.Deep`: `<session>/Scout/Scout.Deep.jsonl`); Claude Code's are `agent-<id>` from `<session>/subagents/`; Codex has none, so its tree is the root alone. `status` is `pending|running|completed|failed|aborted|idle`: the parent transcript's `async-result` (`<task-result status=…>`) decides how a subagent ended; before it, `running` while its lock file (`.<Name>.jsonl.lock.os`) exists or its transcript changed in the last minute, `completed` once `<Name>.md` exists, else its last `stopReason` (`error` → failed, `aborted` → aborted), else `pending`. `now` is the intent (or `tool: detail`) of the node's open tool call; tokens and cost are summed from the node's own transcript. The rest feeds the hub, all from that same transcript: `agent_type` (omp's agent definition, `task`/`scout`; null on the root), `thinking` (last `thinking_level_change`), `requests` (assistant messages), `active_ms` (time between consecutive entries, gaps over 5 minutes counted as parked), `context_tokens` (the last request's prompt: input + cache read + cache write), `recent` (the last 8 tool calls, `{at, tool, intent, status: running|ok|error}`). `context_window` is only what omp itself reported in the parent's `task` result (`details.progress[].contextWindow`, present for synchronous spawns); hostd never guesses a window from the model name, so an agent without one shows no context bar. The root's `todos` is `{phases: [{name, tasks: [{content, status}]}], done, total}` from omp's latest todo state: the last `user_todo_edit` entry or successful non-`view` `todo` result in the transcript (the same rule `todo-tracker.ts` rehydrates by); other agents have `null`. `agent_history` takes a dotted `sub` (every segment `[A-Za-z0-9_-]`, never a path) and also returns `result` items (a subagent finished) and `compaction` items. What omp injects as a *user* turn is not one: `<irc from="parent" agent="Main">…</irc>` (behind the `[Wait interrupted by message]` marker or not) becomes `{kind: irc, from, agent, text}`, a `<system-notice>`/`<system-injection>`/`<system-reminder>` block `{kind: notice, text}`, and omp's `advisor` message one `{kind: advisor, severity, text}` per note (`blocker`, `concern`, `nit`…). `messages` for older phones keeps typed user turns only. **Steering**: `agent_send` with `steer: true` types into a *working* omp agent, which queues it for the running turn; Claude Code and Codex, and omp without `steer`, still refuse while the agent works. Stop sends Escape (`agent_interrupt`, only while the agent works); slash commands are typed like any message. **New agent** (`agent_launch`) asks Atlas Desktop over `~/.atlas/desktop.sock` for `terminal_create` in the project, so it needs the desktop running. Both need the **act** permission.
+
+**The hub on the phone** (`apps/mobile/lib/features/agents/agent_hub_screen.dart`) is omp's Agent Hub: the app-bar button opens the roster of the pane's agents (a long-press on a crew chip opens that agent's detail directly) with `N running · M parked`, the totals (cost, active time, requests, tools, tokens), a **Flat / By parent** switch (the tree indents; flat names `↳ parent` on each row) and **All / Running / Done / Failed** filters. A row is the status ring, the dotted name, type · model · thinking, the task in one line and its numbers with the last activity. Tapping it opens the **detail**: Task, Current (the running tool), Usage with the context bar (`292K/1M 29%`, only when omp reported a window), Lineage (spawned by, children: each a link that opens that agent's detail), the todos for the main agent, Recent activity (timestamped tool rows with their outcome) and the report. Its buttons stay pinned under the scrolling content: **Open conversation**, **Back to parent** (or Main) and **Message**. In the chat, a persistent breadcrumb (`Main › Scout › Deep`, every crumb a chip, `Main` first) is on screen while a subagent is focused. The main agent shows a **Waiting on N jobs** strip (running subagents, a tiny bar of each one's context use, each a link) and a collapsible **todo card**; IRC, notice and advisor items render as compact cards (advisor by severity: blocker red, concern amber), never as the user's bubbles. hostd can only type into the main agent's terminal, so a message written while a subagent is focused is labelled *Message Main about <name>* and sent to the main agent as `Tell <id>: …` (as a steer while it works); only omp relays it, so Claude Code and Codex show no composer on a subagent. Claude Code and Codex degrade to what they have: a Claude agent's subagents list flat, a Codex agent is the root alone.
+
+## Lab lane (validate a branch without touching your install)
+
+Validating a change to hostd or to the phone app used to mean replacing your installed Atlas and restarting your hostd in the middle of real work. The lab lane runs the branch **beside** your installation, on your real agents:
+
+```bash
+bun run mobile:lab                     # build, start the lab hostd, install Atlas Lab on your iPhone, print the pairing QR
+bun run mobile:lab --device "<name>"   # a specific device (id or name)    --android | --sim: a physical Android phone, a booted simulator
+bun run mobile:lab --watch             # + rebuild and restart the lab hostd on crates/ changes; `flutter run` (debug, hot reload) stays attached
+bun run mobile:lab --status            # is the lab running, and what does it follow
+bun run mobile:lab --stop              # stops the LAB hostd only
+```
+
+**The shadow hostd** (`atlas hostd --lab`, from `target/debug/atlas`; `--dir` overrides the folder) keeps every file under `~/.atlas/lab` (`$ATLAS_HOSTD_DIR/lab`): socket, pid, token, `mobile/key`, `devices.json`, invites and `audit.log`. It never writes under your real directory. It is a *client* of your real hostd's socket:
+
+| It does | How |
+|---|---|
+| show your real agents | seeds from `agent_status_all` and follows `agent_status` / `agent_approval*` pushes into its own agent hub |
+| run the branch's code | `agent_tree`, `agent_history` and `project_*` run in the lab over the same session files and project registry (read only) |
+| act on your terminals | `pty_list`, `pty_read`, `pty_write`, `pty_signal`, `agent_send`, `agent_interrupt`, `agent_approve`, `agent_launch` are forwarded to your hostd; a phone's terminal gets its own connection to it, relayed back, and released when the phone leaves |
+
+It never starts the hook server (that would steal the endpoint your agents read), never adopts or hands off terminals, and refuses to create, kill or resize one. Your hostd holds a permission prompt only for *its own* phones, so an experimental phone never makes a real agent wait. If your hostd restarts (`atlas update`), forwarded calls fail with a clear message and the lab reconnects and re-seeds on its own; with no hostd at all it exits at start with an error. It has no idle timeout: it stops with `--stop`.
+
+**Atlas Lab** is the same app built with `--dart-define=ATLAS_LAB=1 --dart-define=ATLAS_SHA=<git sha>` under its own identity: bundle id `br.com.codeatlas.atlas.mobile.lab` (iOS scheme `lab`, Android gradle property `atlas.lab=1` giving the id `….mobile.lab`), the name "Atlas Lab", an orange icon (`bun run mobile:lab:icons`, the phone twin of `icons:dev`) and a slim `LAB · <sha>` strip on top. Secure storage is isolated by the bundle id (no keychain or app group is shared), and the app has no push (no Firebase or APNs identity), so nothing in it depends on one. The lab pairs with its own code and key; your real app and its pairings are untouched. The real app's build, id, name, icon and output paths are unchanged.
+
+Notes: build and install go through `scripts/heavy.sh`; the one-shot path is `flutter build` + `flutter install` (an attached `flutter run --release` hangs, so `--watch` attaches a debug run). A phone must be unlocked and trusted for `flutter install`. `atlas.yaml` action `M` runs it.
 
 ## Files
 

@@ -20,6 +20,8 @@ mod render_loop;
 mod select;
 mod settings;
 mod shared;
+mod system;
+mod watchdog;
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -38,6 +40,7 @@ pub use lifecycle::*;
 pub use mouse::*;
 pub use select::*;
 pub use settings::*;
+pub use system::install as install_system_observers;
 
 /// `terminal.*` settings for a GPU terminal (defaults when absent).
 #[derive(serde::Deserialize)]
@@ -91,8 +94,6 @@ impl Default for TermPrefs {
 
 struct Term {
     pty: String,
-    /// Retained `NSView*`; touched only on the main thread.
-    view: usize,
     shared: Arc<Shared>,
     render: Option<JoinHandle<()>>,
     reader: tauri::async_runtime::JoinHandle<()>,
@@ -100,6 +101,9 @@ struct Term {
     writer: tauri::async_runtime::JoinHandle<()>,
 }
 
+/// The registry of open terminals. **Never taken on a render thread** (`render_loop`): commands,
+/// the reader and the system observers take it briefly to find a terminal's `Shared` and let go
+/// before doing anything slow, so a stuck renderer cannot hold it and freeze the other tabs.
 static TERMS: LazyLock<Mutex<HashMap<String, Term>>> = LazyLock::new(Default::default);
 /// Set at first `term_open`; lets non-command paths (VT callbacks) reach the app.
 static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -112,6 +116,11 @@ fn with_term(tab: &str) -> Result<Arc<Shared>, String> {
     Ok(t.shared.clone())
 }
 
+/// Every open terminal's shared state; the registry lock is not held after this returns.
+fn all_shared() -> Vec<Arc<Shared>> {
+    TERMS.lock().values().map(|t| t.shared.clone()).collect()
+}
+
 /// The terminal of `tab`, or every open one when omitted.
 fn targets(tab: Option<&str>) -> Result<Vec<Arc<Shared>>, String> {
     let terms = TERMS.lock();
@@ -122,6 +131,18 @@ fn targets(tab: Option<&str>) -> Result<Vec<Arc<Shared>>, String> {
             .ok_or_else(|| format!("no terminal for tab {t}")),
         None => Ok(terms.values().map(|t| t.shared.clone()).collect()),
     }
+}
+
+/// Every open terminal with its tab id, as owned handles. The registry lock is held only for
+/// the clone: anything slow (the VT lock a feeding reader holds, a render thread's state) must
+/// be taken from these handles, never under `TERMS`, or one busy terminal stalls every
+/// `term_*` command (`with_term` and `targets` queue on the same mutex).
+fn open_terms() -> Vec<(String, Arc<Shared>)> {
+    TERMS
+        .lock()
+        .iter()
+        .map(|(tab, t)| (tab.clone(), t.shared.clone()))
+        .collect()
 }
 
 /// The general pasteboard as a paste decision (⌘V). Read natively because the webview's paste

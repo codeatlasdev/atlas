@@ -4,7 +4,6 @@
 		DropdownMenu,
 		DropdownMenuItem,
 		DropdownMenuLabel,
-		Dialog,
 		NotificationBell,
 		Spinner,
 	} from "@codeatlasdev/ui";
@@ -22,6 +21,7 @@
 	} from "@lucide/svelte";
 	import { api, type ProjectView } from "#lib/api.ts";
 	import Tip from "#lib/components/Tip.svelte";
+	import { removeProject } from "#lib/components/sidebar/projects.ts";
 	import PanelOps from "#lib/panel/PanelOps.svelte";
 	import Crumbs from "#lib/shell/Crumbs.svelte";
 	import RightToggle from "#lib/shell/RightToggle.svelte";
@@ -44,7 +44,6 @@
 			p.running,
 		),
 	);
-	let removeOpen = $state(false);
 
 	const DOCKS = [
 		{ side: "left", label: "Left dock", command: "workspace::ToggleLeftDock", icon: PanelLeft },
@@ -114,9 +113,11 @@
 			<DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
 				{#if p.pinned}<PinOff size={14} /> Unpin{:else}<Pin size={14} /> Pin to top{/if}
 			</DropdownMenuItem>
-			<DropdownMenuItem variant="destructive" onclick={() => (removeOpen = true)}>
-				<Trash2 size={14} /> Remove from Atlas
-			</DropdownMenuItem>
+			{#if !p.parent}
+				<DropdownMenuItem variant="destructive" onclick={() => removeProject(p.id)}>
+					<Trash2 size={14} /> Remove from Atlas…
+				</DropdownMenuItem>
+			{/if}
 		</DropdownMenu>
 		{#if p.running}
 			<Button
@@ -162,32 +163,15 @@
 	</div>
 </header>
 
-<Dialog
-	bind:open={removeOpen}
-	title="Remove {p.name}?"
-	description="Only removes it from the sidebar. Files and running stacks are untouched."
-	size="sm"
->
-	{#snippet actions()}
-		<Button variant="ghost" onclick={() => (removeOpen = false)}>Cancel</Button>
-		<Button
-			variant="destructive"
-			onclick={() => {
-				removeOpen = false;
-				store.run("rm", () => api.remove(p.id));
-			}}>Remove</Button
-		>
-	{/snippet}
-</Dialog>
-
 <style>
-	/* One row, 40px: the same band as the macOS traffic lights (window y ≈ 8 + 20). The crumb
+	/* One row, --title-row tall (app.css): the same band as the macOS traffic lights, whose centre is that row's
+	   (trafficLightPosition in tauri.conf.json, pinned by lib/trafficLights.test.ts). The crumb
 	   truncates first; the actions never wrap. */
 	header {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 40px;
+		height: var(--title-row);
 		flex: none;
 		padding: 0 10px 0 10px;
 		transition: padding-left var(--dur-slow) var(--ease);
@@ -232,26 +216,36 @@
 		--c: var(--ca-semantic-error);
 	}
 	.dot {
+		position: relative;
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
 		background: var(--c);
 	}
-	.dot.pulse {
+	/* The expanding halo is a pseudo-element animated with transform + opacity (a box-shadow would repaint each frame). */
+	.dot.pulse::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: color-mix(in oklab, var(--c) 55%, transparent);
 		animation: live 2.4s ease-out infinite;
 	}
 	@keyframes live {
 		0% {
-			box-shadow: 0 0 0 0 color-mix(in oklab, var(--c) 55%, transparent);
+			transform: scale(1);
+			opacity: 1;
 		}
 		70%,
 		100% {
-			box-shadow: 0 0 0 5px transparent;
+			transform: scale(2.8);
+			opacity: 0;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.dot.pulse {
+		.dot.pulse::after {
 			animation: none;
+			opacity: 0;
 		}
 	}
 	.grow {

@@ -31,7 +31,7 @@ fn entries(dir: &Path) -> Result<Vec<Entry>, String> {
     }
 }
 
-fn root_of(dir: &Path, id: &str) -> Result<PathBuf, String> {
+pub(crate) fn root_of(dir: &Path, id: &str) -> Result<PathBuf, String> {
     entries(dir)?
         .into_iter()
         .find(|e| e.id == id)

@@ -62,6 +62,7 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `bun run lint:workflows` | actionlint and zizmor over `.github/` (also part of `bun run check`) |
 | `bun run desktop:dev` / `desktop:build` / `desktop:build:app` / `desktop:check` / `desktop:link` | run the app with hot reload, build the bundle, build a debug `.app` only, check the frontend, link the debug bundle |
 | `bun run mobile:check` | `scripts/mobile-check.sh` — Flutter analyze and test for `apps/mobile` (also part of `bun run check`; skipped when Flutter is absent) |
+| `bun run mobile:lab` | validate a branch on your phone beside your real Atlas: a shadow hostd plus the Atlas Lab app, never touching your install (see [Atlas Mobile](mobile.md#lab-lane-validate-a-branch-without-touching-your-install)) |
 | `bun run desktop:lab` | the desktop frontend in your browser with HMR, backed by an invisible agent instance (see Atlas Lab below) |
 | `bun run desktop:agent` | start your own agent instance of the desktop app (see [AGENTS.md](https://github.com/codeatlasdev/atlas/blob/main/AGENTS.md)) |
 | `bun run site:dev` / `site:build` / `site:check` / `site:deploy` | the website: dev server, static build, `astro check` plus script/function type-checks, Cloudflare deploy |
@@ -109,6 +110,8 @@ Debug builds also expose the live stores as `window.__atlas` (`ws`, `store`, `ag
 ### Develop Atlas with Atlas
 
 The repo has its own `atlas.yaml` (ports 13450-13459). `atlas dev` gives you the Lab (`l` opens http://localhost:13450) and the docs site (`w`, port 13451), both started on demand, plus actions for the gate (`c`), format (`F`), desktop tests (`d`), the debug app build (`b`), an agent instance (`A`), the flicker sweep (`x`), the selection and gesture benches (`B`, `H`), the dev icons (`I`) and a release dry run (`Y`). Agents reach the same things through MCP (`atlas_start_service lab`, `atlas_run_action c`, `atlas_logs_search`), so nobody has to remember which script does what.
+
+CI does the same per job: `scripts/ci-paths.sh` maps the changed paths to areas, so a commit that only touches markdown runs no Rust, mobile or frontend job (`docs/` still rebuilds the site), while any path it does not know runs everything.
 
 While editing, `bun run check:changed` (action `u`) runs only what your changes can affect: the changed crates and every crate that depends on them, plus the desktop, mobile, scripts, skills or workflow checks their paths touch (`--base <ref>`, default `origin/main`; `--dry-run` lists the commands). `bun run check` is still the gate before a push.
 

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/lab/lab.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/push/push_registration.dart';
@@ -189,6 +190,9 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
       title: 'Atlas',
       debugShowCheckedModeBanner: false,
       theme: atlasTheme(),
+      // Atlas Lab only (`--dart-define=ATLAS_LAB=1`): the "LAB · sha" strip. The real app is untouched.
+      builder: (context, app) =>
+          LabFrame(lab: LabConfig.fromEnvironment(), child: app!),
       routerConfig: _router,
     );
   }

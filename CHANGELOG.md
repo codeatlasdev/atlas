@@ -27,6 +27,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Row preview deduplication.** When a crewmate's role starts with a tag prefix (e.g. "Analyst: latency reports"), the tag pill and the preview no longer duplicate — the preview shows only the part after the colon.
 - **Primary buttons are full pills.** Continue / Connect / Open chat buttons in onboarding are now `border-radius: 999px`.
 
+### Fixed
+
+- **Clicking a terminal or a browser tab after closing a menu gives it the keyboard again.** With the `+` menu (or any menu or popover) open over a terminal, a click on the terminal closed the menu, and the menu then handed focus back to its own button (or dropped it), so everything you typed went nowhere. A press on any native view (terminal, browser page, any future kind) now gives it focus, and a closing overlay's focus restore right after that press is handed back to it.
+
+## [1.5.0-alpha.20] — 2026-10-26
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
 ## [1.5.0-alpha.19] — 2026-10-23
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
@@ -71,6 +79,7 @@ Atlas is in **alpha**: expect bugs and breaking changes. Please [report what bre
 
 ### Fixed
 
+- **Switching spaces no longer freezes the window when a space has a Changes tab or several open tabs.** Leaving a space unmounted its hidden tabs and coming back mounted them all inside the switch frame; the Changes view reloaded (`git diff` plus a rewrite of every row) each time its pane's `focused` prop flipped; and the kit's glass blur was never switched off (`data-style="solid"`), so chips over the pager re-blurred while it moved. A 400-line new file per space turned a switch into a 1-4 s stall; tabs now stay mounted once shown and the view reloads only for a different worktree, mode or base.
 - Terminal: scrolling up while a program prints (omp, logs, a build) no longer snaps back to the bottom on every chunk; a key or a paste returns to the live screen, as in Ghostty (#97).
 - Terminal, every OS: keystrokes and pastes reach the program in the order they were typed. The desktop sent each write as its own request and hostd ran each one on its own task, so a fast typist or a paste followed by ⏎ could arrive swapped.
 - Terminal (macOS GPU): a terminal host restart or live upgrade no longer leaves the terminal frozen; it reattaches and replays its output.

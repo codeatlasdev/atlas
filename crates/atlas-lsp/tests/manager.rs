@@ -468,7 +468,7 @@ async fn crash_restarts_and_replays_open_documents() {
     assert!(msg(&d).contains("len=12"));
     assert_eq!(std::fs::read_to_string(&count).unwrap().trim(), "2");
     assert_eq!(r.m.status()[0].state, State::Ready);
-    assert!(!pid_alive(pid1));
+    until("crashed server reaped", || !pid_alive(pid1)).await;
 }
 
 #[tokio::test]
@@ -529,7 +529,9 @@ async fn restart_budget_is_limited_per_window() {
     let _ = r.m.request(&a, "test/crash", Value::Null, None).await;
     until("gives up", || r.m.status()[0].state == State::Crashed).await;
     assert!(r.m.pids().is_empty());
-    assert!(!pid_alive(pid2));
+    // macOS keeps a just-exited child as a zombie for a moment after the manager saw it end
+    // (flaked in CI 2026-10-26): wait for it to go rather than probing once.
+    until("crashed server reaped", || !pid_alive(pid2)).await;
     assert!(
         r.m.status()[0]
             .message

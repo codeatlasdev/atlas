@@ -10,6 +10,7 @@ pub mod hook_server;
 pub mod integrations;
 #[cfg(test)]
 mod tests;
+pub mod tree;
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -42,6 +43,30 @@ pub struct AgentStatus {
     pub state_started_at: u64,
     pub worktree_id: Option<String>,
     pub tab_id: Option<String>,
+    /// The session's title as the agent named it (omp's `title` entry), for lists.
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// An unchanged agent is still heard from this often: the desktop trusts hooks over a terminal's title
+/// while `updated_at` is under 5 s old (`HOOK_GRACE_MS` in `agents.svelte.ts`), so this stays well below it.
+pub const HEARTBEAT_MS: u64 = 1_000;
+
+impl AgentStatus {
+    /// Everything a client shows is equal (`updated_at` is the heartbeat, not a change; `state_started_at`
+    /// only moves with `state`).
+    fn same_view(&self, o: &Self) -> bool {
+        self.state == o.state
+            && self.agent == o.agent
+            && self.session_id == o.session_id
+            && self.session_file == o.session_file
+            && self.model == o.model
+            && self.prompt == o.prompt
+            && self.last_message == o.last_message
+            && self.worktree_id == o.worktree_id
+            && self.tab_id == o.tab_id
+            && self.title == o.title
+    }
 }
 
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
@@ -64,6 +89,12 @@ pub struct AgentHub {
     pending: Mutex<HashMap<String, Pending>>,
     /// For bot panes: callback that returns true when telegram or push tokens can receive approvals.
     bot_pane_can_answer: Mutex<Option<BotAnswerFn>>,
+    /// Prompts raised by ANOTHER hostd that this one mirrors (the lab lane, [`crate::lab`]):
+    /// `req` → its `agent_approval` event. Listed and pushed like a local one, but answered
+    /// through that daemon, so there is no answer channel here.
+    mirrored: Mutex<HashMap<String, Value>>,
+    /// Pane → when its last `agent_status` was pushed (ms), for the [`HEARTBEAT_MS`] throttle.
+    pushed: Mutex<HashMap<String, u64>>,
 }
 
 impl Default for AgentHub {
@@ -75,6 +106,8 @@ impl Default for AgentHub {
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
             bot_pane_can_answer: Mutex::new(None),
+            mirrored: Mutex::default(),
+            pushed: Mutex::default(),
         }
     }
 }
@@ -132,10 +165,33 @@ pub fn normalize(cur: Option<State>, p: &Value) -> Option<State> {
     }
 }
 
+/// A subagent's transcript lives under its parent's session dir (`<parent>.jsonl` →
+/// `<parent>/<Name>.jsonl`, nested ones deeper).
+fn is_subagent_file(parent: Option<&str>, file: Option<&str>) -> bool {
+    let (Some(parent), Some(file)) = (parent, file) else {
+        return false;
+    };
+    let dir = parent.strip_suffix(".jsonl").unwrap_or(parent);
+    file.strip_prefix(dir)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
+
 /// `/private/tmp/x/` and `/tmp/x` are the same directory on macOS.
 fn norm_cwd(p: &str) -> String {
     let p = p.trim_end_matches('/');
     p.strip_prefix("/private").unwrap_or(p).to_string()
+}
+
+/// Whether a phone may type into an agent in `state`: idle or done, always; while the agent
+/// works only as steering (`steer`) and only for omp, which queues a message typed mid-turn
+/// for the running turn. Claude Code and Codex would take it as the next prompt or garble
+/// the turn, so they keep the old rule. `Err` is the refusal text.
+pub fn send_allowed(state: State, agent: &str, steer: bool) -> Result<(), &'static str> {
+    match state {
+        State::Idle | State::Done => Ok(()),
+        _ if steer && agent == "omp" => Ok(()),
+        _ => Err("agent is working"),
+    }
 }
 
 impl AgentHub {
@@ -146,6 +202,17 @@ impl AgentHub {
     }
 
     pub fn apply(&self, agent: &str, body: &Value) -> Option<(String, AgentStatus)> {
+        self.apply_at(agent, body, now_ms())
+    }
+
+    /// [`apply`](Self::apply) at an explicit time (ms), so the push throttle is testable without a clock.
+    ///
+    /// omp posts every tool event, so most hooks change nothing a client shows. The stored status
+    /// always takes the event (`updated_at` stays fresh for `agent_status_all`), but the `agent_status`
+    /// push, which costs the desktop a Tauri event, store writes and sidebar/tray recomputation and
+    /// every phone a frame, goes out when something visible changed or, as the liveness heartbeat the
+    /// desktop's title fallback reads from `updated_at`, once per [`HEARTBEAT_MS`] per pane (#110).
+    pub fn apply_at(&self, agent: &str, body: &Value, now: u64) -> Option<(String, AgentStatus)> {
         let pane = match body["pane_key"].as_str() {
             Some(p) => p.to_string(),
             None => {
@@ -154,8 +221,8 @@ impl AgentHub {
             }
         };
         let p = &body["payload"];
-        let now = now_ms();
         let mut panes = self.panes.lock();
+        let known = panes.contains_key(&pane);
         let st = panes.entry(pane.clone()).or_insert_with(|| AgentStatus {
             state: State::Idle,
             agent: agent.to_string(),
@@ -168,7 +235,9 @@ impl AgentHub {
             state_started_at: now,
             worktree_id: None,
             tab_id: None,
+            title: None,
         });
+        let before = st.clone();
         let str_of = |k: &str| p[k].as_str().filter(|s| !s.is_empty()).map(str::to_string);
         st.worktree_id = body["worktree_id"]
             .as_str()
@@ -178,22 +247,44 @@ impl AgentHub {
             .as_str()
             .map(str::to_string)
             .or(st.tab_id.take());
-        st.session_id = str_of("session_id").or(st.session_id.take());
-        st.session_file = str_of("session_file").or(st.session_file.take());
-        st.model = str_of("model").or(st.model.take());
-        if let Some(pr) = str_of("prompt") {
-            st.prompt = Some(pr);
-        }
-        if let Some(t) = str_of("text") {
-            st.last_message = Some(t.chars().take(2000).collect());
-        }
-        if let Some(next) = normalize(Some(st.state), p)
-            && next != st.state
-        {
-            st.state = next;
-            st.state_started_at = now;
+        let file = str_of("session_file");
+        // omp runs this extension in its subagents too, in the same terminal: their hooks
+        // carry the parent's pane key and a session file inside the parent's session dir.
+        // They must not rename, retarget or finish the pane; only a prompt that needs the
+        // human (an approval) gets through.
+        let sub = is_subagent_file(st.session_file.as_deref(), file.as_deref());
+        if sub {
+            if normalize(Some(st.state), p) == Some(State::Blocked) && st.state != State::Blocked {
+                st.state = State::Blocked;
+                st.state_started_at = now;
+            }
+        } else {
+            st.session_id = str_of("session_id").or(st.session_id.take());
+            if file.is_some() && file != st.session_file {
+                st.title = None;
+            }
+            st.session_file = file.or(st.session_file.take());
+            st.model = str_of("model").or(st.model.take());
+            if let Some(pr) = str_of("prompt") {
+                st.prompt = Some(pr);
+            }
+            if let Some(t) = str_of("text") {
+                st.last_message = Some(t.chars().take(2000).collect());
+            }
+            if let Some(next) = normalize(Some(st.state), p)
+                && next != st.state
+            {
+                st.state = next;
+                st.state_started_at = now;
+            }
+            if let Some(f) = &st.session_file
+                && (st.title.is_none() || matches!(p["event"].as_str(), Some("agent_end" | "stop")))
+            {
+                st.title = history::title(f).or(st.title.take());
+            }
         }
         st.updated_at = now;
+        let changed = !known || !before.same_view(st);
         let out = (pane, st.clone());
         drop(panes);
         let payload_ev = p["event"].as_str().unwrap_or("");
@@ -205,8 +296,18 @@ impl AgentHub {
                 "tool_input": p["tool_input"],
             }));
         }
-        self.push_status(&out.0, &out.1);
+        if changed || self.heartbeat_due(&out.0, now) {
+            self.push_status(&out.0, &out.1, now);
+        }
         Some(out)
+    }
+
+    /// This pane has not been pushed for a full [`HEARTBEAT_MS`] (never pushed counts as due).
+    fn heartbeat_due(&self, pane: &str, now: u64) -> bool {
+        self.pushed
+            .lock()
+            .get(pane)
+            .is_none_or(|last| now.saturating_sub(*last) >= HEARTBEAT_MS)
     }
 
     /// The pane's program exited: back to Idle (the pane stays listed).
@@ -217,11 +318,14 @@ impl AgentHub {
         st.state_started_at = now_ms();
         let st = st.clone();
         drop(panes);
-        self.push_status(pane, &st);
+        self.push_status(pane, &st, now_ms());
         Some(st)
     }
 
-    fn push_status(&self, pane: &str, st: &AgentStatus) {
+    /// Push one `agent_status` at `now` (ms) and restart the pane's heartbeat clock. Every push goes
+    /// through here, so [`apply_at`](Self::apply_at)'s throttle also sees the `idle` pushes.
+    fn push_status(&self, pane: &str, st: &AgentStatus, now: u64) {
+        self.pushed.lock().insert(pane.to_string(), now);
         let _ = self
             .tx
             .send(json!({"ev": "agent_status", "pane_key": pane, "status": st}));
@@ -296,13 +400,85 @@ impl AgentHub {
             .map_err(|_| "no such pending request".to_string())
     }
 
-    /// Prompts still waiting, as the `agent_approval` events that announced them.
+    /// Prompts still waiting, as the `agent_approval` events that announced them (this daemon's
+    /// own, and the ones it mirrors).
     pub fn pending_approvals(&self) -> Vec<Value> {
-        self.pending
+        let mut all: Vec<Value> = self
+            .pending
             .lock()
             .values()
             .map(|(_, ev, _)| ev.clone())
-            .collect()
+            .collect();
+        all.extend(self.mirrored.lock().values().cloned());
+        all
+    }
+
+    /// Mirror one pane's status from the daemon this one follows (the lab lane): stored and
+    /// pushed as `agent_status`. An older update never replaces a newer one, so events that
+    /// were buffered while the seed was read cannot roll a pane back.
+    pub fn mirror_status(&self, pane: &str, st: AgentStatus) {
+        let mut panes = self.panes.lock();
+        if panes
+            .get(pane)
+            .is_some_and(|cur| cur.updated_at > st.updated_at)
+        {
+            return;
+        }
+        panes.insert(pane.to_string(), st.clone());
+        drop(panes);
+        self.push_status(pane, &st, now_ms());
+    }
+
+    /// Replace everything with the followed daemon's snapshot (`agent_status_all`): panes that
+    /// are gone there are gone here (a status push has no removal event, so this is how they
+    /// leave), and prompts it no longer holds are dropped (their `agent_approval_done` is
+    /// pushed, so a phone clears them).
+    pub fn mirror_all(&self, panes: HashMap<String, AgentStatus>, approvals: Vec<Value>) {
+        self.panes.lock().retain(|k, _| panes.contains_key(k));
+        for (pane, st) in panes {
+            self.mirror_status(&pane, st);
+        }
+        let keep: Vec<String> = approvals
+            .iter()
+            .filter_map(|e| e["req"].as_str().map(str::to_string))
+            .collect();
+        let stale: Vec<(String, Value)> = self
+            .mirrored
+            .lock()
+            .iter()
+            .filter(|(r, _)| !keep.contains(r))
+            .map(|(r, e)| (r.clone(), e.clone()))
+            .collect();
+        for (req, ev) in stale {
+            self.mirror_approval_done(&req, ev["pane_key"].as_str().unwrap_or_default());
+        }
+        for ev in approvals {
+            self.mirror_approval(ev);
+        }
+    }
+
+    /// A prompt raised by the followed daemon: list it and push it.
+    pub fn mirror_approval(&self, ev: Value) {
+        let Some(req) = ev["req"].as_str() else {
+            return;
+        };
+        if self
+            .mirrored
+            .lock()
+            .insert(req.to_string(), ev.clone())
+            .is_none()
+        {
+            let _ = self.tx.send(ev);
+        }
+    }
+
+    /// The followed daemon's prompt `req` was answered, timed out or withdrawn.
+    pub fn mirror_approval_done(&self, req: &str, pane: &str) {
+        if self.mirrored.lock().remove(req).is_some() {
+            let _ = self
+                .tx
+                .send(json!({"ev": "agent_approval_done", "req": req, "pane_key": pane}));
+        }
     }
 
     pub fn session_file(&self, pane: &str) -> Option<String> {
@@ -311,6 +487,10 @@ impl AgentHub {
 
     pub fn state_of(&self, pane: &str) -> Option<State> {
         self.panes.lock().get(pane).map(|s| s.state)
+    }
+
+    pub fn status_of(&self, pane: &str) -> Option<AgentStatus> {
+        self.panes.lock().get(pane).cloned()
     }
 
     pub fn all(&self) -> HashMap<String, AgentStatus> {

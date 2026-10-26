@@ -60,7 +60,7 @@ impl Session {
                 // rest is plain output, so the screen is rebuilt once, not per piece.
                 let ev = if i == 0 { "pty_replay" } else { "pty_output" };
                 let _ = out
-                    .send(json!({"ev": ev, "pty": self.id, "data": B64.encode(part)}).to_string());
+                    .force(json!({"ev": ev, "pty": self.id, "data": B64.encode(part)}).to_string());
             }
         }
         b.attachers.insert(conn, out);

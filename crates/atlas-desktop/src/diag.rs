@@ -135,7 +135,8 @@ impl Install {
 pub struct Incident {
     /// Unix seconds.
     pub at: u64,
-    /// `unreachable | restarted | upgrade-failed | panic | start-failed`.
+    /// `unreachable | restarted | upgrade-failed | panic | start-failed`, and for the GPU terminal
+    /// `terminal-rebuild | terminal-recovered | terminal-rebuild-failed | terminal-system-event | terminal-dropped`.
     pub kind: String,
     pub detail: String,
 }

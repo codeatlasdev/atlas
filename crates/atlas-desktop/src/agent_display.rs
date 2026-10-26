@@ -193,8 +193,19 @@ pub fn guard_user_displays(app: &AppHandle) {
     });
 }
 
+/// The display we own, for the watchdog. `Err(())` while `ensure` holds the lock: creating the display services the
+/// main run loop (`select_hidpi_mode`), which runs the watchdog's tick on the SAME thread, and the mutex is not
+/// reentrant, so a blocking lock there deadlocked agent starts ("window was not shown after 90s"). Mid-creation no
+/// window has been ordered in yet, so the tick has nothing to check and is skipped.
+fn own_display() -> Result<Option<u32>, ()> {
+    DISPLAY
+        .try_lock()
+        .map(|g| g.as_ref().map(|d| d.id))
+        .ok_or(())
+}
+
 fn hide_if_off_our_display(app: &AppHandle) {
-    let own = DISPLAY.lock().as_ref().map(|d| d.id);
+    let Ok(own) = own_display() else { return };
     let primary_h = crate::display_mac::primary_height();
     let displays = crate::display_mac::active_displays();
     for win in app.windows().values() {
@@ -261,6 +272,20 @@ mod tests {
             .filter(|(_, s)| code(s).contains(needle))
             .map(|(n, _)| n)
             .collect()
+    }
+
+    /// Incident (2026-10-26, agent starts hanging "window was not shown after 90s"): `ensure` holds DISPLAY while
+    /// creating the display, which services the run loop and runs the watchdog's tick on the same thread. The tick's
+    /// read must not block on the held lock (parking_lot is not reentrant: a blocking lock there is a deadlock).
+    #[test]
+    fn the_watchdog_read_does_not_block_while_the_display_is_being_created() {
+        let held = super::DISPLAY.lock();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(super::own_display()).unwrap());
+        let r = rx.recv_timeout(std::time::Duration::from_secs(2));
+        drop(held);
+        assert_eq!(r, Ok(Err(())), "the watchdog read blocked on the held lock");
+        assert_eq!(super::own_display(), Ok(None));
     }
 
     /// Incident (agent window on the user's built-in display for ~25 s): with `ATLAS_AGENT=1` nothing may order a

@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
 use super::lifecycle::{ExtraColors, build_palette};
-use super::{TERMS, TermPrefs, targets, with_term};
+use super::{TermPrefs, open_terms, targets, with_term};
 
 /// Visible screen text (debug bridge / tests).
 #[tauri::command]
@@ -20,36 +20,35 @@ pub fn term_stats(app: AppHandle) -> Value {
         .get_window("main")
         .and_then(|w| w.scale_factor().ok())
         .unwrap_or(2.0);
-    let terms = TERMS.lock();
-    json!(
-        terms
-            .iter()
-            .map(|(tab, t)| {
-                let (s, cell) = {
-                    let st = t.shared.state.lock();
-                    (st.stats, st.cell)
-                };
-                let (cols, rows) = t.shared.vt.size();
-                (
-                    tab.clone(),
-                    json!({
-                        "frames": s.frames, "cols": cols, "rows": rows,
-                        "cell_w": cell[0] as f64 / scale, "cell_h": cell[1] as f64 / scale,
-                        "work_p50_us": s.work_p50_us, "work_p95_us": s.work_p95_us,
-                        "work_max_us": s.work_max_us,
-                        "interval_p50_us": s.interval_p50_us, "interval_p95_us": s.interval_p95_us,
-                    }),
-                )
-            })
-            .collect::<serde_json::Map<_, _>>()
-    )
+    // Handles first, `TERMS` released: `vt.size()` waits for the VT lock a feeding reader holds,
+    // and with 7+ busy agents that wait used to be spent holding the registry every command needs.
+    let rows = open_terms().into_iter().map(|(tab, sh)| {
+        let (stats, cell) = {
+            let st = sh.state.lock();
+            (st.stats, st.cell)
+        };
+        (tab, stats_row(stats, cell, sh.vt.size(), scale))
+    });
+    json!(rows.collect::<serde_json::Map<_, _>>())
+}
+
+/// One terminal's entry of `term_stats`: what the frontend (`cell_w`/`cell_h`, `cols`, `rows`) and
+/// `scripts/agents-load-bench.ts` (frames, work and interval percentiles) read.
+fn stats_row(s: atlas_term::Stats, cell: [f32; 2], (cols, rows): (u16, u16), scale: f64) -> Value {
+    json!({
+        "frames": s.frames, "cols": cols, "rows": rows,
+        "cell_w": cell[0] as f64 / scale, "cell_h": cell[1] as f64 / scale,
+        "work_p50_us": s.work_p50_us, "work_p95_us": s.work_p95_us,
+        "work_max_us": s.work_max_us,
+        "interval_p50_us": s.interval_p50_us, "interval_p95_us": s.interval_p95_us,
+    })
 }
 
 /// Start a fresh measurement window on every open terminal.
 #[tauri::command]
 pub fn term_stats_reset() {
-    for t in TERMS.lock().values() {
-        t.shared.update(|s| s.reset = true);
+    for (_, sh) in open_terms() {
+        sh.update(|s| s.reset = true);
     }
 }
 
@@ -137,4 +136,53 @@ pub fn term_focus(tab: String, focused: bool) -> Result<(), String> {
         s.dirty = true;
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Contract with `geometry.ts::cellFromStats` (`cell_w`/`cell_h` in window points, i.e. the
+    /// renderer's physical pixels over the backing scale) and with `scripts/agents-load-bench.ts`
+    /// (frame and work/interval percentiles, `cols`/`rows`). Splitting `term_stats` to read the
+    /// handles outside `TERMS` (many busy agents) must not move a key.
+    #[test]
+    fn a_stats_row_carries_the_keys_the_frontend_and_the_bench_read() {
+        let s = atlas_term::Stats {
+            frames: 7,
+            work_p50_us: 220,
+            work_p95_us: 290,
+            work_max_us: 1600,
+            interval_p50_us: 8330,
+            interval_p95_us: 8450,
+        };
+        let v = stats_row(s, [16.0, 34.0], (144, 44), 2.0);
+        assert_eq!(v["cell_w"], 8.0);
+        assert_eq!(v["cell_h"], 17.0);
+        assert_eq!(
+            (v["cols"].as_u64(), v["rows"].as_u64()),
+            (Some(144), Some(44))
+        );
+        for (k, want) in [
+            ("frames", 7),
+            ("work_p50_us", 220),
+            ("work_p95_us", 290),
+            ("work_max_us", 1600),
+            ("interval_p50_us", 8330),
+            ("interval_p95_us", 8450),
+        ] {
+            assert_eq!(v[k].as_u64(), Some(want), "{k}");
+        }
+    }
+
+    /// Before the first frame the renderer has not measured a cell: the frontend treats 0 as "unknown".
+    #[test]
+    fn a_terminal_that_never_drew_reports_a_zero_cell_not_nan() {
+        let v = stats_row(atlas_term::Stats::default(), [0.0, 0.0], (80, 24), 2.0);
+        assert_eq!(
+            (v["cell_w"].as_f64(), v["cell_h"].as_f64()),
+            (Some(0.0), Some(0.0))
+        );
+        assert_eq!(v["frames"].as_u64(), Some(0));
+    }
 }

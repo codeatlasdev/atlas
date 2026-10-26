@@ -89,19 +89,78 @@ pub(super) struct ImgInst {
     pub uv1: [f32; 2],
 }
 
-/// Growable vertex buffer.
+/// Capacity policy of a [`VBuf`], separate from the GPU buffer so it is testable without an adapter.
+/// Grows to the next power of two at once; shrinks only after `SHRINK_AFTER` consecutive writes that
+/// each needed under a quarter of the capacity (hysteresis: a burst does not keep its high-water mark
+/// for the life of the tab, and a steady frame size never reallocates).
+#[derive(Debug)]
+pub(super) struct Sizing {
+    cap: u64,
+    /// Writes in a row that fit in a quarter of `cap`, and the largest among them.
+    quiet: u32,
+    peak: u64,
+}
+
+/// Smallest (and initial) capacity.
+const MIN_CAP: u64 = 64 * 1024;
+/// Quiet writes (about 2 s at 60 fps) before a shrink.
+const SHRINK_AFTER: u32 = 120;
+
+impl Sizing {
+    pub(super) fn new() -> Self {
+        Self {
+            cap: MIN_CAP,
+            quiet: 0,
+            peak: 0,
+        }
+    }
+
+    pub(super) fn cap(&self) -> u64 {
+        self.cap
+    }
+
+    /// Account for a write of `len` bytes: the new capacity when the buffer must be reallocated.
+    pub(super) fn on_write(&mut self, len: u64) -> Option<u64> {
+        if len > self.cap {
+            self.cap = len.next_power_of_two();
+            self.quiet = 0;
+            self.peak = 0;
+            return Some(self.cap);
+        }
+        if self.cap > MIN_CAP && len <= self.cap / 4 {
+            self.quiet += 1;
+            self.peak = self.peak.max(len);
+            if self.quiet >= SHRINK_AFTER {
+                // Twice the recent peak: room to grow before the next reallocation.
+                let next = (self.peak * 2).next_power_of_two().max(MIN_CAP);
+                self.quiet = 0;
+                self.peak = 0;
+                if next < self.cap {
+                    self.cap = next;
+                    return Some(next);
+                }
+            }
+        } else {
+            self.quiet = 0;
+            self.peak = 0;
+        }
+        None
+    }
+}
+
+/// Growable, shrinkable vertex buffer.
 pub(super) struct VBuf {
     pub buf: wgpu::Buffer,
-    cap: u64,
+    size: Sizing,
     label: &'static str,
 }
 
 impl VBuf {
     pub fn new(d: &wgpu::Device, label: &'static str) -> Self {
-        let cap = 64 * 1024;
+        let size = Sizing::new();
         Self {
-            buf: Self::alloc(d, label, cap),
-            cap,
+            buf: Self::alloc(d, label, size.cap()),
+            size,
             label,
         }
     }
@@ -115,10 +174,14 @@ impl VBuf {
         })
     }
 
+    /// Allocated size in bytes.
+    pub fn capacity(&self) -> u64 {
+        self.size.cap()
+    }
+
     pub fn write(&mut self, g: &Gpu, bytes: &[u8]) {
-        if bytes.len() as u64 > self.cap {
-            self.cap = (bytes.len() as u64).next_power_of_two();
-            self.buf = Self::alloc(&g.device, self.label, self.cap);
+        if let Some(cap) = self.size.on_write(bytes.len() as u64) {
+            self.buf = Self::alloc(&g.device, self.label, cap);
         }
         g.queue.write_buffer(&self.buf, 0, bytes);
     }

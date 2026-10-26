@@ -114,3 +114,71 @@ impl SeqScan {
         }
     }
 }
+
+/// Finds `ESC[3J` + `ESC[H` + `ESC[2J` (macOS/ncurses `clear`: terminfo `E3` then `clear`), split-safe.
+/// ED 3 arrives while the old screen is still on the grid, then alacritty's ED 2 on the primary
+/// screen scrolls that screen into history instead of erasing it, so the old prompt stays one
+/// scroll away (and the scrollbar shows). The match point is just past `ESC[2J`.
+#[derive(Default)]
+pub(super) struct ClearScan {
+    /// Bytes of `PATTERN` matched so far.
+    at: usize,
+}
+
+impl ClearScan {
+    const PATTERN: &'static [u8] = b"\x1b[3J\x1b[H\x1b[2J";
+
+    /// Offsets just past each full pattern in `bytes`.
+    pub(super) fn scan(&mut self, bytes: &[u8]) -> Vec<usize> {
+        let mut out = Vec::new();
+        for (i, &b) in bytes.iter().enumerate() {
+            if b == Self::PATTERN[self.at] {
+                self.at += 1;
+            } else {
+                // The pattern has no repeated prefix except its leading ESC.
+                self.at = usize::from(b == 0x1b);
+            }
+            if self.at == Self::PATTERN.len() {
+                out.push(i + 1);
+                self.at = 0;
+            }
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ClearScan;
+
+    #[test]
+    fn clear_scan_is_split_safe_and_exact() {
+        let whole = b"x\x1b[3J\x1b[H\x1b[2Jy";
+        assert_eq!(ClearScan::default().scan(whole), vec![whole.len() - 1]);
+        // Every possible split point finds exactly one match.
+        for k in 0..=whole.len() {
+            let mut s = ClearScan::default();
+            let n = s.scan(&whole[..k]).len() + s.scan(&whole[k..]).len();
+            assert_eq!(n, 1, "split at {k}");
+        }
+        // Other erases never match: a shell's ^L / ED 2 alone, ED 3 alone, a restarted ESC.
+        for not in [
+            &b"\x1b[H\x1b[2J"[..],
+            b"\x1b[3J",
+            b"\x1b[3J\x1b[2J",
+            b"\x1b[3J\x1b[H\x1b[J",
+        ] {
+            assert!(ClearScan::default().scan(not).is_empty());
+        }
+        // An aborted attempt right before the real one still matches.
+        assert_eq!(
+            ClearScan::default()
+                .scan(b"\x1b[3\x1b[3J\x1b[H\x1b[2J")
+                .len(),
+            1
+        );
+        // Two clears back to back.
+        let two = [&whole[1..whole.len() - 1], &whole[1..whole.len() - 1]].concat();
+        assert_eq!(ClearScan::default().scan(&two).len(), 2);
+    }
+}

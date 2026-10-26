@@ -50,13 +50,6 @@ pub(super) fn resolve(rect: Frame, show: bool, last: Option<(f64, f64)>) -> Targ
     }
 }
 
-/// Does the view's content hole belong in the page? Only when the view is on screen over the slot,
-/// has drawn its first frame and the slot is not in motion (a tab swipe moves the pane by a CSS
-/// transform the view cannot follow, so the slot paints the terminal colour while it moves).
-pub(super) fn hole_open(shown: bool, drawn: bool, moving: bool) -> bool {
-    shown && drawn && !moving
-}
-
 /// Physical pixels of a frame of `w` × `h` points at backing `scale`: what the Metal drawable and the
 /// renderer's surface are sized to, at least 1 so the layer never loses its surface.
 pub(super) fn pixels(w: f64, h: f64, scale: f64) -> (u32, u32) {
@@ -132,13 +125,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_hole_is_open_only_while_the_view_is_really_there_and_still() {
-        assert!(hole_open(true, true, false));
-        assert!(!hole_open(false, true, false), "hidden tab: the slot paints");
-        assert!(!hole_open(true, false, false), "before the first frame: the slot paints");
-        assert!(!hole_open(true, true, true), "a pane in motion: the slot paints");
-    }
 
     const BG: [f64; 3] = [0.1, 0.2, 0.3];
 

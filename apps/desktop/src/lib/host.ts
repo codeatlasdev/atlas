@@ -88,7 +88,11 @@ export const host = {
 	ptyKill: (pty: string) => hostCall("pty_kill", { pty }),
 	/** Terminals of every connected host (local + SSH). */
 	ptyList: () => invoke<PtySummary[]>("host_pty_list"),
-	ptyInfo: (pty: string) => hostCall<PtySummary & { cwd_now: string | null }>("pty_info", { pty }),
+	/** `fg` (the foreground program) is only in `pty_info`: `pty_list` no longer forks `ps` per session. */
+	ptyInfo: (pty: string) =>
+		hostCall<PtySummary & { cwd_now: string | null; fg: { pid: number; name: string } | null }>("pty_info", {
+			pty,
+		}),
 	ptyRead: (pty: string, lines = 200) =>
 		hostCall<{ text: string }>("pty_read", { pty, lines }).then((r) => r.text),
 	/** Runs a command; stdout/stderr come back decoded. Throws on spawn errors only. */

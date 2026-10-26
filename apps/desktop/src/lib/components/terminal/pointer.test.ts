@@ -284,3 +284,25 @@ test("reports to a mouse-reporting program carry the device-pixel offset inside 
 		py: Math.round((3 * 20 + 10) * dpr),
 	});
 });
+
+// Incident (2026-10-26, "hover não funciona" in omp's TUI): a program in any-motion mode (?1003, omp's overlays)
+// highlights what is under the pointer, but bare moves were never reported: only moves with a button held were.
+// Every move to a new cell is offered to the program once (the VT encodes it only when the mode asks for it).
+test("a bare move over a new cell is offered to the program once per cell, with no click before it", async () => {
+	move(9, 9); // the first move only learns the cell size
+	await settle();
+	calls = [];
+	move(3, 2);
+	move(3, 2);
+	move(4, 2);
+	const motion = of("term_mouse").filter((a) => a.action === "motion");
+	expect(motion.map((a) => [a.col, a.row, a.button])).toEqual([
+		[3, 2, null],
+		[4, 2, null],
+	]);
+});
+
+test("⇧ keeps the move for the terminal: no report", () => {
+	move(3, 2, { shiftKey: true });
+	expect(of("term_mouse").filter((a) => a.action === "motion")).toEqual([]);
+});

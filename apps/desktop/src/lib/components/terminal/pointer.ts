@@ -170,9 +170,30 @@ export class Pointer {
 
 	mousemove = (e: MouseEvent) => {
 		if (this.#program !== null) return this.#programDrag(e);
-		if (!this.#selecting) return this.#hoverUrl(e);
+		if (!this.#selecting) {
+			this.#hoverMotion(e);
+			return this.#hoverUrl(e);
+		}
 		this.#drag(e);
 	};
+
+	/** Last cell a bare move was offered at (once per cell, as xterm/Ghostty report any-motion). */
+	#hoverCell = "";
+	/**
+	 * A bare move (no button) to a new cell: offered to the program, which gets it only in any-motion mode (?1003,
+	 * omp's overlays, htop, vim with `mouse=a`): the VT encodes nothing otherwise. ⇧ keeps the pointer for the terminal.
+	 */
+	#hoverMotion(e: MouseEvent) {
+		if (e.shiftKey || this.#o.readonly()) return;
+		// Before the first click the cell size is unknown: ask once, the next move reports (hover needs no click).
+		if (!this.#cell) return void this.#fetchCell().catch(quiet);
+		const c = this.#toCell(e);
+		if (!c) return;
+		const key = `${c.col},${c.row}`;
+		if (key === this.#hoverCell) return;
+		this.#hoverCell = key;
+		this.#report(this.#o.tab(), "motion", null, c, e);
+	}
 
 	/** The button of a press the program took moved: report a new cell once. */
 	#programDrag(e: MouseEvent) {

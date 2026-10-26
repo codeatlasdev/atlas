@@ -22,6 +22,13 @@ use super::watchdog::{Action, Watchdog, Why};
 /// follows is the latest state (Ghostty draws on the display link, not per read).
 pub(super) const FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
 
+/// When the next frame may be drawn after the last one at `last`: `None` = now (an idle terminal draws at once, so
+/// typing never waits a refresh); otherwise one refresh interval after the last frame.
+pub(super) fn pace_until(last: Instant, now: Instant) -> Option<Instant> {
+    let ready = last + FRAME_INTERVAL;
+    (now < ready).then_some(ready)
+}
+
 /// Selection highlight: #264F78 at ~67% opacity.
 const SELECTION: [u8; 4] = [38, 79, 120, 170];
 /// Search matches (dim amber) and the current match (strong orange), alpha-blended.
@@ -156,7 +163,7 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
                 && s.font_pt.is_none()
                 && s.font_new.is_none()
             {
-                let ready = t + FRAME_INTERVAL;
+                let ready = pace_until(t, Instant::now()).unwrap_or_else(Instant::now);
                 while Instant::now() < ready && !s.closed && s.rebuild.is_none() && s.size.is_none()
                 {
                     sh.wake.wait_until(&mut s, ready);
@@ -188,6 +195,12 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         // invisible: drawing it only queues vsync-blocked work on the one shared GPU queue, once
         // per byte burst per tab (many streaming agents made that the freeze). Its first frame
         // still draws (the view is shown by it), and the watchdog stands down: nothing is owed.
+        // Shown again after being parked: the view waits off screen for a fresh frame (`Placement::request`), so
+        // one is drawn now and the hook puts the view over its pane, like a first frame.
+        if sh.placement.lock().awaiting() {
+            first_frame_pending = true;
+            stale = true;
+        }
         let parked = !first_frame_pending && !sh.placement.lock().is_shown();
         if parked {
             stale |= demand;
@@ -735,22 +748,14 @@ mod tests {
     }
 
     // The cost side of pacing: output after an idle period is drawn at once (no refresh to wait for), so typing
-    // latency does not gain a frame.
+    // latency does not gain a frame. A decision, not a wall-clock race: the threaded version of this test measured
+    // the runner's scheduler (39 ms on a loaded macOS CI runner, 19551a16).
     #[test]
     fn output_after_idle_is_drawn_without_waiting_for_a_refresh() {
-        let rig = Rig::start(Mode::Draw);
-        rig.show();
-        rig.sh.redraw();
-        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
-        std::thread::sleep(FRAME_INTERVAL * 3);
-        let n = rig.log.renders.load(Ordering::SeqCst);
-        let t0 = Instant::now();
-        rig.sh.vt.feed(b"typed");
-        rig.sh.redraw();
-        rig.until("the echo is drawn", |l| {
-            l.renders.load(Ordering::SeqCst) > n
-        });
-        assert!(t0.elapsed() < FRAME_INTERVAL, "took {:?}", t0.elapsed());
-        rig.stop();
+        let last = Instant::now();
+        assert_eq!(pace_until(last, last + FRAME_INTERVAL * 3), None);
+        assert_eq!(pace_until(last, last + FRAME_INTERVAL), None);
+        let soon = last + FRAME_INTERVAL / 4;
+        assert_eq!(pace_until(last, soon), Some(last + FRAME_INTERVAL));
     }
 }

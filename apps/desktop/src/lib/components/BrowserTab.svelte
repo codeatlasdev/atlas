@@ -206,6 +206,8 @@
 	{/if}
 	{#if picking}<div class="hint">Click an element in the page · Esc to cancel</div>{/if}
 	<div class="area" bind:this={area}>
+		<!-- The slot's own colour; the core carves the page's hole out of it (never out of the slot). -->
+		<div class="fill" data-native-fill></div>
 		{#if !tab.url}
 			<div class="state">
 				<p class="title">New tab</p>
@@ -290,6 +292,11 @@
 		position: relative;
 		flex: 1;
 		min-height: 0;
+	}
+	.fill {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
 		background: var(--ca-surface-base);
 	}
 	.state {

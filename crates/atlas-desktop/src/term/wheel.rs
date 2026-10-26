@@ -145,8 +145,8 @@ mod tests {
     fn small_trackpad_deltas_scroll_the_scrollback_and_leave_a_sub_row_offset() {
         let sh = rig();
         assert!(
-            !sh.wheel_event(&args(0.3)),
-            "the live bottom has no row to show below the last: no offset, no settle"
+            sh.wheel_event(&args(0.3)),
+            "up from the live bottom: an offset (older lines come in from above) and a settle"
         );
         assert_eq!(sh.vt.scrollbar().0, 0);
         sh.vt.scroll(10);
@@ -191,6 +191,31 @@ mod tests {
         );
         assert_eq!(sh.state.lock().scroll_frac, 0.0);
         assert_eq!(sh.vt.scrollbar().0, 0, "the viewport did not move");
+    }
+
+    // Incident (2026-10-26, "o scroll não funciona no omp"): an agent TUI on the primary screen keeps redrawing its
+    // status rows at the bottom (cursor moves, erase-line, rewrite) while the user scrolls up. The viewport must stay
+    // where the wheel left it through that redraw, and a trackpad gesture must actually move it.
+    #[test]
+    fn a_gesture_scrolls_back_and_stays_there_while_the_program_redraws_its_bottom_rows() {
+        let sh = rig();
+        for _ in 0..20 {
+            sh.wheel_event(&args(0.5));
+        }
+        let (off, _) = sh.vt.scrollbar();
+        assert!(off >= 9, "a 10-row gesture moved the viewport {off} rows");
+        // omp-style redraw of the last rows, no newline: the history does not grow.
+        for i in 0..50 {
+            sh.vt
+                .feed(format!("\x1b[4;1H\x1b[2Kstatus {i}\x1b[3;1H\x1b[2Kspinner {i}").as_bytes());
+        }
+        assert_eq!(sh.vt.scrollbar().0, off, "the redraw moved the viewport");
+        // New lines while scrolled back: the view stays on the same text (the offset grows with the history).
+        sh.vt.feed(b"\x1b[4;1Hnew line\r\nanother\r\n");
+        assert!(
+            sh.vt.scrollbar().0 >= off,
+            "new output pulled the viewport down"
+        );
     }
 
     #[test]

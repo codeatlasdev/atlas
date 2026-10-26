@@ -137,9 +137,19 @@ impl Placement {
         rect: (f64, f64, f64, f64),
         show: bool,
     ) -> Option<(f64, f64, f64, f64)> {
+        // Back from parked: the layer holds the picture from before (a parked view does not draw), so it stays off
+        // screen until a fresh frame is on it (`drawn`). Showing it at once flashed the stale picture.
+        if show && !self.shown {
+            self.drawn = false;
+        }
         self.rect = Some(rect);
         self.shown = show;
         self.frame()
+    }
+
+    /// Shown but waiting for a fresh frame: the render loop must draw one now and then call `drawn`.
+    pub(super) fn awaiting(&self) -> bool {
+        self.shown && !self.drawn
     }
 
     /// The page wants the view on screen (as opposed to parked under a dialog or in a hidden tab),
@@ -266,15 +276,40 @@ mod tests {
         let mut p = Placement::default();
         assert_eq!(p.request(R, false), None);
         assert_eq!(p.drawn(), None);
-        assert_eq!(p.request(R, true), Some(R));
+        assert_eq!(
+            p.request(R, true),
+            None,
+            "shown again: waits for a fresh frame"
+        );
+        assert_eq!(p.drawn(), Some(R));
     }
 
     #[test]
-    fn after_the_first_frame_requests_apply_at_once_and_parking_still_works() {
+    fn while_shown_requests_apply_at_once_and_parking_still_works() {
         let mut p = Placement::default();
         p.request(R, true);
         p.drawn();
+        let moved = (10.0, 20.0, 400.0, 220.0);
+        assert_eq!(
+            p.request(moved, true),
+            Some(moved),
+            "a move while shown is immediate"
+        );
         assert_eq!(p.request(R, false), None);
-        assert_eq!(p.request(R, true), Some(R));
+    }
+
+    // Incident (2026-10-26, ghost frames switching tabs): a parked terminal does not draw, so its layer still holds
+    // the picture from before it was parked. Shown again at once, it flashed that stale picture until the next
+    // frame. Back from parked, a view waits (off screen, the slot's own colour shows) until a fresh frame is drawn.
+    #[test]
+    fn a_view_shown_again_waits_for_a_fresh_frame() {
+        let mut p = Placement::default();
+        p.request(R, true);
+        p.drawn();
+        p.request(R, false);
+        assert_eq!(p.request(R, true), None);
+        assert!(p.awaiting(), "the render loop must draw one frame now");
+        assert_eq!(p.drawn(), Some(R));
+        assert!(!p.awaiting());
     }
 }

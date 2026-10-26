@@ -303,7 +303,6 @@
 	{/if}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div
-		style:background={slotBg}
 		class="area"
 		class:link={overLink}
 		bind:this={area}
@@ -315,6 +314,8 @@
 		{ondrop}
 		onmouseleave={pointer.clearHover}
 	>
+		<!-- The slot's own colour (padding around the native view); the core carves the view's hole out of it. -->
+		<div class="fill" data-native-fill style:background={slotBg}></div>
 		<textarea
 			bind:this={input}
 			class="sink"
@@ -354,6 +355,11 @@
 		min-height: 0;
 	}
 	/* Ghostty: the hand only over a link while ⌘ is held (`Pointer` decides, per cell). */
+	.fill {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
 	.area.link {
 		cursor: pointer;
 	}

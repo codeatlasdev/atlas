@@ -166,9 +166,13 @@ impl Wheel {
         }
         let rows = self.acc.add(d, cell_h);
         let route = route(rows, mode, shift, readonly, cell.0, cell.1, mods);
-        // Where the viewport is once `rows` are applied: an offset only exists strictly inside the scrollback.
+        // Where the viewport is once `rows` are applied. The remainder is dropped only when it pushes against the
+        // end it is on (down at the bottom, up at the top). Dropping it at either end whatever its direction lost
+        // every sub-row trackpad delta from the bottom, where every gesture starts: the trackpad never scrolled.
         let after = (i64::from(offset) + i64::from(rows)).clamp(0, i64::from(max));
-        if after == 0 || after == i64::from(max) {
+        let rest = self.acc.rest;
+        let against = (after == 0 && rest <= 0.0) || (after == i64::from(max) && rest >= 0.0);
+        if against {
             self.acc.rest = 0.0;
             return Outcome { route, frac: 0.0 };
         }
@@ -405,18 +409,49 @@ mod tests {
         }
     }
 
-    // A fraction at either end of the scrollback would show a gap above the first line / below the last.
+    // A fraction that pushes past an end would show a gap (below the last line at the bottom, above the first at
+    // the top). Incident (2026-10-26, "o scroll não funciona"): the remainder was dropped at either end whatever
+    // its direction, so a gesture starting at the live bottom (all of them) never left it.
     #[test]
-    fn at_either_end_of_the_scrollback_there_is_no_offset() {
+    fn at_an_end_only_a_push_against_it_is_dropped() {
         let at = |px: f64, pos: (u32, u32)| ev(&mut Wheel::default(), px, PRIMARY, pos).frac;
         assert_eq!(
-            at(5.0, (0, 100)),
+            at(-5.0, (0, 100)),
             0.0,
-            "live bottom: a fraction would show a gap under the last line"
+            "down at the live bottom: nothing below the last line"
         );
-        assert_eq!(at(-5.0, (0, 100)), 0.0);
-        assert_eq!(at(5.0, (100, 100)), 0.0, "top of the scrollback");
+        assert_eq!(at(5.0, (100, 100)), 0.0, "up at the top of the scrollback");
         assert_eq!(at(25.0, (99, 100)), 0.0, "the next row reaches the top");
+        assert!(
+            at(5.0, (0, 100)) > 0.0,
+            "up from the live bottom: older lines come in from above"
+        );
+        assert!(at(-5.0, (100, 100)) < 0.0, "down from the top");
+    }
+
+    #[test]
+    fn a_slow_gesture_from_the_live_bottom_scrolls() {
+        let mut w = Wheel::default();
+        let mut offset = 0u32;
+        for _ in 0..20 {
+            let o = w.event(
+                Delta {
+                    px: H * 0.5,
+                    precise: true,
+                },
+                H,
+                PRIMARY,
+                (offset, 100),
+                false,
+                false,
+                (0, 0),
+                (false, false),
+            );
+            if let Route::Scroll(n) = o.route {
+                offset = (offset as i32 + n) as u32;
+            }
+        }
+        assert_eq!(offset, 10, "20 half-row deltas = 10 rows");
     }
 
     // Smooth scrolling is the terminal's own scrollback only: never a program that has the wheel.

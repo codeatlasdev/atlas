@@ -8,7 +8,9 @@
  *  - `.window-ground`: the window's chrome colour behind everything (one, fixed, window coordinates);
  *  - `.ground`: the card colour and space tint of a space layer (one per layer, so a hole travels with its layer on the
  *    compositor and a parked neighbour's hole is right the moment it slides in);
- *  - the slot element itself: its own fill (a terminal's padding colour) paints around the view, not under it.
+ *  - the slot's fill (`[data-native-fill]`, a child that paints the slot's own colour, e.g. a terminal's padding):
+ *    around the view, not under it. Never the slot element itself: a `clip-path` also cuts hit-testing, and the slot
+ *    receives the page's input for the view (a terminal's clicks, wheel and selection).
  *
  * Everything the page draws over a slot (menus, dialogs, a modal's scrim, shadows, blur) is ordinary DOM above the
  * native view in the same compositor commit, so there is nothing to keep in step with it: a hole only ever follows its
@@ -80,7 +82,8 @@ export function setHole(slot: Element, box: Box | null) {
 	const window = document.querySelector(".window-ground");
 	if (window) carve(window, [...holes.values()]);
 	if (layer && layerGround) carve(layerGround, inside(layer));
-	carve(slot, box ? [box] : []);
+	const fill = slot.querySelector(":scope > [data-native-fill]");
+	if (fill) carve(fill, box ? [box] : []);
 }
 
 /** A slot is gone: forget its hole and restore the grounds under where it was. */

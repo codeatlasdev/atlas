@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+## [1.5.0-alpha.21] — 2026-10-26
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
 ### Fixed
 
 - **⌘⌫ clears the line in the terminal again, and ⌘← ⌘→ ⌥← ⌥→ move like in Ghostty.** Shells that turn on the Kitty keyboard protocol (fish 4, recent zsh setups, Neovim) received ⌘⌫ as "super+Backspace", which they don't bind, so it deleted nothing, and ⌘← jumped a word. These chords are now sent as the same text Ghostty sends, whatever protocol the program asked for: ⌘⌫ deletes to the start of the line (`^U`), ⌘← / ⌘→ go to the start / end (`^A` / `^E`), ⌥← / ⌥→ jump a word (`ESC b` / `ESC f`). ⌥⌫ still deletes a word.

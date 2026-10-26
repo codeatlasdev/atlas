@@ -18,7 +18,7 @@
 	import FindInput from "./FindInput.svelte";
 	import { IS_MAC, primaryKey } from "#lib/keys.ts";
 	import { xtermKey } from "#lib/termKeys.ts";
-	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
+	import { droppedPty, ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
 
 	let {
 		pty,
@@ -232,6 +232,10 @@
 		});
 		offs.push(() => stream.dispose());
 		listen("host://reconnected", () => stream.reattach()).then((u) => (alive ? offs.push(u) : u()));
+		// hostd stopped feeding this view because it did not read (a hidden webview): the replay redraws it.
+		listen("host://event", (e) => {
+			if (droppedPty(e.payload) === pty) stream.reattach();
+		}).then((u) => (alive ? offs.push(u) : u()));
 		if (!readonly) t.onData((d) => void host.ptyWrite(pty, d).catch(() => {}));
 		let timer: number | undefined;
 		const ro = new ResizeObserver(() => {

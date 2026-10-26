@@ -12,7 +12,7 @@ use atlas_core::ipc;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, oneshot};
 
 use crate::paths;
 
@@ -23,7 +23,7 @@ type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
 
 #[derive(Clone)]
 pub struct HostClient {
-    tx: mpsc::UnboundedSender<String>,
+    tx: crate::pty::Out,
     pending: Pending,
     next: Arc<AtomicU64>,
     events: broadcast::Sender<HostEvent>,
@@ -51,7 +51,7 @@ impl HostClient {
             ));
         }
 
-        let (tx, rx) = mpsc::unbounded_channel::<String>();
+        let (tx, rx) = crate::pty::out_channel();
         tokio::spawn(crate::protocol::write_lines(rx, w));
         let pending: Pending = Arc::default();
         let (events, _) = broadcast::channel(4096);
@@ -94,7 +94,7 @@ impl HostClient {
         let (otx, orx) = oneshot::channel();
         self.pending.lock().insert(id, otx);
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string();
-        if self.tx.send(line).is_err() {
+        if self.tx.force(line).is_err() {
             self.pending.lock().remove(&id);
             return Err(anyhow!("hostd disconnected"));
         }

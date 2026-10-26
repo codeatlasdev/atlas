@@ -16,6 +16,15 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Fixed
 
 - **omp subagents no longer take over their parent agent.** Their hooks share the parent's terminal, so a subagent's prompt ("Complete assignment thoroughly: …") became the agent's name on the phone, its transcript replaced the chat and its end marked the parent done while it still worked.
+||||||| 807d992e
+### Fixed
+
+- **`atlas hostd` no longer grows without limit for a client that stops reading** (#109). A phone on a bad network, a paused webview or a suspended process, with an agent printing non-stop, made hostd queue every terminal chunk in memory, and hostd is the process that keeps every agent alive. Each connection now holds at most 8 MiB unwritten; past that hostd stops feeding it, sends `pty_dropped` (`reason: slow_client`), and the app or phone reattaches with replay (the last 2 MiB) by itself. The program, the other clients and `pty_exit` are never held up. `info` shows the bytes queued per connection (`queued`) and how many clients were dropped.
+||||||| 807d992e
+- **The edge peek no longer opens under a dialog.** With Settings, a dialog or the command palette open, moving the pointer to the window edge slid the sidebar in underneath it. A peek now stays shut while any modal layer is open (read from the kit's `layerchange`, not a per-dialog flag), and one already open closes when the modal opens.
+- **Project avatars and custom-styled buttons show the pointer.** The app inherited the arrow cursor everywhere and the kit's native-feel base reset buttons to it, so the project tiles at the bottom of the sidebar (and every custom button without its own rule) looked unclickable. `@codeatlasdev/ui` 4.6.0 gives every enabled button and `role` control the hand (disabled ones get `not-allowed`) and no longer resets them under `data-ca-native`, so Atlas bumps the kit and carries no cursor rule of its own (#117).
+- **The ⌘-hover underline no longer lingers on the wrong line.** With a language server on, holding ⌘ over an identifier underlines it; the underline was a snapshot of the pointer position and stayed on its line when the caret moved or the view scrolled, so the editor showed the caret, gutter number and active-line highlight on one line and an underlined identifier on another. It now follows what is under the pointer as the content moves, and clears when ⌘ is released.
+- **Switching spaces is about 2.5x less of a stall with big diffs open.** With a 400-line Changes tab in each of five spaces the window blocked for about 204 ms per switch (263 ms worst); flipping which space is current restyled every element of the two spaces it swapped, and the follow-up swipe-zone measurement walked every mounted space. A switch now blocks for about 83 ms (93 ms worst) in a headless run; the remaining cost is paint and compositing of the two swapped layers, tracked in #121.
 
 ## [1.5.0-alpha.19] — 2026-10-23
 
@@ -61,6 +70,7 @@ Atlas is in **alpha**: expect bugs and breaking changes. Please [report what bre
 
 ### Fixed
 
+- **Switching spaces no longer freezes the window when a space has a Changes tab or several open tabs.** Leaving a space unmounted its hidden tabs and coming back mounted them all inside the switch frame; the Changes view reloaded (`git diff` plus a rewrite of every row) each time its pane's `focused` prop flipped; and the kit's glass blur was never switched off (`data-style="solid"`), so chips over the pager re-blurred while it moved. A 400-line new file per space turned a switch into a 1-4 s stall; tabs now stay mounted once shown and the view reloads only for a different worktree, mode or base.
 - Terminal: scrolling up while a program prints (omp, logs, a build) no longer snaps back to the bottom on every chunk; a key or a paste returns to the live screen, as in Ghostty (#97).
 - Terminal, every OS: keystrokes and pastes reach the program in the order they were typed. The desktop sent each write as its own request and hostd ran each one on its own task, so a fast typist or a paste followed by ⏎ could arrive swapped.
 - Terminal (macOS GPU): a terminal host restart or live upgrade no longer leaves the terminal frozen; it reattaches and replays its output.

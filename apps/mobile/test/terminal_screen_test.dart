@@ -129,6 +129,56 @@ class _DelayedAttach implements Transport {
   }
 }
 
+/// A computer that drops this client's terminal feed (`pty_dropped`) after the first attach, as
+/// hostd does for a client that stopped reading, and replays the screen on the next attach.
+class _DropsOnce implements Transport {
+  final _lines = StreamController<String>.broadcast();
+  bool _closed = false;
+  final List<Map> attaches = [];
+  @override
+  Stream<String> get incomingLines => _lines.stream;
+  @override
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await _lines.close();
+  }
+
+  void _push(Map m) {
+    if (!_closed) _lines.add(jsonEncode(m));
+  }
+
+  @override
+  Future<void> sendLine(String line) async {
+    final m = jsonDecode(line) as Map;
+    final id = m['id'];
+    if (m['cmd'] == 'pty_attach') {
+      attaches.add(m['args'] as Map);
+      if (attaches.length == 1) {
+        _push({
+          'ev': 'pty_replay',
+          'pty': 'p',
+          'data': base64.encode(utf8.encode('before-drop')),
+        });
+        scheduleMicrotask(
+          () => _push({
+            'ev': 'pty_dropped',
+            'pty': 'p',
+            'reason': 'slow_client',
+          }),
+        );
+      } else {
+        _push({
+          'ev': 'pty_replay',
+          'pty': 'p',
+          'data': base64.encode(utf8.encode('after-replay')),
+        });
+      }
+    }
+    scheduleMicrotask(() => _push({'id': id, 'ok': true, 'data': {}}));
+  }
+}
+
 Future<void> _open(WidgetTester t, Transport Function() tr, String pty) async {
   await t.pumpWidget(
     ProviderScope(
@@ -233,5 +283,23 @@ void main() {
     // Release the held pty_attach so no 20 s deadline timer lingers.
     transport.releaseAttach();
     await t.pump(const Duration(milliseconds: 10));
+  });
+
+  // Guards a terminal that goes stale for good: hostd stops feeding a client that does not read and
+  // says so with pty_dropped; the screen has to ask again with replay to catch up (#109).
+  testWidgets('a pty_dropped makes the screen reattach with replay', (t) async {
+    final transport = _DropsOnce();
+    await _open(t, () => transport, 'p');
+    expect(transport.attaches.length, 2, reason: 'reattached once');
+    expect(transport.attaches.last['pty'], 'p');
+    expect(transport.attaches.last['replay'], true);
+    expect(_screen(t), contains('after-replay'));
+    expect(
+      _screen(t),
+      isNot(contains('before-drop')),
+      reason: 'the replay rebuilds the screen, it is not appended to the old one',
+    );
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 3));
   });
 }

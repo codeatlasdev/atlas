@@ -52,7 +52,7 @@ async fn listeners_get_activity_only_from_output() {
     std::fs::create_dir_all(&dir).unwrap();
     for (cmd, want) in [("printf hello", true), ("sleep 0.2", false)] {
         let s = Session::spawn(sh(cmd), &dir).unwrap();
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = super::out_channel();
         s.attach(1, tx, false, false);
         let t0 = std::time::Instant::now();
         while s.exited().is_none() {
@@ -60,7 +60,7 @@ async fn listeners_get_activity_only_from_output() {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         let mut got = false;
-        while let Ok(l) = rx.try_recv() {
+        while let Some(l) = rx.try_recv() {
             got |= l.contains(r#""ev":"pty_activity""#);
         }
         assert_eq!(got, want, "{cmd}");
@@ -109,7 +109,7 @@ async fn a_title_set_before_attach_comes_back_as_a_title_event() {
     };
     let s = Session::spawn(shell_req(script), &dir).unwrap();
     until_exited(&s).await;
-    let (tx, _rx) = mpsc::unbounded_channel();
+    let (tx, _rx) = super::out_channel();
     let info = s.attach(1, tx, true, true);
     let ev = crate::protocol::title_event(&s.id, &info).expect("a title event");
     assert_eq!(
@@ -283,4 +283,145 @@ async fn pty_and_exec_find_binaries_the_login_shell_put_on_path() {
         stdout.contains("bun-ran from-exec") && stdout.contains("mine"),
         "{r}"
     );
+}
+
+/// A client that never reads while a program prints far more than the cap: hostd's queue for it
+/// stays bounded, the program is not slowed, a healthy attacher misses nothing, and a reattach
+/// with replay continues. Unix only: it needs a fast byte source.
+// Regression: #109, hostd queued every `pty_output` for a client that stopped reading, without limit.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming() {
+    use super::OUT_CAP;
+    use base64::Engine;
+
+    const TOTAL: usize = 40 * 1024 * 1024;
+    let dir = tempfile::tempdir().unwrap();
+    let script = format!("head -c {TOTAL} /dev/zero | tr '\\0' a; echo END; sleep 30");
+    let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
+
+    let (stuck, mut stuck_rx) = super::out_channel();
+    let (healthy, mut healthy_rx) = super::out_channel();
+    s.attach(1, stuck.clone(), false, true);
+    s.attach(2, healthy, false, true);
+
+    let decode = |line: &str| -> Option<Vec<u8>> {
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        matches!(v["ev"].as_str(), Some("pty_output" | "pty_replay")).then(|| {
+            base64::engine::general_purpose::STANDARD
+                .decode(v["data"].as_str().unwrap())
+                .unwrap()
+        })
+    };
+    let (mut text_tail, mut seen, mut stuck_max) = (String::new(), 0usize, 0usize);
+    let t0 = std::time::Instant::now();
+    while !text_tail.contains("END") {
+        assert!(
+            t0.elapsed() < Duration::from_secs(60),
+            "the program froze behind a client that does not read (saw {seen} bytes)"
+        );
+        while let Some(line) = healthy_rx.try_recv() {
+            if let Some(b) = decode(&line) {
+                seen += b.len();
+                text_tail.push_str(&String::from_utf8_lossy(&b));
+                let keep = text_tail.len().saturating_sub(16);
+                text_tail.drain(..keep);
+            }
+        }
+        stuck_max = stuck_max.max(stuck.pending());
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+
+    // Bounded: the cap plus the one line that crossed it (a coalesced chunk is at most 64 KiB,
+    // 4/3 of that as base64, plus the JSON envelope).
+    assert!(
+        stuck_max <= OUT_CAP + 128 * 1024,
+        "queued {stuck_max} bytes for a client that never reads"
+    );
+    assert!(
+        seen >= TOTAL,
+        "the healthy attacher saw {seen} of {TOTAL} bytes"
+    );
+    // The stuck one is unsubscribed, and its queue ends with the reason.
+    {
+        let b = s.buf.lock();
+        assert!(
+            !b.attachers.contains_key(&1),
+            "stuck attacher still subscribed"
+        );
+        assert!(b.attachers.contains_key(&2), "healthy attacher was dropped");
+    }
+    let mut last = None;
+    while let Some(line) = stuck_rx.try_recv() {
+        last = Some(line);
+    }
+    let notice: serde_json::Value = serde_json::from_str(&last.unwrap()).unwrap();
+    assert_eq!(notice["ev"], "pty_dropped", "{notice}");
+    assert_eq!(notice["reason"], "slow_client");
+    assert_eq!(notice["pty"], s.id.as_str());
+    assert!(super::dropped_total() >= 1);
+
+    // Reattach with replay: the ring (2 MiB) comes back and ends where the program is.
+    let (again, mut again_rx) = super::out_channel();
+    s.attach(3, again, true, true);
+    let mut replay = Vec::new();
+    while let Some(line) = again_rx.try_recv() {
+        replay.extend(decode(&line).unwrap_or_default());
+    }
+    assert!(
+        replay.len() > 1024 * 1024,
+        "replay came back with {} bytes",
+        replay.len()
+    );
+    assert!(String::from_utf8_lossy(&replay).contains("END"));
+    s.signal("KILL").unwrap();
+}
+
+/// The notice a dropped client gets names the pty and the reason, the others are untouched.
+// Regression: #109
+#[test]
+fn a_connection_over_its_cap_is_told_why_and_unsubscribed() {
+    use super::{Buf, out_channel_with_cap};
+    use std::collections::HashMap;
+
+    let (slow, mut slow_rx) = out_channel_with_cap(8);
+    let (fast, mut fast_rx) = out_channel_with_cap(1 << 20);
+    let mut conns = HashMap::from([(1u64, slow), (2u64, fast)]);
+    // The cap is checked before a line is added: the first line fits, the next does not.
+    Buf::broadcast("p1", &mut conns, "0123456789");
+    assert_eq!(conns.len(), 2);
+    Buf::broadcast("p1", &mut conns, "next");
+    assert_eq!(
+        conns.keys().copied().collect::<Vec<_>>(),
+        vec![2],
+        "slow one removed"
+    );
+    assert_eq!(slow_rx.try_recv().as_deref(), Some("0123456789"));
+    let notice: serde_json::Value = serde_json::from_str(&slow_rx.try_recv().unwrap()).unwrap();
+    assert_eq!(
+        (&notice["ev"], &notice["pty"], &notice["reason"]),
+        (
+            &serde_json::json!("pty_dropped"),
+            &serde_json::json!("p1"),
+            &serde_json::json!("slow_client")
+        )
+    );
+    assert!(slow_rx.try_recv().is_none(), "nothing after the notice");
+    assert_eq!(fast_rx.try_recv().as_deref(), Some("0123456789"));
+    assert_eq!(fast_rx.try_recv().as_deref(), Some("next"));
+}
+
+/// `pty_exit` reaches a client that is over its cap: it must learn the program ended.
+// Regression: #109 (dropping over-cap output must not drop the exit)
+#[test]
+fn pty_exit_is_delivered_even_to_a_connection_over_its_cap() {
+    use super::{Buf, out_channel_with_cap};
+
+    let (out, mut rx) = out_channel_with_cap(1);
+    out.send("fill".into()).unwrap();
+    let mut b = Buf::new(Default::default(), None, 0);
+    b.attachers.insert(1, out);
+    b.notify_force(r#"{"ev":"pty_exit","pty":"p","code":0}"#);
+    assert_eq!(rx.try_recv().as_deref(), Some("fill"));
+    assert!(rx.try_recv().unwrap().contains("pty_exit"));
 }

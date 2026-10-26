@@ -46,6 +46,10 @@ html.opaque-window body {
 html.opaque-window .peek-panel {
 	top: 8px;
 }
+/* Windows: the page's own caption buttons (lib/shell/WindowControls.svelte) sit over the title row's right end. */
+html.custom-chrome {
+	--caption-controls: 138px;
+}
 
 :root {
 	--mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;

@@ -401,6 +401,9 @@ fn main() {
             create_main_window(app)?;
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
+            // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
+            // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
+            #[cfg(not(windows))]
             app.set_menu(menu::build(&handle)?)?;
             app.manage(live::LiveHub::new(&handle));
             app.manage(cmds::Discovery::default());

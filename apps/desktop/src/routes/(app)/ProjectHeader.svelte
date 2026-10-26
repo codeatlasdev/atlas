@@ -180,9 +180,13 @@
 	header.inset {
 		padding-left: 70px;
 	}
-	/* Windows and Linux: the native title bar holds the window buttons. */
+	/* Windows and Linux: no traffic lights to clear on the left. */
 	:global(html.opaque-window) header.inset {
 		padding-left: 10px;
+	}
+	/* Windows: the caption buttons sit over the row's right end (WindowControls.svelte). */
+	:global(html.custom-chrome) header {
+		padding-right: var(--caption-controls);
 	}
 	header > :global(.crumbs) {
 		flex: 0 1 auto;

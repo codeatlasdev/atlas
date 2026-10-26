@@ -57,7 +57,7 @@ test("selectable text opts in with the kit's .ca-selectable, not a local .select
 				stale.push(path);
 		}
 	};
-	walk(new URL("..", import.meta.url).pathname);
+	walk(Bun.fileURLToPath(new URL("..", import.meta.url)));
 	expect(stale).toEqual([]);
 });
 
@@ -96,7 +96,7 @@ test("every .ca-* selector in app styles names a stable kit part", () => {
 			else if (/\.(svelte|css)$/.test(name)) scan(path, readFileSync(path, "utf8"));
 		}
 	};
-	walk(new URL("..", import.meta.url).pathname);
+	walk(Bun.fileURLToPath(new URL("..", import.meta.url)));
 	scan("app.css", css);
 	expect(bad).toEqual([]);
 });

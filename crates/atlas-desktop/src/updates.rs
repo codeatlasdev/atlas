@@ -209,8 +209,9 @@ fn link_target(p: &Path) -> Option<String> {
 }
 
 /// Linux: the AppImage this process runs from (`$APPIMAGE`, set by its runtime), else the distro
-/// package's `/usr/bin/atlas-desktop`; none for a dev build. Windows: the installed exe is
-/// [`atlas_core::paths::installed_app`] already, so this finds nothing more.
+/// package's `/usr/bin/atlas-desktop`. Windows: the installer's exe
+/// ([`atlas_core::paths::installed_app`], `%LOCALAPPDATA%\Atlas\atlas-desktop.exe`) when this
+/// process is it. None for a dev build, which then shows the dev line and pauses updates.
 #[cfg(not(target_os = "macos"))]
 fn own_bundle() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("APPIMAGE").map(PathBuf::from)
@@ -219,7 +220,21 @@ fn own_bundle() -> Option<PathBuf> {
         return Some(p);
     }
     let exe = std::env::current_exe().ok()?;
-    (atlas_core::paths::packaged_app().as_deref() == Some(exe.as_path())).then_some(exe)
+    let packaged = if cfg!(windows) {
+        atlas_core::paths::installed_app()
+    } else {
+        atlas_core::paths::packaged_app()
+    };
+    packaged.is_some_and(|p| same_file(&p, &exe)).then_some(exe)
+}
+
+/// Same file on disk; Windows paths differ in case and `\\?\` prefixes, so compare canonical forms.
+#[cfg(not(target_os = "macos"))]
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// `.../Atlas.app` when this binary is `.../Atlas.app/Contents/MacOS/<bin>`.

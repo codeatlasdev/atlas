@@ -6,6 +6,16 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **Atlas Desktop on Windows looks like a Windows 11 app.** No native title bar or menu bar: Atlas draws its own minimize, maximize/restore and close buttons in the title row (the window keeps its shadow, resize borders and snap). The installer has Atlas artwork, icon, publisher and a Start menu folder.
+
+### Fixed
+
+- **Windows: an installed Atlas no longer thinks it is a dev build.** The amber "Dev build" line and paused updates were shown on every installed app.
+- **Windows: no console windows flashing.** Language-server installs and probes, the update check and hostd's "start the stack" ran console programs without hiding their window.
+- **Windows: the omp logo was a black square** in menus and tabs (its gradient pointed at a hidden copy of the mark).
+
 ## [1.5.0-alpha.22] — 2026-10-26
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

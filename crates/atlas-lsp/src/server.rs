@@ -247,9 +247,8 @@ pub fn spawn_process(launch: &Launch, root: &Path, log: &Path) -> Result<Child> 
             Ok(())
         });
     }
-    // CREATE_NO_WINDOW: a console server started from the GUI app must not flash a window.
-    #[cfg(windows)]
-    cmd.creation_flags(0x0800_0000);
+    // A console server started from the GUI app must not flash a window.
+    atlas_core::sys::CommandExt::no_window(&mut cmd);
     cmd.spawn()
         .with_context(|| format!("spawn {}", launch.program.display()))
 }

@@ -311,14 +311,22 @@ pub struct AgentShipStatus {
 pub async fn bot_agent_check(host_key: String, agent_id: String) -> Result<AgentShipStatus, String> {
     let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
     let script = check_script(&agent_id).ok_or_else(|| format!("unknown agent {agent_id:?}"))?;
-    let out = tokio::process::Command::new("ssh")
+    let ssh = tokio::process::Command::new("ssh")
+        .no_window()
         .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15"])
         .arg(ssh_target)
         .arg(&script)
         .stdin(std::process::Stdio::null())
-        .output()
+        .kill_on_drop(true)
+        .output();
+    // A check that never answers must not leave the row on "Checking…": give up and say so.
+    let out = tokio::time::timeout(std::time::Duration::from_secs(45), ssh)
         .await
+        .map_err(|_| format!("{ssh_target} did not answer in 45 s"))?
         .map_err(|e| format!("ssh: {e}"))?;
+    if !out.status.success() && out.stdout.is_empty() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
     let stdout = String::from_utf8_lossy(&out.stdout);
     let mut parts = stdout.trim().splitn(2, '\t');
     let installed = parts.next().unwrap_or("0") == "1";

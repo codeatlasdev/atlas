@@ -57,7 +57,17 @@
 	let installRunning = $state(false);
 	let installDone = $state(false);
 	/** Host key of the ship launched in this onboarding; the first crewmate is created there. */
-	let launchedKey = $state("");
+	let launchedNow = $state("");
+	/**
+	 * The ship this onboarding works on: the one launched here, else the one already connected (the connect step
+	 * is skipped when a ship exists, which left this empty and the engine checks stuck on "Checking…" forever).
+	 */
+	const launchedKey = $derived(
+		launchedNow ||
+			bots.hosts.find((h) => h.key.startsWith("ssh:atlas-bot@"))?.key ||
+			bots.hosts.find((h) => h.key !== "")?.key ||
+			"",
+	);
 	let fieldShake = $state(false);
 
 	// ─── connect step: SSH key ────────────────────────────────────────────────
@@ -328,7 +338,7 @@
 			await invoke("bot_install", args);
 			const ship = botTarget(target);
 			await bots.addHost(ship, ship);
-			launchedKey = `ssh:${ship}`;
+			launchedNow = `ssh:${ship}`;
 			installedPhases = new Set(INSTALL_STEPS.map((s) => s.phase));
 			activePhase = null;
 			installDone = true;
@@ -582,7 +592,7 @@
 	async function openChat() {
 		if (creatingBot) return;
 		// The ship launched here, else the first remote ship; hosts[0] is this Mac, never the crew's home.
-		const hostKey = launchedKey || bots.hosts.find((h) => h.key !== "")?.key || "";
+		const hostKey = launchedKey;
 		creatingBot = true;
 		try {
 			if (selectedEngine) {

@@ -214,7 +214,7 @@ curl -fsSL {url_q} -o "$tmpf" &&
 WANT=$(curl -fsSL {sha_q} | awk '{{print $1}}') &&
 GOT=$(sha256sum "$tmpf" | awk '{{print $1}}') &&
 [ "$WANT" = "$GOT" ] || {{ echo 'checksum mismatch' >&2; exit 1; }} &&
-sudo tar -xzf "$tmpf" --strip-components=1 -C {dir_q} &&
+sudo tar -xzf "$tmpf" -C {dir_q} atlas &&
 sudo chmod +x {dir_q}/atlas &&
 rm -f "$tmpf""#,
         dir_q = shq(INSTALL_DIR),

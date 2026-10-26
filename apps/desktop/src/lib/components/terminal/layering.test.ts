@@ -62,3 +62,8 @@ test("the terminal slot sets the text I-beam, and the pointer while links are li
 	expect(src("pointer.ts")).toContain("onLinkMode?.(true)");
 	expect(src("pointer.ts")).toContain("onLinkMode?.(false)");
 });
+
+test("a modal layer suspends the holes (the page is opaque under dialogs) and the slot paints meanwhile", () => {
+	expect(src("../../shell/session.svelte.ts")).toContain("onModalChange(setModal)");
+	expect(src("../GpuTerminal.svelte")).toMatch(/const hole = \$derived\([^)]*!suspended\)/);
+});

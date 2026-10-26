@@ -12,12 +12,33 @@ import { maskStyle, sameHoles, type Hole } from "./holes.ts";
 type Rect = { left: number; top: number; width: number; height: number };
 
 const open = new Map<string, () => Rect | null>();
+/**
+ * A modal layer (dialog, sheet, drawer) is open: its scrim covers every terminal anyway, so no hole is cut and the
+ * page stays an opaque page. A transparent webview leaves stale, non-opaque composited tiles inside the scrollers
+ * of a layer over it (Settings rows drawn over each other); an opaque one never does. The slots paint the terminal
+ * colour meanwhile (`holesSuspended`), so the view under the scrim is not shown through anything.
+ */
+let modal = false;
+const watchers = new Set<() => void>();
+export const holesSuspended = () => modal;
+/** Subscribe to `holesSuspended` flips (a slot repaints itself). Returns the teardown. */
+export function onSuspendChange(fn: () => void): () => void {
+	watchers.add(fn);
+	return () => watchers.delete(fn);
+}
+/** The kit announced a layer change (`modalOpen.ts`): suspend the holes while a modal is up, restore them after. */
+export function setModal(on: boolean) {
+	if (on === modal) return;
+	modal = on;
+	for (const w of watchers) w();
+	flushNow();
+}
 const last = new Map<Element, Hole[]>();
 let raf = 0;
 
 function apply() {
 	raf = 0;
-	const rects = [...open.values()].map((f) => f()).filter((r): r is Rect => !!r);
+	const rects = modal ? [] : [...open.values()].map((f) => f()).filter((r): r is Rect => !!r);
 	// The page is opaque unless a terminal really shows through it (`html.term-hole`, app.css).
 	document.documentElement.classList.toggle("term-hole", rects.length > 0);
 	for (const el of document.querySelectorAll(".ground, .card")) {
@@ -62,6 +83,8 @@ function flushNow() {
 export function resetHoles() {
 	open.clear();
 	last.clear();
+	modal = false;
+	watchers.clear();
 	document.documentElement.classList.remove("term-hole");
 	if (raf) cancelAnimationFrame(raf);
 	raf = 0;

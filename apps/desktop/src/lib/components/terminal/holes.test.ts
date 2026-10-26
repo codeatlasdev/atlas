@@ -2,7 +2,7 @@
 import "../../../../test/setup.ts";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { closeHole, openHole, recut, resetHoles } from "./holeLayers.ts";
+import { closeHole, holesSuspended, onSuspendChange, openHole, recut, resetHoles, setModal } from "./holeLayers.ts";
 import { contentRect } from "./fonts.ts";
 import { maskStyle, overlap, sameHoles } from "./holes.ts";
 
@@ -132,4 +132,25 @@ test("a moved rect is re-cut once per frame, however many answers arrive", () =>
 	expect(frames.length).toBe(1);
 	flush();
 	expect(document.querySelector(".card").style.getPropertyValue("mask-position")).toBe("0 0, 50px 20px");
+});
+
+// Settings rows were drawn over each other when a dialog opened over a terminal: a transparent webview keeps stale,
+// non-opaque tiles in the scrollers of a layer above it. With a modal up there is no hole and the page is opaque.
+test("a modal suspends every hole: no cut, no transparent page, and it comes back when the modal closes", () => {
+	const root = document.documentElement;
+	openHole("t", () => ({ left: 10, top: 20, width: 300, height: 200 }));
+	expect(root.classList.contains("term-hole")).toBe(true);
+	let flips = 0;
+	const off = onSuspendChange(() => flips++);
+	setModal(true);
+	expect(holesSuspended()).toBe(true);
+	expect(flips).toBe(1);
+	expect(root.classList.contains("term-hole")).toBe(false);
+	expect(document.querySelector(".card").style.getPropertyValue("mask-image")).toBe("none");
+	setModal(true);
+	expect(flips).toBe(1);
+	setModal(false);
+	expect(root.classList.contains("term-hole")).toBe(true);
+	expect(document.querySelector(".card").style.getPropertyValue("mask-size")).toBe("100% 100%, 300px 200px");
+	off();
 });

@@ -17,7 +17,8 @@ import { loadKeymap, register } from "#lib/keymap.svelte.ts";
 import { startCtl } from "#lib/ctl.ts";
 import { startAutoCleanup } from "#lib/stores/autoCleanup.svelte.ts";
 import { startMenu } from "#lib/menu.svelte.ts";
-import { startModalWatch } from "#lib/modalOpen.ts";
+import { onModalChange, startModalWatch } from "#lib/modalOpen.ts";
+import { setModal } from "#lib/components/terminal/holeLayers.ts";
 import { metrics } from "#lib/panel/metrics.svelte.ts";
 import { shellCommands } from "#lib/shell/commands.svelte.ts";
 import { offerGhostty, startThemeCommands } from "#lib/shell/themeCommands.svelte.ts";
@@ -214,6 +215,8 @@ export function startSession(): () => void {
 	loadKeymap().catch(() => {});
 	const stopMenu = startMenu();
 	const stopModalWatch = startModalWatch();
+	// A modal over the page: no terminal hole while it is up (the page stays opaque; holeLayers.ts).
+	const stopHoleModal = onModalChange(setModal);
 	loadPrefs().catch(() => {});
 	themes.init().then(offerGhostty, fail);
 	const unregister = register(shellCommands());
@@ -232,6 +235,8 @@ export function startSession(): () => void {
 		stopThemeCommands();
 		void stopMenu.then((f) => f());
 		stopModalWatch();
+		stopHoleModal();
+		setModal(false);
 		void stopHostStatus.then((f) => f());
 		void stopSound.then((f) => f());
 		store.dispose();

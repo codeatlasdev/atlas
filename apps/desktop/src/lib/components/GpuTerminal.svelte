@@ -18,7 +18,7 @@
 	import { fontStep, keyToSend, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
 	import { isSwiping, watchSlot } from "./nativeSlot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";
-	import { closeHole, openHole, recut } from "./terminal/holeLayers.ts";
+	import { closeHole, holesSuspended, onSuspendChange, openHole, recut } from "./terminal/holeLayers.ts";
 	import { contentRect } from "./terminal/fonts.ts";
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { registerTermView } from "#lib/stores/termViews.ts";
@@ -119,7 +119,10 @@
 	const slotBg = $derived(themes.terminal?.bg ?? "var(--ca-surface-base)");
 	// The hole: transparent while the native view is really under the slot and still. The page's backdrop layers (ground,
 	// card) are cut at the slot's rect while it is open (`holeLayers.ts`), so the terminal shows through them too.
-	const hole = $derived(presented && visible && !moving);
+	// A modal over the page suspends every hole (holeLayers.ts): the page is opaque then, so the slot paints.
+	let suspended = $state(holesSuspended());
+	$effect(() => onSuspendChange(() => (suspended = holesSuspended())));
+	const hole = $derived(presented && visible && !moving && !suspended);
 	$effect(() => {
 		if (hole && area) openHole(tab, () => (area ? contentRect(area) : null));
 		else closeHole(tab);

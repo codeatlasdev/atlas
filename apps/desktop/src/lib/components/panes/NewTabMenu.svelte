@@ -92,8 +92,7 @@
 		{#if !pinned(active)}<DropdownMenuItem onclick={() => onrename(active.id)}>Rename tab</DropdownMenuItem
 			>{/if}
 		{#if hasTermView(active.id)}
-			<DropdownMenuItem
-				onclick={() => void reloadTermView(active.id).catch((e) => toast.error(errText(e)))}
+			<DropdownMenuItem onclick={() => void reloadTermView(active.id).catch((e) => toast.error(errText(e)))}
 				>Reload terminal</DropdownMenuItem
 			>
 		{/if}

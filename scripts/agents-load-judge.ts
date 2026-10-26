@@ -19,7 +19,7 @@ export interface Load {
 	/** rAF gaps of the page, ms (all windows, concatenated). */
 	frameGapMs: number[];
 	/** Per terminal: presented frames at the start and at the end of the measured window, and the pty's byte count. */
-	terms: { tab: string; framesStart: number; framesEnd: number; bytes: number }[];
+	terms: { tab: string; framesStart: number; framesEnd: number; bytes: number; shown?: boolean }[];
 	/** Resident set per process kind, MB, one entry per sample. */
 	rssMb: { app: number[]; hostd: number[]; web: number[] };
 	/** `agent://status` events the page received in the window, and `host://event`s (title/activity/exit). */
@@ -76,7 +76,7 @@ export function summarize(l: Load) {
 		agents: l.terms.length,
 		stallMs: stat(l.stallMs),
 		frameGapMs: stat(l.frameGapMs),
-		fps: l.terms.map((t) => ({ tab: t.tab, fps: round((t.framesEnd - t.framesStart) / Math.max(1, l.seconds)), bytes: t.bytes })),
+		fps: l.terms.map((t) => ({ tab: t.tab, fps: round((t.framesEnd - t.framesStart) / Math.max(1, l.seconds)), bytes: t.bytes, shown: t.shown })),
 		rssGrowthMb: {
 			app: growth(l.rssMb.app),
 			hostd: growth(l.rssMb.hostd),
@@ -97,7 +97,7 @@ export function check(l: Load, budget: Budget = BUDGET): string[] {
 	if (s.frameGapMs.p95 > budget.frameGapP95Ms) v.push(`page frame gap p95 ${s.frameGapMs.p95} ms > ${budget.frameGapP95Ms} ms`);
 	for (const t of s.fps) {
 		// A program that printed nothing has no frames to owe; one that printed and shows < minFps is frozen or starved.
-		if (t.bytes > 0 && t.fps < budget.minFps) v.push(`terminal ${t.tab} presented ${t.fps} fps < ${budget.minFps} fps while its program printed ${t.bytes} bytes`);
+		if (t.shown !== false && t.bytes > 0 && t.fps < budget.minFps) v.push(`terminal ${t.tab} presented ${t.fps} fps < ${budget.minFps} fps while its program printed ${t.bytes} bytes`);
 	}
 	for (const k of ["app", "hostd", "web"] as const) {
 		if (s.rssGrowthMb[k] > budget.rssGrowthMb) v.push(`${k} RSS grew ${s.rssGrowthMb[k]} MB > ${budget.rssGrowthMb} MB`);

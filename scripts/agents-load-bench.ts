@@ -89,7 +89,13 @@ async function main() {
 		mkdirSync(fx, { recursive: true });
 		writeFileSync(join(fx, "atlas.yaml"), 'name: agents-load\nservices:\n  web:\n    command: "sleep 100000"\n    port: 20999\n');
 		await evalJs(`await window.__TAURI_INTERNALS__.invoke("projects_add", { root: ${JSON.stringify(fx)} }); await window.__atlas.store.refresh(); return 1`);
-		const wt = (await evalJs(`return window.__atlas.ws.doc.selected ?? null`)) as string | null;
+		// A fresh instance has nothing selected: pick the fixture's main worktree (it appears once the store syncs).
+		const wt = (await evalJs(`for (let i = 0; i < 100; i++) {
+			const w = window.__atlas.ws.doc.worktrees.find((x) => x.path === ${JSON.stringify(fx)} || x.path === ${JSON.stringify(fx.replace(/^\/private/, ""))});
+			if (w) { window.__atlas.shell.select(w.id); return w.id; }
+			await new Promise((r) => setTimeout(r, 100));
+		}
+		return window.__atlas.ws.doc.selected ?? null`)) as string | null;
 		if (!wt) throw new Error("no worktree to open terminals in (is the instance on a project view?)");
 		const argv = JSON.stringify(["bun", join(root, "scripts/agents-load-gen.ts"), ...gen]);
 		const genEnv = JSON.stringify({ LOADGEN_COUNT_DIR: counts });
@@ -98,6 +104,12 @@ async function main() {
 			`const out = []; for (let i = 0; i < ${agents}; i++) { const t = await window.__atlas.ws.newTerminal(${JSON.stringify(wt)}, { argv: ${argv}, env: ${genEnv}, agent: "omp", label: "load " + i }); if (t) out.push(t.id); } return out`,
 		)) as string[];
 		if (tabs.length < agents) throw new Error(`opened ${tabs.length} of ${agents} terminals`);
+		// Like a person watching one agent while the others work: the last tab is shown, the rest are
+		// parked behind it. Only a shown terminal has a native view, so only it is judged on fps.
+		const shown = tabs[tabs.length - 1]!;
+		await evalJs(`window.__atlas.ws.activate(${JSON.stringify(shown)}); return 1`);
+		for (let i = 0; i < 100 && !(shown in (await termStats())); i++) await Bun.sleep(100);
+		if (!(shown in (await termStats()))) throw new Error("the shown terminal never opened its native view");
 		await evalJs(START);
 		await Bun.sleep(warmup * 1000);
 		const [before, bytes0] = [await termStats(), printed()];
@@ -123,6 +135,7 @@ async function main() {
 				framesStart: before[tab]?.frames ?? 0,
 				framesEnd: after[tab]?.frames ?? 0,
 				bytes: (bytes1[tab] ?? 0) - (bytes0[tab] ?? 0),
+				shown: tab === shown,
 			})),
 			rssMb,
 			statusEvents: page.status,

@@ -142,6 +142,7 @@ macro_rules! handlers {
             boot::boot_mark,
             boot::app_ready,
             boot::theme_cache_write,
+            boot::window_ground,
             boot::themes_user_read,
             cmds::open_in_editor,
             cmds::open_url,
@@ -219,6 +220,7 @@ macro_rules! handlers {
             capture::capture_cmd,
             term::term_open,
             term::term_bounds,
+            term::term_layout,
             term::term_close,
             term::term_reload,
             term::term_stats,
@@ -344,6 +346,11 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    // The NSWindow paints the app's ground from its first frame: until the page and the terminal views
+    // present, a gap shows the theme's colour, never the desktop through the transparent window.
+    if let Some(ground) = cache.as_ref().and_then(|c| c.ground.as_deref()) {
+        boot::set_window_ground(app.handle(), ground);
+    }
     boot::mark("window:created");
     boot::arm_deadline(app.handle());
     drop(win);

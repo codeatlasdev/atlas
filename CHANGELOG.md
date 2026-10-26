@@ -6,10 +6,16 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **Menus, dialogs, popovers, the sidebar peek and toasts now draw over a terminal instead of hiding it.** The GPU terminal is a native view; it used to sit above the page, so every layer that opened over it forced the terminal off screen (it vanished and came back). The terminal now sits **under** the transparent page and shows through a hole cut in the page's backdrop, so anything the page draws is simply on top, with no native work, no hide/show and no flicker. A modal covers every terminal, and Settings dims everything behind it with its one backdrop.
+- **Every terminal's position is applied once per frame, together, in one Core Animation transaction after the page has presented** (`term_layout`). The Metal surface is resized in the same block, and the window and each terminal view paint the app's theme colour behind everything, so a one-frame mismatch can show only the app's colour, never the desktop.
+
 ### Fixed
 
 - **A GPU terminal that went blank after sleep, lid close or a display change draws again** ([#104](https://github.com/codeatlasdev/atlas/issues/104)). Atlas now rebuilds every terminal's surface when the Mac wakes or a display changes, keeping its screen and scrollback.
 - **A terminal that stops drawing recovers by itself** ([#108](https://github.com/codeatlasdev/atlas/issues/108)). A frame that could not be presented is retried without waiting for new output, and a surface that stays dead for 2 s is replaced. Recoveries show up in the diagnostics report.
+- **A terminal can no longer stay blank because its view was left parked, re-ordered under the page, or sized 0x0 by a layout in flight.** A degenerate rect parks the view at its last good size and the next real rect shows it again; a view that ended up above the page is put back below it before every move; the page opens a terminal's hole only after the backend confirms the view is on screen.
 - **Background terminals no longer draw on every burst of output.** With many agents streaming, each hidden tab used to queue GPU work; now it draws once when shown.
 
 ### Added

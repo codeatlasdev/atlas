@@ -1,6 +1,7 @@
 /**
- * Keeps the native terminal view (a child view painted above the webview) in step with its DOM
- * slot: opens it once, tracks bounds/visibility, and builds the color and pref payloads.
+ * Keeps the native terminal view (an NSView BELOW the transparent webview) in step with its DOM slot: opens it
+ * once, registers the slot with the per-frame layout batch (`termLayout.ts`) and builds the color and pref
+ * payloads. The slot is a hole in the page while `presented` is true; overlays never touch the view.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -12,9 +13,8 @@ import { gpu } from "#lib/stores/gpu.svelte.ts";
 import { prefs } from "#lib/stores/prefs.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
 import { nativeRect } from "#lib/zoom.ts";
-import { overlayOpen } from "../nativeSlot.ts";
-import { fontCandidates, insetRect } from "./fonts.ts";
-import { isViewDropped } from "./viewDropped.ts";
+import { contentRect, fontCandidates } from "./fonts.ts";
+import { TermLayout, usable } from "./termLayout.ts";
 
 /** Theme color as #rrggbb (the kit uses oklch; a canvas normalizes any CSS color). */
 function hex(el: Element, cssVar: string, fallback: string): string {
@@ -76,62 +76,108 @@ export function listenFontFallback() {
 	});
 }
 
+/** The one layout batch of the window: every terminal's rect crosses IPC together, once per frame. */
+export const termLayout = new TermLayout((cmd, args) => invoke(cmd, args));
+
+/** `term://presented` `{tab, presented}`: the backend's word on whether a view is on screen under its slot. */
+const presenters = new Map<string, (presented: boolean) => void>();
+let presentedListening = false;
+function listenPresented() {
+	if (presentedListening) return;
+	presentedListening = true;
+	void listen<{ tab: string; presented: boolean }>("term://presented", (e) => {
+		termLayout.presented(e.payload.tab, e.payload.presented);
+		presenters.get(e.payload.tab)?.(e.payload.presented);
+	});
+}
+
 export class NativeView {
 	opened = false;
 	#failed = false;
-	// Observers fire concurrently; serialize so `term_open` runs once before any `term_bounds`.
-	#chain = Promise.resolve();
+	#off: (() => void) | undefined;
+	// `term_open` runs once, before the slot joins the batch.
+	#opening: Promise<void> | undefined;
 
 	constructor(
 		private ids: () => { tab: string; pty: string },
 		private area: () => HTMLElement | undefined,
 		private visible: () => boolean,
+		/** The native view is on screen under the slot (open the hole) or not (paint the slot). */
+		private onPresented: (presented: boolean) => void = () => {},
 	) {}
 
+	/** Schedule a layout: measures every terminal at once and sends one batched call. */
 	sync = () => {
-		this.#chain = this.#chain.then(() => this.#apply());
-		return this.#chain;
+		void this.#open().then(() => termLayout.request()).catch((e) => this.#fail(e));
 	};
 
-	async #apply() {
+	#rect() {
 		const area = this.area();
-		if (!area || this.#failed) return;
-		const { tab, pty } = this.ids();
-		const r = area.getBoundingClientRect();
-		const { padding_x: px, padding_y: py } = prefs.value.terminal;
-		// The view's frame is in window points, the slot in CSS px (they differ under layout zoom).
-		const rect = nativeRect(insetRect(r, px, py));
-		// The native view sits above the webview: park it under dialogs/palette.
-		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen(r, area);
-		try {
-			if (!this.opened) {
-				if (!show) return;
-				this.opened = true;
-				bootMark("term_open:begin");
-				await invoke("term_open", { tab, pty, ...rect, ...termColors(area), prefs: termPrefs() });
-				bootMark("term_open:done");
-			}
+		if (!area) return null;
+		const r = contentRect(area);
+		// The view's frame is in window points, the slot in CSS px (they differ under layout zoom). The content box
+		// is inside the slot's padding border: the same box the page cuts out of its backdrop (`holeLayers.ts`).
+		return nativeRect({ x: r.left, y: r.top, w: r.width, h: r.height });
+	}
+
+	/** Open the native view once, at the first usable rect of a visible slot. */
+	#open(): Promise<void> {
+		if (this.opened || this.#failed) return Promise.resolve();
+		const area = this.area();
+		const r = this.#rect();
+		if (!area || !this.visible() || !usable(r)) return Promise.resolve();
+		return (this.#opening ??= (async () => {
+			const { tab, pty } = this.ids();
+			bootMark("term_open:begin");
+			this.opened = true;
 			try {
-				await invoke("term_bounds", { tab, ...rect, visible: show });
+				await invoke("term_open", { tab, pty, ...r, ...termColors(area), prefs: termPrefs() });
 			} catch (e) {
-				if (!isViewDropped(e)) throw e;
-				// The native view is gone (its render thread ended): open it again over the same
-				// pty, which hostd kept alive with its scrollback (it replays into the new view).
-				if (!show) return void (this.opened = false);
-				await invoke("term_open", { tab, pty, ...rect, ...termColors(area), prefs: termPrefs() });
-				await invoke("term_bounds", { tab, ...rect, visible: show });
+				this.opened = false;
+				throw e;
+			} finally {
+				this.#opening = undefined;
 			}
-		} catch (e) {
-			this.#failed = true;
-			const msg = errText(e);
-			// A host that predates the raw stream and could not be replaced: xterm.js until it
-			// restarts. (The app normally upgrades it live on connect, see `host.rs`.)
-			if (msg.includes("pty_attach_raw")) {
-				if (!gpu.hostTooOld)
-					toast.info("GPU terminal turns on after the terminal host restarts (Settings → Terminal).");
-				gpu.hostTooOld = true;
-			} else toast.error(msg);
-		}
+			bootMark("term_open:done");
+			listenPresented();
+			presenters.set(tab, this.onPresented);
+			const off = termLayout.add({
+				tab,
+				measure: () => this.#rect(),
+				visible: () => this.visible(),
+				onPresented: this.onPresented,
+				// The view is gone (its render thread ended): open it again over the same pty, which hostd
+				// kept alive with its scrollback (it replays into the new view).
+				onDropped: () => {
+					this.#off?.();
+					this.opened = false;
+					this.sync();
+				},
+			});
+			this.#off = () => {
+				off();
+				if (presenters.get(tab) === this.onPresented) presenters.delete(tab);
+			};
+		})());
+	}
+
+	#fail(e: unknown) {
+		this.#failed = true;
+		this.onPresented(false);
+		const msg = errText(e);
+		// A host that predates the raw stream and could not be replaced: xterm.js until it
+		// restarts. (The app normally upgrades it live on connect, see `host.rs`.)
+		if (msg.includes("pty_attach_raw")) {
+			if (!gpu.hostTooOld)
+				toast.info("GPU terminal turns on after the terminal host restarts (Settings → Terminal).");
+			gpu.hostTooOld = true;
+		} else toast.error(msg);
+	}
+
+	/** The slot goes away (unmount): leave the batch. The backend view is closed by `term_close`. */
+	dispose() {
+		this.#off?.();
+		this.#off = undefined;
 	}
 
 	/**

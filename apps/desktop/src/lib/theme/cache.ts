@@ -9,6 +9,8 @@ export interface ThemeCache {
 	dark: boolean;
 	/** Exactly the custom properties the engine put on <html>. */
 	vars: Record<string, string>;
+	/** The window ground (`windowGround`, `#rrggbb`): the NSWindow paints it behind the page and the native views. */
+	ground: string;
 }
 
 let last = "";
@@ -19,4 +21,6 @@ export function writeThemeCache(cache: ThemeCache) {
 	if (key === last) return;
 	last = key;
 	void invoke("theme_cache_write", { cache }).catch(() => {});
+	// The live window repaints now; the cache only serves the next launch.
+	void invoke("window_ground", { hex: cache.ground }).catch(() => {});
 }

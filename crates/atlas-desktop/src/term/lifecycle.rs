@@ -12,15 +12,13 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncReadExt;
 
+use super::layering::{OFFSCREEN, Target};
 use super::mac;
 use super::render_loop::{Hooks, render_loop};
 use super::shared::{BELL, Placement, Shared, State};
 use super::watchdog::Why;
 use super::{APP, TERMS, Term, TermPrefs, on_main, pty_writer, with_term, write_clipboard};
 use crate::host::HostHub;
-
-/// Where a hidden terminal's view is parked.
-const OFFSCREEN: f64 = -20_000.0;
 
 /// Optional `#rrggbb` theme colors beyond fg/bg (Ghostty `cursor-color`, `cursor-text`,
 /// `selection-background`, `selection-foreground`). Empty strings count as unset.
@@ -220,6 +218,7 @@ pub async fn term_open(
 
     // Surface creation touches the NSView/CAMetalLayer: main thread only.
     let spec_open = spec.clone();
+    let bg = shared.bg();
     let (view, renderer, resolution) = on_main(&app, move || {
         // Parked: it is moved over the pane when the first frame is drawn (`Placement`).
         new_surface(
@@ -229,6 +228,7 @@ pub async fn term_open(
             font_pt,
             scale as f32,
             spec_open,
+            bg,
         )
     })?;
     shared.set_view(view);
@@ -251,7 +251,9 @@ pub async fn term_open(
 }
 
 /// A parked native view and a `Renderer` drawing into it. Main thread only. `logical` is the
-/// view's size in points, `pixels` the surface's physical size.
+/// view's size in points, `pixels` the surface's physical size. `bg` paints the layer before its
+/// first drawable: wgpu swaps the view's layer for a `CAMetalLayer` in `Renderer::new`, so the
+/// colour is applied after it, to the layer that stays.
 fn new_surface(
     ns_win: usize,
     logical: (f64, f64),
@@ -259,13 +261,17 @@ fn new_surface(
     font_pt: f32,
     scale: f32,
     spec: atlas_term::FontSpec,
+    bg: [f64; 3],
 ) -> Result<(usize, Renderer, atlas_term::FontResolution), String> {
-    let view = mac::create(ns_win, OFFSCREEN, OFFSCREEN, logical.0, logical.1)?;
+    let view = mac::create(ns_win, OFFSCREEN, OFFSCREEN, logical.0, logical.1, bg)?;
     let ptr = std::ptr::NonNull::new(view as *mut std::ffi::c_void).ok_or("null view")?;
     // SAFETY: the view stays retained until its renderer is dropped (`term_close` joins the
     // render thread first; a rebuild drops the old renderer before destroying the old view).
     match unsafe { Renderer::new(ptr, pixels.0, pixels.1, font_pt, scale, spec) } {
-        Ok((r, res)) => Ok((view, r, res)),
+        Ok((r, res)) => {
+            mac::recolor(view, bg);
+            Ok((view, r, res))
+        }
         Err(e) => {
             mac::destroy(view);
             Err(e)
@@ -294,7 +300,8 @@ fn spawn_render(
         .spawn(move || {
             let (resize_app, font_app, first_app, rebuild_app) =
                 (a.clone(), a.clone(), a.clone(), a);
-            let (font_tab, incident_tab) = (tab.clone(), tab);
+            let (font_tab, first_tab, rebuild_tab, incident_tab) =
+                (tab.clone(), tab.clone(), tab.clone(), tab);
             let (first_sh, rebuild_sh) = (sh.clone(), sh.clone());
             render_loop(
                 renderer,
@@ -312,16 +319,21 @@ fn spawn_render(
                     }),
                     on_first_frame: Box::new(move || {
                         let view = first_sh.view();
-                        let frame = first_sh.placement.lock().drawn();
-                        if let Some((x, y, w, h)) = frame {
-                            let _ = on_main(&first_app, move || {
-                                mac::set_frame(view, x, y, w, h);
-                                Ok(())
-                            });
-                        }
+                        let target = first_sh.placement.lock().drawn();
+                        let px = pixels_of(&first_app, target);
+                        let _ = on_main(&first_app, move || {
+                            mac::apply(&[mac::Move {
+                                view,
+                                target,
+                                pixels: px,
+                            }]);
+                            Ok(())
+                        });
+                        // The surface is on screen under the slot: the page may open its hole now.
+                        emit_presented(&first_app, &first_tab, &first_sh);
                     }),
                     rebuild: Box::new(move |old: Renderer, pixels, _why| {
-                        rebuild_surface(&rebuild_app, &rebuild_sh, ns_win, scale, old, pixels)
+                        rebuild_surface(&rebuild_app, &rebuild_tab, &rebuild_sh, ns_win, scale, old, pixels)
                     }),
                     incident: Box::new(move |kind, detail| {
                         crate::diag::incident(kind, &format!("tab {incident_tab}: {detail}"))
@@ -334,10 +346,12 @@ fn spawn_render(
 
 /// Replace `old`'s view and surface with new ones at `pixels` (the screen and scrollback live in
 /// the `Vt` and are untouched). Runs on the render thread; the AppKit work hops to the main thread.
-/// The new view is parked until its first frame, like a new terminal's (`Placement`). `Err(old)`:
-/// the new surface could not be made, the old one stays.
+/// The new view is parked until its first frame, like a new terminal's (`Placement`), and the page
+/// closes its hole until then (`term://presented`), so the slot paints the terminal colour meanwhile.
+/// `Err(old)`: the new surface could not be made, the old one stays.
 fn rebuild_surface(
     app: &AppHandle,
+    tab: &str,
     sh: &Arc<Shared>,
     ns_win: usize,
     scale: f64,
@@ -350,8 +364,9 @@ fn rebuild_surface(
     };
     let ligatures = old.ligatures();
     let logical = (pixels.0 as f64 / scale, pixels.1 as f64 / scale);
+    let bg = sh.bg();
     let made = on_main(app, move || {
-        new_surface(ns_win, logical, pixels, font_pt, scale as f32, spec)
+        new_surface(ns_win, logical, pixels, font_pt, scale as f32, spec, bg)
     });
     let (view, mut renderer, _) = match made {
         Ok(v) => v,
@@ -363,6 +378,7 @@ fn rebuild_surface(
     renderer.set_ligatures(ligatures);
     // Parked again: `on_first_frame` shows the new view over the pane once it has drawn.
     sh.placement.lock().parked();
+    emit_presented(app, tab, sh);
     let old_view = sh.set_view(view);
     // The old surface must be gone before its view is released.
     drop(old);
@@ -385,8 +401,137 @@ fn dropped(tab: &str) -> bool {
         .is_some_and(|t| t.render.as_ref().is_some_and(|r| r.is_finished()))
 }
 
+/// `term://presented` `{tab, presented}`: the view is on screen under its slot (or no longer), so the page
+/// opens (or closes) the slot's hole. Sent on every change of that state; the page never guesses it.
+fn emit_presented(app: &AppHandle, tab: &str, sh: &Shared) {
+    let presented = sh.placement.lock().is_presented();
+    let _ = app.emit("term://presented", json!({"tab": tab, "presented": presented}));
+}
+
+/// Physical size of the surface for `target` (`Over` and `Park` both keep their size), at the window's scale.
+fn pixels_of(app: &AppHandle, target: Target) -> Option<(u32, u32)> {
+    let scale = app
+        .get_window("main")
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(2.0);
+    match target {
+        Target::Over((_, _, w, h)) => Some(layering::pixels(w, h, scale)),
+        Target::Park(..) => None,
+    }
+}
+
+/// One terminal's place in a layout batch (`term_layout`).
+#[derive(serde::Deserialize, Debug)]
+pub struct Slot {
+    pub tab: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub visible: bool,
+}
+
+/// Result for one slot of a layout batch.
+#[derive(serde::Serialize, Debug, PartialEq)]
+pub struct Placed {
+    pub tab: String,
+    /// The view is on screen under the slot (the page opens its hole).
+    pub presented: bool,
+    /// The terminal's view is gone: the page re-runs `term_open` for it.
+    pub dropped: bool,
+}
+
+/// Place every terminal of one frame in ONE main-thread hop and ONE Core Animation transaction, after
+/// the page has presented the DOM change that moved the slots (`mac::after_page_presents`), so the
+/// webview and the native views commit into the same screen frame. A tab that is gone or whose render
+/// thread ended is reported `dropped` instead of failing the batch. Overlays are not an input: nothing
+/// here ever hides a view for a menu or dialog.
+#[tauri::command]
+pub async fn term_layout(app: AppHandle, slots: Vec<Slot>) -> Result<Vec<Placed>, String> {
+    let mut out = Vec::with_capacity(slots.len());
+    let mut moves = Vec::with_capacity(slots.len());
+    let mut sizes = Vec::new();
+    for s in &slots {
+        let Some(sh) = live(&s.tab) else {
+            out.push(Placed { tab: s.tab.clone(), presented: false, dropped: true });
+            continue;
+        };
+        // Before the first frame is drawn the view stays parked; the rect is applied when it is (`Placement`).
+        let target = sh.placement.lock().request((s.x, s.y, s.w, s.h), s.visible);
+        let pixels = pixels_of(&app, target);
+        moves.push(mac::Move { view: sh.view(), target, pixels });
+        if let Some(px) = pixels {
+            sizes.push((sh.clone(), px));
+        }
+        let presented = sh.placement.lock().is_presented();
+        out.push(Placed { tab: s.tab.clone(), presented, dropped: false });
+    }
+    let ns_win = app
+        .get_window("main")
+        .ok_or("no main window")?
+        .ns_window()
+        .map_err(|e| e.to_string())? as usize;
+    // The reply (which lets the page open its holes) waits for the native frames: a hole opened before
+    // its view moved would show the old place for a frame. `pending` is taken by whoever applies first:
+    // the page's presentation callback, or the deadline below when the page never presents (occluded or
+    // hidden window), so a layout is never lost.
+    let pending = Arc::new(Mutex::new(Some(moves)));
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    let done_tx = Arc::new(Mutex::new(Some(done_tx)));
+    let (p1, d1) = (pending.clone(), done_tx.clone());
+    on_main(&app, move || {
+        mac::after_page_presents(ns_win, move || apply_pending(ns_win, &p1, &d1));
+        Ok(())
+    })?;
+    // The renderer follows to the same size; the render thread draws its next frame at it.
+    for (sh, px) in sizes {
+        sh.update(|st| st.size = Some(px));
+    }
+    if tokio::time::timeout(PRESENT_DEADLINE, done_rx).await.is_err() {
+        let _ = on_main(&app, move || {
+            apply_pending(ns_win, &pending, &done_tx);
+            Ok(())
+        });
+    }
+    Ok(out)
+}
+
+/// Apply the batch once, on the main thread, and release the waiting command.
+fn apply_pending(
+    ns_win: usize,
+    pending: &Mutex<Option<Vec<mac::Move>>>,
+    done: &Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+) {
+    if let Some(moves) = pending.lock().take() {
+        // Blank-terminal audit: a view the page ended up above (the web view re-added, a window change) is
+        // "there" but never visible. Put it back below the page before moving it; this is a no-op reorder
+        // for a view that is already right, and it never hides anything.
+        for m in &moves {
+            if !mac::is_layered(m.view) {
+                mac::relayer(ns_win, m.view);
+            }
+        }
+        mac::apply(&moves);
+    }
+    if let Some(tx) = done.lock().take() {
+        let _ = tx.send(());
+    }
+}
+
+/// How long a layout batch waits for the page's presentation before it answers anyway.
+const PRESENT_DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// The open terminal of `tab` whose render thread is alive; a dead one is reported as an incident.
+fn live(tab: &str) -> Option<Arc<Shared>> {
+    if dropped(tab) {
+        crate::diag::incident("terminal-dropped", &format!("tab {tab}: render thread ended"));
+        return None;
+    }
+    with_term(tab).ok()
+}
+
 /// Move/resize over the pane; `visible: false` parks it offscreen. Errors with [`VIEW_DROPPED`]
-/// when the view is gone, so the frontend opens it again.
+/// when the view is gone, so the frontend opens it again. A one-tab `term_layout`.
 #[tauri::command]
 pub async fn term_bounds(
     app: AppHandle,
@@ -397,34 +542,12 @@ pub async fn term_bounds(
     h: f64,
     visible: bool,
 ) -> Result<(), String> {
-    if dropped(&tab) {
-        crate::diag::incident(
-            "terminal-dropped",
-            &format!("tab {tab}: render thread ended"),
-        );
-        return Err(VIEW_DROPPED.into());
+    let slot = Slot { tab, x, y, w, h, visible };
+    let placed = term_layout(app, vec![slot]).await?;
+    match placed.first() {
+        Some(p) if p.dropped => Err(VIEW_DROPPED.into()),
+        _ => Ok(()),
     }
-    let shared = with_term(&tab)?;
-    // Before the first frame is drawn the view stays parked; the rect is applied when it is (`Placement`).
-    let (vx, vy) = match shared.placement.lock().request((x, y, w, h), visible) {
-        Some((x, y, _, _)) => (x, y),
-        None => (OFFSCREEN, OFFSCREEN),
-    };
-    // Read after the placement is recorded: a rebuild swaps the view, and one that lands between
-    // here and the move still shows at the right place (`Placement` is what its first frame uses).
-    let view = shared.view();
-    on_main(&app, move || {
-        mac::set_frame(view, vx, vy, w, h);
-        Ok(())
-    })?;
-    if visible {
-        let scale = app
-            .get_window("main")
-            .and_then(|w| w.scale_factor().ok())
-            .unwrap_or(2.0);
-        shared.update(|s| s.size = Some(((w * scale) as u32, (h * scale) as u32)));
-    }
-    Ok(())
 }
 
 /// "Reload terminal": replace `tab`'s surface and renderer by hand, as the watchdog does when a tab

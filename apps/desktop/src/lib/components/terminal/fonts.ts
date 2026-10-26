@@ -32,16 +32,16 @@ export function fontCandidates(css: string): string[] {
 		.filter((p) => p && !GENERIC[p.toLowerCase()]);
 }
 
-/** Cell rect of a padded terminal: the slot shrunk by `px`/`py` on each side, never below 1 × 1. */
-export function insetRect(
-	r: { left: number; top: number; width: number; height: number },
-	px: number,
-	py: number,
-) {
+/**
+ * The content box of `el` (inside its border) in the viewport, in CSS px: the native view's rect. The slot's border is
+ * the terminal padding band, so this is the slot shrunk by `terminal.padding_x/y` on each side.
+ */
+export function contentRect(el: HTMLElement) {
+	const r = el.getBoundingClientRect();
 	return {
-		x: r.left + px,
-		y: r.top + py,
-		w: Math.max(1, r.width - 2 * px),
-		h: Math.max(1, r.height - 2 * py),
+		left: r.left + el.clientLeft,
+		top: r.top + el.clientTop,
+		width: Math.max(1, el.clientWidth),
+		height: Math.max(1, el.clientHeight),
 	};
 }

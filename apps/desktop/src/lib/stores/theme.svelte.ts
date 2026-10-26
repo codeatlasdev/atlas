@@ -18,6 +18,7 @@ import {
 	type ThemeSelection,
 } from "#lib/theme.ts";
 import { writeThemeCache } from "#lib/theme/cache.ts";
+import { windowGround } from "#lib/theme/ground.ts";
 import { complete } from "#lib/theme/derive.ts";
 import { exportAtlasJson, exportGhostty } from "#lib/theme/import/export.ts";
 import { parseGhosttyConfig } from "#lib/theme/import/ghostty.ts";
@@ -301,6 +302,7 @@ class Themes {
 			scheme: this.selection.mode,
 			dark: t.appearance === "dark",
 			vars,
+			ground: windowGround(t.style),
 		});
 	}
 }

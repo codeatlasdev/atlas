@@ -2,7 +2,8 @@
 //!
 //! Decisions live in `page_stage.rs` (pure, tested); this file holds the snapshots (`CGImage`s taken with
 //! `WKWebView.takeSnapshot` of the pager rect), the overlay `CALayer` tree and executes what the stage returns.
-//! The overlay sits just above the main webview's layer and below the native child views, clipped to the pager
+//! The overlay sits just above the main webview's layer (so above the terminal views under it, which it covers with
+//! fills) and below the native child webviews, clipped to the pager
 //! rect, so the sidebar and chrome stay live. Layers move in a `CATransaction` with actions disabled: the window
 //! server composites them every display frame, whatever WebContent is doing.
 //!
@@ -176,7 +177,22 @@ fn raise(app: &AppHandle, sh: &mut Shell, cur: &str, inc: Option<&str>) {
     };
     let cur_l = make(sh.images.get(cur).copied());
     let inc_l = make(inc.and_then(|i| sh.images.get(i).copied()));
-    // Above the webview, below the native child views (terminal, browser): the sidebar stays live.
+    // A snapshot is web content only: where a terminal is, it has a hole, and the live terminal (a native view
+    // UNDER the page, and under this overlay) would stay still beneath the sliding page. A fill of the terminal's
+    // colour on the outgoing page's layer covers it and slides with it. The incoming page's terminal is not on
+    // screen, and its snapshot was taken with the slot painting the terminal colour already.
+    // Core Animation's y is bottom-up: the fill's frame is flipped inside the pager-sized layer.
+    for f in crate::term::stage_fills((sh.rect.x, sh.rect.y, sh.rect.w, sh.rect.h)) {
+        let (x, y, w, h) = f.frame;
+        let fill = CALayer::new();
+        fill.setFrame(NSRect::new(
+            NSPoint::new(x, frame.size.height - y - h),
+            NSSize::new(w, h),
+        ));
+        crate::term::paint_layer(&fill, f.bg);
+        cur_l.addSublayer(&fill);
+    }
+    // Above the webview (and so above the terminal views beneath it); the sidebar stays live.
     match wk.layer() {
         Some(wl) => host.insertSublayer_above(&root, Some(&wl)),
         None => host.addSublayer(&root),

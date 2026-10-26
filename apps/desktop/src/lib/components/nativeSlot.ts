@@ -1,14 +1,26 @@
 /**
- * Re-measure a native child view (terminal, browser) whenever its DOM slot may have moved:
- * the slot resizes, the window resizes, or a dialog/palette opens or closes (the native view must
- * be parked under those). Returns the teardown.
+ * Re-measure a native view whenever its DOM slot may have moved: the slot resizes or the window resizes.
+ * Returns the teardown.
+ *
+ * A GPU terminal sits BELOW the transparent webview, so a dialog, menu or peek that opens over it needs no
+ * native work and `watchSlot` ignores them. An embedded browser is a child webview ABOVE the page and cannot be
+ * covered by CSS: it passes `overlays: true` and is re-synced (and parked, see `overlayOpen`) when one opens.
  *
  * Every trigger only schedules one `requestAnimationFrame`; `sync` (which reads layout and crosses
  * IPC) runs once per frame, after the frame's DOM writes. Observers used to call it directly, so one
  * layout change fired several syncs in the same frame, each forcing layout in the middle of Svelte's
  * writes, and the native view lagged the DOM by a frame or two (visible as a flash).
+ *
+ * `onSwipe` runs (in that frame) when a tab pane starts or stops moving (`data-swiping`), so a terminal's slot can
+ * paint over its view while the pane is transformed. Only that attribute is observed for it: no `childList` over the
+ * whole body per terminal.
  */
-export function watchSlot(slot: Element, sync: () => void): () => void {
+export function watchSlot(
+	slot: Element,
+	sync: () => void,
+	onSwipe?: () => void,
+	opts: { overlays?: boolean } = {},
+): () => void {
 	let raf = 0;
 	const schedule = () => {
 		if (!raf)
@@ -19,12 +31,15 @@ export function watchSlot(slot: Element, sync: () => void): () => void {
 	};
 	const ro = new ResizeObserver(schedule);
 	ro.observe(slot);
-	const mo = new MutationObserver(schedule);
+	const mo = new MutationObserver((records) => {
+		if (onSwipe && records.some((r) => r.attributeName === "data-swiping")) onSwipe();
+		schedule();
+	});
 	mo.observe(document.body, {
 		subtree: true,
 		attributes: true,
-		attributeFilter: ["data-state", "data-swiping"],
-		childList: true,
+		attributeFilter: opts.overlays ? ["data-state", "data-swiping"] : ["data-swiping"],
+		childList: !!opts.overlays,
 	});
 	window.addEventListener("resize", schedule);
 	return () => {
@@ -35,13 +50,20 @@ export function watchSlot(slot: Element, sync: () => void): () => void {
 	};
 }
 
+/** Is `el` inside a pane the tab pager is moving by a CSS transform? */
+export function isSwiping(el: Element | undefined | null): boolean {
+	return !!el?.closest("[data-swiping]");
+}
+
 const hits = (a: Pick<DOMRect, "left" | "top" | "right" | "bottom">, b: typeof a) =>
 	a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 
 /**
- * Dialogs, menus, listboxes, the palette and an open edge peek must sit above the native view, which is a sibling
- * NSView no web layer can cover (tooltips stay out: a hover hint would park it on every pass): park it while one is
- * open over it. Only one that overlaps the slot can cover it; the others (a popover
+ * EMBEDDED BROWSERS ONLY. A browser tab is a child webview above the page, a sibling NSView no web layer can cover.
+ * GPU terminals are under the page and never ask this (`termLayout.ts`): nothing may park a terminal for an overlay.
+ *
+ * Dialogs, menus, listboxes, the palette and an open edge peek must sit above the native view (tooltips stay out: a
+ * hover hint would park it on every pass): park it while one is open over it. Only one that overlaps the slot can cover it; the others (a popover
  * over the sidebar, a chip far from the terminal) used to park it too, so it vanished and reappeared on every
  * open/close. A modal is the exception: its scrim dims the whole window and everything behind it is inert, so a
  * native view left bright and clickable beside its box would break the modal (codeatlasdev/atlas#66).

@@ -1,18 +1,20 @@
-//! GPU terminal: one native view per tab laid over the pane, drawn by `atlas-term`.
+//! GPU terminal: one native view per tab, **below** the transparent webview, drawn by `atlas-term`.
 //!
 //! Per terminal, as in Ghostty: a reader task (hostd `pty_attach_raw` → `Vt`), a render
 //! thread (snapshot → wgpu, woken only by new bytes or a resize), and writes (keys,
-//! paste, VT replies) through the hostd connection. Clicks pass through the view to the
-//! webview (`hitTest:` → nil), so focus and keyboard stay in the frontend for now.
+//! paste, VT replies) through the hostd connection. The view sits under the page and is a hole in it
+//! (`layering`): menus, dialogs and the sidebar peek draw over it with no native work, and pointer and
+//! key events reach the slot's DOM handlers, which call the `term_*` commands.
 //! Local hostd only: the raw stream is a dedicated socket connection. macOS only (AppKit view).
 //!
 //! This file is the registry of open terminals plus the pty/clipboard/main-thread helpers.
 //! The `#[tauri::command]`s live by concern: `lifecycle` (open/bounds/close), `keys`
 //! (input, scrolling, prompts), `mouse` (pointer reports to programs), `select` (selection,
-//! links, search), `settings` (theme, prefs, font, focus, stats); `render_loop`, `mac` and
+//! links, search), `settings` (theme, prefs, font, focus, stats); `render_loop`, `mac`, `layering` and
 //! `shared` are the machinery.
 
 mod keys;
+pub mod layering;
 mod lifecycle;
 mod mac;
 mod mouse;
@@ -41,6 +43,32 @@ pub use mouse::*;
 pub use select::*;
 pub use settings::*;
 pub use system::install as install_system_observers;
+
+/// The terminals on screen that a page-slide overlay over `pager` (x, y, w, h in the content view's top-left
+/// points) must cover, as fills relative to the pager (`layering::stage_fills`). The registry lock is held only
+/// to clone the `Arc`s.
+pub fn stage_fills(pager: layering::Frame) -> Vec<layering::Fill> {
+    let live: Vec<layering::Fill> = all_shared()
+        .iter()
+        .filter_map(|sh| match sh.placement.lock().target() {
+            layering::Target::Over(frame) => Some(layering::Fill { frame, bg: sh.bg() }),
+            layering::Target::Park(..) => None,
+        })
+        .collect();
+    layering::stage_fills(pager, &live)
+}
+
+/// Paint a bare layer opaque (the page stage's fills).
+#[cfg(target_os = "macos")]
+pub fn paint_layer(layer: &objc2_quartz_core::CALayer, rgb: [f64; 3]) {
+    mac::paint_layer(layer, rgb);
+}
+
+/// Paint the main NSWindow itself with `rgb` (`boot::set_window_ground`).
+#[cfg(target_os = "macos")]
+pub fn set_window_background(ns_window: usize, rgb: [f64; 3]) {
+    mac::set_window_background(ns_window, rgb);
+}
 
 /// `terminal.*` settings for a GPU terminal (defaults when absent).
 #[derive(serde::Deserialize)]

@@ -73,6 +73,10 @@ pub fn term_recolor(
         selection_fg,
     };
     let pal = build_palette(&fg, &bg, ansi16.as_deref(), min_contrast, &extra)?;
+    let bg = {
+        let c = pal.base[atlas_term::colors::NamedColor::Background as usize];
+        super::layering::bg_floats(c.r, c.g, c.b)
+    };
     for sh in targets(tab.as_deref())? {
         sh.vt.set_palette(&pal);
         let pal = pal.clone();
@@ -81,6 +85,11 @@ pub fn term_recolor(
             s.pal_new = true;
             s.dirty = true;
         });
+        // The layer behind the Metal drawable follows the theme too: a gap shows the new colour.
+        let view = sh.view();
+        if let Some(app) = super::APP.get() {
+            let _ = app.run_on_main_thread(move || super::mac::recolor(view, bg));
+        }
     }
     Ok(())
 }

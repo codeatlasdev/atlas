@@ -86,6 +86,7 @@
 	`--space-accent` and `--space-tint`. `--space-accent-text` and `--space-on-accent` are read only below a layer
 	(panel, project header, editor, viewers), and every layer carries all four itself (`shell.layerVars`, SpacePager).
 -->
+<div class="ground" aria-hidden="true"></div>
 <div
 	class="app"
 	style:--space-accent={shell.active ? shell.accent(shell.active.id) : undefined}
@@ -96,6 +97,7 @@
 	</div>
 	<EdgePeek edge="left" size={260} label="Sidebar" active={!docks.sidebar}>{@render sidebar()}</EdgePeek>
 	<main class="content" class:full={!docks.sidebar} use:swipe={historySwipe()}>
+		<div class="card" aria-hidden="true"></div>
 		<div class="space-edge" aria-hidden="true"></div>
 		<div class="nav-chip nav-chip-prev" aria-hidden="true"><ChevronLeft size={18} /></div>
 		<div class="nav-chip nav-chip-next" aria-hidden="true"><ChevronRight size={18} /></div>

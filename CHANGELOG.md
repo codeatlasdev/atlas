@@ -56,6 +56,7 @@ Atlas is in **alpha**: expect bugs and breaking changes. Please [report what bre
 
 ### Fixed
 
+- **Switching spaces no longer freezes the window when a space has a Changes tab or several open tabs.** Leaving a space unmounted its hidden tabs and coming back mounted them all inside the switch frame; the Changes view reloaded (`git diff` plus a rewrite of every row) each time its pane's `focused` prop flipped; and the kit's glass blur was never switched off (`data-style="solid"`), so chips over the pager re-blurred while it moved. A 400-line new file per space turned a switch into a 1-4 s stall; tabs now stay mounted once shown and the view reloads only for a different worktree, mode or base.
 - Terminal: scrolling up while a program prints (omp, logs, a build) no longer snaps back to the bottom on every chunk; a key or a paste returns to the live screen, as in Ghostty (#97).
 - Terminal, every OS: keystrokes and pastes reach the program in the order they were typed. The desktop sent each write as its own request and hostd ran each one on its own task, so a fast typist or a paste followed by ⏎ could arrive swapped.
 - Terminal (macOS GPU): a terminal host restart or live upgrade no longer leaves the terminal frozen; it reattaches and replays its output.

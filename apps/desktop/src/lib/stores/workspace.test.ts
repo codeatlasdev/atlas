@@ -4,7 +4,9 @@ import { afterAll, expect, mock, test } from "bun:test";
 mock.module("@tauri-apps/api/core", () => ({ invoke: async () => null }));
 mock.module("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 await (await import("../../../test/uiKit.ts")).installUiKit();
-mock.module("#lib/api.ts", () => ({ errText: String }));
+// Process-wide, and every store module that loads after it stays linked to it: carry the names the other stores import
+// (`api`, `git`) so a later file (DiffView.test.ts) that pulls them in links instead of failing on a missing export.
+mock.module("#lib/api.ts", () => ({ errText: String, api: {}, git: {} }));
 let ptyList: () => Promise<unknown[]> = async () => [];
 const created = [];
 mock.module("#lib/host.ts", () => ({

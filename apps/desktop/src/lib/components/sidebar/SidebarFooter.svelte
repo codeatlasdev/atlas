@@ -102,16 +102,27 @@
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.pill {
-			animation:
-				rise 260ms var(--ca-ease-spring, ease-out),
-				glow 3.2s ease-in-out 600ms infinite;
+			animation: rise 260ms var(--ca-ease-spring, ease-out);
 		}
+		.pill::after {
+			animation: glow 3.2s ease-in-out 600ms infinite;
+		}
+	}
+	/* The glow is a static shadow on a pseudo-element whose opacity breathes: the blurred shadow is painted once. */
+	.pill::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		box-shadow:
+			0 0 0 0.5px color-mix(in oklab, var(--ca-brand-main) 55%, transparent),
+			0 0 20px 0 color-mix(in oklab, var(--ca-brand-main) 55%, transparent);
+		opacity: 0;
+		pointer-events: none;
 	}
 	@keyframes glow {
 		50% {
-			box-shadow:
-				0 0 0 0.5px color-mix(in oklab, var(--ca-brand-main) 55%, transparent),
-				0 0 20px 0 color-mix(in oklab, var(--ca-brand-main) 55%, transparent);
+			opacity: 1;
 		}
 	}
 	@keyframes rise {

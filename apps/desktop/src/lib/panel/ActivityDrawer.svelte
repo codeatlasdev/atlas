@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useNow } from "#lib/clock.svelte.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 	import { EmptyState, ToggleGroup } from "@codeatlasdev/ui";
 	import { Activity } from "@lucide/svelte";
@@ -13,10 +14,10 @@
 	let { projectId }: { projectId: string } = $props();
 	const space = useSpace();
 
-	let now = $state(Date.now());
+	const t = useNow(15_000);
 	let rows = $derived(fold(store.live[projectId]?.events ?? []));
 	let tally = $derived(counts(rows));
-	let groups = $derived(group(filterRows(rows, activity.filter), now));
+	let groups = $derived(group(filterRows(rows, activity.filter), t.now));
 
 	let items = $derived(
 		(
@@ -44,12 +45,7 @@
 	$effect(() => {
 		if (!activity.open) return;
 		activity.markSeen(projectId);
-		now = Date.now();
-		const t = setInterval(() => (now = Date.now()), 15_000);
-		return () => {
-			activity.markSeen(projectId);
-			clearInterval(t);
-		};
+		return () => activity.markSeen(projectId);
 	});
 
 	onMount(() => () => (activity.open = false));

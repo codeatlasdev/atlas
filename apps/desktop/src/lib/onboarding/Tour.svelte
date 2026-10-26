@@ -69,19 +69,45 @@
 		else void next();
 	}
 
+	// Re-measure when the layout settles, never on a timer: the page resizing, the spotlighted element resizing
+	// (docks and sidebars animate its box), and any transition/animation ending anywhere (a dock that finished
+	// opening moved the anchor without resizing the document).
+	let anchorEl: HTMLElement | null = null;
+	let ro: ResizeObserver | undefined;
+	let queued = false;
+	function schedule() {
+		if (queued) return;
+		queued = true;
+		requestAnimationFrame(() => {
+			queued = false;
+			measure();
+		});
+	}
+
+	// Follow the spotlighted element: observe its box so a resize that does not touch the document is seen.
+	$effect(() => {
+		const el = step ? anchor(step.anchor) : null;
+		if (el === anchorEl) return;
+		if (anchorEl) ro?.unobserve(anchorEl);
+		anchorEl = el;
+		if (el) ro?.observe(el);
+	});
+
 	onMount(() => {
 		measure();
 		// No anchor on screen at all (e.g. no project selected): nothing to show.
 		if (!steps.length) skip();
-		const ro = new ResizeObserver(measure);
+		ro = new ResizeObserver(schedule);
 		ro.observe(document.documentElement);
-		// Docks and sidebars animate: re-measure while the layout settles.
-		const poll = setInterval(measure, 250);
-		window.addEventListener("resize", measure);
+		if (anchorEl) ro.observe(anchorEl);
+		window.addEventListener("resize", schedule);
+		document.addEventListener("transitionend", schedule, true);
+		document.addEventListener("animationend", schedule, true);
 		return () => {
-			ro.disconnect();
-			clearInterval(poll);
-			window.removeEventListener("resize", measure);
+			ro?.disconnect();
+			window.removeEventListener("resize", schedule);
+			document.removeEventListener("transitionend", schedule, true);
+			document.removeEventListener("animationend", schedule, true);
 		};
 	});
 

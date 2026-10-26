@@ -2,6 +2,7 @@
 	import { Tooltip } from "@codeatlasdev/ui";
 	import type { Snippet } from "svelte";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
+	import { guarded } from "./tooltipGuard.ts";
 
 	/**
 	 * Tooltip for an interactive control; appends the command's current key binding
@@ -24,4 +25,8 @@
 	let keys = $derived(command ? shortcutFor(command) : undefined);
 </script>
 
-<Tooltip content={keys ? `${label}  ${keys}` : label} {side} delay={400} triggerChild={child} />
+<Tooltip content={keys ? `${label}  ${keys}` : label} {side} delay={400}>
+	{#snippet triggerChild(props)}
+		{@render child(guarded(props))}
+	{/snippet}
+</Tooltip>

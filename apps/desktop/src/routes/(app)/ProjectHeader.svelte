@@ -232,26 +232,36 @@
 		--c: var(--ca-semantic-error);
 	}
 	.dot {
+		position: relative;
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
 		background: var(--c);
 	}
-	.dot.pulse {
+	/* The expanding halo is a pseudo-element animated with transform + opacity (a box-shadow would repaint each frame). */
+	.dot.pulse::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: color-mix(in oklab, var(--c) 55%, transparent);
 		animation: live 2.4s ease-out infinite;
 	}
 	@keyframes live {
 		0% {
-			box-shadow: 0 0 0 0 color-mix(in oklab, var(--c) 55%, transparent);
+			transform: scale(1);
+			opacity: 1;
 		}
 		70%,
 		100% {
-			box-shadow: 0 0 0 5px transparent;
+			transform: scale(2.8);
+			opacity: 0;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.dot.pulse {
+		.dot.pulse::after {
 			animation: none;
+			opacity: 0;
 		}
 	}
 	.grow {

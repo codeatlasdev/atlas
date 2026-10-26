@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { usePoll } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { Button, DropdownMenu, DropdownMenuItem, Spinner, StatusChip, TextArea } from "@codeatlasdev/ui";
 	import { ExternalLink, RefreshCw, Wrench } from "@lucide/svelte";
@@ -25,13 +26,14 @@
 	onMount(() => {
 		void pr.checkAuth(worktreeId);
 		void refresh();
-		const t = window.setInterval(refresh, POLL_MS);
-		return () => clearInterval(t);
 	});
 
-	$effect(() => {
-		if (focused) void refresh();
-	});
+	// Polls while this tab is the focused one, once on gaining focus; the shared clock sleeps with a hidden window.
+	usePoll(
+		POLL_MS,
+		() => focused,
+		() => void refresh(),
+	);
 
 	async function showLog(c: Check) {
 		log = { name: c.name, text: "Loading…" };

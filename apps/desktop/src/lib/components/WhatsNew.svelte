@@ -280,7 +280,7 @@
 							aria-valuemax="100"
 							aria-valuenow={pct ?? undefined}
 						>
-							<i class:indeterminate={pct === null} style:width={pct === null ? undefined : `${pct}%`}></i>
+							<i class:indeterminate={pct === null} style:--p={pct === null ? undefined : pct / 100}></i>
 						</div>
 						<p class="hint">
 							{pct === null ? "Downloading…" : `${pct}%`}{u.progress.total
@@ -759,13 +759,19 @@
 	}
 	.bar i {
 		display: block;
+		width: 100%;
 		height: 100%;
 		border-radius: inherit;
 		background: var(--ca-brand-main);
-		transition: width 160ms linear;
+		/* Progress as scaleX: a width transition would relayout the dialog footer on every chunk. */
+		transform-origin: left;
+		transform: scaleX(var(--p, 0));
+		transition: transform 160ms linear;
 	}
 	.bar i.indeterminate {
 		width: 30%;
+		transform: none;
+		transition: none;
 		animation: slide 1.2s ease-in-out infinite;
 	}
 	@keyframes slide {

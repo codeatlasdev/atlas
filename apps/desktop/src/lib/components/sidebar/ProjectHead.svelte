@@ -179,14 +179,22 @@
 		height: 9px;
 		box-shadow: 0 0 0 2px var(--ca-surface-base);
 	}
-	.ico .dot.pulse.ok {
+	/* A ring that breathes: transform + opacity on a pseudo-element, not a box-shadow repaint per frame. */
+	.ico .dot.pulse.ok::after {
+		inset: -3px;
+		background: none;
+		border: 3px solid color-mix(in oklab, var(--dot-ok) 28%, transparent);
 		animation: alive 2.4s ease-in-out infinite;
 	}
 	@keyframes alive {
+		0%,
+		100% {
+			transform: scale(0.7);
+			opacity: 0;
+		}
 		50% {
-			box-shadow:
-				0 0 0 2px var(--ca-surface-base),
-				0 0 0 5px color-mix(in oklab, var(--dot-ok) 28%, transparent);
+			transform: scale(1);
+			opacity: 1;
 		}
 	}
 	.pname {

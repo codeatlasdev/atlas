@@ -246,8 +246,7 @@ html.opaque-window .peek-panel {
 	inset: 0;
 	border-radius: inherit;
 	pointer-events: none;
-	background:
-		radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%), var(--ca-surface-base);
+	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%), var(--ca-surface-base);
 	transition: background var(--dur-slow) var(--ease);
 }
 
@@ -351,21 +350,37 @@ html.opaque-window .peek-panel {
 	border-radius: 50%;
 	flex-shrink: 0;
 	background: var(--dot-off);
-	transition:
-		background 200ms ease-out,
-		box-shadow 200ms ease-out;
+	transition: background 200ms ease-out;
+}
+/* The glow is a pseudo-element faded with opacity: animating `box-shadow` repaints every dot on every status change. */
+.dot.ok,
+.dot.fail {
+	position: relative;
+}
+.dot.ok::after,
+.dot.fail::after {
+	content: "";
+	position: absolute;
+	inset: -3px;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle,
+		color-mix(in oklab, var(--glow) 60%, transparent) 0 35%,
+		transparent 70%
+	);
+	pointer-events: none;
 }
 .dot.ok {
+	--glow: var(--dot-ok);
 	background: var(--dot-ok);
-	box-shadow: 0 0 6px color-mix(in oklab, var(--dot-ok) 60%, transparent);
 }
 .dot.warn {
 	background: var(--dot-warn);
 	animation: pulse 1.4s ease-in-out infinite;
 }
 .dot.fail {
+	--glow: var(--dot-fail);
 	background: var(--dot-fail);
-	box-shadow: 0 0 6px color-mix(in oklab, var(--dot-fail) 60%, transparent);
 }
 
 @keyframes pulse {

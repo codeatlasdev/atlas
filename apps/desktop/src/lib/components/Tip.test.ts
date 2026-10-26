@@ -68,3 +68,47 @@ test("showing the tooltip never re-creates the control: it keeps keyboard focus 
 	expect(document.activeElement).toBe(before);
 	done();
 });
+
+// Kit bug (codeatlasdev/ui issue drafted in the report): the tooltip closes on the trigger's pointerleave / blur / Escape
+// only. Cmd-Tab, a space switch or a hidden window while the pointer rests on the control delivers neither, so the
+// tooltip stays open over whatever comes next. Until a kit release closes on window blur / visibilitychange itself,
+// Tip does it.
+async function openOnHover(target) {
+	const ctl = target.querySelector(".ctl");
+	ctl.dispatchEvent(new FocusEvent("focus"));
+	flushSync();
+	await tick();
+	expect(tooltip()).not.toBeNull();
+}
+
+test("the tooltip closes when the window loses focus", async () => {
+	const { target, done } = setup();
+	await openOnHover(target);
+	window.dispatchEvent(new Event("blur"));
+	flushSync();
+	await tick();
+	expect(target.querySelector(".ctl").getAttribute("data-state")).toBe("closed");
+	done();
+});
+
+test("the tooltip closes when the page becomes hidden", async () => {
+	const { target, done } = setup();
+	await openOnHover(target);
+	Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+	document.dispatchEvent(new Event("visibilitychange"));
+	Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+	flushSync();
+	await tick();
+	expect(target.querySelector(".ctl").getAttribute("data-state")).toBe("closed");
+	done();
+});
+
+test("unmounting a Tip forgets its trigger, so a later blur touches nothing", async () => {
+	const { closeAll, tracked } = await import("./tooltipGuard.ts");
+	const { done } = setup();
+	expect(tracked()).toBeGreaterThan(0);
+	done();
+	flushSync();
+	expect(tracked()).toBe(0);
+	expect(() => closeAll()).not.toThrow();
+});

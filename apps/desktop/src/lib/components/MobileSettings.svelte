@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { usePoll, useNow } from "#lib/clock.svelte.ts";
 	import { onMount } from "svelte";
 	import { Button, Switch, toast } from "@codeatlasdev/ui";
 	import { renderSVG } from "uqr";
@@ -18,7 +19,7 @@
 
 	let devices = $state<Device[]>([]);
 	let pairing = $state<{ p: PairStart; at: number } | null>(null);
-	let now = $state(Date.now());
+	const clk = useNow(1000);
 
 	async function load() {
 		const prevIds = new Set(devices.filter((d) => !d.revoked).map((d) => d.node_id));
@@ -32,13 +33,14 @@
 
 	onMount(() => {
 		load().catch((e) => toast.error(errText(e)));
-		const t = setInterval(() => {
-			now = Date.now();
-			// Poll only while a code is live; stop once it expires.
-			if (pairing && left > 0) void load().catch(() => {});
-		}, 1000);
-		return () => clearInterval(t);
 	});
+
+	// Poll only while a code is live; stop once it expires.
+	usePoll(
+		1000,
+		() => !!pairing && left > 0,
+		() => void load().catch(() => {}),
+	);
 
 	async function pair() {
 		try {
@@ -58,7 +60,7 @@
 		await load();
 	}
 
-	const left = $derived(pairing ? secondsLeft(pairing.p, pairing.at, now) : 0);
+	const left = $derived(pairing ? secondsLeft(pairing.p, pairing.at, clk.now) : 0);
 	const active = $derived(devices.filter((d) => !d.revoked));
 </script>
 

@@ -13,6 +13,7 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { runAction } from "#lib/actions.svelte.ts";
 	import Tip from "#lib/components/Tip.svelte";
+	import { guarded } from "#lib/components/tooltipGuard.ts";
 	import { activity } from "./activity.svelte.ts";
 	import { actionOutput } from "./actionOutput.svelte.ts";
 	import ActionOutputDrawer from "./ActionOutputDrawer.svelte";
@@ -101,7 +102,7 @@
 				>
 					<Tooltip content={a.disabled ?? a.confirm ?? a.label} side="left" delay={250}>
 						{#snippet triggerChild(props)}
-							<span {...props} class="item">
+							<span {...guarded(props)} class="item">
 								{#if a.busy}<Spinner size={13} />{:else if a.confirm}<TriangleAlert size={13} />{:else}<Zap
 										size={13}
 									/>{/if}

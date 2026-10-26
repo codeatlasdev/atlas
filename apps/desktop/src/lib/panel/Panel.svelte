@@ -1,8 +1,8 @@
 <script lang="ts">
+	import { useNow } from "#lib/clock.svelte.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 	import { Button, EmptyState } from "@codeatlasdev/ui";
 	import { FileCog } from "@lucide/svelte";
-	import { onMount } from "svelte";
 	import { api, type ProjectView } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { themes } from "#lib/stores/theme.svelte.ts";
@@ -23,7 +23,7 @@
 	let live = $derived(store.live[project.id]);
 	let cfg = $derived(store.configs[project.id]);
 	let root = $state<HTMLElement | null>(null);
-	let now = $state(Date.now());
+	const t = useNow(15_000);
 
 	let quick = $derived((cfg?.services ?? []).filter((s) => s.target?.how === "browser"));
 	let services = $derived(serviceRows(cfg?.services ?? [], live?.services, project.running));
@@ -37,7 +37,7 @@
 		return {
 			mem: t.mem,
 			cpu: t.cpu,
-			restarts: metrics.restartsLastHour(project.id, now),
+			restarts: metrics.restartsLastHour(project.id, t.now),
 			errors: metrics.errorsLast(project.id, 5 * 60_000),
 		};
 	});
@@ -87,15 +87,10 @@
 		if (w) ws.reveal(w.id, (t) => t.kind === "config", { kind: "config", label: "Config" });
 	}
 
-	onMount(() => {
-		const clock = setInterval(() => (now = Date.now()), 15_000);
-		return () => clearInterval(clock);
-	});
-
 	let stackBusy = $derived(!!store.busy[`stack:${project.id}`]);
 	let uptime = $derived.by(() => {
 		const since = metrics.upSince(project.id);
-		return since ? Math.max(0, now - since) : null;
+		return since ? Math.max(0, t.now - since) : null;
 	});
 </script>
 

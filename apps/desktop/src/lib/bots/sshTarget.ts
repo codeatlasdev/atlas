@@ -65,3 +65,12 @@ function parsePort(target: string, portStr: string): ParseResult {
 	}
 	return { ok: true, target, port: n };
 }
+
+/**
+ * The SSH target the desktop connects to after `atlas bot install`: hostd runs as the `atlas-bot` user,
+ * not as the admin user the install signed in with (whose home has no bot hostd).
+ */
+export function botTarget(installTarget: string): string {
+	const at = installTarget.indexOf("@");
+	return `atlas-bot@${at < 0 ? installTarget : installTarget.slice(at + 1)}`;
+}

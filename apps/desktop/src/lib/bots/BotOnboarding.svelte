@@ -27,7 +27,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { parseInstallLine, INSTALL_STEPS, type InstallPhase } from "#lib/bots/installSteps.ts";
-	import { parseSSHTarget } from "#lib/bots/sshTarget.ts";
+	import { botTarget, parseSSHTarget } from "#lib/bots/sshTarget.ts";
 	import { errText } from "#lib/api.ts";
 
 	let { ondone }: { ondone: () => void } = $props();
@@ -58,6 +58,8 @@
 	let lastErrLine = $state("");
 	let installRunning = $state(false);
 	let installDone = $state(false);
+	/** Host key of the ship launched in this onboarding; the first crewmate is created there. */
+	let launchedKey = $state("");
 	let fieldShake = $state(false);
 
 	// ─── connect step: SSH key ────────────────────────────────────────────────
@@ -284,7 +286,9 @@
 			const args: Record<string, unknown> = { target, port: sshPort !== 22 ? sshPort : null };
 			if (sudoPassword !== undefined) args.sudoPassword = sudoPassword;
 			await invoke("bot_install", args);
-			await bots.addHost(target, target);
+			const ship = botTarget(target);
+			await bots.addHost(ship, ship);
+			launchedKey = `ssh:${ship}`;
 			installedPhases = new Set(INSTALL_STEPS.map((s) => s.phase));
 			activePhase = null;
 			installDone = true;
@@ -346,7 +350,8 @@
 
 	async function openChat() {
 		if (creatingBot) return;
-		const hostKey = bots.hosts[0]?.key ?? "";
+		// The ship launched here, else the first remote ship; hosts[0] is this Mac, never the crew's home.
+		const hostKey = launchedKey || bots.hosts.find((h) => h.key !== "")?.key || "";
 		creatingBot = true;
 		try {
 			if (selectedEngine) {

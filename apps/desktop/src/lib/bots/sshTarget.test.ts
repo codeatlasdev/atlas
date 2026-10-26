@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, test, expect } from "bun:test";
-import { parseSSHTarget } from "./sshTarget.ts";
+import { botTarget, parseSSHTarget } from "./sshTarget.ts";
 
 describe("parseSSHTarget", () => {
 	test("standard target — no port", () => {
@@ -74,5 +74,17 @@ describe("parseSSHTarget", () => {
 		const r = parseSSHTarget("  ubuntu@host  ");
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.target).toBe("ubuntu@host");
+	});
+});
+
+// Incident: after installing on root@server the desktop registered root@server, whose home has no bot
+// hostd, so creating the first crewmate went nowhere. The ship lives under the atlas-bot user.
+describe("botTarget", () => {
+	test("swaps the admin user for atlas-bot", () => {
+		expect(botTarget("root@136.148.72.141")).toBe("atlas-bot@136.148.72.141");
+		expect(botTarget("ubuntu@my-server.com")).toBe("atlas-bot@my-server.com");
+	});
+	test("keeps IPv6 brackets", () => {
+		expect(botTarget("root@[::1]")).toBe("atlas-bot@[::1]");
 	});
 });

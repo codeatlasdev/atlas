@@ -85,28 +85,18 @@ export function frameSamples(frames: EngineFrame[]): { t: number; x: number }[] 
 
 /**
  * Native views (terminal, browser) parked and restored by a gesture, counted from the `visible` flag of their
- * bounds calls (a terminal's come batched in `term_layout`): a hide after a show is one park, a show after a hide
- * one restore. A view left hidden at the end shows up as parked > restored. A terminal is under the page and parks
- * only when its tab leaves the screen, so a gesture that parks one without leaving its tab is a regression.
+ * bounds calls: a hide after a show is one park, a show after a hide one restore. A view left hidden at the end
+ * shows up as parked > restored.
  */
 export class NativeCount {
 	#visible = new Map<string, boolean>();
 	#parked = 0;
 	#restored = 0;
-	see(
-		cmd: string,
-		args: { tab?: string; visible?: boolean; slots?: Array<{ tab?: string; visible?: boolean }> } | undefined,
-	) {
-		if (cmd === "term_layout") {
-			for (const s of args?.slots ?? []) this.#note(`term:${s.tab ?? ""}`, s.visible);
-			return;
-		}
+	see(cmd: string, args: { tab?: string; visible?: boolean } | undefined) {
 		if (cmd !== "term_bounds" && cmd !== "browser_bounds" && cmd !== "pager") return;
-		this.#note(`${cmd}:${args?.tab ?? ""}`, args?.visible);
-	}
-	#note(key: string, visible: boolean | undefined) {
+		const key = `${cmd}:${args?.tab ?? ""}`;
 		const was = this.#visible.get(key);
-		const now = visible !== false;
+		const now = args?.visible !== false;
 		if (was === now) return;
 		this.#visible.set(key, now);
 		if (was === undefined) return;

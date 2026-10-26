@@ -83,17 +83,6 @@ test("native park/restore counts follow the visible flag of the bounds calls, pe
 	expect(n.result()).toEqual({ parked: 2, restored: 1 });
 });
 
-test("terminal slots arrive batched in term_layout; a gesture that hides none counts zero parks", () => {
-	const n = new NativeCount();
-	const slot = (tab: string, visible: boolean) => ({ tab, visible });
-	n.see("term_layout", { slots: [slot("a", true), slot("b", true)] });
-	n.see("term_layout", { slots: [slot("a", true), slot("b", true)] }); // an overlay opened: nothing changes
-	expect(n.result()).toEqual({ parked: 0, restored: 0 });
-	n.see("term_layout", { slots: [slot("a", false), slot("b", true)] }); // a's tab left the screen
-	n.see("term_layout", { slots: [slot("a", true), slot("b", true)] });
-	expect(n.result()).toEqual({ parked: 1, restored: 1 });
-});
-
 test("end state: exactly one current layer, it is the selected space, and nothing keeps a stale transform", () => {
 	const ok = {
 		selected: "b",

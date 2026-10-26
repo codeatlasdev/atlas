@@ -78,42 +78,6 @@ pub struct ThemeCache {
     /// `--css-var` → value, exactly what `cssVars()` produced.
     #[serde(default)]
     pub vars: std::collections::BTreeMap<String, String>,
-    /// The window ground as `#rrggbb` (`windowGround`): what the NSWindow itself paints behind every layer, so a
-    /// one-frame gap between the page and a native view shows the app's colour, never the desktop.
-    #[serde(default)]
-    pub ground: Option<String>,
-}
-
-/// `#rrggbb` as the 0..1 sRGB floats AppKit takes; `None` for anything else (a missing or malformed cache).
-pub fn parse_ground(hex: &str) -> Option<[f64; 3]> {
-    let h = hex.trim().strip_prefix('#')?;
-    if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let v = u32::from_str_radix(h, 16).ok()?;
-    Some([(v >> 16) as u8, (v >> 8) as u8, v as u8].map(|c| f64::from(c) / 255.0))
-}
-
-/// Paint the main window itself with `hex` (macOS; main thread). Other platforms have an opaque window already.
-#[cfg(target_os = "macos")]
-pub fn set_window_ground(app: &AppHandle, hex: &str) {
-    use tauri::Manager;
-    let (Some(rgb), Some(win)) = (parse_ground(hex), app.get_window("main")) else {
-        return;
-    };
-    if let Ok(ns) = win.ns_window() {
-        crate::term::set_window_background(ns as usize, rgb);
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn set_window_ground(_app: &AppHandle, _hex: &str) {}
-
-/// The frontend applied a theme: repaint the window ground now (the cache file is rewritten separately).
-#[tauri::command]
-pub fn window_ground(app: AppHandle, hex: String) {
-    let a = app.clone();
-    let _ = app.run_on_main_thread(move || set_window_ground(&a, &hex));
 }
 
 fn system() -> String {
@@ -289,37 +253,7 @@ mod tests {
             scheme: scheme.into(),
             dark,
             vars: [("--ca-surface-base".to_string(), "#131c2b".to_string())].into(),
-            ground: Some("#0b1220".into()),
         }
-    }
-
-    // The window ground is what the NSWindow paints behind the page and the native terminals: a gap of one frame
-    // between them must show the theme, never the desktop. It is read from a cache older versions wrote without it.
-    #[test]
-    fn ground_parses_hex_and_rejects_everything_else() {
-        assert_eq!(parse_ground("#000000"), Some([0.0, 0.0, 0.0]));
-        assert_eq!(parse_ground(" #ffffff "), Some([1.0, 1.0, 1.0]));
-        let [r, g, b] = parse_ground("#336699").unwrap();
-        assert!((r - 0.2).abs() < 1e-9 && (g - 0.4).abs() < 1e-9 && (b - 0.6).abs() < 1e-9);
-        for bad in [
-            "",
-            "000000",
-            "#fff",
-            "#12345g",
-            "#1234567",
-            "oklch(0.2 0 0)",
-        ] {
-            assert_eq!(parse_ground(bad), None, "{bad}");
-        }
-    }
-
-    #[test]
-    fn a_cache_written_before_the_ground_existed_still_loads() {
-        let c: ThemeCache =
-            serde_json::from_str(r#"{"name":"Atlas Dark","dark":true,"vars":{"--a":"1"}}"#)
-                .unwrap();
-        assert_eq!(c.ground, None);
-        assert_eq!(c.scheme, "system");
     }
 
     #[test]

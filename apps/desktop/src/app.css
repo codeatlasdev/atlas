@@ -1,15 +1,6 @@
 /* The window is transparent over a native NSVisualEffectView, whose brightness is the wallpaper's. The page owns
    the ground instead: the theme's chrome surface (`--ca-surface-sunken`, theme/ground.ts), opaque, under the
-   sidebar and in the gutter around `.content`. The material only backs the rounded window corners.
-
-   GPU terminals are native views UNDER this page (term/layering.rs). Whatever the page paints over a terminal hides
-   it, so on macOS the ground is painted by `.ground` and the card by `.card` (below), and both are masked with the
-   terminals' presented rects (`--term-holes`, terminal/holes.ts): the slot is transparent and the terminal shows
-   through, while menus, dialogs and the sidebar peek, painted above, simply cover it. `html`/`body` stay opaque (the
-   ground colour) and turn transparent ONLY while a terminal hole is open (`html.term-hole`, holeLayers.ts): with no
-   terminal on screen the page is the opaque page it always was, so a transparent webview can never leave stale
-   tiles or let a leaving view show through a surface that relies on the body. Windows and Linux (`opaque-window`)
-   have no native terminal and always keep the opaque body. */
+   sidebar and in the gutter around `.content`. The material only backs the rounded window corners. */
 html,
 body {
 	margin: 0;
@@ -24,27 +15,11 @@ body {
 	cursor: default;
 }
 
-html.term-hole:not(.opaque-window),
-html.term-hole:not(.opaque-window) body {
-	background: transparent !important;
-}
-
 /* Linux: an opaque window with native decorations and no vibrancy to show through; the page
    paints the backdrop the sidebar would otherwise get from NSVisualEffectView. */
 html.opaque-window,
 html.opaque-window body {
 	background: var(--ca-surface-sunken) !important;
-}
-/* The ground layer (macOS): the theme's chrome surface behind the sidebar and the gutter, with the terminals' holes. */
-.ground {
-	position: fixed;
-	inset: 0;
-	z-index: -2;
-	pointer-events: none;
-	background: var(--ca-surface-sunken);
-}
-html.opaque-window .ground {
-	display: none;
 }
 /* Windows and Linux: no traffic lights over the content, the peeking sidebar can use the full height. */
 html.opaque-window .peek-panel {
@@ -225,7 +200,7 @@ html.opaque-window .peek-panel {
 	min-width: 0;
 	margin: 8px 8px 8px 0;
 	border-radius: 12px;
-	/* Outside the border box only: it never paints over a terminal, so it stays on `.content` (clipped by nothing). */
+	background: var(--ca-surface-base);
 	box-shadow:
 		0 0 0 0.5px var(--ca-outline-subtle),
 		var(--ca-shadow-sm);
@@ -238,15 +213,14 @@ html.opaque-window .peek-panel {
 .content.full {
 	margin-left: 8px;
 }
-/* The card: its surface and a wash of the space's hue behind everything, so each space feels like its own place. A layer of its own (not `.content`'s background) so a terminal's hole can be cut out of it without masking
-   the content that sits on it (a mask applies to every descendant). */
-.card {
+/* A wash of the space's hue behind everything, so each space feels like its own place. */
+.content::before {
+	content: "";
 	position: absolute;
 	z-index: -1;
 	inset: 0;
-	border-radius: inherit;
 	pointer-events: none;
-	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%), var(--ca-surface-base);
+	background: radial-gradient(120% 60% at 0% 0%, var(--space-tint), transparent 70%);
 	transition: background var(--dur-slow) var(--ease);
 }
 

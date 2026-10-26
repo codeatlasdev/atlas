@@ -16,10 +16,8 @@
 	import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 	import { runCommand } from "#lib/keymap.svelte.ts";
 	import { fontStep, keyToSend, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
-	import { isSwiping, watchSlot } from "./nativeSlot.ts";
+	import { watchSlot } from "./nativeSlot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";
-	import { closeHole, holesSuspended, onSuspendChange, openHole, recut } from "./terminal/holeLayers.ts";
-	import { contentRect } from "./terminal/fonts.ts";
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { registerTermView } from "#lib/stores/termViews.ts";
 	import { Pointer } from "./terminal/pointer.ts";
@@ -55,33 +53,12 @@
 	let matchCase = $state(false);
 
 	const quiet = () => {};
-	/**
-	 * The native view is on screen under the slot (the backend says so: `term://presented`, and the reply of every
-	 * layout batch). Only then is the slot a transparent hole; until then, and for a tab that is not on screen,
-	 * the slot paints the terminal colour. A pane the tab pager moves by a CSS transform (`data-swiping`) also
-	 * paints it: the view cannot follow the transform, and the opaque slot covers it while it moves.
-	 */
-	let presented = $state(false);
-	// A pane in flight (`data-swiping`), and the beat after it lands: the mark lifts in the DOM at once, but the native
-	// view only reaches the pane's rest rect with the next layout batch, so the slot keeps painting until that answers.
-	let swiping = $state(false);
-	let settling = $state(false);
-	const moving = $derived(swiping || settling);
 	const view = new NativeView(
 		() => ({ tab, pty }),
 		() => area,
 		() => visible,
-		(p) => {
-			presented = p;
-			settling = false;
-			// Every layout answer: the rect may have moved with `presented` unchanged (a split dragged).
-			recut();
-		},
 	);
-	// ⌘ held over the terminal: links are live, so the slot shows the pointer cursor (the page owns the cursor now).
-	let linkMode = $state(false);
 	const pointer = new Pointer({
-		onLinkMode: (on) => (linkMode = on),
 		tab: () => tab,
 		area: () => area,
 		focusInput: () => input?.focus(),
@@ -117,16 +94,6 @@
 	// view stays parked until its first frame is drawn (`Placement` in term/shared.rs), and the slot is all that shows until then:
 	// it must be the terminal's own colour, not the webview behind it.
 	const slotBg = $derived(themes.terminal?.bg ?? "var(--ca-surface-base)");
-	// The hole: transparent while the native view is really under the slot and still. The page's backdrop layers (ground,
-	// card) are cut at the slot's rect while it is open (`holeLayers.ts`), so the terminal shows through them too.
-	// A modal over the page suspends every hole (holeLayers.ts): the page is opaque then, so the slot paints.
-	let suspended = $state(holesSuspended());
-	$effect(() => onSuspendChange(() => (suspended = holesSuspended())));
-	const hole = $derived(presented && visible && !moving && !suspended);
-	$effect(() => {
-		if (hole && area) openHole(tab, () => (area ? contentRect(area) : null));
-		else closeHole(tab);
-	});
 
 	// Padding moves the native rect: re-sync when it changes.
 	$effect(() => {
@@ -285,12 +252,7 @@
 			const t = e.payload.tab === tab ? ws.tab(tab) : undefined;
 			if (t) t.cwd = e.payload.cwd;
 		});
-		// A pane in flight carries `data-swiping` (tabPager.ts): the slot paints while it moves.
-		const unwatch = watchSlot(area!, view.sync, () => {
-			const now = isSwiping(area);
-			if (swiping && !now) settling = true;
-			swiping = now;
-		});
+		const unwatch = watchSlot(area!, view.sync);
 		const unregister = registerTermView(tab, view);
 		// Title/exit events for the tab; bytes come over the raw stream.
 		void host.ptyAttach(pty, false, false).catch(quiet);
@@ -299,8 +261,6 @@
 			void cwd.then((f) => f());
 			void osc52.then((f) => f());
 			unwatch();
-			closeHole(tab);
-			view.dispose();
 			unregister();
 			if (document.activeElement === input) termFocus.on = false;
 			void host.ptyDetach(pty).catch(quiet);
@@ -322,12 +282,8 @@
 	{/if}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div
-		style:background={hole ? "transparent" : slotBg}
-		style:border-color={slotBg}
-		style:border-width="{prefs.value.terminal.padding_y}px {prefs.value.terminal.padding_x}px"
+		style:background={slotBg}
 		class="area"
-		class:hole
-		class:link={linkMode}
 		bind:this={area}
 		onmousedown={pointer.mousedown}
 		onmousemove={pointer.mousemove}
@@ -369,20 +325,11 @@
 		display: flex;
 		flex-direction: column;
 	}
-	/* The slot fills the pane. Its border is the padding band (`terminal.padding_x/y`), always painted in the terminal
-	   colour (Ghostty `window-padding-color = extend`); its content box is exactly the native view's rect and, while the
-	   view is presented, a transparent hole. */
+	/* The slot fills the pane in the terminal background; `terminal.padding_x/y` insets the native view inside it. */
 	.area {
 		position: relative;
 		flex: 1;
 		min-height: 0;
-		box-sizing: border-box;
-		border-style: solid;
-		/* The page sits above the native view, so the mouse cursor is the page's: the terminal's is the text I-beam. */
-		cursor: text;
-	}
-	.area.link {
-		cursor: pointer;
 	}
 	/* Focus target for keys/IME/paste; the native view draws the terminal. */
 	.sink {

@@ -52,7 +52,7 @@
 	});
 
 	onMount(() => {
-		const unwatch = watchSlot(area!, sync, undefined, { overlays: true });
+		const unwatch = watchSlot(area!, sync);
 		const off = listen<{ event: string; url?: string; title?: string }>(`browser://${tab.id}`, (e) => {
 			const p = e.payload;
 			if (p.url && (p.event === "load" || p.event === "nav")) {

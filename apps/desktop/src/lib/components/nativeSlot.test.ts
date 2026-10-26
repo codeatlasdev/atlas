@@ -38,9 +38,9 @@ afterEach(() => {
 const flush = () => frames.splice(0).forEach((f) => f());
 const tick = () => new Promise<void>((r) => queueMicrotask(r));
 
-test("a resize, a window resize and a dialog opening in the same frame make one sync, not three (browser slot)", async () => {
+test("a resize, a window resize and a dialog opening in the same frame make one sync, not three", async () => {
 	let calls = 0;
-	const stop = watchSlot(document.createElement("div"), () => calls++, undefined, { overlays: true });
+	const stop = watchSlot(document.createElement("div"), () => calls++);
 	resizeCb!();
 	window.dispatchEvent(new Event("resize"));
 	const dlg = document.createElement("div");
@@ -49,41 +49,6 @@ test("a resize, a window resize and a dialog opening in the same frame make one 
 	await tick(); // MutationObserver records are delivered in a microtask
 	expect(calls).toBe(0); // nothing reads layout or crosses IPC before the frame
 	flush();
-	expect(calls).toBe(1);
-	stop();
-});
-
-// The point of the layering (terminal BELOW the webview): a dialog, a menu or a peek opening over a terminal is
-// none of its business. Its watcher schedules nothing, so no layout, no IPC and no native call happen for it.
-test("a terminal slot ignores overlays: a dialog opening or a menu state flip schedules no sync", async () => {
-	let calls = 0;
-	const stop = watchSlot(document.createElement("div"), () => calls++);
-	const dlg = document.createElement("div");
-	dlg.setAttribute("role", "dialog");
-	document.body.append(dlg);
-	dlg.setAttribute("data-state", "open");
-	await tick();
-	flush();
-	expect(calls).toBe(0);
-	stop();
-});
-
-test("a terminal slot still re-syncs when a tab pane starts or stops moving, and says so once per change", async () => {
-	let calls = 0;
-	let swipes = 0;
-	const stop = watchSlot(
-		document.createElement("div"),
-		() => calls++,
-		() => swipes++,
-	);
-	const pane = document.createElement("div");
-	document.body.append(pane);
-	pane.toggleAttribute("data-swiping", true);
-	await tick();
-	pane.toggleAttribute("data-swiping", false);
-	await tick();
-	flush();
-	expect(swipes).toBe(2);
 	expect(calls).toBe(1);
 	stop();
 });

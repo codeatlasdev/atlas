@@ -11,7 +11,6 @@ mod stats;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use std::time::Instant;
@@ -20,7 +19,7 @@ use gpu::{
     DecoInst, Gpu, ImgInst, Uniforms, VBuf, bind_group, bind_layout, glyph_vertex_layout, gpu,
     pipeline, surface_extent, texture,
 };
-use images::Tex;
+use images::{Tex, TexCache};
 use stats::Timing;
 
 use crate::font::{ATLAS, Atlas, COLOR_ATLAS, Font, GlyphInst, TextLayout};
@@ -40,7 +39,7 @@ pub struct Renderer {
     linear: wgpu::Sampler,
     imgs: VBuf,
     img_insts: Vec<ImgInst>,
-    textures: HashMap<u32, Tex>,
+    textures: TexCache<Tex>,
     uniforms: wgpu::Buffer,
     bind: wgpu::BindGroup,
     /// Same layout as `bind` but sampling the RGBA emoji atlas.
@@ -199,7 +198,7 @@ impl Renderer {
             linear,
             imgs: VBuf::new(d, "images"),
             img_insts: Vec::new(),
-            textures: HashMap::new(),
+            textures: TexCache::new(images::TEX_BUDGET),
             uniforms,
             bind,
             color_bind,
@@ -254,6 +253,15 @@ impl Renderer {
     /// Reset the measurement window.
     pub fn reset_stats(&mut self) {
         self.timing.reset();
+    }
+
+    /// GPU bytes held by the vertex buffers and the inline-image textures (leak/soak probes).
+    pub fn gpu_bytes(&self) -> u64 {
+        [&self.imgs, &self.cells, &self.glyphs, &self.color_glyphs, &self.decos]
+            .iter()
+            .map(|b| b.capacity())
+            .sum::<u64>()
+            + self.textures.bytes()
     }
 
     fn upload_atlases(&mut self, g: &Gpu) {

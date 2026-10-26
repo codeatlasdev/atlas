@@ -26,6 +26,16 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 
 **Revoke** cuts the phone off immediately and forgets it. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
 
+### Pairing fails with a VPN or WARP on
+
+The pairing code carries this computer's key, its relay and its direct addresses (`addrs`). hostd publishes only the addresses of real LAN interfaces, private IPv4 first, then ULA and global IPv6. It leaves out loopback, link-local (`fe80::`, `169.254.`), CGNAT `100.64.0.0/10` and any address that only a tunnel owns (a `utun`/`tun`/`wg`/`tailscale` interface, or any interface flagged point-to-point), because a phone on the LAN cannot reach those (`crates/atlas-host/src/mobile/addrs.rs`, #113). If every address is a tunnel's, they are published anyway rather than an empty list; the relay still connects.
+
+What this does **not** settle: whether a phone on the same Wi-Fi reaches the computer's LAN address while a full-tunnel VPN is on. Packets from the phone arrive on `en0`, but the replies leave by the route the VPN installed; a VPN that captures the default route (WARP in its default mode) can send them into the tunnel, so the direct path never completes. That depends on the VPN's routing and split-tunnel rules and needs a phone on the network to check. Until it is measured, expect the relay (`ATLAS_MOBILE_RELAY` unset) to carry the connection, and if pairing does not complete:
+
+1. Make sure `ATLAS_MOBILE_RELAY=0` is **not** set (it turns the relay off, so only the LAN addresses remain).
+2. Pause the VPN, or add the LAN (`192.168.0.0/16`, your Wi-Fi subnet) to its split-tunnel exclusions, then pair again.
+3. Check what is published: Settings → Integrations → Mobile shows the addresses in the pairing link (`addr=` parameters).
+
 ## Approvals
 
 Claude Code and Codex run `atlas hook … permission-request` before showing their own prompt. While a phone is connected, hostd shows the prompt on the phone and waits up to 55 s for Allow or Deny. With no phone connected, it answers nothing at once, and the agent asks in the terminal as usual. Re-run `atlas setup claude-code --apply` / `atlas setup codex --apply` once so the hook is registered with its 60 s timeout. omp approvals are shown as "needs you" but answered on the computer.

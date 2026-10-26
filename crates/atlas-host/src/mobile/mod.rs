@@ -15,6 +15,7 @@
 //! pairs never touches the network. `ServeOpts::no_mobile_relay` (`ATLAS_MOBILE_RELAY=0`
 //! for `atlas hostd`) turns relays and address lookup off (LAN, tests).
 
+mod addrs;
 mod session;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
@@ -187,9 +188,11 @@ impl Mobile {
             bad: 0,
         });
         let addr = self.endpoint.lock().as_ref().map(|e| e.addr());
-        let addrs: Vec<String> = addr
+        let direct: Vec<std::net::SocketAddr> =
+            addr.iter().flat_map(|a| a.ip_addrs().copied()).collect();
+        let published: Vec<String> = addrs::publishable(&direct, &addrs::local_interfaces())
             .iter()
-            .flat_map(|a| a.ip_addrs().map(|a| a.to_string()))
+            .map(|a| a.to_string())
             .collect();
         let relay = addr
             .as_ref()
@@ -198,7 +201,7 @@ impl Mobile {
             "node_id": self.node_id(),
             "code": code,
             "expires_in_s": CODE_TTL.as_secs(),
-            "addrs": addrs,
+            "addrs": published,
             "relay_url": relay,
             "hostname": crate::server::hostname(),
         }))

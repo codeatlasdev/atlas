@@ -311,6 +311,10 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         f.rewind()?;
         f.write_all(std::process::id().to_string().as_bytes())?;
     }
+    // Read the login shell's environment now, off the runtime, while the first client connects: the
+    // first terminal or `exec` otherwise pays for the shell's rc files (0.3 s for fish, 6 s+ when
+    // one hangs). Later spawns read the cache.
+    tokio::task::spawn_blocking(atlas_core::login_env::warm);
     let token = paths::ensure_token(dir)?;
     let sock = paths::socket(dir);
     // Bind beside the live socket and rename over it: the path is never missing, and the
@@ -790,7 +794,13 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
                     .entry("ATLAS_HOOK_ENDPOINT".into())
                     .or_insert(endpoint);
             }
-            let s = Session::spawn(req, &hub.scroll_dir).map_err(e)?;
+            // Off the runtime: the first spawn of a daemon whose probe has not finished waits for the
+            // login shell's rc files, and forking a pty blocks too; neither may stall other requests.
+            let scroll = hub.scroll_dir.clone();
+            let s = tokio::task::spawn_blocking(move || Session::spawn(req, &scroll))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(e)?;
             let id = s.id.clone();
             idle_agent_on_exit(hub, &s);
             hub.sessions.lock().insert(id.clone(), s);

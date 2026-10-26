@@ -5,8 +5,11 @@
 //! user's shell rc files were never read. Every service, `pre_command`, action and pty then dies with
 //! `command not found`. We ask the user's own shell for its environment once and give it to every child.
 //!
-//! Shell choice (see [`resolve_shell`]): an explicit override (Atlas Desktop's Settings), else `$SHELL`,
-//! else the account's login shell from the user database (`getpwuid`), else `/bin/sh`. The probe runs the
+//! Shell choice (see [`resolve_shell`]): an explicit override (Atlas Desktop's Settings), else the account's
+//! login shell from the user database (`getpwuid`, what `chsh` sets), else `$SHELL`, else `/bin/sh`.
+//! `$SHELL` ranks below the account because it is whatever launched us, not what the user chose: `bun run`
+//! runs package scripts under `/bin/bash`, so a `desktop:dev` app and the hostd it spawns inherit
+//! `SHELL=/bin/bash` although the login shell is fish. The probe runs the
 //! shell as an interactive login shell (`-ilc`, because bash/zsh/fish read different rc files for login
 //! and interactive shells, and many installers only touch one), degrading to `-lc` and `-c` for shells
 //! that reject the combined flags (csh/tcsh). The only things the shell must run are `echo` and the
@@ -89,6 +92,17 @@ pub fn set_override(shell: Option<String>) {
 /// The cached probe, running it on first use.
 pub fn current() -> Probe {
     CURRENT.lock().clone()
+}
+
+/// The shell the cached probe ran (what a terminal tab starts), without cloning the environment.
+pub fn shell() -> String {
+    CURRENT.lock().shell.clone()
+}
+
+/// Run the probe now if nothing did yet. A daemon calls this from a blocking thread at start so the
+/// first terminal does not wait for the shell's rc files.
+pub fn warm() {
+    LazyLock::force(&CURRENT);
 }
 
 /// Probe again now (after the override changed) and cache the result.
@@ -213,11 +227,11 @@ fn pick_shell(
     if let Some(s) = good(&over) {
         return (s, "settings");
     }
-    if let Some(s) = good(&env_shell) {
-        return (s, "$SHELL");
-    }
     if let Some(s) = good(&account) {
         return (s, "account");
+    }
+    if let Some(s) = good(&env_shell) {
+        return (s, "$SHELL");
     }
     // zsh is macOS's default; a Linux box may not have it.
     let default = if ok(Path::new("/bin/zsh")) {
@@ -556,22 +570,39 @@ mod tests {
         assert!(p.contains("v20.1.0/bin") && !p.contains("v18.0.0"), "{p}");
     }
 
+    // Incident (maintainer, `bun run desktop:dev`): bun runs package scripts under `/bin/bash`, which
+    // exports SHELL=/bin/bash to cargo-tauri, the app and the hostd it spawns. `$SHELL` is whatever
+    // launched us; the account's login shell (`chsh`) is the user's choice. New terminal tabs came up
+    // in bash although the login shell is fish.
     #[test]
-    fn shell_choice_prefers_override_then_env_then_account() {
+    fn shell_choice_prefers_override_then_account_then_env() {
         let ok = |p: &Path| p.starts_with("/good");
         let s = |x: &str| Some(x.to_string());
         assert_eq!(
             pick_shell(s("/good/o"), s("/good/e"), s("/good/a"), ok),
             ("/good/o".into(), "settings")
         );
+        // The inherited $SHELL (here: the bash a launcher script ran under) never beats the account.
         assert_eq!(
-            pick_shell(s("/bad/o"), s("/good/e"), s("/good/a"), ok),
+            pick_shell(None, s("/good/bash"), s("/good/fish"), ok),
+            ("/good/fish".into(), "account")
+        );
+        assert_eq!(
+            pick_shell(s("/bad/o"), s("/good/bash"), s("/good/fish"), ok),
+            ("/good/fish".into(), "account")
+        );
+        // No usable account entry (container without passwd row, deleted shell): $SHELL is next.
+        assert_eq!(
+            pick_shell(None, s("/good/e"), None, ok),
             ("/good/e".into(), "$SHELL")
         );
         assert_eq!(
-            pick_shell(None, s("/bad/e"), s("/good/a"), ok),
-            ("/good/a".into(), "account")
+            pick_shell(None, s("/good/e"), s("/bad/a"), ok),
+            ("/good/e".into(), "$SHELL")
         );
+        let (d, src) = pick_shell(None, s("/bad/e"), s("/bad/a"), ok);
+        assert_eq!(src, "default");
+        assert!(d.ends_with("sh"));
         let (d, src) = pick_shell(None, None, None, ok);
         assert_eq!(src, "default");
         assert!(d.ends_with("sh"));
@@ -613,5 +644,27 @@ mod tests {
         );
         // Three flag sets, each bounded.
         assert!(t.elapsed() < ATTEMPT_TIMEOUT * 3 + Duration::from_secs(5));
+    }
+
+    /// Opening a terminal reads the cached probe: `shell()`, `vars()` and `warm()` never run the shell
+    /// again (the probe of a hanging rc would take 6 s per call).
+    #[test]
+    fn reading_the_cached_probe_does_not_probe_again() {
+        let home = tempfile::tempdir().unwrap();
+        let hang = home.path().join("hang.sh");
+        std::fs::write(&hang, "#!/bin/sh\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&hang, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut p = probe_with("/bin/sh", home.path(), &gui_env(home.path()));
+        p.shell = hang.display().to_string();
+        let _env = install(p);
+        set_override(Some(hang.display().to_string()));
+        let t = Instant::now();
+        for _ in 0..50 {
+            assert_eq!(shell(), hang.display().to_string());
+            assert!(vars().iter().any(|(k, _)| k == "PATH"));
+            warm();
+        }
+        set_override(None);
+        assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
     }
 }

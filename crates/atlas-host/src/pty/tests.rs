@@ -285,6 +285,53 @@ async fn pty_and_exec_find_binaries_the_login_shell_put_on_path() {
     );
 }
 
+/// Incident (maintainer, `bun run desktop:dev`): `bun run` runs scripts under `/bin/bash`, so the hostd
+/// inherited SHELL=/bin/bash and every new terminal tab (no argv) started bash, while the account's login
+/// shell is fish. A tab with no argv starts the shell the probe resolved, whatever `$SHELL` says. The
+/// stand-in shell prints its own name and flags, so the test sees which program the tab ran and how.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tab_without_argv_starts_the_probed_login_shell_not_the_inherited_one() {
+    use atlas_core::login_env::{fixtures, install, probe_with};
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = fixtures::fake_home();
+    let fake = home.path().join("loginsh");
+    std::fs::write(&fake, "#!/bin/sh\necho \"ran-login-shell $0 $*\"\n").unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut p = probe_with("/bin/sh", home.path(), &fixtures::gui_env(home.path()));
+    p.shell = fake.display().to_string();
+    let _env = install(p);
+    // The launcher's value that used to win. Set before any thread of this test reads it.
+    // SAFETY: only this serialized (`install`) test touches SHELL.
+    unsafe { std::env::set_var("SHELL", "/bin/bash") };
+
+    let dir = tempfile::tempdir().unwrap();
+    let req = PtyCreate {
+        cwd: "/".into(),
+        argv: vec![],
+        env: Default::default(),
+        cols: 80,
+        rows: 24,
+        scope: Default::default(),
+        title: None,
+        mode: Default::default(),
+    };
+    let s = Session::spawn(req, dir.path()).unwrap();
+    let t0 = std::time::Instant::now();
+    while s.exited().is_none() {
+        assert!(t0.elapsed() < Duration::from_secs(10), "pty did not exit");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let out = String::from_utf8_lossy(&s.buf.lock().ring_bytes()).into_owned();
+    assert!(
+        out.contains(&format!("ran-login-shell {} -l", fake.display())),
+        "{out:?}"
+    );
+    assert_eq!(s.meta.argv, [fake.display().to_string(), "-l".into()]);
+}
+
 /// A client that never reads while a program prints far more than the cap: hostd's queue for it
 /// stays bounded, the program is not slowed, a healthy attacher misses nothing, and a reattach
 /// with replay continues. Unix only: it needs a fast byte source.

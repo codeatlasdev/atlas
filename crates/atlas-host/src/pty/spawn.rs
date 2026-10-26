@@ -29,11 +29,12 @@ fn default_argv() -> Vec<String> {
     vec![std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".into())]
 }
 
-/// The shell a terminal tab starts: the one the environment probe resolved (override, `$SHELL`, the
-/// account's login shell), so a tab and a service see the same PATH.
+/// The shell a terminal tab starts: the one the environment probe resolved (override, the account's login
+/// shell, `$SHELL`), so a tab and a service see the same PATH. Read from the cached probe: no passwd
+/// lookup or `stat` per tab.
 #[cfg(unix)]
 fn login_shell() -> String {
-    atlas_core::login_env::resolve_shell().0
+    atlas_core::login_env::shell()
 }
 
 /// A started child, before it becomes a [`Session`].

@@ -69,10 +69,14 @@ pub async fn run(
             c
         }
     };
+    // Cold cache = the probe runs here; never on a runtime worker.
+    let login = tokio::task::spawn_blocking(atlas_core::login_env::vars)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut child = cmd
         .no_window()
         .current_dir(cwd)
-        .envs(atlas_core::login_env::vars())
+        .envs(login)
         .envs(env)
         .stdin(if input.is_some() {
             Stdio::piped()

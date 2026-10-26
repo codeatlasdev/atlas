@@ -338,11 +338,17 @@ async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming()
         stuck_max <= OUT_CAP + 128 * 1024,
         "queued {stuck_max} bytes for a client that never reads"
     );
-    assert!(seen >= TOTAL, "the healthy attacher saw {seen} of {TOTAL} bytes");
+    assert!(
+        seen >= TOTAL,
+        "the healthy attacher saw {seen} of {TOTAL} bytes"
+    );
     // The stuck one is unsubscribed, and its queue ends with the reason.
     {
         let b = s.buf.lock();
-        assert!(!b.attachers.contains_key(&1), "stuck attacher still subscribed");
+        assert!(
+            !b.attachers.contains_key(&1),
+            "stuck attacher still subscribed"
+        );
         assert!(b.attachers.contains_key(&2), "healthy attacher was dropped");
     }
     let mut last = None;
@@ -362,7 +368,11 @@ async fn an_attacher_that_never_reads_is_dropped_and_the_others_keep_streaming()
     while let Some(line) = again_rx.try_recv() {
         replay.extend(decode(&line).unwrap_or_default());
     }
-    assert!(replay.len() > 1024 * 1024, "replay came back with {} bytes", replay.len());
+    assert!(
+        replay.len() > 1024 * 1024,
+        "replay came back with {} bytes",
+        replay.len()
+    );
     assert!(String::from_utf8_lossy(&replay).contains("END"));
     s.signal("KILL").unwrap();
 }
@@ -381,7 +391,11 @@ fn a_connection_over_its_cap_is_told_why_and_unsubscribed() {
     Buf::broadcast("p1", &mut conns, "0123456789");
     assert_eq!(conns.len(), 2);
     Buf::broadcast("p1", &mut conns, "next");
-    assert_eq!(conns.keys().copied().collect::<Vec<_>>(), vec![2], "slow one removed");
+    assert_eq!(
+        conns.keys().copied().collect::<Vec<_>>(),
+        vec![2],
+        "slow one removed"
+    );
     assert_eq!(slow_rx.try_recv().as_deref(), Some("0123456789"));
     let notice: serde_json::Value = serde_json::from_str(&slow_rx.try_recv().unwrap()).unwrap();
     assert_eq!(

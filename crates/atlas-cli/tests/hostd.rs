@@ -1342,7 +1342,13 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         .unwrap();
     let req = json!({"id": 1, "cmd": "pty_attach", "args": {"pty": pty, "replay": false}});
     stuck
-        .write_all(format!("{}\n{req}\n", atlas_host::protocol::hello_line(&token, "stuck")).as_bytes())
+        .write_all(
+            format!(
+                "{}\n{req}\n",
+                atlas_host::protocol::hello_line(&token, "stuck")
+            )
+            .as_bytes(),
+        )
         .await
         .unwrap();
 
@@ -1356,7 +1362,10 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     let t0 = std::time::Instant::now();
     let mut saw_end = false;
     while !saw_end {
-        assert!(t0.elapsed() < Duration::from_secs(90), "healthy client stalled at {healthy_bytes} bytes");
+        assert!(
+            t0.elapsed() < Duration::from_secs(90),
+            "healthy client stalled at {healthy_bytes} bytes"
+        );
         match tokio::time::timeout(Duration::from_millis(100), ev.recv()).await {
             Ok(Ok(e)) if e["pty"] == pty.as_str() && e["ev"] == "pty_output" => {
                 let b = B64.decode(e["data"].as_str().unwrap()).unwrap();
@@ -1369,7 +1378,10 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         let info = c.call("info", json!({})).await.unwrap();
         max_queued = max_queued.max(info["queued"]["total_bytes"].as_u64().unwrap_or(u64::MAX));
     }
-    assert!(healthy_bytes >= 100_000_000, "healthy client got {healthy_bytes} bytes");
+    assert!(
+        healthy_bytes >= 100_000_000,
+        "healthy client got {healthy_bytes} bytes"
+    );
     // What hostd held for the stuck connection never went past the cap (plus the healthy client's
     // own small backlog and one coalesced chunk), where it used to be ~100 MiB.
     assert!(
@@ -1396,7 +1408,10 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         .find(|l| l.contains(r#""ev":"pty_dropped""#))
         .unwrap_or_else(|| panic!("no pty_dropped among {} bytes", all.len()));
     let dropped: Value = serde_json::from_str(dropped).unwrap();
-    assert_eq!((&dropped["pty"], &dropped["reason"]), (&json!(pty), &json!("slow_client")));
+    assert_eq!(
+        (&dropped["pty"], &dropped["reason"]),
+        (&json!(pty), &json!("slow_client"))
+    );
 
     // Reattach with replay: the ring comes back, ends at the program's last output, and the
     // pty is still running (the program was never held up).
@@ -1418,6 +1433,10 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         }
     }
     assert_eq!(kinds[0], "pty_replay");
-    assert!(replayed.len() > 1_000_000, "replay was {} bytes", replayed.len());
+    assert!(
+        replayed.len() > 1_000_000,
+        "replay was {} bytes",
+        replayed.len()
+    );
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
 }

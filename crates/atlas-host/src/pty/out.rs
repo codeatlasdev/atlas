@@ -95,7 +95,8 @@ impl OutRx {
         Some(line)
     }
 
-    /// Without waiting (tests, drains).
+    /// Without waiting.
+    #[cfg(test)]
     pub fn try_recv(&mut self) -> Option<String> {
         let line = self.rx.try_recv().ok()?;
         self.pending.fetch_sub(line.len(), Ordering::Relaxed);

@@ -43,9 +43,9 @@ use master::Master;
 
 const RING_MAX: usize = 2 * 1024 * 1024;
 
-pub use out::{OUT_CAP, Out, OutRx, Refused, channel as out_channel};
 #[cfg(test)]
 pub(crate) use out::with_cap as out_channel_with_cap;
+pub use out::{OUT_CAP, Out, OutRx, Refused, channel as out_channel};
 /// Bounded: a raw reader that falls behind blocks the pty reader (backpressure to
 /// the program, as in a native terminal) instead of hostd buffering without limit.
 pub type RawOut = mpsc::Sender<Vec<u8>>;

@@ -504,7 +504,8 @@
 										<p class="field-error" role="alert">{authError}</p>
 									{/if}
 								</div>
-							{:else if failedPhase}
+							{:else if lastErrLine}
+								<!-- Any failure, including one before the first step marker (e.g. the CLI can't run): never shake silently. -->
 								<p class="field-error" role="alert">{lastErrLine}</p>
 							{/if}
 

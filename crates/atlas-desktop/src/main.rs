@@ -374,7 +374,15 @@ fn main() {
     boot::mark("main");
     shell_env::start();
     boot::mark("shell_env:started");
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows/Linux: a second launch (Start menu, taskbar, `atlas desktop`) focuses the running app instead of
+    // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
+    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        show_main(app)
+    }));
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())

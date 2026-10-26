@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fixtures } from "./flicker-sweep-fixtures.ts";
+import { ATLAS, fixtures } from "./flicker-sweep-fixtures.ts";
 import { SURFACES } from "./flicker-sweep-surfaces.ts";
 
 const script = join(import.meta.dir, "flicker-sweep.ts");
@@ -116,7 +116,7 @@ describe("the fixture projects", () => {
 		const fx = fixtures();
 		try {
 			for (const root of fx.roots) {
-				const r = Bun.spawnSync([join(import.meta.dir, "../target/debug/atlas"), "config", "check", "--dir", root], { stdout: "pipe", stderr: "pipe" });
+				const r = Bun.spawnSync([ATLAS, "config", "check", "--dir", root], { stdout: "pipe", stderr: "pipe" });
 				expect({ root, code: r.exitCode, err: r.stderr.toString() + r.stdout.toString() }).toMatchObject({ root, code: 0 });
 			}
 		} finally {
@@ -128,13 +128,13 @@ describe("the fixture projects", () => {
 describe("fixtures.cleanup leaves no process behind", () => {
 	// Incident (three full sweep runs): the app starts each fixture stack as a detached `atlas dev --runner` (ppid 1). Stopping
 	// the agent instance does not stop them, so every run leaked a runner with its services. cleanup() must `atlas down`.
-	const atlas = join(import.meta.dir, "../target/debug/atlas");
 	const alive = (root: string) => Bun.spawnSync(["pgrep", "-f", "--", `dev --runner --dir ${root}`]).stdout.toString().trim().split("\n").filter(Boolean);
 
-	test("a running fixture stack is stopped by cleanup()", async () => {
+	// Windows has no pgrep, so the probe saw nothing and the test leaked the runner it started; the sweep is macOS only.
+	test.skipIf(process.platform === "win32")("a running fixture stack is stopped by cleanup()", async () => {
 		const fx = fixtures();
 		const root = fx.roots[1]!; // sweep-docs: one small service
-		const up = Bun.spawnSync([atlas, "dev", "--detach", "--dir", root], { stdout: "pipe", stderr: "pipe" });
+		const up = Bun.spawnSync([ATLAS, "dev", "--detach", "--dir", root], { stdout: "pipe", stderr: "pipe" });
 		expect(up.exitCode, up.stderr.toString()).toBe(0);
 		for (let i = 0; i < 40 && alive(root).length === 0; i++) await Bun.sleep(250);
 		expect(alive(root).length, "the runner should be up before cleanup").toBeGreaterThan(0);

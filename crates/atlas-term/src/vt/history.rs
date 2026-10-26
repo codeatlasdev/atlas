@@ -28,8 +28,8 @@ impl Vt {
     /// the width changes: the same bytes hold fewer lines at 500 columns than at 80.
     pub(super) fn apply_history(&self, t: &mut Term<Proxy>) {
         let lines = self.scrollback.load(Ordering::Relaxed);
-        t.grid_mut()
-            .update_history(history_lines(lines, t.columns(), BYTE_BUDGET));
+        let cap = history_lines(lines, t.columns(), BYTE_BUDGET);
+        t.grid_mut().update_history(cap);
         Self::reclaim(t);
     }
 

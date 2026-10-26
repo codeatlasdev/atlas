@@ -14,6 +14,7 @@ mod frame;
 mod history;
 mod images;
 mod scan;
+mod shell;
 #[cfg(test)]
 mod tests;
 
@@ -246,8 +247,9 @@ impl Vt {
         let scrollback = scrollback.min(100_000);
         self.scrollback.store(scrollback, Ordering::Relaxed);
         let mut t = self.term.lock();
+        let cap = history::history_lines(scrollback, t.columns(), history::BYTE_BUDGET);
         t.set_options(Config {
-            scrolling_history: history::history_lines(scrollback, t.columns(), history::BYTE_BUDGET),
+            scrolling_history: cap,
             kitty_keyboard: true,
             default_cursor_style: CursorStyle { shape, blinking },
             ..Config::default()

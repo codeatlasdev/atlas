@@ -301,7 +301,14 @@ mod tests {
         assert_eq!(parse_ground(" #ffffff "), Some([1.0, 1.0, 1.0]));
         let [r, g, b] = parse_ground("#336699").unwrap();
         assert!((r - 0.2).abs() < 1e-9 && (g - 0.4).abs() < 1e-9 && (b - 0.6).abs() < 1e-9);
-        for bad in ["", "000000", "#fff", "#12345g", "#1234567", "oklch(0.2 0 0)"] {
+        for bad in [
+            "",
+            "000000",
+            "#fff",
+            "#12345g",
+            "#1234567",
+            "oklch(0.2 0 0)",
+        ] {
             assert_eq!(parse_ground(bad), None, "{bad}");
         }
     }
@@ -309,7 +316,8 @@ mod tests {
     #[test]
     fn a_cache_written_before_the_ground_existed_still_loads() {
         let c: ThemeCache =
-            serde_json::from_str(r#"{"name":"Atlas Dark","dark":true,"vars":{"--a":"1"}}"#).unwrap();
+            serde_json::from_str(r#"{"name":"Atlas Dark","dark":true,"vars":{"--a":"1"}}"#)
+                .unwrap();
         assert_eq!(c.ground, None);
         assert_eq!(c.scheme, "system");
     }

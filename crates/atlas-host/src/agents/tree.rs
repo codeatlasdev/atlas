@@ -60,7 +60,12 @@ pub fn subagent_file(session_file: &str, id: &str) -> Result<String, String> {
     candidates
         .into_iter()
         .find(|f| f.is_file())
-        .map(|f| f.to_string_lossy().into_owned())
+        // Forward slashes on every OS (`atlas_core::paths::normalize`): the path goes to the phone as a stored path.
+        .map(|f| {
+            atlas_core::paths::normalize(&f)
+                .to_string_lossy()
+                .into_owned()
+        })
         .ok_or_else(|| "no such subagent".into())
 }
 

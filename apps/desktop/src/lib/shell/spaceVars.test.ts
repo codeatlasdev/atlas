@@ -53,7 +53,7 @@ test("the layout writes on `.app` only the vars its chrome reads, never text/on-
 });
 
 test("every layer declares all four vars itself (the only source for the readers above)", () => {
-	const pager = readFileSync(join(src, "routes/(app)/SpacePager.svelte"), "utf8");
+	const layer = readFileSync(join(src, "routes/(app)/SpaceLayer.svelte"), "utf8");
 	for (const v of ["--space-accent", "--space-accent-text", "--space-on-accent", "--space-tint"])
-		expect(pager).toContain(`style:${v}=`);
+		expect(layer).toContain(`style:${v}=`);
 });

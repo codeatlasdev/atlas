@@ -14,6 +14,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CommitMsg, FrameMsg } from "#lib/shell/pager.ts";
+import { inParkedLayer } from "#lib/shell/parkedLayer.ts";
 import { availability, availabilityKey, trailing } from "#lib/shell/trailing.ts";
 import { nativeRect } from "#lib/zoom.ts";
 
@@ -74,9 +75,9 @@ export function initNativeSwipe(): Promise<void> {
 const matches = (x: Entry, p: { zone: SwipeZone; id?: string }) =>
 	x.spec.zone === p.zone && (x.spec.id ?? undefined) === (p.id ?? undefined);
 
-/** Rect in CSS px clipped to the viewport, or null (hidden, `inert`, parked off-screen or empty). */
+/** Rect in CSS px clipped to the viewport, or null (hidden, `inert`, in a parked pager layer, off-screen or empty). */
 function rectOf(el: HTMLElement) {
-	if (el.closest("[inert]")) return null;
+	if (el.closest("[inert]") || inParkedLayer(el)) return null;
 	const r = el.getBoundingClientRect();
 	const x = Math.max(0, r.x);
 	const y = Math.max(0, r.y);
@@ -98,7 +99,20 @@ export function scrollerRects(root: ParentNode = document): { x: number; y: numb
 		const r = rectOf(el);
 		if (r) out.push(r);
 	}
-	for (const el of root.querySelectorAll<HTMLElement>("main.content *")) {
+	// Not `main.content *` over every layer: a parked layer never yields a rect (`rectOf`), and measuring its elements
+	// (`scrollWidth`, `getComputedStyle`) cost O(all mounted spaces) per switch, 480 ms with five 400-line diffs (#121).
+	// The walk rejects a parked layer as a whole subtree, so none of its nodes is even visited.
+	const content = root.querySelector<HTMLElement>("main.content");
+	const walker = content
+		? document.createTreeWalker(content, NodeFilter.SHOW_ELEMENT, {
+				acceptNode: (n) =>
+					(n as HTMLElement).matches(".space-layer[data-role='near']")
+						? NodeFilter.FILTER_REJECT
+						: NodeFilter.FILTER_ACCEPT,
+			})
+		: null;
+	for (let n = walker?.nextNode(); n; n = walker!.nextNode()) {
+		const el = n as HTMLElement;
 		if (el.scrollWidth <= el.clientWidth + 1 || el.closest(".strip")) continue;
 		if (!/auto|scroll|overlay/.test(getComputedStyle(el).overflowX)) continue;
 		const r = rectOf(el);

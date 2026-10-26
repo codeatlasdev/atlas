@@ -505,6 +505,8 @@ unsafe extern "C" {
         value_cb: *const c_void,
     ) -> *const c_void;
     static kCFBooleanTrue: *const c_void;
+    fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: u8) -> i32;
+    static kCFRunLoopDefaultMode: *const c_void;
     static kCFTypeDictionaryKeyCallBacks: c_void;
     static kCFTypeDictionaryValueCallBacks: c_void;
 }
@@ -725,6 +727,17 @@ impl Backend for Cg {
     }
 }
 
+/// Wait `seconds` the way a UI thread must: by servicing its run loop. CoreGraphics refreshes a process's view of a
+/// display it just created (its mode list, its current mode) from run loop sources, so a thread that sleeps instead
+/// sees `CGDisplayCopyAllDisplayModes` return NULL for as long as it sleeps (measured on macOS 27 inside the app's
+/// main thread: NULL for 10 s while WindowServer listed 24 modes; non-NULL after one 50 ms run loop turn).
+fn service_run_loop(seconds: f64) {
+    // SAFETY: plain CoreFoundation call on the current thread's run loop with the framework's own default mode.
+    unsafe {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, seconds, 0);
+    }
+}
+
 fn rect_of(r: CGRect) -> Rect {
     Rect {
         x: r.origin.x,
@@ -753,7 +766,7 @@ fn select_hidpi_mode(id: u32, pixel_w: u32) -> Result<(), String> {
         );
         let modes = poll_until(
             200,
-            |_| std::thread::sleep(std::time::Duration::from_millis(50)),
+            |_| service_run_loop(0.05),
             || {
                 let m = CGDisplayCopyAllDisplayModes(id, opts);
                 (!m.is_null()).then_some(m)

@@ -49,9 +49,9 @@ tempfile = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSView", "NSResponder", "NSWindow", "NSGraphics", "NSPasteboard", "NSPasteboardItem", "NSEvent", "NSHapticFeedback", "NSImage", "NSBitmapImageRep", "NSImageRep", "NSGraphicsContext", "objc2-core-graphics"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSView", "NSResponder", "NSWindow", "NSWorkspace", "NSGraphics", "NSPasteboard", "NSPasteboardItem", "NSEvent", "NSHapticFeedback", "NSImage", "NSBitmapImageRep", "NSImageRep", "NSGraphicsContext", "objc2-core-graphics"] }
 block2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSError", "NSURL", "NSArray", "NSDictionary", "NSProcessInfo", "NSData", "NSObject", "NSValue", "NSRunLoop", "NSDate"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSError", "NSURL", "NSArray", "NSDictionary", "NSProcessInfo", "NSData", "NSObject", "NSValue", "NSRunLoop", "NSDate", "NSNotification", "NSOperation"] }
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "SCStream", "SCShareableContent", "SCScreenshotManager", "SCRecordingOutput", "SCError", "objc2-core-media", "objc2-core-graphics", "objc2-av-foundation"] }
 objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMSampleBuffer", "CMTime", "CMSync", "objc2-core-video"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGImage", "CGColorSpace", "CGDataProvider"] }

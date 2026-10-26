@@ -237,6 +237,11 @@ impl Renderer {
         )
     }
 
+    /// Physical pixels of the configured surface (what a replacement surface must be created at).
+    pub fn pixel_size(&self) -> (u32, u32) {
+        (self.config.width, self.config.height)
+    }
+
     /// Cell size in physical pixels.
     pub fn cell_px(&self) -> [f32; 2] {
         self.text.font.cell

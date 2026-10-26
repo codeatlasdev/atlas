@@ -20,6 +20,8 @@ mod render_loop;
 mod select;
 mod settings;
 mod shared;
+mod system;
+mod watchdog;
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -38,6 +40,7 @@ pub use lifecycle::*;
 pub use mouse::*;
 pub use select::*;
 pub use settings::*;
+pub use system::install as install_system_observers;
 
 /// `terminal.*` settings for a GPU terminal (defaults when absent).
 #[derive(serde::Deserialize)]
@@ -91,8 +94,6 @@ impl Default for TermPrefs {
 
 struct Term {
     pty: String,
-    /// Retained `NSView*`; touched only on the main thread.
-    view: usize,
     shared: Arc<Shared>,
     render: Option<JoinHandle<()>>,
     reader: tauri::async_runtime::JoinHandle<()>,
@@ -100,6 +101,9 @@ struct Term {
     writer: tauri::async_runtime::JoinHandle<()>,
 }
 
+/// The registry of open terminals. **Never taken on a render thread** (`render_loop`): commands,
+/// the reader and the system observers take it briefly to find a terminal's `Shared` and let go
+/// before doing anything slow, so a stuck renderer cannot hold it and freeze the other tabs.
 static TERMS: LazyLock<Mutex<HashMap<String, Term>>> = LazyLock::new(Default::default);
 /// Set at first `term_open`; lets non-command paths (VT callbacks) reach the app.
 static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -110,6 +114,11 @@ fn with_term(tab: &str) -> Result<Arc<Shared>, String> {
         .get(tab)
         .ok_or_else(|| format!("no terminal for tab {tab}"))?;
     Ok(t.shared.clone())
+}
+
+/// Every open terminal's shared state; the registry lock is not held after this returns.
+fn all_shared() -> Vec<Arc<Shared>> {
+    TERMS.lock().values().map(|t| t.shared.clone()).collect()
 }
 
 /// The terminal of `tab`, or every open one when omitted.

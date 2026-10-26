@@ -20,6 +20,14 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Fixed
 
 - **`atlas hostd` no longer grows without limit for a client that stops reading** (#109). A phone on a bad network, a paused webview or a suspended process, with an agent printing non-stop, made hostd queue every terminal chunk in memory, and hostd is the process that keeps every agent alive. Each connection now holds at most 8 MiB unwritten; past that hostd stops feeding it, sends `pty_dropped` (`reason: slow_client`), and the app or phone reattaches with replay (the last 2 MiB) by itself. The program, the other clients and `pty_exit` are never held up. `info` shows the bytes queued per connection (`queued`) and how many clients were dropped.
+||||||| 748e3fad
+- **A GPU terminal that went blank after sleep, lid close or a display change draws again** ([#104](https://github.com/codeatlasdev/atlas/issues/104)). Atlas now rebuilds every terminal's surface when the Mac wakes or a display changes, keeping its screen and scrollback.
+- **A terminal that stops drawing recovers by itself** ([#108](https://github.com/codeatlasdev/atlas/issues/108)). A frame that could not be presented is retried without waiting for new output, and a surface that stays dead for 2 s is replaced. Recoveries show up in the diagnostics report.
+- **Background terminals no longer draw on every burst of output.** With many agents streaming, each hidden tab used to queue GPU work; now it draws once when shown.
+
+### Added
+
+- **Reload terminal** (⌘⇧P, and the `+` menu of a terminal tab) rebuilds a blank or stuck terminal view without restarting the app or losing scrollback.
 ||||||| 807d992e
 - **The edge peek no longer opens under a dialog.** With Settings, a dialog or the command palette open, moving the pointer to the window edge slid the sidebar in underneath it. A peek now stays shut while any modal layer is open (read from the kit's `layerchange`, not a per-dialog flag), and one already open closes when the modal opens.
 - **Project avatars and custom-styled buttons show the pointer.** The app inherited the arrow cursor everywhere and the kit's native-feel base reset buttons to it, so the project tiles at the bottom of the sidebar (and every custom button without its own rule) looked unclickable. `@codeatlasdev/ui` 4.6.0 gives every enabled button and `role` control the hand (disabled ones get `not-allowed`) and no longer resets them under `data-ca-native`, so Atlas bumps the kit and carries no cursor rule of its own (#117).

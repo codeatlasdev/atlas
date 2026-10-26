@@ -17,6 +17,7 @@ unsupported!(
     term_open,
     term_bounds,
     term_close,
+    term_reload,
     term_stats,
     term_stats_reset,
     term_key,
@@ -50,3 +51,6 @@ unsupported!(
 
 /// No GPU terminals to reattach after a hostd restart.
 pub async fn reattach_all() {}
+
+/// No native terminals to rebuild on wake.
+pub fn install_system_observers() {}

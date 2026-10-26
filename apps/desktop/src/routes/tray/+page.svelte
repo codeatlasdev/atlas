@@ -444,15 +444,25 @@
 	}
 	/* The only looping motion: a slow halo on an unhealthy dot. Off for reduced motion. */
 	.dot.live {
+		position: relative;
+	}
+	.dot.live::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: color-mix(in oklab, currentColor 45%, transparent);
 		animation: halo 2.4s ease-out infinite;
 	}
 	@keyframes halo {
 		0% {
-			box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+			transform: scale(1);
+			opacity: 1;
 		}
 		70%,
 		100% {
-			box-shadow: 0 0 0 6px transparent;
+			transform: scale(3);
+			opacity: 0;
 		}
 	}
 	.state.fail .dot.live {

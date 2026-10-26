@@ -51,13 +51,13 @@ Modelled on Ghostty's macOS defaults (`ghostty +list-keybinds --default`) and th
 
 | Keys | Legacy | Kitty protocol on | Does |
 |---|---|---|---|
-| ⌘⌫ | `^U` | `CSI 127;9u` | delete to line start |
-| ⌘← / ⌘→ | `^A` / `^E` | `CSI 1;9D` / `CSI 1;9C` | line start / end |
+| ⌘⌫ | `^U` | `^U` | delete to line start |
+| ⌘← / ⌘→ | `^A` / `^E` | `^A` / `^E` | line start / end |
 | ⌥⌫ | `ESC DEL` | `CSI 127;3u` | delete word back |
-| ⌥← / ⌥→ | `ESC b` / `ESC f` | `CSI 1;3D` / `CSI 1;3C` | word back / forward |
+| ⌥← / ⌥→ | `ESC b` / `ESC f` | `ESC b` / `ESC f` | word back / forward |
 | ⌥Delete | `ESC d` | `CSI 3;3~` | delete word forward |
 
-With the Kitty keyboard protocol on, the program receives the real key and modifiers (⌘ is super, `8`) and binds it itself. ⇧ or ⌃ with these keys keeps the plain xterm modifier parameters.
+⌘⌫, ⌘← ⌘→ and ⌥← ⌥→ are bindings, as in Ghostty (`super+backspace=text:\x15`, `alt+left=esc:b`, …): the same bytes whatever keyboard protocol the program pushed. Sending them as Kitty keys (`CSI 127;9u`) reached fish 4 unbound, so ⌘⌫ did nothing. ⌥⌫ and ⌥Delete are keys: with the Kitty protocol on, the program receives the real key and modifiers and binds it itself. ⇧ or ⌃ with these keys keeps the plain xterm modifier parameters.
 
 **Terminal actions** (handled by Atlas):
 

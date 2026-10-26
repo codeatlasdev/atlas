@@ -1,5 +1,5 @@
 <script lang="ts">
-	/** Settings ▸ General ▸ Sounds: master switch, volume, "reduce", and one row per earcon with a preview. */
+	/** Settings ▸ Notifications & sounds ▸ Sounds: master switch, volume, "reduce", and one row per earcon with a preview. */
 	import { Alert, Button, Slider, Switch } from "@codeatlasdev/ui";
 	import { Play } from "@lucide/svelte";
 	import Group from "#lib/settings/Group.svelte";

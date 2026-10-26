@@ -11,6 +11,14 @@ macro_rules! unsupported {
     )*};
 }
 
+/// No native terminal views exist off macOS (listed for the registration test:
+///     term_list,
+/// returns an empty list instead of refusing).
+#[tauri::command]
+pub fn term_list() -> Vec<String> {
+    Vec::new()
+}
+
 const UNSUPPORTED: &str = "the GPU terminal needs macOS; this build uses xterm.js";
 
 unsupported!(

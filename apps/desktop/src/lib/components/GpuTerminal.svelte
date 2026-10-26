@@ -16,10 +16,9 @@
 	import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 	import { runCommand } from "#lib/keymap.svelte.ts";
 	import { fontStep, keyToSend, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
-	import { watchSlot } from "./nativeSlot.ts";
+	import { watchSlot } from "#lib/native/slot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
-	import { registerTermView } from "#lib/stores/termViews.ts";
 	import { Pointer } from "./terminal/pointer.ts";
 	import TermSearchBar from "./terminal/TermSearchBar.svelte";
 
@@ -253,7 +252,6 @@
 			if (t) t.cwd = e.payload.cwd;
 		});
 		const unwatch = watchSlot(area!, view.sync);
-		const unregister = registerTermView(tab, view);
 		// Title/exit events for the tab; bytes come over the raw stream.
 		void host.ptyAttach(pty, false, false).catch(quiet);
 		return () => {
@@ -261,10 +259,9 @@
 			void cwd.then((f) => f());
 			void osc52.then((f) => f());
 			unwatch();
-			unregister();
 			if (document.activeElement === input) termFocus.on = false;
 			void host.ptyDetach(pty).catch(quiet);
-			void invoke("term_close", { tab }).catch(quiet);
+			void view.dispose();
 		};
 	});
 </script>

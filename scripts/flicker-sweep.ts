@@ -22,6 +22,7 @@ import { join } from "node:path";
 import {
 	analyze,
 	CLEAN_PROBE,
+	ghostFrames,
 	cropRect,
 	frameStarts,
 	GRID_H,
@@ -34,6 +35,8 @@ import {
 import { flashWindows } from "../studio/src/lint/checks-video.ts";
 import { fixtures } from "./flicker-sweep-fixtures.ts";
 import { SURFACES, type Drive } from "./flicker-sweep-surfaces.ts";
+import type { Trace } from "../apps/desktop/src/lib/shell/trace.ts";
+import { aim, type LiveZone } from "../apps/desktop/src/lib/shell/traceAim.ts";
 
 const arg = (k: string, d?: string) => {
 	const i = process.argv.indexOf(`--${k}`);
@@ -108,13 +111,25 @@ async function crops(file: string, dir: string, w: number, h: number, frame: num
 	return files;
 }
 
-async function judge(file: string, surface: string, dir: string): Promise<SurfaceResult & { crops: Record<string, string[]> }> {
+/**
+ * Page-side: the transition is at rest (no pager gesture, no running animation, two frames painted), then the
+ * wall clock. Ghost marks are taken at that moment.
+ */
+const AT_REST = `const until = Date.now() + 5000;
+	while (Date.now() < until && (document.querySelector(".pager.moving") || document.getAnimations().some((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)))
+		await new Promise((r) => requestAnimationFrame(r));
+	await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+	return Date.now()`;
+
+async function judge(file: string, surface: string, dir: string, marks: number[] = []): Promise<SurfaceResult & { crops: Record<string, string[]> }> {
 	const { frames, w, h } = await decode(file);
 	const findings = frames.length >= 3 ? analyze(frames, flashWindows) : { blips: [], blanks: [], flashes: [] };
+	if (marks.length) findings.ghosts = ghostFrames(frames, marks);
 	const shots: Record<string, string[]> = {};
 	for (const b of findings.blips) shots[`blip@${b.t.toFixed(3)}`] = await crops(file, dir, w, h, b.frame, b.box, `${surface}-blip-${b.frame}`);
 	for (const b of findings.blanks)
 		shots[`${b.kind}@${b.t.toFixed(3)}`] = await crops(file, dir, w, h, b.frame, { x0: 0, y0: 0, x1: GRID_W, y1: GRID_H }, `${surface}-${b.kind}-${b.frame}`);
+	for (const g of findings.ghosts ?? []) shots[`ghost@${g.t.toFixed(3)}`] = await crops(file, dir, w, h, g.frame, g.box, `${surface}-ghost-${g.frame}`);
 	return { surface, frames: frames.length, findings, crops: shots };
 }
 
@@ -137,6 +152,7 @@ async function main() {
 	mkdirSync(out, { recursive: true });
 	const started = (await $`ls ${sock}`.quiet().nothrow()).exitCode === 0;
 	if (started) throw new Error(`an agent instance named "${name}" is already running; stop it first (bun run desktop:agent -- --stop --name ${name})`);
+	const layerErrors: string[] = [];
 	const results: Array<SurfaceResult & { crops: Record<string, string[]> }> = [];
 	const fx = fixtures();
 	try {
@@ -151,8 +167,20 @@ async function main() {
 			},
 			type: (selector, text, delay = 40) => debug("type", selector, text, "--delay", String(delay)).then(() => undefined),
 			resize: (w, h) => debug("resize", String(w), String(h)).then(() => undefined),
+			mark: async () => {
+				marks.push(await evalJs<number>(AT_REST));
+			},
+			swipe: async (name) => {
+				const t: Trace = JSON.parse(await Bun.file(join(root, "apps/desktop/src/lib/shell/__fixtures__/traces", `${name}.json`)).text());
+				const zones = await evalJs<LiveZone[]>(`return await window.__TAURI_INTERNALS__.invoke("swipe_zones_now")`);
+				const events = aim(t.events, "sidebar", zones);
+				if (!events) throw new Error(`no space zone to aim ${name} at`);
+				await evalJs(`await window.__TAURI_INTERNALS__.invoke("gesture_replay_samples", { events: ${JSON.stringify(events)} }); return 1`);
+			},
+			hide: (on) => debug("hide", ...(on ? [] : ["--restore"])).then(() => undefined),
 			fixtures: fx,
 		};
+		let marks: number[] = [];
 		for (const root of fx.roots) await evalJs(`await window.__TAURI_INTERNALS__.invoke("projects_add", { root: ${JSON.stringify(root)} }); return 1`);
 		await evalJs(`await window.__atlas.store.refresh(); return window.__atlas.store.projects.length`);
 		// a real worktree (the sidebar's worktree rows and their menu exist only then), made through the app's own path like
@@ -174,7 +202,8 @@ async function main() {
 			if (before.length) throw new Error(`${s.id} starts with an open dialog (${before.join(", ")}): the previous surface left it open`);
 			if (loadavg()[0]! >= LOAD_MAX) hotSurfaces.push(s.id);
 			// the recorder runs for `seconds`; the driver runs concurrently on its own bridge connection
-			const rec = $`${atlas} desktop debug record ${file} --seconds ${String(s.seconds)} --fps 60`.env(env).quiet();
+			marks = [];
+			const rec = $`${atlas} desktop debug record ${file} --seconds ${String(s.seconds)} --fps 60`.env(env).quiet().nothrow();
 			await Bun.sleep(600); // the recorder needs a beat before the first frame
 			let broke: string | undefined;
 			try {
@@ -191,15 +220,21 @@ async function main() {
 					const found = await evalJs<boolean>(probe.startsWith("js:") ? `return !!(${probe.slice(3)})` : `return [...document.querySelectorAll(${JSON.stringify(probe)})].some(e => e.offsetParent !== null)`);
 					if (!found) broke = `expected on screen at the end: ${what} (${probe})`;
 				}
-			await rec; // always: a recorder left running would collide with the next surface
+			const done = await rec; // always: a recorder left running would collide with the next surface
+			if (done.exitCode !== 0) throw new Error(`record ${s.id} failed: ${done.stderr.toString().trim()}`);
+			// marks are wall-clock ms; the frames' timeline starts at the first delivered frame
+			const st: { started_epoch_ms: number; first_frame_offset_ms: number | null } = JSON.parse(done.stderr.toString().trim().split("\n").at(-1)!);
+			const t0 = st.started_epoch_ms + (st.first_frame_offset_ms ?? 0);
 			if (broke) {
 				// a surface the sweep could not drive was not exercised: that fails the sweep like a flicker would
 				console.error(`  could not drive ${s.id}: ${broke}`);
 			}
-			const r = await judge(file, s.id, join(out, "crops"));
+			const r = await judge(file, s.id, join(out, "crops"), marks.map((m) => (m - t0) / 1000));
 			results.push({ ...r, undriven: broke?.split("\n")[0] });
-			console.error(`  ${r.frames} frames, ${r.findings.blips.length} blips, ${r.findings.blanks.length} blank, ${r.findings.flashes.length} flashing`);
+			console.error(`  ${r.frames} frames, ${r.findings.blips.length} blips, ${r.findings.blanks.length} blank, ${r.findings.flashes.length} flashing${r.findings.ghosts ? `, ghost frames: ${r.findings.ghosts.length} (${marks.length} transitions)` : ""}`);
 		}
+		// the page's own "current state only" check (SpacePager.svelte, debug builds): any report fails the sweep
+		layerErrors.push(...(await debug("logs")).split("\n").filter((l) => l.includes("[layers]")));
 	} finally {
 		if (!has("keep")) {
 			await $`bun run desktop:agent -- --stop --name ${name}`.cwd(root).quiet().nothrow();
@@ -207,15 +242,19 @@ async function main() {
 		}
 	}
 	const v = verdict(results);
+	if (layerErrors.length) {
+		v.code = 1;
+		v.lines.push(...layerErrors.map((l) => `page: ${l}`));
+	}
 	writeFileSync(join(out, "report.json"), JSON.stringify({ when: new Date().toISOString(), loaded: hotSurfaces, surfaces: results, exit: v.code }, null, 2));
 	writeFileSync(
 		join(out, "report.md"),
 		[
 			"# Flicker sweep",
 			"",
-			"| surface | frames | blips | blank | flashing |",
-			"|---|---:|---:|---:|---:|",
-			...results.map((r) => `| ${r.surface} | ${r.frames} | ${r.findings.blips.length} | ${r.findings.blanks.length} | ${r.findings.flashes.length} |`),
+			"| surface | frames | blips | blank | flashing | ghost frames |",
+			"|---|---:|---:|---:|---:|---:|",
+			...results.map((r) => `| ${r.surface} | ${r.frames} | ${r.findings.blips.length} | ${r.findings.blanks.length} | ${r.findings.flashes.length} | ${r.findings.ghosts?.length ?? "-"} |`),
 			"",
 			...(v.lines.length ? ["## Findings", "", ...v.lines.map((l) => `- ${l}`), "", ...results.flatMap((r) => Object.entries(r.crops).map(([k, fs]) => `- ${r.surface} ${k}: ${fs.join(", ")}`))] : ["No flicker."]),
 			"",
@@ -226,7 +265,7 @@ async function main() {
 		console.error(`flicker found${hotSurfaces.length ? ` (the host was loaded while recording ${hotSurfaces.join(", ")}: re-run on a quiet machine before trusting those)` : ""}:\n  ${v.lines.join("\n  ")}`);
 		process.exit(1);
 	}
-	console.error(`${results.length} surfaces, no flicker`);
+	console.error(`${results.length} surfaces, no flicker, ghost frames: 0`);
 }
 
 await main();

@@ -51,7 +51,9 @@ impl<T> TexCache<T> {
 
     /// The cached upload of `id` if it is of this `generation`.
     pub(super) fn fresh(&self, id: u32, generation: u64) -> bool {
-        self.map.get(&id).is_some_and(|e| e.generation == generation)
+        self.map
+            .get(&id)
+            .is_some_and(|e| e.generation == generation)
     }
 
     pub(super) fn get(&self, id: u32) -> Option<&T> {

@@ -5,7 +5,7 @@ description: "The native Metal terminal in Atlas Desktop: rendering, images, she
 
 # GPU terminal
 
-Atlas Desktop draws local terminals natively instead of with xterm.js (default on; Settings → Appearance → Terminal → **Fast terminal (GPU)**, stored as `atlas.gpuTerminal`, `"0"` turns it off; applies to terminals opened afterwards). It covers terminals of local hostd worktrees (macOS); terminals of SSH-host worktrees keep xterm.js.
+Atlas Desktop draws local terminals natively instead of with xterm.js (default on; Settings → Terminal → **Fast terminal (GPU)**, stored as `atlas.gpuTerminal`, `"0"` turns it off; applies to terminals opened afterwards). It covers terminals of local hostd worktrees (macOS); terminals of SSH-host worktrees keep xterm.js.
 
 ## Architecture
 
@@ -77,7 +77,7 @@ With the Kitty keyboard protocol on, the program receives the real key and modif
 
 ⌘K and ⌘⇧D follow Ghostty only while a terminal has the keyboard focus: ⌘K is the Jump palette everywhere else (also reachable from ⌘⇧P and the Go menu) and ⌘⇧D is Changes. Both the native menu and the window's key handler (`terminalKeeps`) hand the key to the terminal while one is focused; before 1.5.0 the key handler still sent ⌘K to the Jump palette.
 
-**Settings** (`settings.json`, Settings → Appearance → Terminal): `terminal.copy_on_select` (default true, Ghostty `copy-on-select`), `terminal.click_to_move` (true, `cursor-click-to-move`), `terminal.option_as_alt` (`both` | `left` | `right` | `none`, default `both`, `macos-option-as-alt`). With ⌥ as Alt, ⌥B sends `ESC b`; with `none` it types the macOS character (∫). ⌥ with arrows, ⌫ and Delete is always Alt: those keys have no macOS character.
+**Settings** (`settings.json`, Settings → Terminal): `terminal.copy_on_select` (default true, Ghostty `copy-on-select`), `terminal.click_to_move` (true, `cursor-click-to-move`), `terminal.option_as_alt` (`both` | `left` | `right` | `none`, default `both`, `macos-option-as-alt`). With ⌥ as Alt, ⌥B sends `ESC b`; with `none` it types the macOS character (∫). ⌥ with arrows, ⌫ and Delete is always Alt: those keys have no macOS character.
 
 **Click to move.** A plain click (no drag, no modifier) on the prompt being edited sends arrow keys that move the shell's cursor there, like Ghostty's `cursor-click-to-move`. It needs OSC 133 (the shell marks the prompt start `A` and the command start `C`/end `D`), so a running command, the alternate screen and a scrolled-up viewport never get arrows. Only the prompt's own lines count (from its first line to the cursor's line).
 

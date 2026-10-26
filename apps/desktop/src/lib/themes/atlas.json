@@ -73,8 +73,8 @@
 				"search.match_background": "#e6b46d40",
 				"search.active_match_background": "#ef945f73",
 				"error.on_fill": "#000000",
-				"tooltip.background": "#c0caf5",
-				"tooltip.foreground": "#131c2b",
+				"tooltip.background": "#273143",
+				"tooltip.foreground": "#c0caf5",
 				"overlay.background": "#273143",
 				"players": [
 					{

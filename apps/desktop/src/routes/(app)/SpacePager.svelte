@@ -6,17 +6,15 @@
 	 * painted, so a gesture only moves a transform; what keeps it out of reach is in `parkedLayer.ts`. A role flip
 	 * changes nothing the layer's subtree inherits (#121), so it restyles no descendant.
 	 */
-	import { invoke } from "@tauri-apps/api/core";
 	import { onMount, tick } from "svelte";
 	import { spacePager } from "#lib/shell/pager.ts";
 	import { engineGo, nativeActive, initNativeSwipe, pushZones } from "#lib/shell/nativeSwipe.ts";
 	import { guardFocus } from "#lib/shell/parkedLayer.ts";
-	import { createStageSync } from "#lib/shell/stageSync.ts";
-	import { dirtyPage, pagesChanged, type PagesState } from "#lib/shell/pageDirty.ts";
+	import { offendingLayers } from "#lib/shell/layerInvariant.ts";
+	import { reconcileSoon } from "#lib/native/surface.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { neighbour } from "#lib/shell/space.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
-	import { nativeRect } from "#lib/zoom.ts";
 	import SpaceLayer from "./SpaceLayer.svelte";
 	import SpaceSlot from "./SpaceSlot.svelte";
 
@@ -51,86 +49,20 @@
 	}
 
 	/**
-	 * Snapshots render at this fraction of the pager's width in points (so a quarter of the pixels at 0.5). Measured
-	 * on a 2x display, 1264x774 pt: 36 ms at 1.0, 22 ms at 0.75, 11 ms at 0.5, 8 ms at 0.35. `takeSnapshot` runs on
-	 * the main thread, so at 0.5 a swipe that begins during a warm-up waits one frame instead of two; the slide is
-	 * 300 ms of motion, where 1x pixel density on a retina panel reads as motion blur, not as softness.
+	 * After a commit or a gesture's rest the native views are reconciled (`lib/native/surface.ts`). Debug builds: no layer but the current one may be on screen (ghost
+	 * frames, docs/postmortems/ghost-frames.md). Checked after the next frame; reported as a console error.
 	 */
-	const SNAP_SCALE = 0.5;
-
-	/** Two animation frames: the DOM change has been laid out, painted and committed to the compositor. */
-	const painted = () => {
-		const { promise, resolve } = Promise.withResolvers<void>();
-		requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-		return promise;
-	};
-
-	/** Last selection, gesture or content change: warm-ups wait for the app to be quiet (stageSync QUIET_MS). */
-	let lastActivity = performance.now();
-	const touch = () => (lastActivity = performance.now());
-
-	/** Is a native-drawn or JS-drawn gesture in flight (warm-ups must not touch the DOM then). */
-	let gesture = false;
-
-	const sync = createStageSync({
-		ids: () => shell.spaceIds,
-		active: () => shell.activeId,
-		show(id) {
-			const el = layers[id];
-			if (!el) return;
-			// On top of the origin, in view: invisible to the user behind the native cover.
-			el.style.transform = "translate3d(0,0,0)";
-			el.style.zIndex = "1";
-			el.style.visibility = "visible";
-		},
-		park(id) {
-			const el = layers[id];
-			if (!el) return;
-			el.style.removeProperty("transform");
-			el.style.removeProperty("z-index");
-			el.style.removeProperty("visibility");
-		},
-		nextFrame: painted,
-		cover: () => invoke<boolean>("pager_cover"),
-		uncover: () => invoke<void>("pager_uncover"),
-		snapshot: (id) => invoke<boolean>("pager_snapshot", { id, scale: SNAP_SCALE }),
-		pages: pushPages,
-		idle: (f) =>
-			typeof requestIdleCallback === "function"
-				? requestIdleCallback(() => void f(), { timeout: 800 })
-				: setTimeout(() => void f(), 50),
-		gestureActive: () => gesture,
-		quietMs: () => performance.now() - lastActivity,
-	});
-
-	let pushedPages: PagesState | null = null;
-	/**
-	 * Tell native the order and the pager rect. `measure` reads the rect (forces layout): only when the size may
-	 * have changed (resize, first push) and never for a plain selection, which changes neither.
-	 */
-	function pushPages(measure = false) {
-		const order = [...shell.spaceIds];
-		let rect = pushedPages?.rect;
-		if (measure || !rect) {
-			const r = root?.getBoundingClientRect();
-			if (!r) return Promise.resolve();
-			// Native lays its snapshot layers out in window points; the page measures CSS px (they differ under layout zoom).
-			const n = nativeRect({ x: r.x, y: r.y, w: r.width, h: r.height });
-			rect = [n.x, n.y, n.w, n.h];
-		}
-		const next = { order, rect };
-		if (!pagesChanged(pushedPages, next)) return Promise.resolve();
-		pushedPages = next;
-		return invoke<void>("pager_pages", {
-			order,
-			active: shell.activeId,
-			rect: { x: rect[0], y: rect[1], w: rect[2], h: rect[3] },
+	function checkLayers() {
+		// Native views are above every layer: whatever the switch did, none may stay up without an owner.
+		reconcileSoon({ ready: ws.loaded });
+		if (!("__ATLAS_DEBUG__" in window)) return;
+		requestAnimationFrame(() => {
+			if (!root) return;
+			const bad = offendingLayers(root, spacePager.kept);
+			if (bad.length)
+				console.error("[layers] non-current layer on screen:", bad.map((el) => el.dataset.space).join(","));
 		});
 	}
-
-	/** The pages to keep snapshotted: the page on screen first, then its neighbours. */
-	const wanted = () =>
-		shell.mounted.length ? [shell.activeId!, ...shell.mounted.filter((x) => x !== shell.activeId)] : [];
 
 	onMount(() => {
 		const detach = spacePager.attach({
@@ -138,81 +70,30 @@
 			width: () => root?.clientWidth ?? 0,
 			ids: () => shell.spaceIds,
 			active: () => shell.activeId,
-			commit: (id) => shell.commitSpace(id),
+			commit: (id) => {
+				shell.commitSpace(id);
+				checkLayers();
+			},
 			moving(on, keep) {
 				kept = on ? (keep ?? []) : [];
 				moving = on;
-				gesture = on;
-				touch();
-				if (on) sync.abort();
-				else sync.resume();
+				if (!on) checkLayers();
 			},
 			flush: () => tick(),
-			ack: (seq) => void painted().then(() => invoke("pager_ready", { seq })),
 			engineGo: (dir) => engineGo("space", dir),
 		});
 		const unguard = root ? guardFocus(root) : () => {};
-		let stopped = false;
-		void initNativeSwipe().then(async () => {
-			if (stopped || !nativeActive()) return;
-			await pushPages(true);
-			sync.warm(wanted());
-		});
-		// Geometry follows layout; content changes make a page's snapshot stale.
-		const ro = new ResizeObserver(() => {
-			void pushPages(true);
-			for (const id of shell.spaceIds) sync.dirty(id);
-			sync.warm(wanted());
-		});
-		if (root) ro.observe(root);
-		const mo = new MutationObserver((recs) => {
-			for (const r of recs) {
-				const t = r.target as HTMLElement;
-				const layer = t.closest?.(".space-layer");
-				const id = dirtyPage({
-					type: r.type,
-					attributeName: r.attributeName,
-					targetIsLayerRoot: t === layer,
-					page: layer?.getAttribute("data-space") ?? null,
-				});
-				if (id) {
-					sync.dirty(id);
-					touch();
-				}
-			}
-			sync.warmIfStale(wanted());
-		});
-		if (root)
-			mo.observe(root, {
-				subtree: true,
-				childList: true,
-				characterData: true,
-				attributes: true,
-				attributeFilter: ["class", "src", "data-state"],
-			});
+		void initNativeSwipe();
 		return () => {
-			stopped = true;
-			ro.disconnect();
-			mo.disconnect();
 			unguard();
 			detach();
 		};
 	});
 
-	// The order, the active page or the mounted window changed: tell native and refresh what moved into reach.
-	// Never in the selection's synchronous flush (it reads layout): after the next paint, coalesced.
-	let pushed = 0;
+	// Which neighbours exist depends on the active space (no wrap): the sidebar's zone must say so.
 	$effect(() => {
 		void [shell.spaceIds, shell.activeId, shell.mounted];
-		touch();
-		if (!nativeActive()) return;
-		// which neighbours exist depends on the active space (no wrap): the sidebar's zone must say so
-		pushZones();
-		cancelAnimationFrame(pushed);
-		pushed = requestAnimationFrame(() => {
-			pushed = requestAnimationFrame(() => void pushPages().then(() => sync.warmIfStale(wanted())));
-		});
-		return () => cancelAnimationFrame(pushed);
+		if (nativeActive()) pushZones();
 	});
 </script>
 

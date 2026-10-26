@@ -8,6 +8,11 @@ mod agent;
 mod agent_mode;
 mod boot;
 mod browser;
+// Built only on the macOS WebKit hook (`browser_fail_mac`); kept everywhere so its test runs.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod browser_fail;
+#[cfg(target_os = "macos")]
+mod browser_fail_mac;
 mod id_migrate;
 // Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -32,14 +37,7 @@ mod lifecycle;
 mod live;
 mod live_server;
 mod menu;
-#[cfg(target_os = "macos")]
-mod page_layers;
-#[cfg(not(target_os = "macos"))]
-#[path = "page_layers_stub.rs"]
-mod page_layers;
-// Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-mod page_stage;
+mod natives;
 mod registry;
 mod remote;
 mod shell_env;
@@ -213,6 +211,8 @@ macro_rules! handlers {
             browser::browser_close,
             browser::browser_eval,
             browser::browser_pick,
+            natives::natives_hit,
+            natives::natives_ground,
             browser::browser_pick_cancel,
             browser_keys::browser_set_keys,
             browser::window_region_png,
@@ -220,19 +220,14 @@ macro_rules! handlers {
             term::term_open,
             term::term_bounds,
             term::term_close,
+            term::term_list,
             term::term_reload,
             term::term_stats,
             term::term_stats_reset,
             swipe_mac::swipe_zones,
+            swipe_mac::swipe_zones_now,
             swipe_mac::swipe_native,
             swipe_mac::swipe_go,
-            page_layers::pager_pages,
-            page_layers::pager_snapshot,
-            page_layers::pager_invalidate,
-            page_layers::pager_cover,
-            page_layers::pager_uncover,
-            page_layers::pager_ready,
-            page_layers::pager_state,
             term::term_key,
             term::term_paste,
             term::term_paste_clipboard,
@@ -424,6 +419,8 @@ fn main() {
             term::install_system_observers();
             #[cfg(target_os = "macos")]
             browser_keys_mac::install(&handle);
+            #[cfg(target_os = "macos")]
+            natives::install(&handle);
             #[cfg(target_os = "macos")]
             if let Some(win) = app.get_window("main") {
                 use window_vibrancy::{

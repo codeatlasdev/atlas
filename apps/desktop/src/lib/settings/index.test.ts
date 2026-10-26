@@ -16,8 +16,8 @@ import {
 
 describe("resolveSection", () => {
 	test("legacy ids map to the new structure", () => {
-		expect(resolveSection("updates")).toEqual({ section: "general" });
-		expect(resolveSection("shell")).toEqual({ section: "general" });
+		expect(resolveSection("updates")).toEqual({ section: "general", item: "updates" });
+		expect(resolveSection("shell")).toEqual({ section: "integrations", tab: "shell", item: "shell" });
 		expect(resolveSection("appearance")).toEqual({ section: "appearance" });
 		expect(resolveSection("editor")).toEqual({ section: "editor", tab: "editor" });
 	});
@@ -44,6 +44,7 @@ describe("resolveSection", () => {
 		expect(resolveSection("editor/languages")).toEqual({ section: "editor", tab: "languages" });
 		expect(resolveSection("editor/nope")).toEqual({ section: "editor", tab: "editor" });
 		expect(resolveSection("terminal/languages")).toEqual({ section: "terminal" });
+		expect(resolveSection("integrations/ssh")).toEqual({ section: "integrations", tab: "ssh" });
 	});
 
 	test("unknown or prototype-ish ids fall back to General", () => {
@@ -81,7 +82,7 @@ describe("deep links used by the app resolve to the section that holds what they
 				SECTIONS.some((s) => s.id === r.section),
 				t,
 			).toBe(true);
-			if (r.section === "general") expect(["updates", "shell", "general"], t).toContain(t);
+			if (r.section === "general") expect(["updates", "general"], t).toContain(t);
 		}
 	});
 
@@ -127,10 +128,10 @@ describe("settings index", () => {
 		const home: Record<string, string> = {
 			updates: "general",
 			"update-channel": "general",
-			shell: "general",
-			sounds: "general",
-			browser: "general",
-			notify: "general",
+			shell: "integrations",
+			sounds: "notifications",
+			browser: "integrations",
+			notify: "notifications",
 			"theme-mode": "appearance",
 			accent: "appearance",
 			"ui-zoom": "appearance",
@@ -156,7 +157,8 @@ describe("settings index", () => {
 			"git-commit-agent": "git",
 			quick: "agents",
 			keymap: "keyboard",
-			"ssh-hosts": "ssh",
+			"ssh-hosts": "integrations",
+			"agent-integration": "integrations",
 			tour: "help",
 		};
 		for (const [id, section] of Object.entries(home)) {
@@ -174,20 +176,31 @@ describe("settings index", () => {
 			expect(SETTINGS_INDEX.find((e) => e.id === id)).toMatchObject({ section: "editor", tab: "editor" });
 	});
 
-	test("the sections read in the order a user works: General, Appearance, Editor, Terminal, … Help", () => {
-		expect(SECTIONS.map((s) => s.id)).toEqual([
-			"general",
-			"appearance",
-			"editor",
-			"terminal",
-			"workspaces",
-			"agents",
-			"git",
-			"keyboard",
-			"ssh",
-			"mobile",
-			"help",
+	test("the sidebar reads Atlas (app), Work (where you code) and Connect (outside things)", () => {
+		const by = (k: string) => SECTIONS.filter((s) => s.cluster === k).map((s) => s.id);
+		expect(by("app")).toEqual(["general", "appearance", "notifications", "keyboard", "help"]);
+		expect(by("work")).toEqual(["workspaces", "editor", "terminal", "git", "agents"]);
+		expect(by("connect")).toEqual(["integrations"]);
+	});
+
+	// The incident this reorganisation fixes: General held updates, shell, links, notifications and sounds.
+	test("General is the app and its updates, nothing else", () => {
+		expect(SETTINGS_INDEX.filter((e) => e.section === "general").map((e) => e.id)).toEqual([
+			"updates",
+			"update-channel",
 		]);
+	});
+
+	test("Integrations holds what Atlas connects to, one tab each", () => {
+		expect(SECTION_TABS.integrations.map((t) => t.id)).toEqual(["shell", "agents", "ssh", "mobile"]);
+		for (const [id, tab] of [
+			["shell", "shell"],
+			["browser", "shell"],
+			["agent-integration", "agents"],
+			["ssh-hosts", "ssh"],
+			["mobile-pair", "mobile"],
+		])
+			expect(SETTINGS_INDEX.find((e) => e.id === id)).toMatchObject({ section: "integrations", tab });
 	});
 });
 
@@ -210,7 +223,7 @@ describe("searchSettings", () => {
 	test("matches hidden keywords such as the old technical names", () => {
 		expect(searchSettings("osc52")[0]).toMatchObject({ id: "clipboard", section: "terminal" });
 		expect(searchSettings("scrollback")[0]).toMatchObject({ id: "scrollback" });
-		expect(searchSettings("zsh")[0]).toMatchObject({ id: "shell", section: "general" });
+		expect(searchSettings("zsh")[0]).toMatchObject({ id: "shell", section: "integrations" });
 	});
 
 	test("every word must match; order of words does not matter", () => {
@@ -271,8 +284,8 @@ describe("searchSettings", () => {
 		expect(searchSettings("terminal font")[0]).toMatchObject({ id: "term-font", section: "terminal" });
 		expect(searchSettings("interface font")[0]).toMatchObject({ id: "ui-font", section: "appearance" });
 		expect(searchSettings("file icons")[0]).toMatchObject({ id: "panel-file-icons", section: "appearance" });
-		expect(searchSettings("open links")[0]).toMatchObject({ id: "browser", section: "general" });
-		expect(searchSettings("notifications")[0]).toMatchObject({ id: "notify", section: "general" });
+		expect(searchSettings("open links")[0]).toMatchObject({ id: "browser", section: "integrations" });
+		expect(searchSettings("notifications")[0]).toMatchObject({ id: "notify", section: "notifications" });
 		expect(searchSettings("custom language server")[0]).toMatchObject({
 			id: "lsp-custom",
 			section: "editor",
@@ -286,6 +299,8 @@ describe("crumb", () => {
 		expect(crumb(SETTINGS_INDEX.find((e) => e.id === "ws-dir")!)).toBe("Workspaces");
 		expect(crumb(SETTINGS_INDEX.find((e) => e.id === "lsp-custom")!)).toBe("Editor › Languages");
 		expect(crumb(SETTINGS_INDEX.find((e) => e.id === "buffer-font")!)).toBe("Editor");
+		expect(crumb(SETTINGS_INDEX.find((e) => e.id === "ssh-hosts")!)).toBe("Integrations › SSH hosts");
+		expect(crumb(SETTINGS_INDEX.find((e) => e.id === "sounds")!)).toBe("Notifications & sounds");
 	});
 });
 
@@ -300,12 +315,12 @@ describe("relativeFrom", () => {
 });
 
 describe("sound settings are searchable", () => {
-	// Every row of Settings ▸ General ▸ Sounds must be reachable from search, and nothing may point at a category
+	// Every row of Settings ▸ Notifications & sounds ▸ Sounds must be reachable from search, and nothing may point at a category
 	// the sound system does not have (the catalog and the policy are two lists that must stay one).
 	test("master, volume and reduce are findable", () => {
 		for (const q of ["sounds", "volume", "reduce sounds", "earcon", "chime"])
 			expect(
-				searchSettings(q).some((e) => e.section === "general" && e.group === "Sounds"),
+				searchSettings(q).some((e) => e.section === "notifications" && e.group === "Sounds"),
 				q,
 			).toBe(true);
 	});

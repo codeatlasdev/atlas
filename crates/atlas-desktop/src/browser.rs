@@ -4,7 +4,8 @@
 //! Design Mode script (`browser_grab.js`) is injected into every page; it holds
 //! no secret. The app reads results with `eval_with_callback`, never over the network.
 //!
-//! Events: `browser://<tab>` `{event: "load"|"title"|"nav", url, title?}`.
+//! Events: `browser://<tab>` `{event: "load"|"title"|"nav", url, title?}`, and on macOS
+//! `{event: "fail", url, code, domain, message}` for a failed navigation (`browser_fail_mac.rs`).
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -259,7 +260,20 @@ pub async fn browser_open(
     match created {
         // The key monitor (browser_keys_mac.rs) needs to know which native views are browser pages.
         #[cfg(target_os = "macos")]
-        Ok(v) => crate::browser_keys_mac::track(&v, label(&tab)),
+        Ok(v) => {
+            crate::browser_keys_mac::track(&v, label(&tab));
+            // WebKit's failed-load callbacks, which wry never forwards (`browser_fail_mac.rs`).
+            crate::browser_fail_mac::track(&app, &v, tab.clone());
+            // The router (`natives`) finds the page's `WKWebView` by kind and tab, and a browser page takes its own
+            // mouse input; the view goes BELOW the main webview, which is transparent over this tab's slot. Queued
+            // on the main thread before this command returns.
+            let t = tab.clone();
+            let _ = v.with_webview(move |pw| {
+                let view = pw.inner() as usize;
+                crate::natives::register("browser", &t, view, true);
+                crate::natives::lower_below_page(view);
+            });
+        }
         #[cfg(not(target_os = "macos"))]
         Ok(_) => {}
         Err(e) => {
@@ -352,7 +366,14 @@ pub async fn browser_close(app: AppHandle, tab: String) -> Result<(), String> {
     let _gate = LIFECYCLE.lock().await;
     REGISTRY.lock().close(&tab);
     #[cfg(target_os = "macos")]
-    crate::browser_keys_mac::untrack(&label(&tab));
+    {
+        crate::browser_keys_mac::untrack(&label(&tab));
+        crate::browser_fail_mac::untrack(&tab);
+    }
+    // The view leaves the native registry first: its pointer may be reused by the next view and must not receive the
+    // old one's input.
+    #[cfg(target_os = "macos")]
+    crate::natives::unregister("browser", &tab);
     match webview(&app, &tab) {
         Ok(v) => v.close().map_err(|e| e.to_string()),
         Err(_) => Ok(()),

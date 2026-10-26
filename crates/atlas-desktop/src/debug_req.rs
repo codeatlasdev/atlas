@@ -89,6 +89,12 @@ pub enum Req {
         w: f64,
         h: f64,
     },
+    /// Hide the main window (`on`) or show it again: the window-restore transition of the flicker sweep. Agent
+    /// instances only (the show goes back through the guarded placement); never `miniaturize`, whose animation
+    /// flies the window to the Dock on the user's displays.
+    Hide {
+        on: bool,
+    },
     /// The newest live frame of the main window newer than `since` (JPEG, base64), waiting up to `wait_ms`.
     Frame {
         since: u64,
@@ -265,6 +271,9 @@ pub fn parse(v: &Value) -> Result<Req, String> {
                 h: side("height")?,
             })
         }
+        "hide" => Ok(Req::Hide {
+            on: v["on"].as_bool().ok_or("hide needs on: true|false")?,
+        }),
         "record" => {
             let stop = match (v["seconds"].as_u64(), str_field(v, "until")) {
                 (Some(_), Some(_)) => return Err("give --seconds or --until, not both".into()),

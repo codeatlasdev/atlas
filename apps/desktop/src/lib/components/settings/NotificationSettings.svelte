@@ -1,31 +1,10 @@
 <script lang="ts">
-	import { IS_MAC } from "#lib/keys.ts";
-	/** Settings ▸ General ▸ Links and Notifications: where links open and when Atlas tells you about agents. */
-	import { SegmentedControl, Switch } from "@codeatlasdev/ui";
+	/** Settings ▸ Notifications & sounds ▸ Notifications: when Atlas tells you about agents. */
+	import { Switch } from "@codeatlasdev/ui";
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import { agents } from "#lib/stores/agents.svelte.ts";
-	import { browserPrefs } from "#lib/stores/browser.svelte.ts";
 </script>
-
-<Group title="Links">
-	<Row
-		id="browser"
-		label="Open links in"
-		description={`Where links from services, ports and terminals open. Hold ${IS_MAC ? "⌘" : "Ctrl"} while clicking to use the other browser.`}
-	>
-		<SegmentedControl
-			aria-label="Open links in"
-			size="sm"
-			value={browserPrefs.openIn}
-			items={[
-				{ value: "atlas", label: "Atlas browser" },
-				{ value: "system", label: "System browser" },
-			]}
-			onchange={(v) => browserPrefs.set(v as "atlas" | "system")}
-		/>
-	</Row>
-</Group>
 
 <Group title="Notifications" description="Atlas tells you when an agent finishes or needs you.">
 	<Row

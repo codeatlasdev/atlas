@@ -90,7 +90,10 @@ fn vertex_buffer_shrinks_back_after_a_burst() {
         }
     }
     let (n, cap) = shrank.expect("never shrank after the burst");
-    assert!(n >= 100, "shrank after only {n} quiet writes (thrashing risk)");
+    assert!(
+        n >= 100,
+        "shrank after only {n} quiet writes (thrashing risk)"
+    );
     assert_eq!(cap, 128 * KB, "twice the recent peak, power of two");
     assert!(s.cap() < 8 << 20 && s.cap() >= base);
 }
@@ -143,7 +146,11 @@ fn image_cache_is_bounded_in_bytes_not_count() {
         c.insert(id, 1, img, (), frame);
         c.touch(id, frame);
         c.evict(frame);
-        assert!(c.bytes() <= 64 << 20, "{} bytes after image {id}", c.bytes());
+        assert!(
+            c.bytes() <= 64 << 20,
+            "{} bytes after image {id}",
+            c.bytes()
+        );
     }
     assert_eq!(c.len(), 4);
     assert!(c.get(99).is_some() && c.get(0).is_none());
@@ -183,4 +190,16 @@ fn image_cache_replacing_an_upload_keeps_the_byte_count_exact() {
     c.insert(1, 2, 60, (), 2);
     assert_eq!(c.bytes(), 60);
     assert!(c.fresh(1, 2));
+}
+
+// The scroll thumb was a fixed light grey: invisible on a light terminal theme. It contrasts with the background.
+#[test]
+fn scroll_thumb_is_dark_on_light_backgrounds_and_light_on_dark_ones() {
+    let on_dark = super::thumb_color([0x1a, 0x1b, 0x26, 0xff]);
+    let on_light = super::thumb_color([0xfa, 0xfa, 0xfa, 0xff]);
+    assert!(
+        on_dark[0] > 0x80 && on_light[0] < 0x80,
+        "{on_dark:?} {on_light:?}"
+    );
+    assert!(on_dark[3] > 0 && on_dark[3] < 0xff);
 }

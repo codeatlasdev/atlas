@@ -1,46 +1,49 @@
 <script lang="ts">
-	/** Settings dialog: section nav on the left, the selected page (or search results) on the right. */
-	import { Dialog, IconButton } from "@codeatlasdev/ui";
+	/**
+	 * Settings dialog: section nav on the left, the selected page (or search results) on the right. What exists,
+	 * its titles and its tabs all come from the registry (`lib/settings/registry.ts`); this file only lays it out.
+	 */
+	import { Dialog, IconButton, Tabs, TabsContent, TabsList, TabsTrigger } from "@codeatlasdev/ui";
 	import { X } from "@lucide/svelte";
 	import { tick } from "svelte";
-	import HelpSettings from "#lib/onboarding/HelpSettings.svelte";
-	import { searchSettings, type SettingEntry } from "#lib/settings/index.ts";
+	import {
+		SECTIONS,
+		SECTION_TABS,
+		searchSettings,
+		type SettingEntry,
+		type SettingsTab,
+	} from "#lib/settings/index.ts";
 	import PageHead from "#lib/settings/PageHead.svelte";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
-	import AgentSettings from "./AgentSettings.svelte";
-	import GitSettings from "./GitSettings.svelte";
-	import AppearanceSettings from "./AppearanceSettings.svelte";
-	import EditorSettings from "./EditorSettings.svelte";
-	import LinksNotifications from "./settings/LinksNotifications.svelte";
+	import { PAGE_COMPONENTS, type PageKey } from "./settings/pageComponents.ts";
 	import SearchResults from "./settings/SearchResults.svelte";
-	import SectionTitle from "./settings/SectionTitle.svelte";
 	import SettingsNav from "./settings/SettingsNav.svelte";
-	import SoundSettings from "./settings/SoundSettings.svelte";
-	import UpdatesSection from "./settings/UpdatesSection.svelte";
-	import ShellSettings from "./ShellSettings.svelte";
-	import ShortcutSettings from "./ShortcutSettings.svelte";
-	import SshSettings from "./SshSettings.svelte";
-	import MobileSettings from "./MobileSettings.svelte";
-	import TerminalSettings from "./TerminalSettings.svelte";
-	import WorkspaceSettings from "./WorkspaceSettings.svelte";
 
 	let results = $derived(searchSettings(u.query));
 	let searching = $derived(u.query.trim() !== "");
 	let paneEl: HTMLDivElement | undefined = $state();
 
-	/** Jump to the section/tab of a result and flash the matching row once it renders. */
-	async function go(e: SettingEntry) {
-		u.section = e.section;
-		if (e.tab) u.tab = e.tab;
-		u.query = "";
-		await tick();
-		await new Promise((r) => requestAnimationFrame(r));
-		const row = paneEl?.querySelector<HTMLElement>(`[data-setting="${e.id}"]`);
-		if (!row) return;
-		row.scrollIntoView({ block: "center", behavior: "smooth" });
-		row.classList.add("flash");
-		setTimeout(() => row.classList.remove("flash"), 1500);
-	}
+	let section = $derived(SECTIONS.find((s) => s.id === u.section)!);
+	let tabs = $derived(SECTION_TABS[u.section]);
+	/** A tab id that does not belong to the open section (left over from another) reads as its first tab. */
+	let tab = $derived(tabs?.find((t) => t.id === u.tab) ?? tabs?.[0]);
+	let Page = $derived(PAGE_COMPONENTS[(tab ? `${u.section}/${tab.id}` : u.section) as PageKey]);
+
+	/** Scroll to the row a deep link or a search result names, and flash it once its page has rendered. */
+	$effect(() => {
+		const id = u.open && !searching ? u.reveal : null;
+		if (!id) return;
+		void (async () => {
+			await tick();
+			await new Promise((r) => requestAnimationFrame(r));
+			const row = paneEl?.querySelector<HTMLElement>(`[data-setting="${id}"]`);
+			u.reveal = null;
+			if (!row) return;
+			row.scrollIntoView({ block: "center", behavior: "smooth" });
+			row.classList.add("flash");
+			setTimeout(() => row.classList.remove("flash"), 1500);
+		})();
+	});
 </script>
 
 <Dialog bind:open={u.open} size="xl" chromeless title="Settings" class="settings-dialog">
@@ -55,48 +58,26 @@
 			</div>
 			<div class="page">
 				{#if searching}
-					<SearchResults {results} query={u.query} onpick={go} />
-				{:else if u.section === "general"}
-					<PageHead
-						title="General"
-						description="Keep Atlas up to date, make sure your projects start with the same tools as your terminal, and choose how Atlas tells you things."
+					<SearchResults
+						{results}
+						query={u.query}
+						onpick={(e: SettingEntry) => u.select({ ...e, item: e.id })}
 					/>
-					<UpdatesSection />
-					<SectionTitle title="Shell for your projects" setting="shell">
-						Services start with the PATH and variables of this shell, the same as in your terminal. Pick
-						another shell if tools like bun or node are not found.
-					</SectionTitle>
-					<ShellSettings />
-					<LinksNotifications />
-					<SoundSettings />
-				{:else if u.section === "appearance"}
-					<AppearanceSettings />
-				{:else if u.section === "editor"}
-					<EditorSettings />
-				{:else if u.section === "terminal"}
-					<TerminalSettings />
-				{:else if u.section === "workspaces"}
-					<WorkspaceSettings />
-				{:else if u.section === "agents"}
-					<AgentSettings />
-				{:else if u.section === "git"}
-					<GitSettings />
-				{:else if u.section === "keyboard"}
-					<PageHead
-						title="Keyboard shortcuts"
-						description="Click a shortcut to change it. Every command is listed, whether it has a key or not."
-					/>
-					<ShortcutSettings />
-				{:else if u.section === "ssh"}
-					<SshSettings />
-				{:else if u.section === "mobile"}
-					<MobileSettings />
-				{:else if u.section === "help"}
-					<PageHead
-						title="Help & onboarding"
-						description="Take the tour again, look up a shortcut, or bring the checklist back."
-					/>
-					<HelpSettings />
+				{:else}
+					<PageHead title={section.label} description={section.description} />
+					{#if tabs}
+						<Tabs bind:value={u.tab as SettingsTab}>
+							<TabsList>
+								{#each tabs as t (t.id)}
+									<TabsTrigger value={t.id}>{t.label}</TabsTrigger>
+								{/each}
+							</TabsList>
+						</Tabs>
+						<p class="tabdesc">{tab?.description}</p>
+					{/if}
+					{#key `${u.section}/${tab?.id ?? ""}`}
+						<Page />
+					{/key}
 				{/if}
 			</div>
 		</div>
@@ -149,5 +130,12 @@
 	/* A scrolling column: children keep their content height (alerts and groups were squeezed). */
 	.page > :global(*) {
 		flex-shrink: 0;
+	}
+	.tabdesc {
+		margin: -10px 0 0;
+		max-width: 72ch;
+		font-size: 12.5px;
+		line-height: 1.5;
+		color: var(--ca-text-secondary);
 	}
 </style>

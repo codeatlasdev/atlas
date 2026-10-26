@@ -351,7 +351,7 @@ fn custom_launch(cmd: &str, args: &[String]) -> std::result::Result<Launch, Fail
             "custom_not_found",
             format!("The custom language server command `{cmd}` was not found"),
         )
-        .hint("Check the command in Settings → Languages (or .atlas/settings.json); it must be an executable on PATH or an absolute path.")),
+        .hint("Check the command in Settings → Editor → Languages (or .atlas/settings.json); it must be an executable on PATH or an absolute path.")),
     }
 }
 

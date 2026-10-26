@@ -1,6 +1,6 @@
 /**
- * Keeps the native terminal view (a child view painted above the webview) in step with its DOM
- * slot: opens it once, tracks bounds/visibility, and builds the color and pref payloads.
+ * The terminal's adapter over the native-view core (`lib/native/surface.ts`): how a GPU terminal is opened, placed and
+ * closed, and the colour and pref payloads. Everything the native views share lives in the core.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -11,8 +11,7 @@ import { bootMark } from "#lib/boot.ts";
 import { gpu } from "#lib/stores/gpu.svelte.ts";
 import { prefs } from "#lib/stores/prefs.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
-import { nativeRect } from "#lib/zoom.ts";
-import { overlayOpen } from "../nativeSlot.ts";
+import { createNativeSurface, type NativeRect, type NativeSurface } from "#lib/native/surface.ts";
 import { fontCandidates, insetRect } from "./fonts.ts";
 import { isViewDropped } from "./viewDropped.ts";
 
@@ -76,83 +75,103 @@ export function listenFontFallback() {
 	});
 }
 
+/**
+ * The terminal's ADAPTER over the native-view core (`native/surface.ts`): the core serializes open → bounds → close,
+ * carves the page transparent over the view, parks for swipes, strips 2 px for the loading bar and registers the view
+ * for the reconciler; this class says how a GPU terminal is opened, placed and closed, and owns the terminal extras
+ * (colours, prefs, reload).
+ */
 export class NativeView {
-	opened = false;
-	#failed = false;
-	// Observers fire concurrently; serialize so `term_open` runs once before any `term_bounds`.
-	#chain = Promise.resolve();
+	#surface: NativeSurface;
 
 	constructor(
 		private ids: () => { tab: string; pty: string },
 		private area: () => HTMLElement | undefined,
 		private visible: () => boolean,
-	) {}
-
-	sync = () => {
-		this.#chain = this.#chain.then(() => this.#apply());
-		return this.#chain;
-	};
-
-	async #apply() {
-		const area = this.area();
-		if (!area || this.#failed) return;
-		const { tab, pty } = this.ids();
-		const r = area.getBoundingClientRect();
-		const { padding_x: px, padding_y: py } = prefs.value.terminal;
-		// The view's frame is in window points, the slot in CSS px (they differ under layout zoom).
-		const rect = nativeRect(insetRect(r, px, py));
-		// The native view sits above the webview: park it under dialogs/palette.
-		const show = this.visible() && r.width > 0 && r.height > 0 && !overlayOpen(r, area);
-		try {
-			if (!this.opened) {
-				if (!show) return;
-				this.opened = true;
-				bootMark("term_open:begin");
-				await invoke("term_open", { tab, pty, ...rect, ...termColors(area), prefs: termPrefs() });
-				bootMark("term_open:done");
-			}
-			try {
-				await invoke("term_bounds", { tab, ...rect, visible: show });
-			} catch (e) {
-				if (!isViewDropped(e)) throw e;
-				// The native view is gone (its render thread ended): open it again over the same
-				// pty, which hostd kept alive with its scrollback (it replays into the new view).
-				if (!show) return void (this.opened = false);
-				await invoke("term_open", { tab, pty, ...rect, ...termColors(area), prefs: termPrefs() });
-				await invoke("term_bounds", { tab, ...rect, visible: show });
-			}
-		} catch (e) {
-			this.#failed = true;
-			const msg = errText(e);
-			// A host that predates the raw stream and could not be replaced: xterm.js until it
-			// restarts. (The app normally upgrades it live on connect, see `host.rs`.)
-			if (msg.includes("pty_attach_raw")) {
-				if (!gpu.hostTooOld)
-					toast.info("GPU terminal turns on after the terminal host restarts (Settings → Terminal).");
-				gpu.hostTooOld = true;
-			} else toast.error(msg);
-		}
+		/** Tauri's `invoke`; injected by the tests. */
+		private call: typeof invoke = invoke,
+		/** The colour payload of `term_open`; injected by the tests. */
+		private colors: (el: Element) => Record<string, unknown> = termColors,
+	) {
+		const open = async (rect: NativeRect) => {
+			const { tab, pty } = this.ids();
+			const el = this.area();
+			bootMark("term_open:begin");
+			await this.call("term_open", {
+				tab,
+				pty,
+				...rect,
+				...(el ? this.colors(el) : {}),
+				prefs: termPrefs(),
+			});
+			bootMark("term_open:done");
+		};
+		this.#surface = createNativeSurface({
+			kind: "terminal",
+			id: ids().tab,
+			slot: area,
+			visible,
+			// The native view is the slot inset by the terminal's padding; the slot behind it paints the background.
+			rect: (r) => {
+				const { padding_x: px, padding_y: py } = prefs.value.terminal;
+				return insetRect(r, px, py);
+			},
+			open,
+			place: (rect, shown) => this.call("term_bounds", { tab: this.ids().tab, ...rect, visible: shown }),
+			release: () =>
+				this.call("term_close", { tab: this.ids().tab }).then(
+					() => {},
+					() => {},
+				),
+			// The native view is gone (its render thread ended): the core opens it again over the same pty, which hostd
+			// kept alive with its scrollback (it replays into the new view).
+			gone: isViewDropped,
+			onError: (e) => {
+				const msg = errText(e);
+				// A host that predates the raw stream and could not be replaced: xterm.js until it restarts. (The app
+				// normally upgrades it live on connect, see `host.rs`.)
+				if (msg.includes("pty_attach_raw")) {
+					if (!gpu.hostTooOld)
+						toast.info("GPU terminal turns on after the terminal host restarts (Settings → Terminal).");
+					gpu.hostTooOld = true;
+				} else toast.error(msg);
+				return "stop";
+			},
+			reload: () => this.call("term_reload", { tab: this.ids().tab }),
+		});
 	}
+
+	get opened() {
+		return this.#surface.isOpen();
+	}
+
+	sync = () => this.#surface.sync();
+
+	/**
+	 * The component is going away: close the view AFTER whatever is queued (an in-flight `term_open` included), and let
+	 * nothing open or show it again. A close outside the chain landed before the open and left an owner-less view on
+	 * screen over every other space.
+	 */
+	dispose = () => this.#surface.dispose();
 
 	/**
 	 * "Reload terminal": the backend replaces this tab's surface and renderer; the pty, screen and
 	 * scrollback stay. No-op before the view is opened.
 	 */
-	async reload() {
-		if (!this.opened) return;
-		await invoke("term_reload", { tab: this.ids().tab });
+	reload() {
+		return this.#surface.reload();
 	}
 
 	/** Recolor live after a theme switch. */
 	recolor() {
 		const area = this.area();
 		if (this.opened && area)
-			void invoke("term_recolor", { tab: this.ids().tab, ...termColors(area) }).catch(() => {});
+			void this.call("term_recolor", { tab: this.ids().tab, ...termColors(area) }).catch(() => {});
 	}
 
 	/** Push `terminal.*` settings live: scrollback, cursor, OSC 52. */
 	setPrefs() {
 		const p = termPrefs();
-		if (this.opened) void invoke("term_set_prefs", { tab: this.ids().tab, prefs: p }).catch(() => {});
+		if (this.opened) void this.call("term_set_prefs", { tab: this.ids().tab, prefs: p }).catch(() => {});
 	}
 }

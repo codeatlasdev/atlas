@@ -6,7 +6,6 @@
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import Group from "#lib/settings/Group.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import {
 		pairUrl,
@@ -63,11 +62,6 @@
 	const left = $derived(pairing ? secondsLeft(pairing.p, pairing.at, clk.now) : 0);
 	const active = $derived(devices.filter((d) => !d.revoked));
 </script>
-
-<PageHead
-	title="Mobile"
-	description="See and control this computer's projects, agents and terminals from Atlas Mobile. No account: the phone connects straight to this computer (through an encrypted relay when a direct path is blocked). The computer must be awake."
-/>
 
 <Group title="Pair a phone">
 	<Row

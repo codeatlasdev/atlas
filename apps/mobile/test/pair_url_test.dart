@@ -7,7 +7,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 
 void main() {
   group('PairInfo.parse', () {
-    // The URL Settings → Mobile really shows (fixtures/pair_url.txt, written by the
+    // The URL Settings → Integrations → Mobile really shows (fixtures/pair_url.txt, written by the
     // desktop's mobile.test.ts from hostd's real `mobile_pair_start` reply): a hand-typed
     // URL here could hide an encoding the phone reads differently ('+' for a space).
     test('reads the pairing URL the desktop produces', () {

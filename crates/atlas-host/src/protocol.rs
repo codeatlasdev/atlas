@@ -287,7 +287,7 @@ pub enum HostCmd {
     /// Install or reinstall a managed server now (progress arrives as `lsp_status` pushes).
     LspInstall {
         name: String,
-        /// Remove Atlas's managed copy first (Settings → Languages → Update).
+        /// Remove Atlas's managed copy first (Settings → Editor → Languages → Update).
         #[serde(default)]
         reinstall: bool,
     },

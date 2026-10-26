@@ -181,13 +181,14 @@
 </Dialog>
 
 <style>
-	/* One row, 40px: the same band as the macOS traffic lights (window y ≈ 8 + 20). The crumb
+	/* One row, --title-row tall (app.css): the same band as the macOS traffic lights, whose centre is that row's
+	   (trafficLightPosition in tauri.conf.json, pinned by lib/trafficLights.test.ts). The crumb
 	   truncates first; the actions never wrap. */
 	header {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		height: 40px;
+		height: var(--title-row);
 		flex: none;
 		padding: 0 10px 0 10px;
 		transition: padding-left var(--dur-slow) var(--ease);

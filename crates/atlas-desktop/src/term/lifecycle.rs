@@ -232,6 +232,8 @@ pub async fn term_open(
         )
     })?;
     shared.set_view(view);
+    // Its input is DOM events on the slot, so the router leaves it to the page (`natives`).
+    crate::natives::register("terminal", &tab, view, false);
     emit_font_event(&app, &tab, &spec, &resolution);
     shared.placement.lock().request((x, y, w, h), true);
     let render = spawn_render(&app, &tab, &pty, &shared, renderer, ns_win, scale)?;
@@ -294,7 +296,7 @@ fn spawn_render(
         .spawn(move || {
             let (resize_app, font_app, first_app, rebuild_app) =
                 (a.clone(), a.clone(), a.clone(), a);
-            let (font_tab, incident_tab) = (tab.clone(), tab);
+            let (font_tab, incident_tab, rebuild_tab) = (tab.clone(), tab.clone(), tab);
             let (first_sh, rebuild_sh) = (sh.clone(), sh.clone());
             render_loop(
                 renderer,
@@ -321,7 +323,15 @@ fn spawn_render(
                         }
                     }),
                     rebuild: Box::new(move |old: Renderer, pixels, _why| {
-                        rebuild_surface(&rebuild_app, &rebuild_sh, ns_win, scale, old, pixels)
+                        rebuild_surface(
+                            &rebuild_app,
+                            &rebuild_sh,
+                            &rebuild_tab,
+                            ns_win,
+                            scale,
+                            old,
+                            pixels,
+                        )
                     }),
                     incident: Box::new(move |kind, detail| {
                         crate::diag::incident(kind, &format!("tab {incident_tab}: {detail}"))
@@ -339,6 +349,7 @@ fn spawn_render(
 fn rebuild_surface(
     app: &AppHandle,
     sh: &Arc<Shared>,
+    tab: &str,
     ns_win: usize,
     scale: f64,
     old: Renderer,
@@ -364,6 +375,8 @@ fn rebuild_surface(
     // Parked again: `on_first_frame` shows the new view over the pane once it has drawn.
     sh.placement.lock().parked();
     let old_view = sh.set_view(view);
+    // The registry follows the tab to the new view.
+    crate::natives::register("terminal", tab, view, false);
     // The old surface must be gone before its view is released.
     drop(old);
     let _ = on_main(app, move || {
@@ -437,6 +450,15 @@ pub fn term_reload(tab: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Tab ids of every open native terminal view. The page closes the ones no mounted terminal owns
+/// (`lib/nativeViews.ts`): a view whose owner went away can never be parked again by anyone else.
+#[tauri::command]
+pub fn term_list() -> Vec<String> {
+    let mut v: Vec<String> = TERMS.lock().keys().cloned().collect();
+    v.sort();
+    v
+}
+
 #[tauri::command]
 pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
     let Some(mut t) = TERMS.lock().remove(&tab) else {
@@ -450,6 +472,7 @@ pub async fn term_close(app: AppHandle, tab: String) -> Result<(), String> {
         let _ = r.join();
     }
     let view = t.shared.view();
+    crate::natives::unregister("terminal", &tab);
     on_main(&app, move || {
         mac::destroy(view);
         Ok(())

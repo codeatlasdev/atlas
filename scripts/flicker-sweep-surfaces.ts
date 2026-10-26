@@ -12,6 +12,16 @@ export interface Drive {
 	type(selector: string, text: string, delayMs?: number): Promise<void>;
 	/** Resize the main window (logical px). */
 	resize(w: number, h: number): Promise<void>;
+	/**
+	 * The transition just driven has reached its final state: waits until the pager is at rest and every animation
+	 * finished, then records the moment. The ghost judge holds every frame shown after it to the settled picture
+	 * (`ghostFrames`); a surface that marks nothing is not ghost-judged.
+	 */
+	mark(): Promise<void>;
+	/** Replay a recorded trackpad trace (`__fixtures__/traces/<name>.json`) aimed at the sidebar's space zone. */
+	swipe(trace: string): Promise<void>;
+	/** Hide the window (true) or show it again (false): the window-restore transition. */
+	hide(on: boolean): Promise<void>;
 	fixtures: Fixtures;
 }
 
@@ -177,28 +187,25 @@ export const SURFACES: Surface[] = [
 	},
 	{
 		id: "dialogs",
-		covers: "dialogs open/close: new worktree, find projects, confirm (ask), prompt, what's new drawer",
-		seconds: 22,
+		covers: "dialogs open/close: new worktree, find projects, confirm (ask), what's new drawer; ghost-judged after each",
+		seconds: 26,
 		expects: [["the app (all dialogs closed)", '[aria-label="Settings"]']],
 		async run(d) {
 			const { main } = d.fixtures;
 			await d.eval(select(main));
-			await d.eval(`${A}.worktrees.newDialog.repoId = ${ids(main)}; ${A}.worktrees.newDialog.open = true; return 1`);
-			await d.sleep(1800);
-			await d.eval(`${A}.worktrees.newDialog.open = false; return 1`);
-			await d.sleep(1200);
-			await d.eval(`${A}.discovery.open = true; return 1`);
-			await d.sleep(1800);
-			await d.eval(`${A}.discovery.close(); return 1`);
-			await d.sleep(1200);
-			await d.eval(`${A}.confirmDialog("Sweep", { description: "Confirm?" }); return 1`);
-			await d.sleep(1800);
-			await d.eval(key("escape"));
-			await d.sleep(1200);
-			await d.eval(`${A}.updates.whatsNewOpen = true; return 1`);
-			await d.sleep(1800);
-			await d.eval(`${A}.updates.whatsNewOpen = false; return 1`);
-			await d.sleep(1200);
+			for (const [open, close] of [
+				[`${A}.worktrees.newDialog.repoId = ${ids(main)}; ${A}.worktrees.newDialog.open = true`, `${A}.worktrees.newDialog.open = false`],
+				[`${A}.discovery.open = true`, `${A}.discovery.close()`],
+				[`${A}.confirmDialog("Sweep", { description: "Confirm?" })`, null],
+				[`${A}.updates.whatsNewOpen = true`, `${A}.updates.whatsNewOpen = false`],
+			] as const) {
+				await d.eval(`${open}; return 1`);
+				await d.mark();
+				await d.sleep(1100);
+				await d.eval(close ? `${close}; return 1` : key("escape"));
+				await d.mark();
+				await d.sleep(1100);
+			}
 		},
 	},
 	{
@@ -228,6 +235,53 @@ export const SURFACES: Surface[] = [
 			await d.sleep(1500);
 			await d.eval(`const b = document.querySelector('[aria-label="Settings"]'); b?.dispatchEvent(new PointerEvent("pointerleave", { bubbles: true, pointerType: "mouse" })); return !!b`);
 			await d.sleep(900);
+		},
+	},
+	{
+		id: "spaces-click",
+		covers: "space switches by clicking the sidebar (10, both directions and jumps); ghost-judged after each",
+		seconds: 24,
+		expects: [["the space strip", ".spaces .space"]],
+		async run(d) {
+			const { main } = d.fixtures;
+			await d.eval(select(main));
+			await d.sleep(800);
+			for (const n of ["sweep-docs", "sweep-api", main, "sweep-api", "sweep-docs", main, "sweep-docs", main, "sweep-api", main]) {
+				await d.click(`.spaces .space[aria-label="${n}"]`);
+				await d.mark();
+				await d.sleep(1100);
+			}
+		},
+	},
+	{
+		id: "spaces-gesture",
+		covers: "space switches by trackpad gesture (10 replayed flicks over the sidebar, both directions); ghost-judged after each",
+		seconds: 26,
+		async run(d) {
+			await d.eval(select(d.fixtures.main));
+			await d.sleep(800);
+			for (let i = 0; i < 10; i++) {
+				await d.swipe(i % 2 ? "flick-prev" : "flick-next");
+				await d.mark();
+				await d.sleep(1100);
+			}
+		},
+	},
+	{
+		id: "restore",
+		covers: "window hidden and shown again (restore) over the Panel, three times; ghost-judged after each show",
+		seconds: 14,
+		async run(d) {
+			await d.eval(select(d.fixtures.main));
+			await d.eval(reveal("services", "Panel"));
+			await d.sleep(800);
+			for (let i = 0; i < 3; i++) {
+				await d.hide(true);
+				await d.sleep(800);
+				await d.hide(false);
+				await d.mark();
+				await d.sleep(1200);
+			}
 		},
 	},
 	{
@@ -321,12 +375,13 @@ export const SURFACES: Surface[] = [
 	},
 	{
 		id: "tabs",
-		covers: "tab strip: switch between Panel, Logs, Changes, Config (pane swap), close and reopen a tab",
-		seconds: 16,
+		covers: "tab strip: switch between Panel, Logs, Changes, Config (pane swap); ghost-judged after each",
+		seconds: 18,
 		async run(d) {
 			await d.eval(select(d.fixtures.main));
 			for (const [kind, label] of [["logs", "Logs"], ["diff", "Changes"], ["config", "Config"], ["services", "Panel"], ["logs", "Logs"]] as const) {
 				await d.eval(reveal(kind, label));
+				await d.mark();
 				await d.sleep(1500);
 			}
 		},

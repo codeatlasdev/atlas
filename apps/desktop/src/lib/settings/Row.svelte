@@ -7,6 +7,7 @@
 		id,
 		stack = false,
 		children,
+		lead,
 		below,
 	}: {
 		label: string;
@@ -16,6 +17,8 @@
 		/** Control under the text instead of beside it (wide controls). */
 		stack?: boolean;
 		children?: Snippet;
+		/** Icon or logo before the label (an agent, a device). */
+		lead?: Snippet;
 		/** Full-width content under the row (previews, notices). */
 		below?: Snippet;
 	} = $props();
@@ -23,6 +26,7 @@
 
 <div class="row" class:stack data-setting={id}>
 	<div class="main">
+		{#if lead}<span class="lead">{@render lead()}</span>{/if}
 		<div class="text">
 			<span class="label">{label}</span>
 			{#if description}<span class="desc">{description}</span>{/if}
@@ -42,6 +46,15 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 24px;
+	}
+	.lead {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		width: 28px;
+		height: 28px;
+		margin-right: -10px;
+		color: var(--ca-text-secondary);
 	}
 	.stack .main {
 		flex-direction: column;

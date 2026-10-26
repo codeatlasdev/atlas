@@ -584,7 +584,7 @@ async fn agent_send_types_only_into_an_idle_or_done_agent() {
     c.call("shutdown", json!({})).await.ok();
 }
 
-/// Contract with Settings → Mobile: `apps/desktop/src/lib/__fixtures__/mobile-*.json` are
+/// Contract with Settings → Integrations → Mobile: `apps/desktop/src/lib/__fixtures__/mobile-*.json` are
 /// this producer's output (random parts pinned), read by `settings/mobile.test.ts`, whose
 /// pairing URL the phone's `pair_url_test.dart` parses. `UPDATE_FIXTURES=1` rewrites them.
 #[tokio::test]

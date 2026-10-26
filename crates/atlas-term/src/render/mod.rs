@@ -257,10 +257,16 @@ impl Renderer {
 
     /// GPU bytes held by the vertex buffers and the inline-image textures (leak/soak probes).
     pub fn gpu_bytes(&self) -> u64 {
-        [&self.imgs, &self.cells, &self.glyphs, &self.color_glyphs, &self.decos]
-            .iter()
-            .map(|b| b.capacity())
-            .sum::<u64>()
+        [
+            &self.imgs,
+            &self.cells,
+            &self.glyphs,
+            &self.color_glyphs,
+            &self.decos,
+        ]
+        .iter()
+        .map(|b| b.capacity())
+        .sum::<u64>()
             + self.textures.bytes()
     }
 
@@ -384,19 +390,23 @@ impl Renderer {
                 }
             }
         }
-        // Scrollbar thumb: right edge, height ∝ visible/total, top = history position.
-        if f.total_lines > f.rows && f.rows > 0 {
+        // Scrollbar thumb, macOS overlay style: only while the view is scrolled back into history (at the live
+        // bottom it says nothing and was a permanent grey bar), thin, inset from the edge and the corners, a neutral
+        // that contrasts with the background at low alpha (`thumb_color`).
+        if f.total_lines > f.rows && f.rows > 0 && f.display_offset > 0 {
+            let s = self.scale;
+            let inset = 3.0 * s;
             let max_off = (f.total_lines - f.rows) as f32;
-            let vp_h = self.config.height as f32;
-            let thumb_h = (vp_h * f.rows as f32 / f.total_lines as f32).max(20.0);
-            let thumb_y = (vp_h - thumb_h) * (1.0 - f.display_offset as f32 / max_off);
-            let w = 4.0 * self.scale;
+            let track = self.config.height as f32 - 2.0 * inset;
+            let thumb_h = (track * f.rows as f32 / f.total_lines as f32).max(28.0 * s);
+            let thumb_y = inset + (track - thumb_h) * (1.0 - f.display_offset as f32 / max_off);
+            let w = 3.0 * s;
             self.deco_insts.push(DecoInst {
-                x: self.config.width as f32 - w,
+                x: self.config.width as f32 - w - inset,
                 y: thumb_y,
                 w,
                 h: thumb_h,
-                color: [0x88, 0x88, 0x88, 0x80],
+                color: thumb_color(f.clear),
                 kind: 0,
             });
         }
@@ -499,5 +509,15 @@ impl Renderer {
         g.queue.present(frame);
         self.timing.record(t0);
         Ok(true)
+    }
+}
+
+/// Scroll thumb colour: light on a dark background, dark on a light one, at low alpha.
+pub(crate) fn thumb_color(bg: [u8; 4]) -> [u8; 4] {
+    let l = 0.2126 * f32::from(bg[0]) + 0.7152 * f32::from(bg[1]) + 0.0722 * f32::from(bg[2]);
+    if l < 128.0 {
+        [0xc8, 0xcc, 0xd4, 0x59]
+    } else {
+        [0x30, 0x33, 0x3a, 0x4d]
     }
 }

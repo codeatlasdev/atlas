@@ -16,7 +16,10 @@ import { spawn } from "bun";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compile } from "svelte/compiler";
+// The app's own Svelte (the repo root has no svelte): resolved from apps/desktop, so the probe compiles the component
+// with the exact compiler the app ships.
+const svelte = (sub: string) => Bun.resolveSync(`svelte/${sub}`, join(import.meta.dir, "../apps/desktop"));
+const { compile } = (await import(svelte("compiler"))) as typeof import("svelte/compiler");
 
 const arg = (k: string, d?: string) => {
 	const i = process.argv.indexOf(`--${k}`);
@@ -49,7 +52,7 @@ export async function renderLayer(current: boolean): Promise<string> {
 	try {
 		const file = join(dir, "SpaceLayer.mjs");
 		await Bun.write(file, server);
-		const { render } = await import("svelte/server");
+		const { render } = (await import(svelte("server"))) as typeof import("svelte/server");
 		const mod = (await import(file)) as { default: unknown };
 		const vars = { accent: "red", text: "red", onAccent: "white", tint: "red" };
 		const children = (r: { push(s: string): void }) => r.push("@@BODY@@");

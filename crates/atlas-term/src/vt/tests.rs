@@ -814,3 +814,85 @@ fn answers_osc_10_11_and_4_color_queries() {
         )
     );
 }
+
+// Incident (2026-10-26, GIF): `clear` in zsh left the old prompt and the word "clear" on screen.
+// Bytes captured from a real zsh on a pty (TERM=xterm-256color, macOS `clear`): the E3 (`ESC[3J`)
+// comes BEFORE home + clear-screen (`ESC[H ESC[2J`), so when ED 3 runs there is no scrollback yet
+// to purge, and alacritty's ED 2 on the primary screen scrolls the old screen into history instead
+// of erasing it. The history must be purged after the whole clear.
+const MAC_CLEAR: &[u8] = b"\x1b[3J\x1b[H\x1b[2J";
+
+fn blank_frame_rows(f: &Frame) -> bool {
+    f.glyphs.is_empty()
+}
+
+#[test]
+fn the_clear_command_leaves_an_empty_screen_and_no_scrollback() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(b"ac on main\r\n$ ls\r\na b c\r\nac on main\r\n$ clear\r\n");
+    vt.feed(MAC_CLEAR);
+    assert_eq!(vt.text(), "", "the screen is blank right after clear");
+    assert_eq!(vt.scrollbar(), (0, 0), "nothing is left to scroll back to");
+    vt.feed(b"ac on main\r\n$ ");
+    assert_eq!(vt.text().trim(), "ac on main\n$");
+    assert_eq!(vt.scrollbar(), (0, 0));
+}
+
+#[test]
+fn the_clear_command_blanks_the_rendered_frame_and_the_scrolled_back_view() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(b"old prompt\r\n$ clear\r\n");
+    let mut f = Frame::default();
+    vt.snapshot(&pal(), &mut f);
+    assert!(!blank_frame_rows(&f), "fixture: the old lines are drawn");
+    vt.feed(MAC_CLEAR);
+    vt.snapshot(&pal(), &mut f);
+    assert!(blank_frame_rows(&f), "no glyph of the old screen survives");
+    assert_eq!(f.display_offset, 0);
+    assert_eq!(f.total_lines, f.rows, "no scrollbar: no history");
+    // Scrolling up finds nothing: the old screen is not in the scrollback.
+    vt.scroll(1000);
+    vt.snapshot(&pal(), &mut f);
+    assert!(blank_frame_rows(&f), "scrolling back shows no old prompt");
+}
+
+#[test]
+fn clear_with_existing_scrollback_and_split_reads_still_ends_empty() {
+    // Lots of output already in history; the pty delivers the clear in odd chunks.
+    let vt = Vt::new(20, 4, |_| {});
+    for i in 0..30 {
+        vt.feed(format!("line {i}\r\n").as_bytes());
+    }
+    assert!(vt.scrollbar().1 > 0);
+    for chunk in [&b"\x1b[3"[..], b"J\x1b[", b"H\x1b[2", b"J"] {
+        vt.feed(chunk);
+    }
+    assert_eq!(vt.text(), "");
+    assert_eq!(vt.scrollbar(), (0, 0));
+}
+
+#[test]
+fn clear_on_the_alternate_screen_and_a_blank_screen_do_not_misbehave() {
+    // Already-empty screen: nothing to scroll away, nothing in history.
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(MAC_CLEAR);
+    assert_eq!(vt.text(), "");
+    assert_eq!(vt.scrollbar(), (0, 0));
+    // Alternate screen: ED 2 erases in place; the primary screen is untouched underneath.
+    vt.feed(b"primary\x1b[?1049h\x1b[3J\x1b[H\x1b[2J");
+    assert_eq!(vt.text(), "");
+    vt.feed(b"\x1b[?1049l");
+    assert_eq!(vt.text(), "primary");
+}
+
+#[test]
+fn clear_inside_a_synchronized_update_still_ends_empty_once_flushed() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(b"old prompt\r\n$ clear\r\n");
+    vt.feed(b"\x1b[?2026h");
+    vt.feed(MAC_CLEAR);
+    vt.feed(b"\x1b[?2026l");
+    vt.flush_sync();
+    assert_eq!(vt.text(), "");
+    assert_eq!(vt.scrollbar(), (0, 0), "the held ED 2 ran before the purge");
+}

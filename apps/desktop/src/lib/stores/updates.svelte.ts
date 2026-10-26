@@ -3,7 +3,12 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "@codeatlasdev/ui";
 import { api, errText } from "#lib/api.ts";
-import { resolveSection, type SettingsSection, type SettingsTab } from "#lib/settings/index.ts";
+import {
+	resolveSection,
+	type SettingsSection,
+	type SettingsTab,
+	type SettingsTarget,
+} from "#lib/settings/index.ts";
 import { sound } from "#lib/sound/sound.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
 import {
@@ -77,8 +82,10 @@ class Updates {
 	relaunchNeeded = $state(false);
 	open = $state(false);
 	section = $state<SettingsSection>("general");
-	/** Tab inside the Editor section. */
+	/** Tab of the open section; meaningless (and ignored) when the section has no tabs. */
 	tab = $state<SettingsTab>("editor");
+	/** Row id Settings scrolls to and flashes once its page renders; cleared by the dialog when done. */
+	reveal = $state<string | null>(null);
 	/** Search box text; lives here so it survives reopening and so `show` can clear it. */
 	query = $state("");
 	checkedAt = $state<number | null>(null);
@@ -100,17 +107,22 @@ class Updates {
 	/** "Updated to X" card shown once after an update. */
 	updatedTo = $state<string | null>(null);
 
-	/**
-	 * Open Settings on a section. Accepts current ids, the pre-reorganisation ids
-	 * (`updates`, `shell`, `editor`) and `appearance/<tab>`.
-	 */
-	show = (target: string = this.section) => {
-		const t = resolveSection(target);
+	/** Go to a section (and tab, and row) of Settings. A section without a tab target keeps the current tab. */
+	select = (t: SettingsTarget) => {
 		this.section = t.section;
 		if (t.tab) this.tab = t.tab;
+		this.reveal = t.item ?? null;
 		this.query = "";
+	};
+
+	/**
+	 * Open Settings on whatever `target` names: a section, `section/tab`, a row id (the row is revealed) or an id
+	 * an older version used. See `resolveSection`.
+	 */
+	show = (target?: string) => {
+		this.select(target === undefined ? { section: this.section } : resolveSection(target));
 		this.open = true;
-		if (t.section === "general") this.check();
+		if (this.section === "general") this.check();
 	};
 
 	/** Dev builds and `atlas link` must not be overwritten by a release. */

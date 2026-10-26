@@ -1,6 +1,7 @@
 <script lang="ts">
-	/** Settings sidebar: search box, section list with the update badge, version footer. */
+	/** Settings sidebar: search box, sections under their cluster headings, version footer. */
 	import {
+		Bell,
 		Bot,
 		CircleHelp,
 		Code,
@@ -9,27 +10,26 @@
 		GitBranch,
 		Keyboard,
 		Palette,
-		Server,
+		Plug,
 		SlidersHorizontal,
-		Smartphone,
 		SquareTerminal,
 	} from "@lucide/svelte";
 	import SearchField from "#lib/components/SearchField.svelte";
-	import { SECTIONS, type SettingsSection } from "#lib/settings/index.ts";
+	import { CLUSTERS, SECTIONS, openSection, type SettingsSection } from "#lib/settings/index.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
 
 	const ICONS: Record<SettingsSection, typeof Download> = {
 		general: SlidersHorizontal,
 		appearance: Palette,
+		notifications: Bell,
+		keyboard: Keyboard,
+		help: CircleHelp,
+		workspaces: FolderTree,
 		editor: Code,
 		terminal: SquareTerminal,
-		workspaces: FolderTree,
-		agents: Bot,
 		git: GitBranch,
-		keyboard: Keyboard,
-		ssh: Server,
-		mobile: Smartphone,
-		help: CircleHelp,
+		agents: Bot,
+		integrations: Plug,
 	};
 
 	let { searching }: { searching: boolean } = $props();
@@ -40,24 +40,27 @@
 	<div class="find">
 		<SearchField clearable placeholder="Search settings" aria-label="Search settings" bind:value={u.query} />
 	</div>
-	{#each SECTIONS as n (n.id)}
-		{@const Icon = ICONS[n.id]}
-		<button
-			class="nav"
-			class:on={!searching && u.section === n.id}
-			aria-current={!searching && u.section === n.id ? "page" : undefined}
-			onclick={() => {
-				u.query = "";
-				u.section = n.id;
-			}}
-		>
-			<Icon size={15} />
-			{n.label}
-			{#if n.id === "general" && u.available && !u.linked}<span
-					class="badge-dot"
-					aria-label="Update available"
-				></span>{/if}
-		</button>
+	{#each CLUSTERS as k (k.id)}
+		<div class="cluster" role="group" aria-labelledby="cluster-{k.id}">
+			<div class="khead" id="cluster-{k.id}">{k.label}</div>
+			{#each SECTIONS.filter((s) => s.cluster === k.id) as n (n.id)}
+				{@const Icon = ICONS[n.id]}
+				<button
+					class="nav"
+					class:on={!searching && u.section === n.id}
+					aria-current={!searching && u.section === n.id ? "page" : undefined}
+					title={n.description}
+					onclick={() => u.select(openSection(n.id))}
+				>
+					<Icon size={15} />
+					{n.label}
+					{#if n.id === "general" && u.available && !u.linked}<span
+							class="badge-dot"
+							aria-label="Update available"
+						></span>{/if}
+				</button>
+			{/each}
+		</div>
 	{/each}
 	<div class="navfoot mono">
 		Atlas {u.info?.app.version ?? ""}{#if u.dev}<span class="devchip">Dev</span>{/if}
@@ -66,6 +69,8 @@
 
 <style>
 	nav {
+		min-height: 0;
+		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
@@ -77,6 +82,19 @@
 		font-size: 15px;
 		font-weight: 700;
 		padding: 0 8px 12px;
+	}
+	.cluster {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.khead {
+		padding: 12px 10px 4px;
+		font-size: 10.5px;
+		font-weight: 650;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ca-text-hint);
 	}
 	.find {
 		display: flex;

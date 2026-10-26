@@ -58,7 +58,7 @@
 			panel.classList.toggle("shown", on);
 			panel.toggleAttribute("inert", !on);
 			panel.setAttribute("aria-hidden", String(!on));
-			// Native views (browser, terminal) cannot be covered by CSS: `watchSlot` sees this flip and parks them.
+			// Native views (browser, terminal) sit below the page: the peek is ordinary DOM above them, and this flip is how the hit map (`native/hit.ts`) learns the panel now owns the pointer.
 			panel.dataset.state = on ? "open" : "closed";
 		}
 		// The sidebar inside this panel is a swipe zone only while the panel is open (`rectOf` skips `[inert]`), and a

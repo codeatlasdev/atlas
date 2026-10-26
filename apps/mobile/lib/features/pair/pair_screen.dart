@@ -205,7 +205,7 @@ class _Scanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(Space.radius),
             ),
             child: const Text(
-              'On your computer: Atlas Desktop → Settings → Mobile → Pair a phone',
+              'On your computer: Atlas Desktop → Settings → Integrations → Mobile → Pair a phone',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
             ),

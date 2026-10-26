@@ -4,13 +4,19 @@
  */
 import { colorScheme, toast } from "@codeatlasdev/ui";
 import { nativeFeel } from "@codeatlasdev/ui/kit";
+import { dismissHoverOnBlur } from "./hoverDismiss.ts";
 import { allowContextMenu } from "#lib/contextMenu.ts";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { untrack } from "svelte";
 import { api, errText } from "#lib/api.ts";
 import { bootMark } from "#lib/boot.ts";
-import { reconcile } from "#lib/browserSync.ts";
+import { reconcile as reconcileBrowsers } from "#lib/browserSync.ts";
+import "#lib/native/kinds.ts";
+import { reconcileSoon } from "#lib/native/surface.ts";
+import { startGround } from "#lib/native/ground.ts";
+import { startHitMap } from "#lib/native/hit.ts";
+import { startNativeClicks } from "#lib/nativeClicks.ts";
 import { host } from "#lib/host.ts";
 import { errors, startErrorHandler } from "#lib/errors/errors.svelte.ts";
 import { loadKeymap, register } from "#lib/keymap.svelte.ts";
@@ -127,7 +133,7 @@ function syncEffects() {
 		if (!ws.loaded) return;
 		untrack(
 			() =>
-				void reconcile(
+				void reconcileBrowsers(
 					invoke,
 					ws.doc.tabs.filter((t) => t.kind === "browser").map((t) => t.id),
 				).catch(() => {}),
@@ -221,6 +227,24 @@ export function startSession(): () => void {
 	hooks.launchAgent = (id, agent, prompt) => agents.launch(id, agent, { prompt });
 	exposeStores();
 	const stopFeel = nativeFeel({ blockZoom: true, allowContextMenu });
+	const stopHoverDismiss = dismissHoverOnBlur();
+	// A press on a terminal/browser closes menus and popovers like a press on the page does.
+	const stopNativeClicks = startNativeClicks();
+	// Native views sit below the page, which is transparent over their slots (macOS; the other platforms keep the opaque
+	// page and their own child views above it). The hit map tells the Rust router what the page owns over a slot.
+	const mac = !document.documentElement.classList.contains("opaque-window");
+	const stopGround = mac
+		? startGround((rgba) => void invoke("natives_ground", { rgba }).catch(() => {}))
+		: () => {};
+	const stopHitMap = mac
+		? startHitMap((cmd, args) => invoke(cmd, args as Record<string, unknown>))
+		: () => {};
+	// The window came back (another app, a Space, minimize): no native view may be left up without an owner.
+	const reconcile = () => {
+		if (document.visibilityState === "visible") reconcileSoon({ ready: ws.loaded });
+	};
+	window.addEventListener("focus", reconcile);
+	document.addEventListener("visibilitychange", reconcile);
 	const stopTray = startTrayFeed();
 	// The popover's sparklines need samples even with no Panel open.
 	const stopMetrics = metrics.start();
@@ -239,6 +263,12 @@ export function startSession(): () => void {
 		ws.dispose();
 		agents.dispose();
 		stopFeel();
+		stopHoverDismiss();
+		stopNativeClicks();
+		stopHitMap();
+		stopGround();
+		window.removeEventListener("focus", reconcile);
+		document.removeEventListener("visibilitychange", reconcile);
 		stopErrors();
 		stopTray();
 		stopMetrics();

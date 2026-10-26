@@ -505,7 +505,11 @@ unsafe extern "C" {
         value_cb: *const c_void,
     ) -> *const c_void;
     static kCFBooleanTrue: *const c_void;
-    fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: u8) -> i32;
+    fn CFRunLoopRunInMode(
+        mode: *const c_void,
+        seconds: f64,
+        return_after_source_handled: u8,
+    ) -> i32;
     static kCFRunLoopDefaultMode: *const c_void;
     static kCFTypeDictionaryKeyCallBacks: c_void;
     static kCFTypeDictionaryValueCallBacks: c_void;

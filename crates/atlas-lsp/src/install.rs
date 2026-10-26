@@ -121,7 +121,7 @@ impl Failure {
         }
         if lower.contains("no rust-analyzer build for") || lower.contains("no node.js build for") {
             return Failure::new("unsupported_platform", text)
-                .hint("There is no prebuilt server for this OS/CPU. Install one yourself and set its command in Settings → Languages.");
+                .hint("There is no prebuilt server for this OS/CPU. Install one yourself and set its command in Settings → Editor → Languages.");
         }
         let net = [
             "could not resolve",
@@ -147,7 +147,7 @@ impl Failure {
                 "install_failed",
                 format!("Installing {server} failed: {text}"),
             )
-            .hint("The install log is in ~/.atlas/lsp/logs. Retry from Settings → Languages.")
+            .hint("The install log is in ~/.atlas/lsp/logs. Retry from Settings → Editor → Languages.")
         }
     }
 }

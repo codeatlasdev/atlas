@@ -54,7 +54,10 @@ fn scrollback_memory_is_reclaimed_and_bounded() {
     fill(&vt, 5_000);
     assert!(vt.history_lines() >= 4_900);
     let full = live();
-    assert!(full > empty + 5_000 * 80 * 16, "history must cost real memory: {empty} -> {full}");
+    assert!(
+        full > empty + 5_000 * 80 * 16,
+        "history must cost real memory: {empty} -> {full}"
+    );
     vt.feed(b"\x1b[3J");
     assert_eq!(vt.history_lines(), 0);
     let after_ed3 = live();
@@ -79,13 +82,19 @@ fn scrollback_memory_is_reclaimed_and_bounded() {
     // `Vt::reset` (a hostd replay starts from scratch).
     fill(&vt, 5_000);
     vt.reset();
-    assert!(live() < empty + (empty / 2).max(256 << 10), "reset kept scrollback");
+    assert!(
+        live() < empty + (empty / 2).max(256 << 10),
+        "reset kept scrollback"
+    );
 
     // A smaller scrollback setting frees the surplus too.
     fill(&vt, 5_000);
     vt.set_options(100, "block", false);
     assert!(vt.history_lines() <= 100);
-    assert!(live() < empty + 2 * (100 + 24) * 80 * 24 + (256 << 10), "shrinking the cap kept the rows");
+    assert!(
+        live() < empty + 2 * (100 + 24) * 80 * 24 + (256 << 10),
+        "shrinking the cap kept the rows"
+    );
 }
 
 /// 100 000 lines at 500 columns is over a GB of cells uncapped: the byte budget tightens the line cap.
@@ -101,6 +110,9 @@ fn a_wide_terminal_stays_inside_the_scrollback_byte_budget() {
     }
     let bytes = vt.history_bytes();
     assert!(bytes <= 64 << 20, "{bytes} bytes of history at 500 columns");
-    assert!(bytes > 32 << 20, "the budget must still be used, got {bytes}");
+    assert!(
+        bytes > 32 << 20,
+        "the budget must still be used, got {bytes}"
+    );
     assert!(vt.history_lines() < 100_000);
 }

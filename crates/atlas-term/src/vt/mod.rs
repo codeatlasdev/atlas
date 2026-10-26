@@ -172,6 +172,26 @@ impl Vt {
     /// Inside a synchronized update (mode 2026) the parser buffers until the update
     /// ends or `sync_deadline` passes (then call `flush_sync`).
     pub fn feed(&self, bytes: &[u8]) {
+        // `clear` (ED3 + home + ED2) must end with an empty history: cut the chunk after each one.
+        let cuts = self.shell.lock().clear.scan(bytes);
+        let mut from = 0;
+        for end in cuts {
+            self.feed_part(&bytes[from..end]);
+            self.purge_history();
+            from = end;
+        }
+        self.feed_part(&bytes[from..]);
+    }
+
+    /// ED 3 again, after the whole `clear` ran: its ED 2 pushed the old screen into history.
+    fn purge_history(&self) {
+        let mut p = self.parser.lock();
+        let mut t = self.term.lock();
+        p.advance(&mut *t, b"\x1b[3J");
+        Self::reclaim(&mut t);
+    }
+
+    fn feed_part(&self, bytes: &[u8]) {
         let mut p = self.parser.lock();
         let mut t = self.term.lock();
         let mut sh = self.shell.lock();

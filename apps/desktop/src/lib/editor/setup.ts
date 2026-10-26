@@ -29,12 +29,12 @@ import {
 	keymap,
 	lineNumbers,
 	rectangularSelection,
-	scrollPastEnd,
 } from "@codemirror/view";
 import { bracketColors } from "#lib/editor/bracketColors.ts";
 import { indentGuides, renderWhitespace, rulers } from "#lib/editor/guides.ts";
 import { editorKeymap } from "#lib/editor/keymap.ts";
 import { minimap } from "#lib/editor/minimap.ts";
+import { scrollPastEnd } from "#lib/editor/scrollPastEnd.ts";
 import { findPanel } from "#lib/editor/search.ts";
 import type { EditorPrefs } from "#lib/editor/settings.ts";
 import { stickyScroll } from "#lib/editor/sticky.ts";

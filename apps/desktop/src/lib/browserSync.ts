@@ -1,22 +1,18 @@
 /**
- * Frontend half of the embedded-browser lifecycle. The native child webview outlives this
- * page (reload, HMR, ⌘W/⌘⇧T), so two rules keep it exactly over its pane or hidden:
+ * Frontend half of the embedded-browser lifecycle. The native child webview outlives this page (reload, HMR,
+ * ⌘W/⌘⇧T), so two rules keep it exactly over its pane or hidden:
  *
- * - `reconcile`: on boot, close native views whose tab is gone; the rest stay parked until
- *   their `BrowserTab` measures itself.
- * - `paneSync`: one tab's open/bounds/park calls run strictly in order (observers fire
- *   concurrently), always with the rect measured when the call *runs*, never a stale one;
- *   after `dispose` nothing can un-park the view again.
+ * - `reconcile`: on boot, close native views whose tab is gone; the rest stay parked until their `BrowserTab`
+ *   measures itself.
+ * - `browserSurface`: the browser's ADAPTER over the native-view core (`native/surface.ts`). The core owns the
+ *   serialized open → place → release chain (always with the rect measured when the call *runs*, never a stale one;
+ *   after `dispose` nothing can un-park the view again), the slot hole in the page, the loading strip and the
+ *   reconciler; this file only says how a browser view is opened, placed and parked, and when it may open.
  *
- * No DOM or Tauri imports: both are injected, so this is unit-testable.
+ * No Tauri import: `invoke` is injected, so this is unit-testable.
  */
 
-interface Rect {
-	x: number;
-	y: number;
-	w: number;
-	h: number;
-}
+import { createNativeSurface, type NativeSurface, type SurfaceOptions } from "./native/surface.ts";
 
 type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -34,73 +30,47 @@ export async function reconcile(invoke: Invoke, tabIds: Iterable<string>): Promi
 	return stale;
 }
 
-interface PaneSyncOptions {
+export interface BrowserSurfaceOptions {
 	tab: string;
 	invoke: Invoke;
-	/** Current rect of the pane, or null when it is not laid out (no element). */
-	measure: () => Rect | null;
-	/** Should the view be on screen right now (active tab, no overlay)? */
+	/** The pane the page stands in for. */
+	slot: () => HTMLElement | undefined;
+	/** Should the page be on screen right now (active tab)? A swipe or an overlay is the core's business. */
 	shown: () => boolean;
+	/** The page failed to load: it is parked behind the tab's own error screen, never a white rectangle. */
+	failed?: () => boolean;
 	/** URL to load when the view has to be created; empty = nothing to open yet. */
 	url: () => string | undefined;
 	onError: (e: unknown) => void;
+	/** A load that never reported back in `stallMs`: the page's error screen. */
+	onStall?: () => void;
+	stallMs?: number;
 }
 
-export interface PaneSync {
-	/** Queue a bounds sync. Coalesces: at most one run waits behind the running one. */
-	sync: () => Promise<void>;
-	/** Park the view and stop all further syncs (component destroyed). */
-	dispose: () => Promise<void>;
-	/** Resolves when everything queued so far has run. */
-	settled: () => Promise<void>;
-	/** The native view exists (this component opened or re-adopted it). */
-	isOpen: () => boolean;
-}
-
-export function paneSync(o: PaneSyncOptions): PaneSync {
-	let chain: Promise<void> = Promise.resolve();
-	let queued = false;
-	let disposed = false;
-	let opened = false;
-
-	async function apply() {
-		queued = false;
-		if (disposed) return;
-		const url = o.url();
-		const r = o.measure();
-		if (!url || !r) return;
-		try {
-			// `browser_open` is idempotent in Rust (reuse + reposition), so calling it on every
-			// mount is safe and re-adopts a view that survived a reload.
-			if (!opened) {
-				await o.invoke("browser_open", { tab: o.tab, url, ...r, visible: o.shown() });
-				opened = true;
-			}
-			// Re-measure after the await: layout may have moved while open was in flight.
-			const now = o.measure() ?? r;
-			if (disposed) return;
-			await o.invoke("browser_bounds", { tab: o.tab, ...now, visible: o.shown() });
-		} catch (e) {
-			o.onError(e);
-		}
-	}
-
-	function sync() {
-		if (disposed) return chain;
-		// A run is already waiting and will measure fresh when it starts: no need for another.
-		if (!queued) {
-			queued = true;
-			chain = chain.then(apply).catch(o.onError);
-		}
-		return chain;
-	}
-
-	async function dispose() {
-		disposed = true;
-		await chain;
-		// Hidden, not closed: the tab may only be re-parented (split/move). closeTab closes it.
-		await o.invoke("browser_park", { tab: o.tab }).catch(() => {});
-	}
-
-	return { sync, dispose, settled: () => chain, isOpen: () => opened };
+export function browserSurface(o: BrowserSurfaceOptions, opts?: SurfaceOptions): NativeSurface {
+	let url = "";
+	return createNativeSurface(
+		{
+			kind: "browser",
+			id: o.tab,
+			slot: o.slot,
+			visible: o.shown,
+			extraHidden: o.failed,
+			// Created parked (a restored background tab never flashes over the UI), but only once there is a page to load.
+			canOpen: () => {
+				url = o.url() ?? "";
+				return !!url;
+			},
+			// `browser_open` is idempotent in Rust (reuse + reposition), so calling it on every mount is safe and
+			// re-adopts a view that survived a reload.
+			open: (rect, visible) => o.invoke("browser_open", { tab: o.tab, url, ...rect, visible }),
+			place: (rect, visible) => o.invoke("browser_bounds", { tab: o.tab, ...rect, visible }),
+			// Hidden, not closed: the tab may only be re-parented (split/move). `closeTab` closes it.
+			release: () => o.invoke("browser_park", { tab: o.tab }).catch(() => {}),
+			onError: (e) => o.onError(e),
+			onStall: o.onStall,
+			stallMs: o.stallMs,
+		},
+		opts,
+	);
 }

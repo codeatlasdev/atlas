@@ -272,7 +272,7 @@ fn explain_failure(code: i32, tail: &str, command: &str, path: &str) -> String {
     let fix = if cfg!(windows) {
         "Add its folder to your user Path (Environment Variables in the System settings) and restart Atlas"
     } else {
-        "Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings > Shell"
+        "Add its directory to PATH in your shell's rc file (~/.bashrc, ~/.zshrc, ~/.config/fish/config.fish) and restart Atlas, or pick the right shell in Settings → Integrations → Shell & links"
     };
     format!("{base}. `{bin}` was not found. PATH used by Atlas: {path}. {fix}.")
 }

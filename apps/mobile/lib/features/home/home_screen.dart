@@ -241,7 +241,7 @@ class _DashboardState extends ConsumerState<_Dashboard> {
         title: Text('Forget ${widget.device.name}?'),
         content: const Text(
           'This phone stops connecting to it. Pair again with a new code to undo. '
-          'To cut a phone off for good, use Revoke in Atlas Desktop → Settings → Mobile.',
+          'To cut a phone off for good, use Revoke in Atlas Desktop → Settings → Integrations → Mobile.',
         ),
         actions: [
           TextButton(
@@ -967,7 +967,7 @@ class _IntegrationOff extends StatelessWidget {
                 Text("${agent.label} integration is off"),
                 const SizedBox(height: Space.xs),
                 Text(
-                  "Its agents won't show here. Turn it on in Atlas on your Mac: Settings → Agents.",
+                  "Its agents won't show here. Turn it on in Atlas on your Mac: Settings → Integrations → Agent hooks.",
                   style: TextStyle(color: c.muted),
                 ),
               ],

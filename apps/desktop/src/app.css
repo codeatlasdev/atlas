@@ -15,6 +15,27 @@ body {
 	cursor: default;
 }
 
+/* Native-view engine on (macOS, `lib/native/ground.ts`): native views are NSViews BELOW the page, so the page must paint
+   nothing over a view's slot. The chrome colour moves from the root to `.window-ground` and the card colour to each space
+   layer's `.ground` (SpaceLayer.svelte); both carry a hole at every slot, written in the same task as the slot's layout.
+   Everything else on the page stays opaque and above the native views, overlays included. Without the class (Linux,
+   Windows, before the shell starts) none of this applies and the root and `.content` paint as before. */
+html.ground-holes,
+html.ground-holes body {
+	background: transparent !important;
+}
+.window-ground {
+	display: none;
+}
+html.ground-holes .window-ground {
+	display: block;
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background: var(--ca-surface-sunken);
+}
+
 /* Linux: an opaque window with native decorations and no vibrancy to show through; the page
    paints the backdrop the sidebar would otherwise get from NSVisualEffectView. */
 html.opaque-window,
@@ -29,6 +50,15 @@ html.opaque-window .peek-panel {
 :root {
 	--mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 	--sidebar-w: 260px;
+
+	/* The title band: ONE source for everything beside the macOS traffic lights.
+	   `.content` starts --window-pad below the window top and its first row (project header, empty states) is
+	   --title-row tall, so that row's centre is at window y = --window-pad + --title-row / 2 (28). The sidebar's first
+	   row spans the same band. crates/atlas-desktop/tauri.conf.json `trafficLightPosition.y` MUST be that centre + 2:
+	   tao leaves each 14 px button 9 px above its title-bar container's bottom, so the lights' centre is y - 2.
+	   lib/trafficLights.test.ts pins the pair; change them together. */
+	--window-pad: 8px;
+	--title-row: 40px;
 
 	/* Motion: one vocabulary for the whole shell. Spring-ish ease-out, fast. */
 	--ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -120,7 +150,7 @@ html.opaque-window .peek-panel {
 .peek-panel {
 	position: absolute;
 	/* Below the traffic lights (they stay clickable above the panel). */
-	top: 40px;
+	top: calc(var(--window-pad) + var(--title-row));
 	bottom: 8px;
 	z-index: 40;
 	width: var(--sidebar-w);
@@ -198,7 +228,7 @@ html.opaque-window .peek-panel {
 	isolation: isolate;
 	flex: 1;
 	min-width: 0;
-	margin: 8px 8px 8px 0;
+	margin: var(--window-pad) var(--window-pad) var(--window-pad) 0;
 	border-radius: 12px;
 	background: var(--ca-surface-base);
 	box-shadow:
@@ -209,9 +239,16 @@ html.opaque-window .peek-panel {
 	flex-direction: column;
 	transition: margin var(--dur-slow) var(--ease);
 }
+/* The card's own paint lives in each layer's `.ground` once the engine is on (a hole must travel with its layer). */
+html.ground-holes .content {
+	background: transparent;
+}
+html.ground-holes .content::before {
+	display: none;
+}
 /* With the sidebar hidden the content owns the whole window. */
 .content.full {
-	margin-left: 8px;
+	margin-left: var(--window-pad);
 }
 /* A wash of the space's hue behind everything, so each space feels like its own place. */
 .content::before {
@@ -430,4 +467,42 @@ html {
 	--ca-scrim-blur: none;
 	--ca-overlay-blur: none;
 	--ca-tooltip-blur: none;
+}
+
+/* The loading strip of every native view (`lib/native/indicator.ts`): 2 px above the view, never over it. Brand colour,
+   an indeterminate shimmer, faded in and out by opacity (the core shows it only after 150 ms of loading). */
+.native-load {
+	position: absolute;
+	left: 0;
+	right: 0;
+	overflow: hidden;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--dur) var(--ease);
+}
+.native-load[data-on="true"] {
+	opacity: 1;
+}
+.native-load::before {
+	content: "";
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 30%;
+	background: var(--ca-brand-main);
+	animation: native-load 1.1s ease-in-out infinite;
+}
+@keyframes native-load {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(340%);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.native-load::before {
+		animation: none;
+		width: 100%;
+		opacity: 0.5;
+	}
 }

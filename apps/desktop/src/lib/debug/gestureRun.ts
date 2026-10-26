@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createProbe, type Run } from "./gestureProbe.ts";
 import type { ScrollSample, Trace } from "../shell/trace.ts";
+import { offendingLayers } from "../shell/layerInvariant.ts";
 
 /** Time of the last finger lift (`ended`/`cancelled`) in the trace. */
 export function liftAt(events: ScrollSample[]): number {
@@ -111,11 +112,11 @@ export class NativeCount {
 interface EndState {
 	selected: string;
 	layers: { id: string; role: string; transform: string }[];
-	/** The native snapshot overlay is still up (read back from native). */
-	overlay: boolean;
+	/** Non-current layers visible in view at rest (`offendingLayers`): ghost frames. */
+	ghosts: string[];
 }
 
-/** What is inconsistent in the page after a gesture: roles, selection, leftover transforms, a stuck overlay. */
+/** What is inconsistent in the page after a gesture: roles, selection, leftover transforms, a parked layer in view. */
 export function endStateProblems(s: EndState): string[] {
 	const out: string[] = [];
 	const current = s.layers.filter((l) => l.role === "current");
@@ -123,7 +124,7 @@ export function endStateProblems(s: EndState): string[] {
 	else if (current[0]!.id !== s.selected)
 		out.push(`current layer is ${current[0]!.id} but the selection is ${s.selected}`);
 	for (const l of s.layers) if (l.transform) out.push(`layer ${l.id} keeps a transform at rest`);
-	if (s.overlay) out.push("the native overlay is still up");
+	for (const id of s.ghosts) out.push(`layer ${id} is on screen at rest`);
 	return out;
 }
 
@@ -261,7 +262,7 @@ export async function runGesture(o: GestureRunOpts & { shell: Shell; ws?: Ws }):
 	let report: { first_seq: number; last_seq: number; commits: [number, number][] };
 	try {
 		report = await invoke("gesture_replay_samples", { events: trace.events });
-		// Let Svelte apply the commit, the overlay's ack lift and the natives come back: 600 ms of quiet.
+		// Let Svelte apply the commit and the natives come back: 600 ms of quiet.
 		const quiet = Promise.withResolvers<void>();
 		setTimeout(quiet.resolve, 600);
 		await quiet.promise;
@@ -273,11 +274,12 @@ export async function runGesture(o: GestureRunOpts & { shell: Shell; ws?: Ws }):
 	const lift = liftAt(trace.events);
 	const samples = frameSamples(frames);
 	const claim = claimAt(trace.events);
-	const state = await invoke<{ overlay: boolean }>("pager_state").catch(() => ({ overlay: false }));
 	const problems = endStateProblems({
 		selected: m.selected(),
 		layers: m.layers(),
-		overlay: state.overlay,
+		ghosts: [...document.querySelectorAll(".pager")]
+			.flatMap((p) => offendingLayers(p))
+			.map((el) => el.dataset.space ?? "?"),
 	});
 	return {
 		trace: trace.name,

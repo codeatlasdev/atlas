@@ -1,5 +1,6 @@
-//! The AppKit side: a click-through `NSView` per terminal, laid over the pane in the
-//! window's content view and used as the wgpu surface. Main thread only.
+//! The AppKit side: a click-through `NSView` per terminal, laid in the window's content view BELOW the main
+//! webview (the page is transparent over the pane's slot and paints overlays above it: `natives`) and used as the
+//! wgpu surface. Main thread only.
 
 use objc2::rc::Retained;
 use objc2::runtime::NSObject;
@@ -44,6 +45,7 @@ pub fn create(ns_window: usize, x: f64, y: f64, w: f64, h: f64) -> Result<usize,
         unsafe { msg_send![TermView::alloc(mtm), initWithFrame: frame(&content, x, y, w, h)] };
     view.setWantsLayer(true);
     content.addSubview(&view);
+    crate::natives::lower_below_page(Retained::as_ptr(&view) as usize);
     Ok(Retained::into_raw(view) as usize)
 }
 

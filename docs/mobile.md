@@ -11,7 +11,7 @@ It works while the Atlas window is closed, because hostd keeps running. The comp
 
 ## Pairing
 
-1. On your computer: **Settings → Mobile → Pair a phone**. A QR code and a 6-digit code appear for two minutes.
+1. On your computer: **Settings → Integrations → Mobile → Pair a phone**. A QR code and a 6-digit code appear for two minutes.
 2. In Atlas Mobile: **Add a computer**, then scan the code.
 
 The code works once. Five wrong attempts cancel it. After pairing, the phone is recognised by its own key. Each paired phone is listed under **Paired phones** with what it may do:

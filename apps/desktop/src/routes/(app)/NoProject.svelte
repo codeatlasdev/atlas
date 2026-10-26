@@ -48,7 +48,7 @@
 
 <style>
 	.drag-strip {
-		height: 40px;
+		height: var(--title-row);
 	}
 	.empty {
 		position: relative;

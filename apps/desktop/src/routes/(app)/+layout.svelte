@@ -91,6 +91,7 @@
 	style:--space-accent={shell.active ? shell.accent(shell.active.id) : undefined}
 	style:--space-tint={shell.active ? shell.tint(shell.active.id) : undefined}
 >
+	<div class="window-ground" aria-hidden="true"></div>
 	<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
 		<div class="sidebar-panel">{@render sidebar()}</div>
 	</div>

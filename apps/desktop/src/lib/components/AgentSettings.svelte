@@ -7,8 +7,8 @@
 	import { quick } from "#lib/stores/quick.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import Group from "#lib/settings/Group.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import LoadError from "#lib/settings/LoadError.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
 	import { customAgentEntry, type CustomAgentEntry } from "#lib/settings/customAgents.ts";
 
@@ -41,11 +41,17 @@
 		await saveCustom([...custom, r.entry]);
 	}
 
+	let loadError = $state<string | null>(null);
+
 	onMount(async () => {
-		const s = await api.settings();
-		permissions = (s.agentPermissions as string) ?? "manual";
-		args = (s.agentArgs as Record<string, string>) ?? {};
-		custom = Array.isArray(s.customAgents) ? (s.customAgents as CustomAgentEntry[]) : [];
+		try {
+			const s = await api.settings();
+			permissions = (s.agentPermissions as string) ?? "manual";
+			args = (s.agentArgs as Record<string, string>) ?? {};
+			custom = Array.isArray(s.customAgents) ? (s.customAgents as CustomAgentEntry[]) : [];
+		} catch (e) {
+			loadError = errText(e);
+		}
 	});
 
 	const save = (patch: Record<string, unknown>) =>
@@ -53,10 +59,9 @@
 	const saveQuick = () => quick.save().catch((e) => toast.error(errText(e)));
 </script>
 
-<PageHead
-	title="Agents"
-	description="Coding agents run in terminals inside your worktrees. Choose which one starts by default, how much it may do on its own, and the quick commands in the tab strip."
-/>
+{#if loadError}
+	<LoadError what="your agent settings" error={loadError} />
+{/if}
 
 <Group title="Coding agents">
 	{#each agents.list as a (a.id)}
@@ -117,16 +122,6 @@
 					save({ agentArgs: { ...args } });
 				}}
 			/>
-		</Row>
-	{/each}
-	{#each agents.integrations.filter((a) => a.state === "missing") as a, i (a.id)}
-		<!-- The first row carries the search anchor (catalog id agent-integration). -->
-		<Row
-			id={i === 0 ? "agent-integration" : undefined}
-			label="{a.label} integration"
-			description="Lets {a.label} tell Atlas and Atlas Mobile when it is working, waiting for you or done, and use Atlas tools."
-		>
-			<Button size="sm" onclick={() => agents.enableIntegration(a.id)}>Turn on</Button>
 		</Row>
 	{/each}
 </Group>

@@ -9,7 +9,7 @@ use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::search::{Match, RegexSearch};
 use alacritty_terminal::term::{Term, TermMode};
 
-use super::scan::SeqScan;
+use super::scan::{ClearScan, SeqScan};
 use super::{Proxy, Vt, VtEvent};
 use crate::graphics::Store;
 use crate::search::UrlHit;
@@ -38,6 +38,7 @@ pub(super) struct Search {
 
 pub(super) struct Shell {
     pub(super) scan: SeqScan,
+    pub(super) clear: ClearScan,
     pub(super) marks: VecDeque<Mark>,
     pub(super) images: Store,
     /// Cell size in physical px (image size ↔ cells), set by the renderer.
@@ -57,6 +58,7 @@ impl Default for Shell {
     fn default() -> Self {
         Self {
             scan: SeqScan::default(),
+            clear: ClearScan::default(),
             marks: VecDeque::new(),
             images: Store::default(),
             cell: [8.0, 16.0],

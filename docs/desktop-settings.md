@@ -9,6 +9,47 @@ Atlas Desktop stores its preferences in `~/.atlas/desktop/settings.json`. Everyt
 
 Editor, interface and terminal preferences use [Zed's setting names](https://zed.dev/docs/configuring-zed).
 
+## Where things are in Settings
+
+Settings (⌘,) has eleven sections in three groups, and a search box that jumps to a setting by what it does. Every section starts with one line saying what it is for.
+
+| Group | Section | What is in it |
+|---|---|---|
+| Atlas | **General** | Updates: the app, the `atlas` CLI and the terminal host, and the release channel they follow |
+| | **Appearance** | Theme (light, dark, terminal), import and export, accent color, zoom, interface font, file panel, split panes |
+| | **Notifications & sounds** | Notifications when an agent finishes or needs you; the sounds Atlas plays, one switch each |
+| | **Keyboard shortcuts** | Rebind or remove the key of any command |
+| | **Help & onboarding** | The guided tour, the shortcut cheat sheet, the getting-started checklist |
+| Work | **Workspaces** | Where worktrees are created, branch name prefix, auto clean up, clean up by hand |
+| | **Editor** | Tabs **Editor** (code font, editing, display) and **Languages** (language servers) |
+| | **Terminal** | Renderer, font, cursor, padding, scrollback, clipboard |
+| | **Git** | Which agent writes commit messages |
+| | **Agents** | Default agent, tool approval, extra arguments, custom agents, quick commands |
+| Connect | **Integrations** | Tabs **Shell & links**, **Agent hooks**, **SSH hosts** and **Mobile** |
+
+Where it used to be: *Shell for your projects* and *Open links in* (General) are in **Integrations › Shell & links**; the agent hooks switches (Agents) are in **Integrations › Agent hooks**; **SSH hosts** and **Mobile** were sections of their own and are tabs of **Integrations**; notifications and sounds (General) are in **Notifications & sounds**. Older links such as `updates.show("ssh")` or `appearance/terminal` still open the right place.
+
+### The registry
+
+`apps/desktop/src/lib/settings/registry.ts` is the one list of what Settings contains: **category** (a sidebar entry) → **page** (a tab, or the whole page) → **group** (a card) → **item** (a row). The sidebar and its group headings, the page header and tab strip, the search index, the breadcrumb of a search result and every `updates.show("<id>")` deep link are derived from it, so they cannot disagree.
+
+To add a setting:
+
+1. Put an `item(id, label, description, keywords?, ...aliases)` in the right group of `registry.ts`. The id never changes afterwards.
+2. Render the row in the page component named in that page's `files`, with `<Row id="the-id" …>`.
+
+That is all: search finds it by label, description and keywords, `updates.show("the-id")` opens its page and flashes the row, and the tests go red if either half is missing (`registry.test.ts`: every item reachable by search and by deep link, no alias shadows an id; `placement.test.ts`: the ids a component renders are exactly the ones the registry files under it).
+
+To add a section or a tab, add the category (or page) to the registry and its component to `components/settings/pageComponents.ts` and its icon to `SettingsNav.svelte`; the types stop compiling until all three exist. When something moves, keep its id and add the old deep-link id to `aliases` (on the item, the page or the category).
+
+| Deep link | Opens |
+|---|---|
+| `terminal`, `integrations` | a section (the first tab for a tabbed one) |
+| `editor/languages` | a section and a tab |
+| `shell`, `ws-dir`, `notify` … | the page of that row, scrolled to it and flashed |
+| `appearance/terminal`, `ssh`, `languages` … | ids of earlier versions, kept as aliases |
+| anything unknown | the first section |
+
 ## Editor and interface
 
 | Key | Default | Notes |
@@ -30,7 +71,7 @@ Editor, interface and terminal preferences use [Zed's setting names](https://zed
 
 ## Code editor
 
-Settings → Appearance → Editor.
+Settings → Editor.
 
 | Key | Default | Notes |
 |---|---|---|
@@ -54,7 +95,7 @@ Settings → Appearance → Editor.
 
 ## Language servers
 
-Settings → Appearance → Languages lists every language server Atlas knows, shows whether it is on your `PATH`, managed by Atlas or missing, and lets you install, update, uninstall, restart it and open its log. Atlas runs a server from your `PATH` when it finds one, and otherwise downloads one the first time you open a file of that language.
+Settings → Editor → Languages lists every language server Atlas knows, shows whether it is on your `PATH`, managed by Atlas or missing, and lets you install, update, uninstall, restart it and open its log. Atlas runs a server from your `PATH` when it finds one, and otherwise downloads one the first time you open a file of that language.
 
 `lsp` replaces the server of a language or changes how it starts. Keys are LSP language ids (`typescript`, `rust`, `go`, `python`…); the same shape works in a project's `.atlas/settings.json`.
 
@@ -94,7 +135,7 @@ A project can carry its own overrides in `.atlas/settings.json` at the root of t
 }
 ```
 
-The project file wins over `~/.atlas/desktop/settings.json` field by field for the language it names (`command`, `args` and `disabled` are replaced; `initialization_options` and `settings` are merged deeper, project keys winning); languages and fields it does not mention keep your own settings. Settings → Languages links to the file (`.atlas/settings.json` in the footer) and creates it when it does not exist. An unreadable file is ignored and reported in the editor's language server status.
+The project file wins over `~/.atlas/desktop/settings.json` field by field for the language it names (`command`, `args` and `disabled` are replaced; `initialization_options` and `settings` are merged deeper, project keys winning); languages and fields it does not mention keep your own settings. Settings → Editor → Languages links to the file (`.atlas/settings.json` in the footer) and creates it when it does not exist. An unreadable file is ignored and reported in the editor's language server status.
 
 ## Terminal
 
@@ -116,7 +157,7 @@ The project file wins over `~/.atlas/desktop/settings.json` field by field for t
 | `terminal.padding_x` | `10` | 0–64 pt; inset left and right of the terminal. The margin uses the terminal theme's background |
 | `terminal.padding_y` | `6` | 0–64 pt; inset above and below |
 
-The GPU terminal itself is switched with **Settings → Appearance → Terminal → Fast terminal (GPU)**.
+The GPU terminal itself is switched with **Settings → Terminal → Fast terminal (GPU)**.
 
 ## Theme and shortcuts
 
@@ -136,7 +177,7 @@ The GPU terminal itself is switched with **Settings → Appearance → Terminal 
 
 Every shortcut is a named command (`workspace::ToggleLeftDock`, `pane::SplitRight`, `atlas::NewWorktree`…). ⌘⇧P lists every command with its current key, and Settings → Keyboard shortcuts rebinds them with a recorder. Modifiers are `ctrl`, `alt`, `shift` and `cmd`, joined with `-`: `cmd-shift-p`, `ctrl-tab`, `alt-cmd-left`. ⌘Z, ⇧⌘Z and ⌘A are fixed by the app menu and cannot be rebound. The defaults are listed in [Desktop app › Keyboard](desktop.md#keyboard).
 
-## Workspaces and agents
+## Workspaces, agents and notifications
 
 | Key | Notes |
 |---|---|
@@ -152,6 +193,8 @@ Every shortcut is a named command (`workspace::ToggleLeftDock`, `pane::SplitRigh
 | `openServicesIn` | `system` opens service URLs in your browser instead of the Atlas browser |
 
 ## Shell, updates and onboarding
+
+The shell is in Settings → Integrations → Shell & links; updates are in Settings → General.
 
 | Key | Notes |
 |---|---|

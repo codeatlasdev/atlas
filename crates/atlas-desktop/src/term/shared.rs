@@ -292,8 +292,18 @@ mod tests {
         let mut p = Placement::default();
         p.request(R, true);
         p.drawn();
-        assert_eq!(p.request((0.0, 0.0, 0.0, 0.0), true), PARK, "0x0 parks at the last size");
-        assert_eq!(p.request(R, true), Target::Over(R), "and the real rect shows it again");
+        // Under the page the view needs no hiding: staying at the last good rect is invisible where the page
+        // paints and never flashes, which parking and coming back would.
+        assert_eq!(
+            p.request((0.0, 0.0, 0.0, 0.0), true),
+            Target::Over(R),
+            "0x0 keeps the last good rect"
+        );
+        assert_eq!(
+            p.request(R, true),
+            Target::Over(R),
+            "and the real rect shows it again"
+        );
         assert!(p.is_presented());
     }
 

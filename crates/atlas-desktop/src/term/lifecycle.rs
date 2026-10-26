@@ -318,22 +318,26 @@ fn spawn_render(
                         emit_font_event(&font_app, &font_tab, spec, res)
                     }),
                     on_first_frame: Box::new(move || {
-                        let view = first_sh.view();
                         let target = first_sh.placement.lock().drawn();
                         let px = pixels_of(&first_app, target);
+                        let sh = first_sh.clone();
                         let _ = on_main(&first_app, move || {
-                            mac::apply(&[mac::Move {
-                                view,
-                                target,
-                                pixels: px,
-                            }]);
+                            mac::apply(&resolve(vec![(sh, target, px)]));
                             Ok(())
                         });
                         // The surface is on screen under the slot: the page may open its hole now.
                         emit_presented(&first_app, &first_tab, &first_sh);
                     }),
                     rebuild: Box::new(move |old: Renderer, pixels, _why| {
-                        rebuild_surface(&rebuild_app, &rebuild_tab, &rebuild_sh, ns_win, scale, old, pixels)
+                        rebuild_surface(
+                            &rebuild_app,
+                            &rebuild_tab,
+                            &rebuild_sh,
+                            ns_win,
+                            scale,
+                            old,
+                            pixels,
+                        )
                     }),
                     incident: Box::new(move |kind, detail| {
                         crate::diag::incident(kind, &format!("tab {incident_tab}: {detail}"))
@@ -405,7 +409,10 @@ fn dropped(tab: &str) -> bool {
 /// opens (or closes) the slot's hole. Sent on every change of that state; the page never guesses it.
 fn emit_presented(app: &AppHandle, tab: &str, sh: &Shared) {
     let presented = sh.placement.lock().is_presented();
-    let _ = app.emit("term://presented", json!({"tab": tab, "presented": presented}));
+    let _ = app.emit(
+        "term://presented",
+        json!({"tab": tab, "presented": presented}),
+    );
 }
 
 /// Physical size of the surface for `target` (`Over` and `Park` both keep their size), at the window's scale.
@@ -453,18 +460,26 @@ pub async fn term_layout(app: AppHandle, slots: Vec<Slot>) -> Result<Vec<Placed>
     let mut sizes = Vec::new();
     for s in &slots {
         let Some(sh) = live(&s.tab) else {
-            out.push(Placed { tab: s.tab.clone(), presented: false, dropped: true });
+            out.push(Placed {
+                tab: s.tab.clone(),
+                presented: false,
+                dropped: true,
+            });
             continue;
         };
         // Before the first frame is drawn the view stays parked; the rect is applied when it is (`Placement`).
         let target = sh.placement.lock().request((s.x, s.y, s.w, s.h), s.visible);
         let pixels = pixels_of(&app, target);
-        moves.push(mac::Move { view: sh.view(), target, pixels });
+        moves.push((sh.clone(), target, pixels));
         if let Some(px) = pixels {
             sizes.push((sh.clone(), px));
         }
         let presented = sh.placement.lock().is_presented();
-        out.push(Placed { tab: s.tab.clone(), presented, dropped: false });
+        out.push(Placed {
+            tab: s.tab.clone(),
+            presented,
+            dropped: false,
+        });
     }
     let ns_win = app
         .get_window("main")
@@ -487,7 +502,10 @@ pub async fn term_layout(app: AppHandle, slots: Vec<Slot>) -> Result<Vec<Placed>
     for (sh, px) in sizes {
         sh.update(|st| st.size = Some(px));
     }
-    if tokio::time::timeout(PRESENT_DEADLINE, done_rx).await.is_err() {
+    if tokio::time::timeout(PRESENT_DEADLINE, done_rx)
+        .await
+        .is_err()
+    {
         let _ = on_main(&app, move || {
             apply_pending(ns_win, &pending, &done_tx);
             Ok(())
@@ -499,16 +517,17 @@ pub async fn term_layout(app: AppHandle, slots: Vec<Slot>) -> Result<Vec<Placed>
 /// Apply the batch once, on the main thread, and release the waiting command.
 fn apply_pending(
     ns_win: usize,
-    pending: &Mutex<Option<Vec<mac::Move>>>,
+    pending: &Mutex<Option<Vec<Planned>>>,
     done: &Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 ) {
-    if let Some(moves) = pending.lock().take() {
+    if let Some(planned) = pending.lock().take() {
+        let moves = resolve(planned);
         // Blank-terminal audit: a view the page ended up above (the web view re-added, a window change) is
         // "there" but never visible. Put it back below the page before moving it; this is a no-op reorder
         // for a view that is already right, and it never hides anything.
         for m in &moves {
-            if !mac::is_layered(m.view) {
-                mac::relayer(ns_win, m.view);
+            if !mac::is_layered(&m.view) {
+                mac::relayer(ns_win, &m.view);
             }
         }
         mac::apply(&moves);
@@ -518,13 +537,37 @@ fn apply_pending(
     }
 }
 
+/// A move decided off the main thread; the view is looked up when it is applied.
+type Planned = (Arc<Shared>, Target, Option<(u32, u32)>);
+
+/// The views of a batch, read on the main thread where `term_close` and a rebuild release them: a
+/// terminal closed after the batch was planned is skipped, a rebuilt one moves its new view. Planning
+/// with the view pointer crashed the app when a tab closed before WebKit's next present (SIGTRAP in
+/// `superview`, 2026-10-25).
+fn resolve(planned: Vec<Planned>) -> Vec<mac::Move> {
+    planned
+        .into_iter()
+        .filter(|(sh, _, _)| !sh.state.lock().closed)
+        .filter_map(|(sh, target, pixels)| {
+            Some(mac::Move {
+                view: mac::retain_view(sh.view())?,
+                target,
+                pixels,
+            })
+        })
+        .collect()
+}
+
 /// How long a layout batch waits for the page's presentation before it answers anyway.
 const PRESENT_DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// The open terminal of `tab` whose render thread is alive; a dead one is reported as an incident.
 fn live(tab: &str) -> Option<Arc<Shared>> {
     if dropped(tab) {
-        crate::diag::incident("terminal-dropped", &format!("tab {tab}: render thread ended"));
+        crate::diag::incident(
+            "terminal-dropped",
+            &format!("tab {tab}: render thread ended"),
+        );
         return None;
     }
     with_term(tab).ok()
@@ -542,7 +585,14 @@ pub async fn term_bounds(
     h: f64,
     visible: bool,
 ) -> Result<(), String> {
-    let slot = Slot { tab, x, y, w, h, visible };
+    let slot = Slot {
+        tab,
+        x,
+        y,
+        w,
+        h,
+        visible,
+    };
     let placed = term_layout(app, vec![slot]).await?;
     match placed.first() {
         Some(p) if p.dropped => Err(VIEW_DROPPED.into()),

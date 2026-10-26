@@ -53,7 +53,7 @@ pub(super) fn resolve(rect: Frame, show: bool, last: Option<(f64, f64)>) -> Targ
 /// Physical pixels of a frame of `w` × `h` points at backing `scale`: what the Metal drawable and the
 /// renderer's surface are sized to, at least 1 so the layer never loses its surface.
 pub(super) fn pixels(w: f64, h: f64, scale: f64) -> (u32, u32) {
-    let px = |v: f64| ((v * scale).round().max(1.0)) as u32;
+    let px = |v: f64| ((v * scale).floor().max(1.0)) as u32;
     (px(w), px(h))
 }
 
@@ -106,7 +106,10 @@ mod tests {
 
     #[test]
     fn a_hidden_tab_parks_at_its_last_size() {
-        assert_eq!(resolve(R, false, Some((300.0, 200.0))), Target::Park(300.0, 200.0));
+        assert_eq!(
+            resolve(R, false, Some((300.0, 200.0))),
+            Target::Park(300.0, 200.0)
+        );
         assert_eq!(resolve(R, false, None), Target::Park(1.0, 1.0));
     }
 
@@ -121,18 +124,33 @@ mod tests {
             (0.0, 0.0, f64::INFINITY, 200.0),
             (0.0, 0.0, -5.0, 200.0),
         ] {
-            assert_eq!(resolve(bad, true, Some((300.0, 200.0))), Target::Park(300.0, 200.0), "{bad:?}");
+            assert_eq!(
+                resolve(bad, true, Some((300.0, 200.0))),
+                Target::Park(300.0, 200.0),
+                "{bad:?}"
+            );
         }
     }
-
 
     const BG: [f64; 3] = [0.1, 0.2, 0.3];
 
     // The stage slides snapshots that have a hole where a terminal is: the fill covers the live view under it.
     #[test]
     fn a_terminal_inside_the_pager_is_filled_relative_to_the_pager_origin() {
-        let fills = stage_fills((100.0, 40.0, 800.0, 600.0), &[Fill { frame: (120.0, 80.0, 300.0, 200.0), bg: BG }]);
-        assert_eq!(fills, vec![Fill { frame: (20.0, 40.0, 300.0, 200.0), bg: BG }]);
+        let fills = stage_fills(
+            (100.0, 40.0, 800.0, 600.0),
+            &[Fill {
+                frame: (120.0, 80.0, 300.0, 200.0),
+                bg: BG,
+            }],
+        );
+        assert_eq!(
+            fills,
+            vec![Fill {
+                frame: (20.0, 40.0, 300.0, 200.0),
+                bg: BG
+            }]
+        );
     }
 
     #[test]
@@ -141,12 +159,27 @@ mod tests {
         let out = stage_fills(
             pager,
             &[
-                Fill { frame: (50.0, 40.0, 100.0, 100.0), bg: BG },
-                Fill { frame: (0.0, 0.0, 90.0, 900.0), bg: BG },
-                Fill { frame: (900.0, 40.0, 50.0, 50.0), bg: BG },
+                Fill {
+                    frame: (50.0, 40.0, 100.0, 100.0),
+                    bg: BG,
+                },
+                Fill {
+                    frame: (0.0, 0.0, 90.0, 900.0),
+                    bg: BG,
+                },
+                Fill {
+                    frame: (900.0, 40.0, 50.0, 50.0),
+                    bg: BG,
+                },
             ],
         );
-        assert_eq!(out, vec![Fill { frame: (0.0, 0.0, 50.0, 100.0), bg: BG }]);
+        assert_eq!(
+            out,
+            vec![Fill {
+                frame: (0.0, 0.0, 50.0, 100.0),
+                bg: BG
+            }]
+        );
     }
 
     #[test]

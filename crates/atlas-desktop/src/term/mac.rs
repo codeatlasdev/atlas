@@ -97,7 +97,8 @@ fn cg_color(rgb: [f64; 3]) -> *mut AnyObject {
     // autorelease pool outlives (the layer retains it on assignment).
     unsafe {
         let cls = objc2::class!(NSColor);
-        let c: *mut AnyObject = msg_send![cls, colorWithSRGBRed: rgb[0], green: rgb[1], blue: rgb[2], alpha: 1.0f64];
+        let c: *mut AnyObject =
+            msg_send![cls, colorWithSRGBRed: rgb[0], green: rgb[1], blue: rgb[2], alpha: 1.0f64];
         msg_send![c, CGColor]
     }
 }
@@ -136,7 +137,10 @@ pub fn recolor(view: usize, rgb: [f64; 3]) {
 
 /// One terminal's move for [`apply`].
 pub struct Move {
-    pub view: usize,
+    /// Retained for the batch: the batch runs after WebKit's next present, and a tab closed in between
+    /// releases its own reference (`destroy`); a raw pointer here crashed the app (SIGTRAP in
+    /// `superview`, 2026-10-25).
+    pub view: Retained<NSView>,
     pub target: Target,
     /// Physical pixels of the surface after the move (`Over` only), to size the drawable in the same block.
     pub pixels: Option<(u32, u32)>,
@@ -151,8 +155,7 @@ pub fn apply(moves: &[Move]) {
     CATransaction::begin();
     CATransaction::setDisableActions(true);
     for m in moves {
-        // SAFETY: retained in `create`, released only in `destroy`.
-        let view = unsafe { &*(m.view as *const NSView) };
+        let view = &*m.view;
         let Some(sup) = (unsafe { view.superview() }) else {
             continue;
         };
@@ -173,9 +176,7 @@ pub fn apply(moves: &[Move]) {
     CATransaction::commit();
     // The transaction has committed: the resized presents above landed with it. Back to async presents.
     for m in moves {
-        // SAFETY: as above.
-        let view = unsafe { &*(m.view as *const NSView) };
-        sync_with_transaction(view, false);
+        sync_with_transaction(&m.view, false);
     }
 }
 
@@ -232,9 +233,7 @@ pub fn after_page_presents(ns_window: usize, f: impl FnOnce() + 'static) {
 /// Is the view still in the window, below the page's web view? False after anything that rebuilt
 /// the content view's children (a window/screen change, a webview re-added): the page would then
 /// paint over a terminal that is "there" but never visible again.
-pub fn is_layered(view: usize) -> bool {
-    // SAFETY: retained in `create`, released only in `destroy`.
-    let view = unsafe { &*(view as *const NSView) };
+pub fn is_layered(view: &NSView) -> bool {
     let Some(sup) = (unsafe { view.superview() }) else {
         return false;
     };
@@ -248,10 +247,9 @@ pub fn is_layered(view: usize) -> bool {
 }
 
 /// Put the view back below the page (it may have been re-parented or the page re-added over it).
-pub fn relayer(ns_window: usize, view: usize) {
-    // SAFETY: Tauri's live main NSWindow; the view is retained in `create`.
+pub fn relayer(ns_window: usize, view: &NSView) {
+    // SAFETY: Tauri's live main NSWindow.
     let win = unsafe { &*(ns_window as *const NSWindow) };
-    let view = unsafe { &*(view as *const NSView) };
     let Some(content) = win.contentView() else {
         return;
     };
@@ -267,7 +265,8 @@ pub fn set_window_background(ns_window: usize, rgb: [f64; 3]) {
     unsafe {
         let win = ns_window as *mut AnyObject;
         let cls = objc2::class!(NSColor);
-        let c: *mut AnyObject = msg_send![cls, colorWithSRGBRed: rgb[0], green: rgb[1], blue: rgb[2], alpha: 1.0f64];
+        let c: *mut AnyObject =
+            msg_send![cls, colorWithSRGBRed: rgb[0], green: rgb[1], blue: rgb[2], alpha: 1.0f64];
         let _: () = msg_send![win, setBackgroundColor: c];
     }
 }
@@ -277,4 +276,11 @@ pub fn destroy(view: usize) {
     if let Some(view) = unsafe { Retained::from_raw(view as *mut NSView) } {
         view.removeFromSuperview();
     }
+}
+
+/// A retained reference to the live view at `view` (the pointer `create` returned), for work that runs
+/// later on the main thread.
+pub fn retain_view(view: usize) -> Option<Retained<NSView>> {
+    // SAFETY: called while the terminal is registered, so `create`'s reference keeps the view alive here.
+    unsafe { Retained::retain(view as *mut NSView) }
 }

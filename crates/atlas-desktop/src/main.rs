@@ -34,10 +34,13 @@ mod git;
 mod git_branch;
 mod host;
 mod lifecycle;
+#[cfg(any(target_os = "linux", test))]
+mod linux_gfx;
 mod live;
 mod live_server;
 mod menu;
 mod natives;
+mod pty_batch;
 mod registry;
 mod remote;
 mod shell_env;
@@ -317,6 +320,19 @@ fn visible_on_any(win: (i32, i32, i32, i32), screens: &[(i32, i32, i32, i32)]) -
     })
 }
 
+/// Whether the main window is see-through. Only macOS shows anything through it (vibrancy behind the sidebar); on
+/// Linux the page paints an opaque backdrop (`html.opaque-window`), so an alpha window gives WebKitGTK and the
+/// compositor per-frame alpha blending of the whole window for nothing. Same mechanism as tauri-apps/tauri#15471
+/// (measured on macOS: ~8x GPU power for a static page); the Linux cost is inferred, not measured.
+fn window_transparent(configured: bool) -> bool {
+    transparent_on(configured, std::env::consts::OS)
+}
+
+/// [`window_transparent`] for an explicit OS name (`std::env::consts::OS`), so every platform's answer is testable.
+fn transparent_on(configured: bool, os: &str) -> bool {
+    configured && os != "linux"
+}
+
 /// The main window from `tauri.conf.json` (`create: false`), built here so it can start hidden
 /// with the cached theme already on `<html>` and in the native appearance. `boot::app_ready`
 /// (first real frame) or `boot`'s deadline shows it; window-state restores size/position/maximized
@@ -338,6 +354,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
     let win = builder
+        .transparent(window_transparent(cfg.transparent))
         .visible(false)
         .theme(theme)
         .initialization_script(script)
@@ -370,6 +387,8 @@ fn main() {
     #[cfg(windows)]
     wait_for_predecessor();
     diag::install_panic_hook();
+    #[cfg(target_os = "linux")]
+    linux_gfx::log_startup();
     boot::start();
     boot::mark("main");
     shell_env::start();
@@ -515,7 +534,28 @@ fn main() {
 }
 #[cfg(test)]
 mod window_tests {
-    use super::visible_on_any;
+    use super::{transparent_on, visible_on_any};
+
+    // Incident (2026-10-26, Arch: lag and ghost frames): `tauri.conf.json` makes the main window transparent for the
+    // macOS vibrancy, and the Linux build inherited it although its page is opaque.
+    #[test]
+    fn the_main_window_is_transparent_only_where_something_shows_through() {
+        assert!(
+            !transparent_on(true, "linux"),
+            "Linux: opaque page, no vibrancy"
+        );
+        assert!(
+            transparent_on(true, "macos"),
+            "macOS: vibrancy shows through"
+        );
+        assert!(transparent_on(true, "windows"), "Windows keeps what it had");
+        for os in ["linux", "macos", "windows"] {
+            assert!(
+                !transparent_on(false, os),
+                "never transparent when not configured"
+            );
+        }
+    }
 
     const LAPTOP: (i32, i32, i32, i32) = (0, 0, 3024, 1964);
 

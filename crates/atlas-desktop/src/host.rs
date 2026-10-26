@@ -331,14 +331,61 @@ impl HostHub {
     }
 }
 
+/// Terminal output waiting for the next frame (`pty_batch.rs`): one event per pty per frame instead of one per
+/// hostd chunk, which on WebKitGTK (Linux) froze the app with two busy terminals.
+static PTY_OUT: std::sync::LazyLock<Mutex<crate::pty_batch::PtyBatcher>> =
+    std::sync::LazyLock::new(Default::default);
+/// About one display frame.
+const PTY_FLUSH: Duration = Duration::from_millis(16);
+
+fn flush_pty_output(app: &AppHandle) {
+    use base64::Engine;
+    let out = PTY_OUT.lock().drain();
+    for b in out {
+        // Only the main window shows terminals; `emit` also evaluated every chunk in the tray webview.
+        let _ = app.emit_to(
+            "main",
+            &format!("pty://{}", b.pty),
+            json!({
+                "data": base64::engine::general_purpose::STANDARD.encode(&b.bytes),
+                "replay": b.replay
+            }),
+        );
+    }
+}
+
+/// Start the per-frame flusher (once per app).
+fn start_pty_flusher(app: &AppHandle) {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    let app = app.clone();
+    STARTED.call_once(move || {
+        tauri::async_runtime::spawn(async move {
+            let mut tick = tokio::time::interval(PTY_FLUSH);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                if !PTY_OUT.lock().is_empty() {
+                    flush_pty_output(&app);
+                }
+            }
+        });
+    });
+}
+
 fn forward(app: &AppHandle, ev: &Value) {
     match ev["ev"].as_str() {
         Some(k @ ("pty_output" | "pty_replay")) => {
+            use base64::Engine;
             let pty = ev["pty"].as_str().unwrap_or_default();
-            let _ = app.emit(
-                &format!("pty://{pty}"),
-                json!({"data": ev["data"], "replay": k == "pty_replay"}),
-            );
+            let Ok(bytes) =
+                base64::engine::general_purpose::STANDARD.decode(ev["data"].as_str().unwrap_or(""))
+            else {
+                return;
+            };
+            start_pty_flusher(app);
+            if PTY_OUT.lock().push(pty, &bytes, k == "pty_replay") {
+                flush_pty_output(app);
+            }
         }
         Some("agent_status") => {
             let _ = app.emit(

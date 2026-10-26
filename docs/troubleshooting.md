@@ -61,6 +61,26 @@ The full table is in [Agent setup](agents.md#troubleshooting) and [MCP](mcp.md#t
 | `atlas wt` or `atlas term` says the app is not running | They use `~/.atlas/desktop.sock`; open Atlas Desktop first. `atlas term` falls back to the local hostd when the app is closed. |
 | The app and CLI versions differ | `atlas update` brings both to the latest; **Update CLI & app** in the app does the same. Running stacks keep their version until `atlas down && atlas dev --detach`. |
 
+### Linux: lag, freezes or stale frames
+
+Atlas Desktop on Linux paints through WebKitGTK and draws terminals with xterm.js. On some setups, most often NVIDIA, WebKitGTK and the graphics driver disagree. Atlas sets none of the WebKit variables itself (forcing them helps one machine and slows another, see [Tauri's Linux graphics page](https://tauri.app/develop/debug/linux-graphics)), so try them yourself, in this order, one at a time, from a terminal:
+
+```bash
+# 0. What Atlas saw: session, display servers, NVIDIA driver and every WEBKIT_/GDK_/GSK_ variable set.
+grep "linux graphics" ~/.atlas/desktop/app.log | tail -1
+
+# 1. Wayland + NVIDIA ("Error 71 (Protocol error)", blank window): costs nothing in speed.
+__NV_DISABLE_EXPLICIT_SYNC=1 atlas desktop
+
+# 2. A flickering or blank window, "AcceleratedSurfaceDMABuf was unable to construct a complete framebuffer":
+WEBKIT_DISABLE_DMABUF_RENDERER=1 atlas desktop
+
+# 3. Last resort (the window dies on resize): turns accelerated compositing off. Slow: every change repaints the window.
+WEBKIT_DISABLE_COMPOSITING_MODE=1 atlas desktop
+```
+
+Variables you set are left alone. Include the `linux graphics` line and which of the three helped when you report it.
+
 ### Debugging a debug build
 
 ```bash

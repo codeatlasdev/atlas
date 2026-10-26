@@ -11,7 +11,7 @@
     "fmt": "cargo fmt --all && cd apps/desktop && bun run format",
     "dup": "bunx jscpd",
     "deps:update": "for d in . apps/desktop site studio; do (cd $d && bunx npm-check-updates -u --configFilePath \"$(git rev-parse --show-toplevel)\") || exit 1; done && bun install && (cd apps/desktop && bun install) && (cd site && bun install)",
-    "desktop:dev": "scripts/setup.sh --quiet && cd crates/atlas-desktop && cargo tauri dev --config tauri.dev.conf.json",
+    "desktop:dev": "scripts/setup.sh --quiet && cargo build -q -p atlas-cli && ATLAS_HOSTD_DIR=\"$HOME/.atlas/dev\" ATLAS_BIN=\"$PWD/target/debug/atlas\" bash -c 'cd crates/atlas-desktop && cargo tauri dev --config tauri.dev.conf.json'",
     "desktop:agent": "scripts/desktop-agent.sh",
     "desktop:lab": "scripts/desktop-lab.sh",
     "desktop:mirror": "bun scripts/desktop-mirror.ts",

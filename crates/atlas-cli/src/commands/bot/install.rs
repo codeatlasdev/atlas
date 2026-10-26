@@ -151,6 +151,19 @@ or run the install from a terminal: atlas bot install {}",
         }
     }
 
+    // The desktop reaches a ship over SSH as atlas-bot and runs `$HOME/.atlas/bin/atlas hostd`, the same path
+    // as any remote; without this link it found no binary and the first crewmate never got created.
+    let link = format!(
+        "sudo -u {u} mkdir -p {home}/.atlas/bin && sudo -u {u} ln -sfn {dir}/atlas {home}/.atlas/bin/atlas",
+        u = BOT_USER,
+        home = shq(BOT_HOME),
+        dir = shq(INSTALL_DIR),
+    );
+    let o = r.exec(&link).await?;
+    if o.code != 0 {
+        bail!("linking atlas for {BOT_USER} failed: {}", o.stderr.trim());
+    }
+
     // Ensure .ssh dir exists under the bot home with correct ownership
     let mk_ssh = format!(
         "sudo mkdir -p {home}/.ssh && sudo chmod 700 {home}/.ssh && sudo chown {u}:{u} {home}/.ssh",

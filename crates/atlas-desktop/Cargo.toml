@@ -66,7 +66,7 @@ atlas-term = { path = "../atlas-term" }
 [target.'cfg(target_os = "linux")'.dependencies]
 # Already in the graph through wry/gtk (same 0.18 line); used to ask the session bus whether a StatusNotifier host
 # exists (tray.rs), because a tray icon with no host is silently invisible.
-gio = "0.18"
+gio = "0.22"
 
 [dev-dependencies]
 serde_norway = { workspace = true }

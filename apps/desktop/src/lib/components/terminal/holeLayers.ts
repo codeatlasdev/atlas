@@ -36,15 +36,26 @@ export function recut() {
 	if (!raf) raf = requestAnimationFrame(apply);
 }
 
-/** A slot's native view is on screen under it (`rect` is where, in CSS px): open its hole. */
+/**
+ * A slot's native view is on screen under it (`rect` is where, in CSS px): open its hole.
+ *
+ * The cut is written NOW, in the same task as the slot turning transparent (Svelte's effect runs before the frame):
+ * a deferred write would let one frame show the slot transparent under a still-opaque card, or the card cut over a
+ * slot already painting again. Layout answers that only move a rect still coalesce into one write per frame (`recut`).
+ */
 export function openHole(tab: string, rect: () => Rect | null) {
 	open.set(tab, rect);
-	recut();
+	flushNow();
 }
 
-/** The view is gone or hidden: close the hole so the page paints that rect again. */
+/** The view is gone or hidden: close the hole so the page paints that rect again (same task as the slot painting). */
 export function closeHole(tab: string) {
-	if (open.delete(tab)) recut();
+	if (open.delete(tab)) flushNow();
+}
+
+function flushNow() {
+	if (raf) cancelAnimationFrame(raf);
+	apply();
 }
 
 /** Test seam: forget every hole and cached mask. */

@@ -211,6 +211,7 @@ macro_rules! handlers {
             browser::browser_close,
             browser::browser_eval,
             browser::browser_pick,
+            browser::browser_focus,
             natives::natives_hit,
             natives::natives_ground,
             browser::browser_pick_cancel,

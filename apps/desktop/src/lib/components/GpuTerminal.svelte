@@ -56,6 +56,9 @@
 		() => ({ tab, pty }),
 		() => area,
 		() => visible,
+		undefined,
+		undefined,
+		() => input?.focus(),
 	);
 	const pointer = new Pointer({
 		tab: () => tab,

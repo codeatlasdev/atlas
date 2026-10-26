@@ -72,6 +72,8 @@ export interface NativeAdapter {
 	onError?: (e: unknown) => "stop" | void;
 	/** Kind-specific "reload", reachable through `reloadNativeSurface`. */
 	reload?: () => Promise<unknown>;
+	/** Give the view keyboard focus (`native/focus.ts` calls it on a press on the slot). */
+	focus?: () => void;
 	/** No load event for `stallMs` (default 15 s): the load is over and never finished. */
 	onStall?: () => void;
 	stallMs?: number;
@@ -90,6 +92,9 @@ export interface NativeSurface {
 	loading: Loading;
 	/** The adapter's own reload, a no-op before the view is open. */
 	reload: () => Promise<void>;
+	/** The slot and the adapter's focus, for `native/focus.ts`. */
+	slot: () => HTMLElement | undefined;
+	focus: () => void;
 }
 
 export interface SurfaceOptions {
@@ -109,6 +114,9 @@ export const nativeSurfaces = {
 		return out;
 	},
 };
+
+/** Every mounted surface (the focus claim walks them). */
+export const allNativeSurfaces = () => surfaces.values();
 
 export const hasNativeSurface = (kind: string, id: string | null | undefined) =>
 	!!id && surfaces.has(key(kind, id));
@@ -274,6 +282,8 @@ export function createNativeSurface(a: NativeAdapter, opts: SurfaceOptions = {})
 	}
 
 	const self: NativeSurface & { kind: string; id: string } = {
+		slot: a.slot,
+		focus: () => a.focus?.(),
 		kind: a.kind,
 		id: a.id,
 		sync,

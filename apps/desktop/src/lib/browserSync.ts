@@ -67,6 +67,7 @@ export function browserSurface(o: BrowserSurfaceOptions, opts?: SurfaceOptions):
 			place: (rect, visible) => o.invoke("browser_bounds", { tab: o.tab, ...rect, visible }),
 			// Hidden, not closed: the tab may only be re-parented (split/move). `closeTab` closes it.
 			release: () => o.invoke("browser_park", { tab: o.tab }).catch(() => {}),
+			focus: () => void o.invoke("browser_focus", { tab: o.tab }).catch(() => {}),
 			onError: (e) => o.onError(e),
 			onStall: o.onStall,
 			stallMs: o.stallMs,

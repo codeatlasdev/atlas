@@ -359,6 +359,31 @@ pub fn browser_nav(app: AppHandle, tab: String, action: String) -> Result<(), St
     .map_err(|e| e.to_string())
 }
 
+/// Give the tab's page the keyboard (`native/focus.ts`: a press on the page, even if a closing menu then restores DOM
+/// focus to its trigger). Makes the WKWebView the window's first responder.
+#[tauri::command]
+pub fn browser_focus(app: AppHandle, tab: String) -> Result<(), String> {
+    let v = webview(&app, &tab)?;
+    // Only the first responder inside our own window: never activates the app or raises the window (an agent
+    // instance must not take the user's focus; `.set_focus()` is reserved for the user's show path).
+    #[cfg(target_os = "macos")]
+    v.with_webview(|pw| {
+        use objc2::runtime::AnyObject;
+        // SAFETY: wry's live WKWebView on the main thread; `window` and `makeFirstResponder:` are plain AppKit calls.
+        unsafe {
+            let view = pw.inner() as *mut AnyObject;
+            let win: *mut AnyObject = objc2::msg_send![view, window];
+            if !win.is_null() {
+                let _: bool = objc2::msg_send![win, makeFirstResponder: view];
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "macos"))]
+    let _ = v;
+    Ok(())
+}
+
 /// Close the tab's webview. Serialized with `browser_open` so a close that follows an
 /// in-flight open (⌘W right after opening) always lands after the view exists.
 #[tauri::command]

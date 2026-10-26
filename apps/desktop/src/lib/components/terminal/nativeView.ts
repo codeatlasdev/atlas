@@ -92,6 +92,8 @@ export class NativeView {
 		private call: typeof invoke = invoke,
 		/** The colour payload of `term_open`; injected by the tests. */
 		private colors: (el: Element) => Record<string, unknown> = termColors,
+		/** Focus the terminal's input sink (where its keys are read). */
+		private focusInput: () => void = () => {},
 	) {
 		const open = async (rect: NativeRect) => {
 			const { tab, pty } = this.ids();
@@ -111,6 +113,7 @@ export class NativeView {
 			id: ids().tab,
 			slot: area,
 			visible,
+			focus: () => this.focusInput(),
 			// The native view is the slot inset by the terminal's padding; the slot behind it paints the background.
 			rect: (r) => {
 				const { padding_x: px, padding_y: py } = prefs.value.terminal;

@@ -17,6 +17,8 @@ import { reconcileSoon } from "#lib/native/surface.ts";
 import { startGround } from "#lib/native/ground.ts";
 import { startHitMap } from "#lib/native/hit.ts";
 import { startNativeClicks } from "#lib/nativeClicks.ts";
+import { startNativeFocus } from "#lib/native/focus.ts";
+import { allNativeSurfaces } from "#lib/native/surface.ts";
 import { host } from "#lib/host.ts";
 import { errors, startErrorHandler } from "#lib/errors/errors.svelte.ts";
 import { loadKeymap, register } from "#lib/keymap.svelte.ts";
@@ -230,6 +232,8 @@ export function startSession(): () => void {
 	const stopHoverDismiss = dismissHoverOnBlur();
 	// A press on a terminal/browser closes menus and popovers like a press on the page does.
 	const stopNativeClicks = startNativeClicks();
+	// A press on a native view gives it the keyboard, even when a closing menu restores focus to its trigger.
+	const stopNativeFocus = startNativeFocus({ surfaces: allNativeSurfaces });
 	// Native views sit below the page, which is transparent over their slots (macOS; the other platforms keep the opaque
 	// page and their own child views above it). The hit map tells the Rust router what the page owns over a slot.
 	const mac = !document.documentElement.classList.contains("opaque-window");
@@ -265,6 +269,7 @@ export function startSession(): () => void {
 		stopFeel();
 		stopHoverDismiss();
 		stopNativeClicks();
+		stopNativeFocus();
 		stopHitMap();
 		stopGround();
 		window.removeEventListener("focus", reconcile);

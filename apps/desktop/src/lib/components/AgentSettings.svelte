@@ -243,7 +243,7 @@
 		gap: 8px;
 		padding: 12px 14px;
 	}
-	.custom :global(.ca-textarea),
+	.custom :global(.ca-ta),
 	.custom .err,
 	.custom > div:last-child {
 		grid-column: 1 / -1;

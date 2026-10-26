@@ -69,3 +69,34 @@ test("app.css turns the scrim and tooltip blur off through their own kit tokens,
 	expect(css).toMatch(/--ca-tooltip-blur:\s*none/);
 	expect(css).not.toMatch(/--ca-blur-ultra-thin\s*:/);
 });
+
+// Incident (kit 4.6.0 `codeatlas-ui workarounds`): `AgentSettings.svelte` spanned the Environment field over both grid
+// columns with `:global(.ca-textarea)`, a class the kit never rendered (the root is `.ca-ta`), so the rule matched nothing
+// and the field sat in one column. Every kit class an app selector names must be a stable part in the kit's own manifest
+// (`dist/parts.json`); `.ca-selectable` is the one documented utility class.
+test("every .ca-* selector in app styles names a stable kit part", () => {
+	const parts = JSON.parse(
+		readFileSync(new URL("../../node_modules/@codeatlasdev/ui/dist/parts.json", import.meta.url), "utf8"),
+	);
+	const stable = new Set<string>(["ca-selectable"]);
+	for (const c of parts.components) for (const p of c.parts) if (p.stable) stable.add(p.name);
+	const bad: string[] = [];
+	const scan = (path: string, src: string) => {
+		const styles = path.endsWith(".svelte")
+			? [...src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1])
+			: [src];
+		for (const s of styles)
+			for (const m of s.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/\.(ca-[a-z][\w-]*)/g))
+				if (!stable.has(m[1])) bad.push(`${path}: .${m[1]}`);
+	};
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			const path = join(dir, name);
+			if (statSync(path).isDirectory()) walk(path);
+			else if (/\.(svelte|css)$/.test(name)) scan(path, readFileSync(path, "utf8"));
+		}
+	};
+	walk(new URL("..", import.meta.url).pathname);
+	scan("app.css", css);
+	expect(bad).toEqual([]);
+});

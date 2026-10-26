@@ -146,7 +146,7 @@ impl Renderer {
             let [sx, sy, sw, sh] = im.src;
             let (iw, ih) = (im.w as f32, im.h as f32);
             self.img_insts.push(ImgInst {
-                pos: [im.col * cw, im.row * ch],
+                pos: [im.col * cw, (im.row + f.over as f32) * ch],
                 size: [im.cols * cw, im.rows * ch],
                 uv0: [sx as f32 / iw, sy as f32 / ih],
                 uv1: [(sx + sw) as f32 / iw, (sy + sh) as f32 / ih],

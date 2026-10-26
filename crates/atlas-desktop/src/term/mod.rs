@@ -8,7 +8,7 @@
 //!
 //! This file is the registry of open terminals plus the pty/clipboard/main-thread helpers.
 //! The `#[tauri::command]`s live by concern: `lifecycle` (open/bounds/close), `keys`
-//! (input, scrolling, prompts), `mouse` (pointer reports to programs), `select` (selection,
+//! (input, scrolling, prompts), `mouse` (pointer reports to programs), `wheel` (wheel and trackpad), `select` (selection,
 //! links, search), `settings` (theme, prefs, font, focus, stats); `render_loop`, `mac` and
 //! `shared` are the machinery.
 
@@ -22,6 +22,7 @@ mod settings;
 mod shared;
 mod system;
 mod watchdog;
+mod wheel;
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -41,6 +42,7 @@ pub use mouse::*;
 pub use select::*;
 pub use settings::*;
 pub use system::install as install_system_observers;
+pub use wheel::*;
 
 /// `terminal.*` settings for a GPU terminal (defaults when absent).
 #[derive(serde::Deserialize)]
@@ -48,6 +50,8 @@ pub use system::install as install_system_observers;
 pub struct TermPrefs {
     pub(super) font_size: f32,
     pub(super) scrollback: usize,
+    /// Memory cap of the scrollback in bytes of cells (`terminal.scrollback_bytes`); the tighter of the two wins.
+    pub(super) scrollback_bytes: usize,
     /// `block` | `bar` | `underline` | `hollow`.
     pub(super) cursor_shape: String,
     pub(super) cursor_blink: bool,
@@ -81,6 +85,7 @@ impl Default for TermPrefs {
         Self {
             font_size: 12.5,
             scrollback: 10_000,
+            scrollback_bytes: 64 << 20,
             cursor_shape: "block".into(),
             cursor_blink: false,
             // Ghostty's default: a program may not overwrite the clipboard unasked.

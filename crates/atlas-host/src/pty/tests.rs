@@ -562,3 +562,58 @@ async fn the_pty_list_summary_does_not_fork_ps_for_the_foreground_program() {
     );
     s.kill().await;
 }
+
+/// What a pty program printed, once it exited (the ring holds the raw bytes, `\r\n` line ends).
+#[cfg(unix)]
+async fn ran(req: PtyCreate, dir: &std::path::Path) -> String {
+    let s = Session::spawn(req, dir).unwrap();
+    until_exited(&s).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let out = String::from_utf8_lossy(&s.buf.lock().ring_bytes()).into_owned();
+    out.replace("\r\n", "\n")
+}
+
+// Study gap 7 (Ghostty parity): agents (Claude Code, omp, codex) branch on `TERM_PROGRAM` for scroll speed,
+// link clicks and graphics. A terminal tab says who it is, and hostd's own environment never leaks the
+// terminal that launched it (`TERM_PROGRAM=ghostty` from the shell that ran `bun run desktop:dev`). One test:
+// it edits the process environment, which the others read.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_terminal_says_it_is_atlas_whatever_launched_hostd() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: no other test reads these two variables; set before any child is spawned.
+    unsafe {
+        std::env::set_var("TERM_PROGRAM", "ghostty");
+        std::env::set_var("TERM_PROGRAM_VERSION", "9.9.9");
+    }
+    let show = "echo \"[${TERM_PROGRAM-unset}|${TERM_PROGRAM_VERSION-unset}|$COLORTERM|$TERM]\"";
+    let out = ran(shell_req(show), dir.path()).await;
+    let want = format!(
+        "[Atlas|{}|truecolor|xterm-256color]",
+        env!("CARGO_PKG_VERSION")
+    );
+    assert!(out.contains(&want), "{out:?}");
+
+    // The caller's own env has the last word (an agent that asks for another identity).
+    let mut req = shell_req(show);
+    req.env = [
+        ("TERM_PROGRAM".to_string(), "custom".to_string()),
+        ("TERM_PROGRAM_VERSION".to_string(), "1".to_string()),
+    ]
+    .into();
+    let out = ran(req, dir.path()).await;
+    assert!(out.contains("[custom|1|"), "caller wins: {out:?}");
+
+    // A pipe session is a JSONL protocol, not a terminal: no identity of ours (and none inherited here).
+    unsafe {
+        std::env::remove_var("TERM_PROGRAM");
+        std::env::remove_var("TERM_PROGRAM_VERSION");
+    }
+    let mut pipe = shell_req(show);
+    pipe.mode = crate::protocol::Mode::Pipe;
+    let s = Session::spawn(pipe, dir.path()).unwrap();
+    until_exited(&s).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let out = String::from_utf8_lossy(&s.buf.lock().ring_bytes()).into_owned();
+    assert!(out.contains("[unset|unset|"), "pipe session: {out:?}");
+}

@@ -30,6 +30,7 @@
 		readonly = false,
 		onLink,
 		onFile,
+		isFile,
 	}: {
 		tab: string;
 		pty: string;
@@ -40,6 +41,8 @@
 		onLink?: (url: string, external: boolean) => void;
 		/** ⌘-click on a plain token: `true` when it named a file and was opened. */
 		onFile?: (token: string) => boolean;
+		/** Does this path-shaped token name a file of the worktree? Only those light up on ⌘-hover. */
+		isFile?: (token: string) => boolean | Promise<boolean>;
 	} = $props();
 
 	let area: HTMLDivElement | undefined = $state();
@@ -50,6 +53,8 @@
 	let query = $state("");
 	let useRegex = $state(false);
 	let matchCase = $state(false);
+	/** The pointer is over a live link (⌘ held): the slot shows the pointer hand. */
+	let overLink = $state(false);
 
 	const quiet = () => {};
 	const view = new NativeView(
@@ -71,6 +76,8 @@
 			else void api.openUrl(url).catch((err) => toast.error(errText(err)));
 		},
 		onFile: (token) => onFile?.(token) ?? false,
+		isFile: (token) => isFile?.(token) ?? false,
+		onLinkMode: (on) => (overLink = on),
 	});
 
 	$effect(() => {
@@ -114,7 +121,7 @@
 	let optionSide: "left" | "right" | null = null;
 
 	function onkeyup(e: KeyboardEvent) {
-		if (e.key === "Meta") pointer.clearHover();
+		if (e.key === "Meta") void pointer.metaChanged(false);
 		if (e.code === "AltLeft" || e.code === "AltRight") optionSide = null;
 	}
 
@@ -163,6 +170,7 @@
 	}
 
 	function onkeydown(e: KeyboardEvent) {
+		if (e.key === "Meta") void pointer.metaChanged(true);
 		if (e.code === "AltLeft") optionSide = "left";
 		else if (e.code === "AltRight") optionSide = "right";
 		// ⌘ chords: Ghostty's terminal actions and the macOS line-editing keys. Other ⌘
@@ -255,6 +263,15 @@
 			if (t) t.cwd = e.payload.cwd;
 		});
 		const unwatch = watchSlot(area!, view.sync);
+		// ⌘ pressed or released while another element has the keyboard (the sink only hears it when focused), and
+		// switching away with ⌘ down (⌘-Tab never delivers the keyup): links must not stay lit.
+		const meta = (down: boolean) => (e: KeyboardEvent) => e.key === "Meta" && void pointer.metaChanged(down);
+		const metaDown = meta(true);
+		const metaUp = meta(false);
+		const blurred = () => pointer.clearHover();
+		window.addEventListener("keydown", metaDown);
+		window.addEventListener("keyup", metaUp);
+		window.addEventListener("blur", blurred);
 		// Title/exit events for the tab; bytes come over the raw stream.
 		void host.ptyAttach(pty, false, false).catch(quiet);
 		return () => {
@@ -262,6 +279,10 @@
 			void cwd.then((f) => f());
 			void osc52.then((f) => f());
 			unwatch();
+			window.removeEventListener("keydown", metaDown);
+			window.removeEventListener("keyup", metaUp);
+			window.removeEventListener("blur", blurred);
+			pointer.dispose();
 			if (document.activeElement === input) termFocus.on = false;
 			void host.ptyDetach(pty).catch(quiet);
 			void view.dispose();
@@ -284,6 +305,7 @@
 	<div
 		style:background={slotBg}
 		class="area"
+		class:link={overLink}
 		bind:this={area}
 		onmousedown={pointer.mousedown}
 		onmousemove={pointer.mousemove}
@@ -330,6 +352,10 @@
 		position: relative;
 		flex: 1;
 		min-height: 0;
+	}
+	/* Ghostty: the hand only over a link while ⌘ is held (`Pointer` decides, per cell). */
+	.area.link {
+		cursor: pointer;
 	}
 	/* Focus target for keys/IME/paste; the native view draws the terminal. */
 	.sink {

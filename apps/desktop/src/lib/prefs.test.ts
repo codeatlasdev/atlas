@@ -54,6 +54,19 @@ test("terminal font and padding: defaults, valid values, out-of-range fall back"
 	expect([bad.font_thicken, bad.padding_x, bad.padding_y]).toEqual([false, 10, 6]);
 });
 
+// Scrollback is bounded in lines (`max_scroll_history_lines`) and bytes (`scrollback_bytes`, Ghostty
+// `scrollback-limit`); the smaller wins in the terminal. The byte budget is 64 MiB unless the user picks one.
+test("terminal scrollback_bytes: default 64 MiB, valid values taken, out-of-range fall back", () => {
+	expect(resolvePrefs({}).terminal.scrollback_bytes).toBe(64 * 1024 * 1024);
+	expect(resolvePrefs({ terminal: { scrollback_bytes: 50_000_000 } }).terminal.scrollback_bytes).toBe(
+		50_000_000,
+	);
+	for (const bad of [0, 1000, -5, 2 ** 31, "50MB", null])
+		expect(resolvePrefs({ terminal: { scrollback_bytes: bad } }).terminal.scrollback_bytes).toBe(
+			64 * 1024 * 1024,
+		);
+});
+
 test("lsp map: defaults to empty, keeps valid entries", () => {
 	expect(resolvePrefs({}).lsp).toEqual({});
 	const p = resolvePrefs({

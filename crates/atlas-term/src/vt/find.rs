@@ -1,5 +1,5 @@
-//! Things found in the grid: OSC 8 links, plain URLs (and the ⌘-hover underline) and the
-//! incremental search. The matching itself is in `crate::search`.
+//! Things found in the grid: OSC 8 links, plain URLs, paths and the incremental search (the
+//! ⌘-hover underline and word picking are in `pick`). The matching itself is in `crate::search`.
 
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Line, Point};
@@ -18,7 +18,7 @@ pub struct SearchStat {
 
 impl Vt {
     /// Grid point under a viewport cell, or `None` when it is outside the scrollback.
-    fn point_in_grid(t: &Term<Proxy>, col: usize, row: i32) -> Option<Point> {
+    pub(super) fn point_in_grid(t: &Term<Proxy>, col: usize, row: i32) -> Option<Point> {
         let p = Self::point(t, col, row);
         (p.line >= t.topmost_line() && p.line <= t.bottommost_line()).then_some(p)
     }
@@ -39,19 +39,6 @@ impl Vt {
         let t = self.term.lock();
         let p = Self::point_in_grid(&t, col, row)?;
         search::token_at(&t, p)
-    }
-
-    /// Underline the plain URL under a viewport cell (⌘ held); `None` clears it.
-    /// Returns whether the hover changed (the caller redraws).
-    pub fn set_hover(&self, at: Option<(usize, i32)>) -> bool {
-        let t = self.term.lock();
-        let hit = at
-            .and_then(|(col, row)| Self::point_in_grid(&t, col, row))
-            .and_then(|p| search::url_at(&t, p));
-        let mut sh = self.shell.lock();
-        let changed = sh.hover != hit;
-        sh.hover = hit;
-        changed
     }
 
     /// Search the scrollback + screen and move to the next (`forward`) / previous match,

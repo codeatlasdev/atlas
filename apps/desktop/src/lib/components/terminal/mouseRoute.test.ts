@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { mouseRoute, wheelReports } from "./mouseRoute.ts";
+import { mouseRoute } from "./mouseRoute.ts";
 
 const mods = (over = {}) => ({ shiftKey: false, metaKey: false, ...over });
 
@@ -11,12 +11,4 @@ test("a program that owns the mouse gets plain clicks; ⇧ and ⌘ stay with Atl
 	expect(mouseRoute(true, mods({ shiftKey: true }))).toBe("terminal");
 	expect(mouseRoute(true, mods({ metaKey: true }))).toBe("terminal");
 	expect(mouseRoute(false, mods())).toBe("terminal");
-});
-
-// One report per notch, as many as the scroll moved lines, capped so a fling is not a flood.
-test("wheel lines become capped up/down notch reports", () => {
-	expect(wheelReports(3)).toEqual({ action: "wheelUp", count: 3 });
-	expect(wheelReports(-2)).toEqual({ action: "wheelDown", count: 2 });
-	expect(wheelReports(500)).toEqual({ action: "wheelUp", count: 20 });
-	expect(wheelReports(0)).toBeNull();
 });

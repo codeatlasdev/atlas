@@ -3,7 +3,7 @@
 use super::gpu::{Uniforms, bind_layout, glyph_vertex_layout, gpu, pipeline};
 
 /// The shader parses and validates, and the Rust uniform block matches the WGSL
-/// struct (`U`: 2×vec2 + vec2 + vec2 + u32, 40 bytes), checked on the real device.
+/// struct (`U`: 2×vec2 + vec2 + vec2 + u32 + f32, 40 bytes), checked on the real device.
 #[test]
 fn shader_and_pipelines_validate() {
     let g = match gpu() {
@@ -202,4 +202,30 @@ fn scroll_thumb_is_dark_on_light_backgrounds_and_light_on_dark_ones() {
         "{on_dark:?} {on_light:?}"
     );
     assert!(on_dark[3] > 0 && on_dark[3] < 0xff);
+}
+
+use super::grid_origin_y;
+
+// Smooth scrolling: the grid is drawn `over` rows higher than the viewport top (those rows are the overscan above),
+// then pushed down by the sub-row remainder. Positive `frac` = content moves down = older lines come in.
+#[test]
+fn grid_origin_hides_the_overscan_and_applies_the_sub_row_offset() {
+    assert_eq!(
+        grid_origin_y(0, 0.0, 20.0),
+        0.0,
+        "no smooth scrolling: today's layout, untouched"
+    );
+    assert_eq!(
+        grid_origin_y(1, 0.0, 20.0),
+        -20.0,
+        "the overscan row sits above the viewport"
+    );
+    assert_eq!(grid_origin_y(1, 0.25, 20.0), -15.0);
+    assert_eq!(grid_origin_y(1, -0.25, 20.0), -25.0);
+}
+
+// A fraction the renderer cannot honour (no overscan rows to show) must not shift the content: a strip would show.
+#[test]
+fn grid_origin_ignores_a_fraction_without_overscan() {
+    assert_eq!(grid_origin_y(0, 0.4, 20.0), 0.0);
 }

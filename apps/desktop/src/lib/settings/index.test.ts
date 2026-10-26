@@ -150,6 +150,7 @@ describe("settings index", () => {
 			gpu: "terminal",
 			"term-font": "terminal",
 			scrollback: "terminal",
+			"scrollback-memory": "terminal",
 			clipboard: "terminal",
 			"ws-dir": "workspaces",
 			"agent-default": "agents",

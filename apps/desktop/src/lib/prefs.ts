@@ -65,6 +65,8 @@ export interface Prefs {
 		cursor_shape: "block" | "bar" | "underline" | "hollow";
 		blinking: boolean;
 		max_scroll_history_lines: number;
+		/** GPU terminal: cap on the memory of one terminal's scrollback, in bytes of cells (Ghostty `scrollback-limit`); the line cap still applies, the tighter one wins. */
+		scrollback_bytes: number;
 		/** Program writes to the clipboard (OSC 52). */
 		osc52: "allow" | "ask" | "deny";
 		/** GPU terminal: programming ligatures (`->`, `!=`). */
@@ -131,6 +133,7 @@ export const DEFAULT_PREFS: Prefs = {
 		cursor_shape: "block",
 		blinking: false,
 		max_scroll_history_lines: 10_000,
+		scrollback_bytes: 64 * 1024 * 1024,
 		osc52: "ask",
 		ligatures: true,
 		minimum_contrast: 4.5,
@@ -180,6 +183,7 @@ const RANGES: Record<string, [number, number]> = {
 	"terminal.padding_x": [0, 64],
 	"terminal.padding_y": [0, 64],
 	"terminal.max_scroll_history_lines": [0, 100_000],
+	"terminal.scrollback_bytes": [1024 * 1024, 1024 * 1024 * 1024],
 	"project_panel.indent_size": [4, 40],
 	"active_pane_modifiers.border_size": [0, 8],
 	"active_pane_modifiers.inactive_opacity": [0.2, 1],

@@ -69,6 +69,10 @@ actions:
     label: Agents load bench (7 busy agents)
     group: bench
     command: scripts/heavy.sh bun scripts/agents-load-bench.ts
+  - key: T
+    label: Terminal agent bench (6 agent TUI flood patterns, scroll, mouse reports)
+    group: bench
+    command: scripts/heavy.sh bun scripts/term-agent-bench.ts
   - key: I
     label: Regenerate the Atlas Dev icons
     group: build

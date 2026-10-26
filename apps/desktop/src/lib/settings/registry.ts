@@ -703,6 +703,12 @@ const DEFS = [
 								"max_scroll_history_lines history buffer",
 							),
 							item(
+								"scrollback-memory",
+								"Scrollback memory",
+								"Most memory one terminal spends on its scrollback, in MB. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only).",
+								"scrollback_bytes memory limit megabytes mb ghostty scrollback-limit",
+							),
+							item(
 								"clipboard",
 								"Programs can copy to your clipboard",
 								"Lets commands such as tmux or ssh sessions put text on your clipboard.",

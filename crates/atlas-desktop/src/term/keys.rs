@@ -68,23 +68,6 @@ pub fn term_paste_clipboard(tab: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Scroll the viewport; positive `delta` goes up into history. On the alternate screen
-/// (less, vim, htop) there is no scrollback: the wheel becomes arrow keys (Ghostty's
-/// mouse-scroll on the alt screen, xterm mode 1007). A read-only tab never sends them.
-#[tauri::command]
-pub fn term_scroll(tab: String, delta: i32, readonly: Option<bool>) -> Result<(), String> {
-    let sh = with_term(&tab)?;
-    if !readonly.unwrap_or(false)
-        && let Some(arrows) = input::alt_scroll(delta, sh.vt.mode())
-    {
-        sh.write(&arrows);
-        return Ok(());
-    }
-    sh.vt.scroll(delta);
-    sh.redraw();
-    Ok(())
-}
-
 /// Where `term_scroll_to` goes (⌘Home / ⌘End / ⌘PgUp / ⌘PgDn, Ghostty's scroll_* actions).
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

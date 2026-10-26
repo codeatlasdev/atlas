@@ -1,13 +1,15 @@
 /**
- * Mouse handling for the GPU terminal: selection (click, drag, multi-click, block), ⌘-hover and
- * ⌘-click on URLs, click-to-move, wheel scroll. The renderer owns the selection; this only feeds
+ * Mouse handling for the GPU terminal: selection (click, drag with autoscroll, multi-click, block, ⇧-extend),
+ * ⌘-hover and ⌘-click on URLs, OSC 8 links and file paths, click-to-move, wheel scroll. The renderer owns the selection; this only feeds
  * it cells and decides what a press means.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { appliedZoom } from "#lib/zoom.ts";
-import { WheelAccum, cellAt, cellFromStats, wheelLines, type Cell, type CellHit } from "./geometry.ts";
-import { mouseRoute, wheelReports } from "./mouseRoute.ts";
+import { cellAt, cellFromStats, type Cell, type CellHit } from "./geometry.ts";
+import { mouseRoute } from "./mouseRoute.ts";
+import { wheelArgs } from "./wheel.ts";
+import { AUTOSCROLL_MS, autoscroll, hoverDecision, selectionClicks, type LinkAt } from "./select.ts";
 
 interface Options {
 	tab: () => string;
@@ -21,7 +23,9 @@ interface Options {
 	onLink: (url: string, external: boolean) => void;
 	/** A plain token was ⌘-clicked; `true` when it named a file and was opened. */
 	onFile: (token: string) => boolean;
-	/** ⌘ is held over the terminal (links are live) or no longer: the slot shows the pointer cursor meanwhile. */
+	/** Does this path-shaped token name a file of the worktree? Only such tokens light up on ⌘-hover. */
+	isFile: (token: string) => boolean | Promise<boolean>;
+	/** The pointer is over a live link (⌘ held): the slot shows the pointer hand meanwhile, until it is not. */
 	onLinkMode?: (on: boolean) => void;
 }
 
@@ -40,7 +44,12 @@ export class Pointer {
 	#lastCol = -1;
 	#lastRow = -1;
 	#lastHover = "";
-	#wheel = new WheelAccum();
+	/** Last pointer position in page px (a ⌘ press with a still mouse, and the autoscroll, read it). */
+	#at: { x: number; y: number } | null = null;
+	/** The autoscroll interval while a drag is held outside the grid. */
+	#scroller: ReturnType<typeof setInterval> | undefined;
+	/** Removes the window listeners of a drag in progress. */
+	#unwatch: (() => void) | null = null;
 	#o: Options;
 
 	constructor(options: Options) {
@@ -73,6 +82,8 @@ export class Pointer {
 	}
 
 	#report(tab: string, action: string, button: number | null, c: CellHit, e: MouseEvent) {
+		// SGR-Pixels (DECSET 1016): the offset from the grid's corner in device px; the VT ignores it unless on.
+		const [px, py] = this.#pixels(e);
 		void invoke("term_mouse", {
 			tab,
 			action,
@@ -82,18 +93,34 @@ export class Pointer {
 			shift: e.shiftKey,
 			alt: e.altKey,
 			ctrl: e.ctrlKey,
+			px,
+			py,
 		}).catch(quiet);
 	}
 
+	/** The pointer's offset from cell (0, 0)'s corner in device px (negative in the margin). */
+	#pixels(e: MouseEvent): [number, number] {
+		const r = this.#o.area()?.getBoundingClientRect();
+		const { padding_x, padding_y } = this.#o.prefs();
+		const dpr = window.devicePixelRatio || 1;
+		return [
+			Math.round((e.clientX - (r?.left ?? 0) - padding_x) * dpr),
+			Math.round((e.clientY - (r?.top ?? 0) - padding_y) * dpr),
+		];
+	}
+
+	/** ⌘-click: a URL or OSC 8 link goes to the app (browser per Settings ▸ Links), a file token opens the editor. */
 	async #openUnder(tab: string, c: CellHit): Promise<boolean> {
-		const at = { tab, col: c.col, row: c.row };
-		const url = await invoke<string | null>("term_hyperlink_at", at).catch(() => null);
-		if (url) {
-			this.#o.onLink(url, true);
+		const link = await invoke<LinkAt | null>("term_link_at", { tab, col: c.col, row: c.row }).catch(
+			() => null,
+		);
+		if (!link) return false;
+		if (link.kind === "url") {
+			// `external` stays false: whether it opens in an Atlas tab or the system browser is the setting's call.
+			this.#o.onLink(link.target, false);
 			return true;
 		}
-		const token = await invoke<string | null>("term_path_at", at).catch(() => null);
-		return token ? this.#o.onFile(token) : false;
+		return this.#o.onFile(link.target);
 	}
 
 	mousedown = async (e: MouseEvent) => {
@@ -110,17 +137,25 @@ export class Pointer {
 			this.#program = e.button;
 			this.#lastCol = c.col;
 			this.#lastRow = c.row;
+			this.#watchWindow();
 			this.#report(tab, "press", e.button, c, e);
 			return;
 		}
 		if (e.button !== 0) return;
 		if (e.metaKey && (await this.#openUnder(tab, c))) {
-			this.#hovered = false;
-			void invoke("term_hover", { tab }).catch(quiet);
+			this.clearHover();
 			return;
 		}
 		this.#selecting = true;
-		// A plain single click may be a click-to-move; a drag or a multi-click is a selection.
+		this.#watchWindow();
+		this.#at = { x: e.clientX, y: e.clientY };
+		// ⇧-click moves the end of the selection that is there (Ghostty, iTerm2, Terminal.app); a drag after it
+		// keeps moving it. A plain single click may be a click-to-move; a drag or a multi-click is a selection.
+		if (e.shiftKey && !e.altKey && !e.metaKey) {
+			this.#press = null;
+			void invoke("term_select_extend", { tab, col: c.col, row: c.row, frac: c.frac }).catch(quiet);
+			return;
+		}
 		this.#press =
 			e.detail === 1 && !e.altKey && !e.shiftKey && !e.metaKey ? { col: c.col, row: c.row } : null;
 		void invoke("term_select_start", {
@@ -128,38 +163,111 @@ export class Pointer {
 			col: c.col,
 			row: c.row,
 			frac: c.frac,
-			clicks: Math.min(e.detail, 3),
+			clicks: selectionClicks(e.detail),
 			block: e.altKey,
 		}).catch(quiet);
 	};
 
 	mousemove = (e: MouseEvent) => {
-		if (this.#program !== null) {
-			const c = this.#toCell(e);
-			if (c && (c.col !== this.#lastCol || c.row !== this.#lastRow)) {
-				this.#lastCol = c.col;
-				this.#lastRow = c.row;
-				this.#report(this.#o.tab(), "motion", this.#program, c, e);
-			}
-			return;
-		}
+		if (this.#program !== null) return this.#programDrag(e);
 		if (!this.#selecting) return this.#hoverUrl(e);
+		this.#drag(e);
+	};
+
+	/** The button of a press the program took moved: report a new cell once. */
+	#programDrag(e: MouseEvent) {
+		const c = this.#toCell(e);
+		if (!c || (c.col === this.#lastCol && c.row === this.#lastRow)) return;
+		this.#lastCol = c.col;
+		this.#lastRow = c.row;
+		this.#report(this.#o.tab(), "motion", this.#program, c, e);
+	}
+
+	/** A selection drag moved (over the slot or, through the window listener, outside it). */
+	#drag(e: MouseEvent) {
 		if (!(e.buttons & 1)) return void this.mouseup(e);
+		this.#at = { x: e.clientX, y: e.clientY };
 		const c = this.#toCell(e);
 		if (c && this.#press && (c.col !== this.#press.col || c.row !== this.#press.row)) this.#press = null;
 		if (c) this.#update(c);
-	};
+		this.#autoscroll();
+	}
+
+	/** Edges of the grid in page px: the pointer beyond them while dragging scrolls the viewport. */
+	#gridEdges(): { top: number; bottom: number } | null {
+		const r = this.#o.area()?.getBoundingClientRect();
+		if (!r) return null;
+		const { padding_y } = this.#o.prefs();
+		return { top: r.top + padding_y, bottom: r.bottom - padding_y };
+	}
+
+	/** Start, keep or stop the interval that scrolls while the drag is held outside the grid. */
+	#autoscroll() {
+		const edges = this.#gridEdges();
+		const lines = this.#scrollLines(edges);
+		if (!lines) {
+			clearInterval(this.#scroller);
+			this.#scroller = undefined;
+			return;
+		}
+		this.#scroller ??= setInterval(() => this.#scrollTick(), AUTOSCROLL_MS);
+	}
+
+	#scrollLines(edges: { top: number; bottom: number } | null): number {
+		if (!edges || !this.#at || !this.#cell) return 0;
+		return autoscroll(this.#at.y, edges.top, edges.bottom, this.#cell.h);
+	}
+
+	#scrollTick() {
+		const lines = this.#scrollLines(this.#gridEdges());
+		if (!this.#selecting || !lines || !this.#at) return this.#autoscroll();
+		const c = this.#toCell({ clientX: this.#at.x, clientY: this.#at.y } as MouseEvent);
+		void invoke("term_select_scroll", {
+			tab: this.#o.tab(),
+			lines,
+			col: c?.col ?? 0,
+			frac: c?.frac ?? 0,
+		}).catch(quiet);
+	}
+
+	/**
+	 * While a button is held the pointer may leave the slot (a selection dragged past the pane, a program's
+	 * drag): the slot's own handlers would never see the release. These listen on the window for that case only;
+	 * events over the slot reach its handlers, so they are skipped here.
+	 */
+	#watchWindow() {
+		if (this.#unwatch) return;
+		const outside = (e: MouseEvent) => !(e.target instanceof Node && this.#o.area()?.contains(e.target));
+		const move = (e: MouseEvent) => outside(e) && this.mousemove(e);
+		const up = (e: MouseEvent) => outside(e) && void this.mouseup(e);
+		window.addEventListener("mousemove", move);
+		window.addEventListener("mouseup", up);
+		this.#unwatch = () => {
+			window.removeEventListener("mousemove", move);
+			window.removeEventListener("mouseup", up);
+			this.#unwatch = null;
+		};
+	}
+
+	/** The drag is over: no window listeners, no autoscroll. */
+	#endDrag() {
+		this.#unwatch?.();
+		clearInterval(this.#scroller);
+		this.#scroller = undefined;
+	}
 
 	mouseup = async (e: MouseEvent) => {
 		if (this.#program !== null) {
 			const button = this.#program;
 			this.#program = null;
+			this.#endDrag();
 			const c = this.#toCell(e);
 			if (c) this.#report(this.#o.tab(), "release", button, c, e);
 			return;
 		}
 		if (!this.#selecting) return;
 		this.#selecting = false;
+		this.#endDrag();
 		const tab = this.#o.tab();
 		const c = this.#toCell(e);
 		const click =
@@ -180,39 +288,76 @@ export class Pointer {
 	wheel = async (e: WheelEvent) => {
 		e.preventDefault();
 		const tab = this.#o.tab();
-		// Before the first click the cell size is unknown: wheel at 16 px per line otherwise.
+		// Before the first click the cell size is unknown: wheel at 16 px per row otherwise.
 		if (!this.#cell) await this.#fetchCell().catch(quiet);
-		const rows = this.#cell ? Math.floor((this.#o.area()?.clientHeight ?? 0) / this.#cell.h) : 24;
-		const lines = this.#wheel.take(wheelLines(e.deltaY, this.#cell, e.deltaMode, rows));
-		const readonly = this.#o.readonly();
-		const notch = wheelReports(lines);
-		if (notch && !readonly && (await this.#owns(tab, e))) {
-			const c = this.#toCell(e);
-			if (c) {
-				for (let i = 0; i < notch.count; i++) this.#report(tab, notch.action, null, c, e);
-				return;
-			}
-		}
-		if (lines) void invoke("term_scroll", { tab, delta: lines, readonly }).catch(quiet);
+		const screen = this.#cell ? Math.floor((this.#o.area()?.clientHeight ?? 0) / this.#cell.h) : 24;
+		const at = this.#toCell(e) ?? { col: 0, row: 0 };
+		// One call per event: the host accumulates, routes (arrows / mouse reports / scrollback) and writes once.
+		void invoke("term_wheel", { tab, e: wheelArgs(e, this.#cell, at, screen, this.#o.readonly()) }).catch(
+			quiet,
+		);
 	};
 
-	#hoverUrl(e: MouseEvent) {
+	/** ⌘ is down over the link under the pointer? (`term_link_at`, then the app's say on paths.) */
+	async #hoverAt(c: CellHit) {
+		const tab = this.#o.tab();
+		const link = await invoke<LinkAt | null>("term_link_at", { tab, col: c.col, row: c.row }).catch(
+			() => null,
+		);
+		// The pointer moved on, or ⌘ went up, while the answer was in flight.
+		if (this.#lastHover !== `${c.col},${c.row}`) return;
+		const { link: show, paths } = await hoverDecision(link, this.#o.isFile);
+		// ...and again after the (possibly disk) check.
+		if (this.#lastHover !== `${c.col},${c.row}`) return;
+		if (!show) return this.#unhover();
+		this.#hovered = true;
+		this.#o.onLinkMode?.(true);
+		void invoke("term_hover", { tab, col: c.col, row: c.row, paths }).catch(quiet);
+	}
+
+	async #hoverUrl(e: MouseEvent) {
+		this.#at = { x: e.clientX, y: e.clientY };
 		if (!e.metaKey) return this.clearHover();
+		// The cell size is fetched on a press; a ⌘-hover before the first click would otherwise find none.
+		if (!this.#cell) await this.#fetchCell().catch(quiet);
 		const c = this.#toCell(e);
 		if (!c) return;
 		const key = `${c.col},${c.row}`;
 		if (key === this.#lastHover) return;
 		this.#lastHover = key;
-		this.#hovered = true;
-		this.#o.onLinkMode?.(true);
-		void invoke("term_hover", { tab: this.#o.tab(), col: c.col, row: c.row }).catch(quiet);
+		await this.#hoverAt(c);
 	}
 
-	clearHover = () => {
-		this.#lastHover = "";
+	/** Drop the underline and the hand, keeping the "⌘ is down here" memo (the pointer is still over the slot). */
+	#unhover() {
 		if (!this.#hovered) return;
 		this.#hovered = false;
 		this.#o.onLinkMode?.(false);
 		void invoke("term_hover", { tab: this.#o.tab() }).catch(quiet);
+	}
+
+	/**
+	 * ⌘ went down or up while the pointer rests over the slot: links light up (or go out) without a mouse
+	 * move, as in Ghostty. The window forwards the key; the pointer position is the last one seen.
+	 */
+	metaChanged = async (down: boolean) => {
+		if (!down) return this.clearHover();
+		if (!this.#cell) await this.#fetchCell().catch(quiet);
+		if (!this.#at || !this.#o.area() || !this.#cell) return;
+		const c = this.#toCell({ clientX: this.#at.x, clientY: this.#at.y } as MouseEvent);
+		if (!c) return;
+		this.#lastHover = `${c.col},${c.row}`;
+		await this.#hoverAt(c);
+	};
+
+	clearHover = () => {
+		this.#lastHover = "";
+		this.#unhover();
+	};
+
+	/** Stop watching the window and the autoscroll (the terminal tab is going away). */
+	dispose = () => {
+		this.#endDrag();
+		this.clearHover();
 	};
 }

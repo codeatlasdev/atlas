@@ -147,6 +147,7 @@ The project file wins over `~/.atlas/desktop/settings.json` field by field for t
 | `terminal.cursor_shape` | `"block"` | `block`, `bar`, `underline` or `hollow` |
 | `terminal.blinking` | `false` | |
 | `terminal.max_scroll_history_lines` | `10000` | 0–100000 |
+| `terminal.scrollback_bytes` | `67108864` | 1 MiB–1 GiB; most memory one [GPU terminal](terminal.md#scrollback) spends on its scrollback (bytes of cells). Settings shows it in MB. The tighter of this and the line cap wins; applies live |
 | `terminal.osc52` | `"ask"` | what happens when a program writes your clipboard: `allow`, `ask` or `deny`. Reading the clipboard is always denied |
 | `terminal.ligatures` | `true` | GPU terminal |
 | `terminal.minimum_contrast` | `4.5` | 1–21; WCAG ratio a cell's text is lifted to at draw time (the theme's ANSI table is not changed), `1` = off. GPU terminal |

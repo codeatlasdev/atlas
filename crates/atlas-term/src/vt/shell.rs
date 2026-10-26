@@ -9,6 +9,7 @@ use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::search::{Match, RegexSearch};
 use alacritty_terminal::term::{Term, TermMode};
 
+use super::pixel::PixelScan;
 use super::scan::{ClearScan, SeqScan};
 use super::{Proxy, Vt, VtEvent};
 use crate::graphics::Store;
@@ -39,6 +40,9 @@ pub(super) struct Search {
 pub(super) struct Shell {
     pub(super) scan: SeqScan,
     pub(super) clear: ClearScan,
+    /// DECSET 1016 (SGR-Pixels), which alacritty ignores: the scanner and the state it keeps.
+    pub(super) pixel_scan: PixelScan,
+    pub(super) pixel: bool,
     pub(super) marks: VecDeque<Mark>,
     pub(super) images: Store,
     /// Cell size in physical px (image size ↔ cells), set by the renderer.
@@ -52,6 +56,9 @@ pub(super) struct Shell {
     /// Start line of the output last selected by `select_last_output` (the next call goes
     /// further back); reset by a new prompt.
     pub(super) out_walk: Option<i64>,
+    /// First and last cell of the word a double-click selected (a URL or path is one word): the
+    /// anchor a drag from it grows from. Any other selection start clears it.
+    pub(super) word: Option<(Point, Point)>,
 }
 
 impl Default for Shell {
@@ -59,6 +66,8 @@ impl Default for Shell {
         Self {
             scan: SeqScan::default(),
             clear: ClearScan::default(),
+            pixel_scan: PixelScan::default(),
+            pixel: false,
             marks: VecDeque::new(),
             images: Store::default(),
             cell: [8.0, 16.0],
@@ -67,6 +76,7 @@ impl Default for Shell {
             search_key: None,
             hover: None,
             out_walk: None,
+            word: None,
         }
     }
 }

@@ -13,8 +13,11 @@ mod find;
 mod frame;
 mod history;
 mod images;
+mod pick;
+mod pixel;
 mod scan;
 mod shell;
+mod sync;
 #[cfg(test)]
 mod tests;
 
@@ -28,18 +31,35 @@ use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::{Config, Term, TermMode};
-use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Handler, Processor};
+use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Handler};
 use parking_lot::Mutex;
 
 use crate::colors::Palette;
 use scan::Seq;
 use shell::Shell;
+use sync::SyncHold;
+
+/// The VT parser with Atlas's synchronized-update hold (`sync`).
+pub(crate) type Processor = alacritty_terminal::vte::ansi::Processor<SyncHold>;
 
 pub use find::SearchStat;
 pub use frame::{
     BOLD, CursorBars, CursorCell, DecoCell, DecoKind, Frame, GlyphCell, HyperlinkCell, ITALIC,
     ImageDraw,
 };
+pub use pick::{HoverTarget, Link, LinkKind, SelectionState};
+
+/// The viewport and the modes the wheel rules read (`Vt::wheel_state`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WheelState {
+    pub display_offset: u32,
+    pub max_offset: u32,
+    /// Any mouse-reporting mode (1000/1002/1003) is on.
+    pub mouse: bool,
+    pub alt_screen: bool,
+    /// DECSET 1007.
+    pub alt_scroll: bool,
+}
 
 /// What the terminal asks of its host.
 pub enum VtEvent {
@@ -77,6 +97,8 @@ impl EventListener for Proxy {
             Event::PtyWrite(s) if s == "\x1b[?2027;0$y" => {
                 (self.0)(VtEvent::Write("\x1b[?2027;3$y".into()))
             }
+            // Alacritty answers `?1016$p` "not recognized": `track_pixel` answers it from its own state.
+            Event::PtyWrite(s) if s == "\x1b[?1016;0$y" => {}
             Event::PtyWrite(s) => (self.0)(VtEvent::Write(s)),
             Event::Title(t) => (self.0)(VtEvent::Title(t)),
             Event::Bell => (self.0)(VtEvent::Bell),
@@ -122,6 +144,8 @@ pub struct Vt {
     shell: Mutex<Shell>,
     /// The user's scrollback line cap, before the byte budget tightens it (`history`).
     scrollback: AtomicUsize,
+    /// The byte budget that tightens it (`history::BYTE_BUDGET` until the user sets one).
+    budget: AtomicUsize,
     on_event: OnEvent,
     win: SizeCell,
     pal: PalCell,
@@ -160,6 +184,7 @@ impl Vt {
             parser: Mutex::new(Processor::new()),
             shell: Mutex::new(Shell::default()),
             scrollback,
+            budget: AtomicUsize::new(history::BYTE_BUDGET),
             on_event,
             win,
             pal,
@@ -197,6 +222,7 @@ impl Vt {
         let mut sh = self.shell.lock();
         let mut at = 0;
         let had_history = t.grid().history_size() > 0;
+        self.track_pixel(&mut sh, bytes);
         for (end, seq) in sh.scan.scan(bytes) {
             p.advance(&mut *t, &bytes[at..end]);
             at = end;
@@ -239,6 +265,27 @@ impl Vt {
         }
     }
 
+    /// Follow DECSET 1016 (alacritty ignores it) and answer its DECRQM.
+    fn track_pixel(&self, sh: &mut Shell, bytes: &[u8]) {
+        for c in sh.pixel_scan.scan(bytes) {
+            match c {
+                pixel::Change::Set(on) => sh.pixel = on,
+                pixel::Change::Reset => sh.pixel = false,
+                // xterm: 1 set, 2 reset.
+                pixel::Change::Query => (self.on_event)(VtEvent::Write(format!(
+                    "\x1b[?1016;{}$y",
+                    if sh.pixel { 1 } else { 2 }
+                ))),
+            }
+        }
+    }
+
+    /// The program turned on SGR-Pixels (DECSET 1016): pointer reports carry pixel coordinates
+    /// (`mouse::report`), taking precedence over 1006 like xterm and Ghostty.
+    pub fn pixel_mouse(&self) -> bool {
+        self.shell.lock().pixel
+    }
+
     /// Theme colors used to answer OSC 10/11/4 color queries.
     pub fn set_palette(&self, p: &Palette) {
         *self.pal.lock() = Some(p.clone());
@@ -267,7 +314,7 @@ impl Vt {
         let scrollback = scrollback.min(100_000);
         self.scrollback.store(scrollback, Ordering::Relaxed);
         let mut t = self.term.lock();
-        let cap = history::history_lines(scrollback, t.columns(), history::BYTE_BUDGET);
+        let cap = history::history_lines(scrollback, t.columns(), self.scrollback_bytes());
         t.set_options(Config {
             scrolling_history: cap,
             kitty_keyboard: true,
@@ -297,7 +344,14 @@ impl Vt {
 
     pub fn resize(&self, cols: u16, rows: u16) {
         let (cols, rows) = (cols.max(1), rows.max(1));
+        // Ghostty: a resize always ends a synchronized update (the half frame was laid out for the old grid).
+        // Same lock order as `feed`: parser, then term.
+        let mut p = self.parser.lock();
         let mut t = self.term.lock();
+        if p.sync_timeout().sync_timeout().is_some() {
+            p.stop_sync(&mut *t);
+        }
+        drop(p);
         t.resize(Size {
             cols: cols as usize,
             rows: rows as usize,
@@ -358,6 +412,20 @@ impl Vt {
         (t.grid().display_offset() as u32, max as u32)
     }
 
+    /// What the wheel rules read, at this instant (`term_stats.vt`).
+    pub fn wheel_state(&self) -> WheelState {
+        let t = self.term.lock();
+        let m = *t.mode();
+        let max = t.grid().total_lines().saturating_sub(t.screen_lines());
+        WheelState {
+            display_offset: t.grid().display_offset() as u32,
+            max_offset: max as u32,
+            mouse: m.intersects(TermMode::MOUSE_MODE),
+            alt_screen: m.contains(TermMode::ALT_SCREEN),
+            alt_scroll: m.contains(TermMode::ALTERNATE_SCROLL),
+        }
+    }
+
     /// Viewport row -> grid point (rows scroll with the display offset).
     fn point(t: &Term<Proxy>, col: usize, row: i32) -> Point {
         Point {
@@ -374,32 +442,5 @@ impl Vt {
         let mut sel = Selection::new(SelectionType::Lines, start, Side::Left);
         sel.update(end, Side::Right);
         t.selection = Some(sel);
-    }
-
-    /// Start a selection at a viewport cell.
-    pub fn start_selection(&self, col: usize, row: i32, ty: SelectionType, side: Side) {
-        let mut t = self.term.lock();
-        let p = Self::point(&t, col, row);
-        t.selection = Some(Selection::new(ty, p, side));
-    }
-
-    pub fn update_selection(&self, col: usize, row: i32, side: Side) {
-        let mut t = self.term.lock();
-        let p = Self::point(&t, col, row);
-        if let Some(sel) = t.selection.as_mut() {
-            sel.update(p, side);
-        }
-    }
-
-    /// Selected text, if any (the selection stays highlighted).
-    pub fn end_selection(&self) -> Option<String> {
-        self.term
-            .lock()
-            .selection_to_string()
-            .filter(|s| !s.is_empty())
-    }
-
-    pub fn clear_selection(&self) {
-        self.term.lock().selection = None;
     }
 }

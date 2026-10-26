@@ -205,17 +205,21 @@ pub async fn term_open(
                 cell: [0.0; 2],
                 focused: false,
                 bell_until: None,
+                scroll_frac: 0.0,
             }),
             osc52: Mutex::new(prefs.osc52.clone()),
             wake: Condvar::new(),
             placement: Mutex::new(Placement::default()),
             view: std::sync::atomic::AtomicUsize::new(0),
             writer: writer_tx,
+            wheel: Mutex::default(),
+            last_wheel: Mutex::new(None),
         }
     });
     shared
         .vt
         .set_options(prefs.scrollback, &prefs.cursor_shape, prefs.cursor_blink);
+    shared.vt.set_scrollback_bytes(prefs.scrollback_bytes);
     shared.vt.set_palette(&pal);
 
     // Surface creation touches the NSView/CAMetalLayer: main thread only.
@@ -599,5 +603,16 @@ mod tests {
         // Absent = the bundled font, no thickening.
         let d = TermPrefs::default().font_spec();
         assert!(d.families.is_empty() && !d.thicken);
+    }
+
+    // `termPrefs()` (nativeView.ts) sends `scrollback_bytes` next to `scrollback`; a key renamed on one side
+    // would leave every terminal on the default budget with no error. Absent = the 64 MiB default.
+    #[test]
+    fn prefs_scrollback_budget_comes_from_json() {
+        let prefs: TermPrefs =
+            serde_json::from_str(r#"{"scrollback":500,"scrollback_bytes":8388608}"#).unwrap();
+        assert_eq!((prefs.scrollback, prefs.scrollback_bytes), (500, 8 << 20));
+        let d: TermPrefs = serde_json::from_str("{}").unwrap();
+        assert_eq!(d.scrollback_bytes, 64 << 20);
     }
 }

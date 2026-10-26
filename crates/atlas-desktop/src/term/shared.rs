@@ -41,6 +41,9 @@ pub(super) struct State {
     pub(super) font_new: Option<atlas_term::FontSpec>,
     /// The font request the terminal is at, or will be once `font_new` is applied.
     pub(super) font_spec: atlas_term::FontSpec,
+    /// Rows (-1..1) the content is drawn below its row grid: the sub-row offset of a smooth scroll
+    /// (`wheel::term_wheel`). The render thread asks the snapshot for overscan rows while it is not 0.
+    pub(super) scroll_frac: f32,
 }
 
 pub(super) const BLINK: Duration = Duration::from_millis(530);
@@ -60,6 +63,10 @@ pub(super) struct Shared {
     pub(super) view: AtomicUsize,
     /// Bytes for the pty, sent in order by one drain task (`super::drain`).
     pub(super) writer: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Wheel accumulator and sub-row offset (`atlas_term::wheel`).
+    pub(super) wheel: Mutex<atlas_term::wheel::Wheel>,
+    /// When the last wheel event arrived: the settle task acts only if it is still the latest.
+    pub(super) last_wheel: Mutex<Option<Instant>>,
 }
 
 /// hostd drops a request line over 1 MiB; base64 grows a chunk by 4/3.
@@ -101,6 +108,7 @@ impl Shared {
     /// User input (keys, paste): back to the live screen first (Ghostty
     /// `scroll-to-bottom = keystroke`); output alone never moves the viewport (#97).
     pub(super) fn input(&self, bytes: &[u8]) {
+        self.wheel_reset();
         if self.vt.scrollbar().0 != 0 {
             self.vt.scroll_to_bottom();
             self.redraw();
@@ -161,7 +169,16 @@ impl Shared {
     /// A terminal with no pty, GPU or app: what the render-loop tests drive.
     pub(super) fn for_test(cols: u16, rows: u16) -> Arc<Shared> {
         let (writer, _rx) = tokio::sync::mpsc::unbounded_channel();
-        Arc::new(Shared {
+        Arc::new(Self::with_writer(cols, rows, writer))
+    }
+
+    /// Like `for_test`, with the channel the pty writes go to, so a test can read what the program was sent.
+    pub(super) fn with_writer(
+        cols: u16,
+        rows: u16,
+        writer: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    ) -> Shared {
+        Shared {
             vt: Vt::new(cols, rows, |_| {}),
             state: Mutex::new(State {
                 size: None,
@@ -184,13 +201,16 @@ impl Shared {
                 font_cur: 12.5,
                 font_new: None,
                 font_spec: Default::default(),
+                scroll_frac: 0.0,
             }),
             osc52: Mutex::new("ask".into()),
             wake: Condvar::new(),
             placement: Mutex::new(Placement::default()),
             view: AtomicUsize::new(0),
             writer,
-        })
+            wheel: Mutex::default(),
+            last_wheel: Mutex::new(None),
+        }
     }
 }
 

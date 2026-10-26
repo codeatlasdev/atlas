@@ -1,9 +1,9 @@
 //! Inline images (Kitty graphics, sixel): anchoring a decoded placement at the cursor and
 //! moving the cursor past it. Decoding and storage live in `crate::graphics`.
 
+use super::Processor;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::term::{Term, TermMode};
-use alacritty_terminal::vte::ansi::Processor;
 
 use super::shell::Shell;
 use super::{Proxy, Vt};

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use alacritty_terminal::grid::Dimensions;
-use alacritty_terminal::index::{Line, Point};
+use alacritty_terminal::index::{Column, Line, Point};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
@@ -97,8 +97,14 @@ fn blend(bg: Rgba, sel: Rgba) -> Rgba {
 #[derive(Default)]
 pub struct Frame {
     pub cols: u32,
+    /// The viewport's rows (the pty grid, the scrollbar). The cells below hold `rows + 2 * over` grid rows.
     pub rows: u32,
-    /// Row-major cell backgrounds.
+    /// Set by the host before `snapshot`: grid rows copied above and below the viewport (smooth scrolling
+    /// draws the content between whole rows). Every `row` in this frame is a grid row: viewport row + `over`.
+    pub over: u32,
+    /// Set by the host: rows (-1..1) the grid is pushed down by (smooth scrolling); needs `over > 0`.
+    pub scroll_frac: f32,
+    /// Row-major cell backgrounds, `rows + 2 * over` rows.
     pub bg: Vec<Rgba>,
     pub glyphs: Vec<GlyphCell>,
     pub decos: Vec<DecoCell>,
@@ -154,8 +160,9 @@ impl Vt {
         f.cols = cols as u32;
         f.rows = rows as u32;
         f.clear = clear;
+        let over = f.over as usize;
         f.bg.clear();
-        f.bg.resize(cols * rows, clear);
+        f.bg.resize(cols * (rows + 2 * over), clear);
         f.glyphs.clear();
         f.decos.clear();
         f.hyperlinks.clear();
@@ -211,7 +218,7 @@ impl Vt {
             .filter(|_| (0..rows as i32).contains(&cursor_row))
             .map(|bars| CursorCell {
                 col: c.cursor.point.column.0 as u16,
-                row: cursor_row as u16,
+                row: (cursor_row + over as i32) as u16,
                 bars,
                 color: rgba(pal.cursor(c.colors)),
             });
@@ -240,14 +247,30 @@ impl Vt {
             };
             (hits, hover)
         };
-        for cell in c.display_iter {
-            let row = cell.point.line.0 + offset;
-            if row < 0 || row as usize >= rows {
+        // The viewport, then (smooth scrolling) the line just above and just below it, where they exist.
+        let outside = (over > 0)
+            .then(|| {
+                let (top, bottom) = (t.topmost_line(), t.bottommost_line());
+                [Line(-offset - 1), Line(-offset + rows as i32)]
+                    .into_iter()
+                    .filter(move |l| *l >= top && *l <= bottom)
+                    .flat_map(|l| {
+                        let row = &t.grid()[l];
+                        (0..cols).map(move |col| (l, col, row))
+                    })
+                    .map(|(l, col, row)| (Point::new(l, Column(col)), &row[Column(col)]))
+            })
+            .into_iter()
+            .flatten();
+        let inside = c.display_iter.map(|ic| (ic.point, ic.cell));
+        for (point, cell) in inside.chain(outside) {
+            let row = point.line.0 + offset;
+            if row < -(over as i32) || row >= rows as i32 + over as i32 {
                 continue;
             }
-            let (row, col) = (row as usize, cell.point.column.0);
+            let (row, col) = ((row + over as i32) as usize, point.column.0);
             let fl = cell.flags;
-            if fl.contains(Flags::WIDE_CHAR_SPACER) && cursor != Some(cell.point) {
+            if fl.contains(Flags::WIDE_CHAR_SPACER) && cursor != Some(point) {
                 continue;
             }
             let mut fg = pal.resolve(cell.fg, c.colors);
@@ -261,7 +284,7 @@ impl Vt {
             }
             let mut bg = rgba(bg);
             let mut keep_fg = false;
-            if c.selection.is_some_and(|s| s.contains(cell.point)) {
+            if c.selection.is_some_and(|s| s.contains(point)) {
                 match pal.selection_bg {
                     // Themed selection: opaque background (+ optional foreground).
                     Some(sel) => {
@@ -274,7 +297,7 @@ impl Vt {
                     None => bg = blend(bg, f.selection_color),
                 }
             }
-            if let Some(&(_, cur)) = hits.iter().find(|(m, _)| m.contains(&cell.point)) {
+            if let Some(&(_, cur)) = hits.iter().find(|(m, _)| m.contains(&point)) {
                 bg = blend(
                     bg,
                     if cur {
@@ -284,10 +307,10 @@ impl Vt {
                     },
                 );
             }
-            if cursor != Some(cell.point) && !keep_fg {
+            if cursor != Some(point) && !keep_fg {
                 fg = pal.enforce_contrast(fg, bg);
             }
-            if cursor == Some(cell.point) {
+            if cursor == Some(point) {
                 // Block cursor: cursor color behind, `cursor_text` (else the cell
                 // background) as text.
                 fg = pal.cursor_text.map_or(bg, rgba);
@@ -312,7 +335,7 @@ impl Vt {
                     wide: fl.contains(Flags::WIDE_CHAR),
                 });
             }
-            if hover.as_ref().is_some_and(|h| in_span(h, cell.point)) {
+            if hover.as_ref().is_some_and(|h| in_span(h, point)) {
                 f.decos.push(DecoCell {
                     col: col as u16,
                     row: row as u16,

@@ -300,27 +300,6 @@ pub fn shell_quote(s: &str) -> String {
     }
 }
 
-/// Wheel on the alternate screen (xterm "alternate scroll", DECSET 1007, on by default;
-/// Ghostty `mouse-scroll` on the alt screen): `lines` > 0 scrolls up, sent as that many
-/// Up arrows (Down for negative). `None` when the program has the real scrollback (primary
-/// screen), asked for mouse reports (`MOUSE_MODE`, not implemented here: the program
-/// would get nothing), or turned the mode off.
-pub fn alt_scroll(lines: i32, mode: TermMode) -> Option<Vec<u8>> {
-    if lines == 0
-        || !mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)
-        || mode.intersects(TermMode::MOUSE_MODE)
-    {
-        return None;
-    }
-    let arrow: &[u8] = match (lines > 0, mode.contains(TermMode::APP_CURSOR)) {
-        (true, false) => b"\x1b[A",
-        (true, true) => b"\x1bOA",
-        (false, false) => b"\x1b[B",
-        (false, true) => b"\x1bOB",
-    };
-    Some(arrow.repeat(lines.unsigned_abs().min(50) as usize))
-}
-
 /// ⇧PgUp / ⇧PgDn: scroll the terminal's own scrollback by a page instead of sending
 /// `CSI 5;2~`. `Some(true)` = up. `None` on the alternate screen (the program owns the
 /// keys) and for any other key.
@@ -629,24 +608,6 @@ mod tests {
         assert_eq!(key("Delete", OPT, k).unwrap(), b"\x1b[3;3~");
         // Plain Backspace keeps its legacy byte.
         assert_eq!(key("Backspace", NONE, k).unwrap(), b"\x7f");
-    }
-
-    #[test]
-    fn wheel_on_the_alternate_screen_sends_arrows() {
-        let alt = TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL;
-        assert_eq!(alt_scroll(3, alt).unwrap(), b"\x1b[A\x1b[A\x1b[A");
-        assert_eq!(alt_scroll(-2, alt).unwrap(), b"\x1b[B\x1b[B");
-        assert_eq!(
-            alt_scroll(1, alt | TermMode::APP_CURSOR).unwrap(),
-            b"\x1bOA"
-        );
-        // Primary screen keeps its scrollback; mode 1007 off, or a mouse-reporting program, opts out.
-        assert_eq!(alt_scroll(3, TermMode::ALTERNATE_SCROLL), None);
-        assert_eq!(alt_scroll(3, TermMode::ALT_SCREEN), None);
-        assert_eq!(alt_scroll(3, alt | TermMode::MOUSE_REPORT_CLICK), None);
-        assert_eq!(alt_scroll(0, alt), None);
-        // A runaway flick is capped.
-        assert_eq!(alt_scroll(500, alt).unwrap().len(), 50 * 3);
     }
 
     #[test]

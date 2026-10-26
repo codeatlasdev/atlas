@@ -1447,7 +1447,8 @@ async fn lab_survives_main_restarting_and_follows_the_new_one() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert_eq!(n, 1, "the lab never reached the restarted main");
-||||||| 807d992e
+}
+
 // Regression: #109. A client that stopped reading (a phone on a bad network, a paused webview) made
 // hostd queue every `pty_output` without limit; hostd is the process that keeps the agents alive.
 // Real daemon: the stuck client is a raw socket that attaches and never reads again.

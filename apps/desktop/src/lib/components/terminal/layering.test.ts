@@ -1,3 +1,4 @@
+// @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
@@ -43,11 +44,21 @@ test("every native-geometry call of a terminal goes through the one batch", () =
 	expect(nv).toContain("termLayout.request()");
 });
 
-test("the body is transparent and the ground and card are separate masked layers (macOS)", () => {
+test("the ground and card are separate masked layers, the body transparent only with a hole (macOS)", () => {
 	const css = readFileSync(new URL("../../../app.css", import.meta.url), "utf8");
-	expect(css).toMatch(/html,\s*body\s*\{[^}]*background: transparent !important/);
+	expect(css).toMatch(/html\.term-hole:not\(\.opaque-window\)[^{]*\{[^}]*background: transparent !important/);
 	expect(css).toMatch(/\.ground\s*\{/);
 	expect(css).toMatch(/\.card\s*\{/);
 	// `.content` itself paints no surface: a mask on it would also mask its children.
 	expect(css.match(/\.content\s*\{[^}]*\}/)![0]).not.toContain("background:");
+});
+
+// The page is above the native view, so the mouse cursor over a terminal is the page's: the slot must set it.
+test("the terminal slot sets the text I-beam, and the pointer while links are live", () => {
+	const svelte = src("../GpuTerminal.svelte");
+	expect(svelte.match(/\.area\s*\{[^}]*\}/)![0]).toMatch(/cursor:\s*text/);
+	expect(svelte).toMatch(/\.area\.link\s*\{[^}]*cursor:\s*pointer/);
+	expect(svelte).toContain("class:link={linkMode}");
+	expect(src("pointer.ts")).toContain("onLinkMode?.(true)");
+	expect(src("pointer.ts")).toContain("onLinkMode?.(false)");
 });

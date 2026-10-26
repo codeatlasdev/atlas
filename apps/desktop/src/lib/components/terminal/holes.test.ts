@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../../test/setup.ts";
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { closeHole, openHole, resetHoles } from "./holeLayers.ts";
 import { contentRect } from "./fonts.ts";
 import { maskStyle, overlap, sameHoles } from "./holes.ts";
@@ -106,4 +107,26 @@ test("a hole whose rect function returns null contributes nothing", () => {
 	openHole("t", () => null);
 	flush();
 	expect(document.querySelector(".card").style.getPropertyValue("mask-image")).toBe("none");
+});
+
+// Regression (Settings sections drawn over each other, editor with unpainted areas): the page must be opaque unless a
+// terminal shows through it. A transparent body on every screen let stale tiles and leaving views show through.
+test("the page body is opaque; it turns transparent only while a terminal hole is open", () => {
+	const css = readFileSync(new URL("../../../app.css", import.meta.url), "utf8");
+	const base = css.match(/(?:^|\n)html,\s*body\s*\{[^}]*\}/)![0];
+	expect(base).toContain("background: var(--ca-surface-sunken) !important");
+	expect(css).toMatch(/html\.term-hole:not\(\.opaque-window\)[^{]*\{[^}]*background: transparent !important/);
+});
+
+test("html.term-hole follows the open holes: set with a presented terminal, gone when the last closes", () => {
+	const root = document.documentElement;
+	openHole("t", () => ({ left: 10, top: 20, width: 300, height: 200 }));
+	flush();
+	expect(root.classList.contains("term-hole")).toBe(true);
+	closeHole("t");
+	flush();
+	expect(root.classList.contains("term-hole")).toBe(false);
+	openHole("t", () => null);
+	flush();
+	expect(root.classList.contains("term-hole")).toBe(false);
 });

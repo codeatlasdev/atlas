@@ -230,7 +230,7 @@ test("an open peek that does not overlap the slot (slot already beside it) leave
 
 test("opening and closing a peek schedules exactly one re-sync each, never more", async () => {
 	let calls = 0;
-	const stop = watchSlot(document.createElement("div"), () => calls++);
+	const stop = watchSlot(document.createElement("div"), () => calls++, undefined, { overlays: true });
 	const p = peekPanel(rect(190, 40, 260, 700), false);
 	await tick();
 	flush();

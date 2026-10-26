@@ -18,10 +18,13 @@ let raf = 0;
 function apply() {
 	raf = 0;
 	const rects = [...open.values()].map((f) => f()).filter((r): r is Rect => !!r);
+	// The page is opaque unless a terminal really shows through it (`html.term-hole`, app.css).
+	document.documentElement.classList.toggle("term-hole", rects.length > 0);
 	for (const el of document.querySelectorAll(".ground, .card")) {
 		const o = el.getBoundingClientRect();
 		const holes = rects.map((r) => ({ x: r.left - o.left, y: r.top - o.top, w: r.width, h: r.height }));
-		if (sameHoles(last.get(el) ?? [], holes)) continue;
+		const before = last.get(el);
+		if (before && sameHoles(before, holes)) continue;
 		last.set(el, holes);
 		const style = (el as HTMLElement).style;
 		for (const [k, v] of Object.entries(maskStyle(holes))) style.setProperty(k, v);
@@ -48,6 +51,7 @@ export function closeHole(tab: string) {
 export function resetHoles() {
 	open.clear();
 	last.clear();
+	document.documentElement.classList.remove("term-hole");
 	if (raf) cancelAnimationFrame(raf);
 	raf = 0;
 }

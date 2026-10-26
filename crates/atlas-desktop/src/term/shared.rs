@@ -310,7 +310,7 @@ mod tests {
         assert!(p.is_presented());
     }
 
-    // An overlay is not a state of the tab: nothing here can express "covered", so a dialog cannot park a view.
+    // An overlay is not a state of the tab: nothing here can express it, so a dialog cannot park a view.
     #[test]
     fn the_only_way_to_park_is_the_tab_not_being_shown() {
         let mut p = Placement::default();

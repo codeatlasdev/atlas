@@ -78,7 +78,10 @@
 			recut();
 		},
 	);
+	// ⌘ held over the terminal: links are live, so the slot shows the pointer cursor (the page owns the cursor now).
+	let linkMode = $state(false);
 	const pointer = new Pointer({
+		onLinkMode: (on) => (linkMode = on),
 		tab: () => tab,
 		area: () => area,
 		focusInput: () => input?.focus(),
@@ -321,6 +324,7 @@
 		style:border-width="{prefs.value.terminal.padding_y}px {prefs.value.terminal.padding_x}px"
 		class="area"
 		class:hole
+		class:link={linkMode}
 		bind:this={area}
 		onmousedown={pointer.mousedown}
 		onmousemove={pointer.mousemove}
@@ -371,6 +375,11 @@
 		min-height: 0;
 		box-sizing: border-box;
 		border-style: solid;
+		/* The page sits above the native view, so the mouse cursor is the page's: the terminal's is the text I-beam. */
+		cursor: text;
+	}
+	.area.link {
+		cursor: pointer;
 	}
 	/* Focus target for keys/IME/paste; the native view draws the terminal. */
 	.sink {

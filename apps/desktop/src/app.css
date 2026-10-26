@@ -5,13 +5,16 @@
    GPU terminals are native views UNDER this page (term/layering.rs). Whatever the page paints over a terminal hides
    it, so on macOS the ground is painted by `.ground` and the card by `.card` (below), and both are masked with the
    terminals' presented rects (`--term-holes`, terminal/holes.ts): the slot is transparent and the terminal shows
-   through, while menus, dialogs and the sidebar peek, painted above, simply cover it. `html`/`body` themselves are
-   transparent on macOS; Windows and Linux (`opaque-window`) have no native terminal and keep the opaque body. */
+   through, while menus, dialogs and the sidebar peek, painted above, simply cover it. `html`/`body` stay opaque (the
+   ground colour) and turn transparent ONLY while a terminal hole is open (`html.term-hole`, holeLayers.ts): with no
+   terminal on screen the page is the opaque page it always was, so a transparent webview can never leave stale
+   tiles or let a leaving view show through a surface that relies on the body. Windows and Linux (`opaque-window`)
+   have no native terminal and always keep the opaque body. */
 html,
 body {
 	margin: 0;
 	height: 100%;
-	background: transparent !important;
+	background: var(--ca-surface-sunken) !important;
 	overflow: hidden;
 	font-family: var(--atlas-ui-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--ca-font-sans));
 	font-size: var(--atlas-ui-font-size, 13px);
@@ -19,6 +22,11 @@ body {
 	user-select: none;
 	-webkit-user-select: none;
 	cursor: default;
+}
+
+html.term-hole:not(.opaque-window),
+html.term-hole:not(.opaque-window) body {
+	background: transparent !important;
 }
 
 /* Linux: an opaque window with native decorations and no vibrancy to show through; the page

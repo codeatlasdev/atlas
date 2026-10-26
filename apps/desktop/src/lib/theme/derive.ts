@@ -323,8 +323,10 @@ function legible(s: ThemeStyle, dark: boolean) {
 		s[key] = withAlpha(opaque(color(s[key])!), Math.max(0.04, a - 0.02));
 	}
 	s["error.on_fill"] = readableOn(opaque(color(s.error)!));
-	s["tooltip.background"] = opaque(color(s.text)!);
-	s["tooltip.foreground"] = opaque(color(s["editor.background"])!);
+	// Light themes invert the tooltip (text colour as fill); dark ones raise it like the kit does: an inverted, pale
+	// tooltip glares over a dark UI. Both read 7:1+ (text on the opaque elevated surface is held to that above).
+	s["tooltip.background"] = opaque(color(dark ? s["elevated_surface.background"] : s.text)!);
+	s["tooltip.foreground"] = opaque(color(dark ? s.text : s["editor.background"])!);
 	s["overlay.background"] = opaque(color(s["elevated_surface.background"])!);
 	// Text on the accent fill: a theme's own choice stays when it reads, else the better of white and black.
 	const accent = opaque(color(s["text.accent"])!);

@@ -214,6 +214,9 @@
 		box-shadow: 0 8px 32px color-mix(in oklab, black 22%, transparent);
 		user-select: none;
 		-webkit-user-drag: none;
+	}
+	/* Promoted only while the picture is being dragged (a permanent layer holds a texture per open image). */
+	.stage.dragging img {
 		will-change: transform;
 	}
 	.stage:not(.dragging) img {

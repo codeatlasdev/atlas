@@ -6,7 +6,6 @@ import {
 	prevStep,
 	skipToEnd,
 	shouldShow,
-	isEngineReady,
 	infoStepIndex,
 	stepProgress,
 	INFO_STEPS,
@@ -70,13 +69,6 @@ describe("seen flag", () => {
 
 	test("shouldShow returns false when already has bots (not first run)", () => {
 		expect(shouldShow(false, true)).toBe(false);
-	});
-});
-
-describe("engine readiness", () => {
-	test("unready engines are disabled", () => {
-		expect(isEngineReady({ id: "claude", label: "Claude Code", installed: true })).toBe(true);
-		expect(isEngineReady({ id: "opencode", label: "OpenCode", installed: false })).toBe(false);
 	});
 });
 

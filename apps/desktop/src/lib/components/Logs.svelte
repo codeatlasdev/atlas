@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { usePoll } from "#lib/clock.svelte.ts";
 	import { onDestroy, untrack } from "svelte";
 	import { primaryKey } from "#lib/keys.ts";
 	import { toast } from "@codeatlasdev/ui";
@@ -124,11 +125,11 @@
 	});
 
 	/** A sliding window ages lines out by itself: once a second, drop what fell below the cutoff. */
-	$effect(() => {
-		if (!win.lastMs) return;
-		const t = setInterval(() => eng.slide(slideCutoff(win, Date.now()), rebuild), 1000);
-		return () => clearInterval(t);
-	});
+	usePoll(
+		1000,
+		() => !!win.lastMs,
+		() => eng.slide(slideCutoff(win, Date.now()), rebuild),
+	);
 
 	/** New lines → append to the view; a replaced ring (resync) → rebuild. */
 	$effect(() => {

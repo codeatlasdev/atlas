@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { expect, test } from "bun:test";
-import { overlayOpen } from "./nativeSlot.ts";
+import { overlayRects } from "../native/hit.ts";
 
 // Incident (selection stall, 13 spaces; codeatlasdev/ui#27): on kit 0.7.1 every overlay wrapped a bits-ui Portal that
 // mounted an imperative root under <body> even while closed (~11 nodes each, ~160 per space switch), so Atlas deferred
@@ -150,25 +150,30 @@ test("a DropdownMenu and a Popover declared outside a Dialog but opened while it
 	host.remove();
 });
 
-// Contract nativeSlot.overlayOpen reads (2026-10-17, the terminal painted over the new-tab "+" menu): an open kit menu
-// is `[role=menu][data-state=open]`. The native terminal parks under it only while that holds; if a kit upgrade renames
-// the role or drops `data-state`, the terminal covers menus again and this goes red. Real kit, real open menu.
-test("an open DropdownMenu over a native slot parks it (role=menu, data-state=open)", async () => {
+// Contract native/hit.overlayRects reads (2026-10-17, the terminal painted over the new-tab "+" menu; now: a click on the
+// menu reached the browser tab under it): an open kit menu is `[role=menu][data-state=open]`. The hit map reports it only
+// while that holds; if a kit upgrade renames the role or drops `data-state`, the router hands the menu's clicks to the
+// native view again and this goes red. Real kit, real open menu.
+test("an open DropdownMenu over a native slot is in the hit map (role=menu, data-state=open)", async () => {
 	await (
 		await import("../../../test/uiKit.ts")
 	).useRealKit("Dialog", "DropdownMenu", "DropdownMenu/DropdownMenuItem", "Popover");
 	const { default: Harness } = await import("../../../test/DialogOverlaysHarness.svelte");
 	const host = document.createElement("div");
 	document.body.append(host);
-	// No modal: a modal parks every slot on its own, which would hide what the menu does.
+	// No modal: a modal reports the whole window on its own, which would hide what the menu does.
 	const app = flushSync(() => mount(Harness, { target: host, props: { open: false } }));
-	const everywhere = { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 };
-	expect(overlayOpen(everywhere)).toBe(false);
+	expect(overlayRects()).toEqual([]);
 	host.querySelector(".menu-t").click();
 	flushSync();
 	await tick();
-	expect(document.querySelector("[role=menu]")).not.toBeNull();
-	expect(overlayOpen(everywhere)).toBe(true);
+	const menu = document.querySelector("[role=menu]");
+	expect(menu).not.toBeNull();
+	// the test DOM lays nothing out: give the real menu a box, so only the selector contract is under test
+	menu.getBoundingClientRect = () => new DOMRect(10, 10, 100, 80);
+	// ...and the position the layer engine writes once it has placed the layer (an unplaced one is no hole yet)
+	menu.style.translate = "10px 10px";
+	expect(overlayRects()).toEqual([{ x: 10, y: 10, w: 100, h: 80 }]);
 	unmount(app);
 	host.remove();
 });

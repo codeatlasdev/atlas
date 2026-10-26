@@ -90,14 +90,14 @@ test("end state: exactly one current layer, it is the selected space, and nothin
 			{ id: "a", role: "near", transform: "" },
 			{ id: "b", role: "current", transform: "" },
 		],
-		overlay: false,
+		ghosts: [] as string[],
 	};
 	expect(endStateProblems(ok)).toEqual([]);
 	expect(endStateProblems({ ...ok, selected: "a" })).toContain("current layer is b but the selection is a");
 	expect(
 		endStateProblems({ ...ok, layers: [{ id: "b", role: "current", transform: "translate3d(-4px,0,0)" }] }),
 	).toContain("layer b keeps a transform at rest");
-	expect(endStateProblems({ ...ok, overlay: true })).toContain("the native overlay is still up");
+	expect(endStateProblems({ ...ok, ghosts: ["a"] })).toContain("layer a is on screen at rest");
 	expect(
 		endStateProblems({
 			...ok,

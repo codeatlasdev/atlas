@@ -13,9 +13,10 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import Group from "#lib/settings/Group.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import LoadError from "#lib/settings/LoadError.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
+	import WorktreePreview from "#lib/settings/WorktreePreview.svelte";
 
 	let workspaceDir = $state("");
 	let branchPrefix = $state("git-username");
@@ -27,14 +28,20 @@
 	let auto = $state<CleanupPrefs>({ mode: "off", days: 14 });
 	let cleaned = $state<Cleaned[]>([]);
 
+	let loadError = $state<string | null>(null);
+
 	onMount(async () => {
-		const s = await api.settings();
-		workspaceDir = (s.workspaceDir as string) ?? "";
-		branchPrefix = (s.branchPrefix as string) ?? "git-username";
-		branchPrefixCustom = (s.branchPrefixCustom as string) ?? "";
-		nest = s.nestWorkspaces !== "false";
-		auto = cleanupPrefs(s);
-		cleaned = restorable(s.cleanedWorktrees, Date.now());
+		try {
+			const s = await api.settings();
+			workspaceDir = (s.workspaceDir as string) ?? "";
+			branchPrefix = (s.branchPrefix as string) ?? "git-username";
+			branchPrefixCustom = (s.branchPrefixCustom as string) ?? "";
+			nest = s.nestWorkspaces !== "false";
+			auto = cleanupPrefs(s);
+			cleaned = restorable(s.cleanedWorktrees, Date.now());
+		} catch (e) {
+			loadError = errText(e);
+		}
 	});
 
 	async function restore(c: Cleaned) {
@@ -76,10 +83,9 @@
 	};
 </script>
 
-<PageHead
-	title="Workspaces"
-	description="Each worktree is its own checkout of a repository. Choose where Atlas puts them and how their branches are named."
-/>
+{#if loadError}
+	<LoadError what="your workspace settings" error={loadError} />
+{/if}
 
 <Group title="New worktrees">
 	<Row
@@ -99,6 +105,11 @@
 				save({ workspaceDir: v || null });
 			}}
 		/>
+		{#snippet below()}
+			<WorktreePreview
+				prefs={{ dir: workspaceDir, nest, prefix: branchPrefix, custom: branchPrefixCustom }}
+			/>
+		{/snippet}
 	</Row>
 	<Row
 		id="ws-nest"

@@ -13,9 +13,6 @@
  *           sits at `-amount·W`, the neighbour in the direction of travel at `(dir - amount)·W`. A gesture that
  *           preempts a settle is rebased by the engine on the page being settled to: the origin is simply
  *           whatever is selected when the new generation begins.
- *
- * When the native stage (`page_layers.rs`) draws the slide from snapshots, frames still arrive (they carry the
- * generation and the stage) but nothing is written here; `host.moving` and the commit go on as usual.
  */
 
 export type Dir = 1 | -1;
@@ -26,8 +23,6 @@ export interface FrameMsg {
 	seq: number;
 	amount: number;
 	stage: "track" | "settle" | "rest";
-	/** The native stage draws this generation from snapshots: write no transforms, but ack at rest. */
-	native?: boolean;
 }
 
 export interface CommitMsg {
@@ -51,8 +46,6 @@ export interface PagerHost {
 	moving(on: boolean, keep?: string[]): void;
 	/** Resolves once Svelte has applied the pending state (after `commit`). */
 	flush(): Promise<void>;
-	/** Tell the native stage the live DOM shows the page the generation ended on and painted it. */
-	ack(seq: number): void;
 	/** The engine's own programmatic switch (`swipe_go`): its spring and clock. False = refused (fingers down). */
 	engineGo(dir: Dir): Promise<boolean>;
 }
@@ -100,8 +93,6 @@ class Pager {
 	#active = false;
 	/** What the host was last told it must keep mounted (`moving(true, …)`): told again only when it changes. */
 	#told = "";
-	/** The native stage draws the current generation. */
-	#native = false;
 	/** Highest generation whose decision was applied. */
 	#applied = 0;
 	/** The state change was already made by the caller (`go` selects first). */
@@ -111,6 +102,11 @@ class Pager {
 
 	get active() {
 		return this.#active;
+	}
+
+	/** Layers the current gesture keeps on screen (empty at rest). */
+	get kept(): string[] {
+		return this.#active && this.#told ? this.#told.split("\u0000") : [];
 	}
 
 	attach(host: PagerHost) {
@@ -131,18 +127,15 @@ class Pager {
 		if (m.seq > this.#seq) this.#begin(m.seq);
 		if (!this.#origin) return;
 		if (m.stage === "rest") return void this.#rest(m.seq);
-		this.#native = !!m.native;
 		const ids = h.ids();
 		const next = place(this.#origin, m.amount, ids, h.width(), this.#target ?? undefined);
 		const keep = new Set(next.map((p) => p.id));
-		if (!this.#native) {
-			for (const id of this.#moved) if (!keep.has(id)) this.#release(id);
-			for (const p of next) {
-				const el = h.layer(p.id);
-				if (!el) continue;
-				el.style.transform = `translate3d(${p.x}px,0,0)`;
-				this.#moved.add(p.id);
-			}
+		for (const id of this.#moved) if (!keep.has(id)) this.#release(id);
+		for (const p of next) {
+			const el = h.layer(p.id);
+			if (!el) continue;
+			el.style.transform = `translate3d(${p.x}px,0,0)`;
+			this.#moved.add(p.id);
 		}
 		const told = [...keep].join("\u0000");
 		if (!this.#active || told !== this.#told) {
@@ -214,8 +207,6 @@ class Pager {
 		if (seq !== this.#seq || this.#active) return; // a newer generation took over meanwhile
 		for (const id of [...this.#moved]) this.#release(id);
 		h.moving(false);
-		// The live DOM is at rest on the committed page: the native overlay may come down.
-		if (this.#native) h.ack(seq);
 	}
 
 	/** Abort without animation (detach). */

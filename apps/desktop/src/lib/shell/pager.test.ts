@@ -16,13 +16,12 @@ class Layer {
 	};
 }
 
-let host, layers, committed, moving, active, go, acked;
+let host, layers, committed, moving, active, go;
 beforeEach(() => {
 	layers = { a: new Layer(), b: new Layer(), c: new Layer(), z: new Layer() };
 	committed = [];
 	moving = [];
 	go = [];
-	acked = [];
 	active = "a";
 	host = {
 		layer: (id) => layers[id],
@@ -37,7 +36,6 @@ beforeEach(() => {
 		flush: () => Promise.resolve(),
 		// The engine's own programmatic switch (swipe_go): resolves to whether it took it.
 		engineGo: async (dir) => (go.push(dir), true),
-		ack: (seq) => acked.push(seq),
 	};
 	spacePager.attach(host)();
 	spacePager.attach(host);
@@ -183,37 +181,6 @@ test("go(id, origin) animates without committing (the selection already moved)",
 	expect(committed).toEqual([]);
 	await settle();
 	expect(go).toEqual([1]);
-});
-
-// ---- the native stage draws the slide ----
-
-test("when the native stage draws a generation, no transform is written but the commit and rest still run", async () => {
-	spacePager.frame({ zone: "space", seq: 1, amount: 0.3, stage: "track", native: true });
-	expect(layers.a.style.transform).toBe("");
-	expect(layers.b.style.transform).toBe("");
-	expect(moving[0]).toEqual([true, ["a", "b"]]);
-	c(1, 1);
-	expect(committed).toEqual(["b"]);
-	spacePager.frame({ zone: "space", seq: 1, amount: 1, stage: "rest", native: true });
-	await settle();
-	// Svelte applied the selection; only now may the overlay come down.
-	expect(acked).toEqual([1]);
-	expect(moving.at(-1)).toEqual([false]);
-});
-
-test("the ack is sent once per generation, after the flush, even if rest repeats", async () => {
-	spacePager.frame({ zone: "space", seq: 1, amount: 0.3, stage: "track", native: true });
-	c(1, 0);
-	spacePager.frame({ zone: "space", seq: 1, amount: 0, stage: "rest", native: true });
-	spacePager.frame({ zone: "space", seq: 1, amount: 0, stage: "rest", native: true });
-	await settle();
-	expect(acked).toEqual([1]);
-});
-
-test("a generation the stage did not draw (no snapshot yet) is drawn by the layers, never by both", () => {
-	spacePager.frame({ zone: "space", seq: 1, amount: 0.3, stage: "track", native: false });
-	expect(layers.a.style.transform).toBe("translate3d(-300px,0,0)");
-	expect(acked).toEqual([]);
 });
 
 // Incident (bench, every commit trace): the worst frame of a gesture came with a 10-19 ms main-thread stall right

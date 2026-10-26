@@ -21,6 +21,8 @@ interface Options {
 	onLink: (url: string, external: boolean) => void;
 	/** A plain token was ⌘-clicked; `true` when it named a file and was opened. */
 	onFile: (token: string) => boolean;
+	/** ⌘ is held over the terminal (links are live) or no longer: the slot shows the pointer cursor meanwhile. */
+	onLinkMode?: (on: boolean) => void;
 }
 
 const quiet = () => {};
@@ -202,6 +204,7 @@ export class Pointer {
 		if (key === this.#lastHover) return;
 		this.#lastHover = key;
 		this.#hovered = true;
+		this.#o.onLinkMode?.(true);
 		void invoke("term_hover", { tab: this.#o.tab(), col: c.col, row: c.row }).catch(quiet);
 	}
 
@@ -209,6 +212,7 @@ export class Pointer {
 		this.#lastHover = "";
 		if (!this.#hovered) return;
 		this.#hovered = false;
+		this.#o.onLinkMode?.(false);
 		void invoke("term_hover", { tab: this.#o.tab() }).catch(quiet);
 	};
 }

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { toast } from "@codeatlasdev/ui";
-	import { tick } from "svelte";
 	import { api } from "#lib/api.ts";
 	import { resolvePath } from "#lib/logs/links.ts";
 	import { openFile } from "#lib/stores/files.svelte.ts";
 	import { openPreview } from "#lib/stores/browser.svelte.ts";
-	import type { Run } from "./actionRuns.ts";
+	import VirtualList from "#lib/components/VirtualList.svelte";
+	import type { Run, RunLine } from "./actionRuns.ts";
 	import { segments, type Seg } from "./actionSegments.ts";
 
 	/** Output of one run: tail window, follow-while-live scrolling and clickable URLs/paths. */
@@ -26,41 +26,18 @@
 		root: string;
 	} = $props();
 
-	/** Rendered tail: a run keeps up to 5000 lines, the DOM only needs the end unless asked. */
-	const TAIL = 1500;
-
-	let all = $state(false);
-	let rows = $derived.by(() => {
+	/** The whole ring (up to 5000 lines) is windowed by VirtualList: only the rows on screen are in the DOM. */
+	let lines = $derived.by(() => {
 		void rev;
-		const items = run.lines.items;
-		const shown = all ? items : items.slice(-TAIL);
-		const hidden = items.length - shown.length;
-		return { lines: shown, hidden, first: run.lines.base + hidden };
+		return { items: [...run.lines.items], first: run.lines.base };
 	});
 
-	let viewport = $state<HTMLElement>();
-	let follow = $state(true);
-
-	function onscroll() {
-		if (!viewport) return;
-		follow = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24;
-	}
-
-	const toEnd = () => tick().then(() => viewport && (viewport.scrollTop = viewport.scrollHeight));
-
-	// Auto-follow while the run is live and the reader is at the bottom.
-	$effect(() => {
-		void rev;
-		if (!active || !follow || run.status !== "running") return;
-		void toEnd();
-	});
+	let list: ReturnType<typeof VirtualList<RunLine>> | undefined = $state();
 
 	// Switching runs starts at the end (what just happened), following again.
 	$effect(() => {
 		void run.id;
-		all = false;
-		follow = true;
-		void toEnd();
+		list?.scrollToEnd();
 	});
 
 	async function openLink(e: MouseEvent, seg: Seg) {
@@ -82,18 +59,25 @@
 	}
 </script>
 
-<div class="out mono" bind:this={viewport} {onscroll} tabindex="-1">
-	{#if run.truncated > 0}
-		<div class="note">
-			{run.truncated.toLocaleString()} earlier lines were not kept (attached mid-run); full output is in .logs/.
-		</div>
-	{/if}
-	{#if rows.hidden > 0}
-		<button class="note more" onclick={() => (all = true)}>
-			Show {rows.hidden.toLocaleString()} earlier lines
-		</button>
-	{/if}
-	{#each rows.lines as l, i (rows.first + i)}
+<VirtualList
+	bind:this={list}
+	class="action-out mono"
+	items={lines.items}
+	key={(_, i) => String(lines.first + i)}
+	estimate={17}
+	stickBottom={active && run.status === "running"}
+>
+	{#snippet header()}
+		{#if run.truncated > 0}
+			<div class="note">
+				{run.truncated.toLocaleString()} earlier lines were not kept (attached mid-run); full output is in .logs/.
+			</div>
+		{/if}
+		{#if lines.items.length === 0}
+			<div class="note">{run.status === "running" ? "Waiting for output…" : "No output."}</div>
+		{/if}
+	{/snippet}
+	{#snippet item(l)}
 		<div class="ln">
 			{#each segments(l.text) as s}{#if s.link}<a
 						href={s.link.target}
@@ -103,13 +87,11 @@
 						onclick={(e) => openLink(e, s)}>{s.text}</a
 					>{:else}<span style={s.css}>{s.text}</span>{/if}{/each}
 		</div>
-	{:else}
-		<div class="note">{run.status === "running" ? "Waiting for output…" : "No output."}</div>
-	{/each}
-</div>
+	{/snippet}
+</VirtualList>
 
 <style>
-	.out {
+	:global(.vl.action-out) {
 		flex: 1;
 		min-height: 0;
 		overflow: auto;
@@ -138,15 +120,5 @@
 		font-family: inherit;
 		font-size: 11px;
 		color: var(--ca-text-secondary);
-	}
-	.more {
-		display: block;
-		border: 0;
-		background: none;
-		text-align: left;
-		cursor: pointer;
-	}
-	.more:hover {
-		color: var(--ca-text-primary);
 	}
 </style>

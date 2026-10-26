@@ -359,7 +359,6 @@
 		font: inherit;
 		font-size: 12px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 	}
 	.toggle:hover {
 		color: var(--ca-text-primary);
@@ -455,7 +454,6 @@
 		font: inherit;
 		text-align: left;
 		color: var(--ca-text-primary);
-		cursor: default;
 	}
 	.ai-row:hover {
 		background: var(--ca-action-hover);

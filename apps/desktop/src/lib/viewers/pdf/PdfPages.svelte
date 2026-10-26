@@ -45,6 +45,7 @@
 >
 	<div
 		class="content"
+		class:pinching={pinch.k !== 1}
 		style:width="{layout.width + PAGE_PAD * 2}px"
 		style:height="{layout.height}px"
 		style:transform={pinch.k !== 1 ? `scale(${pinch.k})` : undefined}
@@ -81,7 +82,10 @@
 	.content {
 		position: relative;
 		min-width: 100%;
-		/* Pinch scales this layer live; the crisp re-render lands after the gesture settles. */
+	}
+	/* Pinch scales this layer live; the crisp re-render lands after the gesture settles. The layer is promoted only
+	   while a pinch is in flight: a permanent `will-change` keeps a GPU texture of the whole column for as long as the tab lives. */
+	.content.pinching {
 		will-change: transform;
 	}
 	.page {

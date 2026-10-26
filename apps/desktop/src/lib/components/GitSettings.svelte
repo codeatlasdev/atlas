@@ -5,15 +5,21 @@
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { commitMessages } from "#lib/stores/commitMessage.svelte.ts";
 	import Group from "#lib/settings/Group.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import LoadError from "#lib/settings/LoadError.svelte";
 
 	/** `auto` = your default agent when it is installed, else the first installed one. */
 	let choice = $state("auto");
 
+	let loadError = $state<string | null>(null);
+
 	onMount(async () => {
-		const s = await api.settings();
-		choice = (s.gitCommitAgent as string) ?? "auto";
+		try {
+			const s = await api.settings();
+			choice = (s.gitCommitAgent as string) ?? "auto";
+		} catch (e) {
+			loadError = errText(e);
+		}
 	});
 
 	async function save(v: string) {
@@ -27,10 +33,9 @@
 	}
 </script>
 
-<PageHead
-	title="Git"
-	description="How Atlas helps with commits. Nothing is committed for you: a generated message lands in the commit box, fully editable."
-/>
+{#if loadError}
+	<LoadError what="your Git settings" error={loadError} />
+{/if}
 
 <Group title="Commit messages">
 	<Row
@@ -50,11 +55,24 @@
 				onchange={save}
 			/>
 		</div>
+		{#snippet below()}
+			{#if !agents.list.some((a) => a.installed)}
+				<p class="hint">
+					No coding agent is installed on this computer, so there is nothing to write messages yet. Install
+					omp, Claude Code or Codex and pick it here.
+				</p>
+			{/if}
+		{/snippet}
 	</Row>
 </Group>
 
 <style>
 	.select {
 		min-width: 170px;
+	}
+	.hint {
+		margin: 0;
+		font-size: 12px;
+		color: var(--ca-text-secondary);
 	}
 </style>

@@ -1,12 +1,10 @@
 <script lang="ts">
-	/** Settings ▸ Editor: the code font and editing prefs, and the language servers, in two tabs. */
-	import { Tabs, TabsContent, TabsList, TabsTrigger, toast } from "@codeatlasdev/ui";
+	/** Settings ▸ Editor ▸ Editor: the code font and editing prefs. The tab strip is drawn by Settings. */
+	import { toast } from "@codeatlasdev/ui";
 	import { homeDir } from "@tauri-apps/api/path";
 	import { errText } from "#lib/api.ts";
-	import { SECTION_TABS, relativeFrom, type SettingsTab } from "#lib/settings/index.ts";
+	import { relativeFrom } from "#lib/settings/index.ts";
 	import CodeTab from "#lib/settings/CodeTab.svelte";
-	import LanguagesTab from "#lib/settings/LanguagesTab.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
 	import { openFile } from "#lib/stores/files.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -28,32 +26,13 @@
 	}
 </script>
 
-<PageHead
-	title="Editor"
-	description="The code editor and diffs: font, indentation and display, and the language servers behind completion and diagnostics."
-/>
-
-<Tabs bind:value={updates.tab as SettingsTab}>
-	<TabsList>
-		{#each SECTION_TABS.editor ?? [] as t (t.id)}
-			<TabsTrigger value={t.id}>{t.label}</TabsTrigger>
-		{/each}
-	</TabsList>
-	<TabsContent value="editor"><div class="tab"><CodeTab /></div></TabsContent>
-	<TabsContent value="languages"><div class="tab"><LanguagesTab /></div></TabsContent>
-</Tabs>
+<CodeTab />
 
 <p class="foot">
 	Advanced: <button class="link" onclick={editJson}>edit settings.json</button>
 </p>
 
 <style>
-	.tab {
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-		padding-top: 16px;
-	}
 	.foot {
 		margin: 0;
 		font-size: 12px;

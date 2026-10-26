@@ -1,15 +1,28 @@
 <script lang="ts">
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { health, store } from "#lib/stores/projects.svelte.ts";
-	import { identities } from "#lib/stores/identity.svelte.ts";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
+	import PointerMenu from "#lib/components/PointerMenu.svelte";
 	import Tip from "#lib/components/Tip.svelte";
+	import { tick } from "svelte";
+	import { projectMenuItems } from "./projectMenu.ts";
 
 	/**
 	 * Arc's space strip: one icon per project at the bottom of the sidebar (its emoji, icon, logo
 	 * or monogram). The active one is ringed; a running stack breathes. Click to switch; ⌃1…⌃9
-	 * and ⌥⌘←/→ do the same.
+	 * and ⌥⌘←/→ do the same. Right-click opens the project's menu (icon, pin, reveal, remove): the
+	 * strip stays reachable with the sidebar collapsed, so Remove from Atlas lives here too (#98).
 	 */
+	let menuFor = $state<string | null>(null);
+	let pointerMenu: PointerMenu | undefined = $state();
+	const menuProject = $derived(shell.spaces.find((s) => s.id === menuFor));
+
+	async function openMenu(e: MouseEvent, id: string) {
+		e.preventDefault();
+		menuFor = id;
+		await tick();
+		await pointerMenu?.openAt(e.clientX, e.clientY);
+	}
 </script>
 
 {#if shell.spaces.length > 1}
@@ -27,10 +40,7 @@
 						aria-selected={on}
 						aria-label={s.name}
 						onclick={() => shell.switchTo(s.id)}
-						oncontextmenu={(e) => {
-							e.preventDefault();
-							identities.editing = s.id;
-						}}
+						oncontextmenu={(e) => openMenu(e, s.id)}
 					>
 						<ProjectIcon id={s.id} size={22} ring={on} />
 					</button>
@@ -38,6 +48,7 @@
 			</Tip>
 		{/each}
 	</div>
+	<PointerMenu bind:this={pointerMenu} items={menuProject ? projectMenuItems(menuProject) : []} />
 {/if}
 
 <style>

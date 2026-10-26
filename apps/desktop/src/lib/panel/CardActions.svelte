@@ -2,6 +2,7 @@
 	import { Tooltip } from "@codeatlasdev/ui";
 	import { Play, RotateCw, ScrollText, Square, SquareTerminal } from "@lucide/svelte";
 	import type { Component } from "svelte";
+	import { guarded } from "#lib/components/tooltipGuard.ts";
 
 	type Cmd = "start_service" | "stop_service" | "restart_service";
 	type Btn = {
@@ -81,17 +82,21 @@
 
 <div class="btns">
 	{#each buttons as b (b.label)}
-		<Tooltip content={b.tip}
-			><button
-				class="b"
-				disabled={b.off}
-				aria-label={b.label}
-				onclick={(e) => {
-					e.stopPropagation();
-					b.run();
-				}}><b.icon size={b.size} /></button
-			></Tooltip
-		>
+		<Tooltip content={b.tip}>
+			{#snippet triggerChild(props)}
+				<!-- The kit's own wrapper button would nest this one; the control is the trigger. -->
+				<button
+					{...guarded(props)}
+					class="b"
+					disabled={b.off}
+					aria-label={b.label}
+					onclick={(e) => {
+						e.stopPropagation();
+						b.run();
+					}}><b.icon size={b.size} /></button
+				>
+			{/snippet}
+		</Tooltip>
 	{/each}
 </div>
 

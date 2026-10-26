@@ -565,3 +565,27 @@ export function confirmCopy(v: ChannelView): Confirm {
 			: null;
 	return { text: v.switch_to, downgrade: down };
 }
+
+export type Lane = "followed" | "pending" | "feeds" | "idle";
+
+/**
+ * State of each lane in the release-train diagram (alpha → beta → stable). Builds promote down the train,
+ * so a channel *feeds* the focused one when it sits upstream of it. The focus is the reader's unconfirmed
+ * pick (`pending`) when there is one, else the channel the app follows.
+ */
+export function laneStates(followed: Channel, pending: Channel | null): Record<Channel, Lane> {
+	const train: Channel[] = ["alpha", "beta", "stable"];
+	const focus = pending ?? followed;
+	const out = {} as Record<Channel, Lane>;
+	for (const c of train) {
+		out[c] =
+			c === focus
+				? pending
+					? "pending"
+					: "followed"
+				: train.indexOf(c) < train.indexOf(focus)
+					? "feeds"
+					: "idle";
+	}
+	return out;
+}

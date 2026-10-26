@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import { peek } from "#lib/stores/docks.svelte.ts";
+	import { onModalChange } from "#lib/modalOpen.ts";
 	import { pushZones } from "#lib/shell/nativeSwipe.ts";
 	import {
 		CLOSE_DELAY,
@@ -41,11 +42,15 @@
 	let speed = 0;
 	let region: PeekRegion = { hot: false, over: false };
 	let open = false;
+	// A modal layer (Dialog, Sheet, Settings, the palette) is up: the page behind it is inert, so a panel sliding in
+	// under it is dead weight and looks broken. Fed by the kit's `layerchange` (modalOpen.ts), never a per-dialog flag.
+	let modal = false;
 
 	const clear = () => (clearTimeout(timer), (timer = 0));
 
 	/** The single write that crosses into reactivity and the DOM. */
 	function set(on: boolean) {
+		if (on && modal) return;
 		if (open === on) return;
 		open = on;
 		peek[edge] = on;
@@ -53,7 +58,7 @@
 			panel.classList.toggle("shown", on);
 			panel.toggleAttribute("inert", !on);
 			panel.setAttribute("aria-hidden", String(!on));
-			// Native views (browser, terminal) cannot be covered by CSS: `watchSlot` sees this flip and parks them.
+			// Native views (browser, terminal) sit below the page: the peek is ordinary DOM above them, and this flip is how the hit map (`native/hit.ts`) learns the panel now owns the pointer.
 			panel.dataset.state = on ? "open" : "closed";
 		}
 		// The sidebar inside this panel is a swipe zone only while the panel is open (`rectOf` skips `[inert]`), and a
@@ -117,6 +122,16 @@
 			set(false);
 		};
 	});
+
+	$effect(() =>
+		onModalChange((on) => {
+			if (on === modal) return;
+			modal = on;
+			if (!on) return;
+			clear(); // a dwell that started before the dialog opened must not fire behind it
+			set(false);
+		}),
+	);
 
 	// Something else dropped the peek (toggleDock / toggleSidebar): resync the plain flag and the DOM.
 	$effect(() => {

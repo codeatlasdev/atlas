@@ -12,6 +12,7 @@ import {
 	type FlickerOpts,
 	type Frame,
 	frameStarts,
+	ghostFrames,
 	GRID_H,
 	GRID_W,
 	gridOf,
@@ -426,5 +427,64 @@ describe("CLEAN_PROBE: a surface starts and ends on the bare app", () => {
 		expect(
 			open('<div role="region" aria-label="Errors"><div role="alert" class="toast"></div></div>'),
 		).toEqual([]);
+	});
+});
+
+// Incident: ghost frames (docs/postmortems/ghost-frames.md). After a space switch the native stage kept a snapshot of
+// the previous page (or a cover of an open modal) on screen for several frames after the DOM had settled.
+describe("ghostFrames", () => {
+	const region = (v: number) => Object.fromEntries(Array.from({ length: 20 }, (_, i) => [i, v]));
+	const settledAt = (t0: number) => still(30, t0, 60, 0.2, region(0.6));
+
+	test("frames that already show the settled state after the mark are clean", () => {
+		const frames = [...still(10, 0, 60, 0.2, region(0.1)), ...settledAt(10 / 60)];
+		expect(ghostFrames(frames, [12 / 60])).toEqual([]);
+	});
+
+	test("the old picture still shown after the mark is a ghost, once per stale frame", () => {
+		const frames = [...still(14, 0, 60, 0.2, region(0.1)), ...settledAt(14 / 60)];
+		const g = ghostFrames(frames, [10 / 60]);
+		// mark at frame 10, grace 0.05 s -> from frame 13: frame 13 still old, 14+ settled
+		expect(g.map((x) => x.frame)).toEqual([13]);
+		expect(g[0]!.cells).toBe(20);
+	});
+
+	test("a stale picture coming back after the new one appeared is a ghost too", () => {
+		const frames = [...settledAt(0).slice(0, 10), frame(10 / 60, 0.2, region(0.1)), ...settledAt(11 / 60)];
+		expect(ghostFrames(frames, [5 / 60]).map((x) => x.frame)).toEqual([10]);
+	});
+
+	test("the settled picture of a mark stops at the next mark; motion before a mark is not judged", () => {
+		// a slide (frames 0-9 ramping) before mark 1, settled for a second (the sweep waits that long), then the next
+		// transition's motion, settled before mark 2
+		const ramp = Array.from({ length: 10 }, (_, i) => frame(i / 60, 0.2, region(0.1 + i * 0.05)));
+		const frames = [
+			...ramp,
+			...still(70, 10 / 60, 60, 0.2, region(0.6)),
+			...still(30, 80 / 60, 60, 0.2, region(0.9)),
+		];
+		expect(ghostFrames(frames, [11 / 60, 85 / 60])).toEqual([]);
+	});
+
+	test("a change under minCells (a caret) is not a ghost", () => {
+		const frames = [...still(14, 0, 60, 0.2, { 0: 0.9 }), ...still(30, 14 / 60)];
+		expect(ghostFrames(frames, [10 / 60])).toEqual([]);
+	});
+
+	test("the verdict names ghosts and fails", () => {
+		const v = verdict([
+			{
+				surface: "spaces-click",
+				frames: 40,
+				findings: {
+					blips: [],
+					blanks: [],
+					flashes: [],
+					ghosts: [{ mark: 2, frame: 9, t: 0.15, cells: 20, box: { x0: 0, y0: 0, x1: 20, y1: 1 } }],
+				},
+			},
+		]);
+		expect(v.code).toBe(1);
+		expect(v.lines[0]).toContain("spaces-click: ghost frame at 0.150 s after transition 2");
 	});
 });

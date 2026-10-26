@@ -16,7 +16,7 @@
 	import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 	import { runCommand } from "#lib/keymap.svelte.ts";
 	import { fontStep, keyToSend, producesInput, termAction, type TermAction } from "#lib/termKeys.ts";
-	import { watchSlot } from "./nativeSlot.ts";
+	import { watchSlot } from "#lib/native/slot.ts";
 	import { shellQuote } from "./terminal/geometry.ts";
 	import { NativeView, listenFontFallback, termPrefs } from "./terminal/nativeView.ts";
 	import { Pointer } from "./terminal/pointer.ts";
@@ -56,6 +56,9 @@
 		() => ({ tab, pty }),
 		() => area,
 		() => visible,
+		undefined,
+		undefined,
+		() => input?.focus(),
 	);
 	const pointer = new Pointer({
 		tab: () => tab,
@@ -268,7 +271,7 @@
 			window.removeEventListener("atlas:rail-slide", onRail);
 			if (document.activeElement === input) termFocus.on = false;
 			void host.ptyDetach(pty).catch(quiet);
-			void invoke("term_close", { tab }).catch(quiet);
+			void view.dispose();
 		};
 	});
 </script>

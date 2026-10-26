@@ -18,10 +18,10 @@
 	import { api } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
 	import { updates as u } from "#lib/stores/updates.svelte.ts";
-	import Group from "./Group.svelte";
+	import { DEFAULT_CHANNEL } from "#lib/updates.ts";
 	import HostStatusRow from "./HostStatusRow.svelte";
-	import Row from "./Row.svelte";
 	import SectionTitle from "./SectionTitle.svelte";
+	import Tile from "./Tile.svelte";
 	import UpdateChannel from "./UpdateChannel.svelte";
 
 	const CHANGELOG_URL = "https://github.com/codeatlasdev/atlas/blob/main/CHANGELOG.md";
@@ -52,6 +52,10 @@
 			: "",
 	);
 
+	let channelLabel = $derived(
+		(u.channelState?.channel ?? DEFAULT_CHANNEL).replace(/^./, (c) => c.toUpperCase()),
+	);
+
 	async function copy(text: string) {
 		await navigator.clipboard.writeText(text);
 		toast.success("Copied");
@@ -61,14 +65,16 @@
 <SectionTitle title="Updates" setting="updates" first />
 <div class="hero" class:avail={u.available && !u.linked} class:dev={u.linked}>
 	<div class="badge">
-		{#if u.linked}<FlaskConical size={22} />{:else if u.available}<Sparkles size={22} />{:else}<CheckCircle2
-				size={22}
+		{#if u.linked}<FlaskConical size={20} />{:else if u.available}<Sparkles size={20} />{:else}<CheckCircle2
+				size={20}
 			/>{/if}
 	</div>
 	<div class="htext">
 		<h2>{headline}</h2>
 		<p>
-			{#if u.checking}<Spinner size={11} /> Checking…{:else}{checked}{/if}
+			{#if u.checking}<Spinner size={11} /> Checking…{:else if checked}{checked}{/if}
+			<span class="chip mono">{u.info?.app.version ?? "—"}</span>
+			<span class="chip">{channelLabel}</span>
 			{#if u.release}
 				<button class="link" onclick={() => api.openUrl(u.release!.url)}
 					>Release on GitHub <ExternalLink size={11} /></button
@@ -102,6 +108,19 @@
 			Check now
 		</Button>
 	</div>
+	<div class="hfoot">
+		<label class="auto" title="On launch, when you return to the app, and every 6 hours">
+			<Switch
+				checked={u.prefs.auto}
+				aria-label="Check for updates automatically"
+				onchange={(v) => u.setAuto(v)}
+			/>
+			Check automatically
+		</label>
+		<button class="link" onclick={() => api.openUrl(CHANGELOG_URL)}
+			>Full changelog <ExternalLink size={11} /></button
+		>
+	</div>
 </div>
 
 {#if u.error}
@@ -115,51 +134,39 @@
 	</p>
 {/if}
 
-<Group>
-	<Row
+<div class="tiles">
+	<Tile
 		icon={Terminal}
 		name="Atlas CLI"
 		sub={u.info?.cli.path ? tilde(u.info.cli.path) : (u.info?.cli.error ?? "…")}
+		title={u.info?.cli.path ? tilde(u.info.cli.path) : undefined}
 		mono
 	>
-		{#if u.info?.cli.linked_to}<span class="tag info">linked</span>{/if}
-		<div class="ver mono">
+		{#snippet badges()}{#if u.info?.cli.linked_to}<span class="tag info">linked</span>{/if}{/snippet}
+		{#snippet version()}
 			{u.info?.cli.version ?? "—"}
 			{#if u.cliBehind && !u.info?.cli.linked_to}<ArrowRight size={12} /><b>{u.release?.version}</b>{/if}
-		</div>
-	</Row>
-	<Row
+		{/snippet}
+	</Tile>
+	<Tile
 		icon={AppWindow}
 		name="Atlas Desktop"
 		sub={u.info?.app.dev ? "cargo tauri dev" : tilde(u.info?.app.bundle)}
+		title={u.info?.app.dev ? undefined : tilde(u.info?.app.bundle)}
 		mono
 	>
-		{#if u.info?.app.dev}<span class="tag warn">Dev</span>{:else if u.info?.app.linked_to}<span
-				class="tag info">linked</span
-			>{/if}
-		<div class="ver mono">
+		{#snippet badges()}
+			{#if u.info?.app.dev}<span class="tag warn">Dev</span>{:else if u.info?.app.linked_to}<span
+					class="tag info">linked</span
+				>{/if}
+		{/snippet}
+		{#snippet version()}
 			{u.info?.app.version ?? "—"}
 			{#if u.appBehind && !u.linked}<ArrowRight size={12} /><b>{u.release?.version}</b>{/if}
-		</div>
-	</Row>
+		{/snippet}
+	</Tile>
 	<HostStatusRow />
-	<Row icon={Sparkles} name="Changelog" sub="Every release, newest first">
-		<button class="link" onclick={() => api.openUrl(CHANGELOG_URL)}
-			>Full changelog <ExternalLink size={11} /></button
-		>
-	</Row>
-	<Row
-		icon={RefreshCw}
-		name="Check automatically"
-		sub="On launch, when you return to the app, and every 6 hours"
-	>
-		<Switch
-			checked={u.prefs.auto}
-			aria-label="Check for updates automatically"
-			onchange={(v) => u.setAuto(v)}
-		/>
-	</Row>
-</Group>
+</div>
 
 {#if u.aheadOfChannel && !u.linked}
 	<p class="skipnote">
@@ -228,7 +235,7 @@
 <style>
 	.hero h2 {
 		margin: 0;
-		font-size: 16px;
+		font-size: 15px;
 		font-weight: 650;
 		letter-spacing: -0.01em;
 	}
@@ -238,13 +245,16 @@
 		color: var(--ca-text-secondary);
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		flex-wrap: wrap;
+		gap: 4px 8px;
 	}
+	/* Two rows: status + actions, then the quiet controls under a hairline. */
 	.hero {
 		display: flex;
 		align-items: center;
-		gap: 16px;
-		padding: 16px 18px;
+		flex-wrap: wrap;
+		gap: 12px 14px;
+		padding: 14px 16px 10px;
 		border-radius: 12px;
 		background: color-mix(in oklab, var(--tone) 7%, var(--ca-surface-raised));
 		box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--tone) 28%, transparent);
@@ -257,7 +267,7 @@
 		--tone: var(--ca-semantic-warning);
 	}
 	.htext {
-		flex: 1;
+		flex: 1 1 260px;
 		min-width: 0;
 	}
 	.hact {
@@ -267,15 +277,46 @@
 		flex-wrap: wrap;
 		justify-content: flex-end;
 	}
+	.hfoot {
+		flex: 1 1 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding-top: 8px;
+		border-top: 0.5px solid color-mix(in oklab, var(--tone) 22%, transparent);
+	}
+	.auto {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		cursor: pointer;
+	}
+	.chip {
+		font-size: 11px;
+		font-weight: 600;
+		padding: 1px 7px;
+		border-radius: 999px;
+		color: var(--ca-text-primary);
+		background: color-mix(in oklab, var(--tone) 12%, transparent);
+	}
 	.badge {
-		width: 44px;
-		height: 44px;
-		border-radius: 12px;
+		width: 38px;
+		height: 38px;
+		border-radius: 11px;
 		display: grid;
 		place-items: center;
 		color: var(--tone);
 		background: color-mix(in oklab, var(--tone) 14%, transparent);
 		box-shadow: inset 0 0 0 0.5px color-mix(in oklab, var(--tone) 40%, transparent);
+	}
+	/* Three tiles in a row; they wrap to two, then one, as the dialog narrows. */
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+		gap: 10px;
 	}
 	.link {
 		display: inline-flex;
@@ -296,8 +337,9 @@
 	.tag {
 		font-size: 10.5px;
 		font-weight: 600;
-		padding: 2px 7px;
+		padding: 1px 7px;
 		border-radius: 999px;
+		white-space: nowrap;
 	}
 	.tag.info {
 		color: var(--ca-semantic-info);
@@ -307,14 +349,7 @@
 		color: var(--ca-semantic-warning);
 		background: color-mix(in oklab, var(--ca-semantic-warning) 14%, transparent);
 	}
-	.ver {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12.5px;
-		color: var(--ca-text-secondary);
-	}
-	.ver b {
+	.tiles :global(.ver b) {
 		color: var(--ca-brand-main);
 	}
 	.devbox {

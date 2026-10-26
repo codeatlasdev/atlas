@@ -9,8 +9,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SETTINGS_INDEX } from "./index.ts";
-import { PAGES } from "./pages.ts";
+import { REGISTRY } from "./index.ts";
+
+/** The pages of the registry, one per tab (or one per single-page section). */
+const PAGES = REGISTRY.flatMap((c) =>
+	c.pages.map((p) => ({ section: c.id, tab: p.id, files: p.files, groups: p.groups })),
+);
 
 const lib = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = (rel: string) => readFileSync(join(lib, rel), "utf8");
@@ -30,35 +34,26 @@ function idsOf(source: string): string[] {
 	return [...ids];
 }
 
-describe("every screen renders only the settings the catalog files under it", () => {
+describe("every screen renders only the settings the registry files under it", () => {
 	for (const page of PAGES) {
 		test(`${page.section}${page.tab ? `/${page.tab}` : ""}: ${page.files.join(", ")}`, () => {
 			const rendered = new Set(page.files.flatMap((f) => idsOf(src(f))));
-			// Catalog ids with a dynamic template (sound-cat-{c}) are matched by prefix.
-			const filed = SETTINGS_INDEX.filter(
-				(e) => e.section === page.section && (e.tab ?? null) === (page.tab ?? null),
-			);
+			const filed = page.groups.flatMap((g) => g.items.map((i) => i.id));
+			const where = `${page.section}${page.tab ? "/" + page.tab : ""}`;
 			for (const id of rendered) {
 				if (id.includes("{")) continue;
 				expect(
-					filed.some((e) => e.id === id),
-					`${id} is rendered by ${page.files.join("/")} but the catalog does not file it under ${page.section}${page.tab ? "/" + page.tab : ""}`,
+					filed.includes(id),
+					`${id} is rendered by ${page.files.join("/")} but the registry does not file it under ${where}`,
 				).toBe(true);
 			}
-			for (const e of filed) {
-				if (e.id.startsWith("sound-cat-")) continue;
+			for (const id of filed) {
+				if (id.startsWith("sound-cat-")) continue;
 				expect(
-					rendered.has(e.id),
-					`${e.id} is filed under ${page.section}${page.tab ? "/" + page.tab : ""} but ${page.files.join("/")} never renders it`,
+					rendered.has(id),
+					`${id} is filed under ${where} but ${page.files.join("/")} never renders it`,
 				).toBe(true);
 			}
 		});
 	}
-
-	test("every catalog entry belongs to exactly one page", () => {
-		for (const e of SETTINGS_INDEX) {
-			const owners = PAGES.filter((p) => p.section === e.section && (p.tab ?? null) === (e.tab ?? null));
-			expect(owners.length, `${e.id} (${e.section}/${e.tab ?? ""})`).toBe(1);
-		}
-	});
 });

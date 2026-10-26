@@ -131,3 +131,59 @@ test("the right dock peek re-pushes too", async () => {
 	expect(pushes.length).toBeGreaterThan(before);
 	expect(zonesOf()).toContain("space");
 });
+
+// Regression: with a modal open (Settings, a Dialog, the palette) a pointer at the window edge still slid the peek
+// panel in underneath the dialog. The kit announces every layer change as `layerchange` on `document`
+// (`detail.modal`, the contract modalOpen.ts and kitOverlays.test.ts pin); an edge peek must follow it: never open
+// while a modal is up, and drop one that is already open.
+const layers = (...kinds: string[]) =>
+	document.dispatchEvent(
+		new CustomEvent("layerchange", {
+			detail: {
+				layers: kinds.map((kind) => ({ kind })),
+				count: kinds.length,
+				modal: kinds.includes("modal"),
+			},
+		}),
+	);
+
+test("the pointer at the edge does not open the peek while a modal is open", async () => {
+	const panel = await app();
+	layers("modal");
+	await hover(2);
+	expect(panel.dataset.state).not.toBe("open");
+	layers(); // closed again: the next deliberate approach to the edge peeks as usual
+	await hover(600);
+	await hover(2);
+	expect(panel.dataset.state).toBe("open");
+});
+
+test("a flick into the edge (open-now) does not open the peek behind a modal either", async () => {
+	const panel = await app("right");
+	layers("modal");
+	window.dispatchEvent(new PointerEvent("pointermove", { clientX: 1100, buttons: 0 }));
+	await run(20);
+	window.dispatchEvent(new PointerEvent("pointermove", { clientX: 1199, buttons: 0 }));
+	await run(20);
+	await run(100);
+	expect(panel.dataset.state).not.toBe("open");
+});
+
+test("an open peek closes when a modal opens, and a menu (not modal) leaves it alone", async () => {
+	const panel = await app();
+	await hover(2);
+	expect(panel.dataset.state).toBe("open");
+	layers("popover");
+	expect(panel.dataset.state).toBe("open");
+	layers("popover", "modal");
+	expect(panel.dataset.state).not.toBe("open");
+});
+
+test("a dwell that started before the modal opened is cancelled by it", async () => {
+	const panel = await app();
+	window.dispatchEvent(new PointerEvent("pointermove", { clientX: 2, buttons: 0 }));
+	await run(20); // the open delay is now pending
+	layers("modal");
+	await run(200);
+	expect(panel.dataset.state).not.toBe("open");
+});

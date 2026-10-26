@@ -2,9 +2,10 @@
 	import { Button, Kbd } from "@codeatlasdev/ui";
 	import { Compass, Keyboard, ListChecks } from "@lucide/svelte";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
+	import Group from "#lib/settings/Group.svelte";
+	import Row from "#lib/settings/Row.svelte";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { progress } from "./checklist.ts";
-	import FeatureText from "./FeatureText.svelte";
 	import { onboarding } from "./state.svelte.ts";
 
 	let p = $derived(progress(onboarding.state));
@@ -16,50 +17,33 @@
 	}
 </script>
 
-<div class="list">
-	<div class="item" data-setting="tour">
-		<FeatureText icon={Compass} title="Guided tour">
-			A two-minute walk through spaces, the header, the side panel and search.
-		</FeatureText>
+<Group title="Help">
+	<Row
+		id="tour"
+		label="Guided tour"
+		description="A two-minute walk through spaces, the header, the side panel and search."
+	>
+		{#snippet lead()}<Compass size={16} />{/snippet}
 		<Button variant="glass" size="sm" onclick={() => run(() => onboarding.startTour())}>Take the tour</Button>
-	</div>
-	<div class="item" data-setting="help-keys">
-		<FeatureText icon={Keyboard} title="Shortcut cheat sheet">
-			Every key in one searchable list. Open it anywhere with <Kbd>{shortcutFor("atlas::Help") ?? "?"}</Kbd>
-			anywhere.
-		</FeatureText>
+	</Row>
+	<Row id="help-keys" label="Shortcut cheat sheet" description="Every key in one searchable list.">
+		{#snippet lead()}<Keyboard size={16} />{/snippet}
+		<Kbd>{shortcutFor("atlas::Help") ?? "?"}</Kbd>
 		<Button variant="glass" size="sm" onclick={() => run(() => (onboarding.helpOpen = true))}>
 			Open cheat sheet
 		</Button>
-	</div>
-	<div class="item" data-setting="checklist">
-		<FeatureText icon={ListChecks} title="Getting started checklist">
-			{p.done} of {p.total} first steps done{onboarding.state.checklist.dismissed
-				? ". The card is hidden."
-				: "."}
-		</FeatureText>
+	</Row>
+	<Row
+		id="checklist"
+		label="Getting started checklist"
+		description={`${p.done} of ${p.total} first steps done${onboarding.state.checklist.dismissed ? ". The card is hidden." : "."}`}
+	>
+		{#snippet lead()}<ListChecks size={16} />{/snippet}
 		{#if onboarding.state.checklist.dismissed}
 			<Button variant="glass" size="sm" onclick={() => run(() => void onboarding.showChecklist())}
 				>Show the card</Button
 			>
 		{/if}
 		<Button variant="ghost" size="sm" onclick={() => run(() => void onboarding.restart())}>Start over</Button>
-	</div>
-</div>
-
-<style>
-	.list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.item {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 12px;
-		border-radius: 11px;
-		background: var(--ca-surface-raised);
-		box-shadow: 0 0 0 0.5px var(--ca-outline-subtle);
-	}
-</style>
+	</Row>
+</Group>

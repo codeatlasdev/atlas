@@ -97,6 +97,8 @@ export interface Findings {
 	blips: Blip[];
 	blanks: Blank[];
 	flashes: Flash[];
+	/** judged only on surfaces that mark their transitions (`ghostFrames`) */
+	ghosts?: Ghost[];
 }
 
 const mean = (g: number[]) => g.reduce((a, b) => a + b, 0) / g.length;
@@ -220,6 +222,66 @@ export function analyze(frames: Frame[], flashWindows: FlashJudge, o: Partial<Fl
 	return { blips: found, blanks, flashes };
 }
 
+// ── ghost frames ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+export interface Ghost {
+	/** the transition (index into the marks) */
+	mark: number;
+	frame: number;
+	t: number;
+	/** cells that differ from the settled picture */
+	cells: number;
+	box: Box;
+}
+
+/** What a ghost judge needs beyond the flicker thresholds. */
+export interface GhostOpts {
+	/** the compositor may present the state of the mark this much later (s) */
+	graceS: number;
+	/** the settled picture of a mark is the last frame at most this long after it (or before the next mark) */
+	settleS: number;
+	/** frames judged after each mark */
+	window: number;
+}
+export const GHOST_DEFAULTS: GhostOpts = { graceS: 0.05, settleS: 1, window: 6 };
+
+/**
+ * Ghost frames (docs/postmortems/ghost-frames.md): after a transition reached its final state in the DOM (`marks`,
+ * seconds on the recording's timeline, taken once the page is at rest), every frame shown must already be that
+ * state. Each of the `window` frames shown from `mark + grace` on is compared with the settled frame of the mark;
+ * one that differs on at least `minCells` cells by `delta` showed an older picture (a stale snapshot, a parked
+ * layer, a modal that was already closed) and is a ghost.
+ */
+export function ghostFrames(
+	frames: Frame[],
+	marks: number[],
+	o: Partial<FlickerOpts & GhostOpts> = {},
+): Ghost[] {
+	const c = { ...opt(o), ...GHOST_DEFAULTS, ...o };
+	const last = (t: number) => {
+		let i = -1;
+		while (i + 1 < frames.length && frames[i + 1]!.t <= t) i++;
+		return i;
+	};
+	const out: Ghost[] = [];
+	marks.forEach((m, k) => {
+		// the next transition's own frames start at its mark: the settled picture is strictly before it
+		const end = Math.min(m + c.settleS, (marks[k + 1] ?? Infinity) - 1e-6);
+		const s = last(end);
+		const from = last(m + c.graceS);
+		if (s < 0 || from < 0) return;
+		const settled = frames[s]!.grid;
+		for (let i = from; i < Math.min(s, from + c.window); i++) {
+			const g = frames[i]!.grid;
+			const hit: number[] = [];
+			for (let n = 0; n < g.length; n++) if (Math.abs(g[n]! - settled[n]!) >= c.delta) hit.push(n);
+			if (hit.length >= c.minCells)
+				out.push({ mark: k, frame: i, t: frames[i]!.t, cells: hit.length, box: boxOf(hit) });
+		}
+	});
+	return out;
+}
+
 // ── decoding: raw frames -> the grid the detector reads ───────────────────────────────────────────────────────────
 
 /** Linear-light value of one sRGB channel byte (WCAG 2.x), the same transfer the studio lint uses. */
@@ -309,6 +371,10 @@ export function verdict(results: SurfaceResult[]): { code: 0 | 1; lines: string[
 		for (const f of r.findings.flashes)
 			lines.push(
 				`${r.surface}: luminance flashing ${f.start.toFixed(2)}-${f.end.toFixed(2)} s (> 3 flashes/s)`,
+			);
+		for (const g of r.findings.ghosts ?? [])
+			lines.push(
+				`${r.surface}: ghost frame at ${g.t.toFixed(3)} s after transition ${g.mark} (${g.cells} cells differ from the settled picture, cells ${g.box.x0},${g.box.y0}-${g.box.x1},${g.box.y1})`,
 			);
 	}
 	return { code: lines.length ? 1 : 0, lines };

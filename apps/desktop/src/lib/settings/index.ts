@@ -1,4 +1,5 @@
-/** Public surface of the settings model: navigation, catalog, search, path helper. */
+/** Public surface of the settings model: registry, navigation, catalog, search, path helper. */
+export * from "./registry.ts";
 export * from "./sections.ts";
 export * from "./catalog.ts";
 export * from "./search.ts";

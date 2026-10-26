@@ -16,8 +16,6 @@
 	import { reducedMotion } from "#lib/bots/motion.ts";
 	import { normalizeLook } from "#lib/bots/look.ts";
 
-
-
 	let { beat = $bindable(0) }: { beat?: number } = $props();
 
 	const PERIOD = 22000;
@@ -305,12 +303,27 @@
 		height: 0.5em;
 		border-radius: 50%;
 		background: #34d399;
-		box-shadow: 0 0 0 0 rgb(52 211 153 / 0.6);
+	}
+	.dot.live {
+		position: relative;
+	}
+	/* The pulse is a ring that scales and fades: transform/opacity only, nothing the compositor has to repaint. */
+	.dot.live::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		background: var(--ok);
 		animation: live 2s ease-out infinite;
 	}
 	@keyframes live {
+		from {
+			opacity: 0.6;
+			transform: scale(1);
+		}
 		to {
-			box-shadow: 0 0 0 0.5em rgb(52 211 153 / 0);
+			opacity: 0;
+			transform: scale(3);
 		}
 	}
 
@@ -568,7 +581,6 @@
 	@keyframes pop {
 		from {
 			opacity: 0;
-			filter: blur(6px);
 			transform: translateY(1em) scale(0.97);
 		}
 	}
@@ -578,7 +590,6 @@
 	@keyframes step-in {
 		from {
 			opacity: 0;
-			filter: blur(4px);
 			transform: translateY(0.4em);
 		}
 	}
@@ -588,7 +599,7 @@
 		.step-in,
 		.face.hop,
 		.shimmer,
-		.dot.live,
+		.dot.live::after,
 		.caret {
 			animation: none;
 		}

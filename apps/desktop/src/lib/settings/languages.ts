@@ -1,5 +1,5 @@
 /**
- * Pure model behind Settings → Languages: what state a language server is in, how a
+ * Pure model behind Settings → Editor → Languages: what state a language server is in, how a
  * JSON text box is validated and how an edit becomes a patch of the `lsp` preference.
  * No Svelte, no IPC.
  */

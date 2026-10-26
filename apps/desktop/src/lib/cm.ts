@@ -183,10 +183,15 @@ const theme = EditorView.theme({
 		overscrollBehavior: "contain",
 		scrollbarGutter: "auto",
 	},
+	// The window is `user-select: none` (app.css) and that inherits. WKWebView puts no caret and no selection in an
+	// editable element that inherits `none`: the active line and the status bar moved, nothing blinked. Opt back in,
+	// prefixed too (style-mod does not add the prefix).
 	".cm-content": {
 		caretColor: "var(--cm-caret, var(--ca-brand-main))",
 		minWidth: "100%",
 		boxSizing: "border-box",
+		userSelect: "text",
+		"-webkit-user-select": "text",
 	},
 	"&.cm-focused": { outline: "none" },
 	".cm-cursor, .cm-dropCursor": {

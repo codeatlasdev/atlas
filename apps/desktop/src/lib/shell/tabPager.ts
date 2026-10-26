@@ -33,7 +33,7 @@ export function placeTabs(order: string[], active: string, amount: number, w: nu
 
 /**
  * Native views (terminal, browser) cannot follow a CSS transform and nothing crosses IPC per frame, so every pane in
- * flight carries `data-swiping` for the generation: `overlayOpen` parks the native view under it, and lifting the mark
+ * flight carries `data-swiping` for the generation: the surface parks the native view for it (`native/surface.ts`), and lifting the mark
  * makes `watchSlot` put the view back at the pane's untransformed rect.
  */
 function release(el: HTMLElement) {

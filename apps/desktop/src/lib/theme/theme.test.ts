@@ -539,6 +539,14 @@ describe("kit surfaces: destructive button, tooltip, overlay", () => {
 				contrast(s.text.slice(0, 7), s["elevated_surface.background"].slice(0, 7)),
 			).toBeGreaterThanOrEqual(7);
 		});
+		// Incident (2026-10-26, Settings tooltip in the sidebar): dark themes drew an inverted, pale tooltip (the text
+		// colour as fill) that glared over the dark UI. A dark theme's tooltip is a raised dark surface, like the kit's.
+		if (t.appearance === "dark")
+			test(`${t.name}: the tooltip is a dark raised surface, not an inverted pale one`, () => {
+				const bg = s["tooltip.background"].slice(0, 7);
+				expect(toOklch(bg).l).toBeLessThan(0.5);
+				expect(bg).toBe(s["elevated_surface.background"].slice(0, 7));
+			});
 	}
 });
 

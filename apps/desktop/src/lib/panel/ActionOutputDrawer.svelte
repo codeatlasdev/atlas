@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useNow } from "#lib/clock.svelte.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 	import { Button, EmptyState, toast } from "@codeatlasdev/ui";
 	import { Copy, RotateCw, Terminal } from "@lucide/svelte";
@@ -21,7 +22,7 @@
 
 	let live = $derived(store.live[project.id]);
 	let cfg = $derived(store.configs[project.id]);
-	let now = $state(Date.now());
+	const t = useNow(1000);
 
 	// Reading `rev` tracks every change of the (non-reactive) rings.
 	let runs = $derived.by(() => {
@@ -35,13 +36,6 @@
 	// The action definition of the selected run (by label), for "Run again".
 	let def = $derived(cfg?.actions.find((a) => a.label === run?.label && !a.session));
 	let busy = $derived(!!def && !!store.busy[`action:${project.id}:${def.key}`]);
-
-	$effect(() => {
-		if (!actionOutput.open) return;
-		now = Date.now();
-		const t = setInterval(() => (now = Date.now()), 1000);
-		return () => clearInterval(t);
-	});
 
 	async function copy() {
 		if (!run) return;
@@ -94,7 +88,7 @@
 				>
 					<span class="label">{r.label}</span>
 					<span class="time mono" title="Started {hms(r.start)}">{hms(r.start)}</span>
-					<span class="dur mono">{duration(r, now)}</span>
+					<span class="dur mono">{duration(r, t.now)}</span>
 				</DrawerRow>
 			{/each}
 		</div>

@@ -12,6 +12,7 @@ import {
 	channelOfVersion,
 	compareVersions,
 	confirmCopy,
+	laneStates,
 	offerLine,
 	parseChannelState,
 	parseChannelViews,
@@ -227,6 +228,17 @@ describe("confirmCopy", () => {
 			version: "1.3.0",
 			warning: expect.stringContaining("may not be readable"),
 		});
+	});
+});
+
+describe("laneStates", () => {
+	test("the followed lane is lit and everything upstream feeds it", () => {
+		expect(laneStates("stable", null)).toEqual({ alpha: "feeds", beta: "feeds", stable: "followed" });
+		expect(laneStates("beta", null)).toEqual({ alpha: "feeds", beta: "followed", stable: "idle" });
+		expect(laneStates("alpha", null)).toEqual({ alpha: "followed", beta: "idle", stable: "idle" });
+	});
+	test("an unconfirmed pick takes the focus instead of the followed channel", () => {
+		expect(laneStates("alpha", "stable")).toEqual({ alpha: "feeds", beta: "feeds", stable: "pending" });
 	});
 });
 

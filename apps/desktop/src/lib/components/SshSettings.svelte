@@ -6,7 +6,7 @@
 	import { api, errText } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import Group from "#lib/settings/Group.svelte";
-	import PageHead from "#lib/settings/PageHead.svelte";
+	import LoadError from "#lib/settings/LoadError.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
 
@@ -19,12 +19,19 @@
 	let addPath = $state("");
 	let adding = $state(false);
 
+	let loadError = $state<string | null>(null);
+
 	async function load() {
-		aliases = await invoke<string[]>("ssh_config_hosts");
-		const s = await api.settings();
-		hosts = Array.isArray(s.sshHosts) ? (s.sshHosts as { alias: string }[]).map((h) => h.alias) : [];
-		status = await invoke<Record<string, string>>("ssh_status");
-		addHost ||= hosts[0] ?? "";
+		try {
+			aliases = await invoke<string[]>("ssh_config_hosts");
+			const s = await api.settings();
+			hosts = Array.isArray(s.sshHosts) ? (s.sshHosts as { alias: string }[]).map((h) => h.alias) : [];
+			status = await invoke<Record<string, string>>("ssh_status");
+			addHost ||= hosts[0] ?? "";
+			loadError = null;
+		} catch (e) {
+			loadError = errText(e);
+		}
 	}
 
 	onMount(() => {
@@ -87,10 +94,9 @@
 						: "neutral";
 </script>
 
-<PageHead
-	title="SSH hosts"
-	description="Work on a worktree that lives on another machine. Atlas starts a small helper there and connects over SSH, so terminals, the editor, diffs and agents all run on that machine."
-/>
+{#if loadError}
+	<LoadError what="your SSH hosts" error={loadError} />
+{/if}
 
 <Group title="Your hosts">
 	{#each hosts as h (h)}

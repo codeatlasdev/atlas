@@ -269,7 +269,9 @@
 		box-shadow: inset 0 0 0 2px var(--ca-brand-main);
 	}
 	.drag {
-		height: 52px;
+		height: calc(var(--window-pad) + var(--title-row));
+		box-sizing: border-box;
+		padding-top: var(--window-pad);
 		flex-shrink: 0;
 		display: flex;
 		align-items: center;
@@ -279,6 +281,7 @@
 	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
 	:global(html.opaque-window) .drag {
 		height: 36px;
+		padding-top: 0;
 	}
 	/* Hidden until the sidebar is hovered, like Arc's chrome. */
 	.drag :global(.hide-btn),

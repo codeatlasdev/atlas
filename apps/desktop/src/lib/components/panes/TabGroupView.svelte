@@ -26,6 +26,7 @@
 	import { tabSwipe } from "#lib/shell/gestures.ts";
 	import { pushZones } from "#lib/shell/nativeSwipe.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
+	import { fillStep, mountedTabs } from "./tabMount.ts";
 	import Contain from "#lib/errors/Contain.svelte";
 	import CrashProbe from "#lib/errors/CrashProbe.svelte";
 	import NewTabMenu from "./NewTabMenu.svelte";
@@ -39,10 +40,8 @@
 	let active = $derived(ws.tab(g?.activeTab));
 	// Focus and native views belong to the live space: a mounted neighbour (or a space mid-swipe) never steals them.
 	let focused = $derived(!!g && space.live && ws.doc.focusedGroup[g.worktreeId] === groupId);
-	/** Tabs shown at least once stay mounted; the rest of a space's tabs mount only once it is current. */
+	/** Tabs mounted at least once stay mounted (`tabMount.ts`): leaving a space unmounts nothing, returning mounts nothing. */
 	let seen = $state<Record<string, true>>({});
-	/** How many of the not-yet-shown tabs of the current space are mounted (grows one per tick). */
-	let extra = $state(0);
 	$effect(() => {
 		const id = g?.activeTab;
 		if (id && !seen[id]) seen[id] = true;
@@ -54,18 +53,22 @@
 		pushZones();
 	});
 	// A space that became current fills in its other tabs one per timer tick: they are hidden, so
-	// nothing visible changes, and a 19-editor space never costs a frame.
+	// nothing visible changes, and a 19-editor space never costs a frame. Each filled tab joins `seen`, so it
+	// stays mounted for good and a later visit has nothing left to fill.
+	let mounted = $derived(
+		mountedTabs({
+			tabs: tabs.map((t) => t.id),
+			active: g?.activeTab,
+			seen: new Set(Object.keys(seen)),
+		}),
+	);
 	$effect(() => {
-		if (!space.current || extra >= tabs.length) return;
-		const h = setTimeout(() => extra++, 40);
+		if (!fillStep({ tabs: tabs.map((t) => t.id), mounted, current: space.current })) return;
+		const h = setTimeout(() => {
+			const next = tabs.find((t) => !mounted.has(t.id));
+			if (next) seen[next.id] = true;
+		}, 40);
 		return () => clearTimeout(h);
-	});
-	let mounted = $derived.by(() => {
-		const rest = space.current ? extra : 0;
-		let n = 0;
-		return new Set(
-			tabs.filter((t) => t.id === g?.activeTab || seen[t.id] || (!!rest && n++ < rest)).map((t) => t.id),
-		);
 	});
 	let w = $derived(ws.worktree(g?.worktreeId));
 	let project = $derived(store.projects.find((p) => p.id === w?.repoId));
@@ -307,7 +310,6 @@
 		border-radius: 6px;
 		font-size: 12px;
 		color: var(--ca-text-secondary);
-		cursor: default;
 		flex-shrink: 0;
 	}
 	.tab.pinned {

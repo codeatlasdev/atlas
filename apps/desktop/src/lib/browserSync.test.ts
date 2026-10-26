@@ -1,8 +1,12 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { paneSync, reconcile, staleViews } from "./browserSync.ts";
+import "../../test/setup.ts";
+import { browserSurface, reconcile, staleViews } from "./browserSync.ts";
+import { STRIP } from "./native/indicator.ts";
 
 const R = { x: 240, y: 80, w: 900, h: 600 };
+/** What the browser's view gets: the pane, minus the core's loading strip on top. */
+const V = { x: R.x, y: R.y + STRIP, w: R.w, h: R.h - STRIP };
 
 /**
  * A fake native side. `hold` names commands that block until `release(cmd)` is called, so a
@@ -66,11 +70,15 @@ function pane(n, over = {}) {
 	let rect = R;
 	let shown = true;
 	let url = "https://example.com";
+	let attached = true;
 	const errors = [];
-	const p = paneSync({
+	const el = document.createElement("div");
+	el.getBoundingClientRect = () => new DOMRect(rect.x, rect.y, rect.w, rect.h);
+	document.body.append(el);
+	const p = browserSurface({
 		tab: "t1",
 		invoke: n.invoke,
-		measure: () => rect,
+		slot: () => (attached ? el : undefined),
 		shown: () => shown,
 		url: () => url,
 		onError: (e) => errors.push(String(e)),
@@ -82,6 +90,8 @@ function pane(n, over = {}) {
 		setRect: (r) => (rect = r),
 		setShown: (s) => (shown = s),
 		setUrl: (u) => (url = u),
+		detach: () => (attached = false),
+		el,
 	};
 }
 
@@ -101,6 +111,12 @@ test("concurrent observers open once, then only bounds, strictly in order", asyn
 	expect(names.filter((c) => c === "browser_open")).toHaveLength(1);
 	expect(names[0]).toBe("browser_open");
 	expect(names.indexOf("browser_open")).toBeLessThan(names.indexOf("browser_bounds"));
+	expect(n.calls.find((c) => c.cmd === "browser_open")).toMatchObject({
+		tab: "t1",
+		url: "https://example.com",
+		...V,
+	});
+	await p.dispose();
 });
 
 test("syncs coalesce, and the queued one measures fresh when it runs", async () => {
@@ -120,6 +136,7 @@ test("syncs coalesce, and the queued one measures fresh when it runs", async () 
 	const bounds = n.calls.filter((c) => c.cmd === "browser_bounds");
 	expect(bounds).toHaveLength(1); // three queued syncs collapsed into one
 	expect(bounds[0].w).toBe(500);
+	await t.p.dispose();
 });
 
 test("a hidden tab opens parked (visible:false) with its real rect", async () => {
@@ -127,8 +144,9 @@ test("a hidden tab opens parked (visible:false) with its real rect", async () =>
 	const t = pane(n);
 	t.setShown(false);
 	await t.p.sync();
-	expect(n.calls.find((c) => c.cmd === "browser_open").visible).toBe(false);
+	expect(n.calls.find((c) => c.cmd === "browser_open")).toMatchObject({ visible: false, ...V });
 	expect(n.calls.find((c) => c.cmd === "browser_bounds").visible).toBe(false);
+	await t.p.dispose();
 });
 
 test("no url or no element: nothing is opened", async () => {
@@ -136,9 +154,12 @@ test("no url or no element: nothing is opened", async () => {
 	const t = pane(n);
 	t.setUrl(undefined);
 	await t.p.sync();
-	const gone = pane(n, { measure: () => null });
+	const gone = pane(n);
+	gone.detach();
 	await gone.p.sync();
 	expect(n.calls).toEqual([]);
+	await t.p.dispose();
+	await gone.p.dispose();
 });
 
 test("layout moves during open: bounds use the latest rect and visibility", async () => {
@@ -153,6 +174,7 @@ test("layout moves during open: bounds use the latest rect and visibility", asyn
 	const b = n.calls.find((c) => c.cmd === "browser_bounds");
 	expect(b.x).toBe(0);
 	expect(b.visible).toBe(false);
+	await t.p.dispose();
 });
 
 test("dispose waits for in-flight work, parks last, and later syncs are inert", async () => {
@@ -185,22 +207,120 @@ test("a failing open reports the error and the next sync retries it", async () =
 	expect(t.p.isOpen()).toBe(false);
 	await t.p.sync();
 	expect(t.p.isOpen()).toBe(true);
+	await t.p.dispose();
 });
 
 test("a throwing measure does not poison the chain", async () => {
 	const n = native();
 	let boom = true;
-	const t = pane(n, {
-		measure: () => {
-			if (boom) {
-				boom = false;
-				throw new Error("detached");
-			}
-			return R;
-		},
-	});
+	const t = pane(n);
+	const el = t.el;
+	const real = el.getBoundingClientRect.bind(el);
+	el.getBoundingClientRect = () => {
+		if (boom) {
+			boom = false;
+			throw new Error("detached");
+		}
+		return real();
+	};
 	await t.p.sync();
 	await t.p.sync();
 	expect(n.names()).toContain("browser_open");
 	expect(t.errors).toEqual(["Error: detached"]);
+	await t.p.dispose();
+});
+
+// Maintainer GIF (2026-10-26): a pale-blue load bar on top of the white native page, stuck. The page's own load events
+// (`nav`, `load`, `fail`, a title) feed the core's loading state; a page that never answers ends as a stall (its error
+// screen), and the bar is the core's strip above the view, never inside the page.
+function fakeTimers() {
+	const timers = new Map();
+	let next = 1;
+	let now = 0;
+	return {
+		set: (fn, ms) => (timers.set(next, { fn, at: now + ms }), next++),
+		clear: (id) => timers.delete(id),
+		advance(ms) {
+			const to = now + ms;
+			for (;;) {
+				const due = [...timers].filter(([, t]) => t.at <= to).sort((x, y) => x[1].at - y[1].at)[0];
+				if (!due) break;
+				now = due[1].at;
+				timers.delete(due[0]);
+				due[1].fn();
+			}
+			now = to;
+		},
+	};
+}
+
+test("a page that never answers stalls once (its error screen); the page keeps its rect below the strip", async () => {
+	const n = native();
+	const stalled = [];
+	const clock = fakeTimers();
+	const t = pane(n, { onStall: () => stalled.push(1), stallMs: 15_000 });
+	await t.p.sync();
+	expect(n.calls.find((c) => c.cmd === "browser_bounds")).toMatchObject(V);
+	await t.p.dispose();
+	const u = browserSurface(
+		{
+			tab: "t2",
+			invoke: n.invoke,
+			slot: () => document.body.firstElementChild,
+			shown: () => true,
+			url: () => "http://a/",
+			onError() {},
+			onStall: () => stalled.push(2),
+			stallMs: 15_000,
+		},
+		{ timers: clock },
+	);
+	u.loading.start(); // the page's `nav`
+	clock.advance(14_999);
+	expect(stalled).toEqual([]);
+	clock.advance(1);
+	expect(stalled).toEqual([2]);
+	await u.dispose();
+});
+
+// Red test the maintainer asked for: a slow VALID page that keeps reporting progress is never marked failed.
+test("a slow valid page that keeps reporting progress is never stalled", async () => {
+	const n = native();
+	const stalled = [];
+	const clock = fakeTimers();
+	const el = document.createElement("div");
+	el.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
+	document.body.append(el);
+	const u = browserSurface(
+		{
+			tab: "t3",
+			invoke: n.invoke,
+			slot: () => el,
+			shown: () => true,
+			url: () => "http://slow/",
+			onError() {},
+			onStall: () => stalled.push(1),
+		},
+		{ timers: clock },
+	);
+	u.loading.start();
+	for (let i = 0; i < 12; i++) {
+		clock.advance(10_000);
+		u.loading.progress(); // a title, a redirect's nav: the page is alive
+	}
+	expect(stalled).toEqual([]);
+	u.loading.finish();
+	expect(u.loading.state().active).toBe(false);
+	await u.dispose();
+});
+
+test("a failed page is parked (failed()), never a white rectangle", async () => {
+	const n = native();
+	let failed = false;
+	const t = pane(n, { failed: () => failed });
+	await t.p.sync();
+	failed = true;
+	await t.p.sync();
+	expect(n.calls.filter((c) => c.cmd === "browser_bounds").at(-1).visible).toBe(false);
+	await t.p.dispose();
 });

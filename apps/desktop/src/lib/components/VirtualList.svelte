@@ -80,8 +80,10 @@
 		const el = scroller;
 		if (!el) return;
 		pinned = true;
-		el.scrollTop = el.scrollHeight;
-		scrollTop = el.scrollTop;
+		// The end by our own arithmetic (header/footer included via scrollHeight when the browser has it): the
+		// DOM's scrollHeight lags a render behind `total`, so a jump right after an append would stop short.
+		el.scrollTop = Math.max(el.scrollHeight, heights.total) - el.clientHeight;
+		scrollTop = Math.max(0, heights.total - viewH);
 		lastTop = el.scrollTop;
 		queueMicrotask(() => (pinned = false));
 	}

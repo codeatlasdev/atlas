@@ -52,7 +52,12 @@ test("the status dot, the install bar and the state timeline do not transition b
 	expect(bad).toEqual([]);
 });
 
-test("viewers do not hold a permanent will-change layer", () => {
-	const bad = files.filter(([f, css]) => /viewers\//.test(f) && /will-change\s*:/.test(css)).map(([f]) => f);
+test("viewers promote a layer only while it moves (will-change sits under an interaction class)", () => {
+	const bad: string[] = [];
+	for (const [f, css] of files)
+		if (/viewers\//.test(f))
+			// Every `will-change` declaration's selector must name the state that is moving (`.dragging`, `.pinching`).
+			for (const m of css.matchAll(/([^{}]+)\{[^{}]*will-change\s*:/g))
+				if (!/\.(dragging|pinching)\b/.test(m[1])) bad.push(`${f}: ${m[1].trim()}`);
 	expect(bad).toEqual([]);
 });

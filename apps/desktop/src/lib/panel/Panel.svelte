@@ -23,7 +23,7 @@
 	let live = $derived(store.live[project.id]);
 	let cfg = $derived(store.configs[project.id]);
 	let root = $state<HTMLElement | null>(null);
-	const t = useNow(15_000);
+	const clk = useNow(15_000);
 
 	let quick = $derived((cfg?.services ?? []).filter((s) => s.target?.how === "browser"));
 	let services = $derived(serviceRows(cfg?.services ?? [], live?.services, project.running));
@@ -37,7 +37,7 @@
 		return {
 			mem: t.mem,
 			cpu: t.cpu,
-			restarts: metrics.restartsLastHour(project.id, t.now),
+			restarts: metrics.restartsLastHour(project.id, clk.now),
 			errors: metrics.errorsLast(project.id, 5 * 60_000),
 		};
 	});
@@ -90,7 +90,7 @@
 	let stackBusy = $derived(!!store.busy[`stack:${project.id}`]);
 	let uptime = $derived.by(() => {
 		const since = metrics.upSince(project.id);
-		return since ? Math.max(0, t.now - since) : null;
+		return since ? Math.max(0, clk.now - since) : null;
 	});
 </script>
 

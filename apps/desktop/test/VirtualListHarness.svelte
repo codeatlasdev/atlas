@@ -6,13 +6,17 @@
 		expose,
 		stickBottom = false,
 	}: {
-		expose: (h: { set(n: number): void; el(): HTMLDivElement | undefined; list(): VirtualList }) => void;
+		expose: (h: {
+			set(n: number): void;
+			el(): HTMLDivElement | undefined;
+			list(): { isFollowing(): boolean };
+		}) => void;
 		stickBottom?: boolean;
 	} = $props();
 
 	let items = $state<{ id: string }[]>([]);
 	let scroller = $state<HTMLDivElement>();
-	let list: VirtualList;
+	let list: { isFollowing(): boolean };
 	expose({
 		set: (n) => (items = Array.from({ length: n }, (_, i) => ({ id: `r${i}` }))),
 		el: () => scroller,

@@ -139,17 +139,9 @@
 		isolation: isolate;
 		display: grid;
 		place-items: center;
-		background: #f6f7fb;
+		/* Follows the app's scheme (System by default, so the computer's light or dark): the kit tokens carry it. */
+		background: var(--ca-surface-base);
 		color: var(--ca-text-primary);
-		/* Light stage whatever the app theme, like the reference: the scene cards keep the kit's light tokens. */
-		--ca-text-primary: #14161c;
-		--ca-text-secondary: #5b6170;
-		--ca-text-disabled: #b4b9c4;
-		--ca-surface-raised: #ffffff;
-		--ca-surface-sunken: #f1f3f7;
-		--ca-outline-subtle: #0000000f;
-		--ca-outline-default: #00000017;
-		--ca-outline-strong: #0000002b;
 	}
 	/* Two layers, each a soft blob pair; only their opacity and transform change between slides (compositor only). */
 	.sky {
@@ -160,6 +152,10 @@
 		transition:
 			background 900ms ease,
 			transform 1400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+	:global(html.dark) .sky {
+		opacity: 0.28;
+		filter: saturate(1.6);
 	}
 	.sky.a {
 		background: radial-gradient(45% 50% at 22% 20%, var(--a), transparent 70%);
@@ -260,14 +256,14 @@
 		padding: 0;
 		border: 0;
 		border-radius: 3px;
-		background: #14161c33;
+		background: color-mix(in oklab, var(--ca-text-primary) 22%, transparent);
 		transition:
 			width 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
 			background-color 300ms;
 	}
 	.dots button.on {
 		width: 18px;
-		background: #14161c;
+		background: var(--ca-text-primary);
 	}
 	.back,
 	.skip {
@@ -291,7 +287,7 @@
 	}
 	.back:hover,
 	.skip:hover {
-		background: #0000000d;
+		background: var(--ca-action-hover);
 		color: var(--ca-text-primary);
 	}
 	@media (prefers-reduced-motion: reduce) {

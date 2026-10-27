@@ -59,7 +59,7 @@
 		transform: translateY(-3px);
 	}
 	.dir.hit svg {
-		fill: color-mix(in oklab, #3d5bff 22%, white);
+		fill: color-mix(in oklab, #3d5bff 26%, var(--ca-surface-raised));
 		stroke: #3d5bff;
 	}
 	/* The scanner: a soft vertical light crossing left to right (transform only). */

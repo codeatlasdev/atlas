@@ -18,8 +18,6 @@ class Welcome {
 	ripple = $state(0);
 	/** The project whose stack the flow started and is watching. */
 	watching = $state<string | null>(null);
-	/** The title sequence is over (played, skipped, or not needed): the copy may appear. */
-	introDone = $state(false);
 	/** Scene-clock time the stack came up, for the globe's completion hit; null until then. */
 	upAt = $state<number | null>(null);
 

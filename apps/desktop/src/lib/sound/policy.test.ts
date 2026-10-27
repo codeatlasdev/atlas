@@ -187,26 +187,3 @@ describe("boot cooldown survives restarts", () => {
 		expect(mem.last).toEqual({});
 	});
 });
-
-describe("signature: the sonic logo of the intro", () => {
-	test("is a category, plays once per first run (not on a cooldown that a restart resets) and only in the foreground", () => {
-		expect(CATEGORIES).toContain("signature");
-		expect(decide("signature", base, newMemory()).play).toBe(true);
-		expect(decide("signature", { ...base, foreground: false }, newMemory())).toMatchObject({
-			play: false,
-			why: "background",
-		});
-	});
-	test("the reduce switch silences it (it is theatre, not attention)", () => {
-		const prefs = { ...DEFAULT_SOUND_PREFS, reduce: true };
-		expect(decide("signature", { ...base, prefs }, newMemory())).toMatchObject({
-			play: false,
-			why: "reduced",
-		});
-	});
-	test("its cooldown outlives a replay: two plays within the intro's own length are one", () => {
-		const mem = newMemory();
-		record("signature", base.now, mem);
-		expect(decide("signature", { ...base, now: base.now + 2_000 }, mem).why).toBe("cooldown");
-	});
-});

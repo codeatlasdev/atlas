@@ -24,15 +24,12 @@ export interface OnboardingState {
 	done: boolean;
 	/** The tour ran (finished or skipped) at least once. */
 	toured: boolean;
-	/** The welcome intro (globe + sting) played once; it never replays on its own. */
-	introSeen: boolean;
 	checklist: { done: ChecklistId[]; dismissed: boolean };
 }
 
 export const EMPTY_STATE: OnboardingState = {
 	done: false,
 	toured: false,
-	introSeen: false,
 	checklist: { done: [], dismissed: false },
 };
 
@@ -49,7 +46,6 @@ export function parseState(raw: unknown): OnboardingState {
 	return {
 		done: r.done === true,
 		toured: r.toured === true,
-		introSeen: r.introSeen === true,
 		checklist: { done, dismissed: c.dismissed === true },
 	};
 }

@@ -14,7 +14,6 @@
 
 /** One earcon family member per meaningful event. Ids are also the asset file names. */
 export const CATEGORIES = [
-	"signature",
 	"boot",
 	"discovery-done",
 	"stack-up",
@@ -46,14 +45,6 @@ interface Spec {
 const MIN = 60_000;
 
 export const SPECS: Record<Category, Spec> = {
-	signature: {
-		level: 0.9,
-		cooldownMs: 10_000,
-		background: false,
-		attention: false,
-		label: "Welcome sting",
-		description: "The Atlas sound when the globe locks together on first run.",
-	},
 	boot: {
 		level: 0.85,
 		cooldownMs: 60 * MIN,
@@ -194,8 +185,8 @@ export interface Memory {
 
 export const newMemory = (): Memory => ({ last: {} });
 
-/** Categories whose cooldown outlives the process: only the signature, its window is an hour. */
-export const PERSISTED: readonly Category[] = ["boot", "signature"];
+/** Categories whose cooldown outlives the process: only the boot sound, its window is an hour. */
+export const PERSISTED: readonly Category[] = ["boot"];
 
 /** Memory restored from what the app persisted (`{ boot: <ms> }`); unknown keys and non-numbers are dropped. */
 export function seedMemory(raw: Record<string, unknown>): Memory {

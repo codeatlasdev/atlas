@@ -13,7 +13,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
-- **Windows and Linux: Atlas runs once.** Opening it again (Start menu, taskbar, `atlas desktop`) brings the open window forward instead of starting a second app with its own WebView2 processes (about 600 MB each).
+- **Windows and Linux: Atlas runs once.** Opening it again (Start menu, taskbar, `atlas desktop`) brings the open window forward instead of starting a second app with its own set of WebView2 processes.
 - **Windows: an installed Atlas no longer thinks it is a dev build.** The amber "Dev build" line and paused updates were shown on every installed app.
 - **Windows: no console windows flashing.** Language-server installs and probes, the update check and hostd's "start the stack" ran console programs without hiding their window.
 - **Windows: the omp logo was a black square** in menus and tabs (its gradient pointed at a hidden copy of the mark).

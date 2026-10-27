@@ -4,7 +4,7 @@ import { EDIT_COMMANDS, runEdit, targetOf, type EditEnv } from "#lib/edit.ts";
 import { allCommands, dispatchStroke, keymap, runCommand } from "#lib/keymap.svelte.ts";
 import { ops } from "#lib/symbols.ts";
 import { defaultKeymap, merge } from "#lib/keys.ts";
-import { forwardedStrokes, strokeOfBrowserKey, type BrowserKey } from "#lib/browserKeys.ts";
+import { forwardedStrokes, strokesOfBrowserKey, type BrowserKey } from "#lib/browserKeys.ts";
 import { EDIT_ACCELERATORS, MENU_COMMANDS, menuAccelerators } from "#lib/menu.ts";
 import { termFocus } from "#lib/stores/termFocus.svelte.ts";
 
@@ -35,7 +35,7 @@ export async function startMenu(): Promise<() => void> {
 	// Keys the native side took from a focused browser page (issue #42): the same keymap resolves them.
 	const offKeys = await listen<BrowserKey>(
 		"browser://key",
-		(e) => void dispatchStroke(strokeOfBrowserKey(e.payload)),
+		(e) => void dispatchStroke(strokesOfBrowserKey(e.payload)),
 	);
 	const stop = $effect.root(() => {
 		$effect(() => {

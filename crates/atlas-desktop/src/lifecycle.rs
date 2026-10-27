@@ -50,6 +50,17 @@ pub fn exit(code: Option<i32>, tray_reachable: bool) -> Exit {
     }
 }
 
+/// The one way the user quits Atlas: the tray's Quit item and Ctrl+Q (Windows/Linux, `shell::Quit`) both end here.
+/// An explicit code, so [`exit`] never blocks it. Stacks keep running in their runners; there is no confirm.
+pub fn quit(app: &tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+pub fn app_quit(app: tauri::AppHandle) {
+    quit(&app);
+}
+
 /// One entry of the tray's native menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayItem {

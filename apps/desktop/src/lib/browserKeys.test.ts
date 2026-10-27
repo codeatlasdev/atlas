@@ -1,8 +1,8 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import fixture from "./__fixtures__/browser-key.json";
-import { forwardedStrokes, strokeOfBrowserKey } from "./browserKeys.ts";
-import { DEFAULT_KEYMAP, merge, normalize } from "./keys.ts";
+import { forwardedStrokes, strokesOfBrowserKey } from "./browserKeys.ts";
+import { DEFAULT_KEYMAP, defaultKeymap, merge, normalize } from "./keys.ts";
 
 const pushed = (user = {}) => forwardedStrokes(merge(DEFAULT_KEYMAP, user));
 
@@ -48,18 +48,65 @@ test("the pushed list is sorted and duplicate-free, so an unchanged keymap re-pu
 // Contract: __fixtures__/browser-key.json is the REAL serialization of a forwarded key
 // (crates/atlas-desktop/src/browser_keys.rs, `UPDATE_FIXTURES=1` regenerates it).
 test("a real forwarded key resolves to the keymap's stroke and command", () => {
-	const stroke = strokeOfBrowserKey(fixture);
+	const [stroke] = strokesOfBrowserKey(fixture, true);
 	expect(stroke).toBe("ctrl-shift-tab");
 	expect(merge(DEFAULT_KEYMAP, {}).get(stroke)).toBe("pane::ActivateOlderRecentItem");
 });
 
-test("every forwarded stroke survives the Rust → strokeOf round trip with the same spelling", () => {
+test("every forwarded stroke survives the Rust → strokesOf round trip with the same spelling", () => {
 	const eff = merge(DEFAULT_KEYMAP, {});
-	const key = (code, m = {}) =>
-		strokeOfBrowserKey({ code, ctrl: false, alt: false, shift: false, meta: false, ...m });
-	expect(eff.get(key("Digit1", { meta: true }))).toBe("pane::ActivateItem1");
-	expect(eff.get(key("Digit9", { meta: true }))).toBe("pane::ActivateLastItem");
-	expect(eff.get(key("Digit3", { ctrl: true, meta: true }))).toBe("atlas::RecentWorktree3");
-	expect(eff.get(key("BracketLeft", { shift: true, meta: true }))).toBe("pane::ActivatePreviousItem");
-	expect(eff.get(key("Tab", { ctrl: true }))).toBe("pane::ActivateRecentItem");
+	const run = (code, m = {}) =>
+		strokesOfBrowserKey({ code, ctrl: false, alt: false, shift: false, meta: false, ...m }, true)
+			.map((s) => eff.get(s))
+			.find(Boolean);
+	expect(run("Digit1", { meta: true })).toBe("pane::ActivateItem1");
+	expect(run("Digit9", { meta: true })).toBe("pane::ActivateLastItem");
+	expect(run("Digit3", { ctrl: true, meta: true })).toBe("atlas::RecentWorktree3");
+	expect(run("BracketLeft", { shift: true, meta: true })).toBe("pane::ActivatePreviousItem");
+	expect(run("Tab", { ctrl: true })).toBe("pane::ActivateRecentItem");
+});
+
+// Windows: WebView2 forwards the real modifiers (Ctrl as `ctrl`); the app resolves them with the off-macOS keymap.
+test("off macOS the forwarded tab, quit and terminal keys are pushed and resolve to their commands", () => {
+	const eff = merge(defaultKeymap(false), {});
+	const pushed = forwardedStrokes(eff);
+	const run = (code, m = {}) =>
+		strokesOfBrowserKey({ code, ctrl: false, alt: false, shift: false, meta: false, ...m }, false)
+			.map((s) => eff.get(s))
+			.find(Boolean);
+	const cases = [
+		["Digit1", { ctrl: true }, "pane::ActivateItem1"],
+		["Digit2", { alt: true }, "shell::Space2"],
+		["PageDown", { ctrl: true }, "pane::ActivateNextItem"],
+		["PageUp", { ctrl: true }, "pane::ActivatePreviousItem"],
+		["KeyT", { ctrl: true, shift: true }, "workspace::NewTerminal"],
+		["KeyW", { ctrl: true, shift: true }, "pane::CloseActiveItem"],
+		["KeyT", { alt: true, shift: true }, "pane::ReopenClosedItem"],
+		["Tab", { ctrl: true }, "pane::ActivateRecentItem"],
+		["KeyQ", { ctrl: true }, "shell::Quit"],
+		["Backquote", { ctrl: true, shift: true }, "workspace::NewTerminal"],
+	];
+	for (const [code, m, id] of cases) {
+		expect(run(code, m), `${code} ${JSON.stringify(m)}`).toBe(id);
+		const stroke = strokesOfBrowserKey(
+			{ code, ctrl: false, alt: false, shift: false, meta: false, ...m },
+			false,
+		);
+		expect(
+			stroke.some((s) => pushed.includes(s)),
+			`${code} is pushed`,
+		).toBe(true);
+	}
+	// The page keeps what the keymap does not bind: Ctrl+F, F5, Ctrl+R (right dock is bound, F5 is not) …
+	const kept = ["KeyF", "F5", "KeyC", "KeyV"];
+	for (const code of kept) {
+		const s = strokesOfBrowserKey(
+			{ code, ctrl: code !== "F5", alt: false, shift: false, meta: false },
+			false,
+		);
+		expect(
+			s.some((x) => pushed.includes(x)),
+			code,
+		).toBe(false);
+	}
 });

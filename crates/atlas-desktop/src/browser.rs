@@ -278,7 +278,10 @@ pub async fn browser_open(
                 crate::natives::lower_below_page(view);
             });
         }
-        #[cfg(not(target_os = "macos"))]
+        // WebView2: the accelerator-key handler forwards the app's bound keys (`browser_keys_win.rs`).
+        #[cfg(windows)]
+        Ok(v) => crate::browser_keys_win::install(&app, &v),
+        #[cfg(not(any(target_os = "macos", windows)))]
         Ok(_) => {}
         Err(e) => {
             REGISTRY.lock().close(&tab);

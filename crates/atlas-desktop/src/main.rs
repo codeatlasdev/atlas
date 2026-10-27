@@ -19,6 +19,8 @@ mod id_migrate;
 mod browser_keys;
 #[cfg(target_os = "macos")]
 mod browser_keys_mac;
+#[cfg(windows)]
+mod browser_keys_win;
 mod capture;
 mod cmds;
 mod commit_msg;
@@ -208,6 +210,7 @@ macro_rules! handlers {
             remote::projects_add_remote,
             menu::menu_sync,
             zoom::zoom_set,
+            lifecycle::app_quit,
             live_server::live_open,
             live_server::live_touch,
             live_server::live_stop,
@@ -370,6 +373,9 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
+    #[cfg(windows)]
+    webview_win::no_accelerators(&win);
     boot::mark("window:created");
     boot::arm_deadline(app.handle());
     drop(win);

@@ -84,6 +84,8 @@ windows-core = "0.62"
 windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 
 [dev-dependencies]
+# `tauri::test`: the pin wall is tested through the real IPC pipeline on the mock runtime (shots/pin.rs).
+tauri = { version = "2", features = ["test"] }
 serde_norway = { workspace = true }
 
 [lints]

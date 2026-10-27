@@ -106,6 +106,50 @@ pub fn rgba_from_rows(
     Ok(out)
 }
 
+/// [`rgba_from_rows`] that keeps the alpha channel and returns it **straight** (not premultiplied): what a window
+/// capture's rounded corners and shadow are made of. `premultiplied` says how the source stores colour (a
+/// `CGImage` of a window is premultiplied; un-premultiplying a pixel that is not would brighten it).
+pub fn straight_rgba_from_rows(
+    src: &[u8],
+    stride: usize,
+    w: usize,
+    h: usize,
+    order: Order,
+    premultiplied: bool,
+) -> Result<Vec<u8>, String> {
+    let row = w.checked_mul(4).ok_or("the image is too large")?;
+    if h > 0 && (stride < row || src.len() < stride * (h - 1) + row) {
+        return Err(format!(
+            "{} bytes cannot hold {w}x{h} pixels at stride {stride}",
+            src.len()
+        ));
+    }
+    let [r, g, b] = order.0;
+    // the one byte that is not a colour channel
+    let a = 6 - (r + g + b);
+    let mut out = vec![0u8; row * h];
+    for (y, dst) in out.chunks_exact_mut(row.max(1)).enumerate().take(h) {
+        let s = &src[y * stride..y * stride + row];
+        for (d, p) in dst
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(s.as_chunks::<4>().0)
+        {
+            let alpha = p[a];
+            let un = |c: u8| -> u8 {
+                if !premultiplied || alpha == 255 || alpha == 0 {
+                    c
+                } else {
+                    ((u32::from(c) * 255 + u32::from(alpha) / 2) / u32::from(alpha)).min(255) as u8
+                }
+            };
+            *d = [un(p[r]), un(p[g]), un(p[b]), alpha];
+        }
+    }
+    Ok(out)
+}
+
 /// The `w`×`h` block at `(x, y)` of `img`, RGBA. The caller keeps the block inside the image
 /// (`geom::loupe_source` clamps); a block that is not is an error, not a panic.
 pub fn block(
@@ -164,6 +208,21 @@ pub fn encode_png(rgba: &[u8], w: u32, h: u32) -> Result<Vec<u8>, String> {
         let mut enc = png::Encoder::new(&mut out, w, h);
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
+        let mut wr = enc.write_header().map_err(|e| e.to_string())?;
+        wr.write_image_data(rgba).map_err(|e| e.to_string())?;
+    }
+    Ok(out)
+}
+
+/// [`encode_png`] with the fast deflate (`fdeflate`): a retina screenshot is encoded in a fraction of the time of the
+/// default level for a file a little larger. The pixels are identical either way; this is what a capture waits for.
+pub fn encode_png_fast(rgba: &[u8], w: u32, h: u32) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, w, h);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.set_compression(png::Compression::Fast);
         let mut wr = enc.write_header().map_err(|e| e.to_string())?;
         wr.write_image_data(rgba).map_err(|e| e.to_string())?;
     }
@@ -605,5 +664,101 @@ mod tests {
             size: (2, 2),
         };
         assert!(frame_window(&bad, WindowLook::Shadow, 4, 1.0).is_err());
+    }
+
+    /// What a capture saves is the frozen pixels, bit for bit: decoding the fast PNG gives them back, alpha included.
+    #[test]
+    fn the_fast_png_decodes_to_the_pixels_that_went_in() {
+        let (w, h) = (37u32, 23u32);
+        let mut px = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                px.extend_from_slice(&[
+                    (x * 7) as u8,
+                    (y * 11) as u8,
+                    (x ^ y) as u8,
+                    200 + (x % 56) as u8,
+                ]);
+            }
+        }
+        let png = encode_png_fast(&px, w, h).unwrap();
+        let back = decode_png(&png).unwrap();
+        assert_eq!(back.size, (w, h));
+        assert_eq!(back.data, px);
+    }
+
+    #[test]
+    fn the_fast_encoder_refuses_pixels_of_the_wrong_length() {
+        assert!(encode_png_fast(&[0; 7], 2, 1).is_err());
+    }
+
+    /// The reason it exists: a screen-sized frame encodes faster than at the default level. Measured on this
+    /// machine's own encoder: the fast level must not be slower than the default one, and decodes to the same pixels.
+    #[test]
+    fn the_fast_level_is_not_slower_than_the_default_on_a_screenlike_frame() {
+        let (w, h) = (1200u32, 800u32);
+        let mut px = vec![255u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                // flat areas with text-like noise on every 7th row
+                if y % 7 == 0 {
+                    px[i] = (x * 13) as u8;
+                    px[i + 1] = (x * 5) as u8;
+                }
+            }
+        }
+        let t = std::time::Instant::now();
+        let slow = encode_png(&px, w, h).unwrap();
+        let slow_s = t.elapsed().as_secs_f64();
+        let t = std::time::Instant::now();
+        let fast = encode_png_fast(&px, w, h).unwrap();
+        let fast_s = t.elapsed().as_secs_f64();
+        assert!(
+            fast_s <= slow_s * 1.5,
+            "fast {fast_s}s vs default {slow_s}s"
+        );
+        assert_eq!(
+            decode_png(&fast).unwrap().data,
+            decode_png(&slow).unwrap().data
+        );
+    }
+
+    /// A window's rounded corner is transparent and its edge half so: alpha survives, and the colour of a half-covered
+    /// premultiplied pixel is brightened back, or the shadow drawn from it (and the edge) would read darkened.
+    #[test]
+    fn a_window_capture_keeps_its_alpha_and_is_returned_straight() {
+        // BGRA, premultiplied: opaque white, half-transparent white (premultiplied 128), fully transparent
+        let src = [
+            255, 255, 255, 255, //
+            128, 128, 128, 128, //
+            0, 0, 0, 0,
+        ];
+        let got = straight_rgba_from_rows(&src, 12, 3, 1, Order::BGRA, true).unwrap();
+        assert_eq!(&got[..4], &[255, 255, 255, 255]);
+        assert_eq!(&got[4..8], &[255, 255, 255, 128]);
+        assert_eq!(&got[8..12], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn straight_sources_are_not_brightened_and_channels_follow_the_order() {
+        let src = [10, 20, 30, 128];
+        assert_eq!(
+            straight_rgba_from_rows(&src, 4, 1, 1, Order::BGRA, false).unwrap(),
+            [30, 20, 10, 128]
+        );
+        // alpha first (ARGB-like): the alpha byte is the one that is not a colour channel
+        assert_eq!(
+            straight_rgba_from_rows(&[200, 1, 2, 3], 4, 1, 1, Order::ARGB, false).unwrap(),
+            [1, 2, 3, 200]
+        );
+    }
+
+    #[test]
+    fn straight_conversion_respects_the_stride_and_refuses_short_data() {
+        let src = [1, 2, 3, 255, 9, 9, 9, 9, 4, 5, 6, 255, 9, 9, 9, 9];
+        let got = straight_rgba_from_rows(&src, 8, 1, 2, Order::RGBA, true).unwrap();
+        assert_eq!(got, [1, 2, 3, 255, 4, 5, 6, 255]);
+        assert!(straight_rgba_from_rows(&[0; 7], 8, 1, 2, Order::RGBA, true).is_err());
     }
 }

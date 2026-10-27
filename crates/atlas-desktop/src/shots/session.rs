@@ -291,7 +291,9 @@ pub fn step(state: &State, event: Event) -> (State, Vec<Effect>) {
             };
             resolve(still, action).unwrap_or_else(|| (state.clone(), vec![]))
         }
-        // ── idle (and capturing: a hotkey during a still waits for it, then the next one works)
+        // ── idle (and capturing: a hotkey while the pixels are being cut waits for that, a few milliseconds, because
+        // a new session would replace the frozen frames the running capture is about to read; `CaptureDone` ends it
+        // as soon as the pixels are in hand, before the encode and the write)
         (S::Idle, Event::Hotkey(h)) => match pick_of(h) {
             Some(p) => (S::Picking(p), vec![E::ShowOverlay(p)]),
             None if h == Hotkey::Fullscreen => (S::Capturing, vec![E::Still(Still::Screen)]),
@@ -596,7 +598,7 @@ mod tests {
                 "{e:?}"
             );
         }
-        // a hotkey while a still is being saved waits: it does not start an overlay on top of it
+        // a hotkey while the pixels are being cut waits: a new overlay would replace the frames being read
         let (s, fx) = step(&State::Capturing, Event::Hotkey(Hotkey::Region));
         assert_eq!((s, fx), (State::Capturing, vec![]));
     }

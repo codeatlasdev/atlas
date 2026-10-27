@@ -206,14 +206,28 @@
 			vh = window.innerHeight;
 		};
 		window.addEventListener("resize", onResize);
-		// Rust only needs the init once: the dim above is already on screen by now.
-		invoke<OverlayInit>("shots_overlay_init")
+		// The window is built once and reused, so a session reaches it by event (`shots://overlay-init`, twice: at once,
+		// then with the windows a pick can snap to). A window that is only now loading missed those and asks; `null`
+		// means no session is open yet.
+		const begin = (init: OverlayInit) => {
+			dispatch({ type: "init", init });
+			if (st.pointer) scheduleLoupe(st.pointer.x, st.pointer.y);
+		};
+		invoke<OverlayInit | null>("shots_overlay_init")
 			.then((init) => {
-				if (!alive) return;
-				dispatch({ type: "init", init });
-				if (st.pointer) scheduleLoupe(st.pointer.x, st.pointer.y);
+				if (alive && init) begin(init);
 			})
 			.catch((err) => (failure = errText(err)));
+		void listen<OverlayInit>("shots://overlay-init", (ev) => begin(ev.payload)).then((off) =>
+			alive ? offs.push(off) : off(),
+		);
+		// The window was hidden (a commit, a cancel): nothing of this session may show when it is next ordered in.
+		void listen("shots://overlay-reset", () => {
+			loupe = null;
+			centre = null;
+			failure = null;
+			dispatch({ type: "reset" });
+		}).then((off) => (alive ? offs.push(off) : off()));
 		// Space toggles the mode inside the page; Rust's event keeps sibling displays' pages in step. The HUD picks
 		// its modes on the toolbar instead.
 		void listen<Mode>("shots://overlay-mode", (ev) => {

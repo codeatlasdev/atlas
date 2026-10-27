@@ -11,7 +11,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use tauri::{AppHandle, Manager, State};
+use tauri::ipc::{CommandArg, CommandItem, InvokeError};
+use tauri::{AppHandle, Manager, Runtime, State, WebviewWindow};
 
 use super::geom::Rect;
 use super::naming::Kind;
@@ -109,16 +110,37 @@ pub fn open(app: &AppHandle, state: &Shots, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The calling window of a pin command, accepted only when it is a pin (`shots-pin-<n>`). Every command here acts on
+/// the *caller* (`set_size`, `destroy`, key status), so the card, the editor or the main window calling one must be
+/// refused before the command body runs: taking this type instead of a plain `WebviewWindow` is that wall, and a
+/// command cannot forget it.
+pub struct PinWindow<R: Runtime = tauri::Wry>(WebviewWindow<R>);
+
+impl<R: Runtime> std::ops::Deref for PinWindow<R> {
+    type Target = WebviewWindow<R>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de, R: Runtime> CommandArg<'de, R> for PinWindow<R> {
+    fn from_command(command: CommandItem<'de, R>) -> Result<Self, InvokeError> {
+        let window = WebviewWindow::<R>::from_command(command)?;
+        if surface::is_pin_label(window.label()) {
+            Ok(Self(window))
+        } else {
+            Err(InvokeError::from("only a pin window can call this"))
+        }
+    }
+}
+
 /// The picture a pin page shows.
 #[tauri::command]
 pub fn shots_pin_load(
-    window: tauri::WebviewWindow,
+    _pin: PinWindow,
     state: State<'_, Shots>,
     path: String,
 ) -> Result<PinDoc, String> {
-    if !surface::is_pin_label(window.label()) {
-        return Err("only a pin can load a pinned picture".into());
-    }
     let path = PathBuf::from(path);
     known(&state, &path)?;
     editor::load(&path)
@@ -129,13 +151,10 @@ pub fn shots_pin_load(
 #[tauri::command]
 pub fn shots_pin_resize(
     app: AppHandle,
-    window: tauri::WebviewWindow,
+    window: PinWindow,
     width: f64,
     height: f64,
 ) -> Result<(f64, f64), String> {
-    if !surface::is_pin_label(window.label()) {
-        return Err("only a pin can be resized".into());
-    }
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
     let at = window.outer_position().map_err(|e| e.to_string())?;
     let old = window.outer_size().map_err(|e| e.to_string())?;
@@ -165,14 +184,7 @@ pub fn shots_pin_resize(
 /// Esc, +, -, [ and ] while it is the key window, which the page asks for when it is clicked and gives up when it
 /// loses focus. The grant goes through `dock_mac::overlay_keys`, the one place that refuses in an agent instance.
 #[tauri::command]
-pub fn shots_pin_keys(
-    app: AppHandle,
-    window: tauri::WebviewWindow,
-    on: bool,
-) -> Result<(), String> {
-    if !surface::is_pin_label(window.label()) {
-        return Err("only a pin can ask for the keyboard".into());
-    }
+pub fn shots_pin_keys(app: AppHandle, window: PinWindow, on: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let (a, label) = (app.clone(), window.label().to_string());
@@ -189,10 +201,7 @@ pub fn shots_pin_keys(
 
 /// Close the calling pin and give the keyboard back if it held it.
 #[tauri::command]
-pub fn shots_pin_close(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
-    if !surface::is_pin_label(window.label()) {
-        return Err("only a pin can be closed this way".into());
-    }
+pub fn shots_pin_close(app: AppHandle, window: PinWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let _ = app.run_on_main_thread(|| crate::dock_mac::overlay_keys(None));
     if let Some(w) = app.get_webview_window(window.label()) {
@@ -264,6 +273,64 @@ mod tests {
             enc,
             "%2FUsers%2Fme%2FAtlas%20Captures%2Fa%26b%20%231%20%C3%A9.png"
         );
+    }
+
+    /// A command that takes a [`PinWindow`], registered on tauri's mock runtime and invoked through the real IPC
+    /// pipeline, the way each `shots_pin_*` command receives its caller.
+    #[tauri::command]
+    fn probe<R: Runtime>(_pin: PinWindow<R>) -> &'static str {
+        "ran"
+    }
+
+    fn call_from(label: &str) -> Result<String, serde_json::Value> {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![probe])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let caller = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
+            .build()
+            .unwrap();
+        tauri::test::get_ipc_response(
+            &caller,
+            tauri::webview::InvokeRequest {
+                cmd: "probe".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                // the page's own origin: tauri://localhost, or http://tauri.localhost on Windows
+                url: if cfg!(windows) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::default(),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|b| b.deserialize::<String>().unwrap())
+    }
+
+    /// Every pin command acts on its caller (`set_size`, `destroy`, key status), so a window that is not a pin must be
+    /// refused before the body runs: the card, the editor, the main window, the overlay, a look-alike label.
+    #[test]
+    fn a_pin_command_refuses_every_caller_that_is_not_a_pin() {
+        assert_eq!(call_from("shots-pin-1").as_deref(), Ok("ran"));
+        assert_eq!(call_from("shots-pin-42").as_deref(), Ok("ran"));
+        for label in [
+            "main",
+            "shots-quick",
+            "shots-editor",
+            "shots-hud",
+            "shots-overlay-1",
+            "shots-pin-",
+            "shots-pin-x",
+            "shots-pin-1x",
+            "shots-pinned-1",
+        ] {
+            assert!(call_from(label).is_err(), "{label} must be refused");
+        }
     }
 
     /// Pin numbers are unique and never reused: two pins of the same file are two windows.

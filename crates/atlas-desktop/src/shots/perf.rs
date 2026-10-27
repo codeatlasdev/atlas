@@ -23,6 +23,14 @@ pub fn mark(stage: &'static str, since: Instant) {
     record(stage, since.elapsed().as_secs_f64() * 1000.0);
 }
 
+/// Record `stage` as the time since the selection was released (`Shots::released`, set when the commit reaches
+/// `feed`): "release to overlay gone", "release to file", "release to card" are what the person waits for.
+pub fn since_release(stage: &'static str, released: Option<Instant>) {
+    if let Some(t) = released {
+        mark(stage, t);
+    }
+}
+
 pub fn record(stage: &'static str, ms: f64) {
     if std::env::var_os("ATLAS_SHOTS_PERF").is_some() {
         eprintln!("shots-perf: {stage} {ms:.1} ms");

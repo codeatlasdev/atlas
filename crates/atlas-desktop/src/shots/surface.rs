@@ -199,6 +199,7 @@ pub fn build(
     if let Some(w) = app.get_webview_window(&label) {
         return Ok(w);
     }
+    let t = std::time::Instant::now();
     let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
     let url = if query.is_empty() {
         surface.route().to_string()
@@ -223,10 +224,24 @@ pub fn build(
         .accept_first_mouse(true)
         .build()
         .map_err(|e| e.to_string())?;
+    // A capture window is a non-activating panel before it is ever ordered in: an ordinary NSWindow ordered in with
+    // `makeKeyAndOrderFront` brings the whole app forward. The conversion is AppKit window work, so it runs on the
+    // main thread (`build` is called from capture workers) and is waited for.
     #[cfg(target_os = "macos")]
-    if let Ok(ns) = win.ns_window() {
-        crate::dock_mac::make_panel(ns);
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let w = win.clone();
+        let queued = app.run_on_main_thread(move || {
+            if let Ok(ns) = w.ns_window() {
+                crate::dock_mac::make_panel(ns);
+            }
+            let _ = tx.send(());
+        });
+        if queued.is_ok() {
+            let _ = rx.recv_timeout(std::time::Duration::from_secs(5));
+        }
     }
+    super::perf::mark("surface.build", t);
     Ok(win)
 }
 
@@ -249,22 +264,55 @@ pub fn placement(focus_allowed: bool) -> Placement {
     }
 }
 
+/// What a relayout asks of a capture window. A trait so the rule in [`relayout`] is tested against a recording fake:
+/// the real one ([`Live`]) is tauri's window.
+trait Mover {
+    fn size(&mut self, w: f64, h: f64);
+    fn position(&mut self, x: f64, y: f64);
+    fn visible(&self) -> bool;
+    /// Put an already visible window back where an agent instance may show it (`show`).
+    fn park(&mut self);
+}
+
+/// The whole relayout rule: size always, the position only where `placement` allows it.
+fn relayout(placement: Placement, win: &mut impl Mover, frame: Rect) {
+    win.size(frame.w, frame.h);
+    match placement {
+        Placement::SizeAndPosition => win.position(frame.x, frame.y),
+        Placement::SizeThenPark => {
+            if win.visible() {
+                win.park();
+            }
+        }
+    }
+}
+
+struct Live<'a> {
+    app: &'a AppHandle,
+    win: &'a WebviewWindow,
+}
+
+impl Mover for Live<'_> {
+    fn size(&mut self, w: f64, h: f64) {
+        let _ = self.win.set_size(tauri::LogicalSize::new(w, h));
+    }
+    fn position(&mut self, x: f64, y: f64) {
+        let _ = self.win.set_position(tauri::LogicalPosition::new(x, y));
+    }
+    fn visible(&self) -> bool {
+        self.win.is_visible().unwrap_or(false)
+    }
+    fn park(&mut self) {
+        show(self.app, self.win);
+    }
+}
+
 /// Move/resize `win` to `frame` (global logical points). The one entry for every relayout of a capture window after
 /// it has been built (the quick stack growing, a pin zooming), so the agent-instance rule lives in one place.
 /// A window that is not visible yet is placed the same way: `show` then parks it in an agent instance.
 pub fn place(app: &AppHandle, win: &WebviewWindow, frame: Rect) {
-    use tauri::{LogicalPosition, LogicalSize};
-    let _ = win.set_size(LogicalSize::new(frame.w, frame.h));
-    match placement(crate::agent_mode::Mode::current().focus_allowed()) {
-        Placement::SizeAndPosition => {
-            let _ = win.set_position(LogicalPosition::new(frame.x, frame.y));
-        }
-        Placement::SizeThenPark => {
-            if win.is_visible().unwrap_or(false) {
-                show(app, win);
-            }
-        }
-    }
+    let focus_allowed = crate::agent_mode::Mode::current().focus_allowed();
+    relayout(placement(focus_allowed), &mut Live { app, win }, frame);
 }
 
 /// Order `win` in. The user's app shows it; an agent instance only through the guarded virtual display path.
@@ -273,11 +321,20 @@ pub fn place(app: &AppHandle, win: &WebviewWindow, frame: Rect) {
 /// (`park_and_show` moves the frame; incident of the first agent run: SIGTRAP in `setFrame:display:`), so the whole
 /// ordering is done on the main thread and waited for.
 pub fn show(app: &AppHandle, win: &WebviewWindow) {
+    let t = std::time::Instant::now();
     let (tx, rx) = std::sync::mpsc::channel();
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     let (a, w) = (app.clone(), win.clone());
     let queued = app.run_on_main_thread(move || {
         if crate::agent_mode::Mode::current().focus_allowed() {
+            #[cfg(target_os = "macos")]
+            if !w
+                .ns_window()
+                .is_ok_and(crate::dock_mac::ensure_nonactivating)
+            {
+                let _ = tx.send(());
+                return;
+            }
             let _ = w.show();
         } else {
             #[cfg(target_os = "macos")]
@@ -291,6 +348,7 @@ pub fn show(app: &AppHandle, win: &WebviewWindow) {
     if queued.is_ok() {
         let _ = rx.recv_timeout(std::time::Duration::from_secs(5));
     }
+    super::perf::mark("surface.show", t);
 }
 
 #[cfg(test)]
@@ -629,10 +687,72 @@ mod tests {
 mod placement_tests {
     use super::*;
 
-    /// Incident class (agent window on the user's display): relayout of a capture window in an agent instance must
-    /// never set a position (global points are real displays); only the user's app may.
+    /// A window that records what a relayout asked of it.
+    #[derive(Default)]
+    struct Recorder {
+        visible: bool,
+        calls: Vec<String>,
+    }
+
+    impl Mover for Recorder {
+        fn size(&mut self, w: f64, h: f64) {
+            self.calls.push(format!("size {w}x{h}"));
+        }
+        fn position(&mut self, x: f64, y: f64) {
+            self.calls.push(format!("position {x},{y}"));
+        }
+        fn visible(&self) -> bool {
+            self.visible
+        }
+        fn park(&mut self) {
+            self.calls.push("park".into());
+        }
+    }
+
+    const FRAME: Rect = Rect::new(1500.0, 40.0, 252.0, 540.0);
+
+    fn relaid(focus_allowed: bool, visible: bool) -> Vec<String> {
+        let mut w = Recorder {
+            visible,
+            ..Recorder::default()
+        };
+        relayout(placement(focus_allowed), &mut w, FRAME);
+        w.calls
+    }
+
+    /// Incident class (an agent window on the user's display): relayout of a capture window in an agent instance must
+    /// never set a position (a global point is a real display, and a visible agent window there ends the instance);
+    /// only the user's app may. Visible or not, whatever the frame.
     #[test]
     fn an_agent_instance_never_sets_a_position() {
+        for visible in [false, true] {
+            let calls = relaid(false, visible);
+            assert!(
+                !calls.iter().any(|c| c.starts_with("position")),
+                "visible={visible}: {calls:?}"
+            );
+            assert_eq!(calls[0], "size 252x540");
+        }
+    }
+
+    /// A visible agent window is parked again after a resize so it stays inside the virtual display; one that is not
+    /// shown yet is left for `show` to park.
+    #[test]
+    fn an_agent_window_is_parked_again_only_when_it_is_visible() {
+        assert_eq!(relaid(false, true), ["size 252x540", "park"]);
+        assert_eq!(relaid(false, false), ["size 252x540"]);
+    }
+
+    /// The user's app is placed exactly where it was asked to be, size first.
+    #[test]
+    fn the_users_app_gets_its_size_and_its_position() {
+        for visible in [false, true] {
+            assert_eq!(relaid(true, visible), ["size 252x540", "position 1500,40"]);
+        }
+    }
+
+    #[test]
+    fn the_agent_rule_follows_the_focus_gate() {
         assert_eq!(placement(true), Placement::SizeAndPosition);
         assert_eq!(placement(false), Placement::SizeThenPark);
     }

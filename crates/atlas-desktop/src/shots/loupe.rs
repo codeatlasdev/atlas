@@ -1,7 +1,8 @@
 //! The overlay's magnifier: a 15×15 px block of the frozen frame around the pointer, as a PNG data URL.
 //!
-//! The frame is taken once per display before any overlay window is shown (`runner::show_overlay`), so the loupe
-//! shows what the screen looked like, not the dimmed overlay.
+//! The frame is taken once per display with the overlay already up and excluded from it (`runner::show_overlay`),
+//! so the loupe shows what the screen looked like, not the dimmed overlay. Until the freeze is published there is
+//! no loupe (the page hides it).
 
 use super::{Loupe, Shots, geom::loupe_source, pixels};
 
@@ -10,14 +11,10 @@ const GRID: u32 = 15;
 
 /// The block around the global point `(x, y)`, from the frozen frame of the display that contains it.
 pub fn sample(state: &Shots, x: f64, y: f64) -> Option<Loupe> {
-    let (id, frame, scale) = {
-        let overlays = state.overlay.lock();
-        let o = overlays.values().find(|o| o.display.frame.contains(x, y))?;
-        (o.display.id, o.display.frame, o.display.scale)
-    };
-    let frozen = state.frozen.lock();
-    let f = frozen.get(&id)?;
-    let (bx, by, bw, bh) = loupe_source((x, y), frame, scale, GRID);
+    let session = state.frozen.peek()?;
+    let d = session.displays.iter().find(|d| d.frame.contains(x, y))?;
+    let f = session.frames.get(&d.id)?;
+    let (bx, by, bw, bh) = loupe_source((x, y), d.frame, d.scale, GRID);
     // The frame is the display's pixel grid. If it is smaller (the mode changed since it was taken) clamp instead of
     // failing: a slightly stale loupe is better than none.
     let (bw, bh) = (bw.min(f.size.0), bh.min(f.size.1));

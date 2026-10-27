@@ -63,6 +63,8 @@ export interface Hud {
 }
 
 export interface OverlayState {
+	/** The capture session this page is showing (Rust's `OverlayInit.session`); `null` before the first init. */
+	session: number | null;
 	display: Display | null;
 	windows: OverlayWindow[];
 	/** What a click does now: drag a region, or pick the hovered window. */
@@ -100,7 +102,9 @@ export type OverlayEvent =
 	/** The HUD toolbar's "Previous area". */
 	| { type: "previous" }
 	/** Rust answered the timer button with the seconds now in force (0, 3, 5 or 10). */
-	| { type: "timer"; secs: number };
+	| { type: "timer"; secs: number }
+	/** The window was hidden (a commit, a cancel): forget the session so the next one starts as a new page would. */
+	| { type: "reset" };
 
 export type OverlayEffect =
 	| { type: "commit"; payload: OverlayCommit }
@@ -114,6 +118,7 @@ export interface Step {
 }
 
 export const initialState = (): OverlayState => ({
+	session: null,
 	display: null,
 	windows: [],
 	pick: "region",
@@ -435,14 +440,22 @@ function commitReturn(s: OverlayState): Step {
 
 /** The pure transition function: what happens to the overlay on `ev`, and which side effects the page must run. */
 export function reduce(s: OverlayState, ev: OverlayEvent): Step {
-	if (s.done) return idle(s);
+	// A hidden window keeps its last session until Rust resets it, so a reset is the one event a finished page takes.
+	if (ev.type === "reset") return idle(initialState());
+	// A new session's init also revives a finished page: the window was reused, not rebuilt.
+	if (s.done && ev.type !== "init") return idle(s);
 	switch (ev.type) {
 		case "init": {
+			// Rust sends a session's init by event (twice: at once, then with the windows once they are listed) and the
+			// page asks for it when it mounts: a session already running takes the windows and nothing else.
+			if (s.session !== null && s.session === ev.init.session && !s.done)
+				return { state: withHover({ ...s, windows: ev.init.windows }), effects: [] };
 			const hud = ev.init.mode === "all" && ev.init.hud ? ev.init.hud : null;
 			const mode = hud ? (HUD_MODES.includes(hud.lastMode) ? hud.lastMode : "region") : null;
 			return {
 				state: withHover({
-					...s,
+					...initialState(),
+					session: ev.init.session ?? null,
 					display: ev.init.display,
 					windows: ev.init.windows,
 					hud: hud && mode ? { mode, timerSecs: hud.timerSecs, hasPrevious: hud.hasPrevious } : null,

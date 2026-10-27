@@ -168,17 +168,18 @@ pub fn downscale(rgba: &[u8], src: (u32, u32), dst: (u32, u32)) -> Vec<u8> {
             let x1 = ((dx + 1) * sw / dw).max(x0 + 1).min(sw);
             let mut acc = [0u32; 4];
             for y in y0..y1 {
-                for x in x0..x1 {
-                    let i = (y * sw + x) * 4;
-                    for c in 0..4 {
-                        acc[c] += u32::from(rgba[i + c]);
-                    }
+                let row = &rgba[(y * sw + x0) * 4..(y * sw + x1) * 4];
+                for px in row.as_chunks::<4>().0 {
+                    acc[0] += u32::from(px[0]);
+                    acc[1] += u32::from(px[1]);
+                    acc[2] += u32::from(px[2]);
+                    acc[3] += u32::from(px[3]);
                 }
             }
             let n = ((y1 - y0) * (x1 - x0)) as u32;
             let o = (dy * dw + dx) * 4;
-            for c in 0..4 {
-                out[o + c] = (acc[c] / n) as u8;
+            for (c, sum) in acc.iter().enumerate() {
+                out[o + c] = (sum / n) as u8;
             }
         }
     }
@@ -667,6 +668,55 @@ mod tests {
         let out = downscale(&src, (2, 2), (1, 1));
         assert_eq!(out, [127, 127, 127, 255]);
         assert_eq!(downscale(&src, (2, 2), (2, 2)), src);
+    }
+
+    /// The box filter against the plain definition (the mean of every source pixel whose cell maps to the output
+    /// pixel, per channel, integer division), on ratios that do not divide evenly, a one-pixel output and a stretch.
+    #[test]
+    fn the_box_downscale_matches_the_plain_mean_of_each_cell() {
+        fn reference(rgba: &[u8], src: (u32, u32), dst: (u32, u32)) -> Vec<u8> {
+            let (sw, sh, dw, dh) = (
+                src.0 as usize,
+                src.1 as usize,
+                dst.0 as usize,
+                dst.1 as usize,
+            );
+            let mut out = Vec::new();
+            for dy in 0..dh {
+                let y0 = dy * sh / dh;
+                let y1 = ((dy + 1) * sh / dh).max(y0 + 1).min(sh);
+                for dx in 0..dw {
+                    let x0 = dx * sw / dw;
+                    let x1 = ((dx + 1) * sw / dw).max(x0 + 1).min(sw);
+                    for c in 0..4 {
+                        let mut sum = 0u32;
+                        for y in y0..y1 {
+                            for x in x0..x1 {
+                                sum += u32::from(rgba[(y * sw + x) * 4 + c]);
+                            }
+                        }
+                        out.push((sum / ((y1 - y0) * (x1 - x0)) as u32) as u8);
+                    }
+                }
+            }
+            out
+        }
+        for (src, dst) in [
+            ((7, 5), (3, 2)),
+            ((1200, 800), (440, 293)),
+            ((13, 13), (1, 1)),
+            ((3, 3), (5, 4)),
+            ((64, 1), (10, 1)),
+        ] {
+            let px: Vec<u8> = (0..src.0 * src.1 * 4)
+                .map(|i: u32| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+                .collect();
+            assert_eq!(
+                downscale(&px, src, dst),
+                reference(&px, src, dst),
+                "{src:?} -> {dst:?}"
+            );
+        }
     }
 
     fn solid(w: u32, h: u32, rgb: [u8; 3]) -> Frame {

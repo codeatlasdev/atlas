@@ -9,6 +9,7 @@
 
 pub mod clock;
 pub mod editor;
+pub mod freeze;
 pub mod geom;
 pub mod gif;
 pub mod history;
@@ -56,9 +57,15 @@ pub struct Shots {
     state: Mutex<session::State>,
     history: Mutex<History>,
     registered: crate::hotkeys::Registered,
-    /// The frozen frames the overlay samples for its magnifier, raw RGBA per display id.
+    /// The frozen frames of this session (what the overlay shows, the magnifier samples and a region saves).
+    frozen: freeze::Slot,
+    /// The ScreenCaptureKit listing the overlay was opened with, kept for the window pick that has to be captured
+    /// live (a window with its shadow needs the window's own alpha): no second listing after the release.
     #[cfg(target_os = "macos")]
-    frozen: Mutex<std::collections::HashMap<u32, Frozen>>,
+    content: Mutex<Option<std::sync::Arc<sck::Content>>>,
+    /// Counts overlay sessions; the page ignores an init it has already taken and a window reused by the next
+    /// session knows it is a new one.
+    session: std::sync::atomic::AtomicU64,
     /// What each overlay window shows, by display id; set when the overlay opens, cleared when it closes.
     overlay: Mutex<std::collections::HashMap<u32, OverlayInit>>,
     /// What the recording HUD shows now.
@@ -68,21 +75,19 @@ pub struct Shots {
     /// The last region any mode committed, for "capture previous area" (kept in memory only: a restart forgets it,
     /// the displays may have changed).
     last_area: Mutex<Option<(Rect, u32)>>,
+    /// When the last selection was released (the commit reached `feed`): the clock the `release.*` marks read.
+    released: Mutex<Option<std::time::Instant>>,
     /// The recording in progress.
     #[cfg(target_os = "macos")]
     live: Mutex<Option<record_mac::Live>>,
-}
-
-#[cfg(target_os = "macos")]
-struct Frozen {
-    rgba: Vec<u8>,
-    size: (u32, u32),
 }
 
 /// Sent to the overlay page (camelCase).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OverlayInit {
+    /// The capture session this init belongs to.
+    pub session: u64,
     pub display: DisplayInfo,
     pub mode: Pick,
     pub windows: Vec<OverlayWindow>,
@@ -157,12 +162,15 @@ impl Shots {
             state: Mutex::new(session::State::Idle),
             history: Mutex::new(h),
             registered: crate::hotkeys::Registered::default(),
+            frozen: freeze::Slot::default(),
             #[cfg(target_os = "macos")]
-            frozen: Mutex::new(Default::default()),
+            content: Mutex::new(None),
+            session: std::sync::atomic::AtomicU64::new(0),
             overlay: Mutex::new(Default::default()),
             record: Mutex::new(RecordState::idle()),
             pending_record: Mutex::new(None),
             last_area: Mutex::new(None),
+            released: Mutex::new(None),
             #[cfg(target_os = "macos")]
             live: Mutex::new(None),
         }
@@ -286,6 +294,8 @@ pub fn feed(app: &AppHandle, event: Event) {
         },
         e => e,
     };
+    let released = std::time::Instant::now();
+    let mut mode_to_remember = None;
     let (next, effects) = {
         let mut st = shots.state.lock();
         if let Event::Commit(c) = &event {
@@ -295,28 +305,69 @@ pub fn feed(app: &AppHandle, event: Event) {
             }
             if matches!(*st, session::State::Picking(_)) {
                 remember_area(&mut shots.last_area.lock(), c);
-                remember_mode(app, last_mode_of(c));
+                mode_to_remember = Some(last_mode_of(c));
             }
+            *shots.released.lock() = Some(released);
         }
         let (n, fx) = session::step(&st, event);
         *st = n.clone();
         (n, fx)
     };
     let _ = next;
+    // A new overlay session forgets the last freeze here, before any worker runs: a release that beats the worker
+    // waits for THIS session's frames, never takes the previous capture's.
+    if effects
+        .iter()
+        .any(|e| matches!(e, session::Effect::ShowOverlay(_)))
+    {
+        shots.frozen.begin();
+    }
     if effects.is_empty() {
         return;
     }
+    // The overlay clears the screen right here, on the thread that got the release: nothing the worker does
+    // (listing, ScreenCaptureKit, encoding, the clipboard) can delay it.
+    let (now, later) = freeze::split_effects(effects);
+    #[cfg(target_os = "macos")]
+    for fx in now {
+        runner::run(app, fx);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = now;
+    if later.is_empty() && mode_to_remember.is_none() {
+        return;
+    }
     let app = app.clone();
-    std::thread::spawn(move || {
-        for fx in effects {
-            #[cfg(target_os = "macos")]
-            runner::run(&app, fx);
-            #[cfg(not(target_os = "macos"))]
-            {
-                let _ = (&app, fx);
+    let spawned = std::thread::Builder::new()
+        .name("shots-fx".into())
+        .spawn(move || {
+            // The interactive class is for what the person waits on (the overlay, the still) and goes back down for
+            // everything else this worker may run: a recording's start, text recognition, the settings write.
+            for fx in later {
+                #[cfg(target_os = "macos")]
+                {
+                    mac::set_qos(if freeze::is_instant(&fx) {
+                        mac::Qos::Interactive
+                    } else {
+                        mac::Qos::Default
+                    });
+                    runner::run(&app, fx);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = (&app, fx);
+                }
             }
-        }
-    });
+            // after the capture has started: a settings write (disk) never sits in front of it
+            #[cfg(target_os = "macos")]
+            mac::set_qos(mac::Qos::Default);
+            if let Some(m) = mode_to_remember {
+                remember_mode(&app, m);
+            }
+        });
+    if let Err(e) = spawned {
+        eprintln!("shots: cannot start the capture worker: {e}");
+    }
 }
 
 /// Remember the HUD's last mode in the prefs (memory and `settings.json`), only when it changed. A write that
@@ -384,25 +435,41 @@ pub fn shots_prefs_set(app: AppHandle, prefs: CapturePrefs) -> Result<CapturePre
 /// narrowing it, and the session goes through the same states and effects as a real drag.
 #[cfg(debug_assertions)]
 #[tauri::command]
-pub fn shots_debug_start(
+pub async fn shots_debug_start(
     app: AppHandle,
     mode: String,
     rect: Option<[f64; 4]>,
 ) -> Result<(), String> {
     let h = Hotkey::from_name(&mode).ok_or_else(|| format!("unknown capture mode {mode:?}"))?;
     #[cfg(target_os = "macos")]
-    if matches!(h, Hotkey::Record | Hotkey::Gif | Hotkey::Ocr)
-        && !crate::agent_mode::Mode::current().focus_allowed()
+    if matches!(
+        h,
+        Hotkey::Record | Hotkey::Gif | Hotkey::Ocr | Hotkey::Region
+    ) && !crate::agent_mode::Mode::current().focus_allowed()
     {
-        let content = sck::Content::fetch()?;
-        let d = content.displays.first().ok_or("no display")?;
-        let r = rect.map_or(d.frame, |[x, y, w, h]| Rect::new(x, y, w, h));
         let pick = match h {
             Hotkey::Gif => Pick::Gif,
             Hotkey::Ocr => Pick::Text,
+            Hotkey::Region => Pick::Region,
             _ => Pick::Record,
         };
-        *app.state::<Shots>().state.lock() = session::State::Picking(pick);
+        // The hotkey itself: the session opens exactly as a real one (an agent instance builds no window, it only
+        // freezes), then the "drag" is released once the freeze is there, through the same `feed` a real commit takes.
+        feed(&app, Event::Hotkey(h));
+        // Not on the main thread (a sync command runs there): the freeze needs it for window ids, so blocking it here
+        // until the freeze is done would starve the very thing being waited for.
+        let waiting = app.clone();
+        let frozen = tauri::async_runtime::spawn_blocking(move || {
+            waiting
+                .state::<Shots>()
+                .frozen
+                .wait(std::time::Duration::from_secs(10))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("the session did not freeze")?;
+        let d = frozen.displays.first().ok_or("no display")?;
+        let r = rect.map_or(d.frame, |[x, y, w, h]| Rect::new(x, y, w, h));
         feed(
             &app,
             Event::Commit(Commit::Region {
@@ -447,6 +514,49 @@ pub fn shots_debug_freeze(app: AppHandle) -> Result<(), String> {
     pixels::decode_png(&bytes?)?;
     perf::mark("overlay.freeze-png", t);
     Ok(())
+}
+
+/// Debug builds only: whether this process is the active app and which app is frontmost, plus, for every window it
+/// owns, what decides whether ordering it in can bring Atlas forward (`dock_mac::Activation`). Read it before and
+/// after each phase of a capture: nothing a capture does may change `active` or `frontmost`.
+#[cfg(all(debug_assertions, target_os = "macos"))]
+#[tauri::command]
+pub fn shots_debug_activation(app: AppHandle) -> serde_json::Value {
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject, Bool};
+    use objc2_foundation::NSString;
+    let (active, frontmost) = {
+        let ns_app = AnyClass::get(c"NSApplication").expect("AppKit has NSApplication");
+        let ws = AnyClass::get(c"NSWorkspace").expect("AppKit has NSWorkspace");
+        // SAFETY: plain getters on the shared AppKit singletons; a sync command runs on the main thread.
+        unsafe {
+            let shared: *mut AnyObject = objc2::msg_send![ns_app, sharedApplication];
+            let active: Bool = objc2::msg_send![shared, isActive];
+            let workspace: *mut AnyObject = objc2::msg_send![ws, sharedWorkspace];
+            let front: *mut AnyObject = objc2::msg_send![workspace, frontmostApplication];
+            let id: Option<Retained<NSString>> = front
+                .as_ref()
+                .and_then(|f| objc2::msg_send![f, bundleIdentifier]);
+            (active.as_bool(), id.map(|s| s.to_string()))
+        }
+    };
+    let windows: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(l, _)| surface::is_excluded_label(l) || surface::is_pin_label(l))
+        .filter_map(|(label, w)| {
+            let a = crate::dock_mac::activation_of(w.ns_window().ok()?);
+            Some(serde_json::json!({
+                "label": label,
+                "visible": w.is_visible().unwrap_or(false),
+                "panel": a.panel,
+                "nonactivatingStyle": a.nonactivating_style,
+                "preventsTag": a.prevents_tag,
+                "safe": a.safe(),
+            }))
+        })
+        .collect();
+    serde_json::json!({ "active": active, "frontmost": frontmost, "windows": windows })
 }
 
 #[derive(Serialize)]
@@ -517,7 +627,7 @@ pub fn shots_open_shortcuts_settings() -> Result<(), String> {
 
 /// The HUD's "Previous area" button (and any page that wants it): the same as pressing that capture key.
 #[tauri::command]
-pub fn shots_overlay_previous(app: AppHandle) {
+pub async fn shots_overlay_previous(app: AppHandle) {
     feed(&app, Event::Hotkey(Hotkey::Previous));
 }
 
@@ -572,22 +682,29 @@ pub fn shots_history_open(path: String) -> Result<(), String> {
 
 // overlay page
 
-#[tauri::command]
-pub fn shots_overlay_init(
-    window: tauri::WebviewWindow,
-    state: State<'_, Shots>,
-) -> Result<OverlayInit, String> {
-    let id: u32 = window
-        .label()
+/// The display an overlay window's label names (`shots-overlay-<displayId>`).
+fn overlay_display_of(label: &str) -> Result<u32, String> {
+    label
         .strip_prefix(surface::OVERLAY_PREFIX)
         .and_then(|d| d.parse().ok())
-        .ok_or("only a capture overlay window can ask for its display")?;
-    state
-        .overlay
-        .lock()
-        .get(&id)
-        .cloned()
-        .ok_or_else(|| "no capture is in progress".to_string())
+        .ok_or_else(|| "only a capture overlay window can ask for its display".to_string())
+}
+
+/// What the overlay page of display `label` shows now: `Some` while a session is open, `None` between sessions (a
+/// window that is built and loaded ahead of its first capture asks at mount and must not get an error for it).
+fn overlay_of(
+    overlay: &std::collections::HashMap<u32, OverlayInit>,
+    label: &str,
+) -> Result<Option<OverlayInit>, String> {
+    Ok(overlay.get(&overlay_display_of(label)?).cloned())
+}
+
+#[tauri::command]
+pub async fn shots_overlay_init(
+    window: tauri::WebviewWindow,
+    state: State<'_, Shots>,
+) -> Result<Option<OverlayInit>, String> {
+    overlay_of(&state.overlay.lock(), window.label())
 }
 
 /// The overlay page's commit payload (`kind`: `region` | `window` | `screen`, plus `action`: `capture` | `record` |
@@ -635,29 +752,36 @@ pub fn previous_event(last: &Option<(Rect, u32)>) -> Result<Event, String> {
         .ok_or_else(|| "No previous area yet: capture a region first.".to_string())
 }
 
+// Async on purpose: Tauri runs a plain `fn` command on the MAIN thread, and these are the busiest calls of the
+// overlay (the commit that must clear the screen, the loupe asked for at every pointer move). On the async runtime
+// they never queue behind, or in front of, AppKit's event loop.
 #[tauri::command]
-pub fn shots_overlay_commit(app: AppHandle, commit: serde_json::Value) -> Result<(), String> {
+pub async fn shots_overlay_commit(app: AppHandle, commit: serde_json::Value) -> Result<(), String> {
     feed(&app, Event::Commit(parse_commit(&commit)?));
     Ok(())
 }
 
 #[tauri::command]
-pub fn shots_overlay_cancel(app: AppHandle) {
+pub async fn shots_overlay_cancel(app: AppHandle) {
     feed(&app, Event::Cancel);
 }
 
 /// The 15×15 px block around `(x, y)` (global points) of the frozen frame as a PNG data URL, with the colour of its
 /// middle pixel; `None` when there is no frame (the page hides the magnifier).
 #[tauri::command]
-pub fn shots_overlay_loupe(state: State<'_, Shots>, x: f64, y: f64) -> Option<Loupe> {
+pub async fn shots_overlay_loupe(
+    state: State<'_, Shots>,
+    x: f64,
+    y: f64,
+) -> Result<Option<Loupe>, String> {
     #[cfg(target_os = "macos")]
     {
-        loupe::sample(&state, x, y)
+        Ok(loupe::sample(&state, x, y))
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (state, x, y);
-        None
+        Ok(None)
     }
 }
 
@@ -692,6 +816,7 @@ mod tests {
     #[test]
     fn overlay_init_serializes_with_the_keys_the_page_reads() {
         let v = serde_json::to_value(OverlayInit {
+            session: 4,
             display: DisplayInfo {
                 id: 3,
                 frame: Rect::new(0.0, 0.0, 1512.0, 982.0),
@@ -712,12 +837,71 @@ mod tests {
             },
         })
         .unwrap();
+        assert_eq!(v["session"], 4, "the page tells sessions apart by this");
         assert_eq!(v["mode"], "region");
         assert_eq!(v["hud"]["captureOnRelease"], true);
         assert_eq!(v["display"]["id"], 3);
         assert_eq!(v["display"]["frame"]["w"], 1512.0);
         assert_eq!(v["windows"][0]["title"], "t");
         assert_eq!(v["cursor"]["x"], 5.0);
+    }
+
+    fn init_of(session: u64, id: u32) -> OverlayInit {
+        OverlayInit {
+            session,
+            display: DisplayInfo {
+                id,
+                frame: Rect::new(0.0, 0.0, 10.0, 10.0),
+                scale: 1.0,
+            },
+            mode: Pick::Region,
+            windows: vec![],
+            cursor: Cursor { x: 0.0, y: 0.0 },
+            hud: Hud {
+                last_mode: prefs::LastMode::Region,
+                timer_secs: 0,
+                has_previous: false,
+                capture_on_release: true,
+            },
+        }
+    }
+
+    /// A window built ahead of its first capture loads its page and asks for its init: between sessions that is a
+    /// plain "nothing yet" (it gets the init by event when a session opens), never an error on a page nobody sees.
+    #[test]
+    fn an_overlay_window_asking_between_sessions_gets_nothing_not_an_error() {
+        let none = std::collections::HashMap::new();
+        assert_eq!(
+            overlay_of(&none, "shots-overlay-3")
+                .unwrap()
+                .map(|i| i.session),
+            None
+        );
+    }
+
+    #[test]
+    fn an_overlay_window_asking_during_a_session_gets_its_displays_init() {
+        let mut open = std::collections::HashMap::new();
+        open.insert(3, init_of(7, 3));
+        open.insert(4, init_of(7, 4));
+        assert_eq!(
+            overlay_of(&open, "shots-overlay-4")
+                .unwrap()
+                .unwrap()
+                .display
+                .id,
+            4
+        );
+        // a display with no overlay in this session gets nothing
+        assert!(overlay_of(&open, "shots-overlay-9").unwrap().is_none());
+    }
+
+    #[test]
+    fn only_an_overlay_window_may_ask_for_an_overlay_init() {
+        let open = std::collections::HashMap::new();
+        for label in ["main", "shots-quick", "shots-overlay-x", "shots-overlay-"] {
+            assert!(overlay_of(&open, label).is_err(), "{label}");
+        }
     }
 
     /// The page reads exactly `url` and `hex` from `shots_overlay_loupe` (serialize the real value).
@@ -875,6 +1059,7 @@ mod tests {
     #[test]
     fn the_overlay_init_carries_what_the_hud_needs() {
         let v = serde_json::to_value(OverlayInit {
+            session: 12,
             display: DisplayInfo {
                 id: 3,
                 frame: Rect::new(0.0, 0.0, 10.0, 10.0),
@@ -891,6 +1076,7 @@ mod tests {
             },
         })
         .unwrap();
+        assert_eq!(v["session"], 12);
         assert_eq!(v["mode"], "all");
         assert_eq!(v["hud"]["captureOnRelease"], false);
         assert_eq!(v["hud"]["lastMode"], "window");

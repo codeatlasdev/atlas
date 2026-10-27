@@ -149,8 +149,10 @@ export interface HudInit {
 	captureOnRelease: boolean;
 }
 
-/** `shots_overlay_init()`. */
+/** `shots_overlay_init()` (`null` while no capture session is open) and event `shots://overlay-init`. */
 export interface OverlayInit {
+	/** The capture session: the windows are reused, so this tells one session from the next. */
+	session: number;
 	display: Display;
 	mode: Mode;
 	windows: OverlayWindow[];

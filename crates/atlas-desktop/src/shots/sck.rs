@@ -44,9 +44,10 @@ pub struct Content {
     raw: Retained<SCShareableContent>,
 }
 
-// SAFETY: the retained SCShareableContent is only read from the thread that fetched it or handed to SCK calls,
-// which are thread-safe; it is never mutated.
+// SAFETY: the retained SCShareableContent is never mutated; its getters and the SCK calls it is handed to are
+// thread-safe, so it may be shared (the overlay keeps one for the window pick that follows it) and sent.
 unsafe impl Send for Content {}
+unsafe impl Sync for Content {}
 
 fn cgrect(r: &Rect) -> CGRect {
     CGRect::new(CGPoint::new(r.x, r.y), CGSize::new(r.w, r.h))
@@ -235,13 +236,32 @@ pub fn still_rgba(
     exclude: &[u32],
     opts: StillOpts,
 ) -> Result<super::pixels::Rgba, String> {
+    still_pixels(target, exclude, opts, false)
+}
+
+/// [`still_rgba`] keeping the alpha channel, straight: a window's rounded corners and the margin of its shadow are
+/// transparent, and the shadow and padding drawn around it (`pixels::frame_window`) are made from that alpha.
+pub fn still_rgba_alpha(
+    target: &Target,
+    exclude: &[u32],
+    opts: StillOpts,
+) -> Result<super::pixels::Rgba, String> {
+    still_pixels(target, exclude, opts, true)
+}
+
+fn still_pixels(
+    target: &Target,
+    exclude: &[u32],
+    opts: StillOpts,
+    keep_alpha: bool,
+) -> Result<super::pixels::Rgba, String> {
     let (filter, cfg, _) = still_config(target, exclude, opts)?;
     let (tx, rx) = mpsc::channel();
     let block = RcBlock::new(
         move |img: *mut objc2_core_graphics::CGImage, e: *mut NSError| {
             // SAFETY: SCK passes a valid image or a valid error, both live for this callback.
             let r = match unsafe { img.as_ref() } {
-                Some(i) => rgba_of(i),
+                Some(i) => read_pixels(i, keep_alpha),
                 None => Err(sck_error(e)),
             };
             let _ = tx.send(r);
@@ -261,6 +281,13 @@ pub fn still_rgba(
 /// comes from the image's alpha info and byte order (`pixels::Order::of`); a format that is not 8-bit-per-channel
 /// 32-bit is an error, not a guess.
 pub(super) fn rgba_of(img: &objc2_core_graphics::CGImage) -> Result<(Vec<u8>, (u32, u32)), String> {
+    read_pixels(img, false)
+}
+
+fn read_pixels(
+    img: &objc2_core_graphics::CGImage,
+    keep_alpha: bool,
+) -> Result<(Vec<u8>, (u32, u32)), String> {
     use objc2_core_graphics::{CGDataProvider, CGImage as Img, CGImageByteOrderInfo};
     let i = Some(img);
     let (w, h) = (Img::width(i), Img::height(i));
@@ -269,13 +296,19 @@ pub(super) fn rgba_of(img: &objc2_core_graphics::CGImage) -> Result<(Vec<u8>, (u
         return Err("the image is not 8-bit 32-bit pixels".into());
     }
     let little = Img::byte_order_info(i) == CGImageByteOrderInfo::Order32Little;
-    let order = super::pixels::Order::of(Img::alpha_info(i).0, little)
+    let alpha = Img::alpha_info(i).0;
+    let order = super::pixels::Order::of(alpha, little)
         .ok_or("the image has a pixel layout that is not read")?;
     let provider = Img::data_provider(i).ok_or("the image has no pixel data")?;
     let data = CGDataProvider::data(Some(&provider)).ok_or("the image has no pixel data")?;
     // SAFETY: `data` is a live CFData; its pointer and length describe one readable buffer until it is dropped.
     let bytes = unsafe { std::slice::from_raw_parts(data.byte_ptr(), data.length() as usize) };
-    let rgba = super::pixels::rgba_from_rows(bytes, stride, w, h, order)?;
+    let rgba = if keep_alpha {
+        // CGImageAlphaInfo 1 and 2 are the premultiplied layouts
+        super::pixels::straight_rgba_from_rows(bytes, stride, w, h, order, matches!(alpha, 1 | 2))?
+    } else {
+        super::pixels::rgba_from_rows(bytes, stride, w, h, order)?
+    };
     Ok((rgba, (w as u32, h as u32)))
 }
 

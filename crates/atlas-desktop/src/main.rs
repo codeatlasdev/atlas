@@ -629,6 +629,8 @@ fn main() {
         shots::shots_debug_start,
         #[cfg(target_os = "macos")]
         shots::shots_debug_freeze,
+        #[cfg(target_os = "macos")]
+        shots::shots_debug_activation,
         shots::perf::shots_perf,
     ));
     #[cfg(not(debug_assertions))]

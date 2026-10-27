@@ -1206,3 +1206,105 @@ describe("capture on release", () => {
 		expect(r.all.filter((e) => e.type === "commit")).toHaveLength(1);
 	});
 });
+
+// The overlay window is built once and reused by every capture (pre-warmed, hidden between them): the page must come
+// back from a finished session as clean as a new page, and must not act before Rust has said what this session is.
+describe("a reused overlay window", () => {
+	const onRelease = { hud: { lastMode: "region", timerSecs: 0, hasPrevious: false, captureOnRelease: true } };
+	const init = (session, extra = {}) => ({
+		type: "init",
+		init: {
+			session,
+			display: primary,
+			mode: "region",
+			windows: [],
+			cursor: { x: 10, y: 10 },
+			...onRelease,
+			...extra,
+		},
+	});
+
+	test("a window that committed starts the next session clean: no selection, not done, the new pointer", () => {
+		const first = run(reduce(initialState(), init(1)).state, [down(10, 10), move(200, 200), up(200, 200)]);
+		expect(first.state.done).toBe(true);
+		const again = reduce(first.state, { type: "reset" });
+		expect(again.state).toEqual(initialState());
+		const s = reduce(again.state, init(2)).state;
+		expect(s.done).toBe(false);
+		expect(s.rect).toBeNull();
+		expect(s.held).toBeNull();
+		expect(s.drag).toBeNull();
+		expect(s.pointer).toEqual({ x: 10, y: 10 });
+		// and it works: a drag commits again
+		const r = run(s, [down(10, 10), move(100, 100), up(100, 100)]);
+		expect(commitOf(r.all)).toBeDefined();
+	});
+
+	// Even without the reset (it is an event; a lost one must not brick the window) the next session's init revives it.
+	test("a finished page takes the next session's init without a reset", () => {
+		const first = run(reduce(initialState(), init(1)).state, [down(10, 10), move(200, 200), up(200, 200)]);
+		expect(first.state.done).toBe(true);
+		const s = reduce(first.state, init(2)).state;
+		expect(s.done).toBe(false);
+		expect(commitOf(run(s, [down(10, 10), move(100, 100), up(100, 100)]).all)).toBeDefined();
+	});
+
+	test("a window that was cancelled is usable again after the reset", () => {
+		const c = run(reduce(initialState(), init(1)).state, [key("Escape")]);
+		expect(c.state.done).toBe(true);
+		const s = reduce(reduce(c.state, { type: "reset" }).state, init(2)).state;
+		expect(commitOf(run(s, [down(10, 10), move(100, 100), up(100, 100)]).all)).toBeDefined();
+	});
+
+	test("a hovered window and a mode from the last session do not leak into the next", () => {
+		const used = run(boot(primary, "window", [win(1, 0, 0, 100, 100)]), [move(50, 50)]);
+		expect(used.state.pick).toBe("window");
+		expect(used.state.hover).not.toBeNull();
+		const s = reduce(reduce(used.state, { type: "reset" }).state, init(3)).state;
+		expect(s.pick).toBe("region");
+		expect(s.hover).toBeNull();
+		expect(s.hud).toBeNull();
+		expect(s.windows).toEqual([]);
+	});
+
+	// Rust sends the session's init by event and the page also asks for it when it mounts (a cold build): both can
+	// arrive. The second must not wipe a drag that is already under way.
+	test("the same session's init twice is a no-op: a drag in progress survives it", () => {
+		const s = reduce(initialState(), init(5)).state;
+		const mid = run(s, [down(10, 10), move(80, 80)]).state;
+		expect(mid.drag).not.toBeNull();
+		const dup = reduce(mid, init(5));
+		expect(dup.state).toEqual(mid);
+		expect(dup.effects).toEqual([]);
+	});
+
+	// Rust sends the init twice per session: at once (so the page is live while the screen is still being frozen) and
+	// again with the windows a pick can snap to once the listing is done. The second brings the windows only.
+	test("the same session's init later in the session brings the windows without touching the drag", () => {
+		const s = reduce(initialState(), init(5)).state;
+		const mid = run(s, [down(10, 10), move(80, 80)]).state;
+		const w = win(7, 0, 0, 100, 100);
+		const next = reduce(mid, init(5, { windows: [w] }));
+		expect(next.state.windows).toEqual([w]);
+		expect(next.state.drag).toEqual(mid.drag);
+		expect(next.state.rect).toEqual(mid.rect);
+		expect(next.effects).toEqual([]);
+	});
+
+	test("a different session's init replaces the old state", () => {
+		const s = reduce(initialState(), init(5)).state;
+		const mid = run(s, [down(10, 10), move(80, 80)]).state;
+		const next = reduce(mid, init(6, { cursor: { x: 300, y: 300 } })).state;
+		expect(next.drag).toBeNull();
+		expect(next.rect).toBeNull();
+		expect(next.pointer).toEqual({ x: 300, y: 300 });
+	});
+
+	// The freeze is taken while the overlay is already on screen (Rust shows the windows first, then freezes in
+	// parallel). Until the session's init arrives there is no display to commit against: a release before it is
+	// ignored, never a commit with a wrong display or a phantom rect.
+	test("before the session's init a drag does not commit anything", () => {
+		const r = run(initialState(), [down(10, 10), move(200, 200), up(200, 200)]);
+		expect(r.all).toEqual([]);
+	});
+});

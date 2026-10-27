@@ -1,7 +1,7 @@
 <script lang="ts">
 	/** Left sidebar: filter, fixed views, the active project and the collapsible list of the others. */
 	import { IconButton, Kbd, Skeleton, Spinner } from "@codeatlasdev/ui";
-	import { primaryKey } from "#lib/keys.ts";
+	import { kbd, primaryKey } from "#lib/keys.ts";
 	import {
 		Bot,
 		ChevronRight,
@@ -176,7 +176,7 @@
 					aria-label="Jump to worktree or terminal"
 					onclick={() => onJump?.()}
 				>
-					<Kbd>{shortcutFor("atlas::Jump") ?? "⌘K"}</Kbd>
+					<Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd>
 				</button>
 			{/snippet}
 		</Tip>

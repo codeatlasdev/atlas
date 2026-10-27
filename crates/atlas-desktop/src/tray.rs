@@ -273,10 +273,15 @@ pub fn reachable(app: &AppHandle) -> bool {
     app.try_state::<TrayState>().is_none() || tray_host_present()
 }
 
-/// The tray glyph: white on Linux (hosts draw the PNG as is on dark panels), the black template on macOS (tinted by
-/// the system). Both are rendered from `assets/tray-template.svg` by `scripts/icons.ts`.
+/// The tray glyph, per platform: the black template on macOS (tinted by the system), white on Linux (hosts draw the
+/// PNG as is on dark panels) and the full-colour app mark on Windows, whose notification area never tints an icon
+/// (a template would be a solid black disc on the dark taskbar) and reads on both light and dark taskbars. The
+/// template and the white variant are rendered from `assets/tray-template.svg`, the colour one is the app icon's
+/// 32x32 (`app-icon.svg`), all by `scripts/icons.ts`.
 fn icon() -> tauri::Result<tauri::image::Image<'static>> {
-    tauri::image::Image::from_bytes(if cfg!(target_os = "linux") {
+    tauri::image::Image::from_bytes(if cfg!(target_os = "windows") {
+        include_bytes!("../icons/32x32.png")
+    } else if cfg!(target_os = "linux") {
         include_bytes!("../icons/tray-linux.png")
     } else {
         include_bytes!("../icons/tray.png")
@@ -291,7 +296,7 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
     TrayIconBuilder::with_id("main")
         .icon(icon()?)
-        .icon_as_template(!cfg!(target_os = "linux"))
+        .icon_as_template(cfg!(target_os = "macos"))
         .menu(&menu(app)?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| on_menu(app, ev.id().as_ref()))

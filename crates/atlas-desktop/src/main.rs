@@ -14,8 +14,9 @@ mod browser_fail;
 #[cfg(target_os = "macos")]
 mod browser_fail_mac;
 mod id_migrate;
-// Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// Pure decision code: macOS (AppKit monitor) drives the mac-keycode half, Windows (WebView2 accelerator hook) the
+// DOM-code half, Linux neither. Each host leaves the other half unused; all of it is built so its tests run.
+#[allow(dead_code)]
 mod browser_keys;
 #[cfg(target_os = "macos")]
 mod browser_keys_mac;

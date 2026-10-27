@@ -57,9 +57,9 @@ fn reg_value(out: &str, name: &str) -> Option<String> {
 }
 
 /// Run the installer `source` silently with its install dir set to `target`'s folder, wait for
-/// it, and check the app is there at `version`. The installer closes a running Atlas first and
-/// replaces the files in place; the previous install folder is kept aside until the new one is
-/// verified and put back when the installer fails or leaves another version behind.
+/// it, and check the app is there at `version`. The installer closes a running Atlas Desktop and
+/// writes the files in place; the previous files are kept aside until the new ones are verified
+/// and put back when the installer fails or leaves another version behind.
 pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Result<()> {
     if !is_pe(source) {
         bail!(
@@ -67,13 +67,36 @@ pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Re
             source.display()
         );
     }
+    // The silent installer terminates a running Atlas Desktop: bring it back afterwards (the terminal
+    // host and the stacks keep running on their own, so it reattaches where it was).
+    let was_running = app_running(target);
     install_with(
         target,
         version,
         &version_file(),
         |dir| run_installer(source, dir),
         registered_version,
-    )
+    )?;
+    if was_running && !app_running(target) {
+        let _ = open(target, &[]);
+    }
+    Ok(())
+}
+
+/// An Atlas Desktop runs from `target` (not a dev build elsewhere with the same image name).
+fn app_running(target: &Path) -> bool {
+    let Some(name) = target
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+    else {
+        return false;
+    };
+    let want = target.to_string_lossy().to_lowercase().replace('/', "\\");
+    atlas_core::sys::process_rows().iter().any(|r| {
+        r.exe.to_lowercase() == name
+            && atlas_core::sys::command_line(r.pid)
+                .is_some_and(|c| c.to_lowercase().replace('/', "\\").contains(&want))
+    })
 }
 
 /// NSIS: `/S` silent; `/D=` must come last and unquoted, even with spaces.
@@ -90,16 +113,59 @@ fn run_installer(source: &Path, dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The previous install folder, beside the new one.
-fn backup_dir(dir: &Path) -> PathBuf {
-    let mut name = dir.file_name().unwrap_or_default().to_os_string();
-    name.push(".prev");
-    dir.with_file_name(name)
+/// Suffix of a file moved aside by the install run of process `pid`: `atlas.exe` →
+/// `atlas.exe.atlas-old-1234`.
+fn aside_suffix(pid: u32) -> String {
+    format!(".atlas-old-{pid}")
+}
+
+/// `(original name, run pid)` when `name` is a file some install run moved aside.
+fn parse_aside(name: &str) -> Option<(&str, u32)> {
+    let (orig, pid) = name.rsplit_once(".atlas-old-")?;
+    Some((orig, pid.parse().ok()?))
+}
+
+/// Put back what an earlier run (killed mid-install) moved aside, and delete leftovers of earlier
+/// successful runs. Windows cannot delete an image that is still running (the old hostd keeps
+/// `atlas.exe` open until it exits), so an undeletable leftover simply waits for the next run.
+fn recover(dir: &Path, own: u32) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let Some((orig, pid)) = parse_aside(&name) else {
+            continue;
+        };
+        if pid == own {
+            continue;
+        }
+        let orig = dir.join(orig);
+        if orig.exists() {
+            let _ = remove(&e.path());
+        } else {
+            let _ = std::fs::rename(e.path(), orig);
+        }
+    }
+}
+
+fn remove(p: &Path) -> std::io::Result<()> {
+    if p.is_dir() {
+        std::fs::remove_dir_all(p)
+    } else {
+        std::fs::remove_file(p)
+    }
 }
 
 /// The install steps around the installer, with the installer (`run`: given the install folder)
-/// and the registry read (`registered`) injected. On any failure the previous folder and version
-/// record are restored; on success the backup is deleted.
+/// and the registry read (`registered`) injected. On any failure the previous files and version
+/// record are restored; on success the moved-aside files are deleted (or left for the next run
+/// when still in use).
+///
+/// Every entry of the install folder is moved aside by renaming it in place, never the folder
+/// itself: Windows refuses to move a folder while any file in it is open, and one always is
+/// during `atlas update` (the bundled `atlas.exe` running the update, the terminal host
+/// `atlas.exe hostd`), but it does let a running image be renamed.
 ///
 /// The check: `target` is a file and, when the installer registered a version, it equals
 /// `version`. An installer that registers nothing (a `--from` build) is judged by the file only.
@@ -111,21 +177,29 @@ fn install_with(
     registered: impl FnOnce() -> Option<String>,
 ) -> Result<()> {
     let dir = target.parent().context("bad install path")?;
-    let backup = backup_dir(dir);
-    // A previous run killed after moving the install aside: put it back first.
-    if !dir.exists() && backup.exists() {
-        let _ = std::fs::rename(&backup, dir);
+    let pid = std::process::id();
+    recover(dir, pid);
+    let suffix = aside_suffix(pid);
+    let mut aside: Vec<(PathBuf, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if parse_aside(&name).is_some() {
+                continue;
+            }
+            let from = e.path();
+            let to = dir.join(format!("{name}{suffix}"));
+            if let Err(err) = std::fs::rename(&from, &to) {
+                for (f, t) in aside.iter().rev() {
+                    let _ = std::fs::rename(t, f);
+                }
+                return Err(err)
+                    .with_context(|| format!("cannot move {} aside to update it", from.display()));
+            }
+            aside.push((from, to));
+        }
     }
-    let _ = std::fs::remove_dir_all(&backup);
-    let had_old = dir.exists();
-    if had_old {
-        std::fs::rename(dir, &backup).with_context(|| {
-            format!(
-                "cannot move {} aside (is Atlas still running?)",
-                dir.display()
-            )
-        })?;
-    }
+    let had_old = !aside.is_empty();
     let old_version = std::fs::read(vf).ok();
 
     let result = (|| -> Result<()> {
@@ -144,13 +218,26 @@ fn install_with(
 
     match result {
         Ok(()) => {
-            let _ = std::fs::remove_dir_all(&backup);
+            for (_, t) in &aside {
+                let _ = remove(t);
+            }
             Ok(())
         }
         Err(e) => {
-            let _ = std::fs::remove_dir_all(dir);
-            if had_old {
-                let _ = std::fs::rename(&backup, dir);
+            // Drop what the installer wrote, then put every original back under its name.
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for e in entries.flatten() {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if parse_aside(&name).is_none() {
+                        let _ = remove(&e.path());
+                    }
+                }
+            }
+            for (f, t) in &aside {
+                let _ = std::fs::rename(t, f);
+            }
+            if !had_old {
+                let _ = std::fs::remove_dir(dir);
             }
             match old_version {
                 Some(v) => {
@@ -359,16 +446,20 @@ mod install_tests {
         assert!(!vf.exists());
     }
 
-    /// Killed after the install was moved aside, before the installer ran: the next run puts the
-    /// old install back, then replaces it.
+    /// Killed after the files were moved aside, before the installer ran: the next run puts the
+    /// old files back, then replaces them.
     #[test]
     fn an_install_killed_after_the_move_is_recovered_by_the_next_one() {
         let (tmp, target, vf) = installed();
-        std::fs::rename(tmp.path().join("Atlas"), tmp.path().join("Atlas.prev")).unwrap();
+        let dir = tmp.path().join("Atlas");
+        for f in ["atlas-desktop.exe", "data.bin"] {
+            std::fs::rename(dir.join(f), dir.join(format!("{f}{}", aside_suffix(1)))).unwrap();
+        }
 
         let e = install_with(&target, Some("1.1.0"), &vf, |_| bail!("boom"), || None).unwrap_err();
         assert!(format!("{e:#}").contains("boom"));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "old");
+        assert_eq!(names(&dir), ["atlas-desktop.exe", "data.bin"]);
 
         install_with(&target, Some("1.1.0"), &vf, installs("new"), || {
             Some("1.1.0".into())
@@ -376,5 +467,43 @@ mod install_tests {
         .unwrap();
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
         assert_eq!(names(tmp.path()), ["Atlas", "app-version"]);
+    }
+
+    /// The bug `atlas update` hit on Windows: a file in the install folder is open (the bundled
+    /// `atlas.exe` running the update, `atlas.exe hostd`), so the folder could not be moved. The
+    /// open file is now renamed in place and the update goes through; the leftover it leaves while
+    /// still open is cleaned by the next run.
+    #[cfg(windows)]
+    #[test]
+    fn an_open_file_in_the_install_folder_does_not_block_the_update() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (tmp, target, vf) = installed();
+        let dir = tmp.path().join("Atlas");
+        let held = dir.join("atlas.exe");
+        std::fs::write(&held, "running").unwrap();
+        // How Windows opens a running image: others may read and rename it (FILE_SHARE_DELETE), not write.
+        let handle = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x4)
+            .open(&held)
+            .unwrap();
+        assert!(
+            std::fs::rename(&dir, tmp.path().join("Atlas.moved")).is_err(),
+            "the folder must be unmovable while a file in it is open, else this test proves nothing"
+        );
+
+        install_with(&target, Some("1.1.0"), &vf, installs("new"), || {
+            Some("1.1.0".into())
+        })
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(&vf).unwrap(), "1.1.0");
+
+        drop(handle);
+        install_with(&target, Some("1.1.0"), &vf, installs("new"), || {
+            Some("1.1.0".into())
+        })
+        .unwrap();
+        assert_eq!(names(&dir), ["atlas-desktop.exe"]);
     }
 }

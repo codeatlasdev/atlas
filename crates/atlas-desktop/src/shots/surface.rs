@@ -207,7 +207,11 @@ pub fn build(
         format!("{}?{query}", surface.route())
     };
     let (w, h) = surface.size();
-    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()));
+    // Windows: every webview of the app passes the same browser args (webview_win::ARGS).
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    let win = builder
         .theme(theme)
         .initialization_script(script)
         .title("Atlas Capture")

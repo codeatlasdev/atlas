@@ -60,6 +60,8 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+#[cfg(windows)]
+mod webview_win;
 mod workspace;
 mod worktree;
 mod zoom;
@@ -96,6 +98,8 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        #[cfg(windows)]
+        webview_win::sync(app);
         return;
     }
     // Agent instances need the private virtual display (macOS); elsewhere they stay hidden.
@@ -337,6 +341,10 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
         agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
+    #[cfg(windows)]
+    {
+        builder = builder.additional_browser_args(webview_win::ARGS);
+    }
     let win = builder
         .visible(false)
         .theme(theme)
@@ -470,8 +478,13 @@ fn main() {
                 {
                     api.prevent_close();
                     let _ = win.hide();
+                    #[cfg(windows)]
+                    webview_win::sync(win.app_handle());
                 }
             }
+            // Minimize and restore arrive as a resize (0x0 while minimized).
+            #[cfg(windows)]
+            WindowEvent::Resized(_) if win.label() == "main" => webview_win::sync(win.app_handle()),
             // window-state's restored position lands as the first move, after setup
             // and Ready; check it once there.
             WindowEvent::Moved(_) if win.label() == "main" => {

@@ -9,6 +9,7 @@
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import Group from "#lib/settings/Group.svelte";
 	import Row from "#lib/settings/Row.svelte";
+	import DockSettings from "./settings/DockSettings.svelte";
 	import LoadError from "#lib/settings/LoadError.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
 	import { customAgentEntry, type CustomAgentEntry } from "#lib/settings/customAgents.ts";
@@ -128,6 +129,8 @@
 		</Row>
 	{/each}
 </Group>
+
+<DockSettings />
 
 <Group title="Custom agents" description={customDescription}>
 	{#each custom as c (c.id)}

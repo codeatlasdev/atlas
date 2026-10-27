@@ -15,7 +15,7 @@ import { shell } from "#lib/shell/shell.svelte.ts";
 import { hueOf } from "#lib/shell/space.ts";
 import { trayIconOf } from "#lib/shell/identity.ts";
 import { identities } from "#lib/stores/identity.svelte.ts";
-import type { TrayAction, TrayProject, TraySnapshot } from "#lib/tray.ts";
+import type { TrayAction, TrayAgent, TrayProject, TraySnapshot } from "#lib/tray.ts";
 
 const SPARK_POINTS = 30;
 /** The popover is not looking: at most one snapshot per this many ms. */
@@ -23,6 +23,31 @@ const PUBLISH_MS = 1000;
 
 /** When each (project, service) was first seen failed, to say "failed 2 min ago". */
 const failedAt = new Map<string, number>();
+
+/** Newest first: the worktree's place in the main window's recents, as a descending timestamp-like rank. */
+function recentAt(id: string): number {
+	const i = ws.doc.recentWorktrees.indexOf(id);
+	return i < 0 ? 0 : ws.doc.recentWorktrees.length - i;
+}
+
+/** Every agent terminal with its place and state; the popover decides which ones are news. */
+function agentList(): TrayAgent[] {
+	return ws.doc.tabs
+		.filter((t) => t.agent && t.pty && !t.chat)
+		.map((t): TrayAgent => {
+			const w = ws.worktree(t.worktreeId);
+			const s = agents.status[t.id];
+			return {
+				tabId: t.id,
+				agent: t.agent!,
+				project: store.projects.find((p) => p.id === w?.repoId)?.name ?? "",
+				worktree: w?.name ?? "",
+				state: s?.state ?? "idle",
+				lastMessage: s?.last_message ?? null,
+				updatedAt: s?.updated_at ?? 0,
+			};
+		});
+}
 
 function projects(): TrayProject[] {
 	void metrics.rev;
@@ -49,6 +74,10 @@ function projects(): TrayProject[] {
 				icon: trayIconOf(identities.iconOf(p.parent ?? p.id), p.name, identities.dataUrlOf(p.parent ?? p.id)),
 				running: p.running,
 				branch: p.branch,
+				parent: p.parent,
+				path: p.root,
+				pinned: p.pinned,
+				recentAt: recentAt(p.id),
 				services: rows.map((s) => ({ name: s.name, state: s.state })),
 				cpu: Math.round(rows.reduce((t, s) => t + (s.cpu ?? 0), 0)),
 				mem: Math.round(rows.reduce((t, s) => t + (s.mem_mb ?? 0), 0)),
@@ -60,6 +89,7 @@ function projects(): TrayProject[] {
 
 function snapshot(): TraySnapshot {
 	const states = Object.values(agents.status);
+	const list = agentList();
 	const needs = ws.doc.tabs.filter(
 		(t) => t.agent && ["waiting", "blocked"].includes(agents.status[t.id]?.state),
 	);
@@ -70,6 +100,7 @@ function snapshot(): TraySnapshot {
 			working: ws.doc.tabs.filter((t) => t.agent && agents.status[t.id]?.state === "working").length,
 			needsYou: needs.length || states.filter((s) => s.state === "waiting" || s.state === "blocked").length,
 			focusTab: needs[0]?.id ?? null,
+			list,
 		},
 		terminals: { live: Object.values(ws.ptys).filter((p) => !p.exited && !(p.pty in ws.exited)).length },
 		host: { status: hostState.status, version: hostState.version },
@@ -117,6 +148,10 @@ function carryOut(a: TrayAction) {
 		case "terminal":
 			ws.view = "worktree";
 			if (ws.selected) void ws.newTerminal(ws.selected.id);
+			break;
+		case "new-agent":
+			ws.view = "worktree";
+			if (ws.selected) void agents.launch(ws.selected.id);
 			break;
 	}
 }

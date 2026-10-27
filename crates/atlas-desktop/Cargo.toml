@@ -30,6 +30,10 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+gif = "0.14"
+color_quant = "1"
+png = "0.18"
 window-vibrancy = "0.8"
 atlas-tui = { path = "../atlas-tui" }
 atlas-core = { path = "../atlas-core" }
@@ -49,14 +53,15 @@ tempfile = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSView", "NSResponder", "NSWindow", "NSWorkspace", "NSGraphics", "NSPasteboard", "NSPasteboardItem", "NSEvent", "NSHapticFeedback", "NSImage", "NSBitmapImageRep", "NSImageRep", "NSGraphicsContext", "objc2-core-graphics"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSView", "NSResponder", "NSWindow", "NSWorkspace", "NSGraphics", "NSPasteboard", "NSPasteboardItem", "NSEvent", "NSHapticFeedback", "NSImage", "NSBitmapImageRep", "NSImageRep", "NSGraphicsContext", "NSSound", "objc2-core-graphics"] }
 block2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSString", "NSError", "NSURL", "NSArray", "NSDictionary", "NSProcessInfo", "NSData", "NSObject", "NSValue", "NSRunLoop", "NSDate", "NSNotification", "NSOperation"] }
-objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "SCStream", "SCShareableContent", "SCScreenshotManager", "SCRecordingOutput", "SCError", "objc2-core-media", "objc2-core-graphics", "objc2-av-foundation"] }
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "SCStream", "SCShareableContent", "SCScreenshotManager", "SCRecordingOutput", "SCError", "objc2-core-media", "objc2-core-graphics", "objc2-av-foundation", "objc2-core-foundation", "libc"] }
 objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMSampleBuffer", "CMTime", "CMSync", "objc2-core-video"] }
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGImage", "CGColorSpace", "CGDataProvider", "CGPath", "CGColor"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindow", "CGImage", "CGColorSpace", "CGDataProvider", "CGPath", "CGColor", "CGEvent"] }
 objc2-core-video = { version = "0.3", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
-objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVMediaFormat", "AVVideoSettings"] }
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVMediaFormat", "AVVideoSettings", "AVAsset", "AVAssetTrack", "AVComposition", "AVCompositionTrack", "AVAssetExportSession", "AVAssetImageGenerator", "AVMovie", "AVAsynchronousKeyValueLoading", "AVCaptureDevice", "objc2-core-media", "objc2-core-graphics", "objc2-core-foundation", "alloc"] }
+objc2-vision = { version = "0.3", default-features = false, features = ["std", "block2", "VNRecognizeTextRequest", "VNRequest", "VNRequestHandler", "VNObservation", "VNTypes", "VNGeometry", "objc2-core-foundation"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "WKWebView", "WKSnapshotConfiguration"] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CADisplayLink", "CALayer", "CATransaction", "CAAnimation", "CAMediaTiming", "CAShapeLayer", "objc2-core-graphics"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFData"] }
@@ -79,6 +84,8 @@ windows-core = "0.62"
 windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 
 [dev-dependencies]
+# `tauri::test`: the pin wall is tested through the real IPC pipeline on the mock runtime (shots/pin.rs).
+tauri = { version = "2", features = ["test"] }
 serde_norway = { workspace = true }
 
 [lints]

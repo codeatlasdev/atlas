@@ -23,6 +23,13 @@ export interface TrayProject {
 	icon: TrayIcon;
 	running: boolean;
 	branch: string | null;
+	/** Id of the main checkout when this is a linked worktree. */
+	parent: string | null;
+	/** Checkout folder, to tell apart rows that share a name and a branch. */
+	path: string;
+	pinned: boolean;
+	/** When the project was last opened or its agents last moved (ms epoch, 0 = never seen): recents first. */
+	recentAt: number;
 	services: TrayService[];
 	/** Process-tree CPU (% of a core) and memory (MB), summed over the services. */
 	cpu: number;
@@ -33,11 +40,22 @@ export interface TrayProject {
 	failed: { service: string; at: number } | null;
 }
 
+/** One agent terminal, as much of `DockAgent` as a popover row shows. */
+export interface TrayAgent {
+	tabId: string;
+	agent: string;
+	project: string;
+	worktree: string;
+	state: "idle" | "working" | "blocked" | "waiting" | "done";
+	lastMessage: string | null;
+	updatedAt: number;
+}
+
 export interface TraySnapshot {
 	/** Epoch ms the main window built it; the popover shows ages relative to now. */
 	at: number;
 	projects: TrayProject[];
-	agents: { working: number; needsYou: number; focusTab: string | null };
+	agents: { working: number; needsYou: number; focusTab: string | null; list: TrayAgent[] };
 	terminals: { live: number };
 	/** `outdated`: the terminal host needs a restart that the user has not agreed to yet. */
 	host: {
@@ -53,7 +71,7 @@ export interface TraySnapshot {
 export const EMPTY_SNAPSHOT: TraySnapshot = {
 	at: 0,
 	projects: [],
-	agents: { working: 0, needsYou: 0, focusTab: null },
+	agents: { working: 0, needsYou: 0, focusTab: null, list: [] },
 	terminals: { live: 0 },
 	host: { status: null, version: null },
 	update: null,
@@ -67,6 +85,8 @@ export type TrayAction =
 	| { kind: "logs"; id: string; service: string }
 	| { kind: "agents"; tab: string | null }
 	| { kind: "terminal" }
+	/** Start an agent in the selected project (the main window's own "new agent"). */
+	| { kind: "new-agent" }
 	| { kind: "update" }
 	/** Open the "Restart the terminal host?" prompt. */
 	| { kind: "host" };
@@ -111,11 +131,6 @@ export function runningCards(projects: TrayProject[]): TrayProject[] {
 	return projects
 		.filter((p) => p.running)
 		.sort((a, b) => RANK[projectTone(a)] - RANK[projectTone(b)] || a.name.localeCompare(b.name));
-}
-
-/** Idle projects offered a Start button in the compact list under the cards. */
-export function idleProjects(projects: TrayProject[]): TrayProject[] {
-	return projects.filter((p) => !p.running).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export interface Recommendation {
@@ -184,15 +199,6 @@ export function recommend(s: TraySnapshot, now: number): Recommendation | null {
 export function upLine(p: TrayProject): string {
 	const up = p.services.filter((s) => s.state === "running").length;
 	return `${up}/${p.services.length} up`;
-}
-
-/** Agents card subtitle. */
-export function agentsLine(a: TraySnapshot["agents"]): string {
-	if (!a.working && !a.needsYou) return "All quiet";
-	const parts: string[] = [];
-	if (a.needsYou) parts.push(`${a.needsYou} need${a.needsYou === 1 ? "s" : ""} you`);
-	if (a.working) parts.push(`${a.working} working`);
-	return parts.join(" · ");
 }
 
 /** Dot tone of one service in a project card. */
@@ -277,3 +283,185 @@ export function moveFocus(count: number, current: number, key: string): number {
 	if (key === "End") return count - 1;
 	return current;
 }
+
+/** Rank of an agent that needs you: a blocked one (approval) before a plain wait. */
+const NEED_RANK = { blocked: 0, waiting: 1 } as const;
+
+/**
+ * The agents worth a row: those waiting on you (blocked first, longest wait first, since that one has been
+ * stuck longest) and those working (newest first). Done and idle agents are not news.
+ */
+export function agentSections(list: readonly TrayAgent[]): { needsYou: TrayAgent[]; working: TrayAgent[] } {
+	const needsYou = list
+		.filter((a) => a.state === "blocked" || a.state === "waiting")
+		.sort(
+			(a, b) =>
+				NEED_RANK[a.state as keyof typeof NEED_RANK] - NEED_RANK[b.state as keyof typeof NEED_RANK] ||
+				a.updatedAt - b.updatedAt,
+		);
+	const working = list.filter((a) => a.state === "working").sort((a, b) => b.updatedAt - a.updatedAt);
+	return { needsYou, working };
+}
+
+/** `api`, or `api · feat-login` when the agent runs in a worktree that is not the project's own checkout. */
+export function agentWhere(a: Pick<TrayAgent, "project" | "worktree">): string {
+	const own = !a.worktree || a.worktree === "main" || a.worktree === a.project;
+	if (!a.project) return a.worktree;
+	return own ? a.project : `${a.project} · ${a.worktree}`;
+}
+
+/** What the agent is doing in one line: its last message's first line, else the state in words. */
+export function agentDoing(a: Pick<TrayAgent, "state" | "lastMessage">): string {
+	const first = a.lastMessage
+		?.split("\n")
+		.map((l) => l.trim())
+		.find(Boolean);
+	if (first) return first;
+	return a.state === "blocked" ? "Needs approval" : a.state === "waiting" ? "Waiting for you" : "Working";
+}
+
+/** A project row of the popover: the project plus the name that tells it apart from its siblings. */
+export interface TrayRow extends TrayProject {
+	label: string;
+}
+
+export interface ProjectGroup {
+	repo: TrayProject;
+	/** The repo's name, with its folder appended when another repo has the same name (clones, forks). */
+	repoLabel: string;
+	worktrees: TrayRow[];
+	running: boolean;
+	/** False once the repo itself is listed elsewhere (as a running stack) and only its worktrees remain here. */
+	repoShown?: boolean;
+}
+
+/** Last two path segments (`one/atlas`): enough to tell two checkouts apart without printing the home folder. */
+function pathTail(path: string, n = 2): string {
+	return path.split("/").filter(Boolean).slice(-n).join("/");
+}
+
+/**
+ * Worktrees of one repo with the label that tells them apart. A branch is the name people know; without one the
+ * folder name stands in; the id is the last resort. Two rows that still collide (same branch, different folders)
+ * get the folder appended, so the list never shows N identical rows.
+ */
+function labelled(worktrees: TrayProject[]): TrayRow[] {
+	const base = worktrees.map((w) => ({ w, label: w.branch || pathTail(w.path, 1) || w.id }));
+	const count = new Map<string, number>();
+	for (const { label } of base) count.set(label, (count.get(label) ?? 0) + 1);
+	return base.map(({ w, label }) => ({
+		...w,
+		label: (count.get(label) ?? 0) > 1 && w.path ? `${label} · ${pathTail(w.path)}` : label,
+	}));
+}
+
+const live = (p: TrayProject) => p.running;
+const byRecent = (a: TrayProject, b: TrayProject) => b.recentAt - a.recentAt;
+
+/**
+ * Repos with their worktrees nested. A worktree whose repo is not in the list (removed, or filtered out) stands as
+ * its own group rather than vanishing. Order: pinned, running, most recent, name; inside a group: running, recent, label.
+ */
+export function groupProjects(projects: readonly TrayProject[]): ProjectGroup[] {
+	const ids = new Set(projects.map((p) => p.id));
+	const children = new Map<string, TrayProject[]>();
+	const repos: TrayProject[] = [];
+	for (const p of projects) {
+		if (p.parent && ids.has(p.parent)) children.set(p.parent, [...(children.get(p.parent) ?? []), p]);
+		else repos.push(p);
+	}
+	const names = new Map<string, number>();
+	for (const r of repos) names.set(r.name, (names.get(r.name) ?? 0) + 1);
+	return repos
+		.map((repo): ProjectGroup => {
+			const worktrees = labelled(children.get(repo.id) ?? []).sort(
+				(a, b) => Number(live(b)) - Number(live(a)) || byRecent(a, b) || a.label.localeCompare(b.label),
+			);
+			const twin = (names.get(repo.name) ?? 0) > 1 && repo.path;
+			return {
+				repo,
+				repoLabel: twin ? `${repo.name} · ${pathTail(repo.path)}` : repo.name,
+				worktrees,
+				running: live(repo) || worktrees.some(live),
+			};
+		})
+		.sort(
+			(a, b) =>
+				Number(b.repo.pinned) - Number(a.repo.pinned) ||
+				Number(b.running) - Number(a.running) ||
+				byRecent(a.repo, b.repo) ||
+				a.repo.name.localeCompare(b.repo.name),
+		);
+}
+
+/** More projects than fit without hunting: below this a search field is clutter. */
+const SEARCH_FROM = 8;
+export const showSearch = (count: number): boolean => count >= SEARCH_FROM;
+
+/** A typed search opens the stopped section: a hit behind a closed disclosure would read as "not found". */
+export const searchOpensStopped = (q: string): boolean => q.trim() !== "";
+
+function hit(p: TrayProject & { label?: string }, q: string): boolean {
+	return [p.name, p.branch ?? "", p.label ?? "", p.path].some((f) => f.toLowerCase().includes(q));
+}
+
+/** Running stacks that match the search (all of them without one): the same fields as the project list. */
+export function runningMatches(stacks: readonly TrayProject[], query: string): TrayProject[] {
+	const q = query.trim().toLowerCase();
+	return q ? stacks.filter((p) => hit(p, q)) : [...stacks];
+}
+
+/**
+ * The project list as the popover shows it. Stacks that run are already rows of the "Running" section, so they are
+ * left out here (a project is never listed twice); a group stays while its repo or a worktree is still unlisted.
+ * Groups with a running stack but unlisted siblings come first, the rest sit behind "Stopped (n)", `n` counting rows.
+ * A search keeps the groups where the repo or a worktree matches; if only a worktree matches, only it is listed.
+ */
+export function projectSections(
+	groups: readonly ProjectGroup[],
+	query: string,
+): { running: ProjectGroup[]; stopped: ProjectGroup[]; stoppedCount: number } {
+	const q = query.trim().toLowerCase();
+	const rest = groups.flatMap((g): ProjectGroup[] => {
+		const shown = !live(g.repo);
+		const worktrees = g.worktrees.filter((w) => !live(w));
+		if (!shown && !worktrees.length) return [];
+		return [{ ...g, worktrees, repoShown: shown }];
+	});
+	const kept = q
+		? rest.flatMap((g): ProjectGroup[] => {
+				if (g.repoShown && hit(g.repo, q)) return [g];
+				const worktrees = g.worktrees.filter((w) => hit(w, q) || hit(g.repo, q));
+				return worktrees.length ? [{ ...g, worktrees }] : [];
+			})
+		: rest;
+	const stopped = kept.filter((g) => !g.running);
+	return {
+		running: kept.filter((g) => g.running),
+		stopped,
+		stoppedCount: stopped.reduce((n, g) => n + (g.repoShown ? 1 : 0) + g.worktrees.length, 0),
+	};
+}
+
+/**
+ * The header's one line: what needs you, what is working, what runs. A failed service is red and leads. Stacks
+ * count repos and worktrees alike; zero parts are left out.
+ */
+export function headerSummary(s: TraySnapshot): { tone: Tone; text: string } {
+	const failed = s.projects.reduce((n, p) => n + failedServices(p).length, 0);
+	const up = s.projects.filter((p) => p.running).length;
+	const { needsYou, working } = s.agents;
+	// Most urgent first; when the line would not fit beside the quick actions the least urgent parts are dropped.
+	const parts = [
+		needsYou ? `${needsYou} ${needsYou === 1 ? "needs" : "need"} you` : "",
+		failed ? `${failed} failed` : "",
+		working ? `${working} working` : "",
+		up ? `${up} up` : "",
+	].filter(Boolean);
+	while (parts.length > 1 && parts.join(" · ").length > HEADER_MAX) parts.pop();
+	const tone: Tone = failed ? "fail" : needsYou ? "warn" : parts.length ? "ok" : "off";
+	return { tone, text: parts.length ? parts.join(" · ") : "All quiet" };
+}
+
+/** Characters of the status line that fit beside the mark and four quick actions in the 360 px popover. */
+const HEADER_MAX = 28;

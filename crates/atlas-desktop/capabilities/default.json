@@ -3,7 +3,9 @@
   "identifier": "default",
   "windows": [
     "main",
-    "tray"
+    "tray",
+    "dock",
+    "shots-*"
   ],
   "permissions": [
     "core:default",

@@ -279,6 +279,248 @@ const DEFS = [
 		],
 	},
 	{
+		id: "capture",
+		label: "Capture",
+		description:
+			"Screenshots and screen recordings from a hotkey: where they go, the keys, and your history.",
+		cluster: "app",
+		pages: [
+			{
+				files: ["components/settings/CaptureSettings.svelte"],
+				groups: [
+					{
+						title: "Capture",
+						items: [
+							item(
+								"capture-permission",
+								"Screen Recording access",
+								"Screen Recording lets Atlas see the pixels of other apps. It is only used when you press a capture hotkey; nothing is recorded in the background. After granting it, macOS asks you to restart Atlas.",
+								"capture screenshot screen recording permission privacy grant system settings",
+							),
+							item(
+								"capture-enabled",
+								"Capture hotkeys",
+								"Turn the capture hotkeys on or off. Off gives the keys back to other apps.",
+								"capture screenshot screen recording gif hotkey enable disable",
+							),
+							item(
+								"capture-folder",
+								"Save to",
+								"Where captures are saved.",
+								"capture screenshot screen recording gif folder directory pictures path",
+							),
+						],
+					},
+					{
+						title: "Hotkeys",
+						items: [
+							item(
+								"capture-preset",
+								"Key set",
+								"Start from a ready-made set of keys. Picking one shows what it changes; nothing is saved until you apply it.",
+								"capture screenshot hotkey preset macos cleanshot shortcuts keys",
+							),
+							item(
+								"capture-system-keys",
+								"macOS screenshot shortcuts",
+								"macOS answers ⇧⌘3, ⇧⌘4, ⇧⌘5 and ⇧⌘6 before any app, so Atlas can only use them once you turn them off yourself in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Screenshots. Atlas never changes that setting for you.",
+								"capture screenshot macos system shortcuts keyboard shift command 3 4 5 6 disable free",
+							),
+							item(
+								"capture-key-all-in-one",
+								"All-in-One",
+								"One toolbar over the screen: pick region, window, screen, record, GIF or text.",
+								"capture screenshot all in one toolbar menu hotkey shortcut",
+							),
+							item(
+								"capture-key-region",
+								"Region",
+								"Drag to pick an area, or press Space to switch to picking a window.",
+								"capture screenshot screen region area hotkey shortcut",
+							),
+							item(
+								"capture-key-previous",
+								"Previous area",
+								"Capture the same area as your last region capture, right now.",
+								"capture screenshot previous last area repeat region hotkey shortcut",
+							),
+							item(
+								"capture-key-window",
+								"Window",
+								"Click a window to capture it.",
+								"capture screenshot window hotkey shortcut",
+							),
+							item(
+								"capture-key-fullscreen",
+								"Screen",
+								"Capture the whole screen under the pointer.",
+								"capture screenshot fullscreen full screen display hotkey shortcut",
+							),
+							item(
+								"capture-key-ocr",
+								"Text",
+								"Drag over text on screen and copy it, read on this Mac.",
+								"capture screenshot text ocr recognize copy hotkey shortcut",
+							),
+							item(
+								"capture-key-record",
+								"Record",
+								"Pick an area and record a video. Press the key again to stop.",
+								"capture screen recording video record hotkey shortcut",
+							),
+							item(
+								"capture-key-gif",
+								"GIF",
+								"Pick an area and record an animated GIF.",
+								"capture screen recording gif animated hotkey shortcut",
+							),
+						],
+					},
+					{
+						title: "Screenshots",
+						items: [
+							item(
+								"capture-on-release",
+								"Capture when the mouse is released",
+								"Take the shot as soon as you let go of the selection; turn off to adjust it first and confirm with Return.",
+								"capture screenshot region release mouse instant enter return confirm adjust",
+							),
+							item(
+								"capture-timer",
+								"Self-timer",
+								"Wait this long after you pick before a screenshot is taken. Recordings are not delayed.",
+								"capture screenshot timer delay countdown seconds",
+							),
+							item(
+								"capture-scale",
+								"Resolution",
+								"Retina saves the display's own pixels; Standard saves one pixel per point, a smaller file.",
+								"capture screenshot resolution retina scale 1x 2x pixels size",
+							),
+							item(
+								"capture-hide-icons",
+								"Hide desktop icons",
+								"Hide the icons on the desktop while a screenshot or recording is taken.",
+								"capture screenshot screen recording desktop icons hide clean",
+							),
+							item(
+								"capture-window-shadow",
+								"Window shadow",
+								"A window capture keeps its drop shadow, on a transparent background.",
+								"capture screenshot window shadow transparent",
+							),
+							item(
+								"capture-window-padding",
+								"Window background",
+								"A window capture sits on a padded background instead of a shadow. It wins over the shadow when both are on.",
+								"capture screenshot window background padding backdrop",
+							),
+						],
+					},
+					{
+						title: "Recording",
+						items: [
+							item(
+								"capture-quality",
+								"Video quality",
+								"Lower qualities record fewer pixels, so the file is smaller. GIFs are not affected.",
+								"capture screen recording video quality high medium low size bitrate",
+							),
+							item(
+								"capture-clicks",
+								"Show clicks",
+								"A ring on each click in screen recordings and GIFs.",
+								"capture screen recording gif click ring mouse highlight",
+							),
+							item(
+								"capture-keystrokes",
+								"Show keystrokes",
+								"A pill with the keys you press at the bottom of the recorded area. macOS asks for Input Monitoring the first time.",
+								"capture screen recording keystrokes keys keyboard pressed input monitoring",
+							),
+							item(
+								"capture-system-audio",
+								"Record system sound",
+								"The sound your Mac plays goes into the video. Not in GIFs.",
+								"capture screen recording system sound audio computer",
+							),
+							item(
+								"capture-microphone",
+								"Record the microphone",
+								"Your voice goes into the video. macOS asks for microphone access the first time. Not in GIFs.",
+								"capture screen recording microphone mic voice audio narration",
+							),
+						],
+					},
+					{
+						title: "After a capture",
+						items: [
+							item(
+								"capture-copy",
+								"Copy to clipboard",
+								"Put every capture on the clipboard as soon as it is taken: screenshots as an image, recordings and GIFs as the file.",
+								"capture screenshot clipboard copy",
+							),
+							item(
+								"capture-quick-access",
+								"Show the quick access overlay",
+								"A small card with the capture: copy, save as, annotate, send to an agent, or drag it into another app.",
+								"capture screenshot quick access overlay thumbnail card annotate",
+							),
+							item(
+								"capture-dismiss",
+								"Auto-dismiss the overlay",
+								"Seconds before the card goes away by itself, 0 to 60. 0 keeps it until you close it.",
+								"capture screenshot quick access overlay seconds timer never",
+							),
+							item(
+								"capture-corner",
+								"Overlay corner",
+								"The corner of the display under the pointer where the quick access cards stack.",
+								"capture screenshot quick access overlay corner position bottom top left right",
+							),
+							item(
+								"capture-stack",
+								"Cards in the stack",
+								"How many quick access cards stack in the corner before the oldest goes, 1 to 8.",
+								"capture screenshot quick access overlay stack cards number limit",
+							),
+							item(
+								"capture-sound",
+								"Play sound",
+								"A shutter sound when a screenshot is taken.",
+								"capture screenshot sound shutter audio",
+							),
+							item(
+								"capture-highlight",
+								"Highlight the cursor and clicks",
+								"Show the pointer and a ring on each click in screen recordings and GIFs.",
+								"capture screen recording gif cursor pointer click highlight",
+							),
+						],
+					},
+					{
+						title: "History",
+						items: [
+							item(
+								"capture-history-size",
+								"History size",
+								"How many captures to remember, 1 to 500. Older ones drop off the list; their files stay.",
+								"capture screenshot screen recording gif history size limit keep",
+							),
+							item(
+								"capture-history",
+								"Recent captures",
+								"Open, reveal or remove from the list your recent captures. Removing never deletes the file.",
+								"capture screenshot screen recording gif history list recent quick access folder",
+							),
+						],
+					},
+				],
+			},
+		],
+	},
+	{
 		id: "keyboard",
 		label: "Keyboard shortcuts",
 		description: "Change the key of any command, or remove it.",
@@ -770,7 +1012,7 @@ const DEFS = [
 		cluster: "work",
 		pages: [
 			{
-				files: ["components/AgentSettings.svelte"],
+				files: ["components/AgentSettings.svelte", "components/settings/DockSettings.svelte"],
 				groups: [
 					{
 						title: "Coding agents",
@@ -792,6 +1034,29 @@ const DEFS = [
 								"Extra arguments",
 								"Command-line flags added every time that agent starts.",
 								"model flags args",
+							),
+						],
+					},
+					{
+						title: "Agent dock",
+						items: [
+							item(
+								"dock-enabled",
+								"Show the dock",
+								"Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered.",
+								"floating pill overlay widget menu bar always on top hide show",
+							),
+							item(
+								"dock-hotkey",
+								"Message an agent",
+								"Opens the dock's composer from any app. The text goes to the agent you last used, or the one you @mention.",
+								"hotkey shortcut summon global keybinding send prompt",
+							),
+							item(
+								"dock-toggle-hotkey",
+								"Hide or show the dock",
+								"Works even while the dock is hidden, so it is always the way back. The tray menu has Show Agent Dock too.",
+								"hotkey shortcut hide show toggle global keybinding tray",
 							),
 						],
 					},

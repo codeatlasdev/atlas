@@ -875,7 +875,9 @@ mod tests {
     fn probe_tells_a_configless_folder_from_a_configured_one_and_a_subfolder_of_one() {
         let t = tempfile::tempdir().unwrap();
         let bare = t.path().join("bare");
-        std::fs::create_dir_all(&bare).unwrap();
+        // A repo without atlas.yaml: its `.git` makes it the root, so a package.json in an ancestor of the temp
+        // dir (macOS keeps `{}` in /var/folders/<..>/ on some machines) cannot become the project.
+        std::fs::create_dir_all(bare.join(".git")).unwrap();
         let p = probe(&[], &bare).unwrap();
         assert!(!p.has_config);
         assert_eq!(p.registered, None);
@@ -956,7 +958,9 @@ mod tests {
     fn register_a_configless_folder_adds_it_without_writing_anything() {
         let t = tempfile::tempdir().unwrap();
         let bare = t.path().join("bare");
-        std::fs::create_dir_all(&bare).unwrap();
+        // A repo without atlas.yaml: its `.git` makes it the root, so a package.json in an ancestor of the temp
+        // dir (macOS keeps `{}` in /var/folders/<..>/ on some machines) cannot become the project.
+        std::fs::create_dir_all(bare.join(".git")).unwrap();
         let mut entries = Vec::new();
         let (e, fresh) = register(&mut entries, &bare).unwrap();
         assert!(fresh);
@@ -1086,7 +1090,9 @@ mod tests {
     fn project_view_serializes_config_source_and_no_config_missing_for_the_frontend() {
         let t = tempfile::tempdir().unwrap();
         let bare = t.path().join("bare");
-        std::fs::create_dir_all(&bare).unwrap();
+        // A repo without atlas.yaml: its `.git` makes it the root, so a package.json in an ancestor of the temp
+        // dir (macOS keeps `{}` in /var/folders/<..>/ on some machines) cannot become the project.
+        std::fs::create_dir_all(bare.join(".git")).unwrap();
         let v = serde_json::to_value(view(&entry("a", &bare), None)).unwrap();
         assert_eq!(v["config_source"], "detected");
         assert_eq!(v["missing"], serde_json::Value::Null);
@@ -1103,7 +1109,9 @@ mod tests {
     fn probe_fixture_is_the_real_serialization() {
         let t = tempfile::tempdir().unwrap();
         let bare = t.path().join("bare");
-        std::fs::create_dir_all(&bare).unwrap();
+        // A repo without atlas.yaml: its `.git` makes it the root, so a package.json in an ancestor of the temp
+        // dir (macOS keeps `{}` in /var/folders/<..>/ on some machines) cannot become the project.
+        std::fs::create_dir_all(bare.join(".git")).unwrap();
         let mut real = serde_json::to_value(probe(&[], &bare).unwrap()).unwrap();
         // The temp path differs per run; the contract is the shape, so it is pinned to a stable value.
         for k in ["root", "picked"] {

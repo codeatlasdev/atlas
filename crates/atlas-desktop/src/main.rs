@@ -33,9 +33,13 @@ mod debug_req;
 mod diag;
 #[cfg(target_os = "macos")]
 mod display_mac;
+mod dock;
+#[cfg(target_os = "macos")]
+mod dock_mac;
 mod git;
 mod git_branch;
 mod host;
+mod hotkeys;
 mod lifecycle;
 #[cfg(any(target_os = "linux", test))]
 mod linux_gfx;
@@ -48,6 +52,9 @@ mod pty_batch;
 mod registry;
 mod remote;
 mod shell_env;
+// Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod shots;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -288,6 +295,64 @@ macro_rules! handlers {
             tray::tray_hide,
             tray::tray_resize,
             tray::tray_action,
+            dock::dock_ready,
+            dock::dock_show,
+            dock::dock_publish,
+            dock::dock_snapshot,
+            dock::dock_prefs,
+            dock::dock_prefs_set,
+            dock::dock_toggle,
+            dock::dock_menu,
+            hotkeys::hotkey_check,
+            dock::dock_resize,
+            dock::dock_dragged,
+            dock::dock_keys,
+            dock::dock_send,
+            dock::dock_open,
+            dock::dock_take_attachments,
+            shots::shots_prefs,
+            shots::shots_presets,
+            shots::shots_prefs_set,
+            shots::shots_permission,
+            shots::shots_permission_request,
+            shots::shots_open_settings,
+            shots::shots_open_shortcuts_settings,
+            shots::shots_overlay_previous,
+            shots::shots_timer_cycle,
+            shots::shots_pick_folder,
+            shots::shots_history,
+            shots::shots_history_remove,
+            shots::shots_history_reveal,
+            shots::shots_history_open,
+            shots::shots_overlay_init,
+            shots::shots_overlay_commit,
+            shots::shots_overlay_cancel,
+            shots::shots_overlay_loupe,
+            shots::shots_quick_hover,
+            shots::quick::shots_quick_stack,
+            shots::quick::shots_quick_text,
+            shots::quick::shots_quick_action,
+            shots::quick::shots_quick_drag,
+            shots::pin::shots_pin_load,
+            shots::pin::shots_pin_resize,
+            shots::pin::shots_pin_keys,
+            shots::pin::shots_pin_close,
+            shots::shots_record_state,
+            shots::record::shots_record_pause,
+            shots::record::shots_record_resume,
+            shots::record::shots_record_stop,
+            shots::record::shots_record_cancel,
+            shots::record::shots_gif_presets,
+            shots::record::shots_gif_estimate,
+            shots::record::shots_gif_export,
+            shots::record::shots_gif_cancel,
+            shots::record::shots_record_capabilities,
+            shots::record::shots_record_save,
+            shots::record::shots_record_discard,
+            shots::editor::shots_editor_load,
+            shots::editor::shots_editor_save,
+            shots::editor::shots_editor_close,
+            agent::send::agent_send,
             shell_env::settings_patch,
             $($extra)*
         ]
@@ -427,9 +492,19 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_denylist(&[tray::LABEL])
+                .with_denylist(&[
+                    tray::LABEL,
+                    dock::LABEL,
+                    "shots-quick",
+                    "shots-hud",
+                    "shots-editor",
+                    "shots-keys",
+                ])
+                // Pins are `shots-pin-<n>`: any number of them, so the exact-label denylist cannot name them.
+                .with_filter(|label| !shots::surface::is_pin_label(label))
                 // Showing is `boot`'s call (first frame), not window-state's at creation.
                 .with_state_flags(
                     tauri_plugin_window_state::StateFlags::all()
@@ -450,6 +525,7 @@ fn main() {
             create_main_window(app)?;
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
+            app.manage(tray::CaptureMenus::default());
             // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
             // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
             #[cfg(not(windows))]
@@ -464,6 +540,7 @@ fn main() {
             app.manage(commit_msg::Runs::default());
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
+            app.manage(agent::send::Sends::default());
             app.manage(open_path::Pending::default());
             // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
             open_path::open(
@@ -501,6 +578,8 @@ fn main() {
             if agent_mode::Mode::current().tray_allowed() {
                 tray::start(&handle)?;
             }
+            dock::start(&handle)?;
+            shots::start(&handle);
             boot::mark("setup:end");
             Ok(())
         })
@@ -547,6 +626,12 @@ fn main() {
         debug::debug_log,
         debug::debug_reply,
         debug::gesture_replay_samples,
+        shots::shots_debug_start,
+        #[cfg(target_os = "macos")]
+        shots::shots_debug_freeze,
+        #[cfg(target_os = "macos")]
+        shots::shots_debug_activation,
+        shots::perf::shots_perf,
     ));
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(handlers!());

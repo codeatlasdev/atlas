@@ -195,7 +195,7 @@ pub fn shots_pin_keys(app: AppHandle, window: PinWindow, on: bool) -> Result<(),
         .map_err(|e| e.to_string())?;
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = (app, on);
+    let _ = (app, window, on);
     Ok(())
 }
 

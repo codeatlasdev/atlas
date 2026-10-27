@@ -2,6 +2,7 @@
 	/** The "…" menu of a project head or worktree row. */
 	import { DropdownMenuItem } from "@codeatlasdev/ui";
 	import { api } from "#lib/api.ts";
+	import { revealLabel } from "#lib/keys.ts";
 	import { locateProject, removeProject } from "./projects.ts";
 	import { identities } from "#lib/stores/identity.svelte.ts";
 	import { promptDialog } from "#lib/stores/ask.svelte.ts";
@@ -42,7 +43,7 @@
 		>Open in editor</DropdownMenuItem
 	>
 	<DropdownMenuItem onclick={() => store.run("reveal", () => api.reveal(p.id))}
-		>Reveal in Finder</DropdownMenuItem
+		>{revealLabel()}</DropdownMenuItem
 	>
 {/if}
 <DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>

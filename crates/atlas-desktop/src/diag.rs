@@ -492,7 +492,7 @@ fn is_long_secretish(w: &str) -> bool {
         && !w.starts_with('/')
 }
 
-/// `macOS 15.1 (aarch64)`; the version needs `sw_vers`, so a failure leaves just the family.
+/// `macOS 15.1 (aarch64)`; the version needs `sw_vers` (macOS only), so elsewhere, or on a failure, just the family.
 pub fn os_label() -> String {
     let arch = std::env::consts::ARCH;
     let family = match std::env::consts::OS {
@@ -501,10 +501,14 @@ pub fn os_label() -> String {
         "windows" => "Windows",
         o => o,
     };
-    let version = std::process::Command::new("sw_vers")
-        .arg("-productVersion")
-        .output()
-        .ok()
+    let version = cfg!(target_os = "macos")
+        .then(|| {
+            std::process::Command::new("sw_vers")
+                .arg("-productVersion")
+                .output()
+                .ok()
+        })
+        .flatten()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|v| !v.is_empty());

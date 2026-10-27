@@ -65,21 +65,16 @@ class Welcome {
 		this.picked[path] = !(this.picked[path] ?? true);
 	}
 
-	/** Add a single folder the user points at (secondary action). */
+	/** Add a single folder the user points at (secondary action). No atlas.yaml needed: the stack is detected. */
 	async addFolder() {
-		const dir = await pickFolder({ directory: true, title: "Add atlas project" });
+		const dir = await pickFolder({ directory: true, title: "Add a project folder" });
 		if (typeof dir === "string") await this.#add([dir]);
 	}
 
-	/** Run `atlas init` in a folder (stack detection), then add it. */
+	/** The empty-scan primary action: point at a folder; its stack is detected in memory and nothing is written. */
 	async initFolder() {
-		const dir = await pickFolder({ directory: true, title: "Set up a project with atlas init" });
-		if (typeof dir !== "string") return;
-		const p = await store.run("init", () => api.initProject(dir));
-		if (p) {
-			await store.refresh();
-			await this.#started(p.id);
-		}
+		const dir = await pickFolder({ directory: true, title: "Choose a project folder" });
+		if (typeof dir === "string") await this.#add([dir]);
 	}
 
 	/** Add the ticked projects and start the first one's stack. */

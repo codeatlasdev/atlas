@@ -282,7 +282,7 @@ fn search_tool(root: &Path, args: &Value) -> ToolResult {
 }
 
 pub(crate) fn config_tool(root: &Path) -> ToolResult {
-    let cfg = crate::config::load(root).map_err(|e| format!("{e:#}"))?;
+    let (cfg, _) = crate::config::load_or_detect(root).map_err(|e| format!("{e:#}"))?;
     let mut names: Vec<&String> = cfg.services.keys().collect();
     names.sort();
     let services: Vec<Value> = names

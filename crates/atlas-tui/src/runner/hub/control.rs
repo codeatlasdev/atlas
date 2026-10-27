@@ -4,6 +4,7 @@ use serde_json::json;
 
 use super::Hub;
 use crate::config::ProjectConfig;
+use crate::config::adhoc;
 use crate::control::{ControlCmd, ControlRequest, ControlResponse, Resolved, resolve};
 use crate::runtime::manager::ServiceManager;
 
@@ -12,7 +13,7 @@ impl Hub {
     pub async fn handle(
         &mut self,
         manager: &mut ServiceManager,
-        cfg: &ProjectConfig,
+        cfg: &mut ProjectConfig,
         req: ControlRequest,
     ) -> bool {
         let ControlRequest { cmd, reply, stream } = req;
@@ -27,6 +28,12 @@ impl Hub {
             ControlCmd::Shutdown => {
                 let _ = reply.send(ControlResponse::ok(json!({ "stopping": true })));
                 return true;
+            }
+            ControlCmd::AddService { command } => {
+                let name = adhoc::add_one(cfg, &command);
+                let port = cfg.services[&name].port;
+                manager.add_service(&name, &cfg.services[&name]).await;
+                ControlResponse::ok(json!({ "service": name, "port": port }))
             }
             ControlCmd::Subscribe => match stream {
                 Some(stream) => {

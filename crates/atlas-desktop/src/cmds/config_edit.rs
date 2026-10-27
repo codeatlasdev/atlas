@@ -20,13 +20,24 @@ pub struct ConfigText {
     path: String,
 }
 
+/// The text of a project's `atlas.yaml`, or, with no file, what Atlas detected (what "Save as atlas.yaml" writes).
+pub(super) fn read_config_text(root: &Path) -> Result<String, String> {
+    let path = root.join("atlas.yaml");
+    if path.is_file() {
+        std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+    } else {
+        Ok(atlas_core::domain::project::initial_config(root).0)
+    }
+}
+
+/// The project's `atlas.yaml` (or the detected text, at the path it would be saved to, so the Config tab can edit
+/// and save a first version).
 #[tauri::command]
 pub fn config_read(id: String) -> Result<ConfigText, String> {
-    let path = root_of(&id)?.join("atlas.yaml");
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let root = root_of(&id)?;
     Ok(ConfigText {
-        text,
-        path: path.to_string_lossy().into_owned(),
+        text: read_config_text(&root)?,
+        path: root.join("atlas.yaml").to_string_lossy().into_owned(),
     })
 }
 
@@ -136,5 +147,29 @@ mod tests {
         let fixed = format!("{OK}  api: {{ command: \"true\", depends_on: [web] }}\n");
         write_checked(root.path(), &fixed).unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), fixed);
+    }
+
+    // Zero-config: the Config tab of a folder without atlas.yaml shows the detected text (never an error), and once a
+    // file exists the file wins over detection.
+    #[test]
+    fn read_config_text_is_the_detected_config_until_a_file_exists() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = root
+            .path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let detected = read_config_text(root.path()).unwrap();
+        assert!(
+            detected.starts_with(&format!("name: {folder}\n")),
+            "{detected}"
+        );
+        assert!(
+            !root.path().join("atlas.yaml").exists(),
+            "reading must not write"
+        );
+        std::fs::write(root.path().join("atlas.yaml"), OK).unwrap();
+        assert_eq!(read_config_text(root.path()).unwrap(), OK);
     }
 }

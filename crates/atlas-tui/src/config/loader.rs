@@ -21,6 +21,48 @@ pub fn load(root_dir: &Path) -> anyhow::Result<ProjectConfig> {
     Ok(config)
 }
 
+/// The one line printed whenever a run uses a detected config: what was found, how to keep it.
+pub fn detected_notice(config: &ProjectConfig) -> String {
+    let found = if config.services.is_empty() {
+        "no services detected (add one with `atlas -- <cmd>`)".to_string()
+    } else {
+        let mut names: Vec<&str> = config.services.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        format!("services: {}", names.join(", "))
+    };
+    format!("no atlas.yaml: using detected config ({found}); save it with `atlas init`")
+}
+
+/// Where a loaded config came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigSource {
+    /// The `atlas.yaml` at this path.
+    File(PathBuf),
+    /// No `atlas.yaml`: built in memory by `atlas_core::domain::project::initial_config`
+    /// (nothing is written; `atlas init` saves it).
+    Detected,
+}
+
+/// Like [`load`], but a folder without `atlas.yaml` gets the config atlas would write for it
+/// (`initial_config`), parsed in memory. A folder where nothing is detected loads with no
+/// services: the caller says so and the user can still add ad-hoc ones (`atlas -- <cmd>`).
+pub fn load_or_detect(root_dir: &Path) -> anyhow::Result<(ProjectConfig, ConfigSource)> {
+    let path = root_dir.join(CONFIG_FILE);
+    if path.is_file() {
+        return Ok((load(root_dir)?, ConfigSource::File(path)));
+    }
+    let (yaml, _) = atlas_core::domain::project::initial_config(root_dir);
+    let (config, errors) = parse_checked(root_dir, &yaml, CONFIG_FILE)?;
+    if !errors.is_empty() {
+        bail!(
+            "detected config for {} is invalid:\n{}",
+            root_dir.display(),
+            validate::render_errors(&errors, CONFIG_FILE)
+        );
+    }
+    Ok((config, ConfigSource::Detected))
+}
+
 /// Parse atlas.yaml (+ atlas.local.yaml) and run every validation pass.
 /// Hard failures (missing/unreadable file, malformed YAML, wrong types) are
 /// `Err`; semantic problems (unknown keys, bad dependencies, duplicate ports…)
@@ -32,20 +74,29 @@ pub fn load_checked(
     if !config_path.exists() {
         bail!("No {} found in {}", CONFIG_FILE, root_dir.display());
     }
-
-    let mut errors = Vec::new();
-
     let base_content =
         std::fs::read_to_string(&config_path).context("Failed to read atlas.yaml")?;
+    parse_checked(root_dir, &base_content, CONFIG_FILE)
+}
+
+/// The shared body of [`load_checked`] and [`load_or_detect`]: `base_content` is the project
+/// YAML (a file's text or the detected one); `atlas.local.yaml` still layers on top.
+fn parse_checked(
+    root_dir: &Path,
+    base_content: &str,
+    base_name: &str,
+) -> anyhow::Result<(ProjectConfig, Vec<validate::ConfigError>)> {
+    let mut errors = Vec::new();
+
     let base_value: serde_norway::Value =
-        serde_norway::from_str(&base_content).context("Failed to parse atlas.yaml")?;
+        serde_norway::from_str(base_content).context("Failed to parse atlas.yaml")?;
     errors.extend(validate::unknown_keys(
         &base_value,
         validate::Target::Project,
-        CONFIG_FILE,
+        base_name,
     ));
     let mut config: ProjectConfig =
-        serde_norway::from_value(base_value).map_err(|e| anyhow::anyhow!("{CONFIG_FILE}: {e}"))?;
+        serde_norway::from_value(base_value).map_err(|e| anyhow::anyhow!("{base_name}: {e}"))?;
 
     let local_path = root_dir.join(LOCAL_CONFIG_FILE);
     if local_path.exists() {

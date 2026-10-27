@@ -113,7 +113,7 @@ impl AtlasCommand for DesktopArgs {
             && let Some(pkg) = atlas_core::paths::packaged_app()
         {
             if !self.no_open {
-                open(&pkg)?;
+                open(&pkg, &[])?;
             }
             return Ok(());
         }
@@ -149,7 +149,7 @@ impl AtlasCommand for DesktopArgs {
             );
         }
         if !self.no_open {
-            open(&target)?;
+            open(&target, &[])?;
         }
         Ok(())
     }
@@ -408,19 +408,26 @@ fn run(cmd: &mut Command) -> Result<()> {
     Ok(())
 }
 
+/// Launch the app. `args` (a path to open) go to its argv; `open --args` only reaches a fresh
+/// launch on macOS, which is why `atlas <path>` asks a running app through its control socket.
 #[cfg(target_os = "macos")]
-fn open(app: &Path) -> Result<()> {
-    run(Command::new("/usr/bin/open").arg(app))
+pub(crate) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
+    let mut cmd = Command::new("/usr/bin/open");
+    cmd.arg(app);
+    if !args.is_empty() {
+        cmd.arg("--args").args(args);
+    }
+    run(&mut cmd)
 }
 
 #[cfg(target_os = "linux")]
-fn open(app: &Path) -> Result<()> {
-    super::desktop_linux::open(app)
+pub(crate) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
+    super::desktop_linux::open(app, args)
 }
 
 #[cfg(windows)]
-fn open(app: &Path) -> Result<()> {
-    super::desktop_windows::open(app)
+pub(crate) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
+    super::desktop_windows::open(app, args)
 }
 
 /// `bun run desktop:dev` from the atlas workspace (hot-reloading frontend + Tauri shell).

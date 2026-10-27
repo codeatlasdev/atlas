@@ -35,18 +35,27 @@ pub struct ProjectView {
     identity: Option<registry::Identity>,
     /// The checkout is gone from this machine (`None` = present, or a remote project).
     missing: Option<Missing>,
+    /// Where the config comes from: the folder's `atlas.yaml`, or what Atlas detected in memory (nothing on disk).
+    config_source: ConfigSourceView,
     /// `origin` URL last seen while the project existed (only reported when it is missing).
     last_remote: Option<String>,
 }
 
-/// Why a local project cannot be opened.
+/// Why a local project cannot be opened. A folder without `atlas.yaml` is not missing: its stack is detected.
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Missing {
     /// The folder itself no longer exists (deleted, moved, unmounted drive).
     Root,
-    /// The folder is there but its `atlas.yaml` is not.
-    Config,
+}
+
+/// `ProjectView.config_source`: `file` (an `atlas.yaml` is on disk) or `detected` (in memory; offer "Save as atlas.yaml").
+#[derive(Serialize, Debug, PartialEq, Default, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigSourceView {
+    #[default]
+    File,
+    Detected,
 }
 
 /// Cheap stat check; never reads the config or touches a remote path.
@@ -54,14 +63,7 @@ fn missing_of(e: &Entry) -> Option<Missing> {
     if e.is_remote() {
         return None;
     }
-    let root = Path::new(&e.root);
-    if !root.is_dir() {
-        Some(Missing::Root)
-    } else if !root.join("atlas.yaml").is_file() {
-        Some(Missing::Config)
-    } else {
-        None
-    }
+    (!Path::new(&e.root).is_dir()).then_some(Missing::Root)
 }
 
 /// The part of a `ProjectView` that comes from reading the checkout (config + live runner).
@@ -74,18 +76,42 @@ struct Detail {
     running: bool,
     services_total: usize,
     services_healthy: usize,
+    config_source: ConfigSourceView,
+}
+
+/// Config of a local checkout: the file's (validation errors reported, not fatal) or, with no `atlas.yaml`, the one
+/// Atlas detects in memory.
+fn read_config(
+    root: &Path,
+) -> (
+    Option<config::ProjectConfig>,
+    Option<String>,
+    ConfigSourceView,
+) {
+    if root.join("atlas.yaml").is_file() {
+        return match config::load_checked(root) {
+            Ok((cfg, errs)) => (
+                Some(cfg),
+                (!errs.is_empty()).then(|| config::render_errors(&errs, "atlas.yaml")),
+                ConfigSourceView::File,
+            ),
+            Err(err) => (None, Some(format!("{err:#}")), ConfigSourceView::File),
+        };
+    }
+    match config::load_or_detect(root) {
+        Ok((cfg, _)) => (Some(cfg), None, ConfigSourceView::Detected),
+        Err(err) => (None, Some(format!("{err:#}")), ConfigSourceView::Detected),
+    }
 }
 
 fn read_local(root: &Path) -> Detail {
-    let (name, error, total, profiles) = match config::load_checked(root) {
-        Ok((cfg, errs)) => (
-            Some(cfg.name.clone()),
-            (!errs.is_empty()).then(|| config::render_errors(&errs, "atlas.yaml")),
-            cfg.services.len(),
-            cfg.profiles.keys().cloned().collect(),
-        ),
-        Err(err) => (None, Some(format!("{err:#}")), 0, Vec::new()),
-    };
+    let (cfg, error, config_source) = read_config(root);
+    let name = cfg.as_ref().map(|c| c.name.clone());
+    let total = cfg.as_ref().map_or(0, |c| c.services.len());
+    let profiles = cfg
+        .as_ref()
+        .map(|c| c.profiles.keys().cloned().collect())
+        .unwrap_or_default();
     let snap = status::live_snapshot(root).ok();
     Detail {
         name,
@@ -97,6 +123,7 @@ fn read_local(root: &Path) -> Detail {
         services_healthy: snap.as_ref().map_or(0, |s| {
             s.services.iter().filter(|r| r.state == "running").count()
         }),
+        config_source,
     }
 }
 
@@ -132,6 +159,7 @@ fn view(e: &Entry, known: Option<&registry::Known>) -> ProjectView {
         branch: e.branch.clone(),
         host: e.host.clone(),
         identity: e.identity.clone(),
+        config_source: d.config_source,
         last_remote: known
             .filter(|_| missing.is_some())
             .and_then(|k| k.remote.clone()),
@@ -202,10 +230,14 @@ pub fn projects_add(
     Ok(view(&entry, None))
 }
 
-/// Registry edit behind `projects_add`: the project whose `atlas.yaml` is at or above `picked`, added once.
-/// Returns its entry and whether it is new. A folder without a config is refused (`probe` tells the UI first).
+/// Registry edit behind `projects_add`: the project that contains `picked` (`project_root::resolve`: the nearest
+/// `atlas.yaml`, else the nearest `.git`/package root, else the folder), added once. No `atlas.yaml` is needed or written.
+/// Returns its entry and whether it is new.
 fn register(entries: &mut Vec<Entry>, picked: &Path) -> Result<(Entry, bool), String> {
-    let root = config::find_root(picked).ok_or(format!("no atlas.yaml in {}", picked.display()))?;
+    if !picked.exists() {
+        return Err(format!("{} does not exist", picked.display()));
+    }
+    let root = atlas_core::project_root::resolve(picked);
     let root = atlas_core::paths::canonical(&root).unwrap_or(root);
     let id = registry::id_for(&root);
     if let Some(e) = existing(entries, &id, &root) {
@@ -231,8 +263,10 @@ fn register(entries: &mut Vec<Entry>, picked: &Path) -> Result<(Entry, bool), St
 pub struct Probe {
     /// The folder that was picked (canonical).
     picked: String,
-    /// The project root: where `atlas.yaml` is (the picked folder or one above it), else the picked folder.
+    /// The project root (`project_root::resolve`): where `atlas.yaml` is, else the nearest git/package root, else the
+    /// picked folder.
     root: String,
+    /// An `atlas.yaml` is on disk at `root`; `false` = Atlas detects the stack and offers to save the file.
     has_config: bool,
     /// Project name from the config, else the folder name.
     name: String,
@@ -245,18 +279,16 @@ fn probe(entries: &[Entry], picked: &Path) -> Result<Probe, String> {
         return Err(format!("{} is not a folder", picked.display()));
     }
     let picked = atlas_core::paths::canonical(picked).unwrap_or_else(|_| picked.to_path_buf());
-    let found = config::find_root(&picked).map(|r| atlas_core::paths::canonical(&r).unwrap_or(r));
-    let root = found.clone().unwrap_or_else(|| picked.clone());
+    let root = atlas_core::project_root::resolve(&picked);
+    let root = atlas_core::paths::canonical(&root).unwrap_or(root);
+    let found = root.join("atlas.yaml").is_file().then(|| root.clone());
     let name = found
         .as_deref()
         .and_then(|r| config::load(r).ok())
         .map(|c| c.name)
         .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
         .unwrap_or_else(|| root.to_string_lossy().into_owned());
-    let registered = found
-        .as_deref()
-        .and_then(|r| existing(entries, &registry::id_for(r), r))
-        .map(|e| e.id.clone());
+    let registered = existing(entries, &registry::id_for(&root), &root).map(|e| e.id.clone());
     Ok(Probe {
         picked: picked.to_string_lossy().into_owned(),
         root: root.to_string_lossy().into_owned(),
@@ -518,8 +550,10 @@ pub fn projects_relink(
 
 /// Registry edit behind `projects_relink`; returns the root now stored.
 fn relink(entries: &mut [Entry], id: &str, picked: &Path) -> Result<String, String> {
-    let root = config::find_root(picked)
-        .ok_or_else(|| format!("no atlas.yaml in {}", picked.display()))?;
+    if !picked.is_dir() {
+        return Err(format!("{} is not a folder", picked.display()));
+    }
+    let root = atlas_core::project_root::resolve(picked);
     let root = atlas_core::paths::canonical(&root).unwrap_or(root);
     let root_s = root.to_string_lossy().into_owned();
     if entries
@@ -646,6 +680,34 @@ pub async fn project_init(
     projects_add(app, hub, dir)
 }
 
+/// "Save as atlas.yaml": write exactly the config Atlas detected for a file-less project (what the header chip showed,
+/// `initial_config`) and reload it as file-backed. Never overwrites an existing `atlas.yaml`.
+#[tauri::command]
+pub fn project_save_config(app: AppHandle, id: String) -> Result<ProjectView, String> {
+    let entries = registry::load()?;
+    let e = entries
+        .iter()
+        .find(|e| e.id == id)
+        .ok_or_else(|| format!("unknown project {id}"))?;
+    if e.is_remote() {
+        return Err(super::REMOTE_UNSUPPORTED.into());
+    }
+    save_detected(Path::new(&e.root))?;
+    notify_changed(&app);
+    Ok(view(e, None))
+}
+
+/// Write the detected `atlas.yaml` into `root` unless one is there already. Returns the text written.
+fn save_detected(root: &Path) -> Result<String, String> {
+    let file = root.join("atlas.yaml");
+    if file.exists() {
+        return Err(format!("atlas.yaml already exists in {}", root.display()));
+    }
+    let (yaml, _) = atlas_core::domain::project::initial_config(root);
+    registry::write_atomic(&file, &yaml)?;
+    Ok(yaml)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -679,10 +741,8 @@ mod tests {
             missing_of(&entry("b", &t.path().join("gone"))),
             Some(Missing::Root)
         );
-        assert_eq!(
-            missing_of(&entry("c", &t.path().join("noconf"))),
-            Some(Missing::Config)
-        );
+        // A folder without atlas.yaml is present: its stack is detected, it is not "missing".
+        assert_eq!(missing_of(&entry("c", &t.path().join("noconf"))), None);
         // A path that only exists on the SSH host is never stat'ed here.
         let mut remote = entry("d", &t.path().join("gone"));
         remote.host = Some("ssh:box".into());
@@ -770,10 +830,10 @@ mod tests {
         );
         assert_eq!(missing_of(&entries[0]), None);
 
-        // No atlas.yaml in (or above) the folder: refused, entry untouched.
-        let empty = tempfile::tempdir().unwrap();
+        // A gone folder is refused, entry untouched; a folder without atlas.yaml is fine (its stack is detected).
+        let gone = t.path().join("nope");
         let before = entries[0].root.clone();
-        assert!(relink(&mut entries, "keep", empty.path()).is_err());
+        assert!(relink(&mut entries, "keep", &gone).is_err());
         assert_eq!(entries[0].root, before);
         assert!(relink(&mut entries, "nope", &new).is_err());
     }
@@ -893,14 +953,16 @@ mod tests {
     }
 
     #[test]
-    fn register_without_a_config_is_the_old_error_so_callers_must_init_first() {
+    fn register_a_configless_folder_adds_it_without_writing_anything() {
         let t = tempfile::tempdir().unwrap();
         let bare = t.path().join("bare");
         std::fs::create_dir_all(&bare).unwrap();
         let mut entries = Vec::new();
-        let err = register(&mut entries, &bare).unwrap_err();
-        assert!(err.contains("no atlas.yaml"), "{err}");
-        assert!(entries.is_empty());
+        let (e, fresh) = register(&mut entries, &bare).unwrap();
+        assert!(fresh);
+        assert_eq!(entries.len(), 1);
+        assert!(!bare.join("atlas.yaml").exists());
+        assert_eq!(view(&e, None).config_source, ConfigSourceView::Detected);
     }
 
     // Incident (#65): a main project removed from the app left its linked worktrees registered with a dangling
@@ -940,11 +1002,11 @@ mod tests {
         assert_eq!(entries[0].id, "main");
     }
 
-    // Acceptance (#65): a folder without atlas.yaml becomes a project with a config and no terminal. The steps the UI
-    // runs, on a real folder: probe says "no config", the preview names what will be written, `atlas init`'s file
-    // (`initial_config`) is written, and the folder then registers once and loads as a project of that name.
+    // Acceptance (zero-config): a folder without atlas.yaml becomes a runnable project with NOTHING written. It registers,
+    // its view says `detected` with the services Atlas found, and "Save as atlas.yaml" then writes exactly the detected
+    // config, after which the same project loads from the file.
     #[test]
-    fn a_configless_folder_becomes_a_loadable_registered_project() {
+    fn a_configless_folder_registers_detected_and_saving_writes_exactly_what_was_shown() {
         let t = tempfile::tempdir().unwrap();
         let dir = t.path().join("shop");
         std::fs::create_dir_all(&dir).unwrap();
@@ -954,22 +1016,53 @@ mod tests {
         )
         .unwrap();
         let mut entries = Vec::new();
-        assert!(register(&mut entries, &dir).is_err());
         assert!(!probe(&entries, &dir).unwrap().has_config);
 
-        let preview = project_init_preview(dir.to_string_lossy().into_owned()).unwrap();
-        assert!(preview.yaml.starts_with("name: shop\n"), "{}", preview.yaml);
-        assert!(!dir.join("atlas.yaml").exists(), "a preview must not write");
-
-        std::fs::write(dir.join("atlas.yaml"), &preview.yaml).unwrap();
         let (entry, fresh) = register(&mut entries, &dir).unwrap();
         assert!(fresh);
+        assert!(!dir.join("atlas.yaml").exists(), "adding must not write");
         let v = view(&entry, None);
+        assert_eq!(v.config_source, ConfigSourceView::Detected);
         assert_eq!(v.name, "shop");
-        assert_eq!(v.error, None, "the generated config must load cleanly");
-        assert_eq!(v.missing, None);
-        assert_eq!(v.services_total, preview.services.len());
+        assert_eq!(v.error, None);
+        assert_eq!(v.missing, None, "no atlas.yaml is not a missing project");
+        assert!(v.services_total >= 1, "the vite dev script is a service");
         assert!(probe(&entries, &dir).unwrap().registered.is_some());
+
+        let shown = super::super::config_edit::read_config_text(&dir).unwrap();
+        let written = save_detected(&dir).unwrap();
+        assert_eq!(
+            written, shown,
+            "save writes what the chip/Config tab showed"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("atlas.yaml")).unwrap(),
+            shown
+        );
+        let v = view(&entry, None);
+        assert_eq!(v.config_source, ConfigSourceView::File);
+        assert_eq!(v.error, None, "the generated config must load cleanly");
+        assert!(save_detected(&dir).unwrap_err().contains("already exists"));
+    }
+
+    // The registry accepts a nested folder of a repo by its root, and a file by its parent project.
+    #[test]
+    fn register_resolves_a_subfolder_or_file_to_its_project_root() {
+        let t = tempfile::tempdir().unwrap();
+        let repo = t.path().join("repo");
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("package.json"), r#"{"name":"r"}"#).unwrap();
+        std::fs::write(repo.join("src/a.ts"), "x").unwrap();
+        let mut entries = Vec::new();
+        let (from_file, _) = register(&mut entries, &repo.join("src/a.ts")).unwrap();
+        let (from_dir, fresh) = register(&mut entries, &repo.join("src")).unwrap();
+        assert!(!fresh, "same project, never a duplicate");
+        assert_eq!(from_file.id, from_dir.id);
+        assert_eq!(
+            Path::new(&from_file.root),
+            atlas_core::paths::canonical(&repo).unwrap()
+        );
+        assert!(register(&mut entries, &t.path().join("gone")).is_err());
     }
 
     #[test]
@@ -985,6 +1078,23 @@ mod tests {
         let f = t.path().join("f");
         std::fs::write(&f, "x").unwrap();
         assert!(project_init_preview(f.to_string_lossy().into_owned()).is_err());
+    }
+
+    // Contract (AGENTS.md): `lib/api.ts` reads `config_source` ("file" | "detected") and `missing` ("root" | null) off the
+    // REAL serialization of a project view; a folder without atlas.yaml is `detected` and never `missing`.
+    #[test]
+    fn project_view_serializes_config_source_and_no_config_missing_for_the_frontend() {
+        let t = tempfile::tempdir().unwrap();
+        let bare = t.path().join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let v = serde_json::to_value(view(&entry("a", &bare), None)).unwrap();
+        assert_eq!(v["config_source"], "detected");
+        assert_eq!(v["missing"], serde_json::Value::Null);
+        project(&t.path().join("p"));
+        let v = serde_json::to_value(view(&entry("b", &t.path().join("p")), None)).unwrap();
+        assert_eq!(v["config_source"], "file");
+        let v = serde_json::to_value(view(&entry("c", &t.path().join("gone")), None)).unwrap();
+        assert_eq!(v["missing"], "root");
     }
 
     // Contract (AGENTS.md): the frontend reads the REAL serialization of what `project_probe` returns.

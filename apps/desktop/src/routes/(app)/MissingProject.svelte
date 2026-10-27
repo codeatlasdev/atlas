@@ -20,11 +20,8 @@
 	let suggestion = $state<Found | null | undefined>(undefined);
 	let searched = $state("");
 
-	const why = $derived(
-		p.missing === "config"
-			? "The folder is still there, but its atlas.yaml is gone."
-			: "This folder is no longer on this computer. It may have been deleted, moved or live on a disconnected drive.",
-	);
+	const why =
+		"This folder is no longer on this computer. It may have been deleted, moved or live on a disconnected drive.";
 
 	// Look for a moved copy once per missing project (and again if it is relinked elsewhere).
 	$effect(() => {

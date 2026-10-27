@@ -1,26 +1,16 @@
-import type { InitPreview, Probe, ProjectView } from "#lib/api.ts";
+import type { Probe, ProjectView } from "#lib/api.ts";
 
-/** What the Add flow does with a folder, decided from `project_probe` alone. */
+/** What the Add flow does with a folder, decided from `project_probe` alone. Nothing is ever written to the folder:
+ * a folder without `atlas.yaml` is added with its stack detected in memory (the project header offers to save it). */
 export type AddPlan =
 	/** Already in the sidebar: just select it. */
 	| { kind: "select"; id: string }
-	/** `atlas.yaml` at (or above) the folder: register `root`. `inside` = the folder picked is a subfolder of it. */
-	| { kind: "add"; root: string; inside: boolean }
-	/** No `atlas.yaml`: offer to create one with `atlas init`, then register. */
-	| { kind: "init"; dir: string };
+	/** Register `root` (where the project lives). `inside` = the folder picked is a subfolder of it. */
+	| { kind: "add"; root: string; inside: boolean };
 
 export function addPlan(p: Probe): AddPlan {
 	if (p.registered) return { kind: "select", id: p.registered };
-	if (p.has_config) return { kind: "add", root: p.root, inside: p.root !== p.picked };
-	return { kind: "init", dir: p.picked };
-}
-
-/** Text of the confirmation shown before a config is created: what was detected, then the file itself. */
-export function initDescription(dir: string, pv: InitPreview): string {
-	const found = pv.detected
-		? `Detected ${pv.detected}${pv.services.length ? `: ${pv.services.join(", ")}` : ""}.`
-		: "Nothing recognised: the file has commented examples to edit.";
-	return `${dir}\n${found}\nThis creates atlas.yaml in the folder:\n\n${pv.yaml.trimEnd()}`;
+	return { kind: "add", root: p.root, inside: p.root !== p.picked };
 }
 
 /** What removing a project does, said before it happens: the folder stays; a running stack stops; worktrees go too. */

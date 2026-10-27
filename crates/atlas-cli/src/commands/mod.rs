@@ -20,6 +20,7 @@ pub mod init;
 pub mod install;
 pub mod link;
 pub mod mcp;
+pub mod open;
 pub mod release;
 pub mod self_update;
 pub mod setup;

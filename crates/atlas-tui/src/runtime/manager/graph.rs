@@ -29,50 +29,14 @@ impl ServiceManager {
                 if !def.is_enabled() {
                     continue;
                 }
-
-                // Services without a command are externally managed (docker-compose, etc.).
-                // We track their port for health display but never spawn a child.
-                let command = def.command.clone();
-
                 services.insert(
                     name.clone(),
-                    ManagedService {
-                        command,
-                        dir: def.dir.clone(),
-                        env: def.env.clone(),
-                        lock_file: def.lock_file.clone(),
-                        status: ServiceStatus {
-                            name: name.clone(),
-                            state: if selection.contains(name) {
-                                ServiceState::Stopped
-                            } else {
-                                ServiceState::Disabled
-                            },
-                            port: def.port,
-                            health_url: def.health.clone().filter(|h| !h.is_empty()),
-                            pid: None,
-                        },
-                        child: None,
-                        critical: def.critical.unwrap_or(false),
-                        open_key: def.open_key,
-                        last_log: std::sync::Arc::new(std::sync::Mutex::new(String::new())),
-                        hide_logs: def.hide_logs,
-                        stopped: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                        pumps: Vec::new(),
-                        exited_ok: false,
-                        probe_fails: 0,
-                        usage: None,
-                        max_memory: def
-                            .max_memory
-                            .as_deref()
-                            .and_then(crate::runtime::usage::parse_size),
-                        mem_over: 0,
-                        mem_restarts: 0,
-                        exit_code: None,
-                        autostart: def.is_autostart() || selection.requested(name),
-                        deselected: !selection.contains(name),
-                        sched: types::Sched::from_def(def),
-                    },
+                    managed_service(
+                        name,
+                        def,
+                        selection.contains(name),
+                        selection.requested(name),
+                    ),
                 );
             }
         }
@@ -115,8 +79,89 @@ impl ServiceManager {
             mirror: None,
             mode: "tui",
             clients: 0,
+            adhoc: HashSet::new(),
             sampled_at: None,
         }
+    }
+
+    /// Register `def` as a new service of this live run and queue it to start (ad-hoc
+    /// services: `atlas -- <cmd>`). `false` when the name is taken.
+    pub async fn add_service(&mut self, name: &str, def: &crate::config::ServiceDef) -> bool {
+        if self.services.contains_key(name) {
+            return false;
+        }
+        self.services
+            .insert(name.to_string(), managed_service(name, def, true, true));
+        self.order.push(name.to_string());
+        self.adhoc.insert(name.to_string());
+        self.queue_start(name);
+        self.schedule().await;
+        self.write_status_file();
+        let _ = self.event_tx.send(ManagerEvent::StatusChanged);
+        true
+    }
+
+    /// Mark boot-time services as ad-hoc (the runner started with `--adhoc`).
+    pub fn mark_adhoc(&mut self, names: impl IntoIterator<Item = String>) {
+        self.adhoc.extend(names);
+    }
+
+    /// The command of an ad-hoc service (`atlas -- <cmd>`), `None` for configured ones.
+    pub fn adhoc_command(&self, name: &str) -> Option<String> {
+        if !self.adhoc.contains(name) {
+            return None;
+        }
+        self.services.get(name)?.command.clone()
+    }
+}
+
+/// The runtime record of one configured service. `selected`: part of this run's selection
+/// (else it starts `Disabled`); `requested`: named explicitly, so it starts even with
+/// `autostart: false`.
+fn managed_service(
+    name: &str,
+    def: &crate::config::ServiceDef,
+    selected: bool,
+    requested: bool,
+) -> ManagedService {
+    ManagedService {
+        // Services without a command are externally managed (docker-compose, etc.).
+        // We track their port for health display but never spawn a child.
+        command: def.command.clone(),
+        dir: def.dir.clone(),
+        env: def.env.clone(),
+        lock_file: def.lock_file.clone(),
+        status: ServiceStatus {
+            name: name.to_string(),
+            state: if selected {
+                ServiceState::Stopped
+            } else {
+                ServiceState::Disabled
+            },
+            port: def.port,
+            health_url: def.health.clone().filter(|h| !h.is_empty()),
+            pid: None,
+        },
+        child: None,
+        critical: def.critical.unwrap_or(false),
+        open_key: def.open_key,
+        last_log: std::sync::Arc::new(std::sync::Mutex::new(String::new())),
+        hide_logs: def.hide_logs,
+        stopped: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        pumps: Vec::new(),
+        exited_ok: false,
+        probe_fails: 0,
+        usage: None,
+        max_memory: def
+            .max_memory
+            .as_deref()
+            .and_then(crate::runtime::usage::parse_size),
+        mem_over: 0,
+        mem_restarts: 0,
+        exit_code: None,
+        autostart: def.is_autostart() || requested,
+        deselected: !selected,
+        sched: types::Sched::from_def(def),
     }
 }
 

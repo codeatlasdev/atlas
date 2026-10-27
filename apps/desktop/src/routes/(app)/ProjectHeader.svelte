@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		Button,
+		toast,
 		DropdownMenu,
 		DropdownMenuItem,
 		DropdownMenuLabel,
@@ -59,6 +60,15 @@
 		ws.select(n.worktreeId);
 		if (ws.tab(n.tabId)) ws.activate(n.tabId);
 	}
+
+	/** Write the detected config as atlas.yaml; the project then reloads as file-backed. */
+	async function saveConfig(id: string) {
+		const saved = await store.run(`save:${id}`, () => api.saveConfig(id));
+		if (!saved) return;
+		toast.success("Saved atlas.yaml");
+		await store.refresh();
+		void store.loadConfig(id);
+	}
 </script>
 
 <header data-tauri-drag-region class:inset={!docks.sidebar}>
@@ -66,6 +76,21 @@
 	<span class="pill t-{health.tone}" title={health.label}>
 		<span class="dot" class:pulse={health.tone === "ok"}></span>{p.running ? health.label : "Stopped"}
 	</span>
+	{#if p.config_source === "detected"}
+		<span
+			class="detected"
+			title="No atlas.yaml in this folder: Atlas detected how to run it. Nothing was written to disk."
+			>Auto-detected</span
+		>
+		<Button
+			variant="ghost"
+			size="sm"
+			disabled={!!store.busy[`save:${p.id}`]}
+			onclick={() => saveConfig(p.id)}
+		>
+			Save as atlas.yaml
+		</Button>
+	{/if}
 	<div class="grow" data-tauri-drag-region></div>
 	<div class="actions">
 		<NotificationBell
@@ -218,6 +243,15 @@
 	}
 	.pill.t-fail {
 		--c: var(--ca-semantic-error);
+	}
+	/* Quiet marker: the stack comes from detection, not from a file (the button next to it saves one). */
+	.detected {
+		flex: none;
+		padding: 1px 7px;
+		border-radius: 10px;
+		font-size: 11px;
+		color: var(--ca-text-tertiary, var(--ca-text-secondary));
+		background: color-mix(in oklab, var(--ca-text-secondary) 10%, transparent);
 	}
 	.dot {
 		position: relative;

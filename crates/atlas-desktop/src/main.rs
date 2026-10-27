@@ -40,6 +40,7 @@ mod live;
 mod live_server;
 mod menu;
 mod natives;
+mod open_path;
 mod pty_batch;
 mod registry;
 mod remote;
@@ -131,6 +132,8 @@ macro_rules! handlers {
             cmds::projects_remove_missing,
             cmds::projects_find_moved,
             cmds::project_init,
+            cmds::project_save_config,
+            open_path::open_pending,
             cmds::project_probe,
             cmds::project_init_preview,
             cmds::stack_start,
@@ -406,7 +409,11 @@ fn main() {
     // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
     // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+        open_path::open(
+            app,
+            open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
+        );
         show_main(app)
     }));
     let builder = builder
@@ -450,6 +457,15 @@ fn main() {
             app.manage(commit_msg::Runs::default());
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
+            app.manage(open_path::Pending::default());
+            // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
+            open_path::open(
+                &handle,
+                open_path::paths_from_argv(
+                    &std::env::args().collect::<Vec<_>>(),
+                    &std::env::current_dir().unwrap_or_default(),
+                ),
+            );
             ctl::start(&handle);
             app.manage(std::sync::Arc::new(remote::Remotes::default()));
             remote::start(&handle);

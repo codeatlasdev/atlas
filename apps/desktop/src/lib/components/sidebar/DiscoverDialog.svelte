@@ -78,6 +78,12 @@
 		if (id) openNew(id);
 	}
 
+	/** A folder without atlas.yaml is added as is: its stack is detected, nothing is written. */
+	async function addCandidate(f: Found) {
+		await discovery.close();
+		await addPaths([f.path]);
+	}
+
 	const added = (f: Found) => discovery.registered.has(f.path);
 </script>
 
@@ -85,7 +91,7 @@
 	open={discovery.open}
 	onOpenChange={(o) => !o && discovery.close()}
 	title="Find projects"
-	description="Looks for atlas.yaml in your usual project folders and with Spotlight."
+	description="Looks for project folders (with or without an atlas.yaml) in your usual folders and with Spotlight."
 	size="xl"
 >
 	<div class="bar">
@@ -203,8 +209,13 @@
 					{/if}
 				</div>
 				{#if !f.has_config}
-					<Button size="sm" variant="glass" disabled={!!store.busy[`init:${f.path}`]} onclick={() => init(f)}
-						>Init</Button
+					<Button size="sm" variant="glass" onclick={() => addCandidate(f)}>Add</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						title="Write an atlas.yaml in this folder"
+						disabled={!!store.busy[`init:${f.path}`]}
+						onclick={() => init(f)}>Create atlas.yaml</Button
 					>
 				{/if}
 			</div>

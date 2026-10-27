@@ -11,12 +11,34 @@ atlas <command> [options]
 
 Global: `-h/--help` on every command, `-V/--version` on `atlas`.
 
+Two forms need no subcommand:
+
+```text
+atlas <path>            # open a folder or file in Atlas Desktop
+atlas -- <cmd...>       # run a command as a service of this folder's stack
+```
+
+### `atlas <path>`
+
+`atlas .`, `atlas ~/code/api`, `atlas src/main.rs`. The path opens in Atlas Desktop: a folder is opened as a project, a file opens **its** project (the nearest folder with an `atlas.yaml`, else the nearest with `.git` or a `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`, else the file's own folder) and then the file in the editor. No `atlas.yaml` is needed. If Atlas Desktop is running the path goes to it; otherwise the app is started with the path and opens it on launch (install it first with `atlas desktop`).
+
+**A subcommand always wins.** `atlas dev` runs the subcommand even when a folder named `dev` exists; open that folder as `atlas ./dev`. Any other first word is a path only if it is `.`, `..`, contains a path separator, or exists on disk; otherwise it is a typo and fails as it always did (`atlas devv` → `error: unrecognized subcommand 'devv'` + `tip: a similar subcommand exists: 'dev'`, exit `2`). `atlas` alone prints the help.
+
+### `atlas -- <cmd...>`
+
+```text
+atlas -- bun dev
+atlas -- node -e "require('http').createServer((q,s)=>s.end('ok')).listen(4123)"
+```
+
+Runs the command as an **ad-hoc service** of the stack of the current folder (its [project root](#atlas-path)): supervised like any service (logs in `.logs/<name>.log`, port probe when the command names one with `--port N`, `PORT=N` or `.listen(N)`, restart/stop from the TUI, Desktop and MCP). It is **not** saved to `atlas.yaml`. The name comes from the command (`bun dev` → `bun-dev`; flags and quoted code are left out; a taken name gets `-2`, `-3`…). One argument is taken as a ready command line (`atlas -- "bun dev"`); several are quoted for the platform shell (`cmd.exe` on Windows). If a background runner already owns the root the service is added to it live; if nothing runs, the stack is started in the background (like `atlas dev --detach`) with the ad-hoc service included. If a TUI owns the root (it cannot take services live) the command fails and says so: `atlas down`, then run it again. A TUI attached to a runner shows ad-hoc services that were there when it attached.
+
 | Command | Purpose |
 |---|---|
 | [`dev`](#atlas-dev) | start the dev environment (TUI, background runner, headless, CI, or status) |
 | [`down`](#atlas-down) | stop the running atlas (background runner or TUI) and its services |
 | [`init`](#atlas-init) | scaffold `atlas.yaml` |
-| [`config`](#atlas-config) | validate `atlas.yaml`, print its JSON Schema |
+| [`init`](#atlas-init) | scaffold `atlas.yaml` (also: save what `atlas dev` detected) |
 | [`deploy`](deploy.md) | ship a release to a server: atomic swap, health-gated restarts, auto-rollback |
 | [`mcp`](#atlas-mcp) | MCP server for AI agents |
 | [`update`](#atlas-update) (alias `up`) | self-update |
@@ -58,7 +80,7 @@ atlas dev [SERVICE...] [--profile <NAME>]... [--no-deps] [-d, --dir <DIR>]
 | `SERVICE...` | all | Start only these services plus everything they transitively `depends_on`. See [Selecting services](#selecting-services). |
 | `--profile <NAME>` | none | Start the services of a [`profiles:`](configuration.md#profiles) entry (plus their dependencies). Repeatable; profiles and `SERVICE`s are unioned. |
 | `--no-deps` | off | With `SERVICE`/`--profile`: start exactly those, do not pull in dependencies. |
-| `-d, --dir <DIR>` | `.` | Project directory containing `atlas.yaml` (`~` is expanded). |
+| `-d, --dir <DIR>` | `.` | Project directory (`~` is expanded). It does not need an `atlas.yaml`: without one Atlas [detects](configuration.md#no-atlasyaml-detected-config) the services in memory (from `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`) and prints `no atlas.yaml: using detected config (…); save it with 'atlas init'`. Nothing is written. |
 | `-D, --detach` | off | Start the services in a **background runner** and return: the runner is fully daemonized (own session, stdin `/dev/null`, stdout/stderr in `.logs/runner.log`), holds the project lock and serves the control socket and status heartbeat like `--headless`. Prints `atlas runner started (pid N) · attach: atlas dev · stop: atlas down` and exits `0` once the socket answers. A bad `atlas.yaml` or selection is reported on your terminal and nothing is started. Works with `SERVICE…` / `--profile` / `--no-deps`. If a runner is already up it prints `atlas runner already running (pid N) …` and exits `0` (the selection is not applied to it); if a TUI owns the project it exits `1`. See [Runtime › Runner and attach](runtime.md#runner-and-attach). |
 | `--headless` | off | No TUI. Starts services, streams `[name ] line` to stdout and state changes to stderr, stops everything on Ctrl-C / SIGTERM / SIGHUP. Serves the [control socket](mcp.md#how-it-works) so MCP control tools work. |
 | `--ci` | off | Start everything, wait until stable, print a JSON report to stdout, stop everything, exit. |
@@ -176,7 +198,7 @@ Stops the atlas that owns the project: asks it over the control socket to stop e
 atlas init [-d, --dir <DIR>]      # default .
 ```
 
-Writes a minimal `atlas.yaml` (`name:` from the directory plus detected services, or a commented example) and prints what it detected. Fails if `atlas.yaml` already exists.
+Writes a minimal `atlas.yaml` (`name:` from the directory plus detected services, or a commented example) and prints what it detected. Fails if `atlas.yaml` already exists. This is also how you **save** what `atlas dev` [detected](configuration.md#no-atlasyaml-detected-config) in a folder without one: the file is exactly the config that run used.
 
 ## `atlas config`
 
@@ -198,7 +220,7 @@ Build locally, upload, and let a driver on the host do lock → swap → health 
 atlas mcp [-d, --dir <DIR>]
 ```
 
-Runs the MCP server over stdio. `--dir` is the project directory; when omitted, Atlas walks up from the current directory to the nearest folder containing `atlas.yaml` (falling back to the current directory). stdout carries protocol messages only; a one-line `atlas mcp: serving <dir> on stdio` goes to stderr. Exits when the client closes stdin. Full guide: [MCP](mcp.md).
+Runs the MCP server over stdio. `--dir` is the project directory; when omitted, Atlas uses the [project root](#atlas-path) of the current directory (nearest `atlas.yaml`, else nearest `.git` or package manifest, else the current directory itself), so the tools also work in a folder without `atlas.yaml` (`atlas_config` then reports the [detected](configuration.md#no-atlasyaml-detected-config) services). stdout carries protocol messages only; a one-line `atlas mcp: serving <dir> on stdio` goes to stderr. Exits when the client closes stdin. Full guide: [MCP](mcp.md).
 
 ## `atlas update`
 

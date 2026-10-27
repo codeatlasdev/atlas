@@ -88,6 +88,7 @@ test("default keymap binds every stroke once and has the shell keys", () => {
 	expect(m.get("cmd-[")).toBe("shell::Back");
 	expect(m.get("alt-cmd-right")).toBe("shell::NextSpace");
 	expect(m.get("cmd-w")).toBe("pane::CloseActiveItem");
+	expect(m.get("shift-cmd-w")).toBe("pane::CloseActiveItem");
 	expect(m.get("shift-cmd-t")).toBe("pane::ReopenClosedItem");
 	expect(m.get("shift-cmd-a")).toBe("atlas::NewAgentSession");
 	expect(m.get("ctrl-tab")).toBe("pane::ActivateRecentItem");
@@ -164,19 +165,33 @@ test("labels read Ctrl/Alt/Shift words off macOS and glyphs on macOS", () => {
 
 // Off macOS the app's shortcuts are Ctrl chords; a shell needs ^C, ^R, ^L, ^W, ^K… for itself. In a focused terminal a
 // plain Ctrl+letter goes to the program; Ctrl+Shift, digit, Tab and punctuation chords still reach the app.
-test("off macOS a focused terminal keeps plain Ctrl+letter for the program", () => {
+test("off macOS a focused terminal keeps plain Ctrl+letter, Ctrl+[ and Alt+←/→ for the program", () => {
 	const ev = (code: string, m = {}) => ({ code, ctrlKey: false, shiftKey: false, altKey: false, ...m });
-	for (const code of ["KeyC", "KeyR", "KeyL", "KeyW", "KeyK", "KeyT"]) {
-		expect(shellKeepsCtrl(ev(code, { ctrlKey: true }), false)).toBe(true);
+	for (const code of ["KeyC", "KeyR", "KeyL", "KeyW", "KeyK", "KeyT", "KeyB"]) {
+		expect(shellKeepsCtrl(ev(code, { ctrlKey: true }), false), code).toBe(true);
 	}
-	// The app still gets Ctrl+Shift chords, Ctrl+digits, Ctrl+Tab and Ctrl+`.
+	// Ctrl+[ is Esc in vim and readline; Alt+←/→ are readline word motions.
+	expect(shellKeepsCtrl(ev("BracketLeft", { ctrlKey: true }), false)).toBe(true);
+	expect(shellKeepsCtrl(ev("ArrowLeft", { altKey: true }), false)).toBe(true);
+	expect(shellKeepsCtrl(ev("ArrowRight", { altKey: true }), false)).toBe(true);
+	// The app still gets Ctrl+Shift chords (new/close tab), Ctrl+digits, Ctrl+Tab, Ctrl+`, Ctrl+PgUp/PgDn and Ctrl+Q.
 	expect(shellKeepsCtrl(ev("KeyT", { ctrlKey: true, shiftKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("KeyW", { ctrlKey: true, shiftKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("Backquote", { ctrlKey: true, shiftKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("KeyQ", { ctrlKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("PageDown", { ctrlKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("PageUp", { ctrlKey: true }), false)).toBe(false);
 	expect(shellKeepsCtrl(ev("Digit1", { ctrlKey: true }), false)).toBe(false);
 	expect(shellKeepsCtrl(ev("Tab", { ctrlKey: true }), false)).toBe(false);
 	expect(shellKeepsCtrl(ev("Backquote", { ctrlKey: true }), false)).toBe(false);
 	expect(shellKeepsCtrl(ev("KeyR", { ctrlKey: true, altKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("F11"), false)).toBe(false);
+	// Alt+1…9 (spaces) and Alt+Shift chords are not the shell's; Alt+Shift+←/→ neither.
+	expect(shellKeepsCtrl(ev("Digit1", { altKey: true }), false)).toBe(false);
+	expect(shellKeepsCtrl(ev("ArrowLeft", { altKey: true, shiftKey: true }), false)).toBe(false);
 	// macOS app shortcuts are ⌘ chords: nothing to keep.
 	expect(shellKeepsCtrl(ev("KeyC", { ctrlKey: true }), true)).toBe(false);
+	expect(shellKeepsCtrl(ev("ArrowLeft", { altKey: true }), true)).toBe(false);
 });
 
 // Incident (Windows, 2026-10-14): the palette listed "Ctrl+S" for both Save (⌘S) and Toggle sidebar (⌃⌘S), and
@@ -245,7 +260,8 @@ test("off macOS every default binding runs from the keys its label names, and no
 	expect(wrong).toEqual([]);
 	expect([...byLabel].filter(([, ids]) => ids.length > 1)).toEqual([]);
 	// Where the macOS-only chords went.
-	expect(label(bindingsOf("shell::ToggleSidebar", m)[0], false)).toBe("Alt+Shift+S");
+	expect(label(bindingsOf("shell::ToggleSidebar", m)[0], false)).toBe("Ctrl+B");
+	expect(label(bindingsOf("workspace::ToggleLeftDock", m)[0], false)).toBe("Alt+Shift+B");
 	expect(label(bindingsOf("shell::Space1", m)[0], false)).toBe("Alt+1");
 	expect(label(bindingsOf("atlas::RecentWorktree1", m)[0], false)).toBe("Alt+Shift+1");
 	expect(label(bindingsOf("pane::ActivateItem1", m)[0], false)).toBe("Ctrl+1");
@@ -293,4 +309,116 @@ test("the reveal action names the platform's file manager", () => {
 	expect(revealLabel(false, true)).toBe("Reveal in File Explorer");
 	expect(revealLabel(false, false)).toBe("Reveal in file manager");
 	expect(fileManager(false, true)).toBe("File Explorer");
+});
+
+// The shortcut conventions decided for Windows/Linux (Chrome / VS Code / Windows Terminal) and macOS, pinned through the
+// real path of a key: the event's strokes, the platform's default keymap, and the terminal's "keep for the shell" rule.
+// `ran` is what a key does; `inTerminal` says what it does when a terminal has focus (the capture handler's order).
+const key = (code: string, m: Partial<KeyboardEvent> = {}) =>
+	({ code, key: "", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...m }) as KeyboardEvent;
+const ran = (e: KeyboardEvent, mac: boolean) => {
+	const km = merge(defaultKeymap(mac), {});
+	return strokesOf(e, mac)
+		.map((s) => km.get(s))
+		.find(Boolean);
+};
+const inTerminal = (e: KeyboardEvent, mac: boolean) => (shellKeepsCtrl(e, mac) ? undefined : ran(e, mac));
+
+test("tabs, Windows/Linux: Ctrl+T/W outside terminals, Ctrl+Shift+T/W everywhere including a focused terminal", () => {
+	const ctrl = { ctrlKey: true };
+	const ctrlShift = { ctrlKey: true, shiftKey: true };
+	expect(ran(key("KeyT", ctrl), false)).toBe("workspace::NewTerminal");
+	expect(ran(key("KeyW", ctrl), false)).toBe("pane::CloseActiveItem");
+	expect(ran(key("KeyT", ctrlShift), false)).toBe("workspace::NewTerminal");
+	expect(ran(key("KeyW", ctrlShift), false)).toBe("pane::CloseActiveItem");
+	// In a terminal Ctrl+T / Ctrl+W are the shell's (transpose, delete word); Ctrl+Shift+T/W are the app's.
+	expect(inTerminal(key("KeyT", ctrl), false)).toBeUndefined();
+	expect(inTerminal(key("KeyW", ctrl), false)).toBeUndefined();
+	expect(inTerminal(key("KeyT", ctrlShift), false)).toBe("workspace::NewTerminal");
+	expect(inTerminal(key("KeyW", ctrlShift), false)).toBe("pane::CloseActiveItem");
+});
+
+test("tabs, macOS: ⌘T ⌘W ⇧⌘T as before, and ⇧⌘W closes the tab (never every tab)", () => {
+	expect(ran(key("KeyT", { metaKey: true }), true)).toBe("workspace::NewTerminal");
+	expect(ran(key("KeyW", { metaKey: true }), true)).toBe("pane::CloseActiveItem");
+	expect(ran(key("KeyT", { metaKey: true, shiftKey: true }), true)).toBe("pane::ReopenClosedItem");
+	expect(ran(key("KeyW", { metaKey: true, shiftKey: true }), true)).toBe("pane::CloseActiveItem");
+	// ⌘ chords always reach the app, terminal or not.
+	expect(inTerminal(key("KeyT", { metaKey: true }), true)).toBe("workspace::NewTerminal");
+});
+
+test("reopen closed tab moved off Ctrl+Shift+T to Alt+Shift+T off macOS", () => {
+	expect(ran(key("KeyT", { altKey: true, shiftKey: true }), false)).toBe("pane::ReopenClosedItem");
+	expect(inTerminal(key("KeyT", { altKey: true, shiftKey: true }), false)).toBe("pane::ReopenClosedItem");
+	const m = merge(defaultKeymap(false), {});
+	expect(label(bindingsOf("pane::ReopenClosedItem", m)[0], false)).toBe("Alt+Shift+T");
+	expect(bindingsOf("workspace::NewTerminal", m).map((s) => label(s, false))).toContain("Ctrl+Shift+T");
+});
+
+test("no default key closes every tab: Close all stays in the menu and palette", () => {
+	for (const mac of [true, false]) {
+		const m = merge(defaultKeymap(mac), {});
+		expect(bindingsOf("pane::CloseAllItems", m), `mac=${mac}`).toEqual([]);
+	}
+});
+
+test("Ctrl+Q quits off macOS, from a terminal too; Alt+F4 is not a keymap binding; macOS has no Ctrl+Q", () => {
+	expect(ran(key("KeyQ", { ctrlKey: true }), false)).toBe("shell::Quit");
+	expect(inTerminal(key("KeyQ", { ctrlKey: true }), false)).toBe("shell::Quit");
+	expect(ran(key("F4", { altKey: true }), false)).toBeUndefined();
+	expect(ran(key("KeyQ", { ctrlKey: true }), true)).toBeUndefined();
+	// ⌘Q is the native menu's on macOS, not a keymap command.
+	expect(bindingsOf("shell::Quit", merge(defaultKeymap(true), {}))).toEqual([]);
+});
+
+test("Ctrl+PgUp / Ctrl+PgDn walk the tabs off macOS (⌘PgDn stays the GPU terminal's scroll on macOS)", () => {
+	expect(ran(key("PageUp", { ctrlKey: true }), false)).toBe("pane::ActivatePreviousItem");
+	expect(ran(key("PageDown", { ctrlKey: true }), false)).toBe("pane::ActivateNextItem");
+	expect(inTerminal(key("PageDown", { ctrlKey: true }), false)).toBe("pane::ActivateNextItem");
+	expect(ran(key("PageDown", { metaKey: true }), true)).toBeUndefined();
+});
+
+test("Ctrl+Shift+` opens a terminal (VS Code) on every platform, from a terminal too", () => {
+	expect(ran(key("Backquote", { ctrlKey: true, shiftKey: true }), false)).toBe("workspace::NewTerminal");
+	expect(inTerminal(key("Backquote", { ctrlKey: true, shiftKey: true }), false)).toBe(
+		"workspace::NewTerminal",
+	);
+	expect(ran(key("Backquote", { ctrlKey: true, shiftKey: true }), true)).toBe("workspace::NewTerminal");
+	// Ctrl+` keeps toggling the terminal panel.
+	expect(ran(key("Backquote", { ctrlKey: true }), false)).toBe("terminal_panel::ToggleFocus");
+});
+
+// Incident class: Ctrl+B was the left dock while VS Code users expect the sidebar. Off macOS Ctrl+B is the sidebar and
+// the left dock moved to Alt+Shift+B; macOS keeps ⌘B (left dock) and ⌃⌘S (sidebar).
+test("Ctrl+B toggles the sidebar off macOS, the left dock moved to Alt+Shift+B; macOS is unchanged", () => {
+	expect(ran(key("KeyB", { ctrlKey: true }), false)).toBe("shell::ToggleSidebar");
+	expect(ran(key("KeyB", { altKey: true, shiftKey: true }), false)).toBe("workspace::ToggleLeftDock");
+	expect(bindingsOf("shell::ToggleSidebar", merge(defaultKeymap(false), {}))).toEqual(["cmd-b"]);
+	expect(ran(key("KeyB", { metaKey: true }), true)).toBe("workspace::ToggleLeftDock");
+	expect(ran(key("KeyS", { metaKey: true, ctrlKey: true }), true)).toBe("shell::ToggleSidebar");
+	// A focused terminal keeps plain Ctrl+B (tmux prefix, readline back-char).
+	expect(inTerminal(key("KeyB", { ctrlKey: true }), false)).toBeUndefined();
+});
+
+test("Ctrl+[ and Alt+←/→ reach the shell in a focused terminal, and are history/back elsewhere", () => {
+	expect(inTerminal(key("BracketLeft", { ctrlKey: true }), false)).toBeUndefined();
+	expect(inTerminal(key("ArrowLeft", { altKey: true }), false)).toBeUndefined();
+	expect(inTerminal(key("ArrowRight", { altKey: true }), false)).toBeUndefined();
+	expect(ran(key("BracketLeft", { ctrlKey: true }), false)).toBe("shell::Back");
+	expect(ran(key("ArrowLeft", { altKey: true }), false)).toBe("editor::GoBack");
+	expect(ran(key("ArrowRight", { altKey: true }), false)).toBe("editor::GoForward");
+	// macOS: ⌘[ is the app's even in a terminal (⌘ never reaches a shell).
+	expect(inTerminal(key("BracketLeft", { metaKey: true }), true)).toBe("shell::Back");
+});
+
+test("F11 toggles full screen off macOS only", () => {
+	expect(ran(key("F11"), false)).toBe("shell::ToggleFullscreen");
+	expect(inTerminal(key("F11"), false)).toBe("shell::ToggleFullscreen");
+	expect(ran(key("F11"), true)).toBeUndefined();
+});
+
+test("the off-macOS defaults bind every stroke once", () => {
+	const strokes = Object.keys(defaultKeymap(false)).map((k) => normalize(k));
+	expect(strokes.every(Boolean)).toBe(true);
+	expect(new Set(strokes).size).toBe(strokes.length);
 });

@@ -95,6 +95,8 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .focused(false)
         .accept_first_mouse(true)
         .build()?;
+    #[cfg(windows)]
+    crate::webview_win::no_accelerators(&win);
     #[cfg(target_os = "macos")]
     {
         use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState, apply_vibrancy};
@@ -212,7 +214,7 @@ fn on_menu(app: &AppHandle, id: &str) {
     match id {
         ID_OPEN => crate::show_main(app),
         ID_TOGGLE => toggle_main(app),
-        ID_QUIT => app.exit(0),
+        ID_QUIT => lifecycle::quit(app),
         _ => {}
     }
 }

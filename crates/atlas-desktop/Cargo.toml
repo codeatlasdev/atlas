@@ -72,9 +72,11 @@ gio = "0.22"
 tauri-plugin-single-instance = "2"
 
 [target.'cfg(windows)'.dependencies]
-# Same versions tauri/wry already resolve; used by webview_win.rs (WebView2 MemoryUsageTargetLevel).
+# Same versions tauri/wry already resolve; used by webview_win.rs (WebView2 settings, MemoryUsageTargetLevel) and
+# browser_keys_win.rs (accelerator keys of the embedded browser, modifier state through GetKeyState).
 webview2-com = "0.39"
 windows-core = "0.62"
+windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }
 
 [dev-dependencies]
 serde_norway = { workspace = true }

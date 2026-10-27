@@ -8,9 +8,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
-    ICoreWebView2_19,
+    ICoreWebView2_19, ICoreWebView2Settings3,
 };
 use windows_core::Interface;
+
+/// Turn WebView2's browser accelerator keys off for an app page (the main window and the tray popover):
+/// F5 / Ctrl+R reload, Ctrl+F / F3 find, Ctrl+P print, Ctrl+Shift+C / F12 devtools, Ctrl+± zoom, Ctrl+U … are
+/// Edge's, and an unbound one would reload the app or open Edge UI. `keydown` still reaches the page (WebView2
+/// guarantees it), so Atlas's own keymap is unaffected. Never called for the embedded browser's tabs: there users
+/// expect Ctrl+F and F5 to work like a browser.
+pub fn no_accelerators(webview: &tauri::WebviewWindow) {
+    let _ = webview.with_webview(|p| unsafe {
+        let _ = p
+            .controller()
+            .CoreWebView2()
+            .and_then(|core| core.Settings())
+            .and_then(|s| s.cast::<ICoreWebView2Settings3>())
+            .and_then(|s| s.SetAreBrowserAcceleratorKeysEnabled(false));
+    });
+}
 
 /// Browser arguments of every Atlas webview. WebView2 allows one set per user-data folder, so the main window,
 /// the tray popover and the embedded browser's tabs all pass exactly this (`.additional_browser_args(ARGS)`).

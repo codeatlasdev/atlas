@@ -14,11 +14,14 @@ mod browser_fail;
 #[cfg(target_os = "macos")]
 mod browser_fail_mac;
 mod id_migrate;
-// Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// Pure decision code: macOS (AppKit monitor) drives the mac-keycode half, Windows (WebView2 accelerator hook) the
+// DOM-code half, Linux neither. Each host leaves the other half unused; all of it is built so its tests run.
+#[allow(dead_code)]
 mod browser_keys;
 #[cfg(target_os = "macos")]
 mod browser_keys_mac;
+#[cfg(windows)]
+mod browser_keys_win;
 mod capture;
 mod cmds;
 mod commit_msg;
@@ -208,6 +211,7 @@ macro_rules! handlers {
             remote::projects_add_remote,
             menu::menu_sync,
             zoom::zoom_set,
+            lifecycle::app_quit,
             live_server::live_open,
             live_server::live_touch,
             live_server::live_stop,
@@ -370,6 +374,9 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
+    #[cfg(windows)]
+    webview_win::no_accelerators(&win);
     boot::mark("window:created");
     boot::arm_deadline(app.handle());
     drop(win);

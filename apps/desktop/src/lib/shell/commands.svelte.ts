@@ -2,8 +2,11 @@
  * Shell command registry: docks, panes/tabs, spaces, palettes and the numbered chords,
  * composed with the project commands (`projectCommands.svelte.ts`) in palette order.
  */
+import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
+import { IS_MAC } from "#lib/keys.ts";
 import type { Command } from "#lib/keymap.svelte.ts";
 import { focusSearch } from "#lib/search/search.svelte.ts";
 import { closeActive } from "#lib/shell/closeTab.ts";
@@ -35,6 +38,12 @@ import { lspCommands } from "#lib/lsp/commands.ts";
 import { saveAllEditors } from "#lib/symbols.ts";
 
 const hasWt = () => !!ws.selected;
+
+/** F11: the window's own full screen (the page has no title bar on Windows, so this is the only way in or out). */
+async function toggleFullscreen() {
+	const win = getCurrentWindow();
+	await win.setFullscreen(!(await win.isFullscreen()));
+}
 
 /** Bottom dock: show it (with a terminal if empty) and focus it; hide it when focused. */
 async function toggleTerminalPanel() {
@@ -278,6 +287,19 @@ export function shellCommands(): Command[] {
 			when: hasWt,
 		},
 		{ id: "shell::ToggleSidebar", label: "Toggle sidebar", run: toggleSidebar },
+		// Off macOS only (their keys: lib/keys.ts); macOS has the menu's ⌘Q and the green button.
+		{
+			id: "shell::Quit",
+			label: "Quit Atlas",
+			run: () => void invoke("app_quit").catch(() => {}),
+			when: () => !IS_MAC,
+		},
+		{
+			id: "shell::ToggleFullscreen",
+			label: "Toggle full screen",
+			run: toggleFullscreen,
+			when: () => !IS_MAC,
+		},
 		{ id: "workspace::Save", label: "Save", run: () => void saveActive() },
 		{
 			id: "workspace::SaveAll",

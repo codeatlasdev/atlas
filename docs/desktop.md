@@ -206,7 +206,7 @@ Defaults follow macOS, Zed and browser conventions. Every shortcut is a named co
 { "keymap": { "cmd-j": null, "cmd-shift-j": "workspace::ToggleBottomDock" } }
 ```
 
-**On Windows and Linux** the table reads with Ctrl for ⌘ (the Windows/Super key belongs to the system) and Alt for ⌥; labels in the app say so (`Ctrl+Shift+P`). The keymap file keeps the `cmd-…` spelling on every platform. Three macOS-only chords move, since ⌃ and ⌘ are the same Ctrl key there: spaces ⌃1…⌃9 are **Alt+1…9**, recent worktrees ⌃⌘1…⌃⌘6 are **Alt+Shift+1…6**, and the sidebar ⌃⌘S is **Alt+Shift+S**. In a focused terminal a plain Ctrl+letter goes to the shell (^C, ^R, ^W …), while Ctrl+Shift chords (Ctrl+Shift+P for the palette) and Ctrl with a digit, Tab or punctuation still reach the app; Ctrl+C copies when text is selected and Ctrl+V pastes. A Ctrl+Alt chord that types a character (AltGr on Windows: `ś`, `²`, `@`) stays text. The native menu shows no keys there; the app window handles them.
+**On Windows and Linux** the table below reads with Ctrl for ⌘ (the Windows/Super key belongs to the system) and Alt for ⌥; labels in the app say so (`Ctrl+Shift+P`). The keymap file keeps the `cmd-…` spelling on every platform. Where a chord differs by OS, [Differences by OS](#differences-by-os) lists it. In a focused terminal a plain Ctrl+letter goes to the shell (^C, ^R, ^W, ^B …), and so do Ctrl+[ (Esc in vim) and Alt+←/→ (word motion); Ctrl+Shift chords, Ctrl with a digit, Tab, PgUp/PgDn or punctuation, and Ctrl+Q still reach the app. Ctrl+C copies when text is selected and Ctrl+V pastes. A Ctrl+Alt chord that types a character (AltGr on Windows: `ś`, `²`, `@`) stays text. The native menu shows no keys there; the app window handles them.
 
 | Keys                      | Action                                                                                                                       |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -214,7 +214,7 @@ Defaults follow macOS, Zed and browser conventions. Every shortcut is a named co
 | ⌘K                        | jump palette: recent terminals and worktrees, commands, "Create worktree <query>"; Shift-Enter opens beside. In a focused terminal ⌘K clears the screen and scrollback instead (Ghostty's `clear_screen`); the palette is still on ⌘⇧P and the Go menu |
 | ⌘P / ⌘⇧O                  | go to file / go to symbol in the open editor                                                                                 |
 | ⌘⇧F                       | search in project                                                                                                            |
-| ⌘B / ⌘J / ⌥⌘Y             | left dock / bottom dock (terminals) / all docks                                                                              |
+| ⌘B / ⌘J / ⌥⌘Y             | left dock / bottom dock (terminals) / all docks (Windows/Linux: Ctrl+B is the sidebar, the left dock is Alt+Shift+B)         |
 | ⌘⇧E / ⌃⇧G / ⌃\` / ⌘?      | project panel / git panel / terminal panel (focus) / agents                                                                  |
 | ⇧Esc                      | zoom the focused pane (palette: centered layout)                                                                             |
 | ⌘+ / ⌘− / ⌘0              | zoom the whole layout in / out / back to 100% (Ctrl instead of ⌘ outside macOS; steps 50–300%, saved; View menu, Settings → Appearance → Zoom). In a focused GPU terminal ⌘+ ⌘− ⌘0 change that terminal's font size instead |
@@ -226,11 +226,11 @@ Defaults follow macOS, Zed and browser conventions. Every shortcut is a named co
 | ⌥⌘← / ⌥⌘→ , ⌃1…⌃9         | previous / next space, space by position (a space is a repo; each has its own color)                                         |
 | ⌘/                        | shortcuts cheat sheet                                                                                                        |
 | ⌘N                        | new worktree                                                                                                                 |
-| ⌘T / ⌘⇧A                  | new terminal / new agent session                                                                                             |
-| ⌘W / ⌥⌘W / ⌘⇧W            | close tab (asks when a process is running) / close other tabs / close all tabs in the pane                                   |
+| ⌘T / ⌘⇧A / ⌃⇧\`           | new terminal / new agent session / new terminal (VS Code's key, with a terminal focused too)                                 |
+| ⌘W / ⌥⌘W / ⇧⌘W            | close tab (asks when a process is running) / close other tabs / close tab. "Close all tabs in the pane" has no key: palette, tab menu and menu bar |
 | ⌘⇧T                       | reopen the last closed tab (editors, diffs, browser, logs, config and PRs return in place; terminals restart)                |
 | ⌘1…⌘8 / ⌘9                | tab 1–8 by position in the focused pane / last tab                                                                           |
-| ⌘⇧] / ⌘⇧[                 | next / previous tab                                                                                                          |
+| ⌘⇧] / ⌘⇧[                 | next / previous tab (Windows/Linux also Ctrl+PgDn / Ctrl+PgUp)                                                               |
 | ⌃Tab / ⌃⇧Tab              | recent tab / older tab: a switcher lists tabs by last use while ⌃ is held, releasing ⌃ opens the highlighted one (⎋ cancels) |
 | ⌘\\ / ⌘⇧\\                | split right / down                                                                                                           |
 | ⌘,                        | settings                                                                                                                     |
@@ -240,7 +240,24 @@ Defaults follow macOS, Zed and browser conventions. Every shortcut is a named co
 
 **The Panel tab is pinned.** It is always the first tab of the first pane, shown as a compact icon with no close button. ⌘W on it only says so and moves to the next tab; middle-click, close other tabs and close all tabs skip it; it cannot be dragged out, split or moved to another pane or the bottom dock; it is recreated when a worktree opens without one.
 
-**App menu.** Atlas has a real macOS menu (Atlas, File, Edit, View, Go, Window, Help). Edit carries Undo/Redo/Cut/Copy/Paste/Select All. Cut, Copy and Paste are the standard macOS items. Undo (⌘Z), Redo (⇧⌘Z) and Select All (⌘A) are Atlas items that act on whatever has focus: the editor's own history and selection in an editor, `execCommand` in a text field, the terminal's selection (⌘A) in a GPU terminal (undo and redo do nothing there and never reach the shell). The standard AppKit items would send `undo:` to the web view, which knows nothing about CodeMirror's history. These three keys are fixed and cannot be remapped. The menu owns the keys of the commands it lists (File, Go, View and Settings), shows your current binding, follows remaps in Settings → Keyboard shortcuts, and works with focus in a terminal, an editor or the embedded browser. Keys that are not menu items (⌃Tab, ⇧Esc, ⌃1…⌃9, ⌘1…⌘9, ⌘[ ⌘]) are handled by the app window. With focus inside an embedded browser page (a separate native view that never delivers keys to the app window), every ⌘, ⌃ or ⌥ chord bound in your keymap still runs its command: ⌘1…⌘9, ⌃Tab, ⇧⌘[ ⇧⌘], ⌃⌘1…⌃⌘6 and your remaps. The app pushes the bound strokes to the native side, which takes only those from the page; typing, unbound keys and the page's own ⌘C ⌘V ⌘X ⌘Z ⌘A stay with the page. There is no _Close Window_ item: ⌘W closes a tab, never the window.
+**App menu.** Atlas has a real macOS menu (Atlas, File, Edit, View, Go, Window, Help). Edit carries Undo/Redo/Cut/Copy/Paste/Select All. Cut, Copy and Paste are the standard macOS items. Undo (⌘Z), Redo (⇧⌘Z) and Select All (⌘A) are Atlas items that act on whatever has focus: the editor's own history and selection in an editor, `execCommand` in a text field, the terminal's selection (⌘A) in a GPU terminal (undo and redo do nothing there and never reach the shell). The standard AppKit items would send `undo:` to the web view, which knows nothing about CodeMirror's history. These three keys are fixed and cannot be remapped. The menu owns the keys of the commands it lists (File, Go, View and Settings), shows your current binding, follows remaps in Settings → Keyboard shortcuts, and works with focus in a terminal, an editor or the embedded browser. Keys that are not menu items (⌃Tab, ⇧Esc, ⌃1…⌃9, ⌘1…⌘9, ⌘[ ⌘]) are handled by the app window. With focus inside an embedded browser page (a separate native view that never delivers keys to the app window), every ⌘, ⌃ or ⌥ chord bound in your keymap still runs its command: ⌘1…⌘9, ⌃Tab, ⇧⌘[ ⇧⌘], ⌃⌘1…⌃⌘6 and your remaps. The app pushes the bound strokes to the native side, which takes only those from the page; typing, unbound keys and the page's own ⌘C ⌘V ⌘X ⌘Z ⌘A stay with the page. On Windows the same holds through WebView2's accelerator-key event (Ctrl+1…9, Ctrl+Tab, Ctrl+PgUp/PgDn, Ctrl+Shift+T/W, Alt+1…9 …), and the page keeps Ctrl+F, F5, Ctrl+C and Ctrl+V; on Linux (WebKitGTK) the embedded page still takes every key while it has focus. There is no _Close Window_ item: ⌘W closes a tab, never the window.
+
+### Differences by OS
+
+| Action | macOS | Windows / Linux | Why |
+| ------ | ----- | --------------- | --- |
+| New terminal | ⌘T, ⌃⇧\` | Ctrl+T (not in a terminal), **Ctrl+Shift+T** (everywhere, a focused terminal included), Ctrl+Shift+\` | Windows Terminal / GNOME Terminal use Ctrl+Shift+T; Chrome and VS Code use Ctrl+T and Ctrl+Shift+\` |
+| Close tab | ⌘W, ⇧⌘W | Ctrl+W (not in a terminal: it is the shell's delete-word), **Ctrl+Shift+W** (everywhere) | Ctrl+Shift+W no longer closes every tab; "Close all tabs in the pane" is palette / menu only |
+| Reopen closed tab | ⇧⌘T | **Alt+Shift+T** | Ctrl+Shift+T is new terminal there; ⌘ never reaches a shell, so macOS keeps ⇧⌘T |
+| Next / previous tab | ⇧⌘] / ⇧⌘[ | Ctrl+Shift+] / [, **Ctrl+PgDn / Ctrl+PgUp** | Chrome, VS Code and GNOME Terminal; ⌘PgDn is the GPU terminal's scroll on macOS |
+| Toggle sidebar | ⌃⌘S | **Ctrl+B** (VS Code) | the left dock (⌘B on macOS) moved to **Alt+Shift+B** |
+| Quit | ⌘Q (menu) | **Ctrl+Q**, from a terminal too; same quit as the tray's Quit | Alt+F4 still hides the window to the tray |
+| Full screen | ⌃⌘F (View menu) | **F11** | |
+| Go back / forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] (a focused terminal keeps Ctrl+[ for the shell) | |
+| Jump history | ⌃- / ⌃⇧- | Alt+← / Alt+→ (a focused terminal keeps them for word motion) | Ctrl+- is zoom out |
+| Spaces / recent worktrees | ⌃1…⌃9 / ⌃⌘1…⌃⌘6 | Alt+1…9 / Alt+Shift+1…6 | Ctrl+digit is tab by position |
+
+On Windows the webview's own browser keys are off for the app window and the tray popover (F5 and Ctrl+R never reload Atlas, Ctrl+F, Ctrl+P and F12 open no Edge UI); the page still receives every key. The embedded browser's tabs keep theirs.
 
 The palettes highlight the characters your query matched and show their keys (↩ select, ⇧↩ open beside, ⎋ close).
 

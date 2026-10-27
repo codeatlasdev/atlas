@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Open anything with `atlas`, no setup.** `atlas .`, `atlas <folder>` and `atlas <file>` open it in Atlas Desktop (a file opens its project, then the file; the app is started if it is not running). `atlas.yaml` is now optional: in a folder without one, `atlas dev` (also `--detach`, `--headless`, `--ci`), `atlas down` and `atlas mcp` detect the services from `package.json`, `Cargo.toml`, `pyproject.toml` or `go.mod` in memory, print one line saying so and writing nothing; `atlas init` saves exactly that config. A subcommand always wins over a folder of the same name (`atlas ./dev` opens the folder); a typo like `atlas devv` still fails with "unrecognized subcommand" and the suggestion.
+- **`atlas -- <cmd…>` runs a command as a service of this folder's stack.** `atlas -- bun dev` is supervised like any service (logs in `.logs/`, port probe, restart from the TUI/Desktop/MCP) without touching `atlas.yaml`: it joins a running background runner live, or starts the stack in the background with it. Named from the command (`bun-dev`, de-duplicated).
 ### Changed
 
 - **A new first-run welcome.** The full-screen globe title sequence is replaced by a short deck drawn and animated in the app (SVG and CSS, no video): welcome, one file runs your stack, agents side by side, a worktree for every idea, then finding your projects. Arrow keys or Enter move through it, Esc skips. The welcome sound is gone with the sequence. The empty state without projects keeps the globe.

@@ -145,13 +145,21 @@ fn quit_on_terminate(
 }
 
 async fn attach(root_dir: &Path, select: &config::SelectionRequest, runner_pid: i64) -> Result<()> {
-    let cfg = config::load(root_dir)?;
+    let (mut cfg, _) = config::load_or_detect(root_dir)?;
     let mut sub = crate::control::subscribe(root_dir)
         .await
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    // The runner's config is the truth; refuse to draw a different one.
+    // `atlas -- <cmd>` services live only in the runner: rebuild them here from the
+    // command each row carries, so the mirror and the config check below know them.
     let snapshot = std::mem::take(&mut sub.snapshot);
+    for s in snapshot["services"].as_array().into_iter().flatten() {
+        if let (Some(name), Some(command)) = (s["name"].as_str(), s["adhoc"].as_str()) {
+            cfg.services
+                .entry(name.to_string())
+                .or_insert_with(|| config::adhoc::service_def(command));
+        }
+    }
     let runner_services: std::collections::BTreeSet<&str> = snapshot["services"]
         .as_array()
         .into_iter()
@@ -221,7 +229,11 @@ async fn attach(root_dir: &Path, select: &config::SelectionRequest, runner_pid: 
 }
 
 pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<()> {
-    let cfg = config::load(root_dir)?;
+    let (cfg, source) = config::load_or_detect(root_dir)?;
+    if source == config::ConfigSource::Detected {
+        // Printed before raw mode takes the screen; the splash would wipe it otherwise.
+        eprintln!("{}", config::detected_notice(&cfg));
+    }
     // Fail fast on a bad SERVICE/--profile, before the lock prompt or raw mode.
     let selection = config::resolve_selection(&cfg, select).map_err(|e| anyhow::anyhow!(e))?;
 

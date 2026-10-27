@@ -28,6 +28,9 @@ pub struct DevArgs {
     /// The daemonized runner process itself (spawned by --detach; not for direct use).
     #[arg(long, hide = true)]
     pub runner: bool,
+    /// Ad-hoc command to run as a service of this stack (repeatable; set by `atlas -- <cmd>`).
+    #[arg(long = "adhoc", hide = true, value_name = "CMD")]
+    pub adhoc: Vec<String>,
     /// CI mode: start all services, wait for health, print JSON result, exit 0/1.
     #[arg(long)]
     pub ci: bool,
@@ -60,7 +63,7 @@ impl AtlasCommand for DevArgs {
             no_deps: self.no_deps,
         };
         if self.detach {
-            match atlas_tui::detach(&root, &select).await? {
+            match atlas_tui::detach(&root, &select, &self.adhoc).await? {
                 atlas_tui::runner::Detached::Started { pid } => println!(
                     "atlas runner started (pid {pid}) · attach: atlas dev · stop: atlas down"
                 ),
@@ -70,11 +73,11 @@ impl AtlasCommand for DevArgs {
             }
             Ok(())
         } else if self.runner {
-            atlas_tui::run_runner(&root, &select).await
+            atlas_tui::run_runner(&root, &select, &self.adhoc).await
         } else if self.ci {
             atlas_tui::run_ci(&root, self.timeout, &select).await
         } else if self.headless {
-            atlas_tui::run_headless(&root, &select).await
+            atlas_tui::run_headless(&root, &select, &self.adhoc).await
         } else {
             if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
                 eprintln!(

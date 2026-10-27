@@ -68,6 +68,8 @@ pub(super) fn service_json(manager: &ServiceManager, name: &str, state: &Service
         "completed_ok": manager.completed_ok(name),
         "paused_by": manager.paused_by(name),
         "deselected": manager.is_deselected(name),
+        // Ad-hoc (`atlas -- <cmd>`): an attaching client rebuilds the service from this.
+        "adhoc": manager.adhoc_command(name),
         // Whole MB / whole percent: finer values would re-send `rows` every sample.
         "mem_mb": manager.usage(name).map(|u| u.mem >> 20),
         "cpu": manager.usage(name).map(|u| u.cpu.round() as u32),

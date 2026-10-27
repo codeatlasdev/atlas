@@ -147,7 +147,7 @@ pub async fn service_cmd(id: String, cmd: String, service: String) -> Result<Val
 pub async fn action_run(id: String, target: String, confirmed: bool) -> Result<Value, String> {
     let root = root_of(&id)?;
     if !confirmed
-        && let Ok(cfg) = config::load(&root)
+        && let Ok((cfg, _)) = config::load_or_detect(&root)
         && let Some(a) = cfg
             .actions
             .iter()

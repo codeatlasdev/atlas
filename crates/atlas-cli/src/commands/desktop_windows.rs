@@ -106,8 +106,11 @@ fn is_pe(p: &Path) -> bool {
 }
 
 /// Start the app detached from this console, so closing it or Ctrl-C does not take the app down.
-pub(super) fn open(app: &Path) -> Result<()> {
+/// `args` are its argv (a path to open); a running instance receives them through the app's
+/// single-instance forwarding.
+pub(super) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
     let mut cmd = Command::new(app);
+    cmd.args(args);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

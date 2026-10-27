@@ -134,9 +134,10 @@ fn desktop_entry(exec: &Path) -> String {
 }
 
 /// Start the app detached from this terminal (own session, no stdio), so closing the shell or
-/// hitting Ctrl-C does not take the app down.
-pub(super) fn open(app: &Path) -> Result<()> {
+/// hitting Ctrl-C does not take the app down. `args` are its argv (a path to open).
+pub(super) fn open(app: &Path, args: &[std::ffi::OsString]) -> Result<()> {
     let mut cmd = Command::new(app);
+    cmd.args(args);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

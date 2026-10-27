@@ -53,9 +53,6 @@
 			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}
 				><FolderPlus size={13} /> Add a folder…</button
 			>
-			<button class="link" onclick={() => void w.initFolder()}
-				><Wand2 size={13} /> Set up a folder with atlas init</button
-			>
 		</div>
 	</div>
 {/snippet}
@@ -85,15 +82,15 @@
 {/snippet}
 
 {#snippet empty()}
-	<h1>No atlas.yaml found yet.</h1>
+	<h1>No projects found yet.</h1>
 	<p class="lead">
-		Scanned {discovery.done ? discovery.done.dirs.toLocaleString() : 0} folders. Point Atlas at a project and it
-		sets one up for you.
+		Scanned {discovery.done ? discovery.done.dirs.toLocaleString() : 0} folders. Point Atlas at any project folder:
+		it detects the stack, no setup file needed.
 	</p>
 	<div class="actions">
 		<Button size="lg" data-testid={ACTIONS.init} onclick={() => void w.initFolder()}>
 			{#snippet leading()}<Wand2 size={15} />{/snippet}
-			Set up a folder with atlas init
+			Choose a project folder
 		</Button>
 		<div class="secondary">
 			<button class="link" data-testid={ACTIONS.addFolder} onclick={() => void w.addFolder()}

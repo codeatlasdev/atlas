@@ -229,7 +229,7 @@
 					/>{/each}
 			</div>
 		{:else if repos.length === 0}
-			<p class="hint">No projects yet. Add a folder with an <code>atlas.yaml</code>.</p>
+			<p class="hint">No projects yet. Add any project folder: Atlas detects how to run it.</p>
 		{:else if filtering && !visible}
 			<p class="hint">No worktree matches “{sidebar.filter.trim()}”.</p>
 		{/if}
@@ -351,10 +351,6 @@
 		font-size: 12px;
 		line-height: 1.45;
 		color: var(--ca-text-secondary);
-	}
-	.hint code {
-		font-family: var(--mono);
-		font-size: 11px;
 	}
 	.section {
 		display: flex;

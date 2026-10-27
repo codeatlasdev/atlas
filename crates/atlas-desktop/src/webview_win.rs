@@ -15,10 +15,11 @@ use windows_core::Interface;
 /// Browser arguments of every Atlas webview. WebView2 allows one set per user-data folder, so the main window,
 /// the tray popover and the embedded browser's tabs all pass exactly this (`.additional_browser_args(ARGS)`).
 /// First three = wry's defaults (it replaces them when args are given); the rest stops Edge's background
-/// services (component updater, sync, telemetry pings, crash uploader, default-app seeding): measured -110 MB
-/// working set and two fewer processes on an idle page. They affect no page behavior.
+/// services (component updater, sync, crash uploader, default-app seeding). In a controlled run (Edge engine,
+/// throwaway profile, idle page) that was about -110 MB working set and two fewer processes; not measured
+/// cleanly on Atlas itself. Pages keep their behavior (`--no-pings` was left out: it changes `<a ping>`).
 pub const ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
-    --disable-background-networking --disable-component-update --disable-sync --no-pings \
+    --disable-background-networking --disable-component-update --disable-sync \
     --disable-breakpad --disable-default-apps --metrics-recording-only";
 
 static LOW: AtomicBool = AtomicBool::new(false);

@@ -34,22 +34,9 @@ pub(super) fn app_version(app: &Path) -> Option<String> {
     Some(v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
-/// Put the AppImage `source` at `target` (staged next to it, then renamed over the old one) and
-/// record `version`; then (re)write the menu entry.
+/// Put the AppImage `source` at `target` and record `version`; then (re)write the menu entry.
 pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Result<()> {
-    install_file(source, target)?;
-    let vf = version_file();
-    match version {
-        Some(v) => {
-            if let Some(dir) = vf.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
-            std::fs::write(&vf, v)?;
-        }
-        None => {
-            let _ = std::fs::remove_file(&vf);
-        }
-    }
+    install_at(source, target, version, &version_file())?;
     if let Some(home) = dirs::home_dir()
         && let Err(e) = write_menu_entry(&home, target)
     {
@@ -61,7 +48,68 @@ pub(super) fn install(source: &Path, target: &Path, version: Option<&str>) -> Re
     Ok(())
 }
 
-fn install_file(source: &Path, target: &Path) -> Result<()> {
+/// The previous AppImage, kept beside `target` until the new one is in place and recorded.
+fn prev_path(target: &Path) -> PathBuf {
+    target.with_file_name(".atlas-desktop.prev")
+}
+
+/// [`install_file`] plus the version record at `vf`, as one step: the previous app is kept as
+/// `.atlas-desktop.prev` until both are done and put back when either fails, so an update never
+/// leaves a missing or unrecorded app. A kill in between is healed by the next install.
+fn install_at(source: &Path, target: &Path, version: Option<&str>, vf: &Path) -> Result<()> {
+    let prev = prev_path(target);
+    // A previous run killed between its renames: `prev` is the app that was there.
+    if target.symlink_metadata().is_err() && prev.symlink_metadata().is_ok() {
+        let _ = std::fs::rename(&prev, target);
+    }
+    let had_old = target.symlink_metadata().is_ok();
+    let old_version = std::fs::read(vf).ok();
+    install_file(source, target, &prev)?;
+    if let Err(e) = record_version(vf, version) {
+        restore(target, &prev, had_old, vf, old_version);
+        return Err(e);
+    }
+    let _ = std::fs::remove_file(&prev);
+    Ok(())
+}
+
+/// Undo a failed install: the old app (when there was one) and its version record come back.
+fn restore(target: &Path, prev: &Path, had_old: bool, vf: &Path, old_version: Option<Vec<u8>>) {
+    if had_old {
+        let _ = std::fs::rename(prev, target);
+    } else {
+        let _ = std::fs::remove_file(target);
+    }
+    match old_version {
+        Some(v) => {
+            let _ = std::fs::write(vf, v);
+        }
+        None => {
+            let _ = std::fs::remove_file(vf);
+        }
+    }
+}
+
+fn record_version(vf: &Path, version: Option<&str>) -> Result<()> {
+    match version {
+        Some(v) => {
+            if let Some(dir) = vf.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            std::fs::write(vf, v)
+                .with_context(|| format!("cannot record version in {}", vf.display()))
+        }
+        None => {
+            let _ = std::fs::remove_file(vf);
+            Ok(())
+        }
+    }
+}
+
+/// Stage `source` next to `target`, move the existing app to `prev`, and rename the staged file
+/// into place. The staging file is removed on every path; when the final rename fails `prev`
+/// goes back.
+fn install_file(source: &Path, target: &Path, prev: &Path) -> Result<()> {
     if !is_elf(source) {
         bail!(
             "{} is not an AppImage (expected an executable ELF file)",
@@ -71,16 +119,32 @@ fn install_file(source: &Path, target: &Path) -> Result<()> {
     let parent = target.parent().context("bad install path")?;
     std::fs::create_dir_all(parent)
         .with_context(|| format!("cannot create {}", parent.display()))?;
-    let staging = parent.join(".atlas-desktop.new");
-    let _ = std::fs::remove_file(&staging);
-    std::fs::copy(source, &staging).with_context(|| format!("cannot copy {}", source.display()))?;
-    std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755))?;
-    // rename(2) replaces the old file atomically; a running instance keeps its (unlinked) inode.
-    if let Err(e) = std::fs::rename(&staging, target) {
-        let _ = std::fs::remove_file(&staging);
+    let staging = Staging(parent.join(".atlas-desktop.new"));
+    std::fs::copy(source, &staging.0)
+        .with_context(|| format!("cannot copy {}", source.display()))?;
+    std::fs::set_permissions(&staging.0, std::fs::Permissions::from_mode(0o755))?;
+    let had_old = target.symlink_metadata().is_ok();
+    if had_old {
+        std::fs::rename(target, prev)
+            .with_context(|| format!("cannot move {}", target.display()))?;
+    }
+    // rename(2) replaces atomically; a running instance keeps its (unlinked) inode.
+    if let Err(e) = std::fs::rename(&staging.0, target) {
+        if had_old {
+            let _ = std::fs::rename(prev, target);
+        }
         return Err(e).with_context(|| format!("cannot install {}", target.display()));
     }
     Ok(())
+}
+
+/// Removes the staged file when dropped (also after the successful rename, where it is gone).
+struct Staging(PathBuf);
+
+impl Drop for Staging {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 fn is_elf(p: &Path) -> bool {
@@ -163,25 +227,42 @@ mod tests {
         std::fs::write(path, [b"\x7fELF".as_slice(), body].concat()).unwrap();
     }
 
+    /// Installs through the real path with a version file inside the sandbox.
+    fn put(src: &Path, target: &Path, version: Option<&str>) -> Result<()> {
+        install_at(src, target, version, &target.with_file_name("version"))
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        v.sort();
+        v
+    }
+
     #[test]
-    fn install_replaces_the_appimage_in_place_executable_and_leaves_no_staging() {
+    fn install_replaces_the_appimage_in_place_executable_and_leaves_no_staging_or_backup() {
         let tmp = tempfile::tempdir().unwrap();
         let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
         fake_appimage(&a, b"one");
         fake_appimage(&b, b"two");
         let target = tmp.path().join("bin").join("atlas-desktop");
 
-        install_file(&a, &target).unwrap();
-        install_file(&b, &target).unwrap();
+        put(&a, &target, Some("1.0.0")).unwrap();
+        put(&b, &target, Some("1.1.0")).unwrap();
 
         assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFtwo");
         let mode = std::fs::metadata(&target).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o755);
-        let names: Vec<_> = std::fs::read_dir(target.parent().unwrap())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .collect();
-        assert_eq!(names, ["atlas-desktop"]);
+        assert_eq!(
+            std::fs::read_to_string(target.with_file_name("version")).unwrap(),
+            "1.1.0"
+        );
+        assert_eq!(
+            names(target.parent().unwrap()),
+            ["atlas-desktop", "version"]
+        );
     }
 
     /// A truncated download or an HTML error page must never replace a working app.
@@ -191,14 +272,88 @@ mod tests {
         let good = tmp.path().join("good");
         fake_appimage(&good, b"ok");
         let target = tmp.path().join("atlas-desktop");
-        install_file(&good, &target).unwrap();
+        put(&good, &target, Some("1.0.0")).unwrap();
 
         for bad in [b"<html>404</html>".as_slice(), b"\x7fEL", b""] {
             let p = tmp.path().join("bad");
             std::fs::write(&p, bad).unwrap();
-            assert!(install_file(&p, &target).is_err(), "{bad:?}");
+            assert!(put(&p, &target, Some("2.0.0")).is_err(), "{bad:?}");
             assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFok");
         }
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("version")).unwrap(),
+            "1.0.0"
+        );
+    }
+
+    /// The new file is in place but its version cannot be recorded: the old app and the old
+    /// record come back instead of an app whose version disagrees with the CLI's.
+    #[test]
+    fn a_failure_after_the_swap_restores_the_previous_app_and_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
+        fake_appimage(&a, b"one");
+        fake_appimage(&b, b"two");
+        let bin = tmp.path().join("bin");
+        let target = bin.join("atlas-desktop");
+        let vf = bin.join("version");
+        install_at(&a, &target, Some("1.0.0"), &vf).unwrap();
+
+        // A directory where the version file goes: the write fails after the swap.
+        std::fs::remove_file(&vf).unwrap();
+        std::fs::create_dir(&vf).unwrap();
+        assert!(install_at(&b, &target, Some("2.0.0"), &vf).is_err());
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFone");
+        assert!(vf.is_dir());
+        assert_eq!(names(&bin), ["atlas-desktop", "version"]);
+    }
+
+    /// A kill between "old → .prev" and "new → target" leaves no app. The next install puts the
+    /// old one back first, and ends on the new one with nothing else around.
+    #[test]
+    fn an_install_killed_between_its_renames_is_recovered_by_the_next_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
+        fake_appimage(&a, b"one");
+        fake_appimage(&b, b"two");
+        let bin = tmp.path().join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let target = bin.join("atlas-desktop");
+        std::fs::copy(&a, prev_path(&target)).unwrap();
+        assert!(target.symlink_metadata().is_err());
+
+        // The recovery runs even when the follow-up install is refused.
+        let junk = tmp.path().join("junk");
+        std::fs::write(&junk, "<html>").unwrap();
+        assert!(put(&junk, &target, Some("2.0.0")).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFone");
+
+        put(&b, &target, Some("2.0.0")).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFtwo");
+        assert_eq!(names(&bin), ["atlas-desktop", "version"]);
+    }
+
+    /// The install fails before the swap (the folder is read-only, so nothing can be staged):
+    /// the old app and its record stay, and no staging or backup file appears.
+    #[test]
+    fn a_failure_before_the_swap_leaves_no_staging_file_and_keeps_the_old_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        let target = bin.join("atlas-desktop");
+        let src = tmp.path().join("src");
+        fake_appimage(&src, b"x");
+        put(&src, &target, Some("1.0.0")).unwrap();
+        // A target whose folder is read-only: staging cannot even be created.
+        let ro = std::fs::Permissions::from_mode(0o555);
+        std::fs::set_permissions(&bin, ro).unwrap();
+        let r = put(&src, &target, Some("2.0.0"));
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if r.is_ok() {
+            return; // root ignores the mode; nothing to assert
+        }
+        assert_eq!(std::fs::read(&target).unwrap(), b"\x7fELFx");
+        assert_eq!(names(&bin), ["atlas-desktop", "version"]);
     }
 
     #[test]

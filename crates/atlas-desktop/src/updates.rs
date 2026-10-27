@@ -53,13 +53,29 @@ impl Drop for InstallGuard {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Progress {
-    Phase { id: String },
-    Bytes { done: u64, total: u64 },
-    Rollback { state: String },
-    Host { state: String, live: u64 },
+    Phase {
+        id: String,
+    },
+    Bytes {
+        done: u64,
+        total: u64,
+    },
+    Rollback {
+        state: String,
+    },
+    Host {
+        state: String,
+        live: u64,
+    },
+    /// Nothing was installed: Homebrew or a system package manager owns this Atlas.
+    /// `how` is `homebrew` or `package`.
+    Managed {
+        how: String,
+    },
 }
 
-/// `@@atlas phase download` / `@@atlas bytes 10 100` / `@@atlas rollback restored`.
+/// `@@atlas phase download` / `@@atlas bytes 10 100` / `@@atlas rollback restored` /
+/// `@@atlas managed homebrew`.
 fn parse_progress(line: &str) -> Option<Progress> {
     let mut it = line.strip_prefix("@@atlas ")?.split_whitespace();
     match it.next()? {
@@ -76,6 +92,9 @@ fn parse_progress(line: &str) -> Option<Progress> {
         "host" => Some(Progress::Host {
             state: it.next()?.to_string(),
             live: it.next().and_then(|n| n.parse().ok()).unwrap_or(0),
+        }),
+        "managed" => Some(Progress::Managed {
+            how: it.next()?.to_string(),
         }),
         _ => None,
     }
@@ -645,12 +664,24 @@ mod tests {
                 live: 2
             })
         );
+        assert_eq!(
+            parse_progress("@@atlas managed package"),
+            Some(Progress::Managed {
+                how: "package".into()
+            })
+        );
+        // The wire shape the frontend reads: `{kind:"managed", how}`.
+        assert_eq!(
+            serde_json::to_value(parse_progress("@@atlas managed homebrew").unwrap()).unwrap(),
+            serde_json::json!({"kind": "managed", "how": "homebrew"})
+        );
         for bad in [
             "◆ Downloading v1",
             "@@atlas bytes x 1",
             "@@atlas bytes 1",
             "@@atlas nope 1",
             "@@atlas phase",
+            "@@atlas managed",
         ] {
             assert_eq!(parse_progress(bad), None, "{bad}");
         }

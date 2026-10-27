@@ -59,15 +59,12 @@ pub(crate) fn decide(env: &PromptEnv) -> Decision {
     Decision::Prompt(newer)
 }
 
-/// Binary is an `atlas link` symlink or a debug build. `ATLAS_UPDATE_PROMPT=force` lifts the
-/// debug-build half only (used by the pty integration test, which runs a debug binary).
+/// Binary is an `atlas link` symlink or a debug build: the one rule `atlas update` itself
+/// applies (`update_core::is_dev_binary`), so the prompt never offers what the update refuses.
+/// `ATLAS_UPDATE_PROMPT=force` lifts the debug-build half only (used by the pty integration
+/// test, which runs a debug binary).
 fn is_linked() -> bool {
-    let symlinked = std::env::current_exe()
-        .ok()
-        .and_then(|p| std::fs::read_link(p).ok())
-        .is_some();
-    let forced = std::env::var("ATLAS_UPDATE_PROMPT").is_ok_and(|v| v == "force");
-    symlinked || (cfg!(debug_assertions) && !forced)
+    super::update_core::is_dev_binary()
 }
 
 fn env_flag(name: &str) -> bool {
@@ -158,8 +155,8 @@ where
             // `reexec` only returns when exec failed; keep running the old version.
             Flow::Continue
         }
-        // Homebrew etc.: the update command told the user what to run; carry on.
-        Ok(UpdateOutcome::Unchanged) => Flow::Continue,
+        // Homebrew, a declined confirmation, already current: nothing changed, carry on.
+        Ok(UpdateOutcome::Unchanged | UpdateOutcome::Managed) => Flow::Continue,
         Err(e) => {
             eprintln!("\x1b[1;31merror:\x1b[0m update failed: {e}");
             for cause in e.chain().skip(1) {
@@ -248,7 +245,8 @@ pub(crate) async fn run_on_exit_update() {
                 );
             }
         }
-        Ok(UpdateOutcome::Unchanged) => {}
+        // Another tool owns this install and the user was told what to run.
+        Ok(UpdateOutcome::Unchanged | UpdateOutcome::Managed) => {}
         Err(e) => {
             eprintln!("\x1b[1;31merror:\x1b[0m update failed: {e}");
             for cause in e.chain().skip(1) {
@@ -446,5 +444,28 @@ mod tests {
         )
         .await;
         assert_eq!(flow, Flow::Abort);
+    }
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// Homebrew / a package manager owns this install and `atlas update` only told the user
+    /// what to run: the binary did not change, so the session must not re-exec.
+    #[tokio::test]
+    async fn accept_but_managed_elsewhere_does_not_reexec() {
+        let mut execd = false;
+        let mut input = Cursor::new(Vec::new());
+        let flow = on_accept(
+            "0.4.1",
+            &mut input,
+            || async { Ok(UpdateOutcome::Managed) },
+            || execd = true,
+        )
+        .await;
+        assert!(!execd);
+        assert_eq!(flow, Flow::Continue);
     }
 }

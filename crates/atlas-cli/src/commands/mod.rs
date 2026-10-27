@@ -28,6 +28,7 @@ pub mod skills;
 pub mod uninstall;
 pub(crate) mod update_channel;
 pub mod update_core;
+pub(crate) mod update_pkg;
 pub mod update_prompt;
 pub mod version;
 pub mod wt;

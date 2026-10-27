@@ -99,6 +99,8 @@ impl AtlasCommand for DesktopArgs {
         if self.dev {
             return dev();
         }
+        #[cfg(target_os = "macos")]
+        recover_interrupted_swap();
         let installed = installed_app();
         if self.status {
             return status(installed.as_deref());
@@ -271,11 +273,20 @@ async fn sync(installed: Option<&Path>) -> Result<()> {
     sync_app(installed)
 }
 
+/// The one line `atlas update` prints when the app is a dev-build link it will not replace.
+fn linked_notice(app: &Path) -> String {
+    format!(
+        "\x1b[2m◆ Atlas Desktop is linked to a dev build ({}); left alone. Run atlas unlink to update it.\x1b[0m",
+        app.display()
+    )
+}
+
 /// Bring the installed app to this CLI's version. Fails (instead of printing and moving on)
 /// so `atlas update` can roll the CLI back and the app never ends up on another version.
 pub(crate) fn sync_app(installed: Option<&Path>) -> Result<()> {
     let Some(app) = installed else { return Ok(()) };
     if is_symlink(app) {
+        println!("{}", linked_notice(app));
         return Ok(());
     }
     let want = current_version();
@@ -329,52 +340,44 @@ fn install_app(source: &Path, target: &Path, version: Option<&str>) -> Result<()
 }
 
 /// Put the bundle at `source` (`.app` dir or `.app.tar.gz`) at `target`, replacing any
-/// existing app only once the new one is fully in place next to it.
+/// existing app only once the new one is fully in place next to it. The old bundle is kept as
+/// `.Atlas.app.old` until the new one is at `target`, so a crash between the two renames leaves
+/// a bundle [`recover`] puts back, never no app at all. Staging dirs are removed on every path.
 #[cfg(target_os = "macos")]
 pub(crate) fn install(source: &Path, target: &Path) -> Result<()> {
     let parent = target.parent().context("bad install path")?;
     std::fs::create_dir_all(parent)
         .with_context(|| format!("cannot create {}", parent.display()))?;
-    let staging = parent.join(".Atlas.app.new");
-    let old = parent.join(".Atlas.app.old");
-    for p in [&staging, &old] {
-        let _ = remove(p);
-    }
+    recover(target);
+    let staging = Staging(parent.join(".Atlas.app.new"));
+    let extract = Staging(parent.join(".Atlas.app.extract"));
+    // Leftovers of a run that was killed before its guards could drop.
+    let _ = remove(&staging.0);
+    let _ = remove(&extract.0);
 
     let src_app = if source.is_dir() {
         source.to_path_buf()
     } else {
-        let x = parent.join(".Atlas.app.extract");
-        let _ = std::fs::remove_dir_all(&x);
-        std::fs::create_dir_all(&x)?;
+        std::fs::create_dir_all(&extract.0)?;
         run(Command::new("/usr/bin/tar")
             .arg("xzf")
             .arg(source)
             .arg("-C")
-            .arg(&x))?;
-        let app = x.join(APP);
+            .arg(&extract.0))?;
+        let app = extract.0.join(APP);
         if !app.is_dir() {
             bail!("{} does not contain {APP}", source.display());
         }
         app
     };
     // ditto keeps the bundle's symlinks, xattrs and code signature intact.
-    run(Command::new("/usr/bin/ditto").arg(&src_app).arg(&staging))?;
+    run(Command::new("/usr/bin/ditto").arg(&src_app).arg(&staging.0))?;
     let _ = Command::new("/usr/bin/xattr")
         .args(["-dr", "com.apple.quarantine"])
-        .arg(&staging)
+        .arg(&staging.0)
         .status();
 
-    if target.symlink_metadata().is_ok() {
-        std::fs::rename(target, &old)
-            .with_context(|| format!("cannot move {}", target.display()))?;
-    }
-    if let Err(e) = std::fs::rename(&staging, target) {
-        let _ = std::fs::rename(&old, target);
-        return Err(e).with_context(|| format!("cannot install {}", target.display()));
-    }
-    let _ = remove(&old);
-    let _ = std::fs::remove_dir_all(parent.join(".Atlas.app.extract"));
+    swap(&staging.0, target)?;
     // Refresh Launch Services so Spotlight/Dock pick up the new version.
     let _ = Command::new(
         "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
@@ -383,6 +386,76 @@ pub(crate) fn install(source: &Path, target: &Path) -> Result<()> {
     .arg(target)
     .status();
     Ok(())
+}
+
+/// Removes a staging path when dropped, so no error path leaves a half-copied bundle behind
+/// (the disk-full case is exactly when a leftover hurts most).
+#[cfg(target_os = "macos")]
+struct Staging(PathBuf);
+
+#[cfg(target_os = "macos")]
+impl Drop for Staging {
+    fn drop(&mut self) {
+        let _ = remove(&self.0);
+    }
+}
+
+/// The old bundle of an in-flight swap, beside `target`.
+#[cfg(target_os = "macos")]
+fn old_path(target: &Path) -> PathBuf {
+    target.with_file_name(".Atlas.app.old")
+}
+
+/// Replace `target` by the finished bundle `staging` (same folder): the old one moves to
+/// `.Atlas.app.old`, the new one takes its place, and only then is the old one deleted. When the
+/// second rename fails the old bundle goes back.
+#[cfg(target_os = "macos")]
+fn swap(staging: &Path, target: &Path) -> Result<()> {
+    let old = old_path(target);
+    let _ = remove(&old);
+    let had_old = target.symlink_metadata().is_ok();
+    if had_old {
+        std::fs::rename(target, &old)
+            .with_context(|| format!("cannot move {}", target.display()))?;
+    }
+    if let Err(e) = std::fs::rename(staging, target) {
+        if had_old {
+            let _ = std::fs::rename(&old, target);
+        }
+        return Err(e).with_context(|| format!("cannot install {}", target.display()));
+    }
+    let _ = remove(&old);
+    Ok(())
+}
+
+/// Undo a swap that was killed between its two renames: `target` is gone but `.Atlas.app.old`
+/// is the app it replaced, so put it back. When both exist the swap finished and `old` is only
+/// garbage. Returns true when the old app was restored.
+#[cfg(target_os = "macos")]
+pub(crate) fn recover(target: &Path) -> bool {
+    let old = old_path(target);
+    if old.symlink_metadata().is_err() {
+        return false;
+    }
+    if target.symlink_metadata().is_ok() {
+        let _ = remove(&old);
+        return false;
+    }
+    std::fs::rename(&old, target).is_ok()
+}
+
+/// [`recover`] for every place an app can live, before anything looks for the installed one.
+#[cfg(target_os = "macos")]
+fn recover_interrupted_swap() {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    for dir in [PathBuf::from("/Applications"), home.join("Applications")] {
+        if recover(&dir.join(APP)) {
+            eprintln!(
+                "\x1b[33m◆\x1b[0m Restored {} from an interrupted update",
+                dir.join(APP).display()
+            );
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -481,6 +554,30 @@ fn dev() -> Result<()> {
 mod tests {
     use super::*;
 
+    /// A linked app is never replaced by an update: `sync_app` succeeds, the link and what it
+    /// points at stay, and the notice names the app and the way out in one line.
+    #[cfg(unix)]
+    #[test]
+    fn sync_leaves_a_linked_app_alone_and_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dev = tmp.path().join("dev-build");
+        std::fs::write(&dev, "dev").unwrap();
+        let app = tmp.path().join("atlas-app");
+        std::os::unix::fs::symlink(&dev, &app).unwrap();
+
+        sync_app(Some(&app)).unwrap();
+
+        assert_eq!(std::fs::read_link(&app).unwrap(), dev);
+        assert_eq!(std::fs::read_to_string(&dev).unwrap(), "dev");
+        let line = linked_notice(&app);
+        assert!(line.contains(&app.display().to_string()), "{line}");
+        assert!(
+            line.contains("left alone") && line.contains("atlas unlink"),
+            "{line}"
+        );
+        assert_eq!(line.lines().count(), 1);
+    }
+
     /// The asset the release workflow uploads per platform (`release.yml`, `generate-manifest.py`).
     #[test]
     fn the_app_asset_is_the_platforms_bundle() {
@@ -560,5 +657,100 @@ mod tests {
         let target = tmp.path().join("Apps").join(APP);
         assert!(install(&tarball, &target).is_err());
         assert!(target.symlink_metadata().is_err());
+        let left: Vec<_> = std::fs::read_dir(target.parent().unwrap())
+            .map(|d| d.map(|e| e.unwrap().file_name()).collect())
+            .unwrap_or_default();
+        assert!(left.is_empty(), "{left:?}");
+    }
+
+    #[cfg(target_os = "macos")]
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// A kill between `target → .Atlas.app.old` and `staging → target` leaves no `Atlas.app`.
+    /// The next sync/install must put the old app back instead of reporting "not installed".
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_swap_killed_between_its_renames_is_recovered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join(APP);
+        let old = fake_app(&tmp.path().join("prev"), "1.0.0");
+        std::fs::rename(&old, old_path(&target)).unwrap();
+        assert!(target.symlink_metadata().is_err());
+
+        assert!(recover(&target));
+        assert_eq!(app_version(&target).as_deref(), Some("1.0.0"));
+        assert!(old_path(&target).symlink_metadata().is_err());
+        // Nothing left to recover the second time.
+        assert!(!recover(&target));
+    }
+
+    /// The swap finished but the process died before deleting `old`: the new app stays, `old` goes.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn recovery_never_replaces_a_finished_install_with_its_leftover() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = fake_app(tmp.path(), "2.0.0");
+        let stale = fake_app(&tmp.path().join("prev"), "1.0.0");
+        std::fs::rename(&stale, old_path(&target)).unwrap();
+
+        assert!(!recover(&target));
+        assert_eq!(app_version(&target).as_deref(), Some("2.0.0"));
+        assert_eq!(names(tmp.path()), ["Atlas.app", "prev"]);
+    }
+
+    /// `install` itself heals a previous crash first, so the update that follows starts from the
+    /// old app and ends on the new one with nothing else on disk.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn install_after_a_crashed_swap_ends_on_the_new_version_with_no_leftovers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let apps = tmp.path().join("Applications");
+        std::fs::create_dir_all(&apps).unwrap();
+        let target = apps.join(APP);
+        let prev = fake_app(&tmp.path().join("prev"), "1.0.0");
+        std::fs::rename(&prev, old_path(&target)).unwrap();
+        let newer = fake_app(&tmp.path().join("new"), "1.1.0");
+
+        install(&newer, &target).unwrap();
+
+        assert_eq!(app_version(&target).as_deref(), Some("1.1.0"));
+        assert_eq!(names(&apps), [APP]);
+    }
+
+    /// The old app is still where it was while the new one is not yet in place, and comes back
+    /// when the second rename fails.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_failed_swap_keeps_the_old_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = fake_app(tmp.path(), "1.0.0");
+        // The staging bundle does not exist, so the second rename fails.
+        let missing = tmp.path().join(".Atlas.app.new");
+        assert!(swap(&missing, &target).is_err());
+        assert_eq!(app_version(&target).as_deref(), Some("1.0.0"));
+        assert!(old_path(&target).symlink_metadata().is_err());
+    }
+
+    /// A download that is not a tarball fails `tar` after the extract dir was created: the error
+    /// path must not leave the extract dir (or a staging bundle) behind, and the installed app stays.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_failure_after_staging_leaves_no_leftovers_and_keeps_the_old_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let apps = tmp.path().join("Applications");
+        let target = fake_app(&apps, "1.0.0");
+        let corrupt = tmp.path().join("Atlas.app.tar.gz");
+        std::fs::write(&corrupt, b"not a tarball").unwrap();
+
+        assert!(install(&corrupt, &target).is_err());
+        assert_eq!(app_version(&target).as_deref(), Some("1.0.0"));
+        assert_eq!(names(&apps), [APP]);
     }
 }

@@ -33,7 +33,6 @@ import { shell } from "#lib/shell/shell.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
 import { browserPrefs } from "#lib/stores/browser.svelte.ts";
 import { initHostStatus } from "#lib/stores/hostStatus.svelte.ts";
-import { INTRO_TIMING } from "#lib/onboarding/flow.ts";
 import { onboarding } from "#lib/onboarding/state.svelte.ts";
 import { ask, confirmDialog, promptDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
@@ -82,8 +81,6 @@ function exposeStores() {
 				onboarding,
 				welcome,
 				sound,
-				/** Intro timing (ms) for scripted recordings: hitMs is the strike, soundMs when the sting starts. */
-				introTiming: INTRO_TIMING,
 				/** Live CodeMirror views by `worktreeId:path`, the LSP state and the jump history (scripts/validate-goto-definition.sh). */
 				editors,
 				lsp,

@@ -1,9 +1,13 @@
+pub mod adhoc;
 mod loader;
 mod project;
 mod selection;
 mod validate;
 
-pub use loader::{PORT_OFFSET_ENV, apply_port_offset, find_root, load, load_checked};
+pub use loader::{
+    ConfigSource, PORT_OFFSET_ENV, apply_port_offset, detected_notice, find_root, load,
+    load_checked, load_or_detect,
+};
 pub use project::{
     ActionConfig, AndroidConfig, Condition, DEFAULT_START_TIMEOUT_SECS, DependsOn, DeployConfig,
     DeployHooks, DeployKind, DeployService, DeployTarget, HostMode, InfraConfig, IosConfig,

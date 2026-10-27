@@ -1,20 +1,15 @@
 <script lang="ts">
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { escapeEvent, primaryEvent } from "./flow.ts";
-	import Hero from "./Hero.svelte";
+	import Deck from "./deck/Deck.svelte";
 	import { onboarding } from "./state.svelte.ts";
 	import { welcome } from "./welcome.svelte.ts";
 
 	// A project showing up through any other path (CLI, the sidebar) ends the welcome and starts the tour, as before.
-	// Paths through the hero itself walk the guided flow and hand off from its last step.
+	// Paths through the deck itself walk the guided flow and hand off from its last step.
 	let handedOff = false;
-	// Captured before the flag below flips: this overlay instance decides once whether the intro plays.
-	const seenAtMount = onboarding.state.introSeen;
-	// The title sequence plays once per machine: the moment the overlay mounts it counts as seen, so a crash or a
-	// quit mid-intro does not replay it next launch.
-	$effect(() => {
-		if (onboarding.loaded) void onboarding.markIntroSeen();
-	});
+	/** The deck reached its project steps: Enter/Esc drive the flow from here on (before, the deck owns the keys). */
+	let atProjects = $state(false);
 	$effect(() => {
 		if (!store.projects.length || handedOff || welcome.phase !== "welcome") return;
 		handedOff = true;
@@ -43,8 +38,8 @@
 			else skip();
 			return;
 		}
-		if (e.key !== "Enter" || (e.target as HTMLElement | null)?.closest("button, input, a, [role=checkbox]"))
-			return;
+		if (!atProjects || e.key !== "Enter") return;
+		if ((e.target as HTMLElement | null)?.closest("button, input, a, [role=checkbox]")) return;
 		const act = primaryEvent(welcome.phase);
 		if (!act) return;
 		e.preventDefault();
@@ -59,7 +54,7 @@
 
 <div class="first" role="dialog" aria-label="Welcome to Atlas">
 	<div class="drag" data-tauri-drag-region></div>
-	<Hero intro seen={seenAtMount} onfinish={() => void finish()} onskip={skip} />
+	<Deck bind:atProjects onfinish={() => void finish()} onskip={skip} />
 </div>
 
 <style>

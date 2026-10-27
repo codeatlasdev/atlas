@@ -84,16 +84,10 @@ describe("checklist", () => {
 		expect(nextItem(s)).toBeUndefined();
 	});
 
-	test("the intro is remembered as seen, parsed strictly, and absent means not seen", () => {
-		expect(EMPTY_STATE.introSeen).toBe(false);
-		expect(parseState({ introSeen: true }).introSeen).toBe(true);
-		for (const bad of ["yes", 1, null, undefined, {}])
-			expect(parseState({ introSeen: bad }).introSeen).toBe(false);
-		expect(parseState(undefined).introSeen).toBe(false);
-	});
-
-	test("restart (Help > start over) lets the intro play again", () => {
-		expect(parseState({ introSeen: true, done: true }).introSeen).toBe(true);
+	test("a persisted `introSeen` from the old title sequence is ignored", () => {
+		const s = parseState({ introSeen: true, done: true });
+		expect(s).toEqual({ ...EMPTY_STATE, done: true });
+		expect("introSeen" in s).toBe(false);
 	});
 
 	test("palette and file search complete from a newly run command only", () => {

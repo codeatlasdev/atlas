@@ -5,7 +5,7 @@ import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api } from "#lib/api.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
-import { addPlan, initDescription, removeDescription } from "./addProject.ts";
+import { addPlan, removeDescription } from "./addProject.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 
 /** Pick a folder and add it. */
@@ -15,8 +15,8 @@ export async function addProject() {
 }
 
 /**
- * Add one folder (picked or dropped) to the sidebar and select it. A folder with an `atlas.yaml` is registered as is;
- * one without it is offered an `atlas init` first, with the file shown, so no terminal is needed.
+ * Add one folder (picked or dropped) to the sidebar and select it. No `atlas.yaml` is needed: a folder without one is
+ * added with its stack detected in memory, and nothing is written (the project header offers "Save as atlas.yaml").
  */
 export async function addFolder(dir: string) {
 	const probe = await store.run("probe", () => api.probe(dir));
@@ -27,25 +27,14 @@ export async function addFolder(dir: string) {
 		toast.info(`${probe.name} is already in Atlas`);
 		return;
 	}
-	if (plan.kind === "add" && plan.inside) {
+	if (plan.inside) {
 		const ok = await confirmDialog(`Add ${probe.name}?`, {
 			description: `${probe.picked} is inside the project at ${plan.root}, so that project is added.`,
 			confirmLabel: "Add project",
 		});
 		if (!ok) return;
 	}
-	if (plan.kind === "init") {
-		const pv = await store.run("init-preview", () => api.initPreview(plan.dir));
-		if (!pv) return;
-		const ok = await confirmDialog(`Set up ${probe.name} for Atlas?`, {
-			description: initDescription(plan.dir, pv),
-			confirmLabel: "Create atlas.yaml and add",
-		});
-		if (!ok) return;
-	}
-	const p = await store.run("add", () =>
-		plan.kind === "init" ? api.initProject(plan.dir) : api.add(plan.root),
-	);
+	const p = await store.run("add", () => api.add(plan.root));
 	if (!p) return;
 	await store.refresh();
 	store.selected = p.id;

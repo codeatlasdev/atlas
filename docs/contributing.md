@@ -185,10 +185,11 @@ The Atlas mark has **one source**: [`assets/logo.svg`](https://github.com/codeat
 | `crates/atlas-desktop/icons/{32x32,128x128,128x128@2x,icon}.png`, `icon.icns`, `icon.ico` | the app bundle: Dock, Cmd-Tab, Finder, **notifications** |
 | `crates/atlas-desktop/icons/tray.png`, `assets/tray-template.svg` | menu bar (monochrome template; macOS tints it) |
 | `crates/atlas-desktop/icons/tray-linux.png` | Linux tray (the same glyph in white: AppIndicator hosts do not tint) |
+| `crates/atlas-desktop/icons/32x32.png` (also the app bundle icon) | Windows tray: the full-colour mark, because the notification area never tints and a black template is a solid disc there (`tray.rs` `icon()`) |
 | `assets/logo-animated.svg` | README/docs animation |
 | `site/public/{favicon.svg,favicon.ico,apple-touch-icon.png}` | the website |
 | `studio/assets/logo/logo.svg` | studio films |
-| `apps/desktop/src/lib/onboarding/intro/mark.ts` | the welcome intro (tile paths and boxes) |
+| `apps/desktop/src/lib/onboarding/intro/mark.ts` | the welcome globe (tile paths and boxes) |
 
 ```bash
 bun run icons          # regenerate all of the above (needs librsvg, ImageMagick, cargo-tauri)

@@ -14,11 +14,14 @@ mod browser_fail;
 #[cfg(target_os = "macos")]
 mod browser_fail_mac;
 mod id_migrate;
-// Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// Pure decision code: macOS (AppKit monitor) drives the mac-keycode half, Windows (WebView2 accelerator hook) the
+// DOM-code half, Linux neither. Each host leaves the other half unused; all of it is built so its tests run.
+#[allow(dead_code)]
 mod browser_keys;
 #[cfg(target_os = "macos")]
 mod browser_keys_mac;
+#[cfg(windows)]
+mod browser_keys_win;
 mod capture;
 mod cmds;
 mod commit_msg;
@@ -44,6 +47,7 @@ mod live;
 mod live_server;
 mod menu;
 mod natives;
+mod open_path;
 mod pty_batch;
 mod registry;
 mod remote;
@@ -68,6 +72,8 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+#[cfg(windows)]
+mod webview_win;
 mod workspace;
 mod worktree;
 mod zoom;
@@ -104,6 +110,8 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        #[cfg(windows)]
+        webview_win::sync(app);
         return;
     }
     // Agent instances need the private virtual display (macOS); elsewhere they stay hidden.
@@ -132,6 +140,8 @@ macro_rules! handlers {
             cmds::projects_remove_missing,
             cmds::projects_find_moved,
             cmds::project_init,
+            cmds::project_save_config,
+            open_path::open_pending,
             cmds::project_probe,
             cmds::project_init_preview,
             cmds::stack_start,
@@ -206,6 +216,7 @@ macro_rules! handlers {
             remote::projects_add_remote,
             menu::menu_sync,
             zoom::zoom_set,
+            lifecycle::app_quit,
             live_server::live_open,
             live_server::live_touch,
             live_server::live_stop,
@@ -416,12 +427,19 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
         agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
+    #[cfg(windows)]
+    {
+        builder = builder.additional_browser_args(webview_win::ARGS);
+    }
     let win = builder
         .transparent(window_transparent(cfg.transparent))
         .visible(false)
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
+    #[cfg(windows)]
+    webview_win::no_accelerators(&win);
     boot::mark("window:created");
     boot::arm_deadline(app.handle());
     drop(win);
@@ -456,7 +474,19 @@ fn main() {
     boot::mark("main");
     shell_env::start();
     boot::mark("shell_env:started");
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows/Linux: a second launch (Start menu, taskbar, `atlas desktop`) focuses the running app instead of
+    // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
+    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+        open_path::open(
+            app,
+            open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
+        );
+        show_main(app)
+    }));
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -494,6 +524,9 @@ fn main() {
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
             app.manage(tray::CaptureMenus::default());
+            // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
+            // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
+            #[cfg(not(windows))]
             app.set_menu(menu::build(&handle)?)?;
             app.manage(live::LiveHub::new(&handle));
             app.manage(cmds::Discovery::default());
@@ -506,6 +539,15 @@ fn main() {
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
             app.manage(agent::send::Sends::default());
+            app.manage(open_path::Pending::default());
+            // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
+            open_path::open(
+                &handle,
+                open_path::paths_from_argv(
+                    &std::env::args().collect::<Vec<_>>(),
+                    &std::env::current_dir().unwrap_or_default(),
+                ),
+            );
             ctl::start(&handle);
             app.manage(std::sync::Arc::new(remote::Remotes::default()));
             remote::start(&handle);
@@ -555,8 +597,13 @@ fn main() {
                 {
                     api.prevent_close();
                     let _ = win.hide();
+                    #[cfg(windows)]
+                    webview_win::sync(win.app_handle());
                 }
             }
+            // Minimize and restore arrive as a resize (0x0 while minimized).
+            #[cfg(windows)]
+            WindowEvent::Resized(_) if win.label() == "main" => webview_win::sync(win.app_handle()),
             // window-state's restored position lands as the first move, after setup
             // and Ready; check it once there.
             WindowEvent::Moved(_) if win.label() == "main" => {

@@ -102,10 +102,10 @@
 			<EmptyState
 				icon={FileCog}
 				title="No services yet"
-				description="Declare services in atlas.yaml and Atlas starts, watches and charts them here."
+				description="Atlas found nothing to run here. Declare services in atlas.yaml and it starts, watches and charts them."
 			>
 				{#snippet actions()}
-					<Button variant="glass" onclick={openConfig}>Open atlas.yaml</Button>
+					<Button variant="glass" onclick={openConfig}>Edit atlas.yaml</Button>
 				{/snippet}
 			</EmptyState>
 		</div>

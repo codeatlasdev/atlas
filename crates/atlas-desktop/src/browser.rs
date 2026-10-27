@@ -228,6 +228,10 @@ pub async fn browser_open(
         crate::agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
         crate::agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
+    #[cfg(windows)]
+    {
+        builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    }
     let builder = builder
         .initialization_script(GRAB_JS)
         .on_navigation(move |u| {
@@ -274,7 +278,10 @@ pub async fn browser_open(
                 crate::natives::lower_below_page(view);
             });
         }
-        #[cfg(not(target_os = "macos"))]
+        // WebView2: the accelerator-key handler forwards the app's bound keys (`browser_keys_win.rs`).
+        #[cfg(windows)]
+        Ok(v) => crate::browser_keys_win::install(&app, &v),
+        #[cfg(not(any(target_os = "macos", windows)))]
         Ok(_) => {}
         Err(e) => {
             REGISTRY.lock().close(&tab);

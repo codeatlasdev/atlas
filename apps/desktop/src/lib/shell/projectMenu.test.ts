@@ -2,6 +2,7 @@
 import "../../../test/setup.ts";
 import { expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import { revealLabel } from "../keys.ts";
 
 // Issue #98: the space dots (the main project switcher) and the project header had no "Remove from Atlas…"; a right-click
 // on a dot went straight to the icon editor. They now share the project row's actions. Dynamic imports on purpose:
@@ -34,7 +35,7 @@ test("a top-level project offers change icon, pin, reveal and Remove from Atlas�
 	expect(labels(repo())).toEqual([
 		"Change icon and color…",
 		"Pin to top",
-		"Reveal in Finder",
+		revealLabel(),
 		"Remove from Atlas…",
 	]);
 	expect(labels(repo({ pinned: true }))).toContain("Unpin");
@@ -56,7 +57,7 @@ test("a worktree child never offers Remove or the icon editor (it has no identit
 test("a missing folder offers Remove but not Reveal", () => {
 	const l = labels(repo({ missing: true }));
 	expect(l).toContain("Remove from Atlas…");
-	expect(l).not.toContain("Reveal in Finder");
+	expect(l).not.toContain(revealLabel());
 });
 
 test("choosing Remove runs the shared remove flow for that project", () => {
@@ -74,7 +75,7 @@ test("choosing Change icon opens the identity editor on that project", () => {
 test("pin and reveal go through the same commands as the row menu", async () => {
 	calls.length = 0;
 	item(repo({ id: "a", pinned: true }), "Unpin").run();
-	item(repo({ id: "a" }), "Reveal in Finder").run();
+	item(repo({ id: "a" }), revealLabel()).run();
 	await Promise.resolve();
 	expect(calls).toEqual([
 		["pin", "a", false],

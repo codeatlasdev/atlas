@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
-	import { kbd, primaryKey } from "#lib/keys.ts";
+	import { kbd, primaryKey, revealLabel } from "#lib/keys.ts";
 	import { EditorView } from "@codemirror/view";
 	import { toast } from "@codeatlasdev/ui";
 	import {
@@ -308,8 +308,10 @@
 				</Tip>
 			{/if}
 			{#if showCm || changes}
-				<button class:on={wrap} title="Word wrap (⌥Z)" onclick={() => session.setWrap(!session.wrap)}
-					><WrapText size={13} /></button
+				<button
+					class:on={wrap}
+					title="Word wrap ({kbd('alt-z')})"
+					onclick={() => session.setWrap(!session.wrap)}><WrapText size={13} /></button
 				>
 				<button class:on={changes} title="Changes vs HEAD" onclick={() => (changes = !changes)}>
 					<DiffIcon size={13} />
@@ -338,7 +340,7 @@
 			{/if}
 		{/if}
 		{#if phase === "media" || isSvg}
-			<Tip label="Reveal in Finder" side="bottom">
+			<Tip label={revealLabel()} side="bottom">
 				{#snippet child(props)}
 					<button {...props} onclick={reveal}><FolderSearch size={13} /></button>
 				{/snippet}
@@ -354,7 +356,7 @@
 		<Breadcrumbs {view} {path} line={session.cursor.line} doc={lspDoc} onreveal={reveal} />
 	{:else}
 		<div class="pathbar">
-			<button class="path mono" title="Reveal in Finder" onclick={reveal}>{path}</button>
+			<button class="path mono" title={revealLabel()} onclick={reveal}>{path}</button>
 		</div>
 	{/if}
 	{#if session.plan?.large.notice && showCm}

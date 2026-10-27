@@ -34,15 +34,17 @@ export const DEFAULT_KEYMAP: Record<string, string> = {
 	"cmd-shift-e": "project_panel::ToggleFocus",
 	"ctrl-shift-g": "git_panel::ToggleFocus",
 	"ctrl-`": "terminal_panel::ToggleFocus",
+	"ctrl-shift-`": "workspace::NewTerminal",
 	"cmd-?": "agent::Toggle",
 	// Create
 	"cmd-n": "atlas::NewWorktree",
 	"cmd-t": "workspace::NewTerminal",
 	"cmd-shift-a": "atlas::NewAgentSession",
-	// Tabs: close, reopen, switch (⌘1…8 by position, ⌘9 last; ⌃Tab most recent)
+	// Tabs: close, reopen, switch (⌘1…8 by position, ⌘9 last; ⌃Tab most recent). ⇧⌘W closes the tab as well (Chrome's
+	// window close, never "close all": that is palette/menu only); off macOS Ctrl+Shift+T/W are in OFF_MAC_EXTRA.
 	"cmd-w": "pane::CloseActiveItem",
 	"alt-cmd-w": "pane::CloseOtherItems",
-	"cmd-shift-w": "pane::CloseAllItems",
+	"cmd-shift-w": "pane::CloseActiveItem",
 	"cmd-shift-t": "pane::ReopenClosedItem",
 	"cmd-shift-]": "pane::ActivateNextItem",
 	"cmd-shift-[": "pane::ActivatePreviousItem",
@@ -172,24 +174,61 @@ const CODE_KEYS: Record<string, string> = {
  */
 export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
+/** Windows (app.html adds `custom-chrome` from the same `navigator.platform` test). */
+export const IS_WIN = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
+
+/** What the OS calls its file manager, for "Reveal in …": Finder, File Explorer, or the generic name on Linux. */
+export const fileManager = (mac = IS_MAC, win = IS_WIN) =>
+	mac ? "Finder" : win ? "File Explorer" : "file manager";
+
+/** "Reveal in Finder" on macOS, "Reveal in File Explorer" on Windows (the backend's `reveal` opens that). */
+export const revealLabel = (mac = IS_MAC, win = IS_WIN) => `Reveal in ${fileManager(mac, win)}`;
+
 /**
  * Off macOS ⌃ and ⌘ are both Ctrl, so a default written with ⌃ or ⌃⌘ that shares its key with a ⌘ one could never
  * run (⌃⌘S sidebar vs ⌘S save; ⌃1 space, ⌘1 tab, ⌃⌘1 recent worktree). Those move to Alt (⌃) and Alt+Shift (⌃⌘);
  * never to Ctrl+Alt, which is AltGr on Windows. The others keep their macOS spelling (`cmd` reads as Ctrl).
  */
 const OFF_MAC: Record<string, string> = {
-	"ctrl-cmd-s": "alt-shift-s",
 	...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`ctrl-cmd-${n}`, `alt-shift-${n}`])),
 	...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => [`ctrl-${n}`, `alt-${n}`])),
 	// Ctrl− is Zoom out off macOS (cmd-- there): history moves to Alt+←/→, as in VS Code on Windows and Linux.
 	"ctrl--": "alt-left",
 	"ctrl-shift--": "alt-right",
+	// Reopen closed tab leaves Ctrl+Shift+T (new terminal there, as in Windows Terminal and GNOME Terminal).
+	"cmd-shift-t": "alt-shift-t",
+	// Ctrl+B is VS Code's "toggle sidebar" (the spaces sidebar here); the left dock keeps a key of its own.
+	"cmd-b": "alt-shift-b",
 };
 
-/** The default keymap on this platform: [`DEFAULT_KEYMAP`] on macOS, with [`OFF_MAC`]'s moves elsewhere. */
+/**
+ * Off macOS the commands that take a stroke the macOS table gives to another one: Ctrl+B is the sidebar (the left dock
+ * moved to Alt+Shift+B), Ctrl+Shift+T a new terminal (reopen moved to Alt+Shift+T). Applied after [`OFF_MAC`].
+ */
+const OFF_MAC_BOUND: Record<string, string> = {
+	"cmd-b": "shell::ToggleSidebar",
+	"cmd-shift-t": "workspace::NewTerminal",
+	// Chrome / VS Code / GNOME: Ctrl+PgUp / Ctrl+PgDn walk the tabs. (⌘PgDn is the GPU terminal's scroll on macOS.)
+	"ctrl-pageup": "pane::ActivatePreviousItem",
+	"ctrl-pagedown": "pane::ActivateNextItem",
+	// Quit and full screen: the menu bar has them on macOS (⌘Q, ⌃⌘F); elsewhere the page's keymap does.
+	"cmd-q": "shell::Quit",
+	f11: "shell::ToggleFullscreen",
+};
+
+/** macOS-only defaults that mean nothing elsewhere: the sidebar key ⌃⌘S is Ctrl+B there ([`OFF_MAC_BOUND`]). */
+const MAC_ONLY: Record<string, true> = { "ctrl-cmd-s": true };
+
+/**
+ * The default keymap on this platform: [`DEFAULT_KEYMAP`] on macOS, elsewhere with [`OFF_MAC`]'s moves, the
+ * macOS-only keys dropped and [`OFF_MAC_BOUND`]'s commands added.
+ */
 export function defaultKeymap(mac = IS_MAC): Record<string, string> {
 	if (mac) return DEFAULT_KEYMAP;
-	return Object.fromEntries(Object.entries(DEFAULT_KEYMAP).map(([k, v]) => [OFF_MAC[k] ?? k, v]));
+	const moved = Object.entries(DEFAULT_KEYMAP)
+		.filter(([k]) => !Object.hasOwn(MAC_ONLY, k))
+		.map(([k, v]) => [OFF_MAC[k] ?? k, v] as const);
+	return { ...Object.fromEntries(moved), ...OFF_MAC_BOUND };
 }
 
 /** The modifier `cmd-…` bindings mean on this platform is held: ⌘ on macOS, Ctrl elsewhere. */
@@ -202,14 +241,19 @@ export const otherKey = (e: { metaKey: boolean; ctrlKey: boolean }, mac = IS_MAC
 
 /**
  * Off macOS the app's shortcuts are Ctrl chords, which a shell needs (^C, ^R, ^L, ^W …): in a focused terminal a
- * plain Ctrl+letter goes to the program. Ctrl+Shift chords (the palette, Ctrl+Shift+P) and Ctrl with a digit, Tab
- * or punctuation still reach the app. macOS shortcuts use ⌘, which no program reads.
+ * plain Ctrl+letter goes to the program, and so do Ctrl+[ (Esc in vim, readline) and Alt+←/→ (word motion). The
+ * exceptions are Ctrl+Q (quit: terminals rarely want XON) and every Ctrl+Shift chord (the palette, Ctrl+Shift+T/W for
+ * tabs), Ctrl with a digit, Tab, PgUp/PgDn or other punctuation, which still reach the app. macOS shortcuts use ⌘,
+ * which no program reads.
  */
 export function shellKeepsCtrl(
-	e: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; code: string },
+	e: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey?: boolean; code: string },
 	mac = IS_MAC,
 ) {
-	return !mac && e.ctrlKey && !e.shiftKey && !e.altKey && /^Key[A-Z]$/.test(e.code);
+	if (mac || e.shiftKey) return false;
+	if (e.ctrlKey && !e.altKey)
+		return (/^Key[A-Z]$/.test(e.code) && e.code !== "KeyQ") || e.code === "BracketLeft";
+	return e.altKey && !e.ctrlKey && !e.metaKey && (e.code === "ArrowLeft" || e.code === "ArrowRight");
 }
 
 function keyOf(e: KeyboardEvent): string | undefined {

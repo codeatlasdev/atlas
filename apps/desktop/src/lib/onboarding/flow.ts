@@ -7,8 +7,6 @@
  *   `skip` reaches done from anywhere; a project added by any path ends the welcome at once (`added`).
  */
 import type { Found } from "#lib/components/sidebar/discovery.ts";
-import { SIGNATURE_PREROLL } from "./intro/player.ts";
-import { BEATS, DURATION } from "./intro/timeline.ts";
 
 export type Phase = "welcome" | "scanning" | "empty" | "results" | "starting" | "up" | "done";
 
@@ -169,12 +167,4 @@ export const ACTIONS = {
 	add: "welcome-action-add",
 	skip: "welcome-action-skip",
 	finish: "welcome-action-finish",
-} as const;
-
-/** The title sequence's real timing in ms, for `atlas desktop debug eval` scripts (import, do not copy the numbers). */
-export const INTRO_TIMING = {
-	durationMs: Math.round(DURATION * 1000),
-	hitMs: Math.round(BEATS.hit * 1000),
-	/** When the signature is started (its strike is pre-rolled, so it lands on `hitMs`). */
-	soundMs: Math.round((BEATS.hit - SIGNATURE_PREROLL) * 1000),
 } as const;

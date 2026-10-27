@@ -2,6 +2,7 @@
 	import { Button, SegmentedControl, Select, TextArea, TextField, toast } from "@codeatlasdev/ui";
 	import { Trash2, Plus } from "@lucide/svelte";
 	import { onMount } from "svelte";
+	import { kbd } from "#lib/keys.ts";
 	import { api, errText } from "#lib/api.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { quick } from "#lib/stores/quick.svelte.ts";
@@ -12,6 +13,8 @@
 	import LoadError from "#lib/settings/LoadError.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
 	import { customAgentEntry, type CustomAgentEntry } from "#lib/settings/customAgents.ts";
+
+	const customDescription = `Any agent CLI (OpenCode, Gemini CLI, Amp…). It starts from the + menu and ${kbd("cmd-shift-a")} like the built-in ones. Without Atlas hooks its tab shows working while the terminal prints and idle after a few quiet seconds; to report real states it can run \`atlas hook\` (see docs/agents.md).`;
 
 	let permissions = $state("manual");
 	let args = $state<Record<string, string>>({});
@@ -129,10 +132,7 @@
 
 <DockSettings />
 
-<Group
-	title="Custom agents"
-	description="Any agent CLI (OpenCode, Gemini CLI, Amp…). It starts from the + menu and ⌘⇧A like the built-in ones. Without Atlas hooks its tab shows working while the terminal prints and idle after a few quiet seconds; to report real states it can run `atlas hook` (see docs/agents.md)."
->
+<Group title="Custom agents" description={customDescription}>
 	{#each custom as c (c.id)}
 		<Row label={c.label} description={[c.command, ...c.args].join(" ")}>
 			<button

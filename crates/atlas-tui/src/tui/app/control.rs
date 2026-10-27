@@ -25,6 +25,10 @@ impl App {
                 "this atlas dev owns a terminal and cannot be attached to; \
                  run `atlas dev --detach` to keep services running in the background",
             ),
+            ControlCmd::AddService { .. } => ControlResponse::err(
+                "this atlas dev owns a terminal and cannot take new services live; \
+                 run `atlas down`, then `atlas -- <cmd>` (it starts the stack in the background)",
+            ),
             cmd => self.service_control(cmd),
         };
         let _ = req.reply.send(resp);

@@ -44,12 +44,24 @@ fn read_log_tail(path: &Path) -> String {
 
 /// `atlas dev --detach`: validate, start the runner as a detached daemon and wait
 /// until it is reachable.
-pub async fn detach(root_dir: &Path, select: &config::SelectionRequest) -> Result<Detached> {
+pub async fn detach(
+    root_dir: &Path,
+    select: &config::SelectionRequest,
+    adhoc: &[String],
+) -> Result<Detached> {
     use std::process::{Command, Stdio};
 
     // Fail on a bad atlas.yaml / selection here, on the user's terminal, not in a log file.
-    let cfg = config::load(root_dir)?;
-    config::resolve_selection(&cfg, select).map_err(|e| anyhow::anyhow!(e))?;
+    let (mut cfg, source) = config::load_or_detect(root_dir)?;
+    let adhoc_names = config::adhoc::add_all(&mut cfg, adhoc);
+    let mut checked = select.clone();
+    if checked.is_narrowed() {
+        checked.services.extend(adhoc_names);
+    }
+    config::resolve_selection(&cfg, &checked).map_err(|e| anyhow::anyhow!(e))?;
+    if source == config::ConfigSource::Detected {
+        println!("{}", config::detected_notice(&cfg));
+    }
 
     if let Some(info) = control::info(root_dir).await {
         if info.mode == "runner" {
@@ -82,6 +94,9 @@ pub async fn detach(root_dir: &Path, select: &config::SelectionRequest) -> Resul
         .stdin(Stdio::null())
         .stdout(out)
         .stderr(err);
+    for command in adhoc {
+        cmd.arg("--adhoc").arg(command);
+    }
     if select.no_deps {
         cmd.arg("--no-deps");
     }

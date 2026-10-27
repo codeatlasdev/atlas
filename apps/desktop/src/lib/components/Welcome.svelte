@@ -4,6 +4,7 @@
 	import type { IconComponent } from "@codeatlasdev/ui";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { runCommand, shortcutFor } from "#lib/keymap.svelte.ts";
+	import { kbd } from "#lib/keys.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 
 	let { worktreeId }: { worktreeId: string } = $props();
@@ -58,7 +59,7 @@
 			{/each}
 		</div>
 		<p class="foot">
-			<Kbd>{shortcutFor("command_palette::Toggle") ?? "⌘⇧P"}</Kbd> for every command
+			<Kbd>{shortcutFor("command_palette::Toggle") ?? kbd("cmd-shift-p")}</Kbd> for every command
 			<span aria-hidden="true">·</span>
 			<button class="link" onclick={() => runCommand("atlas::Help")}>Shortcuts</button>
 			<span aria-hidden="true">·</span>

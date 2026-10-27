@@ -4,6 +4,7 @@
 	import { Plus, Search, Settings, Sparkles, TerminalSquare } from "@lucide/svelte";
 	import Tip from "#lib/components/Tip.svelte";
 	import { chipFor } from "#lib/hostStatus.ts";
+	import { kbd } from "#lib/keys.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import SpaceDots from "#lib/shell/SpaceDots.svelte";
 	import { hostState, openHostPrompt } from "#lib/stores/hostStatus.svelte.ts";
@@ -56,7 +57,7 @@
 				</IconButton>
 			{/snippet}
 		</Tip>
-		<Kbd>{shortcutFor("atlas::Jump") ?? "⌘K"}</Kbd>
+		<Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd>
 	</div>
 </footer>
 

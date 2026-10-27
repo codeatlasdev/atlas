@@ -54,7 +54,7 @@ test("the saved entry matches the fixture Rust reads", async () => {
 		},
 		["omp", "claude", "codex"],
 	);
-	const path = new URL("../__fixtures__/custom-agent.json", import.meta.url).pathname;
+	const path = Bun.fileURLToPath(new URL("../__fixtures__/custom-agent.json", import.meta.url));
 	const saved = { customAgents: [r.entry] };
 	if (process.env.UPDATE_FIXTURES) await Bun.write(path, JSON.stringify(saved, null, 2) + "\n");
 	expect(await Bun.file(path).json()).toEqual(saved);

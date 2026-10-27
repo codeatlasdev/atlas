@@ -21,6 +21,7 @@
 	import Onboarding from "#lib/onboarding/Onboarding.svelte";
 	import EdgePeek from "#lib/shell/EdgePeek.svelte";
 	import TabSwitcher from "#lib/shell/TabSwitcher.svelte";
+	import WindowControls from "#lib/shell/WindowControls.svelte";
 	import {
 		commandItems,
 		createItems,
@@ -47,6 +48,8 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 
 	let { children }: { children: Snippet } = $props();
+	// Windows: no native title bar (app.html sets the class before first paint).
+	const customChrome = document.documentElement.classList.contains("custom-chrome");
 
 	onMount(() => {
 		bootMark("layout:mounted");
@@ -136,3 +139,4 @@
 <TabSwitcher />
 <CornerStack />
 <ErrorToasts />
+{#if customChrome}<WindowControls />{/if}

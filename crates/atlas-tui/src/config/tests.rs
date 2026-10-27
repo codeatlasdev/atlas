@@ -213,6 +213,78 @@ fn test_missing_config_returns_error() {
 }
 
 #[test]
+fn load_or_detect_prefers_the_file_and_reports_its_path() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        "name: mine\nservices:\n  web:\n    command: x\n",
+    );
+    // A package.json that would detect a different service must not matter.
+    write_config(
+        &dir,
+        "package.json",
+        r#"{"scripts":{"dev":"vite --port 5173"}}"#,
+    );
+    let (cfg, src) = load_or_detect(dir.path()).unwrap();
+    assert_eq!(cfg.name, "mine");
+    assert!(cfg.services.contains_key("web") && !cfg.services.contains_key("dev"));
+    assert_eq!(src, ConfigSource::File(dir.path().join("atlas.yaml")));
+}
+
+#[test]
+fn load_or_detect_builds_the_node_config_in_memory_and_writes_nothing() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "package.json",
+        r#"{"name":"x","scripts":{"dev":"vite --port 5173","build":"vite build"}}"#,
+    );
+    let (cfg, src) = load_or_detect(dir.path()).unwrap();
+    assert_eq!(src, ConfigSource::Detected);
+    assert_eq!(
+        cfg.services["dev"].command.as_deref(),
+        Some("vite --port 5173")
+    );
+    assert_eq!(cfg.services["dev"].port, Some(5173));
+    assert!(
+        !dir.path().join("atlas.yaml").exists(),
+        "detection must never write"
+    );
+}
+
+#[test]
+fn load_or_detect_of_an_empty_folder_loads_with_no_services() {
+    let dir = TempDir::new().unwrap();
+    let (cfg, src) = load_or_detect(dir.path()).unwrap();
+    assert_eq!(src, ConfigSource::Detected);
+    assert!(cfg.services.is_empty(), "{:?}", cfg.services.keys());
+    assert!(!cfg.name.is_empty());
+}
+
+#[test]
+fn load_or_detect_still_layers_atlas_local_yaml_on_a_detected_config() {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "package.json", r#"{"scripts":{"dev":"vite"}}"#);
+    write_config(
+        &dir,
+        "atlas.local.yaml",
+        "services:\n  dev:\n    port: 4999\n",
+    );
+    let (cfg, src) = load_or_detect(dir.path()).unwrap();
+    assert_eq!(src, ConfigSource::Detected);
+    assert_eq!(cfg.services["dev"].port, Some(4999));
+}
+
+#[test]
+fn load_or_detect_propagates_an_invalid_atlas_yaml_instead_of_detecting() {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "package.json", r#"{"scripts":{"dev":"vite"}}"#);
+    write_config(&dir, "atlas.yaml", "services: [not, a, map]\n");
+    assert!(load_or_detect(dir.path()).is_err());
+}
+
+#[test]
 fn test_apply_defaults() {
     let dir = TempDir::new().unwrap();
     write_config(

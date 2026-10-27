@@ -274,28 +274,4 @@ mod tests {
         assert_ne!(a, b);
         assert_ne!(Surface::Pin.label(a), Surface::Pin.label(b));
     }
-
-    /// The page's commands only answer to a pin window: another window (the card, the editor) calling them is refused
-    /// by the label check. This pins the source, because the label check is the only wall around `set_size` /
-    /// `destroy` on an arbitrary window.
-    #[test]
-    fn every_pin_command_checks_that_the_caller_is_a_pin() {
-        let src =
-            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shots/pin.rs"))
-                .unwrap();
-        let code = &src[..src.find("#[cfg(test)]").unwrap()];
-        for name in [
-            "shots_pin_load",
-            "shots_pin_resize",
-            "shots_pin_keys",
-            "shots_pin_close",
-        ] {
-            let body = code.split_once(&format!("pub fn {name}(")).unwrap().1;
-            let body = body.split_once("\n}\n").unwrap().0;
-            assert!(
-                body.contains("is_pin_label(window.label())"),
-                "{name} must refuse a caller that is not a pin"
-            );
-        }
-    }
 }

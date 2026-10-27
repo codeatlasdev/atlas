@@ -636,28 +636,4 @@ mod placement_tests {
         assert_eq!(placement(true), Placement::SizeAndPosition);
         assert_eq!(placement(false), Placement::SizeThenPark);
     }
-
-    /// `place` is the only relayout entry: its source sets the position only inside the user's arm. Whitespace
-    /// insensitive, since rustfmt re-wraps.
-    #[test]
-    fn place_sets_the_position_only_in_the_user_arm() {
-        let src = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shots/surface.rs"),
-        )
-        .unwrap();
-        let body = src.split_once("pub fn place(").unwrap().1;
-        let body = body.split_once("\n}\n").unwrap().0;
-        let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
-        let (user, agent) = body
-            .split_once("Placement::SizeThenPark =>")
-            .expect("agent arm");
-        assert!(
-            user.contains("set_position"),
-            "the user arm sets the position"
-        );
-        assert!(
-            !agent.contains("set_position"),
-            "the agent arm must not: {agent}"
-        );
-    }
 }

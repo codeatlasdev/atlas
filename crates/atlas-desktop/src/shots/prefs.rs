@@ -680,9 +680,15 @@ mod tests {
         p.history = 10;
         p.folder = "relative/dir".into();
         assert!(p.validate(&[]).unwrap_err().contains("absolute"));
-        p.folder = "/Users/x/Shots".into();
+        // Absolute on this OS (`/Users/x/Shots` is relative on Windows: no drive).
+        let abs = if cfg!(windows) {
+            r"C:\x\Shots"
+        } else {
+            "/Users/x/Shots"
+        };
+        p.folder = abs.into();
         assert!(p.validate(&[]).is_ok());
-        assert_eq!(p.dir(), PathBuf::from("/Users/x/Shots"));
+        assert_eq!(p.dir(), PathBuf::from(abs));
     }
 
     #[test]

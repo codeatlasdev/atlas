@@ -68,6 +68,14 @@ atlas-term = { path = "../atlas-term" }
 # exists (tray.rs), because a tray icon with no host is silently invisible.
 gio = "0.22"
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(windows)'.dependencies]
+# Same versions tauri/wry already resolve; used by webview_win.rs (WebView2 MemoryUsageTargetLevel).
+webview2-com = "0.39"
+windows-core = "0.62"
+
 [dev-dependencies]
 serde_norway = { workspace = true }
 

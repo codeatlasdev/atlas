@@ -63,6 +63,8 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+#[cfg(windows)]
+mod webview_win;
 mod workspace;
 mod worktree;
 mod zoom;
@@ -99,6 +101,8 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        #[cfg(windows)]
+        webview_win::sync(app);
         return;
     }
     // Agent instances need the private virtual display (macOS); elsewhere they stay hidden.
@@ -353,6 +357,10 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
         agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
+    #[cfg(windows)]
+    {
+        builder = builder.additional_browser_args(webview_win::ARGS);
+    }
     let win = builder
         .transparent(window_transparent(cfg.transparent))
         .visible(false)
@@ -393,7 +401,15 @@ fn main() {
     boot::mark("main");
     shell_env::start();
     boot::mark("shell_env:started");
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows/Linux: a second launch (Start menu, taskbar, `atlas desktop`) focuses the running app instead of
+    // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
+    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        show_main(app)
+    }));
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -420,6 +436,9 @@ fn main() {
             create_main_window(app)?;
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
+            // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
+            // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
+            #[cfg(not(windows))]
             app.set_menu(menu::build(&handle)?)?;
             app.manage(live::LiveHub::new(&handle));
             app.manage(cmds::Discovery::default());
@@ -478,8 +497,13 @@ fn main() {
                 {
                     api.prevent_close();
                     let _ = win.hide();
+                    #[cfg(windows)]
+                    webview_win::sync(win.app_handle());
                 }
             }
+            // Minimize and restore arrive as a resize (0x0 while minimized).
+            #[cfg(windows)]
+            WindowEvent::Resized(_) if win.label() == "main" => webview_win::sync(win.app_handle()),
             // window-state's restored position lands as the first move, after setup
             // and Ready; check it once there.
             WindowEvent::Moved(_) if win.label() == "main" => {

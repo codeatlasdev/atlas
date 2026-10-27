@@ -10,7 +10,8 @@
         "height": 820,
         "minWidth": 980,
         "minHeight": 620,
-        "decorations": true,
+        "decorations": false,
+        "shadow": true,
         "transparent": false
       }
     ]
@@ -19,11 +20,19 @@
     "targets": ["nsis"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
     "category": "DeveloperTool",
+    "publisher": "CodeAtlas",
+    "copyright": "© CodeAtlas. MIT OR Apache-2.0.",
+    "homepage": "https://atlas.codeatlas.com.br",
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" },
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "../../packaging/windows/installer-header.bmp",
+        "sidebarImage": "../../packaging/windows/installer-sidebar.bmp",
+        "startMenuFolder": "Atlas",
+        "compression": "lzma"
       }
     }
   }

@@ -228,6 +228,10 @@ pub async fn browser_open(
         crate::agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
         crate::agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
+    #[cfg(windows)]
+    {
+        builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    }
     let builder = builder
         .initialization_script(GRAB_JS)
         .on_navigation(move |u| {

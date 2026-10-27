@@ -180,6 +180,9 @@
 		gap: 10px;
 		padding: 16px 20px 12px;
 	}
+	:global(html.custom-chrome) header {
+		padding-right: var(--caption-controls);
+	}
 	h1 {
 		margin: 0;
 		font-size: 22px;

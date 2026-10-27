@@ -54,10 +54,12 @@ impl ReleaseInfo {
     }
 }
 
-/// Base `curl` invocation: silent, fail on HTTP errors, bounded time.
+/// Base `curl` invocation: silent, fail on HTTP errors, bounded time. No console window: the
+/// desktop's update check runs this from the GUI app on Windows.
 fn curl() -> Command {
     let mut c = Command::new("curl");
-    c.args(["-fsS", "--max-time", "120", "-H", "User-Agent: atlas-cli"])
+    crate::sys::CommandExt::no_window(&mut c)
+        .args(["-fsS", "--max-time", "120", "-H", "User-Agent: atlas-cli"])
         .stdin(Stdio::null());
     c
 }

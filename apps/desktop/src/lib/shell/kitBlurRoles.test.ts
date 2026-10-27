@@ -103,7 +103,7 @@ test("no Atlas component asks the kit for an explicit glass/frosted/liquid mater
 				hits.push(path.replace(/.*\/src\//, "src/"));
 		}
 	};
-	walk(new URL("../..", import.meta.url).pathname);
+	walk(Bun.fileURLToPath(new URL("../..", import.meta.url)));
 	expect(hits).toEqual([]);
 });
 

@@ -76,7 +76,10 @@ fn rect_px(rect: &Rect, scale: f64) -> (f64, f64, f64, f64) {
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
-    let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray".into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray".into()));
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    let win = builder
         .theme(theme)
         .initialization_script(script)
         .title("Atlas")
@@ -158,6 +161,7 @@ fn show(app: &AppHandle, icon: Option<&Rect>) {
 }
 
 fn toggle(app: &AppHandle, icon: &Rect) {
+    ensure_popover(app);
     match app.get_webview_window(LABEL) {
         Some(w) if w.is_visible().unwrap_or(false) => {
             let _ = w.hide();
@@ -221,6 +225,8 @@ fn toggle_main(app: &AppHandle) {
     match app.get_window("main") {
         Some(w) if showing => {
             let _ = w.hide();
+            #[cfg(windows)]
+            crate::webview_win::sync(app);
         }
         _ => crate::show_main(app),
     }
@@ -277,11 +283,12 @@ fn icon() -> tauri::Result<tauri::image::Image<'static>> {
     })
 }
 
-/// Create the popover window and the tray icon. On Linux the popover is built but never opened (no click events
-/// there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
+/// Create the tray icon. The popover window (a second WebView2 controller, ~110 ms on Windows) is not built here:
+/// it is not needed until the first click, so [`ensure_popover`] builds it right after the main window first shows
+/// (`boot::show_now`), or on the first click if that comes first. On Linux the popover is built but never opened
+/// (no click events there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
-    build(app)?;
     TrayIconBuilder::with_id("main")
         .icon(icon()?)
         .icon_as_template(!cfg!(target_os = "linux"))
@@ -301,6 +308,17 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// Build the popover once, on the main thread (window creation). A no-op when it exists or when no tray was started
+/// (agent instances, [`start`] never ran).
+pub fn ensure_popover(app: &AppHandle) {
+    if app.try_state::<TrayState>().is_some()
+        && app.get_webview_window(LABEL).is_none()
+        && let Err(e) = build(app)
+    {
+        eprintln!("atlas-desktop: tray popover: {e}");
+    }
 }
 
 /// Main window → popover: the current state, cached for the next time it is shown.

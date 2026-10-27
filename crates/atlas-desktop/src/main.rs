@@ -52,6 +52,8 @@ mod pty_batch;
 mod registry;
 mod remote;
 mod shell_env;
+// Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod shots;
 #[cfg(target_os = "macos")]
 mod swipe_clock;

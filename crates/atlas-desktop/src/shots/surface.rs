@@ -274,6 +274,7 @@ pub fn place(app: &AppHandle, win: &WebviewWindow, frame: Rect) {
 /// ordering is done on the main thread and waited for.
 pub fn show(app: &AppHandle, win: &WebviewWindow) {
     let (tx, rx) = std::sync::mpsc::channel();
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     let (a, w) = (app.clone(), win.clone());
     let queued = app.run_on_main_thread(move || {
         if crate::agent_mode::Mode::current().focus_allowed() {

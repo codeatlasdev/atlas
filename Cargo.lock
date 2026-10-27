@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-cli"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-core"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "anyhow",
  "dirs",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-desktop"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "atlas-core",
  "atlas-host",
@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-host"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-lsp"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-skills"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-term"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "alacritty_terminal",
  "base64 0.23.1",
@@ -516,7 +516,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-tui"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 dependencies = [
  "anyhow",
  "atlas-core",

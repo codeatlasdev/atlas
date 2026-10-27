@@ -18,6 +18,19 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Windows: no console windows flashing.** Language-server installs and probes, the update check and hostd's "start the stack" ran console programs without hiding their window.
 - **Windows: the omp logo was a black square** in menus and tabs (its gradient pointed at a hidden copy of the mark).
 
+## [1.5.0-alpha.23] — 2026-10-26
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
+### Fixed
+
+- **Linux: much less work per terminal while agents stream output (the likely cause of "one tab lags, two freeze the app"; please report how it behaves on your machine).** Terminal output reached the webview as one script evaluation per hostd chunk (dozens a second per terminal, each a round trip into WebKitGTK); it is now one event per terminal per frame. Each terminal also registered its own listeners for host events (two IPC calls and a callback per hostd event, per terminal); the page now has one listener per event name, routed by terminal. And an xterm.js terminal that is fed faster than it can parse (a build log, `cat` of a big file, an agent redrawing a full screen 30 times a second on a slow webview) no longer queues up to 50 MB: past 4 MiB it drops the rest and redraws from the host's replay once it has caught up.
+- **Linux: the main window is no longer an alpha window.** The page paints an opaque background there, so the transparency (needed only for macOS vibrancy) only made WebKitGTK and the compositor blend the whole window every frame.
+
+### Added
+
+- **Linux: the graphics setup is in the app log.** Session type, display servers, NVIDIA driver and every `WEBKIT_`, `GDK_`, `GSK_` variable set are written once at startup (`~/.atlas/desktop/app.log`, and so in "Copy diagnostics"); [Troubleshooting](docs/troubleshooting.md#linux-lag-freezes-or-stale-frames) lists the three variables to try, in order.
+
 ## [1.5.0-alpha.22] — 2026-10-26
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

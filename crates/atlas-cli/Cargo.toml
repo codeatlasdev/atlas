@@ -1,6 +1,6 @@
 [package]
 name = "atlas-cli"
-version = "1.5.0-alpha.22"
+version = "1.5.0-alpha.23"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

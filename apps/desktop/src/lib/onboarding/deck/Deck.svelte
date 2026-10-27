@@ -12,6 +12,7 @@
 	import { welcome as w } from "../welcome.svelte.ts";
 	import Mark from "./Mark.svelte";
 	import SceneAgents from "./SceneAgents.svelte";
+	import SceneScan from "./SceneScan.svelte";
 	import SceneStack from "./SceneStack.svelte";
 	import SceneWorktrees from "./SceneWorktrees.svelte";
 
@@ -104,7 +105,10 @@
 					</Button>
 				</div>
 			{:else}
-				<div class="phases"><Phases {onfinish} /></div>
+				<div class="phases">
+					{#if w.phase === "welcome"}<SceneScan />{/if}
+					<Phases {onfinish} />
+				</div>
 			{/if}
 		</section>
 	{/key}
@@ -202,6 +206,20 @@
 			transform: translateY(14px) scale(0.98);
 		}
 	}
+	.slide > h1,
+	.slide > .lead,
+	.slide > .actions {
+		animation: rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+	}
+	.slide > h1 {
+		animation-delay: 140ms;
+	}
+	.slide > .lead {
+		animation-delay: 210ms;
+	}
+	.slide > .actions {
+		animation-delay: 280ms;
+	}
 	h1 {
 		margin: 0;
 		font-size: 28px;
@@ -278,6 +296,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.slide,
+		.slide > *,
 		.visual,
 		.sky.b {
 			animation: none;

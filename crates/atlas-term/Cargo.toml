@@ -1,6 +1,6 @@
 [package]
 name = "atlas-term"
-version = "1.5.0-alpha.23"
+version = "1.5.0-alpha.24"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

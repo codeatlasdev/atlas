@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+## [1.5.0-alpha.24] — 2026-10-27
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
 ### Added
 
 - **Agent dock: a floating pill that messages your agents from any app.** Press ⌃⌥Space (changeable in Settings → Agents → Agent dock) to open a small composer above whatever you are doing, type, press Enter, and the text goes to your agent, even with the Atlas window closed. It never takes the keyboard focus from the app you are in (on macOS it is a non-activating panel on every Space and over fullscreen apps). It picks the agent from the **To** menu, an `@mention` (`@api`, `@feat-login`, `@claude`), the one you last used, or the most recently active one, and asks when a mention matches several. The agent's last lines stream into the pill with **Open in Atlas**, and an agent that needs you raises a card. Voice, capture and approve/deny from the card are not in this version.

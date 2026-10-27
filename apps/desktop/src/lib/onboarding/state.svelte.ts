@@ -45,13 +45,6 @@ class Onboarding {
 		await this.save().catch(() => {});
 	}
 
-	/** The title sequence played (or was skipped): never replay it on its own. */
-	async markIntroSeen() {
-		if (this.state.introSeen) return;
-		this.state = { ...this.state, introSeen: true };
-		await this.save().catch(() => {});
-	}
-
 	/** First-run welcome finished or skipped. */
 	async finishWelcome() {
 		if (this.state.done) return;

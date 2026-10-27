@@ -344,7 +344,7 @@ atlas desktop debug state                         # projects + service states, w
 atlas desktop debug logs [--level csp|error|warn] [--since N]   # console, uncaught errors, CSP violations
 atlas desktop debug eval 'document.title'         # expression, or a body with `return`; awaits promises
 atlas desktop debug shot x.png [--selector css | --rect x,y,w,h | --full | --window]
-atlas desktop debug record x.mov --seconds 5 | --until '[data-intro="done"]' [--fps 30]
+atlas desktop debug record x.mov --seconds 5 | --until '[data-testid="welcome-up"]' [--fps 30]
 atlas desktop debug wait '.ready' [--timeout ms] | wait 'window.__atlas.ws.loaded' --expr
 atlas desktop debug click 'button.go' | type 'input' 'text' [--delay ms]
 atlas desktop debug resize 1100 720                # main window, logical px (320..5120); prints the page view size

@@ -31,15 +31,9 @@ describe("earcon spec", () => {
 		}
 	});
 
-	test("the sonic logo is a 1.5-3 s signature with a marked downbeat the picture is cut to", () => {
-		const e = EARCONS.signature;
-		expect(e.kind).toBe("signature");
-		expect(e.maxSeconds).toBeGreaterThanOrEqual(1.5);
-		expect(e.maxSeconds).toBeLessThanOrEqual(3);
-		// The intro's HIT lands on the sound's downbeat, so the spec carries where the hit should fall in the file.
-		// A short pre-roll so the decoder's start-up never eats the transient; the build-up belongs to the picture.
-		expect(e.downbeatSeconds).toBeGreaterThanOrEqual(0.05);
-		expect(e.downbeatSeconds).toBeLessThan(0.2);
+	test("the boot signature is the one non-feedback sound, still within the 3 s signature cap", () => {
+		const signatures = Object.entries(EARCONS).filter(([, e]) => e.kind === "signature").map(([id]) => id);
+		expect(signatures).toEqual(["boot"]);
 	});
 
 	test("the ElevenLabs API minimum duration (0.5 s) is respected when requesting, trimming happens after", () => {
@@ -147,10 +141,9 @@ describe("product caps follow the research (<= 300 ms feedback), and the picker 
 });
 
 describe("signatures may build before they strike", () => {
-	// A sonic logo is a swell then a strike; the 50 ms late-attack rule is for feedback ticks, not for it.
+	// A signature may be a swell then a strike; the 50 ms late-attack rule is for feedback ticks, not for it.
 	test("a signature with a long lead-in is not rejected as a late attack", () => {
-		const e = EARCONS.signature;
-		expect(passes(e, ok({ duration: 2.2, silentHead: 0.4, levelAtCapDb: -30 })).ok).toBe(true);
+		expect(passes(EARCONS.boot, ok({ duration: 0.5, silentHead: 0.4 })).ok).toBe(true);
 	});
 	test("a feedback earcon with the same lead-in still is", () => {
 		expect(passes(EARCONS.toggle, ok({ duration: 0.15, silentHead: 0.4 }))).toMatchObject({ ok: false, why: "late-attack" });
@@ -159,7 +152,7 @@ describe("signatures may build before they strike", () => {
 
 describe("a sonic logo must be long enough to be one", () => {
 	test("a signature shorter than its minimum is rejected, a feedback earcon has no minimum beyond audibility", () => {
-		const sig = EARCONS.signature;
+		const sig = { ...EARCONS.boot, maxSeconds: 2.6, minSeconds: 1.5 };
 		expect(passes(sig, ok({ duration: 1.0, levelAtCapDb: undefined }))).toMatchObject({ ok: false, why: "too-short" });
 		expect(passes(sig, ok({ duration: 1.6 })).ok).toBe(true);
 		expect(passes(EARCONS.toggle, ok({ duration: 0.1 })).ok).toBe(true);
@@ -168,7 +161,7 @@ describe("a sonic logo must be long enough to be one", () => {
 
 describe("decayDb: how far a note must fall before it is over", () => {
 	test("a signature's tail rings longer (40 dB) than a feedback tick's (30 dB)", () => {
-		expect(decayDb(EARCONS.signature)).toBe(40);
+		expect(decayDb(EARCONS.boot)).toBe(40);
 		expect(decayDb(EARCONS.toggle)).toBe(30);
 	});
 });

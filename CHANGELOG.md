@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Changed
 
+- **A new first-run welcome.** The full-screen globe title sequence is replaced by a short deck drawn and animated in the app (SVG and CSS, no video): welcome, one file runs your stack, agents side by side, a worktree for every idea, then finding your projects. Arrow keys or Enter move through it, Esc skips. The welcome sound is gone with the sequence. The empty state without projects keeps the globe.
 - **Atlas Desktop on Windows looks like a Windows 11 app.** No native title bar or menu bar: Atlas draws its own minimize, maximize/restore and close buttons in the title row (the window keeps its shadow, resize borders and snap). The installer has Atlas artwork, icon, publisher and a Start menu folder.
 - **Windows: lighter WebView2.** Atlas's webviews (window, tray popover, embedded browser tabs) start without Edge's background networking, component updater, sync and crash uploader, and the window's webview drops to its low-memory mode while Atlas is minimized or in the tray. The menu-bar popover is built after the first frame instead of before it.
 

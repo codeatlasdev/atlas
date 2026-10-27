@@ -74,7 +74,7 @@ export function textOutputs(): Map<string, string> {
 	out.set("site/public/favicon.svg", logo);
 	out.set("studio/assets/logo/logo.svg", logo);
 
-	// The welcome intro animates the real tiles: path data and bounding box per tile.
+	// The welcome globe is drawn from the real tiles: path data and bounding box per tile.
 	out.set("apps/desktop/src/lib/onboarding/intro/mark.ts", markTs(logo, tiles));
 	return out;
 }

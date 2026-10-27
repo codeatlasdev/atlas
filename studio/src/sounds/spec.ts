@@ -30,17 +30,6 @@ export interface Earcon {
 }
 
 export const EARCONS = {
-	signature: {
-		kind: "signature",
-		meaning: "The Atlas sonic logo: the intro's strike, as the globe locks together",
-		gesture:
-			"a quiet gentle sonic logo, no distortion, soft level: ONE clear struck bell note right at the start with a soft shimmering overtone that blooms and slowly resolves upward over two seconds, like a calm cinematic title sting",
-		requestSeconds: 3,
-		maxSeconds: 2.6,
-		targetCentroidHz: 900,
-		minSeconds: 1.5,
-		downbeatSeconds: 0.08,
-	},
 	boot: {
 		kind: "signature",
 		meaning: "Atlas opened (cold start, at most once an hour)",

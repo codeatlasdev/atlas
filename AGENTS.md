@@ -55,7 +55,7 @@ atlas desktop debug shot /tmp/x.png                       # page snapshot (WKWeb
 atlas desktop debug shot /tmp/x.png --selector 'aside.sidebar'   # one element (first VISIBLE match); also --rect x,y,w,h (CSS px)
 atlas desktop debug shot /tmp/x.png --full                # the whole scrollable page/element (view grows for the shot)
 atlas desktop debug shot /tmp/x.png --window              # native window as the compositor shows it (Screen Recording permission)
-atlas desktop debug record /tmp/x.mov --seconds 5 | --until '[data-intro="done"]' [--fps 30]
+atlas desktop debug record /tmp/x.mov --seconds 5 | --until '[data-testid="welcome-up"]' [--fps 30]
 atlas desktop debug wait '.ready' [--timeout ms] | wait 'window.__atlas.ws.loaded' --expr
 atlas desktop debug click 'button.go' | type 'input' 'text' [--delay ms]
 atlas desktop debug resize 1100 720                       # main window, logical px; the flicker sweep resizes mid-recording

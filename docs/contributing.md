@@ -189,7 +189,7 @@ The Atlas mark has **one source**: [`assets/logo.svg`](https://github.com/codeat
 | `assets/logo-animated.svg` | README/docs animation |
 | `site/public/{favicon.svg,favicon.ico,apple-touch-icon.png}` | the website |
 | `studio/assets/logo/logo.svg` | studio films |
-| `apps/desktop/src/lib/onboarding/intro/mark.ts` | the welcome intro (tile paths and boxes) |
+| `apps/desktop/src/lib/onboarding/intro/mark.ts` | the welcome globe (tile paths and boxes) |
 
 ```bash
 bun run icons          # regenerate all of the above (needs librsvg, ImageMagick, cargo-tauri)

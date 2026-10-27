@@ -1,7 +1,7 @@
 /**
- * The globe as a progress meter and as the resting stage. The intro's `frame(t)` assembles it; these build a `Frame`
- * for the rest of the flow (the same renderer paints it): a scan lights one sheet per project, finishing a stack
- * lights them all with the intro's own hit, and the empty state is the dim globe with a single slow glint.
+ * The globe as a progress meter and as the resting stage. These build the `Frame`s of the first-run flow (the renderer
+ * paints them): a scan lights one sheet per project, finishing a stack lights them all with a hit, and the empty state
+ * is the dim globe with a single slow glint.
  */
 import { BEATS, TILES, type Frame, type TileState } from "./timeline.ts";
 
@@ -39,27 +39,21 @@ const DIM = 0.08;
 const LIT = 0.5;
 const FLARE = 0.5;
 const FLARE_SECONDS = 0.9;
-/** The intro's hit: how long its flash and ring last (timeline.ts uses the same numbers). */
+/** The completion hit: how long its flash and ring last. */
 const HIT_FLASH = 0.5;
 const HIT_RING = 0.9;
 
 function whole(glow: (id: number, kind: "sheet" | "rim") => number): TileState[] {
-	return TILES.map((t) => ({ id: t.id, dx: 0, dy: 0, alpha: 1, glow: glow(t.id, t.kind) }));
+	return TILES.map((t) => ({ id: t.id, alpha: 1, glow: glow(t.id, t.kind) }));
 }
 
 const base = (tiles: TileState[]): Frame => ({
-	// At or after the hit beat so the renderer draws the whole globe with its junction nodes.
+	// A beat after the hit, where the camera's punch has decayed to rest.
 	t: BEATS.hit + 1,
-	line: 0,
 	tiles,
 	flash: 0,
 	ring: 0,
 	markScale: 1,
-	push: 1,
-	markFade: 1,
-	sweep: -1,
-	copy: 1,
-	wordmark: false,
 });
 
 /** The globe while projects arrive. `litAt` is when each sheet was lit (seconds, same clock as `now`). */

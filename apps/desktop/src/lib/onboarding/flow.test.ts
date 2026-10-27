@@ -12,11 +12,8 @@ import {
 	type Event,
 	type Phase,
 	ACTIONS,
-	INTRO_TIMING,
 	testId,
 } from "./flow.ts";
-import { BEATS, DURATION } from "./intro/timeline.ts";
-import { SIGNATURE_PREROLL } from "./intro/player.ts";
 
 const found = (name, o = {}) => ({
 	path: `/Users/me/Projects/${name}`,
@@ -236,7 +233,7 @@ describe("showStanding: the empty state in the main pane", () => {
 	});
 });
 
-describe("recording hooks: stable selectors and timing for scripted captures", () => {
+describe("recording hooks: stable selectors for scripted captures", () => {
 	test("every phase has a unique test id, derived from the phase name", () => {
 		const phases = ["welcome", "scanning", "empty", "results", "starting", "up", "done"];
 		const ids = phases.map((p) => testId(p));
@@ -252,11 +249,5 @@ describe("recording hooks: stable selectors and timing for scripted captures", (
 			skip: "welcome-action-skip",
 			finish: "welcome-action-finish",
 		});
-	});
-	test("INTRO_TIMING exposes the shot's real numbers (one source of truth with the timeline)", () => {
-		expect(INTRO_TIMING.durationMs).toBe(Math.round(DURATION * 1000));
-		expect(INTRO_TIMING.hitMs).toBe(Math.round(BEATS.hit * 1000));
-		expect(INTRO_TIMING.soundMs).toBe(Math.round((BEATS.hit - SIGNATURE_PREROLL) * 1000));
-		expect(INTRO_TIMING.hitMs).toBeLessThan(INTRO_TIMING.durationMs);
 	});
 });

@@ -1,7 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { paint } from "./render.ts";
-import { frame, settled } from "./timeline.ts";
 import { calm, progressFrame } from "./globe.ts";
 
 /**
@@ -85,14 +84,14 @@ describe("paint lays the scene out in CSS px under the caller's transform", () =
 			const [w, h] = [1280, 790];
 			const { ctx, fills } = recordingContext({ width: w * dpr, height: h * dpr });
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // what Globe.draw() does
-			paint(ctx, frame(0), w, h);
+			paint(ctx, calm(0), w, h);
 			const stage = fills[0];
 			expect(stage).toMatchObject({ x: 0, y: 0, w: w * dpr, h: h * dpr });
 		});
 	}
 
-	test("the same holds for the settled, progress and calm frames the app paints after the intro", () => {
-		for (const f of [settled(), progressFrame({ lit: 2, doneAt: null, now: 3, litAt: {} }), calm(2)]) {
+	test("the same holds for the progress and calm frames", () => {
+		for (const f of [progressFrame({ lit: 2, doneAt: null, now: 3, litAt: {} }), calm(2)]) {
 			const { ctx, fills } = recordingContext();
 			ctx.setTransform(2, 0, 0, 2, 0, 0);
 			paint(ctx, f, 900, 600);
@@ -102,7 +101,7 @@ describe("paint lays the scene out in CSS px under the caller's transform", () =
 
 	test("without a caller transform it still paints at 1x (the storyboard path)", () => {
 		const { ctx, fills } = recordingContext();
-		paint(ctx, frame(0), 640, 400);
+		paint(ctx, calm(0), 640, 400);
 		expect(fills[0]).toMatchObject({ x: 0, y: 0, w: 640, h: 400 });
 	});
 
@@ -110,9 +109,9 @@ describe("paint lays the scene out in CSS px under the caller's transform", () =
 		const { ctx, fills } = recordingContext();
 		ctx.setTransform(2, 0, 0, 2, 0, 0);
 		const before = ctx.matrix();
-		paint(ctx, frame(1), 500, 300);
+		paint(ctx, calm(1), 500, 300);
 		expect(ctx.matrix()).toEqual(before);
-		paint(ctx, frame(1.1), 500, 300);
+		paint(ctx, calm(1.1), 500, 300);
 		expect(ctx.matrix()).toEqual(before);
 		// each paint opens with its stage fill over the whole 2x buffer
 		expect(

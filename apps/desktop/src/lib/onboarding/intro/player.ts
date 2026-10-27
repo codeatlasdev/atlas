@@ -1,41 +1,4 @@
-/** The intro's clock and its play-once decision. Pure: IntroPlayer.svelte feeds it frames and input. */
-import { BEATS, DURATION } from "./timeline.ts";
-
-/** The signature's strike sits this far into the audio file (studio/src/sounds/spec.ts `downbeatSeconds`). */
-export const SIGNATURE_PREROLL = 0.08;
-/** A frame longer than this is a stall; the clock advances as if it were this long so the hit never jumps. */
-const MAX_DT = 0.05;
-
-export type Plan = { mode: "play"; sound: true } | { mode: "settled"; sound: false };
-
-/** Play the intro only on a true first run, with motion allowed and something to paint on. */
-export function plan(s: { seen: boolean; reducedMotion: boolean; webgl: boolean }): Plan {
-	if (s.seen || s.reducedMotion || !s.webgl) return { mode: "settled", sound: false };
-	return { mode: "play", sound: true };
-}
-
-export interface Clock {
-	t: number;
-	state: "running" | "done";
-	soundFired: boolean;
-	/** Set on the one tick that must start the signature. */
-	fireSound?: true;
-	stopSound?: undefined;
-}
-
-/** Advance the intro by `dt` seconds (or finish it when `skip`). */
-export function tick(c: Clock, dt: number, skip: boolean): Clock {
-	if (c.state === "done") return c;
-	if (skip) return { t: DURATION, state: "done", soundFired: c.soundFired };
-	const t = Math.min(DURATION, c.t + Math.min(Math.max(dt, 0), MAX_DT));
-	const fire = !c.soundFired && t >= BEATS.hit - SIGNATURE_PREROLL;
-	return {
-		t,
-		state: t >= DURATION ? "done" : "running",
-		soundFired: c.soundFired || fire,
-		...(fire ? { fireSound: true as const } : {}),
-	};
-}
+/** When the globe's paint loop runs, and the canvas buffer's size. Pure: Globe.svelte feeds it page state. */
 
 export type Loop = "animate" | "static" | "pause";
 

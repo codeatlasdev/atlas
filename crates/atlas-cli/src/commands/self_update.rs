@@ -14,10 +14,13 @@ use super::AtlasCommand;
 use super::release::{REPO, download_verified};
 use super::update_channel::{self as ch, Pick};
 use super::update_core;
+use super::update_pkg::{self, PackageManager};
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Hit GitHub at most every 6h (cached result is reused in between).
 const CHECK_INTERVAL_SECS: u64 = 6 * 3600;
+/// After a failed live check (offline), do not try again for this long.
+pub(crate) const FAILED_BACKOFF_SECS: u64 = 30 * 60;
 
 /// `atlas update` — see `docs/cli.md#atlas-update`.
 #[derive(Debug, Args)]
@@ -36,7 +39,7 @@ pub struct UpdateArgs {
     /// Install the older release the channel offers when you run a newer build
     #[arg(long)]
     pub downgrade: bool,
-    /// Do not ask for confirmation (with --downgrade)
+    /// Do not ask for confirmation (a downgrade, or installing a system package as root)
     #[arg(short, long)]
     pub yes: bool,
 }
@@ -84,6 +87,11 @@ pub(crate) struct UpdateCache {
     /// channels existed, which only ever knew the stable releases.
     #[serde(default)]
     pub(crate) channel: Option<String>,
+    /// When the last live check *failed* (offline, GitHub down), unix secs. Until
+    /// [`FAILED_BACKOFF_SECS`] passed, nothing re-checks, so an offline `atlas dev` does not
+    /// wait on the network at every start. Cleared by the next successful check.
+    #[serde(default)]
+    pub(crate) failed_at: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -103,6 +111,25 @@ impl UpdateCache {
             available_version: available,
             dismissed: self.dismissed.clone(),
             channel: Some(on.as_str().to_string()),
+            failed_at: None,
+        }
+    }
+
+    /// Cache after a check on `on` that could not reach GitHub: what was known for `on` stays
+    /// (the notice keeps working from it), the failure is stamped so nothing retries for a while.
+    /// An offer computed for another channel is not carried over.
+    pub(crate) fn failed_for(&self, on: Channel, now: u64) -> Self {
+        let same = self.valid_for(on);
+        Self {
+            last_checked: if same { self.last_checked } else { 0 },
+            available_version: if same {
+                self.available_version.clone()
+            } else {
+                None
+            },
+            dismissed: self.dismissed.clone(),
+            channel: Some(on.as_str().to_string()),
+            failed_at: Some(now),
         }
     }
 
@@ -111,8 +138,15 @@ impl UpdateCache {
         self.channel.as_deref().unwrap_or(Channel::Stable.as_str()) == on.as_str()
     }
 
-    /// Older than the check interval, never written, or computed for another channel.
+    /// A check is due: the cache is older than the check interval, never written, or computed
+    /// for another channel, and the last attempt did not fail within the backoff window.
     pub(crate) fn is_stale_for(&self, on: Channel, now: u64) -> bool {
+        if self
+            .failed_at
+            .is_some_and(|f| now.saturating_sub(f) < FAILED_BACKOFF_SECS)
+        {
+            return false;
+        }
         !self.valid_for(on) || now.saturating_sub(self.last_checked) >= CHECK_INTERVAL_SECS
     }
 
@@ -151,19 +185,37 @@ pub(crate) fn now_secs() -> u64 {
 }
 
 pub(crate) fn load_cache() -> UpdateCache {
-    let path = cache_path();
-    std::fs::read_to_string(&path)
+    load_cache_at(&cache_path())
+}
+
+/// The cache at `path`. A file that does not parse as a whole (a field of an unexpected type,
+/// a hand edit) still keeps what can be salvaged — the dismissal above all, so "No" to the
+/// prompt is not forgotten — and counts as never checked. Missing or unreadable: default.
+pub(crate) fn load_cache_at(path: &std::path::Path) -> UpdateCache {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return UpdateCache::default();
+    };
+    if let Ok(cache) = serde_json::from_str(&text) {
+        return cache;
+    }
+    let dismissed = serde_json::from_str::<serde_json::Value>(&text)
         .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .and_then(|v| serde_json::from_value::<Dismissal>(v.get("dismissed")?.clone()).ok());
+    UpdateCache {
+        dismissed,
+        ..UpdateCache::default()
+    }
 }
 
 pub(crate) fn save_cache(cache: &UpdateCache) {
-    let path = cache_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    save_cache_at(&cache_path(), cache);
+}
+
+/// Best-effort and atomic (`.tmp` + rename): `atlas dev` and `atlas update` may run at once.
+pub(crate) fn save_cache_at(path: &std::path::Path, cache: &UpdateCache) {
+    if let Ok(json) = serde_json::to_string(cache) {
+        let _ = update_core::write_atomic(path, json.as_bytes());
     }
-    let _ = std::fs::write(path, serde_json::to_string(cache).unwrap_or_default());
 }
 
 // ── Install method detection ──────────────────────────────────────────────────
@@ -172,17 +224,36 @@ pub(crate) fn save_cache(cache: &UpdateCache) {
 pub enum InstallMethod {
     Homebrew,
     ShellInstaller,
-    /// A Linux distro package (.deb, .rpm, Arch) put it in `/usr/bin`: its package manager updates it.
-    SystemPackage,
+    /// A Linux distro package (.deb, .rpm, Arch) owns the binary: its package manager updates
+    /// it. `Some` names the manager that owns it (asked with `pacman -Qo`, `dpkg -S`, `rpm -qf`,
+    /// or, for a `/usr/bin` binary no database claims, the first manager installed); `None` is
+    /// a `/usr/bin` binary on a machine with none of them, where only instructions can be given.
+    SystemPackage(Option<PackageManager>),
     Manual,
 }
 
 impl InstallMethod {
-    pub fn detect() -> Self {
-        let exe = env::current_exe().unwrap_or_default();
-        Self::of_path(&exe.to_string_lossy())
+    /// How `exe` was installed. `owner` asks the package databases (`pacman -Qo`, `dpkg -S`,
+    /// `rpm -qf`); it is injected so the table is testable without any of them. A binary under
+    /// `/usr/bin` that no database claims is still a system package (the path rule), updated
+    /// with whichever manager the machine has.
+    pub(crate) fn of_exe(
+        exe: &std::path::Path,
+        owner: impl FnOnce(&std::path::Path) -> Option<PackageManager>,
+    ) -> Self {
+        match Self::of_path(&exe.to_string_lossy()) {
+            Self::SystemPackage(_) => Self::SystemPackage(owner(exe).or_else(installed_manager)),
+            // A package can own a binary outside /usr/bin (a custom prefix); the database
+            // knows. A checkout's build output or a cargo install is never package-owned, so
+            // no database is asked about it. Machines without those tools answer None.
+            Self::Manual if !is_dev_location(exe) => {
+                owner(exe).map_or(Self::Manual, |pm| Self::SystemPackage(Some(pm)))
+            }
+            other => other,
+        }
     }
 
+    /// The path rule alone: where each installer puts the binary.
     fn of_path(path: &str) -> Self {
         let path = &path.replace('\\', "/");
         if path.contains("/opt/homebrew")
@@ -195,10 +266,34 @@ impl InstallMethod {
         } else if cfg!(target_os = "linux")
             && (path.starts_with("/usr/bin/") || path.starts_with("/bin/"))
         {
-            Self::SystemPackage
+            Self::SystemPackage(None)
         } else {
             Self::Manual
         }
+    }
+}
+
+/// A checkout's build output or a cargo install: never package-owned, so no database is asked.
+fn is_dev_location(exe: &std::path::Path) -> bool {
+    let p = exe.to_string_lossy().replace('\\', "/");
+    p.contains("/target/") || p.contains("/.cargo/bin/")
+}
+
+/// The package manager this machine has, for a `/usr/bin` binary no package database claims.
+fn installed_manager() -> Option<PackageManager> {
+    let has = |n: &str| atlas_core::paths::which(n).is_some();
+    if has("pacman") {
+        Some(PackageManager::Pacman)
+    } else if has("dpkg") {
+        Some(PackageManager::Apt)
+    } else if has("rpm") {
+        Some(if has("zypper") && !has("dnf") {
+            PackageManager::Zypper
+        } else {
+            PackageManager::Dnf
+        })
+    } else {
+        None
     }
 }
 
@@ -274,16 +369,26 @@ async fn background_check_inner() -> Result<()> {
     if !cache.is_stale_for(on, now_secs()) {
         return Ok(());
     }
-    let available = newer_than_current(&fetch_latest_version(on).await?);
-    if let Some(v) = &available {
-        atlas_tui::update_notice::publish(v.clone());
+    match fetch_latest_version(on).await {
+        Ok(latest) => {
+            let available = newer_than_current(&latest);
+            if let Some(v) = &available {
+                atlas_tui::update_notice::publish(v.clone());
+            }
+            save_cache(&cache.checked_for(on, available));
+            Ok(())
+        }
+        Err(e) => {
+            // Keep what was known; do not ask again before the backoff passed.
+            save_cache(&cache.failed_for(on, now_secs()));
+            Err(e)
+        }
     }
-    save_cache(&cache.checked_for(on, available));
-    Ok(())
 }
 
 /// Newest version for the pre-flight prompt: the cache when fresh, otherwise a live
-/// check bounded by `timeout`. Timeout or error falls back to the cached value silently.
+/// check bounded by `timeout`. Timeout or error falls back to the cached value silently and
+/// stamps the failure, so an offline machine does not wait `timeout` at every start.
 pub(crate) async fn newest_for_preflight(
     timeout: std::time::Duration,
 ) -> (UpdateCache, Option<String>) {
@@ -300,7 +405,24 @@ pub(crate) async fn newest_for_preflight(
             save_cache(&fresh);
             (fresh, available)
         }
-        _ => (cache, cached),
+        _ => {
+            let failed = cache.failed_for(on, now_secs());
+            save_cache(&failed);
+            (failed, cached)
+        }
+    }
+}
+
+/// What the user runs to take `version`: `atlas update` where atlas installs it itself, the
+/// package manager's own command for a package install (`atlas update` also does it, but the
+/// exact command is what one can read, copy and audit), `brew upgrade atlas` for Homebrew.
+pub(crate) fn update_command(method: &InstallMethod, version: &str) -> String {
+    match method {
+        InstallMethod::Homebrew => "brew upgrade atlas".to_string(),
+        InstallMethod::SystemPackage(Some(pm)) => {
+            format!("atlas update   ({})", pm.manual_command(version))
+        }
+        _ => "atlas update".to_string(),
     }
 }
 
@@ -317,11 +439,15 @@ pub fn print_update_notice() {
         .unwrap_or(80)
         .clamp(40, 200);
     let rule = "─".repeat(width);
+    let run = update_command(
+        &InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner),
+        &v,
+    );
     eprintln!();
     eprintln!("\x1b[2m{rule}\x1b[0m");
     eprintln!(" \x1b[1;32m⬆ Update available\x1b[0m");
     eprintln!(
-        " atlas \x1b[2mv{CURRENT_VERSION}\x1b[0m → \x1b[1mv{v}\x1b[0m   Run: \x1b[1;36matlas update\x1b[0m"
+        " atlas \x1b[2mv{CURRENT_VERSION}\x1b[0m → \x1b[1mv{v}\x1b[0m   Run: \x1b[1;36m{run}\x1b[0m"
     );
     eprintln!("\x1b[2m{rule}\x1b[0m");
 }
@@ -350,8 +476,12 @@ async fn fetch_latest_version(on: Channel) -> Result<String> {
 pub(crate) enum UpdateOutcome {
     /// The binary on disk is now the newer release.
     Installed,
-    /// Nothing was replaced (Homebrew, already current, `--check`).
+    /// Nothing was replaced (already current, `--check`, a declined confirmation).
     Unchanged,
+    /// Nothing was installed because another tool owns this Atlas (Homebrew, or a system
+    /// package with no usable package manager): the user was told what to run. Callers must not
+    /// report "up to date" or re-exec for it.
+    Managed,
 }
 
 /// Ask before installing an older build (default No). `--yes` skips the question; outside a
@@ -476,7 +606,8 @@ fn installed_version() -> semver::Version {
 }
 
 pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
-    let method = InstallMethod::detect();
+    let judged = update_core::judged_exe();
+    let method = InstallMethod::of_exe(&judged, update_pkg::owner);
 
     // `--channel X` sticks, even where this binary cannot install anything itself.
     if let Some(on) = req.channel {
@@ -484,34 +615,16 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     }
     let on = req.channel.unwrap_or_else(channel::current);
 
-    if method == InstallMethod::Homebrew {
-        if req.json {
-            bail!(
-                "--json needs an Atlas installed by the shell installer; Homebrew manages this one"
-            );
-        }
-        println!("\x1b[1;34m◆\x1b[0m Installed via Homebrew — run:");
-        println!("  brew upgrade atlas");
-        return Ok(UpdateOutcome::Unchanged);
-    }
-    if method == InstallMethod::SystemPackage {
-        if req.json {
-            bail!(
-                "--json needs an Atlas installed by the shell installer; a system package manages this one"
-            );
-        }
-        println!(
-            "\x1b[1;34m◆\x1b[0m Installed by a system package — update it with your package manager:"
+    // A dev build or an `atlas link` symlink is never overwritten by a release, whatever
+    // installed it: the one rule the `atlas dev` prompt uses (`update_core::is_dev_binary`).
+    // `--check` only reports, so it is allowed.
+    if !req.check_only && update_core::is_dev_binary() {
+        bail!(
+            "this atlas is a dev build or linked to one ({}); `atlas update` only replaces release installs. \
+             `atlas unlink` goes back to the release build",
+            judged.display()
         );
-        println!(
-            "  sudo pacman -U codeatlas-atlas-bin-*.pkg.tar.zst   # Arch (or your AUR helper)"
-        );
-        println!("  sudo apt install ./atlas_*_amd64.deb                # Debian, Ubuntu");
-        println!("  sudo dnf install ./atlas-*.x86_64.rpm               # Fedora, openSUSE");
-        println!("  (packages: https://github.com/{REPO}/releases/latest)");
-        return Ok(UpdateOutcome::Unchanged);
     }
-
     // `atlas link` made ~/.atlas/bin/atlas a symlink to target/debug/atlas: replacing
     // "the binary" would overwrite the dev build, not install a release.
     if !req.check_only
@@ -536,28 +649,40 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         println!();
     }
 
-    let tag = fetch_latest_tag(on)
-        .await
-        .context("Could not check for updates. Check your network connection (needs curl).")?;
+    // A failed check keeps the cache as it was (plus a backoff stamp): a network error is
+    // neither "current" nor "ahead", and must not silence the notice.
+    let tag = match fetch_latest_tag(on).await {
+        Ok(tag) => tag,
+        Err(e) => {
+            save_cache(&load_cache().failed_for(on, now_secs()));
+            return Err(e.context(
+                "Could not check for updates. Check your network connection (needs curl).",
+            ));
+        }
+    };
 
     if req.json {
         // `--json` is a report: it never installs.
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&ch::check_json(&current, on, Some(&tag)))?
-        );
+        let report = ch::check_json(&current, on, Some(&tag));
+        let report = managed_report(&method, &current, &tag, report);
+        println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(UpdateOutcome::Unchanged);
     }
 
     let (offered, decision) =
         ch::offer(&current, &tag).with_context(|| format!("Bad remote version '{tag}'"))?;
+    let managed = !matches!(
+        method,
+        InstallMethod::ShellInstaller | InstallMethod::Manual
+    );
 
     match decision {
         Decision::Current => {
             println!("{}", ch::describe(&current, &tag, on, req.downgrade));
             // Clear any stale cache entry
             save_cache(&load_cache().checked_for(on, None));
-            // The app may still lag behind (an earlier sync failed or was skipped).
+            // The app may still lag behind (an earlier sync failed or was skipped). Homebrew
+            // and packages own the CLI, not the app: the sync is still ours to do.
             if !req.check_only {
                 run_self(&["desktop", "--sync"]);
             }
@@ -568,6 +693,11 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
             println!("{}", ch::describe(&current, &tag, on, req.downgrade));
             if !req.downgrade || req.check_only {
                 return Ok(UpdateOutcome::Unchanged);
+            }
+            if managed {
+                bail!(
+                    "--downgrade needs an Atlas installed by the shell installer; another tool manages this one"
+                );
             }
             if !confirm_downgrade(&current, &offered, on, req.yes)? {
                 println!("Cancelled; nothing was changed.");
@@ -589,11 +719,60 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
                     "\x1b[1;33m◆\x1b[0m {}",
                     ch::describe(&current, &tag, on, false)
                 );
+                if let InstallMethod::SystemPackage(Some(pm)) = &method {
+                    println!(
+                        "  Installed by {}: `atlas update` downloads, verifies and installs the package.",
+                        pm.name()
+                    );
+                }
                 return Ok(UpdateOutcome::Unchanged);
             }
         }
     }
     let latest = offered.to_string();
+
+    match &method {
+        InstallMethod::Homebrew => {
+            println!("\x1b[1;34m◆\x1b[0m Installed via Homebrew — run:");
+            println!("  brew upgrade atlas");
+            println!("  (latest: v{latest})");
+            update_core::managed_event("homebrew");
+            return Ok(UpdateOutcome::Managed);
+        }
+        InstallMethod::SystemPackage(Some(pm)) => {
+            return install_package(*pm, &latest, &tag, req.yes).await;
+        }
+        InstallMethod::SystemPackage(None) => {
+            println!(
+                "\x1b[1;34m◆\x1b[0m Installed by a system package, but no package manager (pacman, dpkg, rpm) was found."
+            );
+            println!(
+                "  Install the v{latest} package for your distribution: https://github.com/{REPO}/releases/tag/{tag}"
+            );
+            update_core::managed_event("package");
+            return Ok(UpdateOutcome::Managed);
+        }
+        InstallMethod::ShellInstaller | InstallMethod::Manual => {}
+    }
+
+    let exe = env::current_exe().context("cannot locate the running atlas binary")?;
+
+    // Every artifact this update replaces must be writable *before* anything is: the CLI's
+    // directory (new binary and `.atlas.prev`) and the installed app (`atlas desktop --sync`).
+    // Otherwise the CLI would be replaced, the app sync would fail and the CLI be rolled back.
+    let app = atlas_core::paths::installed_app();
+    let mut artifacts: Vec<(&str, &std::path::Path)> = vec![("Atlas CLI", exe.as_path())];
+    if let Some(app) = app.as_deref() {
+        artifacts.push(("Atlas Desktop", app));
+    }
+    let blocked = update_core::unwritable(&artifacts);
+    if !blocked.is_empty() {
+        bail!(
+            "cannot update, nothing was changed: {}. Fix the permissions, or reinstall into your home \
+             with the shell installer (`sudo atlas update` would leave root-owned files there)",
+            blocked.join("; ")
+        );
+    }
 
     // Held until this function returns; the kernel frees it if we die. The spawned
     // `atlas desktop --sync` must not wait on us, hence the env marker on that child.
@@ -632,11 +811,10 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(tmp_bin.path(), std::fs::Permissions::from_mode(0o755))?;
     }
-    let exe = env::current_exe().context("cannot locate the running atlas binary")?;
     let backup = update_core::CliBackup::save(&exe)?;
     if let Err(e) = self_replace::self_replace(tmp_bin.path()) {
         backup.discard();
-        return Err(e).context("Failed to replace binary. Try: sudo atlas update");
+        return Err(e).context("Failed to replace the atlas binary");
     }
 
     // Clear cache
@@ -646,20 +824,116 @@ pub(crate) async fn run_update(req: Request) -> Result<UpdateOutcome> {
     println!("\x1b[1;32m✓\x1b[0m Updated to v{latest}");
     println!();
 
-    // The skills (and agent hook) are embedded in the *new* binary, so refresh them by
-    // running it; the running process still holds the old embedded copy.
-    println!("\x1b[1;34m◆\x1b[0m Refreshing skills...");
-    refresh_with_new_binary();
-
-    // The app must follow the CLI. When it cannot, the previous CLI is put back so the two
-    // never sit on different versions unnoticed, and the error says what happened.
-    backup.finish(sync_desktop_with_new_binary(&exe), CURRENT_VERSION, &latest)?;
+    settle(&exe, backup, CURRENT_VERSION, &latest)?;
 
     // Last step: the terminal host outlives updates, so it is usually older than the CLI and
     // app by now. The new binary upgrades it live, restarts it when it is empty, or says
     // exactly what is stale; nothing here ends a running terminal without being asked.
     reconcile_host_with_new_binary(&exe);
 
+    Ok(UpdateOutcome::Installed)
+}
+
+/// The `--check --json` report for an install another tool owns.
+fn managed_report(
+    method: &InstallMethod,
+    current: &semver::Version,
+    tag: &str,
+    report: serde_json::Value,
+) -> serde_json::Value {
+    match method {
+        InstallMethod::Homebrew => ch::managed_json(report, "homebrew", None, "brew upgrade atlas"),
+        InstallMethod::SystemPackage(pm) => {
+            let command = match (*pm, ch::offer(current, tag)) {
+                (Some(pm), Some((v, _))) => pm.manual_command(&v.to_string()),
+                _ => "atlas update".to_string(),
+            };
+            ch::managed_json(report, "package", pm.map(PackageManager::name), &command)
+        }
+        InstallMethod::ShellInstaller | InstallMethod::Manual => report,
+    }
+}
+
+/// Settle a CLI update once the binary at `exe` is the new one and `backup` holds the old one:
+/// bring the app to the new version, then refresh skills and agent hooks with whichever binary
+/// stays on disk. Order matters. The refresh used to run first, so a failed app sync rolled
+/// the CLI back but left skills, MCP entries and hooks on the new version.
+fn settle(
+    exe: &std::path::Path,
+    backup: update_core::CliBackup,
+    from: &str,
+    to: &str,
+) -> Result<()> {
+    let synced = sync_desktop_with_new_binary(exe);
+    let result = backup.finish(synced, from, to);
+    println!("\x1b[1;34m◆\x1b[0m Refreshing skills...");
+    refresh_with(exe);
+    result
+}
+
+/// `#144`: update a package-managed install through its package manager. The asset and its
+/// checksum are downloaded and verified *before* anything asks for privileges; then one
+/// escalated package-manager command installs it, under the update lock, and the installed
+/// binary refreshes skills and agent hooks.
+async fn install_package(
+    pm: PackageManager,
+    latest: &str,
+    tag: &str,
+    yes: bool,
+) -> Result<UpdateOutcome> {
+    let exe = update_core::judged_exe();
+    let asset = pm.asset(latest);
+    println!("\x1b[1;34m◆\x1b[0m Downloading {asset}...");
+    update_core::phase(update_core::Phase::Download);
+    let tmp_dir = tempfile::Builder::new().prefix("atlas-update-").tempdir()?;
+    let file =
+        download_verified(tag, &asset, tmp_dir.path(), update_core::bytes).with_context(|| {
+            format!("Download failed. Releases: https://github.com/{REPO}/releases/tag/{tag}")
+        })?;
+    update_core::phase(update_core::Phase::Verify);
+    println!("\x1b[1;32m✓\x1b[0m Checksum verified");
+
+    let tty = interactive();
+    let has = |n: &str| atlas_core::paths::which(n).is_some();
+    let is_root = update_pkg::is_root();
+    let argv = update_pkg::command_line(update_pkg::escalation(is_root, tty, has)?, pm, &file);
+    println!();
+    println!("  This installs v{latest} with {} as root:", pm.name());
+    println!("    {}", argv.join(" "));
+    if !yes {
+        if !tty {
+            bail!(
+                "installing a system package needs confirmation: run it in a terminal, or pass --yes"
+            );
+        }
+        print!("Install v{latest} now? [y/N] ");
+        std::io::stdout().flush()?;
+        if !ch::parse_confirm(&read_line().unwrap_or_default()) {
+            println!("Cancelled; nothing was changed.");
+            return Ok(UpdateOutcome::Unchanged);
+        }
+    }
+
+    // Nothing above changed the machine. From here a second update (another terminal, the
+    // app) must wait: the package manager and the refresh are one critical section.
+    let _lock = update_core::UpdateLock::acquire()?;
+    update_core::phase(update_core::Phase::InstallCli);
+    println!("\x1b[1;34m◆\x1b[0m Installing with {}...", pm.name());
+    update_pkg::run_install(&argv)?;
+    save_cache(&load_cache().checked_for(channel::current(), None));
+    println!();
+    println!("\x1b[1;32m✓\x1b[0m Updated to v{latest}");
+    println!();
+
+    // The package manager replaced the file at `exe`; the *installed* binary carries the new
+    // skills and hooks, this process still holds the old ones.
+    println!("\x1b[1;34m◆\x1b[0m Refreshing skills...");
+    refresh_with(&exe);
+    // The app is package-owned too (`atlas-desktop` in the same package set); nothing to sync
+    // unless a user-level app exists, which `desktop --sync` handles.
+    update_core::phase(update_core::Phase::UpdateApp);
+    sync_desktop_best_effort(&exe);
+    reconcile_host_with_new_binary(&exe);
     Ok(UpdateOutcome::Installed)
 }
 
@@ -699,21 +973,28 @@ fn sync_desktop_with_new_binary(exe: &std::path::Path) -> Result<()> {
     }
 }
 
-/// Run the freshly installed binary to refresh the skills and, when already set up,
-/// the OMP / Claude Code / Codex integrations (hooks, MCP entry), all embedded in that binary.
-/// Failures are non-fatal.
-fn refresh_with_new_binary() {
-    let Ok(exe) = env::current_exe() else {
-        eprintln!("\x1b[33m◆\x1b[0m Skills refresh skipped: cannot locate the new binary");
-        return;
-    };
+/// `atlas desktop --sync` of the installed binary after a package install: the app follows
+/// the CLI when a user-level one exists. A failure is reported, never fatal (the package
+/// manager already committed the CLI; there is no CLI backup to restore).
+fn sync_desktop_best_effort(exe: &std::path::Path) {
+    if let Err(e) = sync_desktop_with_new_binary(exe) {
+        eprintln!(
+            "\x1b[33m◆\x1b[0m Atlas Desktop could not follow: {e:#} (non-fatal); run `atlas desktop --install`"
+        );
+    }
+}
+
+/// Run `exe` to refresh the skills and, when already set up, the OMP / Claude Code / Codex
+/// integrations (hooks, MCP entry), all embedded in that binary: the running process still
+/// holds its own (old) copy. Failures are non-fatal.
+fn refresh_with(exe: &std::path::Path) {
     for args in [
         &["skills", "install"][..],
         &["setup", "omp", "--refresh"][..],
         &["setup", "claude-code", "--refresh"][..],
         &["setup", "codex", "--refresh"][..],
     ] {
-        run_self_with(&exe, args);
+        run_self_with(exe, args);
     }
 }
 
@@ -774,14 +1055,14 @@ mod tests {
     }
 
     #[test]
-    fn test_install_method_detect() {
-        let m = InstallMethod::detect();
+    fn test_install_method_of_this_binary() {
+        let m = InstallMethod::of_exe(&update_core::judged_exe(), update_pkg::owner);
         assert!(matches!(
             m,
             InstallMethod::Manual
                 | InstallMethod::ShellInstaller
                 | InstallMethod::Homebrew
-                | InstallMethod::SystemPackage
+                | InstallMethod::SystemPackage(_)
         ));
     }
 
@@ -790,7 +1071,7 @@ mod tests {
     #[test]
     fn a_binary_in_usr_bin_is_a_system_package_on_linux_only() {
         let pkg = if cfg!(target_os = "linux") {
-            InstallMethod::SystemPackage
+            InstallMethod::SystemPackage(None)
         } else {
             InstallMethod::Manual
         };
@@ -834,6 +1115,7 @@ mod tests {
             available_version: Some("1.2.3".into()),
             dismissed: None,
             channel: Some("beta".into()),
+            failed_at: None,
         };
         cache.dismiss("1.2.3", 1000);
         let json = serde_json::to_string(&cache).unwrap();
@@ -1081,6 +1363,352 @@ mod tests {
             newer_than("1.4.0+a", "1.4.0+b"),
             None,
             "build metadata ignored"
+        );
+    }
+}
+
+#[cfg(test)]
+mod robustness_tests {
+    use super::*;
+    use std::path::Path;
+
+    fn claims(pm: PackageManager) -> impl FnOnce(&Path) -> Option<PackageManager> {
+        move |_| Some(pm)
+    }
+    fn nobody(_: &Path) -> Option<PackageManager> {
+        None
+    }
+
+    /// The detection table of #144: the package database decides, the path rule is the fallback.
+    #[test]
+    fn install_method_detection_table() {
+        use InstallMethod::*;
+        let p = |s: &str| std::path::PathBuf::from(s);
+        // A database claims a binary even outside /usr/bin (custom prefix).
+        assert_eq!(
+            InstallMethod::of_exe(&p("/opt/atlas/bin/atlas"), claims(PackageManager::Apt)),
+            SystemPackage(Some(PackageManager::Apt))
+        );
+        assert_eq!(
+            InstallMethod::of_exe(&p("/usr/local/bin/atlas"), claims(PackageManager::Pacman)),
+            SystemPackage(Some(PackageManager::Pacman))
+        );
+        // Nobody claims it: a hand-copied binary stays Manual.
+        assert_eq!(
+            InstallMethod::of_exe(&p("/usr/local/bin/atlas"), nobody),
+            Manual
+        );
+        // Homebrew and the shell installer are decided by path, never by a database.
+        assert_eq!(
+            InstallMethod::of_exe(&p("/opt/homebrew/bin/atlas"), claims(PackageManager::Apt)),
+            Homebrew
+        );
+        assert_eq!(
+            InstallMethod::of_exe(&p("/home/u/.atlas/bin/atlas"), claims(PackageManager::Apt)),
+            ShellInstaller
+        );
+        // A checkout's build output and a cargo install are never package-owned.
+        assert_eq!(
+            InstallMethod::of_exe(
+                &p("/home/u/src/atlas/target/debug/atlas"),
+                claims(PackageManager::Apt)
+            ),
+            Manual
+        );
+        assert_eq!(
+            InstallMethod::of_exe(&p("/home/u/.cargo/bin/atlas"), claims(PackageManager::Apt)),
+            Manual
+        );
+        // /usr/bin on Linux is a system package even when no database answers.
+        if cfg!(target_os = "linux") {
+            assert!(matches!(
+                InstallMethod::of_exe(&p("/usr/bin/atlas"), nobody),
+                SystemPackage(_)
+            ));
+            assert_eq!(
+                InstallMethod::of_exe(&p("/usr/bin/atlas"), claims(PackageManager::Dnf)),
+                SystemPackage(Some(PackageManager::Dnf))
+            );
+        }
+    }
+
+    #[test]
+    fn the_notice_names_the_command_for_each_install_method() {
+        let apt = InstallMethod::SystemPackage(Some(PackageManager::Apt));
+        let line = update_command(&apt, "1.6.0");
+        assert!(line.starts_with("atlas update"), "{line}");
+        assert!(
+            line.contains("sudo apt install ./atlas_1.6.0_amd64.deb"),
+            "{line}"
+        );
+        assert_eq!(
+            update_command(&InstallMethod::Homebrew, "1.6.0"),
+            "brew upgrade atlas"
+        );
+        assert_eq!(
+            update_command(&InstallMethod::ShellInstaller, "1.6.0"),
+            "atlas update"
+        );
+        assert_eq!(
+            update_command(&InstallMethod::Manual, "1.6.0"),
+            "atlas update"
+        );
+        assert_eq!(
+            update_command(&InstallMethod::SystemPackage(None), "1.6.0"),
+            "atlas update"
+        );
+    }
+
+    // ── G7: the cache is written atomically and a damaged file keeps the dismissal ──
+
+    #[test]
+    fn save_cache_leaves_no_temp_file_and_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".update_check");
+        let mut c = UpdateCache::default().checked_for(Channel::Alpha, Some("9.9.9".into()));
+        c.dismiss("9.9.9", 5);
+        save_cache_at(&path, &c);
+        assert_eq!(load_cache_at(&path), c);
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, [".update_check"], "{names:?}");
+    }
+
+    #[test]
+    fn a_truncated_cache_still_counts_as_never_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c");
+        std::fs::write(&path, r#"{"last_checked":17,"available_ver"#).unwrap();
+        assert_eq!(load_cache_at(&path), UpdateCache::default());
+        assert!(load_cache_at(&path).is_stale_for(Channel::Alpha, 20));
+    }
+
+    /// The reported loss: a cache with a good dismissal but one field of the wrong type used to
+    /// reset to `default()`, so "No" to the prompt was forgotten and `atlas dev` asked again.
+    #[test]
+    fn a_cache_that_does_not_parse_keeps_its_dismissal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c");
+        std::fs::write(
+            &path,
+            r#"{"last_checked":"yesterday","available_version":"9.9.9",
+                "dismissed":{"version":"9.9.9","until":4102444800}}"#,
+        )
+        .unwrap();
+        let c = load_cache_at(&path);
+        assert!(c.is_dismissed("9.9.9", 1_000), "{c:?}");
+        assert_eq!(c.available_version, None, "the rest is not trusted");
+        assert!(
+            c.is_stale_for(Channel::Alpha, 1_000),
+            "and the next check refetches"
+        );
+    }
+
+    #[test]
+    fn garbage_or_a_missing_cache_is_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            load_cache_at(&dir.path().join("none")),
+            UpdateCache::default()
+        );
+        let p = dir.path().join("g");
+        std::fs::write(&p, "not json at all").unwrap();
+        assert_eq!(load_cache_at(&p), UpdateCache::default());
+    }
+
+    // ── G14: a failed check is stamped with a backoff ──
+
+    #[test]
+    fn a_failed_check_backs_off_and_keeps_what_was_known() {
+        let known = UpdateCache {
+            last_checked: 1_000,
+            available_version: Some("9.9.9".into()),
+            dismissed: None,
+            channel: Some("alpha".into()),
+            failed_at: None,
+        };
+        let now = 1_000 + CHECK_INTERVAL_SECS + 10; // stale: a check is due
+        assert!(known.is_stale_for(Channel::Alpha, now));
+        let failed = known.failed_for(Channel::Alpha, now);
+        assert_eq!(
+            failed.available_version.as_deref(),
+            Some("9.9.9"),
+            "notice keeps working"
+        );
+        assert_eq!(failed.last_checked, 1_000, "not pretended fresh");
+        assert!(
+            !failed.is_stale_for(Channel::Alpha, now + 1),
+            "no retry inside the backoff"
+        );
+        assert!(!failed.is_stale_for(Channel::Alpha, now + FAILED_BACKOFF_SECS - 1));
+        assert!(
+            failed.is_stale_for(Channel::Alpha, now + FAILED_BACKOFF_SECS),
+            "then it retries"
+        );
+    }
+
+    #[test]
+    fn a_successful_check_clears_the_failure() {
+        let failed = UpdateCache::default().failed_for(Channel::Alpha, 50);
+        assert_eq!(failed.failed_at, Some(50));
+        assert_eq!(failed.checked_for(Channel::Alpha, None).failed_at, None);
+    }
+
+    #[test]
+    fn a_failure_never_carries_another_channels_offer() {
+        let beta = UpdateCache::default().checked_for(Channel::Beta, Some("2.0.0-beta.1".into()));
+        let failed = beta.failed_for(Channel::Alpha, 99);
+        assert_eq!(failed.available_version, None);
+        assert_eq!(failed.channel.as_deref(), Some("alpha"));
+        assert_eq!(failed.available_for(&ver("1.0.0"), Channel::Alpha), None);
+    }
+
+    #[test]
+    fn a_failure_keeps_the_dismissal() {
+        let mut c = UpdateCache::default();
+        c.dismiss("2.0.0", 10);
+        assert!(c.failed_for(Channel::Alpha, 20).is_dismissed("2.0.0", 21));
+    }
+
+    fn ver(s: &str) -> semver::Version {
+        semver::Version::parse(s).unwrap()
+    }
+
+    // ── G11: the JSON report names the owner and what to run ──
+
+    #[test]
+    fn managed_report_for_each_install_method() {
+        let cur = ver("1.0.0");
+        let base = ch::check_json(&cur, Channel::Stable, Some("v1.1.0"));
+        let pkg = managed_report(
+            &InstallMethod::SystemPackage(Some(PackageManager::Pacman)),
+            &cur,
+            "v1.1.0",
+            base.clone(),
+        );
+        assert_eq!(pkg["action"], "package");
+        assert_eq!(pkg["manager"], "pacman");
+        assert_eq!(
+            pkg["command"],
+            PackageManager::Pacman.manual_command("1.1.0")
+        );
+        let brew = managed_report(&InstallMethod::Homebrew, &cur, "v1.1.0", base.clone());
+        assert_eq!(brew["action"], "managed");
+        let own = managed_report(&InstallMethod::ShellInstaller, &cur, "v1.1.0", base.clone());
+        assert_eq!(own, base, "self-installed reports are untouched");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod settle_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// A stand-in for an atlas binary: logs `<name> <args>` to `log`, and fails `desktop --sync`
+    /// when `fail_sync`.
+    fn stub(path: &std::path::Path, name: &str, log: &std::path::Path, fail_sync: bool) {
+        let fail = if fail_sync {
+            "[ \"$1 $2\" = 'desktop --sync' ] && exit 1\n"
+        } else {
+            ""
+        };
+        std::fs::write(
+            path,
+            format!(
+                "#!/bin/sh\necho \"{name} $*\" >> '{}'\n{fail}exit 0\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn lines(log: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect()
+    }
+
+    /// The incident (G1): the CLI is rolled back when `atlas desktop --sync` fails, but skills,
+    /// MCP entries and hooks had already been refreshed by the *new* binary, so the CLI that
+    /// stays was older than what it left on disk. The refresh must come after, by whichever
+    /// binary stays.
+    #[test]
+    fn a_failed_app_sync_rolls_back_and_the_old_binary_refreshes() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let exe = dir.path().join("atlas");
+        stub(&exe, "old", &log, false);
+        let backup = update_core::CliBackup::save(&exe).unwrap();
+        stub(&exe, "new", &log, true); // the freshly installed CLI; its app sync fails
+
+        let e = settle(&exe, backup, "1.0.0", "1.1.0").unwrap_err();
+        assert!(format!("{e:#}").contains("stays on v1.0.0"), "{e:#}");
+
+        let calls = lines(&log);
+        assert_eq!(calls[0], "new desktop --sync", "{calls:?}");
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.starts_with("new skills") || c.starts_with("new setup")),
+            "the rolled-back binary's replacement must not have refreshed anything: {calls:?}"
+        );
+        assert!(
+            calls.contains(&"old skills install".to_string()),
+            "{calls:?}"
+        );
+        assert!(
+            calls.contains(&"old setup omp --refresh".to_string()),
+            "{calls:?}"
+        );
+    }
+
+    #[test]
+    fn a_successful_sync_refreshes_with_the_new_binary_afterwards() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let exe = dir.path().join("atlas");
+        stub(&exe, "old", &log, false);
+        let backup = update_core::CliBackup::save(&exe).unwrap();
+        stub(&exe, "new", &log, false);
+
+        settle(&exe, backup, "1.0.0", "1.1.0").unwrap();
+
+        let calls = lines(&log);
+        assert_eq!(calls[0], "new desktop --sync", "{calls:?}");
+        let skills = calls
+            .iter()
+            .position(|c| c == "new skills install")
+            .unwrap();
+        assert!(skills > 0, "refresh follows the sync: {calls:?}");
+        assert!(!calls.iter().any(|c| c.starts_with("old ")), "{calls:?}");
+        assert!(!dir.path().join(".atlas.prev").exists(), "backup discarded");
+    }
+
+    #[test]
+    fn when_the_rollback_itself_fails_the_binary_on_disk_still_refreshes() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("calls");
+        let exe = dir.path().join("atlas");
+        stub(&exe, "old", &log, false);
+        let backup = update_core::CliBackup::save(&exe).unwrap();
+        stub(&exe, "new", &log, true);
+        std::fs::remove_file(dir.path().join(".atlas.prev")).unwrap(); // nothing to restore
+
+        let e = settle(&exe, backup, "1.0.0", "1.1.0").unwrap_err();
+        assert!(
+            format!("{e:#}").contains("could not be rolled back"),
+            "{e:#}"
+        );
+        // The new CLI is what is left, so it is the one whose skills match.
+        assert!(
+            lines(&log).contains(&"new skills install".to_string()),
+            "{:?}",
+            lines(&log)
         );
     }
 }

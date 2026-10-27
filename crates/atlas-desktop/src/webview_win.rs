@@ -70,3 +70,57 @@ pub fn sync(app: &AppHandle) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    /// Incident (1.5.0-alpha.24): the Windows app died at launch with `0x8007139F` because a window added
+    /// later (the agent dock) built its webview without [`super::ARGS`]. WebView2 refuses a second set of
+    /// options in one process, so one forgotten builder takes the whole app down, and only on Windows.
+    /// Every place that builds a webview must pass the shared args right after creating the builder.
+    #[test]
+    fn every_webview_builder_passes_the_shared_browser_args() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut missing = Vec::new();
+        let mut stack = vec![src.clone()];
+        while let Some(dir) = stack.pop() {
+            for e in std::fs::read_dir(&dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_none_or(|x| x != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&p).unwrap();
+                // Production code only: a `#[cfg(test)]` module builds mock webviews.
+                let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+                let lines: Vec<&str> = code.lines().collect();
+                for (i, l) in lines.iter().enumerate() {
+                    let builds = [
+                        "WebviewWindowBuilder::new(",
+                        "WebviewWindowBuilder::from_config(",
+                        "WebviewBuilder::new(",
+                    ]
+                    .iter()
+                    .any(|b| l.contains(b));
+                    if !builds {
+                        continue;
+                    }
+                    let next = lines[i..lines.len().min(i + 15)].join("\n");
+                    if !next.contains("webview_win::ARGS") {
+                        missing.push(format!(
+                            "{}:{}",
+                            p.strip_prefix(&src).unwrap().display(),
+                            i + 1
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "webview built without webview_win::ARGS: {missing:?}"
+        );
+    }
+}

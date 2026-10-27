@@ -6,6 +6,12 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows: Atlas Desktop 1.5.0-alpha.24 closed at launch** (`WebView2 error 0x8007139F` in `~/.atlas/desktop/app.log`). The new agent dock and capture windows built their webview with other browser options than the main window, and WebView2 refuses two sets in one app. Every window now passes the same set, and a test fails the build when a new window forgets it.
+- **Windows: `atlas update` could not update Atlas Desktop** ("cannot move …\Atlas aside (is Atlas still running?)", so the CLI rolled back too). The update moved the whole install folder, which Windows refuses while any file in it is open, and one always is: the app, its terminal host or the `atlas.exe` running the update. It now moves the files aside one by one (Windows allows renaming a running program), and reopens Atlas Desktop when the installer had to close it; terminals and stacks keep running.
+- **Windows: installing only Atlas Desktop now also gives you the `atlas` command.** The installer sets up the CLI it carries (`%USERPROFILE%\.atlas\bin` on your PATH, as the PowerShell install does) when you have none yet, so `atlas update` and `atlas .` work from a new terminal.
+
 ## [1.5.0-alpha.24] — 2026-10-27
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

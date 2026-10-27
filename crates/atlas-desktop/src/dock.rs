@@ -223,7 +223,11 @@ fn pty_of(snapshot: &Value, tab: &str) -> Option<String> {
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
-    let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("dock".into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("dock".into()));
+    // Windows: every webview of the app passes the same browser args (webview_win::ARGS).
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    let win = builder
         .theme(theme)
         .initialization_script(script)
         .title("Atlas Dock")

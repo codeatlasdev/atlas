@@ -44,6 +44,7 @@ import { store } from "#lib/stores/projects.svelte.ts";
 import { quick } from "#lib/stores/quick.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
 import { nativeAppearance } from "#lib/theme/ground.ts";
+import { startDockFeed } from "#lib/stores/dockFeed.svelte.ts";
 import { startTrayFeed } from "#lib/stores/trayFeed.svelte.ts";
 import { updates } from "#lib/stores/updates.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -250,6 +251,7 @@ export function startSession(): () => void {
 	window.addEventListener("focus", reconcile);
 	document.addEventListener("visibilitychange", reconcile);
 	const stopTray = startTrayFeed();
+	const stopDock = startDockFeed();
 	// The popover's sparklines need samples even with no Panel open.
 	const stopMetrics = metrics.start();
 	const stopEffects = $effect.root(syncEffects);
@@ -276,6 +278,7 @@ export function startSession(): () => void {
 		document.removeEventListener("visibilitychange", reconcile);
 		stopErrors();
 		stopTray();
+		stopDock();
 		stopMetrics();
 		stopEffects();
 		stopAutoCleanup();

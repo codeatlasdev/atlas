@@ -179,7 +179,7 @@ describe("settings index", () => {
 
 	test("the sidebar reads Atlas (app), Work (where you code) and Connect (outside things)", () => {
 		const by = (k: string) => SECTIONS.filter((s) => s.cluster === k).map((s) => s.id);
-		expect(by("app")).toEqual(["general", "appearance", "notifications", "keyboard", "help"]);
+		expect(by("app")).toEqual(["general", "appearance", "notifications", "capture", "keyboard", "help"]);
 		expect(by("work")).toEqual(["workspaces", "editor", "terminal", "git", "agents"]);
 		expect(by("connect")).toEqual(["integrations"]);
 	});

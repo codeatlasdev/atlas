@@ -40,6 +40,8 @@ pub struct TrayState {
     shown_at: Mutex<Option<std::time::Instant>>,
     /// Where the icon was when the popover was last opened (physical x, y, w, h), for [`room`].
     icon: Mutex<Option<(f64, f64, f64, f64)>>,
+    /// The "Show / Hide Agent Dock" item, re-labelled when the dock is shown or hidden.
+    dock_item: Mutex<Option<MenuItem<tauri::Wry>>>,
 }
 
 /// Top-left (physical px) of a popover of `size` (w, h) under `icon` (x, y, w, h),
@@ -168,6 +170,7 @@ fn toggle(app: &AppHandle, icon: &Rect) {
 
 const ID_OPEN: &str = "open";
 const ID_TOGGLE: &str = "toggle";
+const ID_DOCK: &str = "dock";
 const ID_QUIT: &str = "quit";
 
 /// The tray's native menu, from [`lifecycle::tray_menu`]. Quit is a plain item handled in [`on_menu`]: the
@@ -190,7 +193,22 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 true,
                 None::<&str>,
             )?)?,
+            TrayItem::ToggleDock => {
+                let shown = app
+                    .try_state::<crate::dock::DockState>()
+                    .is_some_and(|s| s.shown());
+                let item = MenuItem::with_id(
+                    app,
+                    ID_DOCK,
+                    lifecycle::dock_item_label(shown),
+                    true,
+                    None::<&str>,
+                )?;
+                menu.append(&item)?;
+                *app.state::<TrayState>().dock_item.lock() = Some(item);
+            }
             TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+            TrayItem::Capture => menu.append(&capture_submenu(app)?)?,
             TrayItem::Quit => menu.append(&MenuItem::with_id(
                 app,
                 ID_QUIT,
@@ -203,13 +221,77 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Ok(menu)
 }
 
+/// The text of a capture menu entry: the action and, after a tab-like gap, the key it has now. The key is text, not a
+/// menu accelerator: the real hotkey is the global one, and a second registration would fire twice in Atlas.
+fn capture_label(e: &crate::shots::prefs::MenuEntry) -> String {
+    if e.stroke.is_empty() {
+        e.label.to_string()
+    } else {
+        format!("{}    {}", e.label, e.stroke)
+    }
+}
+
+/// Every capture menu item (the tray's and the app menu bar's), so a change of keys re-labels all of them. Managed
+/// before the menu bar is built (`main`), unlike [`TrayState`] and `Shots`.
+#[derive(Default)]
+pub struct CaptureMenus(Mutex<Vec<(String, MenuItem<tauri::Wry>)>>);
+
+/// The "Capture" submenu: one item per capture action (`shots::prefs::menu_entries`). The keys are the ones in
+/// force, or the saved ones before the capture module has started.
+pub fn capture_submenu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
+    let keys = app
+        .try_state::<crate::shots::Shots>()
+        .map(|s| s.keys())
+        .unwrap_or_else(|| crate::shots::prefs::CapturePrefs::load().keys);
+    let sub = tauri::menu::Submenu::new(app, "Capture", true)?;
+    let menus = app.state::<CaptureMenus>();
+    let mut kept = menus.0.lock();
+    for e in crate::shots::prefs::menu_entries(&keys) {
+        let item = MenuItem::with_id(app, e.id.clone(), capture_label(&e), true, None::<&str>)?;
+        sub.append(&item)?;
+        kept.push((e.id, item));
+    }
+    Ok(sub)
+}
+
+/// Capture keys changed in Settings: re-label every capture menu item so it shows the keys in force.
+pub fn refresh_capture(app: &AppHandle, keys: &crate::shots::prefs::Keys) {
+    let Some(menus) = app.try_state::<CaptureMenus>() else {
+        return;
+    };
+    let items = menus.0.lock();
+    for e in crate::shots::prefs::menu_entries(keys) {
+        for (_, item) in items.iter().filter(|(id, _)| *id == e.id) {
+            let _ = item.set_text(capture_label(&e));
+        }
+    }
+}
+
 /// Tray menu click. Quit goes through `AppHandle::exit` with an explicit code, which [`lifecycle::exit`] never blocks.
 fn on_menu(app: &AppHandle, id: &str) {
+    if let Some(h) = crate::shots::prefs::hotkey_of_menu_id(id) {
+        // The same path as the hotkey: the capture session decides what the press means right now.
+        crate::shots::feed(app, crate::shots::session::Event::Hotkey(h));
+        return;
+    }
     match id {
         ID_OPEN => crate::show_main(app),
         ID_TOGGLE => toggle_main(app),
         ID_QUIT => app.exit(0),
+        ID_DOCK => {
+            let _ = crate::dock::toggle(app);
+        }
         _ => {}
+    }
+}
+
+/// Re-label the tray's dock item for a dock that is `shown` now ("Show Agent Dock" ⇄ "Hide Agent Dock").
+pub fn set_dock_label(app: &AppHandle, shown: bool) {
+    if let Some(item) = app
+        .try_state::<TrayState>()
+        .and_then(|s| s.dock_item.lock().clone())
+    {
+        let _ = item.set_text(lifecycle::dock_item_label(shown));
     }
 }
 

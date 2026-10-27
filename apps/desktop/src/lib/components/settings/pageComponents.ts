@@ -18,6 +18,7 @@ import SshSettings from "../SshSettings.svelte";
 import TerminalSettings from "../TerminalSettings.svelte";
 import WorkspaceSettings from "../WorkspaceSettings.svelte";
 import AgentHooks from "./AgentHooks.svelte";
+import CaptureSettings from "./CaptureSettings.svelte";
 import NotificationsPage from "./NotificationsPage.svelte";
 import ShellLinks from "./ShellLinks.svelte";
 import UpdatesSection from "./UpdatesSection.svelte";
@@ -35,6 +36,7 @@ export const PAGE_COMPONENTS: Record<PageKey, Component> = {
 	general: UpdatesSection,
 	appearance: AppearanceSettings,
 	notifications: NotificationsPage,
+	capture: CaptureSettings,
 	keyboard: ShortcutSettings,
 	help: HelpSettings,
 	workspaces: WorkspaceSettings,

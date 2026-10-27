@@ -57,7 +57,6 @@ interface NotifySettings {
 /** Hooks are authoritative; the title fallback only applies after this much hook silence. */
 const HOOK_GRACE_MS = 5_000;
 const INBOX_MAX = 50;
-const PASTE_SETTLE_MS = 150;
 const ATTENTION: Record<string, true> = { done: true, waiting: true, blocked: true };
 
 class Agents {
@@ -273,15 +272,14 @@ class Agents {
 	}
 
 	/**
-	 * Submit text to an agent terminal as a bracketed paste (keeps newlines, no
-	 * `@`/`/` autocomplete popups), then Enter once the TUI has taken the paste.
+	 * Submit text to an agent terminal as a bracketed paste (keeps newlines, no `@`/`/` autocomplete popups), then
+	 * Enter once the TUI has taken the paste. The framing and the pause live in Rust (`agent/send.rs`), the one
+	 * implementation the dock shares.
 	 */
 	async send(tabId: string, text: string) {
 		const t = ws.tab(tabId);
 		if (!t?.pty) return;
-		await host.ptyWrite(t.pty, `\x1b[200~${text.replace(/\x1b/g, "")}\x1b[201~`);
-		await new Promise((r) => setTimeout(r, PASTE_SETTLE_MS));
-		await host.ptyWrite(t.pty, "\r");
+		await invoke("agent_send", { pty: t.pty, text });
 	}
 
 	/** Agent tabs of a worktree, most recently active first. */

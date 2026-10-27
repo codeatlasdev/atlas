@@ -57,17 +57,42 @@ pub enum TrayItem {
     ToggleWindow,
     /// Always bring the main window forward.
     Open,
+    /// Show the agent dock when it is hidden, hide it when it is showing ("Show Agent Dock" / "Hide Agent Dock").
+    ToggleDock,
+    /// The capture submenu: every capture action with its key (macOS only, capture is not available elsewhere).
+    Capture,
     Separator,
     Quit,
 }
 
 /// The tray menu for a platform. macOS opens the popover on left click and keeps a small
-/// right-click menu; Linux gets Show/Hide and Quit because the menu is all it has.
+/// right-click menu; Linux gets Show/Hide and Quit because the menu is all it has. Both carry the dock item:
+/// it is the way back for a dock the user hid and forgot the hotkey of.
 pub fn tray_menu(linux: bool) -> &'static [TrayItem] {
     if linux {
-        &[TrayItem::ToggleWindow, TrayItem::Separator, TrayItem::Quit]
+        &[
+            TrayItem::ToggleWindow,
+            TrayItem::ToggleDock,
+            TrayItem::Separator,
+            TrayItem::Quit,
+        ]
     } else {
-        &[TrayItem::Open, TrayItem::Separator, TrayItem::Quit]
+        &[
+            TrayItem::Open,
+            TrayItem::ToggleDock,
+            TrayItem::Capture,
+            TrayItem::Separator,
+            TrayItem::Quit,
+        ]
+    }
+}
+
+/// The tray item's text for a dock that is `shown` now: it names what the click does.
+pub fn dock_item_label(shown: bool) -> &'static str {
+    if shown {
+        "Hide Agent Dock"
+    } else {
+        "Show Agent Dock"
     }
 }
 
@@ -131,5 +156,36 @@ mod tests {
         assert!(!tray_menu(true).contains(&TrayItem::Open));
         assert_eq!(tray_menu(false)[0], TrayItem::Open);
         assert!(!tray_menu(false).contains(&TrayItem::ToggleWindow));
+    }
+
+    #[test]
+    fn every_tray_menu_can_bring_the_dock_back() {
+        for linux in [true, false] {
+            assert!(
+                tray_menu(linux).contains(&TrayItem::ToggleDock),
+                "linux={linux}"
+            );
+        }
+    }
+
+    /// Capture actions live in a submenu of the macOS tray only: Linux/Windows have no capture ("not available yet").
+    #[test]
+    fn the_capture_submenu_is_in_the_macos_tray_between_the_dock_and_quit() {
+        let m = tray_menu(false);
+        let at = m
+            .iter()
+            .position(|i| *i == TrayItem::Capture)
+            .expect("capture item");
+        let dock = m.iter().position(|i| *i == TrayItem::ToggleDock).unwrap();
+        let quit = m.iter().position(|i| *i == TrayItem::Quit).unwrap();
+        assert!(dock < at && at < quit);
+        assert!(!tray_menu(true).contains(&TrayItem::Capture));
+    }
+
+    /// "Show Agent Dock" / "Hide Agent Dock": the label says what the click does, from the persisted choice.
+    #[test]
+    fn the_dock_item_names_what_a_click_does() {
+        assert_eq!(dock_item_label(true), "Hide Agent Dock");
+        assert_eq!(dock_item_label(false), "Show Agent Dock");
     }
 }

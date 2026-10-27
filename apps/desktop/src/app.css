@@ -52,7 +52,7 @@ html.custom-chrome {
 }
 
 :root {
-	--mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+	--mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace;
 	--sidebar-w: 260px;
 
 	/* The title band: ONE source for everything beside the macOS traffic lights.

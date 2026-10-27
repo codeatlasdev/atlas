@@ -53,11 +53,8 @@
 		opacity: 1;
 	}
 	.name {
-		font:
-			11.5px ui-monospace,
-			"SF Mono",
-			Menlo,
-			monospace;
+		font-size: 11.5px;
+		font-family: var(--mono);
 		fill: var(--ca-text-secondary);
 	}
 	.name.last {
@@ -70,7 +67,7 @@
 		color: var(--ca-text-secondary);
 	}
 	code {
-		font-family: ui-monospace, "SF Mono", Menlo, monospace;
+		font-family: var(--mono);
 		font-size: 11.5px;
 		color: var(--ca-text-primary);
 		word-break: break-all;

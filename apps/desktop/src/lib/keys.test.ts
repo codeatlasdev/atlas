@@ -4,12 +4,14 @@ import {
 	DEFAULT_KEYMAP,
 	bindingsOf,
 	defaultKeymap,
+	fileManager,
 	kbd,
 	modClick,
 	label,
 	merge,
 	normalize,
 	rebind,
+	revealLabel,
 	shellKeepsCtrl,
 	strokeOf,
 	strokesOf,
@@ -283,4 +285,12 @@ test("kbd names a key for UI text: glyphs on macOS, Ctrl/Shift/Esc words elsewhe
 	expect(kbd("cmd-shift-m", false)).toBe("Ctrl+Shift+M");
 	expect(modClick(true)).toBe("⌘-click");
 	expect(modClick(false)).toBe("Ctrl+click");
+});
+
+// Incident (Windows): "Reveal in Finder" was shown on Windows, where the action opens File Explorer.
+test("the reveal action names the platform's file manager", () => {
+	expect(revealLabel(true, false)).toBe("Reveal in Finder");
+	expect(revealLabel(false, true)).toBe("Reveal in File Explorer");
+	expect(revealLabel(false, false)).toBe("Reveal in file manager");
+	expect(fileManager(false, true)).toBe("File Explorer");
 });

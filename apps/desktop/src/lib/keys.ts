@@ -172,6 +172,16 @@ const CODE_KEYS: Record<string, string> = {
  */
 export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
+/** Windows (app.html adds `custom-chrome` from the same `navigator.platform` test). */
+export const IS_WIN = typeof navigator !== "undefined" && /Win/.test(navigator.platform);
+
+/** What the OS calls its file manager, for "Reveal in …": Finder, File Explorer, or the generic name on Linux. */
+export const fileManager = (mac = IS_MAC, win = IS_WIN) =>
+	mac ? "Finder" : win ? "File Explorer" : "file manager";
+
+/** "Reveal in Finder" on macOS, "Reveal in File Explorer" on Windows (the backend's `reveal` opens that). */
+export const revealLabel = (mac = IS_MAC, win = IS_WIN) => `Reveal in ${fileManager(mac, win)}`;
+
 /**
  * Off macOS ⌃ and ⌘ are both Ctrl, so a default written with ⌃ or ⌃⌘ that shares its key with a ⌘ one could never
  * run (⌃⌘S sidebar vs ⌘S save; ⌃1 space, ⌘1 tab, ⌃⌘1 recent worktree). Those move to Alt (⌃) and Alt+Shift (⌃⌘);

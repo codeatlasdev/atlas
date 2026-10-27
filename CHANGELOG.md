@@ -17,6 +17,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Windows: an installed Atlas no longer thinks it is a dev build.** The amber "Dev build" line and paused updates were shown on every installed app.
 - **Windows: no console windows flashing.** Language-server installs and probes, the update check and hostd's "start the stack" ran console programs without hiding their window.
 - **Windows: the omp logo was a black square** in menus and tabs (its gradient pointed at a hidden copy of the mark).
+- **Windows: the tray icon was a solid black dot.** The notification area never tints icons, so the black macOS template showed as a disc; it now uses the full-colour Atlas icon. Also on Windows: "Reveal in File Explorer" instead of "Reveal in Finder", Windows fallbacks in the default font stacks (Segoe UI, Cascadia Mono, Consolas), `Ctrl` key hints instead of ⌘ glyphs in the sidebar, welcome and custom-agent texts, and no `afplay` call on notifications.
 
 ## [1.5.0-alpha.23] — 2026-10-26
 

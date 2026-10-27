@@ -54,10 +54,10 @@ To add a section or a tab, add the category (or page) to the registry and its co
 
 | Key | Default | Notes |
 |---|---|---|
-| `buffer_font_family` | `ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace` | code editor font |
+| `buffer_font_family` | `ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace` | code editor font |
 | `buffer_font_size` | `12.5` | 6–48 |
 | `buffer_line_height` | `1.55` | 1–3 |
-| `ui_font_family` | `-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif` | interface font |
+| `ui_font_family` | `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif` | interface font |
 | `ui_font_size` | `13` | 9–24 |
 | `project_panel.dock` | `"left"` | `left` or `right`: which side the file panel sits on |
 | `project_panel.file_icons` | `true` | Material Icon Theme file icons |
@@ -141,7 +141,7 @@ The project file wins over `~/.atlas/desktop/settings.json` field by field for t
 
 | Key | Default | Notes |
 |---|---|---|
-| `terminal.font_family` | `SF Mono, Menlo, ui-monospace, monospace` | CSS font list for both terminals. The [GPU terminal](terminal.md) uses the first installed family (variable fonts work), else its bundled JetBrains Mono; applies live |
+| `terminal.font_family` | `SF Mono, Menlo, Cascadia Mono, Consolas, ui-monospace, monospace` | CSS font list for both terminals. The [GPU terminal](terminal.md) uses the first installed family (variable fonts work), else its bundled JetBrains Mono; applies live |
 | `terminal.font_thicken` | `false` | draw text slightly heavier (Ghostty `font-thicken`; xterm.js uses weights 500/700); applies live |
 | `terminal.font_size` | `12.5` | 6–48; applies live |
 | `terminal.cursor_shape` | `"block"` | `block`, `bar`, `underline` or `hollow` |

@@ -97,10 +97,10 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = {
-	buffer_font_family: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace',
+	buffer_font_family: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace',
 	buffer_font_size: 12.5,
 	buffer_line_height: 1.55,
-	ui_font_family: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
+	ui_font_family: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif',
 	ui_font_size: 13,
 	zoom: 1,
 	enable_language_servers: true,
@@ -127,7 +127,7 @@ export const DEFAULT_PREFS: Prefs = {
 		auto_reload: true,
 	},
 	terminal: {
-		font_family: "SF Mono, Menlo, ui-monospace, monospace",
+		font_family: "SF Mono, Menlo, Cascadia Mono, Consolas, ui-monospace, monospace",
 		font_thicken: false,
 		font_size: 12.5,
 		cursor_shape: "block",

@@ -4,6 +4,7 @@
 	import { Spinner } from "@codeatlasdev/ui";
 	import { api, type ProjectConfig, type ProjectView } from "#lib/api.ts";
 	import { tilde } from "#lib/format.ts";
+	import { revealLabel } from "#lib/keys.ts";
 	import ProjectIcon from "#lib/shell/ProjectIcon.svelte";
 	import SetupRow from "#lib/components/SetupRow.svelte";
 	import { store, type Live } from "#lib/stores/projects.svelte.ts";
@@ -46,7 +47,7 @@
 		{/if}
 		<button
 			class="root mono"
-			title="Reveal in Finder"
+			title={revealLabel()}
 			onclick={() => store.run("reveal", () => api.reveal(project.id))}
 		>
 			{tilde(project.root)}

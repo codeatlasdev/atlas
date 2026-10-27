@@ -16,7 +16,8 @@ pub fn agent_notify(
         .body(body)
         .show()
         .map_err(|e| e.to_string())?;
-    if sound {
+    // `afplay` and the system sound exist on macOS only; elsewhere the toast carries the platform's own sound.
+    if sound && cfg!(target_os = "macos") {
         let _ = std::process::Command::new("afplay")
             .arg("/System/Library/Sounds/Glass.aiff")
             .stdin(std::process::Stdio::null())

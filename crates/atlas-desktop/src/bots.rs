@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _, BufReader};
 
-
 /// An entry in the bot-hosts registry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BotHost {
@@ -107,11 +106,15 @@ pub async fn bot_install(
     let port_s = port.filter(|&p| p != 22).map(|p| p.to_string());
     if sudo_password.is_some() {
         let mut a = vec!["bot", "install", &target, "--yes", "--sudo-password-stdin"];
-        if let Some(ps) = &port_s { a.extend(["--port", ps]); }
+        if let Some(ps) = &port_s {
+            a.extend(["--port", ps]);
+        }
         cmd.args(a).stdin(Stdio::piped());
     } else {
         let mut a = vec!["bot", "install", &target, "--yes"];
-        if let Some(ps) = &port_s { a.extend(["--port", ps]); }
+        if let Some(ps) = &port_s {
+            a.extend(["--port", ps]);
+        }
         cmd.args(a).stdin(Stdio::null());
     }
     let mut child = cmd.spawn().map_err(|e| format!("cannot run atlas: {e}"))?;
@@ -155,7 +158,10 @@ async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
         }
         let _ = app.emit(
             "bot://install-line",
-            BotInstallLine { line: clean, is_err },
+            BotInstallLine {
+                line: clean,
+                is_err,
+            },
         );
     }
     last
@@ -216,22 +222,25 @@ pub async fn ssh_keygen() -> Result<(), String> {
 /// authentication. Uses SSH_ASKPASS + SSH_ASKPASS_REQUIRE=force so the password
 /// is never on argv; wipes it from memory after use.
 #[tauri::command]
-pub async fn ssh_authorize_key(target: String, port: Option<u16>, password: String) -> Result<(), String> {
+pub async fn ssh_authorize_key(
+    target: String,
+    port: Option<u16>,
+    password: String,
+) -> Result<(), String> {
     let home = dirs::home_dir().ok_or("no home directory")?;
     let pub_key_path = ["id_ed25519.pub", "id_rsa.pub"]
         .iter()
         .map(|n| home.join(".ssh").join(n))
         .find(|p| p.exists())
         .ok_or("no SSH public key found; generate one first")?;
-    let pubkey = std::fs::read_to_string(&pub_key_path)
-        .map_err(|e| format!("reading public key: {e}"))?;
+    let pubkey =
+        std::fs::read_to_string(&pub_key_path).map_err(|e| format!("reading public key: {e}"))?;
     let pubkey = pubkey.trim().to_string();
 
     // Write a temporary askpass helper that prints the password.
     // Single-quote-escape the password for embedding in the shell script.
-    let escaped = password.replace('\'', "'\\''" );
-    let askpass = std::env::temp_dir()
-        .join(format!("atlas-askpass-{}.sh", std::process::id()));
+    let escaped = password.replace('\'', "'\\''");
+    let askpass = std::env::temp_dir().join(format!("atlas-askpass-{}.sh", std::process::id()));
     let script = format!("#!/bin/sh\nprintf '%s' '{escaped}'\n");
     std::fs::write(&askpass, &script).map_err(|e| e.to_string())?;
     drop(password); // wipe from local scope (best-effort)
@@ -245,17 +254,20 @@ pub async fn ssh_authorize_key(target: String, port: Option<u16>, password: Stri
 
     // Remote command: create ~/.ssh and append the public key.
     // Uses stdin for the key content (avoids quoting issues in the shell command).
-    let remote_cmd =
-        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
+    let remote_cmd = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
          cat >> ~/.ssh/authorized_keys && \
          chmod 600 ~/.ssh/authorized_keys";
     let pubkey_line = format!("{pubkey}\n");
 
     let mut ssh_args: Vec<String> = vec![
-        "-o".into(), "PasswordAuthentication=yes".into(),
-        "-o".into(), "PubkeyAuthentication=no".into(),
-        "-o".into(), "StrictHostKeyChecking=accept-new".into(),
-        "-o".into(), "NumberOfPasswordPrompts=1".into(),
+        "-o".into(),
+        "PasswordAuthentication=yes".into(),
+        "-o".into(),
+        "PubkeyAuthentication=no".into(),
+        "-o".into(),
+        "StrictHostKeyChecking=accept-new".into(),
+        "-o".into(),
+        "NumberOfPasswordPrompts=1".into(),
     ];
     if let Some(p) = port.filter(|&p| p != 22) {
         ssh_args.extend(["-p".into(), p.to_string()]);
@@ -308,12 +320,22 @@ pub struct AgentShipStatus {
 /// `host_key` is the full key, e.g. `"ssh:atlas-bot@136.148.72.141"`.
 /// The SSH target is derived by stripping the `"ssh:"` prefix.
 #[tauri::command]
-pub async fn bot_agent_check(host_key: String, agent_id: String) -> Result<AgentShipStatus, String> {
+pub async fn bot_agent_check(
+    host_key: String,
+    agent_id: String,
+) -> Result<AgentShipStatus, String> {
     let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
     let script = check_script(&agent_id).ok_or_else(|| format!("unknown agent {agent_id:?}"))?;
     let ssh = tokio::process::Command::new("ssh")
         .no_window()
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15"])
+        .args([
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=15",
+            "-o",
+            "ServerAliveInterval=15",
+        ])
         .arg(ssh_target)
         .arg(&script)
         .stdin(std::process::Stdio::null())
@@ -331,19 +353,34 @@ pub async fn bot_agent_check(host_key: String, agent_id: String) -> Result<Agent
     let mut parts = stdout.trim().splitn(2, '\t');
     let installed = parts.next().unwrap_or("0") == "1";
     let signed_in = parts.next().unwrap_or("0") == "1";
-    Ok(AgentShipStatus { installed, signed_in })
+    Ok(AgentShipStatus {
+        installed,
+        signed_in,
+    })
 }
 
 /// Install an agent on a bot ship, streaming each line as `bot://install-line` event.
 /// `host_key` is the full key, e.g. `"ssh:atlas-bot@136.148.72.141"`.
 #[tauri::command]
-pub async fn bot_agent_install(app: AppHandle, host_key: String, agent_id: String) -> Result<(), String> {
+pub async fn bot_agent_install(
+    app: AppHandle,
+    host_key: String,
+    agent_id: String,
+) -> Result<(), String> {
     let ssh_target = host_key.strip_prefix("ssh:").unwrap_or(&host_key);
-    let script = install_script(&agent_id).ok_or_else(|| format!("no installer for {agent_id:?}"))?;
+    let script =
+        install_script(&agent_id).ok_or_else(|| format!("no installer for {agent_id:?}"))?;
     // Wrap in an interactive-login shell so ~/.bashrc / installers that source it work.
-    let full_cmd = format!("bash -lc {}", shq(script));
+    let full_cmd = format!("bash -lc {}", shq(&script));
     let mut child = tokio::process::Command::new("ssh")
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15"])
+        .args([
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=15",
+            "-o",
+            "ServerAliveInterval=15",
+        ])
         .arg(ssh_target)
         .arg(&full_cmd)
         .stdin(std::process::Stdio::null())
@@ -359,7 +396,10 @@ pub async fn bot_agent_install(app: AppHandle, host_key: String, agent_id: Strin
     tokio::spawn(pump_install(stderr, app.clone(), true));
     let status = child.wait().await.map_err(|e| format!("ssh wait: {e}"))?;
     if !status.success() {
-        return Err(format!("agent install exited {}", status.code().unwrap_or(-1)));
+        return Err(format!(
+            "agent install exited {}",
+            status.code().unwrap_or(-1)
+        ));
     }
     Ok(())
 }
@@ -367,14 +407,22 @@ pub async fn bot_agent_install(app: AppHandle, host_key: String, agent_id: Strin
 /// Shell script that checks install+auth for `agent_id`. Returns tab-separated "0/1\t0/1\n".
 fn check_script(agent_id: &str) -> Option<String> {
     let (bin, auth_check) = match agent_id {
-        "omp" => ("omp",
-            r#"omp auth export 2>/dev/null | grep -q '"providerType"' && signed_in=1 || true"#),
-        "claude" => ("claude",
-            r#"claude auth status >/dev/null 2>&1 && signed_in=1 || true"#),
-        "codex" => ("codex",
-            r#"codex login status >/dev/null 2>&1 && signed_in=1 || true"#),
-        "opencode" => ("opencode",
-            r#"_oc=$(opencode auth list 2>/dev/null); [ -n "$_oc" ] && ! echo "$_oc" | grep -q '0 credentials' && signed_in=1 || true"#),
+        "omp" => (
+            "omp",
+            r#"omp auth export 2>/dev/null | grep -q '"providerType"' && signed_in=1 || true"#,
+        ),
+        "claude" => (
+            "claude",
+            r#"claude auth status >/dev/null 2>&1 && signed_in=1 || true"#,
+        ),
+        "codex" => (
+            "codex",
+            r#"codex login status >/dev/null 2>&1 && signed_in=1 || true"#,
+        ),
+        "opencode" => (
+            "opencode",
+            r#"_oc=$(opencode auth list 2>/dev/null); [ -n "$_oc" ] && ! echo "$_oc" | grep -q '0 credentials' && signed_in=1 || true"#,
+        ),
         _ => return None,
     };
     Some(format!(
@@ -394,19 +442,106 @@ fn check_script(agent_id: &str) -> Option<String> {
     ))
 }
 
-fn install_script(agent_id: &str) -> Option<&'static str> {
-    match agent_id {
-        "omp" => Some("curl -fsSL https://omp.sh/install | sh"),
-        "claude" => Some("curl -fsSL https://claude.ai/install.sh | bash"),
-        "opencode" => Some("curl -fsSL https://opencode.ai/install | bash"),
-        "codex" => Some(r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#),
-        _ => None,
-    }
+/// The agent's own installer, then `atlas setup <agent> --apply`: without Atlas's hooks the agent never reports
+/// "done" to hostd, so every bot task sat on "Working" until the 2 h timeout.
+fn install_script(agent_id: &str) -> Option<String> {
+    let (install, setup) = match agent_id {
+        // A bot's omp runs in a pane nobody watches: its first-run wizard ("↑/↓ select · ⏎ confirm") waited
+        // for a key forever and the task sat on "Working". Mark the wizard done for atlas-bot only (never on the
+        // user's Mac, where the wizard is omp's real onboarding).
+        "omp" => (
+            r#"curl -fsSL https://omp.sh/install | sh && mkdir -p "$HOME/.omp/agent" && f="$HOME/.omp/agent/config.yml" && touch "$f" && chmod 600 "$f" && { grep -q '^setupVersion:' "$f" || echo 'setupVersion: 2' >> "$f"; }"#,
+            "omp",
+        ),
+        "claude" => (
+            "curl -fsSL https://claude.ai/install.sh | bash",
+            "claude-code",
+        ),
+        "opencode" => ("curl -fsSL https://opencode.ai/install | bash", "opencode"),
+        "codex" => (
+            r#"npm_config_prefix="$HOME/.npm-global" npm install -g @openai/codex"#,
+            "codex",
+        ),
+        _ => return None,
+    };
+    Some(format!(
+        r#"{install} && export PATH="$HOME/.atlas/bin:$HOME/.bun/bin:$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH" && atlas setup {setup} --apply </dev/null"#
+    ))
 }
 
 /// Shell-quote a string for use as a single argument.
 fn shq(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+// ─── provider probe ──────────────────────────────────────────────────────────
+
+/// Call `<base_url>/models` from the desktop to test a custom gateway.
+///
+/// Uses `curl` so no new Rust dep is needed and the request goes from the
+/// desktop process, bypassing the webview CSP.  The API key is passed in the
+/// Authorization header and never written to stdout, stderr, or argv (we build
+/// the header value as a Rust `String` and pass it directly as an arg; it
+/// briefly appears in the process arg list on the local Mac, which is
+/// acceptable for a desktop-only connection-test command).
+///
+/// Returns the list of model IDs on success, or an error string describing the
+/// HTTP status / connection failure.
+#[tauri::command]
+pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<String>, String> {
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let auth = format!("Authorization: Bearer {api_key}");
+
+    let out = tokio::process::Command::new("curl")
+        .no_window()
+        .args(["-sf", "-m", "15", "-H", &auth, "-w", "\n%{http_code}", &url])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("curl: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    // curl appends `\n<status_code>` via `-w "\n%{http_code}"`.
+    let (body, status_str) = stdout.rsplit_once('\n').unwrap_or(("", stdout.as_ref()));
+    let status: u16 = status_str.trim().parse().unwrap_or(0);
+
+    if status == 0 {
+        // curl itself failed (DNS, TLS, timeout …).
+        let detail = stderr.trim();
+        return Err(if detail.is_empty() {
+            format!("could not reach {url}")
+        } else {
+            format!("connection error: {detail}")
+        });
+    }
+    if status == 401 || status == 403 {
+        return Err(format!("HTTP {status}: invalid API key"));
+    }
+    if status != 200 {
+        return Err(format!("HTTP {status} from gateway"));
+    }
+
+    // Parse model list.  Supports the OpenAI { data: [{id}] } shape and the
+    // Anthropic { models: [{id}] } shape.
+    let val: serde_json::Value =
+        serde_json::from_str(body.trim()).map_err(|_| "gateway returned non-JSON".to_string())?;
+
+    let ids: Vec<String> = if let Some(arr) = val.get("data").and_then(|v| v.as_array()) {
+        arr.iter()
+            .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(str::to_string))
+            .collect()
+    } else if let Some(arr) = val.get("models").and_then(|v| v.as_array()) {
+        arr.iter()
+            .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(str::to_string))
+            .collect()
+    } else {
+        vec![]
+    };
+
+    Ok(ids)
 }
 
 // ─── tests ────────────────────────────────────────────────────────────────────
@@ -452,5 +587,61 @@ mod tests {
             assert!(s.contains(id), "{id}: missing bin name in script");
         }
         assert!(check_script("unknown").is_none());
+    }
+
+    // Incident: omp installed on a ship without Atlas's hooks never reported "done", so the bot's task showed
+    // "Working · 62m" until the 2 h timeout. Every engine install must wire the hooks, with the setup name the
+    // CLI actually accepts (claude's is `claude-code`), and only after the agent itself installed.
+    #[test]
+    fn every_engine_install_wires_atlas_hooks_after_installing() {
+        for (id, setup) in [
+            ("omp", "omp"),
+            ("claude", "claude-code"),
+            ("codex", "codex"),
+            ("opencode", "opencode"),
+        ] {
+            let s = install_script(id).unwrap();
+            let at = s
+                .find(&format!("atlas setup {setup} --apply"))
+                .unwrap_or_else(|| panic!("{id}: no hooks"));
+            assert!(
+                s[..at].contains("&&"),
+                "{id}: hooks must run only after a successful install"
+            );
+        }
+        assert!(install_script("unknown").is_none());
+    }
+
+    // Incident: a fresh omp on the ship stopped at its first-run wizard and every task hung on "Working".
+    // Runs the real omp install script (installer stubbed) in a scratch HOME: the wizard must be marked done,
+    // once, in a file only atlas-bot can read, keeping anything already in it.
+    #[cfg(unix)]
+    #[test]
+    fn omp_install_marks_the_first_run_wizard_done_once() {
+        let home = tempfile::tempdir().unwrap();
+        let cfg = home.path().join(".omp/agent/config.yml");
+        std::fs::create_dir_all(cfg.parent().unwrap()).unwrap();
+        std::fs::write(&cfg, "theme: dark\n").unwrap();
+        let script = install_script("omp").unwrap();
+        let prep = script
+            .split(" && export PATH=")
+            .next()
+            .unwrap()
+            .replace("curl -fsSL https://omp.sh/install | sh", "true");
+        for _ in 0..2 {
+            let ok = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&prep)
+                .env("HOME", home.path())
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok);
+        }
+        let text = std::fs::read_to_string(&cfg).unwrap();
+        assert_eq!(text, "theme: dark\nsetupVersion: 2\n");
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&cfg).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }

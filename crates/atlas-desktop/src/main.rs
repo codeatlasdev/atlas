@@ -32,6 +32,7 @@ mod diag;
 mod display_mac;
 mod git;
 mod git_branch;
+mod github_auth;
 mod host;
 mod lifecycle;
 mod live;
@@ -207,6 +208,8 @@ macro_rules! handlers {
             bots::ssh_authorize_key,
             bots::bot_agent_check,
             bots::bot_agent_install,
+            bots::provider_probe,
+            github_auth::project_git_info,
             menu::menu_sync,
             zoom::zoom_set,
             live_server::live_open,

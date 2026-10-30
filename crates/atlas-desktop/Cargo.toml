@@ -47,6 +47,8 @@ libc = { workspace = true }
 semver = { workspace = true }
 tempfile = { workspace = true }
 
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-core-foundation", "NSView", "NSResponder", "NSWindow", "NSWorkspace", "NSGraphics", "NSPasteboard", "NSPasteboardItem", "NSEvent", "NSHapticFeedback", "NSImage", "NSBitmapImageRep", "NSImageRep", "NSGraphicsContext", "objc2-core-graphics"] }
@@ -67,6 +69,8 @@ atlas-term = { path = "../atlas-term" }
 # Already in the graph through wry/gtk (same 0.18 line); used to ask the session bus whether a StatusNotifier host
 # exists (tray.rs), because a tray icon with no host is silently invisible.
 gio = "0.22"
+
+[target.'cfg(windows)'.dependencies]
 
 [dev-dependencies]
 serde_norway = { workspace = true }

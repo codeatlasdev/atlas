@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { BotLook } from "#lib/bots/look.ts";
 import { hostCall } from "#lib/host.ts";
+import { errText } from "#lib/api.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
 import type { AgentIntegration } from "#lib/stores/agentIntegration.ts";
 import type {
@@ -40,6 +41,8 @@ interface HostEntry {
 	bots: Bot[];
 	/** Whether the last `bot_list` call succeeded. */
 	ok: boolean;
+	/** Why the last `bot_list` failed (shown in the sidebar with Retry). */
+	error?: string;
 }
 
 /** Build the `host` routing arg for `hostCall`; omit entirely for local. */
@@ -54,11 +57,19 @@ class BotsStore {
 	hosts = $state<HostEntry[]>([{ key: "", name: "This computer", bots: [], ok: true }]);
 	/** Currently selected bot. */
 	selected = $state<BotSelection | null>(null);
+	/** The sidebar's order (first mate, then the list as shown), published by BotsWorkspace for ⌘1…⌘9. */
+	sidebarOrder = $state<{ hostKey: string; botId: string }[]>([]);
+	/** A task the chat should scroll to and flash once it shows (set by a Board card); cleared by the chat. */
+	focusTask = $state<string | null>(null);
 	/** When set, the next bot creation should link this project automatically. */
 	pendingProjectLink = $state<BotProject | null>(null);
 	/** Tasks for the selected bot, newest first. */
 	tasks = $state<BotTask[]>([]);
 	tasksLoading = $state(false);
+	/** Tasks for ALL bots, keyed by `${hostKey}:${botId}` — drives the board view. */
+	boardTasks = $state<Map<string, BotTask[]>>(new Map());
+	/** True while CrewBoard is mounted; gate for per-bot refresh on bot_task events. */
+	boardOpen = $state(false);
 
 	private off: UnlistenFn[] = [];
 	private refreshTimers = new Map<string, TimerHandle>();
@@ -126,7 +137,14 @@ class BotsStore {
 
 	async createBot(
 		hostKey: string,
-		params: { name: string; role: string; agent: string; approval: string; look?: BotLook },
+		params: {
+			name: string;
+			role: string;
+			agent: string;
+			approval: string;
+			look?: BotLook;
+			setup_step?: string;
+		},
 	): Promise<string> {
 		const p = params.agent ? params : { ...params, agent: undefined };
 		const r = await hostCall<Bot>("bot_create", { ...hostArgs(hostKey), ...p });
@@ -144,6 +162,8 @@ class BotsStore {
 			approval: string;
 			look: BotLook;
 			project: BotProject | null;
+			/** Pass `null` to clear the setup step (mark setup complete). */
+			setup_step: string | null;
 		}>,
 	): Promise<void> {
 		await hostCall("bot_update", { ...hostArgs(hostKey), id, ...patch });
@@ -161,7 +181,8 @@ class BotsStore {
 	async sendTask(prompt: string): Promise<void> {
 		if (!this.selected) return;
 		const { hostKey, botId } = this.selected;
-		await hostCall("bot_task", { ...hostArgs(hostKey), id: botId, prompt, source: "desktop" });
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		await hostCall("bot_task", { ...hostArgs(hostKey), id: botId, prompt, source: "desktop", tz });
 		await this.refreshHost(hostKey);
 		await this.loadTasks();
 	}
@@ -183,19 +204,72 @@ class BotsStore {
 				limit: 100,
 			});
 			// Convert unix-second timestamps to ms at the store boundary.
-			this.tasks = r.tasks.map((t) => ({
-				...t,
-				ts: t.ts * 1000,
-				started_at: t.started_at != null ? t.started_at * 1000 : t.started_at,
-				finished_at: t.finished_at != null ? t.finished_at * 1000 : t.finished_at,
-				steps: t.steps?.map((s) => ({ ...s, ts: s.ts * 1000 })),
-			}));
+			this.tasks = r.tasks.map((t) => this.normalizeTask(t));
 		} catch {
 			// keep stale tasks on error
 		} finally {
 			this.tasksLoading = false;
 		}
 	}
+
+	// ─── board tasks ──────────────────────────────────────────────────────────
+
+	/** Convert unix-second timestamps to ms at the store boundary (shared by loadTasks and board). */
+	private normalizeTask(t: BotTask): BotTask {
+		return {
+			...t,
+			ts: t.ts * 1000,
+			started_at: t.started_at != null ? t.started_at * 1000 : t.started_at,
+			finished_at: t.finished_at != null ? t.finished_at * 1000 : t.finished_at,
+			steps: t.steps?.map((s) => ({ ...s, ts: s.ts * 1000 })),
+		};
+	}
+
+	/** Load tasks for every bot on every host (populates `boardTasks`). Called when the board mounts. */
+	async loadBoardTasks(): Promise<void> {
+		const results = await Promise.allSettled(
+			this.allBots.map(async ({ hostKey, bot }) => {
+				const r = await hostCall<{ tasks: BotTask[] }>("bot_tasks", {
+					...hostArgs(hostKey),
+					id: bot.id,
+					limit: 50,
+				});
+				return { key: `${hostKey}:${bot.id}`, tasks: r.tasks.map((t) => this.normalizeTask(t)) };
+			}),
+		);
+		const next = new Map(this.boardTasks);
+		for (const r of results) {
+			if (r.status === "fulfilled") next.set(r.value.key, r.value.tasks);
+		}
+		this.boardTasks = next;
+	}
+
+	/** Refresh one bot's board tasks when a `bot_task` event fires while the board is open. */
+	private async refreshBotBoardTasks(botId: string): Promise<void> {
+		const entry = this.allBots.find((b) => b.bot.id === botId);
+		if (!entry) return;
+		const { hostKey, bot } = entry;
+		try {
+			const r = await hostCall<{ tasks: BotTask[] }>("bot_tasks", {
+				...hostArgs(hostKey),
+				id: bot.id,
+				limit: 50,
+			});
+			const next = new Map(this.boardTasks);
+			next.set(`${hostKey}:${bot.id}`, r.tasks.map((t) => this.normalizeTask(t)));
+			this.boardTasks = next;
+		} catch {
+			// keep stale data on error
+		}
+	}
+
+	/** Flat list of {hostKey, bot, task} entries for all bots — input to boardColumns(). */
+	get boardEntries(): Array<{ hostKey: string; bot: Bot; task: BotTask }> {
+		return this.allBots.flatMap(({ hostKey, bot }) =>
+			(this.boardTasks.get(`${hostKey}:${bot.id}`) ?? []).map((task) => ({ hostKey, bot, task })),
+		);
+	}
+
 	// ─── memory ───────────────────────────────────────────────────────────────
 
 	async getMemory(): Promise<string> {
@@ -300,6 +374,12 @@ class BotsStore {
 		this.selected = entry ? { hostKey, botId, hostName: entry.name } : null;
 		if (this.selected) await this.loadTasks();
 		if (this.selected) this.markRead(hostKey, botId);
+	}
+
+	/** ⌘n in the Bots workspace: the n-th bot of the sidebar (1-based); `last` for ⌘9. */
+	selectAt(n: number | "last"): void {
+		const e = n === "last" ? this.sidebarOrder.at(-1) : this.sidebarOrder[n - 1];
+		if (e) void this.select(e.hostKey, e.botId);
 	}
 
 	get selectedBot(): Bot | undefined {
@@ -440,10 +520,17 @@ class BotsStore {
 				if (bot.last) return { ...bot, last: { ...bot.last, ts: bot.last.ts * 1000 } };
 				return bot;
 			});
-			this.hosts[idx] = { ...this.hosts[idx], bots, ok: true };
-		} catch {
-			this.hosts[idx] = { ...this.hosts[idx], ok: false };
+			this.hosts[idx] = { ...this.hosts[idx], bots, ok: true, error: undefined };
+		} catch (e) {
+			// Keep the bots we last saw: a ship that restarted (redeploy, reboot) must not make the crew vanish
+			// from the sidebar; say why instead, and the next refresh brings it back.
+			this.hosts[idx] = { ...this.hosts[idx], ok: false, error: errText(e) };
 		}
+	}
+
+	/** Re-read every ship that failed last time (window refocus, a Retry button). */
+	async retryFailed(): Promise<void> {
+		await Promise.all(this.hosts.filter((h) => !h.ok).map((h) => this.refreshHost(h.key)));
 	}
 
 	private scheduleRefresh(key: string, delayMs: number) {
@@ -477,6 +564,7 @@ class BotsStore {
 			const ownerKey = this.allBots.find((b) => b.bot.id === botId)?.hostKey ?? "";
 			this.scheduleRefresh(ownerKey, 200);
 			if (this.selected?.botId === botId) void this.loadTasks();
+			if (this.boardOpen && botId) void this.refreshBotBoardTasks(botId);
 			return;
 		}
 

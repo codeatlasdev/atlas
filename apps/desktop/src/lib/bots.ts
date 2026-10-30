@@ -14,8 +14,18 @@ export interface BotHost {
 
 export type BotState = "idle" | "working" | "needs_you";
 export type ApprovalMode = "ask" | "auto";
-export type TaskState = "queued" | "running" | "done" | "failed" | "cancelled";
+export type TaskState = "queued" | "running" | "done" | "failed" | "cancelled" | "waiting_action";
 export type TaskSource = "mobile" | "desktop" | "telegram" | "routine" | "trigger";
+
+// ─── Task actions ─────────────────────────────────────────────────────────────
+
+export type TaskAction =
+	| { kind: "connect_github"; reason: string }
+	| { kind: "provide_secret"; name: string; label: string; reason: string }
+	| { kind: "input"; label: string; reason: string; placeholder?: string }
+	| { kind: "choose"; question: string; options: string[] }
+	| { kind: "sign_in_engine"; engine: string }
+	| { kind: "add_trigger"; trigger: Trigger["kind"]; prompt: string; reason: string };
 
 // ─── Triggers ────────────────────────────────────────────────────────────────
 
@@ -31,15 +41,17 @@ export interface Trigger {
 		| { type: "webhook"; token: string }
 		| { type: "github"; repo: string; events: string[] }
 		| { type: "file"; path: string; glob?: string }
-		| { type: "bot"; from_bot: string; on: "done" | "failed" | "both" }
-		| { type: "service"; project_dir: string; service: string; on: "failed" | "recovered" | "both" };
+		| { type: "bot"; from_bot: string; on: "done" | "failed" }
+		| { type: "service"; project_dir: string; service: string; on: "failed" | "recovered" };
 	/** Top-level prompt (supports `{{event}}` substitution). */
 	prompt: string;
 	enabled: boolean;
 	last_fired?: number;
+	/** Unix seconds of next scheduled/interval fire; computed by hostd, never sent on input. */
 	next_fire?: number;
+	/** IANA timezone for evaluating cron (e.g. "America/Sao_Paulo"). None = UTC. */
+	tz?: string;
 }
-
 /** Convenience alias — kind discriminant for UI switch statements. */
 export type ScheduleTrigger = Trigger & { kind: { type: "schedule" } };
 export type IntervalTrigger = Trigger & { kind: { type: "interval" } };
@@ -97,6 +109,8 @@ export interface PendingApproval {
 export interface BotStep {
 	ts: number;
 	text: string;
+	/** The agent's title when the step ran; the chat groups steps under it. */
+	group?: string;
 }
 
 export interface BotLast {
@@ -130,6 +144,13 @@ export interface Bot {
 	 * When false: approval must be "auto"; UI shows a hint and disables the selector.
 	 */
 	approval_supported?: boolean;
+	/**
+	 * Current setup conversation step. Present while the bot hasn't finished its
+	 * initial setup chat; cleared (absent) once setup completes.
+	 */
+	setup_step?: string;
+	/** Per-bot short replies toggle. Absent = use crew default (on). */
+	short_replies?: boolean;
 }
 
 export interface BotTask {
@@ -162,6 +183,25 @@ export interface BotTask {
 		cost_usd?: number;
 		duration_ms?: number;
 	};
+	/** Crew action blocking task progress; present when state is "waiting_action". */
+	action?: TaskAction;
+	/** Original full reply before summarization; present only when summarized is true. */
+	reply_full?: string;
+	/** True when result is a summary and reply_full holds the original. */
+	summarized?: boolean;
+	/** What the user picked/typed for the task's choose/input action; `action` keeps the question. */
+	answer?: string;
+	/** What the agent says it is working on (omp's session title), shown on the live card while it runs. */
+	title?: string;
+	/** IANA timezone sent with the task; hostd uses it for cron evaluation and agent context. */
+	tz?: string;
+	/** Set while the task waits for the bot's project to download ("codeatlasdev/ui"); gone once it can start. */
+	preparing?: string;
+}
+
+export interface BotCrewSettings {
+	short_replies: boolean;
+	short_replies_model?: string;
 }
 
 /** One per-turn row from the BotUsage response. */

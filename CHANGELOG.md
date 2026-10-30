@@ -17,18 +17,27 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Telegram bridge for bots.** Paste a Telegram Bot token in Atlas Desktop → Settings → Telegram, then link a chat with `/start <code>`. Linked chats receive task results and can create tasks with `/task <bot name> <text>`. Approval prompts appear as inline keyboard messages (Allow / Deny).
 - **Bot approval prompts wait 30 minutes.** A bot pane with `approval: ask` holds the pending prompt for up to 30 minutes (non-bot panes keep the existing 55 s wait). `atlas setup claude-code|codex --apply` now registers `PermissionRequest` with a 1 805 s timeout to match; re-run it to pick that up.
 - **Atlas Crew theme.** The Bots workspace is now the Crew workspace (⌘⇧B). Navigation renamed: Activity → Logbook (compass icon), Triggers → Watches, Needs you → Captain's call. Favorites are now First mates. "New bot" is "Recruit"; connecting a server is "Launch your ship". Onboarding updated with crew copy and a ship flag mark. Settings section label updated to Crew. Mobile Crew tab and vocabulary updated to match.
-- **Mugiwaras.** The crew section is now called "Mugiwaras" (Japanese for straw hats) across Desktop (rail tooltip, MUGIWARAS sidebar header, Settings, empty states), Mobile (tab label), onboarding ("Meet your Mugiwaras"), and docs. Individual members stay "crewmate"; Ship/Logbook/Watches/Captain's call/Course unchanged.
+- **Atlas Crew name.** The crew section is called "Atlas Crew" across Desktop (rail tooltip, Settings, command palette, onboarding "Meet your Atlas Crew"), Mobile (tab title) and docs. Individual members stay "crewmate".
 - **Straw hat (default).** Every new crewmate wears our own straw hat by default: wide flat brim, woven texture, bot-shell-coloured band, globe-meridian arc on crown, slight tilt with a secondary idle brim-tip animation. Existing bots with an explicit hat keep it. Scales from 24 px to 140 px.
 - **Logbook watches.** Activity entries are grouped by nautical watch period (Middle/Morning/Forenoon/Afternoon/Dog/First watch) with timestamps in ship-log voice ("06:12 · Aria finished: …").
 - **Logbook empty state.** "Calm seas. Nothing logged yet." with a small sea-horizon SVG and boat silhouette.
-- **Ship flag footer.** The Mugiwaras sidebar footer shows a ShipFlag icon next to each connected ship. When no ship is connected it shows "No ship yet · Launch".
+- **Ship flag footer.** The Atlas Crew sidebar footer shows a ShipFlag icon next to each connected ship. When no ship is connected it shows "No ship yet · Launch".
 - **Cartography lines more visible.** Longitude grid raised from 4 % to 7 % opacity in both light and dark themes.
 - **Onboarding principles rewritten.** Replaced the cliché bullets with: "Your ship, your rules — runs on your server, no account", "Hand it the wheel — it keeps working while your Mac sleeps", "It flags you before anything risky".
 - **Row preview deduplication.** When a crewmate's role starts with a tag prefix (e.g. "Analyst: latency reports"), the tag pill and the preview no longer duplicate — the preview shows only the part after the colon.
 - **Primary buttons are full pills.** Continue / Connect / Open chat buttons in onboarding are now `border-radius: 999px`.
+- **Crew automations.** Ask a crewmate in chat ("every weekday at 9, review the open PRs") and it proposes an automation you add with one click, or build one in its settings: schedule (days + time, or custom cron), interval, GitHub events, file changes, another bot, a service. Times use your timezone, a new schedule waits for its first real time, and each row shows the next run.
+- **Crew board.** A second Crew view (hover the top edge or ⌘⇧C): Queued, Working, Needs you and Done columns across every bot, with filters by bot, origin and text, a Done range, and a click that opens the chat at that task.
+- **Bot settings window.** The profile drawer became a window with sections (General, Automations, Engine, Memory, Usage) that saves each field on its own.
+- **Live work in the chat.** While a crewmate works, its steps show up live, grouped under the task it set itself; finished groups fold to one line and stay in the conversation.
+- **⌘1…⌘9 switch crewmates** in the order of the sidebar.
 
 ### Fixed
 
+- **Crew: faster start and short replies.** omp started by a bot waited 25 s for a power assertion on headless servers, which delayed the first step and made every reply summary time out; it now starts in seconds and long replies are summarized again.
+- **Crew: no long silent wait on a first task.** A bot's Git project starts downloading as soon as the project is set, a task waiting for it says "Downloading <repo>…", and a missing project folder is refused when it is set instead of failing every task.
+- **Crew: automations kept each other.** Adding, toggling or removing one used to replace the whole list; the interval and webhook forms never saved.
+- **Crew setup: "Something else" waits for your text** instead of being saved as the project or role.
 - **Clicking a terminal or a browser tab after closing a menu gives it the keyboard again.** With the `+` menu (or any menu or popover) open over a terminal, a click on the terminal closed the menu, and the menu then handed focus back to its own button (or dropped it), so everything you typed went nowhere. A press on any native view (terminal, browser page, any future kind) now gives it focus, and a closing overlay's focus restore right after that press is handed back to it.
 
 ## [1.5.0-alpha.20] — 2026-10-26

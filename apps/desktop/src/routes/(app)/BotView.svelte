@@ -5,20 +5,16 @@
 	 */
 	import { onMount } from "svelte";
 	import type { Component } from "svelte";
-	import { Button, Spinner, toast } from "@codeatlasdev/ui";
+	import { Button, toast } from "@codeatlasdev/ui";
 	import {
 		ArrowDown,
 		ArrowUp,
 		Check,
 		ChevronDown,
-		ChevronRight,
 		ChevronUp,
 		Clock,
 		Copy,
-		Ellipsis,
 		FileText,
-		Folder,
-		GitBranch,
 		GitPullRequest,
 		Link,
 		Bot as BotIcon,
@@ -31,21 +27,40 @@
 		X,
 		Zap,
 	} from "@lucide/svelte";
+	import { invoke } from "@tauri-apps/api/core";
 	import { errText } from "#lib/api.ts";
 	import { hostCall } from "#lib/host.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
-	import type { BotProject, BotTask, ScheduleTrigger, Trigger, TriggerKind } from "#lib/bots.ts";
-	import BotEditor from "#lib/bots/BotEditor.svelte";
+	import type { TriggerKind } from "#lib/bots.ts";
 	import BotFace from "#lib/bots/BotFace.svelte";
-	import { normalizeLook, type BotLook } from "#lib/bots/look.ts";
-	import TypingIndicator from "#lib/bots/TypingIndicator.svelte";
+	import { normalizeLook } from "#lib/bots/look.ts";
 	import type { BotState as FaceState } from "#lib/bots/botFace.ts";
 	import { renderMarkdown } from "#lib/viewers/markdown.ts";
 	import { groupTasks, firstUnreadIndex, roleTag } from "#lib/bots/botsLogic.ts";
 	import { msgIn, msgOut, embedIn, optionIn } from "#lib/bots/motion.ts";
-	import UsageSparkline from "#lib/bots/UsageSparkline.svelte";
+	import BotTyping from "#lib/bots/BotTyping.svelte";
+	import { projectForShip } from "#lib/bots/projectRef.ts";
+	import { workingLabel } from "#lib/bots/stepPhrase.ts";
+	import TaskWork from "#lib/bots/TaskWork.svelte";
+	import { replyParts } from "#lib/bots/replyParts.ts";
+	import {
+		getQuestion,
+		optionAnswer,
+		nextStep as setupNextStep,
+		roleKeyToText,
+		approvalKeyToMode,
+		summaryText,
+		typingDelay,
+		RESTART_STEP,
+		type SetupStep,
+		type SummaryState,
+		type SummaryPart,
+	} from "#lib/bots/crewSetup.ts";
+	import { githubCrew } from "#lib/bots/githubCrew.svelte.ts";
+	import BotSettingsDialog from "#lib/bots/BotSettingsDialog.svelte";
+	import { describeTrigger } from "#lib/bots/automations.ts";
 
 	// ─── ask card ─────────────────────────────────────────────────────────────
 
@@ -71,37 +86,10 @@
 
 	let prompt = $state("");
 	let sending = $state(false);
-	let panel = $state<"none" | "profile">("none");
-	let menuOpen = $state(false);
+	let settingsOpen = $state(false);
 	let now = $state(Date.now());
 
-	// profile panel
-	let settingsRole = $state("");
-	let settingsAgent = $state("");
-	let settingsApproval = $state<"ask" | "auto">("auto");
-	let roleSaving = $state(false);
-	let approvalSaving = $state(false);
-
-	// memory (lazy-loaded when profile opens)
-	let memoryText = $state("");
-	let memoryLoading = $state(false);
-	let memorySaving = $state(false);
-
-	// usage (lazy-loaded when profile opens)
-	let usageData = $state<number[]>([]);
-	let usageTotals = $state({ today: 0, week: 0, month: 0 });
-
-	// routines
-	let routinesList = $state<ScheduleTrigger[]>([]);
-	let newRoutineCron = $state("");
-	let newRoutinePrompt = $state("");
-
-	// triggers (new trigger form)
-	let newTriggerKind = $state<TriggerKind | null>(null);
-	let newTriggerForm = $state<Record<string, string | boolean>>({});
-
 	// thread
-	let stepsOpen = $state<Record<string, boolean>>({});
 	let approvedReqs = $state<Set<string>>(new Set());
 	/** Actual hostname of the local hostd, fetched on first selection of a local bot. */
 	let localHostname = $state("");
@@ -119,11 +107,15 @@
 	let jumpVisible = $state(false);
 	let composerFocused = $state(false);
 
+	// ─── action card state ────────────────────────────────────────────────────
+	let actionInputs = $state<Record<string, string>>({}); // taskId → current input
+	let actionSecrets = $state<Record<string, string>>({}); // taskId → secret value (never logged)
+	let actionSubmitting = $state<Set<string>>(new Set()); // taskIds currently submitting
+
 	// ─── derived ──────────────────────────────────────────────────────────────
 
 	const bot = $derived(bots.selectedBot);
 	const tasks = $derived(bots.tasks);
-	const agentList = $derived(agents.list.filter((a) => a.installed));
 	const hostOnline = $derived(bots.selected ? bots.hostOk(bots.selected.hostKey) : true);
 	const serverName = $derived(bots.selected?.hostName ?? "");
 	/** Show actual hostname for local; server name label for remote. */
@@ -141,7 +133,6 @@
 	const groupedTasks = $derived(groupTasks(orderedTasks));
 	const lastSeenTs = $derived(bots.selectedLastSeen);
 	const unreadIdx = $derived(firstUnreadIndex(orderedTasks, lastSeenTs));
-	const allTriggers = $derived(bot?.triggers ?? []);
 
 	const AGENT_LABELS: Record<string, string> = {
 		omp: "omp",
@@ -156,8 +147,226 @@
 
 	// IDE projects for project linking
 	const ideProjects = $derived(
-		ws.doc.worktrees.map((w) => ({ id: w.id, name: w.name ?? w.id, branch: w.branch ?? "" })),
+		ws.doc.worktrees.map((w) => ({ id: w.id, name: w.name, path: w.path, branch: w.branch ?? "" })),
 	);
+
+	// ─── setup conversation ───────────────────────────────────────────────────
+
+	interface SetupMessage {
+		kind: "bot" | "user";
+		text: string;
+		parts?: SummaryPart[];
+	}
+
+	/** Messages already rendered (so resume shows them without typing delay). */
+	let setupMessages = $state<SetupMessage[]>([]);
+	/** Whether the bot is "typing" its next question. */
+	let setupTyping = $state(false);
+	/** The live question currently shown to the user (null while typing). */
+	let setupCurrentQuestion = $state<ReturnType<typeof getQuestion> | null>(null);
+	/** Free-text answer the user is composing during setup. */
+	let setupInput = $state("");
+	/** Accumulated answers; used to build the summary. */
+	let setupState = $state<{
+		name: string;
+		roleKey: string;
+		roleText: string;
+		project: string;
+		approvalKey: string;
+	}>({ name: "", roleKey: "", roleText: "", project: "", approvalKey: "A" });
+	/** Whether a bot_update call is in flight during setup. */
+	let setupSaving = $state(false);
+	/** The active setup step derived from the bot record. */
+	const setupStep = $derived(bot?.setup_step as SetupStep | undefined);
+	/** IDE project names for the project question chips. */
+	const ideProjectNames = $derived(ideProjects.map((p) => p.name));
+
+	/**
+	 * (Re)initialise the setup conversation when a bot with setup_step is selected,
+	 * or when setup_step changes. Replays already-answered steps without delay,
+	 * then presents the current question with the typing indicator.
+	 */
+	$effect(() => {
+		const step = setupStep;
+		const b = bot;
+		if (!step || !b) return;
+
+		// Pre-fill collected answers from the existing bot record so resuming works.
+		const resumed: typeof setupState = {
+			name: b.name !== "New crewmate" ? b.name : "",
+			roleKey: "",
+			roleText: b.role ?? "",
+			project: b.project?.name ?? b.project?.path ?? b.project?.url ?? "",
+			approvalKey: b.approval === "auto" ? "C" : "A",
+		};
+		setupState = resumed;
+
+		// Build the replay messages: all steps BEFORE the current one are already answered.
+		const { STEPS } = (() => {
+			const s = ["name", "role", "project", "approval", "summary"] as const;
+			return { STEPS: s };
+		})();
+		const currentIdx = STEPS.indexOf(step as (typeof STEPS)[number]);
+		const replay: SetupMessage[] = [];
+		for (let i = 0; i < currentIdx; i++) {
+			const s = STEPS[i] as SetupStep;
+			const q = getQuestion(s, { ideProjects: ideProjectNames });
+			replay.push({ kind: "bot", text: q.text });
+			let answer = "";
+			if (s === "name") answer = resumed.name || b.name;
+			// Only what was really saved: an empty role used to replay as the user saying "Something else".
+			else if (s === "role") answer = resumed.roleText;
+			else if (s === "project") answer = resumed.project || "Skip";
+			else if (s === "approval")
+				answer = getQuestion("approval").options?.find((o) => o.key === resumed.approvalKey)?.title ?? "";
+			if (answer) replay.push({ kind: "user", text: answer });
+		}
+		setupMessages = replay;
+		setupCurrentQuestion = null;
+		setupTyping = false;
+
+		// Now show typing indicator, then the current question.
+		setupTyping = true;
+		const delay = replay.length === 0 ? 600 : typingDelay();
+		const tid = setTimeout(() => {
+			setupTyping = false;
+			if (step === "summary") {
+				setupCurrentQuestion = {
+					...getQuestion("summary"),
+					...(() => {
+						const parts = summaryText({
+							name: resumed.name || b.name,
+							roleText: resumed.roleText || "do tasks",
+							project: resumed.project || undefined,
+							approvalKey: resumed.approvalKey,
+						} satisfies SummaryState);
+						return { parts, text: parts.map((p) => p.text).join("") };
+					})(),
+				};
+			} else {
+				setupCurrentQuestion = getQuestion(step as SetupStep, { ideProjects: ideProjectNames });
+			}
+		}, delay);
+		return () => clearTimeout(tid);
+	});
+
+	async function setupAnswer(key?: string, text?: string) {
+		const step = setupStep;
+		const b = bot;
+		if (!step || !b || !bots.selected || setupSaving) return;
+
+		const option = key != null ? setupCurrentQuestion?.options?.find((o) => o.key === key) : undefined;
+		// "Something else" asks for text: put the c‍ursor in the box and wait, never save the option's own title.
+		if (option && "write" in optionAnswer(option)) {
+			document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Setup answer"]')?.focus();
+			return;
+		}
+		const answerText = option ? option.title : (text ?? "").trim();
+		if (!answerText && step !== "project") return;
+
+		setupMessages = [
+			...setupMessages,
+			{ kind: "bot", text: setupCurrentQuestion?.text ?? "", parts: setupCurrentQuestion?.parts },
+		];
+		setupCurrentQuestion = null;
+
+		// Map answer to bot fields
+		const patch: Record<string, unknown> = {};
+		let nextStep_: SetupStep | "done" = "done";
+		const newState = { ...setupState };
+
+		if (step === "name") {
+			const name = answerText.trim() || "New crewmate";
+			newState.name = name;
+			patch.name = name;
+			nextStep_ = setupNextStep("name");
+		} else if (step === "role") {
+			if (!key) {
+				// typed by the user
+				newState.roleText = answerText;
+			} else {
+				newState.roleKey = key;
+				newState.roleText = roleKeyToText(key);
+			}
+			patch.role = newState.roleText;
+			nextStep_ = setupNextStep("role");
+		} else if (step === "project") {
+			const projectName = answerText.trim();
+			newState.project = projectName;
+			if (projectName) {
+				// One of the user's projects: resolve its git origin BEFORE saving (it used to save the Mac path and
+				// race a later overwrite, so the ship could keep a path it cannot open).
+				const matched = ideProjects.find((p) => p.name === projectName);
+				if (matched) {
+					const origin = await invoke<{ url: string | null }>("project_git_info", { path: matched.path })
+						.then((i) => i.url)
+						.catch(() => null);
+					const r = projectForShip(matched, origin, bots.selected.hostKey);
+					if (!r.ok) {
+						toast.error(r.error);
+						return;
+					}
+					patch.project = r.project;
+				} else {
+					// Free text / git URL
+					const isGit = /^(https?|git|ssh):\/\//.test(projectName) || projectName.endsWith(".git");
+					patch.project = isGit
+						? { kind: "git", url: projectName, name: projectName }
+						: { kind: "path", path: projectName, name: projectName };
+				}
+			}
+			nextStep_ = setupNextStep("project");
+		} else if (step === "approval") {
+			newState.approvalKey = key ?? "A";
+			patch.approval = approvalKeyToMode(key ?? "A");
+			nextStep_ = setupNextStep("approval");
+		} else if (step === "summary") {
+			if (key === "B") {
+				// Restart: go back to first step
+				setupMessages = [];
+				patch.setup_step = RESTART_STEP;
+				nextStep_ = RESTART_STEP;
+			} else {
+				// Done
+				patch.setup_step = null;
+				nextStep_ = "done";
+			}
+		}
+
+		setupState = newState;
+		if (step !== "summary" || key === "A") {
+			setupMessages = [...setupMessages, { kind: "user", text: answerText }];
+		}
+
+		// Persist to bot record
+		setupSaving = true;
+		try {
+			const updatePatch: Parameters<typeof bots.updateBot>[2] = {
+				...("name" in patch ? { name: patch.name as string } : {}),
+				...("role" in patch ? { role: patch.role as string } : {}),
+				...("approval" in patch ? { approval: patch.approval as string } : {}),
+				...("project" in patch
+					? { project: patch.project as Parameters<typeof bots.updateBot>[2]["project"] }
+					: {}),
+				...(step !== "summary" || key !== "B"
+					? { setup_step: nextStep_ === "done" ? null : (nextStep_ as string) }
+					: { setup_step: RESTART_STEP }),
+			};
+			await bots.updateBot(bots.selected.hostKey, b.id, updatePatch);
+		} catch (e) {
+			toast.error(errText(e));
+		} finally {
+			setupSaving = false;
+		}
+
+		setupInput = "";
+
+		// If done, the effect above won't re-run (setup_step cleared), so just clear state.
+		if (nextStep_ === "done") {
+			setupMessages = [];
+			setupCurrentQuestion = null;
+		}
+	}
 
 	// Reset approvedReqs when the selected bot changes
 	$effect(() => {
@@ -175,45 +384,6 @@
 				.catch(() => {});
 		}
 	});
-	// Populate profile panel fields when opened
-	$effect(() => {
-		if (panel === "profile" && bot) {
-			settingsRole = bot.role;
-			settingsApproval = bot.approval;
-			settingsAgent = bot.agent;
-			void loadMemory();
-			void loadRoutines();
-			void bots
-				.getUsage()
-				.then(({ records }) => {
-					const now2 = Date.now();
-					const todayStart = new Date();
-					todayStart.setHours(0, 0, 0, 0);
-					const weekStart = now2 - 7 * 24 * 60 * 60 * 1000;
-					const monthStart = now2 - 30 * 24 * 60 * 60 * 1000;
-					const buckets = new Array(30).fill(0);
-					for (const rec of records) {
-						const tsMs = rec.ts * 1000;
-						const dayIdx = Math.floor((now2 - tsMs) / (24 * 60 * 60 * 1000));
-						if (dayIdx >= 0 && dayIdx < 30)
-							buckets[29 - dayIdx] += (rec.input_tokens ?? 0) + (rec.output_tokens ?? 0);
-					}
-					usageData = buckets;
-					usageTotals = {
-						today: records
-							.filter((r) => r.ts * 1000 >= todayStart.getTime())
-							.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0),
-						week: records
-							.filter((r) => r.ts * 1000 >= weekStart)
-							.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0),
-						month: records
-							.filter((r) => r.ts * 1000 >= monthStart)
-							.reduce((s, r) => s + (r.input_tokens ?? 0) + (r.output_tokens ?? 0), 0),
-					};
-				})
-				.catch(() => {});
-		}
-	});
 
 	onMount(() => {
 		const timer = setInterval(() => {
@@ -225,9 +395,33 @@
 	// Auto-scroll to bottom when new tasks arrive, if already at bottom
 	$effect(() => {
 		const _ = orderedTasks.length;
+		// A Board card asked for one task: that wins over sticking to the bottom.
+		if (bots.focusTask) return;
 		if (atBottom && threadEl) {
 			setTimeout(() => threadEl?.scrollTo({ top: threadEl.scrollHeight }), 0);
 		}
+	});
+
+	// Opened from a Board card: scroll to that task once it is rendered, and flash it so the eye finds it.
+	let flashTask = $state<string | null>(null);
+	$effect(() => {
+		const id = bots.focusTask;
+		if (!id || !threadEl) return;
+		if (!orderedTasks.some((t) => t.id === id)) {
+			// Loaded and still not there (older than the chat's window): give up, or the chat would stop following new
+			// messages, since the stick-to-bottom effect waits while a focus is pending.
+			if (!bots.tasksLoading && orderedTasks.length > 0) bots.focusTask = null;
+			return;
+		}
+		// Not "at the bottom" any more: clearing focusTask re-runs the stick-to-bottom effect above, which put the
+		// thread straight back at the end.
+		atBottom = false;
+		requestAnimationFrame(() => {
+			threadEl?.querySelector(`[data-task-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "center" });
+			flashTask = id;
+			bots.focusTask = null;
+			setTimeout(() => flashTask === id && (flashTask = null), 1600);
+		});
 	});
 
 	// ─── helpers ──────────────────────────────────────────────────────────────
@@ -239,7 +433,10 @@
 	function fmtElapsed(ms: number): string {
 		const s = Math.floor(ms / 1000);
 		if (s < 60) return `${s}s`;
-		return `${Math.floor(s / 60)}m`;
+		const m = Math.floor(s / 60);
+		if (m < 60) return `${m}m`;
+		const h = Math.floor(m / 60);
+		return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 	}
 
 	function fmtTokens(n: number): string {
@@ -278,7 +475,10 @@
 
 	function noop() {}
 
+	/** Fit the composer to its text on every change of `prompt`, typed or set by code. Growing only on `input`
+	 *  left the box two lines tall after a send cleared it, and after a pick or "edit" filled it. */
 	function autoGrow(el: HTMLTextAreaElement) {
+		void [prompt, setupInput];
 		el.style.height = "auto";
 		const maxH = parseInt(getComputedStyle(el).getPropertyValue("--composer-max-h") || "192");
 		el.style.height = Math.min(el.scrollHeight, maxH) + "px";
@@ -321,81 +521,7 @@
 			sending = false;
 		}
 	}
-
-	async function loadMemory() {
-		memoryLoading = true;
-		try {
-			memoryText = await bots.getMemory();
-		} catch {
-			/* keep stale */
-		}
-		memoryLoading = false;
-	}
-
-	async function saveMemory() {
-		memorySaving = true;
-		try {
-			await bots.setMemory(memoryText);
-			toast.success("Memory saved");
-		} catch (e) {
-			toast.error(errText(e));
-		} finally {
-			memorySaving = false;
-		}
-	}
-
-	async function saveRole() {
-		if (!bots.selected || !bot) return;
-		roleSaving = true;
-		try {
-			await bots.updateBot(bots.selected.hostKey, bot.id, { role: settingsRole });
-			toast.success("Role saved");
-		} catch (e) {
-			toast.error(errText(e));
-		} finally {
-			roleSaving = false;
-		}
-	}
-
-	let editingLook = $state<BotLook | null>(null);
-	async function saveLook() {
-		if (!bots.selected || !bot || !editingLook) return;
-		try {
-			await bots.updateBot(bots.selected.hostKey, bot.id, { look: editingLook });
-			editingLook = null;
-		} catch (e) {
-			toast.error(errText(e));
-		}
-	}
-
-	async function saveApproval() {
-		if (!bots.selected || !bot) return;
-		approvalSaving = true;
-		try {
-			await bots.updateBot(bots.selected.hostKey, bot.id, { approval: settingsApproval });
-			toast.success("Approval saved");
-		} catch (e) {
-			toast.error(errText(e));
-		} finally {
-			approvalSaving = false;
-		}
-	}
-
-	/** Kept for compatibility — saves role, agent, and approval together. */
-	async function saveSettings() {
-		if (!bots.selected || !bot) return;
-		await bots.updateBot(bots.selected.hostKey, bot.id, {
-			role: settingsRole,
-			agent: settingsAgent,
-			approval: settingsApproval,
-		});
-	}
-
-	async function loadRoutines() {
-		routinesList = allTriggers.filter((t): t is ScheduleTrigger => t.kind.type === "schedule");
-	}
-
-	// ─── trigger helpers ──────────────────────────────────────────────────────
+	// ─── trigger helpers (still used by thread trigger_event display) ─────────
 
 	const TRIGGER_ICONS: Record<TriggerKind, Component> = {
 		schedule: Clock,
@@ -407,151 +533,8 @@
 		service: Settings2,
 	};
 
-	const TRIGGER_KINDS: Array<{ kind: TriggerKind; label: string }> = [
-		{ kind: "schedule", label: "Schedule" },
-		{ kind: "interval", label: "Interval" },
-		{ kind: "webhook", label: "Webhook" },
-		{ kind: "github", label: "GitHub" },
-		{ kind: "file", label: "File" },
-		{ kind: "bot", label: "Bot chain" },
-		{ kind: "service", label: "Service" },
-	];
-	const GITHUB_EVENTS: Array<{ ev: string; label: string }> = [
-		{ ev: "pr_opened", label: "PR opened" },
-		{ ev: "pr_review_requested", label: "Review requested" },
-		{ ev: "issue_opened", label: "Issue opened" },
-		{ ev: "ci_failed", label: "CI failed" },
-		{ ev: "release", label: "Release" },
-	];
-
 	function triggerIconComponent(kind: TriggerKind | string): Component {
 		return (TRIGGER_ICONS as Record<string, Component>)[kind] ?? Zap;
-	}
-
-	function triggerSummary(t: Trigger): string {
-		const k = t.kind;
-		switch (k.type) {
-			case "schedule":
-				return k.cron;
-			case "interval":
-				return `Every ${k.every_secs}s`;
-			case "webhook":
-				return `webhook (token: ${k.token.slice(0, 6)}…)`;
-			case "github":
-				return `${k.repo} · ${k.events.length} event${k.events.length !== 1 ? "s" : ""}`;
-			case "file":
-				return k.glob ?? k.path;
-			case "bot":
-				return `${k.from_bot} · ${k.on}`;
-			case "service":
-				return `${k.service} · ${k.on}`;
-			default:
-				return "";
-		}
-	}
-
-	async function toggleTrigger(id: string, enabled: boolean) {
-		const updated = allTriggers.map((t) => (t.id === id ? { ...t, enabled } : t));
-		try {
-			await bots.setTriggers(updated);
-		} catch (e) {
-			toast.error(errText(e));
-		}
-	}
-
-	async function removeTrigger(id: string) {
-		const updated = allTriggers.filter((t) => t.id !== id);
-		try {
-			await bots.setTriggers(updated);
-		} catch (e) {
-			toast.error(errText(e));
-		}
-	}
-
-	async function addTrigger() {
-		if (!newTriggerKind) return;
-		const id = crypto.randomUUID();
-		let trig: Trigger;
-		const k = newTriggerKind;
-		const f = newTriggerForm;
-
-		if (k === "schedule") {
-			if (!newRoutineCron.trim() || !newRoutinePrompt.trim()) return;
-			trig = {
-				id,
-				kind: { type: "schedule", cron: newRoutineCron.trim() },
-				prompt: newRoutinePrompt.trim(),
-				enabled: true,
-			};
-		} else if (k === "interval") {
-			const secs = parseInt(f.every_secs as string);
-			if (!secs || secs < 60) return;
-			trig = {
-				id,
-				kind: { type: "interval", every_secs: secs },
-				prompt: (f.prompt as string) ?? "",
-				enabled: true,
-			};
-		} else if (k === "webhook") {
-			trig = {
-				id,
-				kind: { type: "webhook", token: crypto.randomUUID().replace(/-/g, "").slice(0, 24) },
-				prompt: (f.prompt as string) ?? "Webhook event: {{event}}",
-				enabled: true,
-			};
-		} else if (k === "github") {
-			if (!f.repo) return;
-			const events = GITHUB_EVENTS.map((e) => e.ev).filter((ev) => !!f[ev]);
-			trig = {
-				id,
-				kind: { type: "github", repo: f.repo as string, events },
-				prompt: (f.prompt as string) ?? "GitHub: {{event}}",
-				enabled: true,
-			};
-		} else if (k === "file") {
-			if (!f.path && !f.glob) return;
-			trig = {
-				id,
-				kind: { type: "file", path: (f.path as string) ?? "", glob: (f.glob as string) || undefined },
-				prompt: (f.prompt as string) ?? "File changed: {{event}}",
-				enabled: true,
-			};
-		} else if (k === "bot") {
-			if (!f.from_bot) return;
-			trig = {
-				id,
-				kind: {
-					type: "bot",
-					from_bot: f.from_bot as string,
-					on: ((f.on as string) || "done") as "done" | "failed" | "both",
-				},
-				prompt: (f.prompt as string) ?? "Bot finished: {{event}}",
-				enabled: true,
-			};
-		} else {
-			if (!f.service) return;
-			trig = {
-				id,
-				kind: {
-					type: "service",
-					project_dir: (f.project_dir as string) ?? "",
-					service: f.service as string,
-					on: ((f.on as string) || "failed") as "failed" | "recovered" | "both",
-				},
-				prompt: (f.prompt as string) ?? "Service {{event}}",
-				enabled: true,
-			};
-		}
-
-		try {
-			await bots.setTriggers([...allTriggers, trig]);
-			newTriggerKind = null;
-			newTriggerForm = {};
-			newRoutineCron = "";
-			newRoutinePrompt = "";
-		} catch (e) {
-			toast.error(errText(e));
-		}
 	}
 
 	async function openTerminal() {
@@ -565,7 +548,6 @@
 
 	async function cancelRunningTask() {
 		if (!bot?.running_task) return;
-		menuOpen = false;
 		await bots.cancelTask(bot.running_task.id).catch((e) => toast.error(errText(e)));
 	}
 
@@ -587,29 +569,49 @@
 			.catch((e) => toast.error(errText(e)));
 	}
 
-	async function deleteBot() {
-		if (!bots.selected || !bot) return;
-		if (!confirm(`Delete "${bot.name}"? This cannot be undone.`)) return;
+
+
+	// ─── action card helpers ──────────────────────────────────────────────────
+
+	async function answerAction(taskId: string, botId: string, value: string): Promise<void> {
+		const hostKey = bots.selected?.hostKey ?? "";
+		const hostArgs = hostKey ? { host: hostKey } : {};
+		actionSubmitting = new Set([...actionSubmitting, taskId]);
 		try {
-			await bots.deleteBot(bots.selected.hostKey, bot.id);
-			panel = "none";
-		} catch (e) {
-			toast.error(errText(e));
+			await hostCall("bot_action_answer", { ...hostArgs, id: botId, task: taskId, value });
+			const i = { ...actionInputs };
+			delete i[taskId];
+			actionInputs = i;
+			const s = { ...actionSecrets };
+			delete s[taskId];
+			actionSecrets = s;
+		} finally {
+			const sub = new Set(actionSubmitting);
+			sub.delete(taskId);
+			actionSubmitting = sub;
 		}
 	}
 
-	async function linkProject(p: { id: string; name: string; branch: string }) {
-		if (!bots.selected || !bot) return;
-		const project: BotProject = { name: p.name, kind: "path", branch: p.branch || undefined };
-		await bots.updateBot(bots.selected.hostKey, bot.id, { project }).catch((e) => toast.error(errText(e)));
+	async function cancelAction(taskId: string, botId: string): Promise<void> {
+		const hostKey = bots.selected?.hostKey ?? "";
+		const hostArgs = hostKey ? { host: hostKey } : {};
+		await hostCall("bot_cancel", { ...hostArgs, id: botId, task: taskId });
 	}
 
-	async function unlinkProject() {
-		if (!bots.selected || !bot) return;
-		await bots
-			.updateBot(bots.selected.hostKey, bot.id, { project: null })
-			.catch((e) => toast.error(errText(e)));
-	}
+	// Auto-resume: when GitHub connects while a waiting_action connect_github task is parked
+	$effect(() => {
+		const hostKey = bots.selected?.hostKey ?? "";
+		if (!hostKey) return;
+		const status = githubCrew.statuses.get(hostKey);
+		if (!status?.login) return;
+		const needsResume = tasks.some(
+			(t) => t.state === "waiting_action" && t.action?.kind === "connect_github",
+		);
+		if (needsResume) {
+			const ha = hostKey ? { host: hostKey } : {};
+			void hostCall("bot_github_connect_resume", ha);
+		}
+	});
 </script>
 
 <div class="bot-view">
@@ -618,58 +620,43 @@
 	{:else}
 		<!-- Header -->
 		<div class="header">
-			<button class="header-pill" onclick={() => (panel = 'profile')} aria-label="Bot profile: {bot.name}">
-				<BotFace seed={bot.id} look={bot.look} state={faceState} size={28} />
-				<span class="pill-name">{bot.name}</span>
-				{#if bot.state === "working" && bot.running_task}
-					<span class="pill-elapsed"
-						>{fmtElapsed(
-							now - (bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at ?? 0),
-						)}</span
-					>
-				{/if}
+			<!-- Who you are talking to and what it is doing; clicking opens its settings. -->
+		<button class="header-pill" onclick={() => (settingsOpen = true)} aria-label="Bot settings: {bot.name}">
+				<BotFace seed={bot.id} look={bot.look} state={faceState} size={30} />
+				<span class="pill-text">
+					<span class="pill-name">{bot.name}</span>
+					<span class="pill-status" data-state={bot.state}>
+						<span class="pill-dot" aria-hidden="true"></span>
+						{#if bot.state === "working"}
+							<!-- Only with a real start: a task waiting for the user has none, and `now - 0` showed the minutes
+							     since 1970 ("29886587m"). -->
+							{@const runningStart = bot.running_task
+								? bots.tasks.find((t) => t.id === bot.running_task!.id)?.started_at
+								: undefined}
+							Working{runningStart ? ` · ${fmtElapsed(now - runningStart)}` : ""}
+						{:else if bot.state === "needs_you"}
+							Needs you
+						{:else}
+							{agentLabel}
+						{/if}
+					</span>
+				</span>
+				<ChevronDown size={14} class="pill-chevron" aria-hidden="true" />
 			</button>
-			<div class="header-right">
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="menu-wrap" onmouseleave={() => (menuOpen = false)}>
-					<button
-						class="icon-btn"
-						aria-label="More options"
-						aria-expanded={menuOpen}
-						aria-haspopup="menu"
-						onclick={() => (menuOpen = !menuOpen)}><Ellipsis size={16} /></button
-					>
-					{#if menuOpen}
-						<div class="dropdown" role="menu">
-							<button
-								class="menu-item"
-								role="menuitem"
-								onclick={() => {
-									panel = "profile";
-									menuOpen = false;
-								}}>Profile</button
-							>
-							{#if bot.running_task?.pane}
-								<button
-									class="menu-item"
-									role="menuitem"
-									onclick={() => {
-										void openTerminal();
-										menuOpen = false;
-									}}>Terminal</button
-								>
-							{/if}
-							{#if bot.running_task}
-								<button
-									class="menu-item menu-item--danger"
-									role="menuitem"
-									onclick={() => void cancelRunningTask()}>Cancel task</button
-								>
-							{/if}
-						</div>
+			<!-- What used to hide behind "⋯" (whose only item when idle was the settings the name already opens): shown
+			     only while there is a task to watch or stop. -->
+			{#if bot.running_task}
+				<div class="header-right">
+					{#if bot.running_task.pane}
+						<button class="head-btn" onclick={() => void openTerminal()} title="Watch in a terminal">
+							<Terminal size={14} aria-hidden="true" /> Terminal
+						</button>
 					{/if}
+					<button class="head-btn danger" onclick={() => void cancelRunningTask()} title="Stop the current task">
+						<X size={14} aria-hidden="true" /> Stop
+					</button>
 				</div>
-			</div>
+			{/if}
 		</div>
 
 		<!-- Offline banner -->
@@ -681,754 +668,660 @@
 		{/if}
 
 		<!-- Task thread -->
-		<div class="chat-col">
-			<div class="thread" bind:this={threadEl} onscroll={onThreadScroll} aria-label="Task history">
-				{#if bots.tasksLoading && tasks.length === 0}
-					<div class="loading">Loading…</div>
-				{:else if tasks.length === 0}
-					<div class="empty-thread">No tasks yet. Send one below.</div>
-				{:else}
-					{#each orderedTasks as t, i (t.id)}
-						<!-- Unread divider -->
-						{#if i === unreadIdx}
-							<div class="unread-divider" role="separator">
-								<span class="unread-label">NEW</span>
-							</div>
-						{/if}
-						<!-- Date separator on group start + day change -->
-						{#if groupedTasks[i]?.groupStart && i > 0}
-							{@const prev = orderedTasks[i - 1]}
-							{#if new Date(t.ts).toDateString() !== new Date(prev.ts).toDateString()}
-								<div class="msg-ts">{fmtDate(t.ts)}</div>
-							{/if}
-						{/if}
-						<!-- Row: user prompt + bot response -->
-						<!-- svelte-ignore a11y_no_static_element_interactions -->
-						<div
-							class="msg-row"
-							class:group-start={groupedTasks[i]?.groupStart}
-							onmouseenter={() => (hoveredTask = t.id)}
-							onmouseleave={() => (hoveredTask = null)}
-						>
-							<!-- User bubble -->
-							{#if t.trigger_event}
-								{@const TrigIcon = triggerIconComponent(t.trigger_event.kind)}
-								<div class="trigger-event" role="note">
-									<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
-									<span class="trigger-summary">{t.trigger_event.summary}</span>
-								</div>
-							{/if}
-							<div class="msg-out" in:msgOut>
-								<div class="bubble out ca-selectable">{t.prompt}</div>
-								{#if t.source !== "desktop"}
-									<div class="msg-meta">· {t.source}</div>
-								{/if}
-								{#if t.state === "queued"}
-									<div class="msg-meta muted">Queued</div>
-								{/if}
-							</div>
-
-							<!-- Bot response: running -->
-							{#if t.state === "running"}
-								{@const elapsedMs = t.started_at ? now - t.started_at : 0}
-								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									<div class="msg-in-body">
-										<div class="bubble in working">
-											<Spinner size={12} />
-											Working · {fmtElapsed(elapsedMs)}
-										</div>
-										{#if t.steps && t.steps.length > 0}
-											<div class="steps-wrap">
-												<button
-													class="steps-btn"
-													aria-expanded={!!stepsOpen[t.id]}
-													onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-												>
-													{#if stepsOpen[t.id]}
-														<ChevronDown size={12} aria-hidden="true" />
-													{:else}
-														<ChevronRight size={12} aria-hidden="true" />
-													{/if}
-													{t.steps.length}
-													{t.steps.length === 1 ? "step" : "steps"}
-												</button>
-												{#if stepsOpen[t.id]}
-													<div class="steps-list">
-														{#each t.steps as step, si (`${t.id}-${si}`)}
-															<div class="step-row">
-																<span class="step-ts">{fmtTime(step.ts)}</span>
-																<span>{step.text}</span>
-															</div>
-														{/each}
-													</div>
-												{/if}
-											</div>
-										{/if}
-										{#if bot.running_task?.id === t.id && bot.pending_approval}
-											{@const pa = bot.pending_approval}
-											{#if approvedReqs.has(pa.req)}
-												<div class="approval-answered" in:msgIn>
-													<Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}
-												</div>
-											{:else}
-												<div class="approval-bubble" role="alert" in:embedIn>
-													<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
-													<pre class="approval-input">{formatApprovalInput(
-															pa.tool_name ?? "",
-															pa.tool_input,
-														)}</pre>
-													<div class="approval-btns">
-														<Button
-															size="sm"
-															variant="ghost"
-															onclick={() => void denyApproval(pa.pane_key, pa.req)}>Deny</Button
-														>
-														<Button size="sm" onclick={() => void allowApproval(pa.pane_key, pa.req)}
-															>Allow</Button
-														>
-													</div>
-												</div>
-											{/if}
-										{/if}
+		<!-- Task thread or setup conversation -->
+		<!-- --crew: this crewmate's own colour, so your bubbles and the composer match the bot you're talking to. -->
+		<div class="chat-col" style:--crew={normalizeLook(bot.look, bot.id).color}>
+			{#if setupStep}
+				<!-- ── Setup conversation ──────────────────────────────────── -->
+				<div class="thread setup-thread" aria-label="Setup conversation" aria-live="polite">
+					{#each setupMessages as msg, i (i)}
+						{#if msg.kind === "bot"}
+							<div class="msg-in" in:msgIn>
+								<div class="msg-in-body">
+									<div class="bubble in">
+										{#if msg.parts}{#each msg.parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong>{:else}{p.text}{/if}{/each}{:else}{msg.text}{/if}
 									</div>
 								</div>
-								<!-- Bot response: done -->
-							{:else if t.state === "done"}
-								{@const raw = t.result ?? "Done"}
-								{@const collapsed = shouldCollapse(raw) && !expandedResults.has(t.id)}
-								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									<div class="msg-in-body">
-										{#each [parseAsk(t.result)] as ask}
-											{#if ask && !expandedResults.has(t.id + ":dismissed")}
-												<!-- Ask card -->
-												<div class="ask-card">
-													<div class="ask-question">
-														<span>{ask.question}</span>
-														<button
-															class="ask-dismiss"
-															aria-label="Dismiss"
-															onclick={() => {
-																const s = new Set(expandedResults);
-																s.add(t.id + ":dismissed");
-																expandedResults = s;
-															}}>×</button
-														>
+							</div>
+						{:else}
+							<div class="msg-out" in:msgOut>
+								<div class="bubble out">{msg.text}</div>
+							</div>
+						{/if}
+					{/each}
+
+					{#if setupTyping}
+						<div class="msg-in setup-typing" in:msgIn>
+							<BotTyping
+								seed={bot.id}
+								look={bot.look as import("#lib/bots/look.ts").BotLook | undefined}
+								label="Thinking"
+							/>
+						</div>
+					{/if}
+
+					{#if setupCurrentQuestion}
+						{@const q = setupCurrentQuestion}
+						<div class="msg-in" in:msgIn>
+							<div class="msg-in-body">
+								<div class="bubble in">
+									{#if q.parts}{#each q.parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong>{:else}{p.text}{/if}{/each}{:else}{q.text}{/if}
+								</div>
+								{#if q.options}
+									<div class="ask-card setup-ask">
+										{#each q.options as opt, oi (opt.key)}
+											<button
+												class="ask-option"
+												in:optionIn={{ index: oi }}
+												onclick={() => void setupAnswer(opt.key)}
+												disabled={setupSaving}
+											>
+												<span class="ask-key">{opt.key}</span>
+												<div class="ask-opt-body">
+													<span class="ask-opt-title">{opt.title}</span>
+													{#if opt.subtitle}<span class="ask-opt-sub">{opt.subtitle}</span>{/if}
+												</div>
+											</button>
+										{/each}
+									</div>
+								{/if}
+								{#if q.nameChips?.length}
+									<div class="name-chips">
+										{#each q.nameChips as chip (chip)}
+											<button
+												class="name-chip"
+												onclick={() => void setupAnswer(undefined, chip)}
+												disabled={setupSaving}>{chip}</button
+											>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				{#if setupCurrentQuestion?.allowText}
+					<div class="composer">
+						<div class="pill" class:focused={composerFocused} role="group">
+							<textarea
+								class="pill-input"
+								bind:value={setupInput}
+								rows={1}
+								placeholder={setupStep === "name"
+									? "Type a name…"
+									: setupStep === "project"
+										? "Paste a git URL or server path, or skip"
+										: "Type your answer…"}
+								aria-label="Setup answer"
+								onkeydown={(e) => {
+									if (e.key === "Enter" && !e.shiftKey && setupInput.trim()) {
+										e.preventDefault();
+										void setupAnswer(undefined, setupInput);
+									}
+								}}
+								{@attach autoGrow}
+								onfocus={() => (composerFocused = true)}
+								onblur={() => (composerFocused = false)}></textarea>
+							<button
+								class="pill-send"
+								class:active={!!setupInput.trim()}
+								aria-label="Send"
+								disabled={!setupInput.trim() || setupSaving}
+								onclick={() => void setupAnswer(undefined, setupInput)}><ArrowUp size={15} /></button
+							>
+						</div>
+					</div>
+				{/if}
+			{:else}
+				<!-- Normal task thread -->
+				<div class="thread" bind:this={threadEl} onscroll={onThreadScroll} aria-label="Task history">
+					{#if bots.tasksLoading && tasks.length === 0}
+						<div class="loading">Loading…</div>
+					{:else if tasks.length === 0}
+						<div class="empty-thread">No tasks yet. Send one below.</div>
+					{:else}
+						{#each orderedTasks as t, i (t.id)}
+							{#if i === unreadIdx}
+								<div class="unread-divider" role="separator">
+									<span class="unread-label">NEW</span>
+								</div>
+							{/if}
+							{#if groupedTasks[i]?.groupStart && i > 0}
+								{@const prev = orderedTasks[i - 1]}
+								{#if new Date(t.ts).toDateString() !== new Date(prev.ts).toDateString()}
+									<div class="msg-ts">{fmtDate(t.ts)}</div>
+								{/if}
+							{/if}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="msg-row"
+								data-task-id={t.id}
+								class:flash={flashTask === t.id}
+								class:group-start={groupedTasks[i]?.groupStart}
+								onmouseenter={() => (hoveredTask = t.id)}
+								onmouseleave={() => (hoveredTask = null)}
+							>
+								{#if t.trigger_event}
+									{@const TrigIcon = triggerIconComponent(t.trigger_event.kind)}
+									<div class="trigger-event" role="note">
+										<span class="trigger-icon" aria-hidden="true"><TrigIcon size={14} /></span>
+										<span class="trigger-summary">{t.trigger_event.summary}</span>
+									</div>
+								{/if}
+								<div class="msg-out" in:msgOut>
+									<div class="bubble out ca-selectable">{t.prompt}</div>
+									{#if t.source !== "desktop"}
+										<div class="msg-meta">· {t.source}</div>
+									{/if}
+									{#if t.preparing}
+										<!-- A first task on a big repo waited over a minute as a bare "Queued". -->
+										<div class="msg-meta muted preparing">
+											<span class="prep-dot" aria-hidden="true"></span>Downloading {t.preparing}…
+										</div>
+									{:else if t.state === "queued"}
+										<div class="msg-meta muted">Queued</div>
+									{/if}
+								</div>
+
+								<!-- A choice/answer the user gave mid-task stays in the conversation: the crewmate's question, then
+								     the user's pick as their own message. -->
+								{#if t.answer && t.state !== "waiting_action" && t.action?.kind !== "add_trigger"}
+									{#if t.action?.kind === "choose"}
+										<div class="msg-in" in:msgIn>
+											<div class="msg-in-body">
+												<div class="bubble in">{t.action.question}</div>
+											</div>
+										</div>
+									{:else if t.action?.kind === "input"}
+										<div class="msg-in" in:msgIn>
+											<div class="msg-in-body">
+												<div class="bubble in">{t.action.label}</div>
+											</div>
+										</div>
+									{/if}
+									<div class="msg-out" in:msgOut>
+										<div class="bubble out ca-selectable">{t.answer}</div>
+									</div>
+								{/if}
+
+								{#if t.state === "running"}
+									{@const elapsedMs = t.started_at ? now - t.started_at : 0}
+									<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+										<div class="msg-in-body">
+											<!-- Same "dots gather, crewmate hops" as the onboarding. The line says what it is doing: its
+											     latest step while fresh, then "Thinking", "Planning"… changing every few seconds. -->
+											<BotTyping
+												seed={bot.id}
+												look={bot.look as import("#lib/bots/look.ts").BotLook | undefined}
+												label={workingLabel(t.steps?.at(-1)?.text, t.steps?.at(-1)?.ts, now)}
+												detail={fmtElapsed(elapsedMs)}
+											/>
+											<!-- While it works, what it is doing stays on screen, like the onboarding story: a section per
+											     title the agent set itself, its steps ticking off, finished sections folded. -->
+											<TaskWork steps={t.steps ?? []} title={t.title} running />
+											{#if bot.running_task?.id === t.id && bot.pending_approval}
+												{@const pa = bot.pending_approval}
+												{#if approvedReqs.has(pa.req)}
+													<div class="approval-answered" in:msgIn>
+														<Check size={12} aria-hidden="true" /> Allowed by you · {fmtTime(Date.now())}
 													</div>
-													{#each ask.options as opt, oi (opt.key)}
-														<button
-															class="ask-option"
-															onclick={() => {
-																prompt = opt.title;
-																void send();
-															}}
-														>
-															<span class="ask-key">{String.fromCharCode(65 + oi)}</span>
-															<div class="ask-opt-body">
-																<span class="ask-opt-title">{opt.title}</span>
-																{#if opt.subtitle}<span class="ask-opt-sub">{opt.subtitle}</span>{/if}
-															</div>
-														</button>
-													{/each}
-													{#if ask.allow_text !== false}
-														<input
-															class="ask-text"
-															placeholder="Type your own answer"
-															onkeydown={(e) => {
-																if (e.key === "Enter" && (e.currentTarget as HTMLInputElement).value.trim()) {
-																	prompt = (e.currentTarget as HTMLInputElement).value.trim();
-																	void send();
-																}
-															}}
-														/>
+												{:else}
+													<div class="approval-bubble" role="alert" in:embedIn>
+														<div class="approval-tool">Wants to run <strong>{pa.tool_name}</strong></div>
+														<pre class="approval-input">{formatApprovalInput(
+																pa.tool_name ?? "",
+																pa.tool_input,
+															)}</pre>
+														<div class="approval-btns">
+															<Button
+																size="sm"
+																variant="ghost"
+																onclick={() => void denyApproval(pa.pane_key, pa.req)}>Deny</Button
+															>
+															<Button size="sm" onclick={() => void allowApproval(pa.pane_key, pa.req)}
+																>Allow</Button
+															>
+														</div>
+													</div>
+												{/if}
+											{/if}
+										</div>
+									</div>
+								{:else if t.state === "done"}
+									{@const raw = t.result ?? "Done"}
+									{@const collapsed = shouldCollapse(raw) && !expandedResults.has(t.id)}
+									{@const shownFull = expandedResults.has(t.id + ":full")}
+									<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+										<div class="msg-in-body">
+											<!-- The work before the reply, folded per section; it stays in the conversation. -->
+											<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
+											{#if t.action?.kind === "add_trigger" && t.answer}
+												<div class="task-note">
+													{#if t.answer === "add"}
+														<Check size={12} aria-hidden="true" /> Automation added
+													{:else}
+														Not added
 													{/if}
 												</div>
-											{:else if !expandedResults.has(t.id + ":dismissed")}
-												<!-- Normal markdown result -->
-												<div class="md-result ca-selectable" class:collapsed>
-													{@html resultHtml(
-														collapsed ? raw.split("\n").slice(0, COLLAPSE_LINES).join("\n") : raw,
-													)}
-												</div>
-												{#if shouldCollapse(raw)}
-													<button
-														class="show-more"
-														onclick={() => {
-															const s = new Set(expandedResults);
-															if (collapsed) s.add(t.id);
-															else s.delete(t.id);
-															expandedResults = s;
-														}}
-													>
-														{collapsed ? "Show more" : "Show less"}
-														{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp
-																size={12}
-																aria-hidden="true"
-															/>{/if}
-													</button>
-												{/if}
-												{#if t.steps && t.steps.length > 0}
-													<div class="steps-wrap">
-														<button
-															class="steps-btn"
-															aria-expanded={!!stepsOpen[t.id]}
-															onclick={() => (stepsOpen = { ...stepsOpen, [t.id]: !stepsOpen[t.id] })}
-														>
-															{#if stepsOpen[t.id]}
-																<ChevronDown size={12} aria-hidden="true" />
-															{:else}
-																<ChevronRight size={12} aria-hidden="true" />
-															{/if}
-															{t.steps.length}
-															{t.steps.length === 1 ? "step" : "steps"}
-														</button>
-														{#if stepsOpen[t.id]}
-															<div class="steps-list">
-																{#each t.steps as step, si (`${t.id}-${si}`)}
-																	<div class="step-row">
-																		<span class="step-ts">{fmtTime(step.ts)}</span>
-																		<span>{step.text}</span>
-																	</div>
-																{/each}
-															</div>
+											{/if}
+											{#each [parseAsk(t.result)] as ask}
+												{#if ask && !expandedResults.has(t.id + ":dismissed")}
+													<div class="ask-card">
+														<div class="ask-question">
+															<span>{ask.question}</span>
+															<button
+																class="ask-dismiss"
+																aria-label="Dismiss"
+																onclick={() => {
+																	const s = new Set(expandedResults);
+																	s.add(t.id + ":dismissed");
+																	expandedResults = s;
+																}}>×</button
+															>
+														</div>
+														{#each ask.options as opt, oi (opt.key)}
+															<button
+																class="ask-option"
+																onclick={() => {
+																	prompt = opt.title;
+																	void send();
+																}}
+															>
+																<span class="ask-key">{String.fromCharCode(65 + oi)}</span>
+																<div class="ask-opt-body">
+																	<span class="ask-opt-title">{opt.title}</span>
+																	{#if opt.subtitle}<span class="ask-opt-sub">{opt.subtitle}</span>{/if}
+																</div>
+															</button>
+														{/each}
+														{#if ask.allow_text !== false}
+															<input
+																class="ask-text"
+																placeholder="Type your own answer"
+																onkeydown={(e) => {
+																	if (
+																		e.key === "Enter" &&
+																		(e.currentTarget as HTMLInputElement).value.trim()
+																	) {
+																		prompt = (e.currentTarget as HTMLInputElement).value.trim();
+																		void send();
+																	}
+																}}
+															/>
 														{/if}
 													</div>
+												{:else if !expandedResults.has(t.id + ":dismissed")}
+													{#if t.summarized && !shownFull}
+														<div class="md-result ca-selectable">{@html resultHtml(raw)}</div>
+														<button
+															class="show-more"
+															onclick={() => {
+																const s = new Set(expandedResults);
+																s.add(t.id + ":full");
+																expandedResults = s;
+															}}>See full reply</button
+														>
+													{:else if t.summarized && shownFull}
+														<div class="md-result ca-selectable">{@html resultHtml(t.reply_full ?? raw)}</div>
+														<button
+															class="show-more"
+															onclick={() => {
+																const s = new Set(expandedResults);
+																s.delete(t.id + ":full");
+																expandedResults = s;
+															}}>Show summary</button
+														>
+													{:else}
+														{@const parts = replyParts(raw)}
+														{#if parts.length > 1}
+															<!-- A long reply as a few chat messages, one per section, instead of one long document. -->
+															{#each parts as part, pi (pi)}
+																<div class="md-result ca-selectable reply-part" in:msgIn={{ delay: pi * 90 }}>
+																	{@html resultHtml(part)}
+																</div>
+															{/each}
+														{:else}
+															<div class="md-result ca-selectable" class:collapsed>
+																{@html resultHtml(
+																	collapsed ? raw.split("\n").slice(0, COLLAPSE_LINES).join("\n") : raw,
+																)}
+															</div>
+															{#if shouldCollapse(raw)}
+																<button
+																	class="show-more"
+																	onclick={() => {
+																		const s = new Set(expandedResults);
+																		if (collapsed) s.add(t.id);
+																		else s.delete(t.id);
+																		expandedResults = s;
+																	}}
+																>
+																	{collapsed ? "Show more" : "Show less"}
+																	{#if collapsed}<ChevronDown size={12} aria-hidden="true" />{:else}<ChevronUp
+																			size={12}
+																			aria-hidden="true"
+																		/>{/if}
+																</button>
+															{/if}
+														{/if}
+													{/if}
 												{/if}
+											{/each}
+											{#if t.usage}
+												<div class="usage-footer">
+													{#if t.usage.input_tokens || t.usage.output_tokens}
+														<span
+															>{fmtTokens(t.usage.input_tokens ?? 0)}in · {fmtTokens(
+																t.usage.output_tokens ?? 0,
+															)}out</span
+														>
+													{/if}
+													{#if t.usage.cost_usd}<span>${t.usage.cost_usd.toFixed(4)}</span>{/if}
+													{#if t.usage.duration_ms}<span>{fmtElapsed(t.usage.duration_ms)}</span>{/if}
+													{#if t.usage.model}<span class="usage-model">{t.usage.model}</span>{/if}
+												</div>
 											{/if}
-										{/each}
-										{#if t.usage}
-											<div class="usage-footer">
-												{#if t.usage.input_tokens || t.usage.output_tokens}
-													<span
-														>{fmtTokens(t.usage.input_tokens ?? 0)}in · {fmtTokens(
-															t.usage.output_tokens ?? 0,
-														)}out</span
-													>
-												{/if}
-												{#if t.usage.cost_usd}
-													<span>${t.usage.cost_usd.toFixed(4)}</span>
-												{/if}
-												{#if t.usage.duration_ms}
-													<span>{fmtElapsed(t.usage.duration_ms)}</span>
-												{/if}
-												{#if t.usage.model}
-													<span class="usage-model">{t.usage.model}</span>
+										</div>
+									</div>
+								{:else if t.state === "failed"}
+									<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+										<div class="msg-in-body">
+											<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
+											<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
+										</div>
+									</div>
+								{:else if t.state === "cancelled"}
+									<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+										<div class="msg-in-body">
+											<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
+											<div class="task-note"><X size={12} aria-hidden="true" /> Cancelled</div>
+										</div>
+									</div>
+								{:else if t.state === "waiting_action" && t.action}
+									{@const action = t.action}
+									{@const hostKey = bots.selected?.hostKey ?? ""}
+									{@const flow = githubCrew.flows.get(hostKey)}
+									{@const polling = githubCrew.isPolling(hostKey)}
+									{@const status = githubCrew.statuses.get(hostKey)}
+									<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
+										<div class="msg-in-body">
+											<div class="action-card" role="alert">
+												{#if action.kind === "connect_github"}
+													<div class="action-title">Connect GitHub to continue</div>
+													<div class="action-reason">{action.reason}</div>
+													{#if status?.login}
+														<div class="action-connected">Connected as @{status.login}</div>
+													{:else if flow}
+														<div class="gh-flow-block">
+															<p class="gh-flow-label">
+																Enter this code at <a
+																	href={flow.verification_uri}
+																	target="_blank"
+																	rel="noreferrer"
+																	class="text-link">{flow.verification_uri}</a
+																>
+															</p>
+															<div class="gh-code-row">
+																<code class="gh-code">{flow.user_code}</code>
+																<button
+																	class="gh-copy-btn"
+																	onclick={() => {
+																		void navigator.clipboard.writeText(flow.user_code);
+																	}}
+																	aria-label="Copy code">Copy</button
+																>
+															</div>
+															{#if polling}
+																<p class="gh-flow-waiting" role="status" aria-live="polite">
+																	Waiting for authorization…
+																</p>
+															{/if}
+															<Button
+																variant="ghost"
+																size="sm"
+																onclick={() => githubCrew.stopPolling(hostKey)}>Cancel</Button
+															>
+														</div>
+													{:else}
+														<div class="action-btns">
+															<Button size="sm" onclick={() => void githubCrew.startLogin(hostKey)}
+																>Connect</Button
+															>
+															<Button
+																variant="ghost"
+																size="sm"
+																onclick={() => void cancelAction(t.id, bot.id)}>Cancel task</Button
+															>
+														</div>
+													{/if}
+												{:else if action.kind === "provide_secret"}
+													<div class="action-title">{action.label}</div>
+													<div class="action-reason">{action.reason}</div>
+													<input
+														type="password"
+														class="action-input"
+														placeholder="Enter value"
+														value={actionSecrets[t.id] ?? ""}
+														oninput={(e) => {
+															actionSecrets = {
+																...actionSecrets,
+																[t.id]: (e.currentTarget as HTMLInputElement).value,
+															};
+														}}
+														aria-label={action.label}
+													/>
+													<div class="action-btns">
+														<Button
+															size="sm"
+															disabled={!actionSecrets[t.id]?.trim() || actionSubmitting.has(t.id)}
+															onclick={() => {
+																const v = actionSecrets[t.id]?.trim() ?? "";
+																if (v) void answerAction(t.id, bot.id, v);
+															}}>Submit</Button
+														>
+														<Button variant="ghost" size="sm" onclick={() => void cancelAction(t.id, bot.id)}
+															>Cancel</Button
+														>
+													</div>
+												{:else if action.kind === "input"}
+													<div class="action-title">{action.label}</div>
+													{#if action.reason}
+														<div class="action-reason">{action.reason}</div>
+													{/if}
+													<input
+														type="text"
+														class="action-input"
+														placeholder={action.placeholder ?? ""}
+														value={actionInputs[t.id] ?? ""}
+														oninput={(e) => {
+															actionInputs = {
+																...actionInputs,
+																[t.id]: (e.currentTarget as HTMLInputElement).value,
+															};
+														}}
+														onkeydown={(e) => {
+															if (e.key === "Enter") {
+																const v = actionInputs[t.id]?.trim() ?? "";
+																if (v) void answerAction(t.id, bot.id, v);
+															}
+														}}
+														aria-label={action.label}
+													/>
+													<div class="action-btns">
+														<Button
+															size="sm"
+															disabled={!actionInputs[t.id]?.trim() || actionSubmitting.has(t.id)}
+															onclick={() => {
+																const v = actionInputs[t.id]?.trim() ?? "";
+																if (v) void answerAction(t.id, bot.id, v);
+															}}>Submit</Button
+														>
+														<Button variant="ghost" size="sm" onclick={() => void cancelAction(t.id, bot.id)}
+															>Cancel</Button
+														>
+													</div>
+												{:else if action.kind === "choose"}
+													<div class="action-title">{action.question}</div>
+													<div class="action-options">
+														{#each action.options as opt, oi (opt)}
+															<button
+																class="ask-option"
+																disabled={actionSubmitting.has(t.id)}
+																onclick={() => void answerAction(t.id, bot.id, opt)}
+															>
+																<span class="ask-key">{String.fromCharCode(65 + oi)}</span>
+																<div class="ask-opt-body">
+																	<span class="ask-opt-title">{opt}</span>
+																</div>
+															</button>
+														{/each}
+													</div>
+												{:else if action.kind === "sign_in_engine"}
+													<div class="action-title">Sign in to {action.engine}</div>
+													<div class="action-reason">
+														Sign in to {action.engine} in Settings, then click Done.
+													</div>
+													<div class="action-btns">
+														<Button
+															size="sm"
+															disabled={actionSubmitting.has(t.id)}
+															onclick={() => void answerAction(t.id, bot.id, "done")}>Done</Button
+														>
+														<Button variant="ghost" size="sm" onclick={() => void cancelAction(t.id, bot.id)}
+															>Cancel</Button
+														>
+													</div>
+												{:else if action.kind === "add_trigger"}
+													<div class="action-title">{bot.name} wants to add an automation</div>
+													<div class="action-reason">{action.reason}</div>
+													<div class="action-detail">
+														{describeTrigger(action.trigger)}
+													</div>
+													{#if action.prompt}
+														<div class="action-reason">{action.prompt}</div>
+													{/if}
+													<div class="action-btns">
+														<Button
+															size="sm"
+															disabled={actionSubmitting.has(t.id)}
+															onclick={() => void answerAction(t.id, bot.id, "add")}>Add</Button
+														>
+														<Button
+															variant="ghost"
+															size="sm"
+															disabled={actionSubmitting.has(t.id)}
+															onclick={() => void answerAction(t.id, bot.id, "skip")}>Not now</Button
+														>
+													</div>
+												{:else}
+													<div class="action-title">
+														{(action as { label?: string }).label ?? "Response needed"}
+													</div>
+													<input
+														type="text"
+														class="action-input"
+														value={actionInputs[t.id] ?? ""}
+														oninput={(e) => {
+															actionInputs = {
+																...actionInputs,
+																[t.id]: (e.currentTarget as HTMLInputElement).value,
+															};
+														}}
+														aria-label="Response"
+													/>
+													<div class="action-btns">
+														<Button
+															size="sm"
+															disabled={!actionInputs[t.id]?.trim() || actionSubmitting.has(t.id)}
+															onclick={() => {
+																const v = actionInputs[t.id]?.trim() ?? "";
+																if (v) void answerAction(t.id, bot.id, v);
+															}}>Submit</Button
+														>
+														<Button variant="ghost" size="sm" onclick={() => void cancelAction(t.id, bot.id)}
+															>Cancel</Button
+														>
+													</div>
 												{/if}
 											</div>
-										{/if}
+										</div>
 									</div>
-								</div>
-								<!-- Bot response: failed -->
-							{:else if t.state === "failed"}
-								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									<div class="msg-in-body">
-										<div class="bubble in error ca-selectable">{t.error ?? "Failed"}</div>
-									</div>
-								</div>
-								<!-- Bot response: cancelled -->
-							{:else if t.state === "cancelled"}
-								<div class="msg-in" class:group-start={groupedTasks[i]?.groupStart} in:msgIn>
-									<div class="msg-in-body">
-										<div class="bubble in muted">Cancelled</div>
-									</div>
-								</div>
-							{/if}
+								{/if}
 
-							<!-- Hover toolbar (shown via CSS .msg-row:hover) -->
-							<div class="msg-toolbar">
-								<button
-									class="tb-btn"
-									title="Copy"
-									onclick={() =>
-										navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}
-									><Copy size={14} /></button
-								>
-								{#if t.state === "failed" || t.state === "cancelled"}
+								<div class="msg-toolbar">
 									<button
 										class="tb-btn"
-										title="Retry"
-										onclick={() => {
-											prompt = t.prompt;
-											void send();
-										}}><RotateCcw size={14} /></button
+										title="Copy"
+										onclick={() =>
+											navigator.clipboard.writeText(t.state === "done" ? (t.result ?? "") : t.prompt)}
+										><Copy size={14} /></button
 									>
-								{/if}
-								{#if t.state === "running" && bot.running_task?.pane}
-									<button class="tb-btn" title="Open terminal" onclick={openTerminal}
-										><Terminal size={14} /></button
-									>
-								{/if}
+									{#if t.state === "failed" || t.state === "cancelled"}
+										<button
+											class="tb-btn"
+											title="Retry"
+											onclick={() => {
+												prompt = t.prompt;
+												void send();
+											}}><RotateCcw size={14} /></button
+										>
+									{/if}
+									{#if t.state === "running" && bot.running_task?.pane}
+										<button class="tb-btn" title="Open terminal" onclick={openTerminal}
+											><Terminal size={14} /></button
+										>
+									{/if}
+								</div>
 							</div>
-						</div>
-					{/each}
-				{/if}
-			</div>
+						{/each}
+					{/if}
+				</div>
 
-			{#if jumpVisible}
-				<div class="jump-present" role="status">
-					<button class="jump-btn" onclick={jumpToBottom}
-						>Jump to present <ArrowDown size={12} aria-hidden="true" /></button
-					>
+				{#if jumpVisible}
+					<div class="jump-present" role="status">
+						<button class="jump-btn" onclick={jumpToBottom}
+							>Jump to present <ArrowDown size={12} aria-hidden="true" /></button
+						>
+					</div>
+				{/if}
+
+				<div class="composer">
+					<div class="pill" class:focused={composerFocused} role="group">
+						<button class="pill-add" aria-label="Attach" onclick={noop}><Plus size={16} /></button>
+						<textarea
+							class="pill-input"
+							bind:value={prompt}
+							rows={1}
+							placeholder={hasPendingAsk
+								? "Type your answer or talk about something else"
+								: `Message ${bot.name ?? "bot"}…`}
+							aria-label="Task prompt"
+							onkeydown={(e) => {
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
+									void send();
+								}
+							}}
+							{@attach autoGrow}
+							onfocus={() => (composerFocused = true)}
+							onblur={() => (composerFocused = false)}></textarea>
+						<button
+							class="pill-send"
+							class:active={!!prompt.trim()}
+							aria-label="Send"
+							disabled={!prompt.trim() || sending}
+							onclick={send}><ArrowUp size={15} /></button
+						>
+					</div>
+					{#if queuedCount > 0}
+						<div class="queue-hint">{queuedCount} task{queuedCount === 1 ? "" : "s"} in queue</div>
+					{/if}
 				</div>
 			{/if}
-
-			{#if bot.state === "working"}
-				<TypingIndicator bots={[{ id: bot.id, name: bot.name }]} />
-			{/if}
-
-			<!-- Composer -->
-			<div class="composer">
-				<div class="pill" class:focused={composerFocused} role="group">
-					<button class="pill-add" aria-label="Attach" onclick={noop}>
-						<Plus size={16} />
-					</button>
-					<textarea
-						class="pill-input"
-						bind:value={prompt}
-						rows={1}
-						placeholder={hasPendingAsk
-							? "Type your answer or talk about something else"
-							: `Message ${bot.name ?? "bot"}…`}
-						aria-label="Task prompt"
-						onkeydown={(e) => {
-							if (e.key === "Enter" && !e.shiftKey) {
-								e.preventDefault();
-								void send();
-							}
-						}}
-						oninput={(e) => autoGrow(e.currentTarget)}
-						onfocus={() => (composerFocused = true)}
-						onblur={() => (composerFocused = false)}></textarea>
-					<button
-						class="pill-send"
-						class:active={!!prompt.trim()}
-						aria-label="Send"
-						disabled={!prompt.trim() || sending}
-						onclick={send}><ArrowUp size={15} /></button
-					>
-				</div>
-				{#if queuedCount > 0}
-					<div class="queue-hint">{queuedCount} task{queuedCount === 1 ? "" : "s"} in queue</div>
-				{/if}
-			</div>
 		</div>
 
-		<!-- D3 Profile panel (right overlay) -->
-		{#if panel === "profile"}
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-			<div class="panel-overlay" role="presentation" onclick={() => (panel = "none")}></div>
-			<div class="profile-panel" role="complementary" aria-label="Bot profile">
-				<button class="close-btn" onclick={() => (panel = "none")} aria-label="Close panel"
-					><X size={14} /></button
-				>
-
-				<div class="profile-header">
-					<button
-						class="profile-avatar"
-						aria-label="Customize look"
-						onclick={() => (editingLook = normalizeLook(bot.look, bot.id))}
-					>
-						<BotFace seed={bot.id} look={bot.look} state={faceState} size={72} track />
-					</button>
-					<div class="profile-name">{bot.name}</div>
-					<div class="profile-sub">
-						{agentLabel}{bots.selected?.hostKey ? ` · ${serverName}` : ""}
-					</div>
-				</div>
-
-				{#if editingLook}
-					<div class="profile-section">
-						<BotEditor bind:look={editingLook} seed={bot.id} />
-						<div class="profile-foot">
-							<Button size="sm" onclick={() => (editingLook = null)}>Cancel</Button>
-							<Button size="sm" onclick={saveLook}>Save look</Button>
-						</div>
-					</div>
-				{/if}
-
-				<!-- What it does -->
-				<div class="profile-section">
-					<div class="profile-section-title">What it does</div>
-					<textarea
-						class="profile-textarea ca-selectable"
-						bind:value={settingsRole}
-						rows={5}
-						maxlength={2000}
-						aria-label="Bot role"></textarea>
-					<div class="profile-foot">
-						<Button size="sm" disabled={roleSaving} onclick={saveRole}>
-							{roleSaving ? "Saving…" : "Save"}
-						</Button>
-					</div>
-				</div>
-
-				<!-- Approval -->
-				<div class="profile-section">
-					<div class="profile-section-title">Approval</div>
-					<select
-						class="profile-select"
-						bind:value={settingsApproval}
-						disabled={bot.approval_supported === false}
-						aria-label="Approval mode"
-					>
-						<option value="ask">Ask before acting</option>
-						<option value="auto">Automatic (no prompts)</option>
-					</select>
-					{#if bot.approval_supported === false}
-						<p class="hint">OpenCode bots run without approval prompts.</p>
-					{:else}
-						<div class="profile-foot">
-							<Button size="sm" disabled={approvalSaving} onclick={saveApproval}>
-								{approvalSaving ? "Saving…" : "Save"}
-							</Button>
-						</div>
-					{/if}
-				</div>
-
-				<!-- Project -->
-				<div class="profile-section">
-					<div class="profile-section-title">Project</div>
-					{#if bot.project}
-						<div class="project-linked">
-							<span class="project-kind-icon">
-								{#if bot.project.kind === "git"}
-									<GitBranch size={13} aria-hidden="true" />
-								{:else}
-									<Folder size={13} aria-hidden="true" />
-								{/if}
-							</span>
-							<div class="project-details">
-								<span class="project-name">{bot.project.name}</span>
-								{#if bot.project.url}<span class="project-url">{bot.project.url}</span>{/if}
-								{#if bot.project.branch}<span class="project-branch">@ {bot.project.branch}</span>{/if}
-							</div>
-							<button class="close-btn" onclick={() => void unlinkProject()} aria-label="Unlink project">
-								<X size={14} /></button
-							>
-						</div>
-					{:else}
-						<div class="project-link-options">
-							{#each ideProjects as p (p.id)}
-								<button class="project-option" onclick={() => void linkProject(p)}>
-									<GitBranch size={12} aria-hidden="true" />
-									{p.name}
-									{#if p.branch}<span class="muted">{p.branch}</span>{/if}
-								</button>
-							{/each}
-							{#if ideProjects.length === 0}
-								<p class="hint">No IDE projects found. Open a project in the IDE first.</p>
-							{/if}
-						</div>
-					{/if}
-				</div>
-
-				<!-- Triggers -->
-				<div class="profile-section">
-					<div class="profile-section-title">Triggers</div>
-					{#each allTriggers as t, i (t.id)}
-						{@const TrigIcon = triggerIconComponent(t.kind.type as TriggerKind)}
-						<div class="trigger-row" in:optionIn={{ index: i }}>
-							<span class="trigger-row-icon" aria-hidden="true"><TrigIcon size={14} /></span>
-							<span class="trigger-row-summary">{triggerSummary(t)}</span>
-							<input
-								type="checkbox"
-								checked={t.enabled}
-								aria-label="Enable trigger"
-								onchange={(e) => void toggleTrigger(t.id, (e.currentTarget as HTMLInputElement).checked)}
-							/>
-							<button class="close-btn" onclick={() => void removeTrigger(t.id)} aria-label="Remove trigger">
-								<X size={14} /></button
-							>
-						</div>
-					{:else}
-						<p class="hint">No triggers yet.</p>
-					{/each}
-
-					{#if newTriggerKind === null}
-						<div class="add-trigger-picker">
-							<span class="hint">Add trigger:</span>
-							{#each TRIGGER_KINDS as tk}
-								{@const TkIcon = triggerIconComponent(tk.kind)}
-								<button
-									class="trigger-kind-btn"
-									onclick={() => {
-										newTriggerKind = tk.kind;
-										newTriggerForm = {};
-									}}><TkIcon size={13} aria-hidden="true" /> {tk.label}</button
-								>
-							{/each}
-						</div>
-					{:else}
-						<div class="add-trigger-form">
-							{#if newTriggerKind === "schedule"}
-								<input
-									class="cron-input"
-									bind:value={newRoutineCron}
-									placeholder="0 9 * * 1-5"
-									aria-label="Cron expression"
-								/>
-								<textarea
-									class="profile-textarea ca-selectable"
-									bind:value={newRoutinePrompt}
-									rows={3}
-									placeholder="Daily standup summary"
-									aria-label="Prompt"></textarea>
-								<div class="cron-presets">
-									<button class="preset" onclick={() => (newRoutineCron = "0 8 * * *")}
-										>Every morning 8:00</button
-									>
-									<button class="preset" onclick={() => (newRoutineCron = "0 9 * * 1-5")}
-										>Weekdays 9:00</button
-									>
-								</div>
-							{:else if newTriggerKind === "interval"}
-								<div class="add-routine">
-									<input
-										class="cron-input"
-										type="number"
-										min="1"
-										value={newTriggerForm.every ?? ""}
-										oninput={(e) => {
-											newTriggerForm = {
-												...newTriggerForm,
-												every: (e.currentTarget as HTMLInputElement).value,
-											};
-										}}
-										placeholder="30"
-										aria-label="Interval amount"
-									/>
-									<select
-										class="profile-select"
-										value={newTriggerForm.unit ?? "minutes"}
-										onchange={(e) => {
-											newTriggerForm = {
-												...newTriggerForm,
-												unit: (e.currentTarget as HTMLSelectElement).value,
-											};
-										}}
-										aria-label="Interval unit"
-									>
-										<option value="minutes">minutes</option>
-										<option value="hours">hours</option>
-										<option value="days">days</option>
-									</select>
-								</div>
-								<textarea
-									class="profile-textarea ca-selectable"
-									value={String(newTriggerForm.prompt ?? "")}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											prompt: (e.currentTarget as HTMLTextAreaElement).value,
-										};
-									}}
-									rows={3}
-									placeholder="Prompt"
-									aria-label="Prompt"></textarea>
-							{:else if newTriggerKind === "webhook"}
-								<textarea
-									class="profile-textarea ca-selectable"
-									value={String(newTriggerForm.prompt_template ?? "")}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
-										};
-									}}
-									rows={3}
-									placeholder="Prompt template"
-									aria-label="Prompt template"></textarea>
-							{:else if newTriggerKind === "github"}
-								<input
-									class="prompt-input"
-									value={newTriggerForm.repo ?? ""}
-									oninput={(e) => {
-										newTriggerForm = { ...newTriggerForm, repo: (e.currentTarget as HTMLInputElement).value };
-									}}
-									placeholder="owner/repo"
-									aria-label="GitHub repo"
-								/>
-								<div class="github-events">
-									{#each GITHUB_EVENTS as ev}
-										<label class="event-check">
-											<input
-												type="checkbox"
-												checked={!!newTriggerForm[ev.ev]}
-												onchange={(e) => {
-													newTriggerForm = {
-														...newTriggerForm,
-														[ev.ev]: (e.currentTarget as HTMLInputElement).checked,
-													};
-												}}
-												aria-label={ev.label}
-											/>
-											{ev.label}
-										</label>
-									{/each}
-								</div>
-								<textarea
-									class="profile-textarea ca-selectable"
-									value={String(newTriggerForm.prompt_template ?? "")}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
-										};
-									}}
-									rows={3}
-									placeholder="Prompt template"
-									aria-label="Prompt template"></textarea>
-							{:else if newTriggerKind === "file"}
-								<input
-									class="prompt-input"
-									value={newTriggerForm.glob ?? ""}
-									oninput={(e) => {
-										newTriggerForm = { ...newTriggerForm, glob: (e.currentTarget as HTMLInputElement).value };
-									}}
-									placeholder="**/*.ts"
-									aria-label="File glob"
-								/>
-								<textarea
-									class="profile-textarea ca-selectable"
-									value={String(newTriggerForm.prompt_template ?? "")}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
-										};
-									}}
-									rows={3}
-									placeholder="Prompt template"
-									aria-label="Prompt template"></textarea>
-							{:else if newTriggerKind === "bot"}
-								<select
-									class="profile-select"
-									value={newTriggerForm.bot_id ?? ""}
-									onchange={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											bot_id: (e.currentTarget as HTMLSelectElement).value,
-										};
-									}}
-									aria-label="Bot"
-								>
-									<option value="">Select bot…</option>
-									{#each bots.allBots as { bot: b }}
-										<option value={b.id}>{b.name}</option>
-									{/each}
-								</select>
-								<select
-									class="profile-select"
-									value={newTriggerForm.on ?? "done"}
-									onchange={(e) => {
-										newTriggerForm = { ...newTriggerForm, on: (e.currentTarget as HTMLSelectElement).value };
-									}}
-									aria-label="On event"
-								>
-									<option value="done">Done</option>
-									<option value="failed">Failed</option>
-									<option value="both">Both</option>
-								</select>
-								<textarea
-									class="profile-textarea ca-selectable"
-									value={String(newTriggerForm.prompt_template ?? "")}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
-										};
-									}}
-									rows={3}
-									placeholder="Prompt template"
-									aria-label="Prompt template"></textarea>
-							{:else if newTriggerKind === "service"}
-								<input
-									class="prompt-input"
-									value={newTriggerForm.service ?? ""}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											service: (e.currentTarget as HTMLInputElement).value,
-										};
-									}}
-									placeholder="Service name"
-									aria-label="Service name"
-								/>
-								<select
-									class="profile-select"
-									value={newTriggerForm.on ?? "failed"}
-									onchange={(e) => {
-										newTriggerForm = { ...newTriggerForm, on: (e.currentTarget as HTMLSelectElement).value };
-									}}
-									aria-label="On event"
-								>
-									<option value="failed">Failed</option>
-									<option value="recovered">Recovered</option>
-									<option value="both">Both</option>
-								</select>
-								<textarea
-									class="profile-textarea ca-selectable"
-									value={String(newTriggerForm.prompt_template ?? "")}
-									oninput={(e) => {
-										newTriggerForm = {
-											...newTriggerForm,
-											prompt_template: (e.currentTarget as HTMLTextAreaElement).value,
-										};
-									}}
-									rows={3}
-									placeholder="Prompt template"
-									aria-label="Prompt template"></textarea>
-							{/if}
-							<div class="profile-foot">
-								<Button
-									size="sm"
-									variant="ghost"
-									onclick={() => {
-										newTriggerKind = null;
-										newTriggerForm = {};
-									}}>Cancel</Button
-								>
-								<Button size="sm" onclick={addTrigger}>Add</Button>
-							</div>
-						</div>
-					{/if}
-				</div>
-
-				<!-- Memory -->
-				<div class="profile-section">
-					<div class="profile-section-title">Memory</div>
-					{#if memoryLoading}
-						<div class="loading">Loading…</div>
-					{:else}
-						<textarea
-							class="memory-area ca-selectable"
-							bind:value={memoryText}
-							rows={8}
-							aria-label="Bot memory"></textarea>
-						<div class="profile-foot">
-							<Button size="sm" disabled={memorySaving} onclick={saveMemory}>
-								{memorySaving ? "Saving…" : "Save memory"}
-							</Button>
-						</div>
-					{/if}
-				</div>
-
-				<!-- Usage -->
-				<div class="profile-section">
-					<div class="profile-section-title">Usage</div>
-					<UsageSparkline data={usageData} />
-					<div class="usage-totals">
-						<span class="usage-stat">Today: {fmtTokens(usageTotals.today)}</span>
-						<span class="usage-stat">7d: {fmtTokens(usageTotals.week)}</span>
-						<span class="usage-stat">30d: {fmtTokens(usageTotals.month)}</span>
-					</div>
-				</div>
-
-				<!-- Delete bot -->
-				<div class="profile-delete-wrap">
-					<button class="delete-btn" onclick={() => void deleteBot()}>Delete bot</button>
-				</div>
-			</div>
-		{/if}
+		<BotSettingsDialog bind:open={settingsOpen} />
 	{/if}
 </div>
 
@@ -1467,83 +1360,104 @@
 	.header-pill {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		background: var(--ca-bg-secondary, var(--ca-surface-sunken));
-		border-radius: 999px;
-		padding: 4px 12px 4px 6px;
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--ca-text-primary);
+		gap: 10px;
+		background: none;
 		border: none;
+		border-radius: 12px;
+		padding: 4px 10px 4px 4px;
+		color: var(--ca-text-primary);
 		cursor: default;
-		transition: opacity 120ms;
+		transition: background 120ms;
+		text-align: left;
 	}
-	.header-pill:hover {
-		opacity: 0.8;
+	.header-pill:hover,
+	.header-pill:focus-visible {
+		background: var(--ca-vibrancy-fill);
+		outline: none;
+	}
+	.pill-text {
+		display: flex;
+		flex-direction: column;
+		line-height: 1.2;
+		min-width: 0;
 	}
 	.pill-name {
 		font-size: 14px;
 		font-weight: 600;
 	}
-	.pill-elapsed {
-		font-size: 11px;
+	.pill-status {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11.5px;
 		color: var(--ca-text-secondary);
+	}
+	.pill-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--ca-text-tertiary, var(--ca-text-secondary));
+		opacity: 0.6;
+	}
+	.pill-status[data-state="working"] .pill-dot {
+		background: var(--ca-semantic-success);
+		opacity: 1;
+		animation: pill-pulse 1.6s ease-in-out infinite;
+	}
+	.pill-status[data-state="needs_you"] {
+		color: var(--ca-semantic-warning);
+	}
+	.pill-status[data-state="needs_you"] .pill-dot {
+		background: var(--ca-semantic-warning);
+		opacity: 1;
+	}
+	@keyframes pill-pulse {
+		50% {
+			opacity: 0.35;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.pill-status[data-state="working"] .pill-dot {
+			animation: none;
+		}
+	}
+	.header-pill :global(.pill-chevron) {
+		color: var(--ca-text-secondary);
+		opacity: 0;
+		transition: opacity 120ms;
+	}
+	.header-pill:hover :global(.pill-chevron),
+	.header-pill:focus-visible :global(.pill-chevron) {
+		opacity: 1;
 	}
 	.header-right {
 		position: absolute;
 		right: 12px;
 		top: 50%;
 		transform: translateY(-50%);
+		display: flex;
+		gap: 6px;
 	}
-
-	/* context menu */
-	.menu-wrap {
-		position: relative;
-	}
-	.icon-btn {
-		background: none;
-		border: none;
-		font-size: 18px;
-		line-height: 1;
-		color: var(--ca-text-secondary);
-		padding: 4px 6px;
-		border-radius: 6px;
-		cursor: default;
-		letter-spacing: 2px;
-	}
-	.icon-btn:hover {
-		background: var(--ca-vibrancy-fill);
-		color: var(--ca-text-primary);
-	}
-	.dropdown {
-		position: absolute;
-		top: calc(100% + 4px);
-		right: 0;
-		min-width: 140px;
-		background: var(--ca-surface-overlay, var(--ca-surface-base));
-		border: 0.5px solid var(--ca-outline-subtle);
+	.head-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font: inherit;
+		font-size: 12px;
+		padding: 5px 10px;
 		border-radius: 8px;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-		z-index: 100;
-		overflow: hidden;
-		padding: 4px 0;
-	}
-	.menu-item {
-		display: block;
-		width: 100%;
-		text-align: left;
+		border: 0.5px solid var(--ca-outline-subtle);
 		background: none;
-		border: none;
-		padding: 7px 14px;
-		font-size: 13px;
-		color: var(--ca-text-primary);
+		color: var(--ca-text-secondary);
 		cursor: default;
 	}
-	.menu-item:hover {
+	.head-btn:hover {
 		background: var(--ca-vibrancy-fill);
+		color: var(--ca-text-primary);
 	}
-	.menu-item--danger {
+	.head-btn.danger:hover {
 		color: var(--ca-semantic-error);
+		border-color: color-mix(in oklab, var(--ca-semantic-error) 40%, transparent);
 	}
 
 	/* ─── offline banner ─────────────────────────────────────── */
@@ -1562,18 +1476,39 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		max-width: 760px;
+		/* Like Grok: the thread uses the whole pane on a normal window and only centres (capped) once the pane
+		   is much wider than a comfortable reading line, i.e. full screen. */
+		max-width: 1120px;
 		width: 100%;
 		margin: 0 auto;
 		position: relative;
 	}
+	/* A chat never scrolls sideways: with only overflow-y set, overflow-x computed to auto and one wide bubble (a long
+	   unbroken path in an error, a code line) dragged the whole conversation left. Rows may shrink, long words break,
+	   code blocks scroll inside themselves. */
 	.thread {
 		flex: 1;
 		overflow-y: auto;
-		padding: 20px 24px 8px;
+		overflow-x: hidden;
+		padding: 20px clamp(24px, 5%, 64px) 8px;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+	.thread > :global(*) {
+		min-width: 0;
+	}
+	.thread :global(.msg-in-body) {
+		min-width: 0;
+		max-width: 100%;
+	}
+	.thread :global(.bubble),
+	.thread :global(.md-result) {
+		overflow-wrap: anywhere;
+	}
+	.thread :global(.md-result pre) {
+		max-width: 100%;
+		overflow-x: auto;
 	}
 	.empty-thread {
 		color: var(--ca-text-secondary);
@@ -1604,19 +1539,44 @@
 		height: 0.5px;
 		background: var(--ca-outline-subtle);
 	}
+	/* Turns: a clear gap whenever the speaker changes (you ↔ the crewmate), tight spacing between consecutive bubbles of
+	   the same speaker. Before, both sides used 2px and the reply touched the question it answered. */
 	.msg-out {
 		display: flex;
 		flex-direction: column;
 		align-items: flex-end;
-		margin-bottom: 2px;
+		margin-top: 20px;
+		margin-bottom: 14px;
 		padding: 1px 16px;
+	}
+	.msg-out + .msg-out {
+		margin-top: -10px;
 	}
 	.msg-in {
 		display: flex;
 		align-items: flex-start;
 		gap: 12px;
 		padding: 1px 16px;
+		margin-top: 4px;
 		position: relative;
+	}
+	/* The body takes the row and the bubble hugs its text: shrink-wrapped, the body's width depended on its own
+	   content and a bubble's max-width (72%) of it could fall under one word ("Canc/elled"). */
+	.msg-in-body {
+		flex: 1;
+		min-width: 0;
+	}
+	.msg-in-body > .bubble {
+		width: fit-content;
+	}
+	/* A task's end that is not a reply (cancelled): a quiet line, not a bubble. */
+	.task-note {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		padding: 2px 4px;
 	}
 	.msg-in.group-start {
 		margin-top: 8px;
@@ -1628,6 +1588,19 @@
 		display: flex;
 		flex-direction: column;
 	}
+	.msg-row.flash {
+		animation: task-flash 1.6s ease-out;
+		border-radius: 12px;
+	}
+	@keyframes task-flash {
+		0%,
+		30% {
+			background: color-mix(in oklab, var(--ca-brand-main) 16%, transparent);
+		}
+		100% {
+			background: transparent;
+		}
+	}
 	.bubble {
 		max-width: 72%;
 		padding: 12px 16px;
@@ -1638,7 +1611,7 @@
 		white-space: pre-wrap;
 	}
 	.bubble.out {
-		background: color-mix(in oklab, var(--ca-brand-main) 22%, var(--ca-surface-base));
+		background: color-mix(in oklab, var(--crew, var(--ca-brand-main)) 24%, var(--ca-surface-base));
 		border-bottom-right-radius: 4px;
 	}
 	.bubble.in {
@@ -1646,20 +1619,8 @@
 		border-bottom-left-radius: 4px;
 		color: var(--ca-text-primary);
 	}
-	.bubble.in.working {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		white-space: nowrap;
-		word-break: normal;
-		color: var(--ca-text-secondary);
-		font-style: italic;
-	}
 	.bubble.in.error {
 		color: var(--ca-semantic-error);
-	}
-	.bubble.in.muted {
-		color: var(--ca-text-secondary);
 	}
 	.msg-meta {
 		font-size: 11px;
@@ -1667,14 +1628,57 @@
 		margin-top: 2px;
 		padding: 0 4px;
 	}
+	.msg-meta.preparing {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.prep-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--ca-brand-main);
+		animation: prep-pulse 1.2s ease-in-out infinite;
+	}
+	@keyframes prep-pulse {
+		50% {
+			opacity: 0.3;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.prep-dot {
+			animation: none;
+		}
+	}
 
 	/* ─── markdown result ────────────────────────────────────── */
+	/* Consecutive messages of one reply sit close together, like a burst of chat messages. */
+	.reply-part + .reply-part {
+		margin-top: 6px;
+	}
+	/* The bot's reply sits in the same bubble as every other message (loose text on the page read as a document,
+	   not a conversation). One size throughout: the markdown renderer's paragraphs came out smaller than lists. */
 	.md-result {
 		font-size: 15px;
-		line-height: 1.6;
+		line-height: 1.55;
 		color: var(--ca-text-primary);
 		word-break: break-word;
 		max-width: 72%;
+		width: fit-content;
+		padding: 12px 16px;
+		border-radius: 18px;
+		border-bottom-left-radius: 4px;
+		background: var(--ca-surface-sunken);
+	}
+	.md-result :global(:first-child) {
+		margin-top: 0;
+	}
+	.md-result :global(:last-child) {
+		margin-bottom: 0;
+	}
+	.md-result :global(p),
+	.md-result :global(li) {
+		font-size: inherit;
 	}
 	.md-result :global(h1),
 	.md-result :global(h2),
@@ -1798,38 +1802,6 @@
 		background: var(--ca-vibrancy-fill);
 		color: var(--ca-text-primary);
 	}
-	/* steps */
-	.steps-wrap {
-		margin: 2px 0 4px 2px;
-	}
-	.steps-btn {
-		background: none;
-		border: none;
-		font-size: 11.5px;
-		color: var(--ca-text-secondary);
-		cursor: default;
-		padding: 2px 4px;
-	}
-	.steps-btn:hover {
-		color: var(--ca-text-primary);
-	}
-	.steps-list {
-		font-size: 11.5px;
-		color: var(--ca-text-secondary);
-		padding: 4px 0 0 12px;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.step-row {
-		display: flex;
-		gap: 8px;
-	}
-	.step-ts {
-		opacity: 0.6;
-		flex: none;
-	}
-
 	/* approval bubble */
 	.approval-bubble {
 		max-width: 72%;
@@ -1890,14 +1862,18 @@
 	/* ─── composer ───────────────────────────────────────────── */
 	.composer {
 		flex: none;
-		padding: 8px 16px 20px;
+		/* Same side inset as the thread, so the pill lines up with the bubbles above it. */
+		padding: 8px clamp(24px, 5%, 64px) 20px;
 	}
 	.pill {
 		display: flex;
 		align-items: flex-end;
-		background: var(--ca-surface-sunken);
-		border-radius: 999px;
-		border: 1px solid var(--ca-outline-subtle);
+		/* Raised, like Grok's composer: a sunken (darker than the page) pill read as a hole with faded edges. */
+		background: color-mix(in oklab, var(--ca-text-primary) 6%, var(--ca-surface-raised, var(--ca-surface)));
+		/* Half the one-line height: a pill with one line, a rounded box once the text wraps. 999px kept the pill shape
+		   at any height and its round ends cut into the second line. */
+		border-radius: 26px;
+		border: 1px solid color-mix(in oklab, var(--ca-text-primary) 12%, transparent);
 		min-height: 52px;
 		padding: 8px 8px 8px 6px;
 		gap: 4px;
@@ -1905,7 +1881,7 @@
 		--composer-max-h: 192;
 	}
 	.pill.focused {
-		border-color: color-mix(in oklab, var(--ca-brand-main) 60%, transparent);
+		border-color: color-mix(in oklab, var(--crew, var(--ca-brand-main)) 60%, transparent);
 	}
 	.pill-add {
 		flex: none;
@@ -1945,6 +1921,11 @@
 		font-family: inherit;
 		field-sizing: content;
 	}
+	/* Without the "+" before it (the setup composer), the text starts at the pill's own edge: inset it so it clears the
+	   round end like the "+" does in the chat composer. */
+	.pill-input:first-child {
+		padding-left: 14px;
+	}
 	.pill-input::placeholder {
 		color: var(--ca-text-secondary);
 	}
@@ -1957,7 +1938,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: color-mix(in oklab, var(--ca-brand-main) 25%, transparent);
+		background: color-mix(in oklab, var(--crew, var(--ca-brand-main)) 25%, transparent);
 		border: none;
 		color: var(--ca-text-disabled, #888);
 		cursor: default;
@@ -1968,7 +1949,7 @@
 		flex-shrink: 0;
 	}
 	.pill-send.active {
-		background: var(--ca-brand-main);
+		background: var(--crew, var(--ca-brand-main));
 		color: var(--ca-surface-base);
 	}
 	.pill-send:disabled:not(.active) {
@@ -1981,197 +1962,6 @@
 		margin-top: 6px;
 	}
 
-	/* ─── profile panel overlay ──────────────────────────────── */
-	.panel-overlay {
-		position: absolute;
-		inset: 0;
-		z-index: 49;
-	}
-	.profile-panel {
-		position: absolute;
-		right: 0;
-		top: 0;
-		bottom: 0;
-		width: 300px;
-		z-index: 50;
-		background: var(--ca-surface-base);
-		border-left: 0.5px solid var(--ca-outline-subtle);
-		overflow-y: auto;
-		padding: 14px 16px 24px;
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-	}
-	.close-btn {
-		background: none;
-		border: none;
-		font-size: 13px;
-		color: var(--ca-text-secondary);
-		cursor: default;
-		padding: 2px 4px;
-		align-self: flex-end;
-		margin-bottom: 8px;
-	}
-	.close-btn:hover {
-		color: var(--ca-text-primary);
-	}
-	.profile-header {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 6px;
-		padding-bottom: 16px;
-		border-bottom: 0.5px solid var(--ca-outline-subtle);
-		margin-bottom: 4px;
-	}
-	.profile-avatar {
-		padding: 0;
-		border: 0;
-		background: none;
-		cursor: pointer;
-	}
-	.profile-name {
-		font-size: 15px;
-		font-weight: 600;
-		text-align: center;
-	}
-	.profile-sub {
-		font-size: 12px;
-		color: var(--ca-text-secondary);
-		text-align: center;
-	}
-
-	/* profile sections */
-	.profile-section {
-		padding: 14px 0;
-		border-bottom: 0.5px solid var(--ca-outline-subtle);
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.profile-section-title {
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: var(--ca-text-secondary);
-	}
-	.profile-textarea {
-		width: 100%;
-		font-size: 13px;
-		padding: 7px 8px;
-		border-radius: 6px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: var(--ca-surface-sunken);
-		color: var(--ca-text-primary);
-		resize: vertical;
-		box-sizing: border-box;
-		line-height: 1.4;
-		font-family: inherit;
-	}
-	.profile-textarea:focus {
-		outline: none;
-		border-color: var(--ca-action-focus);
-	}
-	.profile-select {
-		font-size: 13px;
-		padding: 6px 8px;
-		border-radius: 6px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: var(--ca-surface-sunken);
-		color: var(--ca-text-primary);
-		width: 100%;
-	}
-	.profile-foot {
-		display: flex;
-		gap: 8px;
-	}
-	.hint {
-		font-size: 12px;
-		color: var(--ca-text-secondary);
-		margin: 0;
-	}
-
-	/* routines (inside profile panel) — add-routine/cron-input/prompt-input kept for schedule form */
-	.add-routine {
-		display: flex;
-		gap: 6px;
-		align-items: center;
-	}
-	.cron-input {
-		width: 100px;
-		font-family: var(--ca-font-mono, monospace);
-		font-size: 12px;
-		padding: 4px 6px;
-		border-radius: 5px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: var(--ca-surface-base);
-		color: var(--ca-text-primary);
-	}
-	.prompt-input {
-		flex: 1;
-		font-size: 12px;
-		padding: 4px 6px;
-		border-radius: 5px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: var(--ca-surface-base);
-		color: var(--ca-text-primary);
-	}
-	.cron-presets {
-		display: flex;
-		gap: 6px;
-		flex-wrap: wrap;
-	}
-	.preset {
-		font-size: 11px;
-		padding: 2px 7px;
-		border-radius: 5px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: none;
-		color: var(--ca-text-secondary);
-		cursor: default;
-	}
-	.preset:hover {
-		background: var(--ca-vibrancy-fill);
-		color: var(--ca-text-primary);
-	}
-
-	/* memory textarea */
-	.memory-area {
-		width: 100%;
-		font-family: var(--ca-font-mono, monospace);
-		font-size: 12px;
-		padding: 8px;
-		border-radius: 6px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		background: var(--ca-surface-sunken);
-		color: var(--ca-text-primary);
-		resize: vertical;
-		box-sizing: border-box;
-	}
-	.memory-area:focus {
-		outline: none;
-		border-color: var(--ca-action-focus);
-	}
-
-	/* delete bot */
-	.profile-delete-wrap {
-		padding-top: 20px;
-		display: flex;
-		justify-content: center;
-	}
-	.delete-btn {
-		background: none;
-		border: none;
-		font-size: 13px;
-		color: var(--ca-semantic-error);
-		cursor: default;
-		padding: 4px 8px;
-		border-radius: 5px;
-	}
-	.delete-btn:hover {
-		background: color-mix(in oklab, var(--ca-semantic-error) 10%, transparent);
-	}
 
 	/* ─── ask card ───────────────────────────────────────────── */
 	.ask-card {
@@ -2287,73 +2077,6 @@
 	.usage-model {
 		font-style: italic;
 	}
-	.usage-totals {
-		display: flex;
-		gap: 12px;
-		padding: 4px 0;
-	}
-	.usage-stat {
-		font-size: 11.5px;
-		color: var(--ca-text-secondary);
-	}
-	/* ── Project section in profile panel ───────────────────────── */
-	.project-linked {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 4px 0;
-	}
-	.project-kind-icon {
-		font-size: 16px;
-		flex: none;
-	}
-	.project-details {
-		flex: 1;
-		min-width: 0;
-	}
-	.project-name {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--ca-text-primary);
-		display: block;
-	}
-	.project-url {
-		font-size: 10.5px;
-		color: var(--ca-text-secondary);
-		display: block;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.project-branch {
-		font-size: 10.5px;
-		color: var(--ca-text-secondary);
-	}
-	.project-link-options {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.project-option {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 6px 8px;
-		border: none;
-		background: none;
-		border-radius: 6px;
-		text-align: left;
-		font-size: 12.5px;
-		color: var(--ca-text-primary);
-		cursor: default;
-	}
-	.project-option:hover {
-		background: var(--ca-vibrancy-fill);
-	}
-	.muted {
-		color: var(--ca-text-secondary);
-		font-size: 11px;
-	}
 
 	/* ─── trigger event line (in thread) ────────────────────── */
 	.trigger-event {
@@ -2373,64 +2096,142 @@
 		font-style: italic;
 	}
 
-	/* ─── trigger rows (inside profile panel) ───────────────── */
-	.trigger-row {
+
+
+	/* ─── setup conversation ─────────────────────────────────── */
+	.setup-thread {
+		padding-top: 24px;
+	}
+	.setup-typing {
+		padding: 4px 16px;
+	}
+	.setup-ask {
+		margin-top: 8px;
+	}
+	.name-chips {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-top: 10px;
+		padding: 0 2px;
+	}
+	.name-chip {
+		padding: 6px 16px;
+		border-radius: 999px;
+		border: 1px solid var(--ca-outline-subtle);
+		background: var(--ca-surface-sunken);
+		color: var(--ca-text-primary);
+		font-size: 14px;
+		cursor: default;
+		transition: background 80ms;
+	}
+	.name-chip:hover:not(:disabled) {
+		background: color-mix(in oklab, var(--ca-brand-main) 12%, var(--ca-surface-sunken));
+		border-color: color-mix(in oklab, var(--ca-brand-main) 40%, transparent);
+	}
+	.name-chip:disabled {
+		opacity: 0.5;
+	}
+
+	/* ── Action card (waiting_action state) ─────────────────────────── */
+	/* A comfortable fixed width instead of shrink-to-fit: the card used to collapse to its title's width and the
+	   "Cancel task" button spilled out of it. */
+	.action-card {
+		box-sizing: border-box;
+		width: min(380px, 100%);
+		max-width: 100%;
+		padding: 14px 16px;
+		border-radius: 18px;
+		border-top-left-radius: 4px;
+		background: color-mix(in oklab, var(--ca-semantic-warning) 8%, transparent);
+		border: 0.5px solid color-mix(in oklab, var(--ca-semantic-warning) 35%, transparent);
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		overflow-wrap: anywhere;
+	}
+	.action-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ca-text-primary);
+	}
+	.action-reason {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+	}
+	.action-connected {
+		font-size: 12px;
+		color: var(--ca-semantic-success);
+	}
+	.action-input {
+		background: var(--ca-surface-base);
+		border: 0.5px solid var(--ca-outline-subtle);
+		border-radius: 8px;
+		padding: 6px 10px;
+		font-size: 13px;
+		color: var(--ca-text-primary);
+		outline: none;
+		width: 100%;
+		box-sizing: border-box;
+	}
+	.action-input:focus {
+		border-color: var(--ca-outline-primary);
+	}
+	.action-btns {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+	}
+	.action-btns :global(button) {
+		white-space: nowrap;
+	}
+	.action-options {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.gh-flow-block {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.gh-flow-label {
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+		margin: 0;
+	}
+	.gh-code-row {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: 12px;
-		padding: 2px 0;
 	}
-	.trigger-row-icon {
-		font-size: 14px;
-		flex: none;
+	.gh-code {
+		font-size: 18px;
+		font-weight: 700;
+		letter-spacing: 0.15em;
+		font-family: var(--ca-font-mono, monospace);
+		color: var(--ca-text-primary);
 	}
-	.trigger-row-summary {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--ca-text-secondary);
-	}
-
-	/* ─── add trigger picker ─────────────────────────────────── */
-	.add-trigger-picker {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		align-items: center;
-	}
-	.trigger-kind-btn {
+	.gh-copy-btn {
 		font-size: 11px;
-		padding: 2px 7px;
+		padding: 2px 8px;
 		border-radius: 5px;
 		border: 0.5px solid var(--ca-outline-subtle);
 		background: none;
 		color: var(--ca-text-secondary);
 		cursor: default;
 	}
-	.trigger-kind-btn:hover {
+	.gh-copy-btn:hover {
 		background: var(--ca-vibrancy-fill);
 		color: var(--ca-text-primary);
 	}
-
-	/* ─── add trigger form ───────────────────────────────────── */
-	.add-trigger-form {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.github-events {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.event-check {
-		display: flex;
-		align-items: center;
-		gap: 6px;
+	.gh-flow-waiting {
 		font-size: 12px;
-		color: var(--ca-text-primary);
-		cursor: default;
+		color: var(--ca-text-secondary);
+		margin: 0;
+	}
+	.text-link {
+		color: var(--ca-accent, #4f8ef7);
 	}
 </style>

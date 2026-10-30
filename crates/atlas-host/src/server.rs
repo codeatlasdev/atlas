@@ -441,12 +441,12 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // read (`ATLAS_HOOK_ENDPOINT`) and steal their events from the real hostd.
     if lab.is_none()
         && let Err(e) = crate::agents::hook_server::start(
-        dir,
-        hub.agents.clone(),
-        hub.mobile.clone(),
-        Some(Arc::downgrade(&hub)),
-    )
-    .await
+            dir,
+            hub.agents.clone(),
+            hub.mobile.clone(),
+            Some(Arc::downgrade(&hub)),
+        )
+        .await
     {
         eprintln!("hostd: agent hook server: {e}");
     }
@@ -1013,7 +1013,15 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::PushRegister { .. }
         | HostCmd::PushUnregister { .. }
         | HostCmd::BotTelegramSet { .. }
-        | HostCmd::BotTelegramLink {}) => crate::bots::handle(hub, bot).await,
+        | HostCmd::BotTelegramLink {}
+        | HostCmd::BotGithubStatus {}
+        | HostCmd::BotGithubLoginStart {}
+        | HostCmd::BotGithubLoginPoll {}
+        | HostCmd::BotGithubLogout {}
+        | HostCmd::BotActionAnswer { .. }
+        | HostCmd::BotGithubConnectResume {}
+        | HostCmd::BotCrewGet {}
+        | HostCmd::BotCrewSet { .. }) => crate::bots::handle(hub, bot).await,
         HostCmd::MobileInvite { url, name } => {
             hub.mobile.mobile_invite(url, name, hub);
             Ok(json!({}))

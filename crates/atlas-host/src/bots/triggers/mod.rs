@@ -90,8 +90,8 @@ pub(crate) fn render_prompt(template: &str, event_summary: &str) -> String {
 /// task (or directly from tests via `tick_schedule`).
 pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
     let bots = hub.bots.store.list_bots();
-    for mut bot in bots {
-        // Collect (trigger_index) for all triggers that should fire this tick.
+    for bot in bots {
+        // Collect trigger indices that should fire this tick.
         let indices: Vec<usize> = bot
             .triggers
             .iter()
@@ -101,7 +101,9 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
                     return None;
                 }
                 let fires = match &t.kind {
-                    TriggerKind::Schedule { cron } => should_fire_cron(cron, t.last_fired, now_s),
+                    TriggerKind::Schedule { cron } => {
+                        should_fire_cron(cron, t.last_fired, t.tz.as_deref(), now_s)
+                    }
                     TriggerKind::Interval { every_secs } => match t.last_fired {
                         None => true,
                         Some(last) => now_s.saturating_sub(last) >= *every_secs,
@@ -115,19 +117,25 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
         if indices.is_empty() {
             continue;
         }
-        let mut changed = false;
         for i in indices {
             let prompt = render_prompt(&bot.triggers[i].prompt, "");
             let task = Task::new("trigger", &prompt);
-            if hub.bots.store.append_task(&bot.id, &task).is_ok() {
-                bot.triggers[i].last_fired = Some(now_s);
-                crate::bots::runner::enqueue(hub, &hub.bots.store, &bot, task);
-                hub.broadcast(serde_json::json!({"ev": "bot_task", "bot_id": &bot.id}).to_string());
-                changed = true;
+            let trigger_id = bot.triggers[i].id.clone();
+            let bot_id = bot.id.clone();
+            if hub.bots.store.append_task(&bot_id, &task).is_ok() {
+                // Reload the bot before updating last_fired to avoid overwriting
+                // a concurrent bot_triggers_set (tick_schedule stale-snapshot bug).
+                if let Ok(mut fresh) = hub.bots.store.load_bot(&bot_id) {
+                    if let Some(t) = fresh.triggers.iter_mut().find(|t| t.id == trigger_id) {
+                        t.last_fired = Some(now_s);
+                    }
+                    let _ = hub.bots.store.save_bot(&fresh);
+                    crate::bots::runner::enqueue(hub, &hub.bots.store, &fresh, task.clone());
+                } else {
+                    crate::bots::runner::enqueue(hub, &hub.bots.store, &bot, task.clone());
+                }
+                hub.broadcast(serde_json::json!({"ev": "bot_task", "bot_id": &bot_id}).to_string());
             }
-        }
-        if changed {
-            let _ = hub.bots.store.save_bot(&bot);
         }
     }
 }
@@ -243,17 +251,80 @@ fn now_s() -> u64 {
         .as_secs()
 }
 
-fn should_fire_cron(cron_expr: &str, last_fired: Option<u64>, now_s: u64) -> bool {
+/// Public access to now_s for callers that compute next_fire (e.g. bot_list handler).
+pub(crate) fn now_s_pub() -> u64 {
+    now_s()
+}
+
+/// Evaluate a cron expression in an optional IANA timezone; returns true when the
+/// next occurrence since `last_fired` (or epoch) has passed `now_s`.
+fn should_fire_cron(
+    cron_expr: &str,
+    last_fired: Option<u64>,
+    tz: Option<&str>,
+    now_s: u64,
+) -> bool {
     let Ok(cron) = croner::Cron::new(cron_expr).parse() else {
         return false;
     };
     let since = last_fired.unwrap_or(0);
+    if let Some(tz_str) = tz
+        && let Ok(zone) = tz_str.parse::<chrono_tz::Tz>()
+    {
+        let since_dt = chrono::DateTime::from_timestamp(since as i64, 0)
+            .unwrap_or_else(chrono::Utc::now)
+            .with_timezone(&zone);
+        return cron
+            .find_next_occurrence(&since_dt, false)
+            .ok()
+            .map(|next| next.timestamp() as u64 <= now_s)
+            .unwrap_or(false);
+    }
     let since_dt =
         chrono::DateTime::from_timestamp(since as i64, 0).unwrap_or_else(chrono::Utc::now);
     cron.find_next_occurrence(&since_dt, false)
         .ok()
         .map(|next| next.timestamp() as u64 <= now_s)
         .unwrap_or(false)
+}
+
+/// Compute the unix-seconds timestamp of the next fire for a `Schedule` or `Interval`
+/// trigger, or `None` for event-driven kinds. Used by `bot_list` to populate `next_fire`.
+pub(crate) fn compute_next_fire(
+    kind: &TriggerKind,
+    last_fired: Option<u64>,
+    tz: Option<&str>,
+    now_s: u64,
+) -> Option<u64> {
+    match kind {
+        TriggerKind::Schedule { cron } => {
+            let Ok(c) = croner::Cron::new(cron).parse() else {
+                return None;
+            };
+            let since = last_fired.unwrap_or(now_s);
+            if let Some(tz_str) = tz
+                && let Ok(zone) = tz_str.parse::<chrono_tz::Tz>()
+            {
+                let since_dt = chrono::DateTime::from_timestamp(since as i64, 0)
+                    .unwrap_or_else(chrono::Utc::now)
+                    .with_timezone(&zone);
+                return c
+                    .find_next_occurrence(&since_dt, false)
+                    .ok()
+                    .map(|dt| dt.timestamp() as u64);
+            }
+            let since_dt =
+                chrono::DateTime::from_timestamp(since as i64, 0).unwrap_or_else(chrono::Utc::now);
+            c.find_next_occurrence(&since_dt, false)
+                .ok()
+                .map(|dt| dt.timestamp() as u64)
+        }
+        TriggerKind::Interval { every_secs } => {
+            let last = last_fired.unwrap_or(now_s);
+            Some(last + every_secs)
+        }
+        _ => None,
+    }
 }
 
 /// Enqueue a trigger-fired task and update `last_fired` on the trigger.
@@ -297,6 +368,8 @@ mod tests {
             enabled: true,
             prompt: "do {{event}} now".into(),
             last_fired: None,
+            tz: None,
+            next_fire: None,
         }
     }
 
@@ -306,7 +379,7 @@ mod tests {
     fn schedule_fires_when_due() {
         // last_fired = None (never ran); now is far in the future → should fire.
         assert!(
-            should_fire_cron("* * * * *", None, 1_000_000),
+            should_fire_cron("* * * * *", None, None, 1_000_000),
             "expected cron to fire when last_fired is None and now is epoch+~11 days"
         );
     }
@@ -316,7 +389,7 @@ mod tests {
         // last_fired 10 s ago inside the same cron minute → next fire is ~50 s away.
         let now_s: u64 = 1_000_060;
         assert!(
-            !should_fire_cron("* * * * *", Some(now_s - 10), now_s),
+            !should_fire_cron("* * * * *", Some(now_s - 10), None, now_s),
             "expected cron NOT to fire again within the same minute"
         );
     }
@@ -417,6 +490,55 @@ mod tests {
             render_prompt("{{event}} and {{event}}", "x"),
             "x and x",
             "should replace all occurrences"
+        );
+    }
+
+    // ── Timezone-aware schedule ────────────────────────────────────────────────
+
+    #[test]
+    fn new_schedule_created_at_14h_does_not_fire_on_next_tick() {
+        // Contract bug fix: a new schedule trigger created at 14:00 with cron "0 9 * * *"
+        // must NOT fire on the next 30 s tick — baseline last_fired = creation time.
+        //
+        // 2024-10-30 14:00:00 UTC (a Wednesday)
+        let created_at: u64 = 1730296800;
+        let tick = created_at + 30;
+        assert!(
+            !should_fire_cron("0 9 * * *", Some(created_at), None, tick),
+            "new 09:00 schedule created at 14:00 must not fire 30s later"
+        );
+    }
+
+    #[test]
+    fn cron_09_sao_paulo_fires_at_12_utc_not_09_utc() {
+        // Contract: cron is evaluated in the user's timezone.
+        // "0 9 * * *" in America/Sao_Paulo (UTC-3) fires at 12:00 UTC.
+        //
+        // Use a fixed Tuesday: 2024-10-29.
+        // Yesterday's 09:00 SP = yesterday 12:00 UTC = 1730203200 (2024-10-29 12:00 UTC).
+        let yesterday_12_utc: u64 = 1730203200;
+        let today_12_utc = yesterday_12_utc + 86400; // 2024-10-30 12:00 UTC = 09:00 SP
+        let today_09_utc = today_12_utc - 3 * 3600; // 2024-10-30 09:00 UTC = 06:00 SP
+
+        // Should fire at 12:00 UTC (= 09:00 SP).
+        assert!(
+            should_fire_cron(
+                "0 9 * * *",
+                Some(yesterday_12_utc),
+                Some("America/Sao_Paulo"),
+                today_12_utc + 30
+            ),
+            "cron '0 9 * * *' in America/Sao_Paulo should fire at 12:00 UTC"
+        );
+        // Must NOT fire at 09:00 UTC (= 06:00 SP — too early).
+        assert!(
+            !should_fire_cron(
+                "0 9 * * *",
+                Some(yesterday_12_utc),
+                Some("America/Sao_Paulo"),
+                today_09_utc + 30
+            ),
+            "cron '0 9 * * *' in America/Sao_Paulo must NOT fire at 09:00 UTC"
         );
     }
 }

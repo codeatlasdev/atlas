@@ -85,6 +85,12 @@ pub struct Trigger {
     pub prompt: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_fired: Option<u64>,
+    /// IANA timezone ("America/Sao_Paulo"). Cron is evaluated in it; None = UTC.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tz: Option<String>,
+    /// Unix seconds of the next scheduled fire; computed on list, never persisted.
+    #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub next_fire: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,9 +211,46 @@ pub struct Bot {
     pub triggers: Vec<Trigger>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectRef>,
+    /// Current setup conversation step; None once setup is complete or not needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup_step: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_replies: Option<bool>,
     pub created_at: u64,
 }
 
+/// Structured action a bot task is waiting for before it can continue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TaskAction {
+    ConnectGithub {
+        reason: String,
+    },
+    ProvideSecret {
+        name: String,
+        label: String,
+        reason: String,
+    },
+    Input {
+        label: String,
+        reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+    },
+    Choose {
+        question: String,
+        options: Vec<String>,
+    },
+    SignInEngine {
+        engine: String,
+    },
+    /// Agent proposes adding a new automation trigger; user must confirm via `bot_action_answer`.
+    AddTrigger {
+        trigger: TriggerKind,
+        prompt: String,
+        reason: String,
+    },
+}
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {
@@ -216,12 +259,16 @@ pub enum TaskState {
     Done,
     Failed,
     Cancelled,
+    WaitingAction,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Step {
     pub ts: u64,
     pub text: String,
+    /// The agent's title when the step ran ("CART: Testar store api e carrinho"): the chat groups steps under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,7 +297,28 @@ pub struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_full: Option<String>,
+    #[serde(default)]
+    pub summarized: bool,
+    /// What the user picked or typed for this task's `choose`/`input` action, shown in the chat as their message
+    /// (it was sent to the agent but never recorded, so the choice vanished from the conversation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    /// What the agent says it is working on (omp's session title), live while the task runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// While the bot's project is still being downloaded before the task can start ("codeatlasdev/ui"); the chat says
+    /// "Downloading …" instead of a bare "Queued" (a first task on a big repo waited over a minute with no word).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preparing: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<TaskAction>,
+    /// The user's timezone when the task was created (IANA, e.g. "America/Sao_Paulo").
+    /// Stamped onto any `add_trigger` action that lands in this task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tz: Option<String>,
 }
 
 impl Task {
@@ -268,9 +336,37 @@ impl Task {
             started_at: None,
             steps: vec![],
             reply: None,
+            reply_full: None,
+            summarized: false,
+            answer: None,
+            title: None,
+            preparing: None,
             ask: None,
             trigger_id: None,
             usage: None,
+            action: None,
+            tz: None,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrewSettings {
+    #[serde(default = "default_true")]
+    pub short_replies: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_replies_model: Option<String>,
+}
+
+impl Default for CrewSettings {
+    fn default() -> Self {
+        Self {
+            short_replies: true,
+            short_replies_model: None,
         }
     }
 }
@@ -487,5 +583,23 @@ impl BotStore {
             }
         }
         out
+    }
+
+    /// `<base>/crew.json`
+    pub fn crew_settings_path(&self) -> std::path::PathBuf {
+        self.base.join("crew.json")
+    }
+
+    pub fn load_crew_settings(&self) -> CrewSettings {
+        let Ok(data) = std::fs::read(self.crew_settings_path()) else {
+            return CrewSettings::default();
+        };
+        serde_json::from_slice(&data).unwrap_or_default()
+    }
+
+    pub fn save_crew_settings(&self, settings: &CrewSettings) -> io::Result<()> {
+        let data = serde_json::to_vec_pretty(settings)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        paths::write_private(&self.crew_settings_path(), &data)
     }
 }

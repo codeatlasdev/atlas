@@ -5,7 +5,7 @@
 //!
 //! - **`ask_user`**  — post a question to the mobile/desktop UI and block until
 //!   answered (up to 30 min).
-//! - **`set_bot`**   — update this bot's metadata (name, role, triggers, …).
+//! - **`set_bot`**   — update this bot's name or role.
 //! - **`approve`**   — answer a Claude permission-prompt (used with
 //!   `--permission-prompt-tool atlas:approve`).
 //!
@@ -316,15 +316,12 @@ fn tools_list() -> Value {
         },
         {
             "name": "set_bot",
-            "description": "Update this bot's metadata (name, role, description, triggers, project).",
+            "description": "Update this bot's name or role. Automations are not set here: propose one with the add_trigger action so the user approves it.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "name":        { "type": "string" },
-                    "role":        { "type": "string" },
-                    "description": { "type": "string" },
-                    "triggers":    { "type": "array" },
-                    "project":     { "type": "object" }
+                    "role":        { "type": "string" }
                 }
             }
         },

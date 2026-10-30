@@ -46,6 +46,15 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// A field that is present (`null` included) is `Some`; only a missing one is `None` (via `#[serde(default)]`).
+fn present<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
+}
+
 pub const PROTO: u32 = 2;
 /// Capabilities reported by `info`; the desktop gates features on these.
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
@@ -434,6 +443,9 @@ pub enum HostCmd {
         engine: Option<crate::bots::store::EngineConfig>,
         #[serde(default)]
         project: Option<crate::bots::store::ProjectRef>,
+        /// Initial setup step; None = no setup needed.
+        #[serde(default)]
+        setup_step: Option<String>,
     },
     BotUpdate {
         id: String,
@@ -451,6 +463,14 @@ pub enum HostCmd {
         engine: Option<crate::bots::store::EngineConfig>,
         #[serde(default)]
         project: Option<crate::bots::store::ProjectRef>,
+        /// `None` = don't touch; `Some(None)` = clear (setup done); `Some(Some(s))` = set step.
+        /// serde's default maps `null` to `None` like a missing key, so "Looks good" (which sends `null`) never
+        /// ended the setup: `present` keeps `null` as `Some(None)`.
+        #[serde(default, deserialize_with = "present")]
+        setup_step: Option<Option<String>>,
+        /// `None` = don't touch; `Some(None)` = clear (use crew default); `Some(Some(true/false))` = set.
+        #[serde(default, deserialize_with = "present")]
+        short_replies: Option<Option<bool>>,
     },
     BotDelete {
         id: String,
@@ -459,6 +479,8 @@ pub enum HostCmd {
         id: String,
         prompt: String,
         source: String,
+        #[serde(default)]
+        tz: Option<String>,
     },
     BotTasks {
         id: String,
@@ -524,6 +546,40 @@ pub enum HostCmd {
         since: Option<u64>,
     },
     EngineLimits {},
+    /// `gh auth status` without secrets. snake_case of `GitHub` would be wrong.
+    #[serde(rename = "bot_github_status")]
+    BotGithubStatus {},
+    /// Ensure gh installed, start `gh auth login --web`, return device code+URL.
+    #[serde(rename = "bot_github_login_start")]
+    BotGithubLoginStart {},
+    /// Poll running login: pending/done/error. On done configures git.
+    #[serde(rename = "bot_github_login_poll")]
+    BotGithubLoginPoll {},
+    /// `gh auth logout` and remove setup-git/insteadOf config.
+    #[serde(rename = "bot_github_logout")]
+    BotGithubLogout {},
+    /// Answer a waiting-action task (provide_secret, input, choose, sign_in_engine).
+    #[serde(rename = "bot_action_answer")]
+    BotActionAnswer {
+        id: String,
+        task: String,
+        /// For provide_secret: the secret value (written to bot secrets, never stored in task).
+        /// For other kinds: the user's response text or chosen option.
+        value: String,
+    },
+    /// If gh is already logged in, wake any connect_github waiters immediately.
+    #[serde(rename = "bot_github_connect_resume")]
+    BotGithubConnectResume {},
+    /// Read crew-level reply-summary settings.
+    #[serde(rename = "bot_crew_get")]
+    BotCrewGet {},
+    /// Write crew-level reply-summary settings.
+    #[serde(rename = "bot_crew_set")]
+    BotCrewSet {
+        short_replies: bool,
+        #[serde(default)]
+        short_replies_model: Option<String>,
+    },
 }
 
 /// Build a response line.
@@ -567,6 +623,39 @@ pub(crate) async fn write_lines<W: tokio::io::AsyncWrite + Unpin>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn github_commands_parse_under_their_wire_names() {
+        let status: Request =
+            serde_json::from_str(r#"{"id":1,"cmd":"bot_github_status","args":{}}"#).unwrap();
+        assert!(matches!(status.cmd, HostCmd::BotGithubStatus {}));
+        let start: Request =
+            serde_json::from_str(r#"{"id":2,"cmd":"bot_github_login_start","args":{}}"#).unwrap();
+        assert!(matches!(start.cmd, HostCmd::BotGithubLoginStart {}));
+        let poll: Request =
+            serde_json::from_str(r#"{"id":3,"cmd":"bot_github_login_poll","args":{}}"#).unwrap();
+        assert!(matches!(poll.cmd, HostCmd::BotGithubLoginPoll {}));
+        let logout: Request =
+            serde_json::from_str(r#"{"id":4,"cmd":"bot_github_logout","args":{}}"#).unwrap();
+        assert!(matches!(logout.cmd, HostCmd::BotGithubLogout {}));
+    }
+
+    #[test]
+    fn bot_action_answer_and_resume_parse_under_wire_names() {
+        let answer: Request = serde_json::from_str(
+            r#"{"id":10,"cmd":"bot_action_answer","args":{"id":"bot1","task":"t1","value":"secret"}}"#,
+        ).unwrap();
+        assert!(matches!(answer.cmd, HostCmd::BotActionAnswer { .. }));
+        if let HostCmd::BotActionAnswer { id, task, value } = answer.cmd {
+            assert_eq!(id, "bot1");
+            assert_eq!(task, "t1");
+            assert_eq!(value, "secret");
+        }
+        let resume: Request =
+            serde_json::from_str(r#"{"id":11,"cmd":"bot_github_connect_resume","args":{}}"#)
+                .unwrap();
+        assert!(matches!(resume.cmd, HostCmd::BotGithubConnectResume {}));
+    }
 
     #[test]
     fn parses_tagged_requests_with_defaults() {

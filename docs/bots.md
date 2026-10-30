@@ -154,12 +154,13 @@ Clients detect bot-server support by checking `info.caps` for `"bots"` before ca
 | `bot_create` | `{name, role, agent, approval, workdir?}` | the bot object |
 | `bot_update` | `{id, name?, role?, agent?, approval?}` | the bot object |
 | `bot_delete` | `{id}` | `{}` — cancels running and queued tasks first |
-| `bot_task` | `{id, prompt, source}` | `{task}` — prompt 1..=20 000 chars |
+| `bot_task` | `{id, prompt, source, tz?}` | `{task}` — prompt 1..=20 000 chars; `tz` is the caller's IANA timezone (e.g. `"America/Sao_Paulo"`) |
 | `bot_tasks` | `{id, limit?}` | `{tasks:[…newest first]}` — default limit 50 |
 | `bot_cancel` | `{id, task}` | `{}` |
 | `bot_memory` | `{id}` | `{text}` |
 | `bot_memory_set` | `{id, text}` | `{}` — ≤ 64 KiB |
 | `bot_routine_set` | `{id, routines}` | `{}` — replaces the whole list; invalid cron is rejected |
+| `bot_triggers_set` | `{id, triggers[]}` | `{}` — replaces the whole automations list; see Automations below |
 | `push_register` | `{token, platform:"fcm"}` | `{}` |
 | `push_unregister` | `{token}` | `{}` |
 | `bot_telegram_set` | `{token?}` | `{}` — set or clear; desktop only |
@@ -181,7 +182,14 @@ Clients detect bot-server support by checking `info.caps` for `"bots"` before ca
   "queued": 0,
   "running_task": { "id": "e5f6a7b8", "pane": "bot:a1b2c3d4:e5f6a7b8" },
   "last": { "text": "Done. Left 3 comments.", "state": "done", "ts": 1729612800 },
-  "pending_approval": { "req": "r1", "tool_name": "Bash", "tool_input": {}, "pane_key": "bot:a1b2c3d4:e5f6a7b8" }
+  "pending_approval": { "req": "r1", "tool_name": "Bash", "tool_input": {}, "pane_key": "bot:a1b2c3d4:e5f6a7b8" },
+  "triggers": [
+    {
+      "id": "t1", "kind": { "type": "schedule", "cron": "0 9 * * 1-5" },
+      "enabled": true, "prompt": "Review the open PRs and summarize.",
+      "tz": "America/Sao_Paulo", "last_fired": 1729612800, "next_fire": 1729699200
+    }
+  ]
 }
 ```
 
@@ -190,6 +198,7 @@ Clients detect bot-server support by checking `info.caps` for `"bots"` before ca
 - `queued`: number of tasks waiting in the queue behind the running one
 - `last`: the most recent task's result/error/prompt (first 140 chars), its final state and timestamp
 - `pending_approval`: the pending `agent_approval` event; present only in `needs_you` state
+- `triggers`: always present (may be empty); each trigger includes `next_fire` (unix seconds) computed by the server — never trusted from the client
 
 ### Task object shape
 
@@ -218,22 +227,22 @@ Clients detect bot-server support by checking `info.caps` for `"bots"` before ca
 
 ## Atlas Desktop
 
-Open the Mugiwaras workspace with **⌘⇧B** (command `atlas::ToggleBotsWorkspace`, remappable). This switches the app between the IDE view and the Mugiwaras view.
+Open the Atlas Crew workspace with **⌘⇧B** (command `atlas::ToggleBotsWorkspace`, remappable). This switches the app between the IDE view and the Atlas Crew view.
 
-The Mugiwaras workspace has two columns:
+The Atlas Crew workspace has two columns:
 
-- **Left column**: search box, list of all crewmates across bot servers, ship status in the footer. Click a ship dot or "No ship yet · Launch" to open **Settings → Mugiwaras**.
+- **Left column**: search box, list of all crewmates across bot servers, ship status in the footer. Click a ship dot or "No ship yet · Launch" to open **Settings → Atlas Crew**.
 - **Right panel**: chat view for the selected crewmate, or the Logbook when none is selected.
 
-**Settings → Mugiwaras** is where you add bot servers (SSH target + name). Each server must already have `atlas bot install` completed.
+**Settings → Atlas Crew** is where you add bot servers (SSH target + name). Each server must already have `atlas bot install` completed.
 
 The chat view shows the task thread (oldest at top, newest at bottom), an inline approval card when `needs_you`, and a text composer that queues tasks even while another is running. A profile panel (⋯ menu) lets you edit the role, change the approval setting, manage routines and read or replace the memory file.
 
 ## Atlas Mobile
 
-The **Mugiwaras** tab (bottom bar) lists every crewmate across all paired computers in a messenger-style list. Each row shows the crewmate's name, agent, server, last message preview, time, and a state dot.
+The **Atlas Crew** tab (bottom bar) lists every crewmate across all paired computers in a messenger-style list. Each row shows the crewmate's name, agent, server, last message preview, time, and a state dot.
 
-Crewmates whose `state` is `needs_you` appear as a card at the top of both the Computers and Mugiwaras tabs until the approval is answered.
+Crewmates whose `state` is `needs_you` appear as a card at the top of both the Computers and Atlas Crew tabs until the approval is answered.
 
 Tapping a bot opens the chat view:
 
@@ -283,3 +292,54 @@ Atlas Bot can push a notification to your phone when a task finishes or a bot ne
 - Notifications are sent only to phones that are not actively connected at the time.
 - To disable: set `ATLAS_PUSH_RELAY=off` in the `[Service]` section of `/etc/systemd/system/atlas-bot.service` and run `sudo systemctl daemon-reload && sudo systemctl restart atlas-bot`.
 - Self-hosters can point `ATLAS_PUSH_RELAY` at their own relay instance (see `services/push-relay/`).
+
+## Automations
+
+Automations (called `triggers` in the wire protocol) let bots run on a schedule, on an interval, when a webhook fires, when a GitHub event arrives, when a file changes, when another bot finishes, or when a service changes state.
+
+### Trigger kinds
+
+| Kind | JSON `type` | Required fields |
+|---|---|---|
+| Schedule | `schedule` | `cron` — 5-field cron in the bot's timezone |
+| Interval | `interval` | `every_secs` — integer ≥ 60 |
+| Webhook | `webhook` | `token` — matched against the URL path |
+| GitHub | `github` | `repo` (owner/repo), `events` (array of `pr_opened`, `pr_review_requested`, `issue_opened`, `ci_failed`, `release`) |
+| File | `file` | `path`, `glob?` |
+| After bot | `bot` | `from_bot` (bot id), `on` (`done` or `failed`) |
+| Service | `service` | `project_dir`, `service`, `on` (`failed` or `recovered`) |
+
+### Timezones
+
+Every trigger has an optional `tz` field (IANA timezone, e.g. `"America/Sao_Paulo"`). For `schedule` and `interval` kinds, `tz` determines what clock the cron expression runs against. Without `tz`, UTC is used.
+
+`bot_task` accepts a `tz` argument (the caller's `Intl.DateTimeFormat().resolvedOptions().timeZone`); it is stored on the task and stamped onto any trigger created via `add_trigger` in that task.
+
+### `bot_triggers_set` semantics
+
+- Replaces the entire trigger list for a bot.
+- For triggers whose `id` matches an existing one, `last_fired` is **preserved** (the input's `last_fired` is ignored). This prevents a UI save from resetting fire history.
+- For **new** `schedule` or `interval` triggers (no existing id match), `last_fired` is set to the current time (baseline). This ensures the first fire is at the next real occurrence, not immediately on the next 30 s tick.
+- `tz` is validated (unknown IANA zone → error `"unknown timezone: <tz>"`).
+- Broadcasts `{"ev":"bot_updated","bot_id":"…"}` so open panels refresh.
+
+### `next_fire`
+
+`bot_list` computes `next_fire` (unix seconds) for every `schedule` and `interval` trigger and includes it in the response. It is never read from input (`#[serde(skip_deserializing)]`) — the server always recomputes it.
+
+### `add_trigger` action
+
+A bot can propose an automation from a conversation. The agent ends its turn with:
+
+```
+ATLAS_ACTION: {"kind":"add_trigger","trigger":{"type":"schedule","cron":"0 9 * * 1-5"},"prompt":"Review the open PRs and summarize","reason":"You asked for a daily PR review"}
+```
+
+- `trigger`: a trigger-kind object (same shape as `Trigger.kind`). Webhooks are not offered to agents.
+- `cron` is written in the user's local time (the task's `tz` is used when saving).
+- Validation runs immediately: if the trigger is invalid the task resolves with `"The automation was invalid: <error>"` so the agent can fix and retry; no card is shown to the user.
+- The desktop shows a card: "**<name> wants to add an automation**", the trigger sentence, the prompt, and buttons **Add** / **Not now**.
+- The answer goes via `bot_action_answer {id, task, value}` with `value = "add"` or `"skip"`.
+  - `"add"`: creates the trigger (new `id`, `enabled: true`, baseline `last_fired`, `tz` from the task), saves, broadcasts `bot_updated`. Continuation to the agent: `"The user added the automation."`.
+  - `"skip"`: no trigger is created. Continuation: `"The user did not add the automation."`.
+- `task.answer` is not set for `add_trigger` (the card itself shows the outcome; it is not a user chat message).

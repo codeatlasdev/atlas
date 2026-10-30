@@ -137,7 +137,15 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::MobileInvite { .. }
         | C::MobileInvites {}
         | C::MobileInviteDismiss { .. }
-        | C::EngineLimits {} => Route::Refuse("lab hostd does not run bots"),
+        | C::EngineLimits {}
+        | C::BotGithubStatus {}
+        | C::BotGithubLoginStart {}
+        | C::BotGithubLoginPoll {}
+        | C::BotGithubLogout {}
+        | C::BotActionAnswer { .. }
+        | C::BotGithubConnectResume {}
+        | C::BotCrewGet {}
+        | C::BotCrewSet { .. } => Route::Refuse("lab hostd does not run bots"),
     }
 }
 

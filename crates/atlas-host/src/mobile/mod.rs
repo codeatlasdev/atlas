@@ -409,6 +409,9 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::MobileInvite { .. } => return Err("not available on mobile"),
         C::MobileInvites {} => Scope::Read,
         C::MobileInviteDismiss { .. } => Scope::Act,
+        C::BotGithubStatus {} | C::BotGithubLoginPoll {} => Scope::Read,
+        C::BotGithubLoginStart {} | C::BotGithubLogout {} => Scope::Act,
+        C::BotActionAnswer { .. } | C::BotGithubConnectResume {} => Scope::Act,
         _ => return Err("not available on mobile"),
     })
 }

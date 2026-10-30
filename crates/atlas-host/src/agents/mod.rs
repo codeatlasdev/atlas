@@ -269,7 +269,9 @@ impl AgentHub {
                 st.prompt = Some(pr);
             }
             if let Some(t) = str_of("text") {
-                st.last_message = Some(t.chars().take(2000).collect());
+                // A bot's whole answer comes from here; 2000 chars cut long replies mid-sentence and split the trailing
+                // ATLAS_ACTION line, which then showed raw instead of becoming a card. Still bounded for the phone.
+                st.last_message = Some(t.chars().take(32_000).collect());
             }
             if let Some(next) = normalize(Some(st.state), p)
                 && next != st.state
@@ -288,7 +290,9 @@ impl AgentHub {
         let out = (pane, st.clone());
         drop(panes);
         let payload_ev = p["event"].as_str().unwrap_or("");
-        if payload_ev == "pre_tool_use" || payload_ev == "post_tool_use" {
+        // One step per tool call: Claude/Codex send pre/post_tool_use, omp sends `tool_call` (its tool_execution_*
+        // events are the same call again and are not counted).
+        if matches!(payload_ev, "pre_tool_use" | "post_tool_use" | "tool_call") {
             let _ = self.tx.send(json!({
                 "ev": "agent_step",
                 "pane_key": out.0,

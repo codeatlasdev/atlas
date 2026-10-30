@@ -21,6 +21,20 @@ use crate::bots::store::{BotSession, EngineConfig, UsageRecord};
 
 use super::{BOT_TASK_TIMEOUT, TurnResult};
 
+/// Settings every bot's omp runs with, as a `--config` overlay. A bot computer is a headless server: omp's sleep
+/// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
+/// 25 s for the D-Bus timeout (seen on atlas-test-ship: first step 33 s in, the reply summary always timed out).
+const BOT_OVERLAY: &str = "power:\n  sleepPrevention: \"off\"\n";
+
+/// `--config <file>` for an omp started by a bot; the file sits in the bot's dir and is rewritten when it differs.
+pub(crate) fn overlay_args(bot_dir: &std::path::Path) -> Vec<String> {
+    let path = bot_dir.join("omp-bot.yml");
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(BOT_OVERLAY) {
+        let _ = std::fs::write(&path, BOT_OVERLAY);
+    }
+    vec!["--config".to_string(), path.to_string_lossy().into_owned()]
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run(
     _engine: &EngineConfig,
@@ -35,7 +49,7 @@ pub(super) async fn run(
     yolo: bool,
 ) -> Result<TurnResult, String> {
     let mut cmd = tokio::process::Command::new("omp");
-    cmd.arg("--mode").arg("rpc");
+    cmd.arg("--mode").arg("rpc").args(overlay_args(bot_dir));
 
     if yolo {
         cmd.arg("--auto-approve");

@@ -138,6 +138,70 @@ exit 0"#;
         crate::bots::runner::set_test_agent_bin(None);
     }
 
+    // Incident: on a ship, an omp bot whose project was codeatlasdev/ac ran in ~/.atlas with nothing cloned: the
+    // terminal (PTY) runner never prepared the project, only the conversational one did. The bot answered from
+    // `git ls-remote` and kept saying the user's Mac folder was not mounted. Any bot with a project must start its
+    // agent inside that project.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pty_agent_starts_inside_the_bot_project() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let mark = tmp.path().join("cwd.txt");
+        let fake_bin = fake_agent(
+            tmp.path(),
+            "claude",
+            &format!("pwd -P > '{}'\nexit 3", mark.display()),
+        );
+        crate::bots::runner::set_test_agent_bin(Some(&fake_bin.to_string_lossy()));
+
+        let client = daemon(&dir).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name": "ProjBot", "role": "r", "agent": "claude", "approval": "auto"}),
+            )
+            .await
+            .unwrap();
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+        client
+            .call(
+                "bot_update",
+                json!({"id": bot_id, "project": {"kind": "path", "path": project.to_string_lossy()}}),
+            )
+            .await
+            .unwrap();
+        let v = client
+            .call(
+                "bot_task",
+                json!({"id": bot_id, "prompt": "go", "source": "test"}),
+            )
+            .await
+            .unwrap();
+        let task_id = v["task"]["id"].as_str().unwrap().to_string();
+        wait_task_state(
+            &client,
+            &bot_id,
+            &task_id,
+            "failed",
+            Duration::from_secs(15),
+        )
+        .await;
+
+        let ran_in = std::fs::read_to_string(&mark).expect("agent ran");
+        assert_eq!(
+            ran_in.trim(),
+            project.canonicalize().unwrap().to_string_lossy()
+        );
+        crate::bots::runner::set_test_agent_bin(None);
+        client.call("shutdown", json!({})).await.ok();
+    }
+
     // ── Test 2: agent exits 3 → failed ──────────────────────────────────────
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1087,6 +1151,8 @@ exit 0"#;
                 enabled: true,
                 prompt: "p".into(),
                 last_fired: None,
+                tz: None,
+                next_fire: None,
             }
         }
 
@@ -1273,6 +1339,153 @@ exit 0"#;
         };
         assert!(rejected2, "interval < 60 s must be rejected, got: {r2:?}");
 
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // Incident: Jorge's first task sat "Queued" ~90 s on atlas-test-ship while the task itself cloned the repo. The
+    // checkout now starts when the bot gets its project, so it is ready before anyone sends a message.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_git_project_is_checked_out_before_the_first_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        for args in [
+            &["init", "-q", "-b", "main"][..],
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "one",
+            ][..],
+        ] {
+            assert!(
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&src)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let dir = tmp.path().join("hostd");
+        let client = daemon(&dir).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name": "Jorge", "role": "r", "agent": "claude", "approval": "auto",
+                       "project": {"kind": "git", "url": format!("file://{}", src.display())}}),
+            )
+            .await
+            .unwrap();
+        let work = dir
+            .join("bots")
+            .join(bot["id"].as_str().unwrap())
+            .join("work");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !work.join(".git").exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "no checkout without a task: {}",
+                work.display()
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // Incident: a first task on a big repo showed a bare "Queued" for over a minute while the project downloaded.
+    // While the task waits for the checkout it carries `preparing` (the repo), and it is gone once the wait ends, here
+    // with a clone that fails so the wait is never skipped by a finished background clone.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_task_says_it_is_downloading_the_project_while_it_waits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let client = daemon(&dir).await;
+        let missing = format!("file://{}/no-such-repo", tmp.path().display());
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name": "J", "role": "r", "agent": "claude", "approval": "auto",
+                       "project": {"kind": "git", "url": missing}}),
+            )
+            .await
+            .unwrap();
+        let id = bot["id"].as_str().unwrap().to_string();
+        let task = client
+            .call(
+                "bot_task",
+                json!({"id": id, "prompt": "go", "source": "test"}),
+            )
+            .await
+            .unwrap();
+        let tid = task["task"]["id"].as_str().unwrap().to_string();
+        let done = wait_task_state(&client, &id, &tid, "failed", Duration::from_secs(20)).await;
+        assert!(
+            done.get("preparing").is_none(),
+            "cleared once the wait ended: {done}"
+        );
+
+        let log = std::fs::read_to_string(dir.join("bots").join(&id).join("tasks.jsonl")).unwrap();
+        let shown: Vec<Value> = log
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|t| t["id"] == tid.as_str() && t.get("preparing").is_some())
+            .collect();
+        assert!(
+            !shown.is_empty(),
+            "the task never said it was downloading the project"
+        );
+        assert!(
+            shown[0]["preparing"]
+                .as_str()
+                .unwrap()
+                .ends_with("no-such-repo")
+        );
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // Incident: the setup saved the text "Something else" as a project folder; the bot accepted it and every task
+    // then failed with "project prepare: path error: No such file or directory". Setting a folder that does not exist
+    // on the bot's computer must be refused when it is set, with the reason, and leave the old project in place.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn setting_a_missing_project_folder_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let client = daemon(&tmp.path().join("hostd")).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name": "J", "role": "r", "agent": "claude", "approval": "auto"}),
+            )
+            .await
+            .unwrap();
+        let id = bot["id"].as_str().unwrap().to_string();
+
+        let err = client
+            .call(
+                "bot_update",
+                json!({"id": id, "project": {"kind": "path", "path": "Something else"}}),
+            )
+            .await
+            .expect_err("a folder that does not exist must be refused");
+        assert!(
+            err.to_string().contains("Something else"),
+            "the error names the folder: {err}"
+        );
+
+        let real = tmp.path().join("proj");
+        std::fs::create_dir(&real).unwrap();
+        client
+            .call(
+                "bot_update",
+                json!({"id": id, "project": {"kind": "path", "path": real}}),
+            )
+            .await
+            .expect("an existing folder is accepted");
         client.call("shutdown", json!({})).await.ok();
     }
 
@@ -2314,5 +2527,832 @@ exit 0
 
         crate::bots::runner::set_test_agent_bin(None);
         client.call("shutdown", json!({})).await.ok();
+    }
+
+    /// Cross-boundary contract: Bot.setup_step serializes as snake_case and round-trips.
+    /// Guards against a rename breaking the TS types that read this field.
+    #[test]
+    fn bot_setup_step_serializes_as_snake_case() {
+        use crate::bots::store::{Approval, Bot};
+
+        let bot_with_step = Bot {
+            id: "test-id".into(),
+            name: "New crewmate".into(),
+            role: String::new(),
+            agent: "omp".into(),
+            workdir: None,
+            approval: Approval::Auto,
+            routines: vec![],
+            triggers: vec![],
+            look: None,
+            engine: None,
+            project: None,
+            setup_step: Some("name".into()),
+            short_replies: None,
+            created_at: 0,
+        };
+        let v = serde_json::to_value(&bot_with_step).unwrap();
+        assert_eq!(
+            v["setup_step"], "name",
+            "setup_step must serialize as snake_case 'setup_step'"
+        );
+
+        // Round-trip: deserializing a JSON object with setup_step preserves the value.
+        let round: Bot = serde_json::from_value(v).unwrap();
+        assert_eq!(round.setup_step.as_deref(), Some("name"));
+
+        // Absent from JSON → None (no-setup bots are unaffected).
+        let no_step: Bot = serde_json::from_str(
+            r#"{"id":"x","name":"x","role":"","agent":"omp","approval":"auto","created_at":0}"#,
+        )
+        .unwrap();
+        assert!(
+            no_step.setup_step.is_none(),
+            "missing setup_step field must deserialize as None"
+        );
+
+        // Clearing via bot_update: outer Some(None) sets bot.setup_step to None.
+        // Verify the BotUpdate protocol field deserializes correctly.
+        use crate::protocol::HostCmd;
+        let clear_cmd: HostCmd =
+            serde_json::from_str(r#"{"cmd":"bot_update","args":{"id":"x","setup_step":null}}"#)
+                .unwrap();
+        if let HostCmd::BotUpdate { setup_step, .. } = clear_cmd {
+            assert_eq!(
+                setup_step,
+                Some(None),
+                "null setup_step must arrive as Some(None)"
+            );
+        } else {
+            panic!("wrong variant");
+        }
+
+        // Advancing via bot_update: outer Some(Some) sets the step.
+        let set_cmd: HostCmd =
+            serde_json::from_str(r#"{"cmd":"bot_update","args":{"id":"x","setup_step":"role"}}"#)
+                .unwrap();
+        if let HostCmd::BotUpdate { setup_step, .. } = set_cmd {
+            assert_eq!(
+                setup_step,
+                Some(Some("role".into())),
+                "string setup_step must arrive as Some(Some(..))"
+            );
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    // ── Test: parse_atlas_action — valid kinds ────────────────────────────────
+    #[test]
+    fn parse_atlas_action_valid_kinds() {
+        use crate::bots::runner::parse_atlas_action;
+        use crate::bots::store::TaskAction;
+        let r = parse_atlas_action(
+            "text\nATLAS_ACTION: {\"kind\":\"connect_github\",\"reason\":\"to clone x/y\"}\n",
+        );
+        assert!(
+            matches!(&r, Some(TaskAction::ConnectGithub { reason }) if reason == "to clone x/y")
+        );
+        let r2 = parse_atlas_action(
+            "ATLAS_ACTION: {\"kind\":\"provide_secret\",\"name\":\"KEY\",\"label\":\"L\",\"reason\":\"R\"}",
+        );
+        assert!(matches!(&r2, Some(TaskAction::ProvideSecret { name, .. }) if name == "KEY"));
+        let r3 = parse_atlas_action(
+            "ATLAS_ACTION: {\"kind\":\"choose\",\"question\":\"Q?\",\"options\":[\"A\",\"B\"]}",
+        );
+        assert!(matches!(&r3, Some(TaskAction::Choose { question, .. }) if question == "Q?"));
+        let r4 =
+            parse_atlas_action("ATLAS_ACTION: {\"kind\":\"sign_in_engine\",\"engine\":\"omp\"}");
+        assert!(matches!(&r4, Some(TaskAction::SignInEngine { engine }) if engine == "omp"));
+        // Last line wins
+        let r5 = parse_atlas_action(
+            "ATLAS_ACTION: {\"kind\":\"connect_github\",\"reason\":\"first\"}\nATLAS_ACTION: {\"kind\":\"sign_in_engine\",\"engine\":\"omp\"}",
+        );
+        assert!(matches!(&r5, Some(TaskAction::SignInEngine { .. })));
+    }
+
+    #[test]
+    fn parse_atlas_action_unknown_kind_falls_back_to_input() {
+        use crate::bots::runner::parse_atlas_action;
+        use crate::bots::store::TaskAction;
+        let r = parse_atlas_action(
+            "ATLAS_ACTION: {\"kind\":\"future_kind\",\"label\":\"My label\",\"reason\":\"why\"}",
+        );
+        assert!(matches!(&r, Some(TaskAction::Input { label, .. }) if label == "My label"));
+    }
+
+    #[test]
+    fn parse_atlas_action_invalid_json_returns_none() {
+        use crate::bots::runner::parse_atlas_action;
+        assert!(parse_atlas_action("ATLAS_ACTION: not_json").is_none());
+        assert!(parse_atlas_action("no action here").is_none());
+    }
+
+    // ── Test: provide_secret value never in task JSON ─────────────────────────
+    #[tokio::test(flavor = "multi_thread")]
+    async fn provide_secret_value_never_in_task_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd-secret");
+        let client = daemon(&dir).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name":"SecBot","role":"r","agent":"claude","approval":"auto"}),
+            )
+            .await
+            .unwrap();
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+        // Call bot_action_answer on a non-existent task (expects error).
+        // The error message must not contain the secret value.
+        let result = client
+            .call(
+                "bot_action_answer",
+                json!({"id": bot_id, "task": "nonexistent", "value": "supersecret"}),
+            )
+            .await;
+        let err_str = format!("{result:?}");
+        assert!(
+            !err_str.contains("supersecret"),
+            "secret value leaked into error: {err_str}"
+        );
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── Test: task_action fixture serialization ────────────────────────────────
+    #[test]
+    fn task_action_fixture_is_real_payload() {
+        use crate::bots::store::TaskAction;
+        let actions: Vec<TaskAction> = vec![
+            TaskAction::ConnectGithub {
+                reason: "to clone owner/repo".to_string(),
+            },
+            TaskAction::ProvideSecret {
+                name: "API_KEY".to_string(),
+                label: "API Key".to_string(),
+                reason: "needed for the API".to_string(),
+            },
+            TaskAction::Input {
+                label: "Enter value".to_string(),
+                reason: "configuration needed".to_string(),
+                placeholder: Some("e.g. my-value".to_string()),
+            },
+            TaskAction::Choose {
+                question: "Which deployment target?".to_string(),
+                options: vec!["staging".to_string(), "production".to_string()],
+            },
+            TaskAction::SignInEngine {
+                engine: "omp".to_string(),
+            },
+        ];
+        let json = serde_json::to_string_pretty(&actions).expect("serialize actions");
+        // The file the phone's contract test reads; a cwd-relative path made cargo (cwd = this crate) write and
+        // check a stray copy under crates/atlas-host/apps, so the two could drift unseen.
+        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/mobile/test/fixtures/task_actions.json");
+        let fixture_path = fixture_path.as_path();
+        if std::env::var("UPDATE_FIXTURES").is_ok() {
+            std::fs::create_dir_all(fixture_path.parent().unwrap()).ok();
+            std::fs::write(fixture_path, &json).expect("write fixture");
+            return;
+        }
+        if !fixture_path.exists() {
+            panic!(
+                "fixture missing — run UPDATE_FIXTURES=1 cargo test -p atlas-host task_action_fixture_is_real_payload to generate it"
+            );
+        }
+        let stored = std::fs::read_to_string(fixture_path).expect("read fixture");
+        let stored_v: serde_json::Value = serde_json::from_str(&stored).expect("parse stored");
+        let live_v: serde_json::Value = serde_json::from_str(&json).expect("parse live");
+        assert_eq!(
+            stored_v, live_v,
+            "fixture is out of date — run UPDATE_FIXTURES=1 cargo test -p atlas-host task_action_fixture_is_real_payload"
+        );
+    }
+
+    // ── Test: github project not logged in → waiting_action ───────────────────
+    #[tokio::test(flavor = "multi_thread")]
+    async fn github_project_not_logged_in_yields_waiting_action() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+        *crate::bots::runner::TEST_FORCE_GITHUB_AUTH.lock() =
+            Some("to clone test/repo".to_string());
+        *crate::bots::runner::TEST_GITHUB_LOGGED_IN.lock() = Some(false);
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd-gh-auth");
+        let fake_bin = fake_agent(tmp.path(), "claude", "exit 0");
+        crate::bots::runner::set_test_agent_bin(Some(&fake_bin.to_string_lossy()));
+        let client = daemon(&dir).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name":"GhBot","role":"r","agent":"claude","approval":"auto"}),
+            )
+            .await
+            .unwrap();
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+        let v = client
+            .call(
+                "bot_task",
+                json!({"id": bot_id, "prompt": "do stuff", "source": "test"}),
+            )
+            .await
+            .unwrap();
+        let task_id = v["task"]["id"].as_str().unwrap().to_string();
+        let task = wait_task_state(
+            &client,
+            &bot_id,
+            &task_id,
+            "waiting_action",
+            Duration::from_secs(10),
+        )
+        .await;
+        assert_eq!(task["action"]["kind"], "connect_github");
+        assert_eq!(task["action"]["reason"], "to clone test/repo");
+        // Now connect: set logged in and call resume.
+        *crate::bots::runner::TEST_GITHUB_LOGGED_IN.lock() = Some(true);
+        client
+            .call("bot_github_connect_resume", json!({}))
+            .await
+            .unwrap();
+        // Task should leave waiting_action state.
+        let start = std::time::Instant::now();
+        loop {
+            let v2 = client
+                .call("bot_tasks", json!({"id": bot_id, "limit": 5}))
+                .await
+                .unwrap();
+            let t = v2["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == task_id)
+                .unwrap()
+                .clone();
+            if t["state"] != "waiting_action" {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(15) {
+                panic!("task never left waiting_action");
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        *crate::bots::runner::TEST_FORCE_GITHUB_AUTH.lock() = None;
+        *crate::bots::runner::TEST_GITHUB_LOGGED_IN.lock() = None;
+        crate::bots::runner::set_test_agent_bin(None);
+        client.call("shutdown", json!({})).await.ok();
+    }
+}
+
+#[cfg(test)]
+mod summarized_fixture {
+    use crate::bots::store::{Task, TaskState};
+
+    #[test]
+    fn bot_task_summarized_fixture_is_real_payload() {
+        let mut task = Task::new("desktop", "list the files");
+        task.id = "task-sum-1".to_string();
+        task.ts = 1700000000;
+        task.state = TaskState::Done;
+        task.result = Some("Listed 3 files in src/.".to_string());
+        task.reply_full = Some(
+            "Found the following main files:\n\
+             - foo.rs: main module\n\
+             - bar.rs: utilities\n\
+             - baz.rs: tests\n\n\
+             All files are in the src/ directory. No changes were made."
+                .to_string(),
+        );
+        task.summarized = true;
+        let json = serde_json::to_string_pretty(&task).expect("serialize task");
+        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/mobile/test/fixtures/bot_task_summarized.json");
+        if std::env::var("UPDATE_FIXTURES").is_ok() {
+            std::fs::create_dir_all(fixture_path.parent().unwrap()).ok();
+            std::fs::write(&fixture_path, &json).expect("write fixture");
+            return;
+        }
+        if !fixture_path.exists() {
+            panic!(
+                "fixture missing — run \
+                 UPDATE_FIXTURES=1 cargo test -p atlas-host bot_task_summarized_fixture_is_real_payload \
+                 to generate it"
+            );
+        }
+        let stored = std::fs::read_to_string(&fixture_path).expect("read fixture");
+        let stored_v: serde_json::Value = serde_json::from_str(&stored).expect("parse stored");
+        let live_v: serde_json::Value = serde_json::from_str(&json).expect("parse live");
+        assert_eq!(
+            stored_v, live_v,
+            "fixture out of date — run UPDATE_FIXTURES=1 ..."
+        );
+    }
+}
+
+// ─── Automations (triggers) tests ────────────────────────────────────────────
+
+#[cfg(all(test, unix))]
+mod automations {
+    use std::path::Path;
+    use std::time::Duration;
+
+    use serde_json::{Value, json};
+
+    use crate::HostClient;
+    use crate::server::ServeOpts;
+
+    async fn daemon(dir: &Path) -> HostClient {
+        let d = dir.to_path_buf();
+        tokio::spawn(async move {
+            let _ = crate::server::serve_with(
+                &d,
+                ServeOpts {
+                    bot_host: true,
+                    ..Default::default()
+                },
+            )
+            .await;
+        });
+        for _ in 0..200 {
+            if let Ok(c) = HostClient::connect_dir(dir, "test").await {
+                return c;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("hostd did not start in 10 s");
+    }
+
+    async fn create_bot(client: &HostClient) -> String {
+        let v = client
+            .call(
+                "bot_create",
+                json!({"name":"AutoBot","role":"r","agent":"claude","approval":"auto"}),
+            )
+            .await
+            .unwrap();
+        v["id"].as_str().unwrap().to_string()
+    }
+
+    /// Wait up to `timeout` for bot_list to return the bot with at least one trigger.
+    async fn wait_bot_triggers(client: &HostClient, bot_id: &str, timeout: Duration) -> Value {
+        let start = std::time::Instant::now();
+        loop {
+            let v = client.call("bot_list", json!({})).await.unwrap();
+            if let Some(bot) = v["bots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|b| b["id"] == bot_id)
+            {
+                let triggers = bot["triggers"].as_array().map(|a| a.len()).unwrap_or(0);
+                if triggers > 0 {
+                    return bot.clone();
+                }
+            }
+            if start.elapsed() > timeout {
+                panic!("bot triggers never appeared");
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    // ── bot_list includes triggers ─────────────────────────────────────────────
+    // Incident: bot_list never returned triggers, so desktop always saw [].
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bot_list_includes_triggers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let client = daemon(&tmp.path().join("h")).await;
+        let bot_id = create_bot(&client).await;
+
+        client
+            .call("bot_triggers_set", json!({"id": bot_id, "triggers": [
+                {"id": "t1", "kind": {"type": "schedule", "cron": "0 9 * * *"}, "enabled": true, "prompt": "run"}
+            ]}))
+            .await
+            .unwrap();
+
+        let bot = wait_bot_triggers(&client, &bot_id, Duration::from_secs(5)).await;
+        let triggers = bot["triggers"].as_array().unwrap();
+        assert_eq!(triggers.len(), 1, "bot_list must return triggers");
+        assert_eq!(triggers[0]["id"], "t1");
+        assert!(
+            bot["triggers"][0].get("next_fire").is_some(),
+            "trigger must have next_fire"
+        );
+
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── replacing the list keeps last_fired of an existing id ─────────────────
+    // Incident: every bot_triggers_set overwrote last_fired, resetting the fire history.
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn triggers_set_preserves_last_fired() {
+        let tmp = tempfile::tempdir().unwrap();
+        let client = daemon(&tmp.path().join("h")).await;
+        let bot_id = create_bot(&client).await;
+
+        // First set: one trigger.
+        client
+            .call("bot_triggers_set", json!({"id": bot_id, "triggers": [
+                {"id": "t1", "kind": {"type": "interval", "every_secs": 3600}, "enabled": true, "prompt": "run"}
+            ]}))
+            .await
+            .unwrap();
+
+        // Read back last_fired (should be Some — baseline).
+        let bot_v1 = wait_bot_triggers(&client, &bot_id, Duration::from_secs(5)).await;
+        let lf1 = bot_v1["triggers"][0]["last_fired"].as_u64();
+        assert!(
+            lf1.is_some(),
+            "new interval trigger must have a baseline last_fired"
+        );
+
+        // Second set: same id plus a new one — last_fired must survive.
+        client
+            .call("bot_triggers_set", json!({"id": bot_id, "triggers": [
+                {"id": "t1", "kind": {"type": "interval", "every_secs": 3600}, "enabled": true, "prompt": "run2"},
+                {"id": "t2", "kind": {"type": "schedule", "cron": "0 10 * * *"}, "enabled": true, "prompt": "run3"}
+            ]}))
+            .await
+            .unwrap();
+
+        // Wait until t2 appears.
+        let start = std::time::Instant::now();
+        let bot_v2 = loop {
+            let v = client.call("bot_list", json!({})).await.unwrap();
+            let bot = v["bots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|b| b["id"] == bot_id)
+                .unwrap()
+                .clone();
+            if bot["triggers"].as_array().map(|a| a.len()).unwrap_or(0) == 2 {
+                break bot;
+            }
+            if start.elapsed() > Duration::from_secs(5) {
+                panic!("second triggers_set did not appear");
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        };
+
+        let t1 = bot_v2["triggers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == "t1")
+            .unwrap()
+            .clone();
+        let lf2 = t1["last_fired"].as_u64();
+        assert_eq!(
+            lf1, lf2,
+            "last_fired of t1 must be preserved across triggers_set"
+        );
+
+        // t2 is new interval — must have a baseline last_fired too.
+        let t2 = bot_v2["triggers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == "t2")
+            .unwrap()
+            .clone();
+        assert!(
+            t2["last_fired"].as_u64().is_some(),
+            "new schedule trigger t2 must have baseline last_fired"
+        );
+
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── Serialization: Trigger with tz/next_fire and TaskAction::AddTrigger ────
+    // Cross-boundary: the TS side reads these exact snake_case keys.
+
+    #[test]
+    fn trigger_tz_and_next_fire_serialize_to_snake_case() {
+        use crate::bots::store::{Trigger, TriggerKind};
+        let t = Trigger {
+            id: "trig-1".into(),
+            kind: TriggerKind::Schedule {
+                cron: "0 9 * * 1-5".into(),
+            },
+            enabled: true,
+            prompt: "Review PRs".into(),
+            last_fired: Some(1730203200),
+            tz: Some("America/Sao_Paulo".into()),
+            next_fire: Some(1730289600),
+        };
+        let v: serde_json::Value = serde_json::to_value(&t).unwrap();
+        assert_eq!(v["tz"], "America/Sao_Paulo", "tz must serialize as 'tz'");
+        assert_eq!(
+            v["next_fire"], 1730289600u64,
+            "next_fire must serialize as 'next_fire'"
+        );
+        assert_eq!(v["last_fired"], 1730203200u64, "last_fired must serialize");
+        // next_fire must NOT be read back from JSON (skip_deserializing).
+        let raw = r#"{"id":"x","kind":{"type":"schedule","cron":"0 9 * * *"},"enabled":true,"prompt":"p","last_fired":null,"next_fire":9999}"#;
+        let t2: Trigger = serde_json::from_str(raw).unwrap();
+        assert_eq!(t2.next_fire, None, "next_fire must be skip_deserializing");
+    }
+
+    #[test]
+    fn add_trigger_action_serializes_to_snake_case_keys() {
+        use crate::bots::store::{TaskAction, TriggerKind};
+        let action = TaskAction::AddTrigger {
+            trigger: TriggerKind::Schedule {
+                cron: "0 9 * * 1-5".into(),
+            },
+            prompt: "Review the open PRs and summarize".into(),
+            reason: "You asked for a daily PR review".into(),
+        };
+        let v: serde_json::Value = serde_json::to_value(&action).unwrap();
+        assert_eq!(v["kind"], "add_trigger", "kind tag must be 'add_trigger'");
+        assert!(v.get("trigger").is_some(), "trigger field must be present");
+        assert!(v.get("prompt").is_some(), "prompt field must be present");
+        assert!(v.get("reason").is_some(), "reason field must be present");
+        assert_eq!(
+            v["trigger"]["type"], "schedule",
+            "trigger type must be snake_case"
+        );
+        assert_eq!(v["trigger"]["cron"], "0 9 * * 1-5");
+
+        // Round-trip deserialization.
+        let json_str = serde_json::to_string(&action).unwrap();
+        let action2: TaskAction = serde_json::from_str(&json_str).unwrap();
+        match action2 {
+            TaskAction::AddTrigger {
+                trigger: TriggerKind::Schedule { cron },
+                prompt,
+                reason,
+            } => {
+                assert_eq!(cron, "0 9 * * 1-5");
+                assert_eq!(prompt, "Review the open PRs and summarize");
+                assert_eq!(reason, "You asked for a daily PR review");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    // ── add_trigger: parsed, answered 'add', lands in bot.triggers ────────────
+    // Incident: add_trigger was not wired end-to-end.
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn add_trigger_add_answer_creates_trigger_with_task_tz() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("h");
+        // Fake agent emits ATLAS_ACTION add_trigger then exits 0.
+        let script = r#"
+if [ -f "$ATLAS_HOOK_ENDPOINT" ]; then
+  . "$ATLAS_HOOK_ENDPOINT"
+  curl -s -X POST "http://127.0.0.1:${ATLAS_HOOK_PORT}/hook/claude" \
+       -H "X-Atlas-Hook-Token: ${ATLAS_HOOK_TOKEN}" \
+       -H "Content-Type: application/json" \
+       -d "{\"pane_key\":\"${ATLAS_PANE_KEY}\",\"payload\":{\"event\":\"agent_end\",\"will_continue\":false,\"text\":\"ATLAS_ACTION: {\\\"kind\\\":\\\"add_trigger\\\",\\\"trigger\\\":{\\\"type\\\":\\\"schedule\\\",\\\"cron\\\":\\\"0 9 * * 1-5\\\"},\\\"prompt\\\":\\\"Review PRs\\\",\\\"reason\\\":\\\"daily review\\\"}\"}}" \
+       || true
+fi
+exit 0"#;
+        let fake_bin = {
+            let bin_dir = tmp.path().join("bin");
+            std::fs::create_dir_all(&bin_dir).unwrap();
+            let p = bin_dir.join("claude");
+            std::fs::write(&p, format!("#!/bin/sh\n{script}\n")).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        crate::bots::runner::set_test_agent_bin(Some(&fake_bin.to_string_lossy()));
+
+        let client = daemon(&dir).await;
+        let bot_id = create_bot(&client).await;
+
+        // Send task with tz so it gets stamped onto the trigger.
+        let v = client
+            .call("bot_task", json!({"id": bot_id, "prompt": "review PRs", "source": "test", "tz": "America/Sao_Paulo"}))
+            .await
+            .unwrap();
+        let task_id = v["task"]["id"].as_str().unwrap().to_string();
+
+        // Wait for WaitingAction.
+        let start = std::time::Instant::now();
+        let task = loop {
+            let tv = client
+                .call("bot_tasks", json!({"id": bot_id, "limit": 5}))
+                .await
+                .unwrap();
+            let t = tv["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == task_id)
+                .unwrap()
+                .clone();
+            if t["state"] == "waiting_action" {
+                break t;
+            }
+            if start.elapsed() > Duration::from_secs(15) {
+                panic!("task never reached waiting_action (state={})", t["state"]);
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        };
+        assert_eq!(task["action"]["kind"], "add_trigger");
+        assert_eq!(task["action"]["trigger"]["type"], "schedule");
+
+        // Answer 'add'.
+        client
+            .call(
+                "bot_action_answer",
+                json!({"id": bot_id, "task": task_id, "value": "add"}),
+            )
+            .await
+            .unwrap();
+
+        // Wait for task to complete.
+        let start = std::time::Instant::now();
+        loop {
+            let tv = client
+                .call("bot_tasks", json!({"id": bot_id, "limit": 5}))
+                .await
+                .unwrap();
+            let t = tv["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == task_id)
+                .unwrap()
+                .clone();
+            if t["state"] != "waiting_action" && t["state"] != "running" && t["state"] != "queued" {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(15) {
+                panic!("task never completed (state={})", t["state"]);
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+
+        // Check triggers were added.
+        let bot = wait_bot_triggers(&client, &bot_id, Duration::from_secs(5)).await;
+        let triggers = bot["triggers"].as_array().unwrap();
+        assert_eq!(triggers.len(), 1, "add trigger must create one trigger");
+        let t = &triggers[0];
+        assert_eq!(t["kind"]["type"], "schedule");
+        assert_eq!(t["kind"]["cron"], "0 9 * * 1-5");
+        assert_eq!(
+            t["tz"], "America/Sao_Paulo",
+            "tz must be stamped from task.tz"
+        );
+        assert!(
+            t["last_fired"].as_u64().is_some(),
+            "trigger must have baseline last_fired"
+        );
+
+        crate::bots::runner::set_test_agent_bin(None);
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── add_trigger: 'skip' answer adds nothing ────────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn add_trigger_skip_answer_adds_nothing() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("h");
+        let script = r#"
+if [ -f "$ATLAS_HOOK_ENDPOINT" ]; then
+  . "$ATLAS_HOOK_ENDPOINT"
+  curl -s -X POST "http://127.0.0.1:${ATLAS_HOOK_PORT}/hook/claude" \
+       -H "X-Atlas-Hook-Token: ${ATLAS_HOOK_TOKEN}" \
+       -H "Content-Type: application/json" \
+       -d "{\"pane_key\":\"${ATLAS_PANE_KEY}\",\"payload\":{\"event\":\"agent_end\",\"will_continue\":false,\"text\":\"ATLAS_ACTION: {\\\"kind\\\":\\\"add_trigger\\\",\\\"trigger\\\":{\\\"type\\\":\\\"interval\\\",\\\"every_secs\\\":3600},\\\"prompt\\\":\\\"hourly check\\\",\\\"reason\\\":\\\"you asked\\\"}\"}}" \
+       || true
+fi
+exit 0"#;
+        let fake_bin = {
+            let bin_dir = tmp.path().join("bin");
+            std::fs::create_dir_all(&bin_dir).unwrap();
+            let p = bin_dir.join("claude");
+            std::fs::write(&p, format!("#!/bin/sh\n{script}\n")).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        crate::bots::runner::set_test_agent_bin(Some(&fake_bin.to_string_lossy()));
+
+        let client = daemon(&dir).await;
+        let bot_id = create_bot(&client).await;
+
+        let v = client
+            .call(
+                "bot_task",
+                json!({"id": bot_id, "prompt": "check stuff", "source": "test"}),
+            )
+            .await
+            .unwrap();
+        let task_id = v["task"]["id"].as_str().unwrap().to_string();
+
+        // Wait for WaitingAction.
+        let start = std::time::Instant::now();
+        loop {
+            let tv = client
+                .call("bot_tasks", json!({"id": bot_id, "limit": 5}))
+                .await
+                .unwrap();
+            let t = tv["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == task_id)
+                .unwrap()
+                .clone();
+            if t["state"] == "waiting_action" {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(15) {
+                panic!("task never reached waiting_action");
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+
+        // Answer 'skip'.
+        client
+            .call(
+                "bot_action_answer",
+                json!({"id": bot_id, "task": task_id, "value": "skip"}),
+            )
+            .await
+            .unwrap();
+
+        // Wait for task to complete.
+        let start = std::time::Instant::now();
+        loop {
+            let tv = client
+                .call("bot_tasks", json!({"id": bot_id, "limit": 5}))
+                .await
+                .unwrap();
+            let t = tv["tasks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == task_id)
+                .unwrap()
+                .clone();
+            if t["state"] != "waiting_action" && t["state"] != "running" && t["state"] != "queued" {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(15) {
+                panic!("task never completed");
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+
+        // Check no triggers were added.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let v = client.call("bot_list", json!({})).await.unwrap();
+        let bot = v["bots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == bot_id)
+            .unwrap()
+            .clone();
+        let triggers = bot["triggers"].as_array().unwrap();
+        assert!(triggers.is_empty(), "skip must not add any triggers");
+
+        crate::bots::runner::set_test_agent_bin(None);
+        client.call("shutdown", json!({})).await.ok();
+    }
+
+    // ── parse_atlas_action: add_trigger JSON is correctly deserialized ─────────
+
+    #[test]
+    fn parse_atlas_action_add_trigger() {
+        use crate::bots::runner::parse_atlas_action;
+        use crate::bots::store::{TaskAction, TriggerKind};
+        let text = r#"Some reply text.
+ATLAS_ACTION: {"kind":"add_trigger","trigger":{"type":"schedule","cron":"0 9 * * 1-5"},"prompt":"Review the open PRs and summarize","reason":"You asked for a daily PR review"}"#;
+        let action = parse_atlas_action(text).expect("should parse");
+        match action {
+            TaskAction::AddTrigger {
+                trigger: TriggerKind::Schedule { cron },
+                prompt,
+                reason,
+            } => {
+                assert_eq!(cron, "0 9 * * 1-5");
+                assert_eq!(prompt, "Review the open PRs and summarize");
+                assert_eq!(reason, "You asked for a daily PR review");
+            }
+            other => panic!("unexpected action: {other:?}"),
+        }
     }
 }

@@ -18,6 +18,8 @@
 	let hostIntegrations = $state<Record<string, AgentIntegration[]>>({});
 	let pairings = $state<Record<string, { p: PairStart; at: number } | null>>({});
 	let hostDevices = $state<Record<string, Device[]>>({});
+	let crewSettings = $state<Record<string, { short_replies: boolean; short_replies_model: string }>>({});
+	let crewSettingsSaving = $state<Record<string, boolean>>({});
 	let now = $state(Date.now());
 	let addHost = $state("");
 	let addName = $state("");
@@ -26,15 +28,25 @@
 	const remoteHosts = $derived(bots.hosts.filter((h) => h.key !== ""));
 
 	async function loadHost(key: string) {
-		const [intResult, devResult] = await Promise.allSettled([
+		const [intResult, devResult, crewResult] = await Promise.allSettled([
 			bots.getHostIntegrations(key),
 			hostCall<{ devices: Device[] }>("mobile_devices", { host: key }),
+			hostCall<{ short_replies: boolean; short_replies_model: string | null }>("bot_crew_get", { host: key }),
 		]);
 		if (intResult.status === "fulfilled") {
 			hostIntegrations = { ...hostIntegrations, [key]: intResult.value };
 		}
 		if (devResult.status === "fulfilled") {
 			hostDevices = { ...hostDevices, [key]: devResult.value.devices };
+		}
+		if (crewResult.status === "fulfilled") {
+			crewSettings = {
+				...crewSettings,
+				[key]: {
+					short_replies: crewResult.value.short_replies,
+					short_replies_model: crewResult.value.short_replies_model ?? "cc/claude-haiku-5-5",
+				},
+			};
 		}
 	}
 
@@ -91,10 +103,22 @@
 			toast.error(errText(e));
 		}
 	}
+
+	async function saveCrewSettings(key: string, short_replies: boolean, short_replies_model: string) {
+		crewSettingsSaving = { ...crewSettingsSaving, [key]: true };
+		try {
+			await hostCall("bot_crew_set", { host: key, short_replies, short_replies_model: short_replies_model || null });
+			crewSettings = { ...crewSettings, [key]: { short_replies, short_replies_model } };
+		} catch (e) {
+			toast.error(errText(e));
+		} finally {
+			crewSettingsSaving = { ...crewSettingsSaving, [key]: false };
+		}
+	}
 </script>
 
 <PageHead
-	title="Mugiwaras"
+	title="Atlas Crew"
 	description="Bot computers run crewmates 24/7 on your own server. Add a ship after running `atlas bot install user@host`."
 />
 
@@ -146,6 +170,37 @@
 			{/snippet}
 		</Row>
 
+		{@const cs = crewSettings[h.key]}
+		{#if cs}
+			<Row id="short-replies" label="Short replies" description="Summarize long bot replies with a cheap model.">
+				<div class="short-replies-form">
+					<label class="sr-label">
+						<input
+							type="checkbox"
+							checked={cs.short_replies}
+							onchange={(e) =>
+								void saveCrewSettings(
+									h.key,
+									(e.currentTarget as HTMLInputElement).checked,
+									cs.short_replies_model,
+								)}
+						/>
+						Enabled
+					</label>
+					{#if cs.short_replies}
+						<input
+							class="input"
+							type="text"
+							placeholder="Model id (e.g. cc/claude-haiku-5-5)"
+							bind:value={cs.short_replies_model}
+							onblur={() => void saveCrewSettings(h.key, cs.short_replies, cs.short_replies_model)}
+							aria-label="Summary model"
+						/>
+					{/if}
+				</div>
+			</Row>
+		{/if}
+
 		<Row id="bots-remove-{h.key}" label="Remove server" description="Stops managing bots on this server.">
 			<Button size="sm" variant="ghost" onclick={() => doRemoveHost(h.key, h.name)}>Remove</Button>
 		</Row>
@@ -183,11 +238,27 @@
 	</Row>
 </Group>
 
+<Group title="GitHub">
+	<Row
+		id="crew-github"
+		label="GitHub"
+		description="Connect GitHub so the crew can clone private repositories. Configure in the crew workspace footer."
+	>
+		<Button
+			size="sm"
+			variant="ghost"
+			onclick={() => {
+				updates.open = false;
+			}}>Open crew workspace</Button
+		>
+	</Row>
+</Group>
+
 <Group title="Onboarding">
 	<Row
 		id="bots-onboarding"
 		label="Replay onboarding"
-		description="Shows the Mugiwaras introduction again from the first step."
+		description="Shows the Atlas Crew introduction again from the first step."
 	>
 		<Button
 			size="sm"
@@ -259,5 +330,18 @@
 	}
 	.input::placeholder {
 		color: var(--ca-text-tertiary, var(--ca-text-secondary));
+	}
+	.short-replies-form {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.sr-label {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--ca-text-primary);
+		cursor: pointer;
 	}
 </style>

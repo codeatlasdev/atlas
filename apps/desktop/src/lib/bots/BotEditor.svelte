@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Button } from "@codeatlasdev/ui";
+	import { Dialog, Button } from "@codeatlasdev/ui";
+	import { Shuffle } from "@lucide/svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import type { BotState } from "#lib/bots/botFace.ts";
 	import {
@@ -12,7 +13,23 @@
 		type BotLook,
 	} from "#lib/bots/look.ts";
 
-	let { look = $bindable(), seed }: { look: BotLook; seed: string } = $props();
+	interface Props {
+		open?: boolean;
+		look: BotLook;
+		seed: string;
+		onsave?: (look: BotLook) => void;
+	}
+
+	let { open = $bindable(false), look, seed, onsave }: Props = $props();
+
+	// Internal draft — reset every time the modal opens.
+	// Initial value doesn't matter; $effect below sets it on first open.
+	let draft = $state<BotLook>({ color: "#000000", eyes: "round", hat: "none" });
+	let prevOpen = false;
+	$effect(() => {
+		if (open && !prevOpen) draft = { ...look };
+		prevOpen = open;
+	});
 
 	const STATES: { id: BotState; label: string }[] = [
 		{ id: "idle", label: "Idle" },
@@ -21,12 +38,27 @@
 		{ id: "offline", label: "Offline" },
 	];
 	let preview = $state<BotState>("idle");
+
+	const changed = $derived(
+		draft.color !== look.color || draft.eyes !== look.eyes || draft.hat !== look.hat,
+	);
+
+	function handleSave() {
+		onsave?.(draft);
+		open = false;
+	}
 </script>
 
-<div class="wrap">
-	<div class="editor">
+<Dialog bind:open title="Customize look" size="xl">
+	<!-- The kit Dialog leaves the page only after every animation inside it ends (presence waits on
+	     getAnimations({subtree:true})). The faces breathe and blink forever, so the closed dialog never left and its
+	     invisible backdrop swallowed every click. Closing turns those animations off so the exit can finish. -->
+	<div class="editor" class:closing={!open}>
+		<!-- ── Left: live preview ──────────────────────────────────────────── -->
 		<div class="stage">
-			<BotFace {seed} {look} state={preview} size={200} track />
+			<div class="face-wrap">
+				<BotFace {seed} look={draft} state={preview} size={180} track />
+			</div>
 			<div class="states" role="radiogroup" aria-label="Preview state">
 				{#each STATES as s (s.id)}
 					<button
@@ -39,33 +71,38 @@
 					</button>
 				{/each}
 			</div>
+			<Button variant="ghost" size="sm" onclick={() => (draft = randomLook())}>
+				<Shuffle size={13} />
+				Randomize
+			</Button>
 		</div>
 
-		<div class="controls">
+		<!-- ── Right: options ─────────────────────────────────────────────── -->
+		<div class="options">
 			<section>
 				<h4>Color</h4>
 				<div class="swatches" role="radiogroup" aria-label="Color">
 					{#each BOT_COLORS as c (c)}
 						<button
 							role="radio"
-							aria-checked={look.color === c}
+							aria-checked={draft.color === c}
 							aria-label={c}
 							class="swatch"
-							class:on={look.color === c}
+							class:on={draft.color === c}
 							style:background={c}
-							onclick={() => (look = { ...look, color: c })}
+							onclick={() => (draft = { ...draft, color: c })}
 						></button>
 					{/each}
 					<label
 						class="swatch custom"
-						class:on={!BOT_COLORS.includes(look.color as never)}
+						class:on={!BOT_COLORS.includes(draft.color as never)}
 						title="Custom color"
 					>
 						<input
 							type="color"
 							aria-label="Custom color"
-							value={look.color}
-							oninput={(e) => (look = { ...look, color: e.currentTarget.value })}
+							value={draft.color}
+							oninput={(e) => (draft = { ...draft, color: e.currentTarget.value })}
 						/>
 					</label>
 				</div>
@@ -77,12 +114,12 @@
 					{#each EYE_STYLES as e (e)}
 						<button
 							role="radio"
-							aria-checked={look.eyes === e}
+							aria-checked={draft.eyes === e}
 							class="tile"
-							class:on={look.eyes === e}
-							onclick={() => (look = { ...look, eyes: e })}
+							class:on={draft.eyes === e}
+							onclick={() => (draft = { ...draft, eyes: e })}
 						>
-							<BotFace {seed} look={{ ...look, eyes: e, hat: "none" }} state="idle" size={52} />
+							<BotFace {seed} look={{ ...draft, eyes: e, hat: "none" }} state="idle" size={52} />
 							<span>{EYE_LABELS[e]}</span>
 						</button>
 					{/each}
@@ -95,87 +132,113 @@
 					{#each HATS as h (h)}
 						<button
 							role="radio"
-							aria-checked={look.hat === h}
+							aria-checked={draft.hat === h}
 							class="tile"
-							class:on={look.hat === h}
-							onclick={() => (look = { ...look, hat: h })}
+							class:on={draft.hat === h}
+							onclick={() => (draft = { ...draft, hat: h })}
 						>
-							<BotFace {seed} look={{ ...look, hat: h }} state="idle" size={52} />
+							<BotFace {seed} look={{ ...draft, hat: h }} state="idle" size={52} />
 							<span>{HAT_LABELS[h]}</span>
 						</button>
 					{/each}
 				</div>
 			</section>
-
-			<Button variant="glass" onclick={() => (look = randomLook())}>Surprise me</Button>
 		</div>
 	</div>
-</div>
+
+	{#snippet actions()}
+		<Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
+		<Button disabled={!changed} onclick={handleSave}>Save</Button>
+	{/snippet}
+</Dialog>
 
 <style>
-	.wrap {
-		container-type: inline-size;
+	.editor.closing :global(*) {
+		animation: none !important;
+		transition: none !important;
 	}
-	@container (max-width: 480px) {
-		.editor {
-			grid-template-columns: 1fr;
-		}
-	}
+	/* Inset from the dialog's edges: the kit Dialog body has no side padding at this size, and the preview and the
+	   last tile column sat flush against the frame. */
 	.editor {
 		display: grid;
-		grid-template-columns: 240px 1fr;
-		gap: 24px;
-		color: var(--ca-text-primary);
+		grid-template-columns: 220px 1fr;
+		gap: 28px;
+		align-items: start;
+		padding: 4px 24px 20px;
 	}
+
+	/* ── Stage (left) ──────────────────────────────────────────────────────── */
 	.stage {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 16px;
-		padding: 28px 12px 16px;
-		border-radius: 16px;
+		padding: 28px 16px 20px;
+		border-radius: 14px;
 		background: var(--ca-surface-sunken);
-		align-self: start;
 	}
+
+	.face-wrap {
+		/* Stable bounding box so the column doesn't jump between states */
+		width: 180px;
+		height: 180px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
 	.states {
 		display: flex;
 		flex-wrap: wrap;
 		justify-content: center;
 		gap: 4px;
 	}
+
 	.states button {
 		font: inherit;
 		font-size: 11px;
-		padding: 3px 8px;
+		padding: 3px 9px;
 		border-radius: 999px;
 		border: 1px solid var(--ca-outline-subtle);
 		background: none;
 		color: var(--ca-text-secondary);
+		cursor: pointer;
+		transition: border-color 100ms;
 	}
+
 	.states button.on {
 		color: var(--ca-text-primary);
 		border-color: var(--ca-brand-main);
 	}
-	.controls {
+
+	/* ── Options (right) ───────────────────────────────────────────────────── */
+	.options {
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
-		align-items: flex-start;
+		gap: 20px;
+		min-width: 0;
 	}
+
 	section {
-		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
+
 	h4 {
-		margin: 0 0 8px;
+		margin: 0;
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--ca-text-secondary);
 	}
+
+	/* Color swatches */
 	.swatches {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
 	}
+
 	.swatch {
 		width: 26px;
 		height: 26px;
@@ -183,50 +246,68 @@
 		border: 2px solid transparent;
 		outline: 2px solid transparent;
 		padding: 0;
+		cursor: pointer;
 		transition: transform 120ms;
 	}
+
 	.swatch:hover {
 		transform: scale(1.12);
 	}
+
 	.swatch.on {
 		outline-color: var(--ca-brand-main);
 		border-color: var(--ca-surface-base);
 	}
+
 	.custom {
 		position: relative;
 		overflow: hidden;
 		background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+		cursor: pointer;
 	}
+
 	.custom input {
 		position: absolute;
 		inset: 0;
 		opacity: 0;
 		cursor: pointer;
 	}
+
+	/* Eyes / Hat tile grids */
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
 		gap: 8px;
+		/* Each grid scrolls independently if it overflows; the modal never scrolls. The inner padding keeps a
+		   selected tile's outline and its hover lift from being clipped by the scroll box. */
+		overflow-y: auto;
+		max-height: 200px;
+		padding: 4px;
+		margin: -4px;
 	}
+
 	.tile {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 4px;
-		padding: 10px 4px 6px;
-		border-radius: 12px;
-		border: 1px solid var(--ca-outline-subtle);
+		padding: 8px 4px 6px;
+		border-radius: 10px;
+		border: 1.5px solid var(--ca-outline-subtle);
 		background: var(--ca-surface-base);
 		color: var(--ca-text-secondary);
 		font: inherit;
 		font-size: 11px;
+		cursor: pointer;
 		transition:
 			transform 120ms,
 			border-color 120ms;
 	}
+
 	.tile:hover {
 		transform: translateY(-2px);
 	}
+
 	.tile.on {
 		border-color: var(--ca-brand-main);
 		color: var(--ca-text-primary);

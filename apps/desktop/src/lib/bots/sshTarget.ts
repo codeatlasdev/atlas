@@ -13,7 +13,7 @@
  */
 
 export type ParsedTarget = { target: string; port: number };
-export type ParseResult = { ok: true } & ParsedTarget | { ok: false; error: string };
+export type ParseResult = ({ ok: true } & ParsedTarget) | { ok: false; error: string };
 
 /**
  * Parse a raw SSH address typed by the user.
@@ -36,7 +36,8 @@ export function parseSSHTarget(raw: string): ParseResult {
 	// Detect IPv6 bracket notation: user@[::1]:port or user@[::1]
 	if (hostPart.startsWith("[")) {
 		const closeBracket = hostPart.indexOf("]");
-		if (closeBracket < 0) return { ok: false, error: 'IPv6 address must be closed: user@[::1] or user@[::1]:port' };
+		if (closeBracket < 0)
+			return { ok: false, error: "IPv6 address must be closed: user@[::1] or user@[::1]:port" };
 		const ipv6Host = hostPart.slice(0, closeBracket + 1); // includes brackets
 		const rest = hostPart.slice(closeBracket + 1);
 		if (rest === "" || rest === ":") {

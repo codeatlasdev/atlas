@@ -938,7 +938,7 @@ const DEFS = [
 	},
 	{
 		id: "bots",
-		label: "Mugiwaras",
+		label: "Atlas Crew",
 		description: "Crewmates running on your ships — agents working around the clock.",
 		cluster: "connect",
 		pages: [
@@ -957,13 +957,35 @@ const DEFS = [
 						],
 					},
 					{
+						title: "GitHub",
+						items: [
+							item(
+								"crew-github",
+								"GitHub",
+								"Connect GitHub so your crew can clone private repositories.",
+								"git private repo token oauth pat",
+							),
+						],
+					},
+					{
+						title: "Short replies",
+						items: [
+							item(
+								"short-replies",
+								"Short replies",
+								"Summarize long bot replies with a cheap model before showing them.",
+								"summary compact ai model cheap",
+							),
+						],
+					},
+					{
 						title: "Onboarding",
 						items: [
 							item(
 								"bots-onboarding",
 								"Replay onboarding",
-								"Shows the Mugiwaras introduction again from the first step.",
-								"onboarding intro tour crew mugiwaras",
+								"Shows the Atlas Crew introduction again from the first step.",
+								"onboarding intro tour crew atlas crew",
 							),
 						],
 					},

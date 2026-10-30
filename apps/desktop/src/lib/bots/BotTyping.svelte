@@ -2,10 +2,11 @@
 	/**
 	 * BotTyping — shared "dots gather → crewmate hops → Thinking" animation.
 	 *
-	 * Used in both the real chat (TypingIndicator) and the onboarding art (BotArtHow).
+	 * Used in the chat (setup "Thinking", task "Working · 12s") and the onboarding art (BotArtHow).
 	 * The dots use the bot's own colour from normalizeLook; the shimmer label uses
 	 * theme tokens so it reads in any theme.
 	 */
+	import { fly } from "svelte/transition";
 	import BotFace from "#lib/bots/BotFace.svelte";
 	import { normalizeLook, type BotLook } from "#lib/bots/look.ts";
 
@@ -13,11 +14,15 @@
 		seed,
 		look,
 		label = "Thinking",
+		detail,
 		paused = false,
 	}: {
 		seed: string;
 		look?: BotLook;
+		/** What it is doing; a change slides the new words in ("Thinking" → "Reading app.ts" → "Planning"…). */
 		label?: string;
+		/** Small fixed text after the label (elapsed time); does not animate with it. */
+		detail?: string;
 		paused?: boolean;
 	} = $props();
 
@@ -29,7 +34,12 @@
 		<span class="dots" style:--crew={crewColor}><i></i><i></i><i></i></span>
 		<span class="mini"><BotFace {seed} {look} state="working" size={22} /></span>
 	</span>
-	<span class="shimmer">{label}</span>
+	<span class="label-slot">
+		{#key label}
+			<span class="shimmer" in:fly={{ y: 7, duration: 260 }}>{label}</span>
+		{/key}
+	</span>
+	{#if detail}<span class="detail">· {detail}</span>{/if}
 </div>
 
 <style>
@@ -169,6 +179,18 @@
 			opacity: 1;
 			transform: translateY(-0.2em);
 		}
+	}
+
+	/* The label swaps in place: one grid cell, so the outgoing and incoming words never push the row around. */
+	.label-slot {
+		display: inline-grid;
+	}
+	.label-slot > :global(*) {
+		grid-area: 1 / 1;
+	}
+	.detail {
+		color: var(--ca-text-secondary);
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* ── shimmer label ────────────────────────────────────────── */

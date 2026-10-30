@@ -19,7 +19,6 @@
 	import SearchResults from "./settings/SearchResults.svelte";
 	import SettingsNav from "./settings/SettingsNav.svelte";
 
-
 	let results = $derived(searchSettings(u.query));
 	let searching = $derived(u.query.trim() !== "");
 	let paneEl: HTMLDivElement | undefined = $state();

@@ -6,7 +6,9 @@ import { stepGroups, stepPhrase, workingLabel, IDLE_WORDS } from "./stepPhrase.t
 // The working line shows it as a short phrase, so the user sees what the crewmate is doing, not just "Working".
 describe("stepPhrase", () => {
 	test("reading a file names the file, not its full path", () => {
-		expect(stepPhrase("Read /var/lib/atlas-bot/.atlas/bots/x/work/src/routes/login.svelte")).toBe("Reading login.svelte");
+		expect(stepPhrase("Read /var/lib/atlas-bot/.atlas/bots/x/work/src/routes/login.svelte")).toBe(
+			"Reading login.svelte",
+		);
 		expect(stepPhrase("read src/app.ts")).toBe("Reading app.ts");
 	});
 
@@ -30,7 +32,7 @@ describe("stepPhrase", () => {
 	});
 
 	test("a tool it does not know still reads as a sentence, never a raw id", () => {
-		expect(stepPhrase("mcp__linear__save_issue {\"x\":1}")).toBe("Using save issue");
+		expect(stepPhrase('mcp__linear__save_issue {"x":1}')).toBe("Using save issue");
 		expect(stepPhrase("todo")).toBe("Using todo");
 	});
 
@@ -39,7 +41,6 @@ describe("stepPhrase", () => {
 		expect(stepPhrase("")).toBe("Working");
 	});
 });
-
 
 // Between tool calls the agent is thinking: the line cycles through short verbs instead of freezing on one phrase.
 describe("workingLabel", () => {
@@ -72,7 +73,10 @@ describe("stepGroups", () => {
 	const s = (text, group, ts = 0) => ({ ts, text, group });
 
 	test("consecutive steps under one title form one group; a new title opens the next", () => {
-		const g = stepGroups([s("read a.ts", "CART: Testar"), s("bash bun test", "CART: Testar"), s("edit b.ts", "FIX: Corrigir")], true);
+		const g = stepGroups(
+			[s("read a.ts", "CART: Testar"), s("bash bun test", "CART: Testar"), s("edit b.ts", "FIX: Corrigir")],
+			true,
+		);
 		expect(g.map((x) => [x.title, x.steps.length, x.done])).toEqual([
 			["CART: Testar", 2, true],
 			["FIX: Corrigir", 1, false],
@@ -104,9 +108,13 @@ describe("stepGroups", () => {
 });
 
 test("an omp hashline edit target names the file, not the [path#TAG] anchor", () => {
-	expect(stepPhrase("edit [apps/store/src/lib/analytics/footer-contact.test.ts#07A1]")).toBe("Editing footer-contact.test.ts");
+	expect(stepPhrase("edit [apps/store/src/lib/analytics/footer-contact.test.ts#07A1]")).toBe(
+		"Editing footer-contact.test.ts",
+	);
 	// hostd keeps 80 characters of a step, which can cut the closing bracket.
-	expect(stepPhrase("edit [apps/store/src/lib/analytics/footer-contact.test.ts#07")).toBe("Editing footer-contact.test.ts");
+	expect(stepPhrase("edit [apps/store/src/lib/analytics/footer-contact.test.ts#07")).toBe(
+		"Editing footer-contact.test.ts",
+	);
 });
 
 // Seen live: the agent runs "cd apps/store && bun test" and the card said "Running cd".

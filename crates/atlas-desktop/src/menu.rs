@@ -15,8 +15,12 @@ use std::collections::HashMap;
 
 use parking_lot::Mutex;
 use serde::Deserialize;
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, Manager, Wry};
+#[cfg(not(windows))]
+use tauri::Manager;
+use tauri::menu::MenuItem;
+#[cfg(not(windows))]
+use tauri::menu::{IsMenuItem, Menu, PredefinedMenuItem, Submenu};
+use tauri::{AppHandle, Emitter, Wry};
 
 const PREFIX: &str = "cmd:";
 
@@ -25,6 +29,7 @@ const PREFIX: &str = "cmd:";
 pub struct Items(Mutex<HashMap<String, MenuItem<Wry>>>);
 
 /// A disabled command item (enabled by the first [`menu_sync`]: a key must not fire early).
+#[cfg(not(windows))]
 fn command(app: &AppHandle, id: &str, label: &str) -> tauri::Result<MenuItem<Wry>> {
     let item = MenuItem::with_id(app, format!("{PREFIX}{id}"), label, false, None::<&str>)?;
     app.state::<Items>()
@@ -35,8 +40,10 @@ fn command(app: &AppHandle, id: &str, label: &str) -> tauri::Result<MenuItem<Wry
 }
 
 /// `(command id, label)` per submenu; `None` is a separator.
+#[cfg(not(windows))]
 type Entries = &'static [Option<(&'static str, &'static str)>];
 
+#[cfg(not(windows))]
 const FILE: Entries = &[
     Some(("atlas::NewWorktree", "New Worktree…")),
     Some(("workspace::NewTerminal", "New Terminal")),
@@ -52,6 +59,7 @@ const FILE: Entries = &[
     Some(("pane::ReopenClosedItem", "Reopen Closed Tab")),
 ];
 
+#[cfg(not(windows))]
 const GO: Entries = &[
     Some(("atlas::Jump", "Jump to Worktree or Terminal…")),
     Some(("file_finder::Toggle", "Go to File…")),
@@ -68,6 +76,7 @@ const GO: Entries = &[
     Some(("atlas::RestartService", "Restart Focused Service")),
 ];
 
+#[cfg(not(windows))]
 const VIEW: Entries = &[
     Some(("shell::ToggleSidebar", "Toggle Sidebar")),
     Some(("workspace::ToggleLeftDock", "Toggle Left Dock")),
@@ -83,6 +92,7 @@ const VIEW: Entries = &[
     Some(("pane::SplitDown", "Split Down")),
 ];
 
+#[cfg(not(windows))]
 fn submenu(
     app: &AppHandle,
     title: &str,
@@ -102,7 +112,8 @@ fn submenu(
     Ok(menu)
 }
 
-/// The app menu bar. Close Window is deliberately absent: ⌘W is "Close Tab".
+/// The app menu bar (macOS and Linux; Windows has none). Close Window is deliberately absent: ⌘W is "Close Tab".
+#[cfg(not(windows))]
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let settings = command(app, "zed::OpenSettings", "Settings…")?;
     let help = command(app, "atlas::Help", "Keyboard Shortcuts")?;
@@ -154,23 +165,29 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         ],
     )?;
     let help_menu = Submenu::with_items(app, "Help", true, &[&help])?;
-    Menu::with_items(
-        app,
-        &[
-            &app_menu,
-            &submenu(app, "File", FILE, &[])?,
-            &edit,
-            &view,
-            &submenu(app, "Go", GO, &[])?,
-            &window,
-            &help_menu,
-        ],
-    )
+    let go = submenu(app, "Go", GO, &[])?;
+    let file = submenu(app, "File", FILE, &[])?;
+    // Capture exists on macOS only (every other platform answers "not available yet").
+    #[cfg(target_os = "macos")]
+    let capture = crate::tray::capture_submenu(app)?;
+    #[cfg(target_os = "macos")]
+    let menus: Vec<&dyn IsMenuItem<Wry>> = vec![
+        &app_menu, &file, &edit, &view, &go, &capture, &window, &help_menu,
+    ];
+    #[cfg(not(target_os = "macos"))]
+    let menus: Vec<&dyn IsMenuItem<Wry>> =
+        vec![&app_menu, &file, &edit, &view, &go, &window, &help_menu];
+    Menu::with_items(app, &menus)
 }
 
-/// Menu click or key equivalent: hand the command id to the frontend.
+/// Menu click or key equivalent: hand the command id to the frontend. `dock:*` ids belong to the agent dock's
+/// native right-click menu (`dock::dock_menu`), `capture:*` ids to the capture submenu (same path as the hotkey).
 pub fn on_event(app: &AppHandle, id: &str) {
-    if let Some(cmd) = id.strip_prefix(PREFIX) {
+    if id.starts_with("dock:") {
+        crate::dock::on_menu(app, id);
+    } else if let Some(h) = crate::shots::prefs::hotkey_of_menu_id(id) {
+        crate::shots::feed(app, crate::shots::session::Event::Hotkey(h));
+    } else if let Some(cmd) = id.strip_prefix(PREFIX) {
         let _ = app.emit("menu://command", cmd);
     }
 }

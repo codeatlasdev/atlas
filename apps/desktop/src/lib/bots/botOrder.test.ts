@@ -13,7 +13,13 @@ describe("shortcutOrder", () => {
 			{ projects: [{ bots: [b("ship", "ana"), b("ship", "bia")] }, { bots: [b("ship", "joao")] }] },
 			{ projects: [{ bots: [b("local", "zed")] }] },
 		];
-		expect(shortcutOrder(hero, sections).map((x) => x.botId)).toEqual(["carlos", "ana", "bia", "joao", "zed"]);
+		expect(shortcutOrder(hero, sections).map((x) => x.botId)).toEqual([
+			"carlos",
+			"ana",
+			"bia",
+			"joao",
+			"zed",
+		]);
 	});
 
 	test("the first mate is not listed twice, and with no first mate the list starts at 1", () => {

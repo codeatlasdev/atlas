@@ -19,6 +19,8 @@ import {
 	prereleaseBadge,
 	dateOf,
 	formatBytes,
+	finishOutcome,
+	finishToast,
 	isSkipped,
 	justUpdated,
 	parseNotes,
@@ -385,6 +387,49 @@ describe("progress reducer", () => {
 		expect(phaseFromLog("◆ Downloading Atlas-1.0.2-aarch64.app.tar.gz...")).toEqual(phase("update-app"));
 		expect(phaseFromLog("hello")).toBeNull();
 	});
+	test("a managed install is remembered with who manages it", () => {
+		expect(run({ kind: "managed", how: "homebrew" }).managed).toBe("homebrew");
+		expect(run({ kind: "managed", how: "package" }).managed).toBe("package");
+		expect(EMPTY_PROGRESS.managed).toBeNull();
+	});
+	test("a managed event does not move the phases", () => {
+		const p = run(phase("download"), { kind: "managed", how: "package" });
+		expect(p.at).toBe(0);
+	});
+});
+
+describe("how a finished install ends", () => {
+	const run = (...events) => events.reduce(reduceProgress, EMPTY_PROGRESS);
+
+	test("an exit-0 run that installed nothing because another tool owns Atlas is `managed`, never `done`", () => {
+		expect(finishOutcome(run({ kind: "managed", how: "homebrew" }))).toBe("managed");
+		expect(finishOutcome(run({ kind: "managed", how: "package" }))).toBe("managed");
+	});
+	test("any other exit-0 run is `done`", () => {
+		expect(finishOutcome(EMPTY_PROGRESS)).toBe("done");
+		expect(finishOutcome(run({ kind: "phase", id: "install-cli" }))).toBe("done");
+	});
+	test("the toast never says `up to date` for a managed install", () => {
+		const managed = finishToast("update", "managed", "homebrew");
+		expect(managed.text).not.toMatch(/up to date/i);
+		expect(managed.text).toMatch(/brew upgrade atlas/);
+		expect(managed.level).toBe("info");
+		expect(finishToast("update", "managed", "package").text).toMatch(/package manager/i);
+		expect(finishToast("update", "done", null)).toEqual({ level: "success", text: "Atlas is up to date" });
+		expect(finishToast("unlink", "done", null).text).toBe("Back on the release build");
+	});
+	test("a managed run is not a finished install: no relaunch, steps stay un-ticked", () => {
+		const p = run({ kind: "managed", how: "homebrew" });
+		expect(states(stepsFrom(p, "managed"))).toEqual([
+			"pending",
+			"pending",
+			"pending",
+			"pending",
+			"pending",
+			"pending",
+		]);
+	});
+	const states = (s) => s.map((x) => x.state);
 });
 
 describe("dateOf", () => {

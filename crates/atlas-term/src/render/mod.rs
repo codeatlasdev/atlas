@@ -403,7 +403,8 @@ impl Renderer {
             let w = 3.0 * s;
             self.deco_insts.push(DecoInst {
                 x: self.config.width as f32 - w - inset,
-                y: thumb_y,
+                // A fixed overlay: it does not ride the smooth-scroll offset of the grid.
+                y: thumb_y - grid_origin_y(f.over, f.scroll_frac, ch),
                 w,
                 h: thumb_h,
                 color: thumb_color(f.clear),
@@ -445,7 +446,7 @@ impl Renderer {
                 atlas: [ATLAS as f32; 2],
                 color_atlas: [COLOR_ATLAS as f32; 2],
                 cols: f.cols.max(1),
-                _pad: 0,
+                origin_y: grid_origin_y(f.over, f.scroll_frac, self.text.font.cell[1]),
             }),
         );
         let view = frame.texture.create_view(&Default::default());
@@ -510,6 +511,16 @@ impl Renderer {
         self.timing.record(t0);
         Ok(true)
     }
+}
+
+/// Where the grid's top edge is, in pixels from the view's top: the `over` overscan rows above the viewport are
+/// hidden, and the content is pushed down by `frac` of a row (smooth scrolling). Without overscan there is nothing
+/// to show in the strip a fraction would open, so it is ignored.
+pub(crate) fn grid_origin_y(over: u32, frac: f32, cell_h: f32) -> f32 {
+    if over == 0 {
+        return 0.0;
+    }
+    (frac.clamp(-1.0, 1.0) - over as f32) * cell_h
 }
 
 /// Scroll thumb colour: light on a dark background, dark on a light one, at low alpha.

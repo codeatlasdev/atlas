@@ -5,12 +5,7 @@
  * and wiring its connection logic into IntegrationsCatalog.svelte.
  */
 
-export type IntegrationCategory =
-	| "Code"
-	| "Productivity"
-	| "Communication"
-	| "Design"
-	| "Password managers";
+export type IntegrationCategory = "Code" | "Productivity" | "Communication" | "Design" | "Password managers";
 
 export type IntegrationStatus = "real" | "coming-soon";
 

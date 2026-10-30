@@ -1,24 +1,13 @@
 <script lang="ts">
 	import { Button, EmptyState, Skeleton } from "@codeatlasdev/ui";
 	import { FolderPlus } from "@lucide/svelte";
-	import { open as pickFolder } from "@tauri-apps/plugin-dialog";
-	import { api } from "#lib/api.ts";
+	import { addProject } from "#lib/components/sidebar/projects.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { showStanding } from "#lib/onboarding/flow.ts";
 	import Hero from "#lib/onboarding/Hero.svelte";
 	import { onboarding } from "#lib/onboarding/state.svelte.ts";
 	import { welcome } from "#lib/onboarding/welcome.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
-
-	async function add() {
-		const dir = await pickFolder({ directory: true, title: "Add atlas project" });
-		if (typeof dir !== "string") return;
-		const v = await store.run("add", () => api.add(dir));
-		if (v) {
-			await store.refresh();
-			store.selected = v.id;
-		}
-	}
 </script>
 
 <div class="drag-strip" data-tauri-drag-region></div>
@@ -40,7 +29,7 @@
 			description="Pick a worktree in the sidebar, or press {shortcutFor('atlas::Jump') ?? '⌘K'} to jump."
 		>
 			{#snippet actions()}
-				<Button variant="glass" onclick={add}>Add project…</Button>
+				<Button variant="glass" onclick={addProject}>Add project…</Button>
 			{/snippet}
 		</EmptyState>
 	{/if}

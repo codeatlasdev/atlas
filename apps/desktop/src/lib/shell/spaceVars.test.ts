@@ -17,7 +17,7 @@ const files = walk(src).filter((f) => /\.(svelte|css|ts)$/.test(f) && !/\.test\.
 const readers = (name: string) =>
 	files
 		.filter((f) => new RegExp(`var\\(\\s*--${name}\\b`).test(readFileSync(f, "utf8")))
-		.map((f) => relative(src, f))
+		.map((f) => relative(src, f).replaceAll("\\", "/"))
 		.sort();
 
 /** Files that render only below a space layer (SpaceView → ProjectHeader / Workbench → panes, panel, viewers). */

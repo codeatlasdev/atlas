@@ -139,39 +139,31 @@ describe("describeTrigger", () => {
 	});
 
 	test("file with glob", () => {
-		expect(describeTrigger({ type: "file", path: "/src", glob: "**/*.ts" })).toBe(
-			"When **/*.ts changes",
-		);
+		expect(describeTrigger({ type: "file", path: "/src", glob: "**/*.ts" })).toBe("When **/*.ts changes");
 	});
 
 	test("file without glob falls back to path", () => {
-		expect(describeTrigger({ type: "file", path: "/src/index.ts" })).toBe(
-			"When /src/index.ts changes",
-		);
+		expect(describeTrigger({ type: "file", path: "/src/index.ts" })).toBe("When /src/index.ts changes");
 	});
 
 	test("bot done", () => {
-		expect(describeTrigger({ type: "bot", from_bot: "Reviewer", on: "done" })).toBe(
-			"When Reviewer finishes",
-		);
+		expect(describeTrigger({ type: "bot", from_bot: "Reviewer", on: "done" })).toBe("When Reviewer finishes");
 	});
 
 	test("bot failed", () => {
-		expect(describeTrigger({ type: "bot", from_bot: "Reviewer", on: "failed" })).toBe(
-			"When Reviewer fails",
-		);
+		expect(describeTrigger({ type: "bot", from_bot: "Reviewer", on: "failed" })).toBe("When Reviewer fails");
 	});
 
 	test("service failed", () => {
-		expect(
-			describeTrigger({ type: "service", project_dir: "/app", service: "web", on: "failed" }),
-		).toBe("When web fails");
+		expect(describeTrigger({ type: "service", project_dir: "/app", service: "web", on: "failed" })).toBe(
+			"When web fails",
+		);
 	});
 
 	test("service recovered", () => {
-		expect(
-			describeTrigger({ type: "service", project_dir: "/app", service: "web", on: "recovered" }),
-		).toBe("When web recovers");
+		expect(describeTrigger({ type: "service", project_dir: "/app", service: "web", on: "recovered" })).toBe(
+			"When web recovers",
+		);
 	});
 });
 

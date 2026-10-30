@@ -36,13 +36,14 @@ const MARK: &str = "__ATLAS_ENV__";
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(6);
 const FLAG_SETS: [&[&str]; 3] = [&["-l", "-i", "-c"], &["-l", "-c"], &["-c"]];
 /// Per-session/terminal vars that must not leak into children.
-const SKIP: [&str; 6] = [
+const SKIP: [&str; 7] = [
     "PWD",
     "OLDPWD",
     "SHLVL",
     "_",
     "TERM_SESSION_ID",
     "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
 ];
 
 /// Outcome of one probe of the login shell.
@@ -617,6 +618,24 @@ mod tests {
             vec![
                 ("PATH".into(), "/a:/b".into()),
                 ("FOO".into(), "x=y".into())
+            ]
+        );
+    }
+
+    /// The terminal that launched Atlas (`TERM_PROGRAM=ghostty`, its version, its session) must not leak into a
+    /// child: a terminal tab sets its own identity, and a service or exec has none. A version without its
+    /// program (`TERM_PROGRAM_VERSION=1.3.1` under `TERM_PROGRAM=Atlas`) would be a lie, so they go together.
+    #[test]
+    fn parse_drops_the_launching_terminals_identity() {
+        let out = format!(
+            "{MARK}\nPATH=/a\0TERM_PROGRAM=ghostty\0TERM_PROGRAM_VERSION=1.3.1\0TERM_SESSION_ID=w0t0p0\0TERM=xterm-256color\0\n{MARK}"
+        );
+        let v = parse(&out).unwrap();
+        assert_eq!(
+            v,
+            vec![
+                ("PATH".into(), "/a".into()),
+                ("TERM".into(), "xterm-256color".into())
             ]
         );
     }

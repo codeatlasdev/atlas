@@ -171,7 +171,7 @@
 								? !!botChainFrom.trim()
 								: selectedKind === "service"
 									? !!serviceName.trim()
-									: true /* webhook */),
+									: true) /* webhook */,
 	);
 
 	// ─── actions ─────────────────────────────────────────────────────────────
@@ -509,8 +509,7 @@
 					: selectedKind === "github"
 						? "A PR was opened: {{event}} — review it"
 						: "Describe what the bot should do when this fires"}
-				aria-label="Automation prompt"
-			></textarea>
+				aria-label="Automation prompt"></textarea>
 		</div>
 	</div>
 

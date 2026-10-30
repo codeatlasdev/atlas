@@ -47,15 +47,13 @@
 
 	// Build the full ordered row list: bots first, then commands.
 	const botRows = $derived(
-		bots.map(
-			(b): PaletteRow => ({
-				kind: "bot",
-				id: b.id,
-				hostKey: b.hostKey,
-				name: b.name,
-				subtitle: b.role ? b.role.slice(0, 80) : "",
-			}),
-		),
+		bots.map((b): PaletteRow => ({
+			kind: "bot",
+			id: b.id,
+			hostKey: b.hostKey,
+			name: b.name,
+			subtitle: b.role ? b.role.slice(0, 80) : "",
+		})),
 	);
 
 	const commandRows = $derived((): PaletteRow[] => {

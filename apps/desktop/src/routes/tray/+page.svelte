@@ -6,44 +6,49 @@
 	import { getCurrentWindow } from "@tauri-apps/api/window";
 	import {
 		Bot,
+		ChevronRight,
 		CircleAlert,
 		Download,
 		ExternalLink,
 		FileText,
+		PanelBottom,
 		Play,
+		Plus,
 		RotateCcw,
+		Search,
 		Settings,
 		Square,
-		Terminal as TerminalIcon,
 	} from "@lucide/svelte";
 	import { onMount, tick } from "svelte";
 	import { errText } from "#lib/api.ts";
-	import { fmtMem } from "#lib/format.ts";
 	import { MARK, MARK_GRADIENT, MARK_VIEW } from "#lib/onboarding/intro/mark.ts";
 	import { accentOf, hueOf, onAccent } from "#lib/shell/space.ts";
 	import {
 		EMPTY_SNAPSHOT,
-		agentsLine,
+		agentDoing,
+		agentSections,
+		agentWhere,
 		failedServices,
-		idleProjects,
+		groupProjects,
+		headerSummary,
 		moveFocus,
-		overall,
 		projectHeadline,
+		projectSections,
 		recommend,
 		restartFailedCalls,
 		runningCards,
+		runningMatches,
+		searchOpensStopped,
 		serviceTone,
-		sparkPaths,
+		showSearch,
 		trayHeight,
 		upLine,
 		type TrayAction,
+		type TrayAgent,
 		type TrayIcon,
 		type TrayProject,
 		type TraySnapshot,
 	} from "#lib/tray.ts";
-
-	const SPARK_W = 280;
-	const SPARK_H = 28;
 
 	let snap = $state<TraySnapshot>(EMPTY_SNAPSHOT);
 	const clk = useNow(15_000);
@@ -52,12 +57,21 @@
 	let root = $state<HTMLDivElement>();
 	let scroller = $state<HTMLDivElement>();
 	let dark = $derived(colorScheme.resolved === "dark");
+	let query = $state("");
+	let stoppedOpen = $state(false);
+	/** The agent dock's switch (Settings → Agents → Agent dock); null until Rust answers. */
+	let dock = $state<{ enabled: boolean } | null>(null);
 
-	let status = $derived(overall(snap.projects));
-	let cards = $derived(runningCards(snap.projects));
-	let idle = $derived(idleProjects(snap.projects));
+	let summary = $derived(headerSummary(snap));
+	let sections = $derived(agentSections(snap.agents.list));
+	let allStacks = $derived(runningCards(snap.projects));
+	let stacks = $derived(runningMatches(allStacks, query));
+	let groups = $derived(groupProjects(snap.projects));
+	let lists = $derived(projectSections(groups, query));
+	let searching = $derived(searchOpensStopped(query));
+	let stoppedShown = $derived(stoppedOpen || searching);
 	let rec = $derived(recommend(snap, clk.now));
-	/** A failure card already says what failed; the recommendation then only adds what it does not (update, host). */
+	/** A failed stack already says what failed; the recommendation then only adds what it does not (update, host). */
 	let recShown = $derived(rec && rec.icon !== "fail" ? rec : null);
 
 	const send = (action: TrayAction) => void invoke("tray_action", { action });
@@ -83,6 +97,19 @@
 	const restartFailed = (p: TrayProject) =>
 		guarded(`${p.id}:restart`, () => Promise.all(restartFailedCalls(p).map((c) => invoke("service_cmd", c))));
 
+	const loadDock = () =>
+		void invoke<{ enabled: boolean }>("dock_prefs")
+			.then((p) => (dock = p))
+			.catch(() => (dock = null));
+
+	/** The dock command keeps the rest of its prefs (summon key, toggle key): write back what was read. */
+	const toggleDock = () =>
+		dock &&
+		guarded("dock", async () => {
+			const prefs = await invoke<{ enabled: boolean }>("dock_prefs");
+			dock = await invoke("dock_prefs_set", { prefs: { ...prefs, enabled: !prefs.enabled } });
+		});
+
 	/** Theme and vibrancy follow the choice made in the main window (shared localStorage). */
 	function syncTheme() {
 		const pref = JSON.parse(localStorage.getItem("ca-scheme") ?? '"system"');
@@ -98,13 +125,19 @@
 		if (root) void invoke("tray_resize", { height: trayHeight(root.scrollHeight) });
 	}
 
-	// Keyboard: ↑/↓/Home/End walk every focusable row and button in reading order; Esc closes.
+	// Keyboard: ↑/↓/Home/End walk every focusable row and button in reading order; Esc clears the search, then closes.
 	function focusables(): HTMLElement[] {
 		return root ? [...root.querySelectorAll<HTMLElement>("[data-nav]:not(:disabled)")] : [];
 	}
 	function onKey(e: KeyboardEvent) {
-		if (e.key === "Escape") return void invoke("tray_hide");
+		if (e.key === "Escape") {
+			if (query) return void (query = "");
+			return void invoke("tray_hide");
+		}
 		if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+		// Home/End belong to the search field's caret while it has the focus.
+		const typing = document.activeElement instanceof HTMLInputElement;
+		if (typing && (e.key === "Home" || e.key === "End")) return;
 		const items = focusables();
 		const at = items.indexOf(document.activeElement as HTMLElement);
 		const next = moveFocus(items.length, at, e.key);
@@ -123,12 +156,15 @@
 			listen("tray://shown", async () => {
 				syncTheme();
 				clk.refresh();
+				loadDock();
 				const fresh = await invoke<TraySnapshot | null>("tray_snapshot");
 				if (fresh) snap = fresh;
 			}),
 		);
+		keep(listen<{ enabled: boolean }>("dock://prefs", (e) => (dock = e.payload)));
 		void invoke<TraySnapshot | null>("tray_snapshot").then((s) => s && (snap = s));
 		syncTheme();
+		loadDock();
 		window.addEventListener("keydown", onKey);
 		return () => {
 			offs.forEach((f) => f());
@@ -139,23 +175,102 @@
 	// Resize after every change that can alter the content's height.
 	$effect(() => {
 		void [
-			cards.length,
-			idle.length,
+			sections.needsYou.length,
+			sections.working.length,
+			stacks.length,
+			lists.running.length,
+			lists.stoppedCount,
+			stoppedShown,
 			recShown,
 			error,
 			snap.host.status,
-			cards.map((c) => failedServices(c).length),
+			stacks.map((c) => failedServices(c).length),
 		];
 		void fit();
 	});
 
 	const hueOfProject = (p: TrayProject) => p.hue ?? hueOf(p.id);
+	const tone = (p: TrayProject) => {
+		const h = projectHeadline(p).state;
+		return h === "failed" ? "fail" : h === "starting" ? "warn" : p.running ? "ok" : "off";
+	};
 </script>
 
 {#snippet tile(i: TrayIcon)}
 	<span class="tile {i.kind}" aria-hidden="true">
 		{#if i.kind === "image"}<img src={i.src} alt="" />{:else}{i.text}{/if}
 	</span>
+{/snippet}
+
+{#snippet agentRow(a: TrayAgent, urgent: boolean)}
+	<li class="row agent" class:urgent>
+		<button
+			class="main"
+			data-nav
+			onclick={() => send({ kind: "agents", tab: a.tabId })}
+			aria-label="Jump to {a.agent} in {agentWhere(a)}"
+		>
+			<span class="glyph {a.state}" aria-hidden="true"><Bot size={13} /></span>
+			<span class="lines">
+				<span class="name">{agentWhere(a)}<span class="kind">{a.agent}</span></span>
+				<span class="sub">{agentDoing(a)}</span>
+			</span>
+		</button>
+		<span class="side">
+			{#if urgent}<span class="verb">{a.state === "blocked" ? "Approval" : "Reply"}</span>{/if}
+			<ChevronRight size={13} />
+		</span>
+	</li>
+{/snippet}
+
+{#snippet project(p: TrayProject, label: string | null, nested: boolean, title: string = p.name)}
+	<li
+		class="row proj"
+		class:nested
+		style:--c={accentOf(p.id, dark, p.hue)}
+		style:--on={onAccent(dark, hueOfProject(p))}
+	>
+		<button
+			class="main"
+			data-nav
+			onclick={() => send({ kind: "project", id: p.id })}
+			aria-label="Open {label ? `${p.name}, ${label}` : title}"
+		>
+			{#if nested}<i class="dot {tone(p)}" aria-hidden="true"></i>{:else}{@render tile(p.icon)}{/if}
+			<span class="name"
+				>{label ?? title}{#if !nested && p.running}<i class="dot {tone(p)}"></i>{/if}</span
+			>
+			{#if !nested && p.branch}<span class="kind">{p.branch}</span>{/if}
+		</button>
+		<span class="side acts">
+			<button
+				class="mini start"
+				data-nav
+				disabled={busy[p.id]}
+				onclick={() => toggleStack(p.id, p.running)}
+				aria-label="{p.running ? 'Stop' : 'Start'} {label ?? title}"
+				title={p.running ? "Stop" : "Start"}
+			>
+				{#if p.running}<Square size={12} />{:else}<Play size={12} />{/if}
+			</button>
+		</span>
+	</li>
+{/snippet}
+
+{#snippet group(g: (typeof lists.running)[number])}
+	{#if g.repoShown !== false}
+		{@render project(g.repo, null, false, g.repoLabel)}
+	{:else}
+		<li
+			class="row crumb"
+			aria-hidden="true"
+			style:--c={accentOf(g.repo.id, dark, g.repo.hue)}
+			style:--on={onAccent(dark, hueOfProject(g.repo))}
+		>
+			<span class="name">{@render tile(g.repo.icon)}{g.repoLabel}</span>
+		</li>
+	{/if}
+	{#each g.worktrees as w (w.id)}{@render project(w, w.label, true)}{/each}
 {/snippet}
 
 <div class="pop" bind:this={root}>
@@ -177,24 +292,54 @@
 				>{#each MARK as t (t.id)}<path d={t.d} />{/each}</g
 			>
 		</svg>
-		<div class="titles">
-			<b
-				>Atlas{#if snap.dev}<span class="devchip">Dev</span>{/if}</b
-			>
-			<span class="state {status.tone}" role="status"
-				><i class="dot {status.tone}" class:live={status.tone === "fail" || status.tone === "warn"}
-				></i>{status.label}</span
-			>
-		</div>
-		<button
-			class="icon"
-			data-nav
-			onclick={() => send({ kind: "settings" })}
-			aria-label="Settings"
-			title="Settings"
+		<span class="state {summary.tone}" role="status" title={summary.text}
+			><i class="dot {summary.tone}" class:live={summary.tone === "fail" || summary.tone === "warn"}></i><span
+				class="text">{summary.text}</span
+			></span
 		>
-			<Settings size={15} />
-		</button>
+		<div class="tools">
+			<button
+				class="icon"
+				data-nav
+				onclick={() => send({ kind: "new-agent" })}
+				aria-label="New agent"
+				title="New agent"
+			>
+				<Plus size={15} />
+			</button>
+			{#if dock}
+				<button
+					class="icon"
+					class:on={dock.enabled}
+					data-nav
+					disabled={busy.dock}
+					aria-pressed={dock.enabled}
+					onclick={toggleDock}
+					aria-label="Agent dock"
+					title={dock.enabled ? "Hide the agent dock" : "Show the agent dock"}
+				>
+					<PanelBottom size={15} />
+				</button>
+			{/if}
+			<button
+				class="icon"
+				data-nav
+				onclick={() => send({ kind: "settings" })}
+				aria-label="Settings"
+				title="Settings"
+			>
+				<Settings size={15} />
+			</button>
+			<button
+				class="icon open"
+				data-nav
+				onclick={() => send({ kind: "open" })}
+				aria-label="Open Atlas"
+				title="Open Atlas"
+			>
+				<ExternalLink size={15} />
+			</button>
+		</div>
 	</header>
 
 	{#if error}
@@ -202,149 +347,162 @@
 	{/if}
 
 	<div class="scroll" bind:this={scroller}>
-		{#each cards as p (p.id)}
-			{@const head = projectHeadline(p)}
-			{@const failed = failedServices(p)}
-			{@const sp = sparkPaths(p.cpuSeries, SPARK_W, SPARK_H, 3)}
-			<article
-				class="card project {head.state}"
-				style:--c={accentOf(p.id, dark, p.hue)}
-				style:--on={onAccent(dark, hueOfProject(p))}
-			>
-				<div class="row">
-					<button
-						class="name-btn"
-						data-nav
-						onclick={() => send({ kind: "project", id: p.id })}
-						aria-label="Open {p.name}"
-					>
-						{@render tile(p.icon)}<span class="name">{p.name}</span>
-						{#if p.branch}<span class="branch">{p.branch}</span>{/if}
-					</button>
-					<span class="chip {head.state}" title={upLine(p)}
-						><i class="dot {head.state === 'failed' ? 'fail' : head.state === 'starting' ? 'warn' : 'ok'}"
-						></i>{head.text}</span
-					>
-				</div>
-				<div class="bar" title={upLine(p)} aria-hidden="true">
-					{#each p.services as s (s.name)}
-						<i class="seg {serviceTone(s.state)}" title="{s.name}: {s.state}"></i>
-					{/each}
-				</div>
-				<div class="stats">
-					<span>{upLine(p)}</span><span>{p.cpu}% CPU</span><span>{fmtMem(p.mem)}</span>
-				</div>
-				{#if sp.line}
-					<svg class="spark" viewBox="0 0 {SPARK_W} {SPARK_H}" preserveAspectRatio="none" aria-hidden="true">
-						<path class="area" d={sp.area} />
-						<path class="line" d={sp.line} vector-effect="non-scaling-stroke" />
-					</svg>
-				{/if}
-				<div class="actions">
-					{#if failed.length}
-						<button
-							class="btn primary"
-							data-nav
-							disabled={busy[`${p.id}:restart`]}
-							onclick={() => restartFailed(p)}
-						>
-							<RotateCcw size={11} />Restart failed
-						</button>
-						<button
-							class="btn"
-							data-nav
-							onclick={() => send({ kind: "logs", id: p.id, service: failed[0]! })}
-						>
-							<FileText size={11} />Logs
-						</button>
-					{/if}
-					<button class="btn ghost" data-nav onclick={() => send({ kind: "project", id: p.id })}>
-						<ExternalLink size={11} />Open
-					</button>
-					<button
-						class="btn ghost end"
-						data-nav
-						disabled={busy[p.id]}
-						onclick={() => toggleStack(p.id, true)}
-						aria-label="Stop {p.name}"
-					>
-						<Square size={11} />Stop
-					</button>
-				</div>
-			</article>
-		{/each}
-
-		<section class="tiles" aria-label="Agents and terminals">
-			<button
-				class="card tile-stat"
-				data-nav
-				onclick={() => send({ kind: "agents", tab: snap.agents.focusTab })}
-			>
-				<span class="label"><Bot size={13} />Agents</span>
-				<span class="big">{snap.agents.needsYou + snap.agents.working}</span>
-				<span class="meta" class:attn={snap.agents.needsYou > 0}>{agentsLine(snap.agents)}</span>
-			</button>
-			<button class="card tile-stat" data-nav onclick={() => send({ kind: "terminal" })}>
-				<span class="label"
-					><TerminalIcon size={13} />Terminals{#if snap.host.status === "outdated"}<i class="dot warn"
-						></i>{/if}</span
-				>
-				<span class="big">{snap.terminals.live}</span>
-				<span class="meta"
-					>{snap.host.version ? `host ${snap.host.version}` : "host"}{#if snap.host.status === "outdated"}
-						· outdated{/if}</span
-				>
-			</button>
-		</section>
+		{#if sections.needsYou.length}
+			<section aria-label="Needs you">
+				<h2 class="attn">Needs you</h2>
+				<ul>
+					{#each sections.needsYou as a (a.tabId)}{@render agentRow(a, true)}{/each}
+				</ul>
+			</section>
+		{/if}
 
 		{#if recShown}
-			<section class="card rec {recShown.icon}">
+			<section class="rec {recShown.icon}" aria-label="Recommendation">
 				<span class="rec-icon">
-					{#if recShown.icon === "update"}<Download size={16} />{:else}<CircleAlert size={16} />{/if}
+					{#if recShown.icon === "update"}<Download size={14} />{:else}<CircleAlert size={14} />{/if}
 				</span>
-				<div class="rec-text">
-					<b>{recShown.title}</b>
-					<span>{recShown.detail}</span>
-				</div>
+				<span class="lines">
+					<span class="name">{recShown.title}</span>
+					<span class="sub">{recShown.detail}</span>
+				</span>
 				<button class="cta" data-nav onclick={() => send(recShown.action)}>{recShown.cta}</button>
 			</section>
 		{/if}
 
-		{#if idle.length}
-			<section class="idle" aria-label="Stopped projects">
-				<h2>Stopped · {idle.length}</h2>
-				{#each idle as p (p.id)}
-					<div
-						class="idle-row"
-						style:--c={accentOf(p.id, dark, p.hue)}
-						style:--on={onAccent(dark, hueOfProject(p))}
-					>
-						<button
-							class="name-btn"
-							data-nav
-							onclick={() => send({ kind: "project", id: p.id })}
-							aria-label="Open {p.name}"
-						>
-							{@render tile(p.icon)}<span class="name">{p.name}</span>
-						</button>
-						<button
-							class="start"
-							data-nav
-							disabled={busy[p.id]}
-							onclick={() => toggleStack(p.id, false)}
-							aria-label="Start {p.name}"
-						>
-							<Play size={11} />Start
-						</button>
-					</div>
-				{/each}
+		{#if sections.working.length}
+			<section aria-label="Working">
+				<h2>Working</h2>
+				<ul>
+					{#each sections.working as a (a.tabId)}{@render agentRow(a, false)}{/each}
+				</ul>
 			</section>
+		{/if}
+
+		{#if stacks.length}
+			<section aria-label="Running stacks">
+				<h2>Running</h2>
+				<ul>
+					{#each stacks as p (p.id)}
+						{@const head = projectHeadline(p)}
+						{@const failed = failedServices(p)}
+						<li
+							class="row stack {head.state}"
+							style:--c={accentOf(p.id, dark, p.hue)}
+							style:--on={onAccent(dark, hueOfProject(p))}
+						>
+							<button
+								class="main"
+								data-nav
+								onclick={() => send({ kind: "project", id: p.id })}
+								aria-label="Open {p.name}{p.branch ? `, ${p.branch}` : ''}"
+							>
+								{@render tile(p.icon)}
+								<span class="lines">
+									<span class="name"
+										>{p.name}{#if p.branch}<span class="kind">{p.branch}</span>{/if}</span
+									>
+									<span class="sub {head.state}" title={upLine(p)}>
+										<span class="bar" aria-hidden="true"
+											>{#each p.services as s (s.name)}<i
+													class="seg {serviceTone(s.state)}"
+													title="{s.name}: {s.state}"
+												></i>{/each}</span
+										>{head.text}
+									</span>
+								</span>
+							</button>
+							<span class="side acts">
+								{#if failed.length}
+									<button
+										class="mini"
+										data-nav
+										disabled={busy[`${p.id}:restart`]}
+										onclick={() => restartFailed(p)}
+										aria-label="Restart failed services of {p.name}"
+										title="Restart failed"><RotateCcw size={12} /></button
+									>
+									<button
+										class="mini"
+										data-nav
+										onclick={() => send({ kind: "logs", id: p.id, service: failed[0]! })}
+										aria-label="Logs of {failed[0]}"
+										title="Logs"><FileText size={12} /></button
+									>
+								{/if}
+								<button
+									class="mini"
+									data-nav
+									disabled={busy[p.id]}
+									onclick={() => toggleStack(p.id, true)}
+									aria-label="Stop {p.name}"
+									title="Stop"><Square size={12} /></button
+								>
+							</span>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
+		{#if showSearch(snap.projects.length) || query}
+			<label class="search">
+				<Search size={13} aria-hidden="true" />
+				<input
+					type="search"
+					placeholder="Find a project or branch"
+					aria-label="Find a project or branch"
+					bind:value={query}
+					autocomplete="off"
+					spellcheck="false"
+				/>
+			</label>
+		{/if}
+
+		{#if lists.running.length}
+			<section aria-label="Projects">
+				<h2>Projects</h2>
+				<ul>
+					{#each lists.running as g (g.repo.id)}{@render group(g)}{/each}
+				</ul>
+			</section>
+		{/if}
+
+		{#if lists.stopped.length}
+			<section aria-label="Stopped projects">
+				<button
+					class="disclose"
+					data-nav
+					aria-expanded={stoppedShown}
+					onclick={() => (stoppedOpen = !stoppedOpen)}
+				>
+					<ChevronRight size={12} class={stoppedShown ? "turned" : ""} />Stopped ({lists.stoppedCount})
+				</button>
+				{#if stoppedShown}
+					<ul>
+						{#each lists.stopped as g (g.repo.id)}{@render group(g)}{/each}
+					</ul>
+				{/if}
+			</section>
+		{:else if query && !stacks.length}
+			<p class="empty">No project matches “{query.trim()}”.</p>
 		{/if}
 	</div>
 
-	<footer>
-		<button class="open" data-nav onclick={() => send({ kind: "open" })}>Open Atlas</button>
-	</footer>
+	{#if snap.host.version || snap.dev}
+		<footer>
+			{#if snap.dev}<span class="devchip" title="Dev build: updates are paused">Dev</span>{/if}
+			{#if snap.host.version}<button
+					class="ver"
+					data-nav
+					onclick={() => send({ kind: "host" })}
+					title="Terminal host"
+				>
+					host {snap.host.version}{#if snap.host.status === "outdated"}<i class="dot warn"></i>outdated{/if}
+					· {snap.terminals.live}
+					{snap.terminals.live === 1 ? "terminal" : "terminals"}
+				</button>{/if}
+		</footer>
+	{/if}
 </div>
 
 <style>
@@ -382,27 +540,20 @@
 	header {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 14px 14px 10px;
+		gap: 8px;
+		padding: 10px 8px 8px 12px;
 	}
 	.mark {
-		width: 30px;
-		height: 30px;
+		width: 20px;
+		height: 20px;
 		flex: none;
 	}
-	.titles {
+	.tools {
 		display: flex;
-		flex: 1;
-		flex-direction: column;
 		gap: 1px;
-		min-width: 0;
-	}
-	.titles b {
-		font-size: 14px;
-		letter-spacing: -0.01em;
+		flex: none;
 	}
 	.devchip {
-		margin-left: 6px;
 		padding: 1px 6px;
 		border-radius: 999px;
 		font-size: 9.5px;
@@ -415,9 +566,20 @@
 	.state {
 		display: inline-flex;
 		align-items: center;
+		flex: 1;
 		gap: 6px;
-		font-size: 12px;
+		min-width: 0;
+		font-size: 12.5px;
+		font-weight: 560;
 		color: var(--ca-text-secondary);
+	}
+	.state.ok {
+		color: var(--ca-text-primary);
+	}
+	.state .text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.state.fail {
 		color: var(--fail);
@@ -474,10 +636,10 @@
 	.icon {
 		display: grid;
 		place-items: center;
-		width: 28px;
-		height: 28px;
+		width: 26px;
+		height: 26px;
 		border: 0;
-		border-radius: 8px;
+		border-radius: 7px;
 		background: transparent;
 		color: var(--ca-text-secondary);
 	}
@@ -485,10 +647,16 @@
 		background: var(--ca-action-hover);
 		color: var(--ca-text-primary);
 	}
+	.icon.on {
+		color: var(--ca-brand-main);
+	}
+	.icon:disabled {
+		color: var(--ca-text-disabled);
+	}
 	.err {
-		margin: 0 14px 8px;
-		padding: 8px 10px;
-		border-radius: 10px;
+		margin: 0 10px 6px;
+		padding: 7px 9px;
+		border-radius: 8px;
 		font-size: 12px;
 		background: color-mix(in oklab, var(--fail) 16%, transparent);
 		color: var(--fail);
@@ -498,115 +666,154 @@
 		display: flex;
 		flex: 1;
 		flex-direction: column;
-		gap: 10px;
+		gap: 6px;
 		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		padding: 2px 14px 10px;
+		padding: 0 6px 8px;
 		scrollbar-width: thin;
 	}
-	.card {
-		position: relative;
+	section {
 		display: flex;
 		flex-direction: column;
-		gap: 7px;
-		min-width: 0;
-		padding: 11px 12px;
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		background: var(--card);
-		color: inherit;
-		text-align: left;
-		font: inherit;
-		animation: rise 160ms var(--ease, ease-out) both;
 	}
-	@keyframes rise {
-		from {
-			opacity: 0;
-			transform: translateY(3px);
-		}
+	h2 {
+		margin: 6px 8px 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--ca-text-secondary);
 	}
-	/* State rail: the card's health at a glance, not just a dot. */
-	.project::before {
-		content: "";
-		position: absolute;
-		left: 0;
-		top: 10px;
-		bottom: 10px;
-		width: 3px;
-		border-radius: 0 3px 3px 0;
-		background: var(--ok);
+	h2.attn {
+		color: var(--warn);
 	}
-	.project.failed::before {
-		background: var(--fail);
-	}
-	.project.starting::before {
-		background: var(--warn);
-	}
-	.project.failed {
-		border-color: color-mix(in oklab, var(--fail) 38%, var(--line));
+	ul {
+		display: flex;
+		flex-direction: column;
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 	.row {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 8px;
-	}
-	.name-btn {
-		display: inline-flex;
-		align-items: center;
 		gap: 6px;
 		min-width: 0;
-		padding: 0;
+		border-radius: 8px;
+	}
+	.row:hover,
+	.row:focus-within {
+		background: var(--ca-action-hover);
+	}
+	.main {
+		display: flex;
+		align-items: center;
+		flex: 1;
+		gap: 8px;
+		min-width: 0;
+		padding: 5px 4px 5px 8px;
 		border: 0;
+		border-radius: 8px;
 		background: none;
 		color: inherit;
 		font: inherit;
 		text-align: left;
 	}
+	.lines {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
 	.name {
-		overflow: hidden;
-		font-size: 12.5px;
-		font-weight: 620;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.branch {
-		padding: 1px 6px;
-		border-radius: 999px;
-		font-size: 10px;
-		color: var(--ca-text-secondary);
-		background: color-mix(in oklab, var(--ca-text-primary) 8%, transparent);
-	}
-	.chip {
 		display: inline-flex;
 		align-items: center;
-		flex: none;
-		gap: 5px;
-		max-width: 52%;
+		gap: 6px;
+		min-width: 0;
 		overflow: hidden;
-		font-size: 11px;
+		font-size: 12.5px;
 		font-weight: 560;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.kind {
+		overflow: hidden;
+		max-width: 11em;
+		padding: 0 6px;
+		border-radius: 999px;
+		font-size: 10.5px;
+		font-weight: 450;
+		text-overflow: ellipsis;
+		color: var(--ca-text-secondary);
+		background: color-mix(in oklab, var(--ca-text-primary) 8%, transparent);
+	}
+	.sub {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		overflow: hidden;
+		font-size: 11px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		color: var(--ca-text-secondary);
 	}
-	.chip.failed {
+	.sub.failed {
 		color: var(--fail);
 	}
-	.chip.starting {
+	.sub.starting {
 		color: var(--warn);
 	}
-	/* One segment per service: failures read as red bars, not as one of ten similar dots. */
-	.bar {
+	.side {
 		display: flex;
-		gap: 2px;
-		height: 4px;
+		align-items: center;
+		flex: none;
+		gap: 4px;
+		padding-right: 6px;
+		color: var(--ca-text-disabled);
+	}
+	.verb {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--warn);
+	}
+	.agent.urgent {
+		background: color-mix(in oklab, var(--warn) 9%, transparent);
+	}
+	.agent.urgent:hover,
+	.agent.urgent:focus-within {
+		background: color-mix(in oklab, var(--warn) 16%, transparent);
+	}
+	.glyph {
+		display: grid;
+		place-items: center;
+		flex: none;
+		width: 18px;
+		height: 18px;
+		border-radius: 5px;
+		color: var(--ca-text-secondary);
+		background: color-mix(in oklab, var(--ca-text-primary) 8%, transparent);
+	}
+	.glyph.working {
+		color: var(--ca-brand-main);
+		background: color-mix(in oklab, var(--ca-brand-main) 16%, transparent);
+	}
+	.glyph.waiting,
+	.glyph.blocked {
+		color: var(--warn);
+		background: color-mix(in oklab, var(--warn) 18%, transparent);
+	}
+	/* Per-service segments: failures read as red bars, not as one of ten similar dots. */
+	.bar {
+		display: inline-flex;
+		flex: none;
+		gap: 1px;
+		width: 28px;
+		height: 3px;
 	}
 	.seg {
 		flex: 1;
-		border-radius: 2px;
-		background: color-mix(in oklab, var(--ca-text-primary) 16%, transparent);
+		border-radius: 1px;
+		background: color-mix(in oklab, var(--ca-text-primary) 18%, transparent);
 	}
 	.seg.ok {
 		background: var(--ok);
@@ -617,166 +824,108 @@
 	.seg.fail {
 		background: var(--fail);
 	}
-	.stats {
-		display: flex;
-		gap: 10px;
-		font-size: 11px;
-		font-variant-numeric: tabular-nums;
-		color: var(--ca-text-secondary);
+	.stack.failed .name {
+		color: var(--fail);
 	}
-	/* Own SVG, not a canvas chart: it stretches to the card, the stroke keeps its width, nothing is clipped. */
-	.spark {
-		display: block;
-		width: 100%;
-		height: 28px;
-		pointer-events: none;
-	}
-	.spark .area {
-		fill: color-mix(in oklab, var(--c) 16%, transparent);
-	}
-	.spark .line {
-		fill: none;
-		stroke: var(--c);
-		stroke-width: 1.5;
-		stroke-linejoin: round;
-		stroke-linecap: round;
-	}
-	.actions {
-		display: flex;
-		gap: 6px;
-		margin-top: 1px;
-	}
-	.end {
-		margin-left: auto;
-	}
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 4px 10px;
-		border: 1px solid var(--line);
-		border-radius: 8px;
-		background: var(--card-hi);
-		color: inherit;
-		font: inherit;
-		font-size: 11px;
-		font-weight: 560;
-		white-space: nowrap;
-		transition: background 120ms ease-out;
-	}
-	.btn:hover {
-		background: color-mix(in oklab, var(--card-hi), var(--ca-text-primary) 8%);
-	}
-	.btn.primary {
-		border-color: transparent;
-		background: var(--ca-brand-main);
-		color: var(--ca-brand-contrast, #04122e);
-	}
-	.btn.primary:hover {
-		background: color-mix(in oklab, var(--ca-brand-main), white 12%);
-	}
-	.btn.ghost {
-		background: transparent;
-		border-color: transparent;
-		color: var(--ca-text-secondary);
-	}
-	.btn.ghost:hover {
-		background: var(--ca-action-hover);
-		color: var(--ca-text-primary);
-	}
-	.btn:disabled {
-		opacity: 1;
-		color: var(--ca-text-disabled);
-	}
-	.tiles {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-	}
-	.tile-stat {
-		gap: 2px;
-		cursor: default;
-		transition: background 120ms ease-out;
-	}
-	.tile-stat:hover {
-		background: var(--card-hi);
-	}
-	.label {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11.5px;
-		font-weight: 600;
-		color: var(--ca-text-secondary);
-	}
-	.big {
-		font-size: 24px;
-		font-weight: 650;
-		letter-spacing: -0.02em;
-		font-variant-numeric: tabular-nums;
-	}
-	.meta {
-		overflow: hidden;
-		font-size: 11px;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--ca-text-secondary);
-	}
-	.meta.attn {
-		color: var(--warn);
-		font-weight: 600;
-	}
-	.idle {
-		display: flex;
-		flex-direction: column;
-	}
-	.idle h2 {
-		margin: 2px 2px 4px;
-		font-size: 10px;
-		font-weight: 650;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--ca-text-secondary);
-	}
-	.idle-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 3px 4px 3px 6px;
-		border-radius: 8px;
-	}
-	.idle-row:hover,
-	.idle-row:focus-within {
-		background: var(--ca-action-hover);
-	}
-	.idle-row .name {
-		font-weight: 500;
-		color: var(--ca-text-secondary);
-	}
-	.idle-row:hover .name,
-	.idle-row:focus-within .name {
-		color: var(--ca-text-primary);
-	}
-	/* Hover/keyboard reveal: the Start button is there for the eye that needs it, quiet for the one that scans. */
-	.start {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 3px 9px;
-		border: 1px solid var(--line);
-		border-radius: 7px;
-		background: var(--card-hi);
-		color: inherit;
-		font: inherit;
-		font-size: 11px;
+	/* Row actions appear on hover or keyboard focus; a failed stack keeps its buttons visible. */
+	.acts {
 		opacity: 0;
 		transition: opacity 120ms ease-out;
 	}
-	.idle-row:hover .start,
-	.idle-row:focus-within .start,
-	.start:focus-visible {
+	.row:hover .acts,
+	.row:focus-within .acts,
+	.stack.failed .acts {
 		opacity: 1;
+	}
+	.mini {
+		display: grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		border: 0;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--ca-text-secondary);
+	}
+	.mini:hover {
+		background: color-mix(in oklab, var(--ca-text-primary) 12%, transparent);
+		color: var(--ca-text-primary);
+	}
+	.mini:disabled {
+		color: var(--ca-text-disabled);
+	}
+	.crumb {
+		padding: 5px 8px;
+		color: var(--ca-text-secondary);
+	}
+	.crumb .name {
+		font-weight: 450;
+	}
+	.proj.nested .main {
+		padding-left: 30px;
+	}
+	.proj.nested .name {
+		font-weight: 450;
+		color: var(--ca-text-secondary);
+	}
+	.proj.nested:hover .name,
+	.proj.nested:focus-within .name {
+		color: var(--ca-text-primary);
+	}
+	.search {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 4px 2px 2px;
+		padding: 0 8px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--card);
+		color: var(--ca-text-secondary);
+	}
+	.search:focus-within {
+		border-color: var(--ca-brand-main);
+	}
+	.search input {
+		flex: 1;
+		min-width: 0;
+		padding: 5px 0;
+		border: 0;
+		outline: 0;
+		background: none;
+		color: var(--ca-text-primary);
+		font: inherit;
+		font-size: 12px;
+	}
+	.empty {
+		margin: 6px 8px;
+		font-size: 12px;
+		color: var(--ca-text-secondary);
+	}
+	.disclose {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin: 2px 0;
+		padding: 4px 8px;
+		border: 0;
+		border-radius: 8px;
+		background: none;
+		color: var(--ca-text-secondary);
+		font: inherit;
+		font-size: 11px;
+		font-weight: 600;
+		text-align: left;
+	}
+	.disclose:hover {
+		background: var(--ca-action-hover);
+		color: var(--ca-text-primary);
+	}
+	.disclose :global(svg) {
+		transition: transform 120ms ease-out;
+	}
+	.disclose :global(svg.turned) {
+		transform: rotate(90deg);
 	}
 	.tile {
 		display: inline-grid;
@@ -807,67 +956,69 @@
 	.rec {
 		flex-direction: row;
 		align-items: center;
-		gap: 10px;
+		gap: 8px;
+		padding: 6px 6px 6px 8px;
+		border-radius: 8px;
+		background: color-mix(in oklab, var(--ca-brand-main) 10%, transparent);
+	}
+	.rec.fail {
+		background: color-mix(in oklab, var(--fail) 10%, transparent);
 	}
 	.rec-icon {
 		display: grid;
 		place-items: center;
-		width: 30px;
-		height: 30px;
-		border-radius: 9px;
-		background: color-mix(in oklab, var(--ca-brand-main) 18%, transparent);
-		color: var(--ca-brand-main);
 		flex: none;
+		width: 18px;
+		height: 18px;
+		color: var(--ca-brand-main);
 	}
-	.rec-text {
-		display: flex;
+	.rec .lines {
 		flex: 1;
-		flex-direction: column;
-		min-width: 0;
-		font-size: 12px;
-	}
-	.rec-text span {
-		color: var(--ca-text-secondary);
-		font-size: 11px;
 	}
 	.cta {
-		padding: 5px 12px;
+		flex: none;
+		padding: 3px 10px;
 		border: 0;
-		border-radius: 8px;
+		border-radius: 7px;
 		background: var(--ca-brand-main);
 		color: var(--ca-brand-contrast, #04122e);
 		font: inherit;
-		font-size: 12px;
+		font-size: 11.5px;
 		font-weight: 600;
 	}
 	footer {
-		padding: 8px 14px 14px;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 10px 8px;
 		border-top: 1px solid var(--line);
 	}
-	.open {
-		width: 100%;
-		padding: 7px 12px;
-		border: 1px solid var(--line);
-		border-radius: 9px;
-		background: var(--card);
-		color: inherit;
+	.ver {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2px 4px;
+		border: 0;
+		border-radius: 6px;
+		background: none;
+		color: var(--ca-text-secondary);
 		font: inherit;
-		font-size: 12px;
-		font-weight: 600;
-		transition: background 120ms ease-out;
+		font-size: 10.5px;
+		font-variant-numeric: tabular-nums;
 	}
-	.open:hover {
-		background: var(--card-hi);
+	.ver:hover {
+		color: var(--ca-text-primary);
+	}
+	button:focus-visible {
+		outline: 2px solid var(--ca-brand-main);
+		outline-offset: -2px;
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.card,
-		.dot.live {
+		.dot.live::after {
 			animation: none;
 		}
-		.btn,
-		.start,
-		.open,
-		.tile-stat {
+		.acts,
+		.disclose :global(svg) {
 			transition: none;
 		}
 	}

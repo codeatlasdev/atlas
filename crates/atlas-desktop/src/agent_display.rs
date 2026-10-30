@@ -302,10 +302,12 @@ mod tests {
             "activateIgnoringOtherApps",
         ] {
             let at = hits(needle);
-            let allowed: &[&str] = if needle == "orderFront" {
-                &["src/agent_display.rs"]
-            } else {
-                &[]
+            let allowed: &[&str] = match needle {
+                "orderFront" => &["src/agent_display.rs"],
+                // The dock panel becomes key (without activating the app) so its input gets keys; unreachable in
+                // agent mode, which the dock walls below assert.
+                "makeKeyWindow" => &["src/dock_mac.rs"],
+                _ => &[],
             };
             assert_eq!(at, allowed, "{needle} appears in {at:?}");
         }
@@ -315,10 +317,14 @@ mod tests {
             (
                 ".show()",
                 &[
+                    "src/dock.rs",
                     "src/main.rs",
                     "src/tray.rs",
                     "src/agent/notify.rs",
                     "src/live.rs",
+                    "src/shots/surface.rs",
+                    // a system notification (`NotificationExt`), not a window
+                    "src/shots/runner.rs",
                 ][..],
             ),
             (".set_focus()", &["src/main.rs", "src/tray.rs"][..]),
@@ -332,6 +338,139 @@ mod tests {
             want.sort();
             assert_eq!(at, want, "{needle}");
         }
+        // The dock: its `.show()` sits in the user branch of `show` (agent instances go through `park_and_show`),
+        // its key status and its hotkey are walled off in agent mode. Whitespace-insensitive: rustfmt re-wraps.
+        let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        let dock = squash(&code(
+            &sources()
+                .iter()
+                .find(|(f, _)| f == "src/dock.rs")
+                .unwrap()
+                .1,
+        ));
+        let gate = "if crate::agent_mode::Mode::current().focus_allowed() {";
+        let (_, show_fn) = dock
+            .split_once("fn show(app: &AppHandle) {")
+            .expect("dock::show");
+        let show_fn = show_fn.split_once(" fn hide").unwrap().0;
+        let (user, agent) = show_fn
+            .split_once(gate)
+            .expect("dock::show keeps its focus gate");
+        assert!(!user.contains(".show()"), "nothing shows before the gate");
+        let (user_branch, agent_branch) = agent.split_once("} else {").unwrap();
+        assert!(user_branch.contains(".show()"));
+        assert!(agent_branch.contains("park_and_show") && !agent_branch.contains(".show()"));
+        let wall = "if !crate::agent_mode::Mode::current().focus_allowed() { return; }";
+        let keys = dock.split_once("pub fn dock_keys").unwrap().1;
+        assert!(
+            keys.split_once('{')
+                .unwrap()
+                .1
+                .trim_start()
+                .starts_with(wall),
+            "dock_keys wall"
+        );
+        // Hotkeys: an agent instance gets an empty set (the previous one is released), and `wanted_keys` is only
+        // reachable from the else branch.
+        let (_, hk) = dock
+            .split_once("fn apply_hotkeys(")
+            .expect("dock::apply_hotkeys");
+        let hk = hk.split_once(" /// A hotkey fired").map_or(hk, |(a, _)| a);
+        let (agent_arm, user_arm) = hk
+            .split_once("if !crate::agent_mode::Mode::current().focus_allowed() {")
+            .expect("apply_hotkeys keeps its focus gate")
+            .1
+            .split_once("} else {")
+            .unwrap();
+        assert!(
+            agent_arm.contains("Vec::new()") && !agent_arm.contains("wanted_keys"),
+            "an agent instance owns no global hotkey"
+        );
+        assert!(user_arm.contains("wanted_keys"));
+        // `dock::summon` is called from async command threads (a capture sent to an agent): showing the panel is an
+        // AppKit window call that traps off the main thread, so the whole body hops to it.
+        let (_, summon_fn) = dock.split_once("pub fn summon(").expect("dock::summon");
+        let summon_fn = summon_fn
+            .split_once(" /// A capture for the composer")
+            .map_or(summon_fn, |(a, _)| a);
+        assert!(
+            summon_fn.contains("run_on_main_thread(move || { show(&a);"),
+            "dock::summon must show the dock on the main thread: {summon_fn}"
+        );
+        // Capture windows (overlay, card, HUD, editor): every one is ordered in through `surface::show` (user branch
+        // `show`, agent branch `park_and_show`), and key status is only ever granted through `dock_mac::overlay_keys`,
+        // which is the one place that refuses in an agent instance (the overlay itself is never built there).
+        let mac = squash(&code(
+            &sources()
+                .iter()
+                .find(|(f, _)| f == "src/dock_mac.rs")
+                .unwrap()
+                .1,
+        ));
+        let (_, keys_fn) = mac
+            .split_once("pub fn overlay_keys(")
+            .expect("dock_mac::overlay_keys");
+        let body = keys_fn.split_once('{').unwrap().1.trim_start();
+        assert!(
+            body.starts_with("if !crate::agent_mode::Mode::current().focus_allowed() { return; }"),
+            "overlay_keys wall: {body}"
+        );
+        let surface_src = squash(&code(
+            &sources()
+                .iter()
+                .find(|(f, _)| f == "src/shots/surface.rs")
+                .unwrap()
+                .1,
+        ));
+        let (_, show_fn) = surface_src
+            .split_once("pub fn show(")
+            .expect("surface::show");
+        let (user, agent) = show_fn
+            .split_once("if crate::agent_mode::Mode::current().focus_allowed() {")
+            .expect("surface::show keeps its focus gate");
+        let _ = user;
+        let (user_branch, agent_branch) = agent.split_once("} else {").unwrap();
+        assert!(user_branch.contains(".show()"));
+        assert!(agent_branch.contains("park_and_show") && !agent_branch.contains(".show()"));
+        // Pins and the quick stack (many windows, relaid out while visible): they never show or position a window
+        // themselves. Showing is `surface::show`; every relayout is `surface::place`, whose agent arm never sets a
+        // position (a global point is a real display, and a visible agent window there ends the instance). The
+        // keyboard is only ever asked through `dock_mac::overlay_keys`.
+        for file in ["src/shots/pin.rs", "src/shots/quick.rs"] {
+            let text = code(&sources().iter().find(|(f, _)| f == file).unwrap().1);
+            for banned in [
+                ".show()",
+                "set_position",
+                "set_focus",
+                "park_and_show",
+                "makeKeyWindow",
+                "make_key(",
+                "order_front",
+            ] {
+                assert!(
+                    !text.contains(banned),
+                    "{file} must go through surface::show / surface::place, found {banned}"
+                );
+            }
+            assert!(text.contains("surface::"), "{file} uses the surface module");
+        }
+        let pin = code(
+            &sources()
+                .iter()
+                .find(|(f, _)| f == "src/shots/pin.rs")
+                .unwrap()
+                .1,
+        );
+        assert!(
+            pin.contains("surface::show(") && pin.contains("surface::place("),
+            "a pin is ordered in by surface::show and moved by surface::place"
+        );
+        assert!(
+            pin.contains("dock_mac::overlay_keys("),
+            "a pin asks for the keyboard only through overlay_keys"
+        );
+        // the page shows the dock by itself only for the user's app
+        assert!(dock.contains("enabled && crate::agent_mode::Mode::current().focus_allowed()"));
         let all = sources();
         let src = |n: &str| code(&all.iter().find(|(f, _)| f == n).unwrap().1);
         // `show_main`: the three window calls sit inside the branch that agent mode never takes, and the agent

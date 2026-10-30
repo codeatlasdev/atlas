@@ -569,8 +569,6 @@
 			.catch((e) => toast.error(errText(e)));
 	}
 
-
-
 	// ─── action card helpers ──────────────────────────────────────────────────
 
 	async function answerAction(taskId: string, botId: string, value: string): Promise<void> {
@@ -621,7 +619,7 @@
 		<!-- Header -->
 		<div class="header">
 			<!-- Who you are talking to and what it is doing; clicking opens its settings. -->
-		<button class="header-pill" onclick={() => (settingsOpen = true)} aria-label="Bot settings: {bot.name}">
+			<button class="header-pill" onclick={() => (settingsOpen = true)} aria-label="Bot settings: {bot.name}">
 				<BotFace seed={bot.id} look={bot.look} state={faceState} size={30} />
 				<span class="pill-text">
 					<span class="pill-name">{bot.name}</span>
@@ -652,7 +650,11 @@
 							<Terminal size={14} aria-hidden="true" /> Terminal
 						</button>
 					{/if}
-					<button class="head-btn danger" onclick={() => void cancelRunningTask()} title="Stop the current task">
+					<button
+						class="head-btn danger"
+						onclick={() => void cancelRunningTask()}
+						title="Stop the current task"
+					>
 						<X size={14} aria-hidden="true" /> Stop
 					</button>
 				</div>
@@ -679,7 +681,8 @@
 							<div class="msg-in" in:msgIn>
 								<div class="msg-in-body">
 									<div class="bubble in">
-										{#if msg.parts}{#each msg.parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong>{:else}{p.text}{/if}{/each}{:else}{msg.text}{/if}
+										{#if msg.parts}{#each msg.parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong
+													>{:else}{p.text}{/if}{/each}{:else}{msg.text}{/if}
 									</div>
 								</div>
 							</div>
@@ -705,7 +708,8 @@
 						<div class="msg-in" in:msgIn>
 							<div class="msg-in-body">
 								<div class="bubble in">
-									{#if q.parts}{#each q.parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong>{:else}{p.text}{/if}{/each}{:else}{q.text}{/if}
+									{#if q.parts}{#each q.parts as p, pi (pi)}{#if p.bold}<strong>{p.text}</strong
+												>{:else}{p.text}{/if}{/each}{:else}{q.text}{/if}
 								</div>
 								{#if q.options}
 									<div class="ask-card setup-ask">
@@ -1962,7 +1966,6 @@
 		margin-top: 6px;
 	}
 
-
 	/* ─── ask card ───────────────────────────────────────────── */
 	.ask-card {
 		border: 0.5px solid var(--ca-outline-subtle);
@@ -2095,8 +2098,6 @@
 	.trigger-summary {
 		font-style: italic;
 	}
-
-
 
 	/* ─── setup conversation ─────────────────────────────────── */
 	.setup-thread {

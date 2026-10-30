@@ -53,14 +53,15 @@ fn root_of(id: &str) -> Result<PathBuf, String> {
 const REMOTE_UNSUPPORTED: &str =
     "not available for SSH checkouts yet (use a terminal in the worktree)";
 
-/// atlas.yaml of an entry, ports shifted by its worktree offset.
+/// Config of an entry (its `atlas.yaml`, or the one detected in memory when the folder has none), ports shifted by its
+/// worktree offset.
 fn load_for(id: &str) -> Result<(PathBuf, config::ProjectConfig), String> {
     let e = find(id)?;
     if e.is_remote() {
         return Err(REMOTE_UNSUPPORTED.into());
     }
     let root = PathBuf::from(&e.root);
-    let mut cfg = config::load(&root).map_err(|e| format!("{e:#}"))?;
+    let (mut cfg, _) = config::load_or_detect(&root).map_err(|e| format!("{e:#}"))?;
     if e.port_offset > 0 {
         config::apply_port_offset(&mut cfg, e.port_offset);
     }

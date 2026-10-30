@@ -1,12 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, test, expect } from "bun:test";
-import {
-	CATALOG,
-	CATEGORIES,
-	filterCatalog,
-	connectedIntegrationIds,
-	canConnect,
-} from "./integrations.ts";
+import { CATALOG, CATEGORIES, filterCatalog, connectedIntegrationIds, canConnect } from "./integrations.ts";
 
 describe("filterCatalog", () => {
 	test("empty query + All returns full catalog", () => {

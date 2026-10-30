@@ -14,11 +14,14 @@ mod browser_fail;
 #[cfg(target_os = "macos")]
 mod browser_fail_mac;
 mod id_migrate;
-// Pure decision code driven only by the AppKit monitor: unused outside macOS, still built so its tests run.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+// Pure decision code: macOS (AppKit monitor) drives the mac-keycode half, Windows (WebView2 accelerator hook) the
+// DOM-code half, Linux neither. Each host leaves the other half unused; all of it is built so its tests run.
+#[allow(dead_code)]
 mod browser_keys;
 #[cfg(target_os = "macos")]
 mod browser_keys_mac;
+#[cfg(windows)]
+mod browser_keys_win;
 mod capture;
 mod cmds;
 mod commit_msg;
@@ -30,20 +33,31 @@ mod debug_req;
 mod diag;
 #[cfg(target_os = "macos")]
 mod display_mac;
+mod dock;
+#[cfg(target_os = "macos")]
+mod dock_mac;
 mod git;
 mod git_branch;
 mod github_auth;
 mod host;
+mod hotkeys;
 mod lifecycle;
+#[cfg(any(target_os = "linux", test))]
+mod linux_gfx;
 mod live;
 mod live_server;
 mod menu;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
 mod bots;
 mod natives;
+mod open_path;
+mod pty_batch;
 mod registry;
 mod remote;
 mod shell_env;
+// Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod shots;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -63,6 +77,8 @@ mod term;
 mod term;
 mod tray;
 mod updates;
+#[cfg(windows)]
+mod webview_win;
 mod workspace;
 mod worktree;
 mod zoom;
@@ -99,6 +115,8 @@ fn show_main(app: &AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        #[cfg(windows)]
+        webview_win::sync(app);
         return;
     }
     // Agent instances need the private virtual display (macOS); elsewhere they stay hidden.
@@ -127,6 +145,8 @@ macro_rules! handlers {
             cmds::projects_remove_missing,
             cmds::projects_find_moved,
             cmds::project_init,
+            cmds::project_save_config,
+            open_path::open_pending,
             cmds::project_probe,
             cmds::project_init_preview,
             cmds::stack_start,
@@ -212,6 +232,7 @@ macro_rules! handlers {
             github_auth::project_git_info,
             menu::menu_sync,
             zoom::zoom_set,
+            lifecycle::app_quit,
             live_server::live_open,
             live_server::live_touch,
             live_server::live_stop,
@@ -248,14 +269,16 @@ macro_rules! handlers {
             term::term_paste,
             term::term_paste_clipboard,
             term::term_text,
-            term::term_scroll,
+            term::term_wheel,
             term::term_copy,
             term::term_select_start,
             term::term_select_update,
             term::term_select_end,
             term::term_clear_selection,
-            term::term_hyperlink_at,
-            term::term_path_at,
+            term::term_link_at,
+            term::term_select_extend,
+            term::term_select_scroll,
+            term::term_pointer_state,
             term::term_select_output,
             term::term_mouse,
             term::term_mouse_captured,
@@ -287,6 +310,64 @@ macro_rules! handlers {
             tray::tray_hide,
             tray::tray_resize,
             tray::tray_action,
+            dock::dock_ready,
+            dock::dock_show,
+            dock::dock_publish,
+            dock::dock_snapshot,
+            dock::dock_prefs,
+            dock::dock_prefs_set,
+            dock::dock_toggle,
+            dock::dock_menu,
+            hotkeys::hotkey_check,
+            dock::dock_resize,
+            dock::dock_dragged,
+            dock::dock_keys,
+            dock::dock_send,
+            dock::dock_open,
+            dock::dock_take_attachments,
+            shots::shots_prefs,
+            shots::shots_presets,
+            shots::shots_prefs_set,
+            shots::shots_permission,
+            shots::shots_permission_request,
+            shots::shots_open_settings,
+            shots::shots_open_shortcuts_settings,
+            shots::shots_overlay_previous,
+            shots::shots_timer_cycle,
+            shots::shots_pick_folder,
+            shots::shots_history,
+            shots::shots_history_remove,
+            shots::shots_history_reveal,
+            shots::shots_history_open,
+            shots::shots_overlay_init,
+            shots::shots_overlay_commit,
+            shots::shots_overlay_cancel,
+            shots::shots_overlay_loupe,
+            shots::shots_quick_hover,
+            shots::quick::shots_quick_stack,
+            shots::quick::shots_quick_text,
+            shots::quick::shots_quick_action,
+            shots::quick::shots_quick_drag,
+            shots::pin::shots_pin_load,
+            shots::pin::shots_pin_resize,
+            shots::pin::shots_pin_keys,
+            shots::pin::shots_pin_close,
+            shots::shots_record_state,
+            shots::record::shots_record_pause,
+            shots::record::shots_record_resume,
+            shots::record::shots_record_stop,
+            shots::record::shots_record_cancel,
+            shots::record::shots_gif_presets,
+            shots::record::shots_gif_estimate,
+            shots::record::shots_gif_export,
+            shots::record::shots_gif_cancel,
+            shots::record::shots_record_capabilities,
+            shots::record::shots_record_save,
+            shots::record::shots_record_discard,
+            shots::editor::shots_editor_load,
+            shots::editor::shots_editor_save,
+            shots::editor::shots_editor_close,
+            agent::send::agent_send,
             shell_env::settings_patch,
             $($extra)*
         ]
@@ -330,6 +411,19 @@ fn visible_on_any(win: (i32, i32, i32, i32), screens: &[(i32, i32, i32, i32)]) -
     })
 }
 
+/// Whether the main window is see-through. Only macOS shows anything through it (vibrancy behind the sidebar); on
+/// Linux the page paints an opaque backdrop (`html.opaque-window`), so an alpha window gives WebKitGTK and the
+/// compositor per-frame alpha blending of the whole window for nothing. Same mechanism as tauri-apps/tauri#15471
+/// (measured on macOS: ~8x GPU power for a static page); the Linux cost is inferred, not measured.
+fn window_transparent(configured: bool) -> bool {
+    transparent_on(configured, std::env::consts::OS)
+}
+
+/// [`window_transparent`] for an explicit OS name (`std::env::consts::OS`), so every platform's answer is testable.
+fn transparent_on(configured: bool, os: &str) -> bool {
+    configured && os != "linux"
+}
+
 /// The main window from `tauri.conf.json` (`create: false`), built here so it can start hidden
 /// with the cached theme already on `<html>` and in the native appearance. `boot::app_ready`
 /// (first real frame) or `boot`'s deadline shows it; window-state restores size/position/maximized
@@ -350,11 +444,19 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         agent_mode::Store::Isolated(id) => builder = builder.data_store_identifier(id),
         agent_mode::Store::Ephemeral => builder = builder.incognito(true),
     }
+    #[cfg(windows)]
+    {
+        builder = builder.additional_browser_args(webview_win::ARGS);
+    }
     let win = builder
+        .transparent(window_transparent(cfg.transparent))
         .visible(false)
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
+    #[cfg(windows)]
+    webview_win::no_accelerators(&win);
     boot::mark("window:created");
     boot::arm_deadline(app.handle());
     drop(win);
@@ -383,17 +485,41 @@ fn main() {
     #[cfg(windows)]
     wait_for_predecessor();
     diag::install_panic_hook();
+    #[cfg(target_os = "linux")]
+    linux_gfx::log_startup();
     boot::start();
     boot::mark("main");
     shell_env::start();
     boot::mark("shell_env:started");
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows/Linux: a second launch (Start menu, taskbar, `atlas desktop`) focuses the running app instead of
+    // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
+    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+        open_path::open(
+            app,
+            open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
+        );
+        show_main(app)
+    }));
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_denylist(&[tray::LABEL])
+                .with_denylist(&[
+                    tray::LABEL,
+                    dock::LABEL,
+                    "shots-quick",
+                    "shots-hud",
+                    "shots-editor",
+                    "shots-keys",
+                ])
+                // Pins are `shots-pin-<n>`: any number of them, so the exact-label denylist cannot name them.
+                .with_filter(|label| !shots::surface::is_pin_label(label))
                 // Showing is `boot`'s call (first frame), not window-state's at creation.
                 .with_state_flags(
                     tauri_plugin_window_state::StateFlags::all()
@@ -414,6 +540,10 @@ fn main() {
             create_main_window(app)?;
             let handle = app.handle().clone();
             app.manage(menu::Items::default());
+            app.manage(tray::CaptureMenus::default());
+            // Windows: no menu bar. The window has no native frame (tauri.windows.conf.json), the page owns
+            // every key there (lib/menu.ts gives no accelerators off macOS) and the palette lists every command.
+            #[cfg(not(windows))]
             app.set_menu(menu::build(&handle)?)?;
             app.manage(live::LiveHub::new(&handle));
             app.manage(cmds::Discovery::default());
@@ -425,6 +555,16 @@ fn main() {
             app.manage(commit_msg::Runs::default());
             app.manage(std::sync::Arc::new(capture::Capture::default()));
             app.manage(std::sync::Arc::new(ctl::Ctl::default()));
+            app.manage(agent::send::Sends::default());
+            app.manage(open_path::Pending::default());
+            // `atlas-desktop <path>` on a cold start: the page opens it once its stores are loaded.
+            open_path::open(
+                &handle,
+                open_path::paths_from_argv(
+                    &std::env::args().collect::<Vec<_>>(),
+                    &std::env::current_dir().unwrap_or_default(),
+                ),
+            );
             ctl::start(&handle);
             app.manage(std::sync::Arc::new(remote::Remotes::default()));
             remote::start(&handle);
@@ -453,6 +593,8 @@ fn main() {
             if agent_mode::Mode::current().tray_allowed() {
                 tray::start(&handle)?;
             }
+            dock::start(&handle)?;
+            shots::start(&handle);
             boot::mark("setup:end");
             Ok(())
         })
@@ -472,8 +614,13 @@ fn main() {
                 {
                     api.prevent_close();
                     let _ = win.hide();
+                    #[cfg(windows)]
+                    webview_win::sync(win.app_handle());
                 }
             }
+            // Minimize and restore arrive as a resize (0x0 while minimized).
+            #[cfg(windows)]
+            WindowEvent::Resized(_) if win.label() == "main" => webview_win::sync(win.app_handle()),
             // window-state's restored position lands as the first move, after setup
             // and Ready; check it once there.
             WindowEvent::Moved(_) if win.label() == "main" => {
@@ -494,6 +641,12 @@ fn main() {
         debug::debug_log,
         debug::debug_reply,
         debug::gesture_replay_samples,
+        shots::shots_debug_start,
+        #[cfg(target_os = "macos")]
+        shots::shots_debug_freeze,
+        #[cfg(target_os = "macos")]
+        shots::shots_debug_activation,
+        shots::perf::shots_perf,
     ));
     #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(handlers!());
@@ -528,7 +681,28 @@ fn main() {
 }
 #[cfg(test)]
 mod window_tests {
-    use super::visible_on_any;
+    use super::{transparent_on, visible_on_any};
+
+    // Incident (2026-10-26, Arch: lag and ghost frames): `tauri.conf.json` makes the main window transparent for the
+    // macOS vibrancy, and the Linux build inherited it although its page is opaque.
+    #[test]
+    fn the_main_window_is_transparent_only_where_something_shows_through() {
+        assert!(
+            !transparent_on(true, "linux"),
+            "Linux: opaque page, no vibrancy"
+        );
+        assert!(
+            transparent_on(true, "macos"),
+            "macOS: vibrancy shows through"
+        );
+        assert!(transparent_on(true, "windows"), "Windows keeps what it had");
+        for os in ["linux", "macos", "windows"] {
+            assert!(
+                !transparent_on(false, os),
+                "never transparent when not configured"
+            );
+        }
+    }
 
     const LAPTOP: (i32, i32, i32, i32) = (0, 0, 3024, 1964);
 

@@ -3,6 +3,7 @@
 	import {
 		Bell,
 		Bot,
+		Camera,
 		CircleHelp,
 		Code,
 		Download,
@@ -23,6 +24,7 @@
 		general: SlidersHorizontal,
 		appearance: Palette,
 		notifications: Bell,
+		capture: Camera,
 		keyboard: Keyboard,
 		help: CircleHelp,
 		workspaces: FolderTree,

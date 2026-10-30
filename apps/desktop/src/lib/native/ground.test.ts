@@ -25,7 +25,9 @@ function scene(slotAt = rect(300, 120, 500, 300)) {
 	const layer = el("space-layer", rect(260, 60, 900, 700));
 	const ground = el("ground", rect(260, 60, 900, 700), layer);
 	const slot = el("area", slotAt, layer);
-	return { windowGround, layer, ground, slot };
+	const fill = el("fill", slotAt, slot);
+	fill.setAttribute("data-native-fill", "");
+	return { windowGround, layer, ground, slot, fill };
 }
 
 beforeEach(() => {
@@ -39,8 +41,8 @@ afterEach(() => {
 
 const path = (e: Element) => e.style.clipPath;
 
-test("a slot hole is carved, in each ground's own coordinates, out of the window ground, the layer ground and the slot", () => {
-	const { windowGround, ground, slot } = scene();
+test("a slot hole is carved, in each ground's own coordinates, out of the window ground, the layer ground and the slot's fill", () => {
+	const { windowGround, ground, slot, fill } = scene();
 	// the native view's box: the slot minus a 2 px strip on top (the loading bar belongs to the page)
 	setHole(slot, { left: 300, top: 122, right: 800, bottom: 420 });
 	// window ground: window coordinates
@@ -48,15 +50,20 @@ test("a slot hole is carved, in each ground's own coordinates, out of the window
 	// layer ground: relative to the layer (260, 60)
 	expect(path(ground)).toBe(clipPath([{ x: 40, y: 62, w: 500, h: 298 }], 900, 700));
 	// the slot's own fill: relative to the slot (300, 120): padding and the strip stay painted
-	expect(path(slot)).toBe(clipPath([{ x: 0, y: 2, w: 500, h: 298 }], 500, 300));
+	expect(path(fill)).toBe(clipPath([{ x: 0, y: 2, w: 500, h: 298 }], 500, 300));
+	// Incident (2026-10-26, "scroll e cliques não funcionam no terminal"): the slot itself was clip-pathed, and a
+	// clip-path also cuts hit-testing, so no real click or wheel ever reached the slot's handlers (they only worked
+	// when a test dispatched events on the element directly). The slot is never clipped; its fill child is.
+	expect(path(slot)).toBe("");
 });
 
 test("clearing a hole (the view is hidden or parked) paints the slot again everywhere, in the same call", () => {
-	const { windowGround, ground, slot } = scene();
+	const { windowGround, ground, slot, fill } = scene();
 	setHole(slot, { left: 300, top: 122, right: 800, bottom: 420 });
 	setHole(slot, null);
 	expect(path(windowGround)).toBe("");
 	expect(path(ground)).toBe("");
+	expect(path(fill)).toBe("");
 	expect(path(slot)).toBe("");
 	expect(holeCount()).toBe(0);
 });

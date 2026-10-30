@@ -5,6 +5,7 @@ use crate::colors::{NamedColor, Palette, rgba};
 use alacritty_terminal::vte::ansi::Rgb;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 fn pal() -> Palette {
     Palette::new(
@@ -333,6 +334,44 @@ fn synchronized_output_holds_until_end_or_flush() {
     assert_eq!(vt.text(), "hidden!");
 }
 
+// Incident (agent TUI flicker): vte ends a synchronized update after 150 ms, so an agent frame that takes longer
+// (a hook, a GC pause, a slow tool) was painted half-drawn. Ghostty holds for 1000 ms (`sync_reset_ms`).
+#[test]
+fn a_synchronized_update_is_held_for_a_second_like_ghostty() {
+    let vt = Vt::new(20, 2, |_| {});
+    let t0 = Instant::now();
+    vt.feed(b"\x1b[?2026hhidden");
+    let held = vt.sync_deadline().expect("pending").duration_since(t0);
+    assert!(
+        held >= Duration::from_millis(990) && held <= Duration::from_millis(1100),
+        "held for {held:?}"
+    );
+    // Still hidden well past vte's own 150 ms.
+    std::thread::sleep(Duration::from_millis(200));
+    vt.feed(b" more");
+    assert_eq!(
+        vt.text(),
+        "",
+        "a frame that is still being written is not drawn"
+    );
+    vt.feed(b"\x1b[?2026l");
+    assert_eq!(vt.text(), "hidden more");
+}
+
+// Ghostty `stream_terminal.zig`: a resize always ends the hold (the half frame was laid out for the old grid).
+#[test]
+fn a_resize_ends_a_pending_synchronized_update() {
+    let vt = Vt::new(10, 2, |_| {});
+    vt.feed(b"\x1b[?2026hhidden");
+    assert_eq!(vt.text(), "");
+    vt.resize(12, 3);
+    assert_eq!(vt.text(), "hidden", "what was buffered is applied");
+    assert!(vt.sync_deadline().is_none(), "no hold left behind");
+    // The next update is a new hold, not a leftover of the old one.
+    vt.feed(b"\x1b[?2026h!");
+    assert!(vt.sync_deadline().is_some());
+}
+
 fn snap(vt: &Vt) -> Frame {
     let mut f = Frame::default();
     vt.snapshot(&pal(), &mut f);
@@ -580,13 +619,13 @@ fn plain_urls_are_found_and_underlined_on_hover() {
     assert_eq!(vt.url_at(8, 0).as_deref(), Some("https://a.dev/x?q=1"));
     assert_eq!(vt.url_at(0, 0), None);
     assert_eq!(vt.url_at(34, 0).as_deref(), Some("http://b.io"));
-    assert!(vt.set_hover(Some((8, 0))));
-    assert!(!vt.set_hover(Some((9, 0))), "same URL: no change");
+    assert!(vt.hover(Some((8, 0)), false));
+    assert!(!vt.hover(Some((9, 0)), false), "same URL: no change");
     let f = snap(&vt);
     let ul: Vec<u16> = f.decos.iter().map(|d| d.col).collect();
     assert_eq!(ul.len(), "https://a.dev/x?q=1".len());
     assert_eq!(ul[0], 5);
-    assert!(vt.set_hover(None));
+    assert!(vt.hover(None, false));
     assert!(snap(&vt).decos.is_empty());
 }
 
@@ -759,6 +798,128 @@ fn scroll_delta_clamps_at_both_ends_and_scroll_to_bottom_snaps() {
     assert_eq!(vt.scrollbar().0, 0);
 }
 
+/// Text of the glyphs of grid row `row` of `f` (a snapshot with overscan has `over` rows above the viewport).
+fn frame_row(f: &Frame, row: u16) -> String {
+    let mut g: Vec<_> = f.glyphs.iter().filter(|g| g.row == row).collect();
+    g.sort_by_key(|g| g.col);
+    g.iter().map(|g| g.ch).collect()
+}
+
+// Smooth scrolling draws the row above and the row below the viewport (Ghostty `RenderState` overscan,
+// #14400): without them a sub-row offset would show a blank strip at the top or bottom.
+#[test]
+fn a_snapshot_with_overscan_carries_the_rows_just_outside_the_viewport() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 30));
+    vt.scroll(10);
+    let mut plain = Frame::default();
+    vt.snapshot(&pal(), &mut plain);
+    assert_eq!(plain.over, 0);
+    let mut f = Frame {
+        over: 1,
+        ..Frame::default()
+    };
+    vt.snapshot(&pal(), &mut f);
+    assert_eq!(
+        (f.rows, f.over),
+        (4, 1),
+        "rows stays the viewport height (the pty grid)"
+    );
+    assert_eq!(
+        f.bg.len(),
+        20 * (4 + 2),
+        "one overscan row above and one below"
+    );
+    // Grid row 0 is the line above the viewport; rows 1..=4 are the viewport, identical to the plain snapshot.
+    for r in 0..4u16 {
+        assert_eq!(
+            frame_row(&f, r + 1),
+            frame_row(&plain, r),
+            "viewport row {r}"
+        );
+    }
+    let first = frame_row(&plain, 0);
+    let n: usize = first.trim_start_matches("line").trim().parse().unwrap();
+    assert_eq!(
+        frame_row(&f, 0),
+        format!("line{}", n - 1),
+        "the line above the viewport"
+    );
+    let last = frame_row(&plain, 3);
+    let n: usize = last.trim_start_matches("line").trim().parse().unwrap();
+    assert_eq!(
+        frame_row(&f, 5),
+        format!("line{}", n + 1),
+        "the line below the viewport"
+    );
+}
+
+// At the ends of the scrollback there is no line to show: the overscan row is blank, never wrapped or invented.
+#[test]
+fn overscan_is_blank_where_the_scrollback_ends() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 30));
+    let mut f = Frame {
+        over: 1,
+        ..Frame::default()
+    };
+    vt.snapshot(&pal(), &mut f);
+    assert_eq!(
+        frame_row(&f, 5),
+        "",
+        "live bottom: nothing below the last line"
+    );
+    assert!(!frame_row(&f, 0).is_empty(), "history above");
+    vt.scroll_to_top();
+    vt.snapshot(&pal(), &mut f);
+    assert_eq!(
+        frame_row(&f, 0),
+        "",
+        "top of the scrollback: nothing above the first line"
+    );
+}
+
+// The cursor, and every viewport-relative thing, moves with the grid: its row includes the overscan.
+#[test]
+fn the_cursor_row_is_in_grid_rows_so_it_moves_with_the_overscan() {
+    let vt = Vt::new(20, 4, |_| {});
+    // A bar cursor is drawn as a decoration with a row of its own (a block one is a cell swap).
+    vt.set_options(100, "bar", false);
+    vt.feed(b"a\r\nb");
+    let mut plain = Frame {
+        focused: true,
+        blink_on: true,
+        ..Frame::default()
+    };
+    vt.snapshot(&pal(), &mut plain);
+    let mut f = Frame {
+        over: 1,
+        focused: true,
+        blink_on: true,
+        ..Frame::default()
+    };
+    vt.snapshot(&pal(), &mut f);
+    assert_eq!(f.cursor.unwrap().row, plain.cursor.unwrap().row + 1);
+}
+
+// `term_stats.vt` is how an agent (and a bug report) sees why a wheel did or did not scroll: the viewport
+// and the three modes the wheel rules read. Real VT, real escape sequences.
+#[test]
+fn wheel_state_reports_the_modes_the_wheel_rules_read() {
+    let vt = Vt::new(20, 4, |_| {});
+    vt.feed(&numbered(0, 40));
+    vt.scroll(7);
+    let s = vt.wheel_state();
+    assert_eq!((s.display_offset, s.max_offset), (7, vt.scrollbar().1));
+    assert!(!s.mouse && !s.alt_screen);
+    // omp's inline mouse setting (`tui.mouse`): 1000 + 1003 + 1006 on the PRIMARY screen.
+    vt.feed(b"\x1b[?1000h\x1b[?1003h\x1b[?1006h");
+    assert!(vt.wheel_state().mouse && !vt.wheel_state().alt_screen);
+    vt.feed(b"\x1b[?1006l\x1b[?1003l\x1b[?1000l\x1b[?1049h");
+    let s = vt.wheel_state();
+    assert!(!s.mouse && s.alt_screen && s.alt_scroll);
+}
+
 #[test]
 fn search_recenter_keeps_a_live_screen_match_visible() {
     let vt = Vt::new(20, 4, |_| {});
@@ -895,4 +1056,102 @@ fn clear_inside_a_synchronized_update_still_ends_empty_once_flushed() {
     vt.flush_sync();
     assert_eq!(vt.text(), "");
     assert_eq!(vt.scrollbar(), (0, 0), "the held ED 2 ran before the purge");
+}
+
+// SGR-Pixels (DECSET 1016): alacritty ignores the mode, so the Vt tracks it itself. DECRQM must tell the
+// truth, because programs (Claude Code probes it) only use pixel coordinates when the answer is set/reset.
+fn query_1016(vt: &Vt, out: &Arc<Mutex<String>>) -> String {
+    out.lock().clear();
+    vt.feed(b"\x1b[?1016$p");
+    out.lock().clone()
+}
+
+fn vt_with_replies() -> (Vt, Arc<Mutex<String>>) {
+    let out = Arc::new(Mutex::new(String::new()));
+    let o = out.clone();
+    let vt = Vt::new(10, 2, move |e| {
+        if let VtEvent::Write(s) = e {
+            o.lock().push_str(&s);
+        }
+    });
+    (vt, out)
+}
+
+#[test]
+fn pixel_mouse_follows_set_reset_and_is_reported_by_decrqm() {
+    let (vt, out) = vt_with_replies();
+    assert!(!vt.pixel_mouse());
+    assert_eq!(query_1016(&vt, &out), "\x1b[?1016;2$y", "supported, reset");
+    vt.feed(b"\x1b[?1000;1016;1006h");
+    assert!(vt.pixel_mouse());
+    assert_eq!(query_1016(&vt, &out), "\x1b[?1016;1$y", "set");
+    vt.feed(b"\x1b[?1016l");
+    assert!(!vt.pixel_mouse());
+    assert_eq!(query_1016(&vt, &out), "\x1b[?1016;2$y");
+}
+
+// xterm: 1016 is an encoding next to 1005/1006; turning another one on later must not silently drop it, and a
+// reset (DECSTR / RIS / `Vt::reset` on reattach) puts it back to off like every other mode.
+#[test]
+fn pixel_mouse_survives_other_encodings_and_dies_with_a_reset() {
+    let (vt, _out) = vt_with_replies();
+    vt.feed(b"\x1b[?1016h\x1b[?1006h");
+    assert!(vt.pixel_mouse());
+    vt.feed(b"\x1b[!p");
+    assert!(!vt.pixel_mouse(), "DECSTR");
+    vt.feed(b"\x1b[?1016h\x1bc");
+    assert!(!vt.pixel_mouse(), "RIS");
+    vt.feed(b"\x1b[?1016h");
+    vt.reset();
+    assert!(!vt.pixel_mouse(), "reattach replay starts from scratch");
+}
+
+// The answer is split across pty reads like any sequence.
+#[test]
+fn pixel_mouse_is_found_when_a_read_ends_inside_the_sequence() {
+    let (vt, out) = vt_with_replies();
+    vt.feed(b"\x1b[?10");
+    vt.feed(b"16h\x1b[?10");
+    vt.feed(b"16$");
+    vt.feed(b"p");
+    assert!(vt.pixel_mouse());
+    assert_eq!(*out.lock(), "\x1b[?1016;1$y");
+}
+
+// The alternate screen swap does not reset it (vim's `?1049h` comes after its mouse setup in some builds).
+#[test]
+fn pixel_mouse_is_not_tied_to_the_alternate_screen() {
+    let (vt, _out) = vt_with_replies();
+    vt.feed(b"\x1b[?1016h\x1b[?1049h\x1b[?1049l");
+    assert!(vt.pixel_mouse());
+}
+
+// What `scripts/term-flood.ts --sync 1` does: erase every row, then draw, inside one 2026 update, in small
+// chunks. The grid must show the old frame until the ESU and the new one after; never the erased rows between.
+#[test]
+fn an_erase_then_draw_repaint_inside_2026_never_shows_the_erased_rows() {
+    let vt = Vt::new(20, 4, |_| {});
+    let frame = |id: u32| {
+        let mut s = String::from("\x1b[?2026h");
+        for r in 1..=4 {
+            s += &format!("\x1b[{r};1H\x1b[2K");
+        }
+        for r in 1..=4 {
+            s += &format!("\x1b[{r};1Hf{id} row{r}");
+        }
+        s + "\x1b[?2026l"
+    };
+    vt.feed(frame(1).as_bytes());
+    let old = vt.text();
+    assert!(old.contains("f1 row4"));
+    let next = frame(2);
+    for chunk in next.as_bytes().chunks(7) {
+        vt.feed(chunk);
+        let now = vt.text();
+        assert!(
+            now == old || now.contains("f2 row4"),
+            "a read between the chunks saw a half frame: {now:?}"
+        );
+    }
+    assert!(vt.text().contains("f2 row4"));
 }

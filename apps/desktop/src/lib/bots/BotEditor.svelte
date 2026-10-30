@@ -31,7 +31,14 @@
 	let { open = $bindable(false), look, seed, onsave }: Props = $props();
 
 	// Internal draft — reset every time the modal opens.
-	let draft = $state<BotLook>({ color: "#000000", eyes: "round", hat: "none", tool: "none", outfit: "none", face: "none" });
+	let draft = $state<BotLook>({
+		color: "#000000",
+		eyes: "round",
+		hat: "none",
+		tool: "none",
+		outfit: "none",
+		face: "none",
+	});
 	let prevOpen = false;
 	$effect(() => {
 		if (open && !prevOpen) draft = { ...look };
@@ -55,11 +62,11 @@
 
 	const changed = $derived(
 		draft.color !== look.color ||
-		draft.eyes !== look.eyes ||
-		draft.hat !== look.hat ||
-		draft.tool !== look.tool ||
-		draft.outfit !== look.outfit ||
-		draft.face !== look.face,
+			draft.eyes !== look.eyes ||
+			draft.hat !== look.hat ||
+			draft.tool !== look.tool ||
+			draft.outfit !== look.outfit ||
+			draft.face !== look.face,
 	);
 
 	function handleSave() {
@@ -90,7 +97,14 @@
 					</button>
 				{/each}
 			</div>
-			<Button variant="ghost" size="sm" onclick={() => { draft = randomLook(); react = { n: react.n + 1, part: "kit" }; }}>
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={() => {
+					draft = randomLook();
+					react = { n: react.n + 1, part: "kit" };
+				}}
+			>
 				<Shuffle size={13} />
 				Randomize
 			</Button>
@@ -147,7 +161,12 @@
 							class:on={draft.eyes === e}
 							onclick={() => equip("eyes", { eyes: e })}
 						>
-							<BotFace {seed} look={{ ...draft, eyes: e, hat: "none", face: "none" }} state="idle" size={52} />
+							<BotFace
+								{seed}
+								look={{ ...draft, eyes: e, hat: "none", face: "none" }}
+								state="idle"
+								size={52}
+							/>
 							<span>{EYE_LABELS[e]}</span>
 						</button>
 					{/each}

@@ -41,8 +41,10 @@ export interface ProjectView {
 	host: string | null;
 	/** User-chosen icon and color; null = automatic. */
 	identity: Identity | null;
-	/** The checkout is gone from this machine (null = present, or an SSH project). */
-	missing: "root" | "config" | null;
+	/** The checkout's folder is gone from this machine (null = present, or an SSH project). */
+	missing: "root" | null;
+	/** `file`: an atlas.yaml is on disk. `detected`: Atlas detected the stack in memory (offer "Save as atlas.yaml"). */
+	config_source: "file" | "detected";
 	/** `origin` URL last seen while the project existed (set when missing). */
 	last_remote: string | null;
 }
@@ -184,6 +186,8 @@ export const api = {
 	removeMissing: () => invoke<number>("projects_remove_missing"),
 	findMoved: (id: string) => invoke<Found | null>("projects_find_moved", { id }),
 	initProject: (dir: string) => invoke<ProjectView>("project_init", { dir }),
+	/** Write the detected config as atlas.yaml (exactly what the header shows) and reload the project as file-backed. */
+	saveConfig: (id: string) => invoke<ProjectView>("project_save_config", { id }),
 	probe: (dir: string) => invoke<Probe>("project_probe", { dir }),
 	initPreview: (dir: string) => invoke<InitPreview>("project_init_preview", { dir }),
 	start: (id: string, profiles: string[] = [], services: string[] = []) =>

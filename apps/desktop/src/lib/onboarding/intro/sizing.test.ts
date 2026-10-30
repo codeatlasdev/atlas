@@ -93,7 +93,7 @@ describe("SizeWatch: re-measure until the first real size, then on every change"
 
 describe("dprQuery: the media query that fires when the pixel ratio changes", () => {
 	// A window dragged from a Retina screen to an external one keeps the same CSS box, so a ResizeObserver stays silent and
-	// a static frame (reduced motion, the settled intro) would stay blurry or oversized. The query is the only signal.
+	// a static frame (reduced motion, the settled globe) would stay blurry or oversized. The query is the only signal.
 	test("is an exact-resolution query for the current ratio", () => {
 		expect(dprQuery(2)).toBe("(resolution: 2dppx)");
 		expect(dprQuery(1)).toBe("(resolution: 1dppx)");

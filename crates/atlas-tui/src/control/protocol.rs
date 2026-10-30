@@ -58,6 +58,10 @@ pub enum ControlCmd {
     Shutdown,
     /// Snapshot reply, then a stream of events (see `runner.rs`).
     Subscribe,
+    /// Register and start an ad-hoc service (`atlas -- <cmd>`): runner only, never persisted.
+    AddService {
+        command: String,
+    },
 }
 
 impl ControlCmd {
@@ -86,6 +90,9 @@ impl ControlCmd {
             "info" => Ok(Self::Info),
             "shutdown" => Ok(Self::Shutdown),
             "subscribe" => Ok(Self::Subscribe),
+            "add_service" => Ok(Self::AddService {
+                command: str_arg("command").ok_or("missing required arg: command")?,
+            }),
             other => Err(format!("unknown cmd: {other}")),
         }
     }
@@ -119,9 +126,10 @@ pub fn resolve(cmd: ControlCmd, cfg: &ProjectConfig) -> Result<Resolved, String>
         ))
     };
     match cmd {
-        ControlCmd::Info | ControlCmd::Shutdown | ControlCmd::Subscribe => {
-            Err("not a service command".to_string())
-        }
+        ControlCmd::Info
+        | ControlCmd::Shutdown
+        | ControlCmd::Subscribe
+        | ControlCmd::AddService { .. } => Err("not a service command".to_string()),
         ControlCmd::StartService(n) => known(&n).map(|()| Resolved::StartService(n)),
         ControlCmd::StopService(n) => known(&n).map(|()| Resolved::StopService(n)),
         ControlCmd::RestartService(n) => known(&n).map(|()| Resolved::RestartService(n)),

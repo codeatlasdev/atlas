@@ -6,8 +6,8 @@ use super::AtlasCommand;
 
 #[derive(Debug, Args)]
 pub struct McpArgs {
-    /// Project directory containing atlas.yaml. Default: the nearest ancestor of
-    /// the current directory that has one (falls back to the current directory).
+    /// Project directory. Default: the project root of the current directory (nearest
+    /// `atlas.yaml`, else nearest `.git` or package manifest, else the directory itself).
     #[arg(short, long)]
     pub dir: Option<String>,
 
@@ -25,10 +25,7 @@ impl AtlasCommand for McpArgs {
 
         let root = match &self.dir {
             Some(d) => std::path::PathBuf::from(expand_tilde(d)),
-            None => {
-                let cwd = std::env::current_dir()?;
-                atlas_tui::config::find_root(&cwd).unwrap_or(cwd)
-            }
+            None => atlas_core::project_root::resolve(&std::env::current_dir()?),
         };
         let root = root.canonicalize().unwrap_or(root);
         if !root.is_dir() {

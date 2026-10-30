@@ -1,13 +1,14 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { addPlan, droppedOn, initDescription, removeDescription } from "./addProject.ts";
+import { addPlan, droppedOn, removeDescription } from "./addProject.ts";
 // The REAL serialization of `project_probe` (crates/atlas-desktop/src/cmds/projects.rs, probe_fixture_is_the_real_serialization).
 import probeFixture from "#lib/__fixtures__/project-probe.json";
 
-// Incident (#65): picking a folder without atlas.yaml ended in "no atlas.yaml in <dir>". The plan for the real Rust
-// payload of such a folder must be "create the config", never "add".
-test("the real probe of a folder without atlas.yaml plans an init of that folder", () => {
-	expect(addPlan(probeFixture)).toEqual({ kind: "init", dir: probeFixture.picked });
+// Zero-config: picking a folder without atlas.yaml (incident #65 was "no atlas.yaml in <dir>", later an init prompt)
+// adds it as is, never asks to create a file. The real Rust payload of such a folder must plan an add of that folder.
+test("the real probe of a folder without atlas.yaml plans an add of that folder, no init step", () => {
+	expect(probeFixture.has_config).toBe(false);
+	expect(addPlan(probeFixture)).toEqual({ kind: "add", root: probeFixture.root, inside: false });
 });
 
 const probe = (over) => ({ ...probeFixture, ...over });
@@ -31,20 +32,6 @@ test("an already registered folder is selected, whatever else is true of it", ()
 		kind: "select",
 		id: "abc",
 	});
-});
-
-test("the init confirmation shows what was detected and the file to be created", () => {
-	const text = initDescription("/p/shop", {
-		yaml: "name: shop\n\nservices:\n  dev:\n    command: vite\n    port: 5173\n",
-		detected: "typescript (vite)",
-		services: ["dev"],
-	});
-	expect(text).toContain("/p/shop");
-	expect(text).toContain("Detected typescript (vite): dev.");
-	expect(text).toContain("name: shop");
-	expect(initDescription("/p", { yaml: "name: p\n", detected: null, services: [] })).toContain(
-		"Nothing recognised",
-	);
 });
 
 // Acceptance (#65): removing says it never deletes files, that a running stack is stopped, and that worktrees follow.

@@ -79,9 +79,7 @@
 		opencode: "OpenCode",
 	};
 	const agentLabel = $derived(
-		bot
-			? (agents.list.find((a) => a.id === bot.agent)?.label ?? AGENT_LABELS[bot.agent] ?? bot.agent)
-			: "",
+		bot ? (agents.list.find((a) => a.id === bot.agent)?.label ?? AGENT_LABELS[bot.agent] ?? bot.agent) : "",
 	);
 	const serverName = $derived(bots.selected?.hostName ?? "");
 
@@ -94,9 +92,7 @@
 	const sections = $derived([
 		{ id: "general" as SectionId, label: "General" },
 		{ id: "automations" as SectionId, label: "Automations" },
-		...(PROVIDER_AGENTS.includes(bot?.agent ?? "")
-			? [{ id: "engine" as SectionId, label: "Engine" }]
-			: []),
+		...(PROVIDER_AGENTS.includes(bot?.agent ?? "") ? [{ id: "engine" as SectionId, label: "Engine" }] : []),
 		{ id: "memory" as SectionId, label: "Memory" },
 		{ id: "usage" as SectionId, label: "Usage" },
 	]);
@@ -209,8 +205,7 @@
 			settingsApproval = bot.approval;
 			approvalStatus = "idle";
 			approvalError = "";
-			settingsShortReplies =
-				bot.short_replies === true ? "on" : bot.short_replies === false ? "off" : "crew";
+			settingsShortReplies = bot.short_replies === true ? "on" : bot.short_replies === false ? "off" : "crew";
 			shortRepliesStatus = "idle";
 			shortRepliesError = "";
 			// Provider fields — user fills in; no init from bot record
@@ -280,8 +275,7 @@
 		shortRepliesStatus = "saving";
 		shortRepliesError = "";
 		try {
-			const val =
-				settingsShortReplies === "on" ? true : settingsShortReplies === "off" ? false : null;
+			const val = settingsShortReplies === "on" ? true : settingsShortReplies === "off" ? false : null;
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			await bots.updateBot(bots.selected.hostKey, bot.id, { short_replies: val } as any);
 			showSaved((s) => (shortRepliesStatus = s));
@@ -555,9 +549,7 @@
 			return;
 		}
 		const project: BotProject = r.project;
-		await bots
-			.updateBot(bots.selected.hostKey, bot.id, { project })
-			.catch((e) => toast.error(errText(e)));
+		await bots.updateBot(bots.selected.hostKey, bot.id, { project }).catch((e) => toast.error(errText(e)));
 	}
 
 	async function unlinkProject() {
@@ -640,8 +632,8 @@
 							aria-current={activeSection === s.id ? "page" : undefined}
 							bind:this={navItemEls[i]}
 							onclick={() => (activeSection = s.id)}
-							onkeydown={(e) => navKeydown(e, i)}
-						>{s.label}</button>
+							onkeydown={(e) => navKeydown(e, i)}>{s.label}</button
+						>
 					</li>
 				{/each}
 			</ul>
@@ -692,8 +684,7 @@
 									e.preventDefault();
 									void saveRole();
 								}
-							}}
-						></textarea>
+							}}></textarea>
 					</section>
 
 					<!-- Behaviour: one row per setting, words on the left, the control on the right. -->
@@ -791,7 +782,6 @@
 							</div>
 						{/if}
 					</section>
-
 				{:else if activeSection === "automations"}
 					<!-- ── Automations ──────────────────────────────────── -->
 					{#if allTriggers.length > 0}
@@ -842,7 +832,6 @@
 					<div class="pane-actions">
 						<Button size="sm" variant="outlined" onclick={openNewAutomation}>Add automation</Button>
 					</div>
-
 				{:else if activeSection === "engine"}
 					<!-- ── Engine ───────────────────────────────────────── -->
 					<section class="card rows">
@@ -917,7 +906,6 @@
 							</Button>
 						</div>
 					</section>
-
 				{:else if activeSection === "memory"}
 					<!-- ── Memory ──────────────────────────────────────── -->
 					{#if memoryLoading}
@@ -936,7 +924,8 @@
 								>
 							</div>
 							<p class="row-hint">
-								Notes {bot.name} writes for itself and reads before every task. Edit or remove anything that is wrong.
+								Notes {bot.name} writes for itself and reads before every task. Edit or remove anything that is
+								wrong.
 							</p>
 							<textarea
 								class="field-textarea memory-textarea"
@@ -949,11 +938,9 @@
 										e.preventDefault();
 										void saveMemory();
 									}
-								}}
-							></textarea>
+								}}></textarea>
 						</section>
 					{/if}
-
 				{:else}
 					<!-- ── Usage ───────────────────────────────────────── -->
 					<UsageSparkline data={usageData} />
@@ -1193,8 +1180,6 @@
 
 	/* ── Field groups ───────────────────────────────────────────────────── */
 
-
-
 	/* ── Save status ────────────────────────────────────────────────────── */
 	.save-status {
 		font-size: 11px;
@@ -1289,7 +1274,6 @@
 		outline: none;
 		border-color: var(--ca-action-focus, var(--ca-brand-main));
 	}
-
 
 	/* ── Cards and rows (macOS Settings style) ─────────────────────────── */
 	.card {
@@ -1470,11 +1454,6 @@
 	}
 
 	/* ── Project ────────────────────────────────────────────────────────── */
-
-
-
-
-
 
 	.project-options {
 		display: flex;

@@ -76,6 +76,9 @@ pub struct ServiceManager {
     pub(crate) mode: &'static str,
     /// Attached clients, written to the status file (runner only).
     pub(crate) clients: usize,
+    /// Services added by `atlas -- <cmd>` (not in atlas.yaml): shown to attaching clients
+    /// with their command so they can rebuild them.
+    pub(crate) adhoc: HashSet<String>,
     /// Last resource sample (`usage.rs`), taken every few seconds.
     pub(crate) sampled_at: Option<std::time::Instant>,
 }

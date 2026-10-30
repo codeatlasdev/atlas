@@ -109,8 +109,11 @@ mock.module("@xterm/addon-search", () => ({ SearchAddon: Plain }));
 mock.module("@xterm/addon-web-links", () => ({ WebLinksAddon: Plain }));
 mock.module("@xterm/addon-unicode11", () => ({ Unicode11Addon: Plain }));
 mock.module("@xterm/addon-webgl", () => ({ WebglAddon: FakeWebgl }));
+/** Every event name the component (and the shared host dispatcher) asked Tauri to listen to, in order. */
+const listened: string[] = [];
 mock.module("@tauri-apps/api/event", () => ({
 	listen: async (name: string, cb: typeof sendEvent) => {
+		listened.push(name);
 		if (name.startsWith("pty://")) sendEvent = cb;
 		return () => {};
 	},
@@ -208,6 +211,23 @@ function setup(props = {}) {
 	const app = flushSync(() => mount(Terminal, { target, props: p }));
 	return { p, target, app, host: () => target.querySelector(".xterm-host") as HTMLElement };
 }
+
+// Incident (2026-10-26, Linux: one terminal tab lags, two freeze): each terminal registered its own listeners for
+// `host://event` and `host://reconnected` (two IPC round trips and a JS callback per hostd event, per terminal).
+test("any number of terminals add no listener of their own for host events: only their pty stream", async () => {
+	const a = setup();
+	await Promise.resolve();
+	const first = listened.filter((n) => n.startsWith("host://")).length;
+	const b = setup({ pty: "p2" });
+	const c = setup({ pty: "p3" });
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(listened.filter((n) => n.startsWith("host://")).length).toBe(first);
+	expect(first).toBeLessThanOrEqual(2);
+	unmount(a.app);
+	unmount(b.app);
+	unmount(c.app);
+});
 
 test("WebGL is loaded before open, so the first paint is already WebGL (no DOM-renderer to WebGL swap)", () => {
 	const { app } = setup();

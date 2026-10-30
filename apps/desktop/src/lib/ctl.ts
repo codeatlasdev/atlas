@@ -1,3 +1,4 @@
+import { toast } from "@codeatlasdev/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Tab, Worktree } from "#lib/stores/workspace.svelte.ts";
@@ -8,6 +9,7 @@ import { errText } from "#lib/api.ts";
 import { realEnv } from "#lib/capture/env.ts";
 import { runScript } from "#lib/capture/runner.ts";
 import { parseScript } from "#lib/capture/script.ts";
+import { relativeTo } from "#lib/openPath.ts";
 
 // These getters resolve through window.__atlasCtlStores (set by shell/session.svelte.ts)
 // so ctl.ts works regardless of which module instance calls it.
@@ -111,6 +113,30 @@ async function waitFor<T>(check: () => T | undefined, timeoutS: number): Promise
 		if (Date.now() > end) throw new Error("timeout");
 		await new Promise((r) => setTimeout(r, 250));
 	}
+}
+
+/** Register the project containing `path` (no atlas.yaml needed; Rust resolves the root) and show it. */
+export async function openProject(path: string): Promise<{ id: string; root: string }> {
+	const p = await live().api.add(path);
+	await live().store.refresh();
+	live().store.selected = p.id;
+	live().ws.view = "worktree";
+	live().ws.select(p.id);
+	return { id: p.id, root: p.root };
+}
+
+/** `project_open` on the path's project; for a file, then open it in the editor of that project's main worktree. */
+export async function openPath(path: string, line?: number) {
+	const proj = await openProject(path);
+	const rel = relativeTo(proj.root, path);
+	const stat = rel
+		? await live()
+				.host.fsStat(path)
+				.catch(() => null)
+		: null;
+	if (!rel || stat?.kind !== "file") return { id: proj.id, root: proj.root, path: null };
+	openFile(proj.id, rel, line);
+	return { id: proj.id, root: proj.root, path: rel };
 }
 
 const handlers: Record<string, (a: Args) => Promise<unknown>> = {
@@ -272,6 +298,19 @@ const handlers: Record<string, (a: Args) => Promise<unknown>> = {
 		return { state: "idle" };
 	},
 
+	async project_open(a) {
+		const path = str(a, "path");
+		if (!path) throw new Error("path required");
+		const { id, root } = await openProject(path);
+		return { id, root };
+	},
+
+	async path_open(a) {
+		const path = str(a, "path");
+		if (!path) throw new Error("path required");
+		return openPath(path, typeof a.line === "number" ? a.line : undefined);
+	},
+
 	async file_open(a) {
 		const w = findWorktree(str(a, "worktree"));
 		const path = str(a, "path") ?? "";
@@ -353,9 +392,27 @@ const handlers: Record<string, (a: Args) => Promise<unknown>> = {
 	},
 };
 
-/** Serve `atlas wt|term|browser|file` requests forwarded by ctl.rs. */
+/** Open what a launch asked for (`atlas-desktop <path>`, a second launch): the queue is drained once the stores are loaded. */
+async function drainOpenRequests() {
+	const reqs = await invoke<{ path: string }[]>("open_pending");
+	if (!reqs.length) return;
+	const stores = () => (window as Window & { __atlasCtlStores?: CtlStores }).__atlasCtlStores;
+	await waitFor(() => (stores()?.store.loaded && stores()?.ws.loaded ? true : undefined), 60);
+	for (const r of reqs) {
+		try {
+			await openPath(r.path);
+		} catch (err) {
+			toast.error(`Cannot open ${r.path}: ${errText(err)}`);
+		}
+	}
+}
+
+/** Serve `atlas wt|term|browser|file|project|path` requests forwarded by ctl.rs, and path opens from launches. */
 export async function startCtl() {
-	return listen<{ id: number; cmd: string; args: Args }>("ctl://request", async (e) => {
+	const stopOpen = await listen("open://request", () => void drainOpenRequests());
+	// A cold start queued its path before the page existed.
+	void drainOpenRequests().catch(() => {});
+	const stopCtl = await listen<{ id: number; cmd: string; args: Args }>("ctl://request", async (e) => {
 		const { id, cmd, args } = e.payload;
 		const h = handlers[cmd];
 		try {
@@ -366,4 +423,8 @@ export async function startCtl() {
 			await invoke("ctl_reply", { id, ok: false, value: errText(err) });
 		}
 	});
+	return () => {
+		stopOpen();
+		stopCtl();
+	};
 }

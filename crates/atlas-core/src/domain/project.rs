@@ -214,7 +214,17 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
     detection
 }
 
-fn extract_port(cmd: &str) -> Option<u16> {
+/// The port a dev command announces: `--port N`, `-p N`, `--port=N`, `PORT=N` or `.listen(N)`.
+pub fn extract_port(cmd: &str) -> Option<u16> {
+    if let Some(i) = cmd.find(".listen(") {
+        let digits: String = cmd[i + ".listen(".len()..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if let Ok(port) = digits.parse::<u16>() {
+            return Some(port);
+        }
+    }
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     for (i, part) in parts.iter().enumerate() {
         if (*part == "--port" || *part == "-p")
@@ -313,5 +323,19 @@ mod tests {
             d.services.len(),
             "{yaml}"
         );
+    }
+
+    #[test]
+    fn extract_port_reads_flags_env_prefix_and_node_listen_calls() {
+        assert_eq!(extract_port("vite --port 5173"), Some(5173));
+        assert_eq!(extract_port("next dev -p 3001"), Some(3001));
+        assert_eq!(extract_port("serve --port=8080"), Some(8080));
+        assert_eq!(extract_port("PORT=4000 node x.js"), Some(4000));
+        assert_eq!(
+            extract_port(r#"node -e "require('http').createServer().listen(4123)""#),
+            Some(4123)
+        );
+        assert_eq!(extract_port("node -e \"x.listen(port)\""), None);
+        assert_eq!(extract_port("bun dev"), None);
     }
 }

@@ -1,3 +1,5 @@
+import { revealLabel } from "#lib/keys.ts";
+
 /** What a right-click or the `…` button was aimed at: a file, a folder, or the empty area (the worktree root). */
 export type MenuTarget = { kind: "file" | "dir"; rel: string; status?: string } | { kind: "root" };
 
@@ -39,7 +41,7 @@ export function menuItems(t: MenuTarget): MenuItem[] {
 		return [
 			...NEW.map((i) => ({ ...i, group: 0 })),
 			{ action: "terminal", label: "Open in terminal", group: 1 },
-			{ action: "reveal", label: "Reveal in Finder", group: 1 },
+			{ action: "reveal", label: revealLabel(), group: 1 },
 			{ action: "copy-path", label: "Copy path", group: 1 },
 		];
 	}
@@ -56,7 +58,7 @@ export function menuItems(t: MenuTarget): MenuItem[] {
 		{ action: "copy-path", label: "Copy path", group: 2 },
 		{ action: "copy-relative-path", label: "Copy relative path", group: 2 },
 		{ action: "terminal", label: "Open in terminal", group: 2 },
-		{ action: "reveal", label: "Reveal in Finder", group: 2 },
+		{ action: "reveal", label: revealLabel(), group: 2 },
 	);
 	const changed = t.kind === "file" && t.status && t.status !== "ignored";
 	if (changed) {

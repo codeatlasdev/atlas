@@ -11,7 +11,12 @@ describe("replyParts", () => {
 
 	test("splits at section headers (bold line or #) and keeps each header with its body", () => {
 		const r = "Intro curta.\n\n**Raiz**\n- a\n- b\n\n**src/**\n- c\n\nSe quiser, detalho.";
-		expect(replyParts(r, 0)).toEqual(["Intro curta.", "**Raiz**\n- a\n- b", "**src/**\n- c", "Se quiser, detalho."]);
+		expect(replyParts(r, 0)).toEqual([
+			"Intro curta.",
+			"**Raiz**\n- a\n- b",
+			"**src/**\n- c",
+			"Se quiser, detalho.",
+		]);
 	});
 
 	test("never cuts a fenced code block, even with blank lines inside", () => {

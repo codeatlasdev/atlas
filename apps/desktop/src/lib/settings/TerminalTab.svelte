@@ -16,6 +16,7 @@
 
 	let p = $derived(prefs.value);
 	let t = $derived(p.terminal);
+	const MB = 1024 * 1024;
 	const save = (patch: Partial<Prefs["terminal"]>) => savePref("terminal", { ...t, ...patch });
 
 	/** Ends every terminal: the app reconnects and starts the current host. */
@@ -214,6 +215,18 @@
 			unit="lines"
 			value={t.max_scroll_history_lines}
 			onchange={(v) => save({ max_scroll_history_lines: v })}
+		/>
+	</Row>
+	<Row
+		id="scrollback-memory"
+		label="Scrollback memory"
+		description="Most memory one terminal spends on its scrollback. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only)."
+	>
+		<NumInput
+			label="Scrollback memory"
+			unit="MB"
+			value={Math.round(t.scrollback_bytes / MB)}
+			onchange={(v) => save({ scrollback_bytes: v * MB })}
 		/>
 	</Row>
 	<Row

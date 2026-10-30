@@ -5,11 +5,23 @@ description: "Every atlas.yaml field, local overrides, validation and the JSON S
 
 # Configuration: `atlas.yaml`
 
-Atlas looks for `atlas.yaml` in the directory you run it from (`atlas dev --dir <path>` to point elsewhere). `atlas.local.yaml` next to it is merged on top for per-machine overrides.
+`atlas.yaml` is optional. Atlas looks for it in the directory you run it from (`atlas dev --dir <path>` to point elsewhere); `atlas.local.yaml` next to it is merged on top for per-machine overrides. Without one, see [No atlas.yaml](#no-atlasyaml-detected-config).
 
 Contents: [Top level](#top-level-fields) · [services](#services) · [depends_on](#depends_on) · [restart policy](#restart-policy) · [profiles](#profiles) · [infra](#infra) · [tunnel](#tunnel) · [actions](#actions) · [mobile](#mobile) · [env_files](#env_files) · [local overrides](#local-overrides-atlaslocalyaml) · [validation](#validation) · [JSON Schema](#json-schema-editor-autocomplete) · [full example](#full-example)
 
 Unknown keys are errors at every depth (with a "did you mean" hint), so a typo never silently does nothing.
+
+## No atlas.yaml: detected config
+
+`atlas dev` (TUI, `--detach`, `--headless`, `--ci`), `atlas down`, `atlas mcp` and Atlas Desktop work in a folder that has no `atlas.yaml`. Atlas builds the config in memory from what it finds, the same one `atlas init` would write:
+
+| Found | Services |
+|---|---|
+| `package.json` | every script named `dev`, `dev:*`, `start`, `start:*` or containing `serve` (command = the script's body, port from `--port N` / `PORT=N` when present, else from the `4010–4099` block) |
+| `pyproject.toml` / `requirements.txt`, `Cargo.toml`, `go.mod` | the language's usual run command, when one is detected |
+| nothing | no services: the stack starts empty, and `atlas -- <cmd>` adds [ad-hoc services](cli.md#atlas----cmd) to it |
+
+Every run on a detected config prints one line, e.g. `no atlas.yaml: using detected config (services: dev); save it with 'atlas init'`. **Nothing is written implicitly**; `atlas init` (or "Save as atlas.yaml" in Atlas Desktop) writes exactly what was detected, after which the file is the source of truth. `atlas.local.yaml` still layers on top of a detected config, and an `atlas.yaml` that exists is never replaced by detection (a broken one is an error, not a fallback). `atlas config check` and `atlas deploy` still need a real file.
 
 ## Top-level fields
 

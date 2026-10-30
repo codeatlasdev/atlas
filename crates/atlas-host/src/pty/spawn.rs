@@ -179,6 +179,16 @@ impl Session {
             ("ATLAS_HOSTD".into(), "1".into()),
             ("ATLAS_PTY_ID".into(), id.clone()),
         ];
+        if req.mode != Mode::Pipe {
+            // Who the terminal is (Ghostty sets `TERM_PROGRAM=ghostty` + its version): agents branch on it for
+            // scroll speed, links and graphics. Set here, not inherited: hostd's own environment may carry the
+            // terminal that launched it.
+            env.push(("TERM_PROGRAM".into(), "Atlas".into()));
+            env.push((
+                "TERM_PROGRAM_VERSION".into(),
+                env!("CARGO_PKG_VERSION").into(),
+            ));
+        }
         env.extend(req.env.iter().map(|(k, v)| (k.clone(), v.clone())));
         let child = if req.mode == Mode::Pipe {
             spawn_pipe(&argv, &req.cwd, env)?

@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { WheelAccum, cellAt, cellFromStats, shellQuote, wheelLines } from "./geometry.ts";
+import { cellAt, cellFromStats, shellQuote } from "./geometry.ts";
 
 test("cellAt floors to the cell and keeps the fraction for the selection side", () => {
 	const hit = cellAt(125, 52, { left: 10, top: 4 }, { w: 10, h: 20 });
@@ -28,29 +28,6 @@ test("cellFromStats reports the cell in the page's CSS px under layout zoom", ()
 	expect(cellAt(80, 0, { left: 0, top: 0 }, cell)).toMatchObject({ col: 10, row: 0 });
 });
 
-test("wheelLines scrolls up for negative deltas, falling back to 16px per line", () => {
-	expect(wheelLines(-32, null)).toBe(2);
-	expect(wheelLines(40, { w: 8, h: 20 })).toBe(-2);
-	expect(wheelLines(4, { w: 8, h: 20 })).toBeCloseTo(-0.2);
-});
-
 test("shellQuote escapes embedded single quotes", () => {
 	expect(shellQuote("/a b/it's")).toBe("'/a b/it'\\''s' ");
-});
-
-test("wheelLines honors line and page delta modes", () => {
-	expect(wheelLines(-3, { w: 8, h: 20 }, 1)).toBe(3);
-	expect(wheelLines(1, { w: 8, h: 20 }, 2, 30)).toBe(-30);
-});
-
-// Trackpads send many small deltas: rounding each one lost them all (never scrolled) or
-// over-scrolled. The fraction carries to the next event; a direction change drops it.
-test("WheelAccum carries sub-line deltas and resets on a direction flip", () => {
-	const a = new WheelAccum();
-	const cell = { w: 8, h: 16 };
-	const got = [1, 2, 3, 4, 5].map(() => a.take(wheelLines(-4, cell)));
-	expect(got).toEqual([0, 0, 0, 1, 0]);
-	expect(a.take(wheelLines(4, cell))).toBe(0);
-	expect(a.take(wheelLines(-12, cell))).toBe(0);
-	expect(a.take(wheelLines(-4, cell))).toBe(1);
 });

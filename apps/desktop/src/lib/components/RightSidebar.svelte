@@ -248,6 +248,10 @@
 		padding: 0 8px;
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
 	}
+	/* Windows: the caption buttons sit over this row's right end (WindowControls.svelte). */
+	:global(html.custom-chrome) .tabs {
+		padding-right: var(--caption-controls);
+	}
 	.skel {
 		display: flex;
 		flex-direction: column;

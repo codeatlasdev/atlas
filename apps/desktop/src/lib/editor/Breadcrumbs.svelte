@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ChevronRight } from "@lucide/svelte";
 	import type { EditorView } from "@codemirror/view";
+	import { revealLabel } from "#lib/keys.ts";
 	import {
 		breadcrumbPath,
 		nestFlat,
@@ -75,7 +76,7 @@
 	{#each files as seg, i (seg.path)}
 		{#if i > 0}<ChevronRight size={11} class="sep" />{/if}
 		{#if seg.kind === "file"}
-			<button class="seg file" title="Reveal in Finder" onclick={onreveal}>{seg.name}</button>
+			<button class="seg file" title={revealLabel()} onclick={onreveal}>{seg.name}</button>
 		{:else}
 			<span class="seg dir">{seg.name}</span>
 		{/if}

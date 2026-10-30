@@ -10,7 +10,7 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { SquareTerminal } from "@lucide/svelte";
 	import { host, b64bytes } from "#lib/host.ts";
-	import { droppedPty } from "#lib/ptyStream.ts";
+	import { hostEvents } from "#lib/hostEventsApp.ts";
 	import { errText } from "#lib/api.ts";
 	import { apply, emptyChat, LineBuffer, type ChatState, type UiRequest } from "#lib/rpc.ts";
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
@@ -82,11 +82,9 @@
 				})
 				.catch(() => {});
 		attach();
-		listen("host://reconnected", attach).then((u) => (alive ? offs.push(u) : u()));
+		offs.push(hostEvents.onReconnected(attach));
 		// hostd dropped this view for not reading (a hidden webview); the replay redraws the transcript.
-		listen("host://event", (e) => {
-			if (droppedPty(e.payload) === tab.pty) attach();
-		}).then((u) => (alive ? offs.push(u) : u()));
+		if (tab.pty) offs.push(hostEvents.onDropped(tab.pty, attach));
 		window.setTimeout(poll, 1500);
 		void worktreeFiles(tab.worktreeId).then((f) => (atFiles = f));
 		return () => {

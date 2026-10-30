@@ -25,7 +25,10 @@ pub async fn run_ci(
     timeout_secs: u64,
     select: &config::SelectionRequest,
 ) -> Result<()> {
-    let cfg = config::load(root_dir)?;
+    let (cfg, source) = config::load_or_detect(root_dir)?;
+    if source == config::ConfigSource::Detected {
+        eprintln!("{}", config::detected_notice(&cfg));
+    }
     let selection = config::resolve_selection(&cfg, select).map_err(|e| anyhow::anyhow!(e))?;
     let _lock = lock_or_err(root_dir)?;
     eprintln!(

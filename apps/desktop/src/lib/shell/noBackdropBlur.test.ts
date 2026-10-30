@@ -29,8 +29,8 @@ for (const file of OVER_PAGER) {
 test("the guard list names real files", async () => {
 	const found = new Set<string>();
 	for await (const f of new Glob("src/**/*.{svelte,css}").scan({
-		cwd: new URL("../../../", import.meta.url).pathname,
+		cwd: Bun.fileURLToPath(new URL("../../../", import.meta.url)),
 	}))
-		found.add(f);
+		found.add(f.replaceAll("\\", "/"));
 	expect(OVER_PAGER.filter((f) => !found.has(f))).toEqual([]);
 });

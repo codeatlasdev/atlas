@@ -20,9 +20,7 @@
 	const shortcut = $derived(shortcutFor("atlas::ToggleCrewBoard") ?? "Cmd+Shift+K");
 
 	const HINT_KEY = "atlas.crewViewBarHintSeen";
-	let hint = $state(
-		typeof localStorage !== "undefined" && localStorage.getItem(HINT_KEY) !== "1",
-	);
+	let hint = $state(typeof localStorage !== "undefined" && localStorage.getItem(HINT_KEY) !== "1");
 
 	/**
 	 * Watch the pointer instead of a hover strip. The strip was 6 px at the very top, which on macOS is the window's

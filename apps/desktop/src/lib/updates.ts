@@ -158,7 +158,8 @@ export type ProgressEvent =
 	| { kind: "phase"; id: string }
 	| { kind: "bytes"; done: number; total: number }
 	| { kind: "rollback"; state: string }
-	| { kind: "host"; state: string; live: number };
+	| { kind: "host"; state: string; live: number }
+	| { kind: "managed"; how: string };
 
 /** What the install has reported so far. */
 export interface Progress {
@@ -171,9 +172,18 @@ export interface Progress {
 	rollback: "restored" | "failed" | null;
 	/** How `atlas update` left the terminal host (`needs-restart` = running terminals, user decides). */
 	host: { state: string; live: number } | null;
+	/** Another tool owns this Atlas (`homebrew`, `package`): the CLI exited 0 without installing. */
+	managed: string | null;
 }
 
-export const EMPTY_PROGRESS: Progress = { at: -1, done: 0, total: 0, rollback: null, host: null };
+export const EMPTY_PROGRESS: Progress = {
+	at: -1,
+	done: 0,
+	total: 0,
+	rollback: null,
+	host: null,
+	managed: null,
+};
 
 /** Fold one event into the progress; phases only move forward, bytes belong to the current phase. */
 export function reduceProgress(p: Progress, e: ProgressEvent): Progress {
@@ -189,6 +199,8 @@ export function reduceProgress(p: Progress, e: ProgressEvent): Progress {
 			return { ...p, rollback: e.state === "restored" ? "restored" : "failed" };
 		case "host":
 			return { ...p, host: { state: e.state, live: e.live } };
+		case "managed":
+			return { ...p, managed: e.how };
 	}
 }
 
@@ -204,16 +216,21 @@ export function phaseFromLog(line: string): ProgressEvent | null {
 }
 
 /**
+ * How the last install ended. `managed`: the CLI exited 0 but installed nothing because another
+ * tool owns this Atlas (Homebrew, a package manager with no usable command), so it is neither a
+ * success nor a failure and no step ran.
+ */
+export type InstallOutcome = "running" | "done" | "failed" | "managed";
+
+/**
  * The step list for the sheet and Settings. `failed` marks the active step; `done` completes
  * every step except Relaunch, which is only done once the app restarts (`relaunched`).
+ * `managed` leaves every step pending: nothing was installed.
  */
-export function stepsFrom(
-	p: Progress,
-	outcome: "running" | "done" | "failed",
-	relaunchNeeded = false,
-): Step[] {
+export function stepsFrom(p: Progress, outcome: InstallOutcome, relaunchNeeded = false): Step[] {
 	return STEPS.map((s, i) => {
 		let state: StepState;
+		if (outcome === "managed") return { ...s, state: "pending" };
 		if (s.id === "relaunch") state = outcome === "done" && relaunchNeeded ? "active" : "pending";
 		else if (outcome === "done") state = "done";
 		else if (i < p.at) state = "done";
@@ -223,6 +240,29 @@ export function stepsFrom(
 		if (p.at === -1 && i === 0 && outcome !== "done") state = outcome === "failed" ? "failed" : "active";
 		return { ...s, state };
 	});
+}
+
+/** A run that exited 0: `managed` when the CLI said another tool owns this install, else `done`. */
+export function finishOutcome(p: Progress): "done" | "managed" {
+	return p.managed ? "managed" : "done";
+}
+
+/** The toast a finished run shows outside the sheet; a managed install is never "up to date". */
+export function finishToast(
+	kind: "update" | "reinstall" | "unlink",
+	outcome: "done" | "managed",
+	managed: string | null,
+): { level: "success" | "info"; text: string } {
+	if (outcome === "managed") {
+		return {
+			level: "info",
+			text:
+				managed === "homebrew"
+					? "Atlas is managed by Homebrew: run `brew upgrade atlas` to update it"
+					: "Atlas is managed by your package manager: update it there (or run `atlas update` in a terminal)",
+		};
+	}
+	return { level: "success", text: kind === "unlink" ? "Back on the release build" : "Atlas is up to date" };
 }
 
 /** `42%` of a known download; null while the size is unknown. */

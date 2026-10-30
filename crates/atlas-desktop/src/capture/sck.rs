@@ -204,6 +204,16 @@ pub(super) fn config(
     }
 }
 
+/// What a recording captures and how it is written: the content filter, the stream configuration, and the file type
+/// of the output (`.mov` for scripted window recordings, `.mp4` for the user's screen captures).
+pub struct Source {
+    pub filter: Retained<SCContentFilter>,
+    pub config: Retained<SCStreamConfiguration>,
+    pub pixels: (usize, usize),
+    /// QuickTime (`.mov`) or MPEG-4 (`.mp4`).
+    pub mp4: bool,
+}
+
 impl Recorder {
     /// Start recording window `id` (`pixels` = output size) into `out` as HEVC.
     pub fn start(
@@ -213,6 +223,30 @@ impl Recorder {
         cursor: bool,
         out: &Path,
     ) -> Result<Self, String> {
+        let window = own_window(id)?;
+        // SAFETY: documented SCK setup; the filter is retained by the stream.
+        let filter = unsafe {
+            SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &window)
+        };
+        Self::start_source(
+            Source {
+                filter,
+                config: config(pixels, fps, cursor),
+                pixels,
+                mp4: false,
+            },
+            out,
+        )
+    }
+
+    /// Start recording `source` into `out` as HEVC.
+    pub fn start_source(source: Source, out: &Path) -> Result<Self, String> {
+        let Source {
+            filter,
+            config,
+            pixels,
+            mp4,
+        } = source;
         if !objc2_foundation::NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(
             objc2_foundation::NSOperatingSystemVersion {
                 majorVersion: 15,
@@ -225,7 +259,6 @@ impl Recorder {
                     .into(),
             );
         }
-        let window = own_window(id)?;
         let _ = std::fs::remove_file(out);
         let ivars = Arc::new(Ivars {
             stats: Mutex::default(),
@@ -241,14 +274,10 @@ impl Recorder {
                 unsafe { msg_send![super(Sink::alloc().set_ivars(iv)), init] };
             // SAFETY: documented SCK setup sequence; every object outlives the stream through `Recorder`.
             unsafe {
-                let filter = SCContentFilter::initWithDesktopIndependentWindow(
-                    SCContentFilter::alloc(),
-                    &window,
-                );
                 let stream = SCStream::initWithFilter_configuration_delegate(
                     SCStream::alloc(),
                     &filter,
-                    &config(pixels, fps, cursor),
+                    &config,
                     Some(ProtocolObject::from_ref(&*sink)),
                 );
                 let rc = SCRecordingOutputConfiguration::new();
@@ -257,10 +286,12 @@ impl Recorder {
                 rc.setVideoCodecType(
                     objc2_av_foundation::AVVideoCodecTypeHEVC.ok_or("HEVC is unavailable")?,
                 );
-                rc.setOutputFileType(
+                rc.setOutputFileType(if mp4 {
+                    objc2_av_foundation::AVFileTypeMPEG4.ok_or("MPEG-4 output is unavailable")?
+                } else {
                     objc2_av_foundation::AVFileTypeQuickTimeMovie
-                        .ok_or("QuickTime output is unavailable")?,
-                );
+                        .ok_or("QuickTime output is unavailable")?
+                });
                 let output = SCRecordingOutput::initWithConfiguration_delegate(
                     SCRecordingOutput::alloc(),
                     &rc,

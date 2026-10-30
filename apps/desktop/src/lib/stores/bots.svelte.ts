@@ -256,7 +256,10 @@ class BotsStore {
 				limit: 50,
 			});
 			const next = new Map(this.boardTasks);
-			next.set(`${hostKey}:${bot.id}`, r.tasks.map((t) => this.normalizeTask(t)));
+			next.set(
+				`${hostKey}:${bot.id}`,
+				r.tasks.map((t) => this.normalizeTask(t)),
+			);
 			this.boardTasks = next;
 		} catch {
 			// keep stale data on error

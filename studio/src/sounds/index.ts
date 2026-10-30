@@ -79,7 +79,7 @@ async function measure(id: EarconId): Promise<Candidate[]> {
 	for (const f of readdirSync(RAW).filter((n) => isCurrentTake(id, n)).sort()) {
 		const trimmed = trim(await decode(join(RAW, f)), decayDb(EARCON_LIST[id]));
 		const { head } = trimmed;
-		// A signature is cut to the picture: shift it so its strike lands where the intro's hit does.
+		// An earcon with a `downbeatSeconds` is cut to a picture: shift it so its strike lands there.
 		const at = EARCON_LIST[id].downbeatSeconds;
 		const y = at !== undefined && findDownbeat(trimmed.y, SR) !== null ? alignDownbeat(trimmed.y, SR, at) : trimmed.y;
 		if (at !== undefined && findDownbeat(trimmed.y, SR) === null) continue;

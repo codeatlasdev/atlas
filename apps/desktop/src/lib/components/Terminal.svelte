@@ -18,7 +18,8 @@
 	import FindInput from "./FindInput.svelte";
 	import { IS_MAC, primaryKey } from "#lib/keys.ts";
 	import { xtermKey } from "#lib/termKeys.ts";
-	import { droppedPty, ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
+	import { ptyStream, type PtyEvent } from "#lib/ptyStream.ts";
+	import { hostEvents } from "#lib/hostEventsApp.ts";
 
 	let {
 		pty,
@@ -214,10 +215,11 @@
 					return host.ptyResize(pty, t.cols, t.rows);
 				}),
 			decode: b64bytes,
-			write: (b, replay) => {
-				if (!replay) return t.write(b);
+			write: (b, replay, done) => {
+				if (!replay) return t.write(b, done);
 				// Fresh buffer behind a hidden host: the reset's blank frame is never on screen.
 				t.write(b, () => {
+					done?.();
 					const render = t.onRender(() => {
 						render.dispose();
 						drawn = true;
@@ -231,11 +233,10 @@
 			},
 		});
 		offs.push(() => stream.dispose());
-		listen("host://reconnected", () => stream.reattach()).then((u) => (alive ? offs.push(u) : u()));
+		// One page-wide listener each (`hostEvents.ts`), not two per terminal.
+		offs.push(hostEvents.onReconnected(() => stream.reattach()));
 		// hostd stopped feeding this view because it did not read (a hidden webview): the replay redraws it.
-		listen("host://event", (e) => {
-			if (droppedPty(e.payload) === pty) stream.reattach();
-		}).then((u) => (alive ? offs.push(u) : u()));
+		offs.push(hostEvents.onDropped(pty, () => stream.reattach()));
 		if (!readonly) t.onData((d) => void host.ptyWrite(pty, d).catch(() => {}));
 		let timer: number | undefined;
 		const ro = new ResizeObserver(() => {

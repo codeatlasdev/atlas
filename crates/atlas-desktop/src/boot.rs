@@ -225,6 +225,8 @@ fn show_now(app: &AppHandle, why: &str) {
     let app = app.clone();
     let _ = app.clone().run_on_main_thread(move || {
         crate::show_main(&app);
+        // Off the critical path: the menu-bar popover is a second webview, built only once the main window is up.
+        crate::tray::ensure_popover(&app);
     });
 }
 

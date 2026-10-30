@@ -104,11 +104,12 @@ Empty result: `(no matches)`.
 
 ### `atlas_config`
 
-Summary of `atlas.yaml` merged with `atlas.local.yaml`, so the agent learns valid service names and action keys/labels. Fails with the validation message if the config is invalid.
+Summary of `atlas.yaml` merged with `atlas.local.yaml`, so the agent learns valid service names and action keys/labels. Without an `atlas.yaml` it summarizes the [detected](configuration.md#no-atlasyaml-detected-config) stack and says so in `source` (`"file"` or `"detected"`). Fails with the validation message if an `atlas.yaml` exists but is invalid.
 
 ```json
 {
   "project": "shop",
+  "source": "file",
   "services": [
     { "name": "api", "port": 3001,
       "depends_on": [{ "service": "database", "condition": "healthy" }],

@@ -194,11 +194,12 @@ describe("summary step", () => {
 	});
 
 	it("keeps a project name or path as given, and omits the clause without one", () => {
-		expect(bold(summaryText({ name: "Z", roleText: "Fix failing CI", project: "atlas", approvalKey: "C" }))).toEqual([
-			"Z",
-			"atlas",
-		]);
-		expect(plain(summaryText({ name: "N", roleText: "Write the changelog", approvalKey: "B" }))).not.toContain(" on ");
+		expect(
+			bold(summaryText({ name: "Z", roleText: "Fix failing CI", project: "atlas", approvalKey: "C" })),
+		).toEqual(["Z", "atlas"]);
+		expect(
+			plain(summaryText({ name: "N", roleText: "Write the changelog", approvalKey: "B" })),
+		).not.toContain(" on ");
 	});
 });
 

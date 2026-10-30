@@ -126,6 +126,94 @@ pub fn forward(mac_key_code: u16, m: Mods) -> Option<Forwarded> {
     })
 }
 
+/// The strokes a key event can mean off macOS, in the frontend's precedence order (`keys.ts` `strokesOf`): Ctrl as
+/// `cmd` first, then Ctrl itself. The Windows key is the system's (none), and a Ctrl+Alt chord that types a
+/// character is AltGr text, not a shortcut: the caller says so with `typed`.
+pub fn strokes_off_mac(code: &str, m: Mods, typed: bool) -> Vec<String> {
+    if m.meta
+        || (m.ctrl && m.alt && typed && (code.starts_with("Key") || code.starts_with("Digit")))
+    {
+        return Vec::new();
+    }
+    let primary = Mods {
+        ctrl: false,
+        meta: m.ctrl,
+        ..m
+    };
+    let literal = Mods { meta: false, ..m };
+    let mut out: Vec<String> = [primary, literal]
+        .into_iter()
+        .filter_map(|x| stroke(code, x))
+        .collect();
+    out.dedup();
+    out
+}
+
+/// Windows/Linux counterpart of [`forward`]: `code` is the DOM code of the physical key. `Some` when one of the
+/// event's strokes is in the pushed list; the payload carries the real modifiers (Ctrl as `ctrl`), which the
+/// frontend's own `strokesOf` resolves again.
+pub fn forward_off_mac(code: &'static str, m: Mods, typed: bool) -> Option<Forwarded> {
+    let list = STROKES.lock();
+    strokes_off_mac(code, m, typed)
+        .iter()
+        .any(|s| list.contains(s))
+        .then_some(Forwarded {
+            code,
+            ctrl: m.ctrl,
+            alt: m.alt,
+            shift: m.shift,
+            meta: m.meta,
+        })
+}
+
+/// DOM `code` of a Windows virtual-key code (`VK_*`). Letters and digits are the ASCII code; the OEM keys are the
+/// US-layout positions the keymap names (`Backquote`, `BracketLeft` …), as `KeyboardEvent.code` reports them.
+pub fn dom_code_win(vk: u32) -> Option<&'static str> {
+    const LETTERS: [&str; 26] = [
+        "KeyA", "KeyB", "KeyC", "KeyD", "KeyE", "KeyF", "KeyG", "KeyH", "KeyI", "KeyJ", "KeyK",
+        "KeyL", "KeyM", "KeyN", "KeyO", "KeyP", "KeyQ", "KeyR", "KeyS", "KeyT", "KeyU", "KeyV",
+        "KeyW", "KeyX", "KeyY", "KeyZ",
+    ];
+    const DIGITS: [&str; 10] = [
+        "Digit0", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8",
+        "Digit9",
+    ];
+    const FKEYS: [&str; 12] = [
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+    ];
+    Some(match vk {
+        0x41..=0x5A => LETTERS[(vk - 0x41) as usize],
+        0x30..=0x39 => DIGITS[(vk - 0x30) as usize],
+        0x70..=0x7B => FKEYS[(vk - 0x70) as usize],
+        0x08 => "Backspace",
+        0x09 => "Tab",
+        0x0D => "Enter",
+        0x1B => "Escape",
+        0x20 => "Space",
+        0x21 => "PageUp",
+        0x22 => "PageDown",
+        0x23 => "End",
+        0x24 => "Home",
+        0x25 => "ArrowLeft",
+        0x26 => "ArrowUp",
+        0x27 => "ArrowRight",
+        0x28 => "ArrowDown",
+        0x2E => "Delete",
+        0xBA => "Semicolon",
+        0xBB => "Equal",
+        0xBC => "Comma",
+        0xBD => "Minus",
+        0xBE => "Period",
+        0xBF => "Slash",
+        0xC0 => "Backquote",
+        0xDB => "BracketLeft",
+        0xDC => "Backslash",
+        0xDD => "BracketRight",
+        0xDE => "Quote",
+        _ => return None,
+    })
+}
+
 /// DOM `code` of a macOS virtual key code (`kVK_*` in HIToolbox/Events.h). These are physical key
 /// positions, so the result is layout-independent, like `strokeOf`.
 pub fn dom_code(mac_key_code: u16) -> Option<&'static str> {
@@ -457,5 +545,131 @@ mod tests {
             committed, fresh,
             "stale fixture: re-run with UPDATE_FIXTURES=1"
         );
+    }
+
+    const ALT: Mods = Mods {
+        ctrl: false,
+        alt: true,
+        shift: false,
+        meta: false,
+    };
+
+    /// What `apps/desktop` pushes on Windows/Linux for the tab keys (`defaultKeymap(false)` through `forwardedStrokes`).
+    fn defaults_off_mac() -> Vec<String> {
+        let mut v: Vec<String> = (1..=9).map(|n| format!("cmd-{n}")).collect();
+        v.extend((1..=9).map(|n| format!("alt-{n}")));
+        v.extend(
+            [
+                "ctrl-tab",
+                "ctrl-shift-tab",
+                "shift-cmd-t",
+                "shift-cmd-w",
+                "cmd-pageup",
+                "cmd-pagedown",
+            ]
+            .map(String::from),
+        );
+        v
+    }
+
+    // Windows/Linux: Ctrl is ⌘, as `keys.ts` `strokesOf` reads it. Ctrl+1 is the tab key the page must not keep.
+    #[test]
+    fn off_mac_ctrl_digits_and_ctrl_shift_chords_are_forwarded() {
+        with(defaults_off_mac(), || {
+            let f = forward_off_mac("Digit1", CTRL, false).unwrap();
+            assert_eq!((f.code, f.ctrl, f.meta), ("Digit1", true, false));
+            assert!(forward_off_mac("KeyT", CTRL_SHIFT, false).is_some());
+            assert!(forward_off_mac("KeyW", CTRL_SHIFT, false).is_some());
+            assert!(forward_off_mac("PageDown", CTRL, false).is_some());
+            assert!(
+                forward_off_mac("Tab", CTRL, false).is_some(),
+                "ctrl-tab is written with ⌃"
+            );
+            assert!(
+                forward_off_mac("Digit2", ALT, false).is_some(),
+                "Alt+2 is a space"
+            );
+        });
+    }
+
+    // The page keeps everything the keymap does not bind: Ctrl+F, F5, plain typing, Ctrl+T (browser tabs: not ours).
+    #[test]
+    fn off_mac_unbound_keys_and_typing_stay_with_the_page() {
+        with(defaults_off_mac(), || {
+            for (code, m) in [
+                ("KeyF", CTRL),
+                ("F5", NONE),
+                ("KeyA", NONE),
+                (
+                    "KeyA",
+                    Mods {
+                        shift: true,
+                        ..NONE
+                    },
+                ),
+                ("Digit1", NONE),
+                ("KeyC", CTRL),
+                ("KeyV", CTRL),
+            ] {
+                assert!(forward_off_mac(code, m, false).is_none(), "{code} {m:?}");
+            }
+        });
+    }
+
+    // The Windows key belongs to the system; AltGr (Ctrl+Alt that types) is text.
+    #[test]
+    fn off_mac_windows_key_and_altgr_text_are_never_forwarded() {
+        with(defaults_off_mac(), || {
+            assert!(forward_off_mac("Digit1", Mods { meta: true, ..NONE }, false).is_none());
+            let altgr = Mods {
+                ctrl: true,
+                alt: true,
+                ..NONE
+            };
+            assert!(
+                forward_off_mac("Digit2", altgr, true).is_none(),
+                "AltGr+2 types ²"
+            );
+            assert!(forward_off_mac("Digit1", Mods { ctrl: true, ..NONE }, true).is_some());
+        });
+    }
+
+    // Same spelling as keys.ts `strokesOf`: ⌘ first, then the literal Ctrl one; one stroke when they coincide.
+    #[test]
+    fn off_mac_strokes_follow_the_frontend_order() {
+        assert_eq!(strokes_off_mac("Tab", CTRL, false), ["cmd-tab", "ctrl-tab"]);
+        assert_eq!(
+            strokes_off_mac("Backquote", CTRL, false),
+            ["cmd-`", "ctrl-`"]
+        );
+        assert_eq!(strokes_off_mac("KeyA", NONE, false), ["a"]);
+        assert_eq!(
+            strokes_off_mac("KeyT", CTRL_SHIFT, false),
+            ["shift-cmd-t", "ctrl-shift-t"]
+        );
+    }
+
+    // `VK_*` → DOM code: a wrong row would swallow the wrong key; every code must be nameable and unique.
+    #[test]
+    fn windows_virtual_key_table_is_injective_and_nameable() {
+        let mut seen = std::collections::HashMap::new();
+        for vk in 0..=0xFFu32 {
+            let Some(code) = dom_code_win(vk) else {
+                continue;
+            };
+            assert!(
+                stroke(code, NONE).is_some(),
+                "{code} (vk {vk:#x}) has no stroke spelling"
+            );
+            if let Some(prev) = seen.insert(code, vk) {
+                panic!("{code} is both vk {prev:#x} and vk {vk:#x}");
+            }
+        }
+        assert_eq!(dom_code_win(0x31), Some("Digit1"));
+        assert_eq!(dom_code_win(0x54), Some("KeyT"));
+        assert_eq!(dom_code_win(0xC0), Some("Backquote"));
+        assert_eq!(dom_code_win(0x22), Some("PageDown"));
+        assert_eq!(dom_code_win(0x7A), Some("F11"));
+        assert_eq!(dom_code_win(0xFF), None);
     }
 }

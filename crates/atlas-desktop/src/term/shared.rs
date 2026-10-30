@@ -41,6 +41,9 @@ pub(super) struct State {
     pub(super) font_new: Option<atlas_term::FontSpec>,
     /// The font request the terminal is at, or will be once `font_new` is applied.
     pub(super) font_spec: atlas_term::FontSpec,
+    /// Rows (-1..1) the content is drawn below its row grid: the sub-row offset of a smooth scroll
+    /// (`wheel::term_wheel`). The render thread asks the snapshot for overscan rows while it is not 0.
+    pub(super) scroll_frac: f32,
 }
 
 pub(super) const BLINK: Duration = Duration::from_millis(530);
@@ -60,6 +63,10 @@ pub(super) struct Shared {
     pub(super) view: AtomicUsize,
     /// Bytes for the pty, sent in order by one drain task (`super::drain`).
     pub(super) writer: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    /// Wheel accumulator and sub-row offset (`atlas_term::wheel`).
+    pub(super) wheel: Mutex<atlas_term::wheel::Wheel>,
+    /// When the last wheel event arrived: the settle task acts only if it is still the latest.
+    pub(super) last_wheel: Mutex<Option<Instant>>,
 }
 
 /// hostd drops a request line over 1 MiB; base64 grows a chunk by 4/3.
@@ -101,6 +108,7 @@ impl Shared {
     /// User input (keys, paste): back to the live screen first (Ghostty
     /// `scroll-to-bottom = keystroke`); output alone never moves the viewport (#97).
     pub(super) fn input(&self, bytes: &[u8]) {
+        self.wheel_reset();
         if self.vt.scrollbar().0 != 0 {
             self.vt.scroll_to_bottom();
             self.redraw();
@@ -129,9 +137,19 @@ impl Placement {
         rect: (f64, f64, f64, f64),
         show: bool,
     ) -> Option<(f64, f64, f64, f64)> {
+        // Back from parked: the layer holds the picture from before (a parked view does not draw), so it stays off
+        // screen until a fresh frame is on it (`drawn`). Showing it at once flashed the stale picture.
+        if show && !self.shown {
+            self.drawn = false;
+        }
         self.rect = Some(rect);
         self.shown = show;
         self.frame()
+    }
+
+    /// Shown but waiting for a fresh frame: the render loop must draw one now and then call `drawn`.
+    pub(super) fn awaiting(&self) -> bool {
+        self.shown && !self.drawn
     }
 
     /// The page wants the view on screen (as opposed to parked under a dialog or in a hidden tab),
@@ -161,7 +179,16 @@ impl Shared {
     /// A terminal with no pty, GPU or app: what the render-loop tests drive.
     pub(super) fn for_test(cols: u16, rows: u16) -> Arc<Shared> {
         let (writer, _rx) = tokio::sync::mpsc::unbounded_channel();
-        Arc::new(Shared {
+        Arc::new(Self::with_writer(cols, rows, writer))
+    }
+
+    /// Like `for_test`, with the channel the pty writes go to, so a test can read what the program was sent.
+    pub(super) fn with_writer(
+        cols: u16,
+        rows: u16,
+        writer: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    ) -> Shared {
+        Shared {
             vt: Vt::new(cols, rows, |_| {}),
             state: Mutex::new(State {
                 size: None,
@@ -184,13 +211,16 @@ impl Shared {
                 font_cur: 12.5,
                 font_new: None,
                 font_spec: Default::default(),
+                scroll_frac: 0.0,
             }),
             osc52: Mutex::new("ask".into()),
             wake: Condvar::new(),
             placement: Mutex::new(Placement::default()),
             view: AtomicUsize::new(0),
             writer,
-        })
+            wheel: Mutex::default(),
+            last_wheel: Mutex::new(None),
+        }
     }
 }
 
@@ -246,15 +276,40 @@ mod tests {
         let mut p = Placement::default();
         assert_eq!(p.request(R, false), None);
         assert_eq!(p.drawn(), None);
-        assert_eq!(p.request(R, true), Some(R));
+        assert_eq!(
+            p.request(R, true),
+            None,
+            "shown again: waits for a fresh frame"
+        );
+        assert_eq!(p.drawn(), Some(R));
     }
 
     #[test]
-    fn after_the_first_frame_requests_apply_at_once_and_parking_still_works() {
+    fn while_shown_requests_apply_at_once_and_parking_still_works() {
         let mut p = Placement::default();
         p.request(R, true);
         p.drawn();
+        let moved = (10.0, 20.0, 400.0, 220.0);
+        assert_eq!(
+            p.request(moved, true),
+            Some(moved),
+            "a move while shown is immediate"
+        );
         assert_eq!(p.request(R, false), None);
-        assert_eq!(p.request(R, true), Some(R));
+    }
+
+    // Incident (2026-10-26, ghost frames switching tabs): a parked terminal does not draw, so its layer still holds
+    // the picture from before it was parked. Shown again at once, it flashed that stale picture until the next
+    // frame. Back from parked, a view waits (off screen, the slot's own colour shows) until a fresh frame is drawn.
+    #[test]
+    fn a_view_shown_again_waits_for_a_fresh_frame() {
+        let mut p = Placement::default();
+        p.request(R, true);
+        p.drawn();
+        p.request(R, false);
+        assert_eq!(p.request(R, true), None);
+        assert!(p.awaiting(), "the render loop must draw one frame now");
+        assert_eq!(p.drawn(), Some(R));
+        assert!(!p.awaiting());
     }
 }

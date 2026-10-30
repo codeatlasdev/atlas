@@ -1,6 +1,7 @@
 /** The project actions of a space dot (right-click): the sidebar row menu's identity, pin, reveal and remove. */
 
 import { api, type ProjectView } from "#lib/api.ts";
+import { revealLabel } from "#lib/keys.ts";
 import type { PointerMenuItem } from "#lib/components/PointerMenu.svelte";
 import { removeProject } from "#lib/components/sidebar/projects.ts";
 import { identities } from "#lib/stores/identity.svelte.ts";
@@ -18,7 +19,7 @@ export function projectMenuItems(p: ProjectView): PointerMenuItem[] {
 	});
 	if (!p.missing) {
 		items.push({
-			label: "Reveal in Finder",
+			label: revealLabel(),
 			group: 0,
 			run: () => void store.run("reveal", () => api.reveal(p.id)),
 		});

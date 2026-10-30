@@ -18,10 +18,6 @@ export function isDirty(current: string, lastSaved: string): boolean {
  * - On success: advances to `attempted` (the value that reached the server).
  * - On failure: stays at `oldSaved` so the field remains dirty for retry.
  */
-export function updateSavedRef(
-	oldSaved: string,
-	attempted: string,
-	success: boolean,
-): string {
+export function updateSavedRef(oldSaved: string, attempted: string, success: boolean): string {
 	return success ? attempted : oldSaved;
 }

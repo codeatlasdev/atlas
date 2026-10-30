@@ -11,6 +11,8 @@
 	import { ws, type Tab } from "#lib/stores/workspace.svelte.ts";
 	import { openFile } from "#lib/stores/files.svelte.ts";
 	import { fileTarget } from "#lib/termPath.ts";
+	import { FileProbe } from "#lib/termPathExists.ts";
+	import { host } from "#lib/host.ts";
 
 	/** `pty` is set: the caller only renders this for terminals that have one. */
 	let { t, pty, active, focused }: { t: Tab; pty: string; active: boolean; focused: boolean } = $props();
@@ -24,6 +26,12 @@
 		if (!hit) return false;
 		openFile(t.worktreeId, hit.path, hit.line, hit.col);
 		return true;
+	};
+	/** ⌘-hover lights a path only when it is an existing file of this worktree (a click needs only the shape). */
+	const probe = new FileProbe((abs) => host.fsStat(abs));
+	const isFile = (token: string) => {
+		const root = ws.worktree(t.worktreeId)?.path;
+		return root ? probe.isFile(token, t.cwd ?? null, root) : false;
 	};
 </script>
 
@@ -64,6 +72,7 @@
 				readonly={ended !== null}
 				{onLink}
 				{onFile}
+				{isFile}
 			/>
 		{:else}
 			<Terminal {pty} visible={active} focused={focused && active} readonly={ended !== null} {onLink} />

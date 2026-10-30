@@ -25,10 +25,15 @@
 
 {#snippet light()}{@html fill(logo?.light)}{/snippet}
 {#snippet dark()}{@html fill(logo?.dark ?? logo?.light)}{/snippet}
+<!-- A colored mark (no dark variant) renders once: SchemeAsset keeps both copies in the DOM, one `display:none`, so a
+     mark with gradient ids (omp) resolved `url(#id)` to the hidden copy, which Chromium/WebView2 paints as nothing. -->
+{#snippet mark()}
+	{#if logo?.dark}<SchemeAsset {light} {dark} />{:else}{@html fill(logo?.light)}{/if}
+{/snippet}
 
 {#if logo}
 	{#if bare}
-		<SchemeAsset {light} {dark} />
+		{@render mark()}
 	{:else}
 		<span
 			class="logo"
@@ -37,7 +42,7 @@
 			aria-hidden="true"
 			data-contrast-decorative
 		>
-			<SchemeAsset {light} {dark} />
+			{@render mark()}
 		</span>
 	{/if}
 {:else if bare}

@@ -54,10 +54,10 @@ To add a section or a tab, add the category (or page) to the registry and its co
 
 | Key | Default | Notes |
 |---|---|---|
-| `buffer_font_family` | `ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace` | code editor font |
+| `buffer_font_family` | `ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace` | code editor font |
 | `buffer_font_size` | `12.5` | 6–48 |
 | `buffer_line_height` | `1.55` | 1–3 |
-| `ui_font_family` | `-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif` | interface font |
+| `ui_font_family` | `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif` | interface font |
 | `ui_font_size` | `13` | 9–24 |
 | `project_panel.dock` | `"left"` | `left` or `right`: which side the file panel sits on |
 | `project_panel.file_icons` | `true` | Material Icon Theme file icons |
@@ -89,7 +89,7 @@ Settings → Editor.
 | `editor.trim_trailing_whitespace_on_save` | `true` | |
 | `editor.insert_final_newline_on_save` | `true` | |
 | `editor.large_file_threshold_bytes` | `2000000` | 100000–100000000; bigger files open in a light mode without language features |
-| `editor.scroll_past_end` | `true` | |
+| `editor.scroll_past_end` | `false` | |
 | `editor.smooth_scrolling` | `true` | |
 | `editor.auto_reload` | `true` | reload a file changed on disk when it has no unsaved edits |
 
@@ -141,12 +141,13 @@ The project file wins over `~/.atlas/desktop/settings.json` field by field for t
 
 | Key | Default | Notes |
 |---|---|---|
-| `terminal.font_family` | `SF Mono, Menlo, ui-monospace, monospace` | CSS font list for both terminals. The [GPU terminal](terminal.md) uses the first installed family (variable fonts work), else its bundled JetBrains Mono; applies live |
+| `terminal.font_family` | `SF Mono, Menlo, Cascadia Mono, Consolas, ui-monospace, monospace` | CSS font list for both terminals. The [GPU terminal](terminal.md) uses the first installed family (variable fonts work), else its bundled JetBrains Mono; applies live |
 | `terminal.font_thicken` | `false` | draw text slightly heavier (Ghostty `font-thicken`; xterm.js uses weights 500/700); applies live |
 | `terminal.font_size` | `12.5` | 6–48; applies live |
 | `terminal.cursor_shape` | `"block"` | `block`, `bar`, `underline` or `hollow` |
 | `terminal.blinking` | `false` | |
 | `terminal.max_scroll_history_lines` | `10000` | 0–100000 |
+| `terminal.scrollback_bytes` | `67108864` | 1 MiB–1 GiB; most memory one [GPU terminal](terminal.md#scrollback) spends on its scrollback (bytes of cells). Settings shows it in MB. The tighter of this and the line cap wins; applies live |
 | `terminal.osc52` | `"ask"` | what happens when a program writes your clipboard: `allow`, `ask` or `deny`. Reading the clipboard is always denied |
 | `terminal.ligatures` | `true` | GPU terminal |
 | `terminal.minimum_contrast` | `4.5` | 1–21; WCAG ratio a cell's text is lifted to at draw time (the theme's ANSI table is not changed), `1` = off. GPU terminal |

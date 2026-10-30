@@ -932,13 +932,17 @@ fn not_running_read_tools_work_and_control_tools_error() {
     assert!(err && text.contains("not running"), "{text}");
 }
 
+/// No atlas.yaml is not an error any more (the stack is detected in memory and the tool says so); a broken
+/// atlas.yaml still is: detection never papers over a file the user wrote.
 #[test]
-fn config_tool_reports_missing_and_invalid_yaml_as_tool_error() {
+fn config_tool_detects_without_a_file_and_reports_invalid_yaml_as_tool_error() {
     let d = tempfile::TempDir::new().unwrap();
     let mut c = McpClient::spawn(d.path());
     c.handshake();
-    let (err, _) = c.call("atlas_config", json!({}));
-    assert!(err);
+    let (err, text) = c.call("atlas_config", json!({}));
+    assert!(!err, "{text}");
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["source"], "detected", "{text}");
     std::fs::write(d.path().join("atlas.yaml"), "name: [unclosed").unwrap();
     let (err, _) = c.call("atlas_config", json!({}));
     assert!(err);

@@ -4,7 +4,13 @@ import { filterRows, cmdKeyIndex, keycapLabel } from "./crewPalette.ts";
 import type { PaletteRow } from "./crewPalette.ts";
 
 const bots: PaletteRow[] = [
-	{ kind: "bot", id: "b1", hostKey: "ssh:atlas-bot@ship", name: "Carlos", subtitle: "Engineer: reviews code" },
+	{
+		kind: "bot",
+		id: "b1",
+		hostKey: "ssh:atlas-bot@ship",
+		name: "Carlos",
+		subtitle: "Engineer: reviews code",
+	},
 	{ kind: "bot", id: "b2", hostKey: "ssh:atlas-bot@ship", name: "Amélie", subtitle: "Designer: figma stuff" },
 	{ kind: "bot", id: "b3", hostKey: "ssh:atlas-bot@ship", name: "Søren", subtitle: "DevOps" },
 ];

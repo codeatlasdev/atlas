@@ -17,7 +17,7 @@ mod png;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub mod request;
 #[cfg(target_os = "macos")]
-mod sck;
+pub(crate) mod sck;
 #[cfg(target_os = "macos")]
 mod snapshot;
 
@@ -41,6 +41,15 @@ pub const COMMANDS: [&str; 4] = [
 
 pub fn handles(cmd: &str) -> bool {
     COMMANDS.contains(&cmd)
+}
+
+/// Encode a `CGImage` (a ScreenCaptureKit still) as a PNG file; shared with `shots`.
+#[cfg(target_os = "macos")]
+pub(crate) fn png_of(
+    img: &objc2_core_graphics::CGImage,
+    out: &std::path::Path,
+) -> Result<(), String> {
+    png::write_cgimage(img, out)
 }
 
 /// A page region in CSS px at a device scale, for [`snapshot_to`].

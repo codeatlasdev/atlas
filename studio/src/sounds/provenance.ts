@@ -42,10 +42,7 @@ cut where the note has decayed 30 dB below its peak, gain set so the RMS of the 
 the peak under ${TARGET.peakCeilingDb} dBFS, 5 ms fade in and out (30 ms, or a quarter of the cap, when a take is cut at
 its length cap), mono, 48 kHz, AAC 48 kb/s in an .m4a container (WebKit decodes it natively; only the .m4a files ship).
 
-The \`signature\` (the sonic logo of the welcome intro) differs in two ways: its tail is cut at 40 dB of decay (a bell rings
-on quietly and that is part of it), and the take is shifted so its strike (the downbeat: the first 5 ms envelope within
-20 dB of the peak that rose 12 dB over the preceding 50 ms) lands 80 ms into the file. The player starts it 80 ms before
-the intro's hit, so the strike and the picture's hit coincide.
+The \`boot\` signature differs in one way: its tail is cut at 40 dB of decay (a bell rings on quietly and that is part of it).
 
 | id | meaning | length | RMS dBFS | peak dBFS | centroid Hz | .m4a bytes | take |
 |---|---|---|---|---|---|---|---|

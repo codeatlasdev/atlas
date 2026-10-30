@@ -53,7 +53,7 @@ pub(super) fn surface_extent(width: u32, height: u32, max_side: u32) -> (u32, u3
     (side(width), side(height))
 }
 
-/// Mirrors the WGSL `U` block (2×vec2 + vec2 + vec2 + u32, 40 bytes).
+/// Mirrors the WGSL `U` block (2×vec2 + vec2 + vec2 + u32 + f32, 40 bytes).
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub(super) struct Uniforms {
@@ -62,7 +62,8 @@ pub(super) struct Uniforms {
     pub atlas: [f32; 2],
     pub color_atlas: [f32; 2],
     pub cols: u32,
-    pub _pad: u32,
+    /// Pixel offset added to every y (`grid_origin_y`).
+    pub origin_y: f32,
 }
 
 /// One decoration bar/wave per cell: position in pixels, thickness, kind, color.

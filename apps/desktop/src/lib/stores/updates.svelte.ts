@@ -16,6 +16,8 @@ import {
 	EMPTY_PREFS,
 	EMPTY_PROGRESS,
 	blurbOf,
+	finishOutcome,
+	finishToast,
 	justUpdated,
 	parseChannelState,
 	parseChannelViews,
@@ -32,6 +34,7 @@ import {
 	type ChannelAction,
 	type ChannelState,
 	type ChannelView,
+	type InstallOutcome,
 	type ProgressEvent,
 	type ReleaseNotes,
 	type UpdatePrefs,
@@ -71,7 +74,7 @@ class Updates {
 	checking = $state(false);
 	running = $state<null | Run>(null);
 	/** How the last install ended; drives the step list. */
-	outcome = $state<"running" | "done" | "failed">("running");
+	outcome = $state<InstallOutcome>("running");
 	log = $state<string[]>([]);
 	/** Why the last install failed (the CLI's last line); null until it does. */
 	failure = $state<string | null>(null);
@@ -353,10 +356,19 @@ class Updates {
 		this.#structured = false;
 		try {
 			const res = await invoke<boolean | null>(cmd, args);
-			if (res === true) this.relaunchNeeded = true;
-			this.outcome = "done";
-			if (!this.whatsNewOpen)
-				toast.success(kind === "unlink" ? "Back on the release build" : "Atlas is up to date");
+			// Progress events and the command result travel on separate channels: let the last
+			// `@@atlas` lines land before deciding how the run ended.
+			const { promise: landed, resolve } = Promise.withResolvers<void>();
+			setTimeout(resolve, 0);
+			await landed;
+			const ended = finishOutcome(this.progress);
+			this.outcome = ended;
+			if (ended === "done" && res === true) this.relaunchNeeded = true;
+			// The sheet has no copy for a managed install, so its toast is shown either way.
+			if (ended === "managed" || !this.whatsNewOpen) {
+				const t = finishToast(kind, ended, this.progress.managed);
+				toast[t.level](t.text);
+			}
 			await this.check();
 			// The app bundle itself may have been replaced even when we could not detect it.
 			if (kind === "reinstall") this.relaunchNeeded = true;

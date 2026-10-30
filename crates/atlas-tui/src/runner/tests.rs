@@ -232,7 +232,7 @@ fn rows_only_sent_when_changed() {
 
 #[tokio::test]
 async fn runner_refuses_sessions_and_serves_info() {
-    let c = cfg();
+    let mut c = cfg();
     let (mut m, _rx) = manager(&c);
     let mut hub = Hub::new("demo");
 
@@ -248,7 +248,7 @@ async fn runner_refuses_sessions_and_serves_info() {
         )
     };
     let (req, rx) = ask(ControlCmd::Info);
-    assert!(!hub.handle(&mut m, &c, req).await);
+    assert!(!hub.handle(&mut m, &mut c, req).await);
     let info = rx.await.unwrap();
     assert_eq!(info.data.unwrap()["mode"], "runner");
 
@@ -256,16 +256,57 @@ async fn runner_refuses_sessions_and_serves_info() {
         target: "x".into(),
         confirmed: true,
     });
-    hub.handle(&mut m, &c, req).await;
+    hub.handle(&mut m, &mut c, req).await;
     let r = rx.await.unwrap();
     assert!(!r.ok);
     assert!(r.error.unwrap().contains("owner-only"));
 
     let (req, _rx) = ask(ControlCmd::Shutdown);
     assert!(
-        hub.handle(&mut m, &c, req).await,
+        hub.handle(&mut m, &mut c, req).await,
         "shutdown asks the loop to stop"
     );
+}
+
+// Guards `atlas -- <cmd>` against a live runner: the service must exist in the runner's config
+// (so restart/stop by name resolve), get a de-duplicated name, and not touch atlas.yaml.
+#[tokio::test]
+async fn add_service_registers_an_adhoc_service_with_a_unique_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut c = cfg();
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut m = ServiceManager::new(dir.path().to_path_buf(), &c, tx);
+    let mut hub = Hub::new("demo");
+
+    let add = |command: &str| {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        let req = ControlRequest {
+            cmd: ControlCmd::AddService {
+                command: command.into(),
+            },
+            reply,
+            stream: None,
+        };
+        (req, rx)
+    };
+    let (req, rx) = add("sleep 30 --port 4555");
+    hub.handle(&mut m, &mut c, req).await;
+    let r = rx.await.unwrap();
+    assert!(r.ok, "{r:?}");
+    let data = r.data.unwrap();
+    assert_eq!(data["service"], "sleep-30");
+    assert_eq!(data["port"], 4555);
+    assert!(
+        c.services.contains_key("sleep-30"),
+        "resolve() must know it"
+    );
+    assert!(m.service_names().contains(&"sleep-30"));
+
+    let (req, rx) = add("sleep 30");
+    hub.handle(&mut m, &mut c, req).await;
+    assert_eq!(rx.await.unwrap().data.unwrap()["service"], "sleep-30-2");
+    assert!(!dir.path().join("atlas.yaml").exists());
+    m.stop_all().await;
 }
 
 // ── protocol over a real socket ──────────────────────────────────────────────
@@ -281,7 +322,7 @@ struct MiniRunner {
 
 fn mini_runner() -> MiniRunner {
     let dir = tempfile::tempdir().unwrap();
-    let c = cfg();
+    let mut c = cfg();
     let (server, mut control_rx) = ControlServer::bind(dir.path()).unwrap();
     let (events, mut event_rx) = mpsc::unbounded_channel::<ManagerEvent>();
     let (stop_tx, stopped) = tokio::sync::oneshot::channel();
@@ -294,7 +335,7 @@ fn mini_runner() -> MiniRunner {
         loop {
             tokio::select! {
                 Some(req) = control_rx.recv() => {
-                    if hub.handle(&mut m, &c, req).await {
+                    if hub.handle(&mut m, &mut c, req).await {
                         hub.bye();
                         let _ = stop_tx.send(());
                         return;

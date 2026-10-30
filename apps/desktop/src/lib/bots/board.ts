@@ -48,11 +48,7 @@ export interface BoardFilterOptions {
 function isToday(ts: number, now: number): boolean {
 	const d = new Date(ts);
 	const n = new Date(now);
-	return (
-		d.getFullYear() === n.getFullYear() &&
-		d.getMonth() === n.getMonth() &&
-		d.getDate() === n.getDate()
-	);
+	return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 }
 
 /** True when `ts` is within the last `days` × 24 h from `now` (rolling window). */
@@ -64,7 +60,6 @@ function isWithinDays(ts: number, now: number, days: number): boolean {
 function endTs(task: BotTask): number {
 	return task.finished_at ?? task.ts;
 }
-
 
 // ─── boardColumns ─────────────────────────────────────────────────────────────
 
@@ -130,9 +125,8 @@ export function boardColumns(entries: BoardEntry[], now: number, opts?: BoardFil
 		// query filter runs post-dedup so it matches the resolved title
 		if (q && !((e as BoardCard).title ?? task.prompt).toLowerCase().includes(q)) continue;
 
-		const inDoneWindow = doneDays === 1
-			? isToday(endTs(task), now)
-			: isWithinDays(endTs(task), now, doneDays);
+		const inDoneWindow =
+			doneDays === 1 ? isToday(endTs(task), now) : isWithinDays(endTs(task), now, doneDays);
 
 		switch (task.state) {
 			case "queued":

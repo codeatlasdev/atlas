@@ -457,7 +457,7 @@
 		background: var(--ca-brand-fill);
 		color: var(--ca-brand-contrast);
 		font: inherit;
-		font-family: -apple-system, sans-serif;
+		font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
 		font-size: 11px;
 		cursor: pointer;
 		box-shadow: 0 2px 10px rgb(0 0 0 / 0.25);

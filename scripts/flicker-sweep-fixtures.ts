@@ -5,7 +5,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ATLAS = join(import.meta.dir, "../target/debug/atlas");
+// Windows: spawnSync does not add `.exe`, so without it `atlas down` in `cleanup` failed silently and the runners stayed up.
+export const ATLAS = join(import.meta.dir, "../target/debug", process.platform === "win32" ? "atlas.exe" : "atlas");
 
 const BASE = "/private/tmp/flicker-sweep-fixtures";
 

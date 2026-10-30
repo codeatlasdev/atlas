@@ -17,6 +17,18 @@ use atlas_term::{FontResolution, FontSpec, Frame, Renderer};
 use super::shared::{BLINK, Shared};
 use super::watchdog::{Action, Watchdog, Why};
 
+/// The shortest time between two draws of one terminal: one display refresh (60 Hz floor; a faster panel only
+/// loses the ability to draw twice in the time it can show one). Output marks the screen dirty; the frame that
+/// follows is the latest state (Ghostty draws on the display link, not per read).
+pub(super) const FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
+
+/// When the next frame may be drawn after the last one at `last`: `None` = now (an idle terminal draws at once, so
+/// typing never waits a refresh); otherwise one refresh interval after the last frame.
+pub(super) fn pace_until(last: Instant, now: Instant) -> Option<Instant> {
+    let ready = last + FRAME_INTERVAL;
+    (now < ready).then_some(ready)
+}
+
 /// Selection highlight: #264F78 at ~67% opacity.
 const SELECTION: [u8; 4] = [38, 79, 120, 170];
 /// Search matches (dim amber) and the current match (strong orange), alpha-blended.
@@ -101,6 +113,8 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
     let mut stall_logged = false;
     // Output arrived while the view was parked: draw once when it is shown again.
     let mut stale = false;
+    // When this terminal last started a draw: the next one waits for a refresh interval after it.
+    let mut last_draw: Option<Instant> = None;
     loop {
         let (size, font_pt, font_new, ligatures, focused, bell, forced, demand) = {
             let mut s = sh.state.lock();
@@ -140,6 +154,24 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
             if s.closed {
                 return;
             }
+            // One frame per display refresh, always of the latest state: output that arrives while we wait just
+            // marks the screen dirty again (it is drawn by the frame that ends the wait). Geometry, a rebuild and
+            // `closed` are not paced.
+            if let Some(t) = last_draw
+                && s.rebuild.is_none()
+                && s.size.is_none()
+                && s.font_pt.is_none()
+                && s.font_new.is_none()
+            {
+                let ready = pace_until(t, Instant::now()).unwrap_or_else(Instant::now);
+                while Instant::now() < ready && !s.closed && s.rebuild.is_none() && s.size.is_none()
+                {
+                    sh.wake.wait_until(&mut s, ready);
+                }
+                if s.closed {
+                    return;
+                }
+            }
             if std::mem::take(&mut s.reset) {
                 r.reset_stats();
             }
@@ -163,6 +195,12 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         // invisible: drawing it only queues vsync-blocked work on the one shared GPU queue, once
         // per byte burst per tab (many streaming agents made that the freeze). Its first frame
         // still draws (the view is shown by it), and the watchdog stands down: nothing is owed.
+        // Shown again after being parked: the view waits off screen for a fresh frame (`Placement::request`), so
+        // one is drawn now and the hook puts the view over its pane, like a first frame.
+        if sh.placement.lock().awaiting() {
+            first_frame_pending = true;
+            stale = true;
+        }
         let parked = !first_frame_pending && !sh.placement.lock().is_shown();
         if parked {
             stale |= demand;
@@ -248,7 +286,12 @@ pub(super) fn render_loop<R: Present>(mut r: R, sh: Arc<Shared>, mut hooks: Hook
         frame.search_current_color = SEARCH_CURRENT;
         frame.focused = focused;
         frame.blink_on = blink_on;
+        // Smooth scrolling: the offset the wheel left, drawn with the row above and below the viewport.
+        let frac = sh.state.lock().scroll_frac;
+        frame.over = u32::from(frac != 0.0);
+        frame.scroll_frac = frac;
         sh.vt.snapshot(&pal, &mut frame);
+        last_draw = Some(Instant::now());
         if bell {
             let tint = |c: [u8; 4]| {
                 [
@@ -311,6 +354,8 @@ mod tests {
         first_frames: AtomicUsize,
         /// Text of the VT at each render, for "draws the latest content".
         seen: Mutex<Vec<String>>,
+        /// `(over, scroll_frac)` of each frame handed to the renderer.
+        smooth: Mutex<Vec<(u32, f32)>>,
         release: AtomicBool,
     }
 
@@ -346,8 +391,9 @@ mod tests {
             Default::default()
         }
         fn reset_stats(&mut self) {}
-        fn render(&mut self, _: &Frame) -> Result<bool, String> {
+        fn render(&mut self, f: &Frame) -> Result<bool, String> {
             self.log.renders.fetch_add(1, Ordering::SeqCst);
+            self.log.smooth.lock().push((f.over, f.scroll_frac));
             self.log.seen.lock().push(self.sh.vt.text());
             match *self.mode.lock() {
                 Mode::Draw => {
@@ -639,5 +685,77 @@ mod tests {
         assert_eq!(a.log.rebuilds.lock()[1], Why::Screens);
         a.stop();
         b.stop();
+    }
+
+    // Smooth scrolling: while a sub-row offset is on screen the frame carries the overscan rows and the offset;
+    // at rest it is the plain snapshot (no extra rows to build or draw).
+    #[test]
+    fn a_sub_row_offset_is_drawn_with_overscan_and_a_rest_frame_is_plain() {
+        let rig = Rig::start(Mode::Draw);
+        rig.show();
+        rig.sh.vt.feed(
+            &(0..40)
+                .flat_map(|i| format!("l{i}\r\n").into_bytes())
+                .collect::<Vec<_>>(),
+        );
+        rig.sh.vt.scroll(10);
+        rig.sh.update(|s| {
+            s.scroll_frac = 0.4;
+            s.dirty = true;
+        });
+        rig.until("an offset frame", |l| {
+            l.smooth.lock().iter().any(|&(o, f)| o == 1 && f == 0.4)
+        });
+        rig.sh.update(|s| {
+            s.scroll_frac = 0.0;
+            s.dirty = true;
+        });
+        let n = rig.log.renders.load(Ordering::SeqCst);
+        rig.until("a plain frame after", |l| {
+            l.renders.load(Ordering::SeqCst) > n && l.smooth.lock().last() == Some(&(0, 0.0))
+        });
+        rig.stop();
+    }
+
+    // Incident (agent TUI flicker): every pty read woke the render thread and drew, so a redraw an agent wrote in
+    // many small chunks showed each intermediate state. Ghostty draws at most once per display refresh and always
+    // the latest state (`renderer/Thread.zig`: output only marks the screen dirty).
+    #[test]
+    fn a_burst_of_output_is_one_frame_per_refresh_not_one_per_read() {
+        let rig = Rig::start(Mode::Draw);
+        rig.show();
+        rig.sh.redraw();
+        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
+        let before = rig.log.renders.load(Ordering::SeqCst);
+        let t0 = Instant::now();
+        for i in 0..40 {
+            rig.sh.vt.feed(format!("chunk {i}\r\n").as_bytes());
+            rig.sh.redraw();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let burst = t0.elapsed();
+        rig.until("the last state is drawn", |l| {
+            l.seen.lock().last().is_some_and(|t| t.contains("chunk 39"))
+        });
+        let drawn = rig.log.renders.load(Ordering::SeqCst) - before;
+        // One frame per refresh interval the burst spanned, plus the one that catches the tail.
+        let budget = (burst.as_millis() / FRAME_INTERVAL.as_millis()) as usize + 2;
+        assert!(
+            drawn <= budget,
+            "{drawn} frames for a {burst:?} burst (budget {budget})"
+        );
+        rig.stop();
+    }
+
+    // The cost side of pacing: output after an idle period is drawn at once (no refresh to wait for), so typing
+    // latency does not gain a frame. A decision, not a wall-clock race: the threaded version of this test measured
+    // the runner's scheduler (39 ms on a loaded macOS CI runner, 19551a16).
+    #[test]
+    fn output_after_idle_is_drawn_without_waiting_for_a_refresh() {
+        let last = Instant::now();
+        assert_eq!(pace_until(last, last + FRAME_INTERVAL * 3), None);
+        assert_eq!(pace_until(last, last + FRAME_INTERVAL), None);
+        let soon = last + FRAME_INTERVAL / 4;
+        assert_eq!(pace_until(last, soon), Some(last + FRAME_INTERVAL));
     }
 }

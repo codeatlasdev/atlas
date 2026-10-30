@@ -65,6 +65,8 @@ export interface Prefs {
 		cursor_shape: "block" | "bar" | "underline" | "hollow";
 		blinking: boolean;
 		max_scroll_history_lines: number;
+		/** GPU terminal: cap on the memory of one terminal's scrollback, in bytes of cells (Ghostty `scrollback-limit`); the line cap still applies, the tighter one wins. */
+		scrollback_bytes: number;
 		/** Program writes to the clipboard (OSC 52). */
 		osc52: "allow" | "ask" | "deny";
 		/** GPU terminal: programming ligatures (`->`, `!=`). */
@@ -95,10 +97,10 @@ export interface Prefs {
 }
 
 export const DEFAULT_PREFS: Prefs = {
-	buffer_font_family: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace',
+	buffer_font_family: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, monospace',
 	buffer_font_size: 12.5,
 	buffer_line_height: 1.55,
-	ui_font_family: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
+	ui_font_family: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif',
 	ui_font_size: 13,
 	zoom: 1,
 	enable_language_servers: true,
@@ -120,17 +122,18 @@ export const DEFAULT_PREFS: Prefs = {
 		trim_trailing_whitespace_on_save: true,
 		insert_final_newline_on_save: true,
 		large_file_threshold_bytes: 2_000_000,
-		scroll_past_end: true,
+		scroll_past_end: false,
 		smooth_scrolling: true,
 		auto_reload: true,
 	},
 	terminal: {
-		font_family: "SF Mono, Menlo, ui-monospace, monospace",
+		font_family: "SF Mono, Menlo, Cascadia Mono, Consolas, ui-monospace, monospace",
 		font_thicken: false,
 		font_size: 12.5,
 		cursor_shape: "block",
 		blinking: false,
 		max_scroll_history_lines: 10_000,
+		scrollback_bytes: 64 * 1024 * 1024,
 		osc52: "ask",
 		ligatures: true,
 		minimum_contrast: 4.5,
@@ -180,6 +183,7 @@ const RANGES: Record<string, [number, number]> = {
 	"terminal.padding_x": [0, 64],
 	"terminal.padding_y": [0, 64],
 	"terminal.max_scroll_history_lines": [0, 100_000],
+	"terminal.scrollback_bytes": [1024 * 1024, 1024 * 1024 * 1024],
 	"project_panel.indent_size": [4, 40],
 	"active_pane_modifiers.border_size": [0, 8],
 	"active_pane_modifiers.inactive_opacity": [0.2, 1],

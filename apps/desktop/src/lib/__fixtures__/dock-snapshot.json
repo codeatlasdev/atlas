@@ -1,0 +1,38 @@
+{
+	"at": 1234,
+	"agents": [
+		{
+			"tabId": "tab-api",
+			"pty": "pty-1",
+			"agent": "omp",
+			"worktreeId": "wt-api",
+			"worktree": "main",
+			"project": "api",
+			"state": "working",
+			"lastMessage": "Reading src/routes/login.ts…",
+			"updatedAt": 1000
+		},
+		{
+			"tabId": "tab-web",
+			"pty": "pty-2",
+			"agent": "claude",
+			"worktreeId": "wt-web",
+			"worktree": "feat-login",
+			"project": "web",
+			"state": "waiting",
+			"lastMessage": "Run `rm -rf node_modules`?",
+			"updatedAt": 900
+		},
+		{
+			"tabId": "tab-plan",
+			"pty": "pty-3",
+			"agent": "omp",
+			"worktreeId": "wt-plan",
+			"worktree": "main",
+			"project": "billing",
+			"state": "idle",
+			"lastMessage": null,
+			"updatedAt": 0
+		}
+	]
+}

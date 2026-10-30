@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { kbd } from "#lib/keys.ts";
+	import { kbd, revealLabel } from "#lib/keys.ts";
 	import { tick } from "svelte";
 	import {
 		ZoomIn,
@@ -188,10 +188,9 @@
 				<button {...props} aria-label="Open externally" onclick={onopen}><ExternalLink size={14} /></button>
 			{/snippet}
 		</Tip>
-		<Tip label="Reveal in Finder" side="top">
+		<Tip label={revealLabel()} side="top">
 			{#snippet child(props)}
-				<button {...props} aria-label="Reveal in Finder" onclick={onreveal}><FolderSearch size={14} /></button
-				>
+				<button {...props} aria-label={revealLabel()} onclick={onreveal}><FolderSearch size={14} /></button>
 			{/snippet}
 		</Tip>
 	{/if}

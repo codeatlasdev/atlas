@@ -6,13 +6,16 @@ struct U {
     // Size of the RGBA emoji atlas (the glyph pipelines sample whichever atlas is bound).
     color_atlas: vec2<f32>,
     cols: u32,
+    // Pixel offset of the whole grid (smooth scrolling: minus the overscan rows, plus the sub-row remainder).
+    origin_y: f32,
 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var atlas_tex: texture_2d<f32>;
 @group(0) @binding(2) var atlas_smp: sampler;
 
 fn ndc(px: vec2<f32>) -> vec4<f32> {
-    return vec4<f32>(px.x / u.viewport.x * 2.0 - 1.0, 1.0 - px.y / u.viewport.y * 2.0, 0.0, 1.0);
+    let y = px.y + u.origin_y;
+    return vec4<f32>(px.x / u.viewport.x * 2.0 - 1.0, 1.0 - y / u.viewport.y * 2.0, 0.0, 1.0);
 }
 
 fn corner(v: u32) -> vec2<f32> {

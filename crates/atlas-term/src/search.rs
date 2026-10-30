@@ -186,6 +186,64 @@ pub fn token_at<T>(t: &Term<T>, p: Point) -> Option<String> {
     Some(chars[s..e].iter().filter(|&&c| c != '\0').collect())
 }
 
+/// The text token under grid point `p` with the cells it covers (the hover underline of a path).
+pub fn token_hit<T>(t: &Term<T>, p: Point) -> Option<UrlHit> {
+    let cols = t.columns();
+    let (chars, first) = paragraph(t, p);
+    let at = (p.line.0 - first.0) as usize * cols + p.column.0;
+    let (s, e) = token_span(&chars, at)?;
+    let cell = |i: usize| Point::new(first + i / cols, Column(i % cols));
+    Some(UrlHit {
+        url: chars[s..e].iter().filter(|&&c| c != '\0').collect(),
+        start: cell(s),
+        end: cell(e - 1),
+    })
+}
+
+/// The OSC 8 hyperlink covering grid point `p`: its uri and the run of cells that carry the same
+/// link (same uri and id), following soft-wrapped lines. Two links side by side stay two.
+pub fn osc8_at<T>(t: &Term<T>, p: Point) -> Option<UrlHit> {
+    let link = t.grid()[p].hyperlink()?;
+    let cols = t.columns();
+    let grid = t.grid();
+    let same = |q: Point| grid[q].hyperlink().is_some_and(|h| h == link);
+    let wraps = |l: Line| grid[l][Column(cols - 1)].flags.contains(Flags::WRAPLINE);
+    // Walk back to the first cell of the run, then forward to the last, across wrapped rows only.
+    let mut start = p;
+    loop {
+        let prev = if start.column.0 > 0 {
+            Point::new(start.line, start.column - 1)
+        } else if start.line > t.topmost_line() && wraps(start.line - 1) {
+            Point::new(start.line - 1, Column(cols - 1))
+        } else {
+            break;
+        };
+        if !same(prev) {
+            break;
+        }
+        start = prev;
+    }
+    let mut end = p;
+    loop {
+        let next = if end.column.0 + 1 < cols {
+            Point::new(end.line, end.column + 1)
+        } else if end.line < t.bottommost_line() && wraps(end.line) {
+            Point::new(end.line + 1, Column(0))
+        } else {
+            break;
+        };
+        if !same(next) {
+            break;
+        }
+        end = next;
+    }
+    Some(UrlHit {
+        url: link.uri().to_string(),
+        start,
+        end,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

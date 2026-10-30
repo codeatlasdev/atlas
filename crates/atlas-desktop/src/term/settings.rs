@@ -27,9 +27,20 @@ pub fn term_stats(app: AppHandle) -> Value {
             let st = sh.state.lock();
             (st.stats, st.cell)
         };
-        (tab, stats_row(stats, cell, sh.vt.size(), scale))
+        let mut row = stats_row(stats, cell, sh.vt.size(), scale);
+        row["vt"] = wheel_row(sh.vt.wheel_state());
+        (tab, row)
     });
     json!(rows.collect::<serde_json::Map<_, _>>())
+}
+
+/// The `vt` block of a `term_stats` entry: where the viewport is and which modes the wheel rules read, so a
+/// report of "the wheel does nothing" can be diagnosed from the running app (`atlas desktop debug eval`).
+fn wheel_row(s: atlas_term::WheelState) -> Value {
+    json!({
+        "display_offset": s.display_offset, "max_offset": s.max_offset,
+        "mouse": s.mouse, "alt_screen": s.alt_screen, "alt_scroll": s.alt_scroll,
+    })
 }
 
 /// One terminal's entry of `term_stats`: what the frontend (`cell_w`/`cell_h`, `cols`, `rows`) and
@@ -95,6 +106,7 @@ pub fn term_set_prefs(tab: Option<String>, prefs: TermPrefs) -> Result<(), Strin
     for sh in targets(tab.as_deref())? {
         sh.vt
             .set_options(prefs.scrollback, &prefs.cursor_shape, prefs.cursor_blink);
+        sh.vt.set_scrollback_bytes(prefs.scrollback_bytes);
         *sh.osc52.lock() = prefs.osc52.clone();
         sh.update(|s| {
             if s.font_cur != pt {

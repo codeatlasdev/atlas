@@ -88,12 +88,6 @@ class Sound {
 		this.#engine.playOnGesture("boot");
 	}
 
-	/** The Atlas sting of the welcome intro. The intro starts from a click or key, so the context already exists. */
-	sting() {
-		this.#engine.gesture();
-		void this.#engine.play("signature");
-	}
-
 	/** Settings → Sounds → Play: ignores cooldowns and the system switch, never volume 0. */
 	preview(category: Category) {
 		this.#engine.gesture();

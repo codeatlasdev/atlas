@@ -74,6 +74,7 @@ impl RunnerLoop {
         root_dir: &Path,
         cfg: ProjectConfig,
         selection: &config::Selection,
+        adhoc_names: Vec<String>,
         foreground: bool,
         control_rx: Option<mpsc::UnboundedReceiver<ControlRequest>>,
     ) -> Result<Self> {
@@ -101,6 +102,7 @@ impl RunnerLoop {
         let mut manager =
             ServiceManager::with_selection(root_dir.to_path_buf(), &cfg, event_tx, selection);
         manager.set_mode("runner");
+        manager.mark_adhoc(adhoc_names);
         let hub = Hub::new(&cfg.name);
         let (sigterm, sighup) = term_signals()?;
 
@@ -143,7 +145,7 @@ impl RunnerLoop {
                 _ = self.sigterm.recv() => break,
                 _ = self.sighup.recv() => break,
                 Some(req) = async { self.control_rx.as_mut().unwrap().recv().await }, if self.control_rx.is_some() => {
-                    if self.hub.handle(&mut self.manager, &self.cfg, req).await {
+                    if self.hub.handle(&mut self.manager, &mut self.cfg, req).await {
                         break;
                     }
                 }
@@ -172,9 +174,23 @@ impl RunnerLoop {
 
 /// The headless engine: services, health, control socket, status heartbeat, disk
 /// logs, and the attach stream. Runs until SIGTERM/SIGHUP/Ctrl-C or `shutdown`.
-pub async fn run(root_dir: &Path, select: &config::SelectionRequest, kind: RunKind) -> Result<()> {
-    let cfg = config::load(root_dir)?;
-    let selection = config::resolve_selection(&cfg, select).map_err(|e| anyhow::anyhow!(e))?;
+pub async fn run(
+    root_dir: &Path,
+    select: &config::SelectionRequest,
+    adhoc: &[String],
+    kind: RunKind,
+) -> Result<()> {
+    let (mut cfg, source) = config::load_or_detect(root_dir)?;
+    let adhoc_names = config::adhoc::add_all(&mut cfg, adhoc);
+    // An ad-hoc service is always wanted, even when the user narrowed the selection.
+    let mut select = select.clone();
+    if select.is_narrowed() {
+        select.services.extend(adhoc_names.iter().cloned());
+    }
+    let selection = config::resolve_selection(&cfg, &select).map_err(|e| anyhow::anyhow!(e))?;
+    if source == config::ConfigSource::Detected {
+        println!("{}", config::detected_notice(&cfg));
+    }
     // Held for the whole run: the singleton lock and the control socket.
     let _lock = lock_or_err(root_dir)?;
     let (_control, control_rx) = match ControlServer::bind(root_dir) {
@@ -185,6 +201,7 @@ pub async fn run(root_dir: &Path, select: &config::SelectionRequest, kind: RunKi
         root_dir,
         cfg,
         &selection,
+        adhoc_names,
         kind == RunKind::Foreground,
         control_rx,
     )

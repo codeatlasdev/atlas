@@ -53,13 +53,29 @@ impl Drop for InstallGuard {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Progress {
-    Phase { id: String },
-    Bytes { done: u64, total: u64 },
-    Rollback { state: String },
-    Host { state: String, live: u64 },
+    Phase {
+        id: String,
+    },
+    Bytes {
+        done: u64,
+        total: u64,
+    },
+    Rollback {
+        state: String,
+    },
+    Host {
+        state: String,
+        live: u64,
+    },
+    /// Nothing was installed: Homebrew or a system package manager owns this Atlas.
+    /// `how` is `homebrew` or `package`.
+    Managed {
+        how: String,
+    },
 }
 
-/// `@@atlas phase download` / `@@atlas bytes 10 100` / `@@atlas rollback restored`.
+/// `@@atlas phase download` / `@@atlas bytes 10 100` / `@@atlas rollback restored` /
+/// `@@atlas managed homebrew`.
 fn parse_progress(line: &str) -> Option<Progress> {
     let mut it = line.strip_prefix("@@atlas ")?.split_whitespace();
     match it.next()? {
@@ -76,6 +92,9 @@ fn parse_progress(line: &str) -> Option<Progress> {
         "host" => Some(Progress::Host {
             state: it.next()?.to_string(),
             live: it.next().and_then(|n| n.parse().ok()).unwrap_or(0),
+        }),
+        "managed" => Some(Progress::Managed {
+            how: it.next()?.to_string(),
         }),
         _ => None,
     }
@@ -209,8 +228,9 @@ fn link_target(p: &Path) -> Option<String> {
 }
 
 /// Linux: the AppImage this process runs from (`$APPIMAGE`, set by its runtime), else the distro
-/// package's `/usr/bin/atlas-desktop`; none for a dev build. Windows: the installed exe is
-/// [`atlas_core::paths::installed_app`] already, so this finds nothing more.
+/// package's `/usr/bin/atlas-desktop`. Windows: the installer's exe
+/// ([`atlas_core::paths::installed_app`], `%LOCALAPPDATA%\Atlas\atlas-desktop.exe`) when this
+/// process is it. None for a dev build, which then shows the dev line and pauses updates.
 #[cfg(not(target_os = "macos"))]
 fn own_bundle() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("APPIMAGE").map(PathBuf::from)
@@ -219,7 +239,21 @@ fn own_bundle() -> Option<PathBuf> {
         return Some(p);
     }
     let exe = std::env::current_exe().ok()?;
-    (atlas_core::paths::packaged_app().as_deref() == Some(exe.as_path())).then_some(exe)
+    let packaged = if cfg!(windows) {
+        atlas_core::paths::installed_app()
+    } else {
+        atlas_core::paths::packaged_app()
+    };
+    packaged.is_some_and(|p| same_file(&p, &exe)).then_some(exe)
+}
+
+/// Same file on disk; Windows paths differ in case and `\\?\` prefixes, so compare canonical forms.
+#[cfg(not(target_os = "macos"))]
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// `.../Atlas.app` when this binary is `.../Atlas.app/Contents/MacOS/<bin>`.
@@ -630,12 +664,24 @@ mod tests {
                 live: 2
             })
         );
+        assert_eq!(
+            parse_progress("@@atlas managed package"),
+            Some(Progress::Managed {
+                how: "package".into()
+            })
+        );
+        // The wire shape the frontend reads: `{kind:"managed", how}`.
+        assert_eq!(
+            serde_json::to_value(parse_progress("@@atlas managed homebrew").unwrap()).unwrap(),
+            serde_json::json!({"kind": "managed", "how": "homebrew"})
+        );
         for bad in [
             "◆ Downloading v1",
             "@@atlas bytes x 1",
             "@@atlas bytes 1",
             "@@atlas nope 1",
             "@@atlas phase",
+            "@@atlas managed",
         ] {
             assert_eq!(parse_progress(bad), None, "{bad}");
         }

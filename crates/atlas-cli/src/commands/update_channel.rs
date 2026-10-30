@@ -60,6 +60,30 @@ pub(crate) fn check_json(installed: &Version, on: Channel, tag: Option<&str>) ->
     })
 }
 
+/// `check_json` for an install another tool owns (`how` = `homebrew` | `package`): the same
+/// report plus who updates it. `action` becomes `package` / `managed` only when an upgrade is on
+/// offer (the one case where something must be installed by that tool); `none` and `downgrade`
+/// stay as they are. `command` is the exact line to run, only present for that upgrade.
+pub(crate) fn managed_json(
+    mut report: Value,
+    how: &str,
+    manager: Option<&str>,
+    command: &str,
+) -> Value {
+    let upgrade = report["action"] == "update";
+    report["managed"] = json!(true);
+    report["manager"] = json!(manager);
+    report["command"] = if upgrade { json!(command) } else { Value::Null };
+    if upgrade {
+        report["action"] = json!(if how == "package" {
+            "package"
+        } else {
+            "managed"
+        });
+    }
+    report
+}
+
 /// `atlas update channel --json`: the real serialized views plus the selection.
 pub(crate) fn channels_json(
     views: &[ChannelView],
@@ -251,6 +275,42 @@ mod tests {
         assert_eq!(none["offered"], Value::Null);
         assert_eq!(none["tag"], Value::Null);
         assert_eq!(none["action"], "none");
+    }
+
+    #[test]
+    fn managed_json_keeps_the_report_and_says_who_installs() {
+        let base = check_json(&ver("1.3.0"), Channel::Beta, Some("v1.4.0-beta.1"));
+        let pkg = managed_json(base.clone(), "package", Some("pacman"), "sudo pacman -U x");
+        assert_eq!(
+            pkg["action"], "package",
+            "an update a package manager must install"
+        );
+        assert_eq!(pkg["managed"], true);
+        assert_eq!(pkg["manager"], "pacman");
+        assert_eq!(pkg["command"], "sudo pacman -U x");
+        assert_eq!(pkg["installed"], "1.3.0");
+        assert_eq!(pkg["offered"], "1.4.0-beta.1");
+        let brew = managed_json(base, "homebrew", None, "brew upgrade atlas");
+        assert_eq!(brew["action"], "managed");
+        assert_eq!(brew["manager"], Value::Null);
+    }
+
+    #[test]
+    fn managed_json_has_no_command_when_nothing_is_to_install() {
+        let cur = check_json(&ver("1.3.0"), Channel::Stable, Some("v1.3.0"));
+        let j = managed_json(cur, "package", Some("apt"), "sudo apt install ./x.deb");
+        assert_eq!(
+            j["action"], "none",
+            "already current: nothing for anyone to install"
+        );
+        assert_eq!(j["managed"], true);
+        assert_eq!(j["command"], Value::Null);
+        let down = check_json(&ver("1.5.0-alpha.1"), Channel::Stable, Some("v1.3.0"));
+        assert_eq!(
+            managed_json(down, "package", Some("apt"), "c")["action"],
+            "downgrade",
+            "a downgrade is reported as such, never as a package install"
+        );
     }
 
     fn views(selected: Channel, installed: &Version) -> Vec<ChannelView> {

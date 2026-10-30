@@ -118,7 +118,9 @@
 		</button>
 	</div>
 	{#if building}
-		<div class="editor"><BotEditor bind:open={building} look={draft} seed="builder" onsave={(l) => (draft = l)} /></div>
+		<div class="editor">
+			<BotEditor bind:open={building} look={draft} seed="builder" onsave={(l) => (draft = l)} />
+		</div>
 	{:else}
 		<div class="grid">
 			{#each CREW as c (c.name)}

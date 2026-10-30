@@ -107,7 +107,11 @@
 	async function saveCrewSettings(key: string, short_replies: boolean, short_replies_model: string) {
 		crewSettingsSaving = { ...crewSettingsSaving, [key]: true };
 		try {
-			await hostCall("bot_crew_set", { host: key, short_replies, short_replies_model: short_replies_model || null });
+			await hostCall("bot_crew_set", {
+				host: key,
+				short_replies,
+				short_replies_model: short_replies_model || null,
+			});
 			crewSettings = { ...crewSettings, [key]: { short_replies, short_replies_model } };
 		} catch (e) {
 			toast.error(errText(e));
@@ -172,7 +176,11 @@
 
 		{@const cs = crewSettings[h.key]}
 		{#if cs}
-			<Row id="short-replies" label="Short replies" description="Summarize long bot replies with a cheap model.">
+			<Row
+				id="short-replies"
+				label="Short replies"
+				description="Summarize long bot replies with a cheap model."
+			>
 				<div class="short-replies-form">
 					<label class="sr-label">
 						<input

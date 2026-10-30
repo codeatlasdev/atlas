@@ -19,6 +19,14 @@ use tokio::sync::OnceCell;
 
 use crate::registry::{Install, Server};
 
+/// Every probe/install child is a console program run from the GUI app or hostd: without
+/// `CREATE_NO_WINDOW` each one flashes a console window on Windows.
+fn hidden(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut c = Command::new(program);
+    atlas_core::sys::CommandExt::no_window(&mut c);
+    c
+}
+
 /// Node runtime pinned for npm-based servers when no suitable `node` is on `PATH`.
 pub const NODE_VERSION: &str = "v24.21.0";
 /// Oldest system Node accepted (typescript-language-server's engine floor is the strictest).
@@ -343,7 +351,7 @@ pub async fn detect(base: &Path, s: &'static Server) -> Detected {
 async fn version_of(bin: &Path) -> Option<String> {
     let out = tokio::time::timeout(
         std::time::Duration::from_secs(3),
-        Command::new(bin)
+        hidden(bin)
             .arg("--version")
             .stdin(Stdio::null())
             .stderr(Stdio::null())
@@ -421,7 +429,7 @@ fn exe(name: &str) -> String {
 /// `rust-analyzer` on `PATH` may be the rustup proxy of a toolchain that lacks the component:
 /// it exists but exits non-zero. Probe with `--version`.
 pub async fn probe(bin: &Path) -> bool {
-    Command::new(bin)
+    hidden(bin)
         .arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -437,7 +445,7 @@ pub async fn probe(bin: &Path) -> bool {
 /// Fetch `url` to `dest` with `curl`: follows redirects, resumes a partial `dest`
 /// (`-C -`) so an interrupted download continues, bounded by connect/stall timeouts.
 async fn curl_to(url: &str, dest: &Path) -> Result<()> {
-    let out = Command::new("curl")
+    let out = hidden("curl")
         .args([
             "-fsSL",
             "--connect-timeout",
@@ -473,7 +481,7 @@ async fn curl_to(url: &str, dest: &Path) -> Result<()> {
 }
 
 async fn curl_text(url: &str) -> Result<String> {
-    let out = Command::new("curl")
+    let out = hidden("curl")
         .args([
             "-fsSL",
             "--max-time",
@@ -642,7 +650,7 @@ fn extract_zip(archive: &Path, out: &Path, strip: usize) -> Result<()> {
         .map(|r| PathBuf::from(r).join("System32").join("tar.exe"))
         .filter(|p| p.is_file())
         .unwrap_or_else(|| PathBuf::from("tar"));
-    let st = std::process::Command::new(tar)
+    let st = atlas_core::sys::CommandExt::no_window(&mut std::process::Command::new(tar))
         .arg("-xf")
         .arg(archive)
         .arg("-C")
@@ -678,7 +686,7 @@ fn gunzip_exec(gz: &Path, out: &Path) -> Result<()> {
 async fn go_install(go: &Path, dir: &Path, s: &Server) -> Result<()> {
     let stage = Stage::new(dir)?;
     let bin_dir = stage.dir.join("bin");
-    let out = Command::new(go)
+    let out = hidden(go)
         .args(["install", &format!("{}@{}", s.packages[0], s.version)])
         .env("GOBIN", &bin_dir)
         .env("GOFLAGS", "-mod=mod")
@@ -712,7 +720,7 @@ fn parse_node_version(s: &str) -> Option<(u32, u32, u32)> {
 }
 
 async fn node_version(node: &Path) -> Option<(u32, u32, u32)> {
-    let out = Command::new(node)
+    let out = hidden(node)
         .arg("--version")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -845,7 +853,7 @@ async fn npm_install(base: &Path, node: &Path, dir: &Path, s: &Server) -> Result
         ),
     )?;
     let npm_cli = npm_cli_for(node).await?;
-    let mut cmd = Command::new(node);
+    let mut cmd = hidden(node);
     cmd.arg(&npm_cli)
         .args([
             "install",

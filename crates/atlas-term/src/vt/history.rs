@@ -10,8 +10,13 @@ use alacritty_terminal::term::cell::Cell;
 
 use super::{Proxy, Vt};
 
-/// Bytes of scrollback cells kept per terminal.
+/// Bytes of scrollback cells kept per terminal unless the user sets `terminal.scrollback_bytes`.
 pub(super) const BYTE_BUDGET: usize = 64 << 20;
+
+/// The range a user budget is clamped to: `0` must not turn history off (the line setting does that) and a
+/// typo must not let one terminal take the machine.
+pub(super) const MIN_BUDGET: usize = 1 << 20;
+pub(super) const MAX_BUDGET: usize = 1 << 30;
 
 /// History lines allowed: the user's `lines` cap, further limited by `budget` at `cols` columns per line.
 pub(super) fn history_lines(lines: usize, cols: usize, budget: usize) -> usize {
@@ -28,7 +33,7 @@ impl Vt {
     /// the width changes: the same bytes hold fewer lines at 500 columns than at 80.
     pub(super) fn apply_history(&self, t: &mut Term<Proxy>) {
         let lines = self.scrollback.load(Ordering::Relaxed);
-        let cap = history_lines(lines, t.columns(), BYTE_BUDGET);
+        let cap = history_lines(lines, t.columns(), self.scrollback_bytes());
         t.grid_mut().update_history(cap);
         Self::reclaim(t);
     }
@@ -37,6 +42,19 @@ impl Vt {
     /// (ED3, RIS, a smaller cap) and only truncates beyond that.
     pub(super) fn reclaim(t: &mut Term<Proxy>) {
         t.grid_mut().truncate();
+    }
+
+    /// Set the per-terminal scrollback byte budget (`terminal.scrollback_bytes`), clamped to 1 MiB..1 GiB. It
+    /// applies now: a smaller one frees rows at once.
+    pub fn set_scrollback_bytes(&self, bytes: usize) {
+        self.budget
+            .store(bytes.clamp(MIN_BUDGET, MAX_BUDGET), Ordering::Relaxed);
+        self.apply_history(&mut self.term.lock());
+    }
+
+    /// The byte budget in force.
+    pub fn scrollback_bytes(&self) -> usize {
+        self.budget.load(Ordering::Relaxed)
     }
 
     /// Cell bytes held by the scrollback (the memory probe the tests and the soak read).

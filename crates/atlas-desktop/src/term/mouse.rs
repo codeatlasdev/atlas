@@ -34,7 +34,10 @@ pub fn term_mouse_captured(tab: String, shift: bool) -> Result<bool, String> {
     Ok(mouse::captures(with_term(&tab)?.vt.mode(), shift))
 }
 
-/// Report a pointer event to the program. `false` = the active mode does not report it.
+/// Report a pointer event to the program. `false` = the active mode does not report it. `px`/`py` are the
+/// pointer in device pixels (CSS px x `devicePixelRatio`, rounded: the unit `CSI 14 t` reports) from the grid's
+/// top-left corner, negative outside it. Only a program that turned on SGR-Pixels (DECSET 1016) sees them; any
+/// other gets the cell. Both or neither: half a position is no position.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn term_mouse(
@@ -46,6 +49,8 @@ pub fn term_mouse(
     shift: bool,
     alt: bool,
     ctrl: bool,
+    px: Option<i32>,
+    py: Option<i32>,
 ) -> Result<bool, String> {
     let sh = with_term(&tab)?;
     let ev = Event {
@@ -56,8 +61,9 @@ pub fn term_mouse(
         ctrl,
         col,
         row,
+        px: px.zip(py),
     };
-    let Some(bytes) = mouse::report(&ev, sh.vt.mode()) else {
+    let Some(bytes) = mouse::report(&ev, sh.vt.mode(), sh.vt.pixel_mouse()) else {
         return Ok(false);
     };
     sh.write(&bytes);

@@ -51,6 +51,7 @@ export function termPrefs() {
 		font_family: fontCandidates(t.font_family),
 		font_thicken: t.font_thicken,
 		scrollback: t.max_scroll_history_lines,
+		scrollback_bytes: t.scrollback_bytes,
 		cursor_shape: t.cursor_shape,
 		cursor_blink: t.blinking,
 		osc52: t.osc52,

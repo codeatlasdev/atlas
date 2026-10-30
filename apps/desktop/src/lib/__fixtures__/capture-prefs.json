@@ -1,0 +1,113 @@
+{
+	"prefs": {
+		"after": {
+			"copy": true,
+			"dismissSecs": 6,
+			"quickAccess": true,
+			"sound": true
+		},
+		"enabled": true,
+		"folder": "",
+		"highlightCursor": true,
+		"history": 50,
+		"keys": {
+			"allInOne": "ctrl-alt-1",
+			"fullscreen": "ctrl-alt-3",
+			"gif": "ctrl-alt-7",
+			"ocr": "ctrl-alt-8",
+			"previous": "ctrl-alt-2",
+			"record": "ctrl-alt-6",
+			"region": "ctrl-alt-4",
+			"window": "ctrl-alt-5"
+		},
+		"quick": {
+			"position": "bottomRight",
+			"stack": 5
+		},
+		"recording": {
+			"clicks": true,
+			"doNotDisturb": true,
+			"keystrokes": false,
+			"microphone": false,
+			"quality": "high",
+			"systemAudio": false,
+			"webcam": false
+		},
+		"still": {
+			"captureOnRelease": true,
+			"hideIcons": false,
+			"lastMode": "region",
+			"scale": "native",
+			"timerSecs": 0,
+			"windowPadding": false,
+			"windowShadow": true
+		},
+		"systemKeysFree": false
+	},
+	"presets": [
+		{
+			"id": "default",
+			"keys": {
+				"allInOne": "ctrl-alt-1",
+				"fullscreen": "ctrl-alt-3",
+				"gif": "ctrl-alt-7",
+				"ocr": "ctrl-alt-8",
+				"previous": "ctrl-alt-2",
+				"record": "ctrl-alt-6",
+				"region": "ctrl-alt-4",
+				"window": "ctrl-alt-5"
+			},
+			"label": "⌃⌥1–8 (default)",
+			"needsSystemKeys": false,
+			"note": null
+		},
+		{
+			"id": "cleanshot",
+			"keys": {
+				"allInOne": "cmd-shift-5",
+				"fullscreen": "cmd-shift-3",
+				"gif": "cmd-shift-9",
+				"ocr": "cmd-shift-8",
+				"previous": "cmd-shift-2",
+				"record": "cmd-shift-6",
+				"region": "cmd-shift-4",
+				"window": "cmd-shift-7"
+			},
+			"label": "⇧⌘3 / 4 / 5 / 6 (CleanShot)",
+			"needsSystemKeys": true,
+			"note": "These are macOS's own screenshot keys (⇧⌘3, ⇧⌘4, ⇧⌘5, ⇧⌘6), and macOS answers them before any app. Atlas never changes a system setting for you: open System Settings > Keyboard > Keyboard Shortcuts > Screenshots, untick them, then tick \"I turned them off\" here. Until then this preset stays unavailable."
+		},
+		{
+			"id": "ctrl-shift",
+			"keys": {
+				"allInOne": "ctrl-shift-5",
+				"fullscreen": "ctrl-shift-3",
+				"gif": "ctrl-shift-9",
+				"ocr": "ctrl-shift-8",
+				"previous": "ctrl-shift-2",
+				"record": "ctrl-shift-6",
+				"region": "ctrl-shift-4",
+				"window": "ctrl-shift-7"
+			},
+			"label": "⌃⇧3–9 (without ⌘)",
+			"needsSystemKeys": false,
+			"note": "⌃⇧4 is not a macOS key, but a few terminals and editors use ⌃⇧ digits; if one stops responding, pick another preset."
+		},
+		{
+			"id": "shift-cmd-s",
+			"keys": {
+				"allInOne": "ctrl-alt-1",
+				"fullscreen": "ctrl-alt-3",
+				"gif": "ctrl-alt-7",
+				"ocr": "ctrl-alt-8",
+				"previous": "ctrl-alt-2",
+				"record": "ctrl-alt-6",
+				"region": "shift-cmd-s",
+				"window": "ctrl-alt-5"
+			},
+			"label": "⇧⌘S for a region",
+			"needsSystemKeys": false,
+			"note": "⇧⌘S is \"Save As\" in most apps. As a global hotkey it wins over the app in front, so Save As stops working everywhere while Atlas runs. macOS keeps ⇧⌘3, ⇧⌘4 and ⇧⌘5 for itself, which is why they are not offered here."
+		}
+	]
+}

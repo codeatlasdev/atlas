@@ -49,10 +49,20 @@ describe("buildOmpModelsYml", () => {
 	// Incident: short replies never happened on the test ship: the provider only listed the bot's model, omp refused the
 	// cheap summary model ("cc/claude-haiku-5-5"), and every reply fell back to the long original.
 	test("also registers the short-replies model, once", () => {
-		const yaml = buildOmpModelsYml({ baseUrl: BASE, apiFormat: "anthropic", model: MODEL, summaryModel: "cc/claude-haiku-5-5" });
+		const yaml = buildOmpModelsYml({
+			baseUrl: BASE,
+			apiFormat: "anthropic",
+			model: MODEL,
+			summaryModel: "cc/claude-haiku-5-5",
+		});
 		expect(yaml).toContain(`- id: ${MODEL}`);
 		expect(yaml).toContain("- id: cc/claude-haiku-5-5");
-		const same = buildOmpModelsYml({ baseUrl: BASE, apiFormat: "anthropic", model: MODEL, summaryModel: MODEL });
+		const same = buildOmpModelsYml({
+			baseUrl: BASE,
+			apiFormat: "anthropic",
+			model: MODEL,
+			summaryModel: MODEL,
+		});
 		expect(same.split(`- id: ${MODEL}`).length - 1).toBe(1);
 	});
 

@@ -34,7 +34,6 @@ import { agents } from "#lib/stores/agents.svelte.ts";
 import { bots } from "#lib/stores/bots.svelte.ts";
 import { browserPrefs } from "#lib/stores/browser.svelte.ts";
 import { initHostStatus } from "#lib/stores/hostStatus.svelte.ts";
-import { INTRO_TIMING } from "#lib/onboarding/flow.ts";
 import { onboarding } from "#lib/onboarding/state.svelte.ts";
 import { ask, confirmDialog, promptDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
@@ -45,6 +44,7 @@ import { store } from "#lib/stores/projects.svelte.ts";
 import { quick } from "#lib/stores/quick.svelte.ts";
 import { themes } from "#lib/stores/theme.svelte.ts";
 import { nativeAppearance } from "#lib/theme/ground.ts";
+import { startDockFeed } from "#lib/stores/dockFeed.svelte.ts";
 import { startTrayFeed } from "#lib/stores/trayFeed.svelte.ts";
 import { updates } from "#lib/stores/updates.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -82,8 +82,6 @@ function exposeStores() {
 				onboarding,
 				welcome,
 				sound,
-				/** Intro timing (ms) for scripted recordings: hitMs is the strike, soundMs when the sting starts. */
-				introTiming: INTRO_TIMING,
 				/** Live CodeMirror views by `worktreeId:path`, the LSP state and the jump history (scripts/validate-goto-definition.sh). */
 				editors,
 				lsp,
@@ -252,6 +250,7 @@ export function startSession(): () => void {
 	window.addEventListener("focus", reconcile);
 	document.addEventListener("visibilitychange", reconcile);
 	const stopTray = startTrayFeed();
+	const stopDock = startDockFeed();
 	// The popover's sparklines need samples even with no Panel open.
 	const stopMetrics = metrics.start();
 	const stopEffects = $effect.root(syncEffects);
@@ -279,6 +278,7 @@ export function startSession(): () => void {
 		document.removeEventListener("visibilitychange", reconcile);
 		stopErrors();
 		stopTray();
+		stopDock();
 		stopMetrics();
 		stopEffects();
 		stopAutoCleanup();

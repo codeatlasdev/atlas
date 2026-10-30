@@ -287,12 +287,12 @@
 
 		<!-- Top bar: search + add -->
 		<div class="top-bar">
-		<button class="icon-btn-round" onclick={() => (palettes.crew = true)} aria-label="Search (⌘K)">
-			<Search size={16} />
-		</button>
-		<button class="icon-btn-round" onclick={startNewBot} aria-label="New crewmate" disabled={creating}>
-			<Plus size={16} />
-		</button>
+			<button class="icon-btn-round" onclick={() => (palettes.crew = true)} aria-label="Search (⌘K)">
+				<Search size={16} />
+			</button>
+			<button class="icon-btn-round" onclick={startNewBot} aria-label="New crewmate" disabled={creating}>
+				<Plus size={16} />
+			</button>
 		</div>
 
 		<!-- Favorite hero -->
@@ -601,7 +601,6 @@
 		opacity: 0.4;
 		cursor: default;
 	}
-
 
 	/* Hero */
 	.hero-wrap {
@@ -1015,5 +1014,4 @@
 		color: var(--ca-text-primary);
 		margin: 0;
 	}
-
 </style>

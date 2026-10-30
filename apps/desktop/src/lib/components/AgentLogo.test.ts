@@ -37,13 +37,16 @@ test("a monochrome mark (Codex) renders BOTH variants and lets the kit's CSS pic
 	done();
 });
 
-test("a colored mark (Claude, omp) reads on both schemes: the same mark in both variants", () => {
+// Incident (Windows): SchemeAsset kept two copies of omp's mark, one display:none; `url(#omp-g)` resolved to the hidden
+// copy's gradient and WebView2 painted the tile black. A colored mark renders once, so every id in it is unique.
+test("a colored mark (Claude, omp) renders once, outside SchemeAsset, so its gradient ids are unique", () => {
 	for (const agent of ["claude", "omp"]) {
 		const { target, done } = render({ agent });
-		const light = target.querySelector(".ca-scheme-asset__light svg");
-		const dark = target.querySelector(".ca-scheme-asset__dark svg");
-		expect(light).not.toBeNull();
-		expect(dark?.outerHTML).toBe(light?.outerHTML);
+		expect(target.querySelector(".ca-scheme-asset"), agent).toBeNull();
+		const roots = [...target.querySelectorAll("svg")].filter((s) => !s.parentElement?.closest("svg"));
+		expect(roots.length, agent).toBe(1);
+		const ids = [...target.querySelectorAll("[id]")].map((e) => e.id);
+		expect(new Set(ids).size, agent).toBe(ids.length);
 		done();
 	}
 });
@@ -83,7 +86,7 @@ test("the kit item draws the icon slot in its fixed aria-hidden box and keeps a 
 test("in the kit's icon slot the logo is bare: the slot draws the box, so there is no second sized wrapper", () => {
 	const { target, done } = render({ agent: "claude", bare: true });
 	expect(target.querySelector(".logo")).toBeNull();
-	expect(target.querySelector(".ca-scheme-asset__light svg")).not.toBeNull();
+	expect(target.querySelector("svg")).not.toBeNull();
 	done();
 	const fallback = render({ agent: "nope", bare: true });
 	expect(fallback.target.querySelector("svg")?.getAttribute("width")).not.toBe("14");
@@ -96,9 +99,7 @@ test("in the kit's icon slot the logo is bare: the slot draws the box, so there 
 test("a bare logo's svg fills its box for every agent, light and dark", () => {
 	for (const agent of ["omp", "claude", "codex"]) {
 		const { target, done } = render({ agent, bare: true });
-		const svgs = [...target.querySelectorAll(".ca-scheme-asset svg")].filter(
-			(s) => !s.parentElement?.closest("svg"),
-		);
+		const svgs = [...target.querySelectorAll("svg")].filter((s) => !s.parentElement?.closest("svg"));
 		expect(svgs.length, agent).toBeGreaterThan(0);
 		for (const s of svgs) {
 			expect([s.getAttribute("width"), s.getAttribute("height")], agent).toEqual(["100%", "100%"]);

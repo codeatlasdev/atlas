@@ -14,14 +14,10 @@ cut where the note has decayed 30 dB below its peak, gain set so the RMS of the 
 the peak under -3 dBFS, 5 ms fade in and out (30 ms, or a quarter of the cap, when a take is cut at
 its length cap), mono, 48 kHz, AAC 48 kb/s in an .m4a container (WebKit decodes it natively; only the .m4a files ship).
 
-The `signature` (the sonic logo of the welcome intro) differs in two ways: its tail is cut at 40 dB of decay (a bell rings
-on quietly and that is part of it), and the take is shifted so its strike (the downbeat: the first 5 ms envelope within
-20 dB of the peak that rose 12 dB over the preceding 50 ms) lands 80 ms into the file. The player starts it 80 ms before
-the intro's hit, so the strike and the picture's hit coincide.
+The `boot` signature differs in one way: its tail is cut at 40 dB of decay (a bell rings on quietly and that is part of it).
 
 | id | meaning | length | RMS dBFS | peak dBFS | centroid Hz | .m4a bytes | take |
 |---|---|---|---|---|---|---|---|
-| `signature` | The Atlas sonic logo: the intro's strike, as the globe locks together | 1740 ms | -22.0 | -7.3 | 851 | 12298 | take 7, 34a0decea062fa74 |
 | `boot` | Atlas opened (cold start, at most once an hour) | 485 ms | -22.4 | -7.7 | 460 | 3999 | take 0, bb2080fbae14b740 |
 | `discovery-done` | Find my projects finished | 300 ms | -22.2 | -11.2 | 756 | 2829 | take 2, daa4467b81f868fb |
 | `stack-up` | Every service of a stack is healthy | 300 ms | -22.2 | -9.8 | 559 | 2937 | take 3, 6a9f6edc1c2f3ced |
@@ -37,7 +33,6 @@ the intro's hit, so the strike and the picture's hit coincide.
 
 Every prompt carries the same timbre sentence ("warm glassy marimba mallet tone, soft attack, clean and dry") so the set reads as one brand.
 
-- `signature`: a quiet gentle sonic logo, no distortion, soft level: ONE clear struck bell note right at the start with a soft shimmering overtone that blooms and slowly resolves upward over two seconds, like a calm cinematic title sting. warm glassy marimba mallet tone, soft attack, clean and dry, no reverb tail, no background noise, no voice, user interface sound effect.
 - `boot`: three note ascending arpeggio resolving upward, calm and confident, a gentle bloom on the last note. warm glassy marimba mallet tone, soft attack, clean and dry, no reverb tail, no background noise, no voice, user interface sound effect.
 - `discovery-done`: two quick soft rising notes, a fifth apart, gentle level, tidy and satisfying like a completed scan. warm glassy marimba mallet tone, soft attack, clean and dry, no reverb tail, no background noise, no voice, user interface sound effect.
 - `stack-up`: two notes rising a fourth then settling, warm and resolved, a small celebration. warm glassy marimba mallet tone, soft attack, clean and dry, no reverb tail, no background noise, no voice, user interface sound effect.

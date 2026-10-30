@@ -12,8 +12,14 @@ const base = (p: string) => {
 };
 
 const SHELL: [RegExp, string][] = [
-	[/^(bun|npm|pnpm|yarn)\s+(run\s+)?test\b|^cargo\s+test\b|^pytest\b|^go\s+test\b|^flutter\s+test\b/, "Running the tests"],
-	[/^(bun|npm|pnpm|yarn)\s+(install|add|i)\b|^cargo\s+(add|fetch)\b|^pip\s+install\b/, "Installing dependencies"],
+	[
+		/^(bun|npm|pnpm|yarn)\s+(run\s+)?test\b|^cargo\s+test\b|^pytest\b|^go\s+test\b|^flutter\s+test\b/,
+		"Running the tests",
+	],
+	[
+		/^(bun|npm|pnpm|yarn)\s+(install|add|i)\b|^cargo\s+(add|fetch)\b|^pip\s+install\b/,
+		"Installing dependencies",
+	],
 	[/^(cargo\s+(build|check)|bun\s+run\s+build|npm\s+run\s+build|tsc\b|svelte-check\b)/, "Building"],
 	[/^gh\b/, "Working on GitHub"],
 	[/^git\b/, "Checking git"],
@@ -54,7 +60,14 @@ export function stepPhrase(step: string | undefined): string {
 }
 
 /** Shown while the agent is between tool calls (thinking, reading its own output, planning the next move). */
-export const IDLE_WORDS = ["Thinking", "Planning", "Looking around", "Working", "Figuring it out", "Almost there"];
+export const IDLE_WORDS = [
+	"Thinking",
+	"Planning",
+	"Looking around",
+	"Working",
+	"Figuring it out",
+	"Almost there",
+];
 
 /** How long a real step stays on the line before idle words take over, and how long each idle word stays. */
 const STEP_HOLD_MS = 4000;
@@ -91,7 +104,7 @@ export function stepGroups<S extends { group?: string }>(
 	for (const step of steps) {
 		const last = groups.at(-1);
 		if (last && (last.title === step.group || step.group === undefined)) last.steps.push(step);
-		else if (last && last.title === undefined) last.title = step.group, last.steps.push(step);
+		else if (last && last.title === undefined) ((last.title = step.group), last.steps.push(step));
 		else groups.push({ title: step.group, steps: [step], done: false });
 	}
 	groups.forEach((g, i) => {

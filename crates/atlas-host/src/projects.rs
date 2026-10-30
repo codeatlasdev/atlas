@@ -186,7 +186,8 @@ pub async fn service(
 /// Start the whole stack the way the desktop does (`atlas dev --detach --dir <root>`).
 async fn up(root: &Path) -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let out = tokio::process::Command::new(exe)
+    let mut cmd = tokio::process::Command::new(exe);
+    let out = atlas_core::sys::CommandExt::no_window(&mut cmd)
         .args(["dev", "--detach", "--dir"])
         .arg(root)
         .stdin(std::process::Stdio::null())

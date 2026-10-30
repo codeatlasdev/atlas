@@ -40,6 +40,8 @@ pub struct TrayState {
     shown_at: Mutex<Option<std::time::Instant>>,
     /// Where the icon was when the popover was last opened (physical x, y, w, h), for [`room`].
     icon: Mutex<Option<(f64, f64, f64, f64)>>,
+    /// The "Show / Hide Agent Dock" item, re-labelled when the dock is shown or hidden.
+    dock_item: Mutex<Option<MenuItem<tauri::Wry>>>,
 }
 
 /// Top-left (physical px) of a popover of `size` (w, h) under `icon` (x, y, w, h),
@@ -76,7 +78,10 @@ fn rect_px(rect: &Rect, scale: f64) -> (f64, f64, f64, f64) {
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
-    let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray".into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray".into()));
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    let win = builder
         .theme(theme)
         .initialization_script(script)
         .title("Atlas")
@@ -92,6 +97,8 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .focused(false)
         .accept_first_mouse(true)
         .build()?;
+    #[cfg(windows)]
+    crate::webview_win::no_accelerators(&win);
     #[cfg(target_os = "macos")]
     {
         use window_vibrancy::{NSVisualEffectMaterial, NSVisualEffectState, apply_vibrancy};
@@ -158,6 +165,7 @@ fn show(app: &AppHandle, icon: Option<&Rect>) {
 }
 
 fn toggle(app: &AppHandle, icon: &Rect) {
+    ensure_popover(app);
     match app.get_webview_window(LABEL) {
         Some(w) if w.is_visible().unwrap_or(false) => {
             let _ = w.hide();
@@ -168,6 +176,7 @@ fn toggle(app: &AppHandle, icon: &Rect) {
 
 const ID_OPEN: &str = "open";
 const ID_TOGGLE: &str = "toggle";
+const ID_DOCK: &str = "dock";
 const ID_QUIT: &str = "quit";
 
 /// The tray's native menu, from [`lifecycle::tray_menu`]. Quit is a plain item handled in [`on_menu`]: the
@@ -190,7 +199,22 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 true,
                 None::<&str>,
             )?)?,
+            TrayItem::ToggleDock => {
+                let shown = app
+                    .try_state::<crate::dock::DockState>()
+                    .is_some_and(|s| s.shown());
+                let item = MenuItem::with_id(
+                    app,
+                    ID_DOCK,
+                    lifecycle::dock_item_label(shown),
+                    true,
+                    None::<&str>,
+                )?;
+                menu.append(&item)?;
+                *app.state::<TrayState>().dock_item.lock() = Some(item);
+            }
             TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+            TrayItem::Capture => menu.append(&capture_submenu(app)?)?,
             TrayItem::Quit => menu.append(&MenuItem::with_id(
                 app,
                 ID_QUIT,
@@ -203,13 +227,77 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Ok(menu)
 }
 
+/// The text of a capture menu entry: the action and, after a tab-like gap, the key it has now. The key is text, not a
+/// menu accelerator: the real hotkey is the global one, and a second registration would fire twice in Atlas.
+fn capture_label(e: &crate::shots::prefs::MenuEntry) -> String {
+    if e.stroke.is_empty() {
+        e.label.to_string()
+    } else {
+        format!("{}    {}", e.label, e.stroke)
+    }
+}
+
+/// Every capture menu item (the tray's and the app menu bar's), so a change of keys re-labels all of them. Managed
+/// before the menu bar is built (`main`), unlike [`TrayState`] and `Shots`.
+#[derive(Default)]
+pub struct CaptureMenus(Mutex<Vec<(String, MenuItem<tauri::Wry>)>>);
+
+/// The "Capture" submenu: one item per capture action (`shots::prefs::menu_entries`). The keys are the ones in
+/// force, or the saved ones before the capture module has started.
+pub fn capture_submenu(app: &AppHandle) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
+    let keys = app
+        .try_state::<crate::shots::Shots>()
+        .map(|s| s.keys())
+        .unwrap_or_else(|| crate::shots::prefs::CapturePrefs::load().keys);
+    let sub = tauri::menu::Submenu::new(app, "Capture", true)?;
+    let menus = app.state::<CaptureMenus>();
+    let mut kept = menus.0.lock();
+    for e in crate::shots::prefs::menu_entries(&keys) {
+        let item = MenuItem::with_id(app, e.id.clone(), capture_label(&e), true, None::<&str>)?;
+        sub.append(&item)?;
+        kept.push((e.id, item));
+    }
+    Ok(sub)
+}
+
+/// Capture keys changed in Settings: re-label every capture menu item so it shows the keys in force.
+pub fn refresh_capture(app: &AppHandle, keys: &crate::shots::prefs::Keys) {
+    let Some(menus) = app.try_state::<CaptureMenus>() else {
+        return;
+    };
+    let items = menus.0.lock();
+    for e in crate::shots::prefs::menu_entries(keys) {
+        for (_, item) in items.iter().filter(|(id, _)| *id == e.id) {
+            let _ = item.set_text(capture_label(&e));
+        }
+    }
+}
+
 /// Tray menu click. Quit goes through `AppHandle::exit` with an explicit code, which [`lifecycle::exit`] never blocks.
 fn on_menu(app: &AppHandle, id: &str) {
+    if let Some(h) = crate::shots::prefs::hotkey_of_menu_id(id) {
+        // The same path as the hotkey: the capture session decides what the press means right now.
+        crate::shots::feed(app, crate::shots::session::Event::Hotkey(h));
+        return;
+    }
     match id {
         ID_OPEN => crate::show_main(app),
         ID_TOGGLE => toggle_main(app),
-        ID_QUIT => app.exit(0),
+        ID_QUIT => lifecycle::quit(app),
+        ID_DOCK => {
+            let _ = crate::dock::toggle(app);
+        }
         _ => {}
+    }
+}
+
+/// Re-label the tray's dock item for a dock that is `shown` now ("Show Agent Dock" ⇄ "Hide Agent Dock").
+pub fn set_dock_label(app: &AppHandle, shown: bool) {
+    if let Some(item) = app
+        .try_state::<TrayState>()
+        .and_then(|s| s.dock_item.lock().clone())
+    {
+        let _ = item.set_text(lifecycle::dock_item_label(shown));
     }
 }
 
@@ -221,6 +309,8 @@ fn toggle_main(app: &AppHandle) {
     match app.get_window("main") {
         Some(w) if showing => {
             let _ = w.hide();
+            #[cfg(windows)]
+            crate::webview_win::sync(app);
         }
         _ => crate::show_main(app),
     }
@@ -267,24 +357,30 @@ pub fn reachable(app: &AppHandle) -> bool {
     app.try_state::<TrayState>().is_none() || tray_host_present()
 }
 
-/// The tray glyph: white on Linux (hosts draw the PNG as is on dark panels), the black template on macOS (tinted by
-/// the system). Both are rendered from `assets/tray-template.svg` by `scripts/icons.ts`.
+/// The tray glyph, per platform: the black template on macOS (tinted by the system), white on Linux (hosts draw the
+/// PNG as is on dark panels) and the full-colour app mark on Windows, whose notification area never tints an icon
+/// (a template would be a solid black disc on the dark taskbar) and reads on both light and dark taskbars. The
+/// template and the white variant are rendered from `assets/tray-template.svg`, the colour one is the app icon's
+/// 32x32 (`app-icon.svg`), all by `scripts/icons.ts`.
 fn icon() -> tauri::Result<tauri::image::Image<'static>> {
-    tauri::image::Image::from_bytes(if cfg!(target_os = "linux") {
+    tauri::image::Image::from_bytes(if cfg!(target_os = "windows") {
+        include_bytes!("../icons/32x32.png")
+    } else if cfg!(target_os = "linux") {
         include_bytes!("../icons/tray-linux.png")
     } else {
         include_bytes!("../icons/tray.png")
     })
 }
 
-/// Create the popover window and the tray icon. On Linux the popover is built but never opened (no click events
-/// there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
+/// Create the tray icon. The popover window (a second WebView2 controller, ~110 ms on Windows) is not built here:
+/// it is not needed until the first click, so [`ensure_popover`] builds it right after the main window first shows
+/// (`boot::show_now`), or on the first click if that comes first. On Linux the popover is built but never opened
+/// (no click events there); it stays hidden, so the `tray_*` commands the page registers keep working unchanged.
 pub fn start(app: &AppHandle) -> tauri::Result<()> {
     app.manage(TrayState::default());
-    build(app)?;
     TrayIconBuilder::with_id("main")
         .icon(icon()?)
-        .icon_as_template(!cfg!(target_os = "linux"))
+        .icon_as_template(cfg!(target_os = "macos"))
         .menu(&menu(app)?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| on_menu(app, ev.id().as_ref()))
@@ -301,6 +397,17 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// Build the popover once, on the main thread (window creation). A no-op when it exists or when no tray was started
+/// (agent instances, [`start`] never ran).
+pub fn ensure_popover(app: &AppHandle) {
+    if app.try_state::<TrayState>().is_some()
+        && app.get_webview_window(LABEL).is_none()
+        && let Err(e) = build(app)
+    {
+        eprintln!("atlas-desktop: tray popover: {e}");
+    }
 }
 
 /// Main window → popover: the current state, cached for the next time it is shown.

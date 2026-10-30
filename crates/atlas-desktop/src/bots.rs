@@ -119,12 +119,11 @@ pub async fn bot_install(
     }
     let mut child = cmd.spawn().map_err(|e| format!("cannot run atlas: {e}"))?;
     // Pipe sudo password to stdin, then close it so the child can proceed
-    if let Some(pw) = sudo_password {
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(format!("{pw}\n").as_bytes()).await;
-            // stdin is dropped here, closing the pipe
-        }
-        // pw is dropped here
+    // stdin and the password are dropped at the end of the block, closing the pipe.
+    if let Some(pw) = sudo_password
+        && let Some(mut stdin) = child.stdin.take()
+    {
+        let _ = stdin.write_all(format!("{pw}\n").as_bytes()).await;
     }
     let stdout = child.stdout.take().expect("piped");
     let stderr = child.stderr.take().expect("piped");

@@ -24,6 +24,11 @@ const flushMicro = () => Promise.resolve().then(() => Promise.resolve());
 function slotEl(r = SLOT) {
 	const el = document.createElement("div");
 	el.getBoundingClientRect = () => new DOMRect(r.x, r.y, r.w, r.h);
+	// The slot's fill: the core carves the hole out of it, never out of the slot (which takes the view's input).
+	const fill = document.createElement("div");
+	fill.setAttribute("data-native-fill", "");
+	fill.getBoundingClientRect = () => new DOMRect(r.x, r.y, r.w, r.h);
+	el.append(fill);
 	document.body.append(el);
 	return el;
 }
@@ -303,7 +308,7 @@ test("a view that went away (adapter says so) is opened again over the same id",
 
 // ── Holes and park: free for every kind. The page is transparent over the native view's slot (`ground.ts`); overlays are
 // ordinary DOM above it and never touch the hole. The hole is the view's box and follows the slot, in the same task.
-const holeOf = (slot) => slot.style.clipPath;
+const holeOf = (slot) => slot.querySelector("[data-native-fill]").style.clipPath;
 const holeIs = (slot, r) =>
 	holeOf(slot) === clipPath([r], slot.getBoundingClientRect().width, slot.getBoundingClientRect().height);
 
@@ -330,6 +335,8 @@ test("the hole follows a layout change in the same call as the sync, before any 
 	n.release("fake_bounds");
 	await s.settled();
 	state.slot.getBoundingClientRect = () => new DOMRect(200, 100, 500, 400);
+	state.slot.querySelector("[data-native-fill]").getBoundingClientRect = () =>
+		new DOMRect(200, 100, 500, 400);
 	void s.sync(); // the placement is queued behind the held IPC...
 	expect(holeIs(state.slot, { x: 0, y: STRIP, w: 500, h: 400 - STRIP })).toBe(true); // ...the hole is already there
 	n.release("fake_bounds");

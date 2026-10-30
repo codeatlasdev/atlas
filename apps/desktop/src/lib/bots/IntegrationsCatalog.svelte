@@ -220,75 +220,86 @@
 
 			<p class="detail-description">{currentIntegration.description}</p>
 
-		{#if currentIntegration.id === "github"}
-			<!-- Accounts card -->
-			<div class="detail-card">
-				<h3 class="card-title">GitHub accounts on your ships</h3>
-				{#each bots.hosts.filter((h) => h.key.startsWith('ssh:')) as ship (ship.key)}
-					{@const status = githubCrew.statuses.get(ship.key)}
-					{@const flow = githubCrew.flows.get(ship.key)}
-					{@const polling = githubCrew.isPolling(ship.key)}
-					<div class="ship-gh-row">
-						<span class="ship-gh-name">{ship.name.replace(/^atlas-bot@/, '')}</span>
-						{#if flow}
-							<!-- Login flow in progress -->
-							<div class="gh-flow-block">
-								<p class="gh-flow-label">Enter this code at <a href={flow.verification_uri} target="_blank" rel="noreferrer" class="text-link">{flow.verification_uri}</a></p>
-								<div class="gh-code-row">
-									<code class="gh-code">{flow.user_code}</code>
-									<button
-										class="gh-copy-btn"
-										onclick={() => { void navigator.clipboard.writeText(flow.user_code); }}
-										aria-label="Copy code"
-									>Copy</button>
+			{#if currentIntegration.id === "github"}
+				<!-- Accounts card -->
+				<div class="detail-card">
+					<h3 class="card-title">GitHub accounts on your ships</h3>
+					{#each bots.hosts.filter((h) => h.key.startsWith("ssh:")) as ship (ship.key)}
+						{@const status = githubCrew.statuses.get(ship.key)}
+						{@const flow = githubCrew.flows.get(ship.key)}
+						{@const polling = githubCrew.isPolling(ship.key)}
+						<div class="ship-gh-row">
+							<span class="ship-gh-name">{ship.name.replace(/^atlas-bot@/, "")}</span>
+							{#if flow}
+								<!-- Login flow in progress -->
+								<div class="gh-flow-block">
+									<p class="gh-flow-label">
+										Enter this code at <a
+											href={flow.verification_uri}
+											target="_blank"
+											rel="noreferrer"
+											class="text-link">{flow.verification_uri}</a
+										>
+									</p>
+									<div class="gh-code-row">
+										<code class="gh-code">{flow.user_code}</code>
+										<button
+											class="gh-copy-btn"
+											onclick={() => {
+												void navigator.clipboard.writeText(flow.user_code);
+											}}
+											aria-label="Copy code">Copy</button
+										>
+									</div>
+									{#if polling}
+										<p class="gh-flow-waiting" role="status" aria-live="polite">Waiting for authorization…</p>
+									{/if}
+									<Button variant="ghost" size="sm" onclick={() => githubCrew.stopPolling(ship.key)}
+										>Cancel</Button
+									>
 								</div>
-								{#if polling}
-									<p class="gh-flow-waiting" role="status" aria-live="polite">Waiting for authorization…</p>
-								{/if}
-								<Button variant="ghost" size="sm" onclick={() => githubCrew.stopPolling(ship.key)}>Cancel</Button>
-							</div>
-						{:else if status?.login}
-							<!-- Connected -->
-							<span class="ship-gh-login">Connected as @{status.login}</span>
-							<Button variant="ghost" size="sm" onclick={() => void githubCrew.logout(ship.key)}>Disconnect</Button>
-						{:else}
-							<!-- Not connected -->
-							<span class="ship-gh-status-off">Not connected</span>
-							<Button
-								variant="filled"
-								size="sm"
-								onclick={() => void githubCrew.startLogin(ship.key)}
-							>Connect</Button>
-						{/if}
-					</div>
-				{:else}
-					<p class="no-ships">No ships added yet. Add a ship in the Bots tab to connect GitHub.</p>
-				{/each}
-			</div>
-
-			<!-- Skills card -->
-			<div class="detail-card">
-				<h3 class="card-title">
-					Skills
-					<span class="card-count">{currentIntegration.skills.length}</span>
-				</h3>
-				<ul class="skills-list" aria-label="Integration skills">
-					{#each currentIntegration.skills as skill (skill.label)}
-						<li class="skill-row" class:skill-row--unavailable={!skill.available}>
-							{#if skill.available}
-								<span class="skill-check" aria-hidden="true"><Check size={13} /></span>
+							{:else if status?.login}
+								<!-- Connected -->
+								<span class="ship-gh-login">Connected as @{status.login}</span>
+								<Button variant="ghost" size="sm" onclick={() => void githubCrew.logout(ship.key)}
+									>Disconnect</Button
+								>
 							{:else}
-								<span class="skill-soon" aria-label="Coming soon">–</span>
+								<!-- Not connected -->
+								<span class="ship-gh-status-off">Not connected</span>
+								<Button variant="filled" size="sm" onclick={() => void githubCrew.startLogin(ship.key)}
+									>Connect</Button
+								>
 							{/if}
-							<span class="skill-label">{skill.label}</span>
-							{#if !skill.available}
-								<span class="skill-badge">Coming soon</span>
-							{/if}
-						</li>
+						</div>
+					{:else}
+						<p class="no-ships">No ships added yet. Add a ship in the Bots tab to connect GitHub.</p>
 					{/each}
-				</ul>
-			</div>
-		{/if}
+				</div>
+
+				<!-- Skills card -->
+				<div class="detail-card">
+					<h3 class="card-title">
+						Skills
+						<span class="card-count">{currentIntegration.skills.length}</span>
+					</h3>
+					<ul class="skills-list" aria-label="Integration skills">
+						{#each currentIntegration.skills as skill (skill.label)}
+							<li class="skill-row" class:skill-row--unavailable={!skill.available}>
+								{#if skill.available}
+									<span class="skill-check" aria-hidden="true"><Check size={13} /></span>
+								{:else}
+									<span class="skill-soon" aria-label="Coming soon">–</span>
+								{/if}
+								<span class="skill-label">{skill.label}</span>
+								{#if !skill.available}
+									<span class="skill-badge">Coming soon</span>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
 		{/if}
 	</div>
 </Dialog>
@@ -764,7 +775,9 @@
 		border-bottom: 0.5px solid var(--ca-outline-subtle);
 		flex-wrap: wrap;
 	}
-	.ship-gh-row:last-child { border-bottom: none; }
+	.ship-gh-row:last-child {
+		border-bottom: none;
+	}
 	.ship-gh-name {
 		flex: 1;
 		font-size: 13px;

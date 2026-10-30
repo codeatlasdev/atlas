@@ -26,6 +26,9 @@ pub struct Event {
     /// 0-based cell.
     pub col: u16,
     pub row: u16,
+    /// Terminal-space pixel position, 0 = the grid's top-left corner, rounded, not clamped (negative when a
+    /// drag left the terminal): what SGR-Pixels (1016) reports. `None` when the caller only knows the cell.
+    pub px: Option<(i32, i32)>,
 }
 
 /// Does the program own the mouse (any reporting mode on)? Then clicks and drags belong to it,
@@ -34,12 +37,15 @@ pub fn captures(mode: TermMode, shift: bool) -> bool {
     mode.intersects(TermMode::MOUSE_MODE) && !shift
 }
 
-/// Bytes for `e`, or `None` when the active mode does not report it.
-pub fn report(e: &Event, mode: TermMode) -> Option<Vec<u8>> {
+/// Bytes for `e`, or `None` when the active mode does not report it. `pixel` is DECSET 1016
+/// (`Vt::pixel_mouse`): the SGR shape with pixel coordinates, ahead of 1006/1005 as in xterm and Ghostty.
+pub fn report(e: &Event, mode: TermMode, pixel: bool) -> Option<Vec<u8>> {
     if !mode.intersects(TermMode::MOUSE_MODE) {
         return None;
     }
-    let sgr = mode.contains(TermMode::SGR_MOUSE);
+    // 1016 is its own format, so it also needs a position in pixels; without one the cell is the best answer.
+    let pixels = e.px.filter(|_| pixel);
+    let sgr = mode.contains(TermMode::SGR_MOUSE) || pixel;
     let base = match e.action {
         Action::Press => e.button?.min(2),
         // Legacy encodings cannot say which button went up.
@@ -59,13 +65,16 @@ pub fn report(e: &Event, mode: TermMode) -> Option<Vec<u8>> {
         Action::WheelDown => 65,
     };
     let code = base + 4 * u8::from(e.shift) + 8 * u8::from(e.alt) + 16 * u8::from(e.ctrl);
+    let end = if e.action == Action::Release {
+        'm'
+    } else {
+        'M'
+    };
+    if let Some((px, py)) = pixels {
+        return Some(format!("\x1b[<{code};{px};{py}{end}").into_bytes());
+    }
     let (x, y) = (u32::from(e.col) + 1, u32::from(e.row) + 1);
     if sgr {
-        let end = if e.action == Action::Release {
-            'm'
-        } else {
-            'M'
-        };
         return Some(format!("\x1b[<{code};{x};{y}{end}").into_bytes());
     }
     let mut out = b"\x1b[M".to_vec();
@@ -86,6 +95,15 @@ pub fn report(e: &Event, mode: TermMode) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// Cells only (no 1016): what every test below the 1016 block means by `report`.
+    fn report(e: &Event, mode: TermMode) -> Option<Vec<u8>> {
+        super::report(e, mode, false)
+    }
+
+    fn report3(e: &Event, mode: TermMode, pixel: bool) -> Option<Vec<u8>> {
+        super::report(e, mode, pixel)
+    }
+
     const CLICK: TermMode = TermMode::MOUSE_REPORT_CLICK;
 
     fn ev(action: Action, button: Option<u8>, col: u16, row: u16) -> Event {
@@ -97,6 +115,15 @@ mod tests {
             ctrl: false,
             col,
             row,
+            px: None,
+        }
+    }
+
+    /// An event with a pixel position (terminal-space, 0-based: what the page measures).
+    fn evp(action: Action, button: Option<u8>, col: u16, row: u16, px: (i32, i32)) -> Event {
+        Event {
+            px: Some(px),
+            ..ev(action, button, col, row)
         }
     }
 
@@ -218,5 +245,125 @@ mod tests {
         assert_eq!(report(&click, vt.mode()).unwrap(), b"\x1b[<0;5;3M");
         vt.feed(b"\x1b[?1000l");
         assert!(!captures(vt.mode(), false));
+    }
+
+    const PIX: TermMode = TermMode::SGR_MOUSE;
+
+    // DECSET 1016 (Ghostty `mouse_encode.zig` sgr_pixels): the SGR format with terminal-space pixels, 0-based
+    // (no +1 as cells have), rounded to whole pixels by the caller.
+    #[test]
+    fn pixel_mode_reports_zero_based_pixels_in_the_sgr_shape() {
+        let m = CLICK | PIX;
+        assert_eq!(
+            report3(&evp(Action::Press, Some(0), 4, 2, (83, 47)), m, true).unwrap(),
+            b"\x1b[<0;83;47M"
+        );
+        assert_eq!(
+            report3(&evp(Action::Release, Some(2), 4, 2, (83, 47)), m, true).unwrap(),
+            b"\x1b[<2;83;47m"
+        );
+        assert_eq!(
+            report3(&evp(Action::Press, Some(0), 0, 0, (0, 0)), m, true).unwrap(),
+            b"\x1b[<0;0;0M"
+        );
+    }
+
+    // xterm and Ghostty: 1016 wins over 1006 (and over 1005 or no encoding at all: it is its own format).
+    #[test]
+    fn pixel_mode_takes_precedence_over_the_other_encodings() {
+        let e = evp(Action::Press, Some(0), 4, 2, (83, 47));
+        assert_eq!(
+            report3(&e, CLICK | PIX, false).unwrap(),
+            b"\x1b[<0;5;3M",
+            "off: cells"
+        );
+        for m in [CLICK, CLICK | PIX, CLICK | TermMode::UTF8_MOUSE] {
+            assert_eq!(report3(&e, m, true).unwrap(), b"\x1b[<0;83;47M", "{m:?}");
+        }
+    }
+
+    // Pixels need a mouse mode like every other encoding: 1016 alone reports nothing.
+    #[test]
+    fn pixel_mode_without_a_mouse_mode_reports_nothing() {
+        let e = evp(Action::Press, Some(0), 4, 2, (83, 47));
+        assert_eq!(report3(&e, PIX, true), None);
+        assert_eq!(report3(&e, TermMode::empty(), true), None);
+    }
+
+    #[test]
+    fn pixel_mode_keeps_modifiers_wheel_and_motion_rules() {
+        let mut e = evp(Action::Press, Some(0), 1, 1, (12, 20));
+        e.shift = true;
+        e.ctrl = true;
+        assert_eq!(report3(&e, CLICK | PIX, true).unwrap(), b"\x1b[<20;12;20M");
+        assert_eq!(
+            report3(&evp(Action::WheelUp, None, 1, 1, (12, 20)), CLICK, true).unwrap(),
+            b"\x1b[<64;12;20M"
+        );
+        assert_eq!(
+            report3(&evp(Action::WheelDown, None, 1, 1, (12, 20)), CLICK, true).unwrap(),
+            b"\x1b[<65;12;20M"
+        );
+        let drag = evp(Action::Motion, Some(0), 1, 1, (12, 20));
+        assert_eq!(
+            report3(&drag, CLICK, true),
+            None,
+            "1000 does not report drags"
+        );
+        assert_eq!(
+            report3(&drag, TermMode::MOUSE_DRAG, true).unwrap(),
+            b"\x1b[<32;12;20M"
+        );
+        let bare = evp(Action::Motion, None, 1, 1, (12, 20));
+        assert_eq!(report3(&bare, TermMode::MOUSE_DRAG, true), None);
+        assert_eq!(
+            report3(&bare, TermMode::MOUSE_MOTION, true).unwrap(),
+            b"\x1b[<35;12;20M"
+        );
+    }
+
+    // No legacy limit in pixels: a 4K terminal reports x > 3000 fine (the cell encodings drop past 222), and
+    // Ghostty does not clamp, so a drag that left the terminal reports a negative position.
+    #[test]
+    fn pixel_mode_has_no_range_limit_and_does_not_clamp() {
+        let m = CLICK | PIX;
+        assert_eq!(
+            report3(&evp(Action::Press, Some(0), 400, 90, (3790, 2100)), m, true).unwrap(),
+            b"\x1b[<0;3790;2100M"
+        );
+        assert_eq!(
+            report3(&evp(Action::Release, Some(0), 0, 0, (-4, -1)), m, true).unwrap(),
+            b"\x1b[<0;-4;-1m"
+        );
+    }
+
+    // No pixel position known (a caller that only has cells, e.g. a replayed trace): the cell is the best
+    // answer, in the cell encoding the program would get without 1016 rather than nothing.
+    #[test]
+    fn pixel_mode_without_a_pixel_position_falls_back_to_the_cell_in_sgr() {
+        let e = ev(Action::Press, Some(0), 4, 2);
+        assert_eq!(report3(&e, CLICK, true).unwrap(), b"\x1b[<0;5;3M");
+    }
+
+    // The path a program takes: set the modes over the pty, then click; DECRST hands cells back.
+    #[test]
+    fn modes_switched_on_by_the_program_choose_pixels() {
+        let vt = crate::vt::Vt::new(20, 5, |_| {});
+        let click = evp(Action::Press, Some(0), 4, 2, (45, 40));
+        vt.feed(b"\x1b[?1000h\x1b[?1006h");
+        assert_eq!(
+            report3(&click, vt.mode(), vt.pixel_mouse()).unwrap(),
+            b"\x1b[<0;5;3M"
+        );
+        vt.feed(b"\x1b[?1016h");
+        assert_eq!(
+            report3(&click, vt.mode(), vt.pixel_mouse()).unwrap(),
+            b"\x1b[<0;45;40M"
+        );
+        vt.feed(b"\x1b[?1016l");
+        assert_eq!(
+            report3(&click, vt.mode(), vt.pixel_mouse()).unwrap(),
+            b"\x1b[<0;5;3M"
+        );
     }
 }

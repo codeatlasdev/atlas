@@ -52,13 +52,21 @@ fn line_edit(name: &str, m: Mods) -> Option<&'static [u8]> {
 /// Bytes for a non-text key, or `None` when the key produces no input
 /// (text arrives separately through `text`).
 pub fn key(name: &str, m: Mods, mode: TermMode) -> Option<Vec<u8>> {
+    // Ghostty's macOS bindings are text, not keys: the same bytes whatever protocol the program pushed
+    // (`super+backspace=text:\x15`, `super+left/right=text:\x01/\x05`, `alt+left/right=esc:b/f`). Under Kitty,
+    // `CSI 127;9u` reached fish 4 unbound, so ⌘⌫ did nothing. ⌥⌫ / ⌥⌦ stay real keys (shells bind alt).
+    if (m.meta || matches!(name, "ArrowLeft" | "ArrowRight"))
+        && let Some(b) = line_edit(name, m)
+    {
+        return Some(b.to_vec());
+    }
     if mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL)
         && let Some(b) = kitty(name, m, mode)
     {
         return Some(b);
     }
-    // Legacy terminals get the readline bytes; a program that pushed the Kitty protocol gets
-    // the real key with its modifiers (`CSI 1;9D`, `CSI 127;9u`) and binds it itself.
+    // ⌥ chords: legacy terminals get the readline bytes; a program that pushed the Kitty protocol gets the real key
+    // with its modifier (`CSI 127;3u`) and binds it itself.
     if !mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL)
         && let Some(b) = line_edit(name, m)
     {
@@ -290,27 +298,6 @@ pub fn shell_quote(s: &str) -> String {
     } else {
         format!("'{}'", s.replace('\'', "'\\''"))
     }
-}
-
-/// Wheel on the alternate screen (xterm "alternate scroll", DECSET 1007, on by default;
-/// Ghostty `mouse-scroll` on the alt screen): `lines` > 0 scrolls up, sent as that many
-/// Up arrows (Down for negative). `None` when the program has the real scrollback (primary
-/// screen), asked for mouse reports (`MOUSE_MODE`, not implemented here: the program
-/// would get nothing), or turned the mode off.
-pub fn alt_scroll(lines: i32, mode: TermMode) -> Option<Vec<u8>> {
-    if lines == 0
-        || !mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL)
-        || mode.intersects(TermMode::MOUSE_MODE)
-    {
-        return None;
-    }
-    let arrow: &[u8] = match (lines > 0, mode.contains(TermMode::APP_CURSOR)) {
-        (true, false) => b"\x1b[A",
-        (true, true) => b"\x1bOA",
-        (false, false) => b"\x1b[B",
-        (false, true) => b"\x1bOB",
-    };
-    Some(arrow.repeat(lines.unsigned_abs().min(50) as usize))
 }
 
 /// ⇧PgUp / ⇧PgDn: scroll the terminal's own scrollback by a page instead of sending
@@ -601,37 +588,26 @@ mod tests {
         assert_eq!(key("ArrowLeft", cmd_shift, legacy).unwrap(), b"\x1b[1;10D");
     }
 
+    /// Incident (2026-10-26, fish 4 in the GPU terminal): fish enables the Kitty protocol, the ⌘ chords went out as
+    /// super+key (`CSI 127;9u`, `CSI 1;9D`), which fish does not bind, so ⌘⌫ deleted nothing and ⌘← moved a word.
+    /// Ghostty binds them as text (`super+backspace=text:\x15`, `super+left=text:\x01`, `super+right=text:\x05`),
+    /// sent whatever protocol the program pushed. ⌥ chords stay real keys there: shells bind alt.
     #[test]
     fn macos_line_editing_map_kitty() {
         let k = TermMode::DISAMBIGUATE_ESC_CODES;
-        // The real key with its modifier (alt 3, super 9): the program binds it.
-        assert_eq!(key("Backspace", CMD, k).unwrap(), b"\x1b[127;9u");
+        assert_eq!(key("Backspace", CMD, k).unwrap(), b"\x15");
+        assert_eq!(key("ArrowLeft", CMD, k).unwrap(), b"\x01");
+        assert_eq!(key("ArrowRight", CMD, k).unwrap(), b"\x05");
+        let all = k | TermMode::REPORT_ALL_KEYS_AS_ESC;
+        assert_eq!(key("Backspace", CMD, all).unwrap(), b"\x15");
+        // The real key with its modifier (alt 3): the program binds it.
         assert_eq!(key("Backspace", OPT, k).unwrap(), b"\x1b[127;3u");
-        assert_eq!(key("ArrowLeft", CMD, k).unwrap(), b"\x1b[1;9D");
-        assert_eq!(key("ArrowRight", CMD, k).unwrap(), b"\x1b[1;9C");
-        assert_eq!(key("ArrowLeft", OPT, k).unwrap(), b"\x1b[1;3D");
-        assert_eq!(key("ArrowRight", OPT, k).unwrap(), b"\x1b[1;3C");
+        // Ghostty binds ⌥← ⌥→ as text too (`alt+left=esc:b`, `alt+right=esc:f`): word jumps in every shell.
+        assert_eq!(key("ArrowLeft", OPT, k).unwrap(), b"\x1bb");
+        assert_eq!(key("ArrowRight", OPT, k).unwrap(), b"\x1bf");
         assert_eq!(key("Delete", OPT, k).unwrap(), b"\x1b[3;3~");
         // Plain Backspace keeps its legacy byte.
         assert_eq!(key("Backspace", NONE, k).unwrap(), b"\x7f");
-    }
-
-    #[test]
-    fn wheel_on_the_alternate_screen_sends_arrows() {
-        let alt = TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL;
-        assert_eq!(alt_scroll(3, alt).unwrap(), b"\x1b[A\x1b[A\x1b[A");
-        assert_eq!(alt_scroll(-2, alt).unwrap(), b"\x1b[B\x1b[B");
-        assert_eq!(
-            alt_scroll(1, alt | TermMode::APP_CURSOR).unwrap(),
-            b"\x1bOA"
-        );
-        // Primary screen keeps its scrollback; mode 1007 off, or a mouse-reporting program, opts out.
-        assert_eq!(alt_scroll(3, TermMode::ALTERNATE_SCROLL), None);
-        assert_eq!(alt_scroll(3, TermMode::ALT_SCREEN), None);
-        assert_eq!(alt_scroll(3, alt | TermMode::MOUSE_REPORT_CLICK), None);
-        assert_eq!(alt_scroll(0, alt), None);
-        // A runaway flick is capped.
-        assert_eq!(alt_scroll(500, alt).unwrap().len(), 50 * 3);
     }
 
     #[test]

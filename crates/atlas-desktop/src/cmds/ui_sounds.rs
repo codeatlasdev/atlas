@@ -14,9 +14,13 @@ fn enabled_from(exit_ok: bool, stdout: &str) -> bool {
     !matches!(stdout.trim(), "0" | "false" | "NO" | "no")
 }
 
-/// Whether the system lets apps play UI sound effects. Read once at start by the frontend.
+/// Whether the system lets apps play UI sound effects. Read once at start by the frontend. `defaults` is macOS
+/// only: elsewhere there is no such switch to follow, so the answer is "on" without spawning anything.
 #[tauri::command]
 pub fn system_ui_sounds() -> bool {
+    if !cfg!(target_os = "macos") {
+        return true;
+    }
     match Command::new("defaults")
         .args(["read", "-g", "com.apple.sound.uiaudio.enabled"])
         .stdin(std::process::Stdio::null())

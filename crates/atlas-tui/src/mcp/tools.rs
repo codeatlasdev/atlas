@@ -51,7 +51,7 @@ const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "atlas_config",
-        description: "Summary of atlas.yaml (merged with atlas.local.yaml): project name, services {name, port, depends_on, command, enabled} and actions {key, label, confirm?}. Use it to learn valid service names and action keys/labels before calling control tools.",
+        description: "Summary of the project config (atlas.yaml merged with atlas.local.yaml, or the stack detected from the project when there is no atlas.yaml): project name, source (\"file\" | \"detected\"), services {name, port, depends_on, command, enabled} and actions {key, label, confirm?}. Use it to learn valid service names and action keys/labels before calling control tools.",
         schema: schema_no_args,
         control: None,
     },
@@ -282,7 +282,7 @@ fn search_tool(root: &Path, args: &Value) -> ToolResult {
 }
 
 pub(crate) fn config_tool(root: &Path) -> ToolResult {
-    let cfg = crate::config::load(root).map_err(|e| format!("{e:#}"))?;
+    let (cfg, source) = crate::config::load_or_detect(root).map_err(|e| format!("{e:#}"))?;
     let mut names: Vec<&String> = cfg.services.keys().collect();
     names.sort();
     let services: Vec<Value> = names
@@ -315,7 +315,13 @@ pub(crate) fn config_tool(root: &Path) -> ToolResult {
             })
         })
         .collect();
-    let v = json!({ "project": cfg.name, "services": services, "actions": actions });
+    // `source`: "file" (atlas.yaml) or "detected" (no file; inferred from the project, `atlas init` saves it).
+    let source = match source {
+        crate::config::ConfigSource::File(_) => "file",
+        crate::config::ConfigSource::Detected => "detected",
+    };
+    let v =
+        json!({ "project": cfg.name, "source": source, "services": services, "actions": actions });
     Ok(serde_json::to_string_pretty(&v).unwrap_or_default())
 }
 

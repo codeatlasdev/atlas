@@ -80,7 +80,6 @@
 		} catch {}
 	});
 
-
 	// bots that actually have at least one card (used to build chips)
 	const unfilteredCols = $derived(boardColumns(bots.boardEntries, now));
 	const availableBots = $derived.by(() => {
@@ -97,7 +96,9 @@
 	// Only the bots that have a chip on screen count. A saved pick whose bot lost its cards (or was deleted) had no
 	// chip to unselect yet still filtered everything out, which left an empty board with no visible filter.
 	const activeBots = $derived(
-		new Set([...selectedBots].filter((k) => availableBots.some((b) => `${b.hostKey}\u0000${b.bot.id}` === k))),
+		new Set(
+			[...selectedBots].filter((k) => availableBots.some((b) => `${b.hostKey}\u0000${b.bot.id}` === k)),
+		),
 	);
 	const filterOpts = $derived<BoardFilterOptions>({
 		...(activeBots.size > 0 ? { bots: activeBots } : {}),

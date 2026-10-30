@@ -22,7 +22,7 @@ This page is the honest version of "how much can you trust an Atlas download". I
 | SBOM | The release job attaches a CycloneDX SBOM of the CLI's dependency tree (`atlas-<version>-sbom.cdx.json`) when `cargo-cyclonedx` is available, and warns loudly when it is not, so a release can ship without one. | `release.yml` |
 | Code signing | Binaries and the app are **ad-hoc** code signed (`codesign --sign -`), which satisfies the Apple silicon "must be signed" rule. | `release.yml` |
 | Hosted build | Releases are built on GitHub-hosted runners from the tag; no long-lived secret: the publish job uses the run's `GITHUB_TOKEN`. | [Releasing](release.md) |
-| Network surface | Atlas makes no network request other than update checks and downloads from GitHub; there is no telemetry. **Atlas Bot** (when installed) additionally calls `push.codeatlas.com.br` for push notifications (event kind only) and, when configured, `api.telegram.org` for the Telegram bridge. Both can be disabled: `ATLAS_PUSH_RELAY=off` and omitting `bot_telegram_set`. | [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md) |
+| Network surface | Atlas makes no network request other than update checks and downloads from GitHub; there is no telemetry. **Atlas Crew** (when installed) additionally calls `push.codeatlas.com.br` for push notifications (event kind only) and, when configured, `api.telegram.org` for the Telegram bridge. Both can be disabled: `ATLAS_PUSH_RELAY=off` and omitting `bot_telegram_set`. | [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md) |
 
 ## What is deliberately not claimed
 

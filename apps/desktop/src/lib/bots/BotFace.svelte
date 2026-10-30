@@ -1,13 +1,27 @@
 <script lang="ts" module>
 	let uid = 0;
+	const PIECES = ["hat", "outfit", "tool", "face"] as const;
 </script>
 
 <script lang="ts">
 	import { onMount } from "svelte";
+	import BotFaceGear from "#lib/bots/BotFaceGear.svelte";
 	import BotHat from "#lib/bots/BotHat.svelte";
 	import type { BotState } from "#lib/bots/botFace.ts";
 	import { normalizeLook, shade } from "#lib/bots/look.ts";
 	import { SHELL_PATHS } from "#lib/bots/shell.ts";
+	import BotOutfit from "#lib/bots/BotOutfit.svelte";
+	import BotTool from "#lib/bots/BotTool.svelte";
+	import {
+		type EquipPart,
+		equipEnter,
+		equipImpulse,
+		fromChannels,
+		pose,
+		spring,
+		STIFFNESS,
+		toChannels,
+	} from "#lib/bots/rig.ts";
 
 	let {
 		seed,
@@ -15,6 +29,7 @@
 		size = 36,
 		look,
 		track = false,
+		react,
 	}: {
 		seed: string;
 		state: BotState;
@@ -23,6 +38,11 @@
 		look?: unknown;
 		/** Eyes follow the pointer (editor preview). */
 		track?: boolean;
+		/**
+		 * Equip signal (editor): bump `n` to make the crewmate hop and the piece named by `part` animate in.
+		 * The value present at mount is ignored, so remounts never replay it.
+		 */
+		react?: { n: number; part: EquipPart };
 	} = $props();
 
 	const id = `bot${++uid}`;
@@ -36,6 +56,18 @@
 	let blinking = $state(false);
 	let paused = $state(false);
 	let svg: SVGSVGElement;
+
+	// Hands, tool and outfit only read at avatar sizes and up; tiny list icons stay a clean face.
+	const detailed = $derived(size >= 40);
+	// Drawn pose, sprung toward rig.pose() every frame (see rig.ts).
+	let p = $state(pose("idle", "none", 0));
+	// Freshly put-on pieces animate in from rig.equipEnter(); `null` = settled, nothing to draw specially.
+	let enter = $state<Record<"hat" | "outfit" | "tool" | "face", ReturnType<typeof equipEnter> | null>>({
+		hat: null,
+		outfit: null,
+		tool: null,
+		face: null,
+	});
 
 	onMount(() => {
 		const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -93,6 +125,57 @@
 		};
 		const onVisibility = () => (paused = document.hidden);
 
+		// Motion: one rAF per face; springs give overshoot on state changes and lag on hands/hat.
+		let raf = 0;
+		let last = performance.now();
+		let lastState = botState;
+		let lastReact = react?.n;
+		const equippedAt: Partial<Record<"hat" | "outfit" | "tool" | "face", number>> = {};
+		const t0 = Math.random() * 10;
+		let ch = toChannels(pose(botState, l.tool, t0));
+		const vel = ch.map(() => 0);
+		const frame = (now: number) => {
+			raf = requestAnimationFrame(frame);
+			if (paused) {
+				last = now;
+				return;
+			}
+			const dt = Math.min(0.05, (now - last) / 1000);
+			last = now;
+			if (botState !== lastState) {
+				// Anticipation: a squash kick whenever the state changes.
+				vel[2] -= 2.4;
+				vel[1] += 1.2;
+				lastState = botState;
+			}
+			if (react && react.n !== lastReact) {
+				lastReact = react.n;
+				const kick = equipImpulse(react.part);
+				for (let i = 0; i < vel.length; i++) vel[i] += kick[i];
+				// A kit swaps everything at once, so every piece animates in.
+				for (const part of PIECES) if (react.part === "kit" || react.part === part) equippedAt[part] = now;
+			}
+			for (const part of PIECES) {
+				const at = equippedAt[part];
+				if (at === undefined) continue;
+				const k = (now - at) / 1000;
+				const e = equipEnter(part, k);
+				const settled = e.dy === 0 && e.dx === 0 && e.reveal === 1 && e.scale === 1 && e.alpha === 1;
+				enter[part] = settled ? null : e;
+				if (settled) delete equippedAt[part];
+			}
+			const target = toChannels(pose(botState, l.tool, t0 + now / 1000));
+			ch = ch.map((x, i) => {
+				const [k, c] = STIFFNESS[i];
+				const [nx, nv] = spring(x, vel[i], target[i], dt, k, c);
+				vel[i] = nv;
+				return nx;
+			});
+			p = fromChannels(ch);
+		};
+		if (reduce) p = fromChannels(ch);
+		else raf = requestAnimationFrame(frame);
+
 		if (!reduce) {
 			later(600 + Math.random() * 2000, blink);
 			later(800 + Math.random() * 1500, glance);
@@ -101,6 +184,7 @@
 		document.addEventListener("visibilitychange", onVisibility);
 		return () => {
 			for (const t of timers) clearTimeout(t);
+			cancelAnimationFrame(raf);
 			window.removeEventListener("pointermove", onPointer);
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
@@ -128,13 +212,37 @@
 		</radialGradient>
 	</defs>
 
-	<ellipse class="shadow" cx="214" cy="432" rx="150" ry="16" fill="#000" opacity=".22" />
+	<defs>
+		<clipPath id="{id}-clip"><circle cx="214" cy="213" r="206" /></clipPath>
+		<!-- Outfit wipe: reveal the clothes top to bottom while they are being put on. -->
+		<clipPath id="{id}-wipe">
+			<rect x="-90" y="-170" width="608" height={(enter.outfit?.reveal ?? 1) * 640} />
+		</clipPath>
+	</defs>
 
-	<g class="body body-{botState}">
+	<ellipse
+		cx="214"
+		cy="432"
+		rx={150 * (1 + p.y / 160)}
+		ry={16 * (1 + p.y / 160)}
+		fill="#000"
+		opacity={0.22 * (1 + p.y / 120)}
+	/>
+
+	<g
+		class="body"
+		transform="translate(0 {p.y}) rotate({p.r} 214 300) translate(214 426) scale({p.sx} {p.sy}) translate(-214 -426)"
+	>
 		<circle cx="214" cy="213" r="206" fill="url(#{id}-g)" />
 		{#if size >= 40}
 			<g fill={shade(l.color, 0.22)} opacity=".55">
 				{#each SHELL_PATHS as d (d)}<path {d} />{/each}
+			</g>
+		{/if}
+
+		{#if detailed && l.outfit !== "none"}
+			<g clip-path={enter.outfit ? `url(#${id}-wipe)` : undefined}>
+				<BotOutfit outfit={l.outfit} color={l.color} clip="{id}-clip" />
 			</g>
 		{/if}
 
@@ -194,6 +302,15 @@
 			{/if}
 		</g>
 
+		{#if l.face !== "none"}
+			<g
+				transform="translate(214 195) scale({enter.face?.scale ?? 1}) translate(-214 -195)"
+				opacity={enter.face?.alpha ?? 1}
+			>
+				<BotFaceGear face={l.face} {px} {py} />
+			</g>
+		{/if}
+
 		{#if botState === "needs_you"}
 			<ellipse cx="214" cy="272" rx="14" ry="17" fill={ink} />
 		{:else if asleep}
@@ -202,8 +319,39 @@
 			<path d="M190 262 Q214 286 238 262" stroke={ink} stroke-width="10" stroke-linecap="round" fill="none" />
 		{/if}
 
-		<g class="hat"><BotHat hat={l.hat} color={l.color} /></g>
+		<g transform="translate(0 {enter.hat?.dy ?? 0}) rotate({p.hat} 214 60)" opacity={enter.hat?.alpha ?? 1}>
+			<BotHat hat={l.hat} color={l.color} />
+		</g>
 	</g>
+
+	{#if detailed}
+		<!-- Floating hands (no arms): they follow the body's lift, with their own lag. -->
+		<g transform="translate(0 {p.y})">
+			<g transform="translate({p.left.x} {p.left.y}) rotate({p.left.r})">
+				<circle r="34" fill={shade(l.color, -0.12)} />
+				<circle cx="-9" cy="-10" r="9" fill="#fff" opacity=".28" />
+			</g>
+			<g transform="translate({p.right.x} {p.right.y}) rotate({p.right.r})">
+				<g
+					transform="translate({enter.tool?.dx ?? 0} {enter.tool?.dy ?? 0}) scale({enter.tool?.scale ?? 1})"
+					opacity={enter.tool?.alpha ?? 1}
+				>
+					<BotTool tool={l.tool} t={p.tool} glow={shade(l.color, 0.55)} />
+				</g>
+				<circle r="34" fill={shade(l.color, -0.12)} />
+				<circle cx="-9" cy="-10" r="9" fill="#fff" opacity=".28" />
+				{#if l.tool !== "none"}
+					<path
+						d="M-26 6 q26 18 52 0"
+						stroke={shade(l.color, -0.35)}
+						stroke-width="6"
+						stroke-linecap="round"
+						fill="none"
+					/>
+				{/if}
+			</g>
+		</g>
+	{/if}
 
 	{#if asleep}
 		<g fill="currentColor" font-family="ui-rounded, system-ui" font-weight="700">
@@ -223,98 +371,6 @@
 	.asleep .body {
 		filter: grayscale(0.85);
 		opacity: 0.6;
-	}
-
-	/* Squash-and-stretch from the floor so it reads as a soft, living body. */
-	.body {
-		transform-origin: 214px 426px;
-	}
-	.body-idle {
-		animation: breathe 3.6s ease-in-out infinite;
-	}
-	.body-offline {
-		animation: breathe 5.5s ease-in-out infinite;
-	}
-	@keyframes breathe {
-		0%,
-		100% {
-			transform: scale(1, 1);
-		}
-		50% {
-			transform: scale(1.015, 1.035);
-		}
-	}
-	.body-working {
-		animation: bob 1.4s ease-in-out infinite;
-	}
-	@keyframes bob {
-		0%,
-		100% {
-			transform: translateY(0) rotate(0deg);
-		}
-		25% {
-			transform: translateY(-10px) rotate(-1.5deg);
-		}
-		75% {
-			transform: translateY(-10px) rotate(1.5deg);
-		}
-	}
-	.body-needs_you {
-		animation: hop 0.9s cubic-bezier(0.3, 0, 0.3, 1) infinite;
-	}
-	@keyframes hop {
-		0%,
-		100% {
-			transform: translateY(0) scale(1.06, 0.94);
-		}
-		40% {
-			transform: translateY(-46px) scale(0.96, 1.05);
-		}
-		70% {
-			transform: translateY(0) scale(1.04, 0.96);
-		}
-	}
-	.shadow {
-		transform-origin: 214px 432px;
-	}
-	svg:has(.body-needs_you) .shadow {
-		animation: shadow 0.9s cubic-bezier(0.3, 0, 0.3, 1) infinite;
-	}
-	@keyframes shadow {
-		40% {
-			transform: scale(0.7);
-			opacity: 0.12;
-		}
-	}
-
-	/* Hat lags the body a beat: secondary motion. */
-	.hat {
-		transform-origin: 214px 40px;
-		animation: sway 3.6s 0.25s ease-in-out infinite;
-	}
-	.body-needs_you .hat {
-		animation: flop 0.9s 0.08s ease-in-out infinite;
-	}
-	@keyframes sway {
-		0%,
-		100% {
-			transform: rotate(-1.5deg);
-		}
-		50% {
-			transform: rotate(1.5deg);
-		}
-	}
-	@keyframes flop {
-		0%,
-		100% {
-			transform: translateY(0) rotate(0deg);
-		}
-		45% {
-			transform: translateY(-14px) rotate(-5deg);
-		}
-		75% {
-			transform: translateY(4px) rotate(3deg);
-		}
 	}
 
 	.eyes {

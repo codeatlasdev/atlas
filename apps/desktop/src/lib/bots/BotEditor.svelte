@@ -7,11 +7,19 @@
 		BOT_COLORS,
 		EYE_LABELS,
 		EYE_STYLES,
+		FACE_LABELS,
+		FACES,
 		HAT_LABELS,
 		HATS,
+		OUTFIT_LABELS,
+		OUTFITS,
 		randomLook,
+		ROLE_KITS,
+		TOOL_LABELS,
+		TOOLS,
 		type BotLook,
 	} from "#lib/bots/look.ts";
+	import type { EquipPart } from "#lib/bots/rig.ts";
 
 	interface Props {
 		open?: boolean;
@@ -23,8 +31,7 @@
 	let { open = $bindable(false), look, seed, onsave }: Props = $props();
 
 	// Internal draft — reset every time the modal opens.
-	// Initial value doesn't matter; $effect below sets it on first open.
-	let draft = $state<BotLook>({ color: "#000000", eyes: "round", hat: "none" });
+	let draft = $state<BotLook>({ color: "#000000", eyes: "round", hat: "none", tool: "none", outfit: "none", face: "none" });
 	let prevOpen = false;
 	$effect(() => {
 		if (open && !prevOpen) draft = { ...look };
@@ -39,8 +46,20 @@
 	];
 	let preview = $state<BotState>("idle");
 
+	// Every change to the look pings the preview: the crewmate hops and the new piece animates in.
+	let react = $state<{ n: number; part: EquipPart }>({ n: 0, part: "kit" });
+	function equip(part: EquipPart, next: Partial<BotLook>) {
+		draft = { ...draft, ...next };
+		react = { n: react.n + 1, part };
+	}
+
 	const changed = $derived(
-		draft.color !== look.color || draft.eyes !== look.eyes || draft.hat !== look.hat,
+		draft.color !== look.color ||
+		draft.eyes !== look.eyes ||
+		draft.hat !== look.hat ||
+		draft.tool !== look.tool ||
+		draft.outfit !== look.outfit ||
+		draft.face !== look.face,
 	);
 
 	function handleSave() {
@@ -57,7 +76,7 @@
 		<!-- ── Left: live preview ──────────────────────────────────────────── -->
 		<div class="stage">
 			<div class="face-wrap">
-				<BotFace {seed} look={draft} state={preview} size={180} track />
+				<BotFace {seed} look={draft} state={preview} size={180} track {react} />
 			</div>
 			<div class="states" role="radiogroup" aria-label="Preview state">
 				{#each STATES as s (s.id)}
@@ -71,7 +90,7 @@
 					</button>
 				{/each}
 			</div>
-			<Button variant="ghost" size="sm" onclick={() => (draft = randomLook())}>
+			<Button variant="ghost" size="sm" onclick={() => { draft = randomLook(); react = { n: react.n + 1, part: "kit" }; }}>
 				<Shuffle size={13} />
 				Randomize
 			</Button>
@@ -79,6 +98,15 @@
 
 		<!-- ── Right: options ─────────────────────────────────────────────── -->
 		<div class="options">
+			<section>
+				<h4>Role kits</h4>
+				<div class="kits">
+					{#each ROLE_KITS as k (k.id)}
+						<button class="kit" onclick={() => equip("kit", k.kit)}>{k.label}</button>
+					{/each}
+				</div>
+			</section>
+
 			<section>
 				<h4>Color</h4>
 				<div class="swatches" role="radiogroup" aria-label="Color">
@@ -90,7 +118,7 @@
 							class="swatch"
 							class:on={draft.color === c}
 							style:background={c}
-							onclick={() => (draft = { ...draft, color: c })}
+							onclick={() => equip("color", { color: c })}
 						></button>
 					{/each}
 					<label
@@ -102,7 +130,7 @@
 							type="color"
 							aria-label="Custom color"
 							value={draft.color}
-							oninput={(e) => (draft = { ...draft, color: e.currentTarget.value })}
+							oninput={(e) => equip("color", { color: e.currentTarget.value })}
 						/>
 					</label>
 				</div>
@@ -117,9 +145,9 @@
 							aria-checked={draft.eyes === e}
 							class="tile"
 							class:on={draft.eyes === e}
-							onclick={() => (draft = { ...draft, eyes: e })}
+							onclick={() => equip("eyes", { eyes: e })}
 						>
-							<BotFace {seed} look={{ ...draft, eyes: e, hat: "none" }} state="idle" size={52} />
+							<BotFace {seed} look={{ ...draft, eyes: e, hat: "none", face: "none" }} state="idle" size={52} />
 							<span>{EYE_LABELS[e]}</span>
 						</button>
 					{/each}
@@ -135,10 +163,64 @@
 							aria-checked={draft.hat === h}
 							class="tile"
 							class:on={draft.hat === h}
-							onclick={() => (draft = { ...draft, hat: h })}
+							onclick={() => equip("hat", { hat: h })}
 						>
 							<BotFace {seed} look={{ ...draft, hat: h }} state="idle" size={52} />
 							<span>{HAT_LABELS[h]}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+
+			<section>
+				<h4>Face</h4>
+				<div class="grid" role="radiogroup" aria-label="Face">
+					{#each FACES as f (f)}
+						<button
+							role="radio"
+							aria-checked={draft.face === f}
+							class="tile"
+							class:on={draft.face === f}
+							onclick={() => equip("face", { face: f })}
+						>
+							<BotFace {seed} look={{ ...draft, face: f }} state="idle" size={52} />
+							<span>{FACE_LABELS[f]}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+
+			<section>
+				<h4>Tool</h4>
+				<div class="grid" role="radiogroup" aria-label="Tool">
+					{#each TOOLS as x (x)}
+						<button
+							role="radio"
+							aria-checked={draft.tool === x}
+							class="tile"
+							class:on={draft.tool === x}
+							onclick={() => equip("tool", { tool: x })}
+						>
+							<BotFace {seed} look={{ ...draft, tool: x }} state="idle" size={52} />
+							<span>{TOOL_LABELS[x]}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
+
+			<section>
+				<h4>Outfit</h4>
+				<div class="grid" role="radiogroup" aria-label="Outfit">
+					{#each OUTFITS as x (x)}
+						<button
+							role="radio"
+							aria-checked={draft.outfit === x}
+							class="tile"
+							class:on={draft.outfit === x}
+							onclick={() => equip("outfit", { outfit: x })}
+						>
+							<BotFace {seed} look={{ ...draft, outfit: x }} state="idle" size={52} />
+							<span>{OUTFIT_LABELS[x]}</span>
 						</button>
 					{/each}
 				</div>
@@ -232,6 +314,33 @@
 		color: var(--ca-text-secondary);
 	}
 
+	/* Role kits */
+	.kits {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.kit {
+		font: inherit;
+		font-size: 12px;
+		padding: 5px 12px;
+		border-radius: 999px;
+		border: 1px solid var(--ca-outline-subtle);
+		background: var(--ca-surface-base);
+		color: var(--ca-text-primary);
+		cursor: pointer;
+		transition:
+			transform 120ms,
+			border-color 120ms;
+	}
+	.kit:hover {
+		transform: translateY(-1px);
+		border-color: var(--ca-brand-main);
+	}
+	.kit:active {
+		transform: scale(0.96);
+	}
+
 	/* Color swatches */
 	.swatches {
 		display: flex;
@@ -273,7 +382,7 @@
 		cursor: pointer;
 	}
 
-	/* Eyes / Hat tile grids */
+	/* Eyes / Hat / Face / Tool / Outfit tile grids */
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));

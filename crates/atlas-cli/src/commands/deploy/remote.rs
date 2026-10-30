@@ -29,12 +29,18 @@ pub struct Output {
 
 impl Remote {
     pub fn new(host: &str) -> Self {
-        Self { host: host.into(), port: None }
+        Self {
+            host: host.into(),
+            port: None,
+        }
     }
 
     /// Create with an explicit port. `port` of 22 is stored as-is.
     pub fn with_port(host: &str, port: u16) -> Self {
-        Self { host: host.into(), port: Some(port) }
+        Self {
+            host: host.into(),
+            port: Some(port),
+        }
     }
 
     fn is_local(&self) -> bool {
@@ -69,8 +75,8 @@ impl Remote {
             c.args(["-p", &port_s]);
         }
         c.arg(&self.host)
-        .arg("--")
-        .arg(format!("bash -c {}", shq(script)));
+            .arg("--")
+            .arg(format!("bash -c {}", shq(script)));
         c
     }
 

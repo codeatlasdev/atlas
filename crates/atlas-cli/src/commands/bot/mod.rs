@@ -83,8 +83,12 @@ impl AtlasCommand for UninstallArgs {
             sudo systemctl disable atlas-bot 2>/dev/null || true; \
             sudo rm -f /etc/systemd/system/atlas-bot.service; \
             sudo systemctl daemon-reload 2>/dev/null || true; \
-            sudo userdel -r atlas-bot 2>/dev/null || true; \
-            sudo rm -rf /usr/local/lib/atlas-bot";
+            sudo rm -rf /usr/local/lib/atlas-bot; \
+            if id atlas-bot >/dev/null 2>&1; then sudo userdel -r atlas-bot 2>/dev/null; fi; \
+            if id atlas-bot >/dev/null 2>&1; then echo 'atlas-bot is still logged in (close Atlas Desktop and any ssh session as atlas-bot), then run uninstall again' >&2; exit 1; fi";
+        // userdel refuses while atlas-bot has processes (the desktop's SSH sessions). Report it instead of killing
+        // them: a `pkill -KILL -u atlas-bot` / `loginctl terminate-user` here coincided with the test server's sshd
+        // going down, so uninstall never kills processes on someone's server.
         let o = r.exec(script).await?;
         if o.code != 0 {
             bail!("uninstall failed: {}", o.stderr.trim());

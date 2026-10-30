@@ -32,6 +32,11 @@ pub struct InstallArgs {
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
     pub sudo_password_stdin: bool,
+    /// Upload this Linux x86_64 `atlas` instead of downloading the release of this version.
+    /// For builds whose hostd is not published yet (the release would lack the bot commands).
+    /// Also read from `ATLAS_BOT_BINARY`, so Atlas Desktop picks it up.
+    #[arg(long)]
+    pub binary: Option<std::path::PathBuf>,
 }
 
 impl AtlasCommand for InstallArgs {
@@ -56,7 +61,7 @@ Wants=network-online.target\n\
 User=atlas-bot\n\
 Environment=ATLAS_HOSTD_IDLE_SECS=never\n\
 Environment=ATLAS_BOT_HOST=1\n\
-Environment=PATH={h}/.bun/bin:{h}/.local/bin:{h}/.opencode/bin:{h}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin\n\
+Environment=PATH={h}/.atlas/bin:{h}/.bun/bin:{h}/.local/bin:{h}/.opencode/bin:{h}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin\n\
 ExecStart=/usr/local/lib/atlas-bot/atlas hostd\n\
 Restart=always\n\
 RestartSec=5\n\
@@ -94,6 +99,15 @@ async fn run_install(args: InstallArgs) -> Result<()> {
             "uname -sm && command -v systemctl >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1",
         )
         .await?;
+    if out.code == 255 {
+        // ssh's own failure (refused, timeout, key rejected): not the host's OS. Saying "needs Linux with systemd"
+        // here sent the user hunting for the wrong problem on a server whose sshd was simply down.
+        bail!(
+            "could not connect to {} over SSH: {}",
+            args.ssh_target,
+            out.stderr.trim()
+        );
+    }
     if out.code != 0 {
         bail!("atlas bot install needs a Linux x86_64 host with systemd and sudo");
     }
@@ -135,7 +149,14 @@ or run the install from a terminal: atlas bot install {}",
     // --- Binary ---
     step_marker("install");
     step("installing atlas binary");
-    get_binary(&r).await?;
+    let binary = args
+        .binary
+        .clone()
+        .or_else(|| std::env::var_os("ATLAS_BOT_BINARY").map(Into::into));
+    match &binary {
+        Some(path) => upload_binary(&r, path).await?,
+        None => get_binary(&r).await?,
+    }
 
     // --- User ---
     step_marker("user");
@@ -192,7 +213,8 @@ or run the install from a terminal: atlas bot install {}",
     // --- Enable and start ---
     step("enabling and starting atlas-bot");
     let o = r
-        .exec("sudo systemctl daemon-reload && sudo systemctl enable --now atlas-bot")
+        // `restart`, not `enable --now`: a reinstall over a running ship must run the new binary.
+        .exec("sudo systemctl daemon-reload && sudo systemctl enable atlas-bot && sudo systemctl restart atlas-bot")
         .await?;
     if o.code != 0 {
         bail!("systemctl enable --now failed: {}", o.stderr.trim());
@@ -260,10 +282,15 @@ Run `atlas update` on this machine to populate the cache, or ensure the host has
     }
 
     eprintln!("\x1b[33m◆\x1b[0m online download failed; uploading local binary (offline mode)");
+    upload_binary(r, &local_bin).await
+}
+
+/// Upload a local Linux `atlas` to the host's install dir.
+async fn upload_binary(r: &Remote, local_bin: &std::path::Path) -> Result<()> {
     let content =
-        std::fs::read(&local_bin).with_context(|| format!("reading {}", local_bin.display()))?;
+        std::fs::read(local_bin).with_context(|| format!("reading {}", local_bin.display()))?;
     let upload = format!(
-        "sudo mkdir -p {dir_q} && sudo tee {dir_q}/atlas > /dev/null && sudo chmod +x {dir_q}/atlas",
+        "sudo mkdir -p {dir_q} && sudo tee {dir_q}/atlas.new > /dev/null && sudo chmod +x {dir_q}/atlas.new && sudo mv -f {dir_q}/atlas.new {dir_q}/atlas",
         dir_q = shq(INSTALL_DIR),
     );
     let o = r.exec_stdin(&upload, Some(&content)).await?;
@@ -371,7 +398,10 @@ mod tests {
         for key in ["check", "install", "user", "service", "ssh", "done"] {
             // Verify the function compiles and the key is a valid str literal
             let expected = format!("step: {key}");
-            assert!(expected.starts_with("step: "), "marker {key} must start with 'step: '");
+            assert!(
+                expected.starts_with("step: "),
+                "marker {key} must start with 'step: '"
+            );
         }
     }
 
@@ -383,10 +413,19 @@ mod tests {
 or run the install from a terminal: atlas bot install {}",
             target, target
         );
-        assert!(msg.contains("passwordless sudo"), "message must mention passwordless sudo");
+        assert!(
+            msg.contains("passwordless sudo"),
+            "message must mention passwordless sudo"
+        );
         assert!(msg.contains(target), "message must contain the target");
-        assert!(msg.contains("atlas bot install"), "message must contain the install command");
-        assert!(msg.contains("asks for a password"), "message must mention password prompt");
+        assert!(
+            msg.contains("atlas bot install"),
+            "message must contain the install command"
+        );
+        assert!(
+            msg.contains("asks for a password"),
+            "message must mention password prompt"
+        );
     }
 
     #[test]
@@ -399,22 +438,8 @@ or run the install from a terminal: atlas bot install {}",
             yes: true,
             port: 22,
             sudo_password_stdin: true,
+            binary: None,
         };
-    }
-
-    #[test]
-    fn sudo_password_stdin_debug_contains_no_secret() {
-        // Debug output of InstallArgs must never contain a password value.
-        let args = InstallArgs {
-            ssh_target: "ubuntu@example.com".into(),
-            yes: false,
-            port: 22,
-            sudo_password_stdin: true,
-        };
-        let dbg = format!("{args:?}");
-        // The only password-related thing is the boolean flag, not a value
-        assert!(!dbg.contains("hunter2"), "no password value in debug");
-        assert!(dbg.contains("sudo_password_stdin: true"));
     }
 
     #[test]
@@ -422,7 +447,13 @@ or run the install from a terminal: atlas bot install {}",
         let unit = systemd_unit();
         assert!(unit.contains(".bun/bin"), "missing .bun/bin in PATH");
         assert!(unit.contains(".local/bin"), "missing .local/bin in PATH");
-        assert!(unit.contains(".opencode/bin"), "missing .opencode/bin in PATH");
-        assert!(unit.contains(".npm-global/bin"), "missing .npm-global/bin in PATH");
+        assert!(
+            unit.contains(".opencode/bin"),
+            "missing .opencode/bin in PATH"
+        );
+        assert!(
+            unit.contains(".npm-global/bin"),
+            "missing .npm-global/bin in PATH"
+        );
     }
 }

@@ -1,0 +1,7 @@
+[
+  {"kind":"connect_github","reason":"to clone owner/repo"},
+  {"kind":"provide_secret","name":"API_KEY","label":"API Key","reason":"needed for the API"},
+  {"kind":"input","label":"Enter value","reason":"configuration needed","placeholder":"e.g. my-value"},
+  {"kind":"choose","question":"Which deployment target?","options":["staging","production"]},
+  {"kind":"sign_in_engine","engine":"omp"}
+]

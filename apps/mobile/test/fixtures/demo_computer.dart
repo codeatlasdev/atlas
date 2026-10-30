@@ -645,6 +645,14 @@ class _DemoComputer implements Transport {
           'version': '1.0.0',
           'hostname': 'Demo MacBook',
         };
+      case 'bot_github_status':
+        data = {'installed': true, 'login': null};
+      case 'bot_github_login_start':
+        data = {'user_code': 'DEMO-1234', 'verification_uri': 'https://github.com/login/device'};
+      case 'bot_github_login_poll':
+        data = {'state': 'pending'};
+      case 'bot_github_logout':
+        data = <String, Object?>{};
       default:
         data = <String, Object?>{};
     }

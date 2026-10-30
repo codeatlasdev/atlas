@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -18,6 +17,7 @@ import 'package:atlas_mobile/features/agents/agents_provider.dart';
 import 'package:atlas_mobile/features/agents/agent_hub_screen.dart';
 import 'package:atlas_mobile/features/agents/crew_widgets.dart';
 import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
+import 'package:atlas_mobile/features/agents/approval_banner.dart';
 
 export 'package:atlas_mobile/features/agents/agent_info.dart'
     show agentStateLabel;

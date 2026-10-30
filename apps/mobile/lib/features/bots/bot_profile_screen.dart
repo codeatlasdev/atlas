@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
@@ -30,6 +33,12 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
   int? _memoryLines;
   bool _memoryLoaded = false;
 
+  ShipGithubStatus? _githubStatus;
+  bool _githubLoading = false;
+  ShipLoginFlow? _githubFlow;
+  bool _githubPolling = false;
+  Timer? _pollTimer;
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +64,15 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
       _memoryLines = memText?.split('\n').length ?? 0;
       _memoryLoaded = true;
     });
+
+    // Load GitHub status.
+    final ghResp = await mux.call('bot_github_status', {});
+    if (mounted && ghResp['ok'] == true) {
+      final ghData = (ghResp['data'] as Map?)?.cast<String, dynamic>() ?? {};
+      setState(() {
+        _githubStatus = ShipGithubStatus.fromJson(ghData);
+      });
+    }
   }
 
   Future<void> _saveRoutines(List<BotRoutine> updated) async {
@@ -205,6 +223,85 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
     await _saveRoutines([..._routines, result]);
   }
 
+  Future<void> _startLogin() async {
+    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    if (mux == null) return;
+    setState(() => _githubLoading = true);
+    try {
+      final resp = await mux.call('bot_github_login_start', {});
+      if (!mounted) return;
+      if (resp['ok'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resp['error']?.toString() ?? 'Failed to start login')),
+        );
+        return;
+      }
+      final data = (resp['data'] as Map?)?.cast<String, dynamic>() ?? {};
+      setState(() {
+        _githubFlow = ShipLoginFlow.fromJson(data);
+        _githubPolling = true;
+      });
+      _startPollingTimer();
+    } finally {
+      if (mounted) setState(() => _githubLoading = false);
+    }
+  }
+
+  void _startPollingTimer() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollLogin());
+  }
+
+  Future<void> _pollLogin() async {
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    final resp = await mux.call('bot_github_login_poll', {});
+    if (!mounted) return;
+    final data = (resp['data'] as Map?)?.cast<String, dynamic>() ?? {};
+    final state = data['state'] as String? ?? 'pending';
+    if (state == 'done') {
+      _stopPolling();
+      final login = data['login'] as String?;
+      setState(() {
+        _githubFlow = null;
+        _githubStatus = ShipGithubStatus(installed: true, login: login);
+      });
+    } else if (state == 'error') {
+      _stopPolling();
+      setState(() => _githubFlow = null);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['error']?.toString() ?? 'GitHub sign-in failed')),
+        );
+      }
+    }
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    setState(() => _githubPolling = false);
+  }
+
+  Future<void> _logout() async {
+    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    if (mux == null) return;
+    await mux.call('bot_github_logout', {});
+    if (!mounted) return;
+    setState(() {
+      _githubStatus = ShipGithubStatus(
+        installed: _githubStatus?.installed ?? true,
+        login: null,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
@@ -267,6 +364,26 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
                       await mux.call('bot_update', {
                         'id': widget.botId,
                         'approval': val,
+                      });
+                      ref.invalidate(botsProvider(widget.device));
+                    },
+                  ),
+                ),
+                const SizedBox(height: Space.lg),
+
+                // ── short replies ──────────────────────────────────────────
+                _Section(
+                  title: 'Short replies',
+                  child: _ShortRepliesRow(
+                    value: bot.shortReplies,
+                    onChanged: (val) async {
+                      final mux = ref
+                          .read(connectionNotifierProvider(widget.device))
+                          .value;
+                      if (mux == null) return;
+                      await mux.call('bot_update', {
+                        'id': widget.botId,
+                        'short_replies': val,
                       });
                       ref.invalidate(botsProvider(widget.device));
                     },
@@ -343,7 +460,21 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: Space.xxl),
+                const SizedBox(height: Space.lg),
+
+                // ── github ────────────────────────────────────────────────
+                _GithubCard(
+                  status: _githubStatus,
+                  flow: _githubFlow,
+                  loading: _githubLoading,
+                  polling: _githubPolling,
+                  onConnect: _startLogin,
+                  onDisconnect: _logout,
+                  onCancelFlow: () {
+                    _stopPolling();
+                    setState(() => _githubFlow = null);
+                  },
+                ),
 
                 // ── delete ────────────────────────────────────────────────
                 Center(
@@ -622,6 +753,171 @@ class _NewRoutineDialogState extends State<_NewRoutineDialog> {
             );
           },
           child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── github card ───────────────────────────────────────────────────────────────
+
+class _GithubCard extends StatelessWidget {
+  const _GithubCard({
+    required this.status,
+    required this.flow,
+    required this.loading,
+    required this.polling,
+    required this.onConnect,
+    required this.onDisconnect,
+    required this.onCancelFlow,
+  });
+
+  final ShipGithubStatus? status;
+  final ShipLoginFlow? flow;
+  final bool loading;
+  final bool polling;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+  final VoidCallback onCancelFlow;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('GitHub', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            if (status == null)
+              const Center(child: CircularProgressIndicator.adaptive())
+            else if (flow != null)
+              _flowView(context, flow!)
+            else if (status!.login != null)
+              _connectedView(context, status!.login!)
+            else
+              _notConnectedView(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _connectedView(BuildContext context, String login) {
+    return Row(
+      children: [
+        const Icon(Icons.check_circle_outline, size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text('Connected as @$login',
+              style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        TextButton(onPressed: onDisconnect, child: const Text('Disconnect')),
+      ],
+    );
+  }
+
+  Widget _notConnectedView(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text('Not connected',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ),
+        FilledButton(
+          onPressed: loading ? null : onConnect,
+          child: loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator.adaptive(strokeWidth: 2))
+              : const Text('Connect'),
+        ),
+      ],
+    );
+  }
+
+  Widget _flowView(BuildContext context, ShipLoginFlow flow) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Go to ${flow.verificationUri} and enter this code:',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(
+              flow.userCode,
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 2),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.copy),
+              tooltip: 'Copy code',
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: flow.userCode));
+              },
+            ),
+          ],
+        ),
+        if (polling)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Waiting for authorization…',
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant)),
+          ),
+        TextButton(onPressed: onCancelFlow, child: const Text('Cancel')),
+      ],
+    );
+  }
+}
+
+// ── short replies row ─────────────────────────────────────────────────────────
+
+class _ShortRepliesRow extends StatelessWidget {
+  const _ShortRepliesRow({required this.value, required this.onChanged});
+  final bool? value; // null = crew default (on)
+  final void Function(bool?) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Summarize long replies with a cheap model.',
+                style: TextStyle(color: c.muted, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'crew', label: Text('Crew default')),
+            ButtonSegment(value: 'on',   label: Text('On')),
+            ButtonSegment(value: 'off',  label: Text('Off')),
+          ],
+          selected: {value == true ? 'on' : value == false ? 'off' : 'crew'},
+          onSelectionChanged: (s) {
+            final v = s.first == 'on' ? true : s.first == 'off' ? false : null;
+            onChanged(v);
+          },
         ),
       ],
     );

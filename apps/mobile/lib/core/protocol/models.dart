@@ -256,19 +256,41 @@ bool canSendChat(AgentStatus? status) {
 }
 
 
+/// A crew action that blocks a task, sent when state is `waiting_action`.
+class TaskAction {
+  const TaskAction({required this.kind, required this.data});
+  final String kind;
+  final Map<String, dynamic> data;
+
+  String? get reason => data['reason'] as String?;
+  String? get name => data['name'] as String?;
+  String? get label => data['label'] as String?;
+  String? get placeholder => data['placeholder'] as String?;
+  String? get question => data['question'] as String?;
+  List<String> get options => (data['options'] as List?)?.cast<String>() ?? const [];
+  String? get engine => data['engine'] as String?;
+
+  factory TaskAction.fromJson(Map<String, dynamic> j) =>
+      TaskAction(kind: j['kind'] as String? ?? '', data: j);
+}
+
+
 /// A task enqueued or completed on a bot.
 class BotTask {
   final String id;
   final int ts;
   final String source;
   final String prompt;
-  final String state; // queued|running|done|failed|cancelled
+  final String state; // queued|running|done|failed|cancelled|waiting_action
   final String? pane;
   final String? result;
   final String? error;
   final int? startedAt;
   final int? finishedAt;
   final List<BotStep> steps;
+  final TaskAction? action;
+  final String? replyFull;
+  final bool summarized;
 
   const BotTask({
     required this.id,
@@ -282,6 +304,9 @@ class BotTask {
     this.startedAt,
     this.finishedAt,
     this.steps = const [],
+    this.action,
+    this.replyFull,
+    this.summarized = false,
   });
 
   factory BotTask.fromJson(Map<String, dynamic> j) => BotTask(
@@ -299,6 +324,11 @@ class BotTask {
       for (final s in (j['steps'] as List<dynamic>?) ?? const [])
         BotStep.fromJson((s as Map).cast<String, dynamic>()),
     ],
+    action: j['action'] == null
+        ? null
+        : TaskAction.fromJson((j['action'] as Map).cast<String, dynamic>()),
+    replyFull: j['reply_full'] as String?,
+    summarized: j['summarized'] as bool? ?? false,
   );
 }
 
@@ -432,6 +462,7 @@ class BotListEntry {
     this.last,
     this.pendingApproval,
     this.routines = const [],
+    this.shortReplies,
   });
   final String id;
   final String name;
@@ -445,6 +476,7 @@ class BotListEntry {
   final BotLast? last;
   final BotPendingApproval? pendingApproval;
   final List<Routine> routines;
+  final bool? shortReplies;
   factory BotListEntry.fromJson(Map<String, dynamic> j) => BotListEntry(
     id: j['id'] as String? ?? '',
     name: j['name'] as String? ?? '',
@@ -467,7 +499,11 @@ class BotListEntry {
     routines: [
       for (final r in (j['routines'] as List<dynamic>?) ?? const [])
         Routine.fromJson((r as Map).cast()),
-/// One entry of an agent's conversation, as `agent_history` returns it.
+    ],
+    shortReplies: j['short_replies'] as bool?,
+  );
+}
+
 sealed class TimelineItem {
   const TimelineItem();
 
@@ -618,7 +654,8 @@ class ComputerInvite {
   const ComputerInvite({required this.url, required this.name});
   final String url;
   final String name;
-/// A subagent's live state in the parent's `agent_history.subagents`.
+}
+
 /// [state]: `running` | `done`.
 class SubagentInfo {
   const SubagentInfo({
@@ -1098,4 +1135,31 @@ class AgentTree {
     if (n == null) return const [];
     return n.isRoot ? [n] : children(n.parent!);
   }
+}
+
+/// GitHub status on a bot ship (`bot_github_status`).
+class ShipGithubStatus {
+  const ShipGithubStatus({required this.installed, required this.login});
+
+  final bool installed;
+  final String? login;
+
+  factory ShipGithubStatus.fromJson(Map<String, dynamic> j) =>
+      ShipGithubStatus(
+        installed: j['installed'] as bool? ?? false,
+        login: j['login'] as String?,
+      );
+}
+
+/// Active device-flow login for a ship (`bot_github_login_start`).
+class ShipLoginFlow {
+  const ShipLoginFlow({required this.userCode, required this.verificationUri});
+
+  final String userCode;
+  final String verificationUri;
+
+  factory ShipLoginFlow.fromJson(Map<String, dynamic> j) => ShipLoginFlow(
+        userCode: j['user_code'] as String? ?? '',
+        verificationUri: j['verification_uri'] as String? ?? '',
+      );
 }

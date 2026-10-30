@@ -111,7 +111,9 @@ void main() {
 
     // Bundle id isolation is the whole storage story: a shared keychain or app group would let
     // the lab read, and so corrupt, the real app's pairings and phone key. Push needs
-    // an entitlement; the lab has no Firebase/APNs identity, so none may appear unnoticed.
+    // both an entitlement and a Firebase config; the lab has neither.
+    // firebase_* packages are allowed in pubspec because build.gradle.kts applies
+    // google-services only when google-services.json is present (lab never has one).
     test('nothing is shared between the two apps and no push is set up', () {
       expect(
         Directory('ios/Runner').listSync().map((e) => e.path),
@@ -128,7 +130,7 @@ void main() {
       final info = _read('ios/Runner/Info.plist');
       expect(info, isNot(contains('remote-notification')));
       final pub = _read('pubspec.yaml');
-      for (final p in ['firebase_', 'flutter_local_notifications']) {
+      for (final p in ['flutter_local_notifications']) {
         expect(
           pub,
           isNot(contains(p)),

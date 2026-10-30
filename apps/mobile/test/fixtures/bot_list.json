@@ -16,7 +16,8 @@
         "id": "task-working",
         "pane": "bot:bot-working:task-working"
       },
-      "state": "working"
+      "state": "working",
+      "triggers": []
     },
     {
       "agent": "claude",
@@ -30,7 +31,8 @@
       "name": "Nightly",
       "queued": 0,
       "role": "Nightly checks",
-      "state": "idle"
+      "state": "idle",
+      "triggers": []
     },
     {
       "agent": "opencode",
@@ -43,7 +45,8 @@
       "name": "Deployer",
       "queued": 0,
       "role": "Deploys releases",
-      "state": "idle"
+      "state": "idle",
+      "triggers": []
     }
   ]
 }

@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -258,6 +260,7 @@ class _BotScreenState extends ConsumerState<BotScreen> {
                         task: task,
                         botId: widget.botId,
                         botName: botName,
+                        device: widget.device,
                         avatarColor: avatarColor,
                         initial: initial,
                         pendingApproval: isApprovalTask ? pa : null,
@@ -307,6 +310,7 @@ class _TaskPair extends StatelessWidget {
     required this.task,
     required this.botId,
     required this.botName,
+    required this.device,
     required this.avatarColor,
     required this.initial,
     required this.expanded,
@@ -318,6 +322,7 @@ class _TaskPair extends StatelessWidget {
   final BotTask task;
   final String botId;
   final String botName;
+  final MacDevice device;
   final Color avatarColor;
   final String initial;
   final bool expanded;
@@ -355,6 +360,16 @@ class _TaskPair extends StatelessWidget {
             initial: initial,
             approval: pendingApproval!,
             onApprove: onApprove ?? (_) {},
+          ),
+        ],
+
+        // ── action card (waiting_action state) ─────────────────────────
+        if (task.state == 'waiting_action' && task.action != null) ...[
+          const SizedBox(height: 4),
+          _ActionCard(
+            task: task,
+            device: device,
+            botId: botId,
           ),
         ],
         const SizedBox(height: 16),
@@ -509,11 +524,11 @@ class _BotBubble extends StatelessWidget {
       case 'cancelled':
         content = Text('Cancelled', style: TextStyle(color: c.faint, fontSize: 14));
 
+      case 'waiting_action':
+        content = Text('Waiting for input…', style: TextStyle(color: c.faint, fontSize: 14));
+
       default: // done
-        content = Text(
-          task.result ?? '',
-          style: TextStyle(color: c.text, fontSize: 14, height: 1.4),
-        );
+        content = _BotBubbleResult(task: task);
     }
 
     const r = Radius.circular(18);
@@ -544,6 +559,42 @@ class _BotBubble extends StatelessWidget {
             child: content,
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _BotBubbleResult extends StatefulWidget {
+  const _BotBubbleResult({required this.task});
+  final BotTask task;
+  @override
+  State<_BotBubbleResult> createState() => _BotBubbleResultState();
+}
+
+class _BotBubbleResultState extends State<_BotBubbleResult> {
+  bool _showFull = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final isSummarized = widget.task.summarized && widget.task.replyFull != null;
+    final shown = _showFull && isSummarized
+        ? widget.task.replyFull!
+        : (widget.task.result ?? '');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(shown, style: TextStyle(color: c.text, fontSize: 14, height: 1.4)),
+        if (isSummarized) ...[
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => setState(() => _showFull = !_showFull),
+            child: Text(
+              _showFull ? 'Show summary' : 'See full reply',
+              style: TextStyle(color: c.accent, fontSize: 12),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -777,6 +828,555 @@ class _Composer extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Action card (waiting_action state) ───────────────────────────────────────
+
+class _ActionCard extends ConsumerStatefulWidget {
+  const _ActionCard({
+    required this.task,
+    required this.device,
+    required this.botId,
+  });
+
+  final BotTask task;
+  final MacDevice device;
+  final String botId;
+
+  @override
+  ConsumerState<_ActionCard> createState() => _ActionCardState();
+}
+
+class _ActionCardState extends ConsumerState<_ActionCard> {
+  final _controller = TextEditingController();
+  bool _submitting = false;
+
+  // GitHub device flow state (for connect_github kind)
+  ShipLoginFlow? _flow;
+  bool _polling = false;
+  Timer? _pollTimer;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _submit(String value) async {
+    if (value.isEmpty || _submitting) return;
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    setState(() => _submitting = true);
+    try {
+      await mux.call('bot_action_answer', {
+        'id': widget.botId,
+        'task': widget.task.id,
+        'value': value,
+      });
+      _controller.clear();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _cancel() async {
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    await mux.call('bot_cancel', {'id': widget.botId, 'task': widget.task.id});
+    if (mounted) {
+      ref.invalidate(botTasksProvider((widget.device, widget.botId)));
+    }
+  }
+
+  Future<void> _startGithubLogin() async {
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    final resp = await mux.call('bot_github_login_start', {});
+    if (!mounted) return;
+    if (resp['ok'] != true) return;
+    final data = (resp['data'] as Map?)?.cast<String, dynamic>() ?? {};
+    setState(() {
+      _flow = ShipLoginFlow.fromJson(data);
+      _polling = true;
+    });
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollLogin());
+  }
+
+  Future<void> _pollLogin() async {
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    final resp = await mux.call('bot_github_login_poll', {});
+    if (!mounted) return;
+    final data = (resp['data'] as Map?)?.cast<String, dynamic>() ?? {};
+    final state = data['state'] as String? ?? 'pending';
+    if (state == 'done') {
+      _pollTimer?.cancel();
+      setState(() {
+        _flow = null;
+        _polling = false;
+      });
+      // Wake the runner
+      final mux2 = ref.read(connectionNotifierProvider(widget.device)).value;
+      await mux2?.call('bot_github_connect_resume', {});
+    } else if (state == 'error') {
+      _pollTimer?.cancel();
+      setState(() {
+        _flow = null;
+        _polling = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final action = widget.task.action;
+    if (action == null) return const SizedBox.shrink();
+
+    const r = Radius.circular(18);
+    final cardDecoration = BoxDecoration(
+      color: c.warning.withValues(alpha: .08),
+      border: Border.all(color: c.warning.withValues(alpha: .35)),
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(4),
+        topRight: r,
+        bottomLeft: r,
+        bottomRight: r,
+      ),
+    );
+
+    Widget cardContent;
+
+    switch (action.kind) {
+      case 'connect_github':
+        final flow = _flow;
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Connect GitHub to continue',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+            ),
+            if (action.reason != null) ...[
+              const SizedBox(height: 4),
+              Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+            ],
+            const SizedBox(height: 10),
+            if (flow != null) ...[
+              Text(
+                'Enter this code at ${flow.verificationUri}',
+                style: TextStyle(fontSize: 12, color: c.muted),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Text(
+                    flow.userCode,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2,
+                      fontFamily: 'Menlo',
+                      fontFamilyFallback: const ['SF Mono', 'RobotoMono', 'monospace'],
+                      color: c.text,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      // clipboard
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Copy', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+              if (_polling) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Waiting for authorization…',
+                  style: TextStyle(fontSize: 12, color: c.muted),
+                ),
+              ],
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () {
+                  _pollTimer?.cancel();
+                  setState(() { _flow = null; _polling = false; });
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+                child: const Text('Cancel', style: TextStyle(fontSize: 13)),
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  FilledButton(
+                    onPressed: _submitting ? null : _startGithubLogin,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: c.warning,
+                      foregroundColor: c.ground,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    child: const Text('Connect'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: _submitting ? null : _cancel,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    child: const Text('Cancel task', style: TextStyle(fontSize: 13)),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        );
+
+      case 'provide_secret':
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              action.label ?? 'Secret required',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+            ),
+            if (action.reason != null) ...[
+              const SizedBox(height: 4),
+              Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+            ],
+            const SizedBox(height: 8),
+            TextField(
+              controller: _controller,
+              obscureText: true,
+              style: TextStyle(fontSize: 14, color: c.text),
+              decoration: InputDecoration(
+                hintText: 'Enter value',
+                hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: c.borderSubtle),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: c.borderSubtle),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: _submitting
+                      ? null
+                      : () {
+                          final v = _controller.text.trim();
+                          if (v.isNotEmpty) _submit(v);
+                        },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.warning,
+                    foregroundColor: c.ground,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Submit'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _submitting ? null : _cancel,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
+        );
+
+      case 'input':
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              action.label ?? 'Input required',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+            ),
+            if (action.reason != null) ...[
+              const SizedBox(height: 4),
+              Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+            ],
+            const SizedBox(height: 8),
+            TextField(
+              controller: _controller,
+              style: TextStyle(fontSize: 14, color: c.text),
+              decoration: InputDecoration(
+                hintText: action.placeholder ?? '',
+                hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: c.borderSubtle),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: c.borderSubtle),
+                ),
+              ),
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) _submit(v.trim());
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: _submitting
+                      ? null
+                      : () {
+                          final v = _controller.text.trim();
+                          if (v.isNotEmpty) _submit(v);
+                        },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.warning,
+                    foregroundColor: c.ground,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Submit'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _submitting ? null : _cancel,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
+        );
+
+      case 'choose':
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              action.question ?? 'Choose an option',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+            ),
+            const SizedBox(height: 8),
+            for (int i = 0; i < action.options.length; i++) ...[
+              OutlinedButton(
+                onPressed: _submitting ? null : () => _submit(action.options[i]),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: c.text,
+                  side: BorderSide(color: c.borderSubtle),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  minimumSize: const Size(double.infinity, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  alignment: Alignment.centerLeft,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: c.ground,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: c.borderSubtle),
+                      ),
+                      child: Text(
+                        String.fromCharCode(65 + i),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c.muted),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        action.options[i],
+                        style: TextStyle(fontSize: 14, color: c.text),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (i < action.options.length - 1) const SizedBox(height: 4),
+            ],
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _submitting ? null : _cancel,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+              child: const Text('Cancel task', style: TextStyle(fontSize: 13)),
+            ),
+          ],
+        );
+
+      case 'sign_in_engine':
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sign in to ${action.engine ?? 'engine'}',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Sign in to ${action.engine ?? 'engine'} in Settings, then tap Done.',
+              style: TextStyle(fontSize: 12, color: c.muted),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: _submitting ? null : () => _submit('done'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.warning,
+                    foregroundColor: c.ground,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Done'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _submitting ? null : _cancel,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
+        );
+
+      default:
+        // Unknown kind: plain text input
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              action.label ?? 'Response needed',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _controller,
+              style: TextStyle(fontSize: 14, color: c.text),
+              decoration: InputDecoration(
+                hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: c.borderSubtle),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: c.borderSubtle),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: _submitting
+                      ? null
+                      : () {
+                          final v = _controller.text.trim();
+                          if (v.isNotEmpty) _submit(v);
+                        },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.warning,
+                    foregroundColor: c.ground,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Submit'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _submitting ? null : _cancel,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
+        );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const SizedBox(width: 36), // avatar placeholder alignment
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.80,
+              ),
+              padding: const EdgeInsets.all(12),
+              decoration: cardDecoration,
+              child: cardContent,
+            ),
+          ),
+        ],
       ),
     );
   }

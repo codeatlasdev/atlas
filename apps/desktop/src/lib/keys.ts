@@ -36,6 +36,7 @@ export const DEFAULT_KEYMAP: Record<string, string> = {
 	"ctrl-`": "terminal_panel::ToggleFocus",
 	"cmd-?": "agent::Toggle",
 	"cmd-shift-b": "atlas::ToggleBotsWorkspace",
+	"cmd-shift-c": "atlas::ToggleCrewBoard",
 	// Create
 	"cmd-n": "atlas::NewWorktree",
 	"cmd-t": "workspace::NewTerminal",

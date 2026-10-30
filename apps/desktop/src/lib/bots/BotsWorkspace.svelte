@@ -6,6 +6,7 @@
 	 */
 	import { randomLook, normalizeLook } from "#lib/bots/look.ts";
 	import { bots } from "#lib/stores/bots.svelte.ts";
+	import { palettes } from "#lib/shell/palettes.svelte.ts";
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import BotListRow from "#lib/bots/BotListRow.svelte";
 	import BotFace from "#lib/bots/BotFace.svelte";
@@ -13,24 +14,80 @@
 	import { toast } from "@codeatlasdev/ui";
 	import { errText } from "#lib/api.ts";
 	import BotView from "../../routes/(app)/BotView.svelte";
-	import { Plus, Search, Settings, CircleHelp, User } from "@lucide/svelte";
-	import { crewOnboarding, SEEN_KEY } from "#lib/bots/crewOnboarding.svelte.ts";
+	import { Plus, Search, Settings, CircleHelp, User, Plug2 } from "@lucide/svelte";
+	import { crewOnboarding, replayCrewOnboarding, SEEN_KEY } from "#lib/bots/crewOnboarding.svelte.ts";
+	import { githubCrew } from "#lib/bots/githubCrew.svelte.ts";
 	import { flip } from "svelte/animate";
+	import { shortcutOrder } from "#lib/bots/botOrder.ts";
 	import UsageMeter from "#lib/bots/UsageMeter.svelte";
 	import BotOnboarding from "#lib/bots/BotOnboarding.svelte";
+	import IntegrationsCatalog from "#lib/bots/IntegrationsCatalog.svelte";
+	import { connectedIntegrationIds } from "#lib/bots/integrations.ts";
+	import CrewPalette from "#lib/bots/CrewPalette.svelte";
+	import CrewViewBar from "#lib/bots/CrewViewBar.svelte";
+	import CrewBoard from "#lib/bots/CrewBoard.svelte";
+	import { crewView } from "#lib/bots/crewView.svelte.ts";
 
 	// ─── state ────────────────────────────────────────────────────────────────
 
-	let query = $state("");
 	let creating = $state(false);
-	let searchOpen = $state(false);
+
 	let footerOpen = $state(false);
+	let footerWrap = $state<HTMLElement>();
+	$effect(() => {
+		if (!footerOpen) return;
+		const onDown = (e: PointerEvent) => {
+			if (footerWrap && !footerWrap.contains(e.target as Node)) footerOpen = false;
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") footerOpen = false;
+		};
+		document.addEventListener("pointerdown", onDown, true);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("pointerdown", onDown, true);
+			document.removeEventListener("keydown", onKey);
+		};
+	});
+	let catalogOpen = $state(false);
+	let catalogDetail = $state<string | null>(null);
+	const popoverConnectedCount = $derived(connectedIntegrationIds(githubCrew.connected).size);
+
+	// The first mate fidgets now and then (one gesture every 5-11 s), paused while the window is hidden.
+	const GESTURES = ["hop", "tilt", "wiggle"] as const;
+	let heroGesture = $state<(typeof GESTURES)[number] | "">("");
+	$effect(() => {
+		let t: ReturnType<typeof setTimeout>;
+		const next = () => {
+			t = setTimeout(
+				() => {
+					if (!document.hidden) {
+						heroGesture = GESTURES[Math.floor(Math.random() * GESTURES.length)];
+						setTimeout(() => (heroGesture = ""), 1000);
+					}
+					next();
+				},
+				5000 + Math.random() * 6000,
+			);
+		};
+		next();
+		return () => clearTimeout(t);
+	});
 
 	// ─── onboarding ───────────────────────────────────────────────────────────
 
 	// First run: no crew yet and never seen. Replays (the "?" button, the palette, Settings) set the same shared flag.
 	if (typeof localStorage !== "undefined" && !localStorage.getItem(SEEN_KEY) && bots.allBots.length === 0)
 		crewOnboarding.open = true;
+
+	// React to external signal (e.g. from BotView error button).
+	$effect(() => {
+		if (githubCrew.openIntegrations) {
+			catalogOpen = true;
+			catalogDetail = "github";
+			githubCrew.openIntegrations = false;
+		}
+	});
 
 	function closeOnboarding() {
 		crewOnboarding.open = false;
@@ -46,15 +103,7 @@
 
 	const remoteHosts = $derived(bots.hosts.filter((h) => h.key !== ""));
 
-	const filteredBots = $derived(
-		query.trim()
-			? bots.allBots.filter(
-					({ bot }) =>
-						bot.name.toLowerCase().includes(query.toLowerCase()) ||
-						(bot.last?.text ?? "").toLowerCase().includes(query.toLowerCase()),
-				)
-			: bots.allBots,
-	);
+	const filteredBots = $derived(bots.allBots);
 	function loadFav(): Map<string, string> {
 		try {
 			return new Map(Object.entries(JSON.parse(localStorage.getItem("bots:favorite") ?? "{}")));
@@ -156,6 +205,11 @@
 		return [...map.values()];
 	});
 
+	// ⌘1…⌘9 follow what is on screen: the first mate, then the list (commands.svelte.ts reads it from the store).
+	$effect(() => {
+		bots.sidebarOrder = shortcutOrder(favoriteEntry, sections);
+	});
+
 	// ─── actions ──────────────────────────────────────────────────────────────
 
 	function selectBot(hostKey: string, botId: string) {
@@ -175,13 +229,24 @@
 		creating = true;
 		const pending = bots.pendingProjectLink;
 		try {
-			const hostKey = bots.hosts[0]?.key ?? "";
+			// The crew lives on a ship (hosts[0] is this Mac, whose hostd has no bot runner), and hostd requires an
+			// engine: reuse the ship's crewmates' one. No ship or no engine yet → the onboarding sets both up.
+			const ship =
+				bots.hosts.find((h) => h.key.startsWith("ssh:atlas-bot@") && h.ok) ??
+				bots.hosts.find((h) => h.key.startsWith("ssh:atlas-bot@"));
+			const agent = ship?.bots.find((b) => b.agent)?.agent ?? "";
+			if (!ship || !agent) {
+				replayCrewOnboarding();
+				return;
+			}
+			const hostKey = ship.key;
 			const id = await bots.createBot(hostKey, {
-				name: pending ? `${pending.name} Crewmate` : "New Crewmate",
+				name: pending ? `${pending.name} Crewmate` : "New crewmate",
 				role: "",
-				agent: "",
-				approval: "auto",
+				agent,
+				approval: "ask",
 				look: randomLook(),
+				setup_step: "name",
 			});
 			if (pending) {
 				await bots.updateBot(hostKey, id, { project: pending });
@@ -202,7 +267,6 @@
 			void bots.select(hostKey, botId);
 		}
 	}
-
 </script>
 
 <div class="bots-workspace">
@@ -215,35 +279,24 @@
 		</defs>
 		<rect width="100%" height="100%" fill="url(#crew-grid)" />
 	</svg>
-	<!-- Left column -->
-	<div class="col-left">
+	<!-- Left column. Hidden (not removed: scroll and list state survive) while the Board is up: it covers every bot,
+	     so picking one there meant nothing. -->
+	<div class="col-left" hidden={crewView.value === "board"}>
 		<!-- Drag region -->
 		<div class="col-drag" data-tauri-drag-region aria-hidden="true"></div>
 
 		<!-- Top bar: search + add -->
 		<div class="top-bar">
-			{#if searchOpen}
-				<input
-					class="search"
-					bind:value={query}
-					placeholder="Find a crewmate…"
-					aria-label="Search bots"
-					onblur={() => {
-						if (!query) searchOpen = false;
-					}}
-				/>
-			{/if}
-			<button class="icon-btn-round" onclick={() => (searchOpen = !searchOpen)} aria-label="Search">
-				<Search size={16} />
-			</button>
-			<button class="icon-btn-round" onclick={startNewBot} aria-label="New crewmate" disabled={creating}>
-				<Plus size={16} />
-			</button>
+		<button class="icon-btn-round" onclick={() => (palettes.crew = true)} aria-label="Search (⌘K)">
+			<Search size={16} />
+		</button>
+		<button class="icon-btn-round" onclick={startNewBot} aria-label="New crewmate" disabled={creating}>
+			<Plus size={16} />
+		</button>
 		</div>
 
-
 		<!-- Favorite hero -->
-		{#if favoriteEntry && !query.trim()}
+		{#if favoriteEntry}
 			{@const hero = favoriteEntry}
 			{@const heroLook = normalizeLook(hero.bot.look, hero.bot.id)}
 			<div class="hero-wrap">
@@ -260,12 +313,15 @@
 								<span class="dot"></span><span class="dot"></span><span class="dot"></span>
 							</div>
 						{:else}
-							<BotFace
-								seed={hero.bot.id}
-								look={hero.bot.look}
-								state={hero.bot.state === "needs_you" ? "needs_you" : "idle"}
-							size={56}
-							/>
+							<!-- Every few seconds the first mate does one small gesture, so it reads as alive at a glance. -->
+							<div class="hero-fidget" data-gesture={heroGesture}>
+								<BotFace
+									seed={hero.bot.id}
+									look={hero.bot.look}
+									state={hero.bot.state === "needs_you" ? "needs_you" : "idle"}
+									size={80}
+								/>
+							</div>
 						{/if}
 						<span class="hero-star" aria-hidden="true">★</span>
 						<!-- presence badge -->
@@ -286,12 +342,19 @@
 
 		<!-- Bot list (non-favorite) -->
 		<div class="bot-list" role="list">
-		{#if nonFavBots.length === 0 && bots.allBots.length === 0}
-			<!-- empty — footer "Launch your ship" is the CTA -->
-			{:else if nonFavBots.length === 0 && query.trim()}
-				<div class="empty-state">
-					<p class="empty-sub">No crewmates match "{query}"</p>
+			{#each bots.hosts.filter((h) => !h.ok && h.key.startsWith("ssh:atlas-bot@")) as h (h.key)}
+				<!-- A ship that didn't answer: say so instead of an empty list that looks like the crew is gone. -->
+				<div class="empty-state" role="status">
+					<p class="empty-sub">
+						Can't reach {h.name.replace(/^atlas-bot@/, "")}{h.error ? `: ${h.error}` : ""}
+					</p>
+					<button class="text-link" onclick={() => void bots.retryFailed()}>Retry</button>
 				</div>
+			{/each}
+			{#if nonFavBots.length === 0 && bots.allBots.length === 0}
+				<!-- empty — footer "Launch your ship" is the CTA -->
+			{:else if nonFavBots.length === 0}
+				<!-- all bots shown as hero, nothing more to list -->
 			{:else}
 				{#each sections.filter( (s) => nonFavBots.some((nb) => nb.hostKey === s.hostKey) ) as section (section.hostKey)}
 					{#if sections.length > 1}
@@ -324,57 +387,92 @@
 			<button class="footer-user-btn" aria-label="User">
 				<User size={15} />
 			</button>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="footer-pill-wrap" onmouseleave={() => (footerOpen = false)}>
-			{#if remoteHosts.length === 0}
-				<button
-					class="footer-pill footer-pill--launch"
-					onclick={openOnboarding}
-					aria-label="Launch your ship"
-				>
-					<ShipFlag size={13} />
-					<span>Launch your ship</span>
-				</button>
-			{:else}
-				<button
-					class="footer-pill"
-					onclick={() => (footerOpen = !footerOpen)}
-					aria-label={remoteHosts[0].name}
-					aria-expanded={footerOpen}
-					aria-haspopup="menu"
-				>
-					<ShipFlag size={13} />
-					<span class="server-dot" class:online={bots.hostOk(remoteHosts[0].key)} aria-hidden="true"></span>
-					<span class="footer-ship-name">{remoteHosts[0].name}</span>
-				</button>
-				{#if footerOpen}
-					<div class="footer-popover" role="menu">
-						<button
-							class="popover-item"
-							role="menuitem"
-							onclick={() => { openBotsSettings(); footerOpen = false; }}
-						>
-							<Settings size={13} />
-							<span>Ship settings</span>
-						</button>
-						<button
-							class="popover-item"
-							role="menuitem"
-							onclick={() => { openOnboarding(); footerOpen = false; }}
-						>
-							<CircleHelp size={13} />
-							<span>Help</span>
-						</button>
-					</div>
+			<!-- A click menu closes on a click outside or Esc, never on mouseleave: the gap between the pill and the
+			     popover closed it while the pointer travelled up to it. -->
+			<div class="footer-pill-wrap" bind:this={footerWrap}>
+				{#if remoteHosts.length === 0}
+					<button
+						class="footer-pill footer-pill--launch"
+						onclick={openOnboarding}
+						aria-label="Launch your ship"
+					>
+						<ShipFlag size={13} />
+						<span>Launch your ship</span>
+					</button>
+				{:else}
+					<button
+						class="footer-pill"
+						onclick={() => (footerOpen = !footerOpen)}
+						aria-label={remoteHosts[0].name}
+						aria-expanded={footerOpen}
+						aria-haspopup="menu"
+					>
+						<ShipFlag size={13} />
+						<span class="server-dot" class:online={bots.hostOk(remoteHosts[0].key)} aria-hidden="true"></span>
+						<span class="footer-ship-name">{remoteHosts[0].name}</span>
+					</button>
+					{#if footerOpen}
+						<div class="footer-popover" role="menu">
+							<!-- Main popover -->
+							<div class="popover-section-title" aria-hidden="true">Integrations</div>
+							<button
+								class="popover-item popover-item--integration"
+								role="menuitem"
+								onclick={() => {
+									catalogOpen = true;
+									catalogDetail = null;
+									footerOpen = false;
+								}}
+								aria-label="Open integrations"
+							>
+								<Plug2 size={13} aria-hidden="true" />
+								<span>Integrations</span>
+								{#if popoverConnectedCount > 0}
+									<span class="integration-status integration-status--on"
+										>{popoverConnectedCount} connected</span
+									>
+								{:else}
+									<span class="integration-status">Manage</span>
+								{/if}
+							</button>
+							<div class="popover-divider" role="separator" aria-hidden="true"></div>
+							<button
+								class="popover-item"
+								role="menuitem"
+								onclick={() => {
+									openBotsSettings();
+									footerOpen = false;
+								}}
+							>
+								<Settings size={13} />
+								<span>Ship settings</span>
+							</button>
+							<button
+								class="popover-item"
+								role="menuitem"
+								onclick={() => {
+									openOnboarding();
+									footerOpen = false;
+								}}
+							>
+								<CircleHelp size={13} />
+								<span>Help</span>
+							</button>
+						</div>
+					{/if}
 				{/if}
-			{/if}
+			</div>
 		</div>
 	</div>
-	</div>
+
+	<!-- Top-edge view switcher (board ↔ chat): only in Crew mode -->
+	<CrewViewBar />
 
 	<!-- Right panel -->
 	<div class="col-right">
-		{#if bots.selectedBot}
+		{#if crewView.value === "board"}
+			<CrewBoard />
+		{:else if bots.selectedBot}
 			<BotView />
 		{:else}
 			<div class="panel-empty">
@@ -387,8 +485,20 @@
 					xmlns="http://www.w3.org/2000/svg"
 					aria-hidden="true"
 				>
-					<path d="M0 46 Q30 42 60 46 Q90 50 120 46" stroke="currentColor" stroke-width="1" opacity="0.2" fill="none" />
-					<path d="M0 52 Q30 48 60 52 Q90 56 120 52" stroke="currentColor" stroke-width="1" opacity="0.12" fill="none" />
+					<path
+						d="M0 46 Q30 42 60 46 Q90 50 120 46"
+						stroke="currentColor"
+						stroke-width="1"
+						opacity="0.2"
+						fill="none"
+					/>
+					<path
+						d="M0 52 Q30 48 60 52 Q90 56 120 52"
+						stroke="currentColor"
+						stroke-width="1"
+						opacity="0.12"
+						fill="none"
+					/>
 					<line x1="0" y1="44" x2="120" y2="44" stroke="currentColor" stroke-width="1.5" opacity="0.28" />
 					<g transform="translate(46, 8)">
 						<line x1="14" y1="8" x2="14" y2="36" stroke="currentColor" stroke-width="1.5" opacity="0.38" />
@@ -403,9 +513,30 @@
 		{/if}
 	</div>
 
+	<IntegrationsCatalog bind:open={catalogOpen} bind:detail={catalogDetail} />
 	{#if crewOnboarding.open}
 		<BotOnboarding ondone={closeOnboarding} />
 	{/if}
+	<CrewPalette
+		bind:open={palettes.crew}
+		bots={bots.allBots.map(({ hostKey, bot }) => ({
+			id: bot.id,
+			hostKey,
+			name: bot.name,
+			role: bot.role ?? "",
+			look: bot.look,
+			state: bot.state,
+		}))}
+		onclose={() => (palettes.crew = false)}
+		onSelectBot={(hk, id) => selectBot(hk, id)}
+		onNewBot={startNewBot}
+		onIntegrations={() => {
+			catalogOpen = true;
+			catalogDetail = null;
+		}}
+		onShipSettings={openBotsSettings}
+		onHelp={openOnboarding}
+	/>
 </div>
 
 <style>
@@ -419,6 +550,9 @@
 	}
 
 	/* ─── Left column ─────────────────────────────────────────── */
+	.col-left[hidden] {
+		display: none;
+	}
 	.col-left {
 		width: 270px;
 		flex: none;
@@ -468,28 +602,6 @@
 		cursor: default;
 	}
 
-	.search {
-		flex: 1;
-		min-width: 0;
-		height: 28px;
-		border-radius: 14px;
-		border: none;
-		background: color-mix(in oklab, var(--ca-outline-subtle) 50%, transparent);
-		color: var(--ca-text-primary);
-		font-size: 12.5px;
-		padding: 0 12px;
-		outline: none;
-		box-sizing: border-box;
-	}
-
-	.search:focus {
-		background: color-mix(in oklab, var(--ca-outline-subtle) 80%, transparent);
-	}
-
-	.search::placeholder {
-		color: var(--ca-text-secondary);
-	}
-
 
 	/* Hero */
 	.hero-wrap {
@@ -505,8 +617,8 @@
 		gap: 6px;
 		background: transparent;
 		border: none;
-		border-radius: 12px;
-		padding: 8px;
+		border-radius: 18px;
+		padding: 14px 16px;
 		cursor: default;
 		transition: background 150ms;
 	}
@@ -518,12 +630,69 @@
 	}
 	.hero-face-wrap {
 		position: relative;
-		width: 56px;
-		height: 56px;
+		width: 80px;
+		height: 80px;
+	}
+	.hero-fidget {
+		transform-origin: 50% 100%;
+	}
+	.hero-fidget[data-gesture="hop"] {
+		animation: hero-hop 700ms cubic-bezier(0.3, 0, 0.3, 1);
+	}
+	.hero-fidget[data-gesture="tilt"] {
+		animation: hero-tilt 900ms ease-in-out;
+	}
+	.hero-fidget[data-gesture="wiggle"] {
+		animation: hero-wiggle 800ms ease-in-out;
+	}
+	@keyframes hero-hop {
+		0%,
+		100% {
+			transform: none;
+		}
+		20% {
+			transform: scale(1.08, 0.9);
+		}
+		50% {
+			transform: translateY(-9px) scale(0.95, 1.06);
+		}
+		80% {
+			transform: scale(1.05, 0.95);
+		}
+	}
+	@keyframes hero-tilt {
+		0%,
+		100% {
+			transform: none;
+		}
+		35%,
+		65% {
+			transform: rotate(-12deg);
+		}
+	}
+	@keyframes hero-wiggle {
+		0%,
+		100% {
+			transform: none;
+		}
+		20% {
+			transform: rotate(9deg);
+		}
+		45% {
+			transform: rotate(-8deg);
+		}
+		70% {
+			transform: rotate(4deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.hero-fidget {
+			animation: none !important;
+		}
 	}
 	.hero-dots {
-		width: 56px;
-		height: 56px;
+		width: 80px;
+		height: 80px;
 		border-radius: 50%;
 		display: flex;
 		align-items: center;
@@ -543,7 +712,7 @@
 	.hero-presence {
 		position: absolute;
 		bottom: 4px;
-		right: 14px;
+		right: 18px;
 		width: 12px;
 		height: 12px;
 		border-radius: 50%;
@@ -639,14 +808,12 @@
 		text-align: center;
 	}
 
-
 	.empty-sub {
 		font-size: 12px;
 		color: var(--ca-text-secondary);
 		margin: 0;
 		line-height: 1.5;
 	}
-
 
 	/* Footer (Discord user-bar style) */
 	/* ─── Footer: user + ship pill ────────────────────────────── */
@@ -660,7 +827,6 @@
 		min-height: 48px;
 		border-top: 1px solid var(--ca-border, rgba(255, 255, 255, 0.06));
 	}
-
 
 	.footer-user-btn {
 		display: flex;
@@ -753,6 +919,33 @@
 		background: var(--ca-vibrancy-fill);
 	}
 
+	.popover-section-title {
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--ca-text-disabled);
+		padding: 6px 10px 2px;
+	}
+	.popover-divider {
+		height: 0.5px;
+		background: var(--ca-outline-subtle);
+		margin: 4px 0;
+	}
+	.popover-item--integration {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+	}
+	.integration-status {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--ca-text-disabled);
+	}
+	.integration-status--on {
+		color: var(--ca-semantic-success, #2f9e44);
+	}
+
 	/* ─── Right panel ─────────────────────────────────────────── */
 	.col-right {
 		flex: 1;
@@ -811,8 +1004,6 @@
 		}
 	}
 
-
-
 	/* Horizon empty state art */
 	.horizon-art {
 		color: var(--ca-text-secondary);
@@ -824,4 +1015,5 @@
 		color: var(--ca-text-primary);
 		margin: 0;
 	}
+
 </style>

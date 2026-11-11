@@ -140,6 +140,8 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
         }
     }
 
+    detect_cargo_service(path, &mut detection);
+
     // Python project
     if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() {
         if detection.language == "unknown" {
@@ -166,6 +168,7 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
             };
         }
     }
+    detect_python_service(path, &mut detection);
 
     // Go project
     if path.join("go.mod").exists() {
@@ -184,6 +187,7 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
                 None
             };
         }
+        detect_go_service(path, &mut detection);
     }
 
     // Monorepo detection
@@ -212,6 +216,194 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
         };
 
     detection
+}
+
+/// `name = "value"` on one line (TOML basic string); `None` for anything fancier.
+fn quoted_value(line: &str, key: &str) -> Option<String> {
+    let rest = line
+        .trim()
+        .strip_prefix(key)?
+        .trim_start()
+        .strip_prefix('=')?;
+    let v = rest.trim().strip_prefix('"')?;
+    Some(v[..v.find('"')?].to_owned())
+}
+
+/// A service key that is safe as a YAML mapping key (`my-app`, `api_2`); anything else falls back to `fallback`.
+fn service_key(raw: &str, fallback: &str) -> String {
+    let ok = !raw.is_empty()
+        && raw
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if ok {
+        raw.to_owned()
+    } else {
+        fallback.to_owned()
+    }
+}
+
+/// The one binary `cargo run` would build, when the answer is unambiguous: a `[package]` (not a virtual workspace)
+/// with exactly one bin (`[[bin]]`, `src/bin/*`, or `src/main.rs`). Anything else gets no service.
+fn detect_cargo_service(path: &Path, detection: &mut ProjectDetection) {
+    let Ok(content) = std::fs::read_to_string(path.join("Cargo.toml")) else {
+        return;
+    };
+    let (mut section, mut package_name) = (String::new(), None);
+    let mut bins: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            section = t.to_owned();
+            if t == "[[bin]]" {
+                bins.push(String::new());
+            }
+        } else if section == "[package]" && package_name.is_none() {
+            package_name = quoted_value(t, "name");
+        } else if section == "[[bin]]"
+            && let Some(n) = quoted_value(t, "name")
+            && let Some(last) = bins.last_mut()
+        {
+            *last = n;
+        }
+    }
+    // A virtual workspace has no `[package]`: `cargo run` has nothing to run there.
+    let Some(package_name) = package_name else {
+        return;
+    };
+    // A `[[bin]]` without a name is not understood: skip rather than guess.
+    if bins.iter().any(String::is_empty) {
+        return;
+    }
+    if path.join("src/main.rs").is_file() && !bins.contains(&package_name) {
+        bins.push(package_name);
+    }
+    if let Ok(dir) = std::fs::read_dir(path.join("src/bin")) {
+        for e in dir.flatten() {
+            let p = e.path();
+            let is_bin = (p.is_file() && p.extension().is_some_and(|x| x == "rs"))
+                || (p.is_dir() && p.join("main.rs").is_file());
+            if is_bin
+                && let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().into_owned())
+                && !bins.contains(&stem)
+            {
+                bins.push(stem);
+            }
+        }
+    }
+    if let [name] = bins.as_slice() {
+        detection.services.push(DetectedService {
+            name: service_key(name, "app"),
+            command: "cargo run".into(),
+            port: None,
+        });
+    }
+}
+
+/// `go run .` when the module root holds a `package main` (a non-test `.go` file declaring it). A `cmd/*` layout or a
+/// library root gets no service: which program to run is the user's call.
+fn detect_go_service(path: &Path, detection: &mut ProjectDetection) {
+    let Ok(dir) = std::fs::read_dir(path) else {
+        return;
+    };
+    let has_main = dir.flatten().any(|e| {
+        let p = e.path();
+        p.is_file()
+            && p.extension().is_some_and(|x| x == "go")
+            && !p
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().ends_with("_test.go"))
+            && std::fs::read_to_string(&p)
+                .is_ok_and(|s| s.lines().any(|l| l.trim() == "package main"))
+    });
+    if !has_main {
+        return;
+    }
+    let module = std::fs::read_to_string(path.join("go.mod"))
+        .ok()
+        .and_then(|s| {
+            s.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("module ")
+                    .map(|m| m.trim().to_owned())
+            })
+        })
+        .and_then(|m| m.rsplit('/').next().map(str::to_owned))
+        .unwrap_or_default();
+    detection.services.push(DetectedService {
+        name: service_key(&module, "app"),
+        command: "go run .".into(),
+        port: None,
+    });
+}
+
+/// Python dev servers, only when the command is unambiguous: Django's `manage.py`, or FastAPI + uvicorn declared in
+/// `pyproject.toml` with exactly one of `main.py`/`app.py`/`api.py` defining `app`.
+fn detect_python_service(path: &Path, detection: &mut ProjectDetection) {
+    if path.join("manage.py").is_file() {
+        detection.services.push(DetectedService {
+            name: "web".into(),
+            command: "python manage.py runserver".into(),
+            port: None,
+        });
+        return;
+    }
+    let Ok(pyproject) = std::fs::read_to_string(path.join("pyproject.toml")) else {
+        return;
+    };
+    if !(pyproject.contains("fastapi") && pyproject.contains("uvicorn")) {
+        return;
+    }
+    let defines_app = |m: &str| {
+        std::fs::read_to_string(path.join(format!("{m}.py"))).is_ok_and(|s| {
+            s.lines()
+                .any(|l| l.starts_with("app =") || l.starts_with("app:"))
+        })
+    };
+    let modules: Vec<&str> = ["main", "app", "api"]
+        .into_iter()
+        .filter(|m| defines_app(m))
+        .collect();
+    if let [module] = modules.as_slice() {
+        let name = pyproject
+            .lines()
+            .scan(String::new(), |section, l| {
+                if l.trim().starts_with('[') {
+                    *section = l.trim().to_owned();
+                }
+                Some((section.clone(), l))
+            })
+            .find_map(|(s, l)| {
+                (s == "[project]")
+                    .then(|| quoted_value(l, "name"))
+                    .flatten()
+            })
+            .unwrap_or_default();
+        detection.services.push(DetectedService {
+            name: service_key(&name, "api"),
+            command: format!("uvicorn {module}:app --reload"),
+            port: None,
+        });
+    }
+}
+
+/// What was detected, for the UI: `Rust project (Cargo.toml, axum)`; `None` when nothing was recognised.
+pub fn detection_label(root: &Path, d: &ProjectDetection) -> Option<String> {
+    let (kind, manifest) = match d.language.as_str() {
+        "rust" => ("Rust", "Cargo.toml"),
+        "typescript" => ("Node", "package.json"),
+        "go" => ("Go", "go.mod"),
+        "python" => (
+            "Python",
+            ["pyproject.toml", "requirements.txt"]
+                .into_iter()
+                .find(|f| root.join(f).is_file())?,
+        ),
+        _ => return None,
+    };
+    Some(match &d.framework {
+        Some(fw) => format!("{kind} project ({manifest}, {fw})"),
+        None => format!("{kind} project ({manifest})"),
+    })
 }
 
 /// The port a dev command announces: `--port N`, `-p N`, `--port=N`, `PORT=N` or `.listen(N)`.
@@ -337,5 +529,202 @@ mod tests {
         );
         assert_eq!(extract_port("node -e \"x.listen(port)\""), None);
         assert_eq!(extract_port("bun dev"), None);
+    }
+
+    fn fixture(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        for (name, body) in files {
+            let p = t.path().join(name);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        t
+    }
+
+    fn commands(d: &ProjectDetection) -> Vec<(&str, &str)> {
+        d.services
+            .iter()
+            .map(|s| (s.name.as_str(), s.command.as_str()))
+            .collect()
+    }
+
+    // Incident: a brand-new user opened a Rust/Go/Python folder and Atlas said "found nothing to run".
+    #[test]
+    fn a_cargo_package_with_one_bin_runs_with_cargo_run() {
+        let t = fixture(&[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+            ),
+            ("src/main.rs", "fn main() {}\n"),
+        ]);
+        assert_eq!(commands(&detect_project(t.path())), [("app", "cargo run")]);
+    }
+
+    #[test]
+    fn a_cargo_package_with_a_named_bin_runs_with_cargo_run() {
+        let t = fixture(&[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"lib-name\"\n\n[[bin]]\nname = \"tool\"\npath = \"src/tool.rs\"\n",
+            ),
+            ("src/tool.rs", "fn main() {}\n"),
+        ]);
+        assert_eq!(commands(&detect_project(t.path())), [("tool", "cargo run")]);
+    }
+
+    #[test]
+    fn cargo_folders_without_exactly_one_bin_get_no_service() {
+        // Library only.
+        let lib = fixture(&[
+            ("Cargo.toml", "[package]\nname = \"l\"\n"),
+            ("src/lib.rs", ""),
+        ]);
+        assert!(detect_project(lib.path()).services.is_empty());
+        // Virtual workspace: `cargo run` would fail with no package.
+        let ws = fixture(&[("Cargo.toml", "[workspace]\nmembers = [\"a\", \"b\"]\n")]);
+        assert!(detect_project(ws.path()).services.is_empty());
+        // Two binaries: `cargo run` is ambiguous.
+        let two = fixture(&[
+            ("Cargo.toml", "[package]\nname = \"t\"\n"),
+            ("src/main.rs", "fn main() {}\n"),
+            ("src/bin/other.rs", "fn main() {}\n"),
+        ]);
+        assert!(detect_project(two.path()).services.is_empty());
+        let two_decl = fixture(&[(
+            "Cargo.toml",
+            "[package]\nname = \"t\"\n[[bin]]\nname = \"a\"\npath = \"a.rs\"\n[[bin]]\nname = \"b\"\npath = \"b.rs\"\n",
+        )]);
+        assert!(detect_project(two_decl.path()).services.is_empty());
+    }
+
+    #[test]
+    fn a_go_module_with_a_main_package_at_the_root_runs_with_go_run() {
+        let t = fixture(&[
+            ("go.mod", "module example.com/app\n\ngo 1.22\n"),
+            ("main.go", "package main\n\nfunc main() {}\n"),
+        ]);
+        assert_eq!(commands(&detect_project(t.path())), [("app", "go run .")]);
+    }
+
+    #[test]
+    fn go_modules_without_a_root_main_package_get_no_service() {
+        // main lives under cmd/: which one to run is the user's call.
+        let cmd = fixture(&[
+            ("go.mod", "module example.com/app\n"),
+            ("cmd/app/main.go", "package main\n"),
+        ]);
+        assert!(detect_project(cmd.path()).services.is_empty());
+        // A library package at the root.
+        let lib = fixture(&[
+            ("go.mod", "module example.com/lib\n"),
+            ("lib.go", "package lib\n"),
+        ]);
+        assert!(detect_project(lib.path()).services.is_empty());
+        // A test file alone is not a program.
+        let test_only = fixture(&[
+            ("go.mod", "module example.com/lib\n"),
+            ("x_test.go", "package main\n"),
+        ]);
+        assert!(detect_project(test_only.path()).services.is_empty());
+    }
+
+    #[test]
+    fn a_django_manage_py_runs_the_dev_server() {
+        let t = fixture(&[
+            ("manage.py", "import django\n"),
+            ("requirements.txt", "django\n"),
+        ]);
+        assert_eq!(
+            commands(&detect_project(t.path())),
+            [("web", "python manage.py runserver")]
+        );
+    }
+
+    #[test]
+    fn fastapi_with_one_obvious_app_module_runs_uvicorn() {
+        let t = fixture(&[
+            (
+                "pyproject.toml",
+                "[project]\nname = \"api\"\ndependencies = [\"fastapi\", \"uvicorn\"]\n",
+            ),
+            ("main.py", "from fastapi import FastAPI\napp = FastAPI()\n"),
+        ]);
+        assert_eq!(
+            commands(&detect_project(t.path())),
+            [("api", "uvicorn main:app --reload")]
+        );
+    }
+
+    #[test]
+    fn fastapi_without_one_unambiguous_app_gets_no_service() {
+        let deps = "[project]\nname = \"api\"\ndependencies = [\"fastapi\", \"uvicorn\"]\n";
+        // No module with an `app` object.
+        let none = fixture(&[("pyproject.toml", deps), ("main.py", "print('hi')\n")]);
+        assert!(detect_project(none.path()).services.is_empty());
+        // Two candidates.
+        let two = fixture(&[
+            ("pyproject.toml", deps),
+            ("main.py", "app = FastAPI()\n"),
+            ("app.py", "app = FastAPI()\n"),
+        ]);
+        assert!(detect_project(two.path()).services.is_empty());
+        // fastapi without uvicorn: the server to run is not known.
+        let no_server = fixture(&[
+            (
+                "pyproject.toml",
+                "[project]\nname = \"api\"\ndependencies = [\"fastapi\"]\n",
+            ),
+            ("main.py", "app = FastAPI()\n"),
+        ]);
+        assert!(detect_project(no_server.path()).services.is_empty());
+    }
+
+    #[test]
+    fn package_json_services_are_unchanged_next_to_a_cargo_manifest() {
+        let t = fixture(&[
+            (
+                "package.json",
+                r#"{"scripts":{"dev":"vite --port 5173","build":"vite build"}}"#,
+            ),
+            ("Cargo.toml", "[package]\nname = \"native\"\n"),
+            ("src/main.rs", "fn main() {}\n"),
+        ]);
+        let d = detect_project(t.path());
+        let names: Vec<&str> = d.services.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["dev", "native"], "{d:?}");
+        assert_eq!(d.services[0].port, Some(5173));
+    }
+
+    #[test]
+    fn detection_label_names_the_stack_and_its_manifest() {
+        let rust = fixture(&[(
+            "Cargo.toml",
+            "[package]\nname = \"x\"\n[dependencies]\naxum = \"1\"\n",
+        )]);
+        assert_eq!(
+            detection_label(rust.path(), &detect_project(rust.path())).as_deref(),
+            Some("Rust project (Cargo.toml, axum)")
+        );
+        let node = fixture(&[("package.json", "{}")]);
+        assert_eq!(
+            detection_label(node.path(), &detect_project(node.path())).as_deref(),
+            Some("Node project (package.json)")
+        );
+        let go = fixture(&[("go.mod", "module x\n")]);
+        assert_eq!(
+            detection_label(go.path(), &detect_project(go.path())).as_deref(),
+            Some("Go project (go.mod)")
+        );
+        let py = fixture(&[("requirements.txt", "flask\n")]);
+        assert_eq!(
+            detection_label(py.path(), &detect_project(py.path())).as_deref(),
+            Some("Python project (requirements.txt)")
+        );
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            detection_label(empty.path(), &detect_project(empty.path())),
+            None
+        );
     }
 }

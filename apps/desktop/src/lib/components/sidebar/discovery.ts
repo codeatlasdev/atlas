@@ -105,3 +105,17 @@ export function ago(seconds: number | null, now = Date.now() / 1000): string {
 	for (const [s, label] of units) if (d >= s) return `${Math.floor(d / s)}${label} ago`;
 	return "just now";
 }
+
+/** The saved scan preferences. Folders without an atlas.yaml are included until the user turns them off: most people
+ * have none, and a scan that hides them looks empty. */
+export function parsePrefs(raw: string | null): { roots: string[]; candidates: boolean } {
+	try {
+		const v = JSON.parse(raw ?? "{}");
+		return {
+			roots: Array.isArray(v.roots) ? v.roots.filter((r: unknown) => typeof r === "string") : [],
+			candidates: v.candidates !== false,
+		};
+	} catch {
+		return { roots: [], candidates: true };
+	}
+}

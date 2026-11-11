@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Changed
+
+- **Opening a folder without an `atlas.yaml` now shows what Atlas found.** The panel names the detected stack (Node, Rust, Go, Python) and offers **Set up services**, instead of "Atlas found nothing to run". Adding a folder says what was detected. Services are now detected for single-binary Cargo projects (`cargo run`), Go modules with a root `main` package (`go run .`), Django (`manage.py runserver`) and FastAPI with one obvious app module (`uvicorn`). **Find projects** lists folders without an `atlas.yaml` by default.
+
 ### Fixed
 
 - **Windows: buttons did nothing, Settings and dialogs never opened, Atlas seemed frozen.** Right after launch, the call the page makes once its first frame is painted never returned, and every later request from the page (opening Settings, loading a dialog, any app action) queued behind it while the window kept drawing. That call now runs off the main thread; a test flags any synchronous command that directly builds a window.

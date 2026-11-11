@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
-import { addPlan, droppedOn, removeDescription } from "./addProject.ts";
+import { addedToast, addPlan, droppedOn, removeDescription } from "./addProject.ts";
 // The REAL serialization of `project_probe` (crates/atlas-desktop/src/cmds/projects.rs, probe_fixture_is_the_real_serialization).
 import probeFixture from "#lib/__fixtures__/project-probe.json";
 
@@ -56,4 +56,19 @@ test("a drop is over the sidebar when its physical position, scaled by the pixel
 	expect(droppedOn(rect, { x: 200, y: 1700 }, 2)).toBe(false);
 	expect(droppedOn(rect, { x: 200, y: 400 }, 1)).toBe(true);
 	expect(droppedOn(rect, { x: 300, y: 400 }, 1)).toBe(false);
+});
+
+// After adding a folder the user must see what Atlas made of it; a folder with an atlas.yaml needs no message.
+test("adding a folder without atlas.yaml says what was detected and how many services", () => {
+	const p = (over) => ({ config_source: "detected", services_total: 2, error: null, ...over });
+	expect(addedToast(p(), "Node project (package.json)")).toBe("Detected Node project: 2 services");
+	expect(addedToast(p({ services_total: 1 }), "Rust project (Cargo.toml)")).toBe(
+		"Detected Rust project: 1 service",
+	);
+	expect(addedToast(p({ services_total: 0 }), "Go project (go.mod)")).toBe(
+		"Detected Go project: no services to run yet",
+	);
+	expect(addedToast(p({ services_total: 0 }), null)).toBe("Added: nothing to run was detected yet");
+	expect(addedToast(p({ config_source: "file" }), "Node project (package.json)")).toBeNull();
+	expect(addedToast(p({ error: "boom" }), "Node project (package.json)")).toBeNull();
 });

@@ -16,7 +16,7 @@
 	import StateTimeline from "./StateTimeline.svelte";
 	import { hex } from "./color.ts";
 	import { metrics } from "./metrics.svelte.ts";
-	import { lastLines, serviceRows } from "./overview.ts";
+	import { emptyPanel, lastLines, serviceRows } from "./overview.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -87,6 +87,8 @@
 		if (w) ws.reveal(w.id, (t) => t.kind === "config", { kind: "config", label: "Config" });
 	}
 
+	// Live rows (a running stack) keep the grid even before the config has loaded.
+	let empty = $derived(services.length ? ({ kind: "services" } as const) : emptyPanel(project, cfg));
 	let stackBusy = $derived(!!store.busy[`stack:${project.id}`]);
 	let uptime = $derived.by(() => {
 		const since = metrics.upSince(project.id);
@@ -97,18 +99,44 @@
 <div class="scroll" bind:this={root}>
 	<PanelHeader {project} {cfg} {live} {uptime} />
 
-	{#if services.length === 0}
+	{#if empty.kind === "detected"}
+		<div class="hero">
+			<EmptyState
+				icon={FileCog}
+				title="{empty.detected}: nothing to run yet"
+				description="Atlas recognised this folder but could not tell what to run. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save."
+			>
+				{#snippet actions()}
+					<Button variant="glass" onclick={openConfig}>Set up services</Button>
+				{/snippet}
+			</EmptyState>
+		</div>
+	{:else if empty.kind === "nothing"}
 		<div class="hero">
 			<EmptyState
 				icon={FileCog}
 				title="No services yet"
-				description="Atlas found nothing to run here. Declare services in atlas.yaml and it starts, watches and charts them."
+				description="Atlas did not recognise a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them."
+			>
+				{#snippet actions()}
+					<Button variant="glass" onclick={openConfig}>Set up services</Button>
+				{/snippet}
+			</EmptyState>
+		</div>
+	{:else if empty.kind === "empty-file"}
+		<div class="hero">
+			<EmptyState
+				icon={FileCog}
+				title="No services yet"
+				description="The atlas.yaml in this folder declares no active service. Add one and Atlas starts, watches and charts it."
 			>
 				{#snippet actions()}
 					<Button variant="glass" onclick={openConfig}>Edit atlas.yaml</Button>
 				{/snippet}
 			</EmptyState>
 		</div>
+	{:else if empty.kind === "loading" || empty.kind === "broken"}
+		<div class="hero"></div>
 	{:else}
 		<PanelKpis
 			running={project.running}

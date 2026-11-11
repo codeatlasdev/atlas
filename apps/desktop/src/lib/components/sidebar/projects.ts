@@ -5,7 +5,7 @@ import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { api } from "#lib/api.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
-import { addPlan, removeDescription } from "./addProject.ts";
+import { addedToast, addPlan, removeDescription } from "./addProject.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 
 /** Pick a folder and add it. */
@@ -38,6 +38,11 @@ export async function addFolder(dir: string) {
 	if (!p) return;
 	await store.refresh();
 	store.selected = p.id;
+	// `refresh` loads configs without awaiting them: wait for this one so the toast can name the stack.
+	await store.loadConfig(p.id);
+	const added = store.projects.find((x) => x.id === p.id) ?? p;
+	const line = addedToast(added, store.configs[p.id]?.detected ?? null);
+	if (line) toast.info(line);
 }
 
 /** Open "Find projects": the dialog fills in while the scan runs. */

@@ -9,6 +9,7 @@ import {
 	normalizeRemote,
 	SPOTLIGHT,
 	splitFound,
+	parsePrefs,
 	type Found,
 } from "./discovery.ts";
 
@@ -91,4 +92,14 @@ test("ago picks the largest unit", () => {
 	expect(ago(now - 3 * 86400, now)).toBe("3d ago");
 	expect(ago(now - 400 * 86400, now)).toBe("1y ago");
 	expect(ago(now + 100, now)).toBe("just now");
+});
+
+// Incident: almost nobody has an atlas.yaml, and "Also folders without atlas.yaml" defaulted to off, so a new user's
+// first scan showed an empty list. It is on until the user turns it off.
+test("folders without atlas.yaml are included by default, and only an explicit off is remembered", () => {
+	expect(parsePrefs(null).candidates).toBe(true);
+	expect(parsePrefs("{}").candidates).toBe(true);
+	expect(parsePrefs("not json").candidates).toBe(true);
+	expect(parsePrefs('{"candidates":false}').candidates).toBe(false);
+	expect(parsePrefs('{"candidates":true,"roots":["/a",3]}')).toEqual({ roots: ["/a"], candidates: true });
 });

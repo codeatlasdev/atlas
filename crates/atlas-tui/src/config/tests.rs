@@ -262,6 +262,33 @@ fn load_or_detect_of_an_empty_folder_loads_with_no_services() {
     assert!(!cfg.name.is_empty());
 }
 
+// Incident: Rust/Go/Python folders loaded with no services ("found nothing to run"). The detected YAML must also
+// survive the real parser: a service name or command that breaks YAML would turn a hint into a broken config.
+#[test]
+fn load_or_detect_runs_a_rust_go_or_django_folder_through_the_real_parser() {
+    let cargo = TempDir::new().unwrap();
+    write_config(&cargo, "Cargo.toml", "[package]\nname = \"my-app\"\n");
+    fs::create_dir_all(cargo.path().join("src")).unwrap();
+    write_config(&cargo, "src/main.rs", "fn main() {}\n");
+    let (cfg, src) = load_or_detect(cargo.path()).unwrap();
+    assert_eq!(src, ConfigSource::Detected);
+    assert_eq!(cfg.services["my-app"].command.as_deref(), Some("cargo run"));
+
+    let go = TempDir::new().unwrap();
+    write_config(&go, "go.mod", "module example.com/svc\n");
+    write_config(&go, "main.go", "package main\n");
+    let (cfg, _) = load_or_detect(go.path()).unwrap();
+    assert_eq!(cfg.services["svc"].command.as_deref(), Some("go run ."));
+
+    let django = TempDir::new().unwrap();
+    write_config(&django, "manage.py", "");
+    let (cfg, _) = load_or_detect(django.path()).unwrap();
+    assert_eq!(
+        cfg.services["web"].command.as_deref(),
+        Some("python manage.py runserver")
+    );
+}
+
 #[test]
 fn load_or_detect_still_layers_atlas_local_yaml_on_a_detected_config() {
     let dir = TempDir::new().unwrap();

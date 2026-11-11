@@ -194,6 +194,37 @@ pub fn project_config(id: String) -> Result<Value, String> {
         })
         .collect();
     Ok(
-        json!({ "name": cfg.name, "services": services, "actions": actions, "setup": setup_info(&root, &cfg) }),
+        json!({ "name": cfg.name, "services": services, "actions": actions, "setup": setup_info(&root, &cfg), "detected": detected_label(&root) }),
     )
+}
+
+/// What Atlas recognised in a folder (`Rust project (Cargo.toml)`), for the panel when it has no services to show.
+/// `None` with an `atlas.yaml` (the file is the source of truth, whatever else the folder holds) or when nothing is
+/// recognised.
+fn detected_label(root: &Path) -> Option<String> {
+    if root.join("atlas.yaml").is_file() {
+        return None;
+    }
+    let d = atlas_core::domain::project::detect_project(root);
+    atlas_core::domain::project::detection_label(root, &d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Contract: `lib/api.ts` `ProjectConfig.detected` is this string or null; the panel's empty state names it.
+    #[test]
+    fn detected_label_names_the_stack_only_when_there_is_no_atlas_yaml() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::write(t.path().join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+        assert_eq!(
+            detected_label(t.path()).as_deref(),
+            Some("Rust project (Cargo.toml)")
+        );
+        std::fs::write(t.path().join("atlas.yaml"), "name: x\nservices: {}\n").unwrap();
+        assert_eq!(detected_label(t.path()), None);
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(detected_label(empty.path()), None);
+    }
 }

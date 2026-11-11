@@ -91,7 +91,7 @@
 	open={discovery.open}
 	onOpenChange={(o) => !o && discovery.close()}
 	title="Find projects"
-	description="Looks for project folders (with or without an atlas.yaml) in your usual folders and with Spotlight."
+	description="Looks for project folders in your usual folders and with Spotlight. An atlas.yaml is optional: Atlas detects the stack."
 	size="xl"
 >
 	<div class="bar">
@@ -143,14 +143,16 @@
 		{:else}
 			{#if !discovery.running}
 				<p class="empty">
-					{query ? `No project matches “${query}”.` : "No atlas.yaml found in the scanned folders."}
+					{query ? `No project matches “${query}”.` : "No projects found in the scanned folders."}
 				</p>
 			{/if}
 		{/each}
 
 		{#if discovery.candidates && candidateGroups.length}
 			<h4 class="section">Could use Atlas</h4>
-			<p class="note">Git repositories with a project file but no atlas.yaml.</p>
+			<p class="note">
+				Git repositories with a project file. Atlas detects how to run them; atlas.yaml is optional.
+			</p>
 			{#each candidateGroups as g (g.root)}
 				{@render group(g.root, g.items)}
 			{/each}

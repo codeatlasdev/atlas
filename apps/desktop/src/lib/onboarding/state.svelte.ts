@@ -7,7 +7,7 @@ import { api } from "#lib/api.ts";
 import { recent } from "#lib/keymap.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
-import { showWelcome } from "./flow.ts";
+import { showWelcome, welcomeFinished } from "./flow.ts";
 import { welcome } from "./welcome.svelte.ts";
 import {
 	complete,
@@ -83,6 +83,11 @@ class Onboarding {
 		return $effect.root(() => {
 			$effect(() => {
 				if (!this.loaded) return;
+				// The welcome is over once any project exists or the deck's flow added one. Saved HERE, in the observer
+				// that is always mounted: the hand-off used to live in FirstRun, which the same state change unmounts
+				// (a project makes `firstRun` false), so its effect never ran and `done` stayed false on disk. The deck
+				// then came back whenever the project list was empty again (Windows user report, 1.5.0-alpha.24).
+				if (store.projects.length || welcomeFinished(welcome.phase)) void this.finishWelcome();
 				if (store.projects.length) void this.markDone("project");
 				if (store.projects.some((p) => p.running)) void this.markDone("stack");
 				if (ws.doc.tabs.some((t) => t.kind === "terminal" && !t.agent)) void this.markDone("terminal");

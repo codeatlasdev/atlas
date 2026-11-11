@@ -114,9 +114,9 @@ export function progress(rows: Row[], reported = false): StartProgress {
 }
 
 /**
- * Whether the welcome overlay is up. A first run is "welcome never finished and nothing added yet"; but once the hero
- * itself adds the first project the count is no longer zero, so the overlay must stay for the rest of the guided flow
- * (`starting`, `up`) or the user would never see their stack come up.
+ * Whether the welcome overlay is up. A first run is "welcome never finished and nothing added yet"; once the deck
+ * adds the first project the overlay stays for the rest of the guided flow (`starting`, `up`) so the user sees their
+ * stack come up, even though the welcome is already saved as finished by then ([`welcomeFinished`]).
  */
 export function showWelcome(
 	state: { done: boolean },
@@ -125,8 +125,17 @@ export function showWelcome(
 	phase: Phase,
 ): boolean {
 	if (!loaded || phase === "done") return false;
-	if (phase === "starting" || phase === "up") return !state.done;
+	if (phase === "starting" || phase === "up") return true;
 	return projectCount === 0 && !state.done;
+}
+
+/**
+ * Whether reaching `phase` means the welcome is over and must be saved as such. A project added from the deck counts:
+ * before, `done` was saved only by "Continue" at the very end, so a stack that failed or a window closed mid-start
+ * left `done: false` and the deck came back from its first slide.
+ */
+export function welcomeFinished(phase: Phase): boolean {
+	return phase === "starting" || phase === "up" || phase === "done";
 }
 
 /** The event Esc raises at `phase`, or null. Esc stops a scan before it dismisses anything, and never abandons a starting stack. */

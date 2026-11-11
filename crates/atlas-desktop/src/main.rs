@@ -419,6 +419,36 @@ fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
     StateFlags::all() - StateFlags::VISIBLE - StateFlags::DECORATIONS
 }
 
+/// First launch (nothing saved yet): open maximized when the configured size (logical px) does not fit the
+/// monitor's work area. 1280×820 on a 1920×1080 screen at 150% (1280×688 work area) or a 1366×768 laptop hung
+/// past the taskbar and the screen edge on every first launch (Windows user report, 1.5.0-alpha.24).
+fn should_maximize_first(size: (f64, f64), work: (f64, f64)) -> bool {
+    size.0 > work.0 || size.1 > work.1
+}
+
+/// Maximize a window that has no saved state and does not fit its monitor.
+fn fit_first_launch(app: &tauri::App, win: &tauri::WebviewWindow, size: (f64, f64)) {
+    let saved = app
+        .path()
+        .app_config_dir()
+        .is_ok_and(|d| d.join(".window-state.json").exists());
+    if saved {
+        return;
+    }
+    let Ok(Some(m)) = win.current_monitor().or_else(|_| win.primary_monitor()) else {
+        return;
+    };
+    let scale = m.scale_factor();
+    let area = m.work_area().size;
+    let work = (
+        f64::from(area.width) / scale,
+        f64::from(area.height) / scale,
+    );
+    if should_maximize_first(size, work) {
+        let _ = win.maximize();
+    }
+}
+
 /// The main window from `tauri.conf.json` (`create: false`), built here so it can start hidden
 /// with the cached theme already on `<html>` and in the native appearance. `boot::app_ready`
 /// (first real frame) or `boot`'s deadline shows it; window-state restores size/position/maximized
@@ -449,6 +479,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    fit_first_launch(app, &win, (cfg.width, cfg.height));
     // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
     #[cfg(windows)]
     webview_win::no_accelerators(&win);
@@ -674,6 +705,19 @@ fn main() {
 mod window_tests {
     use super::{transparent_on, visible_on_any, window_state_flags};
     use tauri_plugin_window_state::StateFlags;
+
+    // Windows user report (1.5.0-alpha.24): 1280×820 opened past the taskbar on a 1280×688 work area.
+    #[test]
+    fn a_first_window_that_does_not_fit_its_monitor_opens_maximized() {
+        use super::should_maximize_first;
+        assert!(should_maximize_first((1280.0, 820.0), (1280.0, 688.0)));
+        assert!(should_maximize_first((1280.0, 820.0), (1366.0, 728.0)));
+        assert!(!should_maximize_first((1280.0, 820.0), (1920.0, 1040.0)));
+        assert!(
+            !should_maximize_first((1280.0, 820.0), (1280.0, 820.0)),
+            "an exact fit stays a window"
+        );
+    }
 
     // Incident (1.5.0-alpha.24, Windows): two title bars. `.window-state.json` from an older build kept
     // `"decorated": true` and the plugin put the native caption back over the page's own WindowControls.

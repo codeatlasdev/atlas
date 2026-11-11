@@ -12,6 +12,8 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Onboarding came back after you added your first folder.** Finishing the welcome was saved by the welcome screen itself, which closes the moment a project appears, so the save never ran. It is now saved by a part of the app that is always running.
+- **Windows: the window opened larger than the screen on first launch** (past the taskbar on 1366×768 laptops or 1080p screens at 150% scaling). A first launch that does not fit the monitor now opens maximized; a size you chose later is kept.
 - **Windows: buttons did nothing, Settings and dialogs never opened, Atlas seemed frozen.** Right after launch, the call the page makes once its first frame is painted never returned, and every later request from the page (opening Settings, loading a dialog, any app action) queued behind it while the window kept drawing. That call now runs off the main thread; a test flags any synchronous command that directly builds a window.
 - **Windows: two title bars** (the system one above Atlas's own minimize/maximize/close). A window position saved by an older version brought the system frame back. The frame is no longer restored from saved state.
 - **Windows and Linux: the agent dock no longer sits over the taskbar from the first launch** ("No agent running"). It is off by default there; Ctrl+Alt+D or Settings → Agents → Agent dock turns it on, and a choice you already saved is kept. macOS is unchanged.

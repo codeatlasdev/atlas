@@ -8,6 +8,7 @@ import {
 	progress,
 	showStanding,
 	showWelcome,
+	welcomeFinished,
 	summarize,
 	type Event,
 	type Phase,
@@ -183,6 +184,26 @@ describe("showWelcome: the overlay stays for the whole guided flow", () => {
 	});
 	test("done hides it", () => {
 		expect(showWelcome({ done: false }, true, 1, "done")).toBe(false);
+	});
+	test("the guided start stays on screen after the welcome was saved as finished", () => {
+		for (const p of ["starting", "up"] as Phase[])
+			expect(showWelcome({ done: true }, true, 1, p), p).toBe(true);
+	});
+});
+
+// Windows user report (1.5.0-alpha.24): finish the deck, open the first folder, and onboarding starts over. `done`
+// was saved only by the final "Continue", so any start that did not reach it kept the deck coming back.
+describe("welcomeFinished: the welcome is saved as over the moment a project is added", () => {
+	test("adding a project (starting), its stack up, or done all finish it", () => {
+		for (const p of ["starting", "up", "done"] as Phase[]) expect(welcomeFinished(p), p).toBe(true);
+	});
+	test("the steps before a project exists do not", () => {
+		for (const p of ["welcome", "scanning", "empty", "results"] as Phase[])
+			expect(welcomeFinished(p), p).toBe(false);
+	});
+	test("once saved, a later launch never shows the deck again", () => {
+		expect(showWelcome({ done: true }, true, 1, "welcome")).toBe(false);
+		expect(showWelcome({ done: true }, true, 0, "welcome")).toBe(false);
 	});
 });
 

@@ -80,7 +80,7 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
     let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("tray".into()));
     #[cfg(windows)]
-    let builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    let builder = builder.additional_browser_args(crate::webview_win::args());
     let win = builder
         .theme(theme)
         .initialization_script(script)

@@ -161,6 +161,7 @@ macro_rules! handlers {
             boot::app_ready,
             boot::theme_cache_write,
             boot::themes_user_read,
+            diag::diag_frontend_error,
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,
@@ -409,6 +410,15 @@ fn transparent_on(configured: bool, os: &str) -> bool {
     configured && os != "linux"
 }
 
+/// What window-state saves and restores. Not VISIBLE: showing is `boot`'s call (first frame). Not DECORATIONS:
+/// the frame belongs to the platform config (`decorations: false` on Windows, drawn by `WindowControls`); a
+/// `.window-state.json` written while an older build had native decorations restored `"decorated": true` and
+/// gave Windows users two title bars (native caption above the page's own min/max/close).
+fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::all() - StateFlags::VISIBLE - StateFlags::DECORATIONS
+}
+
 /// The main window from `tauri.conf.json` (`create: false`), built here so it can start hidden
 /// with the cached theme already on `<html>` and in the native appearance. `boot::app_ready`
 /// (first real frame) or `boot`'s deadline shows it; window-state restores size/position/maximized
@@ -431,7 +441,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
     }
     #[cfg(windows)]
     {
-        builder = builder.additional_browser_args(webview_win::ARGS);
+        builder = builder.additional_browser_args(webview_win::args());
     }
     let win = builder
         .transparent(window_transparent(cfg.transparent))
@@ -505,11 +515,7 @@ fn main() {
                 ])
                 // Pins are `shots-pin-<n>`: any number of them, so the exact-label denylist cannot name them.
                 .with_filter(|label| !shots::surface::is_pin_label(label))
-                // Showing is `boot`'s call (first frame), not window-state's at creation.
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::all()
-                        - tauri_plugin_window_state::StateFlags::VISIBLE,
-                )
+                .with_state_flags(window_state_flags())
                 .build(),
         )
         .setup(|app| {
@@ -666,7 +672,21 @@ fn main() {
 }
 #[cfg(test)]
 mod window_tests {
-    use super::{transparent_on, visible_on_any};
+    use super::{transparent_on, visible_on_any, window_state_flags};
+    use tauri_plugin_window_state::StateFlags;
+
+    // Incident (1.5.0-alpha.24, Windows): two title bars. `.window-state.json` from an older build kept
+    // `"decorated": true` and the plugin put the native caption back over the page's own WindowControls.
+    #[test]
+    fn window_state_never_restores_the_frame_or_visibility() {
+        let f = window_state_flags();
+        assert!(
+            !f.contains(StateFlags::DECORATIONS),
+            "the frame is the platform config's"
+        );
+        assert!(!f.contains(StateFlags::VISIBLE), "showing is boot's call");
+        assert!(f.contains(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED));
+    }
 
     // Incident (2026-10-26, Arch: lag and ghost frames): `tauri.conf.json` makes the main window transparent for the
     // macOS vibrancy, and the Linux build inherited it although its page is opaque.

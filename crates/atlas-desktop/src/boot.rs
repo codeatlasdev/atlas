@@ -231,8 +231,15 @@ fn show_now(app: &AppHandle, why: &str) {
 }
 
 /// The frontend painted its first real frame.
+///
+/// `async` is load-bearing on Windows: a sync command runs ON the main thread, so `run_on_main_thread` in
+/// [`show_now`] ran inline and built the tray popover's WebView2 inside the IPC handler. WebView2 creation
+/// waits on a callback that this very handler blocks, so the call never returned, and from then on every
+/// `invoke` and every chunk fetch of the page queued behind it: Settings and every lazy dialog never opened,
+/// buttons did nothing, while the window kept painting (1.5.0-alpha.24). From the async runtime the closure
+/// is queued to the event loop instead.
 #[tauri::command]
-pub fn app_ready(app: AppHandle) {
+pub async fn app_ready(app: AppHandle) {
     show_now(&app, "ready");
 }
 

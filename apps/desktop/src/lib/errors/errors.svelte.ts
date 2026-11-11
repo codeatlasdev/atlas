@@ -67,6 +67,8 @@ class Errors {
 			return;
 		}
 		if (this.#seen.size >= MAX_SEEN) this.#seen.delete(this.#seen.keys().next().value as string);
+		// Installed builds have no devtools: the app log is the only place a page error survives.
+		invoke("diag_frontend_error", { place: where, message: r.message }).catch(() => {});
 		const id = this.#next++;
 		this.#seen.set(fp, { at: now, id });
 		this.toasts.push({ id, report: r, repeats: 0 });

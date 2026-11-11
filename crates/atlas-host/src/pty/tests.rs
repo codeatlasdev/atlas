@@ -116,13 +116,15 @@ async fn a_title_set_before_attach_comes_back_as_a_title_event() {
         (&ev["ev"], &ev["pty"]),
         (&serde_json::json!("pty_title"), &serde_json::json!(s.id))
     );
-    // An elevated Windows console (CI runners are) puts "Administrator: " before what the program set.
+    // An elevated Windows console (CI runners are) puts "Administrator: " before what the program set, in the
+    // system's language ("Administrador: " on a pt-BR machine).
     let title = ev["title"].as_str().unwrap_or_default();
-    assert_eq!(
-        title.trim_start_matches("Administrator:").trim_start(),
-        "built",
-        "{title:?}"
-    );
+    let set = if cfg!(windows) {
+        title.split_once(':').map_or(title, |(_, r)| r).trim_start()
+    } else {
+        title
+    };
+    assert_eq!(set, "built", "{title:?}");
     assert_eq!(
         crate::protocol::title_event("p", &serde_json::json!({"title": ""})),
         None

@@ -208,9 +208,9 @@ pub fn build(
     };
     let (w, h) = surface.size();
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()));
-    // Windows: every webview of the app passes the same browser args (webview_win::ARGS).
+    // Windows: every webview of the app passes the same browser args (webview_win::args()).
     #[cfg(windows)]
-    let builder = builder.additional_browser_args(crate::webview_win::ARGS);
+    let builder = builder.additional_browser_args(crate::webview_win::args());
     let win = builder
         .theme(theme)
         .initialization_script(script)

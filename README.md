@@ -273,7 +273,7 @@ Rust 1.99 (pinned in `rust-toolchain.toml`). CI runs on GitHub Actions for pull 
 - **Releases:** maintainers, see [docs/release.md](docs/release.md).
 - **License:** [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. Third-party notices → [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## code signing policy
+## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 

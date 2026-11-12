@@ -422,12 +422,19 @@ fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
 /// First launch (nothing saved yet): open maximized when the configured size (logical px) does not fit the
 /// monitor's work area. 1280×820 on a 1920×1080 screen at 150% (1280×688 work area) or a 1366×768 laptop hung
 /// past the taskbar and the screen edge on every first launch (Windows user report, 1.5.0-alpha.24).
+#[cfg(any(windows, test))]
 fn should_maximize_first(size: (f64, f64), work: (f64, f64)) -> bool {
     size.0 > work.0 || size.1 > work.1
 }
 
-/// Maximize a window that has no saved state and does not fit its monitor.
+/// Windows, the user's own app only: maximize a window that has no saved state and does not fit its monitor.
+/// Never in an agent instance (its window must stay where `agent_display` puts it) and never on macOS, where a
+/// maximize orders the hidden window in before `boot` decides to show it.
+#[cfg(windows)]
 fn fit_first_launch(app: &tauri::App, win: &tauri::WebviewWindow, size: (f64, f64)) {
+    if !agent_mode::Mode::current().focus_allowed() {
+        return;
+    }
     let saved = app
         .path()
         .app_config_dir()
@@ -479,6 +486,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         .theme(theme)
         .initialization_script(script)
         .build()?;
+    #[cfg(windows)]
     fit_first_launch(app, &win, (cfg.width, cfg.height));
     // Edge's F5 / Ctrl+R / Ctrl+F … must never reload the app or open browser UI (keydown still reaches the page).
     #[cfg(windows)]

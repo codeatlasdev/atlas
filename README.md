@@ -273,4 +273,12 @@ Rust 1.99 (pinned in `rust-toolchain.toml`). CI runs on GitHub Actions for pull 
 - **Releases:** maintainers, see [docs/release.md](docs/release.md).
 - **License:** [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. Third-party notices → [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+## code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- **Scope:** the Windows files of a release: `atlas.exe`, `atlas-desktop.exe`, the NSIS installer (`Atlas-<version>-x86_64-pc-windows-msvc-setup.exe`) and `Atlas-Setup.exe`. They are built by GitHub Actions from the version tag (`.github/workflows/release.yml`) and signed by SignPath; nothing is signed from a developer's machine. Signing is **pending the Foundation's approval**: until the first signed release, Windows files are unsigned (see [Windows](docs/installation.md#windows)). macOS and Linux files are not part of it.
+- **Team roles:** Committers and reviewers are the repository maintainers (see [GOVERNANCE.md](GOVERNANCE.md)). Approvers, who release a signing request, are the members of the GitHub team [`atlas-maintainers`](https://github.com/orgs/codeatlasdev/teams/atlas-maintainers) (currently [@mvilacad](https://github.com/mvilacad) and [@luancoleto](https://github.com/luancoleto)).
+- **Privacy:** Atlas does not transfer data to other systems unless you ask it to. It has no telemetry, analytics, crash reporting or accounts. The one request it makes on its own is an update check that reads the public releases of `codeatlasdev/atlas` on GitHub (Atlas Desktop has a *Check for updates automatically* switch in Settings); installing or updating downloads the release from GitHub. Nothing is sent to CodeAtlas or SignPath. Every request is listed in [PRIVACY.md](PRIVACY.md).
+
 <p align="center"><sub>made with too much coffee by CodeAtlas · MIT or Apache-2.0</sub></p>

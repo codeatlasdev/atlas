@@ -6,6 +6,7 @@
 	import { onMount, type Snippet } from "svelte";
 	import Contain from "#lib/errors/Contain.svelte";
 	import { startErrorHandler } from "#lib/errors/errors.svelte.ts";
+	import { appLauncher } from "#lib/keys.ts";
 
 	let { children }: { children: Snippet } = $props();
 
@@ -13,6 +14,10 @@
 	onMount(() => startErrorHandler("dock"));
 </script>
 
-<Contain where="Agent dock" title="The dock hit an error" hint="Open Atlas from the Dock to keep working.">
+<Contain
+	where="Agent dock"
+	title="The dock hit an error"
+	hint="Open Atlas from {appLauncher()} to keep working."
+>
 	{@render children()}
 </Contain>

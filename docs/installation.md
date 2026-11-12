@@ -108,7 +108,7 @@ irm https://atlas.codeatlas.com.br/install.ps1 | iex
 $env:ATLAS_CHANNEL = 'stable'; irm https://atlas.codeatlas.com.br/install.ps1 | iex   # or pick a channel
 ```
 
-It verifies the release checksum, puts `atlas.exe` in `%USERPROFILE%\.atlas\bin`, adds that folder to your user `PATH` (open a new terminal afterwards) and installs the bundled agent skills. `atlas desktop` then installs and opens the app. You can also run `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` from the release page by hand: it installs the app and an `atlas.exe` next to it, which the app uses until you install the CLI.
+It verifies the release checksum, puts `atlas.exe` in `%USERPROFILE%\.atlas\bin`, adds that folder to your user `PATH` (open a new terminal afterwards) and installs the bundled agent skills. `atlas desktop` then installs and opens the app. You can also download `Atlas-Setup.exe` from the release page and double-click it: a small window installs Atlas Desktop and, if you have no `atlas` command yet, the `atlas` command too (`%USERPROFILE%\.atlas\bin`, added to your PATH), then opens Atlas. No admin rights, no wizard. The Windows files are **not code-signed yet** (signing through SignPath Foundation is pending its approval, see [Code signing policy](#code-signing-policy)), so SmartScreen may say "Windows protected your PC": click **More info**, then **Run anyway**. Once releases are signed, SmartScreen can still warn about a file few people have downloaded: reputation builds with downloads, and a signature does not switch the warning off by itself. Uninstall it from Settings › Apps (Windows 11: Settings › Apps › Installed apps) like any program: for an install made with `Atlas-Setup.exe` the same window asks **Keep your Atlas data?**. Choosing to delete it removes `%USERPROFILE%\.atlas` (settings, your project list, worktrees Atlas created with any uncommitted changes in them, and the `atlas` command) and asks a second time before it does; your project folders are never touched, and keeping is the default. An install made by `atlas desktop` or `atlas update` shows the plain Windows uninstaller instead. If something fails the window says what and offers **Copy details** (also Ctrl+C); the log is `%TEMP%\atlas-setup.log`. For scripts, `Atlas-Setup.exe --silent` runs without a window (and `--uninstall --silent` removes the app, keeping the data unless `--remove-data` is given); the plain NSIS installer `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` (`/S`) is what `atlas desktop` and `atlas update` run.
 
 What differs from macOS and Linux:
 
@@ -117,6 +117,14 @@ What differs from macOS and Linux:
 - **The terminal host is not upgraded live.** Windows cannot hand a running console to a new process, so after an update the host restarts by itself once no terminal is running, and otherwise asks first, like an old host on any platform.
 - Atlas keeps paths with forward slashes internally (`C:/Users/me/app`, as git prints them).
 - Not on Windows: capture and recording (`atlas desktop capture`, `record`), agent test instances (`desktop:agent`), `atlas link --desktop`, and the `local` target of `atlas deploy` (deploy targets are Linux servers reached over SSH, which works from Windows). `atlas link` makes a symlink, which needs Developer Mode.
+
+### Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- **Scope:** `atlas.exe`, `atlas-desktop.exe`, the NSIS installer and `Atlas-Setup.exe` of each release, built by GitHub Actions from the version tag and signed by SignPath after a maintainer approves the request. Signing is **pending the Foundation's approval**; until then these files are unsigned.
+- **Team roles:** Committers and reviewers are the repository maintainers ([GOVERNANCE.md](https://github.com/codeatlasdev/atlas/blob/main/GOVERNANCE.md)). Approvers are the members of the GitHub team [`atlas-maintainers`](https://github.com/orgs/codeatlasdev/teams/atlas-maintainers).
+- **Privacy:** Atlas does not transfer data to other systems unless you ask it to. No telemetry, analytics, crash reporting or accounts. The one request it makes on its own is an update check that reads the public releases of `codeatlasdev/atlas` on GitHub (Atlas Desktop has a *Check for updates automatically* switch in Settings); installing or updating downloads the release from GitHub. Nothing is sent to CodeAtlas or SignPath. The full list is in [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
 
 ## Update
 
@@ -172,7 +180,7 @@ Build `atlas-cli`, not `atlas-tui` alone: `atlas-tui` is a library, and `atlas-c
 bun run desktop:build            # macOS: .app + .dmg; Linux: .deb, .rpm and .AppImage; Windows: the NSIS setup .exe; all in target/release/bundle/
 atlas desktop --from target/release/bundle/macos/Atlas.app                 # macOS
 atlas desktop --from target/release/bundle/appimage/Atlas_*.AppImage       # Linux
-atlas desktop --from target/release/bundle/nsis/Atlas_*-setup.exe          # Windows
+atlas desktop --from target/release/bundle/nsis/Atlas_*-setup.exe          # Windows (the NSIS installer; Atlas-Setup.exe wraps it: docs/release.md)
 ```
 
 On Linux, build the CLI first (`cargo build --release -p atlas-cli`): the `.deb` and `.rpm` include `target/release/atlas`. On Windows you need the Visual Studio Build Tools (C++ workload) and WebView2 (preinstalled on Windows 11); the release build also puts `atlas.exe` in the installer (`release.yml`, `build-windows`).

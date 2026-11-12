@@ -41,5 +41,10 @@ dirs = { workspace = true }
 tempfile = { workspace = true }
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse", "display"] }
 
+[build-dependencies]
+# Version info of atlas.exe (ProductName, versions): what SignPath's artifact configuration and the
+# Windows file properties read. Already in the tree (tauri-build and atlas-setup use it).
+tauri-winres = "0.3"
+
 [lints]
 workspace = true

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SegmentedControl, Select, Switch } from "@codeatlasdev/ui";
+	import { kbd } from "#lib/keys.ts";
 	import { prefs } from "#lib/stores/prefs.svelte.ts";
 	import { ZOOM_LEVELS } from "#lib/zoom.ts";
 	import FontRows from "./FontRows.svelte";
@@ -21,7 +22,7 @@
 	<Row
 		id="ui-zoom"
 		label="Zoom"
-		description="Scale the whole window. ⌘+ and ⌘− step it, ⌘0 resets it (Ctrl instead of ⌘ outside macOS)."
+		description={`Scale the whole window. ${kbd("cmd-=")} and ${kbd("cmd--")} step it, ${kbd("cmd-0")} resets it.`}
 	>
 		<div class="select">
 			<Select

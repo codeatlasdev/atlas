@@ -41,8 +41,8 @@
 			sky: ["#c9d2ff", "#f3c9e8"],
 		},
 		{
-			title: "One file runs your whole stack.",
-			body: "Atlas reads atlas.yaml, starts every service in order and shows you when each one is up.",
+			title: "Open a folder and Atlas runs it.",
+			body: "Atlas detects your stack, starts every service in order and shows you when each one is up. An atlas.yaml is optional: save one only when you want to tune it.",
 			sky: ["#bfe6d8", "#cfe3ff"],
 			scene: SceneStack,
 		},
@@ -61,7 +61,8 @@
 	];
 	const LAST = SLIDES.length; // the project steps
 
-	let i = $state(0);
+	// Mid-flow (a project is being added or its stack is starting) the deck resumes on the project steps, never on slide 1.
+	let i = $state(w.phase === "welcome" && !w.adding ? 0 : LAST);
 	let dir = $state(1);
 	const go = (n: number) => {
 		if (n < 0 || n > LAST) return;

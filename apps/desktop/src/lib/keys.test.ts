@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import {
 	DEFAULT_KEYMAP,
+	appLauncher,
 	bindingsOf,
 	defaultKeymap,
 	fileManager,
@@ -309,6 +310,13 @@ test("the reveal action names the platform's file manager", () => {
 	expect(revealLabel(false, true)).toBe("Reveal in File Explorer");
 	expect(revealLabel(false, false)).toBe("Reveal in file manager");
 	expect(fileManager(false, true)).toBe("File Explorer");
+});
+
+// Incident (Windows): the dock/tray error fallback said "Open Atlas from the Dock", which Windows does not have.
+test("the error fallback names where the running app lives on each OS", () => {
+	expect(appLauncher(true, false)).toBe("the Dock");
+	expect(appLauncher(false, true)).toBe("the taskbar");
+	expect(appLauncher(false, false)).toBe("your launcher");
 });
 
 // The shortcut conventions decided for Windows/Linux (Chrome / VS Code / Windows Terminal) and macOS, pinned through the

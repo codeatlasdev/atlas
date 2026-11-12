@@ -1,5 +1,5 @@
 <script lang="ts">
-	/** Slide "one atlas.yaml": the file on the left, its services coming up one by one on the right. */
+	/** Slide "Open a folder and Atlas runs it": what Atlas detected on the left, its services coming up one by one on the right. */
 	import { onMount } from "svelte";
 	import Frame from "./Frame.svelte";
 	import { Beats } from "./beats.svelte.ts";
@@ -16,7 +16,7 @@
 	const state = (i: number) => (beats.n > i + 1 ? "running" : beats.n > i ? "starting" : "idle");
 </script>
 
-<Frame title="shop · atlas.yaml">
+<Frame title="shop · detected">
 	<div class="split">
 		<pre class="yaml" aria-hidden="true"><span class="k">services:</span>
 {#each SERVICES as s, i (s.name)}<span class="line" class:on={beats.n > i}>  <span class="k">{s.name}:</span>

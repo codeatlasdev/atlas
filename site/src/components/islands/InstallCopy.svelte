@@ -1,9 +1,20 @@
 <script lang="ts">
-	let { cmd }: { cmd: string } = $props();
+	// `cmd` is shown as is. With `winCmd`, a Windows visitor sees that one instead (the PowerShell installer: `curl | sh` does not run
+	// there); the server render and no-JS visitors keep `cmd`, so the page is complete without a script.
+	import { onMount } from "svelte";
+	let { cmd, winCmd = "", prompt = "$", label = "Copy install command" }: { cmd: string; winCmd?: string; prompt?: string; label?: string } = $props();
+	let windows = $state(false);
+	onMount(() => {
+		const nav = navigator as Navigator & { userAgentData?: { platform?: string; mobile?: boolean } };
+		const mobile = nav.userAgentData?.mobile ?? /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+		windows = !mobile && /win/i.test(nav.userAgentData?.platform ?? navigator.platform ?? "");
+	});
+	const shown = $derived(winCmd && windows ? winCmd : cmd);
+	const mark = $derived(winCmd && windows ? ">" : prompt);
 	let copied = $state(false);
 	async function copy() {
 		try {
-			await navigator.clipboard.writeText(cmd);
+			await navigator.clipboard.writeText(shown);
 			copied = true;
 			setTimeout(() => (copied = false), 1800);
 		} catch {}
@@ -11,8 +22,8 @@
 </script>
 
 <div class="install">
-	<code><span class="p">$</span> {cmd}</code>
-	<button type="button" onclick={copy} aria-label="Copy install command">{copied ? "copied" : "copy"}</button>
+	<code><span class="p">{mark}</span> {shown}</code>
+	<button type="button" onclick={copy} aria-label={winCmd && windows ? "Copy PowerShell install command" : label}>{copied ? "copied" : "copy"}</button>
 	<span class="sr-only" role="status">{copied ? "Install command copied" : ""}</span>
 </div>
 

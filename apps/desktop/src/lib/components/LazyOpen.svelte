@@ -14,7 +14,15 @@
 	$effect(() => {
 		if (!when || requested) return;
 		requested = true;
-		void load().then((m) => (View = m.default));
+		load().then(
+			(m) => (View = m.default),
+			(e) => {
+				// A failed chunk fetch must not leave the dialog dead for the session: let the next open retry,
+				// and surface the error (window `unhandledrejection` → toast + app log).
+				requested = false;
+				throw e;
+			},
+		);
 	});
 </script>
 

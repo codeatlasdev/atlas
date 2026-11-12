@@ -184,6 +184,10 @@ export const fileManager = (mac = IS_MAC, win = IS_WIN) =>
 /** "Reveal in Finder" on macOS, "Reveal in File Explorer" on Windows (the backend's `reveal` opens that). */
 export const revealLabel = (mac = IS_MAC, win = IS_WIN) => `Reveal in ${fileManager(mac, win)}`;
 
+/** Where a running app lives on this OS, for "Open Atlas from …": the Dock, the taskbar, or the generic name on Linux. */
+export const appLauncher = (mac = IS_MAC, win = IS_WIN) =>
+	mac ? "the Dock" : win ? "the taskbar" : "your launcher";
+
 /**
  * Off macOS ⌃ and ⌘ are both Ctrl, so a default written with ⌃ or ⌃⌘ that shares its key with a ⌘ one could never
  * run (⌃⌘S sidebar vs ⌘S save; ⌃1 space, ⌘1 tab, ⌃⌘1 recent worktree). Those move to Alt (⌃) and Alt+Shift (⌃⌘);

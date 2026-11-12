@@ -13,6 +13,19 @@ export function addPlan(p: Probe): AddPlan {
 	return { kind: "add", root: p.root, inside: p.root !== p.picked };
 }
 
+/** The line shown after adding a folder, or null when there is nothing to tell (it has an atlas.yaml, or is broken).
+ * `detected` is the label from `project_config` (`Node project (package.json)`). */
+export function addedToast(
+	p: Pick<ProjectView, "config_source" | "services_total" | "error">,
+	detected: string | null,
+) {
+	if (p.config_source !== "detected" || p.error) return null;
+	if (!detected) return "Added: nothing to run was detected yet";
+	const kind = detected.replace(/ \(.*\)$/, "");
+	const n = p.services_total;
+	return `Detected ${kind}: ${n ? `${n} service${n === 1 ? "" : "s"}` : "no services to run yet"}`;
+}
+
 /** What removing a project does, said before it happens: the folder stays; a running stack stops; worktrees go too. */
 export function removeDescription(p: Pick<ProjectView, "root" | "running">, linkedWorktrees: number): string {
 	const lines = [p.root, "Only the Atlas entry is removed: no file or folder on disk is touched."];

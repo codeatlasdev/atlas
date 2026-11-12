@@ -143,6 +143,8 @@ class Store {
 	projects = $state<ProjectView[]>([]);
 	live = $state<Record<string, Live>>({});
 	configs = $state<Record<string, ProjectConfig>>({});
+	/** Projects whose `project_config` call failed with no config to show: the panel falls back to its empty state. */
+	configFailed = $state<Record<string, boolean>>({});
 	selected = $state<string | null>(null);
 	busy = $state<Record<string, boolean>>({});
 	focusedService = $state<string | null>(null);
@@ -269,6 +271,7 @@ class Store {
 				this.#unlisten.delete(id);
 				delete this.live[id];
 				delete this.configs[id];
+				delete this.configFailed[id];
 				this.#logs.delete(id);
 				for (const k of this.#lastAlert.keys()) if (k.startsWith(`${id}:`)) this.#lastAlert.delete(k);
 			}
@@ -281,8 +284,11 @@ class Store {
 	async loadConfig(id: string) {
 		try {
 			this.configs[id] = await api.projectConfig(id);
+			delete this.configFailed[id];
 		} catch {
-			// Invalid config: the project's `error` field already says why.
+			// Invalid config: the project's `error` field already says why. With no error and no config the panel
+			// must not wait forever: flag it.
+			this.configFailed[id] = true;
 		}
 	}
 

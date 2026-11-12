@@ -1,4 +1,5 @@
 /** Cheat sheet model: bound commands grouped by area, built from the live keymap. */
+import { kbd } from "#lib/keys.ts";
 
 interface SheetRow {
 	id: string;
@@ -58,7 +59,7 @@ export function buildSheet(
 			c.id === "atlas::RecentWorktree1"
 				? "Recent worktree 1–6"
 				: c.id === "pane::ActivateItem1"
-					? "Tab 1–8 (⌘9 last)"
+					? `Tab 1–8 (${kbd("cmd-9")} last)`
 					: c.label;
 		if (q && !label.toLowerCase().includes(q) && !keys.some((k) => k.toLowerCase().includes(q))) continue;
 		const title = GROUPS.find((g) => g.match(c.id))?.title ?? OTHER;

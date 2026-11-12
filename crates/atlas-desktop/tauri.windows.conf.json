@@ -32,7 +32,8 @@
         "headerImage": "../../packaging/windows/installer-header.bmp",
         "sidebarImage": "../../packaging/windows/installer-sidebar.bmp",
         "startMenuFolder": "Atlas",
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerHooks": "../../packaging/windows/installer-hooks.nsh"
       }
     }
   }

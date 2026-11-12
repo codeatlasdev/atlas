@@ -223,16 +223,23 @@ fn show_now(app: &AppHandle, why: &str) {
     }
     mark(&format!("show:{why}"));
     let app = app.clone();
-    let _ = app.clone().run_on_main_thread(move || {
-        crate::show_main(&app);
-        // Off the critical path: the menu-bar popover is a second webview, built only once the main window is up.
-        crate::tray::ensure_popover(&app);
-    });
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || crate::show_main(&a));
+    // Off the critical path, and off the event loop: the tray popover is a second webview, and on Windows building a
+    // WebView2 inside a `run_on_main_thread` closure never completes (no popover ever existed in 1.5.0-alpha.24).
+    tauri::async_runtime::spawn(async move { crate::tray::ensure_popover(&app) });
 }
 
 /// The frontend painted its first real frame.
+///
+/// `async` is load-bearing on Windows: a sync command runs ON the main thread, so `run_on_main_thread` in
+/// [`show_now`] ran inline and built the tray popover's WebView2 inside the IPC handler. WebView2 creation
+/// waits on a callback that this very handler blocks, so the call never returned, and from then on every
+/// `invoke` and every chunk fetch of the page queued behind it: Settings and every lazy dialog never opened,
+/// buttons did nothing, while the window kept painting (1.5.0-alpha.24). From the async runtime the closure
+/// is queued to the event loop instead.
 #[tauri::command]
-pub fn app_ready(app: AppHandle) {
+pub async fn app_ready(app: AppHandle) {
     show_now(&app, "ready");
 }
 

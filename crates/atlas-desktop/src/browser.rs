@@ -230,7 +230,7 @@ pub async fn browser_open(
     }
     #[cfg(windows)]
     {
-        builder = builder.additional_browser_args(crate::webview_win::ARGS);
+        builder = builder.additional_browser_args(crate::webview_win::args());
     }
     let builder = builder
         .initialization_script(GRAB_JS)

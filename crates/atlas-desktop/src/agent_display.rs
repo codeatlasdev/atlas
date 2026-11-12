@@ -329,7 +329,8 @@ mod tests {
             ),
             (".set_focus()", &["src/main.rs", "src/tray.rs"][..]),
             (".unminimize()", &["src/main.rs"][..]),
-            (".maximize()", &[][..]),
+            // Windows first launch only, user's app only (`fit_first_launch`: cfg(windows) + focus_allowed).
+            (".maximize()", &["src/main.rs"][..]),
             (".set_fullscreen(", &[][..]),
         ] {
             let mut at = hits(needle);

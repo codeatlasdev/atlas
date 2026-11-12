@@ -217,8 +217,10 @@ pub fn log_in(base: &Path, line: &str) {
     }
 }
 
-/// A Rust panic of the app: the message and location go to the app log and the incident ring.
-/// Chains to the previous hook, so the default stderr output and debug-build behavior stay.
+/// A Rust panic of the app: the message and location go to the app log and the incident ring, and a
+/// `crash-*.toml` with the backtrace goes to `atlas_core::crash::crash_dir()` (what [`Diagnostics::last_crash`]
+/// reads). Release Windows builds have no console (`windows_subsystem = "windows"`), so stderr is lost there:
+/// these files are the only record. Chains to the previous hook, so debug-build behavior stays.
 pub fn install_panic_hook() {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -233,8 +235,22 @@ pub fn install_panic_hook() {
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_default();
         incident("panic", &format!("{msg} ({at})"));
+        let _ = atlas_core::crash::write_crash_report(&redact(msg), &at);
         prev(info);
     }));
+}
+
+/// A page error (window `error`, `unhandledrejection`, a crashed view) recorded in the app log on every build.
+/// The console reaches Rust only through the debug bridge, so without this an installed app (no devtools)
+/// loses every frontend failure. Bounded: one line, at most 2 KB, redacted by [`incident`].
+#[tauri::command]
+pub fn diag_frontend_error(place: String, message: String) {
+    let m: String = message
+        .chars()
+        .take(2048)
+        .collect::<String>()
+        .replace(['\r', '\n'], " ");
+    incident("frontend", &format!("{place}: {m}"));
 }
 
 /// Last [`TAIL_LINES`] lines of `path` (reading at most [`TAIL_BYTES`] from its end), ANSI escapes
@@ -539,10 +555,15 @@ pub fn last_crash(dir: &Path) -> Option<String> {
                 .unwrap_or(0)
         })?;
     let text = std::fs::read_to_string(newest).ok()?;
+    // Values are TOML basic strings written by `crash::toml_str`; its escapes (`\\ \" \n \r \t \uXXXX`) are JSON's too.
     let field = |k: &str| {
         text.lines()
             .find_map(|l| l.strip_prefix(k)?.trim_start().strip_prefix('='))
-            .map(|v| v.trim().trim_matches('"').to_string())
+            .map(|v| {
+                let v = v.trim();
+                serde_json::from_str::<String>(v)
+                    .unwrap_or_else(|_| v.trim_matches('"').to_string())
+            })
     };
     let msg = field("msg")?;
     let line = match (field("version"), field("location")) {
@@ -800,6 +821,20 @@ plain line, nothing to hide: terminal 3 exited with code 0";
             !c.contains("frame"),
             "the backtrace stays out of the report: {c}"
         );
+    }
+
+    /// `crash::write_crash_report` escapes backslashes and newlines; the summary shows the real text.
+    #[test]
+    fn last_crash_unescapes_the_report_strings() {
+        let crashes = tempfile::tempdir().unwrap();
+        std::fs::write(
+            crashes.path().join("crash-1.toml"),
+            "version = \"1.5.0\"\nmsg = \"bad\\nthing\"\nlocation = \"crates\\\\atlas-desktop\\\\src\\\\main.rs:1\"\n",
+        )
+        .unwrap();
+        let c = last_crash(crashes.path()).unwrap();
+        assert!(c.contains(r"crates\atlas-desktop\src\main.rs:1"), "{c}");
+        assert!(c.contains("bad\nthing"), "{c}");
     }
 
     #[test]

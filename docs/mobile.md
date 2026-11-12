@@ -95,9 +95,16 @@ It takes about two minutes, mostly the iOS build. `bun run mobile:watch` (`--wat
 
 Android: `bun run mobile:e2e:android` / `bun run mobile:watch:android` (`--android`) run the same test on a dedicated `atlas-e2e` emulator (its AVD is created from the newest complete arm64 Google APIs image; your own AVDs are never touched), wiped each run and started without a window unless watching (an emulator cannot be shown after a headless start, so `--watch` shows it from the beginning). It reaches the computer's loopback as `10.0.2.2`. Needs the Android SDK and the Rust Android targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android`). `flutter test` gets `--timeout 5m`, so a stuck step fails with a message.
 
-## Testers
+## Releases (testers, then the stores)
 
-`bun run mobile:beta` (fastlane, `apps/mobile/fastlane/Fastfile`) builds the app and uploads it to **TestFlight** and the **Play internal testing** track with one build number; `fastlane ios_beta` / `fastlane android_beta` do one store. The `Mobile beta` workflow runs the same lanes in CI when a `mobile-v*` tag is pushed (or by hand). Nothing secret is in the repo: the lanes read the environment, and CI reads the `mobile-beta` environment's secrets.
+One path, one tag: `git tag mobile-v1.2.0 && git push origin mobile-v1.2.0` runs the `Mobile release` workflow (`.github/workflows/mobile-release.yml`, fastlane `apps/mobile/fastlane/Fastfile`):
+
+1. **Unattended:** it builds version `1.2.0` (from the tag; `mobile-vX.Y.Z` only) with one build number for both stores, and uploads it to **TestFlight** and the **Play internal testing** track.
+2. **After your approval:** the `store` job waits on the `mobile-store` environment. Its required reviewers approve it from the run (**Review deployments**). It then promotes that same build, never a new one: `fastlane ios_release` submits it to App Store review and Apple releases it as soon as it is approved; `fastlane android_release` moves it from internal testing to production, to every user at once. Not approved within 30 days, the run expires and the version stays with testers. A fix is the next tag (`mobile-v1.2.1`).
+
+Commits and pull requests never publish anything. A run started by hand (Actions, **Run workflow**) builds for testers only and keeps `pubspec.yaml`'s version. Locally, `bun run mobile:beta` does step 1, and `BUILD_NUMBER=<n> VERSION=1.2.0 bundle exec fastlane release` step 2. Nothing secret is in the repo: the lanes read the environment; CI reads the secrets of the `mobile-beta` environment (step 1) and of `mobile-store` (step 2: the App Store Connect key and the Play service account).
+
+Set up once in GitHub: environment `mobile-store` with **Required reviewers** (the maintainers) and **Deployment tags** limited to `mobile-v*`; its secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `PLAY_SERVICE_ACCOUNT_JSON`. Store texts, screenshots, the privacy answers and the age rating are kept in each store's console for now.
 
 | Variable                                                                                            | What                                                                                                                                                                                       |
 | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

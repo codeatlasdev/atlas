@@ -17,6 +17,8 @@ path = "src/main.rs"
 
 [dependencies]
 atlas-core = { path = "../atlas-core" }
+semver = { workspace = true }
+serde_json = { workspace = true }
 # The window is drawn by us, with no WebView2 (the installer runs before it exists) and no winit:
 # a software rasterizer for the vectors and a glyph rasterizer for the text, presented with GDI.
 # Both are pure Rust, so the renderer is unit-tested on every OS.

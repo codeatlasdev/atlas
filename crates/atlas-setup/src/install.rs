@@ -43,6 +43,11 @@ pub trait Host {
     /// Put this program into `install_dir` as the uninstaller Settings › Apps opens. Best effort:
     /// the NSIS uninstaller keeps working without it.
     fn register_uninstaller(&self, install_dir: &Path) -> Result<(), String>;
+    /// Repair what older builds left behind (a stale CLI, an old terminal host, a window-state file
+    /// that restores a second title bar, temp files; see [`crate::repair`]). `announce` is called
+    /// once, before the first change, when there is something to do. Never fails the install:
+    /// every action's failure is logged and the next one runs. Default: nothing (the test hosts).
+    fn repair(&self, _env: &Env, _log: &Log, _announce: &dyn Fn()) {}
     /// Open Atlas.
     fn launch(&self, app: &Path) -> Result<(), String>;
 }
@@ -145,6 +150,8 @@ fn steps(
         // The app is installed and works; Settings › Apps just keeps the plain NSIS uninstaller.
         log.line(format!("could not register the branded uninstaller: {e}"));
     }
+    // The new files are in place: bring the leftovers of older builds in step with them.
+    host.repair(env, log, &|| shared.status("Updating your setup…"));
     // The install itself succeeded: a launch that is skipped or fails is not an error screen, but
     // the window must not claim it is opening Atlas.
     let note = if opt.launch {
@@ -607,6 +614,75 @@ mod tests {
             seen.iter().all(|p| *p < 1.0),
             "full only after verification: {seen:?}"
         );
+    }
+
+    /// The repair of older builds' leftovers runs once the new files are verified (the bundled
+    /// `atlas.exe` it asks is there) and before Atlas opens (the app must start on a repaired
+    /// setup), and tells the window.
+    #[test]
+    fn leftovers_are_repaired_after_the_install_is_verified_and_before_atlas_opens() {
+        let (_t, e, log) = setup();
+        struct Repairing(FakeHost);
+        impl Host for Repairing {
+            fn unpack(&self, d: &Path) -> Result<PathBuf, String> {
+                self.0.unpack(d)
+            }
+            fn close_app(&self, a: &Path, g: Duration) {
+                self.0.close_app(a, g)
+            }
+            fn start_installer(&self, x: &Path, d: &Path) -> Result<Box<dyn Running + '_>, String> {
+                self.0.start_installer(x, d)
+            }
+            fn register_uninstaller(&self, d: &Path) -> Result<(), String> {
+                self.0.register_uninstaller(d)
+            }
+            fn repair(&self, env: &Env, _: &Log, announce: &dyn Fn()) {
+                assert!(env.app_exe().is_file(), "the new app is already in place");
+                self.0.order.borrow_mut().push("repair");
+                announce();
+            }
+            fn launch(&self, a: &Path) -> Result<(), String> {
+                self.0.launch(a)
+            }
+        }
+        let host = Repairing(FakeHost::new(vec![("atlas-desktop.exe", 10)], 0));
+        let shared = Shared::new(Mode::Install);
+        run(&e, &host, &shared, &log, &opt(true)).unwrap();
+        assert_eq!(
+            *host.0.order.borrow(),
+            ["unpack", "close", "run", "register", "repair", "launch"]
+        );
+        assert_eq!(shared.snapshot().phase, Phase::Done);
+    }
+
+    /// A failed install runs no repair: nothing was replaced, so nothing is stale yet.
+    #[test]
+    fn a_failed_install_repairs_nothing() {
+        let (_t, e, log) = setup();
+        struct Repairing(FakeHost);
+        impl Host for Repairing {
+            fn unpack(&self, d: &Path) -> Result<PathBuf, String> {
+                self.0.unpack(d)
+            }
+            fn close_app(&self, a: &Path, g: Duration) {
+                self.0.close_app(a, g)
+            }
+            fn start_installer(&self, x: &Path, d: &Path) -> Result<Box<dyn Running + '_>, String> {
+                self.0.start_installer(x, d)
+            }
+            fn register_uninstaller(&self, d: &Path) -> Result<(), String> {
+                self.0.register_uninstaller(d)
+            }
+            fn repair(&self, _: &Env, _: &Log, _: &dyn Fn()) {
+                panic!("must not run after a failed install")
+            }
+            fn launch(&self, a: &Path) -> Result<(), String> {
+                self.0.launch(a)
+            }
+        }
+        let host = Repairing(FakeHost::new(vec![("atlas-desktop.exe", 10)], 2));
+        let shared = Shared::new(Mode::Install);
+        assert!(run(&e, &host, &shared, &log, &opt(true)).is_err());
     }
 
     #[test]

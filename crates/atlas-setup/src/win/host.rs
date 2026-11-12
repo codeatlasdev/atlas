@@ -12,6 +12,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
 };
 
+use crate::fsutil::Log;
 use crate::install::{self, Running};
 use crate::paths::{self, APP_EXE};
 use crate::uninstall;
@@ -74,6 +75,19 @@ impl install::Host for Real {
             }
         }
         Ok(())
+    }
+
+    fn repair(&self, env: &paths::Env, log: &Log, announce: &dyn Fn()) {
+        // The bundled CLI is the one NSIS just laid down: it judges and replaces the others.
+        let bundled_cli = env.install_dir().join("atlas.exe");
+        let own_payload = env.payload_dir(std::process::id());
+        let actions = super::repair::plan_only(env, &bundled_cli, &own_payload);
+        log.line(format!("repair: {} action(s) planned", actions.len()));
+        if actions.is_empty() {
+            return;
+        }
+        announce();
+        super::repair::run_repair(&actions, &bundled_cli, log);
     }
 
     fn launch(&self, app: &Path) -> Result<(), String> {

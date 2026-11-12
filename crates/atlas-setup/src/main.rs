@@ -22,6 +22,8 @@ mod payload;
 #[cfg(any(windows, test))]
 mod progress;
 #[cfg(any(windows, test))]
+mod repair;
+#[cfg(any(windows, test))]
 mod state;
 #[cfg(any(windows, test))]
 mod ui;

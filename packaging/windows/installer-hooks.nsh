@@ -4,9 +4,15 @@
 ; install.ps1) had no `atlas` command in a terminal and nothing for `atlas update` to update.
 ; First install: let that `atlas.exe` install itself the way install.ps1 does (`atlas install`:
 ; %USERPROFILE%\.atlas\bin, user PATH, bundled skills). Never over an existing CLI: it may be a
-; newer one or a linked dev build, and `atlas update` keeps it in step with the app. "Existing"
-; means an `atlas.exe` in %USERPROFILE%\.atlas\bin or anywhere on PATH (a cargo install in
-; %USERPROFILE%\.cargo\bin, a scoop shim): a second copy in %USERPROFILE%\.atlas\bin would shadow it.
+; newer one or a linked dev build. "Existing" means an `atlas.exe` in %USERPROFILE%\.atlas\bin or
+; anywhere on PATH (a cargo install in %USERPROFILE%\.cargo\bin, a scoop shim): a second copy in
+; %USERPROFILE%\.atlas\bin would shadow it.
+;
+; An existing %USERPROFILE%\.atlas\bin\atlas.exe is the one case that is brought up: `atlas install
+; --upgrade` replaces it only when it is older than the bundled one (or unreadable), never a newer
+; one and never a dev-build link. Without this a CLI from an older build stayed behind forever (the
+; PATH `atlas` and the terminal host it starts ran the old version next to the new app) unless
+; `atlas update` happened to replace it first.
 ;
 ; Settings > Apps: Atlas-Setup.exe (crates/atlas-setup) copies itself into $INSTDIR as
 ; "Atlas Uninstall.exe" after this installer ran, and its `--uninstall` window is what "Uninstall"
@@ -15,7 +21,12 @@
 ; is there this hook points the entry back at it: UninstallString and DisplayIcon use the branded window, QuietUninstallString keeps the
 ; plain NSIS uninstaller for scripts (winget, Intune) that need `/S`.
 !macro NSIS_HOOK_POSTINSTALL
-  IfFileExists "$PROFILE\.atlas\bin\atlas.exe" atlas_cli_done 0
+  IfFileExists "$PROFILE\.atlas\bin\atlas.exe" 0 atlas_cli_first
+  IfFileExists "$INSTDIR\atlas.exe" 0 atlas_cli_done
+  nsExec::Exec '"$INSTDIR\atlas.exe" install --upgrade'
+  Pop $0
+  Goto atlas_cli_done
+  atlas_cli_first:
   SearchPath $1 "atlas.exe"
   StrCmp $1 "" 0 atlas_cli_done
   IfFileExists "$INSTDIR\atlas.exe" 0 atlas_cli_done

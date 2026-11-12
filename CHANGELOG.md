@@ -16,6 +16,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Windows: installing or updating over 1.5.0-alpha.21–24 now repairs what those builds left behind.** `Atlas-Setup.exe` (and the silent installer behind `atlas update` and winget) brings an older `atlas` command in `%USERPROFILE%\.atlas\bin` up to the version it carries (a CLI linked to a dev build or a newer one is left alone), restarts an old terminal host when no terminal is running (open terminals are never ended without asking), drops the saved window frame and any window position that is off every monitor, marks the welcome as done when you already have projects, and clears Atlas's leftover temp files and a stale update lock. Your projects, settings and worktrees are never touched, and a repair that fails never fails the install; each step is in `%TEMP%\atlas-setup.log`.
 - **Onboarding came back after you added your first folder.** Finishing the welcome was saved by the welcome screen itself, which closes the moment a project appears, so the save never ran. It is now saved by a part of the app that is always running.
 - **Atlas Desktop crash reports now include the backtrace**, and the diagnostics summary shows the crash message and location readably.
 - **A new project could keep an empty panel** when its configuration failed to load; it now falls back to **Set up services**.

@@ -144,7 +144,7 @@ Future<void> _settle(WidgetTester t) async {
 void main() {
   const size = Size(393, 852); // iPhone 14 logical pixels
 
-  testWidgets('profile with 2 automations — golden', (t) async {
+  testWidgets('profile with 2 automations lists both', (t) async {
     await t.binding.setSurfaceSize(size);
     final transport = _BotTransport(_botListWith2Triggers);
     await t.pumpWidget(
@@ -158,15 +158,33 @@ void main() {
     expect(find.text('Every 1 hour'), findsOneWidget);
     expect(find.text('Add automation'), findsOneWidget);
 
-    await expectLater(
-      find.byType(BotProfileScreen),
-      matchesGoldenFile('goldens/bot_profile_with_automations.png'),
-    );
-
     await t.pumpWidget(const SizedBox());
     await _settle(t);
     await transport.close();
   });
+
+  testWidgets(
+    'profile with 2 automations — golden',
+    // The profile was redesigned (2026-11-12) and the stored golden was regenerated from the
+    // new code before anyone approved the look, so it proves nothing yet. Regenerate it and
+    // drop this skip once the redesign is approved on a device.
+    skip: true,
+    (t) async {
+      await t.binding.setSurfaceSize(size);
+      final transport = _BotTransport(_botListWith2Triggers);
+      await t.pumpWidget(
+        _wrap(BotProfileScreen(device: _device, botId: _botId), transport),
+      );
+      await _settle(t);
+      await expectLater(
+        find.byType(BotProfileScreen),
+        matchesGoldenFile('goldens/bot_profile_with_automations.png'),
+      );
+      await t.pumpWidget(const SizedBox());
+      await _settle(t);
+      await transport.close();
+    },
+  );
 
   testWidgets('profile with no automations shows empty-state hint', (t) async {
     await t.binding.setSurfaceSize(size);

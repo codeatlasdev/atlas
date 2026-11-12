@@ -38,6 +38,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Terminals reported their agent as another pane** when the terminal host had been started from inside an Atlas terminal: every terminal it opened inherited that terminal's `ATLAS_PANE_KEY` and hook endpoint. A terminal's identity is now always its own.
 - **Atlas Mobile showed no projects for a hostd in another directory.** The terminal host read the desktop's project list from its own directory, so a daemon started with `ATLAS_HOSTD_DIR` (Atlas Dev uses `~/.atlas/dev`) told the phone "Projects 0". It now reads `~/.atlas/desktop/projects.json`, where the desktop keeps it.
 - **"Integration is off" for hooks another Atlas installed.** `atlas setup <agent> --check` now exits 2 when Atlas's hooks are there but differ from this binary's (another version wrote them), and hostd reports that as `other_version` instead of `missing`, so Atlas Mobile no longer says omp or Claude Code is off while you run Atlas Dev beside your installed Atlas. The notice now names the command that turns an integration on.
 - **Crew: faster start and short replies.** omp started by a bot waited 25 s for a power assertion on headless servers, which delayed the first step and made every reply summary time out; it now starts in seconds and long replies are summarized again.

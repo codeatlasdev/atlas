@@ -196,8 +196,9 @@ List<BoardColumn> boardColumns(
     final bot = card.bot;
 
     // Query filter runs post-dedup so it matches the resolved title.
-    if (q != null && !(card.title ?? task.prompt).toLowerCase().contains(q))
+    if (q != null && !(card.title ?? task.prompt).toLowerCase().contains(q)) {
       continue;
+    }
 
     final inDoneWindow = o.doneDays == 1
         ? _isToday(_endTs(task), nowMs)

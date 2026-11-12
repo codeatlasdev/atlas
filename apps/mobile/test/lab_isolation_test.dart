@@ -115,11 +115,23 @@ void main() {
     // firebase_* packages are allowed in pubspec because build.gradle.kts applies
     // google-services only when google-services.json is present (lab never has one).
     test('nothing is shared between the two apps and no push is set up', () {
-      expect(
-        Directory('ios/Runner').listSync().map((e) => e.path),
-        isNot(contains(endsWith('.entitlements'))),
-        reason: 'an entitlements file (keychain/app group/push) would also apply to the lab',
-      );
+      // The real app has push (Runner*.entitlements: aps-environment only); the lab's
+      // configurations sign with no entitlements at all, so it never gets push, a shared
+      // keychain or an app group.
+      for (final MapEntry(key: name, value: body) in configs().entries) {
+        final lab = name.endsWith('-lab');
+        expect(
+          body.contains('CODE_SIGN_ENTITLEMENTS'),
+          !lab,
+          reason: '$name: entitlements are the real app\'s alone',
+        );
+      }
+      for (final f in Directory('ios/Runner').listSync().whereType<File>()) {
+        if (!f.path.endsWith('.entitlements')) continue;
+        final ent = f.readAsStringSync();
+        expect(ent, isNot(contains('keychain-access-groups')), reason: f.path);
+        expect(ent, isNot(contains('application-groups')), reason: f.path);
+      }
       for (final key in [
         'keychain-access-groups',
         'application-groups',

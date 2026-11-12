@@ -604,6 +604,9 @@ jobs:
   publish:
     name: Publish Release
     needs: [build, build-linux, build-arch, build-windows]
+    # Explicit: without an `if`, a skipped job anywhere upstream (the optional SignPath jobs feeding build-windows)
+    # skips publish too, and v1.5.0-alpha.25's first full run built everything and published nothing.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

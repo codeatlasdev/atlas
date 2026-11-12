@@ -3,7 +3,8 @@
  * group), its label and description. Data only; matching is in `search.ts`. There is nothing to edit here:
  * add a setting in `registry.ts`.
  */
-import { REGISTRY } from "./registry.ts";
+import { IS_MAC } from "#lib/keys.ts";
+import { REGISTRY, forPlatform } from "./registry.ts";
 import type { SettingsSection, SettingsTab, SettingsTarget } from "./sections.ts";
 
 export interface SettingEntry extends Omit<SettingsTarget, "item"> {
@@ -16,7 +17,7 @@ export interface SettingEntry extends Omit<SettingsTarget, "item"> {
 	group: string;
 }
 
-export const SETTINGS_INDEX: SettingEntry[] = REGISTRY.flatMap((c) =>
+export const SETTINGS_INDEX: SettingEntry[] = forPlatform(REGISTRY, IS_MAC).flatMap((c) =>
 	c.pages.flatMap((p) =>
 		p.groups.flatMap((g) =>
 			g.items.map((i): SettingEntry => ({

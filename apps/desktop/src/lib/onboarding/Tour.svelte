@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button, Kbd } from "@codeatlasdev/ui";
 	import { onMount, tick } from "svelte";
+	import { kbd } from "#lib/keys.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { onboarding } from "./state.svelte.ts";
 	import {
@@ -143,7 +144,7 @@
 			<p>{step.body}</p>
 			{#if step.id === "palette"}
 				<p class="hint">
-					Press <Kbd>{shortcutFor("atlas::Jump") ?? "⌘K"}</Kbd> any time.
+					Press <Kbd>{shortcutFor("atlas::Jump") ?? kbd("cmd-k")}</Kbd> any time.
 				</p>
 			{/if}
 			<div class="foot">

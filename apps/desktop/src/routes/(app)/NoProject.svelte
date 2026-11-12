@@ -2,6 +2,7 @@
 	import { Button, EmptyState, Skeleton } from "@codeatlasdev/ui";
 	import { FolderPlus } from "@lucide/svelte";
 	import { addProject } from "#lib/components/sidebar/projects.ts";
+	import { kbd } from "#lib/keys.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { showStanding } from "#lib/onboarding/flow.ts";
 	import Hero from "#lib/onboarding/Hero.svelte";
@@ -33,7 +34,8 @@
 		<EmptyState
 			icon={FolderPlus}
 			title="No project selected"
-			description="Pick a worktree in the sidebar, or press {shortcutFor('atlas::Jump') ?? '⌘K'} to jump."
+			description="Pick a worktree in the sidebar, or press {shortcutFor('atlas::Jump') ??
+				kbd('cmd-k')} to jump."
 		>
 			{#snippet actions()}
 				<Button variant="glass" onclick={addProject}>Add project…</Button>

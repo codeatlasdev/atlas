@@ -3,7 +3,8 @@
  * `section/tab`, a row id, or an alias that shipped before) resolves to where it lives now.
  * Pure: no Svelte, no IPC.
  */
-import { REGISTRY, type RegistryDefs } from "./registry.ts";
+import { IS_MAC } from "#lib/keys.ts";
+import { REGISTRY, forPlatform, type RegistryDefs } from "./registry.ts";
 
 type Registry = RegistryDefs;
 export type SettingsSection = Registry[number]["id"];
@@ -18,7 +19,8 @@ export interface SettingsTarget {
 	item?: string;
 }
 
-const CATEGORIES = REGISTRY;
+/** What this platform has: macOS-only pages and rows are not in the sidebar, the index or the deep links. */
+const CATEGORIES = forPlatform(REGISTRY, IS_MAC);
 
 /** The registry's ids are the literal `SettingsSection` union by construction (derived from the same data). */
 const sectionId = (id: string) => id as SettingsSection;

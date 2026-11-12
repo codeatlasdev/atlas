@@ -20,6 +20,7 @@ import {
 } from "@codemirror/search";
 import type { EditorState, Extension, Text } from "@codemirror/state";
 import { EditorView, runScopeHandlers, type Panel, type ViewUpdate } from "@codemirror/view";
+import { kbd } from "#lib/keys.ts";
 
 /** The counter stops here and shows `10000+`. */
 export const MATCH_CAP = 10_000;
@@ -118,10 +119,10 @@ interface Toggle {
 }
 
 const TOGGLES: Toggle[] = [
-	{ key: "caseSensitive", label: "Match case", text: "Aa", shortcut: "⌥⌘C" },
-	{ key: "wholeWord", label: "Match whole word", text: "ab", shortcut: "⌥⌘W" },
-	{ key: "regexp", label: "Use regular expression", text: ".*", shortcut: "⌥⌘R" },
-	{ key: "inSelection", label: "Find in selection", text: "⊡", shortcut: "⌥⌘L" },
+	{ key: "caseSensitive", label: "Match case", text: "Aa", shortcut: kbd("alt-cmd-c") },
+	{ key: "wholeWord", label: "Match whole word", text: "ab", shortcut: kbd("alt-cmd-w") },
+	{ key: "regexp", label: "Use regular expression", text: ".*", shortcut: kbd("alt-cmd-r") },
+	{ key: "inSelection", label: "Find in selection", text: "⊡", shortcut: kbd("alt-cmd-l") },
 ];
 
 /** In-selection scope: set when the panel opens over a multi-line selection, kept until toggled. */
@@ -179,7 +180,7 @@ class FindPanel implements Panel {
 				class: "cm-find-btn cm-find-chevron",
 				"aria-label": "Toggle replace",
 				"aria-expanded": String(this.showReplace),
-				title: "Toggle replace (⌘⌥F)",
+				title: `Toggle replace (${kbd("alt-cmd-f")})`,
 			},
 			"›",
 		);
@@ -215,9 +216,9 @@ class FindPanel implements Panel {
 			this.find,
 			...toggleBtns,
 			this.count,
-			btn("Previous match", "↑", "Previous match (⇧Enter)", () => findPrevious(view)),
+			btn("Previous match", "↑", `Previous match (${kbd("shift-enter")})`, () => findPrevious(view)),
 			btn("Next match", "↓", "Next match (Enter)", () => findNext(view)),
-			btn("Select all matches", "≡", "Select all matches (⌥Enter)", () => selectMatches(view)),
+			btn("Select all matches", "≡", `Select all matches (${kbd("alt-enter")})`, () => selectMatches(view)),
 			btn("Close", "×", "Close (Esc)", () => closeSearchPanel(view)),
 		);
 		this.replaceRow = el(
@@ -225,7 +226,7 @@ class FindPanel implements Panel {
 			{ class: "cm-find-row cm-find-replace" },
 			this.repl,
 			btn("Replace", "Replace", "Replace (Enter)", () => replaceNext(view)),
-			btn("Replace all", "All", "Replace all (⌘⇧Enter)", () => replaceAll(view)),
+			btn("Replace all", "All", `Replace all (${kbd("cmd-shift-enter")})`, () => replaceAll(view)),
 		);
 		this.replaceRow.hidden = !this.showReplace;
 		this.chevron.hidden = readOnly;

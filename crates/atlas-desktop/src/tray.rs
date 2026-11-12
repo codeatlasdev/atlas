@@ -44,8 +44,14 @@ pub struct TrayState {
     dock_item: Mutex<Option<MenuItem<tauri::Wry>>>,
 }
 
-/// Top-left (physical px) of a popover of `size` (w, h) under `icon` (x, y, w, h),
-/// centered on it, inside `screen` (x, y, w, h). `scale` converts the logical gap/margin.
+/// Whether the icon sits in the lower half of `screen`: a bottom taskbar (Windows default), so the popover opens above
+/// it. A top menu bar (macOS, most Linux panels) opens it below.
+fn opens_up(icon: (f64, f64, f64, f64), screen: (f64, f64, f64, f64)) -> bool {
+    icon.1 + icon.3 / 2.0 > screen.1 + screen.3 / 2.0
+}
+
+/// Top-left (physical px) of a popover of `size` (w, h) at `icon` (x, y, w, h), centered on it, inside `screen`
+/// (x, y, w, h): below a top bar, above a bottom taskbar. `scale` converts the logical gap/margin.
 pub fn place(
     icon: (f64, f64, f64, f64),
     size: (f64, f64),
@@ -54,7 +60,11 @@ pub fn place(
 ) -> (f64, f64) {
     let (gap, margin) = (GAP * scale, MARGIN * scale);
     let x = icon.0 + icon.2 / 2.0 - size.0 / 2.0;
-    let y = icon.1 + icon.3 + gap;
+    let y = if opens_up(icon, screen) {
+        icon.1 - gap - size.1
+    } else {
+        icon.1 + icon.3 + gap
+    };
     let (sx, sy, sw, sh) = screen;
     // `max` last: on a screen smaller than the popover the left/top edge wins.
     let x = x.min(sx + sw - size.0 - margin).max(sx + margin);
@@ -62,11 +72,15 @@ pub fn place(
     (x, y)
 }
 
-/// Logical px of height the popover may use under `icon` (physical x, y, w, h) on `screen` (physical x, y, w, h):
-/// from the icon's bottom edge plus the gap down to the screen's bottom margin. Never negative.
+/// Logical px of height the popover may use at `icon` (physical x, y, w, h) on `screen` (physical x, y, w, h): the
+/// room between the icon and the far screen edge (below a top bar, above a bottom taskbar). Never negative.
 pub fn room(icon: (f64, f64, f64, f64), screen: (f64, f64, f64, f64), scale: f64) -> f64 {
-    let below = (screen.1 + screen.3) - (icon.1 + icon.3);
-    (below / scale - GAP - MARGIN).max(0.0)
+    let span = if opens_up(icon, screen) {
+        icon.1 - screen.1
+    } else {
+        (screen.1 + screen.3) - (icon.1 + icon.3)
+    };
+    (span / scale - GAP - MARGIN).max(0.0)
 }
 
 /// Icon rect from a tray event, as physical (x, y, w, h).
@@ -165,7 +179,17 @@ fn show(app: &AppHandle, icon: Option<&Rect>) {
 }
 
 fn toggle(app: &AppHandle, icon: &Rect) {
-    ensure_popover(app);
+    if app.get_webview_window(LABEL).is_none() {
+        // First click before the popover exists: build it off the event loop (WebView2 creation inside an event-loop
+        // callback never completes on Windows), then open it at this icon.
+        let (a, icon) = (app.clone(), *icon);
+        tauri::async_runtime::spawn(async move {
+            ensure_popover(&a);
+            let b = a.clone();
+            let _ = a.run_on_main_thread(move || show(&b, Some(&icon)));
+        });
+        return;
+    }
     match app.get_webview_window(LABEL) {
         Some(w) if w.is_visible().unwrap_or(false) => {
             let _ = w.hide();
@@ -399,14 +423,15 @@ pub fn start(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Build the popover once, on the main thread (window creation). A no-op when it exists or when no tray was started
-/// (agent instances, [`start`] never ran).
+/// Build the popover once. A no-op when it exists or when no tray was started (agent instances, [`start`] never ran).
+/// Call it from the async runtime, never from an event-loop callback: on Windows a WebView2 created inside one never
+/// finishes (the tray was dead on Windows in 1.5.0-alpha.24: no popover window was ever created).
 pub fn ensure_popover(app: &AppHandle) {
     if app.try_state::<TrayState>().is_some()
         && app.get_webview_window(LABEL).is_none()
         && let Err(e) = build(app)
     {
-        eprintln!("atlas-desktop: tray popover: {e}");
+        crate::diag::incident("tray", &format!("popover could not be built: {e}"));
     }
 }
 
@@ -443,22 +468,26 @@ pub fn tray_resize(app: AppHandle, state: State<'_, TrayState>, height: f64) -> 
     let Some(w) = app.get_webview_window(LABEL) else {
         return height;
     };
-    let height = match *state.icon.lock() {
-        Some(icon) => {
-            let scale = w.scale_factor().unwrap_or(1.0);
-            let screen = w.current_monitor().ok().flatten().map(|m| {
-                (
-                    f64::from(m.position().x),
-                    f64::from(m.position().y),
-                    f64::from(m.size().width),
-                    f64::from(m.size().height),
-                )
-            });
-            screen.map_or(height, |s| height.min(room(icon, s, scale)))
-        }
-        None => height,
+    let icon = *state.icon.lock();
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let screen = w.current_monitor().ok().flatten().map(|m| {
+        (
+            f64::from(m.position().x),
+            f64::from(m.position().y),
+            f64::from(m.size().width),
+            f64::from(m.size().height),
+        )
+    });
+    let height = match (icon, screen) {
+        (Some(icon), Some(s)) => height.min(room(icon, s, scale)),
+        _ => height,
     };
     let _ = w.set_size(LogicalSize::new(WIDTH, height));
+    // Opened above a bottom taskbar: re-place it so its bottom edge stays at the icon as the height changes.
+    if let (Some(icon), Some(s)) = (icon, screen) {
+        let (x, y) = place(icon, (WIDTH * scale, height * scale), s, scale);
+        let _ = w.set_position(PhysicalPosition::new(x, y));
+    }
     height
 }
 
@@ -525,7 +554,11 @@ mod tests {
             room((100.0, 0.0, 40.0, 50.0), short, 2.0),
             350.0 - 25.0 - 6.0 - 8.0
         );
-        assert_eq!(room((100.0, 650.0, 40.0, 50.0), short, 2.0), 0.0);
+        // An icon at the bottom of that screen opens upward: all the room above it.
+        assert_eq!(
+            room((100.0, 650.0, 40.0, 50.0), short, 2.0),
+            325.0 - 6.0 - 8.0
+        );
     }
 
     #[test]
@@ -533,5 +566,22 @@ mod tests {
         let ext = (0.0, -1080.0, 1920.0, 1080.0);
         let r = room((100.0, -1080.0, 40.0, 50.0), ext, 1.0);
         assert_eq!(r, 1080.0 - 50.0 - 6.0 - 8.0);
+    }
+
+    // Windows report (1.5.0-alpha.24): with the taskbar at the bottom the popover opened BELOW the icon, was clamped
+    // to a 35 px strip and floated over the app window. A bottom icon opens the popover above it, bottom edge at the
+    // icon, with the room above as its height.
+    #[test]
+    fn a_bottom_taskbar_opens_the_popover_above_the_icon() {
+        let screen = (0.0, 0.0, 1920.0, 1080.0);
+        let icon = (1530.0, 1040.0, 32.0, 40.0);
+        let (x, y) = place(icon, (360.0, 520.0), screen, 1.0);
+        assert_eq!(
+            y,
+            1040.0 - 6.0 - 520.0,
+            "bottom edge one gap above the icon"
+        );
+        assert_eq!(x, 1530.0 + 16.0 - 180.0);
+        assert_eq!(room(icon, screen, 1.0), 1040.0 - 6.0 - 8.0);
     }
 }

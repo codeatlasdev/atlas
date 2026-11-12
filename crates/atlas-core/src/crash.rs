@@ -66,20 +66,43 @@ pub fn write_crash_report(msg: &str, location: &str) -> Option<PathBuf> {
     std::fs::create_dir_all(&dir).ok()?;
 
     let path = dir.join(format!("crash-{ts}.toml"));
-    let backtrace = std::backtrace::Backtrace::capture().to_string();
+    // `capture()` records nothing unless RUST_BACKTRACE is set, and an installed app never has it.
+    let backtrace = std::backtrace::Backtrace::force_capture().to_string();
     let args = std::env::args().collect::<Vec<_>>().join(" ");
 
     let report = format!(
-        "version = \"{version}\"\nos = \"{os}\"\narch = \"{arch}\"\ntimestamp = {ts}\nargs = \"{args}\"\nmsg = \"{msg}\"\nlocation = \"{location}\"\n\nbacktrace = '''\n{backtrace}\n'''\n",
+        "version = \"{version}\"\nos = \"{os}\"\narch = \"{arch}\"\ntimestamp = {ts}\nargs = {args}\nmsg = {msg}\nlocation = {location}\n\nbacktrace = '''\n{backtrace}\n'''\n",
         version = env!("CARGO_PKG_VERSION"),
         os = std::env::consts::OS,
         arch = std::env::consts::ARCH,
-        msg = msg.replace('"', "'"),
-        args = args.replace('"', "'"),
+        msg = toml_str(msg),
+        args = toml_str(&args),
+        location = toml_str(location),
+        backtrace = backtrace.replace("'''", "' ' '"),
     );
 
     std::fs::write(&path, report).ok()?;
     Some(path)
+}
+
+/// A TOML basic string. Windows paths (`src\main.rs`, `C:\Users\…`) carry backslashes, which are escapes in TOML:
+/// written raw they made the whole report unparsable.
+fn toml_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// Returns the directory where crash reports are stored.
@@ -89,4 +112,23 @@ pub fn crash_dir() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
         .join("atlas")
         .join("crashes")
+}
+
+#[cfg(test)]
+mod tests {
+    /// Incident (1.5.0-alpha.24, Windows): panic locations like `src\main.rs` were written raw into a TOML
+    /// basic string (where `\` starts an escape), so the crash report could not be parsed. The escapes used
+    /// (`\\ \" \n \r \t \uXXXX`) mean the same in JSON, so a JSON parse proves the round trip.
+    #[test]
+    fn crash_fields_round_trip_as_escaped_strings() {
+        for s in [
+            r"crates\atlas-desktop\src\main.rs:12:5",
+            "say \"hi\"\nnext\tline\r",
+            "C:\\Users\\x\u{1}",
+        ] {
+            let lit = super::toml_str(s);
+            let back: String = serde_json::from_str(&lit).unwrap_or_else(|e| panic!("{lit}: {e}"));
+            assert_eq!(back, s);
+        }
+    }
 }

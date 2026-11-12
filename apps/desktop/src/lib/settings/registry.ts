@@ -14,6 +14,7 @@
  *  - labels and descriptions are identical to the screens.
  * Pure: no Svelte, no IPC. Icons and components live next to the UI (`SettingsNav`, `pageComponents.ts`).
  */
+import { kbd } from "#lib/keys.ts";
 import { CATEGORIES as SOUND_CATEGORIES, SPECS } from "#lib/sound/policy.ts";
 
 /** One row. `keywords` are words people may type that the label does not contain. */
@@ -24,6 +25,8 @@ export interface ItemDef {
 	readonly keywords?: string;
 	/** Older deep-link ids for this row. */
 	readonly aliases?: readonly string[];
+	/** Only exists on macOS (the native GPU terminal, capture): hidden from nav, search and deep links elsewhere. */
+	readonly macOnly?: true;
 }
 
 /** A card of rows under a title. */
@@ -53,6 +56,8 @@ export interface CategoryDef {
 	readonly cluster: "app" | "work" | "connect";
 	/** Older deep-link ids for the whole category (`appearance/terminal`). */
 	readonly aliases?: readonly string[];
+	/** The whole category is macOS only (capture): no sidebar entry, no search hits, deep links fall back. */
+	readonly macOnly?: true;
 	readonly pages: readonly PageDef[];
 }
 
@@ -70,6 +75,9 @@ const item = (
 	keywords = "",
 	...aliases: string[]
 ): ItemDef => ({ id, label, description, ...(keywords && { keywords }), ...(aliases.length && { aliases }) });
+
+/** A row that only exists on macOS (the fast GPU terminal's own options): see [`forPlatform`]. */
+const macItem = (...a: Parameters<typeof item>): ItemDef => ({ ...item(...a), macOnly: true });
 
 /** One row per sound category; the ids and texts come from the sound policy so the two lists stay one. */
 const SOUND_ITEMS = SOUND_CATEGORIES.map((c) =>
@@ -169,7 +177,7 @@ const DEFS = [
 							item(
 								"ui-zoom",
 								"Zoom",
-								"Scale the whole window. ⌘+ and ⌘− step it, ⌘0 resets it (Ctrl instead of ⌘ outside macOS).",
+								`Scale the whole window. ${kbd("cmd-=")} and ${kbd("cmd--")} step it, ${kbd("cmd-0")} resets it.`,
 								"scale magnify bigger smaller zoom in out reset layout size",
 							),
 						],
@@ -284,6 +292,7 @@ const DEFS = [
 		description:
 			"Screenshots and screen recordings from a hotkey: where they go, the keys, and your history.",
 		cluster: "app",
+		macOnly: true,
 		pages: [
 			{
 				files: ["components/settings/CaptureSettings.svelte"],
@@ -862,7 +871,7 @@ const DEFS = [
 					{
 						title: "Renderer",
 						items: [
-							item(
+							macItem(
 								"gpu",
 								"Fast terminal (GPU)",
 								"Draws local terminals on the graphics chip: smoother scrolling and faster output.",
@@ -882,7 +891,7 @@ const DEFS = [
 							item(
 								"term-font",
 								"Terminal font",
-								"Font families in order; the first one installed wins, else JetBrains Mono. Variable fonts work. Both terminals use it.",
+								"Font families in order; the first one installed wins, else JetBrains Mono. Variable fonts work.",
 								"font_family typeface font-family xterm ghostty nerd variable",
 							),
 							item("term-size", "Terminal font size", "Text size in terminals, in pixels.", "font_size"),
@@ -892,13 +901,13 @@ const DEFS = [
 								"Draw terminal text slightly heavier, like Ghostty's font-thicken. Helps thin fonts on dark backgrounds.",
 								"font_thicken bold weight ghostty",
 							),
-							item(
+							macItem(
 								"ligatures",
 								"Ligatures",
 								"Join characters like -> and != into single symbols (fast terminal only).",
 								"ligatures fira",
 							),
-							item(
+							macItem(
 								"contrast",
 								"Minimum contrast",
 								"Brighten or darken text that is hard to read against its background (fast terminal only). 1 turns it off, 4.5 meets accessibility guidance.",
@@ -944,7 +953,7 @@ const DEFS = [
 								"Lines of output each terminal remembers. More lines use more memory.",
 								"max_scroll_history_lines history buffer",
 							),
-							item(
+							macItem(
 								"scrollback-memory",
 								"Scrollback memory",
 								"Most memory one terminal spends on its scrollback, in MB. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only).",
@@ -959,16 +968,16 @@ const DEFS = [
 							item(
 								"copy-on-select",
 								"Copy on select",
-								"Copy selected text to the clipboard when you release the mouse (fast terminal only).",
+								"Copy selected text to the clipboard when you release the mouse.",
 								"copy_on_select clipboard selection ghostty",
 							),
-							item(
+							macItem(
 								"click-to-move",
 								"Click to move the cursor",
 								"Click the prompt line to move the cursor there. Needs shell integration (fast terminal only).",
 								"click_to_move cursor prompt osc 133 ghostty",
 							),
-							item(
+							macItem(
 								"option-as-alt",
 								"Option key as Alt",
 								"Make ⌥ send Alt instead of typing macOS characters (fast terminal only).",
@@ -1043,7 +1052,7 @@ const DEFS = [
 							item(
 								"dock-enabled",
 								"Show the dock",
-								"Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered.",
+								"Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered. Off by default on Windows and Linux.",
 								"floating pill overlay widget menu bar always on top hide show",
 							),
 							item(
@@ -1066,7 +1075,7 @@ const DEFS = [
 							item(
 								"agent-custom",
 								"Add agent",
-								"Run any agent CLI (OpenCode, Gemini CLI, Amp…) from the + menu and ⌘⇧A.",
+								`Run any agent CLI (OpenCode, Gemini CLI, Amp…) from the + menu and ${kbd("cmd-shift-a")}.`,
 								"custom opencode gemini amp aider cli preset add",
 							),
 						],
@@ -1187,7 +1196,7 @@ const DEFS = [
 							item(
 								"mobile-pair",
 								"Pair a phone",
-								"Scan a code with Atlas Mobile to control this Mac from your phone.",
+								"Scan a code with Atlas Mobile to control this computer from your phone.",
 								"iphone android qr phone remote p2p",
 							),
 						],
@@ -1266,8 +1275,30 @@ const DEFS = [
 	},
 ] as const satisfies readonly CategoryDef[];
 
-/** The registry as plain definitions, for code that walks it without needing the literal ids. */
+/** The registry as plain definitions, for code that walks it without needing the literal ids. Every platform's rows. */
 export const REGISTRY: readonly CategoryDef[] = DEFS;
+
+/**
+ * What this platform shows: the registry without the categories and rows that only exist on macOS (capture, the
+ * native GPU terminal and its own options). Sidebar, search index and deep links all read this, so a hidden page can
+ * neither be found nor opened. Empty groups and pages drop with their last row.
+ */
+export function forPlatform(defs: readonly CategoryDef[], mac: boolean): readonly CategoryDef[] {
+	if (mac) return defs;
+	return defs
+		.filter((c) => !c.macOnly)
+		.map((c) => ({
+			...c,
+			pages: c.pages
+				.map((p) => ({
+					...p,
+					groups: p.groups
+						.map((g) => ({ ...g, items: g.items.filter((i) => !i.macOnly) }))
+						.filter((g) => g.items.length > 0),
+				}))
+				.filter((p) => p.groups.length > 0),
+		}));
+}
 
 /** The registry with its literal ids, from which the section and tab id types are derived. */
 export type RegistryDefs = typeof DEFS;

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Artifact configuration slug: binaries. Input: the zip of the `windows-binaries` job (atlas.exe, atlas-desktop.exe). -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file-set>
+      <include path="atlas.exe" product-name="Atlas" product-version="${version}" />
+      <include path="atlas-desktop.exe" product-name="Atlas" product-version="${version}" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

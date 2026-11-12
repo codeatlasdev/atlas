@@ -174,7 +174,10 @@ fi
 # Bump every crate to the same version (single release version).
 for f in "${crates[@]}"; do
   echo "+ bump $f"
-  [[ $dry == 1 ]] || sed -i '' "1,/^version = /s/^version = \".*\"/version = \"$next\"/" "$f"
+  # Bun, not `sed -i`: BSD sed needs `-i ''`, GNU sed (Linux, Git Bash on Windows) reads that '' as the script.
+  [[ $dry == 1 ]] || F="$f" V="$next" bun -e '
+    const f = process.env.F, t = await Bun.file(f).text();
+    await Bun.write(f, t.replace(/^version = ".*"$/m, `version = "${process.env.V}"`));'
 done
 run cargo update --workspace --offline --quiet
 

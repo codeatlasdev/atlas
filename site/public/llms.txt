@@ -1,11 +1,11 @@
 # Atlas
 
-> The developer platform for everyone: one atlas.yaml runs your stack, a native workspace runs your agents. Atlas is a dev environment by CodeAtlas, available for macOS now with Windows and Linux coming soon: one `atlas.yaml` starts your whole stack (infra, services, health checks, dependencies, restarts); Atlas Desktop adds a GPU terminal, a Zed-style workspace, a live project panel, logs built for real traffic, and AI agents (omp, Claude Code, Codex) in parallel git worktrees; an MCP server lets agents read logs and control services. Open source, MIT or Apache-2.0.
+> The developer platform for everyone: one atlas.yaml runs your stack, a native workspace runs your agents. Atlas is a dev environment by CodeAtlas, available for macOS, Windows and Linux: one `atlas.yaml` starts your whole stack (infra, services, health checks, dependencies, restarts); Atlas Desktop adds a Zed-style workspace, a live project panel, logs built for real traffic, a GPU terminal (macOS; xterm.js terminals on Windows and Linux) and AI agents (omp, Claude Code, Codex) in parallel git worktrees; an MCP server lets agents read logs and control services. Open source, MIT or Apache-2.0.
 
 Source: https://github.com/codeatlasdev/atlas (MIT or Apache-2.0). Releases: https://github.com/codeatlasdev/atlas/releases/latest
 Download: https://atlas.codeatlas.com.br/download/
-Install: `curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh` (prebuilt for macOS 13+ on Apple silicon; `atlas desktop` installs the desktop app).
-Platforms: available now for macOS on Apple silicon. Coming soon: Intel Macs, Windows, Linux. Today the CLI, TUI and MCP server also build from source on Linux.
+Install: macOS and Linux: `curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh`. Windows (PowerShell): `irm https://atlas.codeatlas.com.br/install.ps1 | iex`, or download `Atlas-Setup.exe` (https://github.com/codeatlasdev/atlas/releases/latest/download/Atlas-Setup.exe: one click, per user, no admin rights; not code-signed yet, SmartScreen may warn: More info, then Run anyway). `atlas desktop` installs the desktop app.
+Platforms: macOS 13+ on Apple silicon; Windows 10 (1809+) and 11 on x64; Linux x86_64 (glibc 2.35+; .deb, .rpm, Arch package, AppImage). Coming soon: Intel Macs, Windows on Arm (the x64 build runs emulated), Linux on Arm. macOS only: the native GPU terminal, capture/recording and agent test instances.
 
 ## Docs
 

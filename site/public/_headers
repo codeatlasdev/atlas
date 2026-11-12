@@ -23,6 +23,12 @@
   Cache-Control: public, max-age=300
   X-Robots-Tag: noindex
 
+# Windows installer: the same, for `irm | iex`
+/install.ps1
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
+  X-Robots-Tag: noindex
+
 # API: never cached or indexed
 /api/*
   Cache-Control: no-store

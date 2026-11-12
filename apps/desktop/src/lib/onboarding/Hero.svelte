@@ -46,7 +46,7 @@
 	data-testid={testId(w.phase)}
 	role="presentation"
 >
-	<Globe bind:this={globe} {mode} lit={w.summary.projects} doneAt={w.upAt} />
+	<Globe bind:this={globe} {mode} lit={w.choices.length} doneAt={w.upAt} />
 
 	<div
 		class="scrim"

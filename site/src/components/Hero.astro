@@ -17,14 +17,14 @@ const words = filmWords(FILM_DURATION);
 	<div class="wrap grid">
 		<div class="copy">
 			<h1 id="hero-h" class="display">Run your whole stack from one file.</h1>
-			<p class="lead">Atlas starts your database, API, web app and workers in the right order, shows their health and logs in one native Mac app, and gives every AI coding agent its own branch, ports and terminal.</p>
+			<p class="lead">Atlas starts your database, API, web app and workers in the right order, shows their health and logs in one native desktop app for macOS, Windows and Linux, and gives every AI coding agent its own branch, ports and terminal.</p>
 			<p class="lead lead-s">Starts your whole stack in the right order. Gives every AI coding agent its own branch, ports and terminal.</p>
 			<div class="ask" id="install">
-				<div class="curl"><InstallCopy client:load cmd={SITE.install} /></div>
+				<div class="curl"><InstallCopy client:load cmd={SITE.install} winCmd={SITE.installWindows} /></div>
 				<div class="ctas">
 					<DownloadLinks />
 				</div>
-				<p class="ask-h">An internal developer platform that fits in one <code>atlas.yaml</code>. Open source, MIT or Apache-2.0. macOS now; Windows and Linux are coming soon.</p>
+				<p class="ask-h">An internal developer platform that fits in one <code>atlas.yaml</code>. Open source, MIT or Apache-2.0. For macOS, Windows and Linux; on Windows, <a class="ln" href="/download/#win-h">one click with Atlas-Setup.exe</a>.</p>
 				<p class="ask-h alpha"><b>Alpha:</b> it works and we use it daily, but expect bugs and breaking changes. <a href="https://github.com/codeatlasdev/atlas/issues/new">Report what breaks</a>.</p>
 			</div>
 		</div>

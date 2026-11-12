@@ -148,6 +148,8 @@ export interface ProjectConfig {
 	services: ServiceDef[];
 	actions: ActionDef[];
 	setup: SetupConfig;
+	/** What Atlas recognised in a folder without atlas.yaml (`Rust project (Cargo.toml)`); null with a file or when nothing was. */
+	detected: string | null;
 }
 
 export interface Problem {

@@ -1,0 +1,54 @@
+[package]
+name = "atlas-setup"
+version = "1.5.0-alpha.25"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+publish = false
+description = "Atlas-Setup.exe: the one-click Windows installer and uninstaller window of Atlas Desktop"
+build = "build.rs"
+
+[[bin]]
+name = "Atlas-Setup"
+path = "src/main.rs"
+
+[dependencies]
+atlas-core = { path = "../atlas-core" }
+semver = { workspace = true }
+serde_json = { workspace = true }
+# The window is drawn by us, with no WebView2 (the installer runs before it exists) and no winit:
+# a software rasterizer for the vectors and a glyph rasterizer for the text, presented with GDI.
+# Both are pure Rust, so the renderer is unit-tested on every OS.
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
+# Glyph outlines (already in the tree through the terminal's text stack): the unmaintained
+# ttf-parser behind ab_glyph is not.
+skrifa = "0.44"
+
+# Windows only: the Win32 window and the real installer. Everywhere else `main` just exits, so the
+# workspace builds and tests on Linux and macOS CI.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+# Icon, version info and the DPI manifest of the .exe. Already in the tree (tauri-build uses it).
+tauri-winres = "0.3"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

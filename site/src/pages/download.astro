@@ -17,7 +17,11 @@ const otherChannels = copy.channels.filter((c) => c.id !== DEFAULT_CHANNEL);
 const rel = await latestRelease();
 const dmgUrl = rel.dmg?.url ?? SITE.releases;
 const dmgLabel = rel.version ? `Atlas ${rel.version} for Apple silicon` : "Latest release on GitHub";
-const desc = "Download Atlas for macOS (Apple silicon), Linux x86_64 (Arch, .deb, .rpm, AppImage) and Windows x64. Linux on Arm, native Windows on Arm and Intel Macs are coming soon.";
+// The Windows one-click installer is a release asset with a fixed name, so GitHub's own /releases/latest/download/ redirect always
+// points at the newest build of the default channel (the release "Latest" is): no manifest entry or version in the URL needed.
+const winUrl = `${SITE.releases}/download/Atlas-Setup.exe`;
+const winPs = SITE.installWindows;
+const desc = "Download Atlas for macOS (Apple silicon), Windows 10/11 (x64, one-click Atlas-Setup.exe) and Linux x86_64 (Arch, .deb, .rpm, AppImage). Intel Macs, Windows on Arm and Linux on Arm are coming soon.";
 
 // Platforms that are not shipped yet. `topic` is stored with the email by /api/waitlist.
 const soon = [
@@ -25,9 +29,11 @@ const soon = [
 	{ topic: "windows", name: "Windows on Arm", note: "native arm64 (the x64 build runs emulated today)", icon: `<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>` },
 	{ topic: "linux", name: "Linux on Arm", note: "aarch64: AppImage, .deb, .rpm and Arch", icon: `<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>` },
 ];
+// What each shipped platform needs. The last row is shared by all three.
 const reqs: [string, string][] = [
-	["System", "macOS 13 Ventura or later"],
-	["Chip", "Apple silicon (M1 or later)"],
+	["macOS", "13 Ventura or later, Apple silicon (M1 or later)"],
+	["Windows", "10 (1809 or newer) or 11, x64 (Arm PCs run it emulated); WebView2, preinstalled on Windows 11"],
+	["Linux", "x86_64, glibc 2.35+ (Arch, Fedora, Debian 12, Ubuntu 22.04 or newer); WebKitGTK 4.1"],
 	["Optional", "git and gh for worktrees and pull requests; Docker (OrbStack or Docker Desktop) for an infra: block"],
 ];
 ---
@@ -36,7 +42,7 @@ const reqs: [string, string][] = [
 	"@type": "SoftwareApplication",
 	name: "Atlas",
 	applicationCategory: "DeveloperApplication",
-	operatingSystem: "macOS 13+ (Apple silicon)",
+	operatingSystem: ["macOS 13+ (Apple silicon)", "Windows 10 (1809+) and 11 (x64)", "Linux x86_64 (glibc 2.35+)"],
 	softwareVersion: rel.version || undefined,
 	datePublished: rel.date || undefined,
 	downloadUrl: dmgUrl,
@@ -57,9 +63,9 @@ const reqs: [string, string][] = [
 				<ShareLink client:visible url={`${SITE.url}/download/`} />
 			</section>
 
-			<!-- The page opens on the platform that is available today; the script only changes the copy for other visitors -->
-			<div class="grid">
-				<article class="primary" aria-labelledby="mac-h" data-card="macos-arm" data-default-channel={DEFAULT_CHANNEL}>
+			<!-- Three platforms ship today. The page is complete without JS (macOS, Windows, Linux side by side); the script only flags the visitor's own card and puts it first -->
+			<div class="plats" data-plats data-default-channel={DEFAULT_CHANNEL}>
+				<article class="plat primary" aria-labelledby="mac-h" data-card="macos-arm">
 					<div class="top">
 						<span class="badge"><i class="dot go"></i> Available now</span>
 						<span class="you" data-you hidden>Your Mac</span>
@@ -70,8 +76,6 @@ const reqs: [string, string][] = [
 						<a class="btn solid big" href={dmgUrl} rel="noopener" data-dmg>Download for Mac (.dmg)</a>
 						<span class="meta" data-size>{rel.dmg ? `${fmtSize(rel.dmg.size)} · Apple silicon` : "Apple silicon"}</span>
 					</div>
-					{copy.stage === "alpha" && <p class="stage" data-stage>{copy.stage_note}</p>}
-					<p class="stage" data-primary-channel>This is the <b>{main.label}</b> channel: {main.promise}</p>
 					<p class="note" data-intel hidden>This download is for Apple silicon. Intel Macs are coming soon: use Notify me below.</p>
 					<div class="cli">
 						<p class="cli-h">Or install the command line and the app from a terminal</p>
@@ -79,6 +83,51 @@ const reqs: [string, string][] = [
 						<p class="fine">Then run <code>atlas desktop</code> to install the app. <a class="ln" href="/docs/installation/">Install guide</a></p>
 					</div>
 				</article>
+
+				<article class="plat primary" aria-labelledby="win-h" data-card="windows">
+					<div class="top">
+						<span class="badge"><i class="dot go"></i> Available now</span>
+						<span class="you" data-you hidden>Your PC</span>
+					</div>
+					<h2 id="win-h" class="display">Windows</h2>
+					<p class="sub">Windows 10 (1809+) and 11, x64. Per-user, no admin rights.</p>
+					<div class="cta">
+						<a class="btn solid big" href={winUrl} rel="noopener" data-exe>Download for Windows (.exe)</a>
+						<span class="meta">Atlas-Setup.exe · one click</span>
+					</div>
+					<p class="note smart" data-smartscreen>Not code-signed yet: Windows SmartScreen may say "Windows protected your PC". Click <b>More info</b>, then <b>Run anyway</b>. Code signing through SignPath Foundation is pending (<a class="ln" href="/code-signing-policy/">Code signing policy</a>); the <a class="ln" href="#sum-h">SHA-256</a> of the file is on the release page.</p>
+					<div class="cli">
+						<p class="cli-h">Or install the command line and the app from PowerShell</p>
+						<InstallCopy client:load cmd={winPs} prompt=">" label="Copy PowerShell install command" />
+						<p class="fine">Then run <code>atlas desktop</code> to install the app. <a class="ln" href="/docs/installation/#windows">Windows guide</a></p>
+					</div>
+				</article>
+
+				<article class="plat primary" aria-labelledby="lin-h" data-card="linux">
+					<div class="top">
+						<span class="badge"><i class="dot go"></i> Available now</span>
+						<span class="you" data-you hidden>Your Linux</span>
+					</div>
+					<h2 id="lin-h" class="display">Linux</h2>
+					<p class="sub">x86_64: Arch, Debian, Ubuntu, Fedora and more.</p>
+					<div class="cta">
+						<a class="btn solid big" href={SITE.releases} rel="noopener">Get packages (.deb, .rpm, AppImage)</a>
+						<span class="meta">Arch package too</span>
+					</div>
+					<div class="cli">
+						<p class="cli-h">Or install the command line and the app from a terminal</p>
+						<InstallCopy client:load cmd={SITE.install} />
+						<p class="fine">Then run <code>atlas desktop</code>. <a class="ln" href="/docs/installation/#linux-packages">Linux packages</a></p>
+					</div>
+				</article>
+			</div>
+
+			<div class="grid">
+				<div class="chan-note">
+					{copy.stage === "alpha" && <p class="stage" data-stage>{copy.stage_note}</p>}
+					<p class="stage" data-primary-channel>These downloads are the <b>{main.label}</b> channel: {main.promise}</p>
+					<p class="stage">Terminals in Atlas Desktop are the native GPU terminal on macOS and xterm.js on Windows and Linux. Capture and recording, and the agent test instances, are macOS only.</p>
+				</div>
 
 				<aside class="side" aria-label="This release">
 					<dl class="facts">
@@ -96,7 +145,7 @@ const reqs: [string, string][] = [
 
 			<section class="channels" aria-labelledby="ch-h" data-channels>
 				<h2 id="ch-h" class="h">Other channels</h2>
-				<p class="sub">The download above is the {main.label} channel{DEFAULT_CHANNEL === "stable" ? "" : ", the default while Atlas is in alpha"}. {DEFAULT_CHANNEL === "stable" ? "Beta and Alpha get new work sooner and break more often." : "Beta and Stable move slower and break less: Stable only ships builds that already ran as a beta."} You can switch at any time with <code>atlas update channel</code> or in Settings.</p>
+				<p class="sub">The downloads above are the {main.label} channel{DEFAULT_CHANNEL === "stable" ? "" : ", the default while Atlas is in alpha"}. {DEFAULT_CHANNEL === "stable" ? "Beta and Alpha get new work sooner and break more often." : "Beta and Stable move slower and break less: Stable only ships builds that already ran as a beta."} You can switch at any time with <code>atlas update channel</code> or in Settings. The cards below link the macOS <code>.dmg</code>; for Windows or Linux, open the release page of the channel you want.</p>
 				<ul class="cards">
 					{otherChannels.map((c) => {
 						const r = others[c.id as Channel] ?? null;
@@ -133,7 +182,7 @@ const reqs: [string, string][] = [
 				<p class="sub">Atlas is built to run anywhere you write code. Tell us where you want it and we will email you when it ships.</p>
 				<ul class="cards">
 					{soon.map((p) => (
-						<li class="card" data-card={p.topic}>
+						<li class="card" data-card={`soon-${p.topic}`}>
 							<div class="ct">
 								<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={p.icon} />
 								<div>
@@ -146,13 +195,12 @@ const reqs: [string, string][] = [
 						</li>
 					))}
 				</ul>
-				<p class="fine src"><b>Linux x86_64 ships today:</b> <code>curl -fsSL {SITE.url}/install.sh | sh</code> then <code>atlas desktop</code>, or an Arch package (<code>pacman -U</code>), a .deb, an .rpm or an AppImage from the release page. <a class="ln" href="/docs/installation/#linux-packages">Linux packages</a> · <a class="ln" href={SITE.releases} rel="noopener">Release page</a></p>
-				<p class="fine src"><b>Windows 10/11 x64 ships today:</b> <code>irm {SITE.url}/install.ps1 | iex</code> in PowerShell then <code>atlas desktop</code>, or the setup <code>.exe</code> from the release page. <a class="ln" href="/docs/installation/#windows">Windows</a> · <a class="ln" href={SITE.releases} rel="noopener">Release page</a></p>
+				<p class="fine src">Windows on Arm runs the x64 build emulated today. Intel Macs and Linux on Arm have no prebuilt binaries yet; the CLI builds from source meanwhile: <a class="ln" href="/docs/installation/#build-from-source">build from source</a>.</p>
 			</section>
 
 			<section class="verify" aria-labelledby="sum-h">
 				<h2 id="sum-h" class="h">Verify your download</h2>
-				<p class="sub">SHA-256, read from the latest release. Check with <code>shasum -a 256 &lt;file&gt;</code>. Every asset on the <a class="ln" href={SITE.releases} rel="noopener" data-notes>release page</a> also has a <code>.sha256</code> file next to it.</p>
+				<p class="sub">SHA-256, read from the latest release. Check with <code>shasum -a 256 &lt;file&gt;</code> (Linux: <code>sha256sum</code>; Windows PowerShell: <code>Get-FileHash -Algorithm SHA256 &lt;file&gt;</code>). Every asset on the <a class="ln" href={SITE.releases} rel="noopener" data-notes>release page</a>, <code>Atlas-Setup.exe</code> included, also has a <code>.sha256</code> file next to it.</p>
 				<dl class="sums" data-sums hidden={!(rel.dmg && rel.cli)}>
 					<div><dt data-n="dmg">{rel.dmg?.name}</dt><dd><code data-s="dmg">{rel.dmg?.sha256}</code></dd></div>
 					<div><dt data-n="cli">{rel.cli?.name}</dt><dd><code data-s="cli">{rel.cli?.sha256}</code></dd></div>
@@ -163,8 +211,8 @@ const reqs: [string, string][] = [
 </Base>
 
 <script>
-	// Detects the visitor's OS and chip and adjusts the page: the matching card gets a label, Intel Macs get an honest note,
-	// phones get the send-me-the-link block. Works without it: the static page already leads with the only shipped build.
+	// Detects the visitor's OS and chip and adjusts the page: their platform card gets a "Your ..." label and moves first, Intel Macs
+	// get an honest note, phones get the send-me-the-link block. Works without it: the static page already shows macOS, Windows and Linux.
 	type UAData = { platform?: string; mobile?: boolean; getHighEntropyValues?: (h: string[]) => Promise<{ architecture?: string; bitness?: string }> };
 	const nav = navigator as Navigator & { userAgentData?: UAData };
 	const ua = navigator.userAgent;
@@ -177,16 +225,22 @@ const reqs: [string, string][] = [
 
 	const show = (sel: string, on = true) => document.querySelectorAll<HTMLElement>(sel).forEach((el) => (el.hidden = !on));
 	if (os === "mobile") show("[data-phone]");
-	if (os === "mac") show("[data-you]");
-	if (os === "windows" || os === "linux") document.querySelector(`[data-card="${os}"]`)?.setAttribute("data-you", "");
+	// The visitor's own card: labelled, and first in the list (CSS `order`, so the DOM and the tab order stay the same).
+	const card = { mac: "macos-arm", windows: "windows", linux: "linux" }[os as "mac" | "windows" | "linux"];
+	const mine = card ? document.querySelector<HTMLElement>(`.plat[data-card="${card}"]`) : null;
+	if (mine) {
+		mine.dataset.you = "";
+		mine.querySelector<HTMLElement>("[data-you]")?.removeAttribute("hidden");
+	}
 
 	// Apple silicon vs Intel: only Chromium exposes the architecture; Safari hides it, so for Safari we say nothing rather than guess.
 	if (os === "mac" && uad?.getHighEntropyValues) {
 		uad.getHighEntropyValues(["architecture"]).then((v) => {
 			if (v.architecture === "x86") {
-				show("[data-you]", false);
+				mine?.querySelector<HTMLElement>("[data-you]")?.setAttribute("hidden", "");
+				delete mine?.dataset.you;
 				show("[data-intel]");
-				document.querySelector('[data-card="macos-intel"]')?.setAttribute("data-you", "");
+				document.querySelector('[data-card="soon-macos-intel"]')?.setAttribute("data-you", "");
 			}
 		}).catch(() => {});
 	}
@@ -288,6 +342,15 @@ const reqs: [string, string][] = [
 	.soon-b { color: var(--wait); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--wait) 55%, transparent); }
 
 	.grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 1fr); gap: var(--s-5); align-items: start; }
+	/* The three shipped platforms side by side; the visitor's own card (flagged by the script) comes first and gets the same ring as a .card[data-you] */
+	.plats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--s-4); align-items: start; margin-bottom: var(--s-5); }
+	.plat { align-content: start; }
+	.plat[data-you] { order: -1; box-shadow: 0 0 0 2px var(--wait), 0 30px 60px -30px rgb(2 4 50 / 0.8); }
+	.plat h2 { font-size: clamp(2.2rem, 4.5vw, 3.2rem); }
+	.plat .btn.big { padding: 0.95rem 1.3rem; font-size: 1rem; }
+	.smart { font-size: 0.92rem; font-weight: 500; color: var(--fg-2); padding: 0.7rem 0.9rem; border-radius: 8px; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--wait) 55%, transparent); }
+	.smart b { color: var(--fg); }
+	.chan-note { display: grid; gap: var(--s-2); align-content: start; min-width: 0; }
 	.primary { display: grid; gap: var(--s-3); padding: clamp(1.25rem, 3vw, 2.25rem); background: var(--blue-deep); border-radius: 12px; box-shadow: 0 0 0 1px var(--blue-line), 0 30px 60px -30px rgb(2 4 50 / 0.8); min-width: 0; }
 	.primary .top { display: flex; justify-content: space-between; align-items: center; gap: var(--s-2); }
 	.primary h2 { font-size: clamp(2.6rem, 6vw, 4.2rem); }

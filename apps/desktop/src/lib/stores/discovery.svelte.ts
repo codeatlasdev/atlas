@@ -1,7 +1,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "@codeatlasdev/ui";
 import { api, errText, type DiscoverDone } from "#lib/api.ts";
-import { addable, type Found } from "#lib/components/sidebar/discovery.ts";
+import { addable, parsePrefs, type Found } from "#lib/components/sidebar/discovery.ts";
 import { sound } from "#lib/sound/sound.svelte.ts";
 import { discoverySound } from "#lib/sound/triggers.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
@@ -11,23 +11,6 @@ type ScanEvent =
 	| { t: "progress"; dirs: number; found: number; elapsed_ms: number; current: string };
 
 const PREFS_KEY = "atlas.discover";
-
-interface Prefs {
-	roots: string[];
-	candidates: boolean;
-}
-
-function loadPrefs(): Prefs {
-	try {
-		const v = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
-		return {
-			roots: Array.isArray(v.roots) ? v.roots.filter((r: unknown) => typeof r === "string") : [],
-			candidates: v.candidates === true,
-		};
-	} catch {
-		return { roots: [], candidates: false };
-	}
-}
 
 /** The "Find projects" scan: results stream in while the Rust walk runs off the main thread. */
 class Discovery {
@@ -39,9 +22,10 @@ class Discovery {
 	current = $state("");
 	done = $state<DiscoverDone | null>(null);
 	error = $state<string | null>(null);
+	#saved = parsePrefs(localStorage.getItem(PREFS_KEY));
 	/** User folders scanned in addition to the defaults. */
-	roots = $state<string[]>(loadPrefs().roots);
-	candidates = $state(loadPrefs().candidates);
+	roots = $state<string[]>(this.#saved.roots);
+	candidates = $state(this.#saved.candidates);
 
 	#unlisten: UnlistenFn | null = null;
 	#run = 0;

@@ -51,11 +51,18 @@ pub struct DockPrefs {
 impl Default for DockPrefs {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: default_enabled(std::env::consts::OS),
             summon: "ctrl-alt-space".into(),
             toggle: "ctrl-alt-d".into(),
         }
     }
+}
+
+/// Whether a fresh install shows the pill. macOS: yes (a non-activating panel over every Space). Windows and Linux:
+/// no. There it is a plain always-on-top window that sat over the taskbar from the first launch with "No agent
+/// running" (and an opaque box around it on Windows); Ctrl+Alt+D or Settings → Agents brings it back.
+fn default_enabled(os: &str) -> bool {
+    os == "macos"
 }
 
 impl DockPrefs {
@@ -223,7 +230,11 @@ fn pty_of(snapshot: &Value, tab: &str) -> Option<String> {
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let (theme, script) = crate::boot::window_boot(crate::boot::load_cache().as_ref());
-    let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("dock".into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("dock".into()));
+    // Windows: every webview of the app passes the same browser args (webview_win::args()).
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::webview_win::args());
+    let win = builder
         .theme(theme)
         .initialization_script(script)
         .title("Atlas Dock")
@@ -765,8 +776,20 @@ mod tests {
         let v = serde_json::to_value(DockPrefs::default()).unwrap();
         assert_eq!(
             v,
-            json!({"enabled": true, "summon": "ctrl-alt-space", "toggle": "ctrl-alt-d"})
+            json!({"enabled": cfg!(target_os = "macos"), "summon": "ctrl-alt-space", "toggle": "ctrl-alt-d"})
         );
+    }
+
+    /// Windows user report (1.5.0-alpha.24): the pill sat over the taskbar from the first launch, "No agent
+    /// running", inside an opaque box. A fresh install shows it only where it is a real overlay panel (macOS);
+    /// a saved choice always wins over the default.
+    #[test]
+    fn a_fresh_install_shows_the_pill_only_on_macos() {
+        assert!(default_enabled("macos"));
+        assert!(!default_enabled("windows"));
+        assert!(!default_enabled("linux"));
+        let saved: DockPrefs = serde_json::from_value(json!({"enabled": true})).unwrap();
+        assert!(saved.enabled, "a user who turned it on keeps it on");
     }
 
     /// The hide/show hotkey is a separate stroke and must never collide with the summon key (the plugin would
@@ -802,6 +825,7 @@ mod tests {
     #[test]
     fn toggling_flips_only_enabled() {
         let p = DockPrefs {
+            enabled: true,
             summon: "cmd-alt-k".into(),
             ..DockPrefs::default()
         };
@@ -843,14 +867,17 @@ mod tests {
     /// has nothing to open while the pill is hidden and is released (it would steal ⌃⌥Space from other apps).
     #[test]
     fn a_hidden_dock_keeps_only_the_key_that_brings_it_back() {
-        let on = DockPrefs::default();
+        let on = DockPrefs {
+            enabled: true,
+            ..DockPrefs::default()
+        };
         let keys =
             |p: &DockPrefs| -> Vec<Action> { wanted_keys(p).into_iter().map(|(a, _)| a).collect() };
         assert_eq!(keys(&on), [Action::Summon, Action::Toggle]);
         assert_eq!(keys(&on.toggled()), [Action::Toggle]);
         let no_toggle = DockPrefs {
             toggle: String::new(),
-            ..DockPrefs::default()
+            ..on.clone()
         };
         assert_eq!(keys(&no_toggle), [Action::Summon]);
         // hidden with no hide key: nothing to register (the tray item is the way back)

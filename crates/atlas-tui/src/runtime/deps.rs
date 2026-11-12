@@ -84,8 +84,12 @@ pub fn detect_install_command(root_dir: &Path) -> Option<&'static str> {
         "pnpm install --frozen-lockfile"
     } else if root_dir.join("yarn.lock").exists() {
         "yarn install --frozen-lockfile"
-    } else {
+    } else if root_dir.join("package-lock.json").exists() {
         "npm ci"
+    } else {
+        // `npm ci` refuses to run without a package-lock.json (EUSAGE): a fresh project with none got a red
+        // "Setup npm ci failed" on its first start (Windows user, first-run onboarding).
+        "npm install"
     })
 }
 
@@ -512,6 +516,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         assert_eq!(detect_install_command(dir.path()), None);
         fs::write(dir.path().join("package.json"), "{}").unwrap();
+        assert_eq!(
+            detect_install_command(dir.path()),
+            Some("npm install"),
+            "no lockfile: npm ci would refuse"
+        );
+        fs::write(dir.path().join("package-lock.json"), "{}").unwrap();
         assert_eq!(detect_install_command(dir.path()), Some("npm ci"));
         fs::write(dir.path().join("bun.lock"), "").unwrap();
         assert_eq!(detect_install_command(dir.path()), Some("bun install"));

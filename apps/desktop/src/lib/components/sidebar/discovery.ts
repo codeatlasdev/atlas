@@ -61,6 +61,36 @@ export function addable(found: Found[], registered: ReadonlySet<string>): Found[
 	return found.filter((f) => f.has_config && !registered.has(f.path));
 }
 
+/** Everything a user can tick: folders with an atlas.yaml and, when the scan includes them, folders without one (their
+ * stack is detected on add). Not already in the sidebar. */
+export function pickable(found: Found[], registered: ReadonlySet<string>): Found[] {
+	return found.filter((f) => !registered.has(f.path));
+}
+
+/** Ticked by default: a valid atlas.yaml. Folders without one are the user's explicit choice (the Add button on their
+ * row, or a tick), and a broken config never is. */
+export const tickedByDefault = (f: Found): boolean => f.has_config && !f.error;
+
+/** The dialog's lead. Spotlight is macOS only: naming it on Windows or Linux points at a feature that is not there. */
+export function discoverLead(mac: boolean): string {
+	return `Looks for project folders in your usual folders${mac ? " and with Spotlight" : ""}. An atlas.yaml is optional: Atlas detects the stack.`;
+}
+
+/** Heading of the group of results outside every scanned folder. */
+export const elsewhereLabel = (mac: boolean): string =>
+	mac ? "Elsewhere (found by Spotlight)" : "Elsewhere";
+
+/**
+ * The empty line above the list. With no atlas.yaml anywhere, a plain "No projects found" would sit right over a full
+ * "Could use Atlas" list: say what is true instead.
+ */
+export function noProjectsLine(query: string, candidates: number): string {
+	if (query) return `No project matches “${query}”.`;
+	return candidates
+		? "No folder with an atlas.yaml yet. Add one from the list below."
+		: "No projects found in the scanned folders.";
+}
+
 /** `git@github.com:Org/Repo.git` and `https://github.com/org/repo/` are the same remote. */
 export function normalizeRemote(url: string): string {
 	let u = url
@@ -104,4 +134,18 @@ export function ago(seconds: number | null, now = Date.now() / 1000): string {
 	];
 	for (const [s, label] of units) if (d >= s) return `${Math.floor(d / s)}${label} ago`;
 	return "just now";
+}
+
+/** The saved scan preferences. Folders without an atlas.yaml are included until the user turns them off: most people
+ * have none, and a scan that hides them looks empty. */
+export function parsePrefs(raw: string | null): { roots: string[]; candidates: boolean } {
+	try {
+		const v = JSON.parse(raw ?? "{}");
+		return {
+			roots: Array.isArray(v.roots) ? v.roots.filter((r: unknown) => typeof r === "string") : [],
+			candidates: v.candidates !== false,
+		};
+	} catch {
+		return { roots: [], candidates: true };
+	}
 }

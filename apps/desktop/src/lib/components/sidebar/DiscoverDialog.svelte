@@ -8,11 +8,24 @@
 	import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 	import { FolderPlus, Search, TriangleAlert, X } from "@lucide/svelte";
 	import { tilde } from "#lib/format.ts";
+	import { IS_MAC } from "#lib/keys.ts";
 	import { shell } from "#lib/shell/shell.svelte.ts";
 	import { discovery } from "#lib/stores/discovery.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
-	import { ago, groupFound, matchesQuery, movedCopy, splitFound, type Found } from "./discovery.ts";
+	import {
+		ago,
+		discoverLead,
+		elsewhereLabel,
+		groupFound,
+		matchesQuery,
+		movedCopy,
+		noProjectsLine,
+		pickable,
+		splitFound,
+		tickedByDefault,
+		type Found,
+	} from "./discovery.ts";
 	import { addPaths, relinkProject } from "./projects.ts";
 
 	let query = $state("");
@@ -22,10 +35,12 @@
 	const split = $derived(splitFound(discovery.found));
 	const groups = $derived(groupFound(split.projects, query));
 	const candidateGroups = $derived(groupFound(split.candidates, query));
-	const isPicked = (f: Found) => override[f.path] ?? !f.error;
+	const isPicked = (f: Found) => override[f.path] ?? tickedByDefault(f);
 	/** Ticked folders that are on screen: a filter never adds rows the user cannot see. */
 	const picked = $derived(
-		discovery.addable.filter((f) => isPicked(f) && matchesQuery(f, query)).map((f) => f.path),
+		pickable(discovery.found, discovery.registered)
+			.filter((f) => isPicked(f) && matchesQuery(f, query))
+			.map((f) => f.path),
 	);
 	/** Missing project → the discovered folder that is probably its new home. */
 	const moves = $derived(
@@ -91,7 +106,7 @@
 	open={discovery.open}
 	onOpenChange={(o) => !o && discovery.close()}
 	title="Find projects"
-	description="Looks for project folders (with or without an atlas.yaml) in your usual folders and with Spotlight."
+	description={discoverLead(IS_MAC)}
 	size="xl"
 >
 	<div class="bar">
@@ -143,14 +158,16 @@
 		{:else}
 			{#if !discovery.running}
 				<p class="empty">
-					{query ? `No project matches “${query}”.` : "No atlas.yaml found in the scanned folders."}
+					{noProjectsLine(query, split.candidates.length)}
 				</p>
 			{/if}
 		{/each}
 
 		{#if discovery.candidates && candidateGroups.length}
 			<h4 class="section">Could use Atlas</h4>
-			<p class="note">Git repositories with a project file but no atlas.yaml.</p>
+			<p class="note">
+				Git repositories with a project file. Atlas detects how to run them; atlas.yaml is optional.
+			</p>
 			{#each candidateGroups as g (g.root)}
 				{@render group(g.root, g.items)}
 			{/each}
@@ -169,13 +186,13 @@
 
 {#snippet group(root: string, items: Found[])}
 	<section class="group">
-		<h4 class="root mono" title={root || "Found by Spotlight"}>
-			{root ? tilde(root) : "Elsewhere (found by Spotlight)"}
+		<h4 class="root mono" title={root || elsewhereLabel(IS_MAC)}>
+			{root ? tilde(root) : elsewhereLabel(IS_MAC)}
 		</h4>
 		{#each items as f (f.path)}
 			{@const move = moveByPath[f.path]}
 			<div class="row" class:dim={added(f)}>
-				{#if f.has_config && !added(f)}
+				{#if !added(f)}
 					<Checkbox
 						checked={isPicked(f)}
 						onchange={(on) => (override[f.path] = on)}

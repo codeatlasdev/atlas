@@ -10,7 +10,7 @@
 	import { ago } from "#lib/components/sidebar/discovery.ts";
 	import { discovery } from "#lib/stores/discovery.svelte.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
-	import { ACTIONS } from "./flow.ts";
+	import { ACTIONS, choiceMeta } from "./flow.ts";
 	import { welcome as w } from "./welcome.svelte.ts";
 
 	let { onfinish }: { onfinish: () => void } = $props();
@@ -59,19 +59,19 @@
 
 {#snippet scanning()}
 	<h1 aria-live="polite">
-		<span class="count">{w.summary.projects.toLocaleString()}</span>
-		{w.summary.projects === 1 ? "project" : "projects"} so far
+		<span class="count">{w.choices.length.toLocaleString()}</span>
+		{w.choices.length === 1 ? "project" : "projects"} so far
 	</h1>
 	<p class="lead">
 		<Spinner size={12} />
 		{discovery.dirs.toLocaleString()} folders · {(discovery.elapsedMs / 1000).toFixed(1)}s
 	</p>
 	<ul class="live" aria-label="Projects found">
-		{#each w.summary.top.slice(0, 5) as f (f.path)}
+		{#each w.choices.slice(0, 5) as f (f.path)}
 			<li>
 				<span class="dot"></span>
 				<b>{f.name}</b>
-				<span class="meta">{plural(f.services, "service")}</span>
+				<span class="meta">{choiceMeta(f)}</span>
 			</li>
 		{/each}
 	</ul>
@@ -103,12 +103,12 @@
 
 {#snippet results()}
 	<h1>
-		Found <span class="count">{plural(w.summary.projects, "project")}</span>
+		Found <span class="count">{plural(w.choices.length, "project")}</span>
 	</h1>
 	<p class="lead">
-		{plural(w.summary.services, "service")} ready to start{w.summary.broken
-			? `, ${plural(w.summary.broken, "config")} need a look`
-			: ""}.
+		{#if w.summary.services}{plural(w.summary.services, "service")} ready to start{w.summary.broken
+				? `, ${plural(w.summary.broken, "config")} need a look`
+				: ""}.{:else}Atlas detects how to run each one. Nothing is written to your folders.{/if}
 	</p>
 	<ul class="pick" aria-label="Projects to add">
 		{#each w.choices.slice(0, 7) as f (f.path)}
@@ -119,7 +119,7 @@
 					aria-label="Add {f.name}"
 				/>
 				<span class="name"><b>{f.name}</b><span class="meta mono">{tilde(f.path)}</span></span>
-				<span class="meta">{plural(f.services, "service")} · {ago(f.modified)}</span>
+				<span class="meta">{choiceMeta(f)} · {ago(f.modified)}</span>
 			</li>
 		{/each}
 	</ul>

@@ -81,7 +81,7 @@
 	<Row
 		id="term-font"
 		label="Terminal font"
-		description="Font families in order, like a CSS list. The first one installed wins; the fast terminal falls back to JetBrains Mono. Variable fonts work."
+		description="Font families in order, like a CSS list. The first one installed wins, else JetBrains Mono. Variable fonts work."
 		stack
 	>
 		<TextInput
@@ -111,24 +111,26 @@
 			onchange={(v) => save({ font_thicken: v })}
 		/>
 	</Row>
-	<Row
-		id="ligatures"
-		label="Ligatures"
-		description="Join characters like -> and != into single symbols. Fast terminal only."
-	>
-		<Switch aria-label="Ligatures" checked={t.ligatures} onchange={(v) => save({ ligatures: v })} />
-	</Row>
-	<Row
-		id="contrast"
-		label="Minimum contrast"
-		description="Lightens or darkens text that is hard to read on its background. 4.5 (the default) meets WCAG AA; 1 turns it off. Fast terminal only."
-	>
-		<NumInput
+	{#if gpu.supported}
+		<Row
+			id="ligatures"
+			label="Ligatures"
+			description="Join characters like -> and != into single symbols. Fast terminal only."
+		>
+			<Switch aria-label="Ligatures" checked={t.ligatures} onchange={(v) => save({ ligatures: v })} />
+		</Row>
+		<Row
+			id="contrast"
 			label="Minimum contrast"
-			value={t.minimum_contrast}
-			onchange={(v) => save({ minimum_contrast: v, minimum_contrast_chosen: true })}
-		/>
-	</Row>
+			description="Lightens or darkens text that is hard to read on its background. 4.5 (the default) meets WCAG AA; 1 turns it off. Fast terminal only."
+		>
+			<NumInput
+				label="Minimum contrast"
+				value={t.minimum_contrast}
+				onchange={(v) => save({ minimum_contrast: v, minimum_contrast_chosen: true })}
+			/>
+		</Row>
+	{/if}
 </Group>
 
 <Group title="Cursor">
@@ -217,18 +219,20 @@
 			onchange={(v) => save({ max_scroll_history_lines: v })}
 		/>
 	</Row>
-	<Row
-		id="scrollback-memory"
-		label="Scrollback memory"
-		description="Most memory one terminal spends on its scrollback. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only)."
-	>
-		<NumInput
+	{#if gpu.supported}
+		<Row
+			id="scrollback-memory"
 			label="Scrollback memory"
-			unit="MB"
-			value={Math.round(t.scrollback_bytes / MB)}
-			onchange={(v) => save({ scrollback_bytes: v * MB })}
-		/>
-	</Row>
+			description="Most memory one terminal spends on its scrollback. A wide terminal keeps fewer lines than the setting above to stay inside it (fast terminal only)."
+		>
+			<NumInput
+				label="Scrollback memory"
+				unit="MB"
+				value={Math.round(t.scrollback_bytes / MB)}
+				onchange={(v) => save({ scrollback_bytes: v * MB })}
+			/>
+		</Row>
+	{/if}
 	<Row
 		id="clipboard"
 		label="Programs can copy to your clipboard"
@@ -249,7 +253,7 @@
 	<Row
 		id="copy-on-select"
 		label="Copy on select"
-		description="Selecting text copies it to the clipboard as soon as you release the mouse. Fast terminal only."
+		description="Selecting text copies it to the clipboard as soon as you release the mouse."
 	>
 		<Switch
 			aria-label="Copy on select"
@@ -257,35 +261,37 @@
 			onchange={(v) => save({ copy_on_select: v })}
 		/>
 	</Row>
-	<Row
-		id="click-to-move"
-		label="Click to move the cursor"
-		description="Clicking on the prompt line moves the cursor there. Needs shell integration (OSC 133 prompt marks); fast terminal only."
-	>
-		<Switch
-			aria-label="Click to move the cursor"
-			checked={t.click_to_move}
-			onchange={(v) => save({ click_to_move: v })}
-		/>
-	</Row>
-	<Row
-		id="option-as-alt"
-		label="Option key as Alt"
-		description="Makes ⌥ send Alt (⌥B jumps back a word) instead of typing a macOS character such as ∫. Fast terminal only."
-	>
-		<SegmentedControl
-			aria-label="Option key as Alt"
-			size="sm"
-			value={t.option_as_alt}
-			items={[
-				{ value: "both", label: "Both" },
-				{ value: "left", label: "Left" },
-				{ value: "right", label: "Right" },
-				{ value: "none", label: "Off" },
-			]}
-			onchange={(v) => save({ option_as_alt: v as Prefs["terminal"]["option_as_alt"] })}
-		/>
-	</Row>
+	{#if gpu.supported}
+		<Row
+			id="click-to-move"
+			label="Click to move the cursor"
+			description="Clicking on the prompt line moves the cursor there. Needs shell integration (OSC 133 prompt marks); fast terminal only."
+		>
+			<Switch
+				aria-label="Click to move the cursor"
+				checked={t.click_to_move}
+				onchange={(v) => save({ click_to_move: v })}
+			/>
+		</Row>
+		<Row
+			id="option-as-alt"
+			label="Option key as Alt"
+			description="Makes ⌥ send Alt (⌥B jumps back a word) instead of typing a macOS character such as ∫. Fast terminal only."
+		>
+			<SegmentedControl
+				aria-label="Option key as Alt"
+				size="sm"
+				value={t.option_as_alt}
+				items={[
+					{ value: "both", label: "Both" },
+					{ value: "left", label: "Left" },
+					{ value: "right", label: "Right" },
+					{ value: "none", label: "Off" },
+				]}
+				onchange={(v) => save({ option_as_alt: v as Prefs["terminal"]["option_as_alt"] })}
+			/>
+		</Row>
+	{/if}
 </Group>
 
 <style>

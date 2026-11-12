@@ -1,6 +1,6 @@
 [package]
 name = "atlas-cli"
-version = "1.5.0-alpha.24"
+version = "1.5.0-alpha.25"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -40,6 +40,11 @@ base64 = { workspace = true }
 dirs = { workspace = true }
 tempfile = { workspace = true }
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse", "display"] }
+
+[build-dependencies]
+# Version info of atlas.exe (ProductName, versions): what SignPath's artifact configuration and the
+# Windows file properties read. Already in the tree (tauri-build and atlas-setup use it).
+tauri-winres = "0.3"
 
 [lints]
 workspace = true

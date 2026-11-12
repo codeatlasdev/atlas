@@ -36,12 +36,12 @@ import { SITE } from "../data/site";
 		</div>
 		<div class="bleed">
 			<div class="text wrap">
-				<p class="lead">Most app terminals are xterm.js in a web view. Atlas draws each terminal natively with Metal and wgpu. Its render thread sleeps until there is output.</p>
+				<p class="lead">Most app terminals are xterm.js in a web view. On macOS, Atlas draws each terminal natively with Metal and wgpu. Its render thread sleeps until there is output.</p>
 				<dl class="nums">
 					<div><dt>0.29 ms</dt><dd>render work per frame, p95</dd></div>
 					<div><dt>8.45 ms</dt><dd>frame interval p95 at 120 Hz</dd></div>
 				</dl>
-				<p class="prose-sm">Kitty graphics and sixel, color emoji, ligatures, shell integration. The docs put Ghostty's numbers right next to ours, including the rows where Ghostty wins. <a class="ln" href="/docs/terminal/#performance">Read the table.</a></p>
+				<p class="prose-sm">Kitty graphics and sixel, color emoji, ligatures, shell integration. The docs put Ghostty's numbers right next to ours, including the rows where Ghostty wins. <a class="ln" href="/docs/terminal/#performance">Read the table.</a> On Windows and Linux, Atlas Desktop uses xterm.js terminals for now; the GPU terminal is macOS only.</p>
 			</div>
 			<div class="winwrap" data-slide>
 				<Clip name="loop-terminal" ratio="16 / 7" alt="Atlas GPU terminal showing ligatures, truecolor, emoji and an inline kitty-protocol image" />
@@ -195,11 +195,11 @@ import { SITE } from "../data/site";
 		<div class="wrap">
 			<h2 id="close-h" class="display rise">Atlas is out. Install it in one line.</h2>
 			<div class="cw">
-				<InstallCopy client:visible cmd={SITE.install} />
+				<InstallCopy client:visible cmd={SITE.install} winCmd={SITE.installWindows} />
 				<div class="ctas">
 					<DownloadLinks />
 				</div>
-				<p class="fine">Open source, MIT or Apache-2.0. Available for macOS now; Windows and Linux are coming soon (<a class="ln" href="/download/">all downloads</a>). On Linux today, <a class="ln" href="/docs/installation/#build-from-source">build from source</a>.</p>
+				<p class="fine">Open source, MIT or Apache-2.0. For macOS, Windows 10/11 and Linux x86_64 (<a class="ln" href="/download/">all downloads</a>); on Windows you can also double-click <a class="ln" href="/download/#win-h">Atlas-Setup.exe</a>. Intel Macs and Linux on Arm are coming soon; until then <a class="ln" href="/docs/installation/#build-from-source">build from source</a>.</p>
 				<div class="notes">
 					<p class="notes-h">Get release notes by email</p>
 					<Waitlist client:visible variant="close" />

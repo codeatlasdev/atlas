@@ -298,7 +298,7 @@
 	{#if ended}
 		<div class="end">
 			<p class="end-h display">That was the whole thing.</p>
-			<p class="end-p">Install it in one line, or grab the .dmg.</p>
+			<p class="end-p">Install it in one line, or download the installer for your platform.</p>
 			<div class="end-b">
 				<a class="btn solid" href="/#install" onclick={() => document.fullscreenElement && document.exitFullscreen()}>Install Atlas</a>
 				<button type="button" class="btn" onclick={() => play()}>Watch again</button>

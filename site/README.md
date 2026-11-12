@@ -16,7 +16,7 @@ bun run check      # astro check + type-check of scripts/ and functions/ (CI run
 |---|---|
 | `src/pages/index.astro` | the landing page: one chapter per screen (copy lives next to the markup) |
 | `src/data/landing.ts` | landing-page data: FAQ, JSON-LD, log-river rows and the cache-busting `mediaUrl()` |
-| `src/pages/download.astro` | the download page: resolves the latest release at build time (`src/data/release.ts`, from the release's `manifest.json`), highlights the visitor's OS, lists coming-soon platforms with a notify form (`/api/waitlist` + `topic`), checksums, requirements |
+| `src/pages/download.astro` | the download page: macOS, Windows and Linux cards side by side (the visitor's OS first); the macOS `.dmg` and the version facts come from the latest release at build time (`src/data/release.ts`, from the release's `manifest.json`), the Windows button is the fixed `releases/latest/download/Atlas-Setup.exe` asset (not in the manifest), plus a SmartScreen note while the files are unsigned, coming-soon platforms (Intel Mac, Windows on Arm, Linux on Arm) with a notify form (`/api/waitlist` + `topic`), checksums, requirements |
 | `functions/` | Cloudflare Pages Functions: `release.json`, `changelog/`, `changelog.json` (the release engine, see [docs/site.md](../docs/site.md)), `api/waitlist` |
 | `src/components/Rail.astro` | the icon-only section rail (tooltip on hover/focus, progress hairline); state comes from one scroll handler in `src/lib/page.ts` |
 | `src/components/Hero.astro` | the first screen: the pitch, the install/download calls to action, and the product (the `loop-panel` loop, poster = LCP image, video started after load, never under reduced motion or Data Saver) |

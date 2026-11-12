@@ -8,6 +8,7 @@ export const SITE = {
 	github: "https://github.com/codeatlasdev/atlas",
 	releases: "https://github.com/codeatlasdev/atlas/releases/latest",
 	install: "curl -fsSL https://atlas.codeatlas.com.br/install.sh | sh",
+	installWindows: "irm https://atlas.codeatlas.com.br/install.ps1 | iex",
 	codeatlas: "https://codeatlas.com.br",
 	docs: "/docs/getting-started/",
 };

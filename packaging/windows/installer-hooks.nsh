@@ -27,8 +27,12 @@
   Pop $0
   Goto atlas_cli_done
   atlas_cli_first:
+  ; SearchPath also looks in the current directory, which is $INSTDIR here: its own atlas.exe is not
+  ; an "existing CLI" (a clean install found it and never installed the command; Windows run, 2026-11-11).
   SearchPath $1 "atlas.exe"
-  StrCmp $1 "" 0 atlas_cli_done
+  StrCmp $1 "" atlas_cli_install
+  StrCmp $1 "$INSTDIR\atlas.exe" atlas_cli_install atlas_cli_done
+  atlas_cli_install:
   IfFileExists "$INSTDIR\atlas.exe" 0 atlas_cli_done
   nsExec::Exec '"$INSTDIR\atlas.exe" install'
   Pop $0

@@ -8,10 +8,10 @@ description: "What Atlas is, what it replaces and where to start."
 Atlas is a developer platform for everyone: the paved road from `git clone` to a running, observable stack, without needing a platform team. It boots your project's whole development environment from one `atlas.yaml`: docker infrastructure, app services in dependency order, restarts with backoff, health checks and searchable logs. It gives you three ways to drive it, and they all see the same live state:
 
 - **`atlas dev`**: a terminal dashboard (the [TUI](tui.md)).
-- **Atlas Desktop**: a native app (macOS today, Windows and Linux coming) with a GPU terminal, git worktrees, coding agents, diff review and an embedded browser.
+- **Atlas Desktop**: a native app for macOS, Windows and Linux with a terminal (GPU-drawn on macOS), git worktrees, coding agents, diff review and an embedded browser.
 - **`atlas mcp`**: a [Model Context Protocol](mcp.md) server, so an AI agent can read status and logs, restart a service and wait until it is healthy while you keep working.
 
-> **Status.** Atlas is open source (MIT or Apache-2.0) and built for everyone. Available now: macOS on Apple silicon (the CLI, the TUI, the MCP server and Atlas Desktop; [download](https://atlas.codeatlas.com.br/download/)). Coming soon: Intel Macs, Windows and Linux builds. The CLI already builds from source on Linux and its tests run on Ubuntu in CI.
+> **Status.** Atlas is open source (MIT or Apache-2.0) and built for everyone. Available now: macOS on Apple silicon, Windows 10/11 x64 and Linux x86_64 (the CLI, the TUI, the MCP server and Atlas Desktop; [download](https://atlas.codeatlas.com.br/download/)). Coming soon: Intel Macs, Windows on Arm and Linux on Arm.
 
 ## The problem it solves
 

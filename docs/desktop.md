@@ -5,7 +5,7 @@ description: "Atlas Desktop: spaces, worktrees, agents, review, the embedded bro
 
 # Desktop app
 
-Atlas Desktop is a native app (Tauri 2 + Svelte 5), available for macOS today with Windows and Linux coming soon. It lists every atlas project in a sidebar and lets you start and stop each stack. It shows services live, streams and searches logs, runs actions, and edits `atlas.yaml` with validation.
+Atlas Desktop is a native app (Tauri 2 + Svelte 5) for macOS (Apple silicon), Windows 10/11 (x64, one click with `Atlas-Setup.exe`) and Linux (x86_64). The GPU terminal, capture and agent test instances are macOS only; on Windows and Linux terminals use xterm.js. It lists every atlas project in a sidebar and lets you start and stop each stack. It shows services live, streams and searches logs, runs actions, and edits `atlas.yaml` with validation.
 
 It is a client of the same runners as the CLI: **Start** runs `atlas dev --detach`, and **Stop** is `atlas down`. The app, an attached TUI and an AI agent (through [MCP](mcp.md)) all see and control the same live state. Quitting or closing the app never stops a stack.
 

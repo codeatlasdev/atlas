@@ -46,7 +46,7 @@ jobs:
       - name: Rust targets for the native crate
         run: rustup target add aarch64-apple-ios
 
-      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1.331.0
+      - uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
         with:
           working-directory: apps/mobile
 
@@ -85,7 +85,7 @@ jobs:
       - name: Rust targets for the native crate
         run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
 
-      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1.331.0
+      - uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
         with:
           working-directory: apps/mobile
 

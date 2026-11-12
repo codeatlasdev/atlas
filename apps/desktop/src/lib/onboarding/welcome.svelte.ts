@@ -20,6 +20,8 @@ class Welcome {
 	watching = $state<string | null>(null);
 	/** Scene-clock time the stack came up, for the globe's completion hit; null until then. */
 	upAt = $state<number | null>(null);
+	/** The deck is adding projects (from the click until `added`); keeps the overlay up through that gap. */
+	adding = $state(false);
 
 	/** Scene clock of the globe canvas (set by the Hero); the completion hit is stamped on it. */
 	clock: () => number = () => 0;
@@ -83,20 +85,24 @@ class Welcome {
 	async #add(paths: string[]) {
 		if (!paths.length) return;
 		const before = new Set(store.projects.map((p) => p.id));
+		this.adding = true;
 		try {
 			await addPaths(paths);
 		} catch (e) {
+			this.adding = false;
 			toast.error(errText(e));
 			return;
 		}
 		const fresh = store.projects.find((p) => !before.has(p.id)) ?? store.sorted[0];
 		if (fresh) await this.#started(fresh.id);
+		this.adding = false;
 	}
 
 	async #started(id: string) {
 		store.selected = id;
 		this.watching = id;
 		this.send({ t: "added" });
+		this.adding = false;
 		// `store.run` toasts and returns undefined on failure; without this the user would sit in "starting".
 		const ok = await store.run(`stack:${id}`, async () => (await api.start(id), true));
 		if (!ok && this.phase === "starting") this.send({ t: "stack-failed" });

@@ -123,9 +123,12 @@ export function showWelcome(
 	loaded: boolean,
 	projectCount: number,
 	phase: Phase,
+	adding = false,
 ): boolean {
 	if (!loaded || phase === "done") return false;
-	if (phase === "starting" || phase === "up") return true;
+	// The deck is adding the first project: the project list grows BEFORE the phase moves to `starting`, and in that gap
+	// the old rule ("no projects") unmounted the overlay and remounted it on `starting` from its first slide.
+	if (adding || phase === "starting" || phase === "up") return true;
 	return projectCount === 0 && !state.done;
 }
 

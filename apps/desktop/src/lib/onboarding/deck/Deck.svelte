@@ -61,7 +61,8 @@
 	];
 	const LAST = SLIDES.length; // the project steps
 
-	let i = $state(0);
+	// Mid-flow (a project is being added or its stack is starting) the deck resumes on the project steps, never on slide 1.
+	let i = $state(w.phase === "welcome" && !w.adding ? 0 : LAST);
 	let dir = $state(1);
 	const go = (n: number) => {
 		if (n < 0 || n > LAST) return;

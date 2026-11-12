@@ -25,7 +25,13 @@ class Onboarding {
 	helpOpen = $state(false);
 	/** The welcome overlay is up: first run, and it stays through the guided flow after the first project is added. */
 	firstRun = $derived(
-		showWelcome(this.state, this.loaded && store.loaded, store.projects.length, welcome.phase),
+		showWelcome(
+			this.state,
+			this.loaded && store.loaded,
+			store.projects.length,
+			welcome.phase,
+			welcome.adding,
+		),
 	);
 
 	async init() {

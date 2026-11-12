@@ -11,7 +11,7 @@
 	/** The deck reached its project steps: Enter/Esc drive the flow from here on (before, the deck owns the keys). */
 	let atProjects = $state(false);
 	$effect(() => {
-		if (!store.projects.length || handedOff || welcome.phase !== "welcome") return;
+		if (!store.projects.length || handedOff || welcome.adding || welcome.phase !== "welcome") return;
 		handedOff = true;
 		void finish();
 	});

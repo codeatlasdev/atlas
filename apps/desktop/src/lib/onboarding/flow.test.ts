@@ -189,6 +189,15 @@ describe("showWelcome: the overlay stays for the whole guided flow", () => {
 		for (const p of ["starting", "up"] as Phase[])
 			expect(showWelcome({ done: true }, true, 1, p), p).toBe(true);
 	});
+	// Windows user report (1.5.0-alpha.24): "after I open the first folder in the onboarding, it restarts". The project
+	// list grew before the phase left `welcome`, so for that moment the overlay was hidden, then came back on `starting`
+	// remounted at its first slide. While the deck is adding, it stays up.
+	test("stays up through the add, from the click until the stack starts", () => {
+		expect(showWelcome({ done: false }, true, 1, "welcome", true)).toBe(true);
+		expect(showWelcome({ done: true }, true, 1, "welcome", true)).toBe(true);
+		expect(showWelcome({ done: false }, true, 1, "results", true)).toBe(true);
+		expect(showWelcome({ done: true }, true, 1, "starting", false)).toBe(true);
+	});
 });
 
 // Windows user report (1.5.0-alpha.24): finish the deck, open the first folder, and onboarding starts over. `done`

@@ -6,6 +6,12 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+## [1.5.0-alpha.25] — 2026-11-12
+
+Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).
+
+**The Windows release.** Atlas Desktop on Windows 10/11 now installs with one click (`Atlas-Setup.exe`), opens in a window that fits your screen, responds from the first click, and repairs what earlier Windows builds left behind when you update. The installer is not code-signed yet, so Windows SmartScreen may say "Windows protected your PC": click **More info**, then **Run anyway** (signing through SignPath Foundation is on its way).
+
 ### Added
 
 - **Windows: a one-click installer.** `Atlas-Setup.exe` replaces the generic setup wizard with a small dark Atlas window: the animated globe, a progress bar and one status line; it installs, then opens Atlas (or says to open it from the Start menu when it could not). It needs no WebView2 and no admin rights, has a taskbar entry and Narrator text, and takes `--silent` for scripts. A failure shows what went wrong, the log (`%TEMP%\atlas-setup.log`), what to try next and **Copy details** (also Ctrl+C). For installs made with it, removing Atlas from Settings › Apps › Installed apps opens the same window and asks **Keep your Atlas data?**, naming exactly what deleting removes (`%USERPROFILE%\.atlas`: settings, the project list, worktrees Atlas created with any uncommitted changes, the `atlas` command; never your project folders). Deleting needs a second confirmation; closing the window or Esc cancels. `atlas update` keeps this uninstaller, and the plain NSIS installer can still upgrade over it. The installer no longer adds a second `atlas` command when one is already on your PATH.
@@ -21,17 +27,16 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 - **Windows and Linux: no macOS-only settings or wording.** Settings no longer shows Capture or the GPU-terminal options, the "Screen capture is not available on this platform" toast is gone, and key hints and help text use Ctrl/Alt and "taskbar" instead of ⌘/⌥ and "Dock".
 - **Skipping the welcome left an empty screen.** The main pane now shows **Find my projects** and **Add a folder…**.
 - **Onboarding came back after you added your first folder.** Finishing the welcome was saved by the welcome screen itself, which closes the moment a project appears, so the save never ran. It is now saved by a part of the app that is always running.
-- **Atlas Desktop crash reports now include the backtrace**, and the diagnostics summary shows the crash message and location readably.
 - **A new project could keep an empty panel** when its configuration failed to load; it now falls back to **Set up services**.
 - **npm projects without a `package-lock.json` failed to start** ("Setup npm ci failed"): the install step now runs `npm install` when there is no lockfile.
+- **Crash reports from Atlas Desktop.** An app crash now writes a `crash-*.toml` report with the backtrace (it was unreadable on Windows: paths with `\` broke the file), and the diagnostics summary shows it readably. Page errors are recorded in `%USERPROFILE%\.atlas\desktop\app.log` in installed builds too, and a dialog whose code failed to load can be opened again instead of staying dead until a restart.
 - **Windows: the window opened larger than the screen on first launch** (past the taskbar on 1366×768 laptops or 1080p screens at 150% scaling). A first launch that does not fit the monitor now opens maximized; a size you chose later is kept.
 - **Windows: buttons did nothing, Settings and dialogs never opened, Atlas seemed frozen.** Right after launch, the call the page makes once its first frame is painted never returned, and every later request from the page (opening Settings, loading a dialog, any app action) queued behind it while the window kept drawing. That call now runs off the main thread; a test flags any synchronous command that directly builds a window.
 - **Windows: two title bars** (the system one above Atlas's own minimize/maximize/close). A window position saved by an older version brought the system frame back. The frame is no longer restored from saved state.
 - **Windows and Linux: the agent dock no longer sits over the taskbar from the first launch** ("No agent running"). It is off by default there; Ctrl+Alt+D or Settings → Agents → Agent dock turns it on, and a choice you already saved is kept. macOS is unchanged.
-- **Crash reports from Atlas Desktop.** An app crash now also writes a `crash-*.toml` report with the backtrace (it was unreadable on Windows: paths with `\` broke the file). Page errors are recorded in `~/.atlas/desktop/app.log` in installed builds too. A dialog whose code failed to load can be opened again instead of staying dead until a restart.
 - **Windows: Atlas Desktop 1.5.0-alpha.24 closed at launch** (`WebView2 error 0x8007139F` in `~/.atlas/desktop/app.log`). The new agent dock and capture windows built their webview with other browser options than the main window, and WebView2 refuses two sets in one app. Every window now passes the same set, and a test fails the build when a new window forgets it.
 - **Windows: `atlas update` could not update Atlas Desktop** ("cannot move …\Atlas aside (is Atlas still running?)", so the CLI rolled back too). The update moved the whole install folder, which Windows refuses while any file in it is open, and one always is: the app, its terminal host or the `atlas.exe` running the update. It now moves the files aside one by one (Windows allows renaming a running program), and reopens Atlas Desktop when the installer had to close it; terminals and stacks keep running.
-- **Windows: installing only Atlas Desktop now also gives you the `atlas` command.** The installer sets up the CLI it carries (`%USERPROFILE%\.atlas\bin` on your PATH, as the PowerShell install does) when you have none yet, so `atlas update` and `atlas .` work from a new terminal.
+- **Windows: installing only Atlas Desktop now also gives you the `atlas` command** (`%USERPROFILE%\.atlas\bin` on your PATH, as the PowerShell install does) when you have none, so `atlas update` and `atlas .` work from a new terminal.
 
 ## [1.5.0-alpha.24] — 2026-10-27
 

@@ -84,6 +84,7 @@ pub fn failure_details(reason: &str, log: &Log) -> String {
 }
 
 /// Where an issue goes; added to the text "Copy details" puts on the clipboard.
+#[cfg(windows)]
 pub const ISSUES_URL: &str = "github.com/codeatlasdev/atlas/issues";
 
 /// The way out of a failed run, shown on screen and copied with the details.

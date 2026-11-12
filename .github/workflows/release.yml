@@ -249,6 +249,17 @@ jobs:
             --target x86_64-pc-windows-msvc --bundles nsis \
             --config '{"bundle":{"resources":{"../../target/x86_64-pc-windows-msvc/release/atlas.exe":"atlas.exe"}}}')
 
+      # Atlas-Setup.exe (crates/atlas-setup): the one-click installer people download. It embeds the NSIS
+      # installer built above (ATLAS_SETUP_PAYLOAD) and runs it silently behind its own window. The NSIS
+      # installer stays a release asset too: `atlas desktop` and `atlas update` run it with /S.
+      - name: Build Atlas-Setup
+        run: |
+          T=x86_64-pc-windows-msvc
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          NSIS="$(ls "$PWD/target/$T/release/bundle/nsis/"*-setup.exe)"
+          ATLAS_SETUP_PAYLOAD="$NSIS" cargo xwin build --release --locked --target "$T" -p atlas-setup
+
       - name: Package
         run: |
           V=${TAG#v}
@@ -257,6 +268,7 @@ jobs:
           cp "target/$T/release/atlas.exe" dist/
           (cd dist && tar czf "atlas-$V-$T.tar.gz" atlas.exe && rm atlas.exe)
           cp "target/$T/release/bundle/nsis/"*-setup.exe "dist/Atlas-$V-$T-setup.exe"
+          cp "target/$T/release/Atlas-Setup.exe" dist/Atlas-Setup.exe
           cd dist
           for f in *.tar.gz *.exe; do sha256sum "$f" > "$f.sha256"; done
           ls -l
@@ -367,7 +379,7 @@ jobs:
       - name: SHA256SUMS
         run: |
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.dmg' -o -name '*.cdx.json' -o -name '*.AppImage' \
-            -o -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' -o -name 'PKGBUILD' -o -name '*-setup.exe' \) -print0 \
+            -o -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' -o -name 'PKGBUILD' -o -name '*-setup.exe' -o -name 'Atlas-Setup.exe' \) -print0 \
             | xargs -0 shasum -a 256 | sed 's#  .*/#  #' | sort -k2 > SHA256SUMS
           shasum -a 256 manifest.json >> SHA256SUMS
           cat SHA256SUMS
@@ -423,7 +435,7 @@ jobs:
           | | |
           |---|---|
           | macOS | `Atlas-*-aarch64-apple-darwin.dmg` |
-          | Windows 10/11 | `Atlas-*-x86_64-pc-windows-msvc-setup.exe` (per-user, no admin rights; carries `atlas.exe` too) |
+          | Windows 10/11 | `Atlas-Setup.exe` (one click, per-user, no admin rights; carries `atlas.exe` too). `Atlas-*-x86_64-pc-windows-msvc-setup.exe` is the plain NSIS installer behind it (`/S` for scripts) |
           | Arch Linux | `codeatlas-atlas-bin-*-x86_64.pkg.tar.zst`: `sudo pacman -U codeatlas-atlas-bin-*.pkg.tar.zst` |
           | Debian, Ubuntu | `atlas_*_amd64.deb`: `sudo apt install ./atlas_*_amd64.deb` |
           | Fedora, openSUSE | `atlas-*.x86_64.rpm`: `sudo dnf install ./atlas-*.x86_64.rpm` |
@@ -453,6 +465,7 @@ jobs:
             artifacts/**/*.pkg.tar.zst
             artifacts/**/PKGBUILD
             artifacts/**/*-setup.exe
+            artifacts/**/Atlas-Setup.exe
             artifacts/**/*.sha256
             artifacts/**/*.cdx.json
             manifest.json

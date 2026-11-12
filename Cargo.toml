@@ -9,6 +9,7 @@ members = [
     "crates/atlas-host",
     "crates/atlas-lsp",
     "crates/atlas-term",
+    "crates/atlas-setup",
 ]
 # `cargo build|test` without `--workspace` skips the GUI crates (Tauri/WebKit, the Metal terminal), so the CLI,
 # TUI, runtime and MCP server build anywhere without system GUI libraries. CI and `bun run check` pass

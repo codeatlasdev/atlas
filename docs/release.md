@@ -111,7 +111,7 @@ Only the newest stable line gets fixes. If a hotfix touches code the next beta a
 
 ## What the release workflow does
 
-`.github/workflows/release.yml`, five jobs on GitHub-hosted runners. It runs on a `v*` tag push, or by hand (`workflow_dispatch` with the `tag` input, which is what `bun run release:publish` does). Every job checks out `refs/tags/<tag>`, and the version comes from the tag name (`TAG`, which is `inputs.tag` or the pushed ref).
+`.github/workflows/release.yml`, six jobs on GitHub-hosted runners. It runs on a `v*` tag push, or by hand (`workflow_dispatch` with the `tag` input, which is what `bun run release:publish` does). Every job checks out `refs/tags/<tag>`, and the version comes from the tag name (`TAG`, which is `inputs.tag` or the pushed ref).
 
 1. **`gate`** (`ubuntu-latest`): `scripts/ci-passed.sh` waits for the `CI` run of the tagged commit and fails the release unless it finished `success`. The release never re-runs the tests; it trusts the one CI run of that exact commit.
 2. **`build`** (`macos-14`, after `gate`): `cargo build --release --locked --target aarch64-apple-darwin -p atlas-cli` with `SOURCE_DATE_EPOCH` set to the commit time, ad-hoc `codesign` (so Gatekeeper does not SIGKILL the binary), package `atlas-<version>-aarch64-apple-darwin.tar.gz` plus a `.sha256`. A CycloneDX SBOM of the CLI's dependencies (`cargo cyclonedx`, installed with `--locked` when missing; the step warns and carries on if it cannot be) becomes `atlas-<version>-sbom.cdx.json`. Then Atlas Desktop: `cargo tauri build --bundles app,dmg` (ad-hoc signed through `bundle.macOS.signingIdentity: "-"`), packaged as `Atlas-<version>-aarch64-apple-darwin.app.tar.gz` (what `atlas desktop` and `atlas update` install) and `Atlas-<version>-aarch64-apple-darwin.dmg` (manual download), each with a `.sha256`.
@@ -130,6 +130,21 @@ The GitHub flags come from the tag's channel against the **default channel** (`"
 | `vX.Y.Z-beta.N` / `-rc.N` | pre-release, never Latest | pre-release, never Latest |
 
 So pre-GA GitHub's "Latest" badge and `releases/latest` show the newest build of the default channel: what a user who never chose a channel gets. **That redirect is therefore not the Stable channel any more.** Clients never use it as "the stable tag": Stable is the newest tag without a prerelease label among `releases.atom` (older pages with `?after=<tag>` when a run of alphas fills the 10-entry window) and the redirect, which is only one more candidate. The release notes header says so for a default-channel alpha. The manifest's `prerelease` is the SemVer label, not GitHub's flag. At GA the default flips back to Stable (see [versioning](versioning.md#general-availability)) and the table's right column applies with no other edit.
+
+### Windows installer (`Atlas-Setup.exe`)
+
+`build-windows` produces two installers on purpose:
+
+| Asset | What it is | Who runs it |
+|---|---|---|
+| `Atlas-Setup.exe` | `crates/atlas-setup`: a small borderless window (drawn by us, **no WebView2**, which may not exist yet) with the Atlas globe, a progress bar and a status line; it embeds the NSIS installer below, runs it silently and opens Atlas. `--uninstall` is the same window for removal. | People (the download link, a stable name). |
+| `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` | The Tauri NSIS installer (per-user, `%LOCALAPPDATA%\Atlas`). Listed in `manifest.json` as `desktop`. | `atlas desktop` and `atlas update` (`/S /D=`), scripts. |
+
+The setup is built after the NSIS bundle, with the bundle as its payload: `ATLAS_SETUP_PAYLOAD=<nsis exe> cargo xwin build --release --locked --target x86_64-pc-windows-msvc -p atlas-setup` (without the variable it still compiles, so `cargo build --workspace` works, and reports at run time that it carries no installer). Progress is real: the NSIS installer is silent, so the window watches the install folder grow against the installer's unpacked size; the bar stops short of the end until the exit code is 0 **and** `atlas-desktop.exe` is in place. Errors never close silently: the window shows the reason, **Copy details** and the log (`%TEMP%\atlas-setup.log`).
+
+After a successful install the setup copies itself into the install folder as `Atlas Uninstall.exe` and points the `UninstallString`/`DisplayIcon` of the Settings › Apps entry at it (`QuietUninstallString` stays NSIS's `uninstall.exe /S`). Tauri's installer rewrites that entry on every run, including the silent one of `atlas update`, so `packaging/windows/installer-hooks.nsh` (`NSIS_HOOK_POSTINSTALL`) puts it back when the copy exists. The uninstall window asks whether to keep `~/.atlas` (default: keep; `--silent` never removes it unless `--remove-data`), runs `uninstall.exe /S _?=<dir>`, runs `atlas uninstall --yes` only when removing data, and deletes what NSIS leaves.
+
+Try one locally (Windows, after `cargo tauri build --ci --bundles nsis --config '{"bundle":{"resources":{"../../target/release/atlas.exe":"atlas.exe"}}}'` in `crates/atlas-desktop`): `ATLAS_SETUP_PAYLOAD=$PWD/target/release/bundle/nsis/Atlas_*_x64-setup.exe cargo build --release -p atlas-setup`, then run `target\release\Atlas-Setup.exe`. `ATLAS_SETUP_DUMP=<dir> cargo test -p atlas-setup dump_frames` writes every screen as raw RGBA for design review.
 
 ### Prerelease versions in the macOS bundle
 

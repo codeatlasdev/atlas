@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Windows: a one-click installer.** `Atlas-Setup.exe` replaces the generic setup wizard with a small dark Atlas window: the animated globe, a progress bar and one status line; it installs, then opens Atlas. Removing Atlas from Settings › Apps opens the same window and asks whether to keep your data (`~/.atlas`; kept by default). A failure says what went wrong, with **Copy details** and a log at `%TEMP%\atlas-setup.log`. It needs no WebView2, no admin rights and takes `--silent` for scripts. `atlas desktop` and `atlas update` keep using the plain installer.
+
 ### Changed
 
 - **Opening a folder without an `atlas.yaml` now shows what Atlas found.** The panel names the detected stack (Node, Rust, Go, Python) and offers **Set up services**, instead of "Atlas found nothing to run". Adding a folder says what was detected. Services are now detected for single-binary Cargo projects (`cargo run`), Go modules with a root `main` package (`go run .`), Django (`manage.py runserver`) and FastAPI with one obvious app module (`uvicorn`). **Find projects** lists folders without an `atlas.yaml` by default.

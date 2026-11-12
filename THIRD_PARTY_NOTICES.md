@@ -9,7 +9,7 @@ stated.
 
 | Component | Used for | License | Where |
 |---|---|---|---|
-| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (Regular, Bold, Italic, Bold Italic) | Default font of the GPU terminal | SIL OFL 1.1 | `crates/atlas-term/fonts/JetBrainsMono-*.ttf`, text in `JetBrainsMono-OFL.txt` |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (Regular, Bold, Italic, Bold Italic) | Default font of the GPU terminal; fallback text font of `Atlas-Setup.exe` when Segoe UI is missing | SIL OFL 1.1 | `crates/atlas-term/fonts/JetBrainsMono-*.ttf`, text in `JetBrainsMono-OFL.txt` |
 | [Nerd Fonts Symbols Only](https://github.com/ryanoasis/nerd-fonts) (`SymbolsNerdFontMono-Regular.ttf`) | Icon glyph fallback in the GPU terminal | MIT (the font collection bundles glyph sets under MIT, Apache-2.0 and OFL; see the Nerd Fonts repository for the per-set breakdown) | `crates/atlas-term/fonts/`, text in `NerdFontSymbols-LICENSE` |
 | [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) (`material-icon-theme` npm) | File-type icons in the desktop explorer and tabs (SVGs are bundled at build time by `apps/desktop/scripts/gen-icons.ts`) | MIT | `apps/desktop` build |
 | [pdf.js](https://github.com/mozilla/pdf.js) (`pdfjs-dist` npm) | PDF viewer; CMaps, standard fonts and ICC profiles are served same-origin from the bundle (`apps/desktop/scripts/pdfjs-assets.ts`) | Apache-2.0 | `apps/desktop` build |

@@ -108,7 +108,7 @@ irm https://atlas.codeatlas.com.br/install.ps1 | iex
 $env:ATLAS_CHANNEL = 'stable'; irm https://atlas.codeatlas.com.br/install.ps1 | iex   # or pick a channel
 ```
 
-It verifies the release checksum, puts `atlas.exe` in `%USERPROFILE%\.atlas\bin`, adds that folder to your user `PATH` (open a new terminal afterwards) and installs the bundled agent skills. `atlas desktop` then installs and opens the app. You can also run `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` from the release page by hand: it installs the app and an `atlas.exe` next to it, which the app uses until you install the CLI.
+It verifies the release checksum, puts `atlas.exe` in `%USERPROFILE%\.atlas\bin`, adds that folder to your user `PATH` (open a new terminal afterwards) and installs the bundled agent skills. `atlas desktop` then installs and opens the app. You can also download `Atlas-Setup.exe` from the release page and double-click it: a small window installs Atlas Desktop (and an `atlas.exe` next to it, which the app uses until you install the CLI), then opens it. No admin rights, no wizard. Uninstall it from Settings › Apps like any program: the same window asks whether to keep your Atlas data (`~/.atlas`, kept by default). If something fails the window says what and offers **Copy details**; the log is `%TEMP%\atlas-setup.log`. For scripts, `Atlas-Setup.exe --silent` runs without a window (and `--uninstall --silent` removes the app, keeping the data unless `--remove-data` is given); the plain NSIS installer `Atlas-<version>-x86_64-pc-windows-msvc-setup.exe` (`/S`) is what `atlas desktop` and `atlas update` run.
 
 What differs from macOS and Linux:
 
@@ -172,7 +172,7 @@ Build `atlas-cli`, not `atlas-tui` alone: `atlas-tui` is a library, and `atlas-c
 bun run desktop:build            # macOS: .app + .dmg; Linux: .deb, .rpm and .AppImage; Windows: the NSIS setup .exe; all in target/release/bundle/
 atlas desktop --from target/release/bundle/macos/Atlas.app                 # macOS
 atlas desktop --from target/release/bundle/appimage/Atlas_*.AppImage       # Linux
-atlas desktop --from target/release/bundle/nsis/Atlas_*-setup.exe          # Windows
+atlas desktop --from target/release/bundle/nsis/Atlas_*-setup.exe          # Windows (the NSIS installer; Atlas-Setup.exe wraps it: docs/release.md)
 ```
 
 On Linux, build the CLI first (`cargo build --release -p atlas-cli`): the `.deb` and `.rpm` include `target/release/atlas`. On Windows you need the Visual Studio Build Tools (C++ workload) and WebView2 (preinstalled on Windows 11); the release build also puts `atlas.exe` in the installer (`release.yml`, `build-windows`).

@@ -29,9 +29,7 @@ Future<void> _settle(WidgetTester t) async {
 Widget _wrap(Widget child, List<MacDevice> devices) => ProviderScope(
   overrides: [
     macStorageProvider.overrideWithValue(_Storage(devices)),
-    transportFactoryProvider.overrideWithValue(
-      (_, _) async => demoTransport(),
-    ),
+    transportFactoryProvider.overrideWithValue((_, _) async => demoTransport()),
   ],
   child: MaterialApp(theme: atlasTheme(), home: child),
 );
@@ -44,7 +42,7 @@ void main() {
     await t.pumpWidget(_wrap(const BotsScreen(), [mac]));
     await _settle(t);
     // The demo computer has a "Reviewer" bot.
-    expect(find.text('Reviewer'), findsOneWidget);
+    expect(find.text('Reviewer'), findsWidgets);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });
@@ -61,16 +59,18 @@ void main() {
 
   testWidgets('BotScreen: send task shows queued then done', (t) async {
     await t.binding.setSurfaceSize(const Size(393, 852));
-    await t.pumpWidget(
-      _wrap(BotScreen(device: mac, botId: 'bot-1'), [mac]),
-    );
+    await t.pumpWidget(_wrap(BotScreen(device: mac, botId: 'bot-1'), [mac]));
     await _settle(t);
-    // Enter a prompt and send.
+    // Nothing to send: there is no send button, the field has the row.
+    expect(find.bySemanticsLabel('Send'), findsNothing);
     final field = find.byType(TextField);
+    final emptyWidth = t.getSize(field).width;
     await t.enterText(field, 'Review this PR');
-    await t.pump();
-    // Tap send button.
-    await t.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await _settle(t);
+    // Text in: the button has come out and the field gave up room for it.
+    expect(find.bySemanticsLabel('Send'), findsOneWidget);
+    expect(t.getSize(field).width, lessThan(emptyWidth));
+    await t.tap(find.bySemanticsLabel('Send'));
     await _settle(t);
     // Task prompt is visible in the task list.
     expect(find.text('Review this PR'), findsOneWidget);
@@ -80,6 +80,25 @@ void main() {
     }
     // The demo result contains "demo".
     expect(find.textContaining('demo'), findsWidgets);
+    await t.pumpWidget(const SizedBox());
+    await _settle(t);
+  });
+
+  testWidgets('BotScreen: clearing the text takes the send button back', (
+    t,
+  ) async {
+    await t.binding.setSurfaceSize(const Size(393, 852));
+    await t.pumpWidget(_wrap(BotScreen(device: mac, botId: 'bot-1'), [mac]));
+    await _settle(t);
+    final field = find.byType(TextField);
+    final emptyWidth = t.getSize(field).width;
+    await t.enterText(field, 'x');
+    await _settle(t);
+    await t.enterText(field, '   ');
+    await _settle(t);
+    // Only spaces is nothing to send.
+    expect(find.bySemanticsLabel('Send'), findsNothing);
+    expect(t.getSize(field).width, emptyWidth);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 
@@ -14,7 +15,10 @@ void main() {
   });
 
   test('ShipGithubStatus handles null login', () {
-    final status = ShipGithubStatus.fromJson({'installed': true, 'login': null});
+    final status = ShipGithubStatus.fromJson({
+      'installed': true,
+      'login': null,
+    });
     expect(status.login, isNull);
   });
 

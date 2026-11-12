@@ -12,7 +12,6 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
 /// State for the pairing flow.
@@ -117,6 +116,21 @@ class _PairScreenState extends ConsumerState<PairScreen> {
     ref.invalidate(pairNotifierProvider);
   }
 
+  Future<void> _paste() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
+    if (!mounted || _scanned) return;
+    if (text == null || !text.startsWith('atlas-mobile://pair')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Copy the atlas-mobile://pair link first.'),
+        ),
+      );
+      return;
+    }
+    _scanned = true;
+    ref.read(pairNotifierProvider.notifier).pair(text);
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(pairNotifierProvider);
@@ -129,6 +143,17 @@ class _PairScreenState extends ConsumerState<PairScreen> {
         title: const Text('Pair a computer'),
         backgroundColor: scanning ? Colors.transparent : null,
         foregroundColor: scanning ? Colors.white : null,
+        actions: [
+          // No camera (a simulator) or the code is on screen elsewhere: paste the link
+          // printed under the QR.
+          if (scanning)
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              icon: const Icon(Icons.content_paste_rounded, size: 18),
+              label: const Text('Paste link'),
+              onPressed: _paste,
+            ),
+        ],
       ),
       body: AnimatedSwitcher(
         duration: Motion.slow,

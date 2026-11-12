@@ -1,26 +1,47 @@
 {
-	"tasks": [
-		{
-			"id": "task-done",
-			"ts": 1761213000,
-			"source": "desktop",
-			"prompt": "review the PR",
-			"state": "done",
-			"result": "LGTM",
-			"started_at": 1761212900,
-			"finished_at": 1761213000
-		},
-		{
-			"id": "task-running",
-			"ts": 1761213100,
-			"source": "desktop",
-			"prompt": "write tests",
-			"state": "running",
-			"started_at": 1761213090,
-			"steps": [
-				{ "ts": 1761213092, "text": "Reading files" },
-				{ "ts": 1761213095, "text": "Writing tests" }
-			]
-		}
-	]
+  "tasks": [
+    {
+      "finished_at": 1761213000,
+      "id": "task-done",
+      "pane": "bot:0f9cd2f3-6cf2-c925-cf00-0892d5667cf4:68c98527-e279-1587-82c7-fc59dbe0d33a",
+      "prompt": "review the PR",
+      "result": "LGTM",
+      "source": "desktop",
+      "started_at": 1761212900,
+      "state": "done",
+      "summarized": false,
+      "ts": 1761213000
+    },
+    {
+      "action": {
+        "kind": "add_trigger",
+        "prompt": "Review open PRs",
+        "reason": "You asked for a daily review",
+        "trigger": {
+          "cron": "0 9 * * 1-5",
+          "type": "schedule"
+        }
+      },
+      "id": "task-running",
+      "preparing": "codeatlasdev/ui",
+      "prompt": "write tests",
+      "source": "desktop",
+      "started_at": 1761213090,
+      "state": "running",
+      "steps": [
+        {
+          "text": "Reading files",
+          "ts": 1761213092
+        },
+        {
+          "group": "Test suite",
+          "text": "Writing tests",
+          "ts": 1761213095
+        }
+      ],
+      "title": "Writing unit tests for store",
+      "ts": 1761213100,
+      "tz": "America/Sao_Paulo"
+    }
+  ]
 }

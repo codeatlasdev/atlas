@@ -8,6 +8,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/frb_transport.dart';
+import 'package:atlas_mobile/core/transport/crew_transport.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// Factory that creates a [Transport] for a given [MacDevice].
@@ -32,6 +33,12 @@ final transportFactoryProvider = Provider<TransportFactory>(
 
 /// Provides the [MacStorage] singleton.
 final macStorageProvider = Provider<MacStorage>((ref) => MacStorage());
+
+/// Paired computers from secure storage. The one copy: pairing and forgetting
+/// invalidate it, and every tab reads it.
+final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
+  (ref) => ref.read(macStorageProvider).loadDevices(),
+);
 
 /// Manages the [Multiplexer] lifecycle for a single paired Mac.
 ///
@@ -68,13 +75,25 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   }
 
   Future<Multiplexer?> _connect() async {
+    // A bot computer rides its Mac's connection: rebuilt whenever that one is.
+    final via = _device.via;
+    final parent = via == null
+        ? null
+        : ref.watch(connectionNotifierProvider(via).future);
     try {
-      final secretKey =
-          await ref.read(macStorageProvider).loadSecretKey() ?? '';
-      final transport = await ref.read(transportFactoryProvider)(
-        _device,
-        secretKey,
-      );
+      final Transport transport;
+      if (parent != null) {
+        final mac = await parent;
+        if (mac == null) return null;
+        transport = CrewTransport(mac, _device.crewServer!);
+      } else {
+        final secretKey =
+            await ref.read(macStorageProvider).loadSecretKey() ?? '';
+        transport = await ref.read(transportFactoryProvider)(
+          _device,
+          secretKey,
+        );
+      }
       final mux = Multiplexer(transport);
       _mux = mux;
       _backoffSeconds = 1;

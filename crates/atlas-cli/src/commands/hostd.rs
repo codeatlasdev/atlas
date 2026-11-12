@@ -80,6 +80,8 @@ impl AtlasCommand for HostdArgs {
                     lab: None,
                     no_mobile_relay,
                     bot_host,
+                    registry: Some(atlas_host::server::desktop_registry()),
+                    ..Default::default()
                 },
             )
             .await;
@@ -144,6 +146,8 @@ impl AtlasCommand for HostdArgs {
                 no_mobile_relay,
                 bot_host,
                 lab: self.lab.then_some(main_dir),
+                registry: Some(atlas_host::server::desktop_registry()),
+                ..Default::default()
             },
         )
         .await

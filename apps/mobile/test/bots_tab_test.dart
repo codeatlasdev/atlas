@@ -29,9 +29,7 @@ class _Storage extends MacStorage {
 Widget _wrap(Widget child, List<MacDevice> devices) => ProviderScope(
   overrides: [
     macStorageProvider.overrideWithValue(_Storage(devices)),
-    transportFactoryProvider.overrideWithValue(
-      (_, _) async => demoTransport(),
-    ),
+    transportFactoryProvider.overrideWithValue((_, _) async => demoTransport()),
   ],
   child: MaterialApp(theme: atlasTheme(), home: child),
 );
@@ -53,21 +51,22 @@ void main() {
     await t.pumpWidget(_wrap(const BotsScreen(), [mac]));
     await _settle(t);
 
-    // Both bots appear in the list.
-    expect(find.text('Reviewer'), findsOneWidget);
-    expect(find.text('Nightly'), findsAtLeastNWidgets(1));
+    // Every crewmate stands on the deck and has a logbook card; Nightly also asks for
+    // approval, so it has a captain's-call card too.
+    expect(find.text('Reviewer'), findsNWidgets(2));
+    expect(find.text('Nightly'), findsNWidgets(3));
 
-    // Needs-you card shows inline Deny/Allow (no status chips in messenger design).
+    // Needs-you card shows inline Deny/Allow.
     expect(find.text('Deny'), findsOneWidget);
     expect(find.text('Allow'), findsOneWidget);
 
-    // Working preview text is italic "Working…" (no chip).
-    expect(find.textContaining('Working'), findsWidgets);
+    // A working crewmate says so in its row, Telegram's "typing…" style.
+    expect(find.text('working…'), findsOneWidget);
 
-    // The Deny button (in the needs-you card at top) is above the Reviewer row.
+    // Captain's call comes before the logbook: Deny is above Reviewer's logbook card.
     final denyY = t.getTopLeft(find.text('Deny')).dy;
-    final reviewerY = t.getTopLeft(find.text('Reviewer')).dy;
-    expect(denyY, lessThan(reviewerY));
+    final reviewerCardY = t.getTopLeft(find.text('Reviewer').last).dy;
+    expect(denyY, lessThan(reviewerCardY));
 
     await t.pumpWidget(const SizedBox());
     await _settle(t);

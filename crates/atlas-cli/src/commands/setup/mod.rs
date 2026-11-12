@@ -65,8 +65,9 @@ pub struct HarnessArgs {
     /// Remove only atlas-owned artifacts
     #[arg(long)]
     pub uninstall: bool,
-    /// Exit 0 when atlas is set up for this agent, 1 when not; writes and prints nothing
-    /// (Atlas Desktop asks this before offering to turn the integration on)
+    /// Exit 0 when atlas is set up for this agent, 1 when not, 2 when its hooks are installed
+    /// but differ from this atlas's (another atlas version wrote them; `atlas update` refreshes
+    /// them); writes and prints nothing (Atlas Desktop and Mobile ask this)
     #[arg(long, conflicts_with_all = ["uninstall", "apply", "refresh"])]
     pub check: bool,
     /// Used by `atlas update`: re-apply quietly, only if atlas was already set up
@@ -387,6 +388,15 @@ fn detect() -> Result<()> {
     Ok(())
 }
 
+/// `--check`'s exit code: 0 set up, 1 not set up, 2 set up by a different atlas.
+fn check_code(hooks_installed: bool, differs: bool) -> i32 {
+    match (differs, hooks_installed) {
+        (false, _) => 0,
+        (true, false) => 1,
+        (true, true) => 2,
+    }
+}
+
 fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     let env = Env::from_process()?;
     let project_root = atlas_tui::config::find_root(&env.cwd);
@@ -419,11 +429,10 @@ fn run_agent(agent: Agent, args: HarnessArgs) -> Result<()> {
     };
     plan.warnings.splice(0..0, warnings);
     if args.check {
-        std::process::exit(if plan.has_changes() || plan.has_conflict() {
-            1
-        } else {
-            0
-        });
+        std::process::exit(check_code(
+            paths.hooks_installed(),
+            plan.has_changes() || plan.has_conflict(),
+        ));
     }
 
     let scope_label = match args.scope {

@@ -14,14 +14,18 @@ void main() {
     });
 
     test('connect_github parses correctly', () {
-      final j = fixture.firstWhere((e) => e['kind'] == 'connect_github') as Map<String, dynamic>;
+      final j = fixture.firstWhere(
+        (e) => e['kind'] == 'connect_github',
+      ) as Map<String, dynamic>;
       final a = TaskAction.fromJson(j);
       expect(a.kind, 'connect_github');
       expect(a.reason, 'to clone owner/repo');
     });
 
     test('provide_secret parses correctly', () {
-      final j = fixture.firstWhere((e) => e['kind'] == 'provide_secret') as Map<String, dynamic>;
+      final j = fixture.firstWhere(
+        (e) => e['kind'] == 'provide_secret',
+      ) as Map<String, dynamic>;
       final a = TaskAction.fromJson(j);
       expect(a.kind, 'provide_secret');
       expect(a.name, 'API_KEY');
@@ -30,7 +34,9 @@ void main() {
     });
 
     test('input parses with placeholder', () {
-      final j = fixture.firstWhere((e) => e['kind'] == 'input') as Map<String, dynamic>;
+      final j = fixture.firstWhere(
+        (e) => e['kind'] == 'input',
+      ) as Map<String, dynamic>;
       final a = TaskAction.fromJson(j);
       expect(a.kind, 'input');
       expect(a.label, 'Enter value');
@@ -38,7 +44,9 @@ void main() {
     });
 
     test('choose parses options', () {
-      final j = fixture.firstWhere((e) => e['kind'] == 'choose') as Map<String, dynamic>;
+      final j = fixture.firstWhere(
+        (e) => e['kind'] == 'choose',
+      ) as Map<String, dynamic>;
       final a = TaskAction.fromJson(j);
       expect(a.kind, 'choose');
       expect(a.question, 'Which deployment target?');
@@ -46,7 +54,9 @@ void main() {
     });
 
     test('sign_in_engine parses engine field', () {
-      final j = fixture.firstWhere((e) => e['kind'] == 'sign_in_engine') as Map<String, dynamic>;
+      final j = fixture.firstWhere(
+        (e) => e['kind'] == 'sign_in_engine',
+      ) as Map<String, dynamic>;
       final a = TaskAction.fromJson(j);
       expect(a.kind, 'sign_in_engine');
       expect(a.engine, 'omp');

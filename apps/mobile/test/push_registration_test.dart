@@ -15,14 +15,29 @@ void main() {
   });
 
   test('hostHasBotsCap returns false when caps lacks bots', () {
-    expect(hostHasBotsCap({'caps': ['mobile', 'agents']}), isFalse);
+    expect(
+      hostHasBotsCap({
+        'caps': ['mobile', 'agents'],
+      }),
+      isFalse,
+    );
   });
 
   test('hostHasBotsCap returns true when caps includes bots', () {
-    expect(hostHasBotsCap({'caps': ['mobile', 'bots', 'agents']}), isTrue);
+    expect(
+      hostHasBotsCap({
+        'caps': ['mobile', 'bots', 'agents'],
+      }),
+      isTrue,
+    );
   });
 
   test('hostHasBotsCap returns true when bots is the only cap', () {
-    expect(hostHasBotsCap({'caps': ['bots']}), isTrue);
+    expect(
+      hostHasBotsCap({
+        'caps': ['bots'],
+      }),
+      isTrue,
+    );
   });
 }

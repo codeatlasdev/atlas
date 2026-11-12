@@ -146,7 +146,7 @@ class _NewBotSheetState extends ConsumerState<NewBotSheet> {
           Text('Agent', style: TextStyle(color: c.muted, fontSize: 13)),
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
-              initialValue: _agent,
+            initialValue: _agent,
             decoration: const InputDecoration(isDense: true),
             items: [
               for (final a in _agents)

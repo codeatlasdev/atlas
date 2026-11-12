@@ -59,13 +59,16 @@ pub(crate) struct Hub {
     /// `Some` when this is the lab lane's shadow daemon (`atlas hostd --lab`): it mirrors and
     /// forwards to the main hostd instead of owning terminals (`crate::lab`).
     pub(crate) lab: Option<Arc<crate::lab::Lab>>,
+    /// The desktop's registry dir (`<registry>/desktop/projects.json`).
+    registry: PathBuf,
+    /// Bot computers relayed to Atlas Mobile.
+    pub(crate) crew: Arc<crate::crew::Crew>,
 }
 
 impl Hub {
-    /// Where the desktop's project registry lives: this daemon's dir, or, in a lab, the main
-    /// daemon's (read only).
+    /// Where the desktop's project registry lives (see [`ServeOpts::registry`]).
     pub(crate) fn data_dir(&self) -> &Path {
-        self.lab.as_ref().map_or(&self.dir, |l| l.main_dir())
+        &self.registry
     }
 
     pub(crate) fn get(&self, id: &str) -> Result<Arc<Session>, String> {
@@ -273,6 +276,18 @@ pub struct ServeOpts {
     /// Run as the lab lane's shadow daemon following the main hostd in this directory
     /// (`atlas hostd --lab`, see [`crate::lab`]). `serve_with`'s `dir` is then the lab's own.
     pub lab: Option<PathBuf>,
+    /// Where the desktop keeps its project registry (`<registry>/desktop/projects.json`).
+    /// `atlas hostd` passes `~/.atlas`, where the desktop writes it whatever `ATLAS_HOSTD_DIR`
+    /// says (Atlas Dev runs its daemon in `~/.atlas/dev`). `None`: the lab's main dir, else the
+    /// daemon's own (tests).
+    pub registry: Option<PathBuf>,
+    /// How to reach the bot computers relayed to phones (`crate::crew`); `None`: ssh.
+    pub crew: Option<crate::crew::Connector>,
+}
+
+/// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
+pub fn desktop_registry() -> PathBuf {
+    atlas_core::paths::atlas_home()
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
@@ -281,6 +296,7 @@ pub async fn serve(dir: &Path) -> Result<()> {
         dir,
         ServeOpts {
             bot_host,
+            registry: Some(desktop_registry()),
             ..Default::default()
         },
     )
@@ -402,6 +418,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let agents = Arc::new(crate::agents::AgentHub::default());
     let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
     let bots = crate::bots::BotHub::new(dir);
+    let registry = opts
+        .registry
+        .clone()
+        .or_else(|| opts.lab.clone())
+        .unwrap_or_else(|| dir.to_path_buf());
     let hub = Arc::new(Hub {
         sessions: Mutex::new(sessions),
         scroll_dir,
@@ -419,9 +440,12 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         mobile,
         bots,
         bot_host: opts.bot_host,
+        registry: registry.clone(),
+        crew: Arc::new(crate::crew::Crew::new(&registry, dir, opts.crew.clone())),
         lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
     crate::mobile::start(&hub);
+    hub.crew.start(&hub);
     hub.bots.start(Arc::downgrade(&hub));
     {
         let bots = hub.bots.clone();
@@ -1028,6 +1052,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::BotGithubConnectResume {}
         | HostCmd::BotCrewGet {}
         | HostCmd::BotCrewSet { .. }) => crate::bots::handle(hub, bot).await,
+        HostCmd::CrewServers {} => Ok(hub.crew.servers()),
+        HostCmd::CrewCall { server, cmd, args } => hub.crew.call(&server, &cmd, args).await,
         HostCmd::MobileInvite { url, name } => {
             hub.mobile.mobile_invite(url, name, hub);
             Ok(json!({}))

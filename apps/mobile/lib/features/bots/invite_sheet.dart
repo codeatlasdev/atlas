@@ -5,7 +5,6 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
-import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
 
 // ── sheet ─────────────────────────────────────────────────────────────────────
@@ -36,13 +35,9 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
 
   Future<void> _dismiss() async {
     // Tell the Mac we dismissed so it stops waiting.
-    final mux =
-        ref.read(connectionNotifierProvider(widget.fromDevice)).value;
+    final mux = ref.read(connectionNotifierProvider(widget.fromDevice)).value;
     if (mux != null) {
-      await mux.call(
-        'mobile_invite_dismiss',
-        {'url': widget.invite.url},
-      );
+      await mux.call('mobile_invite_dismiss', {'url': widget.invite.url});
     }
     if (mounted) Navigator.of(context).pop();
     widget.onDismiss();
@@ -55,22 +50,16 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
     });
 
     // Pair using the invite URL (atlas-mobile://pair?...).
-    await ref
-        .read(pairNotifierProvider.notifier)
-        .pair(widget.invite.url);
+    await ref.read(pairNotifierProvider.notifier).pair(widget.invite.url);
 
     if (!mounted) return;
     final pairState = ref.read(pairNotifierProvider);
 
     if (pairState.status == PairStatus.success) {
       // Dismiss on the Mac.
-      final mux =
-          ref.read(connectionNotifierProvider(widget.fromDevice)).value;
+      final mux = ref.read(connectionNotifierProvider(widget.fromDevice)).value;
       if (mux != null) {
-        await mux.call(
-          'mobile_invite_dismiss',
-          {'url': widget.invite.url},
-        );
+        await mux.call('mobile_invite_dismiss', {'url': widget.invite.url});
       }
       if (!mounted) return;
       // Refresh paired devices so the new server shows up immediately.
@@ -120,14 +109,8 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
                 children: [
                   Icon(Icons.laptop_mac, size: 36, color: c.accent),
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: Space.md,
-                    ),
-                    child: Icon(
-                      Icons.arrow_forward,
-                      size: 20,
-                      color: c.faint,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                    child: Icon(Icons.arrow_forward, size: 20, color: c.faint),
                   ),
                   Icon(Icons.phone_iphone, size: 36, color: c.accent),
                 ],
@@ -177,9 +160,7 @@ class _InviteSheetState extends ConsumerState<InviteSheet> {
                       child: _pairing
                           ? const SizedBox.square(
                               dimension: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Text('Add'),
                     ),

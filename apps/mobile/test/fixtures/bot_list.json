@@ -32,7 +32,29 @@
       "queued": 0,
       "role": "Nightly checks",
       "state": "idle",
-      "triggers": []
+      "triggers": [
+        {
+          "enabled": true,
+          "id": "t-sched",
+          "kind": {
+            "cron": "0 9 * * 1-5",
+            "type": "schedule"
+          },
+          "next_fire": 1700100000,
+          "prompt": "Review open PRs",
+          "tz": "America/Sao_Paulo"
+        },
+        {
+          "enabled": false,
+          "id": "t-interval",
+          "kind": {
+            "every_secs": 3600,
+            "type": "interval"
+          },
+          "next_fire": 1700103600,
+          "prompt": "Check deployments"
+        }
+      ]
     },
     {
       "agent": "opencode",

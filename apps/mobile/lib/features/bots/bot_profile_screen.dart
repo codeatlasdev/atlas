@@ -7,8 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/features/bots/automations.dart';
+import 'package:atlas_mobile/features/bots/automation_editor_sheet.dart';
 import 'package:atlas_mobile/features/bots/bots_provider.dart';
+import 'package:atlas_mobile/features/bots/chat_motion.dart';
+import 'package:atlas_mobile/features/bots/crew_text.dart';
+import 'package:atlas_mobile/features/bots/crewmate.dart';
 
 // ── screen ────────────────────────────────────────────────────────────────────
 
@@ -27,12 +33,6 @@ class BotProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
-  List<BotRoutine> _routines = const [];
-  bool _routinesLoaded = false;
-
-  int? _memoryLines;
-  bool _memoryLoaded = false;
-
   ShipGithubStatus? _githubStatus;
   bool _githubLoading = false;
   ShipLoginFlow? _githubFlow;
@@ -42,30 +42,14 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDetails());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadGithub());
   }
 
-  Future<void> _loadDetails() async {
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+  Future<void> _loadGithub() async {
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null) return;
-
-    // Load routines + memory line count from bot_get.
-    final resp = await mux.call('bot_get', {'id': widget.botId});
-    if (!mounted || resp['ok'] != true) return;
-    final data = (resp['data'] as Map?)?.cast<String, dynamic>() ?? {};
-    final rawRoutines = (data['routines'] as List?) ?? [];
-    final memText = data['memory'] as String?;
-    setState(() {
-      _routines = [
-        for (final r in rawRoutines)
-          BotRoutine.fromJson((r as Map).cast<String, dynamic>()),
-      ];
-      _routinesLoaded = true;
-      _memoryLines = memText?.split('\n').length ?? 0;
-      _memoryLoaded = true;
-    });
-
-    // Load GitHub status.
     final ghResp = await mux.call('bot_github_status', {});
     if (mounted && ghResp['ok'] == true) {
       final ghData = (ghResp['data'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -73,16 +57,6 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
         _githubStatus = ShipGithubStatus.fromJson(ghData);
       });
     }
-  }
-
-  Future<void> _saveRoutines(List<BotRoutine> updated) async {
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
-    if (mux == null) return;
-    await mux.call('bot_routine_set', {
-      'id': widget.botId,
-      'routines': updated.map((r) => r.toJson()).toList(),
-    });
-    setState(() => _routines = updated);
   }
 
   Future<void> _editRole(String current) async {
@@ -113,17 +87,20 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
     );
     controller.dispose();
     if (result == null || !mounted) return;
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null) return;
     await mux.call('bot_update', {'id': widget.botId, 'role': result});
     ref.invalidate(botsProvider(widget.device));
   }
 
   Future<void> _editMemory() async {
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null) return;
 
-    // Load full memory text.
     final resp = await mux.call('bot_memory', {'id': widget.botId});
     if (!mounted || resp['ok'] != true) return;
     final text = (resp['data'] as Map?)?['text'] as String? ?? '';
@@ -141,8 +118,7 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
             ),
             actions: [
               FilledButton(
-                onPressed: () =>
-                    Navigator.pop(ctx, controller.text),
+                onPressed: () => Navigator.pop(ctx, controller.text),
                 child: const Text('Save'),
               ),
               const SizedBox(width: Space.md),
@@ -165,14 +141,7 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
     );
     controller.dispose();
     if (saved == null || !mounted) return;
-    final saveResp = await mux.call('bot_memory_set', {
-      'id': widget.botId,
-      'text': saved,
-    });
-    if (!mounted) return;
-    if (saveResp['ok'] == true) {
-      setState(() => _memoryLines = saved.split('\n').length);
-    }
+    await mux.call('bot_memory_set', {'id': widget.botId, 'text': saved});
   }
 
   Future<void> _deleteBot() async {
@@ -198,7 +167,9 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null) return;
     final resp = await mux.call('bot_delete', {'id': widget.botId});
     if (!mounted) return;
@@ -214,17 +185,76 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
     }
   }
 
-  Future<void> _addRoutine() async {
-    final result = await showDialog<BotRoutine>(
-      context: context,
-      builder: (ctx) => const _NewRoutineDialog(),
+  // ── automations ───────────────────────────────────────────────────────────
+
+  Future<void> _saveTriggers(List<Trigger> triggers) async {
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
     );
-    if (result == null) return;
-    await _saveRoutines([..._routines, result]);
+    if (mux == null) return;
+    await mux.call('bot_triggers_set', {
+      'id': widget.botId,
+      'triggers': triggers.map((t) => t.toJson()).toList(),
+    });
+    ref.invalidate(botsProvider(widget.device));
   }
 
+  Future<void> _addAutomation(String botName) async {
+    final result = await showAutomationEditor(context, botName: botName);
+    if (result == null) return;
+    final bot = ref
+        .read(botsProvider(widget.device))
+        .value
+        ?.bots
+        .where((b) => b.id == widget.botId)
+        .firstOrNull;
+    await _saveTriggers([...?bot?.triggers, result]);
+  }
+
+  Future<void> _editAutomation(BotListEntry bot, Trigger trigger) async {
+    final result = await showAutomationEditor(
+      context,
+      existing: trigger,
+      botName: bot.name,
+    );
+    if (result == null) return;
+    await _saveTriggers([
+      for (final t in bot.triggers)
+        if (t.id == trigger.id) result else t,
+    ]);
+  }
+
+  Future<void> _deleteAutomation(BotListEntry bot, Trigger trigger) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove automation?'),
+        content: Text('Remove "${describeTrigger(trigger.kind)}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(
+              foregroundColor: AtlasColors.of(context).error,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _saveTriggers(bot.triggers.where((t) => t.id != trigger.id).toList());
+  }
+
+  // ── github ────────────────────────────────────────────────────────────────
+
   Future<void> _startLogin() async {
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null) return;
     setState(() => _githubLoading = true);
     try {
@@ -232,7 +262,9 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
       if (!mounted) return;
       if (resp['ok'] != true) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(resp['error']?.toString() ?? 'Failed to start login')),
+          SnackBar(
+            content: Text(resp['error']?.toString() ?? 'Failed to start login'),
+          ),
         );
         return;
       }
@@ -249,7 +281,10 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
 
   void _startPollingTimer() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollLogin());
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _pollLogin(),
+    );
   }
 
   Future<void> _pollLogin() async {
@@ -271,7 +306,9 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
       setState(() => _githubFlow = null);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['error']?.toString() ?? 'GitHub sign-in failed')),
+          SnackBar(
+            content: Text(data['error']?.toString() ?? 'GitHub sign-in failed'),
+          ),
         );
       }
     }
@@ -284,7 +321,9 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
   }
 
   Future<void> _logout() async {
-    final mux = await ref.read(connectionNotifierProvider(widget.device).future);
+    final mux = await ref.read(
+      connectionNotifierProvider(widget.device).future,
+    );
     if (mux == null) return;
     await mux.call('bot_github_logout', {});
     if (!mounted) return;
@@ -308,183 +347,227 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
     final botsData = ref.watch(botsProvider(widget.device)).value;
     final bot = botsData?.bots.where((b) => b.id == widget.botId).firstOrNull;
 
+    final hostName = botsData?.hostName ?? widget.device.name;
+    final state = bot == null ? CrewState.idle : CrewState.of(bot.state);
     return Scaffold(
-      appBar: AppBar(title: const Text('Bot profile')),
       body: bot == null
           ? Center(
               child: botsData == null
                   ? const CircularProgressIndicator()
                   : Text(
-                      'Bot not found',
+                      'Crewmate not found',
                       style: TextStyle(color: c.faint),
                     ),
             )
-          : ListView(
-              padding: const EdgeInsets.all(Space.lg),
+          : Stack(
               children: [
-                // ── header ────────────────────────────────────────────────
-                _ProfileHeader(
-                  bot: bot,
-                  hostName: botsData?.hostName ?? widget.device.name,
-                ),
-                const SizedBox(height: Space.xl),
-
-                // ── what it does ──────────────────────────────────────────
-                _Section(
-                  title: 'What it does',
-                  trailing: TextButton(
-                    onPressed: () => _editRole(bot.role),
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                // The crewmate's own colour, a soft glow behind its portrait.
+                Positioned(
+                  top: -220,
+                  left: -80,
+                  right: -80,
+                  height: 560,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          colors: [
+                            CrewLook.from(
+                              bot.look,
+                              bot.id,
+                            ).color.withValues(alpha: .26),
+                            CrewLook.from(
+                              bot.look,
+                              bot.id,
+                            ).color.withValues(alpha: 0),
+                          ],
+                        ),
+                      ),
                     ),
-                    child: const Text('Edit'),
-                  ),
-                  child: Text(
-                    bot.role.isNotEmpty
-                        ? bot.role
-                        : 'No description yet.',
-                    style: TextStyle(color: c.muted, height: 1.4),
                   ),
                 ),
-                const SizedBox(height: Space.lg),
-
-                // ── approval ──────────────────────────────────────────────
-                _Section(
-                  title: 'Approval',
-                  child: _ApprovalPicker(
-                    value: bot.approval,
-                    enabled: bot.approvalSupported,
-                    onChanged: (val) async {
-                      final mux = ref
-                          .read(connectionNotifierProvider(widget.device))
-                          .value;
-                      if (mux == null) return;
-                      await mux.call('bot_update', {
-                        'id': widget.botId,
-                        'approval': val,
-                      });
-                      ref.invalidate(botsProvider(widget.device));
-                    },
+                ListView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
                   ),
-                ),
-                const SizedBox(height: Space.lg),
-
-                // ── short replies ──────────────────────────────────────────
-                _Section(
-                  title: 'Short replies',
-                  child: _ShortRepliesRow(
-                    value: bot.shortReplies,
-                    onChanged: (val) async {
-                      final mux = ref
-                          .read(connectionNotifierProvider(widget.device))
-                          .value;
-                      if (mux == null) return;
-                      await mux.call('bot_update', {
-                        'id': widget.botId,
-                        'short_replies': val,
-                      });
-                      ref.invalidate(botsProvider(widget.device));
-                    },
+                  padding: EdgeInsets.fromLTRB(
+                    Space.lg,
+                    MediaQuery.paddingOf(context).top + 56,
+                    Space.lg,
+                    Space.xxl + MediaQuery.paddingOf(context).bottom,
                   ),
-                ),
-                const SizedBox(height: Space.lg),
+                  children: [
+                    EnterFade(
+                      child: _ProfileHeader(
+                        bot: bot,
+                        hostName: hostName,
+                        state: state,
+                      ),
+                    ),
+                    const SizedBox(height: Space.xl),
 
-                // ── routines ──────────────────────────────────────────────
-                _Section(
-                  title: 'Routines',
-                  child: Column(
-                    children: [
-                      if (!_routinesLoaded)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(Space.md),
-                            child: CircularProgressIndicator(),
+                    EnterFade(
+                      index: 1,
+                      child: _Group(
+                        title: 'What it does',
+                        children: [
+                          _Row(
+                            onTap: () => _editRole(bot.role),
+                            child: Text(
+                              bot.role.isNotEmpty
+                                  ? bot.role
+                                  : 'Tap to describe its job.',
+                              style: TextStyle(
+                                color: bot.role.isNotEmpty ? c.text : c.faint,
+                                height: 1.45,
+                                fontSize: 15,
+                              ),
+                            ),
                           ),
-                        )
-                      else ...[
-                        for (final routine in _routines)
-                          _RoutineRow(
-                            routine: routine,
-                            onToggle: (enabled) async {
-                              final updated = _routines.map((r) {
-                                if (r.id != routine.id) return r;
-                                return BotRoutine(
-                                  id: r.id,
-                                  cron: r.cron,
-                                  prompt: r.prompt,
-                                  enabled: enabled,
-                                );
-                              }).toList();
-                              await _saveRoutines(updated);
-                            },
-                            onDelete: () async {
-                              final updated = _routines
-                                  .where((r) => r.id != routine.id)
-                                  .toList();
-                              await _saveRoutines(updated);
-                            },
+                        ],
+                      ),
+                    ),
+
+                    EnterFade(
+                      index: 2,
+                      child: _Group(
+                        title: 'How it works',
+                        children: [
+                          _Row(
+                            label: 'Approval',
+                            child: _ApprovalPicker(
+                              value: bot.approval,
+                              enabled: bot.approvalSupported,
+                              onChanged: (val) async {
+                                final mux = ref
+                                    .read(
+                                      connectionNotifierProvider(widget.device),
+                                    )
+                                    .value;
+                                if (mux == null) return;
+                                await mux.call('bot_update', {
+                                  'id': widget.botId,
+                                  'approval': val,
+                                });
+                                ref.invalidate(botsProvider(widget.device));
+                              },
+                            ),
                           ),
-                        const SizedBox(height: Space.sm),
-                        OutlinedButton.icon(
-                          onPressed: _addRoutine,
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('New routine'),
+                          _Row(
+                            label: 'Short replies',
+                            child: _ShortRepliesRow(
+                              value: bot.shortReplies,
+                              onChanged: (val) async {
+                                final mux = ref
+                                    .read(
+                                      connectionNotifierProvider(widget.device),
+                                    )
+                                    .value;
+                                if (mux == null) return;
+                                await mux.call('bot_update', {
+                                  'id': widget.botId,
+                                  'short_replies': val,
+                                });
+                                ref.invalidate(botsProvider(widget.device));
+                              },
+                            ),
+                          ),
+                          _Row(
+                            icon: Icons.auto_stories_outlined,
+                            label: 'Memory',
+                            trailingText: 'View / Edit',
+                            onTap: _editMemory,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    EnterFade(
+                      index: 3,
+                      child: _AutomationsSection(
+                        bot: bot,
+                        now: DateTime.now(),
+                        onAdd: () => _addAutomation(bot.name),
+                        onEdit: (t) => _editAutomation(bot, t),
+                        onDelete: (t) => _deleteAutomation(bot, t),
+                        onToggle: (t, enabled) async {
+                          await _saveTriggers([
+                            for (final tr in bot.triggers)
+                              if (tr.id == t.id)
+                                tr.copyWith(enabled: enabled)
+                              else
+                                tr,
+                          ]);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: Space.lg),
+
+                    EnterFade(
+                      index: 4,
+                      child: _Group(
+                        title: 'Accounts',
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(Space.md),
+                            child: _GithubCard(
+                              status: _githubStatus,
+                              flow: _githubFlow,
+                              loading: _githubLoading,
+                              polling: _githubPolling,
+                              onConnect: _startLogin,
+                              onDisconnect: _logout,
+                              onCancelFlow: () {
+                                _stopPolling();
+                                setState(() => _githubFlow = null);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    EnterFade(
+                      index: 5,
+                      child: _Group(
+                        children: [
+                          _Row(
+                            icon: Icons.delete_outline_rounded,
+                            label: 'Remove from the crew',
+                            danger: true,
+                            onTap: _deleteBot,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                // Floating back button, like the chat's.
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 6,
+                  left: Space.md,
+                  child: Semantics(
+                    button: true,
+                    label: 'Back',
+                    child: Pressable(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: c.overlay.withValues(alpha: .82),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: c.border),
                         ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: Space.lg),
-
-                // ── memory ────────────────────────────────────────────────
-                _Section(
-                  title: 'Memory',
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _memoryLoaded
-                              ? (_memoryLines == 0
-                                  ? 'No memory stored yet'
-                                  : '$_memoryLines ${_memoryLines == 1 ? 'line' : 'lines'}')
-                              : '…',
-                          style: TextStyle(color: c.muted),
+                        child: Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 18,
+                          color: c.text,
                         ),
                       ),
-                      TextButton(
-                        onPressed: _editMemory,
-                        child: const Text('View / Edit'),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: Space.lg),
-
-                // ── github ────────────────────────────────────────────────
-                _GithubCard(
-                  status: _githubStatus,
-                  flow: _githubFlow,
-                  loading: _githubLoading,
-                  polling: _githubPolling,
-                  onConnect: _startLogin,
-                  onDisconnect: _logout,
-                  onCancelFlow: () {
-                    _stopPolling();
-                    setState(() => _githubFlow = null);
-                  },
-                ),
-
-                // ── delete ────────────────────────────────────────────────
-                Center(
-                  child: TextButton(
-                    onPressed: _deleteBot,
-                    style: TextButton.styleFrom(foregroundColor: c.error),
-                    child: const Text('Delete bot'),
-                  ),
-                ),
-                const SizedBox(height: Space.lg),
               ],
             ),
     );
@@ -494,40 +577,246 @@ class _BotProfileScreenState extends ConsumerState<BotProfileScreen> {
 // ── profile header ────────────────────────────────────────────────────────────
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.bot, required this.hostName});
+  const _ProfileHeader({
+    required this.bot,
+    required this.hostName,
+    required this.state,
+  });
   final BotListEntry bot;
   final String hostName;
+  final CrewState state;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
+    final tag = crewRoleTag(bot.role);
+    final (word, color) = switch (state) {
+      CrewState.working => ('Working', c.accent),
+      CrewState.needsYou => ('Needs you', c.warning),
+      CrewState.offline => ('Offline', c.faint),
+      CrewState.idle => ('On deck', c.success),
+    };
     return Column(
       children: [
-        CircleAvatar(
-          radius: 32,
-          backgroundColor: c.accent.withValues(alpha: .18),
-          child: Text(
-            bot.name.isNotEmpty ? bot.name[0].toUpperCase() : '?',
-            style: TextStyle(
-              color: c.accent,
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        const SizedBox(height: Space.md),
+        Crewmate(seed: bot.id, look: bot.look, state: state, size: 150),
+        const SizedBox(height: Space.sm),
         Text(
           bot.name,
-          style: Theme.of(context).textTheme.titleLarge,
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+            color: c.text,
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 4),
-        Text(
-          '${bot.agent} · $hostName',
-          style: TextStyle(color: c.muted, fontSize: 13),
-          textAlign: TextAlign.center,
+        if (tag.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(tag, style: TextStyle(color: c.muted, fontSize: 15)),
+        ],
+        const SizedBox(height: Space.md),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _Chip(dot: color, label: word, color: color),
+            _Chip(label: bot.agent, child: AgentLogo(bot.agent, size: 14)),
+            _Chip(icon: Icons.dns_outlined, label: hostName),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.label,
+    this.icon,
+    this.child,
+    this.dot,
+    this.color,
+  });
+  final String label;
+  final IconData? icon;
+  final Widget? child;
+  final Color? dot;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: (color ?? c.text).withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (dot != null)
+            StatusDot(
+              color: dot!,
+              size: 6,
+              pulse: dot == c.accent || dot == c.warning,
+            ),
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: c.muted),
+            const SizedBox(width: 6),
+          ],
+          if (child != null) ...[child!, const SizedBox(width: 6)],
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: color ?? c.muted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// An inset group: a title above one rounded card of rows with hairlines between them.
+class _Group extends StatelessWidget {
+  const _Group({required this.children, this.title});
+  final String? title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null)
+            Padding(
+              padding: const EdgeInsets.only(left: Space.md, bottom: 8),
+              child: Text(
+                title!,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: c.muted,
+                ),
+              ),
+            ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: ColoredBox(
+              color: c.raised,
+              child: Column(
+                children: [
+                  for (var i = 0; i < children.length; i++) ...[
+                    if (i > 0)
+                      Divider(
+                        height: 1,
+                        thickness: 1,
+                        indent: Space.md,
+                        color: c.borderSubtle,
+                      ),
+                    children[i],
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One row of a [_Group]: a label with a control, or tappable text.
+class _Row extends StatelessWidget {
+  const _Row({
+    this.label,
+    this.icon,
+    this.child,
+    this.trailingText,
+    this.onTap,
+    this.danger = false,
+  });
+  final String? label;
+  final IconData? icon;
+  final Widget? child;
+  final String? trailingText;
+  final VoidCallback? onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final fg = danger ? c.error : c.text;
+    Widget body;
+    if (label != null && child != null) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label!,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+          const SizedBox(height: 10),
+          child!,
+        ],
+      );
+    } else if (label != null) {
+      body = Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 20, color: danger ? c.error : c.muted),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Text(
+              label!,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: fg,
+              ),
+            ),
+          ),
+          if (trailingText != null)
+            Text(
+              trailingText!,
+              style: TextStyle(fontSize: 14, color: c.accent),
+            ),
+          if (onTap != null && !danger) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: c.faint, size: 20),
+          ],
+        ],
+      );
+    } else {
+      body = Row(
+        children: [
+          Expanded(child: child ?? const SizedBox()),
+          if (onTap != null)
+            Icon(Icons.edit_outlined, size: 16, color: c.faint),
+        ],
+      );
+    }
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 14),
+        child: body,
+      ),
     );
   }
 }
@@ -535,19 +824,15 @@ class _ProfileHeader extends StatelessWidget {
 // ── section wrapper ───────────────────────────────────────────────────────────
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child, this.trailing});
+  const _Section({required this.title, required this.child});
   final String title;
   final Widget child;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SectionHeader(title, trailing: trailing),
-        child,
-      ],
+      children: [SectionHeader(title), child],
     );
   }
 }
@@ -560,7 +845,7 @@ class _ApprovalPicker extends StatelessWidget {
     required this.onChanged,
     this.enabled = true,
   });
-  final String value; // 'ask' | 'auto'
+  final String value;
   final void Function(String) onChanged;
   final bool enabled;
 
@@ -570,14 +855,10 @@ class _ApprovalPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'ask',  label: Text('Ask before acting')),
-            ButtonSegment(value: 'auto', label: Text('Auto-approve')),
-          ],
-          selected: {value},
-          onSelectionChanged: enabled ? (s) => onChanged(s.first) : null,
-          showSelectedIcon: false,
+        _Segments(
+          options: const [('ask', 'Ask first'), ('auto', 'Auto-approve')],
+          value: value,
+          onChanged: enabled ? onChanged : null,
         ),
         if (!enabled) ...[
           const SizedBox(height: 6),
@@ -591,61 +872,55 @@ class _ApprovalPicker extends StatelessWidget {
   }
 }
 
-// ── routine row ───────────────────────────────────────────────────────────────
+// ── automations section ───────────────────────────────────────────────────────
 
-class _RoutineRow extends StatelessWidget {
-  const _RoutineRow({
-    required this.routine,
-    required this.onToggle,
+class _AutomationsSection extends StatelessWidget {
+  const _AutomationsSection({
+    required this.bot,
+    required this.now,
+    required this.onAdd,
+    required this.onEdit,
     required this.onDelete,
+    required this.onToggle,
   });
-  final BotRoutine routine;
-  final void Function(bool) onToggle;
-  final VoidCallback onDelete;
+
+  final BotListEntry bot;
+  final DateTime now;
+  final VoidCallback onAdd;
+  final void Function(Trigger) onEdit;
+  final void Function(Trigger) onDelete;
+  final void Function(Trigger, bool) onToggle;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Space.xs),
-      child: Row(
+    return _Section(
+      title: 'Automations',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _cronLabel(routine.cron),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: c.faint,
-                    fontFamily: 'Menlo',
-                    fontFamilyFallback: const [
-                      'SF Mono',
-                      'RobotoMono',
-                      'monospace',
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  routine.prompt,
-                  style: TextStyle(color: c.text),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: routine.enabled,
-            onChanged: onToggle,
-            activeThumbColor: c.accent,
-          ),
-          IconButton(
-            icon: Icon(Icons.delete_outline, size: 18, color: c.faint),
-            onPressed: onDelete,
-            tooltip: 'Remove routine',
+          if (bot.triggers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: Space.md),
+              child: Text(
+                'Or just ask ${bot.name}: "every weekday at 9, review the open PRs".',
+                style: TextStyle(color: c.faint, fontSize: 13, height: 1.4),
+              ),
+            )
+          else
+            for (final t in bot.triggers)
+              _TriggerRow(
+                trigger: t,
+                now: now,
+                onEdit: () => onEdit(t),
+                onDelete: () => onDelete(t),
+                onToggle: (v) => onToggle(t, v),
+              ),
+          const SizedBox(height: Space.sm),
+          OutlinedButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Add automation'),
           ),
         ],
       ),
@@ -653,108 +928,81 @@ class _RoutineRow extends StatelessWidget {
   }
 }
 
-String _cronLabel(String cron) {
-  const presets = {
-    '0 8 * * *': 'Every morning 8:00',
-    '0 9 * * 1-5': 'Weekdays 9:00',
-  };
-  return presets[cron] ?? cron;
-}
+class _TriggerRow extends StatelessWidget {
+  const _TriggerRow({
+    required this.trigger,
+    required this.now,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onToggle,
+  });
 
-// ── new routine dialog ────────────────────────────────────────────────────────
-
-class _NewRoutineDialog extends StatefulWidget {
-  const _NewRoutineDialog();
-
-  @override
-  State<_NewRoutineDialog> createState() => _NewRoutineDialogState();
-}
-
-class _NewRoutineDialogState extends State<_NewRoutineDialog> {
-  final _cronCtrl = TextEditingController();
-  final _promptCtrl = TextEditingController();
-
-  static const _presets = [
-    ('Every morning 8:00', '0 8 * * *'),
-    ('Weekdays 9:00', '0 9 * * 1-5'),
-  ];
-
-  @override
-  void dispose() {
-    _cronCtrl.dispose();
-    _promptCtrl.dispose();
-    super.dispose();
-  }
+  final Trigger trigger;
+  final DateTime now;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final void Function(bool) onToggle;
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('New routine'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final c = AtlasColors.of(context);
+    final desc = describeTrigger(trigger.kind, tz: trigger.tz);
+    final nextStr = trigger.nextFire != null
+        ? describeNext(trigger.nextFire!, now)
+        : null;
+
+    return Dismissible(
+      key: ValueKey(trigger.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: Space.lg),
+        color: c.error.withValues(alpha: .15),
+        child: Icon(Icons.delete_outline, color: c.error, size: 20),
+      ),
+      confirmDismiss: (_) async {
+        onDelete();
+        return false; // actual removal is handled via _saveTriggers
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: Space.xs),
+        child: Row(
           children: [
-            const Text('Schedule (cron)', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: Space.xs),
-            TextField(
-              controller: _cronCtrl,
-              decoration: const InputDecoration(
-                hintText: '0 8 * * *',
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: Space.xs),
-            Wrap(
-              spacing: Space.xs,
-              children: [
-                for (final p in _presets)
-                  ActionChip(
-                    label: Text(p.$1, style: const TextStyle(fontSize: 11)),
-                    onPressed: () => setState(() => _cronCtrl.text = p.$2),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+            Expanded(
+              child: InkWell(
+                onTap: onEdit,
+                borderRadius: BorderRadius.circular(Space.radiusSm),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(desc, style: TextStyle(color: c.text, fontSize: 14)),
+                      if (nextStr != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Next: $nextStr',
+                          style: TextStyle(color: c.faint, fontSize: 12),
+                        ),
+                      ],
+                    ],
                   ),
-              ],
-            ),
-            const SizedBox(height: Space.md),
-            const Text('Prompt', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: Space.xs),
-            TextField(
-              controller: _promptCtrl,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'What should the bot do?',
-                isDense: true,
+                ),
               ),
+            ),
+            Switch(
+              value: trigger.enabled,
+              onChanged: onToggle,
+              activeThumbColor: c.accent,
+            ),
+            IconButton(
+              icon: Icon(Icons.edit_outlined, size: 16, color: c.faint),
+              onPressed: onEdit,
+              tooltip: 'Edit',
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final cron = _cronCtrl.text.trim();
-            final prompt = _promptCtrl.text.trim();
-            if (cron.isEmpty || prompt.isEmpty) return;
-            Navigator.pop(
-              context,
-              BotRoutine(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                cron: cron,
-                prompt: prompt,
-                enabled: true,
-              ),
-            );
-          },
-          child: const Text('Add'),
-        ),
-      ],
     );
   }
 }
@@ -812,8 +1060,10 @@ class _GithubCard extends StatelessWidget {
         const Icon(Icons.check_circle_outline, size: 16),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('Connected as @$login',
-              style: Theme.of(context).textTheme.bodyMedium),
+          child: Text(
+            'Connected as @$login',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
         TextButton(onPressed: onDisconnect, child: const Text('Disconnect')),
       ],
@@ -824,11 +1074,12 @@ class _GithubCard extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text('Not connected',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          child: Text(
+            'Not connected',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         FilledButton(
           onPressed: loading ? null : onConnect,
@@ -836,7 +1087,8 @@ class _GithubCard extends StatelessWidget {
               ? const SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator.adaptive(strokeWidth: 2))
+                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                )
               : const Text('Connect'),
         ),
       ],
@@ -857,8 +1109,10 @@ class _GithubCard extends StatelessWidget {
           children: [
             Text(
               flow.userCode,
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 2),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
             ),
             const SizedBox(width: 8),
             IconButton(
@@ -873,9 +1127,12 @@ class _GithubCard extends StatelessWidget {
         if (polling)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('Waiting for authorization…',
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              'Waiting for authorization…',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         TextButton(onPressed: onCancelFlow, child: const Text('Cancel')),
       ],
@@ -887,7 +1144,7 @@ class _GithubCard extends StatelessWidget {
 
 class _ShortRepliesRow extends StatelessWidget {
   const _ShortRepliesRow({required this.value, required this.onChanged});
-  final bool? value; // null = crew default (on)
+  final bool? value;
   final void Function(bool?) onChanged;
 
   @override
@@ -907,19 +1164,114 @@ class _ShortRepliesRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'crew', label: Text('Crew default')),
-            ButtonSegment(value: 'on',   label: Text('On')),
-            ButtonSegment(value: 'off',  label: Text('Off')),
+        _Segments(
+          options: const [
+            ('crew', 'Crew default'),
+            ('on', 'On'),
+            ('off', 'Off'),
           ],
-          selected: {value == true ? 'on' : value == false ? 'off' : 'crew'},
-          onSelectionChanged: (s) {
-            final v = s.first == 'on' ? true : s.first == 'off' ? false : null;
-            onChanged(v);
-          },
+          value: value == true
+              ? 'on'
+              : value == false
+              ? 'off'
+              : 'crew',
+          onChanged: (v) => onChanged(
+            v == 'on'
+                ? true
+                : v == 'off'
+                ? false
+                : null,
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// A pill-shaped choice: the selected option sits on a sliding rounded thumb. Labels never
+/// wrap (Material's SegmentedButton broke "Crew default" in two next to its checkmark).
+class _Segments extends StatelessWidget {
+  const _Segments({required this.options, required this.value, this.onChanged});
+  final List<(String, String)> options;
+  final String value;
+  final void Function(String)? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final index = options
+        .indexWhere((o) => o.$1 == value)
+        .clamp(0, options.length - 1);
+    return Opacity(
+      opacity: onChanged == null ? .5 : 1,
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: c.ground,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: LayoutBuilder(
+          builder: (_, box) {
+            final w = box.maxWidth / options.length;
+            return Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: Motion.normal,
+                  curve: Curves.easeOutCubic,
+                  left: w * index,
+                  width: w,
+                  top: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: c.overlay,
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    for (final (v, label) in options)
+                      Expanded(
+                        child: Semantics(
+                          button: true,
+                          selected: v == value,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onChanged == null || v == value
+                                ? null
+                                : () {
+                                    HapticFeedback.selectionClick();
+                                    onChanged!(v);
+                                  },
+                            child: Center(
+                              child: AnimatedDefaultTextStyle(
+                                duration: Motion.fast,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: v == value
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  color: v == value ? c.text : c.muted,
+                                ),
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }

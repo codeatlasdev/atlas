@@ -17,6 +17,9 @@ Transport demoTransport({List<Map<String, String>> integrations = const []}) =>
 
 int _now() => DateTime.now().millisecondsSinceEpoch;
 
+/// Bot tasks and `last` carry SECONDS (hostd bots/store.rs `now_s()`); agent status, ms.
+int _nowS() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
 class _Agent {
   _Agent(
     this.pane,
@@ -137,8 +140,18 @@ class _DemoComputer implements Transport {
   _DemoComputer(this._integrations) {
     _tick = Timer.periodic(const Duration(seconds: 3), (_) => _jitter());
     // Initialize demo bots
-    _bots['bot-1'] = _DemoBot('bot-1', 'Reviewer', 'claude', 'Reviews PRs in this project');
-    _bots['bot-2'] = _DemoBot('bot-2', 'Nightly', 'codex', 'Runs nightly checks and tests');
+    _bots['bot-1'] = _DemoBot(
+      'bot-1',
+      'Reviewer',
+      'claude',
+      'Reviews PRs in this project',
+    );
+    _bots['bot-2'] = _DemoBot(
+      'bot-2',
+      'Nightly',
+      'codex',
+      'Runs nightly checks and tests',
+    );
     // Set Nightly to needs_you for demo
     _bots['bot-2']!.state = 'needs_you';
     _bots['bot-2']!.pendingApproval = {
@@ -147,72 +160,100 @@ class _DemoComputer implements Transport {
       'tool_input': {'command': 'rm -rf dist'},
       'pane_key': 'bot:bot-2:task-n2',
     };
-    _bots['bot-2']!.lastEntry = {'text': 'Nightly check found issues', 'state': 'needs_you', 'ts': _now()};
+    _bots['bot-2']!.lastEntry = {
+      'text': 'Nightly check found issues',
+      'state': 'needs_you',
+      'ts': _nowS(),
+    };
     // Seed Nightly task history (newest first in list)
-    final n2ts = _now() - 55000;
+    final n2ts = _nowS() - 55;
     _bots['bot-2']!.tasks.addAll([
       {
-        'id': 'task-n2', 'ts': n2ts, 'source': 'routine',
+        'id': 'task-n2',
+        'ts': n2ts,
+        'source': 'routine',
         'prompt': 'Run nightly checks and clean up dist/',
         'state': 'running',
         'started_at': n2ts,
-        'finished_at': null, 'result': null, 'error': null,
+        'finished_at': null,
+        'result': null,
+        'error': null,
         'steps': [
-          {'ts': n2ts + 3000, 'text': 'Bash: bun test'},
-          {'ts': n2ts + 9000, 'text': 'Bash: bun run lint'},
-          {'ts': n2ts + 18000, 'text': 'Read dist/ directory'},
+          {'ts': n2ts + 3, 'text': 'Bash: bun test'},
+          {'ts': n2ts + 9, 'text': 'Bash: bun run lint'},
+          {'ts': n2ts + 18, 'text': 'Read dist/ directory'},
         ],
       },
       {
-        'id': 'task-n1', 'ts': n2ts - 3600000, 'source': 'routine',
+        'id': 'task-n1',
+        'ts': n2ts - 3600,
+        'source': 'routine',
         'prompt': 'Check for dependency updates',
         'state': 'done',
-        'started_at': n2ts - 3600000,
-        'finished_at': n2ts - 3540000,
+        'started_at': n2ts - 3600,
+        'finished_at': n2ts - 3540,
         'result': 'All dependencies up to date. bun.lockb unchanged.',
-        'error': null, 'steps': [],
+        'error': null,
+        'steps': [],
       },
     ]);
     // Set Reviewer to working
     _bots['bot-1']!.state = 'working';
-    _bots['bot-1']!.lastEntry = {'text': 'Reviewing PR #118', 'state': 'working', 'ts': _now()};
+    _bots['bot-1']!.lastEntry = {
+      'text': 'Reviewing PR #118',
+      'state': 'working',
+      'ts': _nowS(),
+    };
     // Seed Reviewer task history
-    final r3ts = _now() - 90000;
+    final r3ts = _nowS() - 90;
     _bots['bot-1']!.tasks.addAll([
       {
-        'id': 'task-r3', 'ts': r3ts, 'source': 'mobile',
+        'id': 'task-r3',
+        'ts': r3ts,
+        'source': 'mobile',
         'prompt': 'Review PR #118 — auth middleware refactor',
         'state': 'running',
         'started_at': r3ts,
-        'finished_at': null, 'result': null, 'error': null,
+        'finished_at': null,
+        'result': null,
+        'error': null,
         'steps': [
-          {'ts': r3ts + 2000, 'text': 'Read src/middleware/auth.ts'},
-          {'ts': r3ts + 8000, 'text': 'Read src/middleware/auth.test.ts'},
-          {'ts': r3ts + 15000, 'text': 'Read src/routes/user.ts'},
-          {'ts': r3ts + 28000, 'text': 'Bash: bun test --filter auth'},
+          {'ts': r3ts + 2, 'text': 'Read src/middleware/auth.ts'},
+          {'ts': r3ts + 8, 'text': 'Read src/middleware/auth.test.ts'},
+          {'ts': r3ts + 15, 'text': 'Read src/routes/user.ts'},
+          {'ts': r3ts + 28, 'text': 'Bash: bun test --filter auth'},
         ],
       },
       {
-        'id': 'task-r2', 'ts': r3ts - 180000, 'source': 'desktop',
+        'id': 'task-r2',
+        'ts': r3ts - 180,
+        'source': 'desktop',
         'prompt': 'Why is the payments service failing?',
         'state': 'done',
-        'started_at': r3ts - 180000,
-        'finished_at': r3ts - 120000,
+        'started_at': r3ts - 180,
+        'finished_at': r3ts - 120,
         'result': 'payments exits with code 2: connects to a ledger service not in this project. Add LEDGER_URL to .env or stub with LEDGER_MOCK=1.',
-        'error': null, 'steps': [],
+        'error': null,
+        'steps': [],
       },
       {
-        'id': 'task-r1', 'ts': r3ts - 720000, 'source': 'routine',
+        'id': 'task-r1',
+        'ts': r3ts - 720,
+        'source': 'routine',
         'prompt': 'Review open PRs and leave comments',
         'state': 'done',
-        'started_at': r3ts - 720000,
-        'finished_at': r3ts - 660000,
+        'started_at': r3ts - 720,
+        'finished_at': r3ts - 660,
         'result': 'Found 2 issues in PR #115: missing null check on line 42 and an unused import. Left inline comments.',
-        'error': null, 'steps': [],
+        'error': null,
+        'steps': [],
       },
     ]);
     // Add pending invite
-    _pendingInvites.add({'url': 'atlas-mobile://pair?node=bot-server-1&code=BOTCODE&name=myserver&addr=192.168.1.10:4040', 'name': 'myserver'});
+    _pendingInvites.add({
+      'url': 'atlas-mobile://pair?node=bot-server-1&code=BOTCODE&name=myserver&addr=192.168.1.10:4040',
+      'name': 'myserver',
+    });
   }
 
   final _lines = StreamController<String>.broadcast();
@@ -605,7 +646,11 @@ class _DemoComputer implements Transport {
           args['prompt'] as String? ?? '',
           args['source'] as String? ?? 'mobile',
         );
-        data = error == null ? {'task': {'id': 'task-$_seq', 'state': 'queued'}} : null;
+        data = error == null
+            ? {
+                'task': {'id': 'task-$_seq', 'state': 'queued'},
+              }
+            : null;
       case 'bot_memory':
         final bot = _bots[args['id'] as String?];
         data = {'text': bot?.memory ?? '# Memory\nNothing saved yet.'};
@@ -648,7 +693,10 @@ class _DemoComputer implements Transport {
       case 'bot_github_status':
         data = {'installed': true, 'login': null};
       case 'bot_github_login_start':
-        data = {'user_code': 'DEMO-1234', 'verification_uri': 'https://github.com/login/device'};
+        data = {
+          'user_code': 'DEMO-1234',
+          'verification_uri': 'https://github.com/login/device',
+        };
       case 'bot_github_login_poll':
         data = {'state': 'pending'};
       case 'bot_github_logout':
@@ -824,7 +872,7 @@ class _DemoComputer implements Transport {
     final bot = _bots[botId];
     if (bot == null) return 'bot not found';
     final taskId = 'task-${++_seq}';
-    final ts = _now();
+    final ts = _nowS();
     final task = <String, dynamic>{
       'id': taskId,
       'ts': ts,
@@ -842,17 +890,18 @@ class _DemoComputer implements Transport {
     // Simulate task running then done.
     _later(const Duration(milliseconds: 500), () {
       task['state'] = 'running';
-      task['started_at'] = _now();
+      task['started_at'] = _nowS();
       bot.state = 'working';
       bot.queued = (bot.queued - 1).clamp(0, 999);
       _pushBotTask(bot, task);
     });
     _later(const Duration(milliseconds: 2800), () {
       task['state'] = 'done';
-      task['finished_at'] = _now();
-      task['result'] = 'This is a demo. On your real bot server, ${bot.agent} would run and return the result here.';
+      task['finished_at'] = _nowS();
+      task['result'] =
+          'This is a demo. On your real bot server, ${bot.agent} would run and return the result here.';
       bot.state = 'idle';
-      bot.lastEntry = {'text': task['result'], 'state': 'done', 'ts': _now()};
+      bot.lastEntry = {'text': task['result'], 'state': 'done', 'ts': _nowS()};
       _pushBotTask(bot, task);
     });
     return null;

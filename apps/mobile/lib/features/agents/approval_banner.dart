@@ -6,7 +6,11 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 class ApprovalBanner extends StatelessWidget {
-  const ApprovalBanner({super.key, required this.approval, required this.onAnswer});
+  const ApprovalBanner({
+    super.key,
+    required this.approval,
+    required this.onAnswer,
+  });
   final AgentApproval approval;
   final void Function(bool allow) onAnswer;
 

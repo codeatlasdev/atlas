@@ -370,6 +370,30 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
     })
 }
 
+/// [`push_scope`] of a whole push line. A `crew_event` (a bot computer's push relayed by
+/// `crate::crew`) needs what the event inside it needs, and never a terminal's.
+pub fn line_scope(line: &str) -> Option<Scope> {
+    #[derive(serde::Deserialize)]
+    struct Ev<'a> {
+        #[serde(borrow)]
+        ev: std::borrow::Cow<'a, str>,
+        #[serde(default)]
+        event: Option<Inner>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Inner {
+        ev: String,
+    }
+    let e = serde_json::from_str::<Ev>(line).ok()?;
+    if e.ev != "crew_event" {
+        return push_scope(&e.ev);
+    }
+    match push_scope(&e.event?.ev)? {
+        Scope::TermRead | Scope::TermWrite => None,
+        s => Some(s),
+    }
+}
+
 /// The scope a mobile request needs; `Err` = never available from a phone.
 pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
     use HostCmd as C;
@@ -412,6 +436,19 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::BotGithubStatus {} | C::BotGithubLoginPoll {} => Scope::Read,
         C::BotGithubLoginStart {} | C::BotGithubLogout {} => Scope::Act,
         C::BotActionAnswer { .. } | C::BotGithubConnectResume {} => Scope::Act,
+        C::CrewServers {} => Scope::Read,
+        // What the relayed command needs here. Terminals stay out: their output streams to the
+        // relaying connection, not to one phone.
+        C::CrewCall { cmd, args, .. } => {
+            let inner = HostCmd::crew_inner(cmd, args).map_err(|_| "bad crew request")?;
+            if matches!(inner, C::CrewCall { .. } | C::CrewServers {}) {
+                return Err("not available on mobile");
+            }
+            match required_scope(&inner)? {
+                Scope::TermRead | Scope::TermWrite => return Err("not available on mobile"),
+                s => s,
+            }
+        }
         _ => return Err("not available on mobile"),
     })
 }

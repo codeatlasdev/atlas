@@ -50,7 +50,9 @@ class PushService {
         }
       });
     } catch (e) {
-      debugPrint('atlas-mobile: push unavailable (Firebase not configured): $e');
+      debugPrint(
+        'atlas-mobile: push unavailable (Firebase not configured): $e',
+      );
       _available = false;
     }
   }

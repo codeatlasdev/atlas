@@ -5,7 +5,32 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 
 // Result of bot_list: whether the server is a bot server, and its bots.
-typedef BotListResult = ({bool isBotServer, String hostName, List<BotListEntry> bots});
+typedef BotListResult = ({
+  bool isBotServer,
+  String hostName,
+  List<BotListEntry> bots,
+});
+
+/// Every computer that can host crewmates: the paired Macs (one may be a bot computer
+/// itself) and the bot computers each Mac's desktop knows, reached through that Mac.
+final crewDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>((
+  ref,
+) async {
+  final macs = await ref.watch(pairedDevicesProvider.future);
+  final out = <MacDevice>[...macs];
+  for (final mac in macs) {
+    final mux = ref.watch(connectionNotifierProvider(mac)).value;
+    if (mux == null) continue;
+    final resp = await mux.call('crew_servers');
+    if (resp['ok'] != true) continue; // an older Mac without the relay
+    final servers = (resp['data'] as Map)['servers'] as List<dynamic>? ?? [];
+    for (final s in servers.cast<Map<dynamic, dynamic>>()) {
+      final id = s['id'] as String;
+      out.add(MacDevice.crew(mac, id, s['name'] as String? ?? id));
+    }
+  }
+  return out;
+});
 
 /// Loads bots from a device. Returns isBotServer=false when bot_list errors
 /// with the 'not a bot server' message (hostd without ATLAS_BOT_HOST=1).
@@ -23,17 +48,27 @@ class BotsNotifier extends AsyncNotifier<BotListResult> {
       if (!ev.hasValue) return;
       final e = ev.value!;
       final evName = e['ev'] as String? ?? '';
-      if (evName == 'bot_task' || evName.startsWith('agent_status')) {
+      if (evName == 'bot_task' ||
+          evName == 'bot_updated' ||
+          evName.startsWith('agent_status')) {
         ref.invalidateSelf();
       }
     });
     final mux = ref.watch(connectionNotifierProvider(device)).value;
     if (mux == null) {
-      return (isBotServer: false, hostName: device.name, bots: const <BotListEntry>[]);
+      return (
+        isBotServer: false,
+        hostName: device.name,
+        bots: const <BotListEntry>[],
+      );
     }
     final resp = await mux.call('bot_list', {});
     if (resp['ok'] != true) {
-      return (isBotServer: false, hostName: device.name, bots: const <BotListEntry>[]);
+      return (
+        isBotServer: false,
+        hostName: device.name,
+        bots: const <BotListEntry>[],
+      );
     }
     final data = (resp['data'] as Map).cast<String, dynamic>();
     final hostName = data['host_name'] as String? ?? device.name;
@@ -48,26 +83,28 @@ class BotsNotifier extends AsyncNotifier<BotListResult> {
 /// Loads tasks for a single bot.
 final botTasksProvider = FutureProvider.autoDispose
     .family<List<BotTask>, (MacDevice, String)>((ref, arg) async {
-  final (device, botId) = arg;
-  // Refresh on bot_task pushes.
-  ref.listen(devicePushEventsProvider(device), (_, ev) {
-    if (!ev.hasValue) return;
-    final e = ev.value!;
-    final bt = e['bot'] as Map?;
-    if ((e['ev'] as String?) == 'bot_task' && bt != null && bt['id'] == botId) {
-      ref.invalidateSelf();
-    }
-  });
-  final mux = ref.watch(connectionNotifierProvider(device)).value;
-  if (mux == null) return const [];
-  final resp = await mux.call('bot_tasks', {'id': botId, 'limit': 50});
-  if (resp['ok'] != true) return const [];
-  final data = (resp['data'] as Map).cast<String, dynamic>();
-  return [
-    for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
-      BotTask.fromJson((t as Map).cast()),
-  ];
-});
+      final (device, botId) = arg;
+      // Refresh on bot_task pushes.
+      ref.listen(devicePushEventsProvider(device), (_, ev) {
+        if (!ev.hasValue) return;
+        final e = ev.value!;
+        final bt = e['bot'] as Map?;
+        if ((e['ev'] as String?) == 'bot_task' &&
+            bt != null &&
+            bt['id'] == botId) {
+          ref.invalidateSelf();
+        }
+      });
+      final mux = ref.watch(connectionNotifierProvider(device)).value;
+      if (mux == null) return const [];
+      final resp = await mux.call('bot_tasks', {'id': botId, 'limit': 50});
+      if (resp['ok'] != true) return const [];
+      final data = (resp['data'] as Map).cast<String, dynamic>();
+      return [
+        for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
+          BotTask.fromJson((t as Map).cast()),
+      ];
+    });
 
 /// Accumulates pending computer invites from push events and on-connect fetch.
 final computerInvitesProvider =
@@ -84,6 +121,9 @@ class ComputerInvitesNotifier extends StateNotifier<List<ComputerInvite>> {
   }
 
   void remove(String url) {
-    state = [for (final i in state) if (i.url != url) i];
+    state = [
+      for (final i in state)
+        if (i.url != url) i,
+    ];
   }
 }

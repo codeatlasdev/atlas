@@ -1,7 +1,9 @@
-
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
@@ -11,46 +13,18 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/bots/bots_provider.dart';
 import 'package:atlas_mobile/features/bots/bot_profile_screen.dart';
+import 'package:atlas_mobile/features/bots/steps.dart';
 
-// ── stable avatar colors (same palette as bots_screen) ───────────────────────
-
-const _kPalette = [
-  Color(0xFF26A69A),
-  Color(0xFFFF7043),
-  Color(0xFF7E57C2),
-  Color(0xFF42A5F5),
-  Color(0xFF66BB6A),
-  Color(0xFFEC407A),
-  Color(0xFFFFCA28),
-  Color(0xFF26C6DA),
-];
-
-Color _avatarColor(String id) {
-  final h = id.codeUnits.fold(0, (a, u) => a ^ u);
-  return _kPalette[h.abs() % _kPalette.length];
-}
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-String _elapsed(int startedAtMs) {
-  final d = DateTime.now()
-      .difference(DateTime.fromMillisecondsSinceEpoch(startedAtMs));
-  if (d.inSeconds < 60) return '${d.inSeconds}s';
-  return '${d.inMinutes}m';
-}
-
-String _chatTime(int tsMs) {
-  final dt = DateTime.fromMillisecondsSinceEpoch(tsMs);
-  final hh = dt.hour.toString().padLeft(2, '0');
-  final mm = dt.minute.toString().padLeft(2, '0');
-  return '$hh:$mm';
-}
+import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
+import 'package:atlas_mobile/features/bots/crew_text.dart';
+import 'package:atlas_mobile/features/bots/chat_motion.dart';
+import 'package:atlas_mobile/features/bots/crewmate.dart';
 
 String _sourceLabel(String s) => switch (s) {
-      'routine' => 'routine',
-      'desktop' => 'desktop',
-      _ => 'mobile',
-    };
+  'routine' => 'routine',
+  'desktop' => 'desktop',
+  _ => 'mobile',
+};
 
 // ── screen ────────────────────────────────────────────────────────────────────
 
@@ -59,10 +33,14 @@ class BotScreen extends ConsumerStatefulWidget {
     super.key,
     required this.device,
     required this.botId,
+    this.scrollToTaskId,
   });
 
   final MacDevice device;
   final String botId;
+
+  /// When set, the screen scrolls to this task id after the first frame.
+  final String? scrollToTaskId;
 
   @override
   ConsumerState<BotScreen> createState() => _BotScreenState();
@@ -72,11 +50,39 @@ class _BotScreenState extends ConsumerState<BotScreen> {
   final _msg = TextEditingController();
   bool _sending = false;
   final Set<String> _expanded = {};
+  final _scrollController = ScrollController();
+  // Task id → GlobalKey for scroll-to-task from the board.
+  final Map<String, GlobalKey> _taskKeys = {};
+
+  /// Messages already shown: each arrives once, never again when scrolled back.
+  final Set<String> _arrived = {};
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.scrollToTaskId != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _scrollToTask(widget.scrollToTaskId!),
+      );
+    }
+  }
 
   @override
   void dispose() {
     _msg.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToTask(String taskId) {
+    final key = _taskKeys[taskId];
+    if (key?.currentContext == null) return;
+    Scrollable.ensureVisible(
+      key!.currentContext!,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+      alignment: 0.1,
+    );
   }
 
   Future<void> _send() async {
@@ -100,6 +106,14 @@ class _BotScreenState extends ConsumerState<BotScreen> {
     });
   }
 
+  Future<void> _cancel(String taskId) async {
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) return;
+    HapticFeedback.mediumImpact();
+    await mux.call('bot_cancel', {'id': widget.botId, 'task': taskId});
+    ref.invalidate(botTasksProvider((widget.device, widget.botId)));
+  }
+
   Future<void> _approve(BotPendingApproval pa, bool allow) async {
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
     if (mux == null) return;
@@ -111,9 +125,12 @@ class _BotScreenState extends ConsumerState<BotScreen> {
   }
 
   void _openProfile(BotListEntry bot, String hostName) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => BotProfileScreen(device: widget.device, botId: widget.botId),
-    ));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            BotProfileScreen(device: widget.device, botId: widget.botId),
+      ),
+    );
   }
 
   @override
@@ -133,8 +150,10 @@ class _BotScreenState extends ConsumerState<BotScreen> {
 
     final botsData = ref.watch(botsProvider(widget.device)).value;
     final bot = botsData?.bots.where((b) => b.id == widget.botId).firstOrNull;
-    final tasks = ref.watch(botTasksProvider((widget.device, widget.botId))).value ?? [];
-    final online = ref.watch(connectionNotifierProvider(widget.device)).value != null;
+    final tasks =
+        ref.watch(botTasksProvider((widget.device, widget.botId))).value ?? [];
+    final online =
+        ref.watch(connectionNotifierProvider(widget.device)).value != null;
     final pa = bot?.pendingApproval;
     final queued = bot?.queued ?? 0;
 
@@ -145,77 +164,96 @@ class _BotScreenState extends ConsumerState<BotScreen> {
       if (parts.length >= 3) approvalTaskId = parts[2];
     }
 
-    final avatarColor = _avatarColor(widget.botId);
     final botName = bot?.name ?? '';
     final initial = botName.isNotEmpty ? botName[0].toUpperCase() : '?';
     final hostName = botsData?.hostName ?? widget.device.name;
-    final agentLabel = bot?.agent ?? '';
 
+    final state = CrewState.of(bot?.state ?? 'idle', online: online);
+    final running = tasks.where((t) => t.state == 'running').firstOrNull;
     return Scaffold(
       backgroundColor: c.ground,
-      appBar: AppBar(
-        backgroundColor: c.base,
-        titleSpacing: 0,
-        title: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: bot != null ? () => _openProfile(bot, hostName) : null,
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64),
+        child: SafeArea(
+          bottom: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            padding: const EdgeInsets.fromLTRB(Space.md, 6, Space.md, 0),
             child: Row(
               children: [
-                // Avatar
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: avatarColor.withValues(alpha: .22),
-                  child: Text(
-                    initial,
-                    style: TextStyle(
-                      color: avatarColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                _RoundButton(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  label: 'Back',
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+                const Spacer(),
+                // Who you are talking to: face and name in one floating pill.
+                Semantics(
+                  button: true,
+                  label:
+                      '$botName, ${switch (state) {
+                        CrewState.working => 'working',
+                        CrewState.needsYou => 'needs you',
+                        CrewState.offline => 'offline',
+                        CrewState.idle => 'on deck',
+                      }}',
+                  child: Pressable(
+                    onTap: bot != null
+                        ? () => _openProfile(bot, hostName)
+                        : null,
+                    child: _Glass(
+                      padding: const EdgeInsets.fromLTRB(6, 5, 18, 5),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Crewmate(
+                            seed: widget.botId,
+                            look: bot?.look,
+                            state: state,
+                            size: 34,
+                          ),
+                          const SizedBox(width: 10),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 170),
+                            child: Text(
+                              botName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                color: c.text,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        botName,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: c.text,
-                        ),
-                      ),
-                      if (agentLabel.isNotEmpty)
-                        Text(
-                          '$agentLabel · $hostName',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: c.muted),
-                        ),
-                    ],
+                const Spacer(),
+                // While it works: stop it. Otherwise nothing; the pill opens the profile.
+                AnimatedSwitcher(
+                  duration: Motion.normal,
+                  transitionBuilder: (child, a) => ScaleTransition(
+                    scale: a,
+                    child: FadeTransition(opacity: a, child: child),
                   ),
+                  child: running != null
+                      ? _RoundButton(
+                          key: const ValueKey('stop'),
+                          icon: Icons.stop_rounded,
+                          label: 'Stop $botName',
+                          onTap: () => _cancel(running.id),
+                        )
+                      : const SizedBox.square(
+                          key: ValueKey('none'),
+                          dimension: 44,
+                        ),
                 ),
               ],
             ),
           ),
         ),
-        actions: [
-          if (bot != null)
-            StatusDot(
-              color: switch (bot.state) {
-                'working' => c.accent,
-                'needs_you' => c.warning,
-                _ => c.faint,
-              },
-              pulse: bot.state == 'working' || bot.state == 'needs_you',
-              size: 7,
-            ),
-          const SizedBox(width: 16),
-        ],
       ),
       body: Column(
         children: [
@@ -229,73 +267,172 @@ class _BotScreenState extends ConsumerState<BotScreen> {
                 children: [
                   Icon(Icons.wifi_off_rounded, size: 14, color: c.warning),
                   const SizedBox(width: 6),
-                  Flexible(child: Text(
-                    '\${widget.device.name} is offline · history shown',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: c.warning),
-                  )),
+                  Flexible(
+                    child: Text(
+                      '${widget.device.name} is offline · history shown',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.warning),
+                    ),
+                  ),
                 ],
               ),
             ),
 
-          // ── message list ───────────────────────────────────────────────
           Expanded(
-            child: tasks.isEmpty
-                ? Center(
-                    child: Text(
-                      'Send a message to start',
-                      style: TextStyle(color: c.faint),
+            child: Stack(
+              children: [
+                // ── message list ───────────────────────────────────────────────
+                Positioned.fill(
+                  child: tasks.isEmpty
+                      ? EmptyState(
+                          icon: Crewmate(
+                            seed: widget.botId,
+                            look: bot?.look,
+                            state: state,
+                            size: 96,
+                          ),
+                          title: botName.isEmpty
+                              ? 'New crewmate'
+                              : 'Say hi to $botName',
+                          message: 'Give it a job. It works on its computer and tells you when it is done.',
+                        )
+                      : ListView.builder(
+                          reverse: true,
+                          controller: _scrollController,
+                          physics: const BouncingScrollPhysics(
+                            parent: AlwaysScrollableScrollPhysics(),
+                          ),
+                          padding: EdgeInsets.fromLTRB(
+                            Space.md,
+                            MediaQuery.paddingOf(context).top + 72,
+
+                            Space.md,
+                            // Room for the composer floating over the end of the thread.
+                            Space.sm +
+                                68 +
+                                MediaQuery.paddingOf(context).bottom +
+                                (running != null ? 40 : 0),
+                          ),
+                          itemCount: tasks.length,
+                          itemBuilder: (_, i) {
+                            final task = tasks[i];
+                            final key = _taskKeys.putIfAbsent(
+                              task.id,
+                              GlobalKey.new,
+                            );
+                            final isApprovalTask =
+                                approvalTaskId != null &&
+                                task.id == approvalTaskId &&
+                                pa != null;
+                            // Newest first: a day's label goes above its oldest message.
+                            final day =
+                                i == tasks.length - 1 ||
+                                crewDayOf(task.ts) !=
+                                    crewDayOf(tasks[i + 1].ts);
+                            final enter = _arrived.add(task.id);
+                            // Opening the chat: the newest few land in quick succession.
+                            final delay = Duration(
+                              milliseconds: i < 6 ? i * 55 : 0,
+                            );
+                            return _TaskPair(
+                              key: key,
+                              task: task,
+                              enter: enter,
+                              delay: delay,
+                              day: day
+                                  ? crewDayLabel(task.ts, DateTime.now())
+                                  : null,
+                              botId: widget.botId,
+                              botName: botName,
+                              device: widget.device,
+                              look: bot?.look,
+                              initial: initial,
+                              pendingApproval: isApprovalTask ? pa : null,
+                              expanded: _expanded.contains(task.id),
+                              onToggle: () => setState(() {
+                                _expanded.contains(task.id)
+                                    ? _expanded.remove(task.id)
+                                    : _expanded.add(task.id);
+                              }),
+                              onApprove: isApprovalTask
+                                  ? (allow) => _approve(pa, allow)
+                                  : null,
+                            );
+                          },
+                        ),
+                ),
+
+                // The composer floats over the thread, no band of its own: the
+                // messages scroll on behind it.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    // The thread fades out under the composer instead of being cut.
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [c.ground.withValues(alpha: 0), c.ground],
+                        stops: const [0, .45],
+                      ),
                     ),
-                  )
-                : ListView.builder(
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                    itemCount: tasks.length,
-                    itemBuilder: (_, i) {
-                      final task = tasks[i];
-                      final isApprovalTask = approvalTaskId != null &&
-                          task.id == approvalTaskId &&
-                          pa != null;
-                      return _TaskPair(
-                        task: task,
-                        botId: widget.botId,
-                        botName: botName,
-                        device: widget.device,
-                        avatarColor: avatarColor,
-                        initial: initial,
-                        pendingApproval: isApprovalTask ? pa : null,
-                        expanded: _expanded.contains(task.id),
-                        onToggle: () => setState(() {
-                          _expanded.contains(task.id)
-                              ? _expanded.remove(task.id)
-                              : _expanded.add(task.id);
-                        }),
-                        onApprove: isApprovalTask
-                            ? (allow) => _approve(pa, allow)
-                            : null,
-                      );
-                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: Space.lg),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ── global approval banner (if not matched to a task) ──────────
+                          if (pa != null && approvalTaskId == null)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: Space.md,
+                              ),
+                              child: _ApprovalBubble(
+                                botName: botName,
+                                look: bot?.look,
+                                initial: initial,
+                                approval: pa,
+                                onApprove: (allow) => _approve(pa, allow),
+                              ),
+                            ),
+
+                          AnimatedSwitcher(
+                            duration: Motion.normal,
+                            transitionBuilder: (child, a) => SizeTransition(
+                              sizeFactor: a,
+                              alignment: Alignment.bottomCenter,
+                              child: FadeTransition(opacity: a, child: child),
+                            ),
+                            child: bot != null && running != null
+                                ? _Typing(
+                                    key: const ValueKey('typing'),
+                                    bot: bot,
+                                    since: running.startedAt,
+                                  )
+                                : const SizedBox(
+                                    key: ValueKey('idle'),
+                                    width: double.infinity,
+                                  ),
+                          ),
+
+                          // ── composer ──────────────────────────────────────────────────
+                          _Composer(
+                            controller: _msg,
+                            sending: _sending,
+                            online: online,
+                            queued: queued,
+                            hintName: botName,
+                            onSend: _send,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-          ),
-
-          // ── global approval banner (if not matched to a task) ──────────
-          if (pa != null && approvalTaskId == null)
-            _ApprovalBubble(
-              botName: botName,
-              avatarColor: avatarColor,
-              initial: initial,
-              approval: pa,
-              onApprove: (allow) => _approve(pa, allow),
+                ),
+              ],
             ),
-
-          // ── composer ──────────────────────────────────────────────────
-          _Composer(
-            controller: _msg,
-            sending: _sending,
-            online: online,
-            queued: queued,
-            hintName: botName,
-            onSend: _send,
           ),
         ],
       ),
@@ -307,11 +444,15 @@ class _BotScreenState extends ConsumerState<BotScreen> {
 
 class _TaskPair extends StatelessWidget {
   const _TaskPair({
+    super.key,
     required this.task,
+    this.enter = false,
+    this.delay = Duration.zero,
+    this.day,
     required this.botId,
     required this.botName,
     required this.device,
-    required this.avatarColor,
+    required this.look,
     required this.initial,
     required this.expanded,
     required this.onToggle,
@@ -320,10 +461,17 @@ class _TaskPair extends StatelessWidget {
   });
 
   final BotTask task;
+
+  /// First time on screen: the exchange arrives (ChatAppear) instead of just being there.
+  final bool enter;
+  final Duration delay;
+
+  /// The day separator to show above this exchange, when it starts a day.
+  final String? day;
   final String botId;
   final String botName;
   final MacDevice device;
-  final Color avatarColor;
+  final Map<String, dynamic>? look;
   final String initial;
   final bool expanded;
   final VoidCallback onToggle;
@@ -335,18 +483,28 @@ class _TaskPair extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── timestamp ──────────────────────────────────────────────────
-        _Timestamp(tsMs: task.ts),
-
-        // ── user bubble (right) ────────────────────────────────────────
-        _UserBubble(task: task),
-        const SizedBox(height: 4),
-
-        // ── bot reply (left) ──────────────────────────────────────────
+        if (day != null)
+          Padding(
+            padding: const EdgeInsets.only(top: Space.md, bottom: 2),
+            child: Center(
+              child: Text(
+                day!,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AtlasColors.of(context).faint,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        _UserBubble(task: task, enter: enter, delay: delay),
         _BotBubble(
           task: task,
-          avatarColor: avatarColor,
-          initial: initial,
+          enter: enter,
+          delay: delay + const Duration(milliseconds: 110),
+          botId: botId,
+          botName: botName,
+          look: look,
           expanded: expanded,
           onToggle: onToggle,
         ),
@@ -356,7 +514,7 @@ class _TaskPair extends StatelessWidget {
           const SizedBox(height: 4),
           _ApprovalBubble(
             botName: botName,
-            avatarColor: avatarColor,
+            look: look,
             initial: initial,
             approval: pendingApproval!,
             onApprove: onApprove ?? (_) {},
@@ -366,73 +524,55 @@ class _TaskPair extends StatelessWidget {
         // ── action card (waiting_action state) ─────────────────────────
         if (task.state == 'waiting_action' && task.action != null) ...[
           const SizedBox(height: 4),
-          _ActionCard(
-            task: task,
-            device: device,
-            botId: botId,
-          ),
+          _ActionCard(task: task, device: device, botId: botId),
         ],
-        const SizedBox(height: 16),
+
+        // ── add_trigger resolved note ──────────────────────────────────
+        // Once the task is no longer waiting (done/running/etc.) and it had
+        // an add_trigger action, show the one-line resolution note.
+        if (task.state != 'waiting_action' &&
+            task.action?.kind == 'add_trigger') ...[
+          const SizedBox(height: 4),
+          _AddTriggerNote(added: task.state != 'cancelled'),
+        ],
+
+        const SizedBox(height: 8),
       ],
     );
   }
 }
 
-// ── Centered timestamp separator ──────────────────────────────────────────────
+// ── Your bubble: right, in the accent ────────────────────────────────────────
 
-class _Timestamp extends StatelessWidget {
-  const _Timestamp({required this.tsMs});
-  final int tsMs;
+class _UserBubble extends StatelessWidget {
+  const _UserBubble({
+    required this.task,
+    this.enter = false,
+    this.delay = Duration.zero,
+  });
+  final BotTask task;
+  final bool enter;
+  final Duration delay;
 
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Center(
-        child: Text(
-          _chatTime(tsMs),
-          style: TextStyle(fontSize: 11, color: c.faint),
-        ),
-      ),
-    );
-  }
-}
-
-// ── User bubble (right side) ──────────────────────────────────────────────────
-
-class _UserBubble extends StatelessWidget {
-  const _UserBubble({required this.task});
-  final BotTask task;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    const r = Radius.circular(18);
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: c.accent.withValues(alpha: .22),
-          borderRadius: const BorderRadius.only(
-            topLeft: r, topRight: r, bottomLeft: r, bottomRight: Radius.circular(4),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
+      padding: const EdgeInsets.only(top: 8, left: 64),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: ChatAppear(
+          fromRight: true,
+          play: enter,
+          delay: delay,
+          child: _Bubble(
+            mine: true,
+            tag: task.source == 'mobile' ? null : _sourceLabel(task.source),
+            child: Text(
               task.prompt,
-              style: TextStyle(color: c.text, height: 1.4, fontSize: 14),
+              style: TextStyle(color: c.onAccent, height: 1.4, fontSize: 16),
             ),
-            const SizedBox(height: 3),
-            Text(
-              _sourceLabel(task.source),
-              style: TextStyle(fontSize: 10, color: c.muted),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -444,15 +584,20 @@ class _UserBubble extends StatelessWidget {
 class _BotBubble extends StatelessWidget {
   const _BotBubble({
     required this.task,
-    required this.avatarColor,
-    required this.initial,
+    this.enter = false,
+    this.delay = Duration.zero,
+    required this.botId,
+    required this.botName,
+    required this.look,
     required this.expanded,
     required this.onToggle,
   });
-
+  final bool enter;
+  final Duration delay;
   final BotTask task;
-  final Color avatarColor;
-  final String initial;
+  final String botId;
+  final String botName;
+  final Map<String, dynamic>? look;
   final bool expanded;
   final VoidCallback onToggle;
 
@@ -463,102 +608,361 @@ class _BotBubble extends StatelessWidget {
     Widget content;
     switch (task.state) {
       case 'queued':
-        content = Text('Queued…', style: TextStyle(color: c.faint, fontSize: 14));
+        content = Text(
+          task.preparing != null ? 'Downloading ${task.preparing}…' : 'Queued…',
+          style: TextStyle(color: c.faint, fontSize: 15),
+        );
 
       case 'running':
-        content = GestureDetector(
-          onTap: task.steps.isNotEmpty ? onToggle : null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox.square(
-                    dimension: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    task.startedAt != null
-                        ? 'Working · ${_elapsed(task.startedAt!)}'
-                        : 'Working…',
-                    style: TextStyle(color: c.accent, fontSize: 14),
-                  ),
-                  if (task.steps.isNotEmpty) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                      size: 16,
-                      color: c.faint,
-                    ),
-                  ],
-                ],
-              ),
-              if (expanded && task.steps.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                for (final step in task.steps)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(
-                      '· ${step.text}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: c.muted,
-                        fontFamily: 'Menlo',
-                        fontFamilyFallback: const ['SF Mono', 'RobotoMono', 'monospace'],
-                      ),
-                    ),
-                  ),
-              ],
-            ],
-          ),
+        final groups = stepGroups(
+          task.steps,
+          true,
+          groupOf: (s) => s.group,
+          fallback: task.title,
+        );
+        content = _StepGroupsView(
+          groups: groups,
+          running: true,
+          startedAt: task.startedAt,
+          expanded: expanded,
+          onToggle: onToggle,
         );
 
       case 'failed':
         content = Text(
           task.error ?? 'Task failed',
-          style: TextStyle(color: c.error, fontSize: 14),
+          style: TextStyle(color: c.error, fontSize: 15),
         );
 
       case 'cancelled':
-        content = Text('Cancelled', style: TextStyle(color: c.faint, fontSize: 14));
+        content = Text(
+          'Cancelled',
+          style: TextStyle(color: c.faint, fontSize: 15),
+        );
 
       case 'waiting_action':
-        content = Text('Waiting for input…', style: TextStyle(color: c.faint, fontSize: 14));
+        content = Text(
+          'Waiting for input…',
+          style: TextStyle(color: c.faint, fontSize: 15),
+        );
 
       default: // done
-        content = _BotBubbleResult(task: task);
+        final groups = stepGroups(
+          task.steps,
+          false,
+          groupOf: (s) => s.group,
+          fallback: task.title,
+        );
+        content = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (groups.isNotEmpty) ...[
+              _StepGroupsView(
+                groups: groups,
+                running: false,
+                startedAt: task.startedAt,
+                expanded: expanded,
+                onToggle: onToggle,
+              ),
+              const SizedBox(height: 8),
+            ],
+            _BotBubbleResult(task: task),
+          ],
+        );
     }
 
-    const r = Radius.circular(18);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // Small avatar
-        CircleAvatar(
-          radius: 14,
-          backgroundColor: avatarColor.withValues(alpha: .22),
-          child: Text(initial,
-              style: TextStyle(color: avatarColor, fontSize: 11, fontWeight: FontWeight.w700)),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.72,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: c.base,
-              border: Border.all(color: c.borderSubtle),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(4), topRight: r, bottomLeft: r, bottomRight: r,
+    // The crewmate's bubble: left, soft surface, its face beside the last line. The
+    // content changes size smoothly as the task runs, steps come in and the reply lands.
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ChatAppear(
+        fromRight: false,
+        play: enter,
+        delay: delay,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Flexible(
+              child: _Bubble(
+                mine: false,
+                child: AnimatedSize(
+                  duration: Motion.slow,
+                  curve: Motion.ease,
+                  alignment: Alignment.topLeft,
+                  child: AnimatedSwitcher(
+                    duration: Motion.normal,
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: Alignment.topLeft,
+                      children: [...previous, ?current],
+                    ),
+                    child: KeyedSubtree(
+                      key: ValueKey(task.state),
+                      child: content,
+                    ),
+                  ),
+                ),
               ),
             ),
-            child: content,
-          ),
+            const SizedBox(width: 48),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// A modern chat bubble: big radius everywhere, a smaller one on the corner that points
+/// to its sender, the time tucked under the text.
+
+class _Bubble extends StatelessWidget {
+  const _Bubble({required this.mine, required this.child, this.tag});
+  final bool mine;
+
+  /// Where a message of yours came from when not this phone ("desktop", "routine").
+  final String? tag;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      decoration: BoxDecoration(
+        color: mine ? c.accent : c.raised,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: tag == null
+          ? child
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                child,
+                const SizedBox(height: 4),
+                Icon(
+                  tag == 'routine'
+                      ? Icons.schedule_rounded
+                      : Icons.desktop_mac_rounded,
+                  size: 12,
+                  color: c.onAccent.withValues(alpha: .45),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+// ── Step groups view ──────────────────────────────────────────────────────────
+
+class _StepGroupsView extends StatelessWidget {
+  const _StepGroupsView({
+    required this.groups,
+    required this.running,
+    required this.startedAt,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final List<StepGroup<BotStep>> groups;
+  final bool running;
+  final int? startedAt;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    if (groups.isEmpty) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (running) ...[
+            SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            running
+                ? (startedAt != null
+                      ? 'Working · ${crewElapsed(startedAt!, DateTime.now())}'
+                      : 'Working…')
+                : 'Done',
+            style: TextStyle(color: running ? c.accent : c.muted, fontSize: 16),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (running) ...[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox.square(
+                dimension: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: c.accent,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                startedAt != null
+                    ? 'Working · ${crewElapsed(startedAt!, DateTime.now())}'
+                    : 'Working…',
+                style: TextStyle(color: c.accent, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+        ],
+        for (var gi = 0; gi < groups.length; gi++) ...[
+          _StepGroupRow(
+            group: groups[gi],
+            isLast: gi == groups.length - 1,
+            running: running,
+            expanded: expanded,
+            onToggle: onToggle,
+          ),
+          if (gi < groups.length - 1) const SizedBox(height: 4),
+        ],
+      ],
+    );
+  }
+}
+
+// ── One step group row ────────────────────────────────────────────────────────
+
+class _StepGroupRow extends StatelessWidget {
+  const _StepGroupRow({
+    required this.group,
+    required this.isLast,
+    required this.running,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final StepGroup<BotStep> group;
+  final bool isLast;
+  final bool running;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final title = group.title ?? (running ? null : 'Steps');
+
+    if (group.done) {
+      // Finished group: '✓ Title · N steps', tap to expand.
+      return GestureDetector(
+        onTap: onToggle,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.check_circle_outline, size: 13, color: c.success),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    title != null
+                        ? '$title · ${group.steps.length} step${group.steps.length == 1 ? '' : 's'}'
+                        : '${group.steps.length} step${group.steps.length == 1 ? '' : 's'}',
+                    style: TextStyle(fontSize: 12, color: c.muted),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  size: 14,
+                  color: c.faint,
+                ),
+              ],
+            ),
+            if (expanded) ...[
+              const SizedBox(height: 4),
+              _StepList(steps: group.steps),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // Current (open) group: title + last 6 steps, '+N earlier' if more.
+    const kMax = 6;
+    final shown = group.steps.length > kMax
+        ? group.steps.sublist(group.steps.length - kMax)
+        : group.steps;
+    final earlier = group.steps.length - shown.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (title != null) ...[
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: c.muted,
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+        if (earlier > 0) ...[
+          Text(
+            '+$earlier earlier',
+            style: TextStyle(
+              fontSize: 11,
+              color: c.faint,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          const SizedBox(height: 2),
+        ],
+        _StepList(steps: shown),
+      ],
+    );
+  }
+}
+
+// ── Step list ─────────────────────────────────────────────────────────────────
+
+class _StepList extends StatelessWidget {
+  const _StepList({required this.steps});
+  final List<BotStep> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final step in steps)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              '· ${stepPhrase(step.text)}',
+              style: TextStyle(
+                fontSize: 12,
+                color: c.muted,
+                fontFamily: 'Menlo',
+                fontFamilyFallback: const [
+                  'SF Mono',
+                  'RobotoMono',
+                  'monospace',
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -577,14 +981,18 @@ class _BotBubbleResultState extends State<_BotBubbleResult> {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final isSummarized = widget.task.summarized && widget.task.replyFull != null;
+    final isSummarized =
+        widget.task.summarized && widget.task.replyFull != null;
     final shown = _showFull && isSummarized
         ? widget.task.replyFull!
         : (widget.task.result ?? '');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(shown, style: TextStyle(color: c.text, fontSize: 14, height: 1.4)),
+        AtlasMarkdown(
+          shown,
+          style: TextStyle(color: c.text, fontSize: 16, height: 1.45),
+        ),
         if (isSummarized) ...[
           const SizedBox(height: 6),
           GestureDetector(
@@ -605,14 +1013,14 @@ class _BotBubbleResultState extends State<_BotBubbleResult> {
 class _ApprovalBubble extends StatelessWidget {
   const _ApprovalBubble({
     required this.botName,
-    required this.avatarColor,
+    required this.look,
     required this.initial,
     required this.approval,
     required this.onApprove,
   });
 
   final String botName;
-  final Color avatarColor;
+  final Map<String, dynamic>? look;
   final String initial;
   final BotPendingApproval approval;
   final void Function(bool) onApprove;
@@ -621,7 +1029,9 @@ class _ApprovalBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final input = approval.toolInput;
-    final cmd = input is Map && input['command'] is String ? input['command'] as String : null;
+    final cmd = input is Map && input['command'] is String
+        ? input['command'] as String
+        : null;
 
     const r = Radius.circular(18);
     return Padding(
@@ -629,11 +1039,11 @@ class _ApprovalBubble extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: avatarColor.withValues(alpha: .22),
-            child: Text(initial,
-                style: TextStyle(color: avatarColor, fontSize: 11, fontWeight: FontWeight.w700)),
+          Crewmate(
+            seed: approval.paneKey,
+            look: look,
+            state: CrewState.needsYou,
+            size: 30,
           ),
           const SizedBox(width: 8),
           Flexible(
@@ -646,7 +1056,10 @@ class _ApprovalBubble extends StatelessWidget {
                 color: c.warning.withValues(alpha: .1),
                 border: Border.all(color: c.warning.withValues(alpha: .4)),
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4), topRight: r, bottomLeft: r, bottomRight: r,
+                  topLeft: Radius.circular(4),
+                  topRight: r,
+                  bottomLeft: r,
+                  bottomRight: r,
                 ),
               ),
               child: Column(
@@ -659,7 +1072,11 @@ class _ApprovalBubble extends StatelessWidget {
                       Flexible(
                         child: Text(
                           'Wants to run ${approval.toolName ?? 'a tool'}',
-                          style: TextStyle(color: c.warning, fontSize: 13, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: c.warning,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -668,7 +1085,10 @@ class _ApprovalBubble extends StatelessWidget {
                     const SizedBox(height: 6),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: c.ground,
                         borderRadius: BorderRadius.circular(8),
@@ -677,7 +1097,11 @@ class _ApprovalBubble extends StatelessWidget {
                         cmd,
                         style: TextStyle(
                           fontFamily: 'Menlo',
-                          fontFamilyFallback: const ['SF Mono', 'RobotoMono', 'monospace'],
+                          fontFamilyFallback: const [
+                            'SF Mono',
+                            'RobotoMono',
+                            'monospace',
+                          ],
                           fontSize: 12,
                           color: c.text,
                         ),
@@ -692,11 +1116,18 @@ class _ApprovalBubble extends StatelessWidget {
                         onPressed: () => onApprove(false),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: c.error,
-                          side: BorderSide(color: c.error.withValues(alpha: .5)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                          side: BorderSide(
+                            color: c.error.withValues(alpha: .5),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 5,
+                          ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
                         ),
                         child: const Text('Deny'),
                       ),
@@ -706,10 +1137,15 @@ class _ApprovalBubble extends StatelessWidget {
                         style: FilledButton.styleFrom(
                           backgroundColor: c.warning,
                           foregroundColor: c.ground,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 5,
+                          ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
                         ),
                         child: const Text('Allow'),
                       ),
@@ -725,7 +1161,98 @@ class _ApprovalBubble extends StatelessWidget {
   }
 }
 
-// ── iMessage-style composer ───────────────────────────────────────────────────
+// ── "<name> is working" with the crewmate busy ───────────────────────────────
+
+class _Typing extends StatelessWidget {
+  const _Typing({super.key, required this.bot, required this.since});
+  final BotListEntry bot;
+  final int? since;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final elapsed = since == null
+        ? ''
+        : ' · ${crewElapsed(since!, DateTime.now())}';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.md, 0, Space.md, Space.xs),
+      child: Row(
+        children: [
+          Crewmate(
+            seed: bot.id,
+            look: bot.look,
+            state: CrewState.working,
+            size: 30,
+          ),
+          const SizedBox(width: Space.sm),
+          Text(
+            '${bot.name} is working$elapsed',
+            style: TextStyle(
+              fontSize: 12,
+              color: c.accent,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const _Dots(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Three dots rising in turn (the desktop's typing indicator).
+class _Dots extends StatefulWidget {
+  const _Dots();
+  @override
+  State<_Dots> createState() => _DotsState();
+}
+
+class _DotsState extends State<_Dots> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    Motion.reduced(context) ? _c.stop() : _c.repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AtlasColors.of(context).accent;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, _) => Row(
+        children: [
+          for (var i = 0; i < 3; i++)
+            Transform.translate(
+              offset: Offset(
+                0,
+                math.max(0, math.sin((_c.value - i * 0.15) * 2 * math.pi)) * -3,
+              ),
+              child: Container(
+                width: 4,
+                height: 4,
+                margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Composer: a floating pill, like the desktop's ────────────────────────────
 
 class _Composer extends StatelessWidget {
   const _Composer({
@@ -747,86 +1274,113 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Container(
-      color: c.base,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Pill with send icon inside
-              Container(
-                decoration: BoxDecoration(
-                  color: c.ground,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: c.borderSubtle),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Space.md,
+          Space.xs,
+          Space.md,
+          Space.sm,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (queued > 0)
+              Padding(
+                padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
+                child: Text(
+                  queued == 1 ? '1 task queued' : '$queued tasks queued',
+                  style: TextStyle(fontSize: 12, color: c.faint),
                 ),
-                child: Row(
+              ),
+            // The field keeps its shape; once there is text, the send dot detaches from
+            // its right end and floats beside it (_SendSlot).
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (_, value, _) {
+                final ready = value.text.trim().isNotEmpty && !sending;
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: controller,
-                        minLines: 1,
-                        maxLines: 5,
-                        style: TextStyle(fontSize: 14, color: c.text),
-                        decoration: InputDecoration(
-                          hintText: online
-                              ? 'Message $hintName'
-                              : 'Offline — queued when back',
-                          hintStyle: TextStyle(color: c.faint, fontSize: 14),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10,
+                      child: _Glass(
+                        child: TextField(
+                          controller: controller,
+                          minLines: 1,
+                          maxLines: 6,
+                          cursorColor: c.text,
+                          textCapitalization: TextCapitalization.sentences,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: c.text,
+                            height: 1.35,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: online
+                                ? 'Message'
+                                : 'Offline — queued when back',
+                            hintStyle: TextStyle(color: c.faint, fontSize: 16),
+                            border: InputBorder.none,
+                            isCollapsed: true,
+                            // The app theme gives every field a filled box; the pill is it.
+                            filled: false,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.fromLTRB(
+                              22,
+                              15,
+                              22,
+                              15,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: GestureDetector(
-                        onTap: sending ? null : onSend,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: c.accent.withValues(alpha: sending ? .4 : 1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: sending
-                              ? Padding(
-                                  padding: const EdgeInsets.all(7),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                    _SendSlot(
+                      shown: ready || sending,
+                      fieldColor: c.overlay.withValues(alpha: .82),
+                      child: Semantics(
+                        button: true,
+                        label: 'Send',
+                        child: Pressable(
+                          onTap: ready
+                              ? () {
+                                  HapticFeedback.lightImpact();
+                                  onSend();
+                                }
+                              : null,
+                          child: Container(
+                            width: _SendSlot.dot,
+                            height: _SendSlot.dot,
+                            decoration: BoxDecoration(
+                              color: c.accent,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: sending
+                                ? SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: c.onAccent,
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.arrow_upward_rounded,
+                                    size: 22,
                                     color: c.onAccent,
                                   ),
-                                )
-                              : Icon(
-                                  Icons.arrow_upward_rounded,
-                                  size: 18,
-                                  color: c.onAccent,
-                                ),
+                          ),
                         ),
                       ),
                     ),
                   ],
-                ),
-              ),
-              if (queued > 0) ...[
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: Text(
-                    queued == 1 ? '1 task queued' : '$queued tasks queued',
-                    style: TextStyle(fontSize: 11, color: c.faint),
-                  ),
-                ),
-              ],
-            ],
-          ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -904,7 +1458,10 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
       _polling = true;
     });
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollLogin());
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _pollLogin(),
+    );
   }
 
   Future<void> _pollLogin() async {
@@ -960,11 +1517,18 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           children: [
             Text(
               'Connect GitHub to continue',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.text,
+              ),
             ),
             if (action.reason != null) ...[
               const SizedBox(height: 4),
-              Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+              Text(
+                action.reason!,
+                style: TextStyle(fontSize: 12, color: c.muted),
+              ),
             ],
             const SizedBox(height: 10),
             if (flow != null) ...[
@@ -982,7 +1546,11 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                       fontWeight: FontWeight.w700,
                       letterSpacing: 2,
                       fontFamily: 'Menlo',
-                      fontFamilyFallback: const ['SF Mono', 'RobotoMono', 'monospace'],
+                      fontFamilyFallback: const [
+                        'SF Mono',
+                        'RobotoMono',
+                        'monospace',
+                      ],
                       color: c.text,
                     ),
                   ),
@@ -992,10 +1560,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                       // clipboard
                     },
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     child: const Text('Copy', style: TextStyle(fontSize: 12)),
                   ),
@@ -1012,13 +1585,21 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
               OutlinedButton(
                 onPressed: () {
                   _pollTimer?.cancel();
-                  setState(() { _flow = null; _polling = false; });
+                  setState(() {
+                    _flow = null;
+                    _polling = false;
+                  });
                 },
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
                 child: const Text('Cancel', style: TextStyle(fontSize: 13)),
               ),
@@ -1030,10 +1611,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                     style: FilledButton.styleFrom(
                       backgroundColor: c.warning,
                       foregroundColor: c.ground,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
                     child: const Text('Connect'),
                   ),
@@ -1041,12 +1627,20 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                   OutlinedButton(
                     onPressed: _submitting ? null : _cancel,
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    child: const Text('Cancel task', style: TextStyle(fontSize: 13)),
+                    child: const Text(
+                      'Cancel task',
+                      style: TextStyle(fontSize: 13),
+                    ),
                   ),
                 ],
               ),
@@ -1060,11 +1654,18 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           children: [
             Text(
               action.label ?? 'Secret required',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.text,
+              ),
             ),
             if (action.reason != null) ...[
               const SizedBox(height: 4),
-              Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+              Text(
+                action.reason!,
+                style: TextStyle(fontSize: 12, color: c.muted),
+              ),
             ],
             const SizedBox(height: 8),
             TextField(
@@ -1074,7 +1675,10 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
               decoration: InputDecoration(
                 hintText: 'Enter value',
                 hintStyle: TextStyle(color: c.faint, fontSize: 14),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(color: c.borderSubtle),
@@ -1098,10 +1702,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                   style: FilledButton.styleFrom(
                     backgroundColor: c.warning,
                     foregroundColor: c.ground,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Submit'),
                 ),
@@ -1109,10 +1718,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                 OutlinedButton(
                   onPressed: _submitting ? null : _cancel,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Cancel', style: TextStyle(fontSize: 13)),
                 ),
@@ -1127,11 +1741,18 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           children: [
             Text(
               action.label ?? 'Input required',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.text,
+              ),
             ),
             if (action.reason != null) ...[
               const SizedBox(height: 4),
-              Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+              Text(
+                action.reason!,
+                style: TextStyle(fontSize: 12, color: c.muted),
+              ),
             ],
             const SizedBox(height: 8),
             TextField(
@@ -1140,7 +1761,10 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
               decoration: InputDecoration(
                 hintText: action.placeholder ?? '',
                 hintStyle: TextStyle(color: c.faint, fontSize: 14),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(color: c.borderSubtle),
@@ -1167,10 +1791,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                   style: FilledButton.styleFrom(
                     backgroundColor: c.warning,
                     foregroundColor: c.ground,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Submit'),
                 ),
@@ -1178,10 +1807,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                 OutlinedButton(
                   onPressed: _submitting ? null : _cancel,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Cancel', style: TextStyle(fontSize: 13)),
                 ),
@@ -1196,19 +1830,30 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           children: [
             Text(
               action.question ?? 'Choose an option',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.text,
+              ),
             ),
             const SizedBox(height: 8),
             for (int i = 0; i < action.options.length; i++) ...[
               OutlinedButton(
-                onPressed: _submitting ? null : () => _submit(action.options[i]),
+                onPressed: _submitting
+                    ? null
+                    : () => _submit(action.options[i]),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: c.text,
                   side: BorderSide(color: c.borderSubtle),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   minimumSize: const Size(double.infinity, 0),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   alignment: Alignment.centerLeft,
                 ),
                 child: Row(
@@ -1224,7 +1869,11 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                       ),
                       child: Text(
                         String.fromCharCode(65 + i),
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c.muted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: c.muted,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -1243,10 +1892,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
             OutlinedButton(
               onPressed: _submitting ? null : _cancel,
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
               child: const Text('Cancel task', style: TextStyle(fontSize: 13)),
             ),
@@ -1259,7 +1913,11 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           children: [
             Text(
               'Sign in to ${action.engine ?? 'engine'}',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.text,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1274,10 +1932,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                   style: FilledButton.styleFrom(
                     backgroundColor: c.warning,
                     foregroundColor: c.ground,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Done'),
                 ),
@@ -1285,10 +1948,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                 OutlinedButton(
                   onPressed: _submitting ? null : _cancel,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Cancel', style: TextStyle(fontSize: 13)),
                 ),
@@ -1297,6 +1965,93 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           ],
         );
 
+      case 'add_trigger':
+        // The agent wants to add an automation; user can Add or skip.
+        final triggerKind = action.triggerKind;
+        final triggerPrompt = action.triggerPrompt;
+        final resolved = action.reason;
+        cardContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.schedule_outlined, size: 14, color: c.warning),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    '${widget.task.id.isNotEmpty ? '' : ''}'
+                    '${(widget.task.action?.name ?? widget.botId)} wants to add an automation',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.warning,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (triggerKind != null) ...[
+              Text(
+                _describeTriggerKind(triggerKind),
+                style: TextStyle(fontSize: 13, color: c.text),
+              ),
+              const SizedBox(height: 2),
+            ],
+            if (triggerPrompt != null && triggerPrompt.isNotEmpty) ...[
+              Text(
+                triggerPrompt,
+                style: TextStyle(fontSize: 12, color: c.muted),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+            ],
+            if (resolved != null) ...[
+              Text(resolved, style: TextStyle(fontSize: 12, color: c.muted)),
+              const SizedBox(height: 6),
+            ] else
+              const SizedBox(height: 6),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: _submitting ? null : () => _submit('add'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c.warning,
+                    foregroundColor: c.ground,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: const Text('Add'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _submitting ? null : () => _submit('skip'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: const Text('Not now', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
+        );
       default:
         // Unknown kind: plain text input
         cardContent = Column(
@@ -1304,7 +2059,11 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           children: [
             Text(
               action.label ?? 'Response needed',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.text,
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -1312,7 +2071,10 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
               style: TextStyle(fontSize: 14, color: c.text),
               decoration: InputDecoration(
                 hintStyle: TextStyle(color: c.faint, fontSize: 14),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(color: c.borderSubtle),
@@ -1336,10 +2098,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                   style: FilledButton.styleFrom(
                     backgroundColor: c.warning,
                     foregroundColor: c.ground,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Submit'),
                 ),
@@ -1347,10 +2114,15 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
                 OutlinedButton(
                   onPressed: _submitting ? null : _cancel,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                   ),
                   child: const Text('Cancel', style: TextStyle(fontSize: 13)),
                 ),
@@ -1378,6 +2150,226 @@ class _ActionCardState extends ConsumerState<_ActionCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+String _describeTriggerKind(TriggerKind kind) => switch (kind) {
+  ScheduleTrigger(:final cron) => 'Schedule: $cron',
+  IntervalTrigger(:final everySecs) => 'Every ${_formatInterval(everySecs)}',
+  WebhookTrigger() => 'Webhook',
+  GithubTrigger(:final repo, :final events) =>
+    'GitHub: $repo (${events.join(', ')})',
+  FileTrigger(:final path, :final glob) =>
+    'File: $path${glob != null ? '/$glob' : ''}',
+  BotTrigger(:final fromBot, :final on) => 'After $fromBot ($on)',
+  ServiceTrigger(:final service, :final on) => 'Service $service ($on)',
+};
+
+String _formatInterval(int secs) {
+  if (secs < 60) return '${secs}s';
+  if (secs < 3600) return '${secs ~/ 60}m';
+  return '${secs ~/ 3600}h';
+}
+
+// ── add_trigger resolved note ──────────────────────────────────────────────────
+
+/// One-line note shown after an add_trigger action is answered.
+class _AddTriggerNote extends StatelessWidget {
+  const _AddTriggerNote({required this.added});
+  final bool added;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          const SizedBox(width: 36),
+          Icon(
+            added ? Icons.check_circle_outline : Icons.remove_circle_outline,
+            size: 13,
+            color: added ? c.success : c.faint,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            added ? 'Automation added' : 'Not added',
+            style: TextStyle(fontSize: 12, color: added ? c.success : c.faint),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A round, softly filled header button (back), like the reference's.
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: label,
+    child: Pressable(
+      onTap: onTap,
+      child: _Glass(
+        circle: true,
+        child: SizedBox.square(
+          dimension: 44,
+          child: Icon(icon, size: 18, color: AtlasColors.of(context).text),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A floating piece over the thread: frosted, hairline edge, soft shadow.
+class _Glass extends StatelessWidget {
+  const _Glass({required this.child, this.circle = false, this.padding});
+  final Widget child;
+  final bool circle;
+  final EdgeInsets? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    final shape = circle ? const CircleBorder() : const StadiumBorder();
+    return ClipPath(
+      clipper: ShapeBorderClipper(shape: shape),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: padding,
+          decoration: ShapeDecoration(
+            color: c.overlay.withValues(alpha: .82),
+            shape: circle
+                ? CircleBorder(side: BorderSide(color: c.border))
+                : StadiumBorder(side: BorderSide(color: c.border)),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Where the send dot lives. Empty field: no slot, the field has the whole row. Text in: the
+/// dot buds out of the field's right end, stretches away on a thinning neck that snaps, and
+/// springs into place while the field gives up the room. Back to empty: pulled back in.
+class _SendSlot extends StatefulWidget {
+  const _SendSlot({
+    required this.shown,
+    required this.fieldColor,
+    required this.child,
+  });
+  final bool shown;
+  final Color fieldColor;
+  final Widget child;
+
+  static const double dot = 46;
+  static const double gap = 8;
+
+  @override
+  State<_SendSlot> createState() => _SendSlotState();
+}
+
+class _SendSlotState extends State<_SendSlot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Motion.slow * 2,
+    reverseDuration: Motion.slow,
+    value: widget.shown ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(_SendSlot old) {
+    super.didUpdateWidget(old);
+    if (old.shown == widget.shown) return;
+    if (Motion.reduced(context)) {
+      _c.value = widget.shown ? 1 : 0;
+    } else if (widget.shown) {
+      _c.forward();
+    } else {
+      _c.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const size = _SendSlot.dot, gap = _SendSlot.gap;
+    return AnimatedBuilder(
+      animation: _c,
+      child: widget.child,
+      builder: (_, child) {
+        final t = _c.value;
+        if (t == 0) return const SizedBox.shrink();
+        // The field gives up the room smoothly while the dot travels out of it.
+        final room = Curves.easeOutCubic.transform(t) * (size + gap);
+        final travel = Curves.easeOutBack.transform(t);
+        // The dot is never small or faded: it is a piece of the field's right end, full
+        // size from the start, that pulls away to the right and snaps free.
+        final dx = -(size + gap) * (1 - travel);
+        // Its colour turns from the field's to the accent once it is out.
+        final tint = Curves.easeIn.transform(((t - .2) / .5).clamp(0.0, 1.0));
+        // The neck: full height at first (still one piece), pinching to nothing.
+        final neck = (1 - t / .55).clamp(0.0, 1.0);
+        final neckH = size * Curves.easeIn.transform(neck);
+        return SizedBox(
+          width: room,
+          height: size,
+          child: OverflowBox(
+            alignment: Alignment.centerRight,
+            minWidth: size + gap,
+            maxWidth: size + gap,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.centerRight,
+              children: [
+                if (neckH > 0.5)
+                  Positioned(
+                    // From inside the field's end to the dot's centre.
+                    left: -size * .5,
+                    right: size / 2 - dx,
+                    top: (size - neckH) / 2,
+                    height: neckH,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(neckH / 2),
+                      child: ColoredBox(color: widget.fieldColor),
+                    ),
+                  ),
+                Transform.translate(
+                  offset: Offset(dx, 0),
+                  child: ColorFiltered(
+                    colorFilter: ColorFilter.mode(
+                      widget.fieldColor.withValues(alpha: 1 - tint),
+                      BlendMode.srcATop,
+                    ),
+                    child: child,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

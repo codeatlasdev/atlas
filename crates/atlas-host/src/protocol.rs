@@ -580,6 +580,25 @@ pub enum HostCmd {
         #[serde(default)]
         short_replies_model: Option<String>,
     },
+    /// The bot computers this Mac's desktop knows (`~/.atlas/desktop/bot-hosts.json`), which
+    /// Atlas Mobile reaches through this hostd (`crate::crew`).
+    CrewServers {},
+    /// Run `cmd` on bot computer `server` through this hostd. A phone may only send what it
+    /// could send this hostd directly, with the same scope (`mobile::required_scope`).
+    CrewCall {
+        server: String,
+        cmd: String,
+        #[serde(default)]
+        args: Value,
+    },
+}
+
+impl HostCmd {
+    /// The command a `crew_call` carries, parsed like any request.
+    pub fn crew_inner(cmd: &str, args: &Value) -> Result<HostCmd, String> {
+        serde_json::from_value(serde_json::json!({"cmd": cmd, "args": args}))
+            .map_err(|e| format!("bad crew request: {e}"))
+    }
 }
 
 /// Build a response line.

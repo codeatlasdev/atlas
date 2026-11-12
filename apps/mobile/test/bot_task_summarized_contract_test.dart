@@ -32,8 +32,12 @@ void main() {
 
     test('unsummarized task has summarized=false and no replyFull', () {
       final j = <String, dynamic>{
-        'id': 't1', 'ts': 0, 'source': 'desktop',
-        'prompt': 'hi', 'state': 'done', 'result': 'ok',
+        'id': 't1',
+        'ts': 0,
+        'source': 'desktop',
+        'prompt': 'hi',
+        'state': 'done',
+        'result': 'ok',
       };
       final task = BotTask.fromJson(j);
       expect(task.summarized, isFalse);

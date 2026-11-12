@@ -273,6 +273,30 @@ fn check_reports_whether_an_agent_is_set_up_and_writes_nothing() {
     }
 }
 
+// Guards 2026-11-12: Atlas Mobile said "Claude Code integration is off" while the hooks were
+// on, because another atlas (the installed one, vs Atlas Dev's) had written them with its own
+// path. Hooks that are there but differ are "installed, other version" (2), not "off" (1).
+#[test]
+fn check_tells_hooks_from_another_atlas_apart_from_no_hooks() {
+    let sb = Sandbox::new();
+    let apply = sb.run(&sb.home, &["setup", "claude-code", "--apply"]);
+    assert!(apply.status.success(), "{}", out(&apply));
+    let settings = sb.claude.join("settings.json");
+    let text = std::fs::read_to_string(&settings).unwrap();
+    assert!(text.contains("\"atlas hook"), "{text}");
+    std::fs::write(
+        &settings,
+        text.replace("\"atlas hook", "\"/old/install/atlas hook"),
+    )
+    .unwrap();
+    let other = sb.run(&sb.home, &["setup", "claude-code", "--check"]);
+    assert_eq!(other.status.code(), Some(2), "{}", out(&other));
+    // The same file without any atlas hook is still "not set up".
+    std::fs::write(&settings, r#"{"theme": "dark"}"#).unwrap();
+    let none = sb.run(&sb.home, &["setup", "claude-code", "--check"]);
+    assert_eq!(none.status.code(), Some(1), "{}", out(&none));
+}
+
 #[test]
 fn missing_omp_still_writes_the_plugin_and_prints_the_link_command() {
     let sb = Sandbox::new();

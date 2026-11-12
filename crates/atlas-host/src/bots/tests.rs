@@ -898,6 +898,31 @@ exit 0"#;
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        // ── Add triggers to bot B for the trigger-parsing contract ────────────
+        client
+            .call(
+                "bot_triggers_set",
+                json!({
+                    "id": bot_b_id,
+                    "triggers": [
+                        {
+                            "id": "t-sched",
+                            "kind": {"type": "schedule", "cron": "0 9 * * 1-5"},
+                            "enabled": true,
+                            "prompt": "Review open PRs",
+                            "tz": "America/Sao_Paulo"
+                        },
+                        {
+                            "id": "t-interval",
+                            "kind": {"type": "interval", "every_secs": 3600},
+                            "enabled": false,
+                            "prompt": "Check deployments"
+                        }
+                    ]
+                }),
+            )
+            .await
+            .expect("bot_triggers_set B");
 
         // ── Phase 3: capture real bot_list ────────────────────────────────────
         let list = client.call("bot_list", json!({})).await.expect("bot_list");
@@ -972,7 +997,21 @@ exit 0"#;
         b_fix["id"] = json!("bot-done");
         b_fix["last"]["ts"] = json!(1700000000u64);
         b_fix["queued"] = json!(0);
-
+        // Normalise trigger IDs, last_fired (server baseline, volatile), and next_fire.
+        if let Some(triggers) = b_fix["triggers"].as_array_mut() {
+            for t in triggers.iter_mut() {
+                if let Some(obj) = t.as_object_mut() {
+                    obj.remove("last_fired");
+                }
+                if t["kind"]["type"] == "schedule" {
+                    t["id"] = json!("t-sched");
+                    t["next_fire"] = json!(1700100000u64);
+                } else if t["kind"]["type"] == "interval" {
+                    t["id"] = json!("t-interval");
+                    t["next_fire"] = json!(1700103600u64);
+                }
+            }
+        }
         let mut c_fix = c.clone();
         c_fix["id"] = json!("bot-opencode");
         c_fix["queued"] = json!(0);
@@ -1025,6 +1064,29 @@ exit 0"#;
             sc["approval_supported"].as_bool(),
             Some(false),
             "fixture opencode bot must have approval_supported:false: {sc}"
+        );
+        // Structural invariant: stored fixture has triggers on bot-done.
+        let sd = sb
+            .iter()
+            .find(|b| b["id"] == "bot-done")
+            .expect("bot-done must be in fixture");
+        let striggers = sd["triggers"]
+            .as_array()
+            .expect("bot-done must have triggers array");
+        assert!(
+            !striggers.is_empty(),
+            "bot-done fixture must have at least one trigger"
+        );
+        let sched = striggers
+            .iter()
+            .find(|t| t["kind"]["type"] == "schedule")
+            .expect("bot-done must have a schedule trigger");
+        assert!(sched["id"].is_string(), "trigger id must be string");
+        assert_eq!(sched["kind"]["cron"].as_str(), Some("0 9 * * 1-5"));
+        assert_eq!(sched["tz"].as_str(), Some("America/Sao_Paulo"));
+        assert!(
+            sched["next_fire"].is_number(),
+            "schedule trigger must have next_fire"
         );
 
         assert_eq!(
@@ -2459,7 +2521,7 @@ exit 0
         fix["prompt"] = json!("review the PR");
         fix["result"] = json!("LGTM");
 
-        // running task: use a static shape (no live running task in this test)
+        // running task: static shape with all new fields (title, preparing, tz, step.group, add_trigger)
         let running_fix = json!({
             "id": "task-running",
             "ts": 1761213100u64,
@@ -2467,27 +2529,43 @@ exit 0
             "prompt": "write tests",
             "state": "running",
             "started_at": 1761213090u64,
+            "title": "Writing unit tests for store",
+            "preparing": "codeatlasdev/ui",
+            "tz": "America/Sao_Paulo",
             "steps": [
                 { "ts": 1761213092u64, "text": "Reading files" },
-                { "ts": 1761213095u64, "text": "Writing tests" }
-            ]
+                { "ts": 1761213095u64, "text": "Writing tests", "group": "Test suite" }
+            ],
+            "action": {
+                "kind": "add_trigger",
+                "trigger": { "type": "schedule", "cron": "0 9 * * 1-5" },
+                "prompt": "Review open PRs",
+                "reason": "You asked for a daily review"
+            }
         });
 
         let fixture = json!({ "tasks": [fix, running_fix] });
 
-        let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let desktop_fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/desktop/src/__fixtures__/bot_tasks.json");
+        let mobile_fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/mobile/test/fixtures/bot_tasks.json");
 
         if std::env::var_os("UPDATE_FIXTURES").is_some() {
             std::fs::write(
-                &fixture_path,
+                &desktop_fixture_path,
+                serde_json::to_string_pretty(&fixture).unwrap() + "\n",
+            )
+            .unwrap();
+            std::fs::write(
+                &mobile_fixture_path,
                 serde_json::to_string_pretty(&fixture).unwrap() + "\n",
             )
             .unwrap();
         }
 
         let stored: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&fixture_path).expect(
+            &std::fs::read_to_string(&desktop_fixture_path).expect(
                 "fixture missing — run: UPDATE_FIXTURES=1 cargo test -p atlas-host bot_tasks_json_contract",
             ),
         )
@@ -2524,6 +2602,38 @@ exit 0
         for step in running_fix_stored["steps"].as_array().unwrap() {
             assert!(step["ts"].is_number(), "step ts must be a number");
         }
+        // New fields: title, preparing, tz, step.group, add_trigger action.
+        assert_eq!(
+            running_fix_stored["title"].as_str(),
+            Some("Writing unit tests for store"),
+            "running task must have title"
+        );
+        assert_eq!(
+            running_fix_stored["preparing"].as_str(),
+            Some("codeatlasdev/ui"),
+            "running task must have preparing"
+        );
+        assert_eq!(
+            running_fix_stored["tz"].as_str(),
+            Some("America/Sao_Paulo"),
+            "running task must have tz"
+        );
+        let grouped_step = running_fix_stored["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| !s["group"].is_null())
+            .expect("at least one step must have a group");
+        assert_eq!(grouped_step["group"].as_str(), Some("Test suite"));
+        assert_eq!(
+            running_fix_stored["action"]["kind"].as_str(),
+            Some("add_trigger"),
+            "running task must have add_trigger action"
+        );
+        assert_eq!(
+            running_fix_stored["action"]["trigger"]["type"].as_str(),
+            Some("schedule")
+        );
 
         crate::bots::runner::set_test_agent_bin(None);
         client.call("shutdown", json!({})).await.ok();

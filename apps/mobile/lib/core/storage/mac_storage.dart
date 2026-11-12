@@ -9,6 +9,9 @@ const _kDevicesKey = 'atlas_mobile.devices';
 /// Secure-storage key for the phone's own iroh secret key (hex-encoded).
 const _kSecretKeyKey = 'atlas_mobile.secret_key';
 
+/// When the Inbox was last opened (ms since the epoch).
+const _kInboxSeenKey = 'atlas_mobile.inbox_seen';
+
 /// Read/write paired [MacDevice]s to [FlutterSecureStorage].
 class MacStorage {
   MacStorage({FlutterSecureStorage? storage})
@@ -59,4 +62,14 @@ class MacStorage {
   /// Persist the phone's own secret key hex.
   Future<void> saveSecretKey(String hexKey) async =>
       _storage.write(key: _kSecretKeyKey, value: hexKey);
+
+  Future<DateTime?> loadInboxSeen() async {
+    final v = int.tryParse(await _storage.read(key: _kInboxSeenKey) ?? '');
+    return v == null ? null : DateTime.fromMillisecondsSinceEpoch(v);
+  }
+
+  Future<void> saveInboxSeen(DateTime at) => _storage.write(
+    key: _kInboxSeenKey,
+    value: '${at.millisecondsSinceEpoch}',
+  );
 }

@@ -115,7 +115,10 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::LspUninstall { .. }
         | C::LspRestart { .. }
         | C::LspLog { .. }
-        | C::LspApplyEditResult { .. } => Route::Local,
+        | C::LspApplyEditResult { .. }
+        // The lab reaches the bot computers itself (they are remote: nothing on this Mac to spare).
+        | C::CrewServers {}
+        | C::CrewCall { .. } => Route::Local,
         C::BotList {}
         | C::BotCreate { .. }
         | C::BotUpdate { .. }

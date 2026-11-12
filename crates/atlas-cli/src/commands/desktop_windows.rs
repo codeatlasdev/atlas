@@ -113,6 +113,12 @@ fn run_installer(source: &Path, dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Atlas-Setup.exe's own copy in the install folder (`crates/atlas-setup`, `paths::OWN_COPY`): the
+/// uninstaller Settings › Apps opens. It is not part of any installer's payload, so an update must
+/// leave it where it is: moved aside it would be deleted with the old files, and the post-install
+/// hook (`packaging/windows/installer-hooks.nsh`) would find nothing to point the uninstall entry at.
+const SETUP_COPY: &str = "Atlas Uninstall.exe";
+
 /// Suffix of a file moved aside by the install run of process `pid`: `atlas.exe` →
 /// `atlas.exe.atlas-old-1234`.
 fn aside_suffix(pid: u32) -> String {
@@ -184,7 +190,7 @@ fn install_with(
     if let Ok(entries) = std::fs::read_dir(dir) {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if parse_aside(&name).is_some() {
+            if parse_aside(&name).is_some() || name.eq_ignore_ascii_case(SETUP_COPY) {
                 continue;
             }
             let from = e.path();
@@ -228,7 +234,7 @@ fn install_with(
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
-                    if parse_aside(&name).is_none() {
+                    if parse_aside(&name).is_none() && !name.eq_ignore_ascii_case(SETUP_COPY) {
                         let _ = remove(&e.path());
                     }
                 }
@@ -425,6 +431,45 @@ mod install_tests {
         assert!(format!("{e:#}").contains("is missing"), "{e:#}");
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "old");
         assert_eq!(names(tmp.path()), ["Atlas", "app-version"]);
+    }
+
+    /// Review finding: `atlas update` moved every file aside, `Atlas Uninstall.exe` included, so the
+    /// NSIS post-install hook found no branded uninstaller and the backup was deleted afterwards.
+    #[test]
+    fn an_update_keeps_the_branded_uninstaller_in_place() {
+        let (tmp, target, vf) = installed();
+        let dir = tmp.path().join("Atlas");
+        let own = dir.join(SETUP_COPY);
+        std::fs::write(&own, "setup").unwrap();
+        // The installer (like the NSIS post-install hook) sees it there while it runs.
+        install_with(
+            &target,
+            Some("1.1.0"),
+            &vf,
+            |d| {
+                assert!(d.join(SETUP_COPY).is_file(), "still in place for the hook");
+                std::fs::write(d.join("atlas-desktop.exe"), "new")?;
+                Ok(())
+            },
+            || Some("1.1.0".into()),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&own).unwrap(), "setup");
+        assert_eq!(names(&dir), ["Atlas Uninstall.exe", "atlas-desktop.exe"]);
+    }
+
+    /// A failed update restores the old install and still leaves the uninstaller alone.
+    #[test]
+    fn a_failed_update_keeps_the_branded_uninstaller_too() {
+        let (tmp, target, vf) = installed();
+        let dir = tmp.path().join("Atlas");
+        std::fs::write(dir.join(SETUP_COPY), "setup").unwrap();
+        install_with(&target, Some("1.1.0"), &vf, |_| bail!("boom"), || None).unwrap_err();
+        assert_eq!(
+            std::fs::read_to_string(dir.join(SETUP_COPY)).unwrap(),
+            "setup"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "old");
     }
 
     /// A first install has nothing to restore: a failure leaves no folder and no record.

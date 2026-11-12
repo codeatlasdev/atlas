@@ -336,14 +336,22 @@ fn detect_go_service(path: &Path, detection: &mut ProjectDetection) {
     });
 }
 
+/// The interpreter command: Windows installs `python` (and the `py` launcher), while macOS and Debian/Ubuntu often
+/// ship only `python3`.
+const PYTHON: &str = if cfg!(windows) { "python" } else { "python3" };
+
+/// The port both Python dev servers are told to listen on. They default to 8000 and ignore `$PORT`, so the command
+/// names it and the service declares the same one for the health probe.
+const PYTHON_PORT: u16 = 8000;
+
 /// Python dev servers, only when the command is unambiguous: Django's `manage.py`, or FastAPI + uvicorn declared in
 /// `pyproject.toml` with exactly one of `main.py`/`app.py`/`api.py` defining `app`.
 fn detect_python_service(path: &Path, detection: &mut ProjectDetection) {
     if path.join("manage.py").is_file() {
         detection.services.push(DetectedService {
             name: "web".into(),
-            command: "python manage.py runserver".into(),
-            port: None,
+            command: format!("{PYTHON} manage.py runserver {PYTHON_PORT}"),
+            port: Some(PYTHON_PORT),
         });
         return;
     }
@@ -380,8 +388,8 @@ fn detect_python_service(path: &Path, detection: &mut ProjectDetection) {
             .unwrap_or_default();
         detection.services.push(DetectedService {
             name: service_key(&name, "api"),
-            command: format!("uvicorn {module}:app --reload"),
-            port: None,
+            command: format!("{PYTHON} -m uvicorn {module}:app --reload --port {PYTHON_PORT}"),
+            port: Some(PYTHON_PORT),
         });
     }
 }
@@ -629,20 +637,30 @@ mod tests {
         assert!(detect_project(test_only.path()).services.is_empty());
     }
 
+    /// Incident (PR #158 review): a detected Django/FastAPI service had `port: None`, so `initial_config` gave it
+    /// `4010+i` and the health probe waited there while the server listened on 8000 (it ignores `$PORT`): the stack
+    /// never turned healthy. The declared port and the one in the command must be the same, and the interpreter is
+    /// the one the OS has (`python` on Windows, `python3` elsewhere).
     #[test]
-    fn a_django_manage_py_runs_the_dev_server() {
+    fn a_django_manage_py_runs_the_dev_server_on_its_declared_port() {
         let t = fixture(&[
             ("manage.py", "import django\n"),
             ("requirements.txt", "django\n"),
         ]);
+        let d = detect_project(t.path());
+        let py = if cfg!(windows) { "python" } else { "python3" };
         assert_eq!(
-            commands(&detect_project(t.path())),
-            [("web", "python manage.py runserver")]
+            commands(&d),
+            [("web", format!("{py} manage.py runserver 8000").as_str())]
         );
+        assert_eq!(d.services[0].port, Some(8000));
+        // The yaml the user gets probes that same port, not 4010.
+        let (yaml, _) = initial_config(t.path());
+        assert!(yaml.contains("    port: 8000\n"), "{yaml}");
     }
 
     #[test]
-    fn fastapi_with_one_obvious_app_module_runs_uvicorn() {
+    fn fastapi_with_one_obvious_app_module_runs_uvicorn_on_its_declared_port() {
         let t = fixture(&[
             (
                 "pyproject.toml",
@@ -650,10 +668,17 @@ mod tests {
             ),
             ("main.py", "from fastapi import FastAPI\napp = FastAPI()\n"),
         ]);
+        let d = detect_project(t.path());
+        let py = if cfg!(windows) { "python" } else { "python3" };
         assert_eq!(
-            commands(&detect_project(t.path())),
-            [("api", "uvicorn main:app --reload")]
+            commands(&d),
+            [(
+                "api",
+                format!("{py} -m uvicorn main:app --reload --port 8000").as_str()
+            )]
         );
+        assert_eq!(d.services[0].port, Some(8000));
+        assert_eq!(extract_port(&d.services[0].command), Some(8000));
     }
 
     #[test]

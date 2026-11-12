@@ -8,7 +8,7 @@ import { api, errText } from "#lib/api.ts";
 import { addPaths } from "#lib/components/sidebar/projects.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
-import { INITIAL, next, progress, summarize, type Event, type Phase } from "./flow.ts";
+import { INITIAL, next, onboardingChoices, progress, summarize, type Event, type Phase } from "./flow.ts";
 
 class Welcome {
 	phase = $state<Phase>(INITIAL);
@@ -22,17 +22,16 @@ class Welcome {
 	upAt = $state<number | null>(null);
 	/** The deck is adding projects (from the click until `added`); keeps the overlay up through that gap. */
 	adding = $state(false);
+	/** The first-run overlay is mounted and owns this flow. The standing Hero shares the store but is not the overlay:
+	 * a returning user adding a folder there never gets the overlay or the tour. */
+	overlay = $state(false);
 
 	/** Scene clock of the globe canvas (set by the Hero); the completion hit is stamped on it. */
 	clock: () => number = () => 0;
 
 	summary = $derived(summarize(discovery.found));
-	/** Valid, not-yet-added projects, newest first: what the user can pick. */
-	choices = $derived(
-		[...discovery.addable]
-			.filter((f) => !f.error && !f.nested)
-			.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0)),
-	);
+	/** Valid, not-yet-added folders, newest first: what the user can pick. Folders without an atlas.yaml count. */
+	choices = $derived(onboardingChoices(discovery.found, discovery.registered));
 	chosen = $derived(this.choices.filter((f) => this.picked[f.path] ?? true));
 	started = $derived.by(() => {
 		const live = this.watching ? store.live[this.watching] : undefined;

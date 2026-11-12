@@ -2,7 +2,7 @@
 
 import { toast } from "@codeatlasdev/ui";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
-import { api } from "#lib/api.ts";
+import { api, type ProjectView } from "#lib/api.ts";
 import { confirmDialog } from "#lib/stores/ask.svelte.ts";
 import { discovery } from "#lib/stores/discovery.svelte.ts";
 import { addedToast, addPlan, removeDescription } from "./addProject.ts";
@@ -38,10 +38,16 @@ export async function addFolder(dir: string) {
 	if (!p) return;
 	await store.refresh();
 	store.selected = p.id;
+	await announceAdded(p.id, p);
+}
+
+/** After adding, say what Atlas made of a folder that has no atlas.yaml (nothing for one that has). Every add path
+ * goes through here: the sidebar, drag-drop, the Find projects dialog and onboarding. */
+async function announceAdded(id: string, fallback: ProjectView) {
 	// `refresh` loads configs without awaiting them: wait for this one so the toast can name the stack.
-	await store.loadConfig(p.id);
-	const added = store.projects.find((x) => x.id === p.id) ?? p;
-	const line = addedToast(added, store.configs[p.id]?.detected ?? null);
+	await store.loadConfig(id);
+	const added = store.projects.find((x) => x.id === id) ?? fallback;
+	const line = addedToast(added, store.configs[id]?.detected ?? null);
 	if (line) toast.info(line);
 }
 
@@ -52,9 +58,13 @@ export function showDiscover() {
 
 /** Register the chosen paths, then fall back to the first project when nothing is selected. */
 export async function addPaths(paths: string[]) {
+	const before = new Set(store.projects.map((p) => p.id));
 	for (const p of paths) await store.run("add", () => api.add(p));
 	await store.refresh();
 	if (!store.selected) store.selected = store.sorted[0]?.id ?? null;
+	// One folder: name what was detected. Several: the sidebar shows them, a toast per folder would be noise.
+	const fresh = store.projects.filter((p) => !before.has(p.id));
+	if (fresh.length === 1) await announceAdded(fresh[0]!.id, fresh[0]!);
 }
 
 /** Re-check every project on disk and say what changed. */

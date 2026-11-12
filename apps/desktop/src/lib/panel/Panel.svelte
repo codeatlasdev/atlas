@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useNow } from "#lib/clock.svelte.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
-	import { Button, EmptyState } from "@codeatlasdev/ui";
+	import { Button, EmptyState, Spinner } from "@codeatlasdev/ui";
 	import { FileCog } from "@lucide/svelte";
 	import { api, type ProjectView } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
@@ -16,7 +16,7 @@
 	import StateTimeline from "./StateTimeline.svelte";
 	import { hex } from "./color.ts";
 	import { metrics } from "./metrics.svelte.ts";
-	import { emptyPanel, lastLines, serviceRows } from "./overview.ts";
+	import { emptyPanel, lastLines, serviceRows, stackKind } from "./overview.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -88,7 +88,11 @@
 	}
 
 	// Live rows (a running stack) keep the grid even before the config has loaded.
-	let empty = $derived(services.length ? ({ kind: "services" } as const) : emptyPanel(project, cfg));
+	let empty = $derived(
+		services.length
+			? ({ kind: "services" } as const)
+			: emptyPanel(project, cfg, !!store.configFailed[project.id]),
+	);
 	let stackBusy = $derived(!!store.busy[`stack:${project.id}`]);
 	let uptime = $derived.by(() => {
 		const since = metrics.upSince(project.id);
@@ -103,7 +107,7 @@
 		<div class="hero">
 			<EmptyState
 				icon={FileCog}
-				title="{empty.detected}: nothing to run yet"
+				title="{stackKind(empty.detected)}: nothing to run yet"
 				description="Atlas recognised this folder but could not tell what to run. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save."
 			>
 				{#snippet actions()}
@@ -116,7 +120,7 @@
 			<EmptyState
 				icon={FileCog}
 				title="No services yet"
-				description="Atlas did not recognise a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them."
+				description="Atlas did not recognise a stack in this folder. Add the services you want in the Config tab and Atlas starts, watches and charts them. Nothing is written until you save."
 			>
 				{#snippet actions()}
 					<Button variant="glass" onclick={openConfig}>Set up services</Button>
@@ -135,7 +139,9 @@
 				{/snippet}
 			</EmptyState>
 		</div>
-	{:else if empty.kind === "loading" || empty.kind === "broken"}
+	{:else if empty.kind === "loading"}
+		<div class="hero"><Spinner size={16} /></div>
+	{:else if empty.kind === "broken"}
 		<div class="hero"></div>
 	{:else}
 		<PanelKpis

@@ -388,27 +388,37 @@ fn logo(pm: &mut Pixmap, f: &Frame, tf: Transform, mask: &Mask) {
 
 fn texts(pm: &mut Pixmap, f: &Frame, tf: Transform) {
     let snap = f.snap;
-    let (title, sub, title_color) = match (snap.phase, snap.mode) {
-        (Phase::Failed, Mode::Install) => ("Setup could not finish", None, color::ERROR),
-        (Phase::Failed, Mode::Uninstall) => ("Removal could not finish", None, color::ERROR),
-        (Phase::Done, _) => (snap.status.as_str(), None, color::OK),
-        (Phase::AskData, _) => (
-            "Remove Atlas",
-            Some("Your settings, projects and sessions live in ~/.atlas."),
-            color::TEXT,
-        ),
-        _ => (snap.status.as_str(), None, color::TEXT),
+    let (title, title_color) = match (snap.phase, snap.mode) {
+        // The same title the clipboard text carries (state.status), so what is read is what is copied.
+        (Phase::Failed, _) => (snap.status.as_str(), color::ERROR),
+        (Phase::Done, _) => (snap.status.as_str(), color::OK),
+        (Phase::AskData, _) => ("Keep your Atlas data?", color::TEXT),
+        (Phase::ConfirmRemove, _) => ("Delete your Atlas data?", color::TEXT),
+        _ => (snap.status.as_str(), color::TEXT),
     };
     text_center(pm, f, tf, title, 176.0, Ink::new(20.0, true, title_color));
     match snap.phase {
         Phase::Failed => {
             let measure = |s: &str| f.fonts.measure(s, 12.5, false);
-            let msg = if snap.details.is_empty() {
-                snap.status.as_str()
+            for (i, line) in failure_lines(snap, &measure).iter().enumerate() {
+                text_center(
+                    pm,
+                    f,
+                    tf,
+                    line,
+                    BODY_Y + i as f32 * BODY_STEP,
+                    Ink::new(12.0, false, color::MUTED),
+                );
+            }
+        }
+        Phase::AskData | Phase::ConfirmRemove => {
+            let measure = |s: &str| f.fonts.measure(s, 12.0, false);
+            let text = if snap.phase == Phase::AskData {
+                ASK_TEXT
             } else {
-                snap.details.as_str()
+                CONFIRM_TEXT
             };
-            for (i, line) in layout::wrap(msg, WIDTH - 80.0, 3, &measure)
+            for (i, line) in layout::wrap(text, WIDTH - 72.0, QUESTION_LINES, &measure)
                 .iter()
                 .enumerate()
             {
@@ -417,37 +427,39 @@ fn texts(pm: &mut Pixmap, f: &Frame, tf: Transform) {
                     f,
                     tf,
                     line,
-                    200.0 + i as f32 * 17.0,
-                    Ink::new(12.5, false, color::MUTED),
+                    BODY_Y + i as f32 * BODY_STEP,
+                    Ink::new(12.0, false, color::MUTED),
                 );
             }
         }
-        Phase::AskData => {
-            if let Some(sub) = sub {
-                text_center(pm, f, tf, sub, 204.0, Ink::new(12.5, false, color::MUTED));
-            }
-            text_center(
-                pm,
-                f,
-                tf,
-                "Keeping them lets a reinstall pick up where you left off.",
-                222.0,
-                Ink::new(12.5, false, color::DIM),
-            );
-        }
         Phase::Done => {
-            let line = if snap.mode == Mode::Install {
-                "Opening Atlas…"
+            let line = if snap.note.is_empty() {
+                "Done."
             } else {
-                "Thanks for trying it."
+                snap.note.as_str()
             };
-            text_center(pm, f, tf, line, 204.0, Ink::new(13.0, false, color::MUTED));
+            let measure = |s: &str| f.fonts.measure(s, 13.0, false);
+            for (i, l) in layout::wrap(line, WIDTH - 72.0, 2, &measure)
+                .iter()
+                .enumerate()
+            {
+                text_center(
+                    pm,
+                    f,
+                    tf,
+                    l,
+                    204.0 + i as f32 * 17.0,
+                    Ink::new(13.0, false, color::MUTED),
+                );
+            }
         }
-        Phase::Working => {
-            let line = if snap.mode == Mode::Install {
+        Phase::Working | Phase::Cancelled => {
+            let line = if !snap.note.is_empty() {
+                snap.note.as_str()
+            } else if snap.mode == Mode::Install {
                 "This takes a few seconds."
             } else {
-                "Your data stays unless you say otherwise."
+                ""
             };
             text_center(
                 pm,
@@ -463,11 +475,39 @@ fn texts(pm: &mut Pixmap, f: &Frame, tf: Transform) {
         pm,
         f,
         tf,
-        "codeatlas.com.br",
+        "atlas.codeatlas.com.br",
         HEIGHT - 11.0,
         Ink::new(10.0, false, color::DIM),
     );
 }
+
+/// Lines of the failure screen's body. The reason (first paragraph of the details) may take
+/// [`REASON_LINES`] and is cut with `…` beyond that (Copy details has all of it); the log and the
+/// next step always show whole.
+const REASON_LINES: usize = 2;
+const TAIL_LINES: usize = 3;
+
+fn failure_lines(snap: &Snapshot, measure: &dyn Fn(&str) -> f32) -> Vec<String> {
+    let details = if snap.details.is_empty() {
+        snap.status.as_str()
+    } else {
+        snap.details.as_str()
+    };
+    let (reason, tail) = details.split_once('\n').unwrap_or((details, ""));
+    let mut lines = layout::wrap(reason, WIDTH - 80.0, REASON_LINES, measure);
+    lines.extend(layout::wrap(tail, WIDTH - 80.0, TAIL_LINES, measure));
+    lines
+}
+const QUESTION_LINES: usize = 4;
+/// Baseline of the first body line and the step between lines on the text screens (buttons at 262).
+const BODY_Y: f32 = 196.0;
+const BODY_STEP: f32 = 14.0;
+
+/// The data question. It names what deleting removes: the data folder, the worktrees Atlas made
+/// (which can hold uncommitted work) and the `atlas` command; and what it never touches.
+pub const ASK_TEXT: &str = "Deleting it removes %USERPROFILE%\\.atlas: settings, your project list, worktrees Atlas created (with any uncommitted changes) and the atlas command. Your project folders are never touched.";
+/// The second step, before anything is deleted.
+pub const CONFIRM_TEXT: &str = "This deletes %USERPROFILE%\\.atlas, including worktrees Atlas created and any uncommitted changes in them, and the atlas command. It cannot be undone.";
 
 /// How a line of text looks.
 #[derive(Clone, Copy)]
@@ -513,7 +553,10 @@ fn text_at(pm: &mut Pixmap, f: &Frame, tf: Transform, text: &str, at: (f32, f32)
 }
 
 fn progress_bar(pm: &mut Pixmap, f: &Frame, tf: Transform, mask: &Mask) {
-    if matches!(f.snap.phase, Phase::Failed | Phase::AskData) {
+    if matches!(
+        f.snap.phase,
+        Phase::Failed | Phase::AskData | Phase::ConfirmRemove
+    ) {
         return;
     }
     let r = layout::BAR;
@@ -669,6 +712,7 @@ mod tests {
             mode: Mode::Install,
             phase,
             status: "Installing Atlas…".into(),
+            note: String::new(),
             progress,
             details: String::new(),
         }
@@ -795,7 +839,7 @@ mod tests {
         let mut s = snap(Phase::Failed, 0.4);
         s.status = "Atlas could not be installed".into();
         s.details =
-            "The Atlas installer failed (exit code 2).\n\nLog: C:\\Temp\\atlas-setup.log".into();
+            "The Atlas installer failed (exit code 2).\nLog: C:\\Temp\\atlas-setup.log".into();
         let pm = paint(&frame(&s, &fonts, 3.0, 1.0));
         let reddish = (0..WIDTH as u32).any(|x| {
             (150..180).any(|y| {
@@ -825,6 +869,57 @@ mod tests {
         assert!(
             row(&working) > row(&pm),
             "the Working frame shows the bar track, the failure does not"
+        );
+    }
+
+    #[test]
+    fn the_data_question_names_what_deleting_removes() {
+        // B1: the screen says what is deleted (worktrees with uncommitted changes, the atlas
+        // command), that project folders are never touched, and uses Windows paths.
+        assert!(ASK_TEXT.contains("%USERPROFILE%\\.atlas"));
+        assert!(ASK_TEXT.contains("worktrees Atlas created (with any uncommitted changes)"));
+        assert!(ASK_TEXT.contains("atlas command"));
+        assert!(ASK_TEXT.contains("Your project folders are never touched."));
+        assert!(CONFIRM_TEXT.contains("cannot be undone"));
+        assert!(
+            !ASK_TEXT.contains("~/"),
+            "Windows-facing text uses %USERPROFILE%"
+        );
+        // And it all fits the window at the font the installer really uses.
+        let fonts = Fonts::bundled();
+        let measure = |s: &str| fonts.measure(s, 12.0, false);
+        for t in [ASK_TEXT, CONFIRM_TEXT] {
+            let lines = layout::wrap(t, WIDTH - 72.0, 99, &measure);
+            assert!(
+                lines.len() <= QUESTION_LINES,
+                "{} lines: {lines:?}",
+                lines.len()
+            );
+        }
+    }
+
+    #[test]
+    fn a_failure_shows_the_reason_the_log_path_and_the_next_step_untruncated() {
+        let fonts = Fonts::bundled();
+        let reason = "The installer finished but C:\\Users\\ana\\AppData\\Local\\Atlas\\atlas-desktop.exe is missing.";
+        let mut s = snap(Phase::Failed, 0.4);
+        s.details = format!(
+            "{reason}\nLog: C:\\Users\\ana\\AppData\\Local\\Temp\\atlas-setup.log\n{}",
+            crate::install::NEXT_STEP
+        );
+        let measure = |t: &str| fonts.measure(t, 12.0, false);
+        let lines = failure_lines(&s, &measure);
+        assert!(lines.len() <= REASON_LINES + TAIL_LINES, "{lines:#?}");
+        // The log path and the way out are whole, never cut; only the long reason may be.
+        assert!(lines.iter().any(|l| l.contains("atlas-setup.log")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("run Atlas-Setup.exe again"))
+        );
+        assert!(
+            lines.last().unwrap().ends_with("open an issue."),
+            "the next step is whole: {lines:#?}"
         );
     }
 
@@ -864,11 +959,18 @@ mod tests {
             None => Fonts::bundled(),
         };
         let mut failed = snap(Phase::Failed, 0.4);
-        failed.details = "The Atlas installer failed (exit code 2).\n\nLog: C:\\Users\\ana\\AppData\\Local\\Temp\\atlas-setup.log".into();
+        failed.status = "Atlas could not be installed".into();
+        failed.details = format!(
+            "The Atlas installer failed (exit code 2).\nLog: C:\\Users\\ana\\AppData\\Local\\Temp\\atlas-setup.log\n{}",
+            crate::install::NEXT_STEP
+        );
         let mut ask = snap(Phase::AskData, 0.0);
         ask.mode = Mode::Uninstall;
+        let mut confirm = snap(Phase::ConfirmRemove, 0.0);
+        confirm.mode = Mode::Uninstall;
         let mut done = snap(Phase::Done, 1.0);
         done.status = "Atlas is ready".into();
+        done.note = "Opening Atlas…".into();
         for (name, s, t, scale) in [
             ("early", snap(Phase::Working, 0.05), 0.5, 1.0),
             ("working", snap(Phase::Working, 0.55), 4.0, 1.0),
@@ -876,6 +978,7 @@ mod tests {
             ("done", done, 6.0, 1.0),
             ("failed", failed, 6.0, 1.0),
             ("ask", ask, 6.0, 1.0),
+            ("confirm", confirm, 6.0, 1.0),
         ] {
             let pm = paint_window(&frame(&s, &fonts, t, scale));
             let name = format!("{name}_{}x{}.rgba", pm.width(), pm.height());

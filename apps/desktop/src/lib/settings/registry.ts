@@ -1043,7 +1043,7 @@ const DEFS = [
 							item(
 								"dock-enabled",
 								"Show the dock",
-								"Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered.",
+								"Keep the pill on screen while Atlas runs. Hide it any time with the hide key, the pill's hide button or right-click menu, or the tray menu; the choice is remembered. Off by default on Windows and Linux.",
 								"floating pill overlay widget menu bar always on top hide show",
 							),
 							item(

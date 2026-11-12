@@ -38,6 +38,10 @@ pub enum Button {
     Dismiss,
     KeepData,
     RemoveData,
+    /// The second step: really delete.
+    ConfirmRemove,
+    /// The second step: back to the question.
+    GoBack,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -48,8 +52,9 @@ pub struct Placed {
     pub primary: bool,
 }
 
-const BTN_Y: f32 = 250.0;
-const BTN_H: f32 = 36.0;
+/// Buttons sit low so the text above them has room for four lines.
+const BTN_Y: f32 = 262.0;
+const BTN_H: f32 = 34.0;
 
 /// The buttons the window shows in this state (the close box is always there, drawn apart).
 pub fn buttons(s: &Snapshot) -> Vec<Placed> {
@@ -79,8 +84,13 @@ pub fn buttons(s: &Snapshot) -> Vec<Placed> {
         ),
         // The default (primary) answer is KEEP.
         Phase::AskData => two(
-            (Button::RemoveData, "Remove my data", false),
+            (Button::RemoveData, "Delete my data", false),
             (Button::KeepData, "Keep my data", true),
+        ),
+        // The second step: the way back is the primary one.
+        Phase::ConfirmRemove => two(
+            (Button::ConfirmRemove, "Yes, delete it", false),
+            (Button::GoBack, "No, go back", true),
         ),
         _ => Vec::new(),
     }
@@ -161,6 +171,7 @@ mod tests {
             mode: Mode::Install,
             phase,
             status: String::new(),
+            note: String::new(),
             progress: 0.5,
             details: String::new(),
         }
@@ -194,6 +205,18 @@ mod tests {
     }
 
     #[test]
+    fn the_second_step_defaults_to_going_back() {
+        let b = buttons(&snap(Phase::ConfirmRemove));
+        let primary: Vec<_> = b.iter().filter(|p| p.primary).collect();
+        assert_eq!(primary.len(), 1);
+        assert_eq!(primary[0].button, Button::GoBack);
+        assert!(
+            b.iter()
+                .any(|p| p.button == Button::ConfirmRemove && !p.primary)
+        );
+    }
+
+    #[test]
     fn a_failure_offers_copy_details_and_close() {
         let b = buttons(&snap(Phase::Failed));
         assert!(b.iter().any(|p| p.button == Button::CopyDetails));
@@ -202,7 +225,7 @@ mod tests {
 
     #[test]
     fn buttons_fit_inside_the_window_and_do_not_overlap() {
-        for ph in [Phase::Failed, Phase::AskData] {
+        for ph in [Phase::Failed, Phase::AskData, Phase::ConfirmRemove] {
             let b = buttons(&snap(ph));
             for p in &b {
                 assert!(

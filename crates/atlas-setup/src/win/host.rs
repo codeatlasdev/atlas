@@ -109,6 +109,25 @@ impl uninstall::Host for Real {
         }
     }
 
+    fn delete_after_exit(&self, path: &Path) -> Result<(), String> {
+        // A running program cannot delete itself, but a detached `cmd` can once it has exited.
+        let line = if path.is_dir() {
+            cleanup_command(&[], &[path])
+        } else {
+            cleanup_command(&[path], &[])
+        };
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/d", "/c"])
+            .raw_arg(&line)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .no_window();
+        atlas_core::sys::spawn_detached(&mut cmd)
+            .map(|_| ())
+            .map_err(|e| format!("cannot start the cleanup: {e}"))
+    }
+
     fn run_uninstaller(&self, uninstaller: &Path, install_dir: &Path) -> Result<i32, String> {
         // `_?=<dir>` makes NSIS run in place and wait, instead of copying itself to %TEMP% and
         // returning at once (which would leave us nothing to wait for).
@@ -126,6 +145,21 @@ impl uninstall::Host for Real {
             }
         }
     }
+}
+
+/// The command line of the detached cleanup: wait until this process is gone, then delete `files`
+/// and, last, the folders (`rmdir` refuses a folder that still holds anything, so it never takes
+/// a user's files). Pure, so the quoting is tested.
+pub fn cleanup_command(files: &[&Path], dirs: &[&Path]) -> String {
+    // `ping -n 4` is the usual no-dependency sleep (about 3 s): enough for this process to exit.
+    let mut c = String::from("ping -n 4 127.0.0.1 >nul");
+    for f in files {
+        c.push_str(&format!(" & del /f /q \"{}\"", f.display()));
+    }
+    for d in dirs {
+        c.push_str(&format!(" & rmdir \"{}\"", d.display()));
+    }
+    c
 }
 
 /// An NSIS program, silent. `/D=` (install) or `_?=` (uninstall) must be last and unquoted.
@@ -148,20 +182,11 @@ fn nsis(exe: &Path, dir: &Path, uninstall: bool) -> Result<Child, String> {
 /// Pids of Atlas Desktop processes that run from `install_dir` (a dev build elsewhere with the
 /// same image name is not ours to close).
 fn app_pids(install_dir: &Path) -> Vec<u32> {
-    let want = install_dir
-        .to_string_lossy()
-        .to_lowercase()
-        .replace('/', "\\");
     atlas_core::sys::process_rows()
         .into_iter()
         .filter(|r| r.exe.eq_ignore_ascii_case(APP_EXE))
         .filter(|r| {
-            atlas_core::sys::exe_path(r.pid).is_some_and(|p| {
-                p.to_string_lossy()
-                    .to_lowercase()
-                    .replace('/', "\\")
-                    .starts_with(&want)
-            })
+            atlas_core::sys::exe_path(r.pid).is_some_and(|p| paths::is_inside(&p, install_dir))
         })
         .map(|r| r.pid)
         .collect()
@@ -200,5 +225,28 @@ fn close_running_app(install_dir: &Path, grace: Duration) {
         if atlas_core::sys::pid_alive(p) {
             atlas_core::sys::force_kill(p);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cleanup_waits_then_deletes_files_before_folders_with_quoted_paths() {
+        let line = cleanup_command(
+            &[Path::new(
+                r"C:\Users\Ana Maria\AppData\Local\Atlas\Atlas Uninstall.exe",
+            )],
+            &[Path::new(r"C:\Users\Ana Maria\AppData\Local\Atlas")],
+        );
+        assert_eq!(
+            line,
+            "ping -n 4 127.0.0.1 >nul & del /f /q \"C:\\Users\\Ana Maria\\AppData\\Local\\Atlas\\Atlas Uninstall.exe\" & rmdir \"C:\\Users\\Ana Maria\\AppData\\Local\\Atlas\""
+        );
+        assert!(
+            !line.contains("rmdir /s"),
+            "the folder goes only when empty: never a user's files"
+        );
     }
 }

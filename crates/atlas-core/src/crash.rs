@@ -66,7 +66,8 @@ pub fn write_crash_report(msg: &str, location: &str) -> Option<PathBuf> {
     std::fs::create_dir_all(&dir).ok()?;
 
     let path = dir.join(format!("crash-{ts}.toml"));
-    let backtrace = std::backtrace::Backtrace::capture().to_string();
+    // `capture()` records nothing unless RUST_BACKTRACE is set, and an installed app never has it.
+    let backtrace = std::backtrace::Backtrace::force_capture().to_string();
     let args = std::env::args().collect::<Vec<_>>().join(" ");
 
     let report = format!(

@@ -88,6 +88,31 @@ export function summarize(found: Found[], limit = 6): ScanSummary {
 	};
 }
 
+/**
+ * What the results step offers: valid, top-level folders not yet in Atlas, newest first. Folders without an atlas.yaml
+ * count: the deck promises "Open a folder and Atlas runs it", and most machines have no atlas.yaml at all, so
+ * counting only configured folders sent exactly those users to "No projects found yet".
+ */
+export function onboardingChoices(found: Found[], registered: ReadonlySet<string>): Found[] {
+	return found
+		.filter((f) => !registered.has(f.path) && !f.error && !f.nested)
+		.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0) || a.name.localeCompare(b.name));
+}
+
+const STACK_LABEL: Record<string, string> = {
+	node: "Node project",
+	rust: "Rust project",
+	go: "Go project",
+	python: "Python project",
+	compose: "Compose project",
+};
+
+/** The result row's meta: services for a configured project, the detected stack for a folder without one. */
+export function choiceMeta(f: Pick<Found, "has_config" | "services" | "stack">): string {
+	if (f.has_config) return `${f.services.toLocaleString()} ${f.services === 1 ? "service" : "services"}`;
+	return (f.stack && STACK_LABEL[f.stack]) || "Project folder";
+}
+
 interface Row {
 	state: string;
 	completed_ok?: boolean;
@@ -117,6 +142,9 @@ export function progress(rows: Row[], reported = false): StartProgress {
  * Whether the welcome overlay is up. A first run is "welcome never finished and nothing added yet"; once the deck
  * adds the first project the overlay stays for the rest of the guided flow (`starting`, `up`) so the user sees their
  * stack come up, even though the welcome is already saved as finished by then ([`welcomeFinished`]).
+ *
+ * `fromOverlay`: the flow began in the overlay. The standing Hero (welcome done, no project) walks the same phases,
+ * but a returning user adding a folder there must not get the first-run overlay, the tour and its "Continue" again.
  */
 export function showWelcome(
 	state: { done: boolean },
@@ -124,11 +152,12 @@ export function showWelcome(
 	projectCount: number,
 	phase: Phase,
 	adding = false,
+	fromOverlay = false,
 ): boolean {
 	if (!loaded || phase === "done") return false;
 	// The deck is adding the first project: the project list grows BEFORE the phase moves to `starting`, and in that gap
 	// the old rule ("no projects") unmounted the overlay and remounted it on `starting` from its first slide.
-	if (adding || phase === "starting" || phase === "up") return true;
+	if (fromOverlay && (adding || phase === "starting" || phase === "up")) return true;
 	return projectCount === 0 && !state.done;
 }
 

@@ -8,6 +8,13 @@
 	// A project showing up through any other path (CLI, the sidebar) ends the welcome and starts the tour, as before.
 	// Paths through the deck itself walk the guided flow and hand off from its last step.
 	let handedOff = false;
+	// Mounted = the overlay owns the flow (see `welcome.overlay`); the flag drops when the overlay goes away.
+	$effect(() => {
+		welcome.overlay = true;
+		return () => {
+			welcome.overlay = false;
+		};
+	});
 	/** The deck reached its project steps: Enter/Esc drive the flow from here on (before, the deck owns the keys). */
 	let atProjects = $state(false);
 	$effect(() => {

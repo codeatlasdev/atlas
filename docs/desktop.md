@@ -291,7 +291,7 @@ How it works: the popover is a second webview (`/tray`, label `tray`) created on
 
 ## Agent dock
 
-A small pill that floats above every other app and Space (and over fullscreen apps) and sends text to the agents Atlas already runs, with the Atlas window closed. It is on while Atlas runs; Settings → Agents → Agent dock turns it off and rebinds its hotkey.
+A small pill that floats above every other app and Space (and over fullscreen apps) and sends text to the agents Atlas already runs, with the Atlas window closed. On macOS it is on while Atlas runs; on Windows and Linux it is off until you turn it on (Ctrl+Alt+D, the dock item in the tray menu, or Settings → Agents → Agent dock). Settings → Agents → Agent dock also rebinds its hotkey.
 
 - **Pill**: the agent it would message (`api · omp`), a dot that is green while any agent works, the hotkey, and a badge with the number of agents that need you. Drag it anywhere; it comes back to the bottom centre of the display under the cursor if the monitor it was on is gone.
 - **Composer** (the hotkey, default ⌃⌥Space, or a click on the pill; the hotkey again or ⎋ closes it): type, Enter (or ⌘/Ctrl+Enter) sends, Shift+Enter is a newline. Who gets it, first rule that applies: the **To** menu; an **@mention** (`@api`, `@feat-login`, `@claude`: matches the tab's project, worktree or agent kind, and is removed from the text); the agent you last sent to from the dock; the most recently active agent. When an @mention matches several tabs the dock **asks** (number keys pick); it never guesses between them. With no agent running it says so and offers **Open Atlas**; it does not start one.

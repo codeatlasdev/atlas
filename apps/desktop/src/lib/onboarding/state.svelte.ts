@@ -31,6 +31,7 @@ class Onboarding {
 			store.projects.length,
 			welcome.phase,
 			welcome.adding,
+			welcome.overlay,
 		),
 	);
 

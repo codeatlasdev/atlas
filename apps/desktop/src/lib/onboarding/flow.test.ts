@@ -2,6 +2,8 @@
 import { describe, expect, test } from "bun:test";
 import {
 	INITIAL,
+	choiceMeta,
+	onboardingChoices,
 	escapeEvent,
 	next,
 	primaryEvent,
@@ -93,6 +95,34 @@ describe("first-run flow", () => {
 	});
 });
 
+// PR #158 review (S7): the deck promises "Open a folder and Atlas runs it", but the results step counted only folders
+// with an atlas.yaml, so a machine of package.json repos landed on "No projects found yet" and the scan was thrown away.
+describe("onboardingChoices: what the results step offers", () => {
+	test("folders without an atlas.yaml are offered, newest first, with their stack as the meta", () => {
+		const list = [
+			found("old", { has_config: false, stack: "node", modified: 100 }),
+			found("api", { modified: 300 }),
+			found("web", { has_config: false, stack: "rust", modified: 200 }),
+		];
+		const c = onboardingChoices(list, new Set());
+		expect(c.map((f) => f.name)).toEqual(["api", "web", "old"]);
+		expect(c.map(choiceMeta)).toEqual(["3 services", "Rust project", "Node project"]);
+	});
+	test("registered, broken and nested folders are not offered", () => {
+		const list = [
+			found("in", { has_config: false }),
+			found("bad", { error: "x" }),
+			found("pkg", { nested: true }),
+			found("ok", { has_config: false }),
+		];
+		expect(onboardingChoices(list, new Set(["/Users/me/Projects/in"])).map((f) => f.name)).toEqual(["ok"]);
+	});
+	test("a folder with no known stack still reads as a project folder; one service is singular", () => {
+		expect(choiceMeta(found("x", { has_config: false, stack: null }))).toBe("Project folder");
+		expect(choiceMeta(found("x", { services: 1 }))).toBe("1 service");
+	});
+});
+
 describe("summarize: the live result of a scan", () => {
 	test("counts projects with atlas.yaml and their services, ignores folders without one", () => {
 		const s = summarize([
@@ -170,7 +200,7 @@ describe("showWelcome: the overlay stays for the whole guided flow", () => {
 	// count becomes 1, the overlay unmounts, and the user never sees their stack come up.
 	test("a first run shows it while the flow is in progress even though a project now exists", () => {
 		for (const p of ["starting", "up"] as Phase[])
-			expect(showWelcome({ done: false }, true, 1, p), p).toBe(true);
+			expect(showWelcome({ done: false }, true, 1, p, false, true), p).toBe(true);
 	});
 	test("a fresh first run (no project, welcome never finished) shows it", () => {
 		expect(showWelcome({ done: false }, true, 0, "welcome")).toBe(true);
@@ -187,16 +217,24 @@ describe("showWelcome: the overlay stays for the whole guided flow", () => {
 	});
 	test("the guided start stays on screen after the welcome was saved as finished", () => {
 		for (const p of ["starting", "up"] as Phase[])
-			expect(showWelcome({ done: true }, true, 1, p), p).toBe(true);
+			expect(showWelcome({ done: true }, true, 1, p, false, true), p).toBe(true);
 	});
 	// Windows user report (1.5.0-alpha.24): "after I open the first folder in the onboarding, it restarts". The project
 	// list grew before the phase left `welcome`, so for that moment the overlay was hidden, then came back on `starting`
 	// remounted at its first slide. While the deck is adding, it stays up.
 	test("stays up through the add, from the click until the stack starts", () => {
-		expect(showWelcome({ done: false }, true, 1, "welcome", true)).toBe(true);
-		expect(showWelcome({ done: true }, true, 1, "welcome", true)).toBe(true);
-		expect(showWelcome({ done: false }, true, 1, "results", true)).toBe(true);
-		expect(showWelcome({ done: true }, true, 1, "starting", false)).toBe(true);
+		expect(showWelcome({ done: false }, true, 1, "welcome", true, true)).toBe(true);
+		expect(showWelcome({ done: true }, true, 1, "welcome", true, true)).toBe(true);
+		expect(showWelcome({ done: false }, true, 1, "results", true, true)).toBe(true);
+		expect(showWelcome({ done: true }, true, 1, "starting", false, true)).toBe(true);
+	});
+	// PR #158 review: a returning user (welcome done, no project) sees the standing Hero, which shares the welcome
+	// store. Adding a folder there walks adding → starting → up; that must not raise the first-run overlay (and with it
+	// the tour on "Continue").
+	test("a flow started in the standing Hero never raises the first-run overlay", () => {
+		expect(showWelcome({ done: true }, true, 1, "welcome", true, false)).toBe(false);
+		for (const p of ["starting", "up"] as Phase[])
+			expect(showWelcome({ done: true }, true, 1, p, false, false), p).toBe(false);
 	});
 });
 

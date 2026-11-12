@@ -555,10 +555,15 @@ pub fn last_crash(dir: &Path) -> Option<String> {
                 .unwrap_or(0)
         })?;
     let text = std::fs::read_to_string(newest).ok()?;
+    // Values are TOML basic strings written by `crash::toml_str`; its escapes (`\\ \" \n \r \t \uXXXX`) are JSON's too.
     let field = |k: &str| {
         text.lines()
             .find_map(|l| l.strip_prefix(k)?.trim_start().strip_prefix('='))
-            .map(|v| v.trim().trim_matches('"').to_string())
+            .map(|v| {
+                let v = v.trim();
+                serde_json::from_str::<String>(v)
+                    .unwrap_or_else(|_| v.trim_matches('"').to_string())
+            })
     };
     let msg = field("msg")?;
     let line = match (field("version"), field("location")) {
@@ -816,6 +821,20 @@ plain line, nothing to hide: terminal 3 exited with code 0";
             !c.contains("frame"),
             "the backtrace stays out of the report: {c}"
         );
+    }
+
+    /// `crash::write_crash_report` escapes backslashes and newlines; the summary shows the real text.
+    #[test]
+    fn last_crash_unescapes_the_report_strings() {
+        let crashes = tempfile::tempdir().unwrap();
+        std::fs::write(
+            crashes.path().join("crash-1.toml"),
+            "version = \"1.5.0\"\nmsg = \"bad\\nthing\"\nlocation = \"crates\\\\atlas-desktop\\\\src\\\\main.rs:1\"\n",
+        )
+        .unwrap();
+        let c = last_crash(crashes.path()).unwrap();
+        assert!(c.contains(r"crates\atlas-desktop\src\main.rs:1"), "{c}");
+        assert!(c.contains("bad\nthing"), "{c}");
     }
 
     #[test]

@@ -61,12 +61,17 @@ export type PanelEmpty =
 	| { kind: "services" | "loading" | "broken" | "nothing" | "empty-file" }
 	| { kind: "detected"; detected: string };
 
+/** `Rust project (Cargo.toml, axum)` → `Rust project`: the manifest detail is for the Config tab, not a headline. */
+export const stackKind = (detected: string) => detected.replace(/ \(.*\)$/, "");
+
 export function emptyPanel(
 	project: Pick<ProjectView, "config_source" | "error">,
 	cfg: Pick<ProjectConfig, "services" | "detected"> | undefined,
+	/** `project_config` failed and there is no config: without this the panel would stay "loading" for good. */
+	failed = false,
 ): PanelEmpty {
 	if (project.error) return { kind: "broken" };
-	if (!cfg) return { kind: "loading" };
+	if (!cfg) return failed ? { kind: "nothing" } : { kind: "loading" };
 	if (cfg.services.length) return { kind: "services" };
 	if (project.config_source === "file") return { kind: "empty-file" };
 	return cfg.detected ? { kind: "detected", detected: cfg.detected } : { kind: "nothing" };

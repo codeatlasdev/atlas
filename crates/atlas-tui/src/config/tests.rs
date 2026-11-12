@@ -283,10 +283,12 @@ fn load_or_detect_runs_a_rust_go_or_django_folder_through_the_real_parser() {
     let django = TempDir::new().unwrap();
     write_config(&django, "manage.py", "");
     let (cfg, _) = load_or_detect(django.path()).unwrap();
+    let py = if cfg!(windows) { "python" } else { "python3" };
     assert_eq!(
         cfg.services["web"].command.as_deref(),
-        Some("python manage.py runserver")
+        Some(format!("{py} manage.py runserver 8000").as_str())
     );
+    assert_eq!(cfg.services["web"].port, Some(8000));
 }
 
 #[test]

@@ -20,19 +20,21 @@ use windows_sys::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock,
 use windows_sys::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
 };
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, VK_ESCAPE, VK_RETURN};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, ReleaseCapture, VK_CONTROL, VK_ESCAPE, VK_RETURN,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
     GetCursorPos, GetMessageW, GetSystemMetrics, HTCAPTION, HTCLIENT, IDC_ARROW, KillTimer,
     LoadCursorW, MSG, PostQuitMessage, RegisterClassW, SM_CXSCREEN, SM_CYSCREEN, SW_SHOWNORMAL,
-    SetCursor, SetTimer, ShowWindow, TranslateMessage, ULW_ALPHA, UpdateLayeredWindow, WM_CLOSE,
-    WM_DESTROY, WM_DPICHANGED, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_NCHITTEST, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_POPUP,
+    SetCursor, SetTimer, SetWindowTextW, ShowWindow, TranslateMessage, ULW_ALPHA,
+    UpdateLayeredWindow, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_KEYDOWN, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_APPWINDOW,
+    WS_EX_LAYERED, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use crate::progress::ease;
-use crate::state::{Phase, Shared};
+use crate::state::{Answer, Phase, Shared};
 use crate::ui::font::Fonts;
 use crate::ui::layout::{self, Button, Hit};
 use crate::ui::render::{self, Frame, SHADOW};
@@ -57,6 +59,8 @@ struct App {
     auto_close: bool,
     /// What the process exits with: 0 only after a successful run.
     exit_code: i32,
+    /// The text last given to the window title (what a screen reader announces).
+    title: String,
 }
 
 thread_local! {
@@ -75,7 +79,11 @@ fn font_dir() -> std::path::PathBuf {
 }
 
 /// Show the window until it closes. Returns the process exit code: 0 when the run succeeded.
+///
+/// When the window cannot be created a worker waiting for an answer would wait forever: the
+/// question is answered "cancel" (nothing has been touched yet) and the exit code is 1.
 pub fn run(shared: Shared, auto_close: bool) -> i32 {
+    let for_failure = shared.clone();
     // The manifest already asks for per-monitor v2; this covers a manifest-less dev build.
     // SAFETY: no preconditions; failure (already set) is fine.
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
@@ -111,6 +119,7 @@ pub fn run(shared: Shared, auto_close: bool) -> i32 {
             scale: 1.0,
             auto_close,
             exit_code: 1,
+            title: String::new(),
         })
     });
 
@@ -119,7 +128,9 @@ pub fn run(shared: Shared, auto_close: bool) -> i32 {
     // SAFETY: valid class and title; no parent.
     let hwnd = unsafe {
         CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+            // WS_EX_APPWINDOW: a taskbar button and an Alt+Tab entry, so the window can be found
+            // and reached from the keyboard.
+            WS_EX_LAYERED | WS_EX_APPWINDOW | WS_EX_TOPMOST,
             class.as_ptr(),
             title.as_ptr(),
             WS_POPUP,
@@ -134,6 +145,7 @@ pub fn run(shared: Shared, auto_close: bool) -> i32 {
         )
     };
     if hwnd.is_null() {
+        for_failure.answer_data(Answer::Cancel);
         return 1;
     }
     // SAFETY: `hwnd` is ours.
@@ -238,6 +250,24 @@ fn paint(hwnd: HWND) {
     present(hwnd, &bgra, w, h);
 }
 
+/// Keep the window's title in step with the screen: Narrator and the taskbar read it, and the
+/// window draws its own text without exposing any.
+fn sync_title(hwnd: HWND) {
+    let text = with_app(|a| {
+        let t = a.shared.snapshot().accessible_text();
+        (t != a.title).then(|| {
+            a.title = t.clone();
+            t
+        })
+    })
+    .flatten();
+    if let Some(t) = text {
+        let t = wide(&t);
+        // SAFETY: `hwnd` is ours and `t` is NUL-terminated.
+        unsafe { SetWindowTextW(hwnd, t.as_ptr()) };
+    }
+}
+
 fn present(hwnd: HWND, bgra: &[u8], w: i32, h: i32) {
     // SAFETY: standard GDI sequence; every created object is released below.
     unsafe {
@@ -315,33 +345,53 @@ fn copy_to_clipboard(hwnd: HWND, text: &str) {
 fn activate(hwnd: HWND, b: Button) {
     match b {
         Button::Close | Button::Dismiss => close(hwnd),
-        Button::CopyDetails => {
-            let text = with_app(|a| {
-                let s = a.shared.snapshot();
-                format!("{}\n\n{}", s.status, s.details)
-            })
-            .unwrap_or_default();
-            copy_to_clipboard(hwnd, &text);
+        Button::CopyDetails => copy_details(hwnd),
+        Button::KeepData | Button::GoBack => {
+            with_app(|a| a.shared.answer_data(Answer::Keep));
         }
-        Button::KeepData => {
-            with_app(|a| a.shared.answer_data(false));
-        }
-        Button::RemoveData => {
-            with_app(|a| a.shared.answer_data(true));
+        Button::RemoveData | Button::ConfirmRemove => {
+            with_app(|a| a.shared.answer_data(Answer::Remove));
         }
     }
 }
 
-/// Close the window. Mid-install this is allowed (the NSIS child keeps going and finishes the
-/// install); the exit code then says whether the run had succeeded by that moment.
+/// "Copy details" and Ctrl+C on the failure screen: the same title the window shows, then the details.
+fn copy_details(hwnd: HWND) {
+    let text = with_app(|a| {
+        let s = a.shared.snapshot();
+        format!(
+            "{}\n\n{}\n\nReport it: {}",
+            s.status,
+            s.details,
+            crate::install::ISSUES_URL
+        )
+    })
+    .unwrap_or_default();
+    copy_to_clipboard(hwnd, &text);
+}
+
+/// What the close box, Alt+F4 and Esc do. The window closes only when nothing is under way:
+///
+/// - on the data question it **cancels** the uninstall (nothing has been touched yet);
+/// - while the install or uninstall runs it does nothing (cancelling is not supported, and a
+///   hidden window that goes on to open Atlas later is worse than a window that stays);
+/// - once finished or failed it closes.
 fn close(hwnd: HWND) {
+    let phase = with_app(|a| a.shared.snapshot().phase);
+    match phase {
+        Some(Phase::AskData | Phase::ConfirmRemove) => {
+            with_app(|a| a.shared.answer_data(Answer::Cancel));
+        }
+        Some(Phase::Working) => {}
+        _ => destroy(hwnd),
+    }
+}
+
+/// Destroy the window now, recording whether the run had succeeded by this moment.
+fn destroy(hwnd: HWND) {
     with_app(|a| {
         let s = a.shared.snapshot();
         a.exit_code = i32::from(s.phase != Phase::Done);
-        // A closed question window answers "keep": removing data is only ever an explicit click.
-        if s.phase == Phase::AskData {
-            a.shared.answer_data(false);
-        }
     });
     // SAFETY: `hwnd` is ours.
     unsafe { DestroyWindow(hwnd) };
@@ -357,13 +407,23 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPA
                 }
                 s.phase
             });
+            sync_title(hwnd);
             paint(hwnd);
-            if snap == Some(Phase::Done) {
+            if snap == Some(Phase::Cancelled) {
+                destroy(hwnd);
+            } else if snap == Some(Phase::Done) {
                 let linger =
                     with_app(|a| a.done_at.map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0))
                         .unwrap_or(0.0);
-                if linger >= DONE_LINGER && with_app(|a| a.auto_close).unwrap_or(false) {
-                    close(hwnd);
+                // The window goes by itself only when Atlas is opening or an uninstall finished;
+                // an install that did not open Atlas stays until the user closes it.
+                let stays = with_app(|a| {
+                    let s = a.shared.snapshot();
+                    s.mode == crate::cli::Mode::Install && !crate::install::closes_itself(&s.note)
+                })
+                .unwrap_or(false);
+                if linger >= DONE_LINGER && !stays && with_app(|a| a.auto_close).unwrap_or(false) {
+                    destroy(hwnd);
                 }
             }
             0
@@ -422,11 +482,17 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPA
         }
         WM_KEYDOWN => {
             let phase = with_app(|a| a.shared.snapshot().phase);
+            // SAFETY: plain key state query.
+            let ctrl = unsafe { GetKeyState(VK_CONTROL as i32) } < 0;
             match (wparam as u16, phase) {
-                (VK_ESCAPE, Some(Phase::Failed | Phase::Done)) => close(hwnd),
-                (VK_RETURN, Some(Phase::AskData)) => activate(hwnd, Button::KeepData),
-                (VK_RETURN, Some(Phase::Failed)) => close(hwnd),
-                (VK_ESCAPE, Some(Phase::AskData)) => activate(hwnd, Button::KeepData),
+                // Ctrl+C copies the details of a failure (the button is not reachable by keyboard).
+                (0x43, Some(Phase::Failed)) if ctrl => copy_details(hwnd),
+                (VK_ESCAPE, _) => close(hwnd),
+                // Enter is the default (primary) button of the screen.
+                (VK_RETURN, Some(Phase::AskData | Phase::ConfirmRemove)) => {
+                    activate(hwnd, Button::KeepData)
+                }
+                (VK_RETURN, Some(Phase::Failed | Phase::Done)) => close(hwnd),
                 _ => {}
             }
             0

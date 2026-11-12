@@ -1,6 +1,6 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
-import { emptyPanel, lastLines, namesLabel, portsLabel, serviceRows } from "./overview.ts";
+import { emptyPanel, lastLines, namesLabel, portsLabel, serviceRows, stackKind } from "./overview.ts";
 
 const def = (name, extra = {}) => ({ name, enabled: true, port: null, depends_on: [], ...extra });
 
@@ -83,5 +83,16 @@ describe("emptyPanel: what the panel says when there are no service rows", () =>
 	});
 	test("an atlas.yaml with no active service is an empty file, not an undetected folder", () => {
 		expect(emptyPanel(project({ config_source: "file" }), cfg())).toEqual({ kind: "empty-file" });
+	});
+	// The store swallowed a failed `project_config`, so the panel stayed on a blank "loading" for good.
+	test("a config that failed to load is the 'nothing' state with its button, not a blank forever", () => {
+		expect(emptyPanel(project(), undefined, true)).toEqual({ kind: "nothing" });
+		expect(emptyPanel(project(), undefined, false)).toEqual({ kind: "loading" });
+		// A broken atlas.yaml still defers to its banner.
+		expect(emptyPanel(project({ error: "x" }), undefined, true)).toEqual({ kind: "broken" });
+	});
+	test("the headline names the stack without its manifest detail", () => {
+		expect(stackKind("Rust project (Cargo.toml, axum)")).toBe("Rust project");
+		expect(stackKind("Go project")).toBe("Go project");
 	});
 });

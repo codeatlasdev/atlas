@@ -1,29 +1,39 @@
 //! The uninstall sequence, behind [`Host`] like the install.
 //!
 //! ```text
-//! close Atlas ─ (ask: keep ~/.atlas?) ─ [remove data: `atlas.exe uninstall --yes`] ─ NSIS
-//! `uninstall.exe /S _?=<dir>` (synchronous) ─ clean what NSIS leaves ─ verify the app is gone
+//! (ask: keep %USERPROFILE%\.atlas? deleting asks a second time) ─ close Atlas ─ NSIS
+//! `uninstall.exe /S _?=<dir>` (synchronous) ─ [remove data: `atlas.exe uninstall --yes`] ─ clean
+//! what NSIS leaves ─ verify the app is gone ─ schedule our own copy for deletion
 //! ```
 //!
-//! The default, everywhere (the window's default button, a silent run, a closed window), is to
-//! **keep** the user's data: removing it is always an explicit choice.
+//! The default, everywhere (the window's default button, a silent run), is to **keep** the user's
+//! data: removing it is always an explicit, twice-confirmed choice. Closing the window on the
+//! question cancels the uninstall before anything is touched.
 
 use std::path::Path;
 use std::time::Duration;
 
 use crate::cli::DataChoice;
 use crate::fsutil::Log;
-use crate::install::CLOSE_GRACE;
+use crate::install::{CLOSE_GRACE, failure_details};
 use crate::paths::{Env, is_product_dir};
-use crate::state::Shared;
+use crate::state::{Answer, Shared};
+
+/// The window's note while the uninstall runs and the data is kept (S1: never contradicts the choice).
+pub const KEEPING: &str = "Your data in %USERPROFILE%\\.atlas stays.";
+/// The same while the data is being deleted.
+pub const DELETING: &str = "Deleting your Atlas data.";
 
 pub trait Host {
     fn close_app(&self, install_dir: &Path, grace: Duration);
-    /// `atlas.exe uninstall --yes`: removes `~/.atlas`, the CLI and its PATH entry. `Err` carries
+    /// `atlas.exe uninstall --yes`: removes `%USERPROFILE%\.atlas`, the CLI and its PATH entry. `Err` carries
     /// what it printed.
     fn remove_cli_and_data(&self, cli: &Path) -> Result<(), String>;
     /// Run the NSIS uninstaller silently and wait; its exit code.
     fn run_uninstaller(&self, uninstaller: &Path, install_dir: &Path) -> Result<i32, String>;
+    /// Delete `path` once this process has exited (a running program cannot delete itself on
+    /// Windows). Best effort; the files are left only if the OS refuses.
+    fn delete_after_exit(&self, path: &Path) -> Result<(), String>;
 }
 
 pub struct Options {
@@ -32,10 +42,13 @@ pub struct Options {
     pub tick: Duration,
 }
 
-/// Does the answer remove `~/.atlas`? `Ask` has no answer yet and means keep.
+/// Does the answer remove `%USERPROFILE%\.atlas`? `Ask` has no answer yet and means keep.
 pub fn removes_data(choice: DataChoice) -> bool {
     choice == DataChoice::Remove
 }
+
+/// `Err` of a run the user cancelled at the question (the window shows nothing: it just closes).
+pub const CANCELLED: &str = "cancelled";
 
 pub fn run(
     env: &Env,
@@ -45,12 +58,11 @@ pub fn run(
     opt: &Options,
 ) -> Result<(), String> {
     let result = steps(env, host, shared, log, opt);
-    if let Err(e) = &result {
+    if let Err(e) = &result
+        && e != CANCELLED
+    {
         log.line(format!("FAILED: {e}"));
-        shared.fail(
-            "Atlas could not be removed",
-            format!("{e}\n\nLog: {}", log.path().display()),
-        );
+        shared.fail("Atlas could not be removed", failure_details(e, log));
     }
     result
 }
@@ -68,19 +80,29 @@ fn steps(
     let choice = match opt.data {
         DataChoice::Ask => {
             shared.ask_data();
-            loop {
-                if let Some(remove) = shared.data_answer() {
-                    break if remove {
-                        DataChoice::Remove
-                    } else {
-                        DataChoice::Keep
-                    };
+            let answer = loop {
+                if let Some(a) = shared.data_answer() {
+                    break a;
                 }
                 std::thread::sleep(opt.tick);
+            };
+            match answer {
+                Answer::Keep => DataChoice::Keep,
+                Answer::Remove => DataChoice::Remove,
+                Answer::Cancel => {
+                    // Nothing was touched yet: the user backed out.
+                    log.line("uninstall cancelled by the user");
+                    return Err(CANCELLED.into());
+                }
             }
         }
         fixed => fixed,
     };
+    shared.note(if removes_data(choice) {
+        DELETING
+    } else {
+        KEEPING
+    });
     log.line(format!(
         "user data: {}",
         if removes_data(choice) {
@@ -96,6 +118,7 @@ fn steps(
 
     shared.status("Removing Atlas…");
     let uninstaller = env.nsis_uninstaller();
+    let was_installed = uninstaller.is_file() || env.app_exe().exists();
     if uninstaller.is_file() {
         let code = host.run_uninstaller(&uninstaller, &install_dir)?;
         log.line(format!("uninstaller exited with {code}"));
@@ -110,7 +133,7 @@ fn steps(
     shared.raise(0.7);
 
     if removes_data(choice) {
-        shared.status("Removing your Atlas data…");
+        shared.status("Deleting your Atlas data…");
         let cli = env.cli_exe();
         if cli.is_file() {
             host.remove_cli_and_data(&cli)?;
@@ -123,14 +146,23 @@ fn steps(
     shared.raise(0.9);
 
     // `_?=` keeps NSIS from copying itself away, so uninstall.exe and our own copy are still here.
-    leftovers(env, &install_dir, log);
+    leftovers(env, host, &install_dir, log);
     if env.app_exe().exists() {
         return Err(format!(
             "{} is still there after the uninstall.",
             env.app_exe().display()
         ));
     }
-    shared.done("Atlas was removed");
+    if !was_installed {
+        shared.done("Atlas was not installed here", "Nothing to remove.");
+    } else if removes_data(choice) {
+        shared.done("Atlas was removed", "Your Atlas data was deleted too.");
+    } else {
+        shared.done(
+            "Atlas was removed",
+            "Your data and the atlas command stay in %USERPROFILE%\\.atlas.",
+        );
+    }
     Ok(())
 }
 
@@ -147,7 +179,9 @@ fn remove_data_dir(dir: &Path, log: &Log) -> Result<(), String> {
 
 /// What NSIS leaves with `_?=`: the uninstaller itself, our own copy, and the folder. Only ever
 /// the product folder, and only what is in it (a bad environment never aims this at another path).
-fn leftovers(env: &Env, install_dir: &Path, log: &Log) {
+/// Our own copy is running (Settings › Apps starts it from here), so Windows refuses to delete it:
+/// it is handed to [`Host::delete_after_exit`], which also takes the folder.
+fn leftovers(env: &Env, host: &dyn Host, install_dir: &Path, log: &Log) {
     if !is_product_dir(install_dir, &env.local_app_data) {
         log.line(format!(
             "not cleaning {}: not the product folder",
@@ -160,12 +194,29 @@ fn leftovers(env: &Env, install_dir: &Path, log: &Log) {
         if let Err(e) = std::fs::remove_file(&p)
             && e.kind() != std::io::ErrorKind::NotFound
         {
-            // Our own running copy cannot be deleted on Windows: it is removed after exit.
-            log.line(format!("kept {}: {e}", p.display()));
+            log.line(format!(
+                "{} is in use, deleting it after exit: {e}",
+                p.display()
+            ));
+            if let Err(e) = host.delete_after_exit(&p) {
+                log.line(format!(
+                    "could not schedule the deletion of {}: {e}",
+                    p.display()
+                ));
+            }
         }
     }
-    // Only an empty folder goes (`remove_dir` refuses a full one): never a user's files.
-    let _ = std::fs::remove_dir(install_dir);
+    // Only an empty folder goes (`remove_dir` refuses a full one): never a user's files. When our
+    // own copy is still running the folder is not empty yet; the scheduled cleanup takes it.
+    if std::fs::remove_dir(install_dir).is_err()
+        && install_dir.exists()
+        && let Err(e) = host.delete_after_exit(install_dir)
+    {
+        log.line(format!(
+            "could not schedule the deletion of {}: {e}",
+            install_dir.display()
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -174,6 +225,7 @@ mod tests {
     use crate::cli::Mode;
     use crate::state::Phase;
     use std::cell::RefCell;
+    use std::path::PathBuf;
 
     struct Fake {
         env: Env,
@@ -181,6 +233,22 @@ mod tests {
         calls: RefCell<Vec<String>>,
         /// What the uninstaller deletes (the app, like NSIS does).
         deletes_app: bool,
+        /// Files Windows would refuse to delete (our own running copy): they are scheduled instead.
+        running: Vec<PathBuf>,
+        scheduled: RefCell<Vec<PathBuf>>,
+    }
+
+    impl Fake {
+        fn new(env: &Env, code: i32, deletes_app: bool) -> Self {
+            Self {
+                env: env.clone(),
+                code,
+                calls: Default::default(),
+                deletes_app,
+                running: Vec::new(),
+                scheduled: Default::default(),
+            }
+        }
     }
 
     impl Host for Fake {
@@ -200,6 +268,10 @@ mod tests {
                 std::fs::remove_file(self.env.install_dir().join("atlas.exe")).unwrap();
             }
             Ok(self.code)
+        }
+        fn delete_after_exit(&self, path: &Path) -> Result<(), String> {
+            self.scheduled.borrow_mut().push(path.to_path_buf());
+            Ok(())
         }
     }
 
@@ -238,12 +310,7 @@ mod tests {
     #[test]
     fn keep_removes_the_app_and_leaves_every_byte_of_user_data() {
         let (_t, e, log) = installed();
-        let host = Fake {
-            env: e.clone(),
-            code: 0,
-            calls: Default::default(),
-            deletes_app: true,
-        };
+        let host = Fake::new(&e, 0, true);
         let shared = Shared::new(Mode::Uninstall);
         run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap();
         assert_eq!(shared.snapshot().phase, Phase::Done);
@@ -263,12 +330,7 @@ mod tests {
     #[test]
     fn remove_data_runs_atlas_uninstall_after_the_app_is_gone() {
         let (_t, e, log) = installed();
-        let host = Fake {
-            env: e.clone(),
-            code: 0,
-            calls: Default::default(),
-            deletes_app: true,
-        };
+        let host = Fake::new(&e, 0, true);
         let shared = Shared::new(Mode::Uninstall);
         run(&e, &host, &shared, &log, &opt(DataChoice::Remove)).unwrap();
         assert_eq!(*host.calls.borrow(), ["close", "nsis", "cli+data"]);
@@ -279,12 +341,7 @@ mod tests {
     fn remove_data_without_a_cli_removes_the_data_folder_by_name() {
         let (_t, e, log) = installed();
         std::fs::remove_file(e.cli_exe()).unwrap();
-        let host = Fake {
-            env: e.clone(),
-            code: 0,
-            calls: Default::default(),
-            deletes_app: true,
-        };
+        let host = Fake::new(&e, 0, true);
         let shared = Shared::new(Mode::Uninstall);
         run(&e, &host, &shared, &log, &opt(DataChoice::Remove)).unwrap();
         assert!(!host.calls.borrow().contains(&"cli+data".to_string()));
@@ -294,19 +351,14 @@ mod tests {
     #[test]
     fn the_question_blocks_until_answered_and_keep_wins_a_no() {
         let (_t, e, log) = installed();
-        let host = Fake {
-            env: e.clone(),
-            code: 0,
-            calls: Default::default(),
-            deletes_app: true,
-        };
+        let host = Fake::new(&e, 0, true);
         let shared = Shared::new(Mode::Uninstall);
         let s2 = shared.clone();
         let answer = std::thread::spawn(move || {
             while s2.snapshot().phase != Phase::AskData {
                 std::thread::yield_now();
             }
-            s2.answer_data(false);
+            s2.answer_data(Answer::Keep);
         });
         run(
             &e,
@@ -326,12 +378,7 @@ mod tests {
     #[test]
     fn a_failing_uninstaller_is_an_error_and_never_touches_data() {
         let (_t, e, log) = installed();
-        let host = Fake {
-            env: e.clone(),
-            code: 5,
-            calls: Default::default(),
-            deletes_app: false,
-        };
+        let host = Fake::new(&e, 5, false);
         let shared = Shared::new(Mode::Uninstall);
         let err = run(&e, &host, &shared, &log, &opt(DataChoice::Remove)).unwrap_err();
         assert!(err.contains("exit code 5"), "{err}");
@@ -346,12 +393,7 @@ mod tests {
     #[test]
     fn exit_zero_with_the_app_still_there_is_a_failure() {
         let (_t, e, log) = installed();
-        let host = Fake {
-            env: e.clone(),
-            code: 0,
-            calls: Default::default(),
-            deletes_app: false,
-        };
+        let host = Fake::new(&e, 0, false);
         let shared = Shared::new(Mode::Uninstall);
         let err = run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap_err();
         assert!(err.contains("still there"), "{err}");
@@ -361,15 +403,133 @@ mod tests {
     fn nothing_installed_is_not_an_error() {
         let (_t, e, log) = installed();
         std::fs::remove_dir_all(e.install_dir()).unwrap();
-        let host = Fake {
-            env: e.clone(),
-            code: 0,
-            calls: Default::default(),
-            deletes_app: false,
-        };
+        let host = Fake::new(&e, 0, false);
         let shared = Shared::new(Mode::Uninstall);
         run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap();
         assert_eq!(shared.snapshot().phase, Phase::Done);
+    }
+
+    /// Answer the way the window does: each answer waits for an open question, then for the
+    /// phase to move on (so two answers in a row are two separate clicks).
+    fn answering(shared: &Shared, answers: Vec<Answer>) -> std::thread::JoinHandle<()> {
+        let s = shared.clone();
+        std::thread::spawn(move || {
+            for a in answers {
+                while !matches!(s.snapshot().phase, Phase::AskData | Phase::ConfirmRemove) {
+                    std::thread::yield_now();
+                }
+                let before = s.snapshot().phase;
+                s.answer_data(a);
+                while s.snapshot().phase == before {
+                    std::thread::yield_now();
+                }
+            }
+        })
+    }
+
+    fn ask_opt() -> Options {
+        Options {
+            data: DataChoice::Ask,
+            tick: Duration::from_millis(1),
+        }
+    }
+
+    #[test]
+    fn delete_needs_two_clicks_and_then_removes_the_data() {
+        let (_t, e, log) = installed();
+        let host = Fake::new(&e, 0, true);
+        let shared = Shared::new(Mode::Uninstall);
+        let t = answering(&shared, vec![Answer::Remove, Answer::Remove]);
+        run(&e, &host, &shared, &log, &ask_opt()).unwrap();
+        t.join().unwrap();
+        assert_eq!(*host.calls.borrow(), ["close", "nsis", "cli+data"]);
+        assert!(!e.data_dir().exists());
+        let snap = shared.snapshot();
+        assert_eq!(snap.note, "Your Atlas data was deleted too.");
+    }
+
+    #[test]
+    fn one_click_on_delete_followed_by_go_back_keeps_everything() {
+        let (_t, e, log) = installed();
+        let host = Fake::new(&e, 0, true);
+        let shared = Shared::new(Mode::Uninstall);
+        let t = answering(&shared, vec![Answer::Remove, Answer::Keep, Answer::Keep]);
+        run(&e, &host, &shared, &log, &ask_opt()).unwrap();
+        t.join().unwrap();
+        assert_eq!(*host.calls.borrow(), ["close", "nsis"]);
+        assert!(e.data_dir().join("settings.json").is_file());
+    }
+
+    #[test]
+    fn closing_the_question_cancels_before_anything_is_touched() {
+        let (_t, e, log) = installed();
+        let host = Fake::new(&e, 0, true);
+        let shared = Shared::new(Mode::Uninstall);
+        let t = answering(&shared, vec![Answer::Cancel]);
+        let err = run(&e, &host, &shared, &log, &ask_opt()).unwrap_err();
+        t.join().unwrap();
+        assert_eq!(err, CANCELLED);
+        assert!(host.calls.borrow().is_empty(), "no close, no uninstall");
+        assert_eq!(shared.snapshot().phase, Phase::Cancelled);
+        assert!(e.app_exe().is_file() && e.data_dir().join("settings.json").is_file());
+    }
+
+    #[test]
+    fn the_running_own_copy_is_deleted_after_exit_not_left_behind() {
+        // Settings > Apps runs "Atlas Uninstall.exe" from the install folder: Windows refuses to
+        // delete it while it runs, so the cleanup is scheduled for after the process ends.
+        let (_t, e, log) = installed();
+        let own = e.install_dir().join(crate::paths::OWN_COPY);
+        let mut host = Fake::new(&e, 0, true);
+        host.running = vec![own.clone()];
+        // Model the refusal: a directory cannot be removed with remove_file, standing in for a
+        // locked image.
+        std::fs::remove_file(&own).unwrap();
+        std::fs::create_dir(&own).unwrap();
+        let shared = Shared::new(Mode::Uninstall);
+        run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap();
+        let scheduled = host.scheduled.borrow();
+        assert!(scheduled.contains(&own), "{scheduled:?}");
+        assert!(
+            scheduled.contains(&e.install_dir()),
+            "the folder is handed over too: {scheduled:?}"
+        );
+        assert_eq!(shared.snapshot().phase, Phase::Done);
+    }
+
+    #[test]
+    fn nothing_installed_says_so_instead_of_claiming_a_removal() {
+        let (_t, e, log) = installed();
+        std::fs::remove_dir_all(e.install_dir()).unwrap();
+        let host = Fake::new(&e, 0, false);
+        let shared = Shared::new(Mode::Uninstall);
+        run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap();
+        let snap = shared.snapshot();
+        assert_eq!(snap.status, "Atlas was not installed here");
+        assert_eq!(snap.note, "Nothing to remove.");
+    }
+
+    #[test]
+    fn the_note_never_contradicts_the_choice() {
+        let (_t, e, log) = installed();
+        let shared = Shared::new(Mode::Uninstall);
+        let host = Fake::new(&e, 5, false);
+        run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap_err();
+        assert_eq!(shared.snapshot().note, KEEPING);
+        let (_t, e, log) = installed();
+        let shared = Shared::new(Mode::Uninstall);
+        let host = Fake::new(&e, 5, false);
+        run(&e, &host, &shared, &log, &opt(DataChoice::Remove)).unwrap_err();
+        assert_eq!(shared.snapshot().note, DELETING);
+    }
+
+    #[test]
+    fn keep_says_where_the_data_and_the_cli_stay() {
+        let (_t, e, log) = installed();
+        let host = Fake::new(&e, 0, true);
+        let shared = Shared::new(Mode::Uninstall);
+        run(&e, &host, &shared, &log, &opt(DataChoice::Keep)).unwrap();
+        assert!(shared.snapshot().note.contains("%USERPROFILE%\\.atlas"));
     }
 
     #[test]

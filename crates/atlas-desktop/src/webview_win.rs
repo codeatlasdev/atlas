@@ -174,7 +174,8 @@ mod tests {
                 if p.extension().is_none_or(|x| x != "rs") {
                     continue;
                 }
-                let text = std::fs::read_to_string(&p).unwrap();
+                // CRLF checkouts (Windows CI) would hide the `\n}\n` item boundary below.
+                let text = std::fs::read_to_string(&p).unwrap().replace("\r\n", "\n");
                 let code = text.split("#[cfg(test)]").next().unwrap_or_default();
                 for chunk in code.split("#[tauri::command]").skip(1) {
                     let head = chunk.trim_start();

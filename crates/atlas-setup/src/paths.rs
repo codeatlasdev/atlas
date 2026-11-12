@@ -9,8 +9,9 @@ const PRODUCT_DIR: &str = "Atlas";
 pub const APP_EXE: &str = "atlas-desktop.exe";
 /// The Tauri NSIS uninstaller, next to the app.
 pub const NSIS_UNINSTALLER: &str = "uninstall.exe";
-/// This program, copied into the install folder by the NSIS post-install hook so Settings › Apps
-/// can run it (`packaging/windows/installer-hooks.nsh`).
+/// This program, copied into the install folder by the installer run ([`crate::install`], through
+/// `Host::register_uninstaller`) so Settings › Apps can run it. The NSIS post-install hook
+/// (`packaging/windows/installer-hooks.nsh`) only points the uninstall entry back at it.
 pub const OWN_COPY: &str = "Atlas Uninstall.exe";
 
 #[derive(Clone, Debug)]
@@ -44,7 +45,7 @@ impl Env {
         self.install_dir().join(NSIS_UNINSTALLER)
     }
 
-    /// The CLI's own install (`atlas install`): `~/.atlas/bin/atlas.exe`.
+    /// The CLI's own install (`atlas install`): `%USERPROFILE%\.atlas\bin\atlas.exe`.
     pub fn cli_exe(&self) -> PathBuf {
         self.home.join(".atlas").join("bin").join("atlas.exe")
     }
@@ -76,6 +77,19 @@ pub fn payload_name() -> &'static str {
 /// `atlas desktop`'s silent run).
 pub fn nsis_dir_arg(dir: &Path) -> String {
     format!("/D={}", dir.display())
+}
+
+/// Does the executable `exe` live inside `dir`? Compared case-insensitively on whole path
+/// components, so `...\Local\AtlasX\atlas-desktop.exe` is not inside `...\Local\Atlas`.
+pub fn is_inside(exe: &Path, dir: &Path) -> bool {
+    let norm = |p: &Path| {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let want = norm(dir);
+    !want.is_empty() && norm(exe).starts_with(&format!("{want}\\"))
 }
 
 /// Is `p` safe to delete recursively as "Atlas's own folder": the product folder directly under
@@ -159,6 +173,28 @@ mod tests {
             !is_product_dir(Path::new("Atlas"), Path::new("")),
             "an empty env must not match"
         );
+    }
+
+    #[test]
+    fn a_process_is_ours_only_inside_the_install_folder() {
+        let dir = Path::new(r"C:\Users\ana\AppData\Local\Atlas");
+        assert!(is_inside(
+            Path::new(r"C:\Users\ana\AppData\Local\Atlas\atlas-desktop.exe"),
+            dir
+        ));
+        assert!(is_inside(
+            Path::new("c:/users/ana/appdata/local/ATLAS/atlas-desktop.exe"),
+            Path::new("C:/Users/ana/AppData/Local/Atlas/")
+        ));
+        for other in [
+            r"C:\Users\ana\AppData\Local\AtlasX\atlas-desktop.exe",
+            r"C:\Users\ana\AppData\Local\Atlas-dev\atlas-desktop.exe",
+            r"C:\dev\atlas\target\debug\atlas-desktop.exe",
+            r"C:\Users\ana\AppData\Local\Atlas",
+        ] {
+            assert!(!is_inside(Path::new(other), dir), "{other}");
+        }
+        assert!(!is_inside(Path::new("atlas-desktop.exe"), Path::new("")));
     }
 
     #[test]

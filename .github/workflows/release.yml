@@ -195,13 +195,25 @@ jobs:
           name: atlas-x86_64-unknown-linux-gnu
           path: dist/*
 
-  # Windows x64: the CLI tarball (atlas.exe) and Atlas Desktop's per-user NSIS installer (what
-  # `atlas desktop` runs), cross-compiled on Linux the way Tauri documents it (cargo-xwin fetches the
-  # MSVC CRT and Windows SDK, makensis packs the installer). The installer also carries atlas.exe, next
-  # to the app, so a desktop-only install can start hostd. tauri-cli checks the build HOST for an appindicator
-  # library when the tray is on, even for a Windows target ("Can't detect any appindicator library").
-  build-windows:
-    name: Build (x86_64-pc-windows-msvc)
+  # Windows x64: the CLI tarball (atlas.exe), Atlas Desktop's per-user NSIS installer (what
+  # `atlas desktop` runs) and Atlas-Setup.exe, cross-compiled on Linux the way Tauri documents it
+  # (cargo-xwin fetches the MSVC CRT and Windows SDK, makensis packs the installer). The installer also
+  # carries atlas.exe, next to the app, so a desktop-only install can start hostd. tauri-cli checks the
+  # build HOST for an appindicator library when the tray is on, even for a Windows target ("Can't detect
+  # any appindicator library").
+  #
+  # Code signing (SignPath Foundation, docs/release.md "Windows code signing") needs the files in the
+  # order they are embedded in one another, so the build is a chain of jobs:
+  #   windows-binaries (atlas.exe, atlas-desktop.exe) -> sign-binaries
+  #   -> windows-installer (NSIS, from the signed binaries) -> sign-installer
+  #   -> windows-setup (Atlas-Setup.exe, around the signed NSIS) -> sign-setup
+  #   -> build-windows (archive, renamed copies, checksums of the final bytes; what `publish` needs).
+  # The sign-* jobs run only when the repository variable SIGNPATH_ENABLED is "true". Without it they
+  # are skipped and the same chain ships today's unsigned artifacts under the same names. Every signing
+  # request waits for a manual approval, so each one is its own job: the wait does not count against a
+  # build job's timeout.
+  windows-binaries:
+    name: Build binaries (x86_64-pc-windows-msvc)
     needs: gate
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -216,7 +228,7 @@ jobs:
           SUDO=$(command -v sudo || true)
           $SUDO apt-get update
           $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
-            clang lld llvm nasm nsis libayatana-appindicator3-dev
+            clang lld llvm nasm libayatana-appindicator3-dev
 
       - name: Install Rust
         run: |
@@ -237,8 +249,7 @@ jobs:
           export SOURCE_DATE_EPOCH
           cargo xwin build --release --locked --target x86_64-pc-windows-msvc -p atlas-cli
 
-      # tauri.windows.conf.json picks the NSIS bundle (per-user install in %LOCALAPPDATA%\Atlas);
-      # --config adds the CLI next to the app only here, so a plain `cargo build` never needs it.
+      # Only the app binary here (--no-bundle): the NSIS installer is packed later, from the signed files.
       - name: Build desktop app
         run: |
           command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
@@ -246,29 +257,293 @@ jobs:
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
           (cd crates/atlas-desktop && cargo tauri build --ci --runner cargo-xwin \
+            --target x86_64-pc-windows-msvc --no-bundle)
+
+      # Flat, so atlas.exe and atlas-desktop.exe sit at the root of the zip SignPath receives
+      # (packaging/windows/signpath/binaries.xml).
+      - name: Stage binaries
+        run: |
+          T=x86_64-pc-windows-msvc
+          mkdir -p stage
+          cp "target/$T/release/atlas.exe" "target/$T/release/atlas-desktop.exe" stage/
+
+      - name: Upload binaries
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-binaries
+          path: stage/*
+          if-no-files-found: error
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+
+  # The sign-* jobs: one SignPath request each, the same shape. Secrets and the SIGNPATH_ENABLED switch:
+  # packaging/windows/signpath/README.md. The workflow only runs on a v* tag push or a dispatch by someone
+  # with write access; SignPath's origin verification (repository, branch, workflow run) and the manual
+  # approval of the signing policy are what gate the signature itself. The jobs get read-only tokens.
+  sign-binaries:
+    name: Sign binaries (SignPath)
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    needs: windows-binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 400
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # SignPath's `version` parameter is the tag without the leading v (the version of the PE files).
+      - name: Version
+        id: ver
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Submit signing request
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ needs.windows-binaries.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
+          wait-for-completion-timeout-in-seconds: "21600"
+          output-artifact-directory: signed
+
+      - name: Upload signed binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-binaries-signed
+          path: signed/*
+          if-no-files-found: error
+
+  # The NSIS installer, packed from the (signed, when signing is on) binaries: `cargo tauri bundle` compiles
+  # nothing and builds no frontend, it only packs what is in target/<triple>/release. The unsigned
+  # path takes the binaries straight from windows-binaries, byte for byte what was built.
+  windows-installer:
+    name: Bundle installer (x86_64-pc-windows-msvc)
+    needs: [windows-binaries, sign-binaries]
+    if: ${{ !cancelled() && needs.windows-binaries.result == 'success' && (needs.sign-binaries.result == 'success' || needs.sign-binaries.result == 'skipped') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: System tools
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
+            nsis libayatana-appindicator3-dev
+
+      - name: Install Rust
+        run: |
+          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+
+      - name: Download binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.sign-binaries.result == 'success' && 'windows-binaries-signed' || 'windows-binaries' }}
+          path: target/x86_64-pc-windows-msvc/release/
+
+      # tauri.windows.conf.json picks the NSIS bundle (per-user install in %LOCALAPPDATA%\Atlas);
+      # --config adds the CLI next to the app only here, so a plain `cargo build` never needs it.
+      - name: Bundle installer
+        run: |
+          command -v cargo-tauri >/dev/null || cargo install tauri-cli --version "$(scripts/setup.sh --tauri-version)" --locked
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          (cd crates/atlas-desktop && cargo tauri bundle --ci \
             --target x86_64-pc-windows-msvc --bundles nsis \
             --config '{"bundle":{"resources":{"../../target/x86_64-pc-windows-msvc/release/atlas.exe":"atlas.exe"}}}')
 
-      # Atlas-Setup.exe (crates/atlas-setup): the one-click installer people download. It embeds the NSIS
-      # installer built above (ATLAS_SETUP_PAYLOAD) and runs it silently behind its own window. The NSIS
-      # installer stays a release asset too: `atlas desktop` and `atlas update` run it with /S.
+      - name: Stage installer
+        run: |
+          mkdir -p stage
+          cp target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe stage/
+
+      - name: Upload installer
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installer
+          path: stage/*
+          if-no-files-found: error
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+
+  sign-installer:
+    name: Sign installer (SignPath)
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    needs: windows-installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 400
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Version
+        id: ver
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Submit signing request
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ needs.windows-installer.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
+          wait-for-completion-timeout-in-seconds: "21600"
+          output-artifact-directory: signed
+
+      - name: Upload signed installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installer-signed
+          path: signed/*
+          if-no-files-found: error
+
+  # Atlas-Setup.exe (crates/atlas-setup): the one-click installer people download. It embeds the NSIS
+  # installer (ATLAS_SETUP_PAYLOAD), signed when signing is on, and runs it silently behind its own
+  # window. The NSIS installer stays a release asset too: `atlas desktop` and `atlas update` run it with /S.
+  windows-setup:
+    name: Build Atlas-Setup (x86_64-pc-windows-msvc)
+    needs: [windows-installer, sign-installer]
+    if: ${{ !cancelled() && needs.windows-installer.result == 'success' && (needs.sign-installer.result == 'success' || needs.sign-installer.result == 'skipped') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: System tools
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends build-essential curl file pkg-config \
+            clang lld llvm nasm
+
+      - name: Install Rust
+        run: |
+          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+          "$HOME/.cargo/bin/rustup" target add x86_64-pc-windows-msvc
+
+      - name: Download installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.sign-installer.result == 'success' && 'windows-installer-signed' || 'windows-installer' }}
+          path: payload/
+
       - name: Build Atlas-Setup
         run: |
+          command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
           T=x86_64-pc-windows-msvc
           SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
           export SOURCE_DATE_EPOCH
-          NSIS="$(ls "$PWD/target/$T/release/bundle/nsis/"*-setup.exe)"
+          NSIS="$(ls "$PWD"/payload/*-setup.exe)"
           ATLAS_SETUP_PAYLOAD="$NSIS" cargo xwin build --release --locked --target "$T" -p atlas-setup
+
+      - name: Stage Atlas-Setup
+        run: |
+          mkdir -p stage
+          cp target/x86_64-pc-windows-msvc/release/Atlas-Setup.exe stage/
+
+      - name: Upload Atlas-Setup
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-setup
+          path: stage/*
+          if-no-files-found: error
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+
+  sign-setup:
+    name: Sign Atlas-Setup (SignPath)
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    needs: windows-setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 400
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Version
+        id: ver
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Submit signing request
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ needs.windows-setup.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
+          wait-for-completion-timeout-in-seconds: "21600"
+          output-artifact-directory: signed
+
+      - name: Upload signed Atlas-Setup
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-setup-signed
+          path: signed/*
+          if-no-files-found: error
+
+  # The Windows assets `publish` collects, built from the final (signed when signing is on) bytes: the
+  # archive, the renamed installer, Atlas-Setup.exe, and every checksum, taken after the last signature.
+  # The job keeps the name build-windows, so publish's needs and the artifact name are unchanged.
+  build-windows:
+    name: Build (x86_64-pc-windows-msvc)
+    needs: [windows-binaries, sign-binaries, windows-installer, sign-installer, windows-setup, sign-setup]
+    if: ${{ !cancelled() && needs.windows-binaries.result == 'success' && needs.windows-installer.result == 'success' && needs.windows-setup.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.sign-binaries.result) && contains(fromJSON('["success","skipped"]'), needs.sign-installer.result) && contains(fromJSON('["success","skipped"]'), needs.sign-setup.result) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.sign-binaries.result == 'success' && 'windows-binaries-signed' || 'windows-binaries' }}
+          path: in/binaries/
+
+      - name: Download installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.sign-installer.result == 'success' && 'windows-installer-signed' || 'windows-installer' }}
+          path: in/installer/
+
+      - name: Download Atlas-Setup
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.sign-setup.result == 'success' && 'windows-setup-signed' || 'windows-setup' }}
+          path: in/setup/
 
       - name: Package
         run: |
           V=${TAG#v}
           T=x86_64-pc-windows-msvc
           mkdir -p dist
-          cp "target/$T/release/atlas.exe" dist/
+          cp in/binaries/atlas.exe dist/
           (cd dist && tar czf "atlas-$V-$T.tar.gz" atlas.exe && rm atlas.exe)
-          cp "target/$T/release/bundle/nsis/"*-setup.exe "dist/Atlas-$V-$T-setup.exe"
-          cp "target/$T/release/Atlas-Setup.exe" dist/Atlas-Setup.exe
+          cp in/installer/*-setup.exe "dist/Atlas-$V-$T-setup.exe"
+          cp in/setup/Atlas-Setup.exe dist/Atlas-Setup.exe
           cd dist
           for f in *.tar.gz *.exe; do sha256sum "$f" > "$f.sha256"; done
           ls -l

@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **A display wake could crash Atlas Desktop** (`wgpu error: Failed to wait for GPU to come idle before reconfiguring the Surface`, #166). Reconnecting a monitor posts dozens of screen-change events in a second and each rebuilt every terminal; a burst now causes one rebuild per terminal, after it settles. A surface that fails to reconfigure no longer panics: the terminal skips frames and retries with a growing delay, GPU errors are logged instead of fatal, and a panic while a terminal is rebuilt is reported with its cause (it was "receiving on a closed channel") and the old surface stays in place.
+
 ## [1.5.0-alpha.25] — 2026-11-12
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

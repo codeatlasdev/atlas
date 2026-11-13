@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 use crate::control::{self, Subscription};
 use crate::runner::parse_state;
 use crate::runtime::logs::LogStream;
-use crate::runtime::manager::{ManagerEvent, MirrorFacts, UnhealthyReport};
+use crate::runtime::manager::{ManagerEvent, MemoryFacts, MirrorFacts, UnhealthyReport};
 use crate::runtime::service::ServiceState;
 use crate::runtime::tunnel::TunnelStatus;
 use crate::tui::widgets::events::EventKind;
@@ -102,6 +102,7 @@ fn facts(v: &Value) -> MirrorFacts {
                     })
                     .unwrap_or_default(),
             }),
+        memory: Some(MemoryFacts::from_json(v)),
     }
 }
 

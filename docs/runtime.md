@@ -70,7 +70,7 @@ Once per second, for every service with a live child that is `running`, `degrade
 | missed `failure_threshold` in a row, after it had answered once | `unhealthy` |
 | missed, never answered yet | unchanged: startup, see [Start timeout](#start-timeout) |
 
-- `unhealthy` beats `degraded`; a failing `ready` probe beats a repeating log line.
+- `unhealthy` beats `degraded`; a failing `ready` probe beats a repeating log line, which beats a memory overrun (`memory_warn`, or `max_memory` with `on_memory_max: notify`): the memory reason is shown only when nothing more specific is wrong, and it clears on its own two samples after memory drops. A memory-`degraded` service does not satisfy a `healthy` dependency, like any `degraded` one.
 - **Repeating errors** only count error-level lines (the same detection as the log level filter). A line is compared after ANSI, timestamps, UUIDs, hex ids and numbers are replaced by placeholders and whitespace is collapsed, so `db timeout after 31ms` and `db timeout after 87ms` are the same error. At most 64 distinct shapes are tracked per service. It clears when the hits age out of the 60 s window.
 - **On entering `unhealthy`** Atlas captures the service's last 20 output lines and the time, raises a critical alert (`unhealthy: no answer from the liveness probe (3 misses × 2s timeout)`, with `, restarting` appended under `on_unhealthy: restart`) and narrates the same text as a scheduler note (like `still starting after Ns: …`). Later ticks keep the original since-time and lines. The state clears when the service answers again.
 - **`on_unhealthy: restart`** also restarts the service the first time it turns `unhealthy`, with the same delays and budget as `max_restarts` (default 5, `0` = unlimited); the budget resets after the service stays up for 60 s. When it is spent the service is left running `unhealthy` with the note `unhealthy again after its restarts: left running`. The default `notify` never restarts.
@@ -231,6 +231,7 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 | `<service>.log` | every spawned service | `HH:MM:SS [stdout\|stderr] text`, ANSI stripped, one line per entry |
 | `<service>.prev.log` | rotation | the previous run's log (or the previous 50 MB segment) |
 | `.tui-status.json` | manager, every second | status snapshot (below). Written atomically (temp file + rename). |
+| `.tui-metrics.json` | manager, every 5 s | per-service memory series (last hour) and facts, for MCP `atlas_metrics` ([memory facts](#status-file-memory-facts)). Written atomically. |
 | `.tui.lock` | the running atlas | singleton `flock`, holds the PID |
 | `.pids` | manager | PIDs of live children, one per line; removed on clean quit |
 | `tunnel.log` | tunnel task | ssh stderr and reconnect notes (same line format; rotated to `tunnel.prev.log` per run) |
@@ -276,6 +277,20 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 | `unhealthy_lines` | the last output lines (up to 20) at that moment; `[]` otherwise |
 
 `atlas dev --status` adds a `READY` column (`ok` / `fail` / `-`) only when some service has a `ready:` probe, so its output is unchanged otherwise. Under a `degraded` row it prints `↳ <probe_error>`, and under an `unhealthy` one `↳ unhealthy for 42s (3 missed probes); last output:` followed by the captured lines.
+
+<a id="status-file-memory-facts"></a>**Memory facts** ([#131](https://github.com/codeatlasdev/atlas/issues/131); see [Memory](configuration.md#memory)). Every service row also carries these keys, from the same producer for the file and the runner wire:
+
+| Key | Meaning |
+|---|---|
+| `memory_rss` | bytes of the whole process tree (on macOS the physical footprint), rounded to whole MB; `null` while the service is not running |
+| `memory_trend` | `rising`, `flat` or `falling` over the last 5 minutes (under ±2 MB/min is `flat`); `null` until ~30 s of samples exist |
+| `memory_trend_mb_min` | signed MB per minute behind the trend, rounded; `null` with it |
+| `budget_state` | `ok`, `warn` (over `memory_warn`) or `over` (over `max_memory`), after two samples in a row; `ok` without a budget |
+| `memory_leak` | `leak suspected: +600 MB over 12 reloads` while RSS only grows from one reload or restart to the next; `null` otherwise |
+
+A row from an older atlas has none of these keys and reads as nothing known. `atlas dev --status` prints one `↳ memory 2.1 GB · rising +42 MB/min · budget warn · leak suspected: …` line under a service only when it has something to say (over a budget, a suspected leak or a rising trend), so a healthy project's table is unchanged.
+
+`.tui-metrics.json` holds the series for MCP [`atlas_metrics`](mcp.md#atlas_metrics): per service, `samples` as `[unix_s, bytes]` pairs (oldest first, one every `interval_s` = 5, the last 720 = one hour), the facts above, and `cycles` (reloads and restarts the leak watch has counted). It is rewritten with the status file's temp-and-rename and belongs to the running `atlas dev`; an attached client never writes it.
 
 ## Exit behavior summary
 

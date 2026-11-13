@@ -20,8 +20,10 @@ fn heavy(dir: &Path, slots: usize) -> Command {
     let mut c = Command::new(BIN);
     c.env("ATLAS_HEAVY_DIR", dir)
         .env("ATLAS_HEAVY_SLOTS", slots.to_string())
-        // Off: these tests are about slots, not about how busy the CI machine is.
+        // Off: these tests are about slots, not about how busy (load or memory) the CI machine is;
+        // the memory-gate test sets its own `ATLAS_HEAVY_MINMEM` after this.
         .env("ATLAS_HEAVY_MAXLOAD", "0")
+        .env("ATLAS_HEAVY_MINMEM", "0")
         .env("HOME", dir.parent().unwrap())
         .stdin(Stdio::null());
     c
@@ -103,9 +105,21 @@ fn peak_overlap(log: &Path) -> (usize, usize) {
 fn job_script(log: &Path, id: &str, ms: u32) -> String {
     // `date +%s%N` is not portable (macOS); python3 is a test prerequisite elsewhere in this crate.
     let stamp = "python3 -c 'import time;print(int(time.time()*1000))'";
+    // Seconds and milliseconds apart: `sleep 0.{ms}` made 1500 ms a 0.15 s sleep, so the FIFO
+    // test's blocker was gone before its waiters queued (CI flake on macOS).
+    let (s, m) = (ms / 1000, ms % 1000);
     format!(
-        "echo start {id} $({stamp}) >> {log}; sleep 0.{ms:03}; echo end {id} $({stamp}) >> {log}",
+        "echo start {id} $({stamp}) >> {log}; sleep {s}.{m:03}; echo end {id} $({stamp}) >> {log}",
         log = log.display()
+    )
+}
+
+/// Like [`job_script`], but the job holds its slot until the test creates `release`: no timing.
+fn held_script(log: &Path, id: &str, release: &Path) -> String {
+    format!(
+        "echo start {id} >> {log}; while [ ! -e {release} ]; do sleep 0.05; done; echo end {id} >> {log}",
+        log = log.display(),
+        release = release.display()
     )
 }
 
@@ -292,11 +306,17 @@ fn a_killed_holder_frees_its_slot_at_once_and_leaves_no_stale_record() {
 fn waiters_start_in_the_order_they_arrived() {
     require_python!();
     let f = fixture();
-    let blocker = run(&f.dir, 1, "blocker", &job_script(&f.log, "blocker", 1500))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let release = f.dir.parent().unwrap().join("release-blocker");
+    let blocker = run(
+        &f.dir,
+        1,
+        "blocker",
+        &held_script(&f.log, "blocker", &release),
+    )
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .unwrap();
     wait_for("blocker to run", Duration::from_secs(10), || {
         (labels(&status(&f.dir, 1)["running"]) == ["blocker"]).then_some(())
     });
@@ -315,6 +335,7 @@ fn waiters_start_in_the_order_they_arrived() {
         });
     }
     assert_eq!(labels(&status(&f.dir, 1)["queued"]), ["a", "b", "c"]);
+    std::fs::write(&release, b"").unwrap();
     for mut k in kids {
         assert!(k.wait().unwrap().success());
     }

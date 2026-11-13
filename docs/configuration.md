@@ -103,7 +103,9 @@ services:
 | `open_url` | string | `http://localhost:<port>` | URL opened by `open_key` instead of the default. |
 | `hide_logs` | bool | `false` | No dedicated tab for this service, and its lines are left out of the **All** tab. Use for quiet infra like databases. Logs are still written to `.logs/<name>.log`. |
 | `lock_file` | string | none | Path (relative to project root) to a JSON file holding `{"pid": N}`, e.g. `apps/ai/.mastra/dev.lock`. Atlas cleans stale locks before the service starts, see [lock files](runtime.md#lock-files-lock_file). |
-| `max_memory` | size (`512M`, `4G`) | none | Memory ceiling for the service's whole process tree. Atlas samples memory and CPU every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor); over the ceiling for two samples in a row, the service is restarted with an alert; after 3 such restarts in a run it is stopped and marked failed. A guard for leaking dev servers. Usage is shown per service in Atlas Desktop and in `atlas_status` (`mem_mb`, `cpu`). |
+| `max_memory` | size (`512M`, `4G`) | none | Hard memory ceiling for the service's whole process tree. Atlas samples memory and CPU every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor); over the ceiling for two samples in a row, `on_memory_max` decides: `restart` (default) restarts it with an alert and, after 3 restarts in a run, stops it and marks it failed; `notify` only alerts. A guard for leaking dev servers. See [Memory](#memory). Usage is shown per service in Atlas Desktop and in `atlas_status` (`mem_mb`, `cpu`). |
+| `memory_warn` | size (`512M`, `1.5GB`) | none | Soft budget, below `max_memory`: over it for two samples in a row the service turns `degraded` with the reason (`using 2.1 GB, over memory_warn 1.5 GB`) and nothing is killed. See [Memory](#memory). |
+| `on_memory_max` | `restart` \| `notify` | `restart` | What Atlas does when the service stays over `max_memory`: `restart` (bounded to 3 per run, then `failed`) or `notify` (one alert, left running and `degraded`). |
 | `health_timeout` | seconds | `2` | How long one liveness probe (the `health` GET, or the TCP connect to `port`) may take before it counts as a miss. See [Health and readiness](#health-and-readiness). |
 | `failure_threshold` | integer | `3` | Liveness misses in a row, while the process is alive and after it answered once, before the service turns `unhealthy`. `0` is treated as `1`. |
 | `ready` | object | none | Readiness probe, separate from liveness: `http` (path or URL) with an optional `status`, or a `command`, plus `timeout`. While liveness passes but this fails, the service is `degraded`. See [Health and readiness](#health-and-readiness). |
@@ -163,6 +165,31 @@ What the verdict is for a service with a live process:
 | misses `failure_threshold` in a row after it answered once | | `unhealthy` |
 
 `unhealthy` beats `degraded`, and a failing `ready` probe beats a repeating log line (it carries the endpoint's own error). `degraded` clears by itself when the probe passes again or the error stops repeating; `unhealthy` clears when the service answers again. `unhealthy` is for a process that is **alive**: a process that exits is `failed`, as before, and a service that was never healthy is still `starting`. Concepts: [Service states](concepts.md#service). Runtime details: [Health states](runtime.md#unhealthy-and-degraded).
+
+### Memory
+
+Atlas samples the memory of each service's whole process tree every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor) and keeps the last hour (720 samples) per service. Two optional budgets act on it, and a leak watch needs no setting:
+
+```yaml
+services:
+  web:
+    command: bun run dev:web
+    memory_warn: 1.5GB          # soft: over it for two samples in a row → `degraded`, nothing is killed
+    max_memory: 4GB             # hard: over it for two samples in a row → on_memory_max
+    on_memory_max: restart      # restart (default) | notify
+```
+
+| Setting | What happens |
+|---|---|
+| `memory_warn` | Over the budget for **two samples in a row** (~10 s; a build spike is not a state) the service turns `degraded` with the reason `using 2.1 GB, over memory_warn 1.5 GB`. Under it for two samples in a row it goes back to `running` by itself. Must be below `max_memory` (`atlas config check` rejects the reverse). Sizes parse like `max_memory`: `512M`, `1.5GB`, `2048`. |
+| `max_memory` + `on_memory_max: restart` (default) | Over the ceiling for two samples in a row, the service is restarted with an alert (`using 5.0 GB (max_memory 4.0 GB), restarting (1/3)`); after 3 such restarts in a run it is stopped and marked `failed`. |
+| `max_memory` + `on_memory_max: notify` | Over the ceiling for two samples in a row, Atlas raises one alert and leaves the service running, `degraded` with `using 5.0 GB, over max_memory 4.0 GB` until it drops under it. For services you would rather restart yourself (a database, a long build). |
+
+Precedence with the other `degraded` causes: `unhealthy` beats everything; a failing `ready:` probe beats a repeating error, which beats the memory overrun (the least specific finding: the others say what is broken, this says it is big). While a probe error is the reason, memory dropping never flips the service to `running`; once the probe passes and memory is still over budget, the memory reason is what remains. A service that is not `running` (starting, failed, stopped) is never degraded by memory.
+
+**Trend and leaks.** From the series Atlas derives a `memory_trend`: `rising`, `flat` or `falling` (a least-squares slope over the last 5 minutes, needs ~30 s of data; under ±2 MB/min is `flat`). It also watches the size at the end of every **reload** (a `[bun] reloaded`, `[vite] hmr update`, `✓ Compiled`, `[nodemon] restarting`, … line in the service's output; lines of one change count once) and every **restart**: a healthy dev server returns to about the same size after a reload, a leaking one grows every time. Four cycles in a row without a drop of more than 3 % and at least 64 MB of growth in total raise one alert, `leak suspected: +600 MB over 12 reloads` (again only after 4 more cycles of growth), and the text rides along in the service's note. A suspected leak is a warning, never a state of its own.
+
+Where it shows: the sidebar row (`memory 2.1 GB · rising +42 MB/min`, `budget warn`, the leak), `atlas dev --status` (one `↳` line under a service with something to say), the Atlas Desktop card, and `memory_rss`, `memory_trend`, `memory_trend_mb_min`, `budget_state` and `memory_leak` in the status file and MCP [`atlas_status`](mcp.md#atlas_status); the whole series is MCP [`atlas_metrics`](mcp.md#atlas_metrics).
 
 ### depends_on
 

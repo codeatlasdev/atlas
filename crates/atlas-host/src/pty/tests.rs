@@ -497,10 +497,17 @@ fn titles(rx: &mut super::OutRx) -> Vec<String> {
 async fn a_title_repeated_by_the_program_is_pushed_once() {
     let dir = tempfile::tempdir().unwrap();
     // `sleep 0.02` keeps each OSC in its own 8 ms coalescing window, so the parser sees every one.
-    let script = "for t in a a a b b a a a; do printf '\\033]0;%s\\007' $t; sleep 0.02; done";
-    let s = Session::spawn(shell_req(script), dir.path()).unwrap();
+    // The program waits for `go`, created after the attach: a title pushed before the client is
+    // attached is not replayed, so on a loaded CI runner the first one was lost.
+    let go = dir.path().join("go");
+    let script = format!(
+        "while [ ! -e '{}' ]; do sleep 0.01; done; for t in a a a b b a a a; do printf '\\033]0;%s\\007' $t; sleep 0.02; done",
+        go.display()
+    );
+    let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
     let (tx, mut rx) = super::out_channel();
     s.attach(1, tx, false, false);
+    std::fs::write(&go, b"").unwrap();
     until_exited(&s).await;
     assert_eq!(titles(&mut rx), ["a", "b", "a"], "one push per change");
     assert_eq!(
@@ -516,10 +523,15 @@ async fn a_title_repeated_by_the_program_is_pushed_once() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_title_that_returns_to_an_earlier_value_is_a_change() {
     let dir = tempfile::tempdir().unwrap();
-    let script = "for t in x y x; do printf '\\033]0;%s\\007' $t; sleep 0.02; done";
-    let s = Session::spawn(shell_req(script), dir.path()).unwrap();
+    let go = dir.path().join("go");
+    let script = format!(
+        "while [ ! -e '{}' ]; do sleep 0.01; done; for t in x y x; do printf '\\033]0;%s\\007' $t; sleep 0.02; done",
+        go.display()
+    );
+    let s = Session::spawn(shell_req(&script), dir.path()).unwrap();
     let (tx, mut rx) = super::out_channel();
     s.attach(1, tx, false, false);
+    std::fs::write(&go, b"").unwrap();
     until_exited(&s).await;
     assert_eq!(titles(&mut rx), ["x", "y", "x"]);
 }

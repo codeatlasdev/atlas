@@ -551,6 +551,38 @@ fn action_output_is_readable_via_atlas_logs() {
     assert!(web["uptime_s"].as_u64().is_some(), "{web}");
     assert!(web["exit_code"].is_null(), "{web}");
     assert_eq!(web["restarts"], 0);
+
+    // `atlas_metrics` returns the memory series the live headless run keeps for the service
+    // (the first sample lands within one health tick), and `atlas_status` carries the facts.
+    let m = wait_for("first memory sample", Duration::from_secs(20), || {
+        let (err, t) = c.call("atlas_metrics", json!({"service": "web"}));
+        let v: Value = serde_json::from_str(&t).ok().filter(|_| !err)?;
+        v["samples"].as_array().filter(|s| !s.is_empty())?;
+        Some(v)
+    });
+    assert_eq!(m["running"], true, "{m}");
+    assert_eq!(m["service"], "web");
+    assert_eq!(m["interval_s"], 5, "{m}");
+    assert!(m["rss_bytes"].as_u64().unwrap() > 0, "{m}");
+    assert_eq!(m["budget_state"], "ok", "no budget configured: {m}");
+    let (err, t) = c.call("atlas_metrics", json!({"service": "nope"}));
+    assert!(
+        err && t.contains("Known services") && t.contains("web"),
+        "{t}"
+    );
+    let web = wait_for(
+        "memory facts in atlas_status",
+        Duration::from_secs(10),
+        || {
+            let st = status(&mut c);
+            st["services"]
+                .as_array()?
+                .iter()
+                .find(|s| s["name"] == "web" && s["memory_rss"].as_u64().is_some_and(|b| b > 0))
+                .cloned()
+        },
+    );
+    assert_eq!(web["budget_state"], "ok", "{web}");
 }
 
 // ───────────────────────── protocol ─────────────────────────
@@ -726,7 +758,17 @@ fn ping_and_tools_work_before_initialize() {
     let mut c = McpClient::spawn(d.path());
     assert_eq!(c.request("ping", json!({}))["result"], json!({}));
     let r = c.request("tools/list", json!({}));
-    assert_eq!(r["result"]["tools"].as_array().unwrap().len(), 10);
+    // The catalogue's exact list is pinned in atlas-tui (`mcp::tools` tests); here: the tools an
+    // agent starts with are listed before `initialize`.
+    let names: Vec<&str> = r["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    for want in ["atlas_status", "atlas_logs", "atlas_wait_ready"] {
+        assert!(names.contains(&want), "{want} missing from {names:?}");
+    }
     let (err, text) = c.call("atlas_status", json!({}));
     assert!(!err, "{text}");
     // Still handshakes fine afterwards, and ping works after too.
@@ -781,6 +823,7 @@ fn tools_list_schemas_are_valid_and_described() {
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     for want in [
         "atlas_status",
+        "atlas_metrics",
         "atlas_logs",
         "atlas_logs_search",
         "atlas_config",
@@ -803,6 +846,7 @@ fn tools_list_schemas_are_valid_and_described() {
         ("atlas_restart_service", &["service"]),
         ("atlas_stop_service", &["service"]),
         ("atlas_start_service", &["service"]),
+        ("atlas_metrics", &["service"]),
         ("atlas_run_action", &["action"]),
     ];
     for t in tools {

@@ -14,9 +14,10 @@ import {
 	type SnapshotRun,
 } from "#lib/panel/actionRuns.ts";
 import { sameConflict, type PortConflict } from "#lib/panel/portConflict.ts";
+import { sameMemory, type MemoryRow } from "#lib/panel/memoryFacts.ts";
 
-/** One row of the runner's `service_json` (runner.rs). */
-export interface Service {
+/** One row of the runner's `service_json` (runner.rs); the memory keys (#131) come from `MemoryRow`. */
+export interface Service extends MemoryRow {
 	name: string;
 	state: string;
 	exit_code: number | null;
@@ -55,7 +56,8 @@ function rowChanged(a: Service, b: Service): boolean {
 		a.cpu !== b.cpu ||
 		a.ready !== b.ready ||
 		a.probe_error !== b.probe_error ||
-		a.unhealthy_since !== b.unhealthy_since
+		a.unhealthy_since !== b.unhealthy_since ||
+		!sameMemory(a, b)
 	);
 }
 

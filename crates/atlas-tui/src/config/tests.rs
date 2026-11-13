@@ -655,6 +655,74 @@ fn test_invalid_ready_log_regex_is_reported() {
 }
 
 #[test]
+fn memory_budget_sizes_parse_like_max_memory_and_bad_ones_name_the_key() {
+    // A size is a string like `max_memory`'s; a bare number is bytes only when quoted.
+    for ok in ["1.5GB", "512M", "3G", "800mb", "'2048'"] {
+        let errs = errors_for(&format!(
+            "name: t\nservices:\n  a:\n    command: x\n    memory_warn: {ok}\n"
+        ));
+        assert!(errs.is_empty(), "{ok}: {errs:#?}");
+    }
+    let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    memory_warn: lots\n");
+    assert_has(&errs, "services.a.memory_warn: 'lots' is not a size");
+    let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    max_memory: 0M\n");
+    assert_has(&errs, "services.a.max_memory: '0M' is not a size");
+    // Unquoted `2048` is a YAML integer: rejected at load, for both keys alike.
+    for key in ["memory_warn", "max_memory"] {
+        let dir = TempDir::new().unwrap();
+        write_config(
+            &dir,
+            "atlas.yaml",
+            &format!("name: t\nservices:\n  a:\n    command: x\n    {key}: 2048\n"),
+        );
+        let e = load_checked(dir.path()).expect_err("integer must not load");
+        assert!(e.to_string().contains("expected a string"), "{key}: {e}");
+    }
+}
+
+/// `warn` at or above `max` would make the soft budget unreachable: the config is wrong.
+#[test]
+fn memory_warn_must_be_below_max_memory() {
+    let errs = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 4G\n    max_memory: 2G\n",
+    );
+    assert_has(
+        &errs,
+        "services.a.memory_warn: must be below max_memory (2G)",
+    );
+    let equal = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 2G\n    max_memory: 2048M\n",
+    );
+    assert_has(&equal, "services.a.memory_warn: must be below max_memory");
+    let ok = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 1.5GB\n    max_memory: 2G\n",
+    );
+    assert!(ok.is_empty(), "{ok:#?}");
+}
+
+#[test]
+fn on_memory_max_takes_restart_or_notify_and_defaults_to_restart() {
+    let cfg = |extra: &str| {
+        let dir = TempDir::new().unwrap();
+        write_config(
+            &dir,
+            "atlas.yaml",
+            &format!("name: t\nservices:\n  a:\n    command: x\n    max_memory: 2G\n{extra}"),
+        );
+        load(dir.path())
+    };
+    assert_eq!(
+        cfg("").unwrap().services["a"].on_memory_max,
+        OnMemoryMax::Restart
+    );
+    assert_eq!(
+        cfg("    on_memory_max: notify\n").unwrap().services["a"].on_memory_max,
+        OnMemoryMax::Notify
+    );
+    assert!(cfg("    on_memory_max: explode\n").is_err());
+}
+
+#[test]
 fn test_duplicate_port_flagged_but_disabled_service_exempt() {
     let errs = errors_for(
         "name: t\nservices:\n  a:\n    command: x\n    port: 3000\n  b:\n    command: y\n    port: 3000\n",

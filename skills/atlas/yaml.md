@@ -32,6 +32,9 @@ services:
     health_timeout: 2           # seconds one liveness probe (health URL / port) may take; default 2
     failure_threshold: 3        # liveness misses in a row (process alive, answered once before) -> `unhealthy`; default 3
     on_unhealthy: notify        # notify (default: state + alert + log context) | restart (also restarts, max_restarts budget)
+    memory_warn: 1.5GB          # soft budget (size): over it for 2 samples -> `degraded` with the reason; nothing is killed; default none
+    max_memory: 4GB             # hard ceiling (size): over it for 2 samples -> on_memory_max; default none
+    on_memory_max: restart      # restart (default: alert + restart, 3 per run, then `failed`) | notify (alert once, left running + `degraded`)
     ready:                      # optional readiness probe; fails while liveness passes -> `degraded`
       http: /ready              # path on this service's `port`, or a full http(s):// URL
       status: 200               # optional exact code; default any 2xx
@@ -70,6 +73,10 @@ List form `[database, redis]` means each `healthy`. Map form conditions: `starte
 ## Health and readiness
 
 `health`/`port` is **liveness**: after it answered once, `failure_threshold` misses in a row (each up to `health_timeout`) on a live process turn the service `unhealthy` (hung; not `failed`, nothing exited). `ready:` is **readiness**, run only while liveness passes: failing it makes the service `degraded` with the probe's error; the same error line 3 times in 60 s (numbers and timestamps ignored) does too. Both clear by themselves. A `healthy` dependent waits for `running`, so `degraded`/`unhealthy` do not satisfy it. Not overridable from `atlas.local.yaml`. Rules: `docs/runtime.md#unhealthy-and-degraded`.
+
+## Memory budgets
+
+`max_memory: 4GB` is the hard ceiling of a service's whole process tree: over it for two samples (~10 s) in a row Atlas acts per `on_memory_max` (`restart`, the default: alert + restart, 3 per run, then `failed`; `notify`: one alert, left running and `degraded`). `memory_warn: 1.5GB` is the soft budget (must be below `max_memory`): over it for two samples the service turns `degraded` with `using 2.1 GB, over memory_warn 1.5 GB` in `probe_error`, nothing is killed, and it returns to `running` by itself. A failing `ready:` probe or a repeating error outranks the memory reason. Atlas also flags a leak with no setting: RSS that grows after every reload or restart raises `leak suspected: +600 MB over 12 reloads` (`memory_leak`). Read it with `atlas_status` (`memory_rss`, `memory_trend`, `budget_state`, `memory_leak`) and `atlas_metrics {"service": "web"}` for the series. Raising a budget to silence the alert hides the leak: find it.
 
 ## profiles and partial runs
 

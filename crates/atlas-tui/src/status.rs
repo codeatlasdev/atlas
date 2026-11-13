@@ -43,6 +43,8 @@ pub struct ServiceRow {
     pub unhealthy_misses: Option<u64>,
     /// The last output lines at the moment it turned `unhealthy`.
     pub unhealthy_lines: Vec<String>,
+    /// RSS, trend, budget standing and leak suspicion (`memory_*`, `budget_state`).
+    pub memory: crate::runtime::manager::MemoryFacts,
 }
 
 /// The SSH tunnel row from the status file (absent when no `tunnel:` is running).
@@ -119,6 +121,7 @@ pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
                                 .collect()
                         })
                         .unwrap_or_default(),
+                    memory: crate::runtime::manager::MemoryFacts::from_json(s),
                 })
                 .collect()
         })
@@ -146,6 +149,36 @@ pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
         services,
         tunnel,
     })
+}
+
+/// What is worth saying about a service's memory, one fact per part: its size, its trend, its
+/// budget standing, a suspected leak. Empty when there is nothing notable (over budget, a
+/// suspected leak, or a rising trend), so a healthy project's output stays as it was.
+pub fn memory_parts(m: &crate::runtime::manager::MemoryFacts) -> Vec<String> {
+    use crate::runtime::memory::{Budget, Direction, fmt_size};
+    let notable = m.budget != Budget::Ok
+        || m.leak.is_some()
+        || m.trend.is_some_and(|t| t.direction == Direction::Rising);
+    let Some(rss) = m.rss.filter(|_| notable) else {
+        return Vec::new();
+    };
+    let mut parts = vec![format!("memory {}", fmt_size(rss))];
+    if let Some(t) = m.trend {
+        parts.push(format!("{} {:+} MB/min", t.direction.name(), t.mb_per_min));
+    }
+    if m.budget != Budget::Ok {
+        parts.push(format!("budget {}", m.budget.name()));
+    }
+    if let Some(leak) = &m.leak {
+        parts.push(leak.clone());
+    }
+    parts
+}
+
+/// The memory line of a service in `atlas dev --status`: [`memory_parts`] on one line.
+pub fn memory_line(m: &crate::runtime::manager::MemoryFacts) -> Option<String> {
+    let parts = memory_parts(m);
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 /// Render the status table when a live atlas run owns `root_dir`.
@@ -206,6 +239,9 @@ pub fn live_status(root_dir: &Path) -> Result<String, String> {
             for l in &s.unhealthy_lines {
                 out.push_str(&format!("      {l}\n"));
             }
+        }
+        if let Some(line) = memory_line(&s.memory) {
+            out.push_str(&format!("  ↳ {line}\n"));
         }
         if let (Some(c), Some(p)) = (&s.port_conflict, s.port) {
             out.push_str(&format!("  ! {}\n", c.describe(p as u16)));
@@ -433,5 +469,52 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("render queue: 412 pending"), "{out}");
+    }
+
+    /// A status file from an older atlas (no memory keys) reads as nothing known and prints no
+    /// memory line: output stays byte-identical for it.
+    #[test]
+    fn old_status_file_has_no_memory_facts_and_no_memory_line() {
+        let dir = tempfile::tempdir().unwrap();
+        write_status(dir.path(), std::process::id(), now());
+        let snap = live_snapshot(dir.path()).unwrap();
+        let m = &snap.services[0].memory;
+        assert_eq!(m.rss, None);
+        assert_eq!(m.budget, crate::runtime::memory::Budget::Ok);
+        assert!(!live_status(dir.path()).unwrap().contains("memory"));
+    }
+
+    #[test]
+    fn a_rising_service_over_budget_with_a_leak_gets_one_memory_line() {
+        let dir = tempfile::tempdir().unwrap();
+        write_services(
+            dir.path(),
+            serde_json::json!({
+                "api": { "state": "degraded", "port": 3000,
+                         "memory_rss": 2254857830u64 >> 20 << 20, "memory_trend": "rising",
+                         "memory_trend_mb_min": 42.0, "budget_state": "warn",
+                         "memory_leak": "leak suspected: +600 MB over 12 reloads",
+                         "probe_error": "using 2.1 GB, over memory_warn 1.5 GB" },
+                "web": { "state": "running", "port": 3001,
+                         "memory_rss": 300u64 << 20, "memory_trend": "flat",
+                         "memory_trend_mb_min": 0.0, "budget_state": "ok" },
+            }),
+        );
+        let out = live_status(dir.path()).unwrap();
+        assert!(
+            out.contains(
+                "↳ memory 2.1 GB · rising +42 MB/min · budget warn · leak suspected: +600 MB over 12 reloads"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains("using 2.1 GB, over memory_warn 1.5 GB"),
+            "{out}"
+        );
+        let web = out.lines().position(|l| l.starts_with("web")).unwrap();
+        assert!(
+            !out.lines().nth(web + 1).unwrap_or("").contains("memory"),
+            "a flat, in-budget service gets no line: {out}"
+        );
     }
 }

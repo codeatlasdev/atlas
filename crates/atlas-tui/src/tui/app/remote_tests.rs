@@ -317,3 +317,51 @@ async fn an_attached_tui_shows_the_port_holder_from_the_real_runner_payload() {
     );
     assert!(real["note"].as_str().unwrap().contains("held by PID 12345"));
 }
+
+/// Contract (#131): the attached TUI reads the REAL `service_json` of a leaking and a steady
+/// service (`__fixtures__/service-memory.json`, written by the `runner::wire` test): the memory
+/// facts survive the wire into the mirror, and the sidebar shows them.
+#[tokio::test]
+async fn an_attached_tui_shows_memory_trend_budget_and_leak_from_the_real_runner_payload() {
+    let rows: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../apps/desktop/src/lib/__fixtures__/service-memory.json"
+    ))
+    .unwrap();
+    let (mut app, _keep) = attached();
+    app.apply_snapshot(&json!({
+        "started": true,
+        "services": rows,
+        "tunnel": null, "logs": [], "events": [], "operation": null,
+    }));
+
+    let api = app.manager.memory_facts("api").expect("api facts");
+    assert_eq!(api.rss, Some(1_426_063_360));
+    assert_eq!(api.budget, crate::runtime::memory::Budget::Warn);
+    assert_eq!(
+        api.trend.map(|t| t.direction),
+        Some(crate::runtime::memory::Direction::Rising)
+    );
+    assert_eq!(
+        api.leak.as_deref(),
+        Some("leak suspected: +660 MB over 11 reloads")
+    );
+    let web = app.manager.memory_facts("web").expect("web facts");
+    assert_eq!(web.budget, crate::runtime::memory::Budget::Ok);
+    assert!(web.leak.is_none());
+    // The degraded reason is the wire's `probe_error`, the same text the card shows.
+    assert_eq!(
+        app.manager.probe_error("api").as_deref(),
+        Some("using 1.3 GB, over memory_warn 1.0 GB")
+    );
+
+    let s = screen(&app);
+    assert!(s.contains("memory 1.3 GB"), "{s}");
+    assert!(s.contains("rising +360 MB/min"), "{s}");
+    assert!(s.contains("budget warn"), "{s}");
+    assert!(s.contains("leak suspected: +660 MB"), "{s}");
+    let web_row = s.lines().find(|l| l.contains("web")).unwrap();
+    assert!(
+        !web_row.contains("memory"),
+        "a steady service stays quiet: {web_row}"
+    );
+}

@@ -46,6 +46,7 @@ fn extras(app: &App) -> HashMap<String, SvcExtra> {
                     restarts: app.manager.restart_count(&s.name),
                     done,
                     off: app.manager.is_deselected(&s.name),
+                    memory: app.manager.memory_facts(&s.name),
                 },
             )
         })

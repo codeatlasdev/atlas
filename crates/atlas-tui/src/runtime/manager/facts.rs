@@ -47,7 +47,7 @@ impl ServiceManager {
                 format!("waiting for {what} ({secs}s){held}")
             });
         }
-        match s.status.state {
+        let base = match s.status.state {
             ServiceState::Failed => match (&s.sched.port_conflict, s.status.port) {
                 (Some(c), Some(p)) => Some(c.describe(p)),
                 _ => s.sched.fail_reason.clone(),
@@ -65,6 +65,18 @@ impl ServiceManager {
                 Some(format!("restarted ×{}", s.sched.tracker.attempts))
             }
             _ => None,
+        };
+        // A suspected leak rides along on a live service: the reason it is `degraded` (or the
+        // restart count) stays, the leak is added, never hidden behind it.
+        let leak = matches!(
+            s.status.state,
+            ServiceState::Running | ServiceState::Degraded
+        )
+        .then(|| s.mem.leak.suspect().map(|l| l.text()))
+        .flatten();
+        match (base, leak) {
+            (Some(b), Some(l)) => Some(format!("{b} · {l}")),
+            (b, l) => b.or(l),
         }
     }
 

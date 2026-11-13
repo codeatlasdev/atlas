@@ -12,6 +12,53 @@ use crate::runtime::service::{ServiceState, ServiceStatus};
 use crate::config::{Condition, RestartPolicy};
 
 use super::policy::RestartTracker;
+use crate::runtime::memory::{Budget, BudgetMachine, LeakDetector, Limits, Series};
+
+/// A service's memory bookkeeping: its budget, the RSS series of its process tree and the leak
+/// watch. The rules live in `runtime::memory`; `mem_watch.rs` applies them to a sample.
+pub(crate) struct MemWatch {
+    pub(crate) limits: Limits,
+    pub(crate) on_max: crate::config::OnMemoryMax,
+    pub(crate) series: Series,
+    pub(crate) budget: BudgetMachine,
+    pub(crate) leak: LeakDetector,
+    /// `max_memory` restarts this run; past [`super::health_check::MEM_RESTARTS`] the service stops.
+    pub(crate) restarts: u32,
+    /// The last RSS reading of the previous process, kept for the cycle a respawn closes.
+    pub(crate) last_rss: Option<u64>,
+    /// Cycles the last leak alert counted: the next one waits for `LEAK_REALERT_CYCLES` more.
+    pub(crate) alerted_cycles: Option<usize>,
+    /// The service is `degraded` only because of the memory budget (so it clears on its own).
+    pub(crate) degrading: bool,
+}
+
+/// Gap between two resource samples (memory/CPU of every service tree).
+pub(crate) const USAGE_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+impl MemWatch {
+    pub(crate) fn from_def(def: &crate::config::ServiceDef) -> Self {
+        let size = |v: &Option<String>| v.as_deref().and_then(crate::runtime::usage::parse_size);
+        Self {
+            limits: Limits {
+                warn: size(&def.memory_warn),
+                max: size(&def.max_memory),
+            },
+            on_max: def.on_memory_max,
+            series: Series::default(),
+            budget: BudgetMachine::default(),
+            leak: LeakDetector::default(),
+            restarts: 0,
+            last_rss: None,
+            alerted_cycles: None,
+            degrading: false,
+        }
+    }
+
+    /// The budget standing, `ok` while nothing is known.
+    pub(crate) fn budget(&self) -> Budget {
+        self.budget.state()
+    }
+}
 
 /// Current phase of a mobile build/deploy pipeline.
 /// Emitted by the log-parsing task inside run_session_action.
@@ -174,11 +221,8 @@ pub(crate) struct ManagedService {
     pub(crate) probes: Probes,
     /// Memory/CPU of the process tree, refreshed every few seconds while alive.
     pub(crate) usage: Option<crate::runtime::usage::Usage>,
-    /// `max_memory:` in bytes: above it (two samples in a row) the service restarts.
-    pub(crate) max_memory: Option<u64>,
-    pub(crate) mem_over: u32,
-    /// Restarts caused by `max_memory` this run; past the cap the service stops.
-    pub(crate) mem_restarts: u32,
+    /// Memory budget, time series and leak watch (see `runtime::memory`).
+    pub(crate) mem: MemWatch,
     /// `autostart: false`: not queued at boot, started on demand.
     pub(crate) autostart: bool,
     /// Not part of this run's selection (`atlas dev SERVICE…` / `--profile`):

@@ -169,6 +169,9 @@ struct Store {
 #[derive(Clone, Debug)]
 pub struct Registry {
     dir: PathBuf,
+    /// Create the base folder when missing. False for a daemon's own dir: when the dir is
+    /// removed under it, a write must not bring it back (see [`Registry::in_existing`]).
+    create_base: bool,
 }
 
 impl Registry {
@@ -187,9 +190,21 @@ impl Registry {
         Self::at(&base)
     }
 
+    /// The registry under `base`, created (with `base`) on the first write.
     pub fn at(base: &Path) -> Self {
         Self {
             dir: base.join("hygiene"),
+            create_base: true,
+        }
+    }
+
+    /// The registry under a daemon's own dir: writes create only the `hygiene` folder, never a
+    /// missing `base`. hostd exits when its dir is removed; a terminal spawning at that moment
+    /// used to recreate the dir and race the deletion ("Directory not empty").
+    pub fn in_existing(base: &Path) -> Self {
+        Self {
+            dir: base.join("hygiene"),
+            create_base: false,
         }
     }
 
@@ -219,8 +234,15 @@ impl Registry {
     }
 
     fn update_in<T>(&self, create: bool, f: impl FnOnce(&mut Store) -> T) -> std::io::Result<T> {
-        if create {
+        if create && self.create_base {
             std::fs::create_dir_all(&self.dir)?;
+        } else if create {
+            // Only the registry's own folder: a missing base is NotFound to the caller.
+            match std::fs::create_dir(&self.dir) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e),
+            }
         }
         let lock_path = self.dir.join("registry.lock");
         let lock = std::fs::OpenOptions::new()

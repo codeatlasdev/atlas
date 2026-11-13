@@ -1224,3 +1224,31 @@ fn maintenance_never_recreates_a_registry_folder_that_was_removed() {
     reg.add_root(root("s", Owner::current(), 1, 1)).unwrap();
     assert!(d.path().join("hygiene/registry.json").is_file());
 }
+
+// CI flake (`hostd_exits_when_its_dir_disappears`, "Directory not empty"): a terminal spawned while
+// hostd's dir was being removed recreated it through the registry write. A daemon's registry never
+// brings back a removed base; a plain one still creates it on first use.
+#[test]
+fn a_daemon_registry_never_recreates_its_removed_base() {
+    let d = tempfile::tempdir().unwrap();
+    let base = d.path().join("hostd-dir");
+    let reg = Registry::in_existing(&base);
+    let err = reg
+        .add_root(root("s", Owner::current(), 1, 1))
+        .expect_err("a missing base is an error, not a resurrection");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(!base.exists(), "the removed dir came back");
+
+    std::fs::create_dir(&base).unwrap();
+    reg.add_root(root("s", Owner::current(), 1, 1)).unwrap();
+    assert_eq!(reg.roots().len(), 1, "an existing base works as usual");
+
+    let fresh = d.path().join("never-made");
+    Registry::at(&fresh)
+        .add_root(root("s", Owner::current(), 1, 1))
+        .unwrap();
+    assert!(
+        fresh.join("hygiene").is_dir(),
+        "a plain registry creates its base"
+    );
+}

@@ -226,6 +226,6 @@ impl Session {
 /// shell ran, and the shell's own tree (macOS and Windows cannot read another process's
 /// environment, see `atlas_core::hygiene`). Reaps by exact `(pid, start)` only.
 fn reap_session_tree(scroll_dir: &std::path::Path, id: &str) {
-    let reg = atlas_core::hygiene::Registry::at(&crate::paths::hygiene_base(scroll_dir));
+    let reg = atlas_core::hygiene::Registry::in_existing(&crate::paths::hygiene_base(scroll_dir));
     let _ = reg.reap_session(id, atlas_core::hygiene::GRACE);
 }

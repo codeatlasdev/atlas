@@ -177,7 +177,7 @@ fn register(scroll_dir: &Path, id: &str, pid: u32, req: &PtyCreate) {
         project: Some(req.cwd.clone()),
         started_at: now_s(),
     };
-    let reg = atlas_core::hygiene::Registry::at(&crate::paths::hygiene_base(scroll_dir));
+    let reg = atlas_core::hygiene::Registry::in_existing(&crate::paths::hygiene_base(scroll_dir));
     let _ = reg.add_root(root);
     // The shell's first children are recorded right away, off the spawn path (a process-table
     // read must not delay the terminal: a client attaching after the spawn would miss output);

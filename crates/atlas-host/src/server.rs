@@ -382,7 +382,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // The terminals now die with THIS daemon: the registry must say so before the old one exits,
     // or the first sweep would take every adopted terminal for an orphan of the retired owner.
     if lab.is_none() && !sessions.is_empty() {
-        let reg = atlas_core::hygiene::Registry::at(&paths::hygiene_base(&scroll_dir));
+        let reg = atlas_core::hygiene::Registry::in_existing(&paths::hygiene_base(&scroll_dir));
         let ids: Vec<String> = sessions.keys().cloned().collect();
         let _ = reg.set_owner(&ids, atlas_core::hygiene::Owner::current());
     }
@@ -481,7 +481,9 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // Orphans of a daemon that died without closing its terminals, and registered dirs over
     // their caps: found when an owner dies (checked every few seconds), at the first tick (a restart after a
     // crash) and in a full sweep every minute. A lab owns none.
-    let reg = atlas_core::hygiene::Registry::at(&paths::hygiene_base(&paths::scrollback_dir(dir)));
+    let reg = atlas_core::hygiene::Registry::in_existing(&paths::hygiene_base(
+        &paths::scrollback_dir(dir),
+    ));
     let mut sweeper = tokio::time::interval(OWNER_CHECK_EVERY);
     let mut sweeps = 0u32;
     let sweeping = Arc::new(std::sync::atomic::AtomicBool::new(false));

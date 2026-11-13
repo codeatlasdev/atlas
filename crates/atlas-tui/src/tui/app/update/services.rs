@@ -16,13 +16,18 @@ impl App {
                     format!("Restarting {} services", names.len()),
                     ToastVariant::Progress,
                 );
+                for name in &names {
+                    self.audit_human("restart_service", name);
+                }
                 self.effects.push_back(Effect::RestartServices(names));
             }
             Message::StopService(name) => {
+                self.audit_human("stop_service", &name);
                 self.set_toast(format!("Stopping {name}"), ToastVariant::Progress);
                 self.effects.push_back(Effect::StopService(name));
             }
             Message::RestartService(name) => {
+                self.audit_human("restart_service", &name);
                 self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
                 self.effects.push_back(Effect::RestartService(name));
             }
@@ -47,10 +52,14 @@ impl App {
                             on_confirm: Box::new(Message::RunActionConfirmed(key)),
                         };
                     }
-                    None => self.effects.push_back(Effect::RunAction(key)),
+                    None => {
+                        self.audit_human_action(key);
+                        self.effects.push_back(Effect::RunAction(key));
+                    }
                 }
             }
             Message::RunActionConfirmed(key) => {
+                self.audit_human_action(key);
                 self.effects.push_back(Effect::RunAction(key));
             }
             Message::OpenService(key) => {
@@ -89,14 +98,17 @@ impl App {
                 self.layer = Layer::Dashboard;
                 match action {
                     ServiceMenuAction::Restart => {
+                        self.audit_human("restart_service", &name);
                         self.set_toast(format!("Restarting {name}"), ToastVariant::Progress);
                         self.effects.push_back(Effect::RestartService(name));
                     }
                     ServiceMenuAction::Stop => {
+                        self.audit_human("stop_service", &name);
                         self.set_toast(format!("Stopping {name}"), ToastVariant::Progress);
                         self.effects.push_back(Effect::StopService(name));
                     }
                     ServiceMenuAction::Start => {
+                        self.audit_human("start_service", &name);
                         self.set_toast(format!("Starting {name}"), ToastVariant::Progress);
                         self.effects.push_back(Effect::RestartService(name));
                     }

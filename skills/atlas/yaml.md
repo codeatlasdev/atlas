@@ -90,6 +90,10 @@ Required: `key` (one char), `label`, `command` (`sh -c` in project root). Option
 
 `deploy: { app?, build?, artifact?: [paths], targets: { NAME: { host (ssh alias|local), dir? (abs, default /opt/<app>), keep? (>=2, 5), link?: {rel: /abs}, install?, migrate?, hooks?: {pre_swap, post_swap, post_deploy, on_failure}, pause_marker?, health_timeout? (60), health_passes? (3), soak? (15), min_free_mb? (1024), services: [{name, kind: systemd|compose|command, health?: url, compose_file? (compose only), restart? (command only, required)}] } } }`. Services restart in list order; a failed health gate rolls back to the last healthy release. Migrations must be expand-only. Secrets go in host files referenced by `link`, never in the repo. Not overridable from atlas.local.yaml. Details: `docs/deploy.md`.
 
+## agents (what AI agents may do)
+
+`agents: { control: deny }` makes MCP agents read-only: restart/stop/start/run_action are refused by `atlas dev` with a message telling the agent to ask the developer. Finer: `control: allow|deny` (default for every control tool), then per tool `restart_service`, `stop_service`, `start_service`, `run_action`: `allow`, `deny`, `{ allow: [names] }` or `{ deny: [names] }` (services; actions by key or label). The tool's own entry beats `control`; no `agents:` = everything allowed. `atlas.yaml` only (`atlas.local.yaml` cannot loosen it). Every control call is audited in `.logs/atlas-audit.log`. Details: `docs/configuration.md#agents`.
+
 ## Ports
 
 Every dev runs several projects at once. Default ports (3000, 3001, 4000, 5000, 5173, 5432, 6379, 8000, 8080, 9000, 27017) collide across projects and with tools: never use them.

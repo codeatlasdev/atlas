@@ -16,6 +16,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 - A service shown `off` (`disabled`, `"off": true`) was deliberately left out of a partial run (`atlas dev web`, `--profile backend`): not a failure. Start it with `atlas_start_service` if the task needs it.
 - Read a failing service's log before restarting it; a restart rotates `<service>.log` to `.prev.log`.
 - Never run an action that has a `confirm:` message without the user's explicit yes.
+- A control tool can answer `this project's atlas.yaml denies agents <tool> on <target>: ask the developer…`: the project's `agents:` policy forbids it. Do not retry, do not look for another way (no `kill`, no `atlas down`, no shell restart): tell the user which call you need and why, and let them run it or allow it under `agents:` in `atlas.yaml`. Every control call you make is recorded in `.logs/atlas-audit.log` (read it with `atlas_logs {"service": "audit"}`).
 - **Run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy [--label X] -- <cmd…>`, never directly.** Several agents and worktrees share one machine: Atlas keeps at most N heavy jobs running at once (default `min(cores / 2, GB of memory / 8)`, at least 1) and the rest wait their turn, first come first served, and a job waits while load or memory pressure is high (`ATLAS_HEAVY_MAXLOAD`, `ATLAS_HEAVY_MINMEM`). The command's output and exit code pass through. `atlas_heavy_status` (or `atlas heavy status`) shows who holds the slots and the ETA. Heavy actions in `atlas.yaml` (`heavy: true`) are already queued.
 - New service or port? Follow **Ports** in [yaml.md](yaml.md#ports): never default ports (3000, 5173, 5432, 6379, 8080…), always a random per-project block.
 
@@ -28,7 +29,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | `atlas_status` | none | no (reports `running: false`); `setup` = last `pre_command` run `{state, command, started_at, finished_at?, reason?}` or null |
 | `atlas_metrics` | `service`, `last?` | no: the memory series of one service (`samples` = `[unix_s, rss_bytes]`, `rss_bytes`/`min_bytes`/`max_bytes`, `trend`, `budget_state`, `leak`), to measure before/after a change instead of sampling with `ps`; `running: false` = the series of the last run |
 | `atlas_config` | none | no |
-| `atlas_logs` | `service?`, `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
+| `atlas_logs` | `service?` (a service, `action:<label>`, or `audit` for the audit trail of control calls), `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
 | `atlas_logs_search` | `query` (substring or `/regex/`), `service?`, `limit?` (1-500, default 50), `include_previous?` | no |
 | `atlas_restart_service` / `atlas_stop_service` / `atlas_start_service` | `service` | yes |
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |

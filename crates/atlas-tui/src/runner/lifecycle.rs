@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use super::{Hub, RunKind};
 use crate::config::{self, ProjectConfig};
-use crate::control::{ControlRequest, ControlServer};
+use crate::control::{ControlRequest, ControlServer, Guard};
 use crate::runtime::SingletonLock;
 use crate::runtime::deps::{DepsOutcome, ensure_deps};
 use crate::runtime::manager::{ManagerEvent, ServiceManager};
@@ -193,7 +193,7 @@ pub async fn run(
     }
     // Held for the whole run: the singleton lock and the control socket.
     let _lock = lock_or_err(root_dir)?;
-    let (_control, control_rx) = match ControlServer::bind(root_dir) {
+    let (_control, control_rx) = match ControlServer::bind(root_dir, Guard::new(&cfg, root_dir)) {
         Ok((s, rx)) => (Some(s), Some(rx)),
         Err(_) => (None, None),
     };

@@ -7,6 +7,7 @@ use atlas_core::ipc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
+use super::guard::Guard;
 use super::protocol::{ControlCmd, ControlRequest, ControlResponse, WireRequest};
 use super::{MAX_LINE_BYTES, REPLY_TIMEOUT, SUBSCRIBER_BUFFER, socket_path};
 
@@ -30,6 +31,7 @@ impl ControlServer {
     /// any pre-existing socket file stale.
     pub fn bind(
         root_dir: &Path,
+        guard: Guard,
     ) -> std::io::Result<(Self, mpsc::UnboundedReceiver<ControlRequest>)> {
         let path = socket_path(root_dir);
         std::fs::create_dir_all(crate::runtime::log_dir(root_dir))?;
@@ -41,6 +43,9 @@ impl ControlServer {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
         }
 
+        // Bound under the singleton lock, so this is the one live run: it starts a fresh audit
+        // file (the previous run's becomes `atlas-audit.prev.log`).
+        guard.start_run();
         let (tx, rx) = mpsc::unbounded_channel();
         let task = tokio::spawn(async move {
             // Connections live in a JoinSet owned by the accept task: aborting the
@@ -50,7 +55,7 @@ impl ControlServer {
                 tokio::select! {
                     accepted = listener.accept() => {
                         let Ok(stream) = accepted else { break };
-                        conns.spawn(serve_conn(stream, tx.clone()));
+                        conns.spawn(serve_conn(stream, tx.clone(), guard.clone()));
                     }
                     Some(_) = conns.join_next(), if !conns.is_empty() => {}
                 }
@@ -114,7 +119,7 @@ pub(crate) async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(
     Ok(terminated.then_some(()))
 }
 
-async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlRequest>) {
+async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlRequest>, guard: Guard) {
     let (rd, mut wr) = ipc::split(stream);
     let mut rd = BufReader::new(rd);
     let mut buf = Vec::new();
@@ -130,7 +135,7 @@ async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlReques
             (ControlResponse::err("request too large"), None)
         } else {
             let line = String::from_utf8_lossy(&buf);
-            handle_line(line.trim_end_matches(['\n', '\r']), &tx).await
+            handle_line(line.trim_end_matches(['\n', '\r']), &tx, &guard).await
         };
         let Ok(mut text) = serde_json::to_string(&resp.0) else {
             break;
@@ -151,7 +156,11 @@ async fn serve_conn(stream: ipc::Stream, tx: mpsc::UnboundedSender<ControlReques
 /// successful `subscribe` (the connection then turns into a stream).
 type LineReply = (ControlResponse, Option<mpsc::Receiver<String>>);
 
-async fn handle_line(line: &str, tx: &mpsc::UnboundedSender<ControlRequest>) -> LineReply {
+async fn handle_line(
+    line: &str,
+    tx: &mpsc::UnboundedSender<ControlRequest>,
+    guard: &Guard,
+) -> LineReply {
     if line.len() > MAX_LINE_BYTES {
         return (ControlResponse::err("request too large"), None);
     }
@@ -163,6 +172,14 @@ async fn handle_line(line: &str, tx: &mpsc::UnboundedSender<ControlRequest>) -> 
         Ok(c) => c,
         Err(e) => return (ControlResponse::err(e), None),
     };
+    let call = guard.call_of(&cmd);
+    // The policy is decided here, before the run loop ever sees the request.
+    if let Some(refusal) = guard.check(&req.caller, &cmd, call.as_ref()) {
+        if let Some(call) = &call {
+            guard.audit(&req.caller, call, &req.args, true, &refusal);
+        }
+        return (refusal, None);
+    }
     let (reply, rx) = oneshot::channel();
     let (stream, events) = if cmd == ControlCmd::Subscribe {
         let (s, e) = mpsc::channel(SUBSCRIBER_BUFFER);
@@ -173,16 +190,15 @@ async fn handle_line(line: &str, tx: &mpsc::UnboundedSender<ControlRequest>) -> 
     if tx.send(ControlRequest { cmd, reply, stream }).is_err() {
         return (ControlResponse::err("atlas dev is shutting down"), None);
     }
-    match tokio::time::timeout(REPLY_TIMEOUT, rx).await {
-        // Only a successful subscribe keeps the connection as a stream.
-        Ok(Ok(resp)) => {
-            let events = events.filter(|_| resp.ok);
-            (resp, events)
-        }
-        Ok(Err(_)) => (ControlResponse::err("atlas dev dropped the request"), None),
-        Err(_) => (
-            ControlResponse::err("timed out waiting for atlas dev"),
-            None,
-        ),
+    let resp = match tokio::time::timeout(REPLY_TIMEOUT, rx).await {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(_)) => ControlResponse::err("atlas dev dropped the request"),
+        Err(_) => ControlResponse::err("timed out waiting for atlas dev"),
+    };
+    if let Some(call) = &call {
+        guard.audit(&req.caller, call, &req.args, false, &resp);
     }
+    // Only a successful subscribe keeps the connection as a stream.
+    let events = events.filter(|_| resp.ok);
+    (resp, events)
 }

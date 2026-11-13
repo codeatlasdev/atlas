@@ -32,13 +32,13 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |
 | `atlas_wait_ready` | `service?`, `timeout_s?` (1-600, default 60) | yes (live heartbeat) |
 
-Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines.
+Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines; on timeout it also names why each blocking service is not ready (the failing `ready:` probe's message for `degraded`, since-when plus last output for `unhealthy`).
 
 Slash prompts (omp): `/atlas:status`, `/atlas:diagnose <service>`, `/atlas:add-service <name> <command> [port]`. Resources: `atlas://status`, `atlas://config`, `atlas://logs/{service}`.
 
 ## Debugging recipe
 
-1. `atlas_status`: what is `failed` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`).
+1. `atlas_status`: what is `failed`, `unhealthy`, `degraded` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`), and for `degraded`/`unhealthy` the `probe_error` / `unhealthy_lines`.
 2. `atlas_logs {"level": "error"}`, then `atlas_logs {"service": "<svc>", "lines": 200}` for the failing service.
 3. `atlas_logs_search {"query": "/ECONNREFUSED|EADDRINUSE/", "include_previous": true}` if the log was just rotated by a restart.
 4. Fix the code or config. If upstream failed first (`dependency X failed`), fix that service first.
@@ -95,7 +95,7 @@ Field reference, action keys, reserved keys and common mistakes: [yaml.md](yaml.
 
 ## Service states
 
-`starting`, `running`, `failed`, `stopped`, `disabled` (stopped by a user or agent, never auto-restarted; undo with `atlas_start_service`), `suspended` (paused by an action's `pause_services`). A service with no `command` is externally managed (docker) and only port-watched.
+`starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (stopped by a user or agent, never auto-restarted; undo with `atlas_start_service`), `suspended` (paused by an action's `pause_services`). `unhealthy` = process alive but no longer answering its health probe (hung; not `failed`); `degraded` = it answers but its `ready:` probe fails or the same error keeps repeating (`probe_error` says which). A service with no `command` is externally managed (docker) and only port-watched.
 
 ## More
 

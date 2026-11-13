@@ -37,7 +37,9 @@ With no infra to wait for, steps 5–6 collapse and app services start right awa
 |---|---|
 | `starting` | spawned (or infra port not up yet), not ready |
 | `running` | ready (see below) |
-| `failed` | exited abnormally, probe failed, dependency failed, or restart budget spent |
+| `degraded` | answering its liveness probe but not usable: its [`ready` probe](configuration.md#health-and-readiness) fails, or the same error keeps repeating in its log. See [Unhealthy and degraded](#unhealthy-and-degraded) |
+| `unhealthy` | process alive but no longer answering its liveness probe (hung), after `failure_threshold` misses in a row. Not `failed`: nothing exited |
+| `failed` | exited abnormally, a probe failed before the service was ever healthy, dependency failed, or restart budget spent |
 | `stopped` | not running; also a finished one-shot (`done`) |
 | `disabled` | stopped by you (`s`, MCP stop), or left out of this run by `SERVICE…` / `--profile` (shown `off`); skipped by health checks, never auto-restarted |
 | `suspended` | paused by an action's `pause_services` |
@@ -45,10 +47,36 @@ With no infra to wait for, steps 5–6 collapse and app services start right awa
 Readiness and health, per service:
 
 - With `ready_log`: the service stays `starting` (a live child is **not** enough) until the first matching output line makes it `running`; afterwards a live child counts as healthy and no port probe is made.
-- Otherwise, a **real HTTP `GET`** of the `health` URL (2 s timeout, redirects not followed; 2xx/3xx = healthy, 4xx/5xx/timeout/refused = not; `https://` supported), or a TCP connect to `port`, or (with neither) the child process being alive. A service with a command but no port, no health and no `ready_log` is `running` after it has been alive for 2 seconds (minimum uptime), so a crash loop never flashes green. The same probe is used by the per-service startup watcher and the one-second health tick.
-- A watcher polls every 500 ms while `starting` and every 3 s once `running`; it only flips a service to `failed` after it was healthy at least once, so slow starts are not reported as failures. A one-second health tick also reaps exited children and refreshes the status file.
+- Otherwise, a **real HTTP `GET`** of the `health` URL (`health_timeout`, default 2 s; redirects not followed; 2xx/3xx = healthy, 4xx/5xx/timeout/refused = not; `https://` supported), or a TCP connect to `port`, or (with neither) the child process being alive. A service with a command but no port, no health and no `ready_log` is `running` after it has been alive for 2 seconds (minimum uptime), so a crash loop never flashes green. The same probe is used by the per-service startup watcher and the one-second health tick.
+- A watcher polls every 500 ms while `starting` and every 3 s once `running`; it only promotes `starting` → `running` (and recovery). It never marks a live service down: that is the one-second health tick's call, which owns the miss counter, the `ready` probe and the log context, reaps exited children and refreshes the status file.
 - A service whose spawned child died is `failed` even if something else answers on its port (an orphan or another tool holding it). The exception is a launcher that exits `0` (`docker compose up -d`) on a service with a port/health: there the probe decides.
 - Command-less services are only port-watched.
+
+### Unhealthy and degraded
+
+Once per second, for every service with a live child that is `running`, `degraded` or `unhealthy`:
+
+1. **Liveness** runs (`health` URL, else `port`, else the process being alive), bounded by `health_timeout` (default 2 s).
+2. If it answered **and** the service has a [`ready:` probe](configuration.md#health-and-readiness), that probe runs (bounded by its own `timeout`, default 5 s). It is skipped while liveness fails.
+3. The verdict is decided in one place:
+
+| Result | State |
+|---|---|
+| answered, `ready` passes or absent, no repeating error | `running` |
+| answered, `ready` fails | `degraded`, reason `ready probe failed: <error>` (`GET /ready → 503`, `connection refused`, `timed out after 5s`, `` `cmd` exited 1: <last stderr line> ``) |
+| answered, same error line ≥ 3 times in 60 s | `degraded`, reason `repeating error: <line>` |
+| missed, fewer than `failure_threshold` (default 3) in a row | unchanged (grace: a dev server's hot restart closes its port for a moment) |
+| missed `failure_threshold` in a row, after it had answered once | `unhealthy` |
+| missed, never answered yet | unchanged: startup, see [Start timeout](#start-timeout) |
+
+- `unhealthy` beats `degraded`; a failing `ready` probe beats a repeating log line.
+- **Repeating errors** only count error-level lines (the same detection as the log level filter). A line is compared after ANSI, timestamps, UUIDs, hex ids and numbers are replaced by placeholders and whitespace is collapsed, so `db timeout after 31ms` and `db timeout after 87ms` are the same error. At most 64 distinct shapes are tracked per service. It clears when the hits age out of the 60 s window.
+- **On entering `unhealthy`** Atlas captures the service's last 20 output lines and the time, raises a critical alert (`unhealthy: no answer from the liveness probe (3 misses × 2s timeout)`, with `, restarting` appended under `on_unhealthy: restart`) and narrates the same text as a scheduler note (like `still starting after Ns: …`). Later ticks keep the original since-time and lines. The state clears when the service answers again.
+- **`on_unhealthy: restart`** also restarts the service the first time it turns `unhealthy`, with the same delays and budget as `max_restarts` (default 5, `0` = unlimited); the budget resets after the service stays up for 60 s. When it is spent the service is left running `unhealthy` with the note `unhealthy again after its restarts: left running`. The default `notify` never restarts.
+- **Only a live process** can be `unhealthy`. A process that exits is `failed` (or restarts per its [restart policy](configuration.md#restart-policy)); a service that is not yet `running` (still `starting`, or a detached launcher with no child) keeps the old rule that a failed probe means `failed`.
+- **Dependents.** A `healthy` [`depends_on`](configuration.md#depends_on) condition is met only by `running`; a `degraded` or `unhealthy` dependency does not satisfy it. Already-started dependents are not stopped.
+- **Health context is per spawn.** Misses, the repeated-error history and the captured lines start empty on every (re)spawn.
+- The service **note** (sidebar, MCP `note`, `atlas dev --ci` `"reason"`) is `unhealthy for 42s: 3 missed probes` for `unhealthy`, and the reason above for `degraded`.
 
 ### Start timeout
 
@@ -56,7 +84,7 @@ A spawned service that waits on a port, `health` URL or `ready_log` shows the si
 
 ### Per-service facts
 
-Per service Atlas tracks the last **exit code** (none while running or when killed by a signal), the **restart count** of the current streak, the **uptime** (while `running`) and the spawn time. They are in `.logs/.tui-status.json` (`exit_code`, `restarts`, `uptime_s`, `started_at`, `note`, `autostart`, `deselected`), in the MCP `atlas_status` rows and (`exit_code`, `restarts`) in `atlas dev --ci` JSON.
+Per service Atlas tracks the last **exit code** (none while running or when killed by a signal), the **restart count** of the current streak, the **uptime** (while `running`) and the spawn time. They are in `.logs/.tui-status.json` (`exit_code`, `restarts`, `uptime_s`, `started_at`, `note`, `autostart`, `deselected`, plus the [health facts](#status-file-health-facts) below), in the MCP `atlas_status` rows and (`exit_code`, `restarts`) in `atlas dev --ci` JSON.
 
 ### Selected runs (`SERVICE…`, `--profile`)
 
@@ -233,7 +261,19 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 
 `mode` is `runner` (`--detach` / `--headless`, attachable) or `tui`; `clients` is the number of attached TUIs. `tunnel` is `null` when no tunnel is running (none configured, or `enabled: false` and not yet opened on demand).
 
-`state` is lowercase (`starting`, `running`, `failed`, `stopped`, `disabled`, `suspended`). `updated_at` is a Unix timestamp, the heartbeat: [`atlas dev --status`](cli.md#--status) and MCP treat the run as alive only if `pid` exists and the heartbeat is less than 120 s old, so a file left by a crash is correctly reported as "not running".
+`state` is lowercase (`starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled`, `suspended`). `updated_at` is a Unix timestamp, the heartbeat: [`atlas dev --status`](cli.md#--status) and MCP treat the run as alive only if `pid` exists and the heartbeat is less than 120 s old, so a file left by a crash is correctly reported as "not running".
+
+<a id="status-file-health-facts"></a>**Health facts.** Every service row of the status file also carries these keys (the runner's `state` and `rows` events carry the same ones, so a TUI or the desktop app attached to a runner shows exactly what the file says):
+
+| Key | Meaning |
+|---|---|
+| `ready` | result of the service's `ready:` probe: `true` while `running`, `false` while `degraded` by a failing probe; `null` without a `ready:` probe, while the service is not up, or when `degraded` only by a repeating error or `unhealthy` |
+| `probe_error` | why a `degraded` service is degraded (the probe's message, or the repeating line); `null` otherwise |
+| `unhealthy_since` | unix seconds the service turned `unhealthy`; `null` otherwise |
+| `unhealthy_misses` | liveness misses in a row at that moment; `null` otherwise |
+| `unhealthy_lines` | the last output lines (up to 20) at that moment; `[]` otherwise |
+
+`atlas dev --status` adds a `READY` column (`ok` / `fail` / `-`) only when some service has a `ready:` probe, so its output is unchanged otherwise. Under a `degraded` row it prints `↳ <probe_error>`, and under an `unhealthy` one `↳ unhealthy for 42s (3 missed probes); last output:` followed by the captured lines.
 
 ## Exit behavior summary
 

@@ -27,6 +27,14 @@ export interface Service {
 	/** Process-tree memory (MB) and CPU (% of a core), sampled by the runner every 5s. */
 	mem_mb?: number | null;
 	cpu?: number | null;
+	/** `ready:` probe: true/false, null = the service has none (runner `probe_facts_json`). */
+	ready?: boolean | null;
+	/** Why a `degraded` service is degraded: the failing ready probe, or the repeating log line. */
+	probe_error?: string | null;
+	/** `unhealthy`: epoch seconds it stopped answering, probes missed, and its last output then. */
+	unhealthy_since?: number | null;
+	unhealthy_misses?: number | null;
+	unhealthy_lines?: string[] | null;
 }
 
 /** Field-wise compare: runner `state` events repeat on every health tick. */
@@ -40,7 +48,10 @@ function rowChanged(a: Service, b: Service): boolean {
 		a.deselected !== b.deselected ||
 		a.completed_ok !== b.completed_ok ||
 		a.mem_mb !== b.mem_mb ||
-		a.cpu !== b.cpu
+		a.cpu !== b.cpu ||
+		a.ready !== b.ready ||
+		a.probe_error !== b.probe_error ||
+		a.unhealthy_since !== b.unhealthy_since
 	);
 }
 

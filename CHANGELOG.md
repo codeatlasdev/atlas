@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Services that are "running" but hung or not usable now say so** ([#132](https://github.com/codeatlasdev/atlas/issues/132), [#136](https://github.com/codeatlasdev/atlas/issues/136)). A live process that stops answering its `health`/`port` probe turns `unhealthy` (not `failed`) after `failure_threshold` misses (default 3) of `health_timeout` seconds each (default 2), with since-when and its last log lines; `on_unhealthy: restart` also restarts it (default `notify`). An optional `ready:` probe (`http` path/URL + expected `status`, or a `command`) turns a service whose liveness passes but readiness fails `degraded`, with the probe's error; so does the same error line repeating 3 times in 60 s (numbers/timestamps normalised), clearing when it stops. `atlas_status`, the status file, `atlas dev --status` (READY column), the TUI and Atlas Desktop show both; `atlas_wait_ready` waits for `running` and, on timeout, returns the failing probe's message or the hang context. Without the new config a live service that stops answering is now `unhealthy` instead of `failed`. Not included: the Node/Bun event-loop-lag preload.
+
 ### Fixed
 
 - **`atlas deploy` no longer ships an older commit over production by accident.** Before building, it reads the commit the host is serving and compares it with `HEAD`: a downgrade is refused (with both shas and the commits that would be dropped) unless you pass `--allow-downgrade`, a diverged `HEAD` unless `--allow-diverged`, and a deployed commit this repo does not know (after trying `git fetch origin <sha>`) unless `--allow-unknown-base`. A forward deploy prints `deploying <id> (<sha>) over <deployed-id> (<deployed-sha>): +N commits`. `atlas deploy rollback` is unchanged ([#170](https://github.com/codeatlasdev/atlas/issues/170)).

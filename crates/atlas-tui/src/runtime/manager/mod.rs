@@ -14,6 +14,8 @@ mod disk_log;
 mod facts;
 mod graph;
 mod health_check;
+#[cfg(test)]
+mod health_tests;
 mod lifecycle;
 mod mirror;
 mod mobile;
@@ -32,9 +34,21 @@ mod tests;
 pub(crate) use disk_log::{log_file_stem, open_stream_log, rotate_stream_log};
 
 pub(crate) use devices::{parse_devicectl_json, parse_simctl_json};
-pub use mirror::MirrorFacts;
+pub use mirror::{MirrorFacts, UnhealthyReport};
 use types::{ManagedService, ManagedSession};
 pub use types::{ManagerEvent, MobileBuildPhase};
+
+/// Test hook: the capture of a service that turned `unhealthy` just now, with `lines` as its
+/// log tail (for tests of consumers: status file, MCP, desktop).
+#[cfg(test)]
+pub(crate) fn test_unhealthy(misses: u32, lines: &[&str]) -> types::Unhealthy {
+    types::Unhealthy {
+        since: std::time::Instant::now(),
+        since_epoch: crate::runtime::clock::now_secs(),
+        misses,
+        lines: lines.iter().map(|l| (*l).to_string()).collect(),
+    }
+}
 
 pub struct ServiceManager {
     pub(crate) root_dir: PathBuf,

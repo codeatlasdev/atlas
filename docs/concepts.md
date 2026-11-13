@@ -18,11 +18,15 @@ A service is always in one of these states:
 | State | Meaning |
 |---|---|
 | `starting` | spawned, not ready yet |
-| `running` | ready: port or `health` probe passed, or its `ready_log` matched |
+| `running` | ready: port or `health` probe passed, or its `ready_log` matched (and its `ready:` probe, when it has one) |
+| `degraded` | answers, but is not usable: its `ready:` probe fails, or the same error keeps repeating in its log |
+| `unhealthy` | the process is alive but stopped answering its `health`/`port` probe (hung) |
 | `failed` | exited abnormally, a dependency failed, or the restart budget is spent |
 | `stopped` | not running; also a finished one-shot |
 | `disabled` | stopped by you, or left out of this run by `atlas dev SERVICE…` |
 | `suspended` | paused by an action's `pause_services` |
+
+`failed`, `unhealthy` and `degraded` are different problems. **`failed`**: the process is gone (or never came up) and Atlas restarts it only per its restart policy. **`unhealthy`**: nothing exited, the process is just no longer answering (a hung SSR server, a deadlocked loop); it comes back to `running` by itself if it answers again, and `on_unhealthy: restart` can restart it. **`degraded`**: it answers its liveness probe but a deeper check says it is not usable; it clears when the check passes or the error stops repeating. `degraded` and `unhealthy` come with a reason and, for a hung service, its last output lines. Configure them with [`health_timeout`, `failure_threshold`, `ready` and `on_unhealthy`](configuration.md#health-and-readiness).
 
 Services start when every [`depends_on`](configuration.md#depends_on) condition holds (`started`, `healthy`, `completed_successfully`, `log_ready`) and restart according to their [restart policy](configuration.md#restart-policy). Details in [Runtime](runtime.md).
 

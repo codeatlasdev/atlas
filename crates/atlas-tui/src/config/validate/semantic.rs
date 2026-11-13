@@ -74,6 +74,14 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
                 ),
             ));
         }
+        if let Some(r) = &def.ready
+            && r.http.is_some() == r.command.is_some()
+        {
+            errors.push(err(
+                format!("services.{name}.ready"),
+                "set exactly one of `http` (path or URL) or `command`".into(),
+            ));
+        }
     }
 
     if let Some(cycle) = find_cycle(&sorted, &names) {

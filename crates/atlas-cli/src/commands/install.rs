@@ -788,30 +788,35 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_running_image_is_moved_aside_and_swept_by_the_next_install() {
-        use std::os::windows::fs::OpenOptionsExt;
         let t = tempfile::tempdir().unwrap();
         let src = t.path().join("new");
         std::fs::write(&src, "new").unwrap();
         let bin = t.path().join("bin");
         let dest = bin.join("atlas.exe");
         std::fs::create_dir_all(&bin).unwrap();
-        std::fs::write(&dest, "running").unwrap();
-        // How Windows opens a running image: others may read and rename it, not write or delete.
-        let image = std::fs::OpenOptions::new()
-            .read(true)
-            .share_mode(0x1 | 0x4)
-            .open(&dest)
+        // A real running image (a handle with FILE_SHARE_DELETE would allow the delete and prove
+        // nothing): a copy of ping.exe, kept running from `dest`.
+        let ping = std::path::Path::new(&std::env::var("SystemRoot").unwrap())
+            .join("System32")
+            .join("PING.EXE");
+        std::fs::copy(&ping, &dest).unwrap();
+        let mut running = std::process::Command::new(&dest)
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
             .unwrap();
 
-        replace_binary(&src, &dest).unwrap();
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "new");
+        let first = replace_binary(&src, &dest);
         let aside: Vec<_> = names(&bin)
             .into_iter()
             .filter(|n| n.starts_with(".atlas-old-"))
             .collect();
+        let _ = running.kill();
+        let _ = running.wait();
+        first.unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "new");
         assert_eq!(aside.len(), 1, "the running image waits aside: {aside:?}");
 
-        drop(image);
         replace_binary(&src, &dest).unwrap();
         assert_eq!(names(&bin), ["atlas.exe"], "the next install swept it");
     }

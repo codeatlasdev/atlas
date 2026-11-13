@@ -1471,12 +1471,15 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
-    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty.
+    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty. The output
+    // waits for a line on stdin, sent once both clients are attached: with `replay: false` a chunk
+    // written before the healthy client attached never reached it (CI: 99 934 469 of 100 000 000
+    // bytes, one 64 KiB read short, PR #106).
     let pty = c
         .call(
             "pty_create",
             json!({"cwd": dir, "argv": ["sh", "-c",
-                "head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
+                "read go; head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
         )
         .await
         .unwrap()["pty"]
@@ -1500,10 +1503,25 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         )
         .await
         .unwrap();
+    // Its attach is answered before it goes silent, so it really holds a subscription when the
+    // output starts (otherwise the cap below would be checked against nothing).
+    let mut reply = Vec::new();
+    while !String::from_utf8_lossy(&reply).contains("\"id\":1") {
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(10), stuck.read(&mut buf))
+            .await
+            .expect("the stuck client's attach was never answered")
+            .unwrap();
+        assert!(n > 0, "hostd closed the stuck client before its attach");
+        reply.extend_from_slice(&buf[..n]);
+    }
 
     // A healthy client keeps receiving the whole time.
     let mut ev = c.events();
     c.call("pty_attach", json!({"pty": pty, "replay": false}))
+        .await
+        .unwrap();
+    c.call("pty_write", json!({"pty": pty, "data": B64.encode("go\n")}))
         .await
         .unwrap();
     let mut healthy_bytes = 0usize;

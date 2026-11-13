@@ -13,7 +13,9 @@
 //! side hangs up, see `runner.rs`). A subscription connection is read-only; an
 //! attached client sends its requests on separate connections.
 
+pub mod audit;
 mod client;
+mod guard;
 mod protocol;
 mod server;
 #[cfg(test)]
@@ -22,8 +24,11 @@ mod tests;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub use client::{RunInfo, Subscription, call, info, subscribe};
-pub use protocol::{ControlCmd, ControlRequest, ControlResponse, Resolved, find_action, resolve};
+pub use client::{RunInfo, Subscription, call, call_as, info, subscribe};
+pub use guard::Guard;
+pub use protocol::{
+    Caller, ControlCmd, ControlRequest, ControlResponse, Resolved, find_action, resolve,
+};
 pub use server::ControlServer;
 pub(crate) use server::read_bounded_line;
 

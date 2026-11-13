@@ -10,12 +10,12 @@ export function shellIn(dir: string | null): string[] {
 	return dir ? ["sh", "-c", `cd ${shq(dir)} && exec "\${SHELL:-/bin/sh}" -l`] : [];
 }
 
-/** Sort weight: failures first, then coming up, running, the rest. */
-const WEIGHT: Record<string, number> = { failed: 0, starting: 1, running: 2 };
+/** Sort weight: failures first, then hung, degraded, coming up, running, the rest. */
+const WEIGHT: Record<string, number> = { failed: 0, unhealthy: 1, degraded: 2, starting: 3, running: 4 };
 
 export function byAttention<T extends { name: string; state: string }>(rows: T[]): T[] {
 	return [...rows].sort(
-		(a, b) => (WEIGHT[a.state] ?? 3) - (WEIGHT[b.state] ?? 3) || a.name.localeCompare(b.name),
+		(a, b) => (WEIGHT[a.state] ?? 5) - (WEIGHT[b.state] ?? 5) || a.name.localeCompare(b.name),
 	);
 }
 

@@ -144,7 +144,7 @@ pub async fn run_ci(
         .map(|s| {
             let mut v = serde_json::json!({
                 "name": s.name,
-                "state": format!("{:?}", s.state).to_lowercase(),
+                "state": s.state.name(),
                 "port": s.port,
             });
             if manager.is_deselected(&s.name) {
@@ -161,6 +161,11 @@ pub async fn run_ci(
             }
             if s.state == ServiceState::Failed
                 && let Some(reason) = manager.fail_reason(&s.name)
+            {
+                v["reason"] = reason.into();
+            }
+            if matches!(s.state, ServiceState::Unhealthy | ServiceState::Degraded)
+                && let Some(reason) = manager.service_note(&s.name)
             {
                 v["reason"] = reason.into();
             }

@@ -357,6 +357,8 @@ mod tests {
         /// `(over, scroll_frac)` of each frame handed to the renderer.
         smooth: Mutex<Vec<(u32, f32)>>,
         release: AtomicBool,
+        /// While set, `rebuild` cannot make a new surface and gives the old renderer back.
+        rebuild_fails: AtomicBool,
     }
 
     struct Fake {
@@ -447,6 +449,9 @@ mod tests {
                 }),
                 rebuild: Box::new(move |old: Fake, size, why| {
                     l2.rebuilds.lock().push(why);
+                    if l2.rebuild_fails.load(Ordering::SeqCst) {
+                        return Err(Box::new(old));
+                    }
                     Ok(Fake {
                         mode: m2.clone(),
                         log: l3.clone(),
@@ -548,6 +553,47 @@ mod tests {
                 .iter()
                 .any(|i| i.starts_with("terminal-recovered"))
         });
+        rig.stop();
+    }
+
+    // #166: a rebuild that cannot make a surface ("receiving on a closed channel", a configure
+    // error) gives the old renderer back. The terminal must stay alive, keep its screen, and be
+    // rebuilt again once the GPU cooperates, not stay dead.
+    #[test]
+    fn a_failed_rebuild_leaves_the_terminal_alive_and_a_later_one_recovers() {
+        let rig = Rig::start(Mode::Draw);
+        rig.show();
+        rig.sh.vt.feed(b"survives");
+        rig.sh.redraw();
+        rig.until("first frame", |l| l.presented.load(Ordering::SeqCst) >= 1);
+
+        rig.log.rebuild_fails.store(true, Ordering::SeqCst);
+        rig.sh.rebuild(Why::Screens);
+        rig.until("the failing rebuild ran", |l| !l.rebuilds.lock().is_empty());
+        // Still alive: new output is drawn by the old renderer (a frame queued by the rebuild
+        // itself may present first, so wait for the content, not a frame count).
+        rig.sh.vt.feed(b"\r\nstill draws");
+        rig.sh.redraw();
+        rig.until("the old renderer draws new output", |l| {
+            l.seen
+                .lock()
+                .last()
+                .is_some_and(|s| s.contains("still draws"))
+        });
+
+        // The GPU cooperates again: the next rebuild takes effect.
+        rig.log.rebuild_fails.store(false, Ordering::SeqCst);
+        let n = rig.log.rebuilds.lock().len();
+        rig.sh.rebuild(Why::Wake);
+        rig.until("a rebuild after the failure", |l| {
+            l.rebuilds.lock().len() > n
+        });
+        let before = rig.log.presented.load(Ordering::SeqCst);
+        rig.sh.redraw();
+        rig.until("the new surface draws", |l| {
+            l.presented.load(Ordering::SeqCst) > before
+        });
+        assert!(rig.log.seen.lock().last().unwrap().contains("survives"));
         rig.stop();
     }
 

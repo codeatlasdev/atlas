@@ -26,6 +26,18 @@ enum Commands {
     /// Stop the running atlas (runner or TUI) and every service it started
     Down(commands::down::DownArgs),
 
+    /// Check this machine: `--hygiene` finds orphaned Atlas processes and the disk Atlas owns
+    Doctor(commands::doctor::DoctorArgs),
+
+    /// Run a command through the machine-wide queue of heavy jobs: `atlas run --heavy -- cargo test`
+    Run(commands::heavy::RunArgs),
+
+    /// The machine-wide queue of heavy jobs (builds, test suites): who runs, who waits
+    Heavy {
+        #[command(subcommand)]
+        command: commands::heavy::HeavyCommands,
+    },
+
     /// Initialize atlas.yaml for the current project
     Init(commands::init::InitArgs),
 
@@ -214,6 +226,8 @@ async fn run() -> Result<()> {
             | Commands::Wt { .. }
             | Commands::Browser(_)
             | Commands::File(_)
+            | Commands::Run(_)
+            | Commands::Heavy { .. }
     );
 
     if !is_update && !is_mcp {
@@ -223,7 +237,10 @@ async fn run() -> Result<()> {
     match command {
         Commands::Dev(args) => args.run().await?,
         Commands::Down(args) => args.run().await?,
+        Commands::Doctor(args) => args.run().await?,
         Commands::Init(args) => args.run().await?,
+        Commands::Run(args) => args.run().await?,
+        Commands::Heavy { command } => command.run().await?,
         Commands::Config { command } => command.run()?,
         Commands::Deploy(args) => args.run().await?,
         Commands::Update(args) => args.run().await?,

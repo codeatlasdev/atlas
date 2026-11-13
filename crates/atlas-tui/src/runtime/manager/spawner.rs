@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use super::ServiceManager;
 use super::types::{
-    ManagerEvent, PROBE_FAILS_TO_FAIL, WATCH_HEALTHY_INTERVAL, WATCH_PROBE_TIMEOUT,
-    WATCH_RETRY_INTERVAL, WATCH_STARTUP_INTERVAL,
+    ManagerEvent, WATCH_HEALTHY_INTERVAL, WATCH_PROBE_TIMEOUT, WATCH_STARTUP_INTERVAL,
 };
 use crate::runtime::logs::{LogStream, spawn_line_pump};
 use crate::runtime::service::ServiceState;
@@ -79,12 +78,30 @@ impl ServiceManager {
             svc.sched.completed_ok = false;
             svc.sched.fail_reason = None;
             svc.exit_code = None;
+            // Nothing of the previous process's health carries over; the pumps of this
+            // spawn write into this fresh context.
+            svc.probes.reset_for_spawn();
+            // A respawn closes a leak-watch cycle with what the old process reached.
+            svc.mem.on_respawn();
         }
+        let health_ctx = self
+            .services
+            .get(name)
+            .map(|s| Arc::clone(&s.probes.ctx))
+            .unwrap_or_default();
 
         self.set_state_if_changed(name, ServiceState::Starting);
 
         if let Some(lock) = &lock_file {
             crate::runtime::envfile::cleanup_lock(&self.root_dir, lock).await;
+        }
+
+        // The port may be held by something atlas did not start (an agent's `bun dev`, another
+        // project). Name it now, in the service's own log, instead of leaving the developer
+        // with the framework's "another dev server is already running". The spawn still goes
+        // ahead: some tools pick another port, and the framework's message stays in the log.
+        if let Some(p) = port {
+            self.detect_port_conflict(name, p).await;
         }
 
         let mut cmd = crate::runtime::process::task_command(&command);
@@ -122,11 +139,16 @@ impl ServiceManager {
             crate::runtime::docker::apply_docker_env(&mut cmd);
         }
 
+        // Last, so a service `env:` can never retag its tree into another session.
+        self.tag_spawn(&mut cmd, name);
         let result = cmd.spawn();
 
         match result {
             Ok(mut child) => {
                 let pid = child.id();
+                if let Some(pid) = pid {
+                    self.register_root(name, pid, atlas_core::hygiene::Kind::Service);
+                }
                 if let Some(service) = self.services.get_mut(name) {
                     service.status.pid = pid;
                 }
@@ -139,6 +161,9 @@ impl ServiceManager {
                 let _ = self.event_tx.send(ManagerEvent::ServiceRestarted {
                     name: name.to_string(),
                 });
+                // After the writers above rotated the log: a line written earlier would move
+                // to `.prev.log` with it. Once per spawn, so a restart on the same holder says it again.
+                self.announce_port_conflict(name);
                 let mut pumps = Vec::with_capacity(2);
                 if let Some(stdout) = child.stdout.take() {
                     let tx = self.event_tx.clone();
@@ -146,11 +171,13 @@ impl ServiceManager {
                     let last_log_stdout = Arc::clone(&last_log);
                     let ready = ready_re.clone();
                     let flag = Arc::clone(&log_ready);
+                    let ctx = Arc::clone(&health_ctx);
                     pumps.push(spawn_line_pump(stdout, move |line| {
                         if let Some(w) = log_out.as_mut() {
                             w.write_line(LogStream::Stdout, &line);
                         }
                         detect_ready(&ready, &flag, &line, &service_name, &tx);
+                        feed_context(&ctx, &line);
                         if let Ok(mut guard) = last_log_stdout.lock() {
                             *guard = line.clone();
                         }
@@ -168,11 +195,13 @@ impl ServiceManager {
                     let last_log_stderr = Arc::clone(&last_log);
                     let ready = ready_re.clone();
                     let flag = Arc::clone(&log_ready);
+                    let ctx = Arc::clone(&health_ctx);
                     pumps.push(spawn_line_pump(stderr, move |line| {
                         if let Some(w) = log_err.as_mut() {
                             w.write_line(LogStream::Stderr, &line);
                         }
                         detect_ready(&ready, &flag, &line, &service_name, &tx);
+                        feed_context(&ctx, &line);
                         if let Ok(mut guard) = last_log_stderr.lock() {
                             *guard = line.clone();
                         }
@@ -210,6 +239,10 @@ impl ServiceManager {
                     .get(name)
                     .and_then(|s| s.status.health_url.clone());
                 let watch_port = self.services.get(name).and_then(|s| s.status.port);
+                let watch_timeout = self
+                    .services
+                    .get(name)
+                    .map_or(WATCH_PROBE_TIMEOUT, |s| s.probes.timeout);
                 let log_driven = ready_re.is_some();
                 // This spawn's stop flag: the watcher bails out when it is set.
                 let stopped = self
@@ -220,8 +253,6 @@ impl ServiceManager {
                 let min_uptime = self.min_uptime;
                 tokio::spawn(async move {
                     let mut interval = WATCH_STARTUP_INTERVAL;
-                    let mut ever_healthy = false;
-                    let mut fails = 0u32;
                     let mut last: Option<ServiceState> = None;
                     loop {
                         tokio::time::sleep(interval).await;
@@ -237,7 +268,7 @@ impl ServiceManager {
                         let Some(healthy) = crate::runtime::health::probe(
                             health_url.as_deref(),
                             watch_port,
-                            WATCH_PROBE_TIMEOUT,
+                            watch_timeout,
                         )
                         .await
                         else {
@@ -253,30 +284,15 @@ impl ServiceManager {
                             }
                             break;
                         };
-                        if healthy {
-                            ever_healthy = true;
-                            fails = 0;
-                            interval = WATCH_HEALTHY_INTERVAL;
-                        } else {
-                            fails += 1;
-                            // Startup polls fast; once it was healthy, space the
-                            // retries so 3 misses span ~6s (a hot restart fits).
-                            interval = if ever_healthy {
-                                WATCH_RETRY_INTERVAL
-                            } else {
-                                WATCH_STARTUP_INTERVAL
-                            };
-                        }
-                        // No Failed before the first healthy probe (startup grace),
-                        // and only after PROBE_FAILS_TO_FAIL misses in a row: dev
-                        // servers close their port while they hot-restart.
-                        let next_state = if healthy {
-                            ServiceState::Running
-                        } else if ever_healthy && fails >= PROBE_FAILS_TO_FAIL {
-                            ServiceState::Failed
-                        } else {
+                        // A live service that stops answering is `unhealthy`, and that is
+                        // `check_health`'s call (it owns the miss counter and the log context);
+                        // this watcher only promotes Starting → Running and recovery.
+                        if !healthy {
+                            interval = WATCH_STARTUP_INTERVAL;
                             continue;
-                        };
+                        }
+                        interval = WATCH_HEALTHY_INTERVAL;
+                        let next_state = ServiceState::Running;
                         // Emit transitions only: re-sending Running every tick floods
                         // the runner log, subscribers and the desktop.
                         if last.as_ref() == Some(&next_state) {
@@ -393,5 +409,15 @@ fn detect_ready(
         let _ = tx.send(ManagerEvent::LogReady {
             name: name.to_string(),
         });
+    }
+}
+
+/// Hand one output line to the service's health context (last lines, repeated errors, reloads).
+fn feed_context(ctx: &crate::runtime::probe::SharedContext, line: &str) {
+    let error =
+        crate::runtime::logs::LogLevel::detect(line) == crate::runtime::logs::LogLevel::Error;
+    if let Ok(mut c) = ctx.lock() {
+        c.push(line, error, std::time::Instant::now());
+        c.note_reload(line, crate::runtime::clock::now_secs());
     }
 }

@@ -13,7 +13,9 @@ pub(crate) mod desktop_linux;
 #[cfg(windows)]
 pub(crate) mod desktop_windows;
 pub mod dev;
+pub mod doctor;
 pub mod down;
+pub mod heavy;
 pub mod hook;
 pub mod hostd;
 pub(crate) mod hostd_reconcile;
@@ -25,6 +27,7 @@ pub mod open;
 pub mod release;
 pub mod self_update;
 pub mod setup;
+pub(crate) mod shellrc;
 pub mod skills;
 pub mod uninstall;
 pub(crate) mod update_channel;

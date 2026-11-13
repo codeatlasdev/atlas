@@ -260,8 +260,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
               ),
             )
           else if (_writeEnabled) ...[
-            _KeyBar(onKey: _sendRaw, enabled: true),
-            _LineInput(onSubmit: (t) => _sendRaw('$t\r')),
+            KeyBar(onKey: _sendRaw, enabled: true),
+            LineInput(onSubmit: (t) => _sendRaw('$t\r')),
           ] else
             SafeArea(
               top: false,
@@ -359,17 +359,18 @@ class _TerminalSink implements Sink<String> {
 
 // ── Key bar ───────────────────────────────────────────────────────────────────
 
-class _KeyBar extends StatefulWidget {
-  const _KeyBar({required this.onKey, required this.enabled});
+/// The row of keys a phone keyboard lacks: Esc, Tab, Ctrl (then A to Z) and the arrows.
+class KeyBar extends StatefulWidget {
+  const KeyBar({super.key, required this.onKey, required this.enabled});
 
   final void Function(String) onKey;
   final bool enabled;
 
   @override
-  State<_KeyBar> createState() => _KeyBarState();
+  State<KeyBar> createState() => _KeyBarState();
 }
 
-class _KeyBarState extends State<_KeyBar> {
+class _KeyBarState extends State<KeyBar> {
   bool _ctrlActive = false;
 
   void _tap(String seq) {
@@ -382,10 +383,10 @@ class _KeyBarState extends State<_KeyBar> {
     final bg = c.base;
 
     Widget key(String label, String seq) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
       child: TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size(44, 36),
+          minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           backgroundColor: c.raised,
           foregroundColor: c.text,
@@ -410,7 +411,7 @@ class _KeyBarState extends State<_KeyBar> {
       // Ctrl toggle
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size(44, 36),
+          minimumSize: const Size(48, 48),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           backgroundColor: _ctrlActive ? c.accent : c.raised,
           foregroundColor: _ctrlActive ? c.onAccent : c.text,
@@ -452,15 +453,15 @@ class _KeyBarState extends State<_KeyBar> {
 
 /// One line typed with the system keyboard, sent with Enter (the key bar covers Esc,
 /// Tab, Ctrl and arrows).
-class _LineInput extends StatefulWidget {
-  const _LineInput({required this.onSubmit});
+class LineInput extends StatefulWidget {
+  const LineInput({super.key, required this.onSubmit});
   final void Function(String) onSubmit;
 
   @override
-  State<_LineInput> createState() => _LineInputState();
+  State<LineInput> createState() => _LineInputState();
 }
 
-class _LineInputState extends State<_LineInput> {
+class _LineInputState extends State<LineInput> {
   final _c = TextEditingController();
 
   @override
@@ -501,7 +502,12 @@ class _LineInputState extends State<_LineInput> {
                 fontFamilyFallback: monoFallback,
                 fontSize: 14,
               ),
-              decoration: const InputDecoration(hintText: 'Type, then return'),
+              decoration: const InputDecoration(
+                hintText: 'Type, then return',
+                // Dense is 40 dp; a thumb needs 48.
+                isDense: false,
+                constraints: BoxConstraints(minHeight: 48),
+              ),
               onSubmitted: (_) => _send(),
               textInputAction: TextInputAction.send,
             ),

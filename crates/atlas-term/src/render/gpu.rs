@@ -3,6 +3,7 @@
 //! shader-validation test (one definition of the layout, so the test checks the real thing).
 
 use std::sync::LazyLock;
+use std::time::{Duration, Instant};
 
 use crate::font::GlyphInst;
 
@@ -34,6 +35,12 @@ static GPU: LazyLock<Result<Gpu, String>> = LazyLock::new(|| {
         ..Default::default()
     }))
     .map_err(|e| e.to_string())?;
+    // wgpu's default for an error no scope caught is to panic, and the surface calls that can fail
+    // after a display wake (#166, #63) run on the main thread and the render threads: a GPU hiccup
+    // must cost a frame, never the app. The calls that can fail are also scoped (`configure_checked`).
+    device.on_uncaptured_error(std::sync::Arc::new(|e: wgpu::Error| {
+        eprintln!("atlas-term wgpu error (not fatal): {e}");
+    }));
     Ok(Gpu {
         instance,
         adapter,
@@ -51,6 +58,89 @@ pub(super) fn gpu() -> Result<&'static Gpu, String> {
 pub(super) fn surface_extent(width: u32, height: u32, max_side: u32) -> (u32, u32) {
     let side = |v: u32| v.min(max_side).max(1);
     (side(width), side(height))
+}
+
+/// `Surface::configure` that reports a validation error instead of panicking (#166: "Failed to
+/// wait for GPU to come idle before reconfiguring the Surface" when another terminal submitted
+/// during the reconfigure; the device is shared by every tab). Also catches a panic raised by
+/// configure itself (e.g. an old `SurfaceTexture` still alive), which would otherwise unwind the
+/// main or render thread.
+pub(super) fn configure_checked(
+    g: &Gpu,
+    surface: &wgpu::Surface<'_>,
+    config: &wgpu::SurfaceConfiguration,
+) -> Result<(), String> {
+    let scope = g.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let called = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        surface.configure(&g.device, config)
+    }));
+    // The scope is popped even when configure panicked (the guard pops on drop otherwise).
+    let caught = pollster::block_on(scope.pop());
+    if let Err(p) = called {
+        let why = p
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| p.downcast_ref::<&str>().copied())
+            .unwrap_or("panic");
+        return Err(format!("Surface::configure panicked: {why}"));
+    }
+    match caught {
+        Some(e) => Err(e.to_string()),
+        None => Ok(()),
+    }
+}
+
+/// Whether the surface's configuration is in step with what the renderer wants, and when a failed
+/// one may be tried again. Pure (the clock is a parameter) so the retry policy is testable without
+/// a GPU: a failed configure must leave the renderer alive, skipping frames, and try again later
+/// with a growing but bounded delay instead of hammering the device (#166).
+#[derive(Debug, Default)]
+pub(super) struct Reconfig {
+    /// The surface must be configured (again) before it can be drawn into.
+    needed: bool,
+    /// Consecutive failures since the last success.
+    failures: u32,
+    /// Not before this instant.
+    retry_at: Option<Instant>,
+}
+
+/// Delay after the first failure; doubles per consecutive failure up to [`RETRY_MAX`].
+const RETRY_BASE: Duration = Duration::from_millis(100);
+const RETRY_MAX: Duration = Duration::from_secs(2);
+
+impl Reconfig {
+    /// The surface was lost/outdated or its size changed: configure it before the next draw.
+    pub(super) fn request(&mut self) {
+        self.needed = true;
+    }
+
+    /// Should the caller call `configure` now? `false` when nothing is needed, or a failed attempt
+    /// is still backing off.
+    pub(super) fn should_try(&self, now: Instant) -> bool {
+        self.needed && self.retry_at.is_none_or(|t| now >= t)
+    }
+
+    /// Is a configure still owed (so the frame must be skipped)?
+    pub(super) fn pending(&self) -> bool {
+        self.needed
+    }
+
+    /// The attempt succeeded.
+    pub(super) fn done(&mut self) {
+        *self = Self::default();
+    }
+
+    /// The attempt failed at `now`: stay pending, back off.
+    pub(super) fn failed(&mut self, now: Instant) {
+        self.needed = true;
+        self.failures = self.failures.saturating_add(1);
+        let shift = (self.failures - 1).min(16);
+        self.retry_at = Some(now + RETRY_BASE.saturating_mul(1 << shift).min(RETRY_MAX));
+    }
+
+    pub(super) fn failures(&self) -> u32 {
+        self.failures
+    }
 }
 
 /// Mirrors the WGSL `U` block (2×vec2 + vec2 + vec2 + u32 + f32, 40 bytes).

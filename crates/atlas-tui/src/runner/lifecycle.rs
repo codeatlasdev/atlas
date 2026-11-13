@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use super::{Hub, RunKind};
 use crate::config::{self, ProjectConfig};
-use crate::control::{ControlRequest, ControlServer};
+use crate::control::{ControlRequest, ControlServer, Guard};
 use crate::runtime::SingletonLock;
 use crate::runtime::deps::{DepsOutcome, ensure_deps};
 use crate::runtime::manager::{ManagerEvent, ServiceManager};
@@ -193,7 +193,7 @@ pub async fn run(
     }
     // Held for the whole run: the singleton lock and the control socket.
     let _lock = lock_or_err(root_dir)?;
-    let (_control, control_rx) = match ControlServer::bind(root_dir) {
+    let (_control, control_rx) = match ControlServer::bind(root_dir, Guard::new(&cfg, root_dir)) {
         Ok((s, rx)) => (Some(s), Some(rx)),
         Err(_) => (None, None),
     };
@@ -234,6 +234,8 @@ async fn handle_event(manager: &mut ServiceManager, event: ManagerEvent, foregro
                 ServiceState::Stopped => "\x1b[90m○\x1b[0m",
                 ServiceState::Disabled => "\x1b[90m⊘\x1b[0m",
                 ServiceState::Suspended => "\x1b[90m⏸\x1b[0m",
+                ServiceState::Unhealthy => "\x1b[31m‼\x1b[0m",
+                ServiceState::Degraded => "\x1b[33m◐\x1b[0m",
             };
             eprintln!("{icon} {name}: {state:?}");
             manager.update_state(&name, state);

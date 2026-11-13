@@ -35,31 +35,16 @@ pub(super) fn log_json(e: &LogEntry) -> Value {
 }
 
 pub(super) fn state_name(state: &ServiceState) -> &'static str {
-    match state {
-        ServiceState::Stopped => "stopped",
-        ServiceState::Starting => "starting",
-        ServiceState::Running => "running",
-        ServiceState::Failed => "failed",
-        ServiceState::Disabled => "disabled",
-        ServiceState::Suspended => "suspended",
-    }
+    state.name()
 }
 
 pub(crate) fn parse_state(s: &str) -> Option<ServiceState> {
-    Some(match s {
-        "stopped" => ServiceState::Stopped,
-        "starting" => ServiceState::Starting,
-        "running" => ServiceState::Running,
-        "failed" => ServiceState::Failed,
-        "disabled" => ServiceState::Disabled,
-        "suspended" => ServiceState::Suspended,
-        _ => return None,
-    })
+    s.parse().ok()
 }
 
 /// State + facts of one service, as sent on the wire (`state` events and `rows`).
 pub(super) fn service_json(manager: &ServiceManager, name: &str, state: &ServiceState) -> Value {
-    json!({
+    let mut v = json!({
         "name": name,
         "state": state_name(state),
         "exit_code": manager.exit_code(name),
@@ -68,12 +53,18 @@ pub(super) fn service_json(manager: &ServiceManager, name: &str, state: &Service
         "completed_ok": manager.completed_ok(name),
         "paused_by": manager.paused_by(name),
         "deselected": manager.is_deselected(name),
+        "port_conflict": manager.port_conflict(name),
         // Ad-hoc (`atlas -- <cmd>`): an attaching client rebuilds the service from this.
         "adhoc": manager.adhoc_command(name),
         // Whole MB / whole percent: finer values would re-send `rows` every sample.
         "mem_mb": manager.usage(name).map(|u| u.mem >> 20),
         "cpu": manager.usage(name).map(|u| u.cpu.round() as u32),
-    })
+    });
+    // `ready`, `probe_error`, `unhealthy_*`: the same keys as the status file.
+    if let (Some(o), Value::Object(extra)) = (v.as_object_mut(), manager.probe_facts_json(name)) {
+        o.extend(extra);
+    }
+    v
 }
 
 pub(super) fn tunnel_json(manager: &ServiceManager) -> Value {
@@ -92,18 +83,311 @@ pub(super) fn tunnel_json(manager: &ServiceManager) -> Value {
 mod tests {
     use super::*;
 
+    const ALL: [ServiceState; 8] = [
+        ServiceState::Stopped,
+        ServiceState::Starting,
+        ServiceState::Running,
+        ServiceState::Failed,
+        ServiceState::Disabled,
+        ServiceState::Suspended,
+        ServiceState::Unhealthy,
+        ServiceState::Degraded,
+    ];
+
     #[test]
     fn state_names_roundtrip() {
-        for s in [
-            ServiceState::Stopped,
-            ServiceState::Starting,
-            ServiceState::Running,
-            ServiceState::Failed,
-            ServiceState::Disabled,
-            ServiceState::Suspended,
-        ] {
+        for s in ALL {
             assert_eq!(parse_state(state_name(&s)), Some(s));
         }
         assert_eq!(parse_state("nope"), None);
+    }
+
+    // Contract (#133): `apps/desktop/src/lib/__fixtures__/service-port-conflict.json` is the REAL
+    // `service_json` of a failed service whose port a foreign process holds; `portConflict.test.ts`
+    // feeds it to the desktop's own comparison, and `remote_tests` to the attached TUI.
+    // `UPDATE_FIXTURES=1` regenerates it.
+    #[test]
+    fn service_json_carries_port_conflict_as_its_own_object_and_matches_the_fixture() {
+        use crate::config::{ProjectConfig, ServiceDef};
+        use crate::runtime::port_conflict::PortConflict;
+        let cfg = ProjectConfig {
+            name: "t".into(),
+            services: std::collections::HashMap::from([(
+                "web".to_string(),
+                ServiceDef {
+                    command: Some("true".into()),
+                    port: Some(4321),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut m = ServiceManager::new(std::env::temp_dir().join("atlas-wire-fixture"), &cfg, tx);
+        let conflict = PortConflict {
+            pid: 12345,
+            cmd: "node".into(),
+            cwd: Some("/work/app".into()),
+        };
+        m.set_port_conflict("web", Some(conflict));
+        m.set_state_if_changed("web", ServiceState::Failed);
+
+        let fresh = service_json(&m, "web", &ServiceState::Failed);
+        assert_eq!(
+            fresh["port_conflict"],
+            json!({"pid": 12345, "cmd": "node", "cwd": "/work/app"})
+        );
+        // Its own field: the note names the holder, the object is not folded into it.
+        let stop = if cfg!(windows) {
+            "taskkill /PID 12345 /F"
+        } else {
+            "kill 12345"
+        };
+        assert_eq!(
+            fresh["note"],
+            format!(
+                "port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself ({stop}) or change the service port"
+            )
+        );
+        // A service without a conflict says `null`, not a missing key.
+        m.set_port_conflict("web", None);
+        assert!(service_json(&m, "web", &ServiceState::Failed)["port_conflict"].is_null());
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/service-port-conflict.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            // Tab-indented, as `prettier --check src` (useTabs) wants the committed file.
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&fresh, &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let mut committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        let mut fresh = fresh;
+        if cfg!(windows) {
+            // The committed note is the Unix form (`kill 12345`); Windows advises `taskkill`.
+            committed["note"] = Value::Null;
+            fresh["note"] = Value::Null;
+        }
+        assert_eq!(
+            committed, fresh,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    /// serde (status file), the wire name and FromStr must agree for every state, or
+    /// a consumer (MCP `readiness`, the desktop) parses a name the producer never writes.
+    #[test]
+    fn serde_name_and_wire_name_agree_for_every_state() {
+        for s in ALL {
+            let ser = serde_json::to_value(&s).unwrap();
+            assert_eq!(ser, state_name(&s), "{s:?}");
+            assert_eq!(state_name(&s).parse::<ServiceState>(), Ok(s.clone()));
+        }
+    }
+
+    fn probed_manager() -> (tempfile::TempDir, ServiceManager) {
+        use crate::config::{ProjectConfig, ReadyProbe, ServiceDef};
+        let def = |ready: Option<ReadyProbe>| ServiceDef {
+            command: Some("sleep 30".into()),
+            port: Some(3000),
+            ready,
+            ..Default::default()
+        };
+        let cfg = ProjectConfig {
+            name: "t".into(),
+            services: [
+                (
+                    "api".to_string(),
+                    def(Some(ReadyProbe {
+                        http: Some("/ready".into()),
+                        status: None,
+                        command: None,
+                        timeout: None,
+                    })),
+                ),
+                ("web".to_string(), def(None)),
+                ("db".to_string(), def(None)),
+            ]
+            .into(),
+            ..Default::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut m = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
+        let api = m.services.get_mut("api").unwrap();
+        api.probes.ready_error = Some("GET /ready → 500".into());
+        api.probes.degraded = Some("ready probe failed: GET /ready → 500".into());
+        m.set_state_if_changed("api", ServiceState::Degraded);
+        m.services.get_mut("web").unwrap().probes.unhealthy = Some(
+            crate::runtime::manager::test_unhealthy(3, &["booting", "stuck in render"]),
+        );
+        m.set_state_if_changed("web", ServiceState::Unhealthy);
+        m.set_state_if_changed("db", ServiceState::Running);
+        (dir, m)
+    }
+
+    /// Contract with the desktop (`apps/desktop/src/lib/__fixtures__/service-states.json`): the REAL
+    /// `state`/`rows` entries of a degraded, an unhealthy and a plain running service. The TS tests
+    /// read this file, never a hand-written mock. `UPDATE_FIXTURES=1` regenerates it.
+    #[test]
+    fn service_states_fixture_is_the_real_wire_output() {
+        let (_dir, m) = probed_manager();
+        let mut rows: Vec<Value> = ["api", "web", "db"]
+            .iter()
+            .map(|n| service_json(&m, n, &m.get_state(n).unwrap()))
+            .collect();
+        // The epoch and the "for Ns" text differ per run; the contract is the shape, so pin them.
+        for r in &mut rows {
+            if r["unhealthy_since"].is_u64() {
+                r["unhealthy_since"] = 1_700_000_000u64.into();
+                r["note"] = "unhealthy for 0s: 3 missed probes".into();
+            }
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/service-states.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&Value::Array(rows.clone()), &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed,
+            Value::Array(rows),
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    /// The wire form must carry exactly the facts the attached TUI's mirror parses back: what the
+    /// runner sends is what `MirrorFacts` serves (state, probe error, hang report).
+    #[test]
+    fn probe_facts_round_trip_through_the_wire() {
+        let (_dir, m) = probed_manager();
+        let web = service_json(&m, "web", &ServiceState::Unhealthy);
+        assert_eq!(web["unhealthy_misses"], 3);
+        assert_eq!(
+            web["unhealthy_lines"],
+            json!(["booting", "stuck in render"])
+        );
+        assert!(web["unhealthy_since"].as_u64().unwrap() > 0);
+        assert!(web["probe_error"].is_null() && web["ready"].is_null());
+        let api = service_json(&m, "api", &ServiceState::Degraded);
+        assert_eq!(api["ready"], false);
+        assert_eq!(api["probe_error"], "ready probe failed: GET /ready → 500");
+        assert!(api["unhealthy_since"].is_null());
+        let db = service_json(&m, "db", &ServiceState::Running);
+        for k in ["ready", "probe_error", "unhealthy_since", "unhealthy_lines"] {
+            assert!(db[k].is_null(), "{k}: {db}");
+        }
+    }
+
+    /// Contract (#131) with the desktop and the attached TUI
+    /// (`apps/desktop/src/lib/__fixtures__/service-memory.json`): the REAL `service_json` of a
+    /// service leaking past `memory_warn` (degraded, rising, a suspected leak) and of a steady
+    /// one, built from real children whose readings go through the manager's own sampling path.
+    /// The TS and attached-TUI tests read this file, never a hand-written mock.
+    /// `UPDATE_FIXTURES=1` regenerates it.
+    #[tokio::test]
+    async fn service_memory_fixture_is_the_real_wire_output() {
+        use crate::config::{ProjectConfig, ServiceDef};
+        const MB: u64 = 1 << 20;
+        let def = |warn: Option<&str>| ServiceDef {
+            command: Some("sleep 30".into()),
+            memory_warn: warn.map(str::to_string),
+            ..Default::default()
+        };
+        let cfg = ProjectConfig {
+            name: "t".into(),
+            services: [
+                ("api".to_string(), def(Some("1G"))),
+                ("web".to_string(), def(None)),
+            ]
+            .into(),
+            ..Default::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut m = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
+        m.min_uptime = std::time::Duration::ZERO;
+        for n in ["api", "web"] {
+            m.start_service(n).await;
+            m.update_state(n, ServiceState::Running);
+        }
+        // api: a reload every 10 s, +60 MB each time, through the budget. web: flat at 300 MB.
+        for i in 0..12u64 {
+            let t = 1_700_000_000 + 10 * i;
+            m.test_sample("api", t, (700 + 60 * i) * MB, &[t]).await;
+            m.test_sample("web", t, (300 + (i % 2)) * MB, &[]).await;
+        }
+        let mut rows: Vec<Value> = ["api", "web"]
+            .iter()
+            .map(|n| service_json(&m, n, &m.get_state(n).unwrap()))
+            .collect();
+        m.stop_service("api").await;
+        m.stop_service("web").await;
+
+        assert_eq!(rows[0]["state"], "degraded");
+        assert_eq!(rows[0]["budget_state"], "warn");
+        assert_eq!(rows[0]["memory_trend"], "rising");
+        assert!(
+            rows[0]["memory_leak"]
+                .as_str()
+                .unwrap()
+                .starts_with("leak suspected: +"),
+            "{}",
+            rows[0]
+        );
+        assert_eq!(rows[1]["state"], "running");
+        assert_eq!(rows[1]["budget_state"], "ok");
+        assert_eq!(rows[1]["memory_trend"], "flat");
+        assert!(rows[1]["memory_leak"].is_null());
+        // The attached TUI parses these keys back into the same facts.
+        let back = crate::runtime::manager::MemoryFacts::from_json(&rows[0]);
+        assert_eq!(back.rss, Some(1360 * MB));
+        assert_eq!(back.budget, crate::runtime::memory::Budget::Warn);
+
+        // `mem_mb` and `cpu` are the real processes' own figures and differ per run; the
+        // contract is the shape, so pin them.
+        for r in &mut rows {
+            r["mem_mb"] = Value::Null;
+            r["cpu"] = Value::Null;
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/service-memory.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&Value::Array(rows.clone()), &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed,
+            Value::Array(rows),
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
     }
 }

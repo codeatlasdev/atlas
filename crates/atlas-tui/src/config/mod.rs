@@ -1,9 +1,11 @@
 pub mod adhoc;
+mod agents;
 mod loader;
 mod project;
 mod selection;
 mod validate;
 
+pub use agents::{AgentsPolicy, Mode as AgentMode, POLICY_TOOLS, Verdict};
 pub use loader::{
     ConfigSource, PORT_OFFSET_ENV, apply_port_offset, detected_notice, find_root, load,
     load_checked, load_or_detect,
@@ -11,8 +13,8 @@ pub use loader::{
 pub use project::{
     ActionConfig, AndroidConfig, Condition, DEFAULT_START_TIMEOUT_SECS, DependsOn, DeployConfig,
     DeployHooks, DeployKind, DeployService, DeployTarget, HostMode, InfraConfig, IosConfig,
-    MobileConfig, PreCommandWhen, ProjectConfig, RestartPolicy, ServiceDef, SessionPlatform,
-    TunnelConfig, grouped_actions,
+    MobileConfig, OnMemoryMax, OnUnhealthy, PreCommandWhen, ProjectConfig, ReadyProbe,
+    RestartPolicy, ServiceDef, SessionPlatform, TunnelConfig, grouped_actions,
 };
 pub use selection::{Selection, SelectionRequest, resolve as resolve_selection};
 pub use validate::{BUILTIN_KEYS, ConfigError, json_schema, render_errors, warnings};

@@ -14,10 +14,20 @@ mod disk_log;
 mod facts;
 mod graph;
 mod health_check;
+#[cfg(test)]
+mod health_tests;
+mod hygiene;
+// Unix only: its shell one-liners build trees that leave their parent chain.
+#[cfg(all(test, unix))]
+mod hygiene_tests;
 mod lifecycle;
+#[cfg(test)]
+mod mem_tests;
+mod mem_watch;
 mod mirror;
 mod mobile;
 pub mod policy;
+mod port;
 mod scheduler;
 #[cfg(test)]
 mod scheduler_tests;
@@ -32,15 +42,31 @@ mod tests;
 pub(crate) use disk_log::{log_file_stem, open_stream_log, rotate_stream_log};
 
 pub(crate) use devices::{parse_devicectl_json, parse_simctl_json};
-pub use mirror::MirrorFacts;
+pub use mem_watch::MemoryFacts;
+pub use mirror::{MirrorFacts, UnhealthyReport};
 use types::{ManagedService, ManagedSession};
 pub use types::{ManagerEvent, MobileBuildPhase};
+
+/// Test hook: the capture of a service that turned `unhealthy` just now, with `lines` as its
+/// log tail (for tests of consumers: status file, MCP, desktop).
+#[cfg(test)]
+pub(crate) fn test_unhealthy(misses: u32, lines: &[&str]) -> types::Unhealthy {
+    types::Unhealthy {
+        since: std::time::Instant::now(),
+        since_epoch: crate::runtime::clock::now_secs(),
+        misses,
+        lines: lines.iter().map(|l| (*l).to_string()).collect(),
+    }
+}
 
 pub struct ServiceManager {
     pub(crate) root_dir: PathBuf,
     pub(crate) log_dir: PathBuf,
     /// Unique id for this atlas run (pid + start epoch), written to the status file.
     pub(crate) session: String,
+    /// Owner id of this manager's processes in the hygiene registry: `session` plus a sequence
+    /// number, unique per manager even within one second of one process.
+    pub(crate) hygiene_run: String,
     /// Unix seconds at manager creation; immutable for the whole run.
     pub(crate) started_at: u64,
     /// How long a service with no port, health URL or `ready_log` must stay alive before it
@@ -81,6 +107,12 @@ pub struct ServiceManager {
     pub(crate) adhoc: HashSet<String>,
     /// Last resource sample (`usage.rs`), taken every few seconds.
     pub(crate) sampled_at: Option<std::time::Instant>,
+    /// Last time the descendants of this run's roots were recorded (`hygiene.rs`).
+    pub(crate) tracked_at: Option<std::time::Instant>,
+    /// Where this run's owner tags are registered (the user's `~/.atlas/hygiene`).
+    pub(crate) hygiene: atlas_core::hygiene::Registry,
+    /// Gap between two resource samples ([`types::USAGE_EVERY`]); a field so tests can sample at will.
+    pub(crate) usage_every: std::time::Duration,
 }
 
 impl ServiceManager {

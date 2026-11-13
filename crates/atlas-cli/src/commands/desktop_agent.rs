@@ -306,9 +306,13 @@ pub fn start(o: StartOpts) -> Result<()> {
         seed_scratch(&user_home, &s)?;
     }
     let log = std::fs::File::create(s.log())?;
+    let session = atlas_core::hygiene::new_session_id();
     let mut cmd = Command::new(&app);
     cmd.env_clear()
         .envs(app_env(&s, &o.atlas_bin))
+        // Everything the instance starts (its hostd, terminals, browsers) answers to it: when the
+        // instance dies without `--stop`, `atlas doctor --hygiene` finds the tree by this tag.
+        .env(atlas_core::hygiene::SESSION_ENV, &session)
         .envs(o.extra_env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
@@ -320,6 +324,7 @@ pub fn start(o: StartOpts) -> Result<()> {
         .spawn()
         .with_context(|| format!("starting {}", app.display()))?;
     let pid = child.id();
+    register_instance(&s, &session, pid, &name);
     let rec = Record {
         name: name.clone(),
         pid,
@@ -384,6 +389,40 @@ pub fn start(o: StartOpts) -> Result<()> {
     println!("{}", ready_line(&s, pid));
     Ok(())
 }
+
+/// An instance's scratch directory (HOME, hostd dir, log) can reach gigabytes over a long run and
+/// is left behind when the instance crashes: record it under the instance's pid and start time so
+/// `atlas doctor --hygiene` and the sweeps reclaim it once the instance is gone, and cap it.
+/// Best effort: a full disk must not stop an instance.
+fn register_instance(s: &Session, session: &str, pid: u32, name: &str) {
+    use atlas_core::hygiene::{Dir, DirKind, Kind, Owner, Registry, Root, now_secs};
+    let start = atlas_core::procs::start_time(pid).unwrap_or(0);
+    let owner = Owner { pid, start };
+    let registry = Registry::open();
+    let _ = registry.add_root(Root {
+        session: session.to_string(),
+        owner,
+        pid,
+        start,
+        kind: Kind::Other,
+        label: format!("agent instance {name}"),
+        project: None,
+        started_at: now_secs(),
+    });
+    let _ = registry.add_dir(Dir {
+        path: s.dir.clone(),
+        cap_bytes: INSTANCE_DIR_CAP,
+        kind: DirKind::Instance,
+        session: Some(session.to_string()),
+        owner: Some(owner),
+        project: None,
+        created_at: now_secs(),
+    });
+}
+
+/// What an agent instance's directory is expected to stay under (reported; never trimmed while
+/// the instance lives).
+const INSTANCE_DIR_CAP: u64 = 2 * 1024 * 1024 * 1024;
 
 /// What `atlas desktop --agent` makes of one answer of the instance's bridge.
 #[derive(Debug, PartialEq, Eq)]

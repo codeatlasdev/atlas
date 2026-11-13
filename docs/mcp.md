@@ -30,6 +30,53 @@ The control socket is served by the TUI, the background runner (`atlas dev --det
 
 If `atlas dev` is not running, control tools return an error result: `atlas dev is not running; start it in a terminal`. Ask the user to start it, or run `atlas dev --detach` yourself: it returns immediately and leaves the services running for the user to `atlas dev` attach to later (`atlas down` stops them).
 
+## Agent permissions and audit
+
+By default an agent may use every control tool, exactly as before. A project whose rules say "only the developer starts and restarts the stack" says so in `atlas.yaml`:
+
+```yaml
+agents:
+  control: deny      # the read-only switch: agents can read status, logs and config, nothing else
+```
+
+`atlas dev` itself enforces it (the control socket server), so any MCP client is covered, not only one front end. A refused call is a normal tool error with guidance, and nothing happens:
+
+```text
+this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, or to allow it under `agents:` in atlas.yaml
+```
+
+Finer control, per tool and per target (see [Configuration › agents](configuration.md#agents)):
+
+```yaml
+agents:
+  control: deny                          # default for every control tool without its own entry
+  restart_service: { allow: [worker] }   # these services only
+  start_service: allow
+  run_action: { deny: [Reset local DB] } # everything except these actions (key or label)
+```
+
+`atlas_status`, `atlas_logs`, `atlas_logs_search`, `atlas_config` and `atlas_wait_ready` only read and are never restricted. The policy applies to agents only: the TUI, Atlas Desktop and the CLI are you, and are never refused. It is read from `atlas.yaml` when `atlas dev` starts and `atlas.local.yaml` cannot loosen it, so a change applies on the next `atlas dev`.
+
+### Audit trail
+
+Every control call is recorded in `.logs/atlas-audit.log`, one JSON object per line, whoever made it:
+
+```json
+{"ts":"2026-11-13T10:00:05.123-03:00","caller":"agent","client":"omp/14.1","session":{"OMP_SESSION_ID":"s-42"},"tool":"restart_service","target":"api","args":{},"result":"denied","detail":"this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, …"}
+```
+
+| Field | Meaning |
+|---|---|
+| `caller` | `agent` (came through `atlas mcp`) or `human` (the TUI keyboard, palette and menus, Atlas Desktop, the CLI) |
+| `client` | the MCP client's `name/version` from its `initialize` handshake; absent for `human` |
+| `session` | the agent host's session variables found in the environment (`OMP_SESSION_ID`, `CLAUDE_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, `CODEX_SESSION_ID`, `ATLAS_AGENT_SESSION`); absent when none is set |
+| `tool` / `target` | the control command (`restart_service`, `stop_service`, `start_service`, `run_action`) and its service name or action key/label as written; `args` carries the other arguments (`confirmed`), cut to 200 characters each |
+| `result` | `allowed` (atlas accepted it), `denied` (the `agents:` policy refused it) or `error` (let through, but atlas refused it: unknown service, confirm gate, action already running; `detail` says why) |
+
+Read it with `atlas_logs {"service": "audit"}` (newest `lines`, oldest first) or `atlas_logs_search {"service": "audit", "query": "denied"}`; both only look at the current run unless `include_previous` is set on the search. The file is not a service: it never appears in the all-services tail, in search without `service`, or in the list of services with logs. Each `atlas dev` run starts a fresh file (the last one becomes `atlas-audit.prev.log`) and a file past 5 MB rotates the same way. Requests that never name a valid target (a missing `service` argument) are protocol errors and are not recorded.
+
+> **Scope.** The policy limits what an agent can do *through atlas*. It does not sandbox the agent: an agent with a shell can still run `kill` or `atlas down`. Use your agent host's own permission rules for that.
+
 ## Tools
 
 All tools return text. Failures set `isError: true` with a message the agent can act on; unknown tool names and malformed requests are JSON-RPC errors.
@@ -37,6 +84,7 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | Tool | Arguments | Needs `atlas dev` |
 |---|---|---|
 | [`atlas_status`](#atlas_status) | none | no |
+| [`atlas_metrics`](#atlas_metrics) | `service`, `last?` | no |
 | [`atlas_logs`](#atlas_logs) | `service?`, `lines?`, `since_minutes?`, `level?` | no |
 | [`atlas_logs_search`](#atlas_logs_search) | `query`, `service?`, `limit?`, `include_previous?` | no |
 | [`atlas_config`](#atlas_config) | none | no |
@@ -44,7 +92,9 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | [`atlas_stop_service`](#atlas_restart_service--atlas_stop_service--atlas_start_service) | `service` | yes |
 | [`atlas_start_service`](#atlas_restart_service--atlas_stop_service--atlas_start_service) | `service` | yes |
 | [`atlas_run_action`](#atlas_run_action) | `action`, `confirmed?` | yes |
+| [`atlas_hygiene`](#atlas_hygiene) | none | no |
 | [`atlas_wait_ready`](#atlas_wait_ready) | `service?`, `timeout_s?` | live heartbeat |
+| [`atlas_heavy_status`](#atlas_heavy_status) | none | no |
 
 ### `atlas_status`
 
@@ -57,9 +107,14 @@ Is `atlas dev` running for this project, and what is each service's state? Call 
   "heartbeat_age_s": 1,
   "services": [
     { "name": "api", "state": "running", "port": 3001, "health": "http://localhost:3001/health",
-      "exit_code": null, "restarts": 0, "uptime_s": 412, "started_at": 1760000000, "note": null, "off": false },
+      "exit_code": null, "restarts": 0, "uptime_s": 412, "started_at": 1760000000, "note": null, "off": false,
+      "port_conflict": null, "ready": true, "probe_error": null, "unhealthy_since": null, "unhealthy_misses": null, "unhealthy_lines": [] },
+    { "name": "worker", "state": "failed", "port": 3003, "health": null,
+      "exit_code": 1, "restarts": 5, "uptime_s": null, "started_at": 1760000412, "note": "gave up after 5 restarts", "port_conflict": null },
     { "name": "web", "state": "failed",  "port": 3002, "health": null,
-      "exit_code": 1, "restarts": 5, "uptime_s": null, "started_at": 1760000412, "note": "gave up after 5 restarts" }
+      "exit_code": null, "restarts": 0, "uptime_s": null, "started_at": 1760000413,
+      "note": "port 3002 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port",
+      "port_conflict": { "pid": 12345, "cmd": "node", "cwd": "/work/app" } }
   ],
   "tunnel": { "state": "running", "local_port": 54320, "ssh_host": "prod-db" }
 }
@@ -67,9 +122,55 @@ Is `atlas dev` running for this project, and what is each service's state? Call 
 
 Per service: `exit_code` is the last exit status of the process (`null` while it runs, never exited, or died on a signal); `restarts` the restart attempts in the current streak; `uptime_s` seconds `running` (`null` otherwise); `started_at` unix seconds of the last spawn; `note` the sidebar annotation (`waiting for :3001 (12s)`, `waiting for ready_log (12s)`, `start timeout: still waiting for :3001 (75s)`, `restarting in 4s (2/5)`, `dependency db failed`, …).
 
+`port_conflict` is `{pid, cmd, cwd}` of the **foreign** process that held the service's port at its last start (a dev server started outside atlas), `null` otherwise; `cwd` is `null` where the OS will not say (Windows). It is its own field, never folded into `note`, and it clears when the holder exits. It is not yours to kill: report it to the user, who can stop it themselves or change the service port (there is deliberately no tool for ending it).
+
+Health fields (see [Health and readiness](configuration.md#health-and-readiness)), present on every row:
+
+| Field | Meaning |
+|---|---|
+| `ready` | result of the service's optional `ready:` probe: `true` while `running`, `false` while `degraded` by a failing probe, `null` when it has none (or it is not up) |
+| `probe_error` | why a `degraded` service is degraded: the failing probe's message (`GET /ready → 503`, `connection refused`, `timed out after 5s`, `` `cmd` exited 1: … ``) or the repeating log line (`repeating error: …`); `null` otherwise |
+| `unhealthy_since` | unix seconds an `unhealthy` (hung) service stopped answering; `null` otherwise |
+| `unhealthy_misses` | liveness probes missed in a row at that moment; `null` otherwise |
+| `unhealthy_lines` | the service's last output lines (up to 20) at that moment, so you can see what it was doing when it hung; `[]` otherwise |
+| `memory_rss` | bytes of the service's whole process tree, rounded to whole MB; `null` while it is not running |
+| `memory_trend` / `memory_trend_mb_min` | `rising`, `flat` or `falling` and its signed MB per minute; `null` until ~30 s of samples exist |
+| `budget_state` | `ok`, `warn` (over `memory_warn`: the service is `degraded` and `probe_error` says `using 2.1 GB, over memory_warn 1.5 GB`) or `over` (over `max_memory`); see [Memory](configuration.md#memory) |
+| `memory_leak` | `leak suspected: +600 MB over 12 reloads` while RSS only grows from one reload or restart to the next; `null` otherwise. The whole series is [`atlas_metrics`](#atlas_metrics) |
+
+A hung service looks like this (`note` is `unhealthy for 42s: 3 missed probes`):
+
+```json
+{ "name": "web", "state": "unhealthy", "port": 3002, "health": "http://localhost:3002/",
+  "exit_code": null, "restarts": 0, "uptime_s": 900, "note": "unhealthy for 42s: 3 missed probes",
+  "ready": null, "probe_error": null, "unhealthy_since": 1760000870, "unhealthy_misses": 3,
+  "unhealthy_lines": ["12:01:04 [stderr] Error: ETIMEDOUT db.internal:5432", "…"] }
+```
+
 `tunnel` is `null` when no [SSH tunnel](configuration.md#tunnel) is running; otherwise its `state` uses the same values as services (`failed` while reconnecting). Tunnel ssh output is readable with `atlas_logs` (`service: "tunnel"`).
 
-`state` is one of `starting`, `running`, `failed`, `stopped`, `disabled` (stopped by a user/agent, or left out of the run), `suspended` (paused by an action). `off: true` marks a service left out of this run by `atlas dev SERVICE…` / `--profile` (state `disabled`): start it with `atlas_start_service`, which clears the flag. When nothing is running: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Other reasons: the pid is dead, or the heartbeat is older than 120 s.
+`state` is one of `starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (stopped by a user/agent, or left out of the run), `suspended` (paused by an action). `unhealthy` = the process is alive but stopped answering its health probe (hung; nothing exited, so not `failed`). `degraded` = it answers, but its `ready:` probe fails, the same error keeps repeating in its log, or it is over its `memory_warn` budget; `probe_error` says which. `off: true` marks a service left out of this run by `atlas dev SERVICE…` / `--profile` (state `disabled`): start it with `atlas_start_service`, which clears the flag. When nothing is running: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Other reasons: the pid is dead, or the heartbeat is older than 120 s.
+
+### `atlas_metrics`
+
+Memory of one service over time ([#131](https://github.com/codeatlasdev/atlas/issues/131)): the series `atlas dev` keeps, so an agent can measure before and after a change (a refactor, a dependency bump, a suspected leak) without ad-hoc `ps` sampling. Works from `.logs/.tui-metrics.json`, so it needs no live control socket, but only a running `atlas dev` writes it.
+
+| Argument | Type | Default | Notes |
+|---|---|---|---|
+| `service` | string | required | Name exactly as in `atlas.yaml` (see `atlas_config`); an unknown one lists the known services. |
+| `last` | integer ≥ 1 | the whole series | Only the newest N samples. |
+
+```json
+{
+  "service": "web", "running": true, "state": "degraded", "updated_at": 1760000900, "interval_s": 5,
+  "samples": [[1760000890, 1363148800], [1760000895, 1420296192], [1760000900, 1426063360]],
+  "rss_bytes": 1426063360, "min_bytes": 1363148800, "max_bytes": 1426063360,
+  "trend": "rising", "trend_mb_per_min": 360.0, "budget_state": "warn", "cycles": 11,
+  "leak": "leak suspected: +660 MB over 11 reloads"
+}
+```
+
+`samples` are `[unix_seconds, bytes]` pairs, oldest first, one every `interval_s` (5 s), up to the last hour (720). Bytes are the whole process tree (on macOS the physical footprint). `trend` is `rising`, `flat` or `falling` (`null` until ~30 s of data), `trend_mb_per_min` its signed speed, `budget_state` `ok` / `warn` / `over` against the service's [`memory_warn` / `max_memory`](configuration.md#memory), `cycles` the reloads and restarts the leak watch has counted, and `leak` the suspicion (`null` when none). `running` is `false` when no live `atlas dev` owns the project: the series is then what the last run left, and `state` is `null`. Before anything was sampled the tool errors with `no metrics yet: …`.
 
 ### `atlas_logs`
 
@@ -77,7 +178,7 @@ Tail logs from `.logs/`. ANSI is already stripped. Each returned line is `[servi
 
 | Argument | Type | Default | Notes |
 |---|---|---|---|
-| `service` | string | all merged by timestamp | Must have a log file; otherwise the error lists services that do. Project [action](runtime.md#actions) output: `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks`. |
+| `service` | string | all merged by timestamp | Must have a log file; otherwise the error lists services that do. Project [action](runtime.md#actions) output: `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks`. `audit`: the [audit trail](#agent-permissions-and-audit) of control calls (`HH:MM:SS agent omp/14.1 restart_service api -> denied: …`); it is never merged into the all-services tail, and `level` / `since_minutes` do not apply to it. |
 | `lines` | integer 1–2000 | 100 | Trailing lines to return. |
 | `since_minutes` | integer ≥ 0 | none | Only lines from the last N minutes (by the `HH:MM:SS` prefix, local time, capped at 24 h). Lines without a timestamp (stack-trace continuations) are kept. |
 | `level` | `error` \| `warn` | none | `error` = errors only; `warn` = warnings and errors. Detected from text (`error`, `fatal`, `panic`, `warn`, color codes). |
@@ -136,7 +237,7 @@ All three return as soon as the request is accepted, not when the service is up:
 { "service": "api", "queued": true }
 ```
 
-Follow with [`atlas_wait_ready`](#atlas_wait_ready).
+Follow with [`atlas_wait_ready`](#atlas_wait_ready). When the project's [`agents:` policy](#agent-permissions-and-audit) denies the call, the result is an error telling the agent to ask the developer.
 
 ### `atlas_run_action`
 
@@ -155,9 +256,13 @@ action 'Reset local DB' requires confirmation: "This wipes the local database. C
 
 The agent must show that text to the user and retry only if they agree. Other errors: unknown action (lists known ones), the action is already running, or (runner / headless) the action has a `platform` (needs the TUI device picker) or is a `session: true` action (needs the terminal that owns it), both owner-TUI only. On success: `{ "action": "Reset local DB", "queued": true }`. The command runs in the background (paused services are restarted when it ends); watch progress with `atlas_status` and `atlas_logs`. A `session: true` action opens its tab in the owner TUI.
 
+### `atlas_hygiene`
+
+Look-only report of what Atlas and agents left behind: orphaned tagged processes (`orphans[]`: `pid`, `name`, `session`, `kind`, `label`, `project`), disk per project (`projects[]`: `target`, `node_modules`, `logs`, `worktrees`, `indexed`), registered temp/cache dirs against their caps (`dirs[]`) and what a fix would free (`freeable`). It is the same value as `atlas doctor --hygiene --json`. It changes nothing: to free anything, tell the user to run `atlas doctor --hygiene --fix` (or use Settings > Workspaces > Hygiene in Atlas Desktop). See [sessions and hygiene](runtime.md#sessions-and-hygiene).
+
 ### `atlas_wait_ready`
 
-Block until a service (or every service) is `running`, polling the live status twice a second.
+Block until a service (or every service) is `running`, polling the live status twice a second. `running` already includes the service's `ready:` probe when it has one, so a `degraded` or `unhealthy` service is still waited for.
 
 | Argument | Type | Default | Notes |
 |---|---|---|---|
@@ -168,17 +273,41 @@ Results:
 
 - ready: `ready after 3.2s` followed by `api=running web=running` (never reported in under 1.5 s, so a call right after a restart cannot see the old `running`);
 - a service entered `failed`: error `service 'api' failed` plus all states (fails fast);
-- timeout: error `timed out after 60s waiting for readiness` plus all states;
+- timeout: error `timed out after 60s waiting for readiness` plus all states, then one block per blocking service that carries a reason: for `degraded` the failing probe's message (`api: ready probe failed: GET /ready → 503`, or the repeating line), for `unhealthy` how long it has been hung, how many probes it missed and its last output lines:
+
+  ```text
+  timed out after 60s waiting for readiness
+  api=degraded web=unhealthy
+  api: ready probe failed: GET /ready → 503
+  web: unhealthy for 42s (3 missed probes); last output:
+      12:01:04 [stderr] Error: ETIMEDOUT db.internal:5432
+  ```
+
+  With `service` set, only that service is listed.
 - atlas not running: error `atlas dev is not running; start it in a terminal`.
 
 > **Client timeouts.** MCP clients cancel a call that takes too long. OMP's default is 30 s per request, so a `timeout_s` above about 25 will be cut off by the client. Either keep `timeout_s` ≤ 25 and call again, or raise the client timeout (OMP: `"timeout": 120000` in the server entry, up to cover the 600 s maximum if you need it). Atlas itself answers every control request within 30 s.
+
+### `atlas_heavy_status`
+
+Read-only and machine-wide (it needs no project and no `atlas dev`): the queue of heavy jobs shared by every project, worktree and agent on this machine ([`atlas run --heavy`](cli.md#atlas-run---heavy)).
+
+```json
+{ "slots": 2, "load": 3.1, "mem_available_pct": 42,
+  "running": [ { "label": "gate", "command": "bun run check", "cwd": "/work/atlas-wt-a", "project": "atlas-wt-a",
+                 "pid": 4242, "state": "running", "queued_at": 1763040000000, "started_at": 1763040004000,
+                 "slot": 0, "age_s": 61, "avg_s": 240, "eta_s": 179 } ],
+  "queued":  [ { "label": "gate", "...": "...", "state": "queued", "age_s": 20, "avg_s": 240, "eta_s": 179 } ] }
+```
+
+`load` is the 5-minute load average and `mem_available_pct` the percent of memory free (each `null` where the OS cannot tell). `eta_s` is the seconds until a running job ends, or until a queued job starts, computed from the rolling average of the last 8 successful runs of the same `label`; `null` when the label has no history. **Agents should run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy -- <cmd…>` instead of spawning them directly**, so a dozen agents never overload the machine; use this tool to see who holds the slots and how long the wait is.
 
 ### Typical agent workflow
 
 1. `atlas_status`: is it up, what is failing?
 2. `atlas_logs {"level": "error"}` or `atlas_logs {"service": "api", "lines": 200}`; `atlas_logs_search {"query": "/ECONN|timeout/"}`.
 3. Fix the code.
-4. `atlas_restart_service {"service": "api"}` then `atlas_wait_ready {"service": "api"}`.
+4. `atlas_restart_service {"service": "api"}` then `atlas_wait_ready {"service": "api"}`. A `degraded` or `unhealthy` service shows up in step 1 with its reason (`probe_error`, `unhealthy_lines`): read those before the logs.
 5. Re-check logs.
 
 ## Set up your client
@@ -275,6 +404,7 @@ printf '%s\n' \
 | `atlas_status` says `running: false` but the TUI is open | The agent is looking at a different project directory than the TUI. Compare the `--dir`/`cwd`. |
 | `atlas dev is not running; start it in a terminal` | Start `atlas dev` (or `atlas dev --detach` / `--headless`) for that project. `--ci` does not serve control. |
 | Control call: `timed out waiting for atlas dev` | The run loop did not answer within 30 s (it is stuck or shutting down). |
+| `atlas_wait_ready` times out with `degraded` / `unhealthy` | The service is up but not usable (`degraded`: its `ready:` probe fails or an error keeps repeating) or hung (`unhealthy`). The timeout message names the reason; see [Health and readiness](configuration.md#health-and-readiness). |
 | `atlas_wait_ready` cut off after 30 s | Client timeout shorter than `timeout_s`; see [Client timeouts](#atlas_wait_ready). |
 | `unknown service 'x'. Known services: …` | Use names from `atlas_config`. |
 | `no log file for service 'x'` | The service has not produced a log yet. Command-less services never have one. |

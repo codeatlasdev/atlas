@@ -37,6 +37,23 @@ pub fn open_log(dir: &Path) -> std::io::Result<std::fs::File> {
 pub fn scrollback_dir(dir: &Path) -> PathBuf {
     dir.join("hostd").join("scrollback")
 }
+
+/// The directory whose `hygiene/` registry covers the terminals of this scrollback dir: the hostd
+/// dir for the real layout (`<dir>/hostd/scrollback`, the registry `atlas doctor --hygiene`
+/// reads), the scrollback dir itself for any other (a test's temp dir stays self-contained).
+pub fn hygiene_base(scroll_dir: &Path) -> PathBuf {
+    let mut up = scroll_dir.ancestors();
+    up.next();
+    match (scroll_dir.file_name(), up.next(), up.next()) {
+        (Some(a), Some(mid), Some(base))
+            if a == "scrollback" && mid.file_name().is_some_and(|m| m == "hostd") =>
+        {
+            base.to_path_buf()
+        }
+        _ => scroll_dir.to_path_buf(),
+    }
+}
+
 /// Where the agent hook server publishes `ATLAS_HOOK_PORT`/`ATLAS_HOOK_TOKEN`.
 pub fn hook_endpoint(dir: &Path) -> PathBuf {
     dir.join("desktop").join("hook-endpoint.env")

@@ -29,6 +29,17 @@ services:
     ready_log: 'listening on'   # regex; service stays `starting` until a line matches
     start_timeout: 60           # seconds; 0 disables; service is never killed for it
     autostart: true             # false = stays stopped until started (menu, palette, atlas_start_service, or named: `atlas dev lab`)
+    health_timeout: 2           # seconds one liveness probe (health URL / port) may take; default 2
+    failure_threshold: 3        # liveness misses in a row (process alive, answered once before) -> `unhealthy`; default 3
+    on_unhealthy: notify        # notify (default: state + alert + log context) | restart (also restarts, max_restarts budget)
+    memory_warn: 1.5GB          # soft budget (size): over it for 2 samples -> `degraded` with the reason; nothing is killed; default none
+    max_memory: 4GB             # hard ceiling (size): over it for 2 samples -> on_memory_max; default none
+    on_memory_max: restart      # restart (default: alert + restart, 3 per run, then `failed`) | notify (alert once, left running + `degraded`)
+    ready:                      # optional readiness probe; fails while liveness passes -> `degraded`
+      http: /ready              # path on this service's `port`, or a full http(s):// URL
+      status: 200               # optional exact code; default any 2xx
+      timeout: 5                # seconds per probe; default 5
+      # command: ./check.sh     # instead of http: sh -c in `dir`, exit 0 = ready (exactly one of http / command)
     depends_on: { migrate: completed_successfully }
     restart: on_failure         # no | on_failure | always
     max_restarts: 5             # 0 = unlimited
@@ -37,6 +48,9 @@ services:
     critical: true
     critical_help: "Run `bun run db:up` and retry"
     lock_file: apps/api/.dev/dev.lock    # JSON {"pid": N}; stale owner cleaned before start
+  db:
+    port: 25432                 # local end of the forward
+    remote: { ssh: dev-box, port: 5432 }   # runs on dev-box: atlas runs `ssh -N -L 25432:localhost:5432 dev-box`, no local process
 profiles:                       # groups for `atlas dev --profile NAME` (repeatable, union)
   backend: [api, migrate]       # members must be services; their depends_on come along
 actions:
@@ -56,17 +70,29 @@ Order in the file does not matter; atlas sorts by `depends_on`.
 
 List form `[database, redis]` means each `healthy`. Map form conditions: `started`, `healthy`, `completed_successfully` (target needs `command`), `log_ready` (target needs `ready_log`). If a dependency can never be satisfied the dependent becomes `failed` with `dependency X failed`.
 
+## Health and readiness
+
+`health`/`port` is **liveness**: after it answered once, `failure_threshold` misses in a row (each up to `health_timeout`) on a live process turn the service `unhealthy` (hung; not `failed`, nothing exited). `ready:` is **readiness**, run only while liveness passes: failing it makes the service `degraded` with the probe's error; the same error line 3 times in 60 s (numbers and timestamps ignored) does too. Both clear by themselves. A `healthy` dependent waits for `running`, so `degraded`/`unhealthy` do not satisfy it. Not overridable from `atlas.local.yaml`. Rules: `docs/runtime.md#unhealthy-and-degraded`.
+
+## Memory budgets
+
+`max_memory: 4GB` is the hard ceiling of a service's whole process tree: over it for two samples (~10 s) in a row Atlas acts per `on_memory_max` (`restart`, the default: alert + restart, 3 per run, then `failed`; `notify`: one alert, left running and `degraded`). `memory_warn: 1.5GB` is the soft budget (must be below `max_memory`): over it for two samples the service turns `degraded` with `using 2.1 GB, over memory_warn 1.5 GB` in `probe_error`, nothing is killed, and it returns to `running` by itself. A failing `ready:` probe or a repeating error outranks the memory reason. Atlas also flags a leak with no setting: RSS that grows after every reload or restart raises `leak suspected: +600 MB over 12 reloads` (`memory_leak`). Read it with `atlas_status` (`memory_rss`, `memory_trend`, `budget_state`, `memory_leak`) and `atlas_metrics {"service": "web"}` for the series. Raising a budget to silence the alert hides the leak: find it.
+
 ## profiles and partial runs
 
 `atlas dev [SERVICE...] [--profile NAME]... [--no-deps]` starts only the named services / profile members plus their transitive `depends_on` (a command-less infra service like `database` only when something selected needs it); `--no-deps` skips dependencies. Everything else shows `off` (state `disabled`, `"off": true` in `atlas_status` rows, `"deselected": true` in `.logs/.tui-status.json`) and is started by hand: `atlas_start_service` (or menu/palette). Unknown service/profile names fail fast with a "did you mean"; a profile member that is not a service is a config error. Without arguments everything starts. Do not treat an `off` service as broken. You still never run `atlas dev` yourself; ask the user.
 
 ## Actions
 
-Required: `key` (one char), `label`, `command` (`sh -c` in project root). Optional: `confirm` (modal in the TUI; MCP refuses until `confirmed: true`), `pause_services`, `group`, `open_tunnel` (needs a `tunnel:` block), and session options `session`, `input_map`, `platform` (`ios`|`android`), `device_id`, `host_mode` (`auto`|`lan`|`simulator`). Session and `platform` actions need the TUI; MCP cannot start `platform` actions under `--headless`. Details: `docs/configuration.md#actions`.
+Required: `key` (one char), `label`, `command` (`sh -c` in project root). Optional: `confirm` (modal in the TUI; MCP refuses until `confirmed: true`), `pause_services`, `heavy` (true: run through the machine-wide heavy-job queue, `atlas run --heavy`; use it for builds, test suites and benches), `group`, `open_tunnel` (needs a `tunnel:` block), and session options `session`, `input_map`, `platform` (`ios`|`android`), `device_id`, `host_mode` (`auto`|`lan`|`simulator`). Session and `platform` actions need the TUI; MCP cannot start `platform` actions under `--headless`. Details: `docs/configuration.md#actions`.
 
 ## deploy (`atlas deploy`)
 
 `deploy: { app?, build?, artifact?: [paths], targets: { NAME: { host (ssh alias|local), dir? (abs, default /opt/<app>), keep? (>=2, 5), link?: {rel: /abs}, install?, migrate?, hooks?: {pre_swap, post_swap, post_deploy, on_failure}, pause_marker?, health_timeout? (60), health_passes? (3), soak? (15), min_free_mb? (1024), services: [{name, kind: systemd|compose|command, health?: url, compose_file? (compose only), restart? (command only, required)}] } } }`. Services restart in list order; a failed health gate rolls back to the last healthy release. Migrations must be expand-only. Secrets go in host files referenced by `link`, never in the repo. Not overridable from atlas.local.yaml. Details: `docs/deploy.md`.
+
+## agents (what AI agents may do)
+
+`agents: { control: deny }` makes MCP agents read-only: restart/stop/start/run_action are refused by `atlas dev` with a message telling the agent to ask the developer. Finer: `control: allow|deny` (default for every control tool), then per tool `restart_service`, `stop_service`, `start_service`, `run_action`: `allow`, `deny`, `{ allow: [names] }` or `{ deny: [names] }` (services; actions by key or label). The tool's own entry beats `control`; no `agents:` = everything allowed. `atlas.yaml` only (`atlas.local.yaml` cannot loosen it). Every control call is audited in `.logs/atlas-audit.log`. Details: `docs/configuration.md#agents`.
 
 ## Ports
 
@@ -115,7 +141,7 @@ services:
 
 ## Validation catches
 
-Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` needs target `ready_log`; `completed_successfully` needs target `command`; `ready_log` is a valid regex; unique ports among enabled services; unique action keys that do not clash with built-in keys or `open_key`s; `open_tunnel` needs `tunnel:`.
+Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` needs target `ready_log`; `completed_successfully` needs target `command`; `ready_log` is a valid regex; `ready` sets exactly one of `http` / `command`; unique ports among enabled services; unique action keys that do not clash with built-in keys or `open_key`s; `open_tunnel` needs `tunnel:`.
 
 ## Common mistakes
 
@@ -125,6 +151,11 @@ Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` nee
 | `open_key` on a service with no `port` and no `open_url` | Set `port` or `open_url` |
 | `pre_command: bun install` when a lockfile exists | Omit it; auto-detected |
 | `depends_on: { api: log_ready }` and `api` has no `ready_log` | Add `ready_log` to `api` |
+| `ready: { http: /ready }` on a service with no `port` | Give it a `port`, or use a full `http://127.0.0.1:<port>/ready` URL; a bare path needs the port |
+| `ready` with both `http` and `command` (or neither) | Exactly one; `atlas config check` rejects it |
+| `remote:` with a `command`, or without a `port` | `remote` replaces the command (the process is the SSH forward) and needs the local `port`; `atlas config check` rejects both |
+| `remote: { ssh: host }` whose key needs a passphrase | Key auth only (`BatchMode=yes`): load the key in ssh-agent and accept the host key first |
+| Raising `failure_threshold` to hide a hung service | It only delays `unhealthy`; read `unhealthy_lines` in `atlas_status` and fix the hang |
 | Migration as a long-running service | `oneshot: true`, depend on it with `completed_successfully` |
 | `restart: always` on a one-shot task | `on_failure`; `always` relaunches after every success |
 | Action key `s`, `r`, `v`, `f`, `D` ... | Pick a key outside the reserved list (see Reserved keys) |

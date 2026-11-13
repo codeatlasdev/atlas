@@ -13,9 +13,11 @@ import {
 	type Runs,
 	type SnapshotRun,
 } from "#lib/panel/actionRuns.ts";
+import { sameConflict, type PortConflict } from "#lib/panel/portConflict.ts";
+import { sameMemory, type MemoryRow } from "#lib/panel/memoryFacts.ts";
 
-/** One row of the runner's `service_json` (runner.rs). */
-export interface Service {
+/** One row of the runner's `service_json` (runner.rs); the memory keys (#131) come from `MemoryRow`. */
+export interface Service extends MemoryRow {
 	name: string;
 	state: string;
 	exit_code: number | null;
@@ -24,9 +26,19 @@ export interface Service {
 	paused_by?: string | null;
 	deselected?: boolean;
 	completed_ok?: boolean;
+	/** Set when a process atlas did not start held the port at the last start. */
+	port_conflict?: PortConflict | null;
 	/** Process-tree memory (MB) and CPU (% of a core), sampled by the runner every 5s. */
 	mem_mb?: number | null;
 	cpu?: number | null;
+	/** `ready:` probe: true/false, null = the service has none (runner `probe_facts_json`). */
+	ready?: boolean | null;
+	/** Why a `degraded` service is degraded: the failing ready probe, or the repeating log line. */
+	probe_error?: string | null;
+	/** `unhealthy`: epoch seconds it stopped answering, probes missed, and its last output then. */
+	unhealthy_since?: number | null;
+	unhealthy_misses?: number | null;
+	unhealthy_lines?: string[] | null;
 }
 
 /** Field-wise compare: runner `state` events repeat on every health tick. */
@@ -39,8 +51,13 @@ function rowChanged(a: Service, b: Service): boolean {
 		a.paused_by !== b.paused_by ||
 		a.deselected !== b.deselected ||
 		a.completed_ok !== b.completed_ok ||
+		!sameConflict(a.port_conflict, b.port_conflict) ||
 		a.mem_mb !== b.mem_mb ||
-		a.cpu !== b.cpu
+		a.cpu !== b.cpu ||
+		a.ready !== b.ready ||
+		a.probe_error !== b.probe_error ||
+		a.unhealthy_since !== b.unhealthy_since ||
+		!sameMemory(a, b)
 	);
 }
 
@@ -149,6 +166,9 @@ class Store {
 	busy = $state<Record<string, boolean>>({});
 	focusedService = $state<string | null>(null);
 	loaded = $state(false);
+	/** Why the last project-list read failed (an unreadable projects.json), else null. `loaded` is true either way: the
+	 * UI must leave its loading state, but an empty list with an error is not "no projects yet". */
+	listError = $state<string | null>(null);
 
 	#unlisten = new Map<string, Promise<UnlistenFn>>();
 	/**
@@ -246,9 +266,11 @@ class Store {
 	async refresh(onListed?: () => void) {
 		try {
 			this.projects = await api.list();
+			this.listError = null;
 			onListed?.();
 		} catch (e) {
-			toast.error(errText(e));
+			this.listError = errText(e);
+			toast.error(this.listError);
 			return;
 		}
 		const attached: Promise<unknown>[] = [];

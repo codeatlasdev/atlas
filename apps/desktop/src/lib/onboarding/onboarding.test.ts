@@ -7,6 +7,7 @@ import {
 	complete,
 	itemsFromRecent,
 	nextItem,
+	stateFromSettings,
 	parseState,
 	progress,
 } from "./checklist.ts";
@@ -98,6 +99,34 @@ describe("checklist", () => {
 		).toEqual(["palette"]);
 		expect(itemsFromRecent([], ["workspace::NewTerminal"])).toEqual([]);
 		expect(itemsFromRecent(["a"], [])).toEqual([]);
+	});
+});
+
+// Incident class: `onboarding.init()` awaited `api.settings()` with no fallback, so a failed read left `loaded` false
+// for the whole session: no overlay, no standing hero, no checklist, and only a toast that said nothing was wrong
+// with the data. A user whose settings cannot be read is not a first-time user (that is the case that wipes it).
+describe("stateFromSettings: onboarding state when settings could not be read", () => {
+	test("a failed read is a returning user in memory: welcome done, nothing persisted, tour not forced", () => {
+		const s = stateFromSettings({ error: "settings.json: EOF" });
+		expect(s.done).toBe(true);
+		expect(s.toured).toBe(false);
+		expect(s.checklist).toEqual({ done: [], dismissed: false });
+	});
+	test("a good read goes through parseState (unknown ids dropped)", () => {
+		const s = stateFromSettings({
+			settings: { onboarding: { done: true, checklist: { done: ["project", "x"] } } },
+		});
+		expect(s.done).toBe(true);
+		expect(s.checklist.done).toEqual(["project"]);
+	});
+	test("settings with no onboarding key (an upgrade from before the deck existed) is a first run", () => {
+		expect(stateFromSettings({ settings: { theme: "dark" } })).toEqual(EMPTY_STATE);
+	});
+	test("each call returns its own object (a fallback must not alias EMPTY_STATE)", () => {
+		const a = stateFromSettings({ error: "x" });
+		a.checklist.done.push("project");
+		expect(stateFromSettings({ error: "x" }).checklist.done).toEqual([]);
+		expect(EMPTY_STATE.checklist.done).toEqual([]);
 	});
 });
 

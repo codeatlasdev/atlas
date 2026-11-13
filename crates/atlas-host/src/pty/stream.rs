@@ -235,6 +235,9 @@ impl Session {
         self.buf.lock().raw.clear();
         let line = json!({"ev": "pty_exit", "pty": self.id, "code": code}).to_string();
         self.buf.lock().notify_force(&line);
+        // The shell is gone: whatever it left behind under this terminal's tag (a backgrounded dev
+        // server, a browser that daemonized) has no terminal to answer to.
+        self.reap_leftovers();
     }
 }
 

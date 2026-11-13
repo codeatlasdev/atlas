@@ -68,7 +68,7 @@ impl ServiceManager {
             self.patch_ios_project_yml_path().await;
         }
 
-        let mut cmd = crate::runtime::process::task_command(&action.command);
+        let mut cmd = crate::runtime::process::task_command(&action.spawn_command());
         cmd.current_dir(&self.root_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -131,6 +131,8 @@ impl ServiceManager {
             }
         }
 
+        let tag_name = format!("session/{label}");
+        self.tag_spawn(&mut cmd, &tag_name);
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
@@ -144,6 +146,9 @@ impl ServiceManager {
         };
 
         let stdin = child.stdin.take();
+        if let Some(pid) = child.id() {
+            self.register_root(&tag_name, pid, atlas_core::hygiene::Kind::Agent);
+        }
 
         // stdout and stderr both stream log lines, with mobile phase detection
         // when platform is set (Gradle/xcode errors come on stderr).
@@ -222,6 +227,9 @@ impl ServiceManager {
             // The child is gone: let the pumps flush buffered output, but a
             // background grandchild holding the pipes must not keep them alive.
             drain_pumps(std::mem::take(&mut session.pumps)).await;
+            // Whatever the session left behind under its tag (a device log tailer, a dev server
+            // started by the build) has no session to answer to.
+            self.reap_tags(&[format!("session/{label}")]).await;
             let _ = self.event_tx.send(ManagerEvent::SessionEnded { label, ok });
             for name in session.resume {
                 let _ = self.event_tx.send(ManagerEvent::ActionCompleted {
@@ -247,6 +255,7 @@ impl ServiceManager {
             for pump in session.pumps.drain(..) {
                 pump.abort();
             }
+            self.reap_tags(&[format!("session/{label}")]).await;
         }
     }
 

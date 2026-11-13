@@ -38,6 +38,7 @@ Every run on a detected config prints one line, e.g. `no atlas.yaml: using detec
 | `env_files` | string list | `[]` | [Dotenv files](#env_files) injected into every service and action. |
 | `mobile` | object | `{}` | [iOS/Android settings](#mobile) for `platform:` actions (normally in `atlas.local.yaml`). |
 | `deploy` | object | none | Release engine for `atlas deploy`. See [deploy.md](deploy.md). |
+| `agents` | object | everything allowed | What AI agents may do through [MCP control tools](#agents). `agents: { control: deny }` makes them read-only. |
 
 ### pre_command
 
@@ -102,7 +103,14 @@ services:
 | `open_url` | string | `http://localhost:<port>` | URL opened by `open_key` instead of the default. |
 | `hide_logs` | bool | `false` | No dedicated tab for this service, and its lines are left out of the **All** tab. Use for quiet infra like databases. Logs are still written to `.logs/<name>.log`. |
 | `lock_file` | string | none | Path (relative to project root) to a JSON file holding `{"pid": N}`, e.g. `apps/ai/.mastra/dev.lock`. Atlas cleans stale locks before the service starts, see [lock files](runtime.md#lock-files-lock_file). |
-| `max_memory` | size (`512M`, `4G`) | none | Memory ceiling for the service's whole process tree. Atlas samples memory and CPU every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor); over the ceiling for two samples in a row, the service is restarted with an alert; after 3 such restarts in a run it is stopped and marked failed. A guard for leaking dev servers. Usage is shown per service in Atlas Desktop and in `atlas_status` (`mem_mb`, `cpu`). |
+| `max_memory` | size (`512M`, `4G`) | none | Hard memory ceiling for the service's whole process tree. Atlas samples memory and CPU every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor); over the ceiling for two samples in a row, `on_memory_max` decides: `restart` (default) restarts it with an alert and, after 3 restarts in a run, stops it and marks it failed; `notify` only alerts. A guard for leaking dev servers. See [Memory](#memory). Usage is shown per service in Atlas Desktop and in `atlas_status` (`mem_mb`, `cpu`). |
+| `memory_warn` | size (`512M`, `1.5GB`) | none | Soft budget, below `max_memory`: over it for two samples in a row the service turns `degraded` with the reason (`using 2.1 GB, over memory_warn 1.5 GB`) and nothing is killed. See [Memory](#memory). |
+| `on_memory_max` | `restart` \| `notify` | `restart` | What Atlas does when the service stays over `max_memory`: `restart` (bounded to 3 per run, then `failed`) or `notify` (one alert, left running and `degraded`). |
+| `health_timeout` | seconds | `2` | How long one liveness probe (the `health` GET, or the TCP connect to `port`) may take before it counts as a miss. See [Health and readiness](#health-and-readiness). |
+| `failure_threshold` | integer | `3` | Liveness misses in a row, while the process is alive and after it answered once, before the service turns `unhealthy`. `0` is treated as `1`. |
+| `ready` | object | none | Readiness probe, separate from liveness: `http` (path or URL) with an optional `status`, or a `command`, plus `timeout`. While liveness passes but this fails, the service is `degraded`. See [Health and readiness](#health-and-readiness). |
+| `on_unhealthy` | `notify` \| `restart` | `notify` | What Atlas does when the service turns `unhealthy`: `notify` shows the state, raises an alert and keeps the log context; `restart` also restarts it (same budget and delays as `max_restarts`). |
+| `remote` | object | none | The service runs on another machine; Atlas forwards its local `port` there over SSH instead of running it. `ssh` (a `~/.ssh/config` host or `user@host`), `port` (where the service listens on that side), `host` (default `localhost`, as seen from the SSH host). Needs `port`, excludes `command`. See [Remote services](#remote-services). |
 
 Notes:
 
@@ -111,6 +119,78 @@ Notes:
 - **Readiness** without `ready_log`: a successful `GET` of the `health` URL, else a TCP connect to `port`, else the process being alive. A command with no port, no health and no `ready_log` is `running` once it has stayed alive for **2 seconds** (a process that crashes inside that window, e.g. in a restart loop, never turns green and never satisfies a `healthy` dependent). `atlas config check` prints a non-fatal `warning:` (exit code stays `0`) when a `healthy` dependency targets such a service.
 - Commands starting with `docker` get a `DOCKER_HOST` pointed at OrbStack's socket when present (unless `DOCKER_HOST` is already set).
 - `open_key` and action `key` values must not collide with [built-in keys](tui.md#key-bindings) or each other; `atlas config check` rejects clashes.
+
+### Health and readiness
+
+Two separate questions, two separate settings:
+
+- **Liveness** (is it answering?) is the `health` URL or `port` probe. Each probe waits `health_timeout` seconds (default `2`). Once the service has answered at least once, `failure_threshold` misses in a row (default `3`) while the process is still alive turn it `unhealthy`. A single answer resets the count, and the misses before the first answer never count (startup is [`start_timeout`](#services)'s business). A service with a `ready_log` is not port-probed.
+- **Readiness** (is it usable?) is the optional `ready:` probe, run on every health tick **only while liveness passes** (a hung service's endpoints would time out too, and `unhealthy` already says so). A service without `ready:` behaves as before.
+
+```yaml
+services:
+  api:
+    command: bun run dev:api
+    port: 24310
+    health: http://localhost:24310/health     # liveness
+    health_timeout: 2                         # seconds per probe (default 2)
+    failure_threshold: 3                      # misses in a row before `unhealthy` (default 3)
+    on_unhealthy: restart                     # notify (default) | restart
+    ready:                                    # readiness
+      http: /ready                            # path on the service `port`, or a full http(s):// URL
+      status: 200                             # optional; default: any 2xx
+      timeout: 5                              # seconds per probe (default 5)
+  worker:
+    command: bun run dev:worker
+    ready:
+      command: ./scripts/queue-ready.sh       # sh -c in the service `dir`; exit 0 = ready
+```
+
+| `ready` field | Type | Default | Description |
+|---|---|---|---|
+| `http` | string | none | A path (`/ready`), resolved against the service `port` on `127.0.0.1`, or a full `http://` / `https://` URL. A bare path without a `port` on the service reports `ready http '/ready' needs the service port`. |
+| `status` | integer | any `2xx` | Exact status code expected from `http`. Any other code is a failure (`GET /ready → 503 (expected 200)`). |
+| `command` | string | none | Shell command run as `sh -c` in the service's `dir` (project root when unset), stdin `/dev/null`; exit `0` = ready. A failure reports the exit code and the last non-empty stderr line. |
+| `timeout` | seconds | `5` | How long one readiness probe may take (`` `cmd` timed out after 5s `` for a command). |
+
+Set **exactly one** of `http` or `command`; `atlas config check` rejects both or neither. Unknown keys under `ready` are errors like everywhere else.
+
+What the verdict is for a service with a live process:
+
+| Liveness | `ready` / log | State |
+|---|---|---|
+| answers | passes (or none configured), no repeating error | `running` |
+| answers | `ready` probe fails | `degraded`, reason `ready probe failed: <error>` |
+| answers | the same error line 3 times within 60 s (numbers, timestamps, UUIDs and hex ids normalised, so `timeout after 31ms` and `timeout after 87ms` count as one) | `degraded`, reason `repeating error: <line>` |
+| misses, fewer than `failure_threshold` | | unchanged (a dev server's hot restart closes its port for a moment) |
+| misses `failure_threshold` in a row after it answered once | | `unhealthy` |
+
+`unhealthy` beats `degraded`, and a failing `ready` probe beats a repeating log line (it carries the endpoint's own error). `degraded` clears by itself when the probe passes again or the error stops repeating; `unhealthy` clears when the service answers again. `unhealthy` is for a process that is **alive**: a process that exits is `failed`, as before, and a service that was never healthy is still `starting`. Concepts: [Service states](concepts.md#service). Runtime details: [Health states](runtime.md#unhealthy-and-degraded).
+
+### Memory
+
+Atlas samples the memory of each service's whole process tree every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor) and keeps the last hour (720 samples) per service. Two optional budgets act on it, and a leak watch needs no setting:
+
+```yaml
+services:
+  web:
+    command: bun run dev:web
+    memory_warn: 1.5GB          # soft: over it for two samples in a row → `degraded`, nothing is killed
+    max_memory: 4GB             # hard: over it for two samples in a row → on_memory_max
+    on_memory_max: restart      # restart (default) | notify
+```
+
+| Setting | What happens |
+|---|---|
+| `memory_warn` | Over the budget for **two samples in a row** (~10 s; a build spike is not a state) the service turns `degraded` with the reason `using 2.1 GB, over memory_warn 1.5 GB`. Under it for two samples in a row it goes back to `running` by itself. Must be below `max_memory` (`atlas config check` rejects the reverse). Sizes parse like `max_memory`: `512M`, `1.5GB`, `2048`. |
+| `max_memory` + `on_memory_max: restart` (default) | Over the ceiling for two samples in a row, the service is restarted with an alert (`using 5.0 GB (max_memory 4.0 GB), restarting (1/3)`); after 3 such restarts in a run it is stopped and marked `failed`. |
+| `max_memory` + `on_memory_max: notify` | Over the ceiling for two samples in a row, Atlas raises one alert and leaves the service running, `degraded` with `using 5.0 GB, over max_memory 4.0 GB` until it drops under it. For services you would rather restart yourself (a database, a long build). |
+
+Precedence with the other `degraded` causes: `unhealthy` beats everything; a failing `ready:` probe beats a repeating error, which beats the memory overrun (the least specific finding: the others say what is broken, this says it is big). While a probe error is the reason, memory dropping never flips the service to `running`; once the probe passes and memory is still over budget, the memory reason is what remains. A service that is not `running` (starting, failed, stopped) is never degraded by memory.
+
+**Trend and leaks.** From the series Atlas derives a `memory_trend`: `rising`, `flat` or `falling` (a least-squares slope over the last 5 minutes, needs ~30 s of data; under ±2 MB/min is `flat`). It also watches the size at the end of every **reload** (a `[bun] reloaded`, `[vite] hmr update`, `✓ Compiled`, `[nodemon] restarting`, … line in the service's output; lines of one change count once) and every **restart**: a healthy dev server returns to about the same size after a reload, a leaking one grows every time. Four cycles in a row without a drop of more than 3 % and at least 64 MB of growth in total raise one alert, `leak suspected: +600 MB over 12 reloads` (again only after 4 more cycles of growth), and the text rides along in the service's note. A suspected leak is a warning, never a state of its own.
+
+Where it shows: the sidebar row (`memory 2.1 GB · rising +42 MB/min`, `budget warn`, the leak), `atlas dev --status` (one `↳` line under a service with something to say), the Atlas Desktop card, and `memory_rss`, `memory_trend`, `memory_trend_mb_min`, `budget_state` and `memory_leak` in the status file and MCP [`atlas_status`](mcp.md#atlas_status); the whole series is MCP [`atlas_metrics`](mcp.md#atlas_metrics).
 
 ### depends_on
 
@@ -174,6 +254,27 @@ services:
 - The counter resets after the service stays `running` for 60 s.
 - While waiting, the sidebar shows `↳ restarting in 4s (2/5)`; afterwards `↳ restarted ×N`. When the budget is spent the service is `failed` with `gave up after N restarts`.
 - Avoid `restart: always` on a one-shot task: it is relaunched after every success.
+
+### Remote services
+
+A heavy service (a database, an AI runtime, a video studio) can run on a beefier machine while the rest of the stack runs locally:
+
+```yaml
+services:
+  db:
+    port: 5432                                     # what the local stack connects to
+    remote: { ssh: dev-box, port: 5432 }           # where it really listens, seen from dev-box
+  ai:
+    port: 8000
+    remote: { ssh: me@gpu.lan, port: 8000, host: 127.0.0.1 }
+    health: http://localhost:8000/health           # probed through the forward
+```
+
+- Atlas runs no local copy. Its process is `ssh -N -L <port>:<host>:<remote port> <ssh>` with `BatchMode=yes` (key auth only: it never prompts), `ExitOnForwardFailure=yes` (a taken local port is a failure, not a silent no-op) and keepalives that notice a dead link within about 45 s.
+- It is an ordinary service otherwise: state, the port probe, logs (ssh's output is the service log), `depends_on`, profiles, MCP. The forward's local port follows Atlas Desktop's per-worktree port offset.
+- A dropped connection is the normal way a forward ends, so without an explicit `restart:` it restarts `always` (backoff and `max_restarts` as usual).
+- The port probe only proves the forward is up; add a `health` URL (or a `ready` probe) to know the remote service itself answers.
+- `ssh` and `host` must be plain words (no spaces, never starting with `-`): they go on an ssh command line.
 
 ## profiles
 
@@ -287,6 +388,7 @@ actions:
 | `platform` | `ios` \| `android` | none | Session only: show a device picker first and inject [mobile settings](#mobile). |
 | `device_id` | string | none | Pin a simulator name or adb serial; skips the picker. E.g. `"iPhone 16 Pro"`, `"emulator-5554"`. |
 | `host_mode` | `auto` \| `lan` \| `simulator` | `auto` | Session actions with a `platform`: which host the dev server advertises to the device. Atlas sets `TAURI_DEV_HOST` and `ATLAS_DEV_HOST` in the session's environment (a variable you already set via `env_files`, a service `env:` or your shell is kept). `simulator` → `127.0.0.1`. `lan` → the LAN IPv4 of the default-route interface (falls back to `127.0.0.1` if it cannot be determined). `auto` → `lan` when the selected device is physical (iOS: a `devicectl` device; Android: any serial not starting with `emulator-`), else `simulator`. See [host_mode](#host_mode). |
+| `heavy` | bool | `false` | Run the command through the machine-wide [heavy-job queue](cli.md#atlas-run---heavy) (`atlas run --heavy --label <label> -- <command>`): at most N heavy jobs run at once on the whole machine, whichever project, worktree or agent started them (default `min(cores / 2, GB of memory / 8)`), the rest wait in order and the sidebar operation shows the wait. Use it for actions that build, run test suites or benches. Works for session actions too. Needs an atlas that has the queue (this key is rejected by older versions: a repo that must work with any installed atlas calls a wrapper script instead, as this repo's `scripts/heavy.sh` does). |
 | `group` | string | none | Label that groups actions: the help overlay (`?`) lists ungrouped actions first, then each group in order of first appearance under a header; the command palette (`:`) prefixes grouped actions with `Group ›` (and also matches the group name when you search). An empty string counts as ungrouped. |
 | `open_tunnel` | bool | `false` | Before the command runs, make sure the [`tunnel`](#tunnel) is up: it is started on demand even with `tunnel.enabled: false`, waiting up to 15 s (the sidebar operation shows `opening tunnel…`). If it cannot come up, the action **fails with the reason and the command does not run**. A tunnel the action had to open on demand is **closed when the action finishes**, success or failure (if several `open_tunnel` actions overlap, the last one closes it; a tunnel that was already up, e.g. `enabled: true`, is left alone). Requires a `tunnel:` block, otherwise the config is rejected (`actions[N].open_tunnel`). |
 
@@ -348,6 +450,7 @@ Atlas does **not** scrub the environment it inherits (there is no allowlist): ev
 ```yaml
 worktree:
   shared: [.env, node_modules]   # dirs symlinked, files copied from the main checkout
+  seed: [node_modules, target]   # heavy dirs cloned copy-on-write before setup (omit = detect, [] = off)
   setup: bun install && bun run db:migrate
   archive: docker compose -p "$ATLAS_WORKSPACE_NAME" down
   setup_timeout: 600             # seconds (default 600)
@@ -355,9 +458,49 @@ worktree:
 
 Used by Atlas Desktop when it creates or deletes a git worktree of this repo. `setup` runs with `sh -c` in the new worktree, in a terminal tab named "Setup"; `archive` runs before deletion. Both get `ATLAS_ROOT_PATH` (main checkout), `ATLAS_WORKTREE_PATH`, `ATLAS_WORKSPACE_NAME` and `ATLAS_PORT_OFFSET`.
 
+### Seeding (`seed`)
+
+A new worktree starts with no `node_modules` and no `target/`, so `setup` reinstalls and rebuilds everything (a cold `target/` is 2 to 4 GB and about 100 000 files). With `seed`, Atlas clones those directories from the main checkout **before `setup` runs**, so `bun install` and `cargo build` only do the difference.
+
+- **What is seeded.** Omitted: detected from the repo root, `node_modules` with a `package.json`, `target` with a `Cargo.toml`. A list names exactly those directories (relative paths, no `..`); `seed: []` turns it off. A directory the main checkout lacks, or the new worktree already has (git checked it out, or `shared` linked it), is left alone. `shared` wins over `seed` for the same path.
+- **Not seeded: Python virtualenvs.** A virtualenv is not relocatable: `bin/*` shebangs and `pyvenv.cfg` hold the absolute path of the main checkout, so a clone would keep running the main checkout's interpreter and `site-packages` (the worktree's editable installs would silently go unused). Any listed directory with a `pyvenv.cfg` (`.venv`, `venv`, a custom name) is refused with a visible note, and `.venv` is never auto-detected. Recreate it in `setup` (`uv sync`, `python -m venv .venv && pip install -e .`).
+- **`node_modules`.** The entries of `node_modules/.bin` are relative symlinks and survive the clone. Some tools keep absolute paths in caches inside it (for example `node_modules/.cache`, `.vite`, `.astro`, Babel/webpack/ESLint caches keyed by path) and native addons built in place may embed the source path: these are rebuilt or invalidated by the first run in the worktree, at worst costing that tool's cold start; list `node_modules` out of `seed` if one misbehaves.
+- **How.** A copy-on-write clone: `clonefile(2)` on macOS (APFS), `FICLONE` per file on Linux (btrfs, XFS with reflink, bcachefs). The blocks are shared until one side writes, so it takes milliseconds and no disk, and writing the worktree never changes the main checkout (Atlas never hardlinks a tree: a write would reach the source). On macOS the seeded `target` and `node_modules` get a `.metadata_never_index` file, so Spotlight does not index them.
+- **When it cannot clone** (another volume, ext4, tmpfs, Windows: block cloning on ReFS is not attempted), the directory is **skipped, never copied in full**, and the progress line and the ready toast say so. Remote (SSH) checkouts are not seeded.
+- **Cargo.** A cloned `target/` is safe to build and test in. Cargo hashes the workspace's absolute path into every crate's fingerprint and file names, so the worktree's own crates and test binaries are rebuilt under new names (the `CARGO_BIN_EXE_*` paths baked into the main checkout's test binaries stay in files nobody runs), while registry dependencies, the expensive part, are reused. The clone owns its blocks, so deleting the main checkout later breaks nothing. Never share one live `CARGO_TARGET_DIR` between worktrees for that reason.
+- **Timing.** The progress step `seed` carries `cloned … in N ms`; when the Setup terminal ends, a toast adds `setup N s`. The same numbers are in the `worktree://progress` `done` payload (`seed: {seeded, skipped, ms}`).
+
 ### Port offset
 
 Each worktree gets a port offset (100, 200, …). When `ATLAS_PORT_OFFSET=N` is set, atlas adds `N` to every service `port`, to `tunnel.local_port`, to every service `env` value equal to some service's port, and to `:<port>` in `open_url`/`health`. Try it: `ATLAS_PORT_OFFSET=100 atlas config check`. The TUI title shows `ports +N`.
+
+## agents
+
+What an AI agent may do through the [MCP control tools](mcp.md#agent-permissions-and-audit) (`atlas_restart_service`, `atlas_stop_service`, `atlas_start_service`, `atlas_run_action`). Without an `agents:` block nothing is restricted. The one-line read-only switch:
+
+```yaml
+agents:
+  control: deny
+```
+
+| Key | Value | Meaning |
+|---|---|---|
+| `control` | `allow` \| `deny` | Default for every control tool that has no entry of its own. |
+| `restart_service`, `stop_service`, `start_service` | `allow`, `deny`, `{ allow: [services] }` or `{ deny: [services] }` | Per tool. A list names services: `allow` admits only those, `deny` refuses only those. |
+| `run_action` | same | Lists name actions by key or label (case-insensitive), whichever the agent used. |
+
+Precedence: the tool's own entry, then `control`, then allow. An empty `allow: []` refuses everything for that tool; an empty `deny: []` refuses nothing.
+
+```yaml
+agents:
+  control: deny
+  restart_service: { allow: [worker, web] }   # may restart these two, nothing else
+  run_action: { deny: [Reset local DB] }      # overrides control: deny for run_action: all actions except this one
+```
+
+Read-only tools (status, logs, config, wait for ready) are never restricted, and neither are you: the TUI, Atlas Desktop and the CLI ignore the policy. Atlas dev enforces it on the control socket, so every MCP client is covered; a refused call returns `this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, …`. Every call, allowed or not, is recorded in `.logs/atlas-audit.log`.
+
+`agents:` is only valid in `atlas.yaml`; `atlas.local.yaml` cannot set or loosen it (it is reported as an unknown field). The policy is read when `atlas dev` starts. A misspelled key (`restart_servce`) is a config error, never a silently open project; `atlas config check` reports it.
 
 ## Local overrides (`atlas.local.yaml`)
 
@@ -393,7 +536,7 @@ What can be overridden:
 | `name` | replaces |
 | `pre_command` | non-empty replaces; `""` disables; omitted keeps the base |
 | `pre_command_when` | replaces |
-| `services.<name>` | field-by-field for `command`, `port`, `health`, `critical`, `depends_on`, `enabled`, `restart`, `max_restarts`, `ready_log`, `oneshot`, `start_timeout`, `autostart`. Entries for services not in `atlas.yaml` are ignored. Other service fields (`dir`, `env`, `open_key`, `open_url`, `hide_logs`, `lock_file`, `critical_help`) cannot be overridden and are rejected as unknown keys. |
+| `services.<name>` | field-by-field for `command`, `port`, `health`, `critical`, `depends_on`, `enabled`, `restart`, `max_restarts`, `ready_log`, `oneshot`, `start_timeout`, `autostart`. Entries for services not in `atlas.yaml` are ignored. Other service fields (`dir`, `env`, `open_key`, `open_url`, `hide_logs`, `lock_file`, `critical_help`, `health_timeout`, `failure_threshold`, `ready`, `on_unhealthy`) cannot be overridden and are rejected as unknown keys. |
 | `tunnel` | field-by-field; ignored if `atlas.yaml` has no `tunnel` |
 | `infra` | replaces the whole block |
 | `profiles` | merged by name: same name replaces that profile's list, a new name is added. Members are validated against the merged `services` |
@@ -421,6 +564,7 @@ $ atlas config check
 - `depends_on` targets exist, no self-dependency, no cycles
 - `log_ready` needs `ready_log` on the target; `completed_successfully` needs a `command` on the target
 - `ready_log` is a valid regex
+- `ready` sets exactly one of `http` or `command`
 - enabled services have unique `port`s (disabled services hold no port)
 - every `profiles` member is a known service
 - action `key`s are unique and do not clash with built-in keys or a service `open_key`; an `open_key` must not be a built-in key either
@@ -472,6 +616,8 @@ services:
     command: bun run dev:server
     port: 3070
     health: http://localhost:3070/health/live
+    ready: { http: /health/ready }
+    on_unhealthy: restart
     depends_on: { migrate: completed_successfully, redis: healthy }
     restart: on_failure
     open_key: a

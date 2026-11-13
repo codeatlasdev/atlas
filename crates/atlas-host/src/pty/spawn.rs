@@ -189,6 +189,30 @@ fn spawn_pty(
     })
 }
 
+/// Record the terminal's root process under hostd's ownership: if hostd dies, the registry still
+/// names the tree and the next sweep reaps it (best effort: a full disk must not stop a terminal).
+fn register(scroll_dir: &Path, id: &str, pid: u32, req: &PtyCreate) {
+    let root = atlas_core::hygiene::Root {
+        session: id.to_string(),
+        owner: atlas_core::hygiene::Owner::current(),
+        pid,
+        start: atlas_core::procs::start_time(pid).unwrap_or(0),
+        kind: atlas_core::hygiene::Kind::Terminal,
+        label: req.argv.first().cloned().unwrap_or_else(|| "shell".into()),
+        project: Some(req.cwd.clone()),
+        started_at: now_s(),
+    };
+    let reg = atlas_core::hygiene::Registry::in_existing(&crate::paths::hygiene_base(scroll_dir));
+    let _ = reg.add_root(root);
+    // The shell's first children are recorded right away, off the spawn path (a process-table
+    // read must not delay the terminal: a client attaching after the spawn would miss output);
+    // the daemon's periodic `track` catches what it starts later, before it can daemonize out of
+    // the parent chain (macOS cannot read tags).
+    std::thread::spawn(move || {
+        let _ = reg.track();
+    });
+}
+
 impl Session {
     /// Spawn `req` in a new PTY. `scroll_dir` holds `<id>.bin` + `<id>.json`.
     pub fn spawn(req: PtyCreate, scroll_dir: &Path) -> Result<Arc<Session>> {
@@ -215,6 +239,10 @@ impl Session {
             ));
         }
         env.extend(req.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+        // Every descendant inherits the owner tag, even one that daemonizes: when the terminal
+        // closes or hostd dies, `atlas_core::hygiene` reaps whatever still carries it. Last, so a
+        // client's own environment can never retag a process into another session.
+        env.push((atlas_core::hygiene::SESSION_ENV.into(), id.clone()));
         let child = if req.mode == Mode::Pipe {
             spawn_pipe(&argv, &req.cwd, env)?
         } else {
@@ -226,6 +254,9 @@ impl Session {
         };
 
         std::fs::create_dir_all(scroll_dir)?;
+        if let Some(pid) = child.pid {
+            register(scroll_dir, &id, pid, &req);
+        }
         let meta = Meta {
             cwd: req.cwd.clone(),
             argv,

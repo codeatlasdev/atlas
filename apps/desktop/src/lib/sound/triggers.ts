@@ -20,7 +20,9 @@ const wanted = (s: Row) => !s.deselected && !s.completed_ok;
 export function stackSound(prev: Row[] | undefined, next: Row[]): Category | null {
 	if (!prev?.length || !next.length) return null;
 	const before = new Map(prev.map((s) => [s.name, s.state]));
-	if (next.some((s) => s.state === "failed" && before.has(s.name) && before.get(s.name) !== "failed"))
+	// A hang (`unhealthy`) sounds like a crash; `degraded` is a warning, no jingle.
+	const down: Record<string, true> = { failed: true, unhealthy: true };
+	if (next.some((s) => down[s.state] && before.has(s.name) && !down[before.get(s.name) ?? ""]))
 		return "service-failed";
 	const want = next.filter(wanted);
 	if (!want.length || !want.every((s) => s.state === "running")) return null;

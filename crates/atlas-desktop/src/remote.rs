@@ -342,9 +342,11 @@ pub async fn projects_add_remote(
     if !hub.exists(&host, &format!("{root}/atlas.yaml")).await {
         return Err(format!("no atlas.yaml in {alias}:{root}"));
     }
-    let mut entries = crate::registry::load()?;
     let id = crate::registry::id_for_host(Some(&host), std::path::Path::new(&root));
-    if !entries.iter().any(|e| e.id == id) {
+    let fresh = crate::registry::edit(|entries| {
+        if entries.iter().any(|e| e.id == id) {
+            return Ok(false);
+        }
         entries.push(crate::registry::Entry {
             id: id.clone(),
             root,
@@ -356,7 +358,9 @@ pub async fn projects_add_remote(
             host: Some(host),
             identity: None,
         });
-        crate::registry::save(&entries)?;
+        Ok(true)
+    })?;
+    if fresh {
         let _ = app.emit("projects://changed", ());
     }
     Ok(id)

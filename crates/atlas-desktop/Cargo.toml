@@ -32,7 +32,7 @@ tauri-plugin-window-state = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"
 gif = "0.14"
-color_quant = "1"
+color_quant = "2"
 png = "0.18"
 window-vibrancy = "0.8"
 atlas-tui = { path = "../atlas-tui" }

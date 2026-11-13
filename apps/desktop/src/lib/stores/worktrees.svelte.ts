@@ -3,6 +3,7 @@ import { toast } from "@codeatlasdev/ui";
 import { api, errText, type ProjectView, type WorktreeProgress } from "#lib/api.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
+import { readyLine } from "#lib/worktreeTiming.ts";
 
 interface Creation {
 	id: string;
@@ -117,11 +118,32 @@ class Worktrees {
 		}
 		store.selected = w.id;
 		ws.select(w.id);
-		if (p.setup) await ws.newTerminal(w.id, { argv: p.setup.argv, env: p.setup.env, label: "Setup" });
+		const setupTab = p.setup
+			? await ws.newTerminal(w.id, { argv: p.setup.argv, env: p.setup.env, label: "Setup" })
+			: undefined;
+		this.report(p.seed, setupTab?.pty ?? null);
 		if (req.agent && req.agent !== "blank" && hooks.launchAgent)
 			await hooks.launchAgent(w.id, req.agent, req.prompt);
 		else if (!p.setup) await ws.newTerminal(w.id);
 		return w.id;
+	}
+
+	/** Toast how long seeding and the Setup command took (the setup time arrives when its terminal exits). */
+	private report(seed: WorktreeProgress["seed"], setupPty: string | null) {
+		if (!setupPty) {
+			const line = readyLine(seed, null);
+			if (line) toast.info(line);
+			return;
+		}
+		const started = performance.now();
+		const stop = $effect.root(() => {
+			$effect(() => {
+				if (!(setupPty in ws.exited)) return;
+				const line = readyLine(seed, Math.round(performance.now() - started));
+				if (line) toast.info(line);
+				queueMicrotask(() => stop());
+			});
+		});
 	}
 
 	async remove(id: string, force = false) {

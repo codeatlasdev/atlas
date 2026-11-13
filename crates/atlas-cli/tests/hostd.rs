@@ -1499,6 +1499,9 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     let mut max_queued = 0u64;
     let t0 = std::time::Instant::now();
     let mut saw_end = false;
+    // Sampled, not per event: an `info` round trip after every chunk made this reader slower than
+    // hostd, so the client's own event buffer lagged and dropped output (CI: 99.87 MB of 100).
+    let mut sampled = std::time::Instant::now() - Duration::from_secs(1);
     while !saw_end {
         assert!(
             t0.elapsed() < Duration::from_secs(90),
@@ -1510,11 +1513,16 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
                 healthy_bytes += b.len();
                 saw_end |= String::from_utf8_lossy(&b).contains("END");
             }
-            Ok(_) => {}
-            Err(_) => {}
+            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(n))) => {
+                panic!("the test's own reader fell behind and lost {n} events")
+            }
+            Ok(_) | Err(_) => {}
         }
-        let info = c.call("info", json!({})).await.unwrap();
-        max_queued = max_queued.max(info["queued"]["total_bytes"].as_u64().unwrap_or(u64::MAX));
+        if sampled.elapsed() >= Duration::from_millis(100) {
+            sampled = std::time::Instant::now();
+            let info = c.call("info", json!({})).await.unwrap();
+            max_queued = max_queued.max(info["queued"]["total_bytes"].as_u64().unwrap_or(u64::MAX));
+        }
     }
     assert!(
         healthy_bytes >= 100_000_000,

@@ -48,8 +48,13 @@ export class Track {
 
 export type Band = "running" | "starting" | "failed" | "stopped";
 
-/** Maps a runner state to its band; anything not up or coming up is "stopped". */
+/**
+ * Maps a runner state to its band; anything not up or coming up is "stopped". A hung service
+ * (`unhealthy`) counts as failed in the history, a `degraded` one is still up.
+ */
 export function bandOf(state: string): Band {
+	if (state === "unhealthy") return "failed";
+	if (state === "degraded") return "running";
 	return state === "running" || state === "starting" || state === "failed" ? state : "stopped";
 }
 

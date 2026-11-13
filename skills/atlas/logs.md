@@ -46,10 +46,11 @@ Command-less services (docker-backed) and interactive sessions have no log file.
 }
 ```
 
-- `state`: `starting`, `running`, `failed`, `stopped`, `disabled`, `suspended`. A `disabled` service with `"deselected": true` (MCP: `"off": true`) was left out of this run by `atlas dev SERVICE…` / `--profile`; start it with `atlas_start_service`.
+- `state`: `starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled`, `suspended`. A `disabled` service with `"deselected": true` (MCP: `"off": true`) was left out of this run by `atlas dev SERVICE…` / `--profile`; start it with `atlas_start_service`.
 - `exit_code`: last exit of the process; `null` while running, never exited, or killed by a signal.
 - `restarts`: attempts in the current streak. `uptime_s`: only while `running`. `started_at`: unix seconds of the last spawn.
 - `note`: scheduler text: `waiting for :3000 (12s)`, `waiting for ready_log (12s)`, `start timeout: still waiting for ...`, `restarting in 2s (1/5)`, `dependency X failed`, `gave up after N restarts`.
+- Health facts on every row: `ready` (`true` while `running`, `false` while `degraded` by a failing `ready:` probe, `null` without a probe), `probe_error` (why it is `degraded`: the probe's message or the repeating log line), `unhealthy_since` (unix seconds), `unhealthy_misses`, `unhealthy_lines` (last output lines when it hung; `[]` otherwise). MCP `atlas_status` returns the same keys.
 - `tunnel` is `null` when no tunnel is running.
 - The run is alive only if `pid` exists and `updated_at` is under 120 s old. A file left by a crash is correctly reported as not running by `atlas dev --status` (exit `3`) and `atlas_status` (`running: false`).
 
@@ -69,6 +70,10 @@ MCP equivalents: `atlas_logs {"service": "api", "lines": 100}`, `{"level": "erro
 - `waiting for X (condition)` (sidebar `↳`): a `depends_on` gate has not opened; look at X.
 - `waiting for :3001 (12s)` / `waiting for ready_log (12s)`: its own probe. After `start_timeout` (default 60 s) it becomes `start timeout: still waiting ...`; nothing is killed and it keeps trying.
 - `EADDRINUSE`: something else holds the port. Atlas never kills by port; find the owner with `lsof -nP -iTCP:<port> -sTCP:LISTEN` and tell the user rather than killing it (on macOS with OrbStack that can be the docker port forwarder).
+
+**`unhealthy` (hung, not failed).** The process is alive but missed `failure_threshold` liveness probes in a row. `unhealthy_lines` is its last output at that moment: look for the stall (a pending DB call, a lock, an exception loop). `unhealthy_since` says how long. `atlas dev --status` prints the same under the row. It clears when the service answers again; with `on_unhealthy: restart` Atlas restarts it once per episode within the `max_restarts` budget. A restart rotates the log, so use `include_previous` to see the run that hung.
+
+**`degraded` (answers, not usable).** `probe_error` is the reason: `ready probe failed: GET /ready → 503`, `connection refused`, `timed out after 5s`, `` `cmd` exited 1: <stderr> ``, or `repeating error: <line>` (the same error 3 times in 60 s). Fix what it names (usually a dependency), not the service's port. `atlas dev --status` shows a READY column (`ok`/`fail`/`-`) when any service has a `ready:` probe.
 
 **Starts, then fails.** `ECONNREFUSED 127.0.0.1:5432` means the database was not ready (check `depends_on` and infra). A missing env var points to `env_files` or `env:`. `dependency X failed` means fix X first. `gave up after N restarts` means the `restart:` budget is spent; read the log of the last attempt, then `atlas_restart_service` resets it.
 

@@ -288,7 +288,7 @@ services:
     port: {web_port}
     health: http://127.0.0.1:{web_port}/
   ticker:
-    command: "sh -c 'while true; do echo tick-line; echo ERROR fixture-boom; sleep 1; done'"
+    command: "sh -c 'echo ERROR fixture-boom; while true; do echo tick-line; sleep 1; done'"
 actions:
   - key: h
     label: Hello

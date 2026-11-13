@@ -33,7 +33,7 @@ struct ToolDef {
 const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "atlas_status",
-        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|failed|stopped|disabled|suspended. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
+        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note,ready,probe_error,unhealthy_since,unhealthy_misses,unhealthy_lines} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`; ready = result of the service's optional `ready:` probe, true|false, null when it has none; probe_error = why a `degraded` service is degraded (the failing ready probe's message, or the log line repeating); unhealthy_since/unhealthy_misses/unhealthy_lines = when a hung service stopped answering its liveness probe, how many probes it missed, and its last output at that moment), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|degraded|unhealthy|failed|stopped|disabled|suspended: `unhealthy` = process alive but not answering its health probe (hung); `degraded` = liveness passes but the ready probe fails or the same error keeps repeating in the log. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
         schema: schema_no_args,
         control: None,
     },
@@ -81,7 +81,7 @@ const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "atlas_wait_ready",
-        description: "Block until a service (or all services when omitted) is running and healthy, polling the live status. Fails fast if the service enters `failed`, and on timeout returns the current states. Typical use: atlas_restart_service then atlas_wait_ready. `suspended` and `disabled` services are not waited for when waiting on all.",
+        description: "Block until a service (or all services when omitted) is running and healthy, polling the live status. `running` already includes the service's `ready:` probe when it has one: a `degraded` (ready probe failing / repeated errors) or `unhealthy` (hung) service is still waited for. Fails fast if the service enters `failed`; on timeout returns the current states plus, for each blocking service, the failing probe's message (degraded) or since-when and last output lines (unhealthy). Typical use: atlas_restart_service then atlas_wait_ready. `suspended` and `disabled` services are not waited for when waiting on all.",
         schema: schema_wait_ready,
         control: None,
     },
@@ -206,6 +206,9 @@ fn status_json(root: &Path) -> Value {
                 "name": r.name, "state": r.state, "port": r.port, "health": r.health,
                 "exit_code": r.exit_code, "restarts": r.restarts, "uptime_s": r.uptime_s, "mem_mb": r.mem_mb, "cpu": r.cpu,
                 "started_at": r.started_at, "note": r.note, "off": r.off,
+                "ready": r.ready, "probe_error": r.probe_error,
+                "unhealthy_since": r.unhealthy_since, "unhealthy_misses": r.unhealthy_misses,
+                "unhealthy_lines": r.unhealthy_lines,
             })).collect::<Vec<_>>(),
             "tunnel": s.tunnel.as_ref().map(|t| json!({
                 "state": t.state, "local_port": t.local_port, "ssh_host": t.ssh_host,
@@ -410,9 +413,15 @@ async fn wait_ready(root: &Path, args: &Value) -> ToolResult {
             _ => {}
         }
         if tokio::time::Instant::now() >= deadline {
+            let why = blockers(&snap.services, service);
             return Err(format!(
-                "timed out after {timeout}s waiting for readiness\n{}",
-                states_line(&snap.services)
+                "timed out after {timeout}s waiting for readiness\n{}{}",
+                states_line(&snap.services),
+                if why.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n{why}")
+                }
             ));
         }
         tokio::time::sleep(WAIT_POLL).await;
@@ -424,6 +433,44 @@ fn states_line(rows: &[status::ServiceRow]) -> String {
         .map(|r| format!("{}={}", r.name, r.state))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Why the services still being waited on are not ready: the failing probe's own message
+/// for `degraded`, since-when plus the captured log tail for `unhealthy`. Empty when nothing
+/// carries a reason.
+pub fn blockers(rows: &[status::ServiceRow], service: Option<&str>) -> String {
+    let mut out = Vec::new();
+    for r in rows.iter().filter(|r| service.is_none_or(|n| r.name == n)) {
+        match r.state.parse() {
+            Ok(ServiceState::Degraded) => {
+                let why = r
+                    .probe_error
+                    .as_deref()
+                    .or(r.note.as_deref())
+                    .unwrap_or("degraded");
+                out.push(format!("{}: {why}", r.name));
+            }
+            Ok(ServiceState::Unhealthy) => {
+                let secs = r
+                    .unhealthy_since
+                    .map_or(0, |t| crate::runtime::clock::now_secs().saturating_sub(t));
+                let mut s = format!(
+                    "{}: unhealthy for {secs}s ({} missed probes)",
+                    r.name,
+                    r.unhealthy_misses.unwrap_or(0)
+                );
+                if !r.unhealthy_lines.is_empty() {
+                    s.push_str("; last output:");
+                    for l in &r.unhealthy_lines {
+                        s.push_str(&format!("\n    {l}"));
+                    }
+                }
+                out.push(s);
+            }
+            _ => {}
+        }
+    }
+    out.join("\n")
 }
 
 #[cfg(test)]
@@ -444,6 +491,11 @@ mod tests {
             started_at: None,
             note: None,
             off: false,
+            ready: None,
+            probe_error: None,
+            unhealthy_since: None,
+            unhealthy_misses: None,
+            unhealthy_lines: Vec::new(),
         }
     }
 
@@ -591,5 +643,201 @@ mod tests {
         let out = call(d.path(), "atlas_status", &json!({})).await.unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["setup"]["reason"], "exit 3: boom");
+    }
+
+    // ── readiness / degraded / unhealthy ────────────────────────────────
+
+    /// A real manager writes the status file; the MCP tools read it back. No hand-written
+    /// JSON on either side of the contract.
+    fn real_status(
+        dir: &Path,
+        ready: Option<crate::config::ReadyProbe>,
+        set: impl FnOnce(&mut crate::runtime::ServiceManager),
+    ) {
+        let cfg = crate::config::ProjectConfig {
+            name: "t".into(),
+            services: std::collections::HashMap::from([(
+                "api".to_string(),
+                crate::config::ServiceDef {
+                    command: Some("sleep 30".into()),
+                    port: Some(3000),
+                    ready,
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut m = crate::runtime::ServiceManager::new(dir.to_path_buf(), &cfg, tx);
+        set(&mut m);
+        m.write_status_file();
+    }
+
+    fn http_ready() -> Option<crate::config::ReadyProbe> {
+        Some(crate::config::ReadyProbe {
+            http: Some("/ready".into()),
+            status: None,
+            command: None,
+            timeout: None,
+        })
+    }
+
+    /// Incident #136 through the real producer: degraded + probe error reach `atlas_status`.
+    #[tokio::test]
+    async fn atlas_status_reports_degraded_with_the_probe_error_and_ready_column() {
+        let d = tempfile::TempDir::new().unwrap();
+        real_status(d.path(), http_ready(), |m| {
+            let svc = m.services.get_mut("api").unwrap();
+            svc.probes.ready_error = Some("GET /ready → 500".into());
+            svc.probes.degraded = Some("ready probe failed: GET /ready → 500".into());
+            m.set_state_if_changed("api", ServiceState::Degraded);
+        });
+        let out = call(d.path(), "atlas_status", &json!({})).await.unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let api = &v["services"][0];
+        assert_eq!(api["state"], "degraded");
+        assert_eq!(api["ready"], false);
+        assert!(
+            api["probe_error"]
+                .as_str()
+                .unwrap()
+                .contains("GET /ready → 500"),
+            "{api}"
+        );
+        assert!(api["unhealthy_since"].is_null());
+    }
+
+    #[tokio::test]
+    async fn atlas_status_reports_unhealthy_with_since_and_log_lines() {
+        let d = tempfile::TempDir::new().unwrap();
+        real_status(d.path(), None, |m| {
+            let svc = m.services.get_mut("api").unwrap();
+            svc.probes.unhealthy = Some(crate::runtime::manager::test_unhealthy(
+                3,
+                &["booting", "GET /slow 9000ms"],
+            ));
+            m.set_state_if_changed("api", ServiceState::Unhealthy);
+        });
+        let out = call(d.path(), "atlas_status", &json!({})).await.unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        let api = &v["services"][0];
+        assert_eq!(api["state"], "unhealthy");
+        assert_eq!(api["unhealthy_misses"], 3);
+        assert!(api["unhealthy_since"].as_u64().unwrap() > 0);
+        assert_eq!(api["unhealthy_lines"][1], "GET /slow 9000ms");
+        assert!(
+            api["ready"].is_null(),
+            "no ready probe configured → null, not false"
+        );
+    }
+
+    /// A service without `ready` serializes the new keys as null: consumers can rely on them.
+    #[tokio::test]
+    async fn atlas_status_without_a_ready_probe_has_null_probe_keys() {
+        let d = tempfile::TempDir::new().unwrap();
+        real_status(d.path(), None, |m| {
+            m.set_state_if_changed("api", ServiceState::Running)
+        });
+        let out = call(d.path(), "atlas_status", &json!({})).await.unwrap();
+        let api = &serde_json::from_str::<Value>(&out).unwrap()["services"][0];
+        assert_eq!(api["state"], "running");
+        for k in [
+            "ready",
+            "probe_error",
+            "unhealthy_since",
+            "unhealthy_misses",
+        ] {
+            assert!(api[k].is_null(), "{k}: {api}");
+        }
+    }
+
+    #[test]
+    fn readiness_waits_on_degraded_and_unhealthy_instead_of_declaring_ready() {
+        for state in ["degraded", "unhealthy"] {
+            let rows = [row("api", state), row("db", "running")];
+            assert_eq!(
+                readiness(&rows, None).unwrap(),
+                Readiness::Waiting,
+                "{state}"
+            );
+            assert_eq!(
+                readiness(&rows, Some("api")).unwrap(),
+                Readiness::Waiting,
+                "{state}"
+            );
+            assert_eq!(readiness(&rows, Some("db")).unwrap(), Readiness::Ready);
+        }
+    }
+
+    #[test]
+    fn blockers_name_the_failing_probe_and_the_hang_context() {
+        let mut api = row("api", "degraded");
+        api.probe_error = Some("ready probe failed: GET /ready → 500".into());
+        let mut web = row("web", "unhealthy");
+        web.unhealthy_since = Some(crate::runtime::clock::now_secs() - 12);
+        web.unhealthy_misses = Some(3);
+        web.unhealthy_lines = vec!["render queue: 412 pending".into()];
+        let rows = [api, web, row("db", "running")];
+        let out = blockers(&rows, None);
+        assert!(
+            out.contains("api: ready probe failed: GET /ready → 500"),
+            "{out}"
+        );
+        assert!(
+            out.contains("web: unhealthy for 12s") && out.contains("3 missed probes"),
+            "{out}"
+        );
+        assert!(out.contains("render queue: 412 pending"), "{out}");
+        assert!(
+            !out.contains("db"),
+            "healthy services are not blockers: {out}"
+        );
+        assert!(
+            blockers(&rows, Some("web")).contains("web:")
+                && !blockers(&rows, Some("web")).contains("api:")
+        );
+    }
+
+    /// `atlas_wait_ready` against a real status file that stays degraded: it must not
+    /// succeed, and on timeout it returns the failing probe's message.
+    #[tokio::test]
+    async fn wait_ready_times_out_on_degraded_with_the_probe_message() {
+        let d = tempfile::TempDir::new().unwrap();
+        real_status(d.path(), http_ready(), |m| {
+            let svc = m.services.get_mut("api").unwrap();
+            svc.probes.ready_error = Some("GET /ready → 500".into());
+            svc.probes.degraded = Some("ready probe failed: GET /ready → 500".into());
+            m.set_state_if_changed("api", ServiceState::Degraded);
+        });
+        let err = call(
+            d.path(),
+            "atlas_wait_ready",
+            &json!({"service": "api", "timeout_s": 1}),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("timed out"), "{err}");
+        assert!(err.contains("api=degraded"), "{err}");
+        assert!(
+            err.contains("ready probe failed: GET /ready → 500"),
+            "{err}"
+        );
+    }
+
+    /// The same wait succeeds once the service is `running` (its `ready` passes).
+    #[tokio::test]
+    async fn wait_ready_succeeds_when_ready_passes() {
+        let d = tempfile::TempDir::new().unwrap();
+        real_status(d.path(), http_ready(), |m| {
+            m.set_state_if_changed("api", ServiceState::Running);
+        });
+        let ok = call(
+            d.path(),
+            "atlas_wait_ready",
+            &json!({"service": "api", "timeout_s": 5}),
+        )
+        .await
+        .unwrap();
+        assert!(ok.starts_with("ready after"), "{ok}");
     }
 }

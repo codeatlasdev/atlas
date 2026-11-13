@@ -17,6 +17,7 @@
 	import { hex } from "./color.ts";
 	import { metrics } from "./metrics.svelte.ts";
 	import { emptyPanel, lastLines, serviceRows, stackKind } from "./overview.ts";
+	import { isGreen, needsAttention } from "./serviceState.ts";
 
 	let { project }: { project: ProjectView } = $props();
 
@@ -28,7 +29,7 @@
 	let quick = $derived((cfg?.services ?? []).filter((s) => s.target?.how === "browser"));
 	let services = $derived(serviceRows(cfg?.services ?? [], live?.services, project.running));
 	let names = $derived(services.map((s) => s.name));
-	let upNames = $derived(new Set(live?.services.filter((s) => s.state === "running").map((s) => s.name)));
+	let upNames = $derived(new Set(live?.services.filter(isGreen).map((s) => s.name)));
 
 	// ── KPIs: recomputed once per published metrics revision (≤1/s) ──
 	let kpi = $derived.by(() => {
@@ -41,8 +42,9 @@
 			errors: metrics.errorsLast(project.id, 5 * 60_000),
 		};
 	});
-	let upCount = $derived(services.filter((s) => s.state === "running").length);
-	let failedCount = $derived(services.filter((s) => s.state === "failed").length);
+	let upCount = $derived(services.filter(isGreen).length);
+	// Failed, hung (unhealthy) or degraded: the KPI tile must not read green over any of them.
+	let failedCount = $derived(services.filter(needsAttention).length);
 
 	// Last log line per service, read once per log revision (the ring is append-only).
 	let tickers = $derived.by(() => {

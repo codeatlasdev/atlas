@@ -499,15 +499,15 @@ async fn test_health_url_requires_2xx_not_just_open_port() {
     mgr.check_health().await;
     assert_eq!(mgr.get_state("svc"), Some(ServiceState::Running));
 
-    // Back to 500: a live Running service survives a hot-restart blip and
-    // turns Failed only on the PROBE_FAILS_TO_FAIL-th miss in a row.
+    // Back to 500: a live Running service survives a hot-restart blip and turns Unhealthy
+    // (not Failed: the process is alive) on the `failure_threshold`-th (default 3) miss in a row.
     ok.store(false, Ordering::Release);
-    for _ in 1..types::PROBE_FAILS_TO_FAIL {
+    for _ in 1..3 {
         mgr.check_health().await;
         assert_eq!(mgr.get_state("svc"), Some(ServiceState::Running));
     }
     mgr.check_health().await;
-    assert_eq!(mgr.get_state("svc"), Some(ServiceState::Failed));
+    assert_eq!(mgr.get_state("svc"), Some(ServiceState::Unhealthy));
 
     mgr.stop_service("svc").await;
     server.abort();
@@ -1313,7 +1313,7 @@ async fn a_successful_respawn_clears_the_previous_failure_reason() {
 /// Wait (bounded) until a service's child has exited. Fixed sleeps raced slow process startup
 /// (`cmd /d /s /c` on Windows CI saw `Starting` after 300 ms, run 39356068863). tokio caches the
 /// exit status, so `check_health`'s own `try_wait` still sees it afterward.
-async fn until_child_exited(m: &mut ServiceManager, name: &str) {
+pub(super) async fn until_child_exited(m: &mut ServiceManager, name: &str) {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while std::time::Instant::now() < deadline {
         let running = m

@@ -29,6 +29,14 @@ services:
     ready_log: 'listening on'   # regex; service stays `starting` until a line matches
     start_timeout: 60           # seconds; 0 disables; service is never killed for it
     autostart: true             # false = stays stopped until started (menu, palette, atlas_start_service, or named: `atlas dev lab`)
+    health_timeout: 2           # seconds one liveness probe (health URL / port) may take; default 2
+    failure_threshold: 3        # liveness misses in a row (process alive, answered once before) -> `unhealthy`; default 3
+    on_unhealthy: notify        # notify (default: state + alert + log context) | restart (also restarts, max_restarts budget)
+    ready:                      # optional readiness probe; fails while liveness passes -> `degraded`
+      http: /ready              # path on this service's `port`, or a full http(s):// URL
+      status: 200               # optional exact code; default any 2xx
+      timeout: 5                # seconds per probe; default 5
+      # command: ./check.sh     # instead of http: sh -c in `dir`, exit 0 = ready (exactly one of http / command)
     depends_on: { migrate: completed_successfully }
     restart: on_failure         # no | on_failure | always
     max_restarts: 5             # 0 = unlimited
@@ -55,6 +63,10 @@ Order in the file does not matter; atlas sorts by `depends_on`.
 ## depends_on
 
 List form `[database, redis]` means each `healthy`. Map form conditions: `started`, `healthy`, `completed_successfully` (target needs `command`), `log_ready` (target needs `ready_log`). If a dependency can never be satisfied the dependent becomes `failed` with `dependency X failed`.
+
+## Health and readiness
+
+`health`/`port` is **liveness**: after it answered once, `failure_threshold` misses in a row (each up to `health_timeout`) on a live process turn the service `unhealthy` (hung; not `failed`, nothing exited). `ready:` is **readiness**, run only while liveness passes: failing it makes the service `degraded` with the probe's error; the same error line 3 times in 60 s (numbers and timestamps ignored) does too. Both clear by themselves. A `healthy` dependent waits for `running`, so `degraded`/`unhealthy` do not satisfy it. Not overridable from `atlas.local.yaml`. Rules: `docs/runtime.md#unhealthy-and-degraded`.
 
 ## profiles and partial runs
 
@@ -115,7 +127,7 @@ services:
 
 ## Validation catches
 
-Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` needs target `ready_log`; `completed_successfully` needs target `command`; `ready_log` is a valid regex; unique ports among enabled services; unique action keys that do not clash with built-in keys or `open_key`s; `open_tunnel` needs `tunnel:`.
+Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` needs target `ready_log`; `completed_successfully` needs target `command`; `ready_log` is a valid regex; `ready` sets exactly one of `http` / `command`; unique ports among enabled services; unique action keys that do not clash with built-in keys or `open_key`s; `open_tunnel` needs `tunnel:`.
 
 ## Common mistakes
 
@@ -125,6 +137,9 @@ Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` nee
 | `open_key` on a service with no `port` and no `open_url` | Set `port` or `open_url` |
 | `pre_command: bun install` when a lockfile exists | Omit it; auto-detected |
 | `depends_on: { api: log_ready }` and `api` has no `ready_log` | Add `ready_log` to `api` |
+| `ready: { http: /ready }` on a service with no `port` | Give it a `port`, or use a full `http://127.0.0.1:<port>/ready` URL; a bare path needs the port |
+| `ready` with both `http` and `command` (or neither) | Exactly one; `atlas config check` rejects it |
+| Raising `failure_threshold` to hide a hung service | It only delays `unhealthy`; read `unhealthy_lines` in `atlas_status` and fix the hang |
 | Migration as a long-running service | `oneshot: true`, depend on it with `completed_successfully` |
 | `restart: always` on a one-shot task | `on_failure`; `always` relaunches after every success |
 | Action key `s`, `r`, `v`, `f`, `D` ... | Pick a key outside the reserved list (see Reserved keys) |

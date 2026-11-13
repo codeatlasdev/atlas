@@ -42,6 +42,14 @@ impl ServiceManager {
         }
         match s.status.state {
             ServiceState::Failed => s.sched.fail_reason.clone(),
+            ServiceState::Unhealthy => s.probes.unhealthy.as_ref().map(|u| {
+                format!(
+                    "unhealthy for {}s: {} missed probes",
+                    u.since.elapsed().as_secs(),
+                    u.misses
+                )
+            }),
+            ServiceState::Degraded => s.probes.degraded.clone(),
             ServiceState::Stopped if s.sched.completed_ok => Some("done".into()),
             ServiceState::Running if s.sched.tracker.attempts > 0 => {
                 Some(format!("restarted ×{}", s.sched.tracker.attempts))

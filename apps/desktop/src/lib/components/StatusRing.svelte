@@ -5,7 +5,14 @@
 
 	const R = 11;
 	const C = 2 * Math.PI * R;
-	const FILL: Record<string, number> = { running: 1, failed: 1, starting: 0.35, suspended: 0.6 };
+	const FILL: Record<string, number> = {
+		running: 1,
+		failed: 1,
+		starting: 0.35,
+		suspended: 0.6,
+		degraded: 0.75,
+		unhealthy: 0.5,
+	};
 
 	const fill = new Spring(0, { stiffness: 0.12, damping: 0.5 });
 	$effect(() => {
@@ -36,6 +43,12 @@
 	}
 	.s-suspended {
 		--c: var(--atlas-state-info, var(--ca-semantic-info));
+	}
+	.s-degraded {
+		--c: var(--atlas-state-warning, var(--ca-semantic-warning));
+	}
+	.s-unhealthy {
+		--c: var(--atlas-state-error, var(--ca-semantic-error));
 	}
 	.track {
 		fill: none;

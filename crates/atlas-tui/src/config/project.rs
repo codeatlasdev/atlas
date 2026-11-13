@@ -357,10 +357,58 @@ pub struct ServiceDef {
     /// `false` = not started at boot; start it from the service menu, command
     /// palette or MCP (`atlas_start_service`). Default `true`.
     pub autostart: Option<bool>,
+    /// Seconds one liveness probe (`health` URL or `port`) may take before it
+    /// counts as a miss. Default 2.
+    pub health_timeout: Option<u64>,
+    /// Liveness misses in a row (child still alive) before a service that was
+    /// healthy turns `unhealthy`. Default 3.
+    pub failure_threshold: Option<u32>,
+    /// Readiness probe, separate from liveness: while `health`/`port` answer but
+    /// this fails, the service is `degraded` with the probe's error. Services
+    /// without it behave as before.
+    pub ready: Option<ReadyProbe>,
+    /// What atlas does when the service turns `unhealthy`: `notify` (default:
+    /// state, alert and captured log context) or `restart`.
+    #[serde(default)]
+    pub on_unhealthy: OnUnhealthy,
+}
+
+/// `ready:` — HTTP (`http` path or URL, expected `status`) or a `command`
+/// (exit 0 = ready). Exactly one of `http` / `command`.
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+#[schemars(deny_unknown_fields)]
+pub struct ReadyProbe {
+    /// Path (`/ready`, resolved against the service `port` on 127.0.0.1) or a full
+    /// `http(s)://` URL. Ready on `status` (default: any 2xx).
+    pub http: Option<String>,
+    /// Exact status code expected from `http`. Default: any 2xx.
+    pub status: Option<u16>,
+    /// Shell command run in the service `dir`; exit 0 = ready.
+    pub command: Option<String>,
+    /// Seconds one readiness probe may take. Default 5.
+    pub timeout: Option<u64>,
+}
+
+/// What happens when a running service stops answering its liveness probe.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnUnhealthy {
+    /// Show `unhealthy` with the captured context and raise an alert (default).
+    #[default]
+    Notify,
+    /// Also restart the service (same budget and delays as `max_restarts`).
+    Restart,
 }
 
 /// Default `start_timeout` in seconds.
 pub const DEFAULT_START_TIMEOUT_SECS: u64 = 60;
+
+/// Default liveness probe timeout in seconds.
+pub const DEFAULT_HEALTH_TIMEOUT_SECS: u64 = 2;
+/// Default liveness misses before `unhealthy`.
+pub const DEFAULT_FAILURE_THRESHOLD: u32 = 3;
+/// Default readiness probe timeout in seconds.
+pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 5;
 
 impl ServiceDef {
     pub fn is_enabled(&self) -> bool {
@@ -384,12 +432,31 @@ impl ServiceDef {
             && self.ready_log.is_none()
     }
 
+    /// Liveness probe timeout.
+    pub fn health_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.health_timeout.unwrap_or(DEFAULT_HEALTH_TIMEOUT_SECS))
+    }
+
+    /// Consecutive liveness misses before `unhealthy` (at least 1).
+    pub fn failure_threshold(&self) -> u32 {
+        self.failure_threshold
+            .unwrap_or(DEFAULT_FAILURE_THRESHOLD)
+            .max(1)
+    }
+
     /// `(dependency, condition)` pairs in declaration order (map form sorted by name).
     pub fn deps(&self) -> Vec<(String, Condition)> {
         self.depends_on
             .as_ref()
             .map(DependsOn::pairs)
             .unwrap_or_default()
+    }
+}
+
+impl ReadyProbe {
+    /// One probe may take this long.
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.timeout.unwrap_or(DEFAULT_READY_TIMEOUT_SECS))
     }
 }
 

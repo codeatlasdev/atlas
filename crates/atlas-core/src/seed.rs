@@ -334,17 +334,16 @@ mod tests {
         );
     }
 
+    // Unix: creating a dangling symlink on Windows needs developer mode.
+    #[cfg(unix)]
     #[test]
     fn a_dangling_symlink_at_the_destination_counts_as_existing() {
         let (_t, root, wt) = fixture();
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink("/nonexistent/shared", wt.join("node_modules")).unwrap();
-            assert_eq!(
-                plan(&root, &wt, None).skipped,
-                [("node_modules".to_string(), Skip::Exists)]
-            );
-        }
+        std::os::unix::fs::symlink("/nonexistent/shared", wt.join("node_modules")).unwrap();
+        assert_eq!(
+            plan(&root, &wt, None).skipped,
+            [("node_modules".to_string(), Skip::Exists)]
+        );
     }
 
     // The next tests need a file system that can clone (APFS, btrfs, XFS reflink). Where the

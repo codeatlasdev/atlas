@@ -2,7 +2,8 @@
 //!
 //! By concern: `projects` (registry list/add/remove/pin/identity/discover), `stack`
 //! (start/stop, services, actions, the config overview), `setup` (dependency install),
-//! `services` (what a service is and how to open it), `heavy` (the machine-wide heavy-job queue), `config_edit` (atlas.yaml read /
+//! `services` (what a service is and how to open it), `heavy` (the machine-wide heavy-job queue), `machine` (the
+//! Machine view's one report: load, memory, queue, services, terminals), `config_edit` (atlas.yaml read /
 //! validate / write) and `system` (open in editor / browser / Finder). This file holds the
 //! registry lookups they share.
 
@@ -10,6 +11,7 @@ mod config_edit;
 mod discover;
 mod heavy;
 mod hygiene;
+mod machine;
 mod projects;
 mod services;
 mod setup;
@@ -28,6 +30,7 @@ use crate::registry::{self, Entry};
 pub use config_edit::*;
 pub use heavy::*;
 pub use hygiene::*;
+pub use machine::*;
 pub use projects::*;
 pub use setup::*;
 pub use stack::*;

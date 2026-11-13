@@ -129,6 +129,7 @@ fn show_main(app: &AppHandle) {
 macro_rules! handlers {
     ($($extra:tt)*) => {
         tauri::generate_handler![
+            cmds::heavy_status,
             cmds::projects_list,
             cmds::projects_add,
             cmds::system_ui_sounds,

@@ -13,6 +13,7 @@ pub(crate) mod desktop_linux;
 pub(crate) mod desktop_windows;
 pub mod dev;
 pub mod down;
+pub mod heavy;
 pub mod hook;
 pub mod hostd;
 pub(crate) mod hostd_reconcile;

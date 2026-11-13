@@ -33,7 +33,7 @@ struct ToolDef {
 const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "atlas_status",
-        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|failed|stopped|disabled|suspended. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
+        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note,port_conflict} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`; port_conflict = {pid,cmd,cwd} of the FOREIGN process that held the service's port at its last start, null otherwise: a dev server started outside atlas, not yours to kill: tell the user, whose options are to stop it themselves or change the service port), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|failed|stopped|disabled|suspended. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
         schema: schema_no_args,
         control: None,
     },
@@ -206,6 +206,7 @@ fn status_json(root: &Path) -> Value {
                 "name": r.name, "state": r.state, "port": r.port, "health": r.health,
                 "exit_code": r.exit_code, "restarts": r.restarts, "uptime_s": r.uptime_s, "mem_mb": r.mem_mb, "cpu": r.cpu,
                 "started_at": r.started_at, "note": r.note, "off": r.off,
+                "port_conflict": r.port_conflict,
             })).collect::<Vec<_>>(),
             "tunnel": s.tunnel.as_ref().map(|t| json!({
                 "state": t.state, "local_port": t.local_port, "ssh_host": t.ssh_host,
@@ -444,6 +445,7 @@ mod tests {
             started_at: None,
             note: None,
             off: false,
+            port_conflict: None,
         }
     }
 

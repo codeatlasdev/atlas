@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **A service whose port is held by a process Atlas did not start now says who holds it.** Before a start, Atlas asks the OS (read-only: `lsof` on macOS, `/proc` on Linux, `GetExtendedTcpTable` on Windows) who listens on the service's port. A foreign holder shows as `port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port` in the sidebar note, in the service's own log, in `atlas dev --status` and on the Atlas Desktop card, and as its own `port_conflict: {pid, cmd, cwd}` field in the status file and MCP `atlas_status` (`null` when there is none). The framework's own message stays in the log. Atlas never ends a process because of its port: the message is advice for you to act on. A holder from this project's own previous run (`.logs/.pids`) is not a conflict; it is cleaned up as before. The conflict clears on its own once the holder exits ([#133](https://github.com/codeatlasdev/atlas/issues/133)).
+
 ### Fixed
 
 - **`atlas deploy` no longer ships an older commit over production by accident.** Before building, it reads the commit the host is serving and compares it with `HEAD`: a downgrade is refused (with both shas and the commits that would be dropped) unless you pass `--allow-downgrade`, a diverged `HEAD` unless `--allow-diverged`, and a deployed commit this repo does not know (after trying `git fetch origin <sha>`) unless `--allow-unknown-base`. A forward deploy prints `deploying <id> (<sha>) over <deployed-id> (<deployed-sha>): +N commits`. `atlas deploy rollback` is unchanged ([#170](https://github.com/codeatlasdev/atlas/issues/170)).

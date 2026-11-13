@@ -38,7 +38,7 @@ Slash prompts (omp): `/atlas:status`, `/atlas:diagnose <service>`, `/atlas:add-s
 
 ## Debugging recipe
 
-1. `atlas_status`: what is `failed` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`).
+1. `atlas_status`: what is `failed` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`) and `port_conflict` (`{pid, cmd, cwd}`: a process Atlas did not start holds the service's port; tell the user, who can stop it themselves or change the service port. Never kill that PID yourself, and there is no tool for it).
 2. `atlas_logs {"level": "error"}`, then `atlas_logs {"service": "<svc>", "lines": 200}` for the failing service.
 3. `atlas_logs_search {"query": "/ECONNREFUSED|EADDRINUSE/", "include_previous": true}` if the log was just rotated by a restart.
 4. Fix the code or config. If upstream failed first (`dependency X failed`), fix that service first.

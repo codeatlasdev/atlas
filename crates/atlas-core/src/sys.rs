@@ -69,6 +69,8 @@ pub fn command_line(pid: u32) -> Option<String> {
     imp::command_line(pid)
 }
 
+pub use crate::port_owner::{PortOwner, port_owner};
+
 /// Does the file name `name` (a path's last component, any case) name the program `program`?
 /// `atlas` matches `atlas`, and on Windows also `atlas.exe`.
 pub fn is_program(name: &str, program: &str) -> bool {

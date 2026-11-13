@@ -19,6 +19,7 @@ pub struct MirrorFacts {
     pub completed_ok: bool,
     pub paused_by: Option<String>,
     pub deselected: bool,
+    pub port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
 }
 
 #[derive(Debug, Default)]
@@ -95,6 +96,7 @@ mod tests {
                 completed_ok: false,
                 paused_by: None,
                 deselected: true,
+                ..Default::default()
             },
         );
         assert_eq!(m.get_state("api"), Some(ServiceState::Failed));

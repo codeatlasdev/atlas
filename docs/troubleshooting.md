@@ -28,7 +28,7 @@ Start with `atlas dev --status` (what is running and in what state) and `atlas v
 | A service is `failed` with `dependency X failed` | A dependency failed, exited non-zero or gave up restarting. Fix `X` first; its dependents start by themselves once their conditions hold, or restart them. |
 | `gave up after N restarts` | The restart budget (`max_restarts`, default 5) is spent. Read the service log, fix the cause, restart it from the menu (`m`) or with `atlas_restart_service`. |
 | A service is green but not answering | A service without `port`, `health` or `ready_log` counts as running after 2 s alive. Add a probe. |
-| `EADDRINUSE` | Something else holds the port, often an orphan of an earlier run. Atlas cleans only what it started itself (from `.logs/.pids`) and never kills by port. Find the process with `lsof -iTCP:<port> -sTCP:LISTEN` and stop it yourself. |
+| `EADDRINUSE` | Something else holds the port. Atlas looks it up before each start, so the service shows `port N held by PID P (cmd, cwd …): stop it yourself (kill P) or change the service port` (sidebar, service log, `atlas dev --status`, MCP `port_conflict`): read that instead of the log, then stop the process yourself (`kill P`) or change the service `port`. Atlas cleans only what it started itself (from `.logs/.pids`) and never kills by port, not even when asked. |
 | `docker compose` failed and a `docker` alert shows | The daemon was not reachable within 15 s. Start Docker or OrbStack; app services still start. |
 | Quitting leaves containers running | By design: Atlas never runs `docker compose down`. Stop them with `docker compose down`. |
 | `pre_command failed` toast | The dependency install failed; services start anyway. Read `.logs/setup.log`. |

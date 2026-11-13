@@ -87,6 +87,14 @@ impl ServiceManager {
             crate::runtime::envfile::cleanup_lock(&self.root_dir, lock).await;
         }
 
+        // The port may be held by something atlas did not start (an agent's `bun dev`, another
+        // project). Name it now, in the service's own log, instead of leaving the developer
+        // with the framework's "another dev server is already running". The spawn still goes
+        // ahead: some tools pick another port, and the framework's message stays in the log.
+        if let Some(p) = port {
+            self.detect_port_conflict(name, p).await;
+        }
+
         let mut cmd = crate::runtime::process::task_command(&command);
         let work_dir = dir
             .as_ref()
@@ -139,6 +147,9 @@ impl ServiceManager {
                 let _ = self.event_tx.send(ManagerEvent::ServiceRestarted {
                     name: name.to_string(),
                 });
+                // After the writers above rotated the log: a line written earlier would move
+                // to `.prev.log` with it. Once per spawn, so a restart on the same holder says it again.
+                self.announce_port_conflict(name);
                 let mut pumps = Vec::with_capacity(2);
                 if let Some(stdout) = child.stdout.take() {
                     let tx = self.event_tx.clone();

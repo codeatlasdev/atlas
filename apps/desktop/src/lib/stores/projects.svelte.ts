@@ -13,6 +13,7 @@ import {
 	type Runs,
 	type SnapshotRun,
 } from "#lib/panel/actionRuns.ts";
+import { sameConflict, type PortConflict } from "#lib/panel/portConflict.ts";
 
 /** One row of the runner's `service_json` (runner.rs). */
 export interface Service {
@@ -24,6 +25,8 @@ export interface Service {
 	paused_by?: string | null;
 	deselected?: boolean;
 	completed_ok?: boolean;
+	/** Set when a process atlas did not start held the port at the last start. */
+	port_conflict?: PortConflict | null;
 	/** Process-tree memory (MB) and CPU (% of a core), sampled by the runner every 5s. */
 	mem_mb?: number | null;
 	cpu?: number | null;
@@ -39,6 +42,7 @@ function rowChanged(a: Service, b: Service): boolean {
 		a.paused_by !== b.paused_by ||
 		a.deselected !== b.deselected ||
 		a.completed_ok !== b.completed_ok ||
+		!sameConflict(a.port_conflict, b.port_conflict) ||
 		a.mem_mb !== b.mem_mb ||
 		a.cpu !== b.cpu
 	);

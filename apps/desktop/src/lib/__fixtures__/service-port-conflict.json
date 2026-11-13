@@ -1,0 +1,18 @@
+{
+	"adhoc": null,
+	"completed_ok": false,
+	"cpu": null,
+	"deselected": false,
+	"exit_code": null,
+	"mem_mb": null,
+	"name": "web",
+	"note": "port 4321 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port",
+	"paused_by": null,
+	"port_conflict": {
+		"cmd": "node",
+		"cwd": "/work/app",
+		"pid": 12345
+	},
+	"restarts": 0,
+	"state": "failed"
+}

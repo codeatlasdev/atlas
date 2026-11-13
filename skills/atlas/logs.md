@@ -68,7 +68,7 @@ MCP equivalents: `atlas_logs {"service": "api", "lines": 100}`, `{"level": "erro
 **Stuck in `starting`.** A service with a `port`/`health` stays `starting` until that probe passes; a `ready_log` service until a matching line appears. Check `note`:
 - `waiting for X (condition)` (sidebar `↳`): a `depends_on` gate has not opened; look at X.
 - `waiting for :3001 (12s)` / `waiting for ready_log (12s)`: its own probe. After `start_timeout` (default 60 s) it becomes `start timeout: still waiting ...`; nothing is killed and it keeps trying.
-- `EADDRINUSE`: something else holds the port. Atlas never kills by port; find the owner with `lsof -nP -iTCP:<port> -sTCP:LISTEN` and tell the user rather than killing it (on macOS with OrbStack that can be the docker port forwarder).
+- `EADDRINUSE` / `port N held by PID P (…)`: something else holds the port. `atlas_status` names it in `port_conflict` `{pid, cmd, cwd}`; Atlas never kills by port. Tell the user what holds it and let them stop it themselves or change the service port (on macOS with OrbStack that can be the docker port forwarder, never to be killed). Do not kill the PID yourself.
 
 **Starts, then fails.** `ECONNREFUSED 127.0.0.1:5432` means the database was not ready (check `depends_on` and infra). A missing env var points to `env_files` or `env:`. `dependency X failed` means fix X first. `gave up after N restarts` means the `restart:` budget is spent; read the log of the last attempt, then `atlas_restart_service` resets it.
 

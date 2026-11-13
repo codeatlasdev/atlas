@@ -187,6 +187,7 @@ impl ServiceManager {
                 }
             }
         }
+        self.refresh_port_conflicts().await;
         self.sample_usage().await;
         // Heartbeat: keeps `updated_at` fresh so `atlas dev --status` can tell a
         // live run from a stale file left by a crash.
@@ -294,6 +295,7 @@ impl ServiceManager {
                     "note": self.service_note(name),
                     "autostart": service.autostart,
                     "deselected": service.deselected,
+                    "port_conflict": self.port_conflict(name),
                     "mem_mb": service.usage.map(|u| u.mem >> 20),
                     "cpu": service.usage.map(|u| u.cpu.round() as u32),
                 });

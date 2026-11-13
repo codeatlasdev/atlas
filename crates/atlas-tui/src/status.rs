@@ -31,6 +31,8 @@ pub struct ServiceRow {
     /// Not in this run's selection (`atlas dev SERVICE…` / `--profile`): shown
     /// `disabled`, startable by hand. Cleared once it is started.
     pub off: bool,
+    /// The foreign process holding this service's port (`port_conflict: {pid, cmd, cwd}`).
+    pub port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
 }
 
 /// The SSH tunnel row from the status file (absent when no `tunnel:` is running).
@@ -94,6 +96,7 @@ pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
                     started_at: s["started_at"].as_u64(),
                     note: s["note"].as_str().map(str::to_string),
                     off: s["deselected"].as_bool().unwrap_or(false),
+                    port_conflict: serde_json::from_value(s["port_conflict"].clone()).ok(),
                 })
                 .collect()
         })
@@ -149,6 +152,9 @@ pub fn live_status(root_dir: &Path) -> Result<String, String> {
             port,
             s.health.as_deref().unwrap_or("-"),
         ));
+        if let (Some(c), Some(p)) = (&s.port_conflict, s.port) {
+            out.push_str(&format!("  ! {}\n", c.describe(p as u16)));
+        }
     }
     if let Some(t) = &snap.tunnel {
         out.push_str(&format!(

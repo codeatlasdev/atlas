@@ -84,6 +84,7 @@ fn facts(v: &Value) -> MirrorFacts {
         completed_ok: v["completed_ok"].as_bool().unwrap_or(false),
         paused_by: v["paused_by"].as_str().map(str::to_string),
         deselected: v["deselected"].as_bool().unwrap_or(false),
+        port_conflict: serde_json::from_value(v["port_conflict"].clone()).ok(),
     }
 }
 

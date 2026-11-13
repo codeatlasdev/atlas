@@ -488,31 +488,35 @@ class _DashboardState extends ConsumerState<_Dashboard> {
           },
         );
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.laptop_mac_rounded, color: c.accent),
-                title: Text(
-                  widget.device.name,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.laptop_mac_rounded, color: c.accent),
+                  title: Text(
+                    widget.device.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text('Paired'),
                 ),
-                subtitle: const Text('Paired'),
-              ),
-              const Divider(height: 1),
-              row(
-                Icons.qr_code_scanner_rounded,
-                'Pair another computer',
-                () => context.push('/pair'),
-              ),
-              row(Icons.privacy_tip_outlined, 'Privacy', openPrivacy),
-              row(
-                Icons.link_off_rounded,
-                'Forget this computer',
-                _forget,
-                color: c.error,
-              ),
-            ],
+                const Divider(height: 1),
+                row(
+                  Icons.qr_code_scanner_rounded,
+                  'Pair another computer',
+                  () => context.push('/pair'),
+                ),
+                row(Icons.privacy_tip_outlined, 'Privacy', openPrivacy),
+                row(
+                  Icons.link_off_rounded,
+                  'Forget this computer',
+                  _forget,
+                  color: c.error,
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -585,15 +589,34 @@ class _Header extends StatelessWidget {
                 else
                   PopupMenuButton<MacDevice>(
                     onSelected: onSwitch,
+                    tooltip: 'Switch computer',
+                    constraints: const BoxConstraints(minHeight: 48),
                     itemBuilder: (_) => [
                       for (final d in others)
-                        PopupMenuItem(value: d, child: Text(d.name)),
+                        PopupMenuItem(
+                          value: d,
+                          child: Text(
+                            d.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                     ],
-                    child: name,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: name,
+                      ),
+                    ),
                   ),
                 const SizedBox(height: 4),
                 AnimatedSwitcher(
                   duration: Motion.normal,
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [...previous, ?current],
+                  ),
                   child: Container(
                     key: ValueKey(label),
                     padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
@@ -609,12 +632,16 @@ class _Header extends StatelessWidget {
                           pulse: label != 'All clear' && label != 'Connected',
                           size: 6,
                         ),
-                        Text(
-                          label,
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -820,14 +847,20 @@ class _ProjectTile extends StatelessWidget {
                       children: [
                         Text(
                           project.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 4),
-                        Row(
+                        // One bar per service (twelve at most): they wrap under the
+                        // caption's line on a narrow phone instead of pushing it out.
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 3,
+                          runSpacing: 4,
                           children: [
                             for (final s in project.services.take(12))
                               Container(
-                                margin: const EdgeInsets.only(right: 3),
                                 width: 14,
                                 height: 6,
                                 decoration: BoxDecoration(
@@ -837,12 +870,10 @@ class _ProjectTile extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(3),
                                 ),
                               ),
-                            if (project.services.isNotEmpty)
-                              const SizedBox(width: 5),
-                            Flexible(
+                            Padding(
+                              padding: const EdgeInsets.only(left: 2),
                               child: Text(
                                 caption,
-                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: flagged ? c.error : c.faint,
                                   fontSize: 12,
@@ -863,51 +894,63 @@ class _ProjectTile extends StatelessWidget {
             Divider(height: 1, color: c.borderSubtle),
             InkWell(
               onTap: () => onAgent(pane, s),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.md,
-                  Space.sm,
-                  Space.md,
-                  Space.sm,
-                ),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 10),
-                    StatusDot(
-                      color: c.agentState(s.state),
-                      pulse: s.state == 'working' || s.state == 'blocked',
-                      size: 6,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      s.agent,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(width: Space.sm),
-                    Expanded(
-                      child: Text(
-                        (s.state == 'working'
-                                    ? s.prompt
-                                    : s.lastMessage ?? s.prompt)
-                                ?.replaceAll('\n', ' ') ??
-                            '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.muted, fontSize: 13),
-                      ),
-                    ),
-                    const SizedBox(width: Space.sm),
-                    Text(
-                      agentStateLabel(s.state),
-                      style: TextStyle(
+              child: MinTapTarget(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.md,
+                    Space.sm,
+                    Space.md,
+                    Space.sm,
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 10),
+                      StatusDot(
                         color: c.agentState(s.state),
-                        fontSize: 12,
+                        pulse: s.state == 'working' || s.state == 'blocked',
+                        size: 6,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Flexible(
+                        flex: 0,
+                        child: Text(
+                          s.agent,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Text(
+                          (s.state == 'working'
+                                      ? s.prompt
+                                      : s.lastMessage ?? s.prompt)
+                                  ?.replaceAll('\n', ' ') ??
+                              '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: c.muted, fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      Flexible(
+                        flex: 0,
+                        child: Text(
+                          agentStateLabel(s.state),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: c.agentState(s.state),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

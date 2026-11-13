@@ -295,10 +295,12 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                     Expanded(
                       child: Text(
                         '  · orbit-shop',
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: c.faint, fontSize: 12),
                       ),
                     ),
+                    const SizedBox(width: 4),
                     AnimatedSwitcher(
                       duration: Motion.normal,
                       child: Text(

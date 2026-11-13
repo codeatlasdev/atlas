@@ -197,9 +197,16 @@ class _Parallax extends StatelessWidget {
                           opacity: (1 - d.abs() * 1.4).clamp(0.0, 1.0),
                           child: Transform.scale(
                             scale: reduced ? 1 : 1 - d.abs() * .12,
-                            child: SizedBox(
-                              height: 180,
-                              child: Center(child: art),
+                            // An illustration is a picture: its labels are drawn for a
+                            // fixed canvas, so they do not follow the system text size
+                            // (the page text under it does).
+                            child: MediaQuery(
+                              data: MediaQuery.of(context)
+                                  .copyWith(textScaler: TextScaler.noScaling),
+                              child: SizedBox(
+                                height: 180,
+                                child: Center(child: art),
+                              ),
                             ),
                           ),
                         ),

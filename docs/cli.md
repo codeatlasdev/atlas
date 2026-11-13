@@ -224,6 +224,24 @@ atlas init [-d, --dir <DIR>]      # default .
 
 Writes a minimal `atlas.yaml` (`name:` from the directory plus detected services, or a commented example) and prints what it detected. Fails if `atlas.yaml` already exists. This is also how you **save** what `atlas dev` [detected](configuration.md#no-atlasyaml-detected-config) in a folder without one: the file is exactly the config that run used.
 
+## `atlas run --heavy`
+
+```text
+atlas run --heavy [--label <NAME>] [--no-nice] -- <cmd...>
+atlas heavy status [--json]
+```
+
+Run a heavy command (a build, a test suite, a bench) through the **machine-wide queue**: every project, worktree, agent and shell on the machine shares it, so five agents starting their suites at once never push the load or the memory past the cap. At most N jobs run at the same time (default `min(cores / 2, GB of memory / 8)`, at least 1); the rest wait in arrival order (first come first served, nobody overtakes) and start the moment a slot frees. The command runs as a child with your stdin/stdout/stderr, under `nice -n 10` on Unix (`--no-nice` keeps its priority), and its exit code is `atlas run`'s (`128 + signal` when a signal ended it). Ctrl-C/SIGTERM while queued leaves the queue (exit `130`, the command never runs); while running the signal is passed to the command. A single word is a shell command line (`atlas run --heavy -- "bun run check && bun test"`), several are an argv.
+
+- **Slots:** `ATLAS_HEAVY_SLOTS` (positive integer), else `heavy.slots` in `~/.atlas/config.json` (`{"heavy": {"slots": 3}}`), else `min(cores / 2, memory in GB / 8)`, at least 1: 12 cores and 24 GB give 3 slots, 16 GB gives 2, 8 GB gives 1 (a cold build of a large workspace peaks near 8 GB, so memory, not only cores, caps how many run together).
+- **Load gate:** a job with a slot still waits until the 5-minute load is below `ATLAS_HEAVY_MAXLOAD` (default: `0.75 * cores`; `0` turns the gate off), at most `ATLAS_HEAVY_WAIT` seconds (default 600), then runs anyway with a warning. Windows has no load average, so the gate is off there.
+- **Memory gate:** it also waits while less than `ATLAS_HEAVY_MINMEM` percent of memory is free (default `20`; `0` turns the gate off; also `heavy.min_mem_pct` in `~/.atlas/config.json`, the environment wins). Free memory is `kern.memorystatus_level` on macOS (the kernel's own pressure figure), `MemAvailable / MemTotal` on Linux and `GlobalMemoryStatusEx` on Windows; a machine that cannot tell has no memory gate. A job held by memory says so; after `ATLAS_HEAVY_WAIT` seconds it runs anyway, with a warning, like the load gate. Memory is checked before load: a full machine freezes, a busy one only slows down.
+- **Build parallelism:** the job's environment caps how many workers each tool starts, so the jobs that run together stay within the machine: `CARGO_BUILD_JOBS` and `UV_THREADPOOL_SIZE` (the thread pool of node/bun tooling) are set to `max(2, cores / slots)` unless you already set them, in which case yours stays. A lone job on a 2-slot machine therefore still gets half the cores for its builds; set `CARGO_BUILD_JOBS` yourself for more.
+- **No stale state:** a slot is an OS file lock under `~/.atlas/heavy/` (`ATLAS_HEAVY_DIR` moves it) held by the running `atlas run` process, so a job that is killed, crashes or loses its machine frees the slot at once, and its record is ignored the same moment. Each job also writes a small JSON record (pid, label, cwd, project, queued_at, started_at).
+- `--label` names the job in the queue and in its ETA history (default: the program's name). Atlas keeps the last 8 successful run times per label and shows an ETA from their average.
+- `atlas heavy status` lists who holds the slots and who waits, with ages and ETAs (`--json` is what the MCP tool [`atlas_heavy_status`](mcp.md#atlas_heavy_status) returns).
+- In `atlas.yaml`, `heavy: true` (this release and later) on an [action](configuration.md#actions) (and `deploy.build_heavy: true` for [`deploy.build`](deploy.md)) routes it through the queue. `scripts/heavy.sh <cmd>` in this repo is a wrapper over `atlas run --heavy`.
+
 ## `atlas config`
 
 ```text

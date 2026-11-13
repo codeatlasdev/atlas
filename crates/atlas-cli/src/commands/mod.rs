@@ -14,6 +14,7 @@ pub(crate) mod desktop_windows;
 pub mod dev;
 pub mod doctor;
 pub mod down;
+pub mod heavy;
 pub mod hook;
 pub mod hostd;
 pub(crate) mod hostd_reconcile;

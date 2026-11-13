@@ -2,7 +2,7 @@
 name: atlas
 description: Work inside a project that has an atlas.yaml. Check service status, read and search logs, restart services, run actions, choose service ports, and edit atlas.yaml through the atlas MCP tools or the .logs/ files. Use when debugging a dev environment, when a service is failing, not ready or hits EADDRINUSE, when adding a service or port, when the user mentions atlas, atlas dev, atlas.yaml, .logs, or service ports, or before touching anything that starts dev servers.
 metadata:
-  version: "3.2.0"
+  version: "3.3.0"
 ---
 
 # Atlas: working in an Atlas project
@@ -16,6 +16,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 - A service shown `off` (`disabled`, `"off": true`) was deliberately left out of a partial run (`atlas dev web`, `--profile backend`): not a failure. Start it with `atlas_start_service` if the task needs it.
 - Read a failing service's log before restarting it; a restart rotates `<service>.log` to `.prev.log`.
 - Never run an action that has a `confirm:` message without the user's explicit yes.
+- **Run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy [--label X] -- <cmd…>`, never directly.** Several agents and worktrees share one machine: Atlas keeps at most N heavy jobs running at once (default `min(cores / 2, GB of memory / 8)`, at least 1) and the rest wait their turn, first come first served, and a job waits while load or memory pressure is high (`ATLAS_HEAVY_MAXLOAD`, `ATLAS_HEAVY_MINMEM`). The command's output and exit code pass through. `atlas_heavy_status` (or `atlas heavy status`) shows who holds the slots and the ETA. Heavy actions in `atlas.yaml` (`heavy: true`) are already queued.
 - New service or port? Follow **Ports** in [yaml.md](yaml.md#ports): never default ports (3000, 5173, 5432, 6379, 8080…), always a random per-project block.
 
 ## Tools
@@ -32,6 +33,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |
 | `atlas_hygiene` | none | no (look-only: orphaned processes, disk per project, registered dirs; to free them the user runs `atlas doctor --hygiene --fix`) |
 | `atlas_wait_ready` | `service?`, `timeout_s?` (1-600, default 60) | yes (live heartbeat) |
+| `atlas_heavy_status` | none | no (machine-wide): `{slots, load, mem_available_pct, running[], queued[]}` with each job's `label`, `command`, `cwd`, `project`, `pid`, `age_s`, `avg_s`, `eta_s` |
 
 Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines; on timeout it also names why each blocking service is not ready (the failing `ready:` probe's message for `degraded`, since-when plus last output for `unhealthy`).
 

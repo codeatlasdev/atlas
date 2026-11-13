@@ -41,7 +41,7 @@ impl ServiceManager {
             .await;
 
         // Run command in background; notify TUI when done
-        let command = action.command.clone();
+        let command = action.spawn_command().into_owned();
         let root_dir = self.root_dir.clone();
         let tx = self.event_tx.clone();
         let label = action.label.clone();

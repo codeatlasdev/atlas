@@ -1196,6 +1196,8 @@ fn json_schema_documents_the_agents_block() {
     ] {
         assert!(def[k].is_object(), "agents.{k} missing from the schema");
     }
+}
+
 fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {
     let dir = TempDir::new().unwrap();
     write_config(&dir, "atlas.yaml", yaml);

@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { toast } from "@codeatlasdev/ui";
-	import { errText } from "#lib/api.ts";
 	import { register } from "#lib/keymap.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import Checklist from "./Checklist.svelte";
@@ -11,7 +9,7 @@
 	import { onboarding } from "./state.svelte.ts";
 
 	onMount(() => {
-		onboarding.init().catch((e) => toast.error(errText(e)));
+		void onboarding.init();
 		const stop = onboarding.observe();
 		const unregister = register([
 			{ id: "atlas::Help", label: "Help: keyboard shortcuts", run: () => (onboarding.helpOpen = true) },

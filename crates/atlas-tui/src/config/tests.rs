@@ -326,7 +326,9 @@ fn load_or_detect_survives_folder_names_that_are_special_in_yaml() {
         "key=value",
         "back`tick",
     ];
-    for name in names {
+    // Windows cannot name a folder with `<>:"/\|?*`; those cases exist only elsewhere.
+    let legal = |n: &&str| !cfg!(windows) || !n.contains(['<', '>', ':', '"', '|', '?', '*']);
+    for name in names.iter().filter(legal).copied() {
         let root = TempDir::new().unwrap();
         let dir = root.path().join(name);
         fs::create_dir_all(&dir).unwrap();

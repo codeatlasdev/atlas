@@ -253,6 +253,31 @@ pub(super) async fn create(
         }
     }
 
+    // Warm the new checkout with the main checkout's heavy dirs (copy-on-write) before `setup`
+    // runs, so the install/build only does the difference. Local checkouts only: a clone is a
+    // local file-system call, and an SSH host's volume is not ours to probe.
+    let seed = if host == crate::host::LOCAL {
+        let (r, d, configured) = (root.clone(), dir.clone(), wcfg.seed.clone());
+        let report = tauri::async_runtime::spawn_blocking(move || {
+            let plan = atlas_core::seed::plan(&r, &d, configured.as_deref());
+            if plan.items.is_empty() && plan.skipped.is_empty() {
+                return None;
+            }
+            Some(atlas_core::seed::run(&r, &d, plan))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        if let Some(rep) = &report {
+            let msg = seed_message(rep);
+            if !rep.seeded.is_empty() || msg != NOTHING {
+                progress("seed", &msg);
+            }
+        }
+        report
+    } else {
+        None
+    };
+
     let real = exec_on(hub, &host, &dir, &["realpath", &dir_s], 10_000)
         .await
         .ok()
@@ -290,6 +315,7 @@ pub(super) async fn create(
         "worktree": {"id": entry.id, "path": entry.root, "branch": branch, "base": base,
                      "portOffset": offset, "repoId": repo.id, "name": s, "linkedPr": args.pr},
         "setup": setup,
+        "seed": seed,
     }))
 }
 
@@ -334,6 +360,43 @@ pub(super) fn hook_env(root: &Path, wt: &Path, name: &str, offset: u16) -> Value
     })
 }
 
+const NOTHING: &str = "nothing to seed";
+
+/// One line for the progress step: what was cloned and how long it took, and what was left out.
+fn seed_message(rep: &atlas_core::seed::Report) -> String {
+    use atlas_core::seed::Skip;
+    let mut parts = Vec::new();
+    if !rep.seeded.is_empty() {
+        parts.push(format!("cloned {} in {} ms", rep.seeded.join(", "), rep.ms));
+    }
+    let unsupported: Vec<&str> = rep
+        .skipped
+        .iter()
+        .filter(|(_, s)| *s == Skip::Unsupported)
+        .map(|(r, _)| r.as_str())
+        .collect();
+    if !unsupported.is_empty() {
+        parts.push(format!(
+            "skipped {} (this file system cannot clone)",
+            unsupported.join(", ")
+        ));
+    }
+    for (rel, s) in &rep.skipped {
+        match s {
+            Skip::Failed(e) => parts.push(format!("{rel}: {e}")),
+            Skip::NotRelocatable => parts.push(format!(
+                "{rel} not seeded (a Python virtualenv is not relocatable: recreate it)"
+            )),
+            _ => {}
+        }
+    }
+    if parts.is_empty() {
+        NOTHING.into()
+    } else {
+        parts.join("; ")
+    }
+}
+
 /// Link a gitignored dir (symlink) or copy a file from the main checkout, on its host.
 async fn share(hub: &HostHub, host: &str, root: &Path, wt: &Path, rel: &str) -> Result<(), String> {
     if rel.contains("..") || Path::new(rel).is_absolute() {
@@ -361,5 +424,35 @@ async fn share(hub: &HostHub, host: &str, root: &Path, wt: &Path, rel: &str) -> 
         Ok(())
     } else {
         Err(format!("{rel}: {}", o.stderr.trim()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_core::seed::{Report, Skip};
+
+    #[test]
+    fn the_seed_message_names_clones_timing_unsupported_dirs_and_failures() {
+        let rep = Report {
+            seeded: vec!["node_modules".into()],
+            skipped: vec![
+                ("target".into(), Skip::Unsupported),
+                (".venv".into(), Skip::Failed("denied".into())),
+                ("venv".into(), Skip::NotRelocatable),
+                ("dist".into(), Skip::Missing),
+            ],
+            ms: 42,
+        };
+        assert_eq!(
+            seed_message(&rep),
+            "cloned node_modules in 42 ms; skipped target (this file system cannot clone); .venv: denied; venv not seeded (a Python virtualenv is not relocatable: recreate it)"
+        );
+        // Missing or existing dirs are normal, not news.
+        let quiet = Report {
+            skipped: vec![("target".into(), Skip::Missing), ("x".into(), Skip::Exists)],
+            ..Report::default()
+        };
+        assert_eq!(seed_message(&quiet), NOTHING);
     }
 }

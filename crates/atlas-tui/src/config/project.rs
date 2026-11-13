@@ -194,6 +194,14 @@ pub struct WorktreeConfig {
     /// symlinked, files copied (e.g. `.env`, `node_modules`).
     #[serde(default)]
     pub shared: Vec<String>,
+    /// Heavy gitignored directories (relative) cloned copy-on-write from the main checkout
+    /// before `setup` runs, so `bun install` / `cargo build` only do the difference. Omitted:
+    /// detected (`node_modules` with a `package.json`, `target` with a `Cargo.toml`); `[]`
+    /// turns it off. A Python virtualenv is refused (not relocatable: it keeps running the main
+    /// checkout's interpreter), so recreate it in `setup`. A file system that cannot clone is
+    /// skipped, never copied in full.
+    #[serde(default)]
+    pub seed: Option<Vec<String>>,
     /// Seconds before `setup` is considered hung (default 600).
     #[serde(default = "default_setup_timeout")]
     pub setup_timeout: u64,

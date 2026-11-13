@@ -1169,7 +1169,11 @@ exit 1"#,
 #[tokio::test]
 async fn a_missing_docker_binary_is_reported_not_silent() {
     let empty = tempfile::TempDir::new().unwrap();
-    // PATH with no docker anywhere (and no /usr/bin: a real docker there would defeat the test).
+    // PATH with no docker anywhere (and no /usr/bin: a real docker there would defeat the test),
+    // but with `sh`: the login env is process-wide, so every other test that spawns `sh -c` while
+    // this one runs resolves it on THIS path. An empty one made their spawns fail with ENOENT
+    // ("failed to spawn: …", a stale failure reason), seen only when the windows overlapped.
+    std::os::unix::fs::symlink("/bin/sh", empty.path().join("sh")).unwrap();
     let _env = atlas_core::login_env::install(atlas_core::login_env::Probe {
         shell: "/bin/sh".into(),
         source: "default",

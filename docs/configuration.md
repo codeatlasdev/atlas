@@ -428,12 +428,25 @@ Atlas does **not** scrub the environment it inherits (there is no allowlist): ev
 ```yaml
 worktree:
   shared: [.env, node_modules]   # dirs symlinked, files copied from the main checkout
+  seed: [node_modules, target]   # heavy dirs cloned copy-on-write before setup (omit = detect, [] = off)
   setup: bun install && bun run db:migrate
   archive: docker compose -p "$ATLAS_WORKSPACE_NAME" down
   setup_timeout: 600             # seconds (default 600)
 ```
 
 Used by Atlas Desktop when it creates or deletes a git worktree of this repo. `setup` runs with `sh -c` in the new worktree, in a terminal tab named "Setup"; `archive` runs before deletion. Both get `ATLAS_ROOT_PATH` (main checkout), `ATLAS_WORKTREE_PATH`, `ATLAS_WORKSPACE_NAME` and `ATLAS_PORT_OFFSET`.
+
+### Seeding (`seed`)
+
+A new worktree starts with no `node_modules` and no `target/`, so `setup` reinstalls and rebuilds everything (a cold `target/` is 2 to 4 GB and about 100 000 files). With `seed`, Atlas clones those directories from the main checkout **before `setup` runs**, so `bun install` and `cargo build` only do the difference.
+
+- **What is seeded.** Omitted: detected from the repo root, `node_modules` with a `package.json`, `target` with a `Cargo.toml`. A list names exactly those directories (relative paths, no `..`); `seed: []` turns it off. A directory the main checkout lacks, or the new worktree already has (git checked it out, or `shared` linked it), is left alone. `shared` wins over `seed` for the same path.
+- **Not seeded: Python virtualenvs.** A virtualenv is not relocatable: `bin/*` shebangs and `pyvenv.cfg` hold the absolute path of the main checkout, so a clone would keep running the main checkout's interpreter and `site-packages` (the worktree's editable installs would silently go unused). Any listed directory with a `pyvenv.cfg` (`.venv`, `venv`, a custom name) is refused with a visible note, and `.venv` is never auto-detected. Recreate it in `setup` (`uv sync`, `python -m venv .venv && pip install -e .`).
+- **`node_modules`.** The entries of `node_modules/.bin` are relative symlinks and survive the clone. Some tools keep absolute paths in caches inside it (for example `node_modules/.cache`, `.vite`, `.astro`, Babel/webpack/ESLint caches keyed by path) and native addons built in place may embed the source path: these are rebuilt or invalidated by the first run in the worktree, at worst costing that tool's cold start; list `node_modules` out of `seed` if one misbehaves.
+- **How.** A copy-on-write clone: `clonefile(2)` on macOS (APFS), `FICLONE` per file on Linux (btrfs, XFS with reflink, bcachefs). The blocks are shared until one side writes, so it takes milliseconds and no disk, and writing the worktree never changes the main checkout (Atlas never hardlinks a tree: a write would reach the source). On macOS the seeded `target` and `node_modules` get a `.metadata_never_index` file, so Spotlight does not index them.
+- **When it cannot clone** (another volume, ext4, tmpfs, Windows: block cloning on ReFS is not attempted), the directory is **skipped, never copied in full**, and the progress line and the ready toast say so. Remote (SSH) checkouts are not seeded.
+- **Cargo.** A cloned `target/` is safe to build and test in. Cargo hashes the workspace's absolute path into every crate's fingerprint and file names, so the worktree's own crates and test binaries are rebuilt under new names (the `CARGO_BIN_EXE_*` paths baked into the main checkout's test binaries stay in files nobody runs), while registry dependencies, the expensive part, are reused. The clone owns its blocks, so deleting the main checkout later breaks nothing. Never share one live `CARGO_TARGET_DIR` between worktrees for that reason.
+- **Timing.** The progress step `seed` carries `cloned … in N ms`; when the Setup terminal ends, a toast adds `setup N s`. The same numbers are in the `worktree://progress` `done` payload (`seed: {seeded, skipped, ms}`).
 
 ### Port offset
 

@@ -1196,4 +1196,33 @@ fn json_schema_documents_the_agents_block() {
     ] {
         assert!(def[k].is_object(), "agents.{k} missing from the schema");
     }
+fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "atlas.yaml", yaml);
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    cfg.worktree.unwrap()
+}
+
+// `worktree.seed` has three states: absent = auto-detect, a list = exactly those, `[]` = off.
+// Collapsing absent and `[]` would either disable detection for everyone or make "off" impossible.
+#[test]
+fn test_worktree_seed_distinguishes_absent_list_and_empty() {
+    let base = "name: t\nservices:\n  a:\n    command: x\nworktree:\n  setup: bun install\n";
+    assert_eq!(worktree_of(base).seed, None);
+    assert_eq!(
+        worktree_of(&format!("{base}  seed: [node_modules, target]\n")).seed,
+        Some(vec!["node_modules".to_string(), "target".to_string()])
+    );
+    assert_eq!(
+        worktree_of(&format!("{base}  seed: []\n")).seed,
+        Some(vec![])
+    );
+}
+
+#[test]
+fn test_schema_lists_worktree_seed() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    let props = &schema["definitions"]["WorktreeConfig"]["properties"];
+    assert!(props.get("seed").is_some(), "schema missing worktree.seed");
 }

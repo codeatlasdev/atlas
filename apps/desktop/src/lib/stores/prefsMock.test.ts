@@ -1,3 +1,4 @@
+// @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { prefsMock } from "../../../test/prefsMock.ts";

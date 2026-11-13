@@ -91,8 +91,8 @@ class _ThinkingRowState extends State<ThinkingRow> {
           borderRadius: BorderRadius.circular(Space.radiusSm),
           onTap: () => setState(() => _open = !_open),
           onLongPress: () => copyText(context, widget.text),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+          // The label is small; the touch area is not.
+          child: MinTapTarget(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

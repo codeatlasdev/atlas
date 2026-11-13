@@ -483,28 +483,40 @@ class _TopBar extends StatelessWidget {
         const BackButton(),
         if (title != null)
           Expanded(
-            child: Text(title!, style: Theme.of(context).textTheme.titleMedium),
+            child: Text(
+              title!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
           )
         else
           const Spacer(),
         if (reconnecting)
-          Padding(
-            padding: const EdgeInsets.only(right: Space.sm),
-            child: Row(
-              children: [
-                const SizedBox.square(
-                  dimension: 12,
-                  child: CircularProgressIndicator(strokeWidth: 1.6),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Reconnecting…',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AtlasColors.of(context).muted,
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.only(right: Space.sm),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox.square(
+                    dimension: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.6),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Reconnecting…',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AtlasColors.of(context).muted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         if (onLogs != null)
@@ -533,8 +545,8 @@ class _Tabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      height: 40,
-      padding: const EdgeInsets.all(3),
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 3),
       decoration: BoxDecoration(
         color: c.base,
         borderRadius: BorderRadius.circular(12),
@@ -545,17 +557,27 @@ class _Tabs extends StatelessWidget {
           final w = box.maxWidth / labels.length;
           return Stack(
             children: [
-              AnimatedPositioned(
-                duration: Motion.slow,
-                curve: Motion.ease,
-                left: w * index,
-                top: 0,
-                bottom: 0,
-                width: w,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: c.raised,
-                    borderRadius: BorderRadius.circular(9),
+              // The pill behind the selected label: as tall as the row, whatever the text size.
+              Positioned.fill(
+                child: AnimatedAlign(
+                  duration: Motion.slow,
+                  curve: Motion.ease,
+                  alignment: Alignment(
+                    labels.length == 1
+                        ? 0
+                        : -1 + 2 * index / (labels.length - 1),
+                    0,
+                  ),
+                  child: FractionallySizedBox(
+                    widthFactor: 1 / labels.length,
+                    heightFactor: 1,
+                    child: Container(
+                      width: w,
+                      decoration: BoxDecoration(
+                        color: c.raised,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -569,17 +591,22 @@ class _Tabs extends StatelessWidget {
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: () => onChanged(i),
-                          child: Center(
-                            child: AnimatedDefaultTextStyle(
-                              duration: Motion.normal,
-                              style: TextStyle(
-                                color: i == index ? c.text : c.muted,
-                                fontWeight: i == index
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                                fontSize: 14,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 48),
+                            child: Center(
+                              child: AnimatedDefaultTextStyle(
+                                duration: Motion.normal,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: i == index ? c.text : c.muted,
+                                  fontWeight: i == index
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  fontSize: 14,
+                                ),
+                                child: Text(labels[i]),
                               ),
-                              child: Text(labels[i]),
                             ),
                           ),
                         ),
@@ -616,6 +643,8 @@ class _Banner extends StatelessWidget {
     child: GestureDetector(
       onTap: onTap,
       child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        alignment: Alignment.centerLeft,
         padding: const EdgeInsets.fromLTRB(
           Space.md,
           Space.sm,
@@ -680,6 +709,8 @@ class _ActionTile extends StatelessWidget {
               children: [
                 Text(
                   action.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 if (action.confirm != null)
@@ -690,13 +721,19 @@ class _ActionTile extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            action.key,
-            style: TextStyle(
-              color: c.faint,
-              fontFamily: monoFamily,
-              fontFamilyFallback: monoFallback,
-              fontSize: 12,
+          const SizedBox(width: Space.sm),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 96),
+            child: Text(
+              action.key,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: c.faint,
+                fontFamily: monoFamily,
+                fontFamilyFallback: monoFallback,
+                fontSize: 12,
+              ),
             ),
           ),
         ],
@@ -774,38 +811,60 @@ class _Header extends StatelessWidget {
             ],
           ),
           const SizedBox(height: Space.md),
-          Row(
+          // Status and uptime on the left, Start on the right; on a narrow phone or large
+          // text the Start button drops to its own line instead of pushing them off screen.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Space.sm,
+            runSpacing: Space.sm,
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    StatusDot(
-                      color: color,
-                      pulse: snap.running && failed == 0,
-                      size: 6,
-                    ),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+              LayoutBuilder(
+                builder: (context, box) => ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: box.maxWidth),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            StatusDot(
+                              color: color,
+                              pulse: snap.running && failed == 0,
+                              size: 6,
+                            ),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      if (meta.isNotEmpty) ...[
+                        const SizedBox(width: Space.sm),
+                        Flexible(
+                          child: Text(
+                            meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: c.faint, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-              if (meta.isNotEmpty) ...[
-                const SizedBox(width: Space.sm),
-                Text(meta, style: TextStyle(color: c.faint, fontSize: 12)),
-              ],
-              const Spacer(),
               if (!snap.running)
                 FilledButton.icon(
                   onPressed: onUp,
@@ -845,8 +904,10 @@ class _SetupRow extends StatelessWidget {
           const Text('Setup', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(width: 8),
           Expanded(
+            flex: 3,
             child: Text(
               snap.setupCommand ?? '',
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontFamily: monoFamily,
@@ -855,7 +916,15 @@ class _SetupRow extends StatelessWidget {
               ),
             ),
           ),
-          Text(snap.setupState!, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              snap.setupState!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
         ],
       ),
     );
@@ -1046,7 +1115,7 @@ class _ServiceSheet extends StatelessWidget {
     }
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1055,11 +1124,21 @@ class _ServiceSheet extends StatelessWidget {
             Row(
               children: [
                 StatusDot(color: c.serviceState(svc.state), size: 8),
-                Text(svc.name, style: Theme.of(context).textTheme.titleLarge),
+                Flexible(
+                  flex: 3,
+                  child: Text(
+                    svc.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
                 const SizedBox(width: Space.sm),
                 Flexible(
+                  flex: 2,
                   child: Text(
                     svc.note ?? svc.state,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: failed ? c.error : c.muted),
                   ),
@@ -1124,42 +1203,34 @@ class _ServiceSheet extends StatelessWidget {
               ),
             ],
             const SizedBox(height: Space.lg),
-            Row(
+            Wrap(
+              spacing: Space.sm,
+              runSpacing: Space.sm,
               children: [
                 if (svc.up) ...[
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => run('restart'),
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('Restart'),
-                    ),
+                  FilledButton.icon(
+                    onPressed: () => run('restart'),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Restart'),
                   ),
-                  const SizedBox(width: Space.sm),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => run('stop'),
-                      icon: const Icon(Icons.stop_rounded, size: 18),
-                      label: const Text('Stop'),
-                    ),
+                  OutlinedButton.icon(
+                    onPressed: () => run('stop'),
+                    icon: const Icon(Icons.stop_rounded, size: 18),
+                    label: const Text('Stop'),
                   ),
                 ] else
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => run('start'),
-                      icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                      label: const Text('Start'),
-                    ),
+                  FilledButton.icon(
+                    onPressed: () => run('start'),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                    label: const Text('Start'),
                   ),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      card.onLogs();
-                    },
-                    icon: const Icon(Icons.subject_rounded, size: 18),
-                    label: const Text('Logs'),
-                  ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    card.onLogs();
+                  },
+                  icon: const Icon(Icons.subject_rounded, size: 18),
+                  label: const Text('Logs'),
                 ),
               ],
             ),
@@ -1254,7 +1325,11 @@ class _LogsPageState extends ConsumerState<_LogsPage> {
     final c = AtlasColors.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_service == null ? 'Logs' : 'Logs · $_service'),
+        title: Text(
+          _service == null ? 'Logs' : 'Logs · $_service',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           TextButton.icon(
             onPressed: () => setState(() => _live = !_live),
@@ -1273,14 +1348,14 @@ class _LogsPageState extends ConsumerState<_LogsPage> {
       body: Column(
         children: [
           SizedBox(
-            height: 44,
+            height: 56,
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: Space.md),
               children: [
                 for (final s in [null, ...widget.services])
                   Padding(
-                    padding: const EdgeInsets.only(right: 6, top: 6, bottom: 6),
+                    padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
                     child: ChoiceChip(
                       label: Text(s ?? 'All'),
                       selected: _service == s,
@@ -1293,7 +1368,6 @@ class _LogsPageState extends ConsumerState<_LogsPage> {
                         color: _service == s ? c.text : c.muted,
                         fontSize: 13,
                       ),
-                      visualDensity: VisualDensity.compact,
                     ),
                   ),
               ],

@@ -141,9 +141,10 @@ async fn remove(hub: &HostHub, id: &str, force: bool, keep_branch: bool) -> Resu
             preserved = Some(b.clone());
         }
     }
-    let mut all = registry::load()?;
-    all.retain(|x| x.id != e.id);
-    registry::save(&all)?;
+    registry::edit(|all| {
+        all.retain(|x| x.id != e.id);
+        Ok(())
+    })?;
     Ok(json!({"preserved_branch": preserved}))
 }
 
@@ -183,11 +184,9 @@ pub async fn worktrees_import(
     hub: State<'_, Arc<HostHub>>,
     repo_id: String,
 ) -> Result<u32, String> {
-    let mut entries = registry::load()?;
-    let repo = entries
-        .iter()
+    let repo = registry::load()?
+        .into_iter()
         .find(|e| e.id == repo_id && e.parent.is_none())
-        .cloned()
         .ok_or("unknown project")?;
     let out = git(
         &hub,
@@ -195,7 +194,9 @@ pub async fn worktrees_import(
         &["worktree", "list", "--porcelain"],
     )
     .await?;
-    let mut added = 0;
+    // Probe the disk (async) first; the registry is touched once, under its lock, so offsets and dedup see the
+    // entries other commands added meanwhile.
+    let mut found: Vec<(String, String, Option<String>)> = Vec::new();
     for block in out.split("\n\n") {
         let mut path = None;
         let mut branch = None;
@@ -209,27 +210,33 @@ pub async fn worktrees_import(
         let Some(p) = path else { continue };
         let p_s = p.to_string_lossy().into_owned();
         let id = registry::id_for_host(repo.host.as_deref(), &p);
-        if entries.iter().any(|e| e.id == id)
-            || !hub.exists(repo.host(), &format!("{p_s}/atlas.yaml")).await
-        {
-            continue;
+        if hub.exists(repo.host(), &format!("{p_s}/atlas.yaml")).await {
+            found.push((id, p_s, branch));
         }
-        let offset = free_offset(&entries, &repo.id);
-        entries.push(Entry {
-            id,
-            root: p_s,
-            pinned: false,
-            added: chrono::Utc::now().to_rfc3339(),
-            parent: Some(repo.id.clone()),
-            port_offset: offset,
-            branch,
-            host: repo.host.clone(),
-            identity: None,
-        });
-        added += 1;
     }
+    let added = registry::edit(|entries| {
+        let mut added = 0;
+        for (id, root, branch) in found {
+            if entries.iter().any(|e| e.id == id) {
+                continue;
+            }
+            let offset = free_offset(entries, &repo.id);
+            entries.push(Entry {
+                id,
+                root,
+                pinned: false,
+                added: chrono::Utc::now().to_rfc3339(),
+                parent: Some(repo.id.clone()),
+                port_offset: offset,
+                branch,
+                host: repo.host.clone(),
+                identity: None,
+            });
+            added += 1;
+        }
+        Ok(added)
+    })?;
     if added > 0 {
-        registry::save(&entries)?;
         let _ = app.emit("projects://changed", ());
     }
     Ok(added)

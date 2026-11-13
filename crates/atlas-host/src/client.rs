@@ -124,30 +124,32 @@ impl HostClient {
     }
 }
 
-/// The `atlas` binary used to start hostd.
+/// The `atlas` binary used to start hostd, resolved from the process `PATH` (see
+/// [`atlas_core::paths::resolve_atlas_cli`]).
 pub fn atlas_bin() -> Result<PathBuf> {
-    if let Ok(p) = std::env::var("ATLAS_BIN") {
-        return Ok(p.into());
-    }
-    let home = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".atlas/bin")
-        .join(atlas_core::paths::exe("atlas"));
-    if home.exists() {
-        return Ok(home);
-    }
-    if let Some(cli) = atlas_core::paths::bundled_cli() {
-        return Ok(cli);
-    }
-    let names = atlas_core::paths::exe_names("atlas");
-    std::env::var_os("PATH")
-        .and_then(|path| {
-            std::env::split_paths(&path)
-                .flat_map(|d| names.iter().map(move |n| d.join(n)))
-                .find(|p| p.is_file())
-        })
-        .ok_or_else(|| anyhow!("atlas CLI not found; run atlas desktop --install"))
+    atlas_bin_with(None)
 }
+
+/// [`atlas_bin`] that also looks on `login_path` (the login shell's `PATH`) before the process one: an app started
+/// from Finder or the Dock has a minimal `PATH`.
+pub fn atlas_bin_with(login_path: Option<&std::ffi::OsStr>) -> Result<PathBuf> {
+    atlas_core::paths::resolve_atlas_cli(
+        std::env::var_os("ATLAS_BIN").as_deref(),
+        dirs::home_dir().as_deref(),
+        atlas_core::paths::bundled_cli(),
+        login_path,
+        std::env::var_os("PATH").as_deref(),
+    )
+    .ok_or_else(|| anyhow!(NOT_FOUND))
+}
+
+/// What the user can do when no runnable `atlas` was found (the CLI that `atlas desktop --install` lives in is the
+/// one that is missing, so the message gives the installer itself).
+pub const NOT_FOUND: &str = if cfg!(windows) {
+    "atlas CLI not found — install (PowerShell): irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+} else {
+    "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+};
 
 /// Connect to the local hostd, starting it (detached, own session) if needed.
 pub async fn ensure_local(atlas: &Path, client: &str) -> Result<HostClient> {

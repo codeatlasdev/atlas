@@ -160,6 +160,9 @@ class Store {
 	busy = $state<Record<string, boolean>>({});
 	focusedService = $state<string | null>(null);
 	loaded = $state(false);
+	/** Why the last project-list read failed (an unreadable projects.json), else null. `loaded` is true either way: the
+	 * UI must leave its loading state, but an empty list with an error is not "no projects yet". */
+	listError = $state<string | null>(null);
 
 	#unlisten = new Map<string, Promise<UnlistenFn>>();
 	/**
@@ -257,9 +260,11 @@ class Store {
 	async refresh(onListed?: () => void) {
 		try {
 			this.projects = await api.list();
+			this.listError = null;
 			onListed?.();
 		} catch (e) {
-			toast.error(errText(e));
+			this.listError = errText(e);
+			toast.error(this.listError);
 			return;
 		}
 		const attached: Promise<unknown>[] = [];

@@ -629,11 +629,18 @@ fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() 
         (echo_through(local_port).as_deref() == Some("ping")).then_some(())
     });
     // The SSH link drops: the forward is restarted and the service is reachable again.
-    let first: i32 = std::fs::read_to_string(&pids).unwrap().trim().parse().unwrap();
+    let first: i32 = std::fs::read_to_string(&pids)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
     // SAFETY: the exact pid our fake ssh wrote for itself.
     unsafe { libc_kill(first, 9) };
     wait_for("forward restarted", Duration::from_secs(40), || {
-        let n = std::fs::read_to_string(&pids).unwrap_or_default().lines().count();
+        let n = std::fs::read_to_string(&pids)
+            .unwrap_or_default()
+            .lines()
+            .count();
         (n >= 2 && echo_through(local_port).as_deref() == Some("ping")).then_some(())
     });
     h.stop();

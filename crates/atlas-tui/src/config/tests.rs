@@ -1155,9 +1155,13 @@ fn a_remote_service_needs_a_port_no_command_and_plain_ssh_words() {
     assert_has(&errs, "services.c.remote.ssh");
     assert_has(&errs, "services.d.remote.host");
     assert!(
-        errors_for("name: t\nservices:\n  db:\n    port: 5\n    remote: { ssh: me@box.lan, port: 5432 }\n")
-            .is_empty()
+        errors_for(
+            "name: t\nservices:\n  db:\n    port: 5\n    remote: { ssh: me@box.lan, port: 5432 }\n"
+        )
+        .is_empty()
     );
+}
+
 fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {
     let dir = TempDir::new().unwrap();
     write_config(&dir, "atlas.yaml", yaml);

@@ -48,18 +48,25 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
             let word = |s: &str| {
                 !s.is_empty()
                     && !s.starts_with('-')
-                    && s.chars().all(|c| c.is_ascii_alphanumeric() || "._-@:[]".contains(c))
+                    && s.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "._-@:[]".contains(c))
             };
             if !word(&r.ssh) {
                 errors.push(err(
                     format!("{path}.ssh"),
-                    format!("'{}' is not an SSH destination (a host alias or user@host)", r.ssh),
+                    format!(
+                        "'{}' is not an SSH destination (a host alias or user@host)",
+                        r.ssh
+                    ),
                 ));
             }
             if let Some(h) = &r.host
                 && !word(h)
             {
-                errors.push(err(format!("{path}.host"), format!("'{h}' is not a host name")));
+                errors.push(err(
+                    format!("{path}.host"),
+                    format!("'{h}' is not a host name"),
+                ));
             }
         }
         for (dep, cond) in def.deps() {

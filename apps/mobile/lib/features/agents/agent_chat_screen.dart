@@ -498,6 +498,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     final canSwitch = sub == null && all.length > 1;
     return AppBar(
       titleSpacing: 0,
+      // Two lines of text (title, state): the bar grows with the text size instead of
+      // clipping the second one.
+      toolbarHeight: math.max(
+        kToolbarHeight,
+        MediaQuery.textScalerOf(context).scale(16 * 1.4 + 12 * 1.4) + 16,
+      ),
       title: InkWell(
         borderRadius: BorderRadius.circular(Space.radiusSm),
         onTap: canSwitch ? () => _switch(all) : null,
@@ -653,137 +659,174 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
     return Scaffold(
       appBar: _appBar(status, all),
-      body: Column(
-        children: [
-          if (tree.subs.isNotEmpty) ...[
-            CrewRail(
-              tree: tree,
-              focus: _focus,
-              fallbackAgent: status.agent,
-              onFocus: _focusNode,
-              onInspect: (n) => showAgentDetail(
-                context,
-                tree: _tree,
-                id: n.id,
-                fallbackAgent: status.agent,
-                onOpen: _focusNode,
-                onJump: (id) => showAgentDetail(
-                  context,
-                  tree: _tree,
-                  id: id,
-                  fallbackAgent: status.agent,
-                  onOpen: _focusNode,
-                  onJump: _focusNode,
-                  onMessage: status.agent == 'omp' ? _messageAbout : null,
-                ),
-                onMessage: status.agent == 'omp' ? _messageAbout : null,
-              ),
-            ),
-          ],
-          if (_focus.isNotEmpty)
-            Breadcrumb(path: _crumbPath(tree), onTap: _focusNode),
-          if (_focus.isEmpty) ...[
-            JobsStrip(tree: tree, onOpen: _focusNode),
-            if (tree.node('')?.todos case final todos? when todos.total > 0)
-              TodoCard(todos),
-          ],
-          if (focusNode != null && (focusNode.running || tree.subs.isNotEmpty))
-            NowStrip(
-              node: focusNode,
-              since: focusNode.isRoot
-                  ? status.stateStartedAt
-                  : DateTime.now().millisecondsSinceEpoch -
-                        focusNode.durationMs,
-            ),
-          Expanded(
-            child: Stack(
+      body: LayoutBuilder(
+        builder: (context, body) => Column(
+          children: [
+            // Crew, breadcrumb, jobs, todos and the live line sit above the timeline. On a
+            // short phone, with large text or the keyboard up, they must not take the whole
+            // screen: they scroll inside a capped area and the timeline keeps the rest.
+            _CappedStrips(
+              bodyHeight: body.maxHeight,
               children: [
-                RefreshIndicator(
-                  color: c.accent,
-                  onRefresh: () async {
-                    await Future.wait([_loadHistory(), _loadTree()]);
-                  },
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onHorizontalDragEnd: (d) => _swipe(d.primaryVelocity ?? 0),
-                    child: ListView(
-                      controller: _scroll,
-                      // Newest at the bottom, scrolled there on open.
-                      reverse: true,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(Space.lg),
-                      children: [
-                        if (status.state == 'working' && !_readOnly)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 10),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: _Typing(),
-                            ),
-                          ),
-                        for (final b in shown.reversed)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: timelineBlock(
-                              context,
-                              b,
-                              history: _history,
-                              onOpenSubagent: _focusNode,
-                              parentId: focusNode?.parent,
-                            ),
-                          ),
-                        if (_history.truncated)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Center(
-                              child: Text(
-                                'older messages not shown',
-                                style: TextStyle(fontSize: 11, color: c.muted),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (shown.isEmpty && _loaded)
-                  Center(
-                    child: Text(
-                      'Nothing here yet',
-                      style: TextStyle(color: c.faint),
-                    ),
-                  ),
-                if (fresh)
-                  Positioned(
-                    bottom: Space.md,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: FilledButton.tonalIcon(
-                        onPressed: _jumpToBottom,
-                        icon: const Icon(Icons.arrow_downward, size: 16),
-                        label: const Text('New activity'),
+                if (tree.subs.isNotEmpty) ...[
+                  CrewRail(
+                    tree: tree,
+                    focus: _focus,
+                    fallbackAgent: status.agent,
+                    onFocus: _focusNode,
+                    onInspect: (n) => showAgentDetail(
+                      context,
+                      tree: _tree,
+                      id: n.id,
+                      fallbackAgent: status.agent,
+                      onOpen: _focusNode,
+                      onJump: (id) => showAgentDetail(
+                        context,
+                        tree: _tree,
+                        id: id,
+                        fallbackAgent: status.agent,
+                        onOpen: _focusNode,
+                        onJump: _focusNode,
+                        onMessage: status.agent == 'omp' ? _messageAbout : null,
                       ),
+                      onMessage: status.agent == 'omp' ? _messageAbout : null,
                     ),
+                  ),
+                ],
+                if (_focus.isNotEmpty)
+                  Breadcrumb(path: _crumbPath(tree), onTap: _focusNode),
+                if (_focus.isEmpty) ...[
+                  JobsStrip(tree: tree, onOpen: _focusNode),
+                  if (tree.node('')?.todos case final todos?
+                      when todos.total > 0)
+                    TodoCard(todos),
+                ],
+                if (focusNode != null &&
+                    (focusNode.running || tree.subs.isNotEmpty))
+                  NowStrip(
+                    node: focusNode,
+                    since: focusNode.isRoot
+                        ? status.stateStartedAt
+                        : DateTime.now().millisecondsSinceEpoch -
+                              focusNode.durationMs,
                   ),
               ],
             ),
-          ),
-          if (approval != null)
-            ApprovalBanner(
-              approval: approval,
-              onAnswer: (allow) => _approve(approval, allow),
-            ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                _error!,
-                style: TextStyle(color: c.error, fontSize: 12),
+            Expanded(
+              child: Stack(
+                children: [
+                  RefreshIndicator(
+                    color: c.accent,
+                    onRefresh: () async {
+                      await Future.wait([_loadHistory(), _loadTree()]);
+                    },
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragEnd: (d) =>
+                          _swipe(d.primaryVelocity ?? 0),
+                      child: ListView(
+                        controller: _scroll,
+                        // Newest at the bottom, scrolled there on open.
+                        reverse: true,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(Space.lg),
+                        children: [
+                          if (status.state == 'working' && !_readOnly)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 10),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: _Typing(),
+                              ),
+                            ),
+                          for (final b in shown.reversed)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: timelineBlock(
+                                context,
+                                b,
+                                history: _history,
+                                onOpenSubagent: _focusNode,
+                                parentId: focusNode?.parent,
+                              ),
+                            ),
+                          if (_history.truncated)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Center(
+                                child: Text(
+                                  'older messages not shown',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: c.muted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (shown.isEmpty && _loaded)
+                    Center(
+                      child: Text(
+                        'Nothing here yet',
+                        style: TextStyle(color: c.faint),
+                      ),
+                    ),
+                  if (fresh)
+                    Positioned(
+                      bottom: Space.md,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: FilledButton.tonalIcon(
+                          onPressed: _jumpToBottom,
+                          icon: const Icon(Icons.arrow_downward, size: 16),
+                          label: const Text('New activity'),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-          _composer(status),
-        ],
+            // What waits for an answer sits above the composer. With the keyboard up on a
+            // short phone it scrolls inside the room that is left, so the composer, which
+            // is where the user types, never leaves the screen.
+            if (approval != null || _error != null)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: body.maxHeight * .25),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      if (approval != null)
+                        ApprovalBanner(
+                          approval: approval,
+                          onAnswer: (allow) => _approve(approval, allow),
+                        ),
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: c.error, fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            // Rigid when there is room, scrolls when there is not (large text with the
+            // keyboard up on a short phone): the field is always reachable.
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: body.maxHeight * .5),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: _composer(status),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -809,6 +852,8 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       ),
       child: SafeArea(
         top: false,
+        // The home indicator is under the keyboard when it is up: no inset then.
+        bottom: MediaQuery.viewInsetsOf(context).bottom == 0,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
           child: Row(
@@ -910,6 +955,30 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 }
 
 /// Three dots that rise in turn while the agent works.
+/// A column of fixed-height strips that scrolls when the room runs out: it never takes
+/// more than [share] of [bodyHeight], the room the chat body really has (the screen
+/// less the app bar, the keyboard and the insets), so the timeline and the composer
+/// keep the rest.
+class _CappedStrips extends StatelessWidget {
+  const _CappedStrips({required this.bodyHeight, required this.children});
+  final double bodyHeight;
+  final List<Widget> children;
+
+  /// Share of the body the strips may take.
+  static const share = .25;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    // Loose flex: it takes its natural height up to the cap, and gives way (scrolling)
+    // when the approval and the composer below it need the room.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: bodyHeight * share),
+      child: SingleChildScrollView(child: Column(children: children)),
+    );
+  }
+}
+
 class _Typing extends StatefulWidget {
   const _Typing();
 

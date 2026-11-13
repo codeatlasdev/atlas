@@ -80,20 +80,29 @@ class SettingsScreen extends ConsumerWidget {
                     Icon(Icons.laptop_mac_rounded, color: c.accent),
                     const SizedBox(width: Space.md),
                     Expanded(
+                      flex: 2,
                       child: Text(
                         friendlyDeviceName(d.name),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                     // The demo is not stored: leaving it is the only thing to forget.
-                    TextButton(
-                      style: TextButton.styleFrom(foregroundColor: c.error),
-                      onPressed: isDemo(d)
-                          ? () => ref.read(demoModeProvider.notifier).state =
-                                false
-                          : () => _forget(context, ref, d),
-                      child: Text(isDemo(d) ? 'Leave demo' : 'Forget'),
+                    // The label gives way at large text sizes instead of overflowing.
+                    Flexible(
+                      child: TextButton(
+                        style: TextButton.styleFrom(foregroundColor: c.error),
+                        onPressed: isDemo(d)
+                            ? () => ref.read(demoModeProvider.notifier).state =
+                                  false
+                            : () => _forget(context, ref, d),
+                        child: Text(
+                          isDemo(d) ? 'Leave demo' : 'Forget',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                   ],
                 ),

@@ -341,8 +341,9 @@ class _DashboardState extends ConsumerState<_Dashboard> {
               ),
               // ── Content slivers ──────────────────────────────────────────
               if (!connected)
+                // EmptyState scrolls itself (a LayoutBuilder: no intrinsic sizes), so the
+                // sliver hands it all the room that is left.
                 SliverFillRemaining(
-                  hasScrollBody: false,
                   child: _Offline(
                     device: widget.device,
                     connecting: conn.isLoading,
@@ -368,7 +369,6 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                 // Empty state centred in remaining space, or the project list
                 if (list.isEmpty)
                   const SliverFillRemaining(
-                    hasScrollBody: false,
                     child: Padding(
                       padding: EdgeInsets.only(bottom: kFloatingBarScrollPad),
                       child: _NoProjectsYet(),
@@ -470,15 +470,28 @@ class _Header extends StatelessWidget {
                 else
                   PopupMenuButton<MacDevice>(
                     onSelected: onSwitch,
+                    tooltip: 'Switch computer',
+                    constraints: const BoxConstraints(minHeight: 48),
                     itemBuilder: (_) => [
                       for (final d in others)
-                        PopupMenuItem(value: d, child: Text(d.name)),
+                        PopupMenuItem(
+                          value: d,
+                          child: Text(
+                            d.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                     ],
-                    child: name,
+                    child: MinTapTarget(child: name),
                   ),
                 const SizedBox(height: 4),
                 AnimatedSwitcher(
                   duration: Motion.normal,
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [...previous, ?current],
+                  ),
                   child: Container(
                     key: ValueKey(label),
                     padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
@@ -494,12 +507,16 @@ class _Header extends StatelessWidget {
                           pulse: label != 'All clear' && label != 'Connected',
                           size: 6,
                         ),
-                        Text(
-                          label,
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],

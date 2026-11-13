@@ -42,15 +42,26 @@ class ApprovalBanner extends StatelessWidget {
                 color: AtlasColors.of(context).warning,
               ),
               const SizedBox(width: 6),
-              Text(
-                'Wants to run ${approval.toolName ?? 'a tool'}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+              Expanded(
+                child: Text(
+                  'Wants to run ${approval.toolName ?? 'a tool'}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 6),
+          // The command can be long: it scrolls inside a box that never takes more than
+          // a quarter of the screen, so Deny and Allow stay in reach.
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 120),
+            constraints: BoxConstraints(
+              maxHeight: (MediaQuery.sizeOf(context).height * .25).clamp(
+                48.0,
+                120.0,
+              ),
+            ),
             child: SingleChildScrollView(
               child: SelectableText(
                 detail,
@@ -63,19 +74,22 @@ class ApprovalBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton(
-                onPressed: () => onAnswer(false),
-                child: const Text('Deny'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () => onAnswer(true),
-                child: const Text('Allow'),
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton(
+                  onPressed: () => onAnswer(false),
+                  child: const Text('Deny'),
+                ),
+                FilledButton(
+                  onPressed: () => onAnswer(true),
+                  child: const Text('Allow'),
+                ),
+              ],
+            ),
           ),
         ],
       ),

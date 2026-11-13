@@ -26,10 +26,12 @@
 
 <div class="row" class:stack data-setting={id}>
 	<div class="main">
-		{#if lead}<span class="lead">{@render lead()}</span>{/if}
-		<div class="text">
-			<span class="label">{label}</span>
-			{#if description}<span class="desc">{description}</span>{/if}
+		<div class="ident">
+			{#if lead}<span class="lead">{@render lead()}</span>{/if}
+			<div class="text">
+				<span class="label">{label}</span>
+				{#if description}<span class="desc">{description}</span>{/if}
+			</div>
 		</div>
 		{#if children}<div class="control">{@render children()}</div>{/if}
 	</div>
@@ -47,13 +49,21 @@
 		justify-content: space-between;
 		gap: 24px;
 	}
+	/* The icon and the text are one group: the free width of the row goes between the group and the control, never
+	   between an icon and the name it belongs to. */
+	.ident {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex: 1;
+		min-width: 0;
+	}
 	.lead {
 		display: grid;
 		place-items: center;
 		flex-shrink: 0;
 		width: 28px;
 		height: 28px;
-		margin-right: -10px;
 		color: var(--ca-text-secondary);
 	}
 	.stack .main {
@@ -62,13 +72,14 @@
 		gap: 10px;
 	}
 	.stack .text {
+		flex: 1;
 		max-width: none;
 	}
 	.text {
 		display: flex;
 		flex-direction: column;
 		gap: 3px;
-		flex: 1;
+		flex: 0 1 auto;
 		min-width: 0;
 		max-width: 62ch;
 	}

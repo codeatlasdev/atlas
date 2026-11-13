@@ -430,14 +430,28 @@ export function badgesFor(
 export const versionAnchor = (version: string): string => `v-${version.replace(/[^0-9a-z]+/gi, "-")}`;
 
 /**
+ * Inline markdown as the text a reader would see: links keep their label, code spans their content, bold/italic lose
+ * their markers. For surfaces that cannot render HTML (the "Updated to X" card, a notification).
+ */
+export function plainText(markdown: string): string {
+	return markdown
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/`([^`]*)`/g, "$1")
+		.replace(/(\*\*|__)(.+?)\1/g, "$2")
+		.replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=$|[\s).,;:!?])/g, "$1$2")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+/**
  * One line about a release for the "Updated to X" card: the changelog's own summary, else the
- * title (or first words) of the first change. "" when the release lists nothing.
+ * title (or first words) of the first change, as plain text. "" when the release lists nothing.
  */
 export function blurbOf(n: ParsedNotes): string {
-	if (n.summary) return n.summary;
+	if (n.summary) return plainText(n.summary);
 	const first = n.groups[0]?.items[0];
 	if (!first) return "";
-	const text = first.title || first.body.replace(/[`*_]/g, "");
+	const text = plainText(first.title || first.body);
 	return text.length > 90 ? `${text.slice(0, 89).trimEnd()}…` : text;
 }
 

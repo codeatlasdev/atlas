@@ -291,6 +291,118 @@ fn load_or_detect_runs_a_rust_go_or_django_folder_through_the_real_parser() {
     assert_eq!(cfg.services["web"].port, Some(8000));
 }
 
+// Incident class: `initial_config` wrote the folder name and each script's name and command into the YAML with a
+// bare `format!`. A folder called `my: app`, `#todo` or `123`, or a script with `: ` or ` #` in its command, made the
+// zero-config project fail with "detected config ... is invalid" (or parse as another type), and "Save as
+// atlas.yaml" would have written that broken file to disk.
+#[test]
+fn load_or_detect_survives_folder_names_that_are_special_in_yaml() {
+    let names = [
+        "my: app",
+        "#todo",
+        "app #1",
+        "[draft]",
+        "{x}",
+        "@scope",
+        "*star",
+        "& co",
+        "!bang",
+        "'q'",
+        "\"dq\"",
+        "- item",
+        "true",
+        "null",
+        "123",
+        "1.5",
+        "~",
+        "%dir",
+        "> fold",
+        "| lit",
+        "trailing:",
+        "a: b: c",
+        "with space",
+        "ünïcödé-项目",
+        "emoji-🚀",
+        "key=value",
+        "back`tick",
+    ];
+    for name in names {
+        let root = TempDir::new().unwrap();
+        let dir = root.path().join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts":{"dev":"vite --port 5173"}}"#,
+        )
+        .unwrap();
+        let (cfg, src) = load_or_detect(&dir).unwrap_or_else(|e| panic!("{name:?}: {e:#}"));
+        assert_eq!(src, ConfigSource::Detected, "{name:?}");
+        assert_eq!(cfg.name, name, "the project keeps the folder's exact name");
+        assert_eq!(cfg.services["dev"].port, Some(5173), "{name:?}");
+    }
+}
+
+#[test]
+fn load_or_detect_survives_scripts_whose_name_or_command_is_special_in_yaml() {
+    let scripts = [
+        ("dev", "vite --host: 0.0.0.0 # local"),
+        ("dev:watch", "*glob* run"),
+        ("start", "& background"),
+        ("start:prod", "!important"),
+        ("serve", "{json} here"),
+        ("dev:2", "[a, b]"),
+        ("dev:3", "'single' and \"double\""),
+        ("dev:4", "@scope/pkg run"),
+        ("dev:5", "%env% node x.js"),
+        ("dev:6", "node x.js\\ntwo"),
+        ("dev:7", "node x.js | tee out.log"),
+        ("serve: x", "node a.js"),
+        ("serve #1", "node b.js"),
+        ("dev:#2", "node c.js"),
+    ];
+    let root = TempDir::new().unwrap();
+    let body: serde_json::Value = serde_json::json!({ "scripts": scripts.iter().cloned().collect::<std::collections::BTreeMap<_, _>>() });
+    fs::write(root.path().join("package.json"), body.to_string()).unwrap();
+    let (cfg, src) = load_or_detect(root.path()).unwrap_or_else(|e| panic!("{e:#}"));
+    assert_eq!(src, ConfigSource::Detected);
+    for (name, cmd) in scripts {
+        let svc = cfg
+            .services
+            .get(name)
+            .unwrap_or_else(|| panic!("service {name:?} lost: {:?}", cfg.services.keys()));
+        assert_eq!(svc.command.as_deref(), Some(cmd), "{name:?}");
+    }
+}
+
+// Detected services used to come out in HashMap order: the same folder got different port numbers (`4010 + index`)
+// and a different service order from one launch to the next.
+#[test]
+fn detected_services_come_out_in_a_stable_order_with_stable_ports() {
+    let root = TempDir::new().unwrap();
+    fs::write(
+        root.path().join("package.json"),
+        r#"{"scripts":{"start":"a","dev":"b","dev:api":"c","dev:web":"d","serve":"e","start:prod":"f"}}"#,
+    )
+    .unwrap();
+    let (first, d) = atlas_core::domain::project::initial_config(root.path());
+    let names: Vec<_> = d.services.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["dev", "dev:api", "dev:web", "serve", "start", "start:prod"]
+    );
+    for _ in 0..20 {
+        let (again, _) = atlas_core::domain::project::initial_config(root.path());
+        assert_eq!(again, first, "same folder, same file, every time");
+    }
+    let (cfg, _) = load_or_detect(root.path()).unwrap();
+    assert_eq!(
+        cfg.services["dev"].port,
+        Some(4010),
+        "ports follow the sorted order"
+    );
+    assert_eq!(cfg.services["dev:api"].port, Some(4011));
+}
+
 #[test]
 fn load_or_detect_still_layers_atlas_local_yaml_on_a_detected_config() {
     let dir = TempDir::new().unwrap();

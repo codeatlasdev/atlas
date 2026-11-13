@@ -5,6 +5,7 @@ import {
 	choiceMeta,
 	onboardingChoices,
 	escapeEvent,
+	firstRunReady,
 	next,
 	primaryEvent,
 	progress,
@@ -317,5 +318,25 @@ describe("recording hooks: stable selectors for scripted captures", () => {
 			skip: "welcome-action-skip",
 			finish: "welcome-action-finish",
 		});
+	});
+});
+
+// Incident class: a registry that cannot be read (truncated projects.json) leaves the store "loaded" with an empty
+// list, which is what "no projects yet" also looks like. A user whose onboarding flag was not read either then got
+// the welcome deck over a broken registry: every folder they added failed with the same registry error, and the
+// deck came back. The overlay and the standing hero only mean "first run" when the list really loaded.
+describe("firstRunReady: the first-run screens wait for a trustworthy list", () => {
+	test("needs settings loaded, the list loaded and no list error", () => {
+		expect(firstRunReady(true, true, null)).toBe(true);
+		expect(firstRunReady(false, true, null)).toBe(false);
+		expect(firstRunReady(true, false, null)).toBe(false);
+	});
+	test("a list that failed to load is never a first run, even though the store says loaded", () => {
+		expect(firstRunReady(true, true, "projects.json: EOF while parsing")).toBe(false);
+	});
+	test("so neither the overlay nor the standing hero shows over a broken registry", () => {
+		const ready = firstRunReady(true, true, "projects.json: expected value");
+		expect(showWelcome({ done: false }, ready, 0, "welcome")).toBe(false);
+		expect(showStanding({ done: true }, ready, 0)).toBe(false);
 	});
 });

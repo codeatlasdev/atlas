@@ -82,6 +82,7 @@ The `deploy:` section cannot be overridden from `atlas.local.yaml`.
 
 ```text
 atlas deploy [TARGET] [--dry-run] [--json] [--allow-dirty] [--skip-build] [--force]
+                      [--allow-downgrade] [--allow-diverged] [--allow-unknown-base]
                       [--lock-wait SECS] [--no-follow] [-d DIR]
 atlas deploy rollback [TARGET] [--to RELEASE_ID] [--json]
 atlas deploy status   [TARGET] [--json]
@@ -91,9 +92,10 @@ atlas deploy history  [TARGET] [-n 20] [--json]
 
 You can omit `TARGET` when there is exactly one target.
 
-- `--dry-run` builds and packs, then prints the release id, the sha256 and the rendered `plan.sh`. It touches nothing remote.
+- `--dry-run` builds and packs, then prints the release id, the sha256 and the rendered `plan.sh`. It changes nothing on the host (it only reads which release is deployed).
 - A dirty working tree is refused unless you pass `--allow-dirty`, in which case the id ends in `-dirty`.
 - If HEAD's sha is already current and healthy, the deploy is a `noop`. Use `--force` to redeploy anyway.
+- A `HEAD` older than, or diverged from, the deployed commit is refused unless you pass `--allow-downgrade` or `--allow-diverged`; a deployed commit this repo does not know is refused unless you pass `--allow-unknown-base`. See [Releases never go backwards by accident](#releases-never-go-backwards-by-accident).
 - `--no-follow` prints the release id once the driver has started and exits 0.
 - Ctrl-C while following prints `detached; deploy continues on host` and exits 130. The host carries on.
 - `rollback` swaps to the newest healthy release before `current`, or to `--to <id>`, then restarts and gates every service. A release marked `failed` is refused.
@@ -115,6 +117,25 @@ You can omit `TARGET` when there is exactly one target.
 ```json
 {"ok":true,"target":"prod","host":"prod","release":"20250101120000-abcdef0","sha":"abcdef0…","previous":"20241231090000-1234567","phase":"healthy","rolled_back":false,"reason":null,"duration_s":74}
 ```
+
+### Releases never go backwards by accident
+
+Before building, `atlas deploy` reads the commit the host is serving (`current` → `releases/<id>/.atlas-release`) and compares it with local `HEAD`. This catches the classic mistake of running `atlas deploy` from a stale checkout, which would ship an older commit over production (migrations stay applied, so features whose schema already ran would vanish).
+
+| `HEAD` relative to the deployed commit | Behaviour |
+|---|---|
+| same commit | as before: `noop`, or a redeploy with `--force` |
+| descends from it | proceeds, printing `deploying <id> (<sha>) over <deployed-id> (<deployed-sha>): +N commits` |
+| older (a downgrade) | refused, with both shas and `git log --oneline HEAD..deployed`. `--allow-downgrade` ships it. To go back on purpose use `atlas deploy rollback` |
+| diverged | refused, with the merge-base and the commit counts on each side. `--allow-diverged` ships it |
+| deployed commit not in this repo | atlas tries `git fetch origin <sha>`; if it is still missing the deploy is refused. `--allow-unknown-base` ships it |
+| nothing deployed yet | proceeds (first deploy) |
+
+`--dry-run` runs the same check (it only reads from the host). `atlas deploy rollback` never goes through it. A release marked `-dirty` is compared by the commit it was built on.
+
+### Artifacts
+
+With `artifact:` paths, atlas builds the tarball with the local `tar` and keeps macOS metadata out of it: no extended attributes (`LIBARCHIVE.xattr.*` pax headers, which make GNU tar on the host print one warning per file) and no AppleDouble `._*` files. It detects bsdtar (macOS) and GNU tar and passes each its own flags; any other `tar` gets none. Owner is fixed to `0/0`, the gzip header carries no name or timestamp, and with GNU tar names are sorted and mtimes pinned to the commit time, so the same content hashes the same wherever it is built (bsdtar cannot pin mtimes). On the host, the driver extracts with `--warning=no-unknown-keyword` when the host `tar` is GNU, which silences the warnings for artifacts built by older atlas versions.
 
 ## Remote layout
 
@@ -198,7 +219,7 @@ deploy:
 
 ## Testing
 
-`cargo test -p atlas-cli --test deploy` exercises the whole lifecycle against `host: local`: deploy, noop, force, crash rollback, manual rollback, lock, interrupted recovery, dirty tree, and `--no-follow`. It needs Linux. On macOS, run it in docker:
+`cargo test -p atlas-cli --test deploy` exercises the whole lifecycle against `host: local`: deploy, noop, force, crash rollback, manual rollback, lock, interrupted recovery, dirty tree, `--no-follow`, and the downgrade, diverged and unknown-base refusals. It needs Linux. On macOS, run it in docker:
 
 ```sh
 docker run --rm -v "$PWD":/w -v atlas-target:/w/target -w /w rust:1 \

@@ -11,6 +11,13 @@ updates:
         update-types: [minor, patch]
     open-pull-requests-limit: 5
     commit-message: { prefix: "chore(deps)" }
+    # windows/windows-core must be the exact versions webview2-com (via tauri/wry) builds on: their COM traits
+    # (`Interface::cast`) are per-version, so a lone bump breaks the Windows build (#156). They move with webview2-com.
+    ignore:
+      - dependency-name: "windows"
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: "windows-core"
+        update-types: [version-update:semver-major, version-update:semver-minor]
   - package-ecosystem: npm
     directory: /apps/desktop
     schedule: { interval: weekly }

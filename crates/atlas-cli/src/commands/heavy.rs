@@ -122,7 +122,7 @@ pub async fn run_heavy(dir: &Dir, args: &RunArgs) -> Result<i32> {
     }
 
     let started = Instant::now();
-    let code = spawn_and_wait(&command_line, args.no_nice, slots, &mut interrupt).await?;
+    let code = spawn_and_wait(&args.command, args.no_nice, slots, &mut interrupt).await?;
     // Only a command that ran to its end teaches the ETA: a killed or failing-fast run would drag
     // the average down.
     let ran = (code == 0).then(|| started.elapsed().as_secs());
@@ -173,21 +173,21 @@ fn describe_hold(h: &heavy::Hold) -> String {
     }
 }
 
-/// Run `command_line` through the platform shell as our child, with our stdio, and return its exit
-/// code (128 + signal when a signal ended it). A SIGINT/SIGTERM/SIGHUP that reaches us is passed on
-/// to the child (its exact pid, never a process group), and we wait for it to end.
+/// Run the command as our child, with our stdio, and return its exit code (128 + signal when a
+/// signal ended it). A SIGINT/SIGTERM/SIGHUP that reaches us is passed on to the child (its exact
+/// pid, never a process group), and we wait for it to end.
 async fn spawn_and_wait(
-    command_line: &str,
+    command: &[String],
     no_nice: bool,
     slots: usize,
     interrupt: &mut Interrupt,
 ) -> Result<i32> {
-    let mut cmd = shell_command(command_line, no_nice);
+    let mut cmd = job_command(command, no_nice);
     // `slots` jobs share the machine: cap each one's build parallelism unless the user did.
     cmd.envs(heavy::job_env_now(slots));
     let mut child = cmd
         .spawn()
-        .with_context(|| format!("failed to spawn: {command_line}"))?;
+        .with_context(|| format!("failed to spawn: {}", command.join(" ")))?;
     let pid = child.id();
     loop {
         tokio::select! {
@@ -201,18 +201,36 @@ async fn spawn_and_wait(
     }
 }
 
-/// The command as a tokio process: under `nice -n 10` on Unix unless `no_nice`; the platform shell
-/// parses the line as its author wrote it.
-fn shell_command(command_line: &str, no_nice: bool) -> tokio::process::Command {
-    #[cfg(unix)]
-    if !no_nice {
-        let mut cmd = tokio::process::Command::new("nice");
-        cmd.args(["-n", "10", "sh", "-c", command_line]);
-        return cmd;
+/// The command as a tokio process, under `nice -n 10` on Unix unless `no_nice`. Several words are
+/// an argv run as is: our child IS the program, so a forwarded signal reaches it. (Through
+/// `sh -c` it reached dash, which does not exec its last command, and dash died of the signal
+/// while the program's own handler never ran: CI, exit 143.) One word is a command line for the
+/// platform shell, parsed as its author wrote it.
+fn job_command(command: &[String], no_nice: bool) -> tokio::process::Command {
+    let argv: Vec<String> = match command {
+        [line] => {
+            #[cfg(unix)]
+            {
+                vec!["sh".into(), "-c".into(), line.clone()]
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = no_nice;
+                return atlas_core::sys::shell_tokio(line);
+            }
+        }
+        argv => argv.to_vec(),
+    };
+    // A terminal command: the child shares our console (no `no_window`, which is for GUI parents).
+    if cfg!(unix) && !no_nice {
+        let mut c = tokio::process::Command::new("nice");
+        c.args(["-n", "10"]).args(&argv);
+        c
+    } else {
+        let mut c = tokio::process::Command::new(&argv[0]);
+        c.args(&argv[1..]);
+        c
     }
-    #[cfg(not(unix))]
-    let _ = no_nice;
-    atlas_core::sys::shell_tokio(command_line)
 }
 
 fn exit_code(s: &std::process::ExitStatus) -> i32 {

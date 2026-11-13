@@ -14,6 +14,7 @@ Reference for the `atlas` skill. MCP tools read exactly these files, so prefer `
 | `.tui.lock` | singleton lock, holds the atlas PID |
 | `.pids` | PIDs of live children; removed on clean quit, cleaned on next start after a crash |
 | `atlas.sock` | control socket used by `atlas mcp` |
+| `atlas-audit.log` | audit trail of control calls, one JSON object per line (`ts`, `caller` human/agent, `client`, `session`, `tool`, `target`, `result` allowed/denied/error); previous run in `atlas-audit.prev.log`. Read it with `atlas_logs {"service": "audit"}` |
 | `.atlas-ui.json` | TUI memory (tab, zoom, filters); ignore it |
 
 Command-less services (docker-backed) and interactive sessions have no log file. `.logs/` should be gitignored.

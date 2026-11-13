@@ -38,6 +38,7 @@ Every run on a detected config prints one line, e.g. `no atlas.yaml: using detec
 | `env_files` | string list | `[]` | [Dotenv files](#env_files) injected into every service and action. |
 | `mobile` | object | `{}` | [iOS/Android settings](#mobile) for `platform:` actions (normally in `atlas.local.yaml`). |
 | `deploy` | object | none | Release engine for `atlas deploy`. See [deploy.md](deploy.md). |
+| `agents` | object | everything allowed | What AI agents may do through [MCP control tools](#agents). `agents: { control: deny }` makes them read-only. |
 
 ### pre_command
 
@@ -409,6 +410,34 @@ Used by Atlas Desktop when it creates or deletes a git worktree of this repo. `s
 ### Port offset
 
 Each worktree gets a port offset (100, 200, …). When `ATLAS_PORT_OFFSET=N` is set, atlas adds `N` to every service `port`, to `tunnel.local_port`, to every service `env` value equal to some service's port, and to `:<port>` in `open_url`/`health`. Try it: `ATLAS_PORT_OFFSET=100 atlas config check`. The TUI title shows `ports +N`.
+
+## agents
+
+What an AI agent may do through the [MCP control tools](mcp.md#agent-permissions-and-audit) (`atlas_restart_service`, `atlas_stop_service`, `atlas_start_service`, `atlas_run_action`). Without an `agents:` block nothing is restricted. The one-line read-only switch:
+
+```yaml
+agents:
+  control: deny
+```
+
+| Key | Value | Meaning |
+|---|---|---|
+| `control` | `allow` \| `deny` | Default for every control tool that has no entry of its own. |
+| `restart_service`, `stop_service`, `start_service` | `allow`, `deny`, `{ allow: [services] }` or `{ deny: [services] }` | Per tool. A list names services: `allow` admits only those, `deny` refuses only those. |
+| `run_action` | same | Lists name actions by key or label (case-insensitive), whichever the agent used. |
+
+Precedence: the tool's own entry, then `control`, then allow. An empty `allow: []` refuses everything for that tool; an empty `deny: []` refuses nothing.
+
+```yaml
+agents:
+  control: deny
+  restart_service: { allow: [worker, web] }   # may restart these two, nothing else
+  run_action: { deny: [Reset local DB] }      # overrides control: deny for run_action: all actions except this one
+```
+
+Read-only tools (status, logs, config, wait for ready) are never restricted, and neither are you: the TUI, Atlas Desktop and the CLI ignore the policy. Atlas dev enforces it on the control socket, so every MCP client is covered; a refused call returns `this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, …`. Every call, allowed or not, is recorded in `.logs/atlas-audit.log`.
+
+`agents:` is only valid in `atlas.yaml`; `atlas.local.yaml` cannot set or loosen it (it is reported as an unknown field). The policy is read when `atlas dev` starts. A misspelled key (`restart_servce`) is a config error, never a silently open project; `atlas config check` reports it.
 
 ## Local overrides (`atlas.local.yaml`)
 

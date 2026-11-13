@@ -29,7 +29,7 @@ Each service keeps its own ring in memory: the last 50,000 lines and at most 8 M
 |---|---|
 | TUI | `/` find, `Tab` find/filter, `Ctrl+R` regex, `v` level, `V` time range, `]e` / `]w` error and warning jumps, `}` / `{` and `o` for links. See [TUI › Log viewer](tui.md#log-viewer) |
 | Desktop | The **Logs** tab: ⌘F find with regex and case toggles, service chips with error counts, level filter, time range, `e` / `w` jumps, ⌘-click on URLs and `path:line`. See [Desktop › Logs](desktop.md#project-panel) |
-| MCP | `atlas_logs` (tail, `level`, `since_minutes`) and `atlas_logs_search` (substring or `/regex/`). See [MCP](mcp.md#atlas_logs) |
+| MCP | `atlas_logs` (tail, `level`, `since_minutes`) and `atlas_logs_search` (substring or `/regex/`); `service: "audit"` shows who restarted, stopped or started what. See [MCP](mcp.md#atlas_logs) |
 | Shell | `tail -f .logs/api.log`, or `atlas dev --headless` to stream all services to stdout |
 
 ## Searching

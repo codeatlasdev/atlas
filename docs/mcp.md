@@ -30,6 +30,53 @@ The control socket is served by the TUI, the background runner (`atlas dev --det
 
 If `atlas dev` is not running, control tools return an error result: `atlas dev is not running; start it in a terminal`. Ask the user to start it, or run `atlas dev --detach` yourself: it returns immediately and leaves the services running for the user to `atlas dev` attach to later (`atlas down` stops them).
 
+## Agent permissions and audit
+
+By default an agent may use every control tool, exactly as before. A project whose rules say "only the developer starts and restarts the stack" says so in `atlas.yaml`:
+
+```yaml
+agents:
+  control: deny      # the read-only switch: agents can read status, logs and config, nothing else
+```
+
+`atlas dev` itself enforces it (the control socket server), so any MCP client is covered, not only one front end. A refused call is a normal tool error with guidance, and nothing happens:
+
+```text
+this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, or to allow it under `agents:` in atlas.yaml
+```
+
+Finer control, per tool and per target (see [Configuration › agents](configuration.md#agents)):
+
+```yaml
+agents:
+  control: deny                          # default for every control tool without its own entry
+  restart_service: { allow: [worker] }   # these services only
+  start_service: allow
+  run_action: { deny: [Reset local DB] } # everything except these actions (key or label)
+```
+
+`atlas_status`, `atlas_logs`, `atlas_logs_search`, `atlas_config` and `atlas_wait_ready` only read and are never restricted. The policy applies to agents only: the TUI, Atlas Desktop and the CLI are you, and are never refused. It is read from `atlas.yaml` when `atlas dev` starts and `atlas.local.yaml` cannot loosen it, so a change applies on the next `atlas dev`.
+
+### Audit trail
+
+Every control call is recorded in `.logs/atlas-audit.log`, one JSON object per line, whoever made it:
+
+```json
+{"ts":"2026-11-13T10:00:05.123-03:00","caller":"agent","client":"omp/14.1","session":{"OMP_SESSION_ID":"s-42"},"tool":"restart_service","target":"api","args":{},"result":"denied","detail":"this project's atlas.yaml denies agents restart_service on api: ask the developer to run it, …"}
+```
+
+| Field | Meaning |
+|---|---|
+| `caller` | `agent` (came through `atlas mcp`) or `human` (the TUI keyboard, palette and menus, Atlas Desktop, the CLI) |
+| `client` | the MCP client's `name/version` from its `initialize` handshake; absent for `human` |
+| `session` | the agent host's session variables found in the environment (`OMP_SESSION_ID`, `CLAUDE_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, `CODEX_SESSION_ID`, `ATLAS_AGENT_SESSION`); absent when none is set |
+| `tool` / `target` | the control command (`restart_service`, `stop_service`, `start_service`, `run_action`) and its service name or action key/label as written; `args` carries the other arguments (`confirmed`), cut to 200 characters each |
+| `result` | `allowed` (atlas accepted it), `denied` (the `agents:` policy refused it) or `error` (let through, but atlas refused it: unknown service, confirm gate, action already running; `detail` says why) |
+
+Read it with `atlas_logs {"service": "audit"}` (newest `lines`, oldest first) or `atlas_logs_search {"service": "audit", "query": "denied"}`; both only look at the current run unless `include_previous` is set on the search. The file is not a service: it never appears in the all-services tail, in search without `service`, or in the list of services with logs. Each `atlas dev` run starts a fresh file (the last one becomes `atlas-audit.prev.log`) and a file past 5 MB rotates the same way. Requests that never name a valid target (a missing `service` argument) are protocol errors and are not recorded.
+
+> **Scope.** The policy limits what an agent can do *through atlas*. It does not sandbox the agent: an agent with a shell can still run `kill` or `atlas down`. Use your agent host's own permission rules for that.
+
 ## Tools
 
 All tools return text. Failures set `isError: true` with a message the agent can act on; unknown tool names and malformed requests are JSON-RPC errors.
@@ -103,7 +150,7 @@ Tail logs from `.logs/`. ANSI is already stripped. Each returned line is `[servi
 
 | Argument | Type | Default | Notes |
 |---|---|---|---|
-| `service` | string | all merged by timestamp | Must have a log file; otherwise the error lists services that do. Project [action](runtime.md#actions) output: `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks`. |
+| `service` | string | all merged by timestamp | Must have a log file; otherwise the error lists services that do. Project [action](runtime.md#actions) output: `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks`. `audit`: the [audit trail](#agent-permissions-and-audit) of control calls (`HH:MM:SS agent omp/14.1 restart_service api -> denied: …`); it is never merged into the all-services tail, and `level` / `since_minutes` do not apply to it. |
 | `lines` | integer 1–2000 | 100 | Trailing lines to return. |
 | `since_minutes` | integer ≥ 0 | none | Only lines from the last N minutes (by the `HH:MM:SS` prefix, local time, capped at 24 h). Lines without a timestamp (stack-trace continuations) are kept. |
 | `level` | `error` \| `warn` | none | `error` = errors only; `warn` = warnings and errors. Detected from text (`error`, `fatal`, `panic`, `warn`, color codes). |
@@ -162,7 +209,7 @@ All three return as soon as the request is accepted, not when the service is up:
 { "service": "api", "queued": true }
 ```
 
-Follow with [`atlas_wait_ready`](#atlas_wait_ready).
+Follow with [`atlas_wait_ready`](#atlas_wait_ready). When the project's [`agents:` policy](#agent-permissions-and-audit) denies the call, the result is an error telling the agent to ask the developer.
 
 ### `atlas_run_action`
 

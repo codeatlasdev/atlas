@@ -16,6 +16,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 - A service shown `off` (`disabled`, `"off": true`) was deliberately left out of a partial run (`atlas dev web`, `--profile backend`): not a failure. Start it with `atlas_start_service` if the task needs it.
 - Read a failing service's log before restarting it; a restart rotates `<service>.log` to `.prev.log`.
 - Never run an action that has a `confirm:` message without the user's explicit yes.
+- A control tool can answer `this project's atlas.yaml denies agents <tool> on <target>: ask the developer…`: the project's `agents:` policy forbids it. Do not retry, do not look for another way (no `kill`, no `atlas down`, no shell restart): tell the user which call you need and why, and let them run it or allow it under `agents:` in `atlas.yaml`. Every control call you make is recorded in `.logs/atlas-audit.log` (read it with `atlas_logs {"service": "audit"}`).
 - New service or port? Follow **Ports** in [yaml.md](yaml.md#ports): never default ports (3000, 5173, 5432, 6379, 8080…), always a random per-project block.
 
 ## Tools
@@ -26,7 +27,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 |---|---|---|
 | `atlas_status` | none | no (reports `running: false`); `setup` = last `pre_command` run `{state, command, started_at, finished_at?, reason?}` or null |
 | `atlas_config` | none | no |
-| `atlas_logs` | `service?`, `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
+| `atlas_logs` | `service?` (a service, `action:<label>`, or `audit` for the audit trail of control calls), `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
 | `atlas_logs_search` | `query` (substring or `/regex/`), `service?`, `limit?` (1-500, default 50), `include_previous?` | no |
 | `atlas_restart_service` / `atlas_stop_service` / `atlas_start_service` | `service` | yes |
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |

@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 
+use crate::control::Caller;
+
 /// Latest protocol revision we implement. Clients requesting anything we don't
 /// know get this back from `initialize` and decide whether to proceed (MCP
 /// lifecycle → version negotiation).
@@ -45,6 +47,9 @@ pub struct Server {
     root: PathBuf,
     /// Version agreed in `initialize` (per connection); gates JSON-RPC batching.
     negotiated: std::sync::Mutex<Option<&'static str>>,
+    /// Who is on the other end (`clientInfo` of `initialize`), sent with every control call so
+    /// atlas dev can apply the `agents:` policy and audit it. Anonymous until the handshake.
+    caller: std::sync::Mutex<Caller>,
 }
 
 impl Server {
@@ -52,6 +57,27 @@ impl Server {
         Self {
             root: root.to_path_buf(),
             negotiated: std::sync::Mutex::new(None),
+            caller: std::sync::Mutex::new(Caller::agent(None, None)),
+        }
+    }
+
+    fn caller(&self) -> Caller {
+        self.caller
+            .lock()
+            .map_or_else(|_| Caller::agent(None, None), |g| g.clone())
+    }
+
+    /// Remember `clientInfo.name`/`.version` from `initialize` (a client that skips the
+    /// handshake stays an anonymous agent: it is never treated as the developer).
+    fn set_client(&self, params: &Value) {
+        let text = |k: &str| {
+            params["clientInfo"][k]
+                .as_str()
+                .map(|s| s.chars().take(100).collect::<String>())
+                .filter(|s| !s.trim().is_empty())
+        };
+        if let Ok(mut g) = self.caller.lock() {
+            *g = Caller::agent(text("name"), text("version"));
         }
     }
 
@@ -138,6 +164,7 @@ impl Server {
         let params = obj.get("params").cloned().unwrap_or(Value::Null);
         Some(match method {
             "initialize" => {
+                self.set_client(&params);
                 let result = initialize_result(&params);
                 if let Some(v) = SUPPORTED_VERSIONS
                     .iter()
@@ -206,7 +233,8 @@ impl Server {
         if !tools::is_tool(name) {
             return error(id, INVALID_PARAMS, format!("unknown tool: {name}"));
         }
-        let (text, is_error) = match tools::call(&self.root, name, &args).await {
+        let caller = self.caller();
+        let (text, is_error) = match tools::call_with(&self.root, name, &args, &caller).await {
             Ok(t) => (t, false),
             Err(e) => (e, true),
         };
@@ -358,6 +386,55 @@ mod tests {
         assert_eq!(r["result"]["protocolVersion"], PROTOCOL_VERSION);
         let caps = &r["result"]["capabilities"];
         assert!(caps["resources"].is_object() && caps["prompts"].is_object());
+    }
+
+    #[test]
+    fn caller_is_the_initialize_client_info_and_never_the_developer_before_it() {
+        let (_d, s) = server();
+        // A client that skips the handshake is still an agent (policy applies), just anonymous.
+        assert_eq!(s.caller().kind(), "agent");
+        assert_eq!(s.caller().client_label(), None);
+        s.set_client(&json!({"clientInfo": {"name": "omp", "version": "14.1"}}));
+        assert_eq!(s.caller().client_label().as_deref(), Some("omp/14.1"));
+        // Hostile or odd values: blank is dropped, length is capped, wrong types are ignored.
+        s.set_client(&json!({"clientInfo": {"name": "  ", "version": 7}}));
+        assert_eq!(s.caller().client_label(), None);
+        s.set_client(&json!({"clientInfo": {"name": "x".repeat(10_000)}}));
+        assert_eq!(s.caller().client_label().unwrap().chars().count(), 100);
+    }
+
+    // The MCP server end to end against a real control socket whose policy denies agents:
+    // `tools/call` must come back as a tool error and must not reach the run loop.
+    #[tokio::test]
+    async fn control_tool_through_the_mcp_server_is_denied_by_the_socket_policy() {
+        let d = tempfile::TempDir::new().unwrap();
+        let cfg: crate::config::ProjectConfig = serde_norway::from_str(
+            "name: p\nservices:\n  api: { command: x }\nagents: { control: deny }\n",
+        )
+        .unwrap();
+        let (_server, mut rx) = crate::control::ControlServer::bind(
+            d.path(),
+            crate::control::Guard::new(&cfg, d.path()),
+        )
+        .unwrap();
+        let s = Server::new(d.path());
+        rpc(&s, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","clientInfo":{"name":"omp","version":"14.1"}}})).await;
+        let r = rpc(&s, json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"atlas_restart_service","arguments":{"service":"api"}}}))
+            .await
+            .unwrap();
+        assert_eq!(r["result"]["isError"], true, "{r}");
+        let text = r["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.contains("atlas.yaml denies agents restart_service on api"),
+            "{text}"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "a denied call must not reach the run loop"
+        );
+        let log = crate::control::audit::read_recent(&d.path().join(".logs"), 10, false);
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].client.as_deref(), Some("omp/14.1"));
     }
 
     #[tokio::test]

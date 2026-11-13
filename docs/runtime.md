@@ -236,6 +236,7 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 | `tunnel.log` | tunnel task | ssh stderr and reconnect notes (same line format; rotated to `tunnel.prev.log` per run) |
 | `.tunnel.pid` | tunnel task | only when a tunnel is left running on exit: pid, `ssh_host`, `local_port` (one per line) |
 | `atlas.sock` | TUI / runner / `--headless` | control socket |
+| `atlas-audit.log` | control socket server, TUI | audit trail of control calls (restart/stop/start service, run action): one JSON object per line with `ts`, `caller` (`human` or `agent`), `client`, `session`, `tool`, `target`, `args`, `result` (`allowed`, `denied`, `error`). The previous run's file is `atlas-audit.prev.log`; it also rotates past 5 MB. Read it with `atlas_logs` `service: "audit"`. See [MCP › Agent permissions and audit](mcp.md#agent-permissions-and-audit) |
 | `runner.log` | `atlas dev --detach` | the daemonized runner's stdout/stderr (lifecycle messages, not service output); truncated on every start |
 | `.atlas-ui.json` | TUI | per-project UI memory: active tab (by name), zoom, wrap/timestamps/JSON toggles, level filter, recent palette commands. Best-effort; a missing or corrupt file is a fresh start |
 

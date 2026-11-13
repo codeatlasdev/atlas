@@ -77,7 +77,8 @@ fn clip(s: &str) -> String {
     }
 }
 
-/// Service names that have a log file in `log_dir` (current runs only), sorted.
+/// Service names that have a log file in `log_dir` (current runs only), sorted. The audit
+/// trail (`atlas-audit.log`) is not a service: it is read as `service: "audit"`.
 pub fn log_services(log_dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(log_dir)
         .into_iter()
@@ -86,7 +87,10 @@ pub fn log_services(log_dir: &Path) -> Vec<String> {
         .filter_map(|e| {
             let f = e.file_name().into_string().ok()?;
             let stem = f.strip_suffix(".log")?;
-            (!stem.ends_with(".prev") && !stem.starts_with('.')).then(|| stem.to_string())
+            (!stem.ends_with(".prev")
+                && !stem.starts_with('.')
+                && stem != crate::control::audit::AUDIT_LOG)
+                .then(|| stem.to_string())
         })
         .collect();
     names.sort();
@@ -330,7 +334,7 @@ impl Matcher {
         crate::runtime::logindex::Matcher::compile_insensitive(q, regex).map(Self)
     }
 
-    fn is_match(&self, line: &str) -> bool {
+    pub(super) fn is_match(&self, line: &str) -> bool {
         self.0.is_match(line)
     }
 }

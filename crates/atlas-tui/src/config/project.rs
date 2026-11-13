@@ -154,6 +154,11 @@ pub struct ProjectConfig {
     /// Atlas Desktop worktrees: setup/teardown hooks and files shared with the main checkout.
     #[serde(default)]
     pub worktree: Option<WorktreeConfig>,
+    /// What AI agents may do through MCP control tools (restart/stop/start service, run
+    /// action). Absent = everything allowed. `agents: { control: deny }` makes them read-only.
+    /// Project-level only: `atlas.local.yaml` cannot loosen it.
+    #[serde(default)]
+    pub agents: super::agents::AgentsPolicy,
     /// Added to every port by `ATLAS_PORT_OFFSET` (parallel worktrees); 0 = none.
     #[serde(skip)]
     #[schemars(skip)]

@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::logs::{self, MinLevel};
-use crate::control::{self, NOT_RUNNING};
+use crate::control::{self, Caller, NOT_RUNNING};
 use crate::runtime::service::ServiceState;
 use crate::status;
 
@@ -39,7 +39,7 @@ const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "atlas_logs",
-        description: "Tail service logs from .logs/<service>.log (ANSI already stripped, lines look like `HH:MM:SS [stdout|stderr] text`). Without `service`, all services are merged by timestamp. Use `level` to see only problems. Works even when atlas is not running (shows the last run). Project action output is logged too: pass `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks` as `service`; without `service` action logs are merged in. Each output line is prefixed [service:line_no].",
+        description: "Tail service logs from .logs/<service>.log (ANSI already stripped, lines look like `HH:MM:SS [stdout|stderr] text`). Without `service`, all services are merged by timestamp. Use `level` to see only problems. Works even when atlas is not running (shows the last run). Project action output is logged too: pass `action:<label>` (e.g. `action:Run checks`) or the file name `action-run-checks` as `service`; without `service` action logs are merged in. Each output line is prefixed [service:line_no]. `service: \"audit\"` shows who restarted/stopped/started what (agents and the developer): `HH:MM:SS caller client tool target -> result`.",
         schema: schema_logs,
         control: None,
     },
@@ -57,25 +57,25 @@ const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "atlas_restart_service",
-        description: "Restart one service in the running `atlas dev` (stop, then start). Returns once the request is accepted; use atlas_wait_ready to wait for it to come back. Errors if atlas dev is not running.",
+        description: "Restart one service in the running `atlas dev` (stop, then start). Returns once the request is accepted; use atlas_wait_ready to wait for it to come back. Errors if atlas dev is not running. The project's `agents:` policy may deny it: then ask the developer to run it.",
         schema: schema_service,
         control: Some("restart_service"),
     },
     ToolDef {
         name: "atlas_stop_service",
-        description: "Stop one service in the running `atlas dev` and mark it disabled (health checks skip it, it will not auto-restart). Undo with atlas_start_service. Errors if atlas dev is not running.",
+        description: "Stop one service in the running `atlas dev` and mark it disabled (health checks skip it, it will not auto-restart). Undo with atlas_start_service. Errors if atlas dev is not running. The project's `agents:` policy may deny it: then ask the developer to run it.",
         schema: schema_service,
         control: Some("stop_service"),
     },
     ToolDef {
         name: "atlas_start_service",
-        description: "Start a stopped/disabled/failed service in the running `atlas dev`. Errors if atlas dev is not running.",
+        description: "Start a stopped/disabled/failed service in the running `atlas dev`. Errors if atlas dev is not running. The project's `agents:` policy may deny it: then ask the developer to run it.",
         schema: schema_service,
         control: Some("start_service"),
     },
     ToolDef {
         name: "atlas_run_action",
-        description: "Run an atlas.yaml action (e.g. migrations, db push) in the running `atlas dev`, by key or label (see atlas_config). Actions with a `confirm` message are destructive: the call is REFUSED and the confirm text returned until you pass confirmed=true — only do that after the user agreed. Services listed in the action's pause_services are paused while it runs. Errors if atlas dev is not running.",
+        description: "Run an atlas.yaml action (e.g. migrations, db push) in the running `atlas dev`, by key or label (see atlas_config). Actions with a `confirm` message are destructive: the call is REFUSED and the confirm text returned until you pass confirmed=true — only do that after the user agreed. Services listed in the action's pause_services are paused while it runs. Errors if atlas dev is not running. The project's `agents:` policy may deny it: then ask the developer to run it.",
         schema: schema_run_action,
         control: Some("run_action"),
     },
@@ -104,7 +104,7 @@ fn schema_logs() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "service": {"type": "string", "description": "Only this service, or `action:<label>` for an action's output. Omit for all merged."},
+            "service": {"type": "string", "description": "Only this service, `action:<label>` for an action's output, or `audit` for the audit trail of control calls. Omit for all merged."},
             "lines": {"type": "integer", "minimum": 1, "maximum": logs::MAX_TAIL, "default": logs::DEFAULT_TAIL, "description": "How many trailing lines to return."},
             "since_minutes": {"type": "integer", "minimum": 0, "description": "Only lines from the last N minutes (by the HH:MM:SS prefix, local time, max 1440)."},
             "level": {"type": "string", "enum": ["error", "warn"], "description": "error = errors only; warn = warnings and errors."}
@@ -118,7 +118,7 @@ fn schema_logs_search() -> Value {
         "type": "object",
         "properties": {
             "query": {"type": "string", "description": "Substring, or /regex/."},
-            "service": {"type": "string", "description": "Only this service. Omit to search all."},
+            "service": {"type": "string", "description": "Only this service, or `audit` for the control audit trail. Omit to search all."},
             "limit": {"type": "integer", "minimum": 1, "maximum": logs::MAX_SEARCH_LIMIT, "default": logs::DEFAULT_SEARCH_LIMIT, "description": "Max matches returned (the most recent ones are kept)."},
             "include_previous": {"type": "boolean", "default": false, "description": "Also search the previous run's logs (<service>.prev.log); useful right after a crash/restart."}
         },
@@ -161,12 +161,20 @@ pub fn catalogue() -> Value {
         .collect()
 }
 
+/// Run a tool as the developer: what hostd does for Atlas Desktop on a remote host. The MCP
+/// server never uses this; it goes through [`call_with`] with its client as an agent.
 pub async fn call(root: &Path, name: &str, args: &Value) -> ToolResult {
+    call_with(root, name, args, &Caller::Human).await
+}
+
+/// Run a tool. `caller` is the MCP client behind this connection: control tools carry it to
+/// atlas dev, which applies the project's `agents:` policy and audits the call.
+pub async fn call_with(root: &Path, name: &str, args: &Value, caller: &Caller) -> ToolResult {
     let Some(tool) = TOOLS.iter().find(|t| t.name == name) else {
         return Err(format!("unknown tool: {name}"));
     };
     if let Some(cmd) = tool.control {
-        return control_tool(root, cmd, args).await;
+        return control_tool(root, cmd, args, caller).await;
     }
     match name {
         "atlas_status" => status_tool(root),
@@ -235,11 +243,41 @@ pub(crate) fn status_tool(root: &Path) -> ToolResult {
     Ok(serde_json::to_string_pretty(&status_json(root)).unwrap_or_default())
 }
 
+/// `service: "audit"` (or the file's own name) selects the control audit trail.
+fn is_audit(service: &str) -> bool {
+    service == "audit" || service == crate::control::audit::AUDIT_LOG
+}
+
+/// The newest `keep` audit entries as readable lines (oldest first), only those matching
+/// `matcher` when given.
+fn audit_text(
+    root: &Path,
+    keep: usize,
+    include_previous: bool,
+    matcher: Option<&logs::Matcher>,
+) -> String {
+    let entries =
+        crate::control::audit::read_recent(&root.join(".logs"), usize::MAX, include_previous);
+    let rendered: Vec<String> = entries
+        .iter()
+        .map(crate::control::audit::AuditEntry::render)
+        .filter(|l| matcher.is_none_or(|m| m.is_match(l)))
+        .collect();
+    let out = &rendered[rendered.len().saturating_sub(keep)..];
+    if out.is_empty() {
+        return "(no matching log lines)".into();
+    }
+    out.join("\n")
+}
+
 pub(crate) fn logs_tool(root: &Path, args: &Value) -> ToolResult {
     let lines = opt_u64(args, "lines")?.map_or(logs::DEFAULT_TAIL, |n| {
         (n as usize).clamp(1, logs::MAX_TAIL)
     });
     let level = opt_str(args, "level")?.map(MinLevel::parse).transpose()?;
+    if opt_str(args, "service")?.is_some_and(is_audit) {
+        return Ok(audit_text(root, lines, false, None));
+    }
     let opts = logs::TailOpts {
         service: opt_str(args, "service")?,
         lines,
@@ -261,6 +299,16 @@ pub(crate) fn logs_tool(root: &Path, args: &Value) -> ToolResult {
 fn search_tool(root: &Path, args: &Value) -> ToolResult {
     let query = opt_str(args, "query")?.ok_or("missing required arg: query")?;
     let matcher = logs::Matcher::parse(query)?;
+    if opt_str(args, "service")?.is_some_and(is_audit) {
+        let limit = opt_u64(args, "limit")?.map_or(logs::DEFAULT_SEARCH_LIMIT, |n| {
+            (n as usize).clamp(1, logs::MAX_SEARCH_LIMIT)
+        });
+        let previous = args
+            .get("include_previous")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        return Ok(audit_text(root, limit, previous, Some(&matcher)));
+    }
     let limit = opt_u64(args, "limit")?.map_or(logs::DEFAULT_SEARCH_LIMIT, |n| {
         (n as usize).clamp(1, logs::MAX_SEARCH_LIMIT)
     });
@@ -329,8 +377,8 @@ pub(crate) fn config_tool(root: &Path) -> ToolResult {
     Ok(serde_json::to_string_pretty(&v).unwrap_or_default())
 }
 
-async fn control_tool(root: &Path, cmd: &str, args: &Value) -> ToolResult {
-    let resp = control::call(root, cmd, args.clone()).await?;
+async fn control_tool(root: &Path, cmd: &str, args: &Value, caller: &Caller) -> ToolResult {
+    let resp = control::call_as(root, cmd, args.clone(), caller).await?;
     if resp.ok {
         Ok(serde_json::to_string_pretty(&resp.data.unwrap_or(Value::Null)).unwrap_or_default())
     } else {
@@ -561,6 +609,41 @@ mod tests {
             assert_eq!(t["inputSchema"]["type"], "object");
             assert!(t["description"].as_str().unwrap().len() > 40);
         }
+    }
+
+    // Regression guard for the class "the developer's own path got the agent policy": hostd runs
+    // `tools::call` for Atlas Desktop on remote hosts, and that is the developer, never an agent.
+    #[tokio::test]
+    async fn call_is_the_developer_and_call_with_an_agent_is_denied_by_the_same_policy() {
+        let d = tempfile::TempDir::new().unwrap();
+        let cfg: crate::config::ProjectConfig = serde_norway::from_str(
+            "name: p\nservices:\n  api: { command: x }\nagents: { control: deny }\n",
+        )
+        .unwrap();
+        let (_server, mut rx) =
+            control::ControlServer::bind(d.path(), control::Guard::new(&cfg, d.path())).unwrap();
+        tokio::spawn(async move {
+            while let Some(req) = rx.recv().await {
+                let _ = req
+                    .reply
+                    .send(control::ControlResponse::ok(json!({"queued": true})));
+            }
+        });
+        let args = json!({"service": "api"});
+        let human = call(d.path(), "atlas_restart_service", &args).await;
+        assert!(human.is_ok(), "{human:?}");
+        let agent = call_with(
+            d.path(),
+            "atlas_restart_service",
+            &args,
+            &Caller::agent(Some("omp".into()), None),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            agent.contains("denies agents restart_service on api"),
+            "{agent}"
+        );
     }
 
     #[tokio::test]

@@ -99,6 +99,18 @@ Android: `bun run mobile:e2e:android` / `bun run mobile:watch:android` (`--andro
 
 ## Releases (testers, then the stores)
 
+Shipping an update, step by step:
+
+1. Merge the app's changes into `main` (nothing is published).
+2. `git checkout main && git pull`.
+3. `bun run mobile:release 1.0.1`: a fix bumps the last number, new features the middle one, a big change the first.
+4. About 20 minutes later testers have it in TestFlight and Play internal testing (Actions → **Mobile release** shows the run).
+5. Try it on a phone.
+6. Good: in that run, **Review deployments** → `mobile-store` → **Approve and deploy**. Not good: do not approve; fix, merge and release the next version.
+7. Apple reviews (usually 1 to 2 days) and releases on approval; Google reviews and publishes. A store that rejects says why by email; the rejected version never reaches the public.
+
+How it works:
+
 One path, one tag: `bun run mobile:release 1.2.0` (on an up-to-date `main`, clean tree; `--dry-run` prints what it would do) tags `mobile-v1.2.0` and pushes the tag. It refuses a malformed version, an existing tag or one lower than the last mobile release. The tag runs the `Mobile release` workflow (`.github/workflows/mobile-release.yml`, fastlane `apps/mobile/fastlane/Fastfile`):
 
 1. **Unattended:** it builds version `1.2.0` (from the tag; `mobile-vX.Y.Z` only) with one build number for both stores, and uploads it to **TestFlight** and the **Play internal testing** track.

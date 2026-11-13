@@ -26,6 +26,7 @@
     "mobile:lab": "bun scripts/mobile-lab.ts",
     "mobile:lab:icons": "scripts/mobile-lab-icons.sh",
     "mobile:beta": "cd apps/mobile && bundle exec fastlane beta",
+    "mobile:release": "scripts/mobile-release.sh",
     "desktop:check": "cd apps/desktop && bun install --frozen-lockfile && bun run check",
     "desktop:link": "cargo run -q -p atlas-cli -- link --desktop",
     "site:dev": "cd site && bun install --frozen-lockfile && bun run dev",

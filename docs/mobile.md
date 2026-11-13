@@ -99,7 +99,7 @@ Android: `bun run mobile:e2e:android` / `bun run mobile:watch:android` (`--andro
 
 ## Releases (testers, then the stores)
 
-One path, one tag: `git tag mobile-v1.2.0 && git push origin mobile-v1.2.0` runs the `Mobile release` workflow (`.github/workflows/mobile-release.yml`, fastlane `apps/mobile/fastlane/Fastfile`):
+One path, one tag: `bun run mobile:release 1.2.0` (on an up-to-date `main`, clean tree; `--dry-run` prints what it would do) tags `mobile-v1.2.0` and pushes the tag. It refuses a malformed version, an existing tag or one lower than the last mobile release. The tag runs the `Mobile release` workflow (`.github/workflows/mobile-release.yml`, fastlane `apps/mobile/fastlane/Fastfile`):
 
 1. **Unattended:** it builds version `1.2.0` (from the tag; `mobile-vX.Y.Z` only) with one build number for both stores, and uploads it to **TestFlight** and the **Play internal testing** track.
 2. **After your approval:** the `store` job waits on the `mobile-store` environment. Its required reviewers approve it from the run (**Review deployments**). It then promotes that same build, never a new one: `fastlane ios_release` submits it to App Store review and Apple releases it as soon as it is approved; `fastlane android_release` moves it from internal testing to production, to every user at once. Not approved within 30 days, the run expires and the version stays with testers. A fix is the next tag (`mobile-v1.2.1`).

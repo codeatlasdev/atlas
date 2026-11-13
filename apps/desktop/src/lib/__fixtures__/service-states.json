@@ -43,10 +43,7 @@
 		"ready": null,
 		"restarts": 0,
 		"state": "unhealthy",
-		"unhealthy_lines": [
-			"booting",
-			"stuck in render"
-		],
+		"unhealthy_lines": ["booting", "stuck in render"],
 		"unhealthy_misses": 3,
 		"unhealthy_since": 1700000000
 	},

@@ -395,6 +395,43 @@ fn project_with_never() -> Project {
     p
 }
 
+/// #136 end to end: a service that stays up but keeps logging the same error is reported
+/// `degraded` by `atlas_status`, with the repeating line as `probe_error`. (The shared fixture's
+/// ticker prints its error once so the other tests can wait for `running`.)
+#[test]
+fn a_service_repeating_one_error_is_degraded_in_atlas_status() {
+    require_python!();
+    let p = project();
+    let mut yaml = std::fs::read_to_string(p.root().join("atlas.yaml")).unwrap();
+    yaml = yaml.replace(
+        "actions:\n",
+        "  looper:\n    command: \"sh -c 'while true; do echo ERROR db connect timeout; sleep 0.3; done'\"\n\nactions:\n",
+    );
+    std::fs::write(p.root().join("atlas.yaml"), yaml).unwrap();
+    let h = Headless::spawn(p.root());
+    let mut c = McpClient::spawn(p.root());
+    c.handshake();
+    let last = std::cell::RefCell::new(Value::Null);
+    let row = common::wait_for_with(
+        "looper degraded",
+        Duration::from_secs(30),
+        || {
+            let st = status(&mut c);
+            let row = st["services"]
+                .as_array()?
+                .iter()
+                .find(|s| s["name"] == "looper")?
+                .clone();
+            *last.borrow_mut() = st;
+            (row["state"] == "degraded").then_some(row)
+        },
+        || startup_report(&h, &p, &last.borrow()),
+    );
+    let why = row["probe_error"].as_str().unwrap_or_default();
+    assert!(why.contains("db connect timeout"), "{row}");
+    assert!(row["unhealthy_since"].is_null(), "{row}");
+}
+
 fn status(c: &mut McpClient) -> Value {
     let (err, text) = c.call("atlas_status", json!({}));
     assert!(!err, "{text}");

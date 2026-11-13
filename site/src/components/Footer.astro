@@ -20,6 +20,7 @@ const cols = [
 	</div>
 	<div class="wrap legal">
 		<span>Open source · MIT or Apache-2.0</span>
+		<a class="ln" href="/code-signing-policy/">Code signing policy</a>
 	</div>
 </footer>
 <style>
@@ -47,7 +48,9 @@ const cols = [
 	ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 	li a { color: var(--fg-2); font-size: 0.97rem; }
 	li a:hover { color: var(--white); }
-	.legal { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line); color: var(--fg-2); font-size: 0.9rem; }
+	.legal { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line); color: var(--fg-2); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; }
+	.legal a { color: var(--fg-2); text-decoration: underline; text-underline-offset: 0.2em; }
+	.legal a:hover { color: var(--white); }
 	@media (max-width: 860px) {
 		.top { grid-template-columns: 1fr; gap: 2.2rem; }
 		.cols { grid-template-columns: 1fr 1fr; gap: 1.8rem 1.4rem; }
@@ -58,6 +61,7 @@ const cols = [
 		ul { gap: 0; }
 		li a { display: flex; align-items: center; min-height: 44px; font-size: 1rem; }
 		.legal { font-size: 0.95rem; line-height: 1.6; }
+		.legal a { display: inline-flex; align-items: center; min-height: 44px; }
 	}
 	@media (max-width: 420px) { .cols { grid-template-columns: 1fr; } }
 </style>

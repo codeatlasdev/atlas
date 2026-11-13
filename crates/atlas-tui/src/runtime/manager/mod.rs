@@ -17,9 +17,9 @@ mod health_check;
 #[cfg(test)]
 mod health_tests;
 mod lifecycle;
-mod mem_watch;
 #[cfg(test)]
 mod mem_tests;
+mod mem_watch;
 mod mirror;
 mod mobile;
 pub mod policy;

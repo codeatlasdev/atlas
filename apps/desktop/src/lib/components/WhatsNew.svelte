@@ -192,7 +192,7 @@
 								<h2 class="num">{r.version}</h2>
 								<div class="meta">
 									{#if r.date}<time>{r.date}</time>{/if}
-									{#if r.pre}<span class="chip pre {r.pre.toLowerCase()}">{r.pre}</span>{/if}
+									{#if r.pre}<span class="chip" data-channel={r.pre.toLowerCase()}>{r.pre}</span>{/if}
 									{#each r.badges as b (b)}
 										<span class="chip {b}"
 											>{b === "latest" ? "Latest" : b === "new" ? "New" : "Installed"}</span
@@ -223,7 +223,9 @@
 						</header>
 
 						{#if open}
-							{#if r.parsed.summary}<p class="summary">{r.parsed.summary}</p>{/if}
+							{#if r.parsed.summary}<p class="summary ca-selectable">
+									{@html renderNote(r.parsed.summary)}
+								</p>{/if}
 							{#each r.parsed.groups as g, gi (g.heading)}
 								{@const k = KIND[g.kind]}
 								<div class="group" style="--tone: {k.tone}">
@@ -233,7 +235,7 @@
 											{@const key = `${r.version}/${gi}/${ii}`}
 											{@const long = isLong(it) && !unfolded[key]}
 											<li class:plain={!it.title}>
-												{#if it.title}<b class="title">{it.title}</b>{/if}
+												{#if it.title}<b class="title">{@html renderNote(it.title)}</b>{/if}
 												{#if it.body}
 													<!-- Our own CHANGELOG, sanitised by renderNote; CSP blocks inline script anyway. -->
 													<div class="body ca-selectable" class:clamp={long}>
@@ -340,7 +342,7 @@
 			</div>
 			{#if heroChannel && followed}
 				<p class="hint chan">
-					<span class="chip pre {heroChannel}">{heroChannel}</span>
+					<span class="chip" data-channel={heroChannel}>{heroChannel}</span>
 					release · following <b>{followed}</b>
 				</p>
 			{/if}
@@ -370,6 +372,7 @@
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
+		container-type: inline-size;
 		padding: 2px 4px 20px 2px;
 		scroll-padding-top: 52px;
 		outline: none;
@@ -437,12 +440,17 @@
 		font-weight: 650;
 		font-variant-numeric: tabular-nums;
 		letter-spacing: -0.01em;
+		/* A version number is one word: when the sheet is narrow it shrinks, it is never cut in the middle. */
+		white-space: nowrap;
 	}
 	.first .num {
-		font-size: 30px;
+		font-size: clamp(20px, 8cqw, 30px);
 		font-weight: 700;
 		line-height: 1.05;
 		letter-spacing: -0.03em;
+	}
+	.ver {
+		min-width: 0;
 	}
 	.meta {
 		display: flex;
@@ -453,11 +461,27 @@
 		font-size: 12px;
 		color: var(--ca-text-secondary);
 	}
+	/*
+	 * A badge is a self-contained pill: its box never depends on the block it sits in. The channel is a data attribute,
+	 * not a class: `alpha` is also the footer note's class, and that rule's margin/padding/border once turned the badge
+	 * into a tall pill below the date.
+	 */
 	.chip {
-		padding: 1px 7px;
+		--tone: var(--ca-text-secondary);
+		display: inline-flex;
+		align-items: center;
+		flex: none;
+		box-sizing: border-box;
+		max-width: 100%;
+		height: 19px;
+		padding: 0 7px;
 		border-radius: 999px;
 		font-size: 11px;
 		font-weight: 600;
+		line-height: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		color: var(--tone);
 		background: color-mix(in oklab, var(--tone) 14%, transparent);
 	}
@@ -470,28 +494,32 @@
 	.chip.installed {
 		--tone: var(--ca-text-secondary);
 	}
-	.chip.pre.alpha {
+	.chip[data-channel="alpha"] {
 		--tone: var(--ca-semantic-error);
 	}
-	.chip.pre.beta {
+	.chip[data-channel="beta"] {
 		--tone: var(--ca-semantic-warning);
 	}
-	.chip.pre.rc {
+	.chip[data-channel="rc"] {
 		--tone: var(--ca-semantic-info);
 	}
-	.chip.pre.stable {
+	.chip[data-channel="stable"] {
 		--tone: var(--ca-semantic-success);
 	}
 	.hint.chan {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		flex-wrap: wrap;
+		gap: 4px 6px;
 		margin-top: 8px;
+		line-height: 19px;
 	}
 	.hint.chan .chip {
 		text-transform: capitalize;
 	}
 	.hint.chan b {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		color: var(--ca-text-primary);
 		text-transform: capitalize;
 	}
@@ -617,7 +645,11 @@
 		margin: 2px 0;
 		font-size: inherit;
 	}
-	.body :global(code) {
+	/* Inline markdown the sheet renders itself: the intro, item titles, bodies and the footer note share one look. */
+	.summary :global(code),
+	.title :global(code),
+	.body :global(code),
+	.alpha :global(code) {
 		padding: 1px 5px;
 		border-radius: 5px;
 		font-family: var(--mono);
@@ -625,11 +657,17 @@
 		color: var(--ca-text-primary);
 		background: color-mix(in oklab, var(--ca-text-primary) 8%, transparent);
 	}
+	.summary :global(strong),
+	.alpha :global(strong) {
+		font-weight: 650;
+	}
+	.summary :global(a),
 	.body :global(a),
 	.alpha :global(a) {
 		color: var(--ca-brand-main);
 		text-decoration: none;
 	}
+	.summary :global(a:hover),
 	.body :global(a:hover),
 	.alpha :global(a:hover) {
 		text-decoration: underline;
@@ -839,14 +877,30 @@
 		flex-wrap: wrap;
 		gap: 6px;
 	}
+	/* The primary button ("Update to 1.5.0-alpha.25 and relaunch · 27.0 MB") is the longest label in the sheet: it fills
+	   the row and, when the sheet is narrow, wraps its label instead of overflowing the edge. */
 	.actions > :global(button) {
-		flex: 1;
+		flex: 1 1 0;
+		min-width: 0;
+		max-width: 100%;
+		height: auto;
+		min-height: 36px;
+		padding-block: 6px;
+		white-space: normal;
+		text-wrap: balance;
+		line-height: 1.25;
 	}
 	.links {
 		display: flex;
 		align-items: center;
-		gap: 2px;
+		flex-wrap: wrap;
+		gap: 2px 2px;
 		margin: 8px 0 0 -6px;
+	}
+	.links .icon.text {
+		height: auto;
+		min-height: 26px;
+		white-space: nowrap;
 	}
 	.grow {
 		flex: 1;

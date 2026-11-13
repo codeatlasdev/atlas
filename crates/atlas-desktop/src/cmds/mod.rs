@@ -10,6 +10,7 @@
 mod config_edit;
 mod discover;
 mod heavy;
+mod hygiene;
 mod machine;
 mod projects;
 mod services;
@@ -28,6 +29,7 @@ use crate::registry::{self, Entry};
 
 pub use config_edit::*;
 pub use heavy::*;
+pub use hygiene::*;
 pub use machine::*;
 pub use projects::*;
 pub use setup::*;

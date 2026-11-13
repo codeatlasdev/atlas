@@ -132,6 +132,8 @@ macro_rules! handlers {
             cmds::heavy_status,
             cmds::machine_report,
             cmds::projects_list,
+            cmds::hygiene_report,
+            cmds::hygiene_fix,
             cmds::projects_add,
             cmds::system_ui_sounds,
             cmds::live_resync,

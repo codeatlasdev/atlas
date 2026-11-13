@@ -34,6 +34,7 @@ Start with `atlas dev --status` (what is running and in what state) and `atlas v
 | `atlas.yaml: services.api.ready: set exactly one of http (path or URL) or command` | A `ready:` block needs `http` **or** `command`, not both and not neither. |
 | `ready http '/ready' needs the service port` | A bare-path `ready.http` is resolved against the service `port`; add `port`, or use a full `http://` URL. |
 | `EADDRINUSE` | Something else holds the port, often an orphan of an earlier run. Atlas cleans only what it started itself (from `.logs/.pids`) and never kills by port. Find the process with `lsof -iTCP:<port> -sTCP:LISTEN` and stop it yourself. |
+| Browsers, dev servers or caches left running or on disk after an agent run, or the Mac slows down indexing worktrees | `atlas doctor --hygiene` lists orphaned processes Atlas started, disk per project and heavy folders Spotlight indexes; `--fix` ends the orphans and frees what Atlas owns (never `target/`, `node_modules` or worktrees). The same is in Settings > Workspaces > Hygiene. See [sessions and hygiene](runtime.md#sessions-and-hygiene). |
 | `docker compose` failed and a `docker` alert shows | The daemon was not reachable within 15 s. Start Docker or OrbStack; app services still start. |
 | Quitting leaves containers running | By design: Atlas never runs `docker compose down`. Stop them with `docker compose down`. |
 | `pre_command failed` toast | The dependency install failed; services start anyway. Read `.logs/setup.log`. |

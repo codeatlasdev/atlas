@@ -939,7 +939,18 @@ async fn hostd_exits_when_its_dir_disappears() {
     )
     .await
     .unwrap();
-    std::fs::remove_dir_all(&dir).unwrap();
+    // The daemon is alive and may write a file (its session registry, a scrollback) while the
+    // tree is removed, so one `remove_dir_all` can meet a new entry ("Directory not empty"),
+    // exactly like `rm -rf` on a live dir. Remove until it is gone: what is tested is that hostd
+    // then exits, not that it never writes.
+    let t0 = std::time::Instant::now();
+    while dir.exists() {
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            t0.elapsed() < Duration::from_secs(10),
+            "could not remove {dir:?}"
+        );
+    }
     wait_for("exit after the dir was removed", || {
         matches!(d.0.try_wait(), Ok(Some(_)))
     })

@@ -20,7 +20,7 @@ Settings (⌘,) has eleven sections in three groups, and a search box that jumps
 | | **Notifications & sounds** | Notifications when an agent finishes or needs you; the sounds Atlas plays, one switch each |
 | | **Keyboard shortcuts** | Rebind or remove the key of any command |
 | | **Help & onboarding** | The guided tour, the shortcut cheat sheet, the getting-started checklist |
-| Work | **Workspaces** | Where worktrees are created, branch name prefix, auto clean up, clean up by hand |
+| Work | **Workspaces** | Where worktrees are created, branch name prefix, auto clean up, clean up by hand, hygiene (orphaned processes and disk) |
 | | **Editor** | Tabs **Editor** (code font, editing, display) and **Languages** (language servers) |
 | | **Terminal** | Renderer, font, cursor, padding, scrollback, clipboard |
 | | **Git** | Which agent writes commit messages |

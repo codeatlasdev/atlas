@@ -136,7 +136,7 @@ Projects (main checkouts) are stored in `~/.atlas/desktop/projects.json`. Add th
 Each project groups its **git worktrees** in the sidebar. **New worktree** (⌘N, or `+` on the project) asks for a name (blank = random), an agent and an optional first prompt; a GitHub PR or issue URL works as the name. Advanced: branch name and base ref. Atlas then:
 
 1. creates `~/.atlas/worktrees/<repo>/<name>` on branch `<git user>/<name>` from `origin/<default>` (`git worktree add`), records the base (`branch.<b>.base`) and sets `push.autoSetupRemote`;
-2. applies `worktree.shared` and runs `worktree.setup` from `atlas.yaml` in a "Setup" terminal ([configuration](configuration.md#worktree));
+2. applies `worktree.shared`, **seeds** the heavy directories (`node_modules`, `target`) from the main checkout by copy-on-write clone so the install and build are incremental (`worktree.seed`; skipped, never copied, where the file system cannot clone), and runs `worktree.setup` from `atlas.yaml` in a "Setup" terminal ([configuration](configuration.md#worktree));
 3. gives the worktree a **port offset** (100, 200, …) so its stack runs next to the main checkout's (`ATLAS_PORT_OFFSET`).
 
 Deleting a worktree stops its stack, runs `worktree.archive`, removes the checkout and deletes the branch unless it is unmerged (then it is kept, and a toast says so). Settings → Workspaces sets the worktree folder and branch name prefix, and **Clean up** lists worktrees with size, last commit and git state. Worktrees created outside Atlas are imported.

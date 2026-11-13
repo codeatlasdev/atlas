@@ -91,6 +91,12 @@ const TOOLS: &[ToolDef] = &[
         schema: schema_wait_ready,
         control: None,
     },
+    ToolDef {
+        name: "atlas_heavy_status",
+        description: "Read-only. The machine-wide queue of heavy jobs (builds, test suites, benches) shared by every project, worktree and agent on this machine: {slots, load, mem_available_pct, running[], queued[]}; each job has {label, command, cwd, project, pid, state, queued_at, started_at (unix ms), age_s, avg_s (average of past runs of the label), eta_s (seconds until it ends, or starts)}. Works without `atlas dev`. Agents MUST run heavy commands (cargo build/test, bun run check, e2e, benches) through `atlas run --heavy [--label X] -- <cmd…>`, never directly: it waits its turn (at most `slots` jobs run at once, first come first served), passes stdout/stderr through and returns the command's exit code. Check this tool to see who holds the slots and how long the wait will be.",
+        schema: schema_no_args,
+        control: None,
+    },
 ];
 
 fn schema_no_args() -> Value {
@@ -192,6 +198,7 @@ pub async fn call(root: &Path, name: &str, args: &Value) -> ToolResult {
         "atlas_logs" => logs_tool(root, args),
         "atlas_logs_search" => search_tool(root, args),
         "atlas_config" => config_tool(root),
+        "atlas_heavy_status" => heavy_status_tool(),
         _ => wait_ready(root, args).await,
     }
 }
@@ -355,6 +362,12 @@ fn search_tool(root: &Path, args: &Value) -> ToolResult {
         .map(|l| l.render())
         .collect::<Vec<_>>()
         .join("\n"))
+}
+
+/// The heavy-job queue (`atlas heavy status --json`): machine-wide, so it needs no project.
+fn heavy_status_tool() -> ToolResult {
+    let st = atlas_core::heavy::Dir::default_dir().status(atlas_core::heavy::slots());
+    serde_json::to_string_pretty(&st).map_err(|e| e.to_string())
 }
 
 pub(crate) fn config_tool(root: &Path) -> ToolResult {
@@ -628,7 +641,8 @@ mod tests {
                 "atlas_stop_service",
                 "atlas_start_service",
                 "atlas_run_action",
-                "atlas_wait_ready"
+                "atlas_wait_ready",
+                "atlas_heavy_status"
             ]
         );
         for t in c.as_array().unwrap() {

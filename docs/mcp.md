@@ -46,6 +46,7 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | [`atlas_start_service`](#atlas_restart_service--atlas_stop_service--atlas_start_service) | `service` | yes |
 | [`atlas_run_action`](#atlas_run_action) | `action`, `confirmed?` | yes |
 | [`atlas_wait_ready`](#atlas_wait_ready) | `service?`, `timeout_s?` | live heartbeat |
+| [`atlas_heavy_status`](#atlas_heavy_status) | none | no |
 
 ### `atlas_status`
 
@@ -234,6 +235,20 @@ Results:
 - atlas not running: error `atlas dev is not running; start it in a terminal`.
 
 > **Client timeouts.** MCP clients cancel a call that takes too long. OMP's default is 30 s per request, so a `timeout_s` above about 25 will be cut off by the client. Either keep `timeout_s` ≤ 25 and call again, or raise the client timeout (OMP: `"timeout": 120000` in the server entry, up to cover the 600 s maximum if you need it). Atlas itself answers every control request within 30 s.
+
+### `atlas_heavy_status`
+
+Read-only and machine-wide (it needs no project and no `atlas dev`): the queue of heavy jobs shared by every project, worktree and agent on this machine ([`atlas run --heavy`](cli.md#atlas-run---heavy)).
+
+```json
+{ "slots": 2, "load": 3.1, "mem_available_pct": 42,
+  "running": [ { "label": "gate", "command": "bun run check", "cwd": "/work/atlas-wt-a", "project": "atlas-wt-a",
+                 "pid": 4242, "state": "running", "queued_at": 1763040000000, "started_at": 1763040004000,
+                 "slot": 0, "age_s": 61, "avg_s": 240, "eta_s": 179 } ],
+  "queued":  [ { "label": "gate", "...": "...", "state": "queued", "age_s": 20, "avg_s": 240, "eta_s": 179 } ] }
+```
+
+`load` is the 5-minute load average and `mem_available_pct` the percent of memory free (each `null` where the OS cannot tell). `eta_s` is the seconds until a running job ends, or until a queued job starts, computed from the rolling average of the last 8 successful runs of the same `label`; `null` when the label has no history. **Agents should run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy -- <cmd…>` instead of spawning them directly**, so a dozen agents never overload the machine; use this tool to see who holds the slots and how long the wait is.
 
 ### Typical agent workflow
 

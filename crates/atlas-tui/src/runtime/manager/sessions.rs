@@ -68,7 +68,7 @@ impl ServiceManager {
             self.patch_ios_project_yml_path().await;
         }
 
-        let mut cmd = crate::runtime::process::task_command(&action.command);
+        let mut cmd = crate::runtime::process::task_command(&action.spawn_command());
         cmd.current_dir(&self.root_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

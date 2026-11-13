@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -17,15 +19,18 @@ typedef TransportFactory = Future<Transport> Function(
   String secretKeyHex,
 );
 
+/// The demo computer is answered in the app; every other one is dialled.
 Future<Transport> _defaultTransportFactory(
   MacDevice device,
   String secretKeyHex,
-) async => FrbTransport.connect(
-  secretKeyHex: secretKeyHex,
-  nodeId: device.nodeId,
-  addrs: device.addrs,
-  relay: device.relay,
-);
+) async => isDemo(device)
+    ? demoTransport()
+    : await FrbTransport.connect(
+        secretKeyHex: secretKeyHex,
+        nodeId: device.nodeId,
+        addrs: device.addrs,
+        relay: device.relay,
+      );
 
 final transportFactoryProvider = Provider<TransportFactory>(
   (ref) => _defaultTransportFactory,
@@ -39,6 +44,10 @@ final macStorageProvider = Provider<MacStorage>((ref) => MacStorage());
 final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
   (ref) => ref.read(macStorageProvider).loadDevices(),
 );
+
+/// Showing the in-app demo computer instead of the paired ones. Not saved: a relaunch
+/// leaves the demo.
+final demoModeProvider = StateProvider<bool>((ref) => false);
 
 /// Manages the [Multiplexer] lifecycle for a single paired Mac.
 ///

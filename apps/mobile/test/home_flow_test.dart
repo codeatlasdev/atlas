@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 
-import 'fixtures/demo_computer.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
@@ -120,6 +120,33 @@ void main() {
     await _settle(t);
     expect(find.text('Claude Code integration is off'), findsOneWidget);
     expect(find.textContaining('integration is off'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    await _settle(t);
+  });
+
+  // App Review reaches the app only through "Explore a demo": with nothing paired and
+  // the real transport factory (no override), the demo computer must answer in the app,
+  // never be dialled, and leaving it must go back to the onboarding.
+  testWidgets('demo: the in-app computer opens with nothing paired', (t) async {
+    await t.binding.setSurfaceSize(const Size(393, 852));
+    final container = ProviderContainer(
+      overrides: [macStorageProvider.overrideWithValue(_Storage(const []))],
+    );
+    addTearDown(container.dispose);
+    container.read(demoModeProvider.notifier).state = true;
+    await t.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(theme: atlasTheme(), home: const HomeScreen()),
+      ),
+    );
+    await _settle(t);
+    expect(find.byType(Onboarding), findsNothing);
+    expect(find.text('orbit-shop'), findsWidgets);
+
+    container.read(demoModeProvider.notifier).state = false;
+    await _settle(t);
+    expect(find.byType(Onboarding), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await _settle(t);
   });

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
@@ -68,10 +69,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  /// What the home shows: onboarding, or a computer's dashboard.
+  /// What the home shows: onboarding, the demo computer, or a paired one's dashboard.
   ({bool onboard, MacDevice? device, List<MacDevice> others}) _target(
     List<MacDevice> stored,
   ) {
+    if (ref.watch(demoModeProvider)) {
+      return (onboard: false, device: demoDevice, others: const []);
+    }
     final onboard =
         stored.isEmpty ||
         (!ref.watch(onboardingSeenProvider) && _alwaysOnboard);

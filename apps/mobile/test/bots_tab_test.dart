@@ -13,7 +13,7 @@ import 'package:atlas_mobile/features/bots/bots_screen.dart';
 import 'package:atlas_mobile/features/bots/bot_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 
-import 'fixtures/demo_computer.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -75,5 +75,7 @@
 	<string>Used to scan QR codes when pairing a Mac.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Used to unlock terminal write access.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

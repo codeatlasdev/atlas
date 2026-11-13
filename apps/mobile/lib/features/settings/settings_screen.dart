@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -50,7 +51,10 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AtlasColors.of(context);
-    final devices = ref.watch(pairedDevicesProvider).value ?? const [];
+    final demo = ref.watch(demoModeProvider);
+    final devices = demo
+        ? const [demoDevice]
+        : ref.watch(pairedDevicesProvider).value ?? const <MacDevice>[];
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -82,10 +86,14 @@ class SettingsScreen extends ConsumerWidget {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
+                    // The demo is not stored: leaving it is the only thing to forget.
                     TextButton(
                       style: TextButton.styleFrom(foregroundColor: c.error),
-                      onPressed: () => _forget(context, ref, d),
-                      child: const Text('Forget'),
+                      onPressed: isDemo(d)
+                          ? () => ref.read(demoModeProvider.notifier).state =
+                                false
+                          : () => _forget(context, ref, d),
+                      child: Text(isDemo(d) ? 'Leave demo' : 'Forget'),
                     ),
                   ],
                 ),

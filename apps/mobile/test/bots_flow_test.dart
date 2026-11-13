@@ -9,7 +9,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/bots/bots_screen.dart';
 import 'package:atlas_mobile/features/bots/bot_screen.dart';
 
-import 'fixtures/demo_computer.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 class _Storage extends MacStorage {
   _Storage(this.devices) : super(storage: null);

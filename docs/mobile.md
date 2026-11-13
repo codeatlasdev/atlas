@@ -26,6 +26,8 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 
 **Revoke** cuts the phone off immediately and forgets it. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
 
+**No computer at hand?** Under the scanner, **Explore a demo** opens a computer that lives in the app (`apps/mobile/lib/core/demo/demo_computer.dart`): sample projects, services, logs, agents with a permission prompt to answer, a crew. It answers the same protocol as hostd, connects to nothing and is not saved; **Settings → Leave demo**, pairing a real computer or relaunching ends it. It is how App Review and Play review use the app (their review notes point to it), and the tests run every screen against it.
+
 ### Pairing fails with a VPN or WARP on
 
 The pairing code carries this computer's key, its relay and its direct addresses (`addrs`). hostd publishes only the addresses of real LAN interfaces, private IPv4 first, then ULA and global IPv6. It leaves out loopback, link-local (`fe80::`, `169.254.`), CGNAT `100.64.0.0/10` and any address that only a tunnel owns (a `utun`/`tun`/`wg`/`tailscale` interface, or any interface flagged point-to-point), because a phone on the LAN cannot reach those (`crates/atlas-host/src/mobile/addrs.rs`, #113). If every address is a tunnel's, they are published anyway rather than an empty list; the relay still connects.

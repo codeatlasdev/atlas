@@ -11,7 +11,8 @@ bool isDemo(MacDevice d) => d.nodeId == demoDevice.nodeId;
 
 /// A computer that lives in the app: it answers the same protocol as `atlas hostd`
 /// (replies by id, pushes with `ev`), so every screen runs its real code against it.
-/// Used by tests that need a self-contained Transport without a real host.
+/// "Explore a demo" on the pairing screen opens it (App Review, and anyone without a
+/// computer at hand); tests use it as a self-contained Transport.
 Transport demoTransport({List<Map<String, String>> integrations = const []}) =>
     _DemoComputer(integrations);
 

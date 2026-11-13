@@ -1364,10 +1364,11 @@ fn foreign_holder() -> (std::process::Child, u16) {
     let mut line = String::new();
     loop {
         line.clear();
-        assert!(
-            out.read_line(&mut line).unwrap() > 0,
-            "holder died before binding"
-        );
+        if out.read_line(&mut line).unwrap_or(0) == 0 {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("holder died before binding");
+        }
         if let Some(p) = line.trim().strip_prefix("PORT=") {
             return (child, p.parse().unwrap());
         }

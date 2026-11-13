@@ -443,7 +443,7 @@ mod tests {
         let r = rpc(&s, json!({"jsonrpc":"2.0","id":3,"method":"tools/list"}))
             .await
             .unwrap();
-        assert_eq!(r["result"]["tools"].as_array().unwrap().len(), 9);
+        assert_eq!(r["result"]["tools"].as_array().unwrap().len(), 10);
     }
 
     #[tokio::test]

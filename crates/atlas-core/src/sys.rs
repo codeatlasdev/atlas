@@ -59,6 +59,35 @@ pub fn hostname() -> Option<String> {
     imp::hostname()
 }
 
+/// The 1, 5 and 15 minute load averages; `None` where the OS has none (Windows).
+pub fn load_avg() -> Option<(f64, f64, f64)> {
+    imp::load_avg()
+}
+
+/// Percent of physical memory the OS can hand out without hurting (0-100); `None` when unreadable.
+/// macOS: `kern.memorystatus_level` (the figure the kernel's own pressure logic uses, free plus
+/// reclaimable); Linux: `MemAvailable / MemTotal`; Windows: `GlobalMemoryStatusEx`.
+pub fn mem_available_pct() -> Option<u8> {
+    imp::mem_available_pct()
+}
+
+/// Installed physical memory in bytes, `None` when unreadable.
+pub fn mem_total_bytes() -> Option<u64> {
+    imp::mem_total_bytes()
+}
+
+/// `(MemAvailable, MemTotal)` of a `/proc/meminfo` text, in kB. Pure so it is testable anywhere.
+#[cfg_attr(all(target_os = "macos", not(test)), allow(dead_code))]
+#[cfg_attr(windows, allow(dead_code))]
+pub(crate) fn parse_meminfo(text: &str) -> Option<(u64, u64)> {
+    let field = |name: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(name)?.strip_prefix(':'))
+            .and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+    };
+    Some((field("MemAvailable")?, field("MemTotal")?)).filter(|(_, total)| *total > 0)
+}
+
 /// The executable file of `pid`, `None` when it is gone or unreadable.
 pub fn exe_path(pid: u32) -> Option<PathBuf> {
     imp::exe_path(pid)
@@ -275,6 +304,54 @@ mod imp {
         Some(String::from_utf8_lossy(&buf[..end]).into_owned())
     }
 
+    pub fn load_avg() -> Option<(f64, f64, f64)> {
+        let mut l = [0f64; 3];
+        // SAFETY: `l` holds the 3 doubles getloadavg writes.
+        (unsafe { libc::getloadavg(l.as_mut_ptr(), 3) } == 3).then_some((l[0], l[1], l[2]))
+    }
+
+    /// `sysctlbyname` of a fixed-size integer (`u32` or `u64`), `None` when the name is unknown.
+    #[cfg(target_os = "macos")]
+    fn sysctl_int<T: Default>(name: &std::ffi::CStr) -> Option<T> {
+        let mut v = T::default();
+        let mut len = std::mem::size_of::<T>();
+        // SAFETY: `v` is `len` writable bytes; `name` is NUL-terminated; no new value is set.
+        let rc = unsafe {
+            libc::sysctlbyname(
+                name.as_ptr(),
+                (&mut v as *mut T).cast(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        (rc == 0 && len == std::mem::size_of::<T>()).then_some(v)
+    }
+
+    pub fn mem_available_pct() -> Option<u8> {
+        #[cfg(target_os = "macos")]
+        {
+            sysctl_int::<u32>(c"kern.memorystatus_level").map(|p| p.min(100) as u8)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let (avail, total) = parse_meminfo(&std::fs::read_to_string("/proc/meminfo").ok()?)?;
+            Some((avail.saturating_mul(100) / total).min(100) as u8)
+        }
+    }
+
+    pub fn mem_total_bytes() -> Option<u64> {
+        #[cfg(target_os = "macos")]
+        {
+            sysctl_int::<u64>(c"hw.memsize").filter(|t| *t > 0)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let (_, total_kb) = parse_meminfo(&std::fs::read_to_string("/proc/meminfo").ok()?)?;
+            Some(total_kb.saturating_mul(1024))
+        }
+    }
+
     pub fn exe_path(pid: u32) -> Option<PathBuf> {
         #[cfg(target_os = "macos")]
         {
@@ -483,6 +560,30 @@ mod imp {
 
     pub fn hostname() -> Option<String> {
         std::env::var("COMPUTERNAME").ok().filter(|s| !s.is_empty())
+    }
+
+    /// Windows has no load average.
+    pub fn load_avg() -> Option<(f64, f64, f64)> {
+        None
+    }
+
+    fn mem_status() -> Option<windows_sys::Win32::System::SystemInformation::MEMORYSTATUSEX> {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        // SAFETY: an all-zero MEMORYSTATUSEX is valid; dwLength is set before the call as required.
+        let mut m: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+        m.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        // SAFETY: `m` is a valid, correctly sized MEMORYSTATUSEX.
+        (unsafe { GlobalMemoryStatusEx(&mut m) } != 0).then_some(m)
+    }
+
+    pub fn mem_available_pct() -> Option<u8> {
+        let m = mem_status()?;
+        (m.ullTotalPhys > 0)
+            .then(|| (m.ullAvailPhys.saturating_mul(100) / m.ullTotalPhys).min(100) as u8)
+    }
+
+    pub fn mem_total_bytes() -> Option<u64> {
+        mem_status().map(|m| m.ullTotalPhys).filter(|t| *t > 0)
     }
 
     pub fn exe_path(pid: u32) -> Option<PathBuf> {
@@ -833,5 +934,25 @@ mod tests {
         let mut b = [0u8; 32];
         random_bytes(&mut b).unwrap();
         assert!(b.iter().any(|&x| x != 0));
+    }
+
+    #[test]
+    fn meminfo_gives_available_and_total_and_rejects_what_it_cannot_use() {
+        let text = "MemTotal:       16384000 kB\nMemFree:          100000 kB\nMemAvailable:    4096000 kB\nBuffers: 1 kB\n";
+        assert_eq!(parse_meminfo(text), Some((4_096_000, 16_384_000)));
+        // A name that merely starts with the field name is not the field.
+        assert_eq!(parse_meminfo("MemTotalX: 5 kB\nMemAvailable: 1 kB\n"), None);
+        // Old kernels have no MemAvailable: unknown, never a made-up figure.
+        assert_eq!(parse_meminfo("MemTotal: 8 kB\nMemFree: 1 kB\n"), None);
+        assert_eq!(parse_meminfo("MemTotal: 0 kB\nMemAvailable: 0 kB\n"), None);
+        assert_eq!(parse_meminfo(""), None);
+    }
+
+    #[test]
+    fn this_machines_memory_is_readable_and_sane() {
+        let total = mem_total_bytes().expect("every supported OS reports its memory");
+        assert!(total >= 256 << 20, "{total}");
+        let pct = mem_available_pct().expect("every supported OS reports free memory");
+        assert!(pct <= 100, "{pct}");
     }
 }

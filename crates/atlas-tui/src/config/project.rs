@@ -93,6 +93,22 @@ pub struct ActionConfig {
     /// this text (title = action label). Enter/`y` runs it, Esc/`n` cancels.
     /// Example: `confirm: "This wipes the local database. Continue?"`
     pub confirm: Option<String>,
+    /// Route the command through the machine-wide heavy-job queue (`atlas run --heavy`): at most N
+    /// heavy jobs run at once on this machine (default `min(cores / 2, GB of memory / 8)`), first come first served.
+    /// Use it for actions that build, run test suites or benches.
+    #[serde(default)]
+    pub heavy: bool,
+}
+
+impl ActionConfig {
+    /// The command to spawn: `command`, routed through the heavy-job queue when `heavy: true`.
+    pub fn spawn_command(&self) -> std::borrow::Cow<'_, str> {
+        if self.heavy {
+            atlas_core::heavy::queued(&self.label, &self.command).into()
+        } else {
+            (&self.command).into()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
@@ -198,6 +214,9 @@ pub struct DeployConfig {
     pub app: Option<String>,
     /// Local build command (`sh -c`, cwd = project root).
     pub build: Option<String>,
+    /// Run `build` through the machine-wide heavy-job queue (`atlas run --heavy`).
+    #[serde(default)]
+    pub build_heavy: bool,
     /// Root-relative paths to ship. Omitted: `git archive HEAD`.
     pub artifact: Option<Vec<String>>,
     pub targets: HashMap<String, DeployTarget>,

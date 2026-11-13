@@ -29,6 +29,7 @@ If a deploy is interrupted after the swap (the host rebooted, or `kill -9` hit t
 deploy:
   app: shop                 # [a-z0-9-]+, default: project name
   build: bun run build      # local `sh -c` in the project root (skip with --skip-build)
+  build_heavy: true         # optional: run the build through the machine-wide heavy-job queue (`atlas run --heavy`)
   artifact: [dist, package.json, bun.lock]   # omit to ship `git archive HEAD`
   targets:
     prod:

@@ -26,6 +26,9 @@ enum Commands {
     /// Stop the running atlas (runner or TUI) and every service it started
     Down(commands::down::DownArgs),
 
+    /// Check this machine: `--hygiene` finds orphaned Atlas processes and the disk Atlas owns
+    Doctor(commands::doctor::DoctorArgs),
+
     /// Initialize atlas.yaml for the current project
     Init(commands::init::InitArgs),
 
@@ -219,6 +222,7 @@ async fn run() -> Result<()> {
     match command {
         Commands::Dev(args) => args.run().await?,
         Commands::Down(args) => args.run().await?,
+        Commands::Doctor(args) => args.run().await?,
         Commands::Init(args) => args.run().await?,
         Commands::Config { command } => command.run()?,
         Commands::Deploy(args) => args.run().await?,

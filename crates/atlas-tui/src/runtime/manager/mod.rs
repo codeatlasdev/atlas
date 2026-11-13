@@ -16,6 +16,9 @@ mod graph;
 mod health_check;
 #[cfg(test)]
 mod health_tests;
+mod hygiene;
+#[cfg(test)]
+mod hygiene_tests;
 mod lifecycle;
 mod mirror;
 mod mobile;
@@ -56,6 +59,9 @@ pub struct ServiceManager {
     pub(crate) log_dir: PathBuf,
     /// Unique id for this atlas run (pid + start epoch), written to the status file.
     pub(crate) session: String,
+    /// Owner id of this manager's processes in the hygiene registry: `session` plus a sequence
+    /// number, unique per manager even within one second of one process.
+    pub(crate) hygiene_run: String,
     /// Unix seconds at manager creation; immutable for the whole run.
     pub(crate) started_at: u64,
     /// How long a service with no port, health URL or `ready_log` must stay alive before it
@@ -96,6 +102,10 @@ pub struct ServiceManager {
     pub(crate) adhoc: HashSet<String>,
     /// Last resource sample (`usage.rs`), taken every few seconds.
     pub(crate) sampled_at: Option<std::time::Instant>,
+    /// Last time the descendants of this run's roots were recorded (`hygiene.rs`).
+    pub(crate) tracked_at: Option<std::time::Instant>,
+    /// Where this run's owner tags are registered (the user's `~/.atlas/hygiene`).
+    pub(crate) hygiene: atlas_core::hygiene::Registry,
 }
 
 impl ServiceManager {

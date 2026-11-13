@@ -130,6 +130,8 @@ macro_rules! handlers {
     ($($extra:tt)*) => {
         tauri::generate_handler![
             cmds::projects_list,
+            cmds::hygiene_report,
+            cmds::hygiene_fix,
             cmds::projects_add,
             cmds::system_ui_sounds,
             cmds::live_resync,

@@ -148,6 +148,23 @@ If Atlas is killed hard (SIGKILL, crash, power loss) its children can survive. O
 
 Atlas deliberately never kills "whatever is listening on the configured port": on macOS with OrbStack that would hit the container runtime's port forwarder.
 
+### Sessions and hygiene
+
+`.pids` and the parent chain miss a process that **daemonized** (a browser a test run opened, a dev server that forked away: it is re-parented to init/launchd and no longer descends from the service). So everything Atlas starts belongs to a **session**: a service (`<run>:<service>`), an action (`<run>:action/<label>`), an interactive session (`<run>:session/<label>`), a hostd terminal (its id), an `atlas desktop --agent` instance. Each started root is recorded in `~/.atlas/hygiene/registry.json` with its owner `(pid, start time)` (a bare pid is reused; the start time names a process for good). How the rest of a session's tree is found depends on the OS:
+
+- **Linux** reads `ATLAS_SESSION=<session>` from every process's environment (set last on every spawn, so a service's `env:` cannot retag its tree). It is inherited by every descendant, `setsid` and double forks included, so a daemonized grandchild is found even if nobody ever saw it.
+- **macOS and Windows cannot read another process's environment** (macOS with SIP returns argv but no environment, even for the same user; Windows has no API). There the owner **records membership while it lives**: at spawn and every 2 s (`atlas dev` on its health tick, hostd on its own tick, an action every second) it snapshots the process table and records every descendant of each live root as `(pid, start)`. A grandchild that later daemonizes and is re-parented to launchd is still known, because it was seen under its root first. **The window:** a process that forks and detaches between two snapshots (under about 2 s) is never seen and escapes on macOS and Windows. This is a limit of the OS, not something to tune away; `atlas doctor --hygiene` says it.
+
+Then:
+
+- **Stop, action end, terminal close:** after the tree kill, every live process of the session (tag, recorded member, current tree of the root) is ended: SIGTERM, a 2 to 3 s grace, SIGKILL, on **exact pids**, re-checking each pid's start time right before every signal. Never a process group, never a negative pid, never by port; a recorded pid whose start time differs is a stranger and is never signalled.
+- **Owner died** (`atlas dev` SIGKILLed, hostd crashed): hostd records and checks every 2 s (one process-table read and a registry read) and reaps the orphaned sessions, so nothing recorded is left **within 10 s** (2 s + the 3 s grace). A standalone `atlas dev` with no hostd sweeps at the next start.
+- **A tag nobody registered** (Linux) is reaped only once the process is older than 60 s (a daemon spawns first and registers a few milliseconds later), by the periodic full sweep.
+- **Registered directories** (agent temp dirs, browser profiles, caches, and the directory of each `atlas desktop --agent` instance) have a size cap (default 512 MiB): the directory of a dead session is deleted whole, one over its cap loses its oldest entries first (an agent instance's directory is its HOME and is never trimmed while it runs, only removed whole once it is gone). Only paths in the registry are ever touched.
+- **Spotlight (macOS):** every worktree root Atlas creates (`~/.atlas/worktrees`, the per-repo folder) and every directory it registers gets an empty `.metadata_never_index` file, so `mdworker` does not index `target/` and `node_modules` trees (a Mac froze while Spotlight indexed several fresh worktrees at once). Nothing is deleted or changed to do it.
+
+`atlas doctor --hygiene` shows all of this and `--fix` applies it ([cli](cli.md#atlas-doctor)); the desktop has the same in Settings > Workspaces > Hygiene; agents read it with the MCP tool `atlas_hygiene` (look only).
+
 ### Lock files (`lock_file`)
 
 Some dev servers keep a JSON lock `{"pid": N}` (e.g. `apps/ai/.mastra/dev.lock`). Before the service starts (and during orphan cleanup) Atlas reads it and:

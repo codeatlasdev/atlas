@@ -168,6 +168,7 @@ pub(super) async fn create(
     } else {
         workspace_dir()
     };
+    let ws_root = ws_dir.clone();
     let parent_dir = if setting("nestWorkspaces").as_deref() == Some("false") {
         ws_dir
     } else {
@@ -180,6 +181,12 @@ pub(super) async fn create(
         k += 1;
     }
     hub.mkdir(&host, &parent_dir.to_string_lossy()).await?;
+    if !repo.is_remote() {
+        // Every checkout below is rebuilt constantly (`target/`, `node_modules`): keep Spotlight
+        // out of the worktree root and of this repo's folder (a freeze indexed several at once).
+        atlas_core::hygiene::mark_never_index(&parent_dir);
+        atlas_core::hygiene::mark_never_index(&ws_root);
+    }
     let dir_s = dir.to_string_lossy().into_owned();
 
     progress("fetch", "git fetch origin");

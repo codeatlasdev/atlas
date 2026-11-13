@@ -30,6 +30,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | `atlas_logs_search` | `query` (substring or `/regex/`), `service?`, `limit?` (1-500, default 50), `include_previous?` | no |
 | `atlas_restart_service` / `atlas_stop_service` / `atlas_start_service` | `service` | yes |
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |
+| `atlas_hygiene` | none | no (look-only: orphaned processes, disk per project, registered dirs; to free them the user runs `atlas doctor --hygiene --fix`) |
 | `atlas_wait_ready` | `service?`, `timeout_s?` (1-600, default 60) | yes (live heartbeat) |
 
 Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines; on timeout it also names why each blocking service is not ready (the failing `ready:` probe's message for `degraded`, since-when plus last output for `unhealthy`).

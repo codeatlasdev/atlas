@@ -619,3 +619,152 @@ async fn a_terminal_says_it_is_atlas_whatever_launched_hostd() {
     let out = String::from_utf8_lossy(&s.buf.lock().ring_bytes()).into_owned();
     assert!(out.contains("[unset|unset|"), "pipe session: {out:?}");
 }
+
+/// A shell that leaves a daemonized `sleep` behind (double fork: its parent exits at once, so it
+/// re-parents to init and no parent chain reaches it) and writes that pid to `marker`. The
+/// subshell lingers 1.5 s before it exits, so hostd's recording sees the `sleep` below the shell
+/// first (a process that detaches between two recordings escapes on macOS, `atlas_core::hygiene`).
+#[cfg(unix)]
+fn daemonizing_shell(marker: &std::path::Path, then: &str) -> String {
+    format!(
+        "( sleep 300 & echo $! > {}; sleep 1.5 ) & wait; {then}",
+        marker.display()
+    )
+}
+
+#[cfg(unix)]
+async fn daemon_pid(marker: &std::path::Path) -> u32 {
+    for _ in 0..200 {
+        if let Ok(s) = std::fs::read_to_string(marker)
+            && let Ok(p) = s.trim().parse::<u32>()
+        {
+            return p;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("the daemonized process never started");
+}
+
+/// The recording hostd's ticker does every couple of seconds, done by hand.
+#[cfg(unix)]
+fn track(dir: &std::path::Path) {
+    atlas_core::hygiene::Registry::at(dir).track().unwrap();
+}
+
+#[cfg(unix)]
+async fn gone_within(pid: u32, within: Duration) -> bool {
+    let end = std::time::Instant::now() + within;
+    while std::time::Instant::now() < end {
+        let zombie = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().starts_with('Z'))
+            .unwrap_or(false);
+        if atlas_core::procs::start_time(pid).is_none() || zombie {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
+/// Wait (bounded) until the daemon has left the shell's parent chain.
+#[cfg(unix)]
+async fn left_the_parent_chain(shell: u32, daemon: u32) -> bool {
+    for _ in 0..200 {
+        if !atlas_core::procs::tree(shell, &atlas_core::procs::table()).contains(&daemon) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
+// Incident (#127): closing a terminal killed the shell, but the dev server or browser it had
+// daemonized kept running for good. hostd records what runs under each terminal while it lives;
+// the close ends all of it.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn closing_a_terminal_ends_the_process_it_daemonized() {
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("daemon.pid");
+    let s = Session::spawn(
+        shell_req(&daemonizing_shell(&marker, "exec sleep 300")),
+        dir.path(),
+    )
+    .unwrap();
+    let daemon = daemon_pid(&marker).await;
+    track(dir.path());
+    assert!(
+        left_the_parent_chain(s.pid.unwrap(), daemon).await,
+        "premise: daemon is outside the parent chain"
+    );
+    let registry = atlas_core::hygiene::Registry::at(dir.path());
+    assert!(
+        registry.roots().iter().any(|r| r.session == s.id),
+        "the shell is registered"
+    );
+    assert!(
+        registry.members().iter().any(|m| m.pid == daemon),
+        "the daemon was recorded under the shell"
+    );
+
+    s.kill().await;
+    assert!(
+        gone_within(daemon, Duration::from_secs(10)).await,
+        "daemon {daemon} survived the close"
+    );
+    assert!(
+        registry.roots().iter().all(|r| r.session != s.id),
+        "a closed terminal leaves no record"
+    );
+    assert!(registry.members().iter().all(|m| m.session != s.id));
+}
+
+// The shell ending by itself (`exit`, a crash) leaves the same orphan: reaped without a close.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_shell_that_exits_by_itself_does_not_leave_its_daemon_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("daemon.pid");
+    let s = Session::spawn(
+        shell_req(&daemonizing_shell(&marker, "sleep 1; exit 0")),
+        dir.path(),
+    )
+    .unwrap();
+    let daemon = daemon_pid(&marker).await;
+    track(dir.path());
+    until_exited(&s).await;
+    assert!(
+        gone_within(daemon, Duration::from_secs(10)).await,
+        "daemon {daemon} outlived its terminal's shell"
+    );
+}
+
+// Terminals own nothing of each other: closing one never touches another's processes.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn closing_a_terminal_leaves_another_terminals_processes_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ma, mb) = (dir.path().join("a.pid"), dir.path().join("b.pid"));
+    let a = Session::spawn(
+        shell_req(&daemonizing_shell(&ma, "exec sleep 300")),
+        dir.path(),
+    )
+    .unwrap();
+    let b = Session::spawn(
+        shell_req(&daemonizing_shell(&mb, "exec sleep 300")),
+        dir.path(),
+    )
+    .unwrap();
+    let (da, db) = (daemon_pid(&ma).await, daemon_pid(&mb).await);
+    track(dir.path());
+    a.kill().await;
+    assert!(gone_within(da, Duration::from_secs(10)).await);
+    assert!(
+        atlas_core::procs::start_time(db).is_some(),
+        "the other terminal's daemon must survive"
+    );
+    b.kill().await;
+    assert!(gone_within(db, Duration::from_secs(10)).await);
+}

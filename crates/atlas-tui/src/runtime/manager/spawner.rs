@@ -137,11 +137,16 @@ impl ServiceManager {
             crate::runtime::docker::apply_docker_env(&mut cmd);
         }
 
+        // Last, so a service `env:` can never retag its tree into another session.
+        self.tag_spawn(&mut cmd, name);
         let result = cmd.spawn();
 
         match result {
             Ok(mut child) => {
                 let pid = child.id();
+                if let Some(pid) = pid {
+                    self.register_root(name, pid, atlas_core::hygiene::Kind::Service);
+                }
                 if let Some(service) = self.services.get_mut(name) {
                     service.status.pid = pid;
                 }

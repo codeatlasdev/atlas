@@ -58,6 +58,10 @@ impl ServiceManager {
         Self {
             root_dir: root_dir.clone(),
             log_dir,
+            hygiene_run: format!(
+                "{session}-{}",
+                RUN_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ),
             session,
             started_at,
             min_uptime: super::types::MIN_UPTIME,
@@ -81,6 +85,8 @@ impl ServiceManager {
             clients: 0,
             adhoc: HashSet::new(),
             sampled_at: None,
+            tracked_at: None,
+            hygiene: run_registry(),
         }
     }
 
@@ -198,4 +204,23 @@ pub(super) fn resolve_order(config: &ProjectConfig) -> Vec<String> {
     }
 
     order
+}
+
+/// Distinguishes the managers of one process: the status `session` is `pid-epoch seconds`, which
+/// two managers created in the same second share, and a shared hygiene tag would let one
+/// manager's stop reap the other's services (a reap is by session).
+static RUN_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The registry of a run: the user's. Unit tests of the manager run real processes under it, so
+/// they get a throwaway one (they must neither write to `~/.atlas` nor sweep what is in it).
+#[cfg(not(test))]
+fn run_registry() -> atlas_core::hygiene::Registry {
+    atlas_core::hygiene::Registry::open()
+}
+
+#[cfg(test)]
+fn run_registry() -> atlas_core::hygiene::Registry {
+    static DIR: std::sync::LazyLock<tempfile::TempDir> =
+        std::sync::LazyLock::new(|| tempfile::tempdir().expect("tempdir"));
+    atlas_core::hygiene::Registry::at(DIR.path())
 }

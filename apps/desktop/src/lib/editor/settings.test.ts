@@ -1,9 +1,10 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { expect, mock, test } from "bun:test";
+import { prefsMock } from "../../../test/prefsMock.ts";
 
 // The adapter imports the rune store (`$state`), which bun cannot compile. The mock must be
 // registered before the adapter loads, so a static import cannot work here.
-mock.module("#lib/stores/prefs.svelte.ts", () => ({ prefs: { value: { editor: { tab_size: 2 } } } }));
+mock.module("#lib/stores/prefs.svelte.ts", () => prefsMock({ editor: { tab_size: 2 } }));
 const { EDITOR_PREF_DEFAULTS, resolveEditorPrefs, editorPrefs } = await import("./settings.ts");
 
 test("non-objects resolve to the defaults", () => {

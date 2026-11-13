@@ -28,6 +28,8 @@ pub struct SvcExtra {
     pub done: bool,
     /// Left out of this run (`atlas dev SERVICE…` / `--profile`): shown `off`.
     pub off: bool,
+    /// Memory facts (#131); a line is drawn only when there is something worth saying.
+    pub memory: Option<crate::runtime::manager::MemoryFacts>,
 }
 
 /// Everything the sidebar needs, so `height` and `render` see identical data.
@@ -276,6 +278,70 @@ mod tests {
         assert!(w.contains("⊘") && w.contains("off"), "{w}");
         let a = rows.iter().find(|r| r.contains("api")).unwrap();
         assert!(!a.contains("off"), "{a}");
+    }
+
+    /// Facts from the REAL wire payload (`__fixtures__/service-memory.json`, written by the
+    /// `runner::wire` test), parsed the way an attached TUI parses them.
+    fn real_memory() -> (
+        crate::runtime::manager::MemoryFacts,
+        crate::runtime::manager::MemoryFacts,
+        String,
+    ) {
+        let rows: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../../../apps/desktop/src/lib/__fixtures__/service-memory.json"
+        ))
+        .unwrap();
+        let note = rows[0]["note"].as_str().unwrap().to_string();
+        (
+            crate::runtime::manager::MemoryFacts::from_json(&rows[0]),
+            crate::runtime::manager::MemoryFacts::from_json(&rows[1]),
+            note,
+        )
+    }
+
+    #[test]
+    fn a_leaking_degraded_service_shows_reason_size_trend_budget_and_the_leak_each_on_a_line() {
+        let (api, _, note) = real_memory();
+        let mut ex = HashMap::new();
+        ex.insert(
+            "api".to_string(),
+            SvcExtra {
+                note: Some(note),
+                memory: Some(api),
+                ..Default::default()
+            },
+        );
+        let rows = draw(vec![svc("api", ServiceState::Degraded, Some(1))], ex);
+        let at = rows.iter().position(|r| r.contains("api")).unwrap();
+        assert!(rows[at].contains("◐"), "{}", rows[at]);
+        assert!(rows[at + 1].contains("using 1.3 GB"), "{}", rows[at + 1]);
+        assert!(rows[at + 2].contains("↳ memory 1.3 GB"), "{}", rows[at + 2]);
+        assert!(
+            rows[at + 3].contains("↳ rising +360 MB/min"),
+            "{}",
+            rows[at + 3]
+        );
+        assert!(rows[at + 4].contains("↳ budget warn"), "{}", rows[at + 4]);
+        assert!(
+            rows[at + 5].contains("↳ leak suspected: +660 MB"),
+            "{}",
+            rows[at + 5]
+        );
+    }
+
+    #[test]
+    fn a_steady_service_in_budget_gets_no_memory_line() {
+        let (_, web, _) = real_memory();
+        let mut ex = HashMap::new();
+        ex.insert(
+            "web".to_string(),
+            SvcExtra {
+                memory: Some(web),
+                ..Default::default()
+            },
+        );
+        let rows = draw(vec![svc("web", ServiceState::Running, Some(1))], ex);
+        assert!(rows.iter().all(|r| !r.contains("memory")), "{rows:?}");
     }
 
     #[test]

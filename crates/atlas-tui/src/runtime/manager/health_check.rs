@@ -228,10 +228,12 @@ impl ServiceManager {
             .lock()
             .ok()
             .and_then(|c| c.repeats.repeated(now).map(str::to_string));
+        let memory = svc.mem.warn_reason().or_else(|| svc.mem.over_reason());
         let verdict = judge(Inputs {
             live,
             ready_error: svc.probes.ready_error.as_deref(),
             repeated: repeated.as_deref(),
+            memory: memory.as_deref(),
         });
         let Some(verdict) = verdict else {
             // Grace: a dev server's hot restart closes its port for a moment.
@@ -242,6 +244,9 @@ impl ServiceManager {
             state => {
                 if let Some(svc) = self.services.get_mut(name) {
                     svc.probes.unhealthy = None;
+                    // Only the memory finding left the service `degraded`: it clears itself.
+                    svc.mem.degrading =
+                        memory.is_some() && verdict.reason.as_deref() == memory.as_deref();
                     svc.probes.degraded = verdict.reason;
                     // Up for a full RESET_AFTER: the hang-restart budget starts over.
                     if svc.probes.hang_restarts > 0
@@ -358,14 +363,21 @@ impl ServiceManager {
     /// both merge this object, so they can never drift apart.
     pub(crate) fn probe_facts_json(&self, name: &str) -> serde_json::Value {
         let report = self.unhealthy_report(name);
-        serde_json::json!({
+        let mut v = serde_json::json!({
             // `null` = no `ready` probe configured (or the service is not up).
             "ready": self.ready_ok(name),
             "probe_error": self.probe_error(name),
             "unhealthy_since": report.as_ref().map(|r| r.since_epoch),
             "unhealthy_misses": report.as_ref().map(|r| r.misses),
             "unhealthy_lines": report.map(|r| r.lines),
-        })
+        });
+        // `memory_rss`, `memory_trend`, `budget_state`, …: same producer for file and wire.
+        if let (Some(o), serde_json::Value::Object(mem)) =
+            (v.as_object_mut(), self.memory_facts_json(name))
+        {
+            o.extend(mem);
+        }
+        v
     }
 
     /// The readiness column: `None` without a `ready` probe (or while the service is not up),
@@ -383,10 +395,14 @@ impl ServiceManager {
         }
     }
 
-    /// Every [`USAGE_EVERY`]: memory/CPU per service tree, and the `max_memory`
-    /// guard (two samples over the ceiling → alert + restart).
-    async fn sample_usage(&mut self) {
-        if self.sampled_at.is_some_and(|t| t.elapsed() < USAGE_EVERY) {
+    /// Every `usage_every`: memory/CPU per service tree, fed to each service's memory watch
+    /// (series, `memory_warn` / `max_memory` budget, leak detector) and acted on: `degraded` over
+    /// the soft budget, and over `max_memory` (two samples in a row) restart or notify.
+    pub(crate) async fn sample_usage(&mut self) {
+        if self
+            .sampled_at
+            .is_some_and(|t| t.elapsed() < self.usage_every)
+        {
             return;
         }
         self.sampled_at = Some(std::time::Instant::now());
@@ -397,53 +413,108 @@ impl ServiceManager {
             .filter_map(|(n, s)| Some((n.clone(), s.status.pid?)))
             .collect();
         let mut usage = crate::runtime::usage::sample(&roots).await;
-        let mut over = Vec::new();
+        let t = crate::runtime::clock::now_secs();
+        let mut outcomes = Vec::new();
         for (name, svc) in self.services.iter_mut() {
             svc.usage = usage.remove(name);
-            match (svc.usage, svc.max_memory) {
-                (Some(u), Some(max)) if u.mem > max => {
-                    svc.mem_over += 1;
-                    if svc.mem_over >= 2 {
-                        svc.mem_over = 0;
-                        over.push((name.clone(), u.mem, max));
-                    }
-                }
-                _ => svc.mem_over = 0,
-            }
+            let Some(u) = svc.usage else { continue };
+            let reloads = svc
+                .probes
+                .ctx
+                .lock()
+                .map(|mut c| c.take_reloads())
+                .unwrap_or_default();
+            let o = svc.mem.on_sample(t, u.mem, &reloads);
+            outcomes.push((name.clone(), u.mem, o));
         }
-        for (name, used, max) in over {
-            let gb = |b: u64| b as f64 / (1u64 << 30) as f64;
-            let tries = self.services.get_mut(&name).map_or(0, |s| {
-                s.mem_restarts += 1;
-                s.mem_restarts
-            });
-            let give_up = tries > MEM_RESTARTS;
-            let message = if give_up {
-                format!(
-                    "using {:.1} GB (max_memory {:.1} GB) after {MEM_RESTARTS} restarts, stopped",
-                    gb(used),
-                    gb(max)
-                )
-            } else {
-                format!(
-                    "using {:.1} GB (max_memory {:.1} GB), restarting ({tries}/{MEM_RESTARTS})",
-                    gb(used),
-                    gb(max)
-                )
-            };
+        for (name, used, o) in outcomes {
+            self.apply_memory_outcome(&name, used, &o).await;
+        }
+        self.write_metrics_file();
+    }
+
+    /// The service stayed over `max_memory` for two samples: restart it (default, bounded by
+    /// [`MEM_RESTARTS`]) or only say so (`on_memory_max: notify`, it turns `degraded`).
+    pub(super) async fn on_over_max(&mut self, name: &str, used: u64) {
+        use crate::config::OnMemoryMax;
+        let Some(svc) = self.services.get_mut(name) else {
+            return;
+        };
+        let (Some(max), on_max) = (svc.mem.limits.max, svc.mem.on_max) else {
+            return;
+        };
+        let fmt = crate::runtime::memory::fmt_size;
+        if on_max == OnMemoryMax::Notify {
+            let message = format!(
+                "using {} (max_memory {}), left running (on_memory_max: notify)",
+                fmt(used),
+                fmt(max)
+            );
             let _ = self.event_tx.send(super::ManagerEvent::CriticalAlert {
-                service: name.clone(),
+                service: name.to_string(),
                 message: message.clone(),
             });
-            if give_up {
-                // Stop for good: an endless kill/respawn cycle is the loop this guards against.
-                self.stop_service(&name).await;
-                self.set_state_if_changed(&name, ServiceState::Failed);
-            } else {
-                self.restart_service(&name).await;
-            }
-            self.note(&name, message);
+            self.note(name, message);
+            return;
         }
+        svc.mem.restarts += 1;
+        let tries = svc.mem.restarts;
+        let give_up = tries > MEM_RESTARTS;
+        let message = if give_up {
+            format!(
+                "using {} (max_memory {}) after {MEM_RESTARTS} restarts, stopped",
+                fmt(used),
+                fmt(max)
+            )
+        } else {
+            format!(
+                "using {} (max_memory {}), restarting ({tries}/{MEM_RESTARTS})",
+                fmt(used),
+                fmt(max)
+            )
+        };
+        let _ = self.event_tx.send(super::ManagerEvent::CriticalAlert {
+            service: name.to_string(),
+            message: message.clone(),
+        });
+        if give_up {
+            // Stop for good: an endless kill/respawn cycle is the loop this guards against.
+            self.stop_service(name).await;
+            self.set_state_if_changed(name, ServiceState::Failed);
+        } else {
+            self.restart_service(name).await;
+        }
+        self.note(name, message);
+    }
+
+    /// Make the state follow the budget right away instead of waiting for the next probe tick:
+    /// `running` ⇄ `degraded` while the service has nothing else wrong with it.
+    pub(super) fn refresh_memory_state(&mut self, name: &str) {
+        let Some(svc) = self.services.get_mut(name) else {
+            return;
+        };
+        let reason = svc.mem.warn_reason().or_else(|| svc.mem.over_reason());
+        let next = match (&svc.status.state, reason) {
+            (ServiceState::Running, Some(r)) => {
+                svc.probes.degraded = Some(r);
+                svc.mem.degrading = true;
+                ServiceState::Degraded
+            }
+            // Still over budget and degraded only for it: the reason follows the live number.
+            (ServiceState::Degraded, Some(r)) if svc.mem.degrading => {
+                svc.probes.degraded = Some(r);
+                return;
+            }
+            // Back under budget, and the degradation was only the memory's (a failing `ready`
+            // probe or a repeating error would have replaced the reason and cleared the flag).
+            (ServiceState::Degraded, None) if svc.mem.degrading => {
+                svc.probes.degraded = None;
+                svc.mem.degrading = false;
+                ServiceState::Running
+            }
+            _ => return,
+        };
+        self.set_state_if_changed(name, next);
     }
 
     /// Latest memory/CPU of a running service.
@@ -452,9 +523,8 @@ impl ServiceManager {
     }
 }
 
-const USAGE_EVERY: Duration = Duration::from_secs(5);
 /// `max_memory` restarts per run before the service is stopped and marked Failed.
-const MEM_RESTARTS: u32 = 3;
+pub(super) const MEM_RESTARTS: u32 = 3;
 
 impl ServiceManager {
     /// Write .logs/.tui-status.json with current service states.
@@ -544,10 +614,15 @@ impl ServiceManager {
 /// file, then rename over the target, so readers see the old or new snapshot
 /// in full, never a truncated one. Best-effort.
 fn write_status_atomic(dir: &std::path::Path, text: &str) {
+    write_atomic(dir, ".tui-status.json", text);
+}
+
+/// The same tmp-then-rename write for any file of the log dir (`.tui-metrics.json` too).
+pub(super) fn write_atomic(dir: &std::path::Path, file: &str, text: &str) {
     let _ = std::fs::create_dir_all(dir);
-    let tmp = dir.join(".tui-status.json.tmp");
+    let tmp = dir.join(format!("{file}.tmp"));
     if std::fs::write(&tmp, text).is_ok() {
-        let _ = std::fs::rename(&tmp, dir.join(".tui-status.json"));
+        let _ = std::fs::rename(&tmp, dir.join(file));
     }
 }
 

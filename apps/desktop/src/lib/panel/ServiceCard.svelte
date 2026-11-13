@@ -89,6 +89,9 @@
 				}}>View logs</button
 			>
 		</div>
+		{#if up && service.memory_leak}
+			<div class="memnote" title={service.memory_leak}>{service.memory_leak}</div>
+		{/if}
 	{:else if showSpark}
 		<CardSpark {projectId} {service} {colors} />
 	{:else if def?.command}
@@ -172,6 +175,13 @@
 	.reason span {
 		flex: 1;
 		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.memnote {
+		font-size: 11px;
+		color: var(--ca-semantic-warning);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

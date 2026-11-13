@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 
 // Result of bot_list: whether the server is a bot server, and its bots.
@@ -13,10 +14,13 @@ typedef BotListResult = ({
 
 /// Every computer that can host crewmates: the paired Macs (one may be a bot computer
 /// itself) and the bot computers each Mac's desktop knows, reached through that Mac.
+/// In the demo, the demo computer stands in for the paired ones (as on the home).
 final crewDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>((
   ref,
 ) async {
-  final macs = await ref.watch(pairedDevicesProvider.future);
+  final macs = ref.watch(demoModeProvider)
+      ? const [demoDevice]
+      : await ref.watch(pairedDevicesProvider.future);
   final out = <MacDevice>[...macs];
   for (final mac in macs) {
     final mux = ref.watch(connectionNotifierProvider(mac)).value;

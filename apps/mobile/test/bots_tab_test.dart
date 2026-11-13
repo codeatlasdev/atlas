@@ -72,6 +72,34 @@ void main() {
     await _settle(t);
   });
 
+  // The demo showed an empty Atlas Crew (and Inbox): both read the paired computers
+  // only. With nothing paired and the demo on, the demo's crewmates must be listed.
+  testWidgets('demo: the crew tab lists the demo crewmates', (t) async {
+    await t.binding.setSurfaceSize(const Size(393, 852));
+    final container = ProviderContainer(
+      overrides: [
+        macStorageProvider.overrideWithValue(_Storage(const [])),
+        transportFactoryProvider.overrideWithValue(
+          (_, _) async => demoTransport(),
+        ),
+      ],
+    );
+    container.read(demoModeProvider.notifier).state = true;
+    await t.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(theme: atlasTheme(), home: const BotsScreen()),
+      ),
+    );
+    await _settle(t);
+    expect(find.text('Reviewer'), findsWidgets);
+    expect(find.text('Nightly'), findsWidgets);
+    await t.pumpWidget(const SizedBox());
+    // The demo computer's timers live with the container: dispose it inside the test.
+    container.dispose();
+    await _settle(t);
+  });
+
   // 2. Approve from the list — open Nightly's BotScreen, see approval bubble,
   //    tap Allow, banner goes away.
   testWidgets('approve from the list', (t) async {

@@ -737,7 +737,17 @@ fn ping_and_tools_work_before_initialize() {
     let mut c = McpClient::spawn(d.path());
     assert_eq!(c.request("ping", json!({}))["result"], json!({}));
     let r = c.request("tools/list", json!({}));
-    assert_eq!(r["result"]["tools"].as_array().unwrap().len(), 10);
+    // The catalogue's exact list is pinned in atlas-tui (`mcp::tools` tests); here: the tools an
+    // agent starts with are listed before `initialize`.
+    let names: Vec<&str> = r["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    for want in ["atlas_status", "atlas_logs", "atlas_wait_ready"] {
+        assert!(names.contains(&want), "{want} missing from {names:?}");
+    }
     let (err, text) = c.call("atlas_status", json!({}));
     assert!(!err, "{text}");
     // Still handshakes fine afterwards, and ping works after too.

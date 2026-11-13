@@ -21,6 +21,12 @@ const SETTLE_GRACE: Duration = Duration::from_millis(1500);
 /// Outcome of a tool: text for the agent, or an error text (`isError: true`).
 pub type ToolResult = Result<String, String>;
 
+/// How many tools `tools/list` returns.
+#[cfg(test)]
+pub(crate) fn tool_count() -> usize {
+    TOOLS.len()
+}
+
 /// One MCP tool. `control` is the control-socket command for tools that act on
 /// the running atlas; read tools (`None`) are served from files in `call`.
 struct ToolDef {

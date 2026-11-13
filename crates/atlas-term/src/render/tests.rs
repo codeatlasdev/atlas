@@ -229,3 +229,66 @@ fn grid_origin_hides_the_overscan_and_applies_the_sub_row_offset() {
 fn grid_origin_ignores_a_fraction_without_overscan() {
     assert_eq!(grid_origin_y(0, 0.4, 20.0), 0.0);
 }
+
+use super::gpu::Reconfig;
+use std::time::{Duration, Instant};
+
+// Incident (#166): `Surface::configure` failed validation after a display wake and wgpu's default
+// handler panicked the app. A failed configure now leaves the surface pending (frames skipped),
+// retried later with a growing, bounded delay.
+#[test]
+fn a_failed_configure_stays_pending_and_is_retried_after_a_backoff() {
+    let t0 = Instant::now();
+    let mut r = Reconfig::default();
+    assert!(!r.pending() && !r.should_try(t0), "nothing owed at rest");
+
+    r.request();
+    assert!(r.pending() && r.should_try(t0));
+
+    r.failed(t0);
+    assert!(r.pending(), "the frame must keep being skipped");
+    assert!(!r.should_try(t0), "no hammering right after a failure");
+    assert!(
+        r.should_try(t0 + Duration::from_secs(3)),
+        "but it is retried later"
+    );
+
+    r.done();
+    assert!(!r.pending() && r.failures() == 0, "a success clears it");
+    assert!(!r.should_try(t0 + Duration::from_secs(60)));
+}
+
+#[test]
+fn configure_retry_delay_grows_but_is_bounded() {
+    let t0 = Instant::now();
+    let mut r = Reconfig::default();
+    r.request();
+    let mut gaps = Vec::new();
+    for _ in 0..40 {
+        r.failed(t0);
+        // The smallest whole-ms offset at which a retry is allowed.
+        let gap = (0..=5000u64)
+            .find(|ms| r.should_try(t0 + Duration::from_millis(*ms)))
+            .expect("always retried within the cap");
+        gaps.push(gap);
+    }
+    assert!(
+        gaps.windows(2).all(|w| w[0] <= w[1]),
+        "non-decreasing: {gaps:?}"
+    );
+    assert!(gaps[0] < gaps[3], "grows: {gaps:?}");
+    assert!(*gaps.last().unwrap() <= 2000, "capped at 2 s: {gaps:?}");
+    assert_eq!(gaps[39], gaps[38], "reached the cap and stays");
+}
+
+// A new request while backing off (a resize during the outage) must not skip the back-off.
+#[test]
+fn a_new_request_during_backoff_does_not_bypass_it() {
+    let t0 = Instant::now();
+    let mut r = Reconfig::default();
+    r.request();
+    r.failed(t0);
+    r.request();
+    assert!(!r.should_try(t0), "still backing off");
+    assert!(r.should_try(t0 + Duration::from_secs(3)));
+}

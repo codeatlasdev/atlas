@@ -86,6 +86,10 @@ Under `~/.atlas/mobile/` (`$ATLAS_HOSTD_DIR/mobile/`): `key` (the computer's iro
 
 Needs the Flutter version pinned in `apps/mobile/pubspec.yaml` (`environment.flutter`, always the newest stable; the gate fails with `flutter upgrade` when yours is older, see `apps/mobile/AGENTS.md`) and a Rust toolchain (the transport is the `apps/mobile/native` crate, bound through flutter_rust_bridge). `scripts/mobile-check.sh` (part of `bun run check`) runs `flutter analyze` and `flutter test`. It is skipped with a notice when Flutter is not installed.
 
+## Goldens
+
+Screenshot tests compare against `apps/mobile/test/goldens/<os>/`: Flutter draws text a few pixels differently on macOS and Linux, so each platform has its own recording and is compared exactly against it (`test/flutter_test_config.dart`). After a visual change, record both: `flutter test --update-goldens` on a Mac writes `macos/`; for `linux/`, push and take the images from the failed CI run's `mobile-golden-failures` artifact (each `<name>_testImage.png` becomes `linux/<name>.png`), or run `--update-goldens` on Linux. Check that the two sets show the same thing.
+
 ## End-to-end test (iOS Simulator, Android emulator)
 
 `bun run mobile:e2e` (`scripts/mobile-e2e.ts`) runs `apps/mobile/integration_test/e2e_test.dart` against a real `atlas hostd`: the app pairs over iroh, lists a fixture project, opens it and a service's sheet, the Agents tab, an agent's chat and its terminal, whose replay must arrive. It touches nothing of yours and never shows a window:

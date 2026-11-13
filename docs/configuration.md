@@ -107,6 +107,7 @@ services:
 | `failure_threshold` | integer | `3` | Liveness misses in a row, while the process is alive and after it answered once, before the service turns `unhealthy`. `0` is treated as `1`. |
 | `ready` | object | none | Readiness probe, separate from liveness: `http` (path or URL) with an optional `status`, or a `command`, plus `timeout`. While liveness passes but this fails, the service is `degraded`. See [Health and readiness](#health-and-readiness). |
 | `on_unhealthy` | `notify` \| `restart` | `notify` | What Atlas does when the service turns `unhealthy`: `notify` shows the state, raises an alert and keeps the log context; `restart` also restarts it (same budget and delays as `max_restarts`). |
+| `remote` | object | none | The service runs on another machine; Atlas forwards its local `port` there over SSH instead of running it. `ssh` (a `~/.ssh/config` host or `user@host`), `port` (where the service listens on that side), `host` (default `localhost`, as seen from the SSH host). Needs `port`, excludes `command`. See [Remote services](#remote-services). |
 
 Notes:
 
@@ -225,6 +226,27 @@ services:
 - The counter resets after the service stays `running` for 60 s.
 - While waiting, the sidebar shows `↳ restarting in 4s (2/5)`; afterwards `↳ restarted ×N`. When the budget is spent the service is `failed` with `gave up after N restarts`.
 - Avoid `restart: always` on a one-shot task: it is relaunched after every success.
+
+### Remote services
+
+A heavy service (a database, an AI runtime, a video studio) can run on a beefier machine while the rest of the stack runs locally:
+
+```yaml
+services:
+  db:
+    port: 5432                                     # what the local stack connects to
+    remote: { ssh: dev-box, port: 5432 }           # where it really listens, seen from dev-box
+  ai:
+    port: 8000
+    remote: { ssh: me@gpu.lan, port: 8000, host: 127.0.0.1 }
+    health: http://localhost:8000/health           # probed through the forward
+```
+
+- Atlas runs no local copy. Its process is `ssh -N -L <port>:<host>:<remote port> <ssh>` with `BatchMode=yes` (key auth only: it never prompts), `ExitOnForwardFailure=yes` (a taken local port is a failure, not a silent no-op) and keepalives that notice a dead link within about 45 s.
+- It is an ordinary service otherwise: state, the port probe, logs (ssh's output is the service log), `depends_on`, profiles, MCP. The forward's local port follows Atlas Desktop's per-worktree port offset.
+- A dropped connection is the normal way a forward ends, so without an explicit `restart:` it restarts `always` (backoff and `max_restarts` as usual).
+- The port probe only proves the forward is up; add a `health` URL (or a `ready` probe) to know the remote service itself answers.
+- `ssh` and `host` must be plain words (no spaces, never starting with `-`): they go on an ssh command line.
 
 ## profiles
 

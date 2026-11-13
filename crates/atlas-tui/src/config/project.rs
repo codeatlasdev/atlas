@@ -390,6 +390,66 @@ pub struct ServiceDef {
     /// state, alert and captured log context) or `restart`.
     #[serde(default)]
     pub on_unhealthy: OnUnhealthy,
+    /// The service runs on another machine: atlas runs no local copy and forwards the
+    /// service's local `port` there over SSH, so it shows up (state, port probe, logs, restarts)
+    /// like a local one. Needs `port`, excludes `command`. Example:
+    /// `remote: { ssh: dev-box, port: 5432 }`.
+    pub remote: Option<RemoteService>,
+}
+
+/// `remote:` of a service: where the real service listens.
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+#[schemars(deny_unknown_fields)]
+pub struct RemoteService {
+    /// SSH destination (a `~/.ssh/config` host or `user@host`). Key auth only: atlas never
+    /// prompts (`BatchMode`).
+    pub ssh: String,
+    /// Port the service listens on, as seen from the SSH host.
+    pub port: u16,
+    /// Host the service listens on, as seen from the SSH host. Default `localhost`.
+    pub host: Option<String>,
+}
+
+impl RemoteService {
+    /// `ssh -N -L <local>:<host>:<port> <dest>` with the tunnel's options: never prompts,
+    /// exits when the local port is taken, notices a dead link within ~45 s. `ssh` is the
+    /// binary (`$ATLAS_SSH_BIN` in tests).
+    pub fn forward_command(&self, ssh: &str, local_port: u16) -> String {
+        let ssh = if ssh.contains(char::is_whitespace) {
+            format!("\"{ssh}\"")
+        } else {
+            ssh.to_string()
+        };
+        let host = self.host.as_deref().unwrap_or("localhost");
+        format!(
+            "{ssh} -N -o ExitOnForwardFailure=yes -o BatchMode=yes -o ServerAliveInterval=15 \
+             -o ServerAliveCountMax=3 -L {local_port}:{host}:{} {}",
+            self.port, self.ssh
+        )
+    }
+}
+
+impl ServiceDef {
+    /// What atlas runs for this service: its `command`, or for a `remote:` service the SSH
+    /// forward of its `port` (resolved when the run starts, so a port offset applied after
+    /// loading, as Atlas Desktop does per worktree, is the port forwarded).
+    pub fn run_command(&self) -> Option<String> {
+        if self.command.is_some() {
+            return self.command.clone();
+        }
+        let (r, port) = (self.remote.as_ref()?, self.port?);
+        Some(r.forward_command(&crate::runtime::tunnel::ssh_bin(), port))
+    }
+
+    /// The restart policy in effect: a `remote:` forward without an explicit one restarts
+    /// always (a dropped SSH connection is the normal way a forward ends).
+    pub fn restart_policy(&self) -> RestartPolicy {
+        if self.remote.is_some() && self.restart == RestartPolicy::No {
+            RestartPolicy::Always
+        } else {
+            self.restart
+        }
+    }
 }
 
 /// `ready:` — HTTP (`http` path or URL, expected `status`) or a `command`

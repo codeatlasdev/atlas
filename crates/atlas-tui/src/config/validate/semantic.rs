@@ -30,6 +30,38 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     let sorted = sorted_services(config);
 
     for (name, def) in &sorted {
+        if let Some(r) = &def.remote {
+            let path = format!("services.{name}.remote");
+            if def.command.is_some() {
+                errors.push(err(
+                    path.clone(),
+                    "a remote service runs no local command: remove `command`".into(),
+                ));
+            }
+            if def.port.is_none() {
+                errors.push(err(
+                    path.clone(),
+                    "needs the service's local `port` (where atlas forwards it)".into(),
+                ));
+            }
+            // Both go on an ssh command line: one plain word each, never an option (`-o…`).
+            let word = |s: &str| {
+                !s.is_empty()
+                    && !s.starts_with('-')
+                    && s.chars().all(|c| c.is_ascii_alphanumeric() || "._-@:[]".contains(c))
+            };
+            if !word(&r.ssh) {
+                errors.push(err(
+                    format!("{path}.ssh"),
+                    format!("'{}' is not an SSH destination (a host alias or user@host)", r.ssh),
+                ));
+            }
+            if let Some(h) = &r.host
+                && !word(h)
+            {
+                errors.push(err(format!("{path}.host"), format!("'{h}' is not a host name")));
+            }
+        }
         for (dep, cond) in def.deps() {
             let path = format!("services.{name}.depends_on.{dep}");
             if dep == *name {

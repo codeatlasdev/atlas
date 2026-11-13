@@ -1045,3 +1045,49 @@ services:
     );
     assert_eq!(cfg.port_offset, 100);
 }
+
+// #135: a `remote:` service runs no local copy; atlas forwards its local port over SSH.
+#[test]
+fn a_remote_service_runs_an_ssh_forward_of_its_final_port_and_restarts_on_drop() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        "name: t\nservices:\n  db:\n    port: 5432\n    remote: { ssh: dev-box, port: 6543, host: 10.0.0.5 }\n  api:\n    command: \"true\"\n    port: 3000\n",
+    );
+    let mut cfg = load(dir.path()).unwrap();
+    // Atlas Desktop shifts a worktree's ports AFTER loading: the forward must follow.
+    crate::config::apply_port_offset(&mut cfg, 100);
+    let db = &cfg.services["db"];
+    assert!(db.command.is_none(), "the config itself is not rewritten");
+    let cmd = db.run_command().unwrap();
+    assert!(cmd.contains("-L 5532:10.0.0.5:6543 dev-box"), "{cmd}");
+    assert!(
+        cmd.contains("BatchMode=yes") && cmd.contains("ExitOnForwardFailure=yes"),
+        "{cmd}"
+    );
+    assert_eq!(
+        db.restart_policy(),
+        crate::config::project::RestartPolicy::Always
+    );
+    // A local service is untouched.
+    let api = &cfg.services["api"];
+    assert_eq!(api.run_command().as_deref(), Some("true"));
+    assert_eq!(api.restart_policy(), api.restart);
+}
+
+#[test]
+fn a_remote_service_needs_a_port_no_command_and_plain_ssh_words() {
+    let errs = errors_for(
+        "name: t\nservices:\n  a:\n    remote: { ssh: box, port: 1 }\n  b:\n    port: 2\n    command: x\n    remote: { ssh: box, port: 1 }\n  c:\n    port: 3\n    remote: { ssh: \"-oProxyCommand=evil\", port: 1 }\n  d:\n    port: 4\n    remote: { ssh: box, port: 1, host: \"a b\" }\n",
+    );
+    assert_has(&errs, "services.a.remote");
+    assert_has(&errs, "needs the service's local `port`");
+    assert_has(&errs, "remove `command`");
+    assert_has(&errs, "services.c.remote.ssh");
+    assert_has(&errs, "services.d.remote.host");
+    assert!(
+        errors_for("name: t\nservices:\n  db:\n    port: 5\n    remote: { ssh: me@box.lan, port: 5432 }\n")
+            .is_empty()
+    );
+}

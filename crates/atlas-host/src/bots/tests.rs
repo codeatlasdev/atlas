@@ -51,6 +51,9 @@ mod bot_integration {
     }
 
     /// Wait up to `timeout` for a task on `bot_id` to reach `state`. Polls every 250 ms.
+    /// A task that ends in another final state, or never gets there, fails with the task
+    /// as hostd last reported it (state, result, error): a timeout alone said nothing about
+    /// the one CI failure of `bot_list_last_and_queued` (PR #106, macOS runner).
     async fn wait_task_state(
         client: &HostClient,
         bot_id: &str,
@@ -59,19 +62,29 @@ mod bot_integration {
         timeout: Duration,
     ) -> Value {
         let start = std::time::Instant::now();
+        let mut last = Value::Null;
         loop {
             let v = client
                 .call("bot_tasks", json!({"id": bot_id, "limit": 20}))
                 .await
                 .expect("bot_tasks failed");
-            if let Some(tasks) = v["tasks"].as_array()
-                && let Some(t) = tasks.iter().find(|t| t["id"] == task_id)
-                && t["state"].as_str() == Some(state)
+            if let Some(t) = v["tasks"]
+                .as_array()
+                .and_then(|tasks| tasks.iter().find(|t| t["id"] == task_id))
             {
-                return t.clone();
+                let now = t["state"].as_str().unwrap_or("");
+                if now == state {
+                    return t.clone();
+                }
+                if matches!(now, "done" | "failed" | "cancelled") {
+                    panic!("task {task_id} ended '{now}', expected '{state}': {t}");
+                }
+                last = t.clone();
             }
             if start.elapsed() > timeout {
-                panic!("task {task_id} did not reach state '{state}' within {timeout:?}");
+                panic!(
+                    "task {task_id} did not reach state '{state}' within {timeout:?}; last seen: {last}"
+                );
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
@@ -136,6 +149,59 @@ exit 0"#;
         );
 
         crate::bots::runner::set_test_agent_bin(None);
+    }
+
+    // An agent that reports agent_end the instant it starts must still end its task
+    // `done`. Guards the CI failure of `bot_list_last_and_queued` on PR #106: the
+    // runner subscribed to agent events only after spawning (and storing and
+    // broadcasting the running task), so a status that came in during that gap was
+    // lost, and the exit that followed failed the task with "agent exited (code 0)".
+    // The pause after the spawn widens that gap on purpose, so this fails every time
+    // when the subscription is late.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_agent_that_finishes_before_the_runner_looks_still_ends_done() {
+        let _bin_lock = crate::bots::runner::TEST_BIN_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("hostd");
+        let script = r#"set -e
+. "$ATLAS_HOOK_ENDPOINT"
+curl -sf -X POST "http://127.0.0.1:${ATLAS_HOOK_PORT}/hook/claude" \
+     -H "X-Atlas-Hook-Token: ${ATLAS_HOOK_TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d "{\"pane_key\":\"${ATLAS_PANE_KEY}\",\"payload\":{\"event\":\"agent_end\",\"will_continue\":false,\"text\":\"fast answer\"}}"
+exit 0"#;
+        let fake_bin = fake_agent(tmp.path(), "claude", script);
+        crate::bots::runner::set_test_agent_bin(Some(&fake_bin.to_string_lossy()));
+        *crate::bots::runner::TEST_PAUSE_AFTER_SPAWN.lock() = Some(Duration::from_secs(1));
+
+        let client = daemon(&dir).await;
+        let bot = client
+            .call(
+                "bot_create",
+                json!({"name": "FastBot", "role": "r", "agent": "claude", "approval": "auto"}),
+            )
+            .await
+            .unwrap();
+        let bot_id = bot["id"].as_str().unwrap().to_string();
+        let v = client
+            .call(
+                "bot_task",
+                json!({"id": bot_id, "prompt": "hi", "source": "test"}),
+            )
+            .await
+            .unwrap();
+        let task_id = v["task"]["id"].as_str().unwrap().to_string();
+        let task =
+            wait_task_state(&client, &bot_id, &task_id, "done", Duration::from_secs(15)).await;
+        assert_eq!(task["result"], "fast answer", "{task}");
+
+        *crate::bots::runner::TEST_PAUSE_AFTER_SPAWN.lock() = None;
+        crate::bots::runner::set_test_agent_bin(None);
+        client.call("shutdown", json!({})).await.ok();
     }
 
     // Incident: on a ship, an omp bot whose project was codeatlasdev/ac ran in ~/.atlas with nothing cloned: the

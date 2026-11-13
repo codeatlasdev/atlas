@@ -37,6 +37,12 @@ pub(crate) fn set_test_agent_bin(bin: Option<&str>) {
     *TEST_AGENT_BIN.lock() = bin.map(str::to_string);
 }
 
+/// Test-only: a pause right after the agent is spawned, so a test can make the agent finish
+/// before the runner gets to watch it.
+#[cfg(test)]
+pub(crate) static TEST_PAUSE_AFTER_SPAWN: parking_lot::Mutex<Option<Duration>> =
+    parking_lot::Mutex::new(None);
+
 const ATLAS_ACTION_PREFIX: &str = "ATLAS_ACTION: ";
 
 /// Test-only: if set, forces the GitHub auth pre-check to return Some(reason).
@@ -1180,6 +1186,11 @@ async fn run_pty_inner(
     // Inject hook endpoint env vars (must come after bot env so ATLAS_* always wins).
     crate::server::hook_env(hub, &mut req);
 
+    // Listen before the agent exists: an agent can report its end (or its title) in the first
+    // milliseconds, and a status sent before the subscription is gone; the exit that follows
+    // would then fail a finished task as "agent exited (code 0)".
+    let agent_rx = hub.agents.subscribe();
+
     // Spawn the pty.
     let session = match Session::spawn(req, &paths::scrollback_dir(&hub.dir)) {
         Ok(s) => s,
@@ -1188,6 +1199,12 @@ async fn run_pty_inner(
 
     let pty_id = session.id.clone();
     hub.sessions.lock().insert(pty_id.clone(), session.clone());
+    #[cfg(test)]
+    let pause = *TEST_PAUSE_AFTER_SPAWN.lock();
+    #[cfg(test)]
+    if let Some(pause) = pause {
+        tokio::time::sleep(pause).await;
+    }
 
     // Mark task as running and record start time.
     task.state = TaskState::Running;
@@ -1197,7 +1214,7 @@ async fn run_pty_inner(
     broadcast_task(hub, &bot.id, task);
 
     // Wait for completion.
-    let (outcome, steps) = wait_for_outcome(hub, &session, pane_key, &bot.id, task).await;
+    let (outcome, steps) = wait_for_outcome(hub, agent_rx, &session, pane_key, &bot.id, task).await;
 
     // Clean up session.
     hub.sessions.lock().remove(&pty_id);
@@ -1205,15 +1222,16 @@ async fn run_pty_inner(
     (outcome, steps)
 }
 
-/// Poll agent status events and pty exit to determine the task outcome.
+/// Poll agent status events and pty exit to determine the task outcome. `agent_rx` must be
+/// subscribed before the agent was spawned.
 async fn wait_for_outcome(
     hub: &Hub,
+    mut agent_rx: tokio::sync::broadcast::Receiver<serde_json::Value>,
     session: &Arc<Session>,
     pane_key: &str,
     bot_id: &str,
     task: &mut Task,
 ) -> (Result<String, String>, Vec<Step>) {
-    let mut agent_rx = hub.agents.subscribe();
     let deadline = tokio::time::sleep(BOT_TASK_TIMEOUT);
     tokio::pin!(deadline);
     let mut steps: Vec<Step> = Vec::new();
@@ -1271,6 +1289,16 @@ async fn wait_for_outcome(
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         return (Err("agent hub closed".to_string()), steps);
+                    }
+                    // Other panes' events overflowed the channel: this pane's `done` may be among the
+                    // dropped ones, and its exit would then fail the task. The stored status is current.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        if let Some(st) = hub.agents.status_of(pane_key)
+                            && st.state == crate::agents::State::Done
+                        {
+                            session.kill().await;
+                            return (Ok(st.last_message.unwrap_or_default()), steps);
+                        }
                     }
                     _ => {}
                 }

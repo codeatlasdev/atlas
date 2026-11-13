@@ -1346,38 +1346,55 @@ fn port_holder_helper() {
     let _ = std::io::stdin().read(&mut [0u8; 1]);
 }
 
-/// A real, separate process listening on a real port: (child, port).
-fn foreign_holder() -> (std::process::Child, u16) {
+/// A real, separate process listening on a real port. Owns the child: dropping it (at the end of
+/// a test or while a failed assertion unwinds) ends the helper and reaps it.
+struct Holder(std::process::Child);
+
+impl Holder {
+    fn id(&self) -> u32 {
+        self.0.id()
+    }
+}
+
+impl Drop for Holder {
+    fn drop(&mut self) {
+        drop(self.0.stdin.take()); // EOF on stdin: the helper returns and exits
+        let _ = self.0.kill(); // in case it is stuck
+        let _ = self.0.wait();
+    }
+}
+
+fn foreign_holder() -> (Holder, u16) {
     use std::io::BufRead;
-    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "runtime::manager::tests::port_holder_helper",
-            "--nocapture",
-        ])
-        .env("ATLAS_TEST_PORT_HOLDER", "1")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut out = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut holder = Holder(
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "runtime::manager::tests::port_holder_helper",
+                "--nocapture",
+            ])
+            .env("ATLAS_TEST_PORT_HOLDER", "1")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let mut out = std::io::BufReader::new(holder.0.stdout.take().unwrap());
     let mut line = String::new();
     loop {
         line.clear();
-        if out.read_line(&mut line).unwrap_or(0) == 0 {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("holder died before binding");
-        }
+        assert!(
+            out.read_line(&mut line).unwrap_or(0) > 0,
+            "holder died before binding"
+        );
         if let Some(p) = line.trim().strip_prefix("PORT=") {
-            return (child, p.parse().unwrap());
+            return (holder, p.parse().unwrap());
         }
     }
 }
 
-fn end_holder(mut child: std::process::Child) {
-    drop(child.stdin.take()); // EOF on stdin: the helper returns and exits
-    let _ = child.wait();
+fn end_holder(holder: Holder) {
+    drop(holder);
 }
 
 /// Incident (#133): an agent's dev server kept the port; the service failed with the framework's

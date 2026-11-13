@@ -1,0 +1,53 @@
+---
+import Base from "../layouts/Base.astro";
+import { SITE } from "../data/site";
+---
+<Base ground="paper" title="Privacy policy · Atlas" description="What Atlas, Atlas Desktop and the Atlas: Dev Remote phone app collect and send: no accounts, no telemetry, no analytics.">
+	<div class="wrap page">
+		<article class="prose">
+			<h1 class="display">Privacy policy</h1>
+			<p>Atlas is made by CodeAtlas LTDA. It is local-first: the CLI, Atlas Desktop and the phone app <strong>Atlas: Dev Remote</strong> have no accounts, telemetry, analytics, ads or crash reporting. We do not sell or share data, and we do not track you across apps or websites. Every network request the software makes is listed in <a href={`${SITE.github}/blob/main/PRIVACY.md`} rel="noopener">PRIVACY.md</a>, next to the code that makes it.</p>
+
+			<h2 id="mobile">The phone app (Atlas: Dev Remote)</h2>
+			<p>The app shows and controls the Atlas running on your own computer. It has no account and talks only to the computers you pair it with.</p>
+			<ul>
+				<li><strong>On the phone:</strong> a key generated on the phone (it never leaves it) and the list of paired computers (name, public key, network addresses), in the system's secure storage. "Forget this computer" deletes one; deleting the app deletes the rest (iOS can keep Keychain items).</li>
+				<li><strong>Between the phone and your computer:</strong> project and service state, logs, agent conversations, terminal output and what you type. End-to-end encrypted; only the two devices hold the keys. CodeAtlas never receives it.</li>
+				<li><strong>Connection relays:</strong> to find your computer, and to forward traffic when a direct connection is blocked, the app uses the public relays of number 0 (the makers of iroh). A relay sees both devices' IP addresses and public keys and how much data passes, never the content.</li>
+				<li><strong>Notifications:</strong> to tell you that a task finished or needs you, the app gets a device token from Firebase Cloud Messaging (Google). Your computer sends that token and the kind of event (<code>task_done</code> or <code>needs_you</code>) through <code>push.codeatlas.com.br</code>, operated by CodeAtlas, to Google. No message text, file names or prompts. The relay logs only the event kind and the result code. Turn notifications off in the system settings, or set <code>ATLAS_PUSH_RELAY=off</code> on the computer.</li>
+				<li><strong>Camera:</strong> used only to scan the pairing code; nothing is recorded or sent.</li>
+				<li><strong>Face ID / biometrics:</strong> checked by the system before you type in a terminal; the app only learns yes or no.</li>
+			</ul>
+
+			<h2 id="desktop">Atlas and Atlas Desktop</h2>
+			<p>They check GitHub for updates (a plain request for the latest public release; Atlas Desktop has a switch to turn automatic checks off) and download releases from GitHub. Everything else stays on your computer. The commands, terminals, web pages and AI agents you run through Atlas make their own network requests; those are theirs, not Atlas's.</p>
+
+			<h2 id="site">This website</h2>
+			<p>A static site on Cloudflare Pages with no third-party scripts, fonts, ads or embeds. Cloudflare keeps standard server logs. If you sign up for release notes, we store your email address, the page language and the date to email you about releases, and remove it when you ask.</p>
+
+			<h2 id="rights">Your data, your requests</h2>
+			<p>Almost everything lives on your own devices, where you can delete it. For anything we hold (a release-notes email address, the relay's counts), or for any question, write to <a href="mailto:luan@codeatlas.com.br">luan@codeatlas.com.br</a>. Children: Atlas is a developer tool and is not directed to children under 13.</p>
+
+			<h2 id="changes">Changes</h2>
+			<p>Changes to this policy are made in the open, in the <a href={`${SITE.github}/commits/main/site/src/pages/privacy.astro`} rel="noopener">history of this page</a>. Last updated: 12 November 2026.</p>
+		</article>
+	</div>
+</Base>
+<style>
+	.page { max-width: 820px; padding: 7rem 0 4rem; }
+	.prose { min-width: 0; overflow-wrap: break-word; }
+	.prose h1 { font-family: var(--font); font-weight: 800; font-stretch: 68%; letter-spacing: -0.012em; line-height: 0.92; text-wrap: balance; font-size: clamp(2.6rem, 6vw, 4.6rem); margin: 0 0 1.6rem; }
+	.prose h2 { font-weight: 800; font-stretch: 75%; font-size: 2rem; line-height: 1.05; margin: 3.2rem 0 1rem; padding-top: 0.8rem; border-top: 2px solid var(--fg); }
+	.prose p, .prose li { color: var(--fg-2); font-size: 1rem; line-height: 1.65; }
+	.prose li { margin: 0.45rem 0; }
+	.prose strong { color: var(--fg); }
+	.prose code { background: rgb(12 16 56 / 0.08); color: var(--fg); padding: 0.1em 0.38em; font-size: 0.86em; overflow-wrap: anywhere; }
+	.prose a { color: var(--fg); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 0.2em; }
+	@media (max-width: 760px) {
+		.page { padding: calc(5.5rem + env(safe-area-inset-top)) 0 3rem; }
+		.prose h2 { font-size: 1.75rem; margin-top: 2.6rem; }
+		.prose p, .prose li { font-size: 1.0625rem; }
+		.prose a { padding-block: 0.45em; }
+		.prose ul { padding-left: 1.3rem; }
+	}
+</style>

@@ -445,7 +445,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             r["result"]["tools"].as_array().unwrap().len(),
-            tools::TOOLS.len()
+            tools::tool_count()
         );
     }
 

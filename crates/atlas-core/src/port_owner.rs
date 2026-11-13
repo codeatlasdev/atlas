@@ -218,12 +218,8 @@ mod imp {
             // SAFETY: on success the buffer starts with a MIB_TCPTABLE_OWNER_PID whose
             // `dwNumEntries` rows follow the header inside `buf`.
             let t = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
-            let rows = unsafe {
-                std::slice::from_raw_parts(
-                    t.table.as_ptr(),
-                    t.dwNumEntries as usize,
-                )
-            };
+            let rows =
+                unsafe { std::slice::from_raw_parts(t.table.as_ptr(), t.dwNumEntries as usize) };
             pids.extend(
                 rows.iter()
                     .filter(|r| matches(r.dwLocalPort))
@@ -232,12 +228,8 @@ mod imp {
         } else {
             // SAFETY: as above, for the IPv6 table.
             let t = unsafe { &*(buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID) };
-            let rows = unsafe {
-                std::slice::from_raw_parts(
-                    t.table.as_ptr(),
-                    t.dwNumEntries as usize,
-                )
-            };
+            let rows =
+                unsafe { std::slice::from_raw_parts(t.table.as_ptr(), t.dwNumEntries as usize) };
             pids.extend(
                 rows.iter()
                     .filter(|r| matches(r.dwLocalPort))

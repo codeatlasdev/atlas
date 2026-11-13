@@ -1114,6 +1114,90 @@ services:
     assert_eq!(cfg.port_offset, 100);
 }
 
+const AGENTS_BASE: &str = "name: p\nservices:\n  api: { command: run }\n";
+
+#[test]
+fn agents_policy_loads_through_the_real_loader_and_defaults_to_open() {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "atlas.yaml", AGENTS_BASE);
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(
+        cfg.agents.is_open(),
+        "no `agents:` = today's behaviour (all allowed)"
+    );
+
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!("{AGENTS_BASE}agents:\n  control: deny\n  restart_service: {{ allow: [api] }}\n"),
+    );
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(matches!(
+        cfg.agents.decide("stop_service", "api", &[]),
+        Verdict::Denied(_)
+    ));
+    assert_eq!(
+        cfg.agents.decide("restart_service", "api", &[]),
+        Verdict::Allowed
+    );
+}
+
+#[test]
+fn agents_typo_is_a_config_error_not_a_silently_open_project() {
+    // Incident class: a mistyped key must never leave the project open while it reads as locked.
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!("{AGENTS_BASE}agents:\n  contrl: deny\n"),
+    );
+    let err = format!("{:#}", load_checked(dir.path()).unwrap_err());
+    assert!(
+        err.contains("contrl") || err.contains("unknown field"),
+        "{err}"
+    );
+}
+
+#[test]
+fn atlas_local_yaml_cannot_carry_or_loosen_the_agents_policy() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!("{AGENTS_BASE}agents:\n  control: deny\n"),
+    );
+    write_config(&dir, "atlas.local.yaml", "agents:\n  control: allow\n");
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(
+        errs.iter()
+            .any(|e| e.file == "atlas.local.yaml" && e.path.contains("agents")),
+        "{errs:?}"
+    );
+    assert_eq!(
+        cfg.agents.control,
+        Some(AgentMode::Deny),
+        "the project file stays the authority"
+    );
+}
+
+#[test]
+fn json_schema_documents_the_agents_block() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    assert!(schema["properties"]["agents"].is_object(), "{schema}");
+    let def = &schema["definitions"]["AgentsPolicy"]["properties"];
+    for k in [
+        "control",
+        "restart_service",
+        "stop_service",
+        "start_service",
+        "run_action",
+    ] {
+        assert!(def[k].is_object(), "agents.{k} missing from the schema");
+    }
+}
+
 fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {
     let dir = TempDir::new().unwrap();
     write_config(&dir, "atlas.yaml", yaml);

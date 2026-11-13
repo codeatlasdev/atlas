@@ -131,6 +131,9 @@ pub struct App {
     pub update_on_exit: bool,
     /// Requests from `atlas mcp` over `.logs/atlas.sock` (None = control disabled).
     pub control_rx: Option<mpsc::UnboundedReceiver<crate::control::ControlRequest>>,
+    /// True while a control-socket request is being applied: the server audited it already,
+    /// so the keyboard-action audit in the reducer stays quiet.
+    pub from_socket: bool,
     /// Attached client of a runner (None = this App owns its services).
     pub remote: Option<Remote>,
     /// Attached: the runner's event stream.
@@ -196,6 +199,7 @@ impl App {
             help_max_scroll: Cell::new(0),
             ui: super::ui_state::UiState::default(),
             control_rx: None,
+            from_socket: false,
             remote: None,
             remote_rx: None,
         }

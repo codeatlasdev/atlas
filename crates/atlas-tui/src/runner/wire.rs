@@ -296,4 +296,98 @@ mod tests {
             assert!(db[k].is_null(), "{k}: {db}");
         }
     }
+
+    /// Contract (#131) with the desktop and the attached TUI
+    /// (`apps/desktop/src/lib/__fixtures__/service-memory.json`): the REAL `service_json` of a
+    /// service leaking past `memory_warn` (degraded, rising, a suspected leak) and of a steady
+    /// one, built from real children whose readings go through the manager's own sampling path.
+    /// The TS and attached-TUI tests read this file, never a hand-written mock.
+    /// `UPDATE_FIXTURES=1` regenerates it.
+    #[tokio::test]
+    async fn service_memory_fixture_is_the_real_wire_output() {
+        use crate::config::{ProjectConfig, ServiceDef};
+        const MB: u64 = 1 << 20;
+        let def = |warn: Option<&str>| ServiceDef {
+            command: Some("sleep 30".into()),
+            memory_warn: warn.map(str::to_string),
+            ..Default::default()
+        };
+        let cfg = ProjectConfig {
+            name: "t".into(),
+            services: [
+                ("api".to_string(), def(Some("1G"))),
+                ("web".to_string(), def(None)),
+            ]
+            .into(),
+            ..Default::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut m = ServiceManager::new(dir.path().to_path_buf(), &cfg, tx);
+        m.min_uptime = std::time::Duration::ZERO;
+        for n in ["api", "web"] {
+            m.start_service(n).await;
+            m.update_state(n, ServiceState::Running);
+        }
+        // api: a reload every 10 s, +60 MB each time, through the budget. web: flat at 300 MB.
+        for i in 0..12u64 {
+            let t = 1_700_000_000 + 10 * i;
+            m.test_sample("api", t, (700 + 60 * i) * MB, &[t]).await;
+            m.test_sample("web", t, (300 + (i % 2)) * MB, &[]).await;
+        }
+        let mut rows: Vec<Value> = ["api", "web"]
+            .iter()
+            .map(|n| service_json(&m, n, &m.get_state(n).unwrap()))
+            .collect();
+        m.stop_service("api").await;
+        m.stop_service("web").await;
+
+        assert_eq!(rows[0]["state"], "degraded");
+        assert_eq!(rows[0]["budget_state"], "warn");
+        assert_eq!(rows[0]["memory_trend"], "rising");
+        assert!(
+            rows[0]["memory_leak"]
+                .as_str()
+                .unwrap()
+                .starts_with("leak suspected: +"),
+            "{}",
+            rows[0]
+        );
+        assert_eq!(rows[1]["state"], "running");
+        assert_eq!(rows[1]["budget_state"], "ok");
+        assert_eq!(rows[1]["memory_trend"], "flat");
+        assert!(rows[1]["memory_leak"].is_null());
+        // The attached TUI parses these keys back into the same facts.
+        let back = crate::runtime::manager::MemoryFacts::from_json(&rows[0]);
+        assert_eq!(back.rss, Some(1360 * MB));
+        assert_eq!(back.budget, crate::runtime::memory::Budget::Warn);
+
+        // `mem_mb` and `cpu` are the real processes' own figures and differ per run; the
+        // contract is the shape, so pin them.
+        for r in &mut rows {
+            r["mem_mb"] = Value::Null;
+            r["cpu"] = Value::Null;
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/lib/__fixtures__/service-memory.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&Value::Array(rows.clone()), &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed,
+            Value::Array(rows),
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
 }

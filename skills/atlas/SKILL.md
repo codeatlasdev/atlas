@@ -26,6 +26,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | Tool | Args | Needs `atlas dev` running |
 |---|---|---|
 | `atlas_status` | none | no (reports `running: false`); `setup` = last `pre_command` run `{state, command, started_at, finished_at?, reason?}` or null |
+| `atlas_metrics` | `service`, `last?` | no: the memory series of one service (`samples` = `[unix_s, rss_bytes]`, `rss_bytes`/`min_bytes`/`max_bytes`, `trend`, `budget_state`, `leak`), to measure before/after a change instead of sampling with `ps`; `running: false` = the series of the last run |
 | `atlas_config` | none | no |
 | `atlas_logs` | `service?`, `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
 | `atlas_logs_search` | `query` (substring or `/regex/`), `service?`, `limit?` (1-500, default 50), `include_previous?` | no |
@@ -41,8 +42,7 @@ Slash prompts (omp): `/atlas:status`, `/atlas:diagnose <service>`, `/atlas:add-s
 
 ## Debugging recipe
 
-1. `atlas_status`: what is `failed` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`) and `port_conflict` (`{pid, cmd, cwd}`: a process Atlas did not start holds the service's port; tell the user, who can stop it themselves or change the service port. Never kill that PID yourself, and there is no tool for it).
-1. `atlas_status`: what is `failed`, `unhealthy`, `degraded` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`), and for `degraded`/`unhealthy` the `probe_error` / `unhealthy_lines`.
+1. `atlas_status`: what is `failed`, `unhealthy`, `degraded` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`), for `degraded`/`unhealthy` the `probe_error` / `unhealthy_lines`, and `port_conflict` (`{pid, cmd, cwd}`: a process Atlas did not start holds the service's port; tell the user, who can stop it themselves or change the service port. Never kill that PID yourself, and there is no tool for it). `degraded` with `budget_state: "warn"` means it is over its `memory_warn`; `memory_trend: "rising"` or a `memory_leak` text means memory keeps growing.
 2. `atlas_logs {"level": "error"}`, then `atlas_logs {"service": "<svc>", "lines": 200}` for the failing service.
 3. `atlas_logs_search {"query": "/ECONNREFUSED|EADDRINUSE/", "include_previous": true}` if the log was just rotated by a restart.
 4. Fix the code or config. If upstream failed first (`dependency X failed`), fix that service first.

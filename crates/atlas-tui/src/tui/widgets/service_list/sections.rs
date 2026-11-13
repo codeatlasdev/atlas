@@ -165,6 +165,16 @@ pub(super) fn services<'a>(
                 Style::default().fg(note_color),
             )));
         }
+        // Size and trend, budget standing and a suspected leak as in `atlas dev --status`, only
+        // when notable, one fact per line so a narrow sidebar never cuts one in half.
+        if let Some(m) = &extra.memory {
+            for part in crate::status::memory_parts(m) {
+                out.plain(Line::from(Span::styled(
+                    format!("   ↳ {}", clip(&part, width.saturating_sub(5) as usize)),
+                    Style::default().fg(t.warning),
+                )));
+            }
+        }
     }
     out.spacer();
 }

@@ -55,12 +55,26 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
                 _ => {}
             }
         }
-        if let Some(m) = &def.max_memory
-            && crate::runtime::usage::parse_size(m).is_none()
+        fn size(v: &Option<String>) -> Option<(&str, Option<u64>)> {
+            v.as_deref()
+                .map(|m| (m, crate::runtime::usage::parse_size(m)))
+        }
+        let (max, warn) = (size(&def.max_memory), size(&def.memory_warn));
+        for (key, v) in [("max_memory", max), ("memory_warn", warn)] {
+            if let Some((m, None)) = v {
+                errors.push(err(
+                    format!("services.{name}.{key}"),
+                    format!("'{m}' is not a size (use e.g. 512M or 4G)"),
+                ));
+            }
+        }
+        // The soft budget must be reachable before the hard one.
+        if let (Some((max_text, Some(max_b))), Some((_, Some(warn_b)))) = (max, warn)
+            && warn_b >= max_b
         {
             errors.push(err(
-                format!("services.{name}.max_memory"),
-                format!("'{m}' is not a size (use e.g. 512M or 4G)"),
+                format!("services.{name}.memory_warn"),
+                format!("must be below max_memory ({max_text})"),
             ));
         }
         if let Some(rx) = &def.ready_log

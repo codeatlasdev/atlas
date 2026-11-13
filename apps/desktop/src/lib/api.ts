@@ -50,9 +50,22 @@ export interface ProjectView {
 	last_remote: string | null;
 }
 
+/** Why a directory was not seeded: serialized `atlas_core::seed::Skip` (`detail` only for `failed`). */
+export interface SeedSkip {
+	reason: "missing" | "exists" | "invalid" | "not_relocatable" | "unsupported" | "failed";
+	detail?: string;
+}
+
+export interface SeedReport {
+	seeded: string[];
+	skipped: [string, SeedSkip][];
+	/** Wall time of the clone step, ms. */
+	ms: number;
+}
+
 export interface WorktreeProgress {
 	creation_id: string;
-	step: "fetch" | "add" | "shared" | "done" | "error";
+	step: "fetch" | "add" | "shared" | "seed" | "done" | "error";
 	message?: string;
 	worktree?: {
 		id: string;
@@ -65,6 +78,8 @@ export interface WorktreeProgress {
 		linkedPr: number | null;
 	};
 	setup?: { argv: string[]; env: Record<string, string> } | null;
+	/** Copy-on-write clone of the main checkout's heavy dirs (`atlas_core::seed::Report`); null when there was nothing to seed or the checkout is on an SSH host. */
+	seed?: SeedReport | null;
 }
 
 export interface WorktreeStats {

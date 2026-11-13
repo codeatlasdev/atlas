@@ -87,6 +87,7 @@ impl ServiceManager {
             sampled_at: None,
             tracked_at: None,
             hygiene: run_registry(),
+            usage_every: super::types::USAGE_EVERY,
         }
     }
 
@@ -158,12 +159,7 @@ fn managed_service(
         exited_ok: false,
         probes: types::Probes::from_def(def),
         usage: None,
-        max_memory: def
-            .max_memory
-            .as_deref()
-            .and_then(crate::runtime::usage::parse_size),
-        mem_over: 0,
-        mem_restarts: 0,
+        mem: types::MemWatch::from_def(def),
         exit_code: None,
         autostart: def.is_autostart() || requested,
         deselected: !selected,

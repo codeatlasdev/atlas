@@ -81,6 +81,8 @@ impl ServiceManager {
             // Nothing of the previous process's health carries over; the pumps of this
             // spawn write into this fresh context.
             svc.probes.reset_for_spawn();
+            // A respawn closes a leak-watch cycle with what the old process reached.
+            svc.mem.on_respawn();
         }
         let health_ctx = self
             .services
@@ -410,11 +412,12 @@ fn detect_ready(
     }
 }
 
-/// Hand one output line to the service's health context (last lines + repeated errors).
+/// Hand one output line to the service's health context (last lines, repeated errors, reloads).
 fn feed_context(ctx: &crate::runtime::probe::SharedContext, line: &str) {
     let error =
         crate::runtime::logs::LogLevel::detect(line) == crate::runtime::logs::LogLevel::Error;
     if let Ok(mut c) = ctx.lock() {
         c.push(line, error, std::time::Instant::now());
+        c.note_reload(line, crate::runtime::clock::now_secs());
     }
 }

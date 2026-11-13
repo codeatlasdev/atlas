@@ -20,6 +20,9 @@ mod hygiene;
 #[cfg(test)]
 mod hygiene_tests;
 mod lifecycle;
+#[cfg(test)]
+mod mem_tests;
+mod mem_watch;
 mod mirror;
 mod mobile;
 pub mod policy;
@@ -38,6 +41,7 @@ mod tests;
 pub(crate) use disk_log::{log_file_stem, open_stream_log, rotate_stream_log};
 
 pub(crate) use devices::{parse_devicectl_json, parse_simctl_json};
+pub use mem_watch::MemoryFacts;
 pub use mirror::{MirrorFacts, UnhealthyReport};
 use types::{ManagedService, ManagedSession};
 pub use types::{ManagerEvent, MobileBuildPhase};
@@ -106,6 +110,8 @@ pub struct ServiceManager {
     pub(crate) tracked_at: Option<std::time::Instant>,
     /// Where this run's owner tags are registered (the user's `~/.atlas/hygiene`).
     pub(crate) hygiene: atlas_core::hygiene::Registry,
+    /// Gap between two resource samples ([`types::USAGE_EVERY`]); a field so tests can sample at will.
+    pub(crate) usage_every: std::time::Duration,
 }
 
 impl ServiceManager {

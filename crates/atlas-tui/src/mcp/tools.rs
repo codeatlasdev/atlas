@@ -21,6 +21,12 @@ const SETTLE_GRACE: Duration = Duration::from_millis(1500);
 /// Outcome of a tool: text for the agent, or an error text (`isError: true`).
 pub type ToolResult = Result<String, String>;
 
+/// How many tools `tools/list` returns.
+#[cfg(test)]
+pub(crate) fn tool_count() -> usize {
+    TOOLS.len()
+}
+
 /// One MCP tool. `control` is the control-socket command for tools that act on
 /// the running atlas; read tools (`None`) are served from files in `call`.
 struct ToolDef {
@@ -33,8 +39,14 @@ struct ToolDef {
 const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "atlas_status",
-        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note,port_conflict,ready,probe_error,unhealthy_since,unhealthy_misses,unhealthy_lines} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`; port_conflict = {pid,cmd,cwd} of the FOREIGN process that held the service's port at its last start, null otherwise: a dev server started outside atlas, not yours to kill: tell the user, whose options are to stop it themselves or change the service port; ready = result of the service's optional `ready:` probe, true|false, null when it has none; probe_error = why a `degraded` service is degraded (the failing ready probe's message, or the log line repeating); unhealthy_since/unhealthy_misses/unhealthy_lines = when a hung service stopped answering its liveness probe, how many probes it missed, and its last output at that moment), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|degraded|unhealthy|failed|stopped|disabled|suspended: `unhealthy` = process alive but not answering its health probe (hung); `degraded` = liveness passes but the ready probe fails or the same error keeps repeating in the log. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
+        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note,port_conflict,ready,probe_error,unhealthy_since,unhealthy_misses,unhealthy_lines,memory_rss,memory_trend,memory_trend_mb_min,budget_state,memory_leak} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`; port_conflict = {pid,cmd,cwd} of the FOREIGN process that held the service's port at its last start, null otherwise: a dev server started outside atlas, not yours to kill: tell the user, whose options are to stop it themselves or change the service port; ready = result of the service's optional `ready:` probe, true|false, null when it has none; probe_error = why a `degraded` service is degraded (the failing ready probe's message, or the log line repeating); unhealthy_since/unhealthy_misses/unhealthy_lines = when a hung service stopped answering its liveness probe, how many probes it missed, and its last output at that moment; memory_rss = bytes of the service's whole process tree, null while it is not running; memory_trend = rising|flat|falling over the last ~5 min with memory_trend_mb_min as MB/min (null until ~30 s of data); budget_state = ok|warn|over against the service's `memory_warn` / `max_memory` (a `warn` service is `degraded` with probe_error `using 2.1 GB, over memory_warn 1.5 GB`); memory_leak = `leak suspected: +600 MB over 12 reloads` when RSS only grew from one reload/restart to the next, else null; call atlas_metrics for the series), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|degraded|unhealthy|failed|stopped|disabled|suspended: `unhealthy` = process alive but not answering its health probe (hung); `degraded` = liveness passes but the ready probe fails or the same error keeps repeating in the log. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
         schema: schema_no_args,
+        control: None,
+    },
+    ToolDef {
+        name: "atlas_metrics",
+        description: "Memory of one service over time, to measure before/after a change without ad-hoc `ps` sampling. Returns {service, running, state, interval_s, samples: [[unix_s, rss_bytes], ...] (oldest first, one every `interval_s`, up to the last hour), rss_bytes, min_bytes, max_bytes, trend (rising|flat|falling, null until ~30 s of data), trend_mb_per_min, budget_state (ok|warn|over: against the service's `memory_warn` / `max_memory`), cycles (reloads and restarts the leak watch has counted), leak (`leak suspected: +600 MB over 12 reloads` while RSS only grows from one reload/restart to the next, else null)}. RSS is the whole process tree (on macOS the physical footprint). Pass `last` to get only the newest N samples. `running: false` (state null) means no live `atlas dev` owns the project: the series is what the last run left. Works from files while `atlas dev` runs; errors when it never ran here.",
+        schema: schema_metrics,
         control: None,
     },
     ToolDef {
@@ -112,6 +124,18 @@ fn schema_service() -> Value {
     })
 }
 
+fn schema_metrics() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "service": {"type": "string", "description": "Service name exactly as in atlas.yaml (see atlas_config)."},
+            "last": {"type": "integer", "minimum": 1, "description": "Only the newest N samples (one every `interval_s`, 5 s by default). Omit for the whole retained series (up to 720)."}
+        },
+        "required": ["service"],
+        "additionalProperties": false
+    })
+}
+
 fn schema_logs() -> Value {
     json!({
         "type": "object",
@@ -182,6 +206,7 @@ pub async fn call(root: &Path, name: &str, args: &Value) -> ToolResult {
     }
     match name {
         "atlas_status" => status_tool(root),
+        "atlas_metrics" => metrics_tool(root, args),
         "atlas_logs" => logs_tool(root, args),
         "atlas_logs_search" => search_tool(root, args),
         "atlas_config" => config_tool(root),
@@ -224,6 +249,11 @@ fn status_json(root: &Path) -> Value {
                 "ready": r.ready, "probe_error": r.probe_error,
                 "unhealthy_since": r.unhealthy_since, "unhealthy_misses": r.unhealthy_misses,
                 "unhealthy_lines": r.unhealthy_lines,
+                "memory_rss": r.memory.rss,
+                "memory_trend": r.memory.trend.map(|t| t.direction.name()),
+                "memory_trend_mb_min": r.memory.trend.map(|t| t.mb_per_min),
+                "budget_state": r.memory.budget.name(),
+                "memory_leak": r.memory.leak.as_deref(),
             })).collect::<Vec<_>>(),
             "tunnel": s.tunnel.as_ref().map(|t| json!({
                 "state": t.state, "local_port": t.local_port, "ssh_host": t.ssh_host,
@@ -247,6 +277,54 @@ fn status_json(root: &Path) -> Value {
 
 pub(crate) fn status_tool(root: &Path) -> ToolResult {
     Ok(serde_json::to_string_pretty(&status_json(root)).unwrap_or_default())
+}
+
+/// `atlas_metrics`: the RSS series `atlas dev` keeps for one service (`.logs/.tui-metrics.json`),
+/// trimmed to the newest `last` samples, with the summary an agent compares before/after.
+pub(crate) fn metrics_tool(root: &Path, args: &Value) -> ToolResult {
+    let service = opt_str(args, "service")?.ok_or("missing required arg: service")?;
+    let last = opt_u64(args, "last")?.map(|n| n.max(1) as usize);
+    let path = crate::runtime::log_dir(root).join(crate::runtime::memory::METRICS_FILE);
+    let text = std::fs::read_to_string(&path).map_err(|_| {
+        format!("no metrics yet: {NOT_RUNNING} (it samples every 5 s once running)")
+    })?;
+    let file: Value =
+        serde_json::from_str(&text).map_err(|e| format!("unreadable metrics file: {e}"))?;
+    let Some(row) = file["services"].get(service) else {
+        let known: Vec<&str> = file["services"]
+            .as_object()
+            .map(|m| m.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        return Err(format!(
+            "unknown service '{service}'. Known services: {}",
+            known.join(", ")
+        ));
+    };
+    let all = row["samples"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let samples = &all[all.len().saturating_sub(last.unwrap_or(all.len()))..];
+    let rss: Vec<u64> = samples.iter().filter_map(|p| p[1].as_u64()).collect();
+    let state = status::live_snapshot(root)
+        .ok()
+        .and_then(|s| s.services.into_iter().find(|r| r.name == service))
+        .map(|r| r.state);
+    let v = json!({
+        "service": service,
+        // `false`: no live `atlas dev` owns this project; the series is what the last run left.
+        "running": state.is_some(),
+        "state": state,
+        "updated_at": file["updated_at"],
+        "interval_s": row["interval_s"],
+        "samples": samples,
+        "rss_bytes": rss.last(),
+        "min_bytes": rss.iter().min(),
+        "max_bytes": rss.iter().max(),
+        "trend": row["memory_trend"],
+        "trend_mb_per_min": row["memory_trend_mb_min"],
+        "budget_state": row["budget_state"],
+        "cycles": row["cycles"],
+        "leak": row["memory_leak"],
+    });
+    Ok(serde_json::to_string_pretty(&v).unwrap_or_default())
 }
 
 pub(crate) fn logs_tool(root: &Path, args: &Value) -> ToolResult {
@@ -536,6 +614,7 @@ mod tests {
             unhealthy_since: None,
             unhealthy_misses: None,
             unhealthy_lines: Vec::new(),
+            memory: crate::runtime::manager::MemoryFacts::from_json(&Value::Null),
         }
     }
 
@@ -585,6 +664,7 @@ mod tests {
             names,
             [
                 "atlas_status",
+                "atlas_metrics",
                 "atlas_logs",
                 "atlas_logs_search",
                 "atlas_config",

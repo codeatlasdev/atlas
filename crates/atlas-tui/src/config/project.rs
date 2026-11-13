@@ -189,6 +189,14 @@ pub struct WorktreeConfig {
     /// symlinked, files copied (e.g. `.env`, `node_modules`).
     #[serde(default)]
     pub shared: Vec<String>,
+    /// Heavy gitignored directories (relative) cloned copy-on-write from the main checkout
+    /// before `setup` runs, so `bun install` / `cargo build` only do the difference. Omitted:
+    /// detected (`node_modules` with a `package.json`, `target` with a `Cargo.toml`); `[]`
+    /// turns it off. A Python virtualenv is refused (not relocatable: it keeps running the main
+    /// checkout's interpreter), so recreate it in `setup`. A file system that cannot clone is
+    /// skipped, never copied in full.
+    #[serde(default)]
+    pub seed: Option<Vec<String>>,
     /// Seconds before `setup` is considered hung (default 600).
     #[serde(default = "default_setup_timeout")]
     pub setup_timeout: u64,
@@ -344,11 +352,18 @@ pub struct ServiceDef {
     /// URL opened by `open_key` instead of `http://localhost:<port>`.
     /// Example: `open_url: http://localhost:3001/api-reference`
     pub open_url: Option<String>,
-    /// Memory ceiling for the whole process tree (`512M`, `3G`). Over it for
-    /// two samples in a row (~10s), the service is restarted with an alert (3 times
-    /// per run, then stopped and marked failed): a
-    /// guard against dev servers that leak. Example: `max_memory: 4G`
+    /// Hard memory ceiling for the whole process tree (`512M`, `3G`). Over it for two samples in
+    /// a row (~10s), Atlas acts per `on_memory_max`: `restart` (default: restart with an alert, 3
+    /// times per run, then stop and mark failed) or `notify` (state `degraded` and an alert, the
+    /// process is left running). A guard against dev servers that leak. Example: `max_memory: 4G`
     pub max_memory: Option<String>,
+    /// Soft memory budget (`1.5GB`, `512M`). Over it for two samples in a row the service is
+    /// `degraded` with the reason (`using 2.1 GB, over memory_warn 1.5 GB`); nothing is killed.
+    /// Must be below `max_memory`. Example: `memory_warn: 1.5GB`
+    pub memory_warn: Option<String>,
+    /// What Atlas does when the tree stays over `max_memory`: `restart` (default) or `notify`.
+    #[serde(default)]
+    pub on_memory_max: OnMemoryMax,
     /// Hint shown under this service's critical-failure alert in the sidebar.
     /// Only relevant with `critical: true`.
     /// Example: `critical_help: "Run `bun run db:up` and retry"`
@@ -417,6 +432,18 @@ pub enum OnUnhealthy {
     Notify,
     /// Also restart the service (same budget and delays as `max_restarts`).
     Restart,
+}
+
+/// What happens when a service's process tree stays over `max_memory`.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnMemoryMax {
+    /// Restart the service with an alert; after 3 restarts in a run, stop it and mark it failed
+    /// (the behavior `max_memory` always had).
+    #[default]
+    Restart,
+    /// Mark the service `degraded` and raise an alert; the process keeps running.
+    Notify,
 }
 
 /// Default `start_timeout` in seconds.

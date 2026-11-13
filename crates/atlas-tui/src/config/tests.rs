@@ -655,6 +655,74 @@ fn test_invalid_ready_log_regex_is_reported() {
 }
 
 #[test]
+fn memory_budget_sizes_parse_like_max_memory_and_bad_ones_name_the_key() {
+    // A size is a string like `max_memory`'s; a bare number is bytes only when quoted.
+    for ok in ["1.5GB", "512M", "3G", "800mb", "'2048'"] {
+        let errs = errors_for(&format!(
+            "name: t\nservices:\n  a:\n    command: x\n    memory_warn: {ok}\n"
+        ));
+        assert!(errs.is_empty(), "{ok}: {errs:#?}");
+    }
+    let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    memory_warn: lots\n");
+    assert_has(&errs, "services.a.memory_warn: 'lots' is not a size");
+    let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    max_memory: 0M\n");
+    assert_has(&errs, "services.a.max_memory: '0M' is not a size");
+    // Unquoted `2048` is a YAML integer: rejected at load, for both keys alike.
+    for key in ["memory_warn", "max_memory"] {
+        let dir = TempDir::new().unwrap();
+        write_config(
+            &dir,
+            "atlas.yaml",
+            &format!("name: t\nservices:\n  a:\n    command: x\n    {key}: 2048\n"),
+        );
+        let e = load_checked(dir.path()).expect_err("integer must not load");
+        assert!(e.to_string().contains("expected a string"), "{key}: {e}");
+    }
+}
+
+/// `warn` at or above `max` would make the soft budget unreachable: the config is wrong.
+#[test]
+fn memory_warn_must_be_below_max_memory() {
+    let errs = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 4G\n    max_memory: 2G\n",
+    );
+    assert_has(
+        &errs,
+        "services.a.memory_warn: must be below max_memory (2G)",
+    );
+    let equal = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 2G\n    max_memory: 2048M\n",
+    );
+    assert_has(&equal, "services.a.memory_warn: must be below max_memory");
+    let ok = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 1.5GB\n    max_memory: 2G\n",
+    );
+    assert!(ok.is_empty(), "{ok:#?}");
+}
+
+#[test]
+fn on_memory_max_takes_restart_or_notify_and_defaults_to_restart() {
+    let cfg = |extra: &str| {
+        let dir = TempDir::new().unwrap();
+        write_config(
+            &dir,
+            "atlas.yaml",
+            &format!("name: t\nservices:\n  a:\n    command: x\n    max_memory: 2G\n{extra}"),
+        );
+        load(dir.path())
+    };
+    assert_eq!(
+        cfg("").unwrap().services["a"].on_memory_max,
+        OnMemoryMax::Restart
+    );
+    assert_eq!(
+        cfg("    on_memory_max: notify\n").unwrap().services["a"].on_memory_max,
+        OnMemoryMax::Notify
+    );
+    assert!(cfg("    on_memory_max: explode\n").is_err());
+}
+
+#[test]
 fn test_duplicate_port_flagged_but_disabled_service_exempt() {
     let errs = errors_for(
         "name: t\nservices:\n  a:\n    command: x\n    port: 3000\n  b:\n    command: y\n    port: 3000\n",
@@ -1044,4 +1112,35 @@ services:
         Some("http://localhost:5273/x")
     );
     assert_eq!(cfg.port_offset, 100);
+}
+
+fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "atlas.yaml", yaml);
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    cfg.worktree.unwrap()
+}
+
+// `worktree.seed` has three states: absent = auto-detect, a list = exactly those, `[]` = off.
+// Collapsing absent and `[]` would either disable detection for everyone or make "off" impossible.
+#[test]
+fn test_worktree_seed_distinguishes_absent_list_and_empty() {
+    let base = "name: t\nservices:\n  a:\n    command: x\nworktree:\n  setup: bun install\n";
+    assert_eq!(worktree_of(base).seed, None);
+    assert_eq!(
+        worktree_of(&format!("{base}  seed: [node_modules, target]\n")).seed,
+        Some(vec!["node_modules".to_string(), "target".to_string()])
+    );
+    assert_eq!(
+        worktree_of(&format!("{base}  seed: []\n")).seed,
+        Some(vec![])
+    );
+}
+
+#[test]
+fn test_schema_lists_worktree_seed() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    let props = &schema["definitions"]["WorktreeConfig"]["properties"];
+    assert!(props.get("seed").is_some(), "schema missing worktree.seed");
 }

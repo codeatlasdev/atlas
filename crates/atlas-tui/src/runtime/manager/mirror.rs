@@ -39,6 +39,8 @@ pub struct MirrorFacts {
     pub probe_error: Option<String>,
     /// Set while the service is `unhealthy`.
     pub unhealthy: Option<UnhealthyReport>,
+    /// RSS, trend, budget standing and leak suspicion (`memory_*`, `budget_state` on the wire).
+    pub memory: Option<super::MemoryFacts>,
 }
 
 #[derive(Debug, Default)]

@@ -381,10 +381,10 @@ If the CLI panics it writes a crash report (`crash-<timestamp>.toml`) to its dat
 ## `atlas uninstall`
 
 ```text
-atlas uninstall [-y, --yes]
+atlas uninstall [-y, --yes] [--purge] [--dry-run]
 ```
 
-Lists what it will remove, then deletes the whole `~/.atlas/` directory (binary, desktop settings and projects, worktrees, hostd state, omp plugin) and the `.atlas` PATH lines from your shell config files, after confirmation (skip with `--yes`). It does not touch `/Applications/Atlas.app` or the skills in `~/.agents/skills`.
+Lists what it will remove, then removes it after confirmation (skip with `--yes`; without a terminal and without `--yes` it refuses). By default that is what Atlas installed: the `atlas` command, the desktop app (a linked dev app loses only its link), the `# Atlas CLI` PATH lines it added to your shell startup files (never a line of your own), the update cache and the terminal host's sockets. Settings, the project list, worktrees, the update channel and the omp plugin in `~/.atlas` are **kept** and listed; `--purge` deletes all of `~/.atlas`. `--dry-run` lists and exits. A step that fails is reported and the others still run. It does not touch the skills in `~/.agents/skills`, or a distro package (use its package manager). Details: [Installation › Uninstall](installation.md#uninstall).
 
 ## `atlas link` / `unlink`
 
@@ -395,6 +395,6 @@ atlas link [--dir <WORKSPACE>] [--no-build] [--desktop]
 atlas unlink
 ```
 
-`link` builds `atlas-cli` (unless `--no-build`), backs up `~/.atlas/bin/atlas` to `atlas.backup`, and replaces it with a symlink to `<workspace>/target/debug/atlas`. Run it inside the Atlas repo or pass `--dir`. The TUI shows a `⚡ linked` badge in this mode. `unlink` restores the backup.
+`link` builds `atlas-cli` (unless `--no-build`), backs up `~/.atlas/bin/atlas` to `atlas.backup`, and replaces it with a symlink to `<workspace>/target/debug/atlas`; the swap is one rename, so a link that cannot be created (Windows without Developer Mode) leaves the release binary where it was, and a link left dangling by `cargo clean` is simply replaced. Run it inside the Atlas repo or pass `--dir`. The TUI shows a `⚡ linked` badge in this mode. `unlink` restores the backup; with no backup it turns the link into a plain copy of the dev build, so `atlas` keeps working (run `atlas update` for a release). `atlas install` leaves a linked or newer `atlas` alone too.
 
 `--desktop` also builds a debug `Atlas.app` (`cargo tauri build --debug`) and makes `/Applications/Atlas.app` a symlink to it. A real install is moved to `~/.atlas/desktop/Atlas.app.backup` first. The app shows a **Dev build** badge, and its updates are paused. `unlink` restores the app as well.

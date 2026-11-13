@@ -8,6 +8,7 @@ pub mod github;
 pub mod ipc;
 pub mod login_env;
 pub mod paths;
+pub mod port_owner;
 pub mod project_root;
 pub mod sys;
 pub mod util;

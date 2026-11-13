@@ -281,3 +281,39 @@ async fn tunnel_key_is_explained_not_toggled_while_attached() {
     assert!(app.tunnel_kill_on_exit, "policy untouched");
     assert!(app.toast.clone().unwrap().0.contains("runner"));
 }
+
+/// Contract (#133): the attached TUI reads the REAL `service_json` the runner wrote to
+/// `__fixtures__/service-port-conflict.json` (see `runner::wire` tests): the holder survives the
+/// wire into the mirror, and the failed service's note names it on screen.
+#[tokio::test]
+async fn an_attached_tui_shows_the_port_holder_from_the_real_runner_payload() {
+    let real: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../apps/desktop/src/lib/__fixtures__/service-port-conflict.json"
+    ))
+    .unwrap();
+    let (mut app, _keep) = attached();
+    // The fixture row is for `web` (config() has api + web); only the state of `api` is made up.
+    app.apply_snapshot(&json!({
+        "started": true,
+        "services": [
+            {"name": "api", "state": "running", "exit_code": null, "restarts": 0,
+             "note": null, "completed_ok": false, "paused_by": null, "deselected": false},
+            real,
+        ],
+        "tunnel": null, "logs": [], "events": [], "operation": null,
+    }));
+
+    let c = app
+        .manager
+        .port_conflict("web")
+        .expect("conflict lost on the wire");
+    assert_eq!((c.pid, c.cmd.as_str()), (12345, "node"));
+    assert_eq!(c.cwd.as_deref(), Some("/work/app"));
+    assert!(app.manager.port_conflict("api").is_none());
+    // The failed service's note (sidebar, dashboard and footer strip all render it) names the holder.
+    assert_eq!(
+        app.manager.service_note("web").as_deref(),
+        real["note"].as_str()
+    );
+    assert!(real["note"].as_str().unwrap().contains("held by PID 12345"));
+}

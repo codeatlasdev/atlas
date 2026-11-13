@@ -34,14 +34,24 @@ impl ServiceManager {
         }
         if let Some((port, secs)) = self.start_wait(name) {
             let what = port.map_or("ready_log".to_string(), |p| format!(":{p}"));
+            let held = s
+                .sched
+                .port_conflict
+                .as_ref()
+                .zip(port)
+                .map(|(c, p)| format!(" · {}", c.describe(p)))
+                .unwrap_or_default();
             return Some(if s.sched.start_warned {
-                format!("start timeout: still waiting for {what} ({secs}s)")
+                format!("start timeout: still waiting for {what} ({secs}s){held}")
             } else {
-                format!("waiting for {what} ({secs}s)")
+                format!("waiting for {what} ({secs}s){held}")
             });
         }
         match s.status.state {
-            ServiceState::Failed => s.sched.fail_reason.clone(),
+            ServiceState::Failed => match (&s.sched.port_conflict, s.status.port) {
+                (Some(c), Some(p)) => Some(c.describe(p)),
+                _ => s.sched.fail_reason.clone(),
+            },
             ServiceState::Unhealthy => s.probes.unhealthy.as_ref().map(|u| {
                 format!(
                     "unhealthy for {}s: {} missed probes",
@@ -136,6 +146,14 @@ impl ServiceManager {
     /// Fail-reason for CI output.
     pub fn fail_reason(&self, name: &str) -> Option<String> {
         self.services.get(name)?.sched.fail_reason.clone()
+    }
+
+    /// The foreign process holding `name`'s port, when its last start found one.
+    pub fn port_conflict(&self, name: &str) -> Option<crate::runtime::port_conflict::PortConflict> {
+        if self.mirror.is_some() {
+            return self.mirror_facts(name)?.port_conflict.clone();
+        }
+        self.services.get(name)?.sched.port_conflict.clone()
     }
 
     /// True if the service finished successfully (one-shot done).

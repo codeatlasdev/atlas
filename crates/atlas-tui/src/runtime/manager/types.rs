@@ -212,6 +212,9 @@ pub(crate) struct Sched {
     pub(crate) gave_up: bool,
     /// Why the service is Failed when atlas decided it (shown in sidebar/CI JSON).
     pub(crate) fail_reason: Option<String>,
+    /// The foreign process that held this service's port when it was last started (or
+    /// re-checked while the conflict stood): `atlas_status` `port_conflict`, the sidebar note.
+    pub(crate) port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
     /// `start_timeout` in seconds: how long Starting may last before a warning.
     pub(crate) start_timeout: u64,
     /// The start-timeout warning (and critical alert) already fired this spawn.
@@ -353,6 +356,7 @@ impl Sched {
             completed_ok: false,
             gave_up: false,
             fail_reason: None,
+            port_conflict: None,
             start_timeout: def.start_timeout_secs(),
             start_warned: false,
             starting_since: None,

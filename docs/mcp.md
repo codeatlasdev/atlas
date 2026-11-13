@@ -58,15 +58,21 @@ Is `atlas dev` running for this project, and what is each service's state? Call 
   "services": [
     { "name": "api", "state": "running", "port": 3001, "health": "http://localhost:3001/health",
       "exit_code": null, "restarts": 0, "uptime_s": 412, "started_at": 1760000000, "note": null, "off": false,
-      "ready": true, "probe_error": null, "unhealthy_since": null, "unhealthy_misses": null, "unhealthy_lines": [] },
+      "port_conflict": null, "ready": true, "probe_error": null, "unhealthy_since": null, "unhealthy_misses": null, "unhealthy_lines": [] },
+    { "name": "worker", "state": "failed", "port": 3003, "health": null,
+      "exit_code": 1, "restarts": 5, "uptime_s": null, "started_at": 1760000412, "note": "gave up after 5 restarts", "port_conflict": null },
     { "name": "web", "state": "failed",  "port": 3002, "health": null,
-      "exit_code": 1, "restarts": 5, "uptime_s": null, "started_at": 1760000412, "note": "gave up after 5 restarts" }
+      "exit_code": null, "restarts": 0, "uptime_s": null, "started_at": 1760000413,
+      "note": "port 3002 held by PID 12345 (node, cwd /work/app): stop it yourself (kill 12345) or change the service port",
+      "port_conflict": { "pid": 12345, "cmd": "node", "cwd": "/work/app" } }
   ],
   "tunnel": { "state": "running", "local_port": 54320, "ssh_host": "prod-db" }
 }
 ```
 
 Per service: `exit_code` is the last exit status of the process (`null` while it runs, never exited, or died on a signal); `restarts` the restart attempts in the current streak; `uptime_s` seconds `running` (`null` otherwise); `started_at` unix seconds of the last spawn; `note` the sidebar annotation (`waiting for :3001 (12s)`, `waiting for ready_log (12s)`, `start timeout: still waiting for :3001 (75s)`, `restarting in 4s (2/5)`, `dependency db failed`, …).
+
+`port_conflict` is `{pid, cmd, cwd}` of the **foreign** process that held the service's port at its last start (a dev server started outside atlas), `null` otherwise; `cwd` is `null` where the OS will not say (Windows). It is its own field, never folded into `note`, and it clears when the holder exits. It is not yours to kill: report it to the user, who can stop it themselves or change the service port (there is deliberately no tool for ending it).
 
 Health fields (see [Health and readiness](configuration.md#health-and-readiness)), present on every row:
 

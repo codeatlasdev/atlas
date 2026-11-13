@@ -69,7 +69,7 @@ MCP equivalents: `atlas_logs {"service": "api", "lines": 100}`, `{"level": "erro
 **Stuck in `starting`.** A service with a `port`/`health` stays `starting` until that probe passes; a `ready_log` service until a matching line appears. Check `note`:
 - `waiting for X (condition)` (sidebar `↳`): a `depends_on` gate has not opened; look at X.
 - `waiting for :3001 (12s)` / `waiting for ready_log (12s)`: its own probe. After `start_timeout` (default 60 s) it becomes `start timeout: still waiting ...`; nothing is killed and it keeps trying.
-- `EADDRINUSE`: something else holds the port. Atlas never kills by port; find the owner with `lsof -nP -iTCP:<port> -sTCP:LISTEN` and tell the user rather than killing it (on macOS with OrbStack that can be the docker port forwarder).
+- `EADDRINUSE` / `port N held by PID P (…)`: something else holds the port. `atlas_status` names it in `port_conflict` `{pid, cmd, cwd}`; Atlas never kills by port. Tell the user what holds it and let them stop it themselves or change the service port (on macOS with OrbStack that can be the docker port forwarder, never to be killed). Do not kill the PID yourself.
 
 **`unhealthy` (hung, not failed).** The process is alive but missed `failure_threshold` liveness probes in a row. `unhealthy_lines` is its last output at that moment: look for the stall (a pending DB call, a lock, an exception loop). `unhealthy_since` says how long. `atlas dev --status` prints the same under the row. It clears when the service answers again; with `on_unhealthy: restart` Atlas restarts it once per episode within the `max_restarts` budget. A restart rotates the log, so use `include_previous` to see the run that hung.
 

@@ -33,7 +33,7 @@ struct ToolDef {
 const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "atlas_status",
-        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note,ready,probe_error,unhealthy_since,unhealthy_misses,unhealthy_lines} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`; ready = result of the service's optional `ready:` probe, true|false, null when it has none; probe_error = why a `degraded` service is degraded (the failing ready probe's message, or the log line repeating); unhealthy_since/unhealthy_misses/unhealthy_lines = when a hung service stopped answering its liveness probe, how many probes it missed, and its last output at that moment), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|degraded|unhealthy|failed|stopped|disabled|suspended: `unhealthy` = process alive but not answering its health probe (hung); `degraded` = liveness passes but the ready probe fails or the same error keeps repeating in the log. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
+        description: "Is `atlas dev` running for this project, and what is the state of each service? Returns running flag, atlas pid, heartbeat age in seconds and per-service {name,state,port,health,exit_code,restarts,uptime_s,mem_mb,cpu,started_at,note,port_conflict,ready,probe_error,unhealthy_since,unhealthy_misses,unhealthy_lines} (exit_code = last exit of the process, null while running; uptime_s only while running; note = scheduler text such as `waiting for :3000 (12s)`; port_conflict = {pid,cmd,cwd} of the FOREIGN process that held the service's port at its last start, null otherwise: a dev server started outside atlas, not yours to kill: tell the user, whose options are to stop it themselves or change the service port; ready = result of the service's optional `ready:` probe, true|false, null when it has none; probe_error = why a `degraded` service is degraded (the failing ready probe's message, or the log line repeating); unhealthy_since/unhealthy_misses/unhealthy_lines = when a hung service stopped answering its liveness probe, how many probes it missed, and its last output at that moment), `tunnel` ({state,local_port,ssh_host}, or null when no tunnel is running), and `setup` = last pre_command run {state: running|ok|failed, command, started_at, finished_at?, reason?} or null. State is one of starting|running|degraded|unhealthy|failed|stopped|disabled|suspended: `unhealthy` = process alive but not answering its health probe (hung); `degraded` = liveness passes but the ready probe fails or the same error keeps repeating in the log. Works even when atlas is not running (then running=false). Call this first when debugging a dev environment.",
         schema: schema_no_args,
         control: None,
     },
@@ -206,6 +206,7 @@ fn status_json(root: &Path) -> Value {
                 "name": r.name, "state": r.state, "port": r.port, "health": r.health,
                 "exit_code": r.exit_code, "restarts": r.restarts, "uptime_s": r.uptime_s, "mem_mb": r.mem_mb, "cpu": r.cpu,
                 "started_at": r.started_at, "note": r.note, "off": r.off,
+                "port_conflict": r.port_conflict,
                 "ready": r.ready, "probe_error": r.probe_error,
                 "unhealthy_since": r.unhealthy_since, "unhealthy_misses": r.unhealthy_misses,
                 "unhealthy_lines": r.unhealthy_lines,
@@ -491,6 +492,7 @@ mod tests {
             started_at: None,
             note: None,
             off: false,
+            port_conflict: None,
             ready: None,
             probe_error: None,
             unhealthy_since: None,

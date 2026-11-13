@@ -13,6 +13,7 @@ pub mod loglinks;
 pub mod logs;
 pub mod manager;
 pub mod opener;
+pub mod port_conflict;
 pub mod probe;
 pub mod process;
 pub mod service;

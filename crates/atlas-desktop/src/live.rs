@@ -214,6 +214,7 @@ fn poll_event(s: &status::Snapshot) -> Value {
             json!({
                 "name": r.name, "state": r.state, "exit_code": r.exit_code,
                 "restarts": r.restarts, "note": r.note, "deselected": r.off,
+                "port_conflict": r.port_conflict,
                 "mem_mb": r.mem_mb, "cpu": r.cpu,
                 // Same keys as the runner's `state`/`rows` events (`probe_facts_json`).
                 "ready": r.ready, "probe_error": r.probe_error,

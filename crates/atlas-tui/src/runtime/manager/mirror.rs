@@ -32,6 +32,7 @@ pub struct MirrorFacts {
     pub completed_ok: bool,
     pub paused_by: Option<String>,
     pub deselected: bool,
+    pub port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
     /// Readiness column (`None` = no `ready` probe).
     pub ready: Option<bool>,
     /// Why the service is `degraded`.

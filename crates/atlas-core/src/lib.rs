@@ -5,6 +5,7 @@ pub mod desktop_ctl;
 pub mod domain;
 pub mod error;
 pub mod github;
+pub mod heavy;
 pub mod ipc;
 pub mod login_env;
 pub mod paths;

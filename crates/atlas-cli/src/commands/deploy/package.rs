@@ -190,6 +190,13 @@ pub fn package(
     if let Some(build) = cfg.build.as_deref().filter(|_| !skip_build) {
         eprintln!("▸ build: {build}");
         // The project's own build command, in this machine's shell (`cmd` on Windows).
+        let queued;
+        let build = if cfg.build_heavy {
+            queued = atlas_core::heavy::queued("deploy build", build);
+            queued.as_str()
+        } else {
+            build
+        };
         let st = atlas_core::sys::shell(build)
             .envs(atlas_core::login_env::vars())
             .current_dir(root)

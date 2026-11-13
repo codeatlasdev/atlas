@@ -705,7 +705,7 @@ fn ping_and_tools_work_before_initialize() {
     let mut c = McpClient::spawn(d.path());
     assert_eq!(c.request("ping", json!({}))["result"], json!({}));
     let r = c.request("tools/list", json!({}));
-    assert_eq!(r["result"]["tools"].as_array().unwrap().len(), 9);
+    assert_eq!(r["result"]["tools"].as_array().unwrap().len(), 10);
     let (err, text) = c.call("atlas_status", json!({}));
     assert!(!err, "{text}");
     // Still handshakes fine afterwards, and ping works after too.
@@ -768,6 +768,7 @@ fn tools_list_schemas_are_valid_and_described() {
         "atlas_start_service",
         "atlas_run_action",
         "atlas_wait_ready",
+        "atlas_heavy_status",
     ] {
         assert!(names.contains(&want), "missing tool {want}");
     }

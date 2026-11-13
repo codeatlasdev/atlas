@@ -221,3 +221,145 @@ fn deploy_lifecycle() {
         std::thread::sleep(Duration::from_millis(500));
     }
 }
+
+impl Fx {
+    fn head(&self) -> String {
+        let o = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&self.repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    }
+
+    /// stdout + stderr of one `atlas deploy` run, with its exit code.
+    fn deploy_text(&self, extra: &[&str]) -> (i32, String) {
+        let out = self.atlas(extra);
+        let all = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        (out.status.code().unwrap(), all)
+    }
+}
+
+// Regression: `atlas deploy` from a checkout older than production shipped HEAD
+// and silently rolled production back (issue #170).
+#[test]
+fn deploy_refuses_to_roll_production_back_unless_allowed() {
+    let fx = Fx::new();
+    let a = fx.head();
+
+    // First deploy: nothing is deployed yet, so there is nothing to compare.
+    let (code, text) = fx.deploy_text(&[]);
+    assert_eq!(code, 0, "{text}");
+    assert!(!text.contains("deploying "), "no base to announce:\n{text}");
+
+    // Forward: HEAD descends from the deployed commit, with the announcement line.
+    fx.commit("date >> restarts; true");
+    let b = fx.head();
+    std::thread::sleep(Duration::from_millis(1100));
+    let (code, text) = fx.deploy_text(&[]);
+    assert_eq!(code, 0, "{text}");
+    let announce = format!("({}) over ", &b[..7]);
+    assert!(
+        text.contains(&announce) && text.contains("+1 commits"),
+        "{text}"
+    );
+    let deployed = fx.current();
+
+    // Downgrade: back to A while B is live. Refused, nothing uploaded, `current` untouched.
+    sh(&fx.repo, &format!("git checkout -q {a}"));
+    let (code, text) = fx.deploy_text(&[]);
+    assert_ne!(code, 0, "{text}");
+    for needle in [
+        &a[..7],
+        &b[..7],
+        "--allow-downgrade",
+        "atlas deploy rollback",
+    ] {
+        assert!(text.contains(needle), "{needle} missing:\n{text}");
+    }
+    assert_eq!(fx.current(), deployed, "refusal must not touch the host");
+    let releases = fs::read_dir(fx.srv.join("releases")).unwrap().count();
+    assert_eq!(releases, 2, "refusal must not upload a release");
+
+    // `--dry-run` is read-only on the host but still guarded.
+    let (code, text) = fx.deploy_text(&["--dry-run"]);
+    assert_ne!(code, 0, "{text}");
+
+    // Explicit override ships it.
+    std::thread::sleep(Duration::from_millis(1100));
+    let (code, text) = fx.deploy_text(&["--allow-downgrade"]);
+    assert_eq!(code, 0, "{text}");
+    assert_ne!(fx.current(), deployed);
+
+    // Rollback never goes through the guard.
+    let out = fx.atlas(&["rollback", "--json"]);
+    assert_eq!(out.status.code(), Some(0));
+
+    // Diverged: a sibling of the deployed commit.
+    sh(&fx.repo, &format!("git checkout -q {a}"));
+    fx.commit("date >> restarts; echo side");
+    let side = fx.head();
+    sh(&fx.repo, &format!("git checkout -q -B main {b}"));
+    std::thread::sleep(Duration::from_millis(1100));
+    let (code, _) = fx.deploy_text(&["--force"]); // make B current again
+    assert_eq!(code, 0);
+    sh(&fx.repo, &format!("git checkout -q {side}"));
+    let (code, text) = fx.deploy_text(&[]);
+    assert_ne!(code, 0, "{text}");
+    assert!(
+        text.contains("diverged")
+            && text.contains("merge-base")
+            && text.contains("--allow-diverged"),
+        "{text}"
+    );
+    std::thread::sleep(Duration::from_millis(1100));
+    let (code, text) = fx.deploy_text(&["--allow-diverged"]);
+    assert_eq!(code, 0, "{text}");
+}
+
+// The deployed commit is not in the local repo (a release cut elsewhere): refuse
+// unless told, never guess.
+#[test]
+fn deploy_refuses_when_deployed_commit_is_unknown_locally() {
+    let fx = Fx::new();
+    let (code, text) = fx.deploy_text(&[]);
+    assert_eq!(code, 0, "{text}");
+    // A different repo (same srv) whose history does not contain the deployed sha.
+    let other = fx._tmp.path().join("other");
+    fs::create_dir_all(&other).unwrap();
+    sh(
+        &other,
+        "git init -q && git config user.email t@t && git config user.name t",
+    );
+    fs::copy(fx.repo.join("atlas.yaml"), other.join("atlas.yaml")).unwrap();
+    fs::write(other.join("start.sh"), "date >> restarts").unwrap();
+    sh(&other, "git add -A && git commit -qm unrelated");
+    let run = |extra: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_atlas"))
+            .arg("deploy")
+            .args(extra)
+            .arg("--dir")
+            .arg(&other)
+            .output()
+            .unwrap();
+        let all = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        (out.status.code().unwrap(), all)
+    };
+    let (code, text) = run(&[]);
+    assert_ne!(code, 0, "{text}");
+    assert!(
+        text.contains("not in this repository") && text.contains("--allow-unknown-base"),
+        "{text}"
+    );
+    std::thread::sleep(Duration::from_millis(1100));
+    let (code, text) = run(&["--allow-unknown-base"]);
+    assert_eq!(code, 0, "{text}");
+}

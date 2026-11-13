@@ -5,12 +5,14 @@
 //!
 //! * `ctx`     — resolved project/target + shared helpers
 //! * `package` — local build and tarball
+//! * `guard`   — refuse a deploy that would roll the host back
 //! * `plan`    — the `plan.sh` handed to the host driver
 //! * `remote`  — ssh transport
 //! * `launch`  — upload, start the driver, follow and report
 //! * `inspect` — `status` / `logs` / `history`
 
 mod ctx;
+mod guard;
 mod inspect;
 mod launch;
 mod package;
@@ -47,6 +49,15 @@ pub struct DeployArgs {
     /// Redeploy even if HEAD is already current and healthy.
     #[arg(long)]
     pub force: bool,
+    /// Ship even if HEAD is older than the deployed commit (use `rollback` to go back on purpose).
+    #[arg(long)]
+    pub allow_downgrade: bool,
+    /// Ship even if HEAD and the deployed commit have diverged.
+    #[arg(long)]
+    pub allow_diverged: bool,
+    /// Ship even if the deployed commit is unknown to this repository.
+    #[arg(long)]
+    pub allow_unknown_base: bool,
     /// Seconds to wait for another deploy's lock (default: fail at once).
     #[arg(long, default_value_t = 0, value_name = "SECS", global = true)]
     pub lock_wait: u64,
@@ -165,8 +176,22 @@ async fn rollback(
 
 async fn deploy(a: &DeployArgs) -> Result<()> {
     let ctx = Ctx::load(&a.dir, a.target.as_deref())?;
+    let head = package::head(&ctx.root)?;
+    let base = guard::check(
+        &ctx,
+        &head,
+        guard::Overrides {
+            allow_downgrade: a.allow_downgrade,
+            allow_diverged: a.allow_diverged,
+            allow_unknown_base: a.allow_unknown_base,
+        },
+    )
+    .await?;
     step(&format!("package ({})", ctx.root.display()));
-    let rel = package::package(&ctx.root, &ctx.cfg, a.allow_dirty, a.skip_build)?;
+    let rel = package::package(&ctx.root, &ctx.cfg, &head, a.allow_dirty, a.skip_build)?;
+    if let Some((dep, ancestry)) = &base {
+        step(&guard::announce(&rel.id, &head, dep, ancestry));
+    }
     let plan = render_plan(&Plan {
         app: &ctx.app,
         target_name: &ctx.name,

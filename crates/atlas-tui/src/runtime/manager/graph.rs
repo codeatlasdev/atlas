@@ -134,7 +134,7 @@ fn managed_service(
     ManagedService {
         // Services without a command are externally managed (docker-compose, etc.).
         // We track their port for health display but never spawn a child.
-        command: def.command.clone(),
+        command: def.run_command(),
         dir: def.dir.clone(),
         env: def.env.clone(),
         lock_file: def.lock_file.clone(),

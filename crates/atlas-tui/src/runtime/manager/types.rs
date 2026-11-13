@@ -383,7 +383,7 @@ impl Sched {
 
     pub(crate) fn from_def(def: &crate::config::ServiceDef) -> Self {
         Self {
-            restart: def.restart,
+            restart: def.restart_policy(),
             max_restarts: def.max_restarts,
             oneshot: def.oneshot,
             deps: def.deps(),
@@ -406,7 +406,7 @@ impl Sched {
             starting_since: None,
             spawned_at: None,
             running_since: None,
-            no_probe: def.command.is_some() && def.has_no_probe(),
+            no_probe: def.run_command().is_some() && def.has_no_probe(),
             paused_by: None,
         }
     }

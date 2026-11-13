@@ -48,6 +48,9 @@ services:
     critical: true
     critical_help: "Run `bun run db:up` and retry"
     lock_file: apps/api/.dev/dev.lock    # JSON {"pid": N}; stale owner cleaned before start
+  db:
+    port: 25432                 # local end of the forward
+    remote: { ssh: dev-box, port: 5432 }   # runs on dev-box: atlas runs `ssh -N -L 25432:localhost:5432 dev-box`, no local process
 profiles:                       # groups for `atlas dev --profile NAME` (repeatable, union)
   backend: [api, migrate]       # members must be services; their depends_on come along
 actions:
@@ -150,6 +153,8 @@ Unknown fields; `depends_on` targets exist (no self, no cycles); `log_ready` nee
 | `depends_on: { api: log_ready }` and `api` has no `ready_log` | Add `ready_log` to `api` |
 | `ready: { http: /ready }` on a service with no `port` | Give it a `port`, or use a full `http://127.0.0.1:<port>/ready` URL; a bare path needs the port |
 | `ready` with both `http` and `command` (or neither) | Exactly one; `atlas config check` rejects it |
+| `remote:` with a `command`, or without a `port` | `remote` replaces the command (the process is the SSH forward) and needs the local `port`; `atlas config check` rejects both |
+| `remote: { ssh: host }` whose key needs a passphrase | Key auth only (`BatchMode=yes`): load the key in ssh-agent and accept the host key first |
 | Raising `failure_threshold` to hide a hung service | It only delays `unhealthy`; read `unhealthy_lines` in `atlas_status` and fix the hang |
 | Migration as a long-running service | `oneshot: true`, depend on it with `completed_successfully` |
 | `restart: always` on a one-shot task | `on_failure`; `always` relaunches after every success |

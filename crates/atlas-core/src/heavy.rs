@@ -111,6 +111,14 @@ struct History {
     runs: BTreeMap<String, Vec<u64>>,
 }
 
+/// The last run times of one label (see [`Dir::runs`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LabelRuns {
+    pub label: String,
+    /// Seconds per run, oldest first (at most `HISTORY_KEEP`).
+    pub secs: Vec<u64>,
+}
+
 /// A queue directory. Every operation takes this, so tests use a temp dir and never `~/.atlas`.
 #[derive(Debug, Clone)]
 pub struct Dir {
@@ -523,6 +531,16 @@ impl Dir {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default()
+    }
+
+    /// The history file as a listing for the Machine view: every label with its last run times in
+    /// seconds, oldest first, labels sorted. Empty when there is no history yet.
+    pub fn runs(&self) -> Vec<LabelRuns> {
+        self.history()
+            .runs
+            .into_iter()
+            .map(|(label, secs)| LabelRuns { label, secs })
+            .collect()
     }
 
     /// Remember that a run of `label` took `secs`. Racing writers may lose a sample, never
@@ -1048,5 +1066,29 @@ mod tests {
         let (_t, d) = dir();
         let st = d.status(3);
         assert_eq!((st.slots, st.running.len(), st.queued.len()), (3, 0, 0));
+    }
+
+    // Machine view (#129): the history file as a per-label listing, oldest run first, labels sorted.
+    #[test]
+    fn runs_lists_every_label_with_its_durations_oldest_first() {
+        let (_t, d) = dir();
+        assert!(d.runs().is_empty(), "no history file is an empty listing");
+        fs::create_dir_all(d.root()).unwrap();
+        d.record_run("gate", 240);
+        d.record_run("bench", 30);
+        d.record_run("gate", 300);
+        assert_eq!(
+            d.runs(),
+            vec![
+                LabelRuns {
+                    label: "bench".into(),
+                    secs: vec![30]
+                },
+                LabelRuns {
+                    label: "gate".into(),
+                    secs: vec![240, 300]
+                },
+            ]
+        );
     }
 }

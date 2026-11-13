@@ -1,0 +1,134 @@
+{
+	"at": 1763040065000,
+	"cores": 12,
+	"gates": {
+		"holding": null,
+		"max_load": 9.0,
+		"min_mem_pct": 20
+	},
+	"heavy": {
+		"load": 3.5,
+		"mem_available_pct": 42,
+		"queued": [
+			{
+				"age_s": 61,
+				"avg_s": 240,
+				"command": "bun run check",
+				"cwd": "/work/atlas-wt-a",
+				"eta_s": 179,
+				"id": "0000000000100-4242-0000",
+				"label": "gate",
+				"pid": 4242,
+				"project": "atlas-wt-a",
+				"queued_at": 1763040000000,
+				"slot": null,
+				"started_at": null,
+				"state": "queued"
+			},
+			{
+				"age_s": 61,
+				"avg_s": 240,
+				"command": "bun run check",
+				"cwd": "/work/atlas-wt-a",
+				"eta_s": 179,
+				"id": "0000000000101-4242-0000",
+				"label": "gate",
+				"pid": 4242,
+				"project": "atlas-wt-a",
+				"queued_at": 1763040000000,
+				"slot": null,
+				"started_at": null,
+				"state": "queued"
+			}
+		],
+		"running": [
+			{
+				"age_s": 61,
+				"avg_s": 240,
+				"command": "bun run check",
+				"cwd": "/work/atlas-wt-a",
+				"eta_s": 179,
+				"id": "0000000000000-4242-0000",
+				"label": "gate",
+				"pid": 4242,
+				"project": "atlas-wt-a",
+				"queued_at": 1763040000000,
+				"slot": 0,
+				"started_at": 1763040004000,
+				"state": "running"
+			}
+		],
+		"slots": 2
+	},
+	"history": [
+		{
+			"avg_s": 270,
+			"label": "gate",
+			"last_s": 270,
+			"max_s": 300,
+			"secs": [240, 300, 270]
+		}
+	],
+	"load": {
+		"fifteen": 2.5,
+		"five": 4.0,
+		"one": 3.5
+	},
+	"mem_available_pct": 42,
+	"mem_total_bytes": 25769803776,
+	"services": [
+		{
+			"budget_state": "warn",
+			"cpu": 12,
+			"memory_leak": null,
+			"memory_rss": 1426063360,
+			"memory_trend": "rising",
+			"memory_trend_mb_min": 360.0,
+			"name": "api",
+			"project": "atlas",
+			"state": "degraded"
+		},
+		{
+			"budget_state": "ok",
+			"cpu": 12,
+			"memory_leak": null,
+			"memory_rss": 629145600,
+			"memory_trend": null,
+			"memory_trend_mb_min": null,
+			"name": "docs",
+			"project": "ui",
+			"state": "running"
+		},
+		{
+			"budget_state": "ok",
+			"cpu": 12,
+			"memory_leak": null,
+			"memory_rss": 330301440,
+			"memory_trend": "flat",
+			"memory_trend_mb_min": 0.0,
+			"name": "web",
+			"project": "atlas",
+			"state": "running"
+		}
+	],
+	"terminals": [
+		{
+			"command": "omp --auto-approve",
+			"cpu": 85.5,
+			"created_at": 1763040000,
+			"cwd": "/work/atlas-wt-a",
+			"mem": 943718400,
+			"pid": 100,
+			"pty": "p1"
+		},
+		{
+			"command": "zsh",
+			"cpu": 0.0,
+			"created_at": 1763040000,
+			"cwd": "/work/atlas-wt-a",
+			"mem": 41943040,
+			"pid": 200,
+			"pty": "p2"
+		}
+	]
+}

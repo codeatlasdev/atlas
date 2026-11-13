@@ -35,7 +35,8 @@ export function problemText(s: StateRow, now: number = Date.now()): string | nul
 		case "failed":
 			return s.note ?? (s.exit_code != null ? `Exited with code ${s.exit_code}` : "Failed to start");
 		case "unhealthy": {
-			const secs = s.unhealthy_since != null ? Math.max(0, Math.floor((now - s.unhealthy_since * 1000) / 1000)) : 0;
+			const secs =
+				s.unhealthy_since != null ? Math.max(0, Math.floor((now - s.unhealthy_since * 1000) / 1000)) : 0;
 			const misses = s.unhealthy_misses != null ? `, ${s.unhealthy_misses} probes missed` : "";
 			return `Not responding for ${secs}s${misses}`;
 		}

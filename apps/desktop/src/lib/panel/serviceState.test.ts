@@ -12,7 +12,9 @@ import { isAlive, isGreen, needsAttention, problemText } from "./serviceState.ts
  * `service_states_fixture_is_the_real_wire_output`): a degraded, an unhealthy and a running service.
  * Never a hand-written mock: the keys here are the ones the producer serializes.
  */
-const rows = JSON.parse(readFileSync(join(import.meta.dir, "..", "__fixtures__", "service-states.json"), "utf8"));
+const rows = JSON.parse(
+	readFileSync(join(import.meta.dir, "..", "__fixtures__", "service-states.json"), "utf8"),
+);
 const [api, web, db] = rows;
 
 describe("the real runner payload", () => {
@@ -33,8 +35,10 @@ describe("classification", () => {
 	});
 
 	test("a degraded or unhealthy service still has a live process: restart/stop stay available", () => {
-		for (const s of ["running", "starting", "degraded", "unhealthy"]) expect(isAlive({ state: s })).toBe(true);
-		for (const s of ["failed", "stopped", "disabled", "suspended", "nope"]) expect(isAlive({ state: s })).toBe(false);
+		for (const s of ["running", "starting", "degraded", "unhealthy"])
+			expect(isAlive({ state: s })).toBe(true);
+		for (const s of ["failed", "stopped", "disabled", "suspended", "nope"])
+			expect(isAlive({ state: s })).toBe(false);
 	});
 
 	test("failed, unhealthy and degraded need attention; the rest do not", () => {
@@ -68,7 +72,9 @@ describe("card banner", () => {
 	});
 
 	test("failed keeps its note, else the exit code, else the generic text", () => {
-		expect(problemText({ state: "failed", note: "gave up after 5 restarts", exit_code: 1 })).toBe("gave up after 5 restarts");
+		expect(problemText({ state: "failed", note: "gave up after 5 restarts", exit_code: 1 })).toBe(
+			"gave up after 5 restarts",
+		);
 		expect(problemText({ state: "failed", note: null, exit_code: 3 })).toBe("Exited with code 3");
 		expect(problemText({ state: "failed", note: null, exit_code: null })).toBe("Failed to start");
 	});
@@ -79,7 +85,9 @@ describe("card banner", () => {
 	});
 
 	test("a degraded service without a probe error falls back to its note, then to a plain label", () => {
-		expect(problemText({ state: "degraded", probe_error: null, note: "repeating error: db timeout" })).toBe("repeating error: db timeout");
+		expect(problemText({ state: "degraded", probe_error: null, note: "repeating error: db timeout" })).toBe(
+			"repeating error: db timeout",
+		);
 		expect(problemText({ state: "degraded", probe_error: null, note: null })).toBe("Degraded");
 	});
 

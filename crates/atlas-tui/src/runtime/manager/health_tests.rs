@@ -474,7 +474,11 @@ async fn the_same_error_three_times_degrades_with_the_sample_line_and_clears() {
 async fn a_child_that_prints_the_same_error_repeatedly_becomes_degraded() {
     let srv = Server::start(200, 200).await;
     let dir = tempfile::tempdir().unwrap();
-    let script = "for i in 1 2 3 4; do echo \"ERROR db connect timeout after ${i}000ms\" >&2; done; sleep 30";
+    // Unrolled, no loop or quoting: `test_sh` turns these one-liners into `cmd` on Windows.
+    let script = "echo ERROR db connect timeout after 1000ms >&2; \
+                  echo ERROR db connect timeout after 2000ms >&2; \
+                  echo ERROR db connect timeout after 3000ms >&2; \
+                  echo ERROR db connect timeout after 4000ms >&2; sleep 30";
     let (mut m, _rx) = manager(dir.path(), &cfg(script, srv.port, |_| {}));
     m.start_service("svc").await;
     m.update_state("svc", ServiceState::Running);

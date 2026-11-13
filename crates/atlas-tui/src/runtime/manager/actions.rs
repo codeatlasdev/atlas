@@ -48,6 +48,13 @@ impl ServiceManager {
         let file_env = self.file_env.clone();
         let log_dir = self.log_dir.clone();
         let in_flight = Arc::clone(&self.actions_in_flight);
+        // The action's tree (a test run's browsers, a build's daemons) carries its own tag, so it
+        // is reaped when the action ends even if something daemonized out of the parent chain.
+        let owner = Some(ActionOwner {
+            session: self.session_tag(&format!("action/{}", action.label)),
+            project: root_dir.to_string_lossy().into_owned(),
+            registry: self.hygiene.clone(),
+        });
         // `open_tunnel: true`: the tunnel must be up before the command runs.
         // Bringing it up happens inside the spawned task (never blocks the UI).
         let tunnel = if action.open_tunnel {
@@ -72,8 +79,10 @@ impl ServiceManager {
             };
             let ok = match gate {
                 Ok(()) => {
-                    run_action_streaming(&command, &root_dir, &file_env, &log_dir, &label, &tx)
-                        .await
+                    run_action_streaming(
+                        &command, &root_dir, &file_env, &log_dir, &label, &tx, owner,
+                    )
+                    .await
                 }
                 Err(reason) => {
                     let _ = tx.send(ManagerEvent::ActionProgress {
@@ -187,6 +196,14 @@ async fn tunnel_gate(
     handle.ensure_up().await
 }
 
+/// Who an action's processes answer to: their tag, and the registry that records the root so a
+/// crashed `atlas dev` leaves a trail the next sweep reaps.
+pub(super) struct ActionOwner {
+    pub(super) session: String,
+    pub(super) project: String,
+    pub(super) registry: atlas_core::hygiene::Registry,
+}
+
 /// Run a non-session action to completion. Each non-empty (ANSI-stripped)
 /// stdout/stderr line becomes an `ActionProgress` (operation row), a `LogLine`
 /// under `action:<label>` (All tab) and an entry in `.logs/action-<slug>.log`
@@ -198,6 +215,7 @@ pub(super) async fn run_action_streaming(
     log_dir: &std::path::Path,
     label: &str,
     tx: &mpsc::UnboundedSender<ManagerEvent>,
+    owner: Option<ActionOwner>,
 ) -> bool {
     use tokio::io::AsyncRead;
 
@@ -213,6 +231,10 @@ pub(super) async fn run_action_streaming(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(o) = &owner {
+        // Last, so an `env:` entry can never retag the tree into another session.
+        cmd.env(atlas_core::hygiene::SESSION_ENV, &o.session);
+    }
     let Ok(mut child) = cmd.spawn() else {
         let msg = format!("failed to spawn: {command}");
         if let Some(mut w) = log_out {
@@ -280,9 +302,52 @@ pub(super) async fn run_action_streaming(
     .flatten()
     .collect();
 
-    let ok = child.wait().await.map(|s| s.success()).unwrap_or(false);
+    if let (Some(o), Some(pid)) = (&owner, child.id()) {
+        let _ = o.registry.add_root(atlas_core::hygiene::Root {
+            session: o.session.clone(),
+            owner: atlas_core::hygiene::Owner::current(),
+            pid,
+            start: atlas_core::procs::start_time(pid).unwrap_or(0),
+            kind: atlas_core::hygiene::Kind::Other,
+            label: label.to_string(),
+            project: Some(o.project.clone()),
+            started_at: crate::runtime::clock::now_secs(),
+        });
+    }
+    let ok = match &owner {
+        Some(o) => wait_tracking(&mut child, &o.registry).await,
+        None => child.wait().await,
+    }
+    .map(|s| s.success())
+    .unwrap_or(false);
     drain_pumps(readers).await;
+    if let Some(o) = owner {
+        // The action is over: whatever it left under its session (a browser a test run opened) goes too.
+        let _ = tokio::task::spawn_blocking(move || {
+            o.registry
+                .reap_session(&o.session, std::time::Duration::from_secs(2));
+        })
+        .await;
+    }
     ok
+}
+
+/// `child.wait()`, recording the child's descendants every second so a process it daemonizes is
+/// known to the session (see `atlas_core::hygiene`).
+async fn wait_tracking(
+    child: &mut tokio::process::Child,
+    registry: &atlas_core::hygiene::Registry,
+) -> std::io::Result<std::process::ExitStatus> {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    loop {
+        tokio::select! {
+            status = child.wait() => return status,
+            _ = tick.tick() => {
+                let reg = registry.clone();
+                let _ = tokio::task::spawn_blocking(move || reg.track()).await;
+            }
+        }
+    }
 }
 
 /// After the child exited: give each pump a moment to flush buffered output,

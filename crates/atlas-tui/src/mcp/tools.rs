@@ -92,6 +92,12 @@ const TOOLS: &[ToolDef] = &[
         control: Some("run_action"),
     },
     ToolDef {
+        name: "atlas_hygiene",
+        description: "Look-only report of what Atlas and agents left behind on this machine: orphaned processes (processes Atlas started for a session whose owner died, found by the ATLAS_SESSION tag on Linux and by what the owner recorded under its roots on macOS/Windows: browsers, dev servers; pid, name, owner label, project), disk per project (target, node_modules, .logs, worktrees), registered temp/cache dirs against their caps, and heavy dirs Spotlight indexes (macOS). Changes nothing. Freeing is the user's call: tell them to run `atlas doctor --hygiene --fix` (or use the Hygiene section of Atlas Desktop), which ends only those orphans and deletes only dirs Atlas registered; target/, node_modules and worktrees are never removed.",
+        schema: schema_no_args,
+        control: None,
+    },
+    ToolDef {
         name: "atlas_wait_ready",
         description: "Block until a service (or all services when omitted) is running and healthy, polling the live status. `running` already includes the service's `ready:` probe when it has one: a `degraded` (ready probe failing / repeated errors) or `unhealthy` (hung) service is still waited for. Fails fast if the service enters `failed`; on timeout returns the current states plus, for each blocking service, the failing probe's message (degraded) or since-when and last output lines (unhealthy). Typical use: atlas_restart_service then atlas_wait_ready. `suspended` and `disabled` services are not waited for when waiting on all.",
         schema: schema_wait_ready,
@@ -212,6 +218,7 @@ pub async fn call_with(root: &Path, name: &str, args: &Value, caller: &Caller) -
         "atlas_logs" => logs_tool(root, args),
         "atlas_logs_search" => search_tool(root, args),
         "atlas_config" => config_tool(root),
+        "atlas_hygiene" => hygiene_tool().await,
         "atlas_heavy_status" => heavy_status_tool(),
         _ => wait_ready(root, args).await,
     }
@@ -416,6 +423,24 @@ fn search_tool(root: &Path, args: &Value) -> ToolResult {
         .map(|l| l.render())
         .collect::<Vec<_>>()
         .join("\n"))
+}
+
+/// The hygiene report as JSON (the same value `atlas doctor --hygiene --json` prints). The scan
+/// reads every process's environment and sizes directory trees: off the async runtime.
+async fn hygiene_tool() -> ToolResult {
+    tokio::task::spawn_blocking(|| {
+        hygiene_json(
+            &atlas_core::hygiene::Registry::open(),
+            &atlas_core::paths::atlas_home(),
+        )
+    })
+    .await
+    .map_err(|e| format!("hygiene scan failed: {e}"))?
+}
+
+fn hygiene_json(registry: &atlas_core::hygiene::Registry, base: &Path) -> ToolResult {
+    serde_json::to_string_pretty(&atlas_core::hygiene::report(registry, base))
+        .map_err(|e| e.to_string())
 }
 
 /// The heavy-job queue (`atlas heavy status --json`): machine-wide, so it needs no project.
@@ -695,6 +720,7 @@ mod tests {
                 "atlas_stop_service",
                 "atlas_start_service",
                 "atlas_run_action",
+                "atlas_hygiene",
                 "atlas_wait_ready",
                 "atlas_heavy_status"
             ]
@@ -1018,5 +1044,50 @@ mod tests {
         .await
         .unwrap();
         assert!(ok.starts_with("ready after"), "{ok}");
+    }
+    /// `atlas_hygiene` serializes the real `Report` (the one the CLI and the desktop read) and,
+    /// being look-only, leaves the orphan it names running.
+    #[cfg(unix)]
+    #[test]
+    fn hygiene_tool_names_a_real_orphan_and_kills_nothing() {
+        use atlas_core::hygiene::{Kind, Owner, Registry, Root};
+        let d = tempfile::TempDir::new().unwrap();
+        let reg = Registry::at(d.path());
+        let mut child = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .unwrap();
+        let start = atlas_core::procs::start_time(child.id()).unwrap();
+        reg.add_root(Root {
+            session: "dead-session".into(),
+            owner: Owner {
+                pid: 0x7fff_fff0,
+                start: 42,
+            },
+            pid: child.id(),
+            start,
+            kind: Kind::Agent,
+            label: "agent".into(),
+            project: None,
+            started_at: 1,
+        })
+        .unwrap();
+        let v: Value = serde_json::from_str(&hygiene_json(&reg, d.path()).unwrap()).unwrap();
+        let pids: Vec<u64> = v["orphans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o["pid"].as_u64().unwrap())
+            .collect();
+        assert!(pids.contains(&u64::from(child.id())), "{v}");
+        for k in ["live", "projects", "dirs", "freeable"] {
+            assert!(v.get(k).is_some(), "missing {k}: {v}");
+        }
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "a report must not kill"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

@@ -6,6 +6,7 @@
 	import { Alert, Button } from "@codeatlasdev/ui";
 	import Contain from "#lib/errors/Contain.svelte";
 	import ActivityDrawer from "#lib/panel/ActivityDrawer.svelte";
+	import MachineDrawer from "#lib/panel/MachineDrawer.svelte";
 	import { corner } from "#lib/shell/cornerStack.ts";
 	import ConfirmAction from "./ConfirmAction.svelte";
 	import MissingProject from "./MissingProject.svelte";
@@ -33,7 +34,7 @@
 	<MissingProject {p} />
 {:else if p}
 	<ProjectHeader {p} />
-	{#if space.current}<ActivityDrawer projectId={p.id} />{/if}
+	{#if space.current}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
 
 	{#if p.error}
 		<div class="banner">

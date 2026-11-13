@@ -26,6 +26,9 @@ enum Commands {
     /// Stop the running atlas (runner or TUI) and every service it started
     Down(commands::down::DownArgs),
 
+    /// Check this machine: `--hygiene` finds orphaned Atlas processes and the disk Atlas owns
+    Doctor(commands::doctor::DoctorArgs),
+
     /// Run a command through the machine-wide queue of heavy jobs: `atlas run --heavy -- cargo test`
     Run(commands::heavy::RunArgs),
 
@@ -230,6 +233,7 @@ async fn run() -> Result<()> {
     match command {
         Commands::Dev(args) => args.run().await?,
         Commands::Down(args) => args.run().await?,
+        Commands::Doctor(args) => args.run().await?,
         Commands::Init(args) => args.run().await?,
         Commands::Run(args) => args.run().await?,
         Commands::Heavy { command } => command.run().await?,

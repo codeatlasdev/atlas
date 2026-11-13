@@ -6,6 +6,13 @@ use crate::runtime::service::ServiceState;
 impl ServiceManager {
     pub async fn check_health(&mut self) {
         self.reap_sessions().await;
+        if self
+            .tracked_at
+            .is_none_or(|t| t.elapsed() >= super::hygiene::TRACK_EVERY)
+        {
+            self.tracked_at = Some(std::time::Instant::now());
+            self.track_members();
+        }
         let names = self.order.clone();
 
         // Restarts due, dependency gates opened, stable counters reset. Runs

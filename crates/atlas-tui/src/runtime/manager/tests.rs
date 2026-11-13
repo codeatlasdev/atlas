@@ -702,6 +702,7 @@ async fn test_action_streaming_returns_with_background_pipe_holder() {
         &dir.path().join(".logs"),
         "bg",
         &tx,
+        None,
     )
     .await;
     assert!(ok);
@@ -737,6 +738,7 @@ async fn action_output_is_persisted_and_streamed_as_log_lines() {
             &logs,
             "Run checks",
             &tx,
+            None,
         )
         .await;
         assert!(!ok, "exit 3 is a failure");
@@ -973,6 +975,7 @@ async fn an_action_finds_binaries_the_login_shell_put_on_path() {
         &dir.path().join(".logs"),
         "Bun",
         &tx,
+        None,
     )
     .await;
     drop(tx);

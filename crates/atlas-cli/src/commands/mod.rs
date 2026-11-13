@@ -24,6 +24,7 @@ pub mod open;
 pub mod release;
 pub mod self_update;
 pub mod setup;
+pub(crate) mod shellrc;
 pub mod skills;
 pub mod uninstall;
 pub(crate) mod update_channel;

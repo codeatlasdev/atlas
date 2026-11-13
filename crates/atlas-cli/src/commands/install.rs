@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use atlas_core::util::expand_tilde;
 use clap::Args;
 use std::path::{Path, PathBuf};
 
 use super::AtlasCommand;
+use crate::commands::shellrc::{self, ShellEnv};
 use crate::commands::skills;
 
 const INSTALL_DIR: &str = ".atlas/bin";
@@ -130,20 +131,36 @@ fn upgrade_existing() -> Result<()> {
     Ok(())
 }
 
+/// Where an install by process `pid` stages the new binary: beside `dest`'s folder (so the final
+/// rename is atomic), under a name no other running installer shares.
+fn staging_path(dir: &Path, pid: u32) -> PathBuf {
+    dir.join(format!(".atlas-install-tmp-{pid}"))
+}
+
+/// Removes the staging file when dropped (also after the successful rename, where it is gone), so
+/// no error path leaves a half-copied binary in `~/.atlas/bin` (a full disk is when it hurts most).
+struct Staging(PathBuf);
+
+impl Drop for Staging {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// Copy `src` over `dest` through a temp file in the same folder. Windows: a running `atlas.exe`
 /// (hostd, a dev session, an MCP server another tool spawned) cannot be overwritten or deleted,
 /// only renamed, so the old file is moved aside first; the next install sweeps the leftovers.
 fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
     let dir = dest.parent().context("install path has no folder")?;
     std::fs::create_dir_all(dir).with_context(|| format!("Could not create {}", dir.display()))?;
-    let tmp = dir.join(".atlas-install-tmp");
-    std::fs::copy(src, &tmp)
-        .with_context(|| format!("Could not copy binary to {}", tmp.display()))?;
+    let tmp = Staging(staging_path(dir, std::process::id()));
+    std::fs::copy(src, &tmp.0)
+        .with_context(|| format!("Could not copy binary to {}", tmp.0.display()))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+        std::fs::set_permissions(&tmp.0, std::fs::Permissions::from_mode(0o755))?;
     }
 
     #[cfg(windows)]
@@ -154,7 +171,8 @@ fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
             dir.join(format!(".atlas-old-{}.exe", std::process::id())),
         );
     }
-    std::fs::rename(&tmp, dest).with_context(|| format!("Could not install to {}", dest.display()))
+    std::fs::rename(&tmp.0, dest)
+        .with_context(|| format!("Could not install to {}", dest.display()))
 }
 
 /// Windows: delete the `.atlas-old-<pid>.exe` files earlier installs moved aside; one still in use
@@ -167,6 +185,48 @@ fn sweep_old(dir: &Path) {
             let _ = std::fs::remove_file(e.path());
         }
     }
+}
+
+/// What [`install_binary`] did with the CLI at the destination.
+#[derive(Debug, PartialEq, Eq)]
+enum Installed {
+    /// This binary was copied there.
+    Copied,
+    /// A dev-build link (`atlas link`) is there: left alone, never overwritten.
+    KeptLink,
+    /// A build with higher SemVer precedence is already there: left alone.
+    KeptNewer(String),
+}
+
+/// Put `src` at `dest` unless something better is already there. `atlas install` is what the
+/// installer scripts run with the *bootstrap* binary (the newest Stable, which may be older than
+/// what the machine runs), so re-running the installer must neither overwrite a developer's
+/// `atlas link` symlink nor downgrade a newer install (and strand it there when the update that
+/// follows cannot reach the network). Same judgment as `install --upgrade`: [`judge_upgrade`].
+fn install_binary(
+    src: &Path,
+    dest: &Path,
+    own: &str,
+    installed: impl FnOnce(&Path) -> Option<String>,
+) -> Result<Installed> {
+    match judge_upgrade(dest, own, installed) {
+        Upgrade::Linked => Ok(Installed::KeptLink),
+        // Same version re-copies (a reinstall repairs a damaged file); only a strictly newer one stays.
+        Upgrade::Current(v) if is_newer(&v, own) => Ok(Installed::KeptNewer(v)),
+        Upgrade::Current(_) | Upgrade::Absent | Upgrade::Replace(_) => {
+            replace_binary(src, dest)?;
+            Ok(Installed::Copied)
+        }
+    }
+}
+
+/// `have` has higher SemVer precedence than `own` (both parsed; anything else is not newer).
+fn is_newer(have: &str, own: &str) -> bool {
+    use atlas_core::channel;
+    matches!(
+        (channel::parse_tag(have), channel::parse_tag(own)),
+        (Some(h), Some(o)) if channel::precedence(&h, &o).is_gt()
+    )
 }
 
 pub async fn handle(dir: Option<String>) -> Result<()> {
@@ -185,9 +245,23 @@ pub async fn handle(dir: Option<String>) -> Result<()> {
     let current_exe =
         std::env::current_exe().context("Could not determine current executable path")?;
     let dest = install_dir.join(atlas_core::paths::exe("atlas"));
-    replace_binary(&current_exe, &dest)?;
-
-    println!("\x1b[32m✓\x1b[0m Installed → {}", dest.display());
+    match install_binary(
+        &current_exe,
+        &dest,
+        env!("CARGO_PKG_VERSION"),
+        installed_version,
+    )? {
+        Installed::Copied => println!("\x1b[32m✓\x1b[0m Installed → {}", dest.display()),
+        Installed::KeptLink => println!(
+            "\x1b[32m✓\x1b[0m Kept      {} (linked to a dev build; `atlas unlink` goes back)",
+            dest.display()
+        ),
+        Installed::KeptNewer(v) => println!(
+            "\x1b[32m✓\x1b[0m Kept      {} (v{v} is newer than this v{}; never a downgrade)",
+            dest.display(),
+            env!("CARGO_PKG_VERSION")
+        ),
+    }
 
     let already_in_path = std::env::var_os("PATH")
         .is_some_and(|path| std::env::split_paths(&path).any(|p| p == install_dir));
@@ -282,23 +356,48 @@ fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
     Ok(String::from_utf8_lossy(&out.stdout).trim() == "changed")
 }
 
+/// What putting `dir` on `PATH` did for one shell.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(windows, allow(dead_code))]
+enum PathSetup {
+    /// The startup file was written (or created).
+    Written(PathBuf),
+    /// The startup file already puts `dir` on `PATH`.
+    AlreadySet(PathBuf),
+    /// The shell has no startup file to append to (bash with none of its login files).
+    NoFile,
+}
+
+/// One line per shell for the installer's report; `NoFile` is not a success and says so.
+#[cfg_attr(windows, allow(dead_code))]
+fn setup_label(shell: &str, s: &PathSetup) -> Option<String> {
+    match s {
+        PathSetup::Written(p) => Some(format!("{shell}  {}", p.display())),
+        PathSetup::AlreadySet(p) => Some(format!("{shell}  {} (already set)", p.display())),
+        PathSetup::NoFile => None,
+    }
+}
+
+/// Put `install_dir` on `PATH` for every shell on this machine. Returns the report lines of the
+/// shells that now have it; empty means the user must do it by hand.
 #[cfg_attr(windows, allow(dead_code))]
 fn setup_path_all_shells(install_dir: &Path) -> Vec<String> {
+    let env = ShellEnv::current();
     let mut written = Vec::new();
-    if shell_exists("fish")
-        && let Ok(label) = setup_fish(install_dir)
-    {
-        written.push(label);
-    }
-    if shell_exists("zsh")
-        && let Ok(label) = setup_zsh(install_dir)
-    {
-        written.push(label);
-    }
-    if shell_exists("bash")
-        && let Ok(label) = setup_bash(install_dir)
-    {
-        written.push(label);
+    for (name, setup) in [
+        (
+            "fish",
+            setup_fish as fn(&ShellEnv, &Path) -> Result<PathSetup>,
+        ),
+        ("zsh", setup_zsh),
+        ("bash", setup_bash),
+    ] {
+        if shell_exists(name)
+            && let Ok(s) = setup(&env, install_dir)
+            && let Some(label) = setup_label(name, &s)
+        {
+            written.push(label);
+        }
     }
     written
 }
@@ -321,86 +420,66 @@ fn which_exists(cmd: &str) -> bool {
     atlas_core::paths::which(cmd).is_some()
 }
 
-fn setup_fish(install_dir: &Path) -> Result<String> {
-    let conf_d = fish_conf_d()?;
+/// fish: `conf.d/atlas.fish`, a file of Atlas's own. One that is not what Atlas writes is the
+/// user's (their own `atlas` wrapper, say): it is left alone and `PATH` is reported as not set.
+#[cfg_attr(windows, allow(dead_code))]
+fn setup_fish(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
+    let rc = env.fish_file();
+    if let Ok(existing) = std::fs::read_to_string(&rc) {
+        if shellrc::is_fish_file_ours(&existing, install_dir) {
+            return Ok(PathSetup::AlreadySet(rc));
+        }
+        bail!(
+            "{} exists and is not the file Atlas writes; add `{}` to it yourself",
+            rc.display(),
+            shellrc::fish_line(install_dir)
+        );
+    }
+    let conf_d = env.fish_conf_d();
     std::fs::create_dir_all(&conf_d)
         .with_context(|| format!("Could not create {}", conf_d.display()))?;
-    let rc = conf_d.join("atlas.fish");
-    let line = format!("fish_add_path {}", install_dir.display());
-    if rc.exists() {
-        let existing = std::fs::read_to_string(&rc).unwrap_or_default();
-        if existing.contains(install_dir.to_string_lossy().into_owned().as_str()) {
-            return Ok("fish  (already set)".to_string());
-        }
-    }
-    std::fs::write(&rc, format!("# Atlas CLI\n{line}\n"))
+    std::fs::write(&rc, shellrc::fish_contents(install_dir))
         .with_context(|| format!("Could not write {}", rc.display()))?;
-    Ok(format!("fish  {}", rc.display()))
+    Ok(PathSetup::Written(rc))
 }
 
-fn fish_conf_d() -> Result<PathBuf> {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_default();
-            PathBuf::from(home).join(".config")
-        });
-    Ok(base.join("fish").join("conf.d"))
+/// zsh: `$ZDOTDIR/.zshenv` (else `~/.zshenv`), which every zsh reads.
+#[cfg_attr(windows, allow(dead_code))]
+fn setup_zsh(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
+    append_block(env.zsh_file(), install_dir)
 }
 
-fn setup_zsh(install_dir: &Path) -> Result<String> {
-    let rc = zsh_env_file()?;
-    let line = format!("export PATH=\"{}:$PATH\"", install_dir.display());
-    let existing = std::fs::read_to_string(&rc).unwrap_or_default();
-    if existing.contains(install_dir.to_string_lossy().into_owned().as_str()) {
-        return Ok("zsh   (already set)".to_string());
+/// bash: the first login file that exists. None is not an error, but not a success either.
+#[cfg_attr(windows, allow(dead_code))]
+fn setup_bash(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
+    match env.bash_file() {
+        Some(rc) => append_block(rc, install_dir),
+        None => Ok(PathSetup::NoFile),
     }
-    append_line(&rc, &line)?;
-    Ok(format!("zsh   {}", rc.display()))
 }
 
-fn zsh_env_file() -> Result<PathBuf> {
-    let zdotdir = std::env::var("ZDOTDIR")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_default();
-            PathBuf::from(home)
-        });
-    Ok(zdotdir.join(".zshenv"))
-}
-
-fn setup_bash(install_dir: &Path) -> Result<String> {
-    let home = std::env::var("HOME").context("$HOME not set")?;
-    let home = PathBuf::from(home);
-    let candidates = [".bash_profile", ".bash_login", ".bashrc"];
-    let rc = candidates
-        .iter()
-        .map(|f| home.join(f))
-        .find(|p| p.is_file());
-    let rc = match rc {
-        Some(r) => r,
-        None => return Ok("bash  (no rc file found)".to_string()),
-    };
-    let line = format!("export PATH=\"{}:$PATH\"", install_dir.display());
-    let existing = std::fs::read_to_string(&rc).unwrap_or_default();
-    if existing.contains(install_dir.to_string_lossy().into_owned().as_str()) {
-        return Ok("bash  (already set)".to_string());
-    }
-    append_line(&rc, &line)?;
-    Ok(format!("bash  {}", rc.display()))
-}
-
-fn append_line(path: &PathBuf, line: &str) -> Result<()> {
+/// Append the PATH block to `rc` unless it already has the exact line.
+#[cfg_attr(windows, allow(dead_code))]
+fn append_block(rc: PathBuf, install_dir: &Path) -> Result<PathSetup> {
     use std::io::Write;
+    let existing = std::fs::read_to_string(&rc).unwrap_or_default();
+    if shellrc::has_path_entry(&existing, install_dir) {
+        return Ok(PathSetup::AlreadySet(rc));
+    }
     let mut f = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
-        .open(path)
-        .with_context(|| format!("Could not open {}", path.display()))?;
-    writeln!(f, "\n# Atlas CLI\n{line}")?;
-    Ok(())
+        .open(&rc)
+        .with_context(|| format!("Could not open {}", rc.display()))?;
+    // A file that does not end in a newline would glue the marker to its last line.
+    let lead = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    write!(f, "{lead}{}", shellrc::block(install_dir))
+        .with_context(|| format!("Could not write {}", rc.display()))?;
+    Ok(PathSetup::Written(rc))
 }
 
 #[cfg(test)]
@@ -408,33 +487,142 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_install_dir_default() {
-        unsafe { std::env::set_var("HOME", "/home/dev") };
-        let home = std::env::var("HOME").unwrap();
-        let dir = PathBuf::from(home).join(INSTALL_DIR);
-        assert_eq!(dir, PathBuf::from("/home/dev/.atlas/bin"));
-    }
-
-    #[test]
     fn test_shell_exists_via_path() {
         assert!(which_exists(if cfg!(windows) { "cmd" } else { "sh" }));
         assert!(!which_exists("atlas-no-such-shell"));
     }
 
+    /// A home in a temp dir with `~/.atlas/bin` as the install dir.
+    fn shell_home() -> (tempfile::TempDir, ShellEnv, PathBuf) {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().to_path_buf();
+        let env = ShellEnv {
+            home: home.clone(),
+            zdotdir: None,
+            xdg_config: None,
+        };
+        (t, env, home.join(".atlas/bin"))
+    }
+
+    /// Re-running the installer must not stack `# Atlas CLI` blocks: the second run reports
+    /// "already set" and leaves the file byte for byte as it was.
     #[test]
-    fn test_fish_conf_d_default() {
-        unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
-        unsafe { std::env::set_var("HOME", "/home/dev") };
-        let dir = fish_conf_d().unwrap();
-        assert_eq!(dir, PathBuf::from("/home/dev/.config/fish/conf.d"));
+    fn path_setup_is_idempotent_for_every_shell() {
+        let (_t, env, bin) = shell_home();
+        std::fs::write(env.home.join(".bashrc"), "alias ll='ls -l'\n").unwrap();
+        for setup in [setup_zsh, setup_bash, setup_fish] {
+            let first = setup(&env, &bin).unwrap();
+            assert!(matches!(first, PathSetup::Written(_)), "{first:?}");
+        }
+        let files = [env.zsh_file(), env.bash_file().unwrap(), env.fish_file()];
+        let before: Vec<_> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
+        for setup in [setup_zsh, setup_bash, setup_fish] {
+            let again = setup(&env, &bin).unwrap();
+            assert!(matches!(again, PathSetup::AlreadySet(_)), "{again:?}");
+        }
+        let after: Vec<_> = files.iter().map(|f| std::fs::read(f).unwrap()).collect();
+        assert_eq!(before, after);
+        let bashrc = std::fs::read_to_string(env.bash_file().unwrap()).unwrap();
+        assert_eq!(bashrc.matches("# Atlas CLI").count(), 1, "{bashrc}");
+    }
+
+    /// Incident class: "already set" was a substring test, so a longer path (`bin-old`) or a comment
+    /// that mentions the folder made the installer skip the line and leave `atlas` off `PATH`.
+    #[test]
+    fn a_lookalike_in_the_rc_file_does_not_count_as_already_set() {
+        let (_t, env, bin) = shell_home();
+        let rc = env.zsh_file();
+        let mine = format!(
+            "export PATH=\"{}-old:$PATH\"\n# {} is where atlas lives\n",
+            bin.display(),
+            bin.display()
+        );
+        std::fs::write(&rc, &mine).unwrap();
+        assert_eq!(
+            setup_zsh(&env, &bin).unwrap(),
+            PathSetup::Written(rc.clone())
+        );
+        let text = std::fs::read_to_string(&rc).unwrap();
+        assert!(
+            text.starts_with(&mine),
+            "the user's lines stay first: {text}"
+        );
+        assert!(shellrc::has_path_entry(&text, &bin));
+    }
+
+    /// What install writes, uninstall removes, leaving the user's file as it was, also when it
+    /// had no trailing newline.
+    #[test]
+    fn install_then_strip_restores_the_rc_file() {
+        let (_t, env, bin) = shell_home();
+        for original in ["", "export A=1\n", "export A=1"] {
+            std::fs::write(env.zsh_file(), original).unwrap();
+            setup_zsh(&env, &bin).unwrap();
+            let written = std::fs::read_to_string(env.zsh_file()).unwrap();
+            assert!(written.contains("# Atlas CLI"), "{written:?}");
+            let back = shellrc::strip_block(&written, &bin).unwrap();
+            let want = if original.is_empty() || original.ends_with('\n') {
+                original.to_string()
+            } else {
+                format!("{original}\n")
+            };
+            assert_eq!(back, want, "{original:?}");
+        }
+    }
+
+    /// A last line without a newline must not swallow the marker.
+    #[test]
+    fn the_block_starts_on_its_own_line_after_a_file_without_trailing_newline() {
+        let (_t, env, bin) = shell_home();
+        std::fs::write(env.zsh_file(), "export A=1").unwrap();
+        setup_zsh(&env, &bin).unwrap();
+        let text = std::fs::read_to_string(env.zsh_file()).unwrap();
+        assert!(text.starts_with("export A=1\n"), "{text:?}");
+        assert!(text.lines().any(|l| l == "# Atlas CLI"), "{text:?}");
     }
 
     #[test]
-    fn test_zsh_env_file_default() {
-        unsafe { std::env::remove_var("ZDOTDIR") };
-        unsafe { std::env::set_var("HOME", "/home/dev") };
-        let f = zsh_env_file().unwrap();
-        assert_eq!(f, PathBuf::from("/home/dev/.zshenv"));
+    fn zsh_follows_zdotdir() {
+        let (_t, mut env, bin) = shell_home();
+        env.zdotdir = Some(env.home.join("zdot"));
+        std::fs::create_dir_all(env.home.join("zdot")).unwrap();
+        let s = setup_zsh(&env, &bin).unwrap();
+        assert_eq!(s, PathSetup::Written(env.home.join("zdot/.zshenv")));
+        assert!(!env.home.join(".zshenv").exists());
+    }
+
+    /// Incident class: with none of bash's login files the installer printed `Added to PATH [bash
+    /// (no rc file found)]` as if it had worked. It is not a success and must not be reported as one.
+    #[test]
+    fn bash_without_a_login_file_is_not_reported_as_set() {
+        let (_t, env, bin) = shell_home();
+        let s = setup_bash(&env, &bin).unwrap();
+        assert_eq!(s, PathSetup::NoFile);
+        assert_eq!(setup_label("bash", &s), None);
+        assert!(
+            !env.home.join(".bashrc").exists(),
+            "nothing is created for bash"
+        );
+        let done = setup_label("zsh", &PathSetup::Written(env.zsh_file())).unwrap();
+        assert!(
+            done.starts_with("zsh") && !done.contains("already"),
+            "{done}"
+        );
+        let had = setup_label("zsh", &PathSetup::AlreadySet(env.zsh_file())).unwrap();
+        assert!(had.contains("already set"), "{had}");
+    }
+
+    /// fish's file is Atlas's own: one the user wrote under that name is never overwritten.
+    #[test]
+    fn fish_never_overwrites_a_file_it_did_not_write() {
+        let (_t, env, bin) = shell_home();
+        let rc = env.fish_file();
+        std::fs::create_dir_all(rc.parent().unwrap()).unwrap();
+        let mine = "function atlas\n  echo my wrapper\nend\n";
+        std::fs::write(&rc, mine).unwrap();
+        let e = setup_fish(&env, &bin).unwrap_err().to_string();
+        assert!(e.contains("not the file Atlas writes"), "{e}");
+        assert_eq!(std::fs::read_to_string(&rc).unwrap(), mine);
     }
 
     fn judge(own: &str, installed: Option<&str>) -> Upgrade {
@@ -535,6 +723,15 @@ mod tests {
         );
     }
 
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
     #[test]
     fn replace_binary_swaps_the_file_and_leaves_no_temp_behind() {
         let t = tempfile::tempdir().unwrap();
@@ -545,6 +742,110 @@ mod tests {
         std::fs::write(&dest, "old").unwrap();
         replace_binary(&src, &dest).unwrap();
         assert_eq!(std::fs::read_to_string(&dest).unwrap(), "new");
-        assert!(!dest.parent().unwrap().join(".atlas-install-tmp").exists());
+        assert_eq!(names(dest.parent().unwrap()), ["atlas.exe"]);
+    }
+
+    /// Incident class: the staging file was `.atlas-install-tmp`, left behind (up to a whole
+    /// half-written binary) whenever the final rename failed, and shared by two installers at once.
+    #[test]
+    fn a_failed_replace_leaves_no_staging_file_and_keeps_the_old_binary() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("new");
+        std::fs::write(&src, "new").unwrap();
+        let bin = t.path().join("bin");
+        // A non-empty directory where the binary goes: the final rename cannot replace it.
+        let dest = bin.join("atlas");
+        std::fs::create_dir_all(dest.join("inside")).unwrap();
+        assert!(replace_binary(&src, &dest).is_err());
+        assert_eq!(names(&bin), ["atlas"], "no staging file left in {bin:?}");
+        assert!(dest.join("inside").is_dir(), "what was there is untouched");
+    }
+
+    #[test]
+    fn two_installs_stage_under_different_names() {
+        let t = tempfile::tempdir().unwrap();
+        let a = staging_path(t.path(), 1);
+        let b = staging_path(t.path(), 2);
+        assert_ne!(a, b, "concurrent installers must not share a staging file");
+        assert_eq!(
+            a.parent(),
+            Some(t.path()),
+            "same folder as the target (atomic rename)"
+        );
+    }
+
+    /// The installer scripts run `atlas install` with the bootstrap binary, which can be older than
+    /// what the machine already runs. It must keep the newer install (the update step that follows
+    /// may be offline), copy an equal or older one, and never replace a dev link.
+    #[test]
+    fn install_never_downgrades_and_never_replaces_a_link() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("bootstrap");
+        std::fs::write(&src, "bootstrap").unwrap();
+        let put = |body: &str| {
+            let d = t.path().join("bin").join("atlas");
+            std::fs::create_dir_all(d.parent().unwrap()).unwrap();
+            let _ = std::fs::remove_file(&d);
+            std::fs::write(&d, body).unwrap();
+            d
+        };
+        let run = |dest: &Path, own: &str, have: Option<&str>| {
+            install_binary(&src, dest, own, |_| have.map(str::to_string)).unwrap()
+        };
+
+        // Newer on disk (alpha.10 vs the bootstrap's alpha.9: numeric, not text, order): kept.
+        let dest = put("on-disk");
+        assert_eq!(
+            run(&dest, "1.5.0-alpha.9", Some("1.5.0-alpha.10")),
+            Installed::KeptNewer("1.5.0-alpha.10".into())
+        );
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "on-disk");
+        // A stable outranks its own prerelease.
+        assert_eq!(
+            run(&dest, "1.5.0-rc.1", Some("1.5.0")),
+            Installed::KeptNewer("1.5.0".into())
+        );
+        // Older on disk: replaced. Equal: re-copied (a reinstall repairs a damaged file).
+        assert_eq!(
+            run(&dest, "1.5.0-alpha.10", Some("1.5.0-alpha.9")),
+            Installed::Copied
+        );
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "bootstrap");
+        std::fs::write(&dest, "damaged").unwrap();
+        assert_eq!(run(&dest, "1.5.0", Some("1.5.0")), Installed::Copied);
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "bootstrap");
+        // Unreadable on disk: replaced.
+        std::fs::write(&dest, "garbage").unwrap();
+        assert_eq!(run(&dest, "1.5.0", None), Installed::Copied);
+        // Absent: installed.
+        let fresh = t.path().join("fresh").join("atlas");
+        assert_eq!(run(&fresh, "1.5.0", None), Installed::Copied);
+        assert_eq!(std::fs::read_to_string(&fresh).unwrap(), "bootstrap");
+
+        #[cfg(unix)]
+        {
+            let real = t.path().join("target-debug-atlas");
+            std::fs::write(&real, "dev build").unwrap();
+            let link = t.path().join("linked").join("atlas");
+            std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            assert_eq!(run(&link, "1.5.0", None), Installed::KeptLink);
+            assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+            assert_eq!(std::fs::read_to_string(&real).unwrap(), "dev build");
+        }
+    }
+
+    #[test]
+    fn is_newer_is_semver_precedence() {
+        assert!(is_newer("1.5.0-alpha.10", "1.5.0-alpha.9"));
+        assert!(is_newer("1.5.0", "1.5.0-rc.1"));
+        assert!(is_newer("v1.6.0", "1.5.9"));
+        assert!(!is_newer("1.5.0-alpha.9", "1.5.0-alpha.10"));
+        assert!(
+            !is_newer("1.5.0", "1.5.0+build.7"),
+            "build metadata is not precedence"
+        );
+        assert!(!is_newer("garbage", "1.5.0"));
+        assert!(!is_newer("1.5.0", "garbage"));
     }
 }

@@ -150,7 +150,7 @@ fn managed_service(
         stopped: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         pumps: Vec::new(),
         exited_ok: false,
-        probe_fails: 0,
+        probes: types::Probes::from_def(def),
         usage: None,
         max_memory: def
             .max_memory

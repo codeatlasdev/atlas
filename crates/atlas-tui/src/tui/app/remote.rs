@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 use crate::control::{self, Subscription};
 use crate::runner::parse_state;
 use crate::runtime::logs::LogStream;
-use crate::runtime::manager::{ManagerEvent, MirrorFacts};
+use crate::runtime::manager::{ManagerEvent, MirrorFacts, UnhealthyReport};
 use crate::runtime::service::ServiceState;
 use crate::runtime::tunnel::TunnelStatus;
 use crate::tui::widgets::events::EventKind;
@@ -84,6 +84,23 @@ fn facts(v: &Value) -> MirrorFacts {
         completed_ok: v["completed_ok"].as_bool().unwrap_or(false),
         paused_by: v["paused_by"].as_str().map(str::to_string),
         deselected: v["deselected"].as_bool().unwrap_or(false),
+        ready: v["ready"].as_bool(),
+        probe_error: v["probe_error"].as_str().map(str::to_string),
+        unhealthy: v["unhealthy_since"]
+            .as_u64()
+            .map(|since_epoch| UnhealthyReport {
+                since_secs: crate::runtime::clock::now_secs().saturating_sub(since_epoch),
+                since_epoch,
+                misses: v["unhealthy_misses"].as_u64().unwrap_or(0) as u32,
+                lines: v["unhealthy_lines"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|l| l.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            }),
     }
 }
 

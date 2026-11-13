@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { prefsMock } from "../../../test/prefsMock.ts";
 
 // Incident (desktop flicker, xterm path, Linux and remote terminals): the terminal opened with the DOM renderer,
 // swapped to WebGL a frame later, fitted only after the pty attach answered (first frames at 80x24, then a reflow),
@@ -139,24 +140,22 @@ await (await import("../../../test/uiKit.ts")).installUiKit();
 // The theme store pulls the whole kit (colorScheme, bits-ui), which bun cannot load; no other test touches it.
 mock.module("#lib/stores/theme.svelte.ts", () => ({ themes: { xterm: {} } }));
 // Same for prefs (editor/settings.test.ts mocks it too): the real store links `api.ts`, which workspace.test.ts stubs.
-mock.module("#lib/stores/prefs.svelte.ts", () => ({
-	prefs: {
-		value: {
-			terminal: {
-				max_scroll_history_lines: 1000,
-				get font_family() {
-					return userFamily;
-				},
-				font_size: 13,
-				font_thicken: false,
-				blinking: false,
-				cursor_shape: "block",
-				padding_x: 0,
-				padding_y: 0,
+mock.module("#lib/stores/prefs.svelte.ts", () =>
+	prefsMock({
+		terminal: {
+			max_scroll_history_lines: 1000,
+			get font_family() {
+				return userFamily;
 			},
+			font_size: 13,
+			font_thicken: false,
+			blinking: false,
+			cursor_shape: "block",
+			padding_x: 0,
+			padding_y: 0,
 		},
-	},
-}));
+	}),
+);
 
 // A fixed-pitch face for every installed family; the rest cannot be drawn by the webview.
 mock.module("./terminal/xtermFont.ts", async () => {

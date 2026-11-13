@@ -5,6 +5,7 @@
 	import CardHead from "./CardHead.svelte";
 	import CardActions from "./CardActions.svelte";
 	import CardSpark from "./CardSpark.svelte";
+	import { isAlive, problemText } from "./serviceState.ts";
 
 	let {
 		projectId,
@@ -42,15 +43,11 @@
 		onkeynav: (e: KeyboardEvent) => void;
 	} = $props();
 
-	let up = $derived(service.state === "running" || service.state === "starting");
-	let failed = $derived(service.state === "failed");
+	let up = $derived(isAlive(service));
+	let failed = $derived(service.state === "failed" || service.state === "unhealthy");
+	let degraded = $derived(service.state === "degraded");
 	let showSpark = $derived(up && service.mem_mb != null);
-	let reason = $derived(
-		failed
-			? (service.note ??
-					(service.exit_code != null ? `Exited with code ${service.exit_code}` : "Failed to start"))
-			: null,
-	);
+	let reason = $derived(problemText(service));
 
 	function press(e: KeyboardEvent) {
 		if (e.target !== e.currentTarget) return;
@@ -68,6 +65,7 @@
 	class="card s-{service.state}"
 	class:focused
 	class:failed
+	class:degraded
 	data-service={service.name}
 	role="button"
 	tabindex="0"
@@ -146,6 +144,14 @@
 	.card.failed {
 		background: color-mix(in oklab, var(--ca-semantic-error) 6%, var(--ca-surface-raised));
 		box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--ca-semantic-error) 45%, transparent);
+	}
+	.card.degraded {
+		background: color-mix(in oklab, var(--ca-semantic-warning) 6%, var(--ca-surface-raised));
+		box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--ca-semantic-warning) 45%, transparent);
+	}
+	.card.degraded .reason {
+		color: var(--ca-semantic-warning);
+		background: color-mix(in oklab, var(--ca-semantic-warning) 10%, transparent);
 	}
 	/* A stopped service reads as quieter through its surface, not through `opacity`: fading the card multiplied
 	   every text colour inside it (measured 2.1-4.4:1); the tokens keep their guaranteed contrast. */

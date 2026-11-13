@@ -32,6 +32,20 @@ pub async fn check_http(url: &str, timeout: Duration) -> bool {
     }
 }
 
+/// `GET url`, bounded by `timeout`: the status code, or a one-line reason
+/// (`timed out after 2s`, `connection refused`, …). The readiness probe judges the code.
+pub async fn http_status(url: &str, timeout: Duration) -> Result<u16, String> {
+    let Some(client) = HTTP.as_ref() else {
+        return Err("http client unavailable".into());
+    };
+    match client.get(url).timeout(timeout).send().await {
+        Ok(resp) => Ok(resp.status().as_u16()),
+        Err(e) if e.is_timeout() => Err(format!("timed out after {}s", timeout.as_secs())),
+        Err(e) if e.is_connect() => Err("connection refused".into()),
+        Err(e) => Err(e.without_url().to_string()),
+    }
+}
+
 pub async fn check_port(host: &str, port: u16, timeout: Duration) -> bool {
     tokio::time::timeout(timeout, TcpStream::connect((host, port)))
         .await

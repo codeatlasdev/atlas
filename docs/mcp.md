@@ -57,7 +57,8 @@ Is `atlas dev` running for this project, and what is each service's state? Call 
   "heartbeat_age_s": 1,
   "services": [
     { "name": "api", "state": "running", "port": 3001, "health": "http://localhost:3001/health",
-      "exit_code": null, "restarts": 0, "uptime_s": 412, "started_at": 1760000000, "note": null, "off": false },
+      "exit_code": null, "restarts": 0, "uptime_s": 412, "started_at": 1760000000, "note": null, "off": false,
+      "ready": true, "probe_error": null, "unhealthy_since": null, "unhealthy_misses": null, "unhealthy_lines": [] },
     { "name": "web", "state": "failed",  "port": 3002, "health": null,
       "exit_code": 1, "restarts": 5, "uptime_s": null, "started_at": 1760000412, "note": "gave up after 5 restarts" }
   ],
@@ -67,9 +68,28 @@ Is `atlas dev` running for this project, and what is each service's state? Call 
 
 Per service: `exit_code` is the last exit status of the process (`null` while it runs, never exited, or died on a signal); `restarts` the restart attempts in the current streak; `uptime_s` seconds `running` (`null` otherwise); `started_at` unix seconds of the last spawn; `note` the sidebar annotation (`waiting for :3001 (12s)`, `waiting for ready_log (12s)`, `start timeout: still waiting for :3001 (75s)`, `restarting in 4s (2/5)`, `dependency db failed`, …).
 
+Health fields (see [Health and readiness](configuration.md#health-and-readiness)), present on every row:
+
+| Field | Meaning |
+|---|---|
+| `ready` | result of the service's optional `ready:` probe: `true` while `running`, `false` while `degraded` by a failing probe, `null` when it has none (or it is not up) |
+| `probe_error` | why a `degraded` service is degraded: the failing probe's message (`GET /ready → 503`, `connection refused`, `timed out after 5s`, `` `cmd` exited 1: … ``) or the repeating log line (`repeating error: …`); `null` otherwise |
+| `unhealthy_since` | unix seconds an `unhealthy` (hung) service stopped answering; `null` otherwise |
+| `unhealthy_misses` | liveness probes missed in a row at that moment; `null` otherwise |
+| `unhealthy_lines` | the service's last output lines (up to 20) at that moment, so you can see what it was doing when it hung; `[]` otherwise |
+
+A hung service looks like this (`note` is `unhealthy for 42s: 3 missed probes`):
+
+```json
+{ "name": "web", "state": "unhealthy", "port": 3002, "health": "http://localhost:3002/",
+  "exit_code": null, "restarts": 0, "uptime_s": 900, "note": "unhealthy for 42s: 3 missed probes",
+  "ready": null, "probe_error": null, "unhealthy_since": 1760000870, "unhealthy_misses": 3,
+  "unhealthy_lines": ["12:01:04 [stderr] Error: ETIMEDOUT db.internal:5432", "…"] }
+```
+
 `tunnel` is `null` when no [SSH tunnel](configuration.md#tunnel) is running; otherwise its `state` uses the same values as services (`failed` while reconnecting). Tunnel ssh output is readable with `atlas_logs` (`service: "tunnel"`).
 
-`state` is one of `starting`, `running`, `failed`, `stopped`, `disabled` (stopped by a user/agent, or left out of the run), `suspended` (paused by an action). `off: true` marks a service left out of this run by `atlas dev SERVICE…` / `--profile` (state `disabled`): start it with `atlas_start_service`, which clears the flag. When nothing is running: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Other reasons: the pid is dead, or the heartbeat is older than 120 s.
+`state` is one of `starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (stopped by a user/agent, or left out of the run), `suspended` (paused by an action). `unhealthy` = the process is alive but stopped answering its health probe (hung; nothing exited, so not `failed`). `degraded` = it answers, but its `ready:` probe fails or the same error keeps repeating in its log; `probe_error` says which. `off: true` marks a service left out of this run by `atlas dev SERVICE…` / `--profile` (state `disabled`): start it with `atlas_start_service`, which clears the flag. When nothing is running: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Other reasons: the pid is dead, or the heartbeat is older than 120 s.
 
 ### `atlas_logs`
 
@@ -157,7 +177,7 @@ The agent must show that text to the user and retry only if they agree. Other er
 
 ### `atlas_wait_ready`
 
-Block until a service (or every service) is `running`, polling the live status twice a second.
+Block until a service (or every service) is `running`, polling the live status twice a second. `running` already includes the service's `ready:` probe when it has one, so a `degraded` or `unhealthy` service is still waited for.
 
 | Argument | Type | Default | Notes |
 |---|---|---|---|
@@ -168,7 +188,17 @@ Results:
 
 - ready: `ready after 3.2s` followed by `api=running web=running` (never reported in under 1.5 s, so a call right after a restart cannot see the old `running`);
 - a service entered `failed`: error `service 'api' failed` plus all states (fails fast);
-- timeout: error `timed out after 60s waiting for readiness` plus all states;
+- timeout: error `timed out after 60s waiting for readiness` plus all states, then one block per blocking service that carries a reason: for `degraded` the failing probe's message (`api: ready probe failed: GET /ready → 503`, or the repeating line), for `unhealthy` how long it has been hung, how many probes it missed and its last output lines:
+
+  ```text
+  timed out after 60s waiting for readiness
+  api=degraded web=unhealthy
+  api: ready probe failed: GET /ready → 503
+  web: unhealthy for 42s (3 missed probes); last output:
+      12:01:04 [stderr] Error: ETIMEDOUT db.internal:5432
+  ```
+
+  With `service` set, only that service is listed.
 - atlas not running: error `atlas dev is not running; start it in a terminal`.
 
 > **Client timeouts.** MCP clients cancel a call that takes too long. OMP's default is 30 s per request, so a `timeout_s` above about 25 will be cut off by the client. Either keep `timeout_s` ≤ 25 and call again, or raise the client timeout (OMP: `"timeout": 120000` in the server entry, up to cover the 600 s maximum if you need it). Atlas itself answers every control request within 30 s.
@@ -178,7 +208,7 @@ Results:
 1. `atlas_status`: is it up, what is failing?
 2. `atlas_logs {"level": "error"}` or `atlas_logs {"service": "api", "lines": 200}`; `atlas_logs_search {"query": "/ECONN|timeout/"}`.
 3. Fix the code.
-4. `atlas_restart_service {"service": "api"}` then `atlas_wait_ready {"service": "api"}`.
+4. `atlas_restart_service {"service": "api"}` then `atlas_wait_ready {"service": "api"}`. A `degraded` or `unhealthy` service shows up in step 1 with its reason (`probe_error`, `unhealthy_lines`): read those before the logs.
 5. Re-check logs.
 
 ## Set up your client
@@ -275,6 +305,7 @@ printf '%s\n' \
 | `atlas_status` says `running: false` but the TUI is open | The agent is looking at a different project directory than the TUI. Compare the `--dir`/`cwd`. |
 | `atlas dev is not running; start it in a terminal` | Start `atlas dev` (or `atlas dev --detach` / `--headless`) for that project. `--ci` does not serve control. |
 | Control call: `timed out waiting for atlas dev` | The run loop did not answer within 30 s (it is stuck or shutting down). |
+| `atlas_wait_ready` times out with `degraded` / `unhealthy` | The service is up but not usable (`degraded`: its `ready:` probe fails or an error keeps repeating) or hung (`unhealthy`). The timeout message names the reason; see [Health and readiness](configuration.md#health-and-readiness). |
 | `atlas_wait_ready` cut off after 30 s | Client timeout shorter than `timeout_s`; see [Client timeouts](#atlas_wait_ready). |
 | `unknown service 'x'. Known services: …` | Use names from `atlas_config`. |
 | `no log file for service 'x'` | The service has not produced a log yet. Command-less services never have one. |

@@ -79,13 +79,13 @@ fn update_entry(
     id: &str,
     f: impl FnOnce(&mut Entry) -> Result<(), String>,
 ) -> Result<(), String> {
-    let mut entries = registry::load()?;
-    let e = entries
-        .iter_mut()
-        .find(|e| e.id == id)
-        .ok_or(format!("unknown project {id}"))?;
-    f(e)?;
-    registry::save(&entries)?;
+    registry::edit(|entries| {
+        let e = entries
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or(format!("unknown project {id}"))?;
+        f(e)
+    })?;
     notify_changed(app);
     Ok(())
 }

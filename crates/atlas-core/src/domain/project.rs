@@ -119,11 +119,14 @@ pub fn detect_project(path: &Path) -> ProjectDetection {
         }
 
         // Detect services from scripts
-        let scripts: Vec<(String, String)> = detection
+        // `scripts` is a HashMap: sort, or the same folder gets another service order (and `4010 + index` ports)
+        // on every launch.
+        let mut scripts: Vec<(String, String)> = detection
             .scripts
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
+        scripts.sort();
         for (name, cmd) in &scripts {
             if name == "dev"
                 || name.starts_with("dev:")
@@ -449,6 +452,48 @@ pub fn extract_port(cmd: &str) -> Option<u16> {
     None
 }
 
+/// `s` as one YAML scalar: as is when a plain scalar would read back as exactly this string, else double-quoted.
+/// Folder names, script names and commands come from the user's disk (`my: app`, `#todo`, `123`, `vite --host: x #y`);
+/// written bare they broke the file or changed type.
+fn yaml_scalar(s: &str) -> String {
+    const WORDS: [&str; 10] = [
+        "true", "false", "null", "yes", "no", "on", "off", "y", "n", "~",
+    ];
+    let first = s.chars().next();
+    let plain = first.is_some_and(|c| c.is_alphanumeric() || matches!(c, '.' | '/' | '_'))
+        && s.trim() == s
+        && !s.chars().any(|c| c.is_control())
+        && !s.contains(": ")
+        && !s.contains(" #")
+        && !s.ends_with(':')
+        && !WORDS.contains(&s.to_ascii_lowercase().as_str())
+        // numbers, `1e3`, `0x1F`, `.inf`, `.nan` and dates read back as non-strings
+        && s.parse::<f64>().is_err()
+        && !s.starts_with("0x")
+        && !s.starts_with("0o")
+        && !s.to_ascii_lowercase().starts_with(".inf")
+        && !s.to_ascii_lowercase().starts_with(".nan")
+        && !(s.len() >= 8 && s.as_bytes()[..4].iter().all(u8::is_ascii_digit) && s.as_bytes()[4] == b'-');
+    if plain {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// The `atlas.yaml` that `atlas init` writes for `root`, and what was detected there. The one place the file is
 /// rendered: the CLI writes it, Atlas Desktop previews it before creating the project.
 pub fn initial_config(root: &Path) -> (String, ProjectDetection) {
@@ -462,7 +507,7 @@ pub fn initial_config(root: &Path) -> (String, ProjectDetection) {
             |n| n.to_string_lossy().into_owned(),
         );
 
-    let mut yaml = format!("name: {name}\n\nservices:\n");
+    let mut yaml = format!("name: {}\n\nservices:\n", yaml_scalar(&name));
     if detection.services.is_empty() {
         yaml.push_str("  # app:\n");
         yaml.push_str("  #   command: npm run dev\n");
@@ -470,8 +515,8 @@ pub fn initial_config(root: &Path) -> (String, ProjectDetection) {
     } else {
         for (i, svc) in detection.services.iter().enumerate() {
             let port = svc.port.unwrap_or(PORT_BLOCK_START + i as u16);
-            yaml.push_str(&format!("  {}:\n", svc.name));
-            yaml.push_str(&format!("    command: {}\n", svc.command));
+            yaml.push_str(&format!("  {}:\n", yaml_scalar(&svc.name)));
+            yaml.push_str(&format!("    command: {}\n", yaml_scalar(&svc.command)));
             yaml.push_str(&format!("    port: {port}\n"));
         }
     }
@@ -523,6 +568,77 @@ mod tests {
             d.services.len(),
             "{yaml}"
         );
+    }
+
+    // Ordinary names and commands stay readable: the desktop previews this file before "Save as atlas.yaml".
+    #[test]
+    fn yaml_scalar_leaves_ordinary_values_plain() {
+        for s in [
+            "my-app",
+            "api_2",
+            "web",
+            "dev:watch",
+            "vite --port 5173",
+            "cargo run",
+            "./run.sh --x",
+            "ünï-项目",
+            "emoji-🚀",
+            "v1.2.3",
+            "a-b",
+            "node server.js && echo hi",
+            "key=value",
+            "PORT=3000 node x.js",
+        ] {
+            assert_eq!(yaml_scalar(s), s);
+        }
+    }
+
+    // Incident class: a folder or script that is special in YAML broke or retyped the generated file.
+    #[test]
+    fn yaml_scalar_quotes_what_a_plain_scalar_would_misread() {
+        for (raw, quoted) in [
+            ("my: app", r#""my: app""#),
+            ("#todo", r##""#todo""##),
+            ("app #1", r##""app #1""##),
+            ("[draft]", r#""[draft]""#),
+            ("{x}", r#""{x}""#),
+            ("@scope/p", r#""@scope/p""#),
+            ("*star", r#""*star""#),
+            ("& co", r#""& co""#),
+            ("!bang", r#""!bang""#),
+            ("'q'", r#""'q'""#),
+            ("- item", r#""- item""#),
+            ("%dir", r#""%dir""#),
+            ("> fold", r#""> fold""#),
+            ("| lit", r#""| lit""#),
+            ("trailing:", r#""trailing:""#),
+            ("true", r#""true""#),
+            ("Null", r#""Null""#),
+            ("NO", r#""NO""#),
+            ("~", r#""~""#),
+            ("123", r#""123""#),
+            ("1.5", r#""1.5""#),
+            ("1e3", r#""1e3""#),
+            ("0x1F", r#""0x1F""#),
+            (".inf", r#"".inf""#),
+            ("2024-01-31", r#""2024-01-31""#),
+            (" lead", r#"" lead""#),
+            ("trail ", r#""trail ""#),
+            ("", r#""""#),
+        ] {
+            assert_eq!(yaml_scalar(raw), quoted, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn yaml_scalar_escapes_quotes_backslashes_and_control_characters() {
+        // Mid-scalar quotes are literal in plain YAML; a leading quote must be escaped.
+        assert_eq!(yaml_scalar(r#"say "hi""#), r#"say "hi""#);
+        assert_eq!(yaml_scalar(r#""hi" there"#), r#""\"hi\" there""#);
+        assert_eq!(yaml_scalar(r"a\b: c"), r#""a\\b: c""#);
+        assert_eq!(yaml_scalar("two\nlines"), r#""two\nlines""#);
+        assert_eq!(yaml_scalar("tab\there"), r#""tab\there""#);
+        assert_eq!(yaml_scalar("bell\u{7}"), r#""bell\u0007""#);
     }
 
     #[test]

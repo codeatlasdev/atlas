@@ -136,6 +136,38 @@ pub fn bundled_cli() -> Option<PathBuf> {
     (cli != exe && cli.is_file()).then_some(cli)
 }
 
+/// The `atlas` CLI the desktop app runs (stacks, hostd, updates), as the first runnable file among, in order:
+/// `$ATLAS_BIN`, `~/.atlas/bin/atlas`, the installer-bundled one (Windows), then `atlas` on the login shell's `PATH`
+/// and on the process `PATH`. A candidate that is not an executable file (an empty override, a directory, a
+/// half-written install) is skipped, never returned. The login-shell `PATH` comes before the process one: an app
+/// started from Finder or the Dock has a minimal `PATH` that misses `/opt/homebrew/bin` and friends. Pure: every
+/// input is an argument.
+pub fn resolve_atlas_cli(
+    env_override: Option<&OsStr>,
+    home: Option<&Path>,
+    bundled: Option<PathBuf>,
+    login_path: Option<&OsStr>,
+    process_path: Option<&OsStr>,
+) -> Option<PathBuf> {
+    env_override
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .into_iter()
+        .chain(home.map(|h| h.join(".atlas/bin").join(exe("atlas"))))
+        .chain(bundled)
+        .find(|p| is_executable(p))
+        .or_else(|| {
+            login_path
+                .filter(|p| !p.is_empty())
+                .and_then(|p| which_in("atlas", p))
+        })
+        .or_else(|| {
+            process_path
+                .filter(|p| !p.is_empty())
+                .and_then(|p| which_in("atlas", p))
+        })
+}
+
 /// `name` as an executable file name on this OS: `atlas` on Unix, `atlas.exe` on Windows.
 pub fn exe(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
@@ -306,5 +338,123 @@ mod tests {
         assert_eq!(which_in("tool", &path), Some(exe.clone()));
         assert_eq!(which_in("tool.exe", &path), Some(exe));
         assert_eq!(which_in("notes.txt", &path), None);
+    }
+    /// A runnable fake `atlas` in `dir` (execute bit on Unix, `.exe` on Windows).
+    fn fake_cli(dir: &Path) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let p = dir.join(exe("atlas"));
+        std::fs::write(&p, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        p
+    }
+
+    fn cli_in(env: Option<&str>, home: &Path, login: Option<&Path>) -> Option<PathBuf> {
+        let login = login.map(|p| std::env::join_paths([p]).unwrap());
+        resolve_atlas_cli(
+            env.map(OsStr::new),
+            Some(home),
+            None,
+            login.as_deref(),
+            None,
+        )
+    }
+
+    // Incident class: hostd's lookup returned `$ATLAS_BIN` without looking at it and accepted any existing
+    // `~/.atlas/bin/atlas` (a directory, a half-written or non-executable file), so a stray variable or an
+    // interrupted install made hostd (the terminals) die in a retry loop while a good CLI sat on the PATH.
+    #[test]
+    fn an_unusable_atlas_bin_override_falls_through_to_the_installed_cli() {
+        let t = tempfile::tempdir().unwrap();
+        let good = fake_cli(&t.path().join(".atlas/bin"));
+        for bad in ["", "/no/such/atlas", t.path().to_str().unwrap()] {
+            assert_eq!(
+                cli_in(Some(bad), t.path(), None),
+                Some(good.clone()),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_usable_override_wins_over_everything() {
+        let t = tempfile::tempdir().unwrap();
+        fake_cli(&t.path().join(".atlas/bin"));
+        let mine = fake_cli(&t.path().join("mine"));
+        assert_eq!(
+            cli_in(Some(mine.to_str().unwrap()), t.path(), None),
+            Some(mine)
+        );
+    }
+
+    #[test]
+    fn a_directory_or_empty_stub_at_the_install_path_does_not_hide_a_cli_on_the_login_path() {
+        let t = tempfile::tempdir().unwrap();
+        // `~/.atlas/bin/atlas` is a directory (a botched install)
+        std::fs::create_dir_all(t.path().join(".atlas/bin").join(exe("atlas"))).unwrap();
+        let on_path = fake_cli(&t.path().join("brew/bin"));
+        assert_eq!(
+            cli_in(None, t.path(), Some(&t.path().join("brew/bin"))),
+            Some(on_path)
+        );
+        // nothing usable anywhere
+        assert_eq!(cli_in(None, t.path(), None), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_non_executable_file_is_not_a_cli() {
+        let t = tempfile::tempdir().unwrap();
+        let p = fake_cli(&t.path().join(".atlas/bin"));
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(cli_in(None, t.path(), None), None);
+    }
+
+    #[test]
+    fn the_login_shell_path_is_tried_before_the_apps_own_minimal_path() {
+        let t = tempfile::tempdir().unwrap();
+        let login = fake_cli(&t.path().join("login"));
+        let proc_ = fake_cli(&t.path().join("proc"));
+        let lp = std::env::join_paths([t.path().join("login")]).unwrap();
+        let pp = std::env::join_paths([t.path().join("proc")]).unwrap();
+        let r = resolve_atlas_cli(None, Some(t.path()), None, Some(&lp), Some(&pp));
+        assert_eq!(r, Some(login));
+        let r = resolve_atlas_cli(None, Some(t.path()), None, None, Some(&pp));
+        assert_eq!(r, Some(proc_));
+    }
+
+    // `PATH=""` splits into one empty entry, which joined to `atlas` is the current directory: a stray `./atlas`
+    // must never be run because the variable was empty.
+    #[test]
+    fn an_empty_path_variable_is_not_the_current_directory() {
+        let t = tempfile::tempdir().unwrap();
+        fake_cli(t.path());
+        let cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(t.path()).unwrap();
+        let empty = OsStr::new("");
+        let r = resolve_atlas_cli(None, None, None, Some(empty), Some(empty));
+        std::env::set_current_dir(cwd).unwrap();
+        assert_eq!(r, None);
+    }
+
+    #[test]
+    fn the_bundled_cli_comes_after_the_installed_one() {
+        let t = tempfile::tempdir().unwrap();
+        let bundled = fake_cli(&t.path().join("app"));
+        let r = resolve_atlas_cli(None, Some(t.path()), Some(bundled.clone()), None, None);
+        assert_eq!(r, Some(bundled));
+        let installed = fake_cli(&t.path().join(".atlas/bin"));
+        let r = resolve_atlas_cli(
+            None,
+            Some(t.path()),
+            Some(t.path().join("app").join(exe("atlas"))),
+            None,
+            None,
+        );
+        assert_eq!(r, Some(installed));
     }
 }

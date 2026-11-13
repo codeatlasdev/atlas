@@ -139,6 +139,19 @@ export function progress(rows: Row[], reported = false): StartProgress {
 }
 
 /**
+ * Whether the first-run screens (overlay, standing hero) may decide anything: settings and the project list loaded,
+ * and the list is a real one. A registry that could not be read leaves the store "loaded" with no projects, which
+ * looks exactly like a first run; `listError` is what tells them apart.
+ */
+export function firstRunReady(
+	settingsLoaded: boolean,
+	listLoaded: boolean,
+	listError: string | null,
+): boolean {
+	return settingsLoaded && listLoaded && !listError;
+}
+
+/**
  * Whether the welcome overlay is up. A first run is "welcome never finished and nothing added yet"; once the deck
  * adds the first project the overlay stays for the rest of the guided flow (`starting`, `up`) so the user sees their
  * stack come up, even though the welcome is already saved as finished by then ([`welcomeFinished`]).

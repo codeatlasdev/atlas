@@ -116,28 +116,60 @@ fn path() -> Result<PathBuf, String> {
 
 /// Missing file = empty registry; a corrupt one is an error (never overwrite it silently).
 pub fn load() -> Result<Vec<Entry>, String> {
-    let p = path()?;
-    match std::fs::read_to_string(&p) {
+    load_at(&path()?)
+}
+
+pub fn load_at(p: &Path) -> Result<Vec<Entry>, String> {
+    match std::fs::read_to_string(p) {
         Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", p.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(format!("{}: {e}", p.display())),
     }
 }
 
-pub fn save(entries: &[Entry]) -> Result<(), String> {
-    let p = path()?;
-    let text = serde_json::to_string_pretty(entries).map_err(|e| e.to_string())?;
-    write_atomic(&p, &text)
+/// One registry edit at a time: load, `f`, save, under one lock. Two edits in flight (the deck adding folders while
+/// a pin or `projects_list` runs) used to start from the same file and the later save dropped the earlier entry.
+/// An error from `f` (or an unreadable registry) writes nothing. Returns whatever `f` returns.
+pub fn edit<T>(f: impl FnOnce(&mut Vec<Entry>) -> Result<T, String>) -> Result<T, String> {
+    edit_at(&path()?, f)
 }
 
-/// tmp + rename, so a crash never leaves a half-written file.
+static EDIT_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+pub fn edit_at<T>(
+    p: &Path,
+    f: impl FnOnce(&mut Vec<Entry>) -> Result<T, String>,
+) -> Result<T, String> {
+    let _guard = EDIT_LOCK.lock();
+    let mut entries = load_at(p)?;
+    let before = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    let out = f(&mut entries)?;
+    let text = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    if text == before && p.exists() {
+        return Ok(out);
+    }
+    write_atomic(p, &text)?;
+    Ok(out)
+}
+
+/// tmp + rename, so a crash never leaves a half-written file. The temp name is unique per call: writers sharing
+/// one name interleaved their bytes or lost the rename to each other. A failed write removes its temp file.
 pub fn write_atomic(p: &Path, text: &str) -> Result<(), String> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
-    let tmp = p.with_extension("tmp~");
-    std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, p).map_err(|e| format!("{}: {e}", p.display()))
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut name = p.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{}.{seq}.tmp~", std::process::id()));
+    let tmp = p.with_file_name(name);
+    let result = std::fs::write(&tmp, text)
+        .map_err(|e| format!("{}: {e}", tmp.display()))
+        .and_then(|()| std::fs::rename(&tmp, p).map_err(|e| format!("{}: {e}", p.display())));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// What Atlas last saw of a checkout while it still existed. A deleted or moved project has no
@@ -249,5 +281,147 @@ mod tests {
         assert!(bad(Some(Icon::Image("/etc/passwd".into())), None));
         assert!(bad(Some(Icon::Image("../x.png".into())), None));
         assert!(bad(Some(Icon::Image("a/../../x.png".into())), None));
+    }
+
+    fn plain(id: &str) -> Entry {
+        Entry {
+            id: id.into(),
+            ..entry(None)
+        }
+    }
+
+    /// Incident class: every writer used the same `projects.json.tmp~`, so two saves in flight wrote into one temp
+    /// file and renamed an interleaved or already-moved file (ENOENT on the second rename, or mixed bytes).
+    #[test]
+    fn concurrent_atomic_writes_leave_one_complete_file_and_no_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = std::sync::Arc::new(dir.path().join("f.json"));
+        let texts: Vec<String> = (0..16).map(|i| format!("{i}").repeat(200_000)).collect();
+        let threads: Vec<_> = texts
+            .iter()
+            .cloned()
+            .map(|t| {
+                let p = p.clone();
+                std::thread::spawn(move || write_atomic(&p, &t))
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap().unwrap();
+        }
+        let got = std::fs::read_to_string(&*p).unwrap();
+        assert!(texts.contains(&got), "file is not any single writer's text");
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["f.json"], "temp files left behind");
+    }
+
+    /// A failed write (target is a directory) must not leave its temp file behind either.
+    #[test]
+    fn a_failed_atomic_write_removes_its_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("target");
+        std::fs::create_dir(&p).unwrap();
+        assert!(write_atomic(&p, "x").is_err());
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["target"]);
+    }
+
+    /// Incident class: `projects_add`, pin, identity, worktree create/remove all did load → change → save with no
+    /// lock; two in flight (the first-run deck adds several folders while `projects_list` and a pin run) lost one
+    /// entry. `edit_at` holds the lock across the whole read-modify-write.
+    #[test]
+    fn concurrent_edits_never_lose_an_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = std::sync::Arc::new(dir.path().join("desktop/projects.json"));
+        let threads: Vec<_> = (0..16)
+            .map(|i| {
+                let p = p.clone();
+                std::thread::spawn(move || {
+                    edit_at(&p, |entries| {
+                        entries.push(plain(&format!("id{i}")));
+                        Ok(())
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let mut ids: Vec<_> = load_at(&p).unwrap().into_iter().map(|e| e.id).collect();
+        ids.sort();
+        let mut want: Vec<_> = (0..16).map(|i| format!("id{i}")).collect();
+        want.sort();
+        assert_eq!(ids, want);
+    }
+
+    /// A closure error aborts the edit: nothing is written, the file is as it was.
+    #[test]
+    fn a_failed_edit_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("projects.json");
+        edit_at(&p, |e| {
+            e.push(plain("a"));
+            Ok(())
+        })
+        .unwrap();
+        let before = std::fs::read_to_string(&p).unwrap();
+        let r: Result<(), String> = edit_at(&p, |e| {
+            e.clear();
+            Err("nope".into())
+        });
+        assert_eq!(r.unwrap_err(), "nope");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), before);
+    }
+
+    /// A corrupt registry stays an error for readers AND editors (the existing "never overwrite it silently"
+    /// rule), and the file is untouched.
+    #[test]
+    fn a_corrupt_registry_is_an_error_and_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("projects.json");
+        std::fs::write(&p, r#"[{"id":"a","root""#).unwrap();
+        assert!(load_at(&p).unwrap_err().contains("projects.json"));
+        assert!(
+            edit_at(&p, |e| {
+                e.push(plain("b"));
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), r#"[{"id":"a","root""#);
+    }
+
+    /// An edit that changes nothing (adding a folder already registered, removing no missing project) must not
+    /// rewrite the file: every needless rewrite is another chance for a crash to catch it mid-write.
+    #[test]
+    fn an_edit_that_changes_nothing_does_not_rewrite_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("projects.json");
+        edit_at(&p, |e| {
+            e.push(plain("a"));
+            Ok(())
+        })
+        .unwrap();
+        // a hand-formatted (compact) file stays as the user left it when nothing changes
+        std::fs::write(&p, serde_json::to_string(&load_at(&p).unwrap()).unwrap()).unwrap();
+        let compact = std::fs::read_to_string(&p).unwrap();
+        edit_at(&p, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), compact);
+    }
+
+    /// First write creates the file (and its folder) even when the closure adds nothing: `p.exists()` is part of
+    /// the no-op rule, so a missing registry is not "unchanged".
+    #[test]
+    fn the_first_edit_creates_a_missing_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("fresh/desktop/projects.json");
+        edit_at(&p, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "[]");
     }
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Button, EmptyState, Skeleton } from "@codeatlasdev/ui";
+	import { Alert, Button, EmptyState, Skeleton } from "@codeatlasdev/ui";
 	import { FolderPlus } from "@lucide/svelte";
 	import { addProject } from "#lib/components/sidebar/projects.ts";
 	import { kbd } from "#lib/keys.ts";
@@ -13,7 +13,7 @@
 	// The standing state is a fresh start: after "Skip for now" the flow sits at `done`, which renders no steps,
 	// and the pane showed a bare globe with nothing to click (Windows first-run pass, 1.5.0-alpha.24).
 	$effect(() => {
-		if (showStanding(onboarding.state, onboarding.loaded, store.projects.length) && welcome.phase === "done")
+		if (showStanding(onboarding.state, onboarding.ready, store.projects.length) && welcome.phase === "done")
 			welcome.reset();
 	});
 </script>
@@ -25,9 +25,17 @@
 			<Skeleton variant="rounded" width={220} height={22} />
 			<Skeleton variant="text" rows={2} width={320} />
 		</div>
+	{:else if store.listError}
+		<!-- An unreadable registry is not an empty one: say why, with the path in the message, and offer a re-read. -->
+		<Alert severity="error" title="Could not read your projects">
+			<div class="err">
+				<span>{store.listError}</span>
+				<Button size="sm" variant="glass" onclick={() => store.refresh()}>Try again</Button>
+			</div>
+		</Alert>
 	{:else if store.projects.length === 0}
 		<!-- First run: the full-window overlay owns the screen; this pane waits for it to be over. -->
-		{#if showStanding(onboarding.state, onboarding.loaded, store.projects.length)}
+		{#if showStanding(onboarding.state, onboarding.ready, store.projects.length)}
 			<Hero onfinish={() => welcome.reset()} />
 		{/if}
 	{:else}
@@ -53,6 +61,15 @@
 		flex: 1;
 		display: grid;
 		place-items: center;
+	}
+	.err {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		max-width: 520px;
+		overflow-wrap: anywhere;
+		user-select: text;
 	}
 	.loading {
 		display: flex;

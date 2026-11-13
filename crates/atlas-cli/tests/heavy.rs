@@ -371,7 +371,12 @@ fn sigterm_to_a_running_job_reaches_its_command_and_frees_the_slot() {
     wait_for("job to run", Duration::from_secs(10), || {
         (labels(&status(&f.dir, 1)["running"]) == ["t"]).then_some(())
     });
-    std::thread::sleep(Duration::from_millis(500)); // the shell installs its trap before `ready`
+    // The trap is installed before `ready` is printed: wait for that line, not a fixed sleep
+    // (CI: a loaded runner had not reached the trap in 500 ms, so TERM killed the shell, 143).
+    let mut out = std::io::BufReader::new(job.stdout.take().unwrap());
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut out, &mut line).unwrap();
+    assert_eq!(line.trim(), "ready");
     // SAFETY: an exact positive pid of a child we spawned.
     assert_eq!(unsafe { libc_kill(job.id() as i32, 15) }, 0);
     // The runner passes the signal on and returns the command's own exit code.

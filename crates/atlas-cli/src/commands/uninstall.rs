@@ -44,15 +44,23 @@ pub(crate) struct Env {
     pub shell: ShellEnv,
     /// The desktop app `atlas desktop` manages (`atlas_core::paths::installed_app`), if any.
     pub app: Option<PathBuf>,
+    /// Windows: the install dir is on the user's `Path` (registry). Always false elsewhere, where
+    /// the shell files carry the `PATH` lines. Only a dir that is there is planned for removal.
+    pub user_path: bool,
 }
 
 impl Env {
     pub(crate) fn current() -> Result<Self> {
         let atlas_home = atlas_core::paths::atlas_home();
+        #[cfg(windows)]
+        let user_path = super::install::has_user_path(&atlas_home.join("bin")).unwrap_or(false);
+        #[cfg(not(windows))]
+        let user_path = false;
         Ok(Self {
             atlas_home,
             shell: ShellEnv::current(),
             app: atlas_core::paths::installed_app(),
+            user_path,
         })
     }
 
@@ -73,7 +81,6 @@ pub(crate) enum Item {
     /// The fish `conf.d/atlas.fish` install wrote.
     FishFile { file: PathBuf },
     /// Windows: the install dir on the user's `Path`.
-    #[cfg_attr(not(windows), allow(dead_code))]
     UserPath { dir: PathBuf },
 }
 
@@ -166,8 +173,9 @@ pub(crate) fn plan(env: &Env, purge: bool) -> Plan {
 
     // Shell startup lines: only the exact block install wrote, in whichever candidate has it.
     let bin = env.bin_dir();
-    #[cfg(windows)]
-    p.remove.push(Item::UserPath { dir: bin.clone() });
+    if env.user_path {
+        p.remove.push(Item::UserPath { dir: bin.clone() });
+    }
     for file in env.shell.candidates() {
         let has = std::fs::read_to_string(&file)
             .ok()
@@ -455,6 +463,7 @@ mod tests {
                 xdg_config: None,
             },
             app: None,
+            user_path: false,
         };
         Machine { _tmp: tmp, env }
     }
@@ -601,6 +610,7 @@ mod tests {
                 xdg_config: None,
             },
             app: None,
+            user_path: false,
         };
         assert!(plan(&env, false).is_empty());
         assert!(plan(&env, true).is_empty());
@@ -650,6 +660,8 @@ mod tests {
         );
     }
 
+    // Windows plans no app (see `on_windows_the_app_is_left_to_its_own_uninstaller`).
+    #[cfg(not(windows))]
     #[test]
     fn an_installed_app_bundle_is_removed_whole() {
         let mut m = machine();
@@ -746,6 +758,50 @@ mod tests {
                 .any(|i| i.describe().contains("Atlas Desktop")),
             "{:?}",
             p.remove
+        );
+    }
+
+    /// Windows: the app belongs to its own uninstaller (Settings › Apps), which also clears the
+    /// registry; `atlas uninstall` must not delete its exe and leave that entry dangling.
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_the_app_is_left_to_its_own_uninstaller() {
+        let mut m = machine();
+        let app = m
+            .env
+            .shell
+            .home
+            .join("AppData/Local/Atlas/atlas-desktop.exe");
+        write(&app, "exe");
+        m.env.app = Some(app.clone());
+        let p = plan(&m.env, false);
+        assert!(!removed_paths(&p).contains(&app), "{:?}", p.remove);
+    }
+
+    /// Incident class (Windows CI): the user-`Path` removal was planned unconditionally, so an
+    /// empty machine "had something to remove" and a second run never finished empty. It is planned
+    /// only when the install dir really is on the user's `Path`, and the plan is empty again after.
+    #[test]
+    fn the_user_path_entry_is_planned_only_when_it_is_there() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut env = Env {
+            atlas_home: tmp.path().join(".atlas"),
+            shell: ShellEnv {
+                home: tmp.path().to_path_buf(),
+                zdotdir: None,
+                xdg_config: None,
+            },
+            app: None,
+            user_path: false,
+        };
+        assert!(plan(&env, false).is_empty());
+        env.user_path = true;
+        let p = plan(&env, false);
+        assert_eq!(
+            p.remove,
+            [Item::UserPath {
+                dir: env.atlas_home.join("bin")
+            }]
         );
     }
 }

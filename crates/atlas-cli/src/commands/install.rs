@@ -147,9 +147,13 @@ impl Drop for Staging {
     }
 }
 
-/// Copy `src` over `dest` through a temp file in the same folder. Windows: a running `atlas.exe`
-/// (hostd, a dev session, an MCP server another tool spawned) cannot be overwritten or deleted,
-/// only renamed, so the old file is moved aside first; the next install sweeps the leftovers.
+/// Copy `src` over `dest` through a temp file in the same folder.
+///
+/// Windows: a running `atlas.exe` (hostd, a dev session, an MCP server another tool spawned)
+/// cannot be overwritten or deleted, only renamed. So an existing file is moved aside to
+/// `.atlas-old-<pid>.exe`, the new one takes its place, and the aside file is deleted right away;
+/// when it is still running that fails and the next install sweeps it (`sweep_old`). If the new
+/// file cannot be put in place the old one is moved back, so there is never no `atlas`.
 fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
     let dir = dest.parent().context("install path has no folder")?;
     std::fs::create_dir_all(dir).with_context(|| format!("Could not create {}", dir.display()))?;
@@ -163,16 +167,24 @@ fn replace_binary(src: &Path, dest: &Path) -> Result<()> {
         std::fs::set_permissions(&tmp.0, std::fs::Permissions::from_mode(0o755))?;
     }
 
+    // Only a file is moved aside: anything else at `dest` is left for the rename to refuse.
     #[cfg(windows)]
-    if dest.exists() {
+    let aside = {
+        let aside = dir.join(format!(".atlas-old-{}.exe", std::process::id()));
         sweep_old(dir);
-        let _ = std::fs::rename(
-            dest,
-            dir.join(format!(".atlas-old-{}.exe", std::process::id())),
-        );
+        (dest.is_file() && std::fs::rename(dest, &aside).is_ok()).then_some(aside)
+    };
+    let installed = std::fs::rename(&tmp.0, dest)
+        .with_context(|| format!("Could not install to {}", dest.display()));
+    #[cfg(windows)]
+    if let Some(aside) = aside {
+        if installed.is_ok() {
+            let _ = std::fs::remove_file(&aside);
+        } else {
+            let _ = std::fs::rename(&aside, dest);
+        }
     }
-    std::fs::rename(&tmp.0, dest)
-        .with_context(|| format!("Could not install to {}", dest.display()))
+    installed
 }
 
 /// Windows: delete the `.atlas-old-<pid>.exe` files earlier installs moved aside; one still in use
@@ -331,6 +343,14 @@ pub(crate) fn remove_user_path(dir: &Path) -> Result<bool> {
     edit_user_path(dir, "remove")
 }
 
+/// Windows: whether `dir` is on the user's `Path`. Reads only; nothing is written.
+#[cfg(windows)]
+pub(crate) fn has_user_path(dir: &Path) -> Result<bool> {
+    edit_user_path(dir, "has")
+}
+
+/// Runs the one PowerShell script behind add/remove/has. Its answer is `changed` (written),
+/// `same` (nothing to do) or, for `has`, `yes`/`no`; `Ok(true)` is `changed` or `yes`.
 #[cfg(windows)]
 fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
     use atlas_core::sys::CommandExt as _;
@@ -339,6 +359,7 @@ fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
         $cur = [Environment]::GetEnvironmentVariable('Path', 'User'); \
         $parts = @(if ($cur) { $cur -split ';' | Where-Object { $_ -ne '' } }); \
         $has = @($parts | Where-Object { $_.TrimEnd('\\') -ieq $d.TrimEnd('\\') }).Count -gt 0; \
+        if ($op -eq 'has') { if ($has) { 'yes' } else { 'no' }; exit }; \
         if ($op -eq 'add') { if ($has) { 'same'; exit } ; $parts += $d } \
         else { if (-not $has) { 'same'; exit } ; $parts = @($parts | Where-Object { $_.TrimEnd('\\') -ine $d.TrimEnd('\\') }) } \
         [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User'); 'changed'";
@@ -353,7 +374,8 @@ fn edit_user_path(dir: &Path, op: &str) -> Result<bool> {
     if !out.status.success() {
         anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim() == "changed")
+    let answer = String::from_utf8_lossy(&out.stdout);
+    Ok(matches!(answer.trim(), "changed" | "yes"))
 }
 
 /// What putting `dir` on `PATH` did for one shell.
@@ -759,6 +781,39 @@ mod tests {
         assert!(replace_binary(&src, &dest).is_err());
         assert_eq!(names(&bin), ["atlas"], "no staging file left in {bin:?}");
         assert!(dest.join("inside").is_dir(), "what was there is untouched");
+    }
+
+    /// Windows contract: a running `atlas.exe` cannot be deleted, only renamed. The install still
+    /// goes through, the old image waits aside while it runs, and the next install sweeps it.
+    #[cfg(windows)]
+    #[test]
+    fn a_running_image_is_moved_aside_and_swept_by_the_next_install() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("new");
+        std::fs::write(&src, "new").unwrap();
+        let bin = t.path().join("bin");
+        let dest = bin.join("atlas.exe");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(&dest, "running").unwrap();
+        // How Windows opens a running image: others may read and rename it, not write or delete.
+        let image = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x4)
+            .open(&dest)
+            .unwrap();
+
+        replace_binary(&src, &dest).unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "new");
+        let aside: Vec<_> = names(&bin)
+            .into_iter()
+            .filter(|n| n.starts_with(".atlas-old-"))
+            .collect();
+        assert_eq!(aside.len(), 1, "the running image waits aside: {aside:?}");
+
+        drop(image);
+        replace_binary(&src, &dest).unwrap();
+        assert_eq!(names(&bin), ["atlas.exe"], "the next install swept it");
     }
 
     #[test]

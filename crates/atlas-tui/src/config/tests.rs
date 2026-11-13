@@ -1160,6 +1160,7 @@ fn a_remote_service_needs_a_port_no_command_and_plain_ssh_words() {
         )
         .is_empty()
     );
+}
 
 const AGENTS_BASE: &str = "name: p\nservices:\n  api: { command: run }\n";
 
@@ -1243,7 +1244,6 @@ fn json_schema_documents_the_agents_block() {
     ] {
         assert!(def[k].is_object(), "agents.{k} missing from the schema");
     }
-}
 }
 
 fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {

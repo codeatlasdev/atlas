@@ -48,7 +48,9 @@ jobs:
   build:
     name: Build (aarch64-apple-darwin)
     needs: gate
-    runs-on: macos-14
+    # macos-14 was retired by GitHub ("The configuration 'macos-14-arm64-us-default' is not supported", 2026-11-12:
+    # the job was cancelled in 1 s and nothing was published). Same Apple-silicon image family as CI.
+    runs-on: macos-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -602,6 +604,9 @@ jobs:
   publish:
     name: Publish Release
     needs: [build, build-linux, build-arch, build-windows]
+    # Explicit: without an `if`, a skipped job anywhere upstream (the optional SignPath jobs feeding build-windows)
+    # skips publish too, and v1.5.0-alpha.25's first full run built everything and published nothing.
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

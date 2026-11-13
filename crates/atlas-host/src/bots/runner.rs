@@ -54,8 +54,9 @@ pub(crate) static TEST_GITHUB_LOGGED_IN: parking_lot::Mutex<Option<bool>> =
 pub(crate) static TEST_SUMMARIZER_BIN: parking_lot::Mutex<Option<String>> =
     parking_lot::Mutex::new(None);
 
-/// Set (or clear) the per-test summarizer binary override.
-#[cfg(test)]
+/// Set (or clear) the per-test summarizer binary override. Its tests run a shell
+/// script as the fake summarizer, so they (and this) are unix only.
+#[cfg(all(test, unix))]
 pub(crate) fn set_test_summarizer_bin(bin: Option<&str>) {
     *TEST_SUMMARIZER_BIN.lock() = bin.map(str::to_string);
 }

@@ -11,7 +11,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:path_parsing/path_parsing.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/features/bots/crew_shell.g.dart';
+import 'package:atlas_mobile/features/bots/crew_shell_paths.dart';
 
 // ── look (look.ts) ───────────────────────────────────────────────────────────
 

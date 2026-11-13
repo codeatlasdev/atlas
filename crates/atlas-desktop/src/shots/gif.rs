@@ -740,7 +740,8 @@ mod tests {
 
     /// The bytes of an encode are pinned: speeding the encoder up must not change a single output byte (palette
     /// order, frame boxes, transparency and delays all show in the hash). Clips: a flat two-panel UI with a moving
-    /// block (exact palette) and a gradient with noise (NeuQuant).
+    /// block (exact palette) and a gradient with noise (NeuQuant). The NeuQuant pin moved once, on purpose, with
+    /// color_quant 2.0, which fixed a non-prime in its sampling step table (478 -> 487).
     #[test]
     fn the_encoded_bytes_do_not_change_when_the_encoder_gets_faster() {
         fn clip(n: usize, colours: bool) -> Vec<Frame> {
@@ -781,7 +782,7 @@ mod tests {
         }
         for (colours, want_hash, want_len) in [
             (false, 0x76d5ee250007321f_u64, 1427),
-            (true, 0xf6e4f67f910f9f6a_u64, 32905),
+            (true, 0x1601ad95d06f3424_u64, 32313),
         ] {
             let mut out = Vec::new();
             encode(&mut out, (160, 100), &clip(12, colours), &delays(12, 15)).unwrap();

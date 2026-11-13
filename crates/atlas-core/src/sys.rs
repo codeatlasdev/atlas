@@ -857,7 +857,16 @@ mod tests {
         // The loser reads the holder's pid (Windows byte-range locks are mandatory).
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "1234");
         drop(a);
-        assert!(try_lock(&b).unwrap());
+        // A sibling test that forks between `open` and `exec` holds the open file description for
+        // that instant, so the release is bounded, not instant (the lock is per description).
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !try_lock(&b).unwrap() {
+            assert!(
+                std::time::Instant::now() < end,
+                "the lock was never released"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     #[test]

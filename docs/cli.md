@@ -192,6 +192,30 @@ Stops the atlas that owns the project: asks it over the control socket to stop e
 | `atlas is not running` | `0` (nothing to do) |
 | `atlas (pid N) is still stopping after 15s; check: atlas dev --status` | `1` |
 
+## `atlas doctor`
+
+```text
+atlas doctor --hygiene [--dry-run | --fix] [--json]
+```
+
+What Atlas and the agents it runs left behind, and the disk it owns. `--hygiene` is required (the only check so far). **Look-only by default** (`--dry-run`); `--fix` changes things.
+
+It lists:
+
+- **Orphaned processes**: processes of a session whose owner (terminal, `atlas dev`, hostd) is gone, with pid, name, what started them and the project, plus how many processes of live sessions it left alone. They are found by the `ATLAS_SESSION` tag on Linux and by what the owner recorded under its roots on macOS and Windows, which cannot read another process's environment; on those a process that forked and detached within about 2 s of starting was never seen and is not listed ([sessions and hygiene](runtime.md#sessions-and-hygiene));
+- **Disk per project** (the folders in Atlas Desktop): `target/`, `node_modules`, `.logs` and `.atlas/worktrees/*`;
+- **Atlas temp and cache dirs** against their caps;
+- **On macOS, heavy dirs Spotlight indexes** (`target/` and `node_modules` of a project or its worktrees with no `.metadata_never_index` in them or above).
+
+`--fix` ends the orphans (SIGTERM, 3 s, SIGKILL, exact pids, a recycled pid never), deletes registered dirs of dead sessions and trims the others to their caps, drops rotated `*.prev.log` when a project's `.logs` is over 200 MiB (the live `<service>.log` stays), and adds the `.metadata_never_index` marker to the indexed heavy dirs (a marker file only). **`target/`, `node_modules`, worktrees and any file Atlas did not create are never removed**: they are reported so you decide.
+
+| Output | Exit |
+|---|---|
+| the report (and, with `--fix`, what was ended, freed and marked) | `0` |
+| `--fix` left a process running after SIGKILL | `1` |
+
+`--json` prints `{"report": …, "fixed": …|null}`, the same value the desktop panel and the MCP tool `atlas_hygiene` read.
+
 ## `atlas init`
 
 ```text

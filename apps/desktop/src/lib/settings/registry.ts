@@ -592,7 +592,7 @@ const DEFS = [
 		cluster: "work",
 		pages: [
 			{
-				files: ["components/WorkspaceSettings.svelte"],
+				files: ["components/WorkspaceSettings.svelte", "components/settings/HygieneGroup.svelte"],
 				groups: [
 					{
 						title: "New worktrees",
@@ -636,6 +636,17 @@ const DEFS = [
 								"Clean up worktrees",
 								"See size, last commit and git state of linked worktrees, and delete the ones you no longer need.",
 								"delete remove disk scan",
+							),
+						],
+					},
+					{
+						title: "Hygiene",
+						items: [
+							item(
+								"ws-hygiene",
+								"Orphans and disk",
+								"Processes Atlas or an agent left running after their owner died, the disk each project holds, and what Fix can free.",
+								"orphan zombie leftover browser chromium vite process kill disk space cache temp spotlight index mdworker cleanup",
 							),
 						],
 					},

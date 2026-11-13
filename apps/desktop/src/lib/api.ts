@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Found } from "#lib/components/sidebar/discovery.ts";
 import type { Identity } from "#lib/shell/identity.ts";
 import type { ProviderState } from "#lib/commitMessage.ts";
+import type { HygieneFixed, HygieneReport } from "#lib/settings/hygiene.ts";
 import { parseBranches, parseSwitched, type Branches, type Switched } from "#lib/branches.ts";
 
 export interface DiscoverArgs {
@@ -246,6 +247,10 @@ export const api = {
 	gitRefs: (id: string) => invoke<string[]>("git_refs", { id }),
 	worktreesImport: (repoId: string) => invoke<number>("worktrees_import", { repoId }),
 	worktreeStats: (id: string) => invoke<WorktreeStats>("worktree_stats", { id }),
+	/** Orphaned tagged processes and disk per project; changes nothing. */
+	hygieneReport: () => invoke<HygieneReport>("hygiene_report"),
+	/** End the orphans and free what Atlas owns (never `target/`, `node_modules` or worktrees). */
+	hygieneFix: () => invoke<{ fixed: HygieneFixed; report: HygieneReport }>("hygiene_fix"),
 	/** `merged`: Rust checks with `gh` that the branch's PR is merged before removing anything. */
 	worktreeAutoRemove: (id: string, merged: boolean) =>
 		invoke<

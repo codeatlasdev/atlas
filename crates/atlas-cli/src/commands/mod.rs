@@ -12,6 +12,7 @@ pub(crate) mod desktop_linux;
 #[cfg(windows)]
 pub(crate) mod desktop_windows;
 pub mod dev;
+pub mod doctor;
 pub mod down;
 pub mod heavy;
 pub mod hook;

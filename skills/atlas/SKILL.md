@@ -32,6 +32,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | `atlas_logs_search` | `query` (substring or `/regex/`), `service?`, `limit?` (1-500, default 50), `include_previous?` | no |
 | `atlas_restart_service` / `atlas_stop_service` / `atlas_start_service` | `service` | yes |
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |
+| `atlas_hygiene` | none | no (look-only: orphaned processes, disk per project, registered dirs; to free them the user runs `atlas doctor --hygiene --fix`) |
 | `atlas_wait_ready` | `service?`, `timeout_s?` (1-600, default 60) | yes (live heartbeat) |
 | `atlas_heavy_status` | none | no (machine-wide): `{slots, load, mem_available_pct, running[], queued[]}` with each job's `label`, `command`, `cwd`, `project`, `pid`, `age_s`, `avg_s`, `eta_s` |
 

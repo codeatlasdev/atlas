@@ -24,6 +24,15 @@ use crate::paths;
 use crate::protocol::{self, Hello, HostCmd, MAX_LINE_BYTES, Request};
 use crate::pty::{Out, Session};
 
+/// How often hostd records the descendants of its terminals and checks whether an owner died
+/// (one process-table read, a registry read and exact-pid probes); with the 3 s SIGTERM grace an
+/// orphan is gone within 10 s. It is also the macOS window: a process that forks and daemonizes
+/// between two records escapes (`atlas_core::hygiene`).
+const OWNER_CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+/// Every Nth check is a full sweep (process table and registered dir caps) even with no orphan
+/// root: about once a minute. The first check is full too (a restart after a crash).
+const FULL_SWEEP_EVERY: u32 = 30;
+
 pub(crate) struct Hub {
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     scroll_dir: PathBuf,
@@ -370,6 +379,13 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             Err(e) => eprintln!("hostd: could not adopt pty {id}: {e:#}"),
         }
     }
+    // The terminals now die with THIS daemon: the registry must say so before the old one exits,
+    // or the first sweep would take every adopted terminal for an orphan of the retired owner.
+    if lab.is_none() && !sessions.is_empty() {
+        let reg = atlas_core::hygiene::Registry::in_existing(&paths::hygiene_base(&scroll_dir));
+        let ids: Vec<String> = sessions.keys().cloned().collect();
+        let _ = reg.set_owner(&ids, atlas_core::hygiene::Owner::current());
+    }
     // A lab owns no terminal, so there is no scrollback of its own to bring back.
     for e in std::fs::read_dir(&scroll_dir)?
         .flatten()
@@ -462,6 +478,23 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let limit = crate::idle::limit_from_env();
     let mut ticker = tokio::time::interval(crate::idle::tick(limit));
     let mut idle_since: Option<Instant> = None;
+    // Orphans of a daemon that died without closing its terminals, and registered dirs over
+    // their caps: found when an owner dies (checked every few seconds), at the first tick (a restart after a
+    // crash) and in a full sweep every minute. A lab owns none.
+    let reg = atlas_core::hygiene::Registry::in_existing(&paths::hygiene_base(
+        &paths::scrollback_dir(dir),
+    ));
+    let mut sweeper = tokio::time::interval(OWNER_CHECK_EVERY);
+    let mut sweeps = 0u32;
+    let sweeping = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    /// Clears the "a sweep runs" flag however the sweep ends (a panic included).
+    struct Sweeping(Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for Sweeping {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::Release);
+        }
+    }
     loop {
         tokio::select! {
             acc = listener.accept() => {
@@ -472,6 +505,31 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             }
             _ = hub.stop.notified() => break,
             _ = term.recv() => break,
+            _ = sweeper.tick(), if hub.lab.is_none() => {
+                sweeps = sweeps.wrapping_add(1);
+                let full = sweeps % FULL_SWEEP_EVERY == 1;
+                let reg = reg.clone();
+                let busy = sweeping.clone();
+                // Detached: a reap waits out its SIGTERM grace and must not stall the accept loop;
+                // one at a time, so a slow reap is never doubled up by the next tick.
+                tokio::task::spawn_blocking(move || {
+                    // Record who runs under each live terminal first: a process seen under its
+                    // shell is still known after it daemonizes (the tag is unreadable on macOS).
+                    let _ = reg.track();
+                    if (!full && !reg.has_orphaned_root()) || busy.swap(true, Ordering::AcqRel) {
+                        return;
+                    }
+                    let _release = Sweeping(busy);
+                    let s = atlas_core::hygiene::sweep(&reg, false);
+                    if !s.orphans.is_empty() || s.freed.bytes > 0 {
+                        eprintln!(
+                            "atlas hostd: hygiene reaped {} orphaned process(es), freed {} bytes",
+                            s.orphans.len(),
+                            s.freed.bytes
+                        );
+                    }
+                });
+            }
             _ = ticker.tick() => {
                 let (live, clients) = hub.activity();
                 if live > 0 || clients > 0 {

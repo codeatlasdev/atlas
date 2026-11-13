@@ -45,6 +45,7 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | [`atlas_stop_service`](#atlas_restart_service--atlas_stop_service--atlas_start_service) | `service` | yes |
 | [`atlas_start_service`](#atlas_restart_service--atlas_stop_service--atlas_start_service) | `service` | yes |
 | [`atlas_run_action`](#atlas_run_action) | `action`, `confirmed?` | yes |
+| [`atlas_hygiene`](#atlas_hygiene) | none | no |
 | [`atlas_wait_ready`](#atlas_wait_ready) | `service?`, `timeout_s?` | live heartbeat |
 | [`atlas_heavy_status`](#atlas_heavy_status) | none | no |
 
@@ -207,6 +208,10 @@ action 'Reset local DB' requires confirmation: "This wipes the local database. C
 ```
 
 The agent must show that text to the user and retry only if they agree. Other errors: unknown action (lists known ones), the action is already running, or (runner / headless) the action has a `platform` (needs the TUI device picker) or is a `session: true` action (needs the terminal that owns it), both owner-TUI only. On success: `{ "action": "Reset local DB", "queued": true }`. The command runs in the background (paused services are restarted when it ends); watch progress with `atlas_status` and `atlas_logs`. A `session: true` action opens its tab in the owner TUI.
+
+### `atlas_hygiene`
+
+Look-only report of what Atlas and agents left behind: orphaned tagged processes (`orphans[]`: `pid`, `name`, `session`, `kind`, `label`, `project`), disk per project (`projects[]`: `target`, `node_modules`, `logs`, `worktrees`, `indexed`), registered temp/cache dirs against their caps (`dirs[]`) and what a fix would free (`freeable`). It is the same value as `atlas doctor --hygiene --json`. It changes nothing: to free anything, tell the user to run `atlas doctor --hygiene --fix` (or use Settings > Workspaces > Hygiene in Atlas Desktop). See [sessions and hygiene](runtime.md#sessions-and-hygiene).
 
 ### `atlas_wait_ready`
 

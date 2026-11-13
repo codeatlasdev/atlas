@@ -59,10 +59,11 @@ impl Owner {
         }
     }
 
-    /// The owner still runs: its pid exists AND started when it did (a reused pid is a stranger).
+    /// The owner still runs: its pid exists AND started when it did (a reused pid is a stranger)
+    /// AND it has not exited (a Unix zombie, or a Windows process kept in the table by a handle).
     pub fn alive(&self) -> bool {
         match procs::start_time(self.pid) {
-            Some(start) => start == self.start,
+            Some(start) => start == self.start && !zombie(self.pid),
             // Unreadable start (Windows access denied): fall back to the bare pid.
             None => self.start == 0 && crate::sys::pid_alive(self.pid),
         }
@@ -198,12 +199,35 @@ impl Registry {
 
     /// Read-modify-write under an exclusive lock (several daemons and CLIs share the file).
     fn update<T>(&self, f: impl FnOnce(&mut Store) -> T) -> std::io::Result<T> {
-        std::fs::create_dir_all(&self.dir)?;
+        self.update_in(true, f)
+    }
+
+    /// [`update`](Self::update) for maintenance (track, prune, reap, remove, caps): it never
+    /// creates anything. A registry whose folder is gone has nothing to maintain, and a daemon
+    /// whose dir was removed (hostd exits when it is) must not resurrect it on its next tick; a
+    /// `remove_dir_all` racing such a write fails with "Directory not empty".
+    fn maintain<T>(&self, f: impl FnOnce(&mut Store) -> T) -> std::io::Result<Option<T>> {
+        if !self.dir.is_dir() {
+            return Ok(None);
+        }
+        match self.update_in(false, f) {
+            Ok(v) => Ok(Some(v)),
+            // Removed between the check and the open: the same "nothing to maintain".
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn update_in<T>(&self, create: bool, f: impl FnOnce(&mut Store) -> T) -> std::io::Result<T> {
+        if create {
+            std::fs::create_dir_all(&self.dir)?;
+        }
+        let lock_path = self.dir.join("registry.lock");
         let lock = std::fs::OpenOptions::new()
-            .create(true)
+            .create(create)
             .truncate(false)
             .write(true)
-            .open(self.dir.join("registry.lock"))?;
+            .open(&lock_path)?;
         // Short critical section: spin briefly instead of blocking a runtime thread.
         let mut tries = 0;
         while !crate::sys::try_lock(&lock)? {
@@ -256,18 +280,19 @@ impl Registry {
 
     /// Forget a session's roots (it ended cleanly and its tree was reaped).
     pub fn remove_session(&self, session: &str) -> std::io::Result<()> {
-        self.update(|s| {
+        self.maintain(|s| {
             s.roots.retain(|r| r.session != session);
             s.members.retain(|m| m.session != session);
             s.dirs.retain(|d| d.session.as_deref() != Some(session));
         })
+        .map(drop)
     }
 
     /// A new process takes over `sessions` (hostd's live upgrade hands the terminals to its
     /// successor): their roots and dirs now die with `owner`, not with the daemon that retires.
     /// Sessions the registry does not know are left alone; `add_root` them first.
     pub fn set_owner(&self, sessions: &[String], owner: Owner) -> std::io::Result<()> {
-        self.update(|s| {
+        self.maintain(|s| {
             for r in s.roots.iter_mut().filter(|r| sessions.contains(&r.session)) {
                 r.owner = owner;
             }
@@ -279,6 +304,7 @@ impl Registry {
                 d.owner = Some(owner);
             }
         })
+        .map(drop)
     }
 
     pub fn roots(&self) -> Vec<Root> {
@@ -320,8 +346,17 @@ impl Registry {
         }
         let table = procs::table();
         let names: HashMap<u32, &Proc> = table.iter().map(|p| (p.pid, p)).collect();
-        self.update(|s| {
+        self.maintain(|s| {
             s.members.retain(Member::alive);
+            // A child seen between fork and exec carries its parent's name; it is the same process
+            // (same pid and start) once it has exec'd, so the name follows.
+            for m in s.members.iter_mut() {
+                if let Some(p) = names.get(&m.pid)
+                    && p.start == m.start
+                {
+                    m.name.clone_from(&p.name);
+                }
+            }
             let known: HashSet<(u32, u64)> = s.members.iter().map(|m| (m.pid, m.start)).collect();
             let mut add = Vec::new();
             for r in s.roots.iter().filter(|r| r.alive()) {
@@ -339,11 +374,23 @@ impl Registry {
             }
             s.members.extend(add);
         })
+        .map(drop)
     }
 
     /// Register `dir` with a cap. A repeat of the same path replaces the old record, so a
     /// session that registers on every start never grows the list.
     pub fn add_dir(&self, dir: Dir) -> std::io::Result<()> {
+        // `enforce_caps` deletes a registered dir whole when its owner is gone, so only a path that
+        // is plainly a scratch directory may enter: absolute, below the root, not the user's home.
+        if !is_deletable_dir(&dir.path) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "refusing to register {}: not a scratch directory",
+                    dir.path.display()
+                ),
+            ));
+        }
         // Heavy, rewritten-constantly dirs must never feed Spotlight (a freeze on a Mac indexing
         // several `target/` trees at once): the marker goes in before anything is written.
         mark_never_index(&dir.path);
@@ -355,11 +402,12 @@ impl Registry {
 
     /// Drop records whose process or directory no longer exists.
     pub fn prune(&self) -> std::io::Result<()> {
-        self.update(|s| {
+        self.maintain(|s| {
             s.roots.retain(Root::alive);
             s.members.retain(Member::alive);
             s.dirs.retain(|d| d.path.exists());
         })
+        .map(drop)
     }
 }
 
@@ -368,6 +416,18 @@ pub fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// A path that may be registered and later deleted whole: absolute, at least two components deep
+/// (never `/` or `/tmp`-level), and neither the user's home nor one of its ancestors.
+fn is_deletable_dir(p: &Path) -> bool {
+    if !p.is_absolute() || p.components().count() < 3 {
+        return false;
+    }
+    match dirs::home_dir() {
+        Some(h) => !h.starts_with(p),
+        None => true,
+    }
 }
 
 /// The file whose presence in a directory makes Spotlight skip it and everything below.
@@ -585,10 +645,13 @@ fn zombie(pid: u32) -> bool {
         // SZOMB = 5.
         ret == size && i.pbi_status == 5
     }
+    // Windows has no zombies, but an exited process stays in the table (with its start time)
+    // while anyone holds a handle to it, e.g. its parent's `Child`: it has exited when its exit
+    // code is no longer STILL_ACTIVE. Without this a reaped process looked alive (CI: its records
+    // were never dropped).
     #[cfg(windows)]
     {
-        let _ = pid;
-        false
+        !crate::sys::pid_alive(pid)
     }
 }
 
@@ -688,11 +751,15 @@ pub fn enforce_caps(registry: &Registry, dry_run: bool) -> Freed {
         if !d.path.exists() {
             continue;
         }
-        let owner_gone = match (&d.session, d.owner) {
-            (Some(s), Some(o)) => !o.alive() && !live.contains(s),
-            (Some(s), None) => !live.contains(s),
-            (None, _) => false,
-        };
+        // A dir is registered before its session's first root is: a sweep of another process in
+        // that gap must not take a brand-new dir for the leftover of a dead one.
+        let settled = now_secs().saturating_sub(d.created_at) >= REGISTRATION_GRACE_SECS;
+        let owner_gone = settled
+            && match (&d.session, d.owner) {
+                (Some(s), Some(o)) => !o.alive() && !live.contains(s),
+                (Some(s), None) => !live.contains(s),
+                (None, _) => false,
+            };
         if owner_gone {
             freed.dirs_removed += 1;
             freed.bytes += dir_size(&d.path);
@@ -709,7 +776,7 @@ pub fn enforce_caps(registry: &Registry, dry_run: bool) -> Freed {
         keep.push(d);
     }
     if !dry_run {
-        let _ = registry.update(|s| s.dirs.retain(|d| keep.iter().any(|k| k.path == d.path)));
+        let _ = registry.maintain(|s| s.dirs.retain(|d| keep.iter().any(|k| k.path == d.path)));
     }
     freed
 }

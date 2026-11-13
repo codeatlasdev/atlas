@@ -211,16 +211,20 @@ pub(super) fn resolve_order(config: &ProjectConfig) -> Vec<String> {
 /// manager's stop reap the other's services (a reap is by session).
 static RUN_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// The registry of a run: the user's. Unit tests of the manager run real processes under it, so
-/// they get a throwaway one (they must neither write to `~/.atlas` nor sweep what is in it).
+/// The registry of a run: the user's.
 #[cfg(not(test))]
 fn run_registry() -> atlas_core::hygiene::Registry {
     atlas_core::hygiene::Registry::open()
 }
 
+/// Unit tests run real processes under real managers, concurrently: every manager gets its OWN
+/// throwaway registry (never `~/.atlas`, never one shared with another test), so a test's track,
+/// reap or sweep can only ever see what that test's manager recorded.
 #[cfg(test)]
 fn run_registry() -> atlas_core::hygiene::Registry {
-    static DIR: std::sync::LazyLock<tempfile::TempDir> =
+    static BASE: std::sync::LazyLock<tempfile::TempDir> =
         std::sync::LazyLock::new(|| tempfile::tempdir().expect("tempdir"));
-    atlas_core::hygiene::Registry::at(DIR.path())
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    atlas_core::hygiene::Registry::at(&BASE.path().join(n.to_string()))
 }

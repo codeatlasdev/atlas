@@ -8,8 +8,8 @@
 
 mod config_edit;
 mod discover;
-mod hygiene;
 mod heavy;
+mod hygiene;
 mod projects;
 mod services;
 mod setup;
@@ -26,8 +26,8 @@ use tauri::{AppHandle, Emitter};
 use crate::registry::{self, Entry};
 
 pub use config_edit::*;
-pub use hygiene::*;
 pub use heavy::*;
+pub use hygiene::*;
 pub use projects::*;
 pub use setup::*;
 pub use stack::*;

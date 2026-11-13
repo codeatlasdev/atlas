@@ -1115,3 +1115,112 @@ fn tracking_an_empty_registry_creates_no_files() {
         "nothing registered: nothing written"
     );
 }
+
+// Production danger found in review of #127: `enforce_caps` runs from EVERY process's sweep
+// (hostd, each `atlas dev`, the CLI, the desktop) over one shared registry. A dir is registered
+// before its session's first root, so another process sweeping in that gap took a brand-new dir
+// for a dead session's leftover and deleted it whole.
+#[test]
+fn a_dir_registered_a_moment_ago_is_not_deleted_by_another_processes_sweep() {
+    let (d, reg) = registry();
+    let fresh = d.path().join("fresh-session-tmp");
+    let old = d.path().join("old-session-tmp");
+    for p in [&fresh, &old] {
+        std::fs::create_dir_all(p).unwrap();
+        std::fs::write(p.join("f"), b"x").unwrap();
+    }
+    for (p, created) in [
+        (&fresh, now_secs()),
+        (&old, now_secs() - REGISTRATION_GRACE_SECS),
+    ] {
+        reg.add_dir(Dir {
+            path: p.clone(),
+            cap_bytes: DEFAULT_DIR_CAP,
+            kind: DirKind::Temp,
+            // Its session has no root in the registry yet (and an owner that is not alive).
+            session: Some("not-yet-rooted".into()),
+            owner: Some(DEAD),
+            project: None,
+            created_at: created,
+        })
+        .unwrap();
+    }
+    let f = enforce_caps(&reg, false);
+    assert_eq!(f.dirs_removed, 1, "{f:?}");
+    assert!(
+        fresh.exists(),
+        "the new dir was deleted by a sweep racing its registration"
+    );
+    assert!(
+        !old.exists(),
+        "a dir past the grace whose owner is gone still goes"
+    );
+}
+
+// Whole-directory deletion is only ever applied to registered paths, so the registry refuses the
+// ones that must never be deleted: relative, the filesystem root, shallow system dirs, the home.
+#[test]
+fn the_registry_refuses_a_path_that_must_never_be_deleted_whole() {
+    let (_d, reg) = registry();
+    let home = dirs::home_dir().unwrap();
+    let mk = |p: PathBuf| Dir {
+        path: p,
+        cap_bytes: 1,
+        kind: DirKind::Temp,
+        session: Some("s".into()),
+        owner: Some(DEAD),
+        project: None,
+        created_at: 1,
+    };
+    for bad in [
+        PathBuf::from("relative/dir"),
+        PathBuf::from("/"),
+        PathBuf::from("/tmp"),
+        home.clone(),
+        home.parent().unwrap().to_path_buf(),
+    ] {
+        assert!(
+            reg.add_dir(mk(bad.clone())).is_err(),
+            "{} was accepted",
+            bad.display()
+        );
+    }
+    assert!(reg.dirs().is_empty());
+    assert!(
+        reg.add_dir(mk(home.join(".atlas/agent-tmp"))).is_ok(),
+        "a scratch dir below home is fine"
+    );
+}
+
+// Incident (found by `hostd_exits_when_its_dir_disappears`, 1 run in 6): hostd records and
+// checks its registry every 2 s. When its dir is removed, a tick that RE-CREATED
+// `<dir>/hygiene/registry.json` raced the removal ("Directory not empty") and, worse, brought the
+// dir back for a daemon that must exit because it is gone. Maintenance never creates anything.
+#[test]
+fn maintenance_never_recreates_a_registry_folder_that_was_removed() {
+    let (d, reg) = registry();
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .unwrap();
+    let start = procs::start_time(child.id()).unwrap();
+    reg.add_root(root("s", Owner::current(), child.id(), start))
+        .unwrap();
+    std::fs::remove_dir_all(d.path().join("hygiene")).unwrap();
+
+    reg.track().unwrap();
+    reg.prune().unwrap();
+    reg.remove_session("s").unwrap();
+    reg.set_owner(&["s".to_string()], Owner::current()).unwrap();
+    let _ = enforce_caps(&reg, false);
+    let _ = sweep(&reg, false);
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(
+        !d.path().join("hygiene").exists(),
+        "a tick resurrected the removed folder"
+    );
+    // Registering is the only thing that creates it again.
+    reg.add_root(root("s", Owner::current(), 1, 1)).unwrap();
+    assert!(d.path().join("hygiene/registry.json").is_file());
+}

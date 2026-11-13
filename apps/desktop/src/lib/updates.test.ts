@@ -553,6 +553,18 @@ test("blurbOf prefers the summary, then the first change, and caps its length", 
 	expect(blurbOf(parseNotes(""))).toBe("");
 });
 
+// The "Updated to X" card shows this as plain text, so no markdown syntax may reach it (the sheet renders the same
+// source as HTML; the card cannot).
+test("blurbOf is plain text: bold, code spans and links lose their syntax in the summary and the title", () => {
+	expect(
+		blurbOf(parseNotes("**The Windows release.** Installs with `Atlas-Setup.exe`, see [docs](https://x.y).")),
+	).toBe("The Windows release. Installs with Atlas-Setup.exe, see docs.");
+	expect(
+		blurbOf(parseNotes("### Changed\n- **Opening a folder without an `atlas.yaml` now shows it.** Body.")),
+	).toBe("Opening a folder without an atlas.yaml now shows it");
+	expect(blurbOf(parseNotes("### Fixed\n- **a** and `b`_c_ *d*, [e](https://x.y)"))).not.toMatch(/[`*_\[\]]/);
+});
+
 describe("settings search", () => {
 	test("the update channel is findable and lives in General", () => {
 		for (const q of ["update channel", "beta", "alpha", "stable", "prerelease"]) {

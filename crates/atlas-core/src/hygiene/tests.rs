@@ -2,6 +2,7 @@
 //! dies, registered dirs that must not grow. Unix only where a shell one-liner builds the tree.
 
 use super::*;
+#[cfg(unix)]
 use std::time::Instant;
 
 fn registry() -> (tempfile::TempDir, Registry) {
@@ -139,6 +140,7 @@ fn wait_gone(pids: &[u32], within: Duration) -> bool {
 
 /// Run `f` and fail the test, never hang, if it does not finish within `within` (a `child.wait()`
 /// on a process that was never signalled would block the suite for good).
+#[cfg(unix)]
 fn bounded<T: Send + 'static>(within: Duration, f: impl FnOnce() -> T + Send + 'static) -> T {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {

@@ -17,7 +17,8 @@ mod health_check;
 #[cfg(test)]
 mod health_tests;
 mod hygiene;
-#[cfg(test)]
+// Unix only: its shell one-liners build trees that leave their parent chain.
+#[cfg(all(test, unix))]
 mod hygiene_tests;
 mod lifecycle;
 #[cfg(test)]

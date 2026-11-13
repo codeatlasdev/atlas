@@ -259,22 +259,25 @@ pub(super) async fn create(
         .filter(|o| o.code == Some(0))
         .map(|o| PathBuf::from(o.stdout.trim()))
         .unwrap_or(dir.clone());
-    let mut entries = registry::load()?;
-    let offset = free_offset(&entries, &repo.id);
-    let entry = Entry {
-        id: registry::id_for_host(repo.host.as_deref(), &real),
-        root: real.to_string_lossy().into_owned(),
-        pinned: false,
-        added: chrono::Utc::now().to_rfc3339(),
-        parent: Some(repo.id.clone()),
-        port_offset: offset,
-        branch: Some(branch.clone()),
-        host: repo.host.clone(),
-        identity: None,
-    };
-    entries.retain(|e| e.id != entry.id);
-    entries.push(entry.clone());
-    registry::save(&entries)?;
+    // Offset and insert under one lock: two worktrees created at once used to read the same free offset and
+    // start stacks on the same ports.
+    let entry = registry::edit(|entries| {
+        let entry = Entry {
+            id: registry::id_for_host(repo.host.as_deref(), &real),
+            root: real.to_string_lossy().into_owned(),
+            pinned: false,
+            added: chrono::Utc::now().to_rfc3339(),
+            parent: Some(repo.id.clone()),
+            port_offset: free_offset(entries, &repo.id),
+            branch: Some(branch.clone()),
+            host: repo.host.clone(),
+            identity: None,
+        };
+        entries.retain(|e| e.id != entry.id);
+        entries.push(entry.clone());
+        Ok(entry)
+    })?;
+    let offset = entry.port_offset;
     let _ = app.emit("projects://changed", ());
 
     let setup = wcfg.setup.filter(|_| args.run_setup).map(|cmd| {

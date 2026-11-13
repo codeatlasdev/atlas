@@ -234,6 +234,8 @@ async fn handle_event(manager: &mut ServiceManager, event: ManagerEvent, foregro
                 ServiceState::Stopped => "\x1b[90m○\x1b[0m",
                 ServiceState::Disabled => "\x1b[90m⊘\x1b[0m",
                 ServiceState::Suspended => "\x1b[90m⏸\x1b[0m",
+                ServiceState::Unhealthy => "\x1b[31m‼\x1b[0m",
+                ServiceState::Degraded => "\x1b[33m◐\x1b[0m",
             };
             eprintln!("{icon} {name}: {state:?}");
             manager.update_state(&name, state);

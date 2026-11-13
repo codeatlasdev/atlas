@@ -216,6 +216,10 @@ fn poll_event(s: &status::Snapshot) -> Value {
                 "restarts": r.restarts, "note": r.note, "deselected": r.off,
                 "port_conflict": r.port_conflict,
                 "mem_mb": r.mem_mb, "cpu": r.cpu,
+                // Same keys as the runner's `state`/`rows` events (`probe_facts_json`).
+                "ready": r.ready, "probe_error": r.probe_error,
+                "unhealthy_since": r.unhealthy_since, "unhealthy_misses": r.unhealthy_misses,
+                "unhealthy_lines": r.unhealthy_lines,
             })
         })
         .collect();
@@ -336,5 +340,51 @@ mod tests {
         let l = "x".repeat(LINE_MAX);
         b.push(&log(&l), 0);
         assert_eq!(b.take().unwrap()["lines"][0]["line"], l);
+    }
+
+    /// An owner TUI (not subscribable) is mirrored from its status file: the poll event must
+    /// carry the same readiness/hang keys as the runner stream, or the panel shows a hung
+    /// service as a plain row.
+    #[test]
+    fn poll_event_carries_the_readiness_and_hang_keys_of_the_status_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".logs")).unwrap();
+        let now = atlas_tui::runtime::clock::now_secs();
+        let body = json!({
+            "pid": std::process::id(), "updated_at": now,
+            "services": {
+                "web": { "state": "unhealthy", "port": 3000, "unhealthy_since": now - 5,
+                         "unhealthy_misses": 3, "unhealthy_lines": ["boot", "stuck in render"] },
+                "api": { "state": "degraded", "port": 3001, "ready": false,
+                         "probe_error": "ready probe failed: GET /ready → 500" },
+                "db":  { "state": "running", "port": 5432 },
+            },
+        });
+        std::fs::write(dir.path().join(".logs/.tui-status.json"), body.to_string()).unwrap();
+        let ev = poll_event(&status::live_snapshot(dir.path()).unwrap());
+        let by = |n: &str| {
+            ev["services"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"] == n)
+                .unwrap()
+                .clone()
+        };
+        let web = by("web");
+        assert_eq!(web["state"], "unhealthy");
+        assert_eq!(web["unhealthy_misses"], 3);
+        assert_eq!(web["unhealthy_since"], now - 5);
+        assert_eq!(web["unhealthy_lines"][1], "stuck in render");
+        let api = by("api");
+        assert_eq!(api["ready"], false);
+        assert!(
+            api["probe_error"]
+                .as_str()
+                .unwrap()
+                .contains("GET /ready → 500")
+        );
+        let db = by("db");
+        assert!(db["ready"].is_null() && db["probe_error"].is_null());
     }
 }

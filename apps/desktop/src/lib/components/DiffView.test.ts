@@ -1,6 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import "../../../test/setup.ts";
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { prefsMock } from "../../../test/prefsMock.ts";
 
 // Incident (space switch froze the page): a space switch changes `focused`, and TabGroupView feeds DiffView through
 // `<Lazy props={{ worktreeId, focused }}>`, an object literal rebuilt on every change. The view reloaded each time with
@@ -37,13 +38,9 @@ mock.module("#lib/api.ts", () => ({
 		},
 	},
 }));
-// Terminal.test.ts and editor/settings.test.ts replace the prefs store with only the parts they read (process-wide), so
-// the view's `prefs.value.diff.view` and its `savePref` -> `setPref` link depend on file order. This test owns both.
-mock.module("#lib/stores/prefs.svelte.ts", () => ({
-	prefs: { value: { diff: { view: "unified" } } },
-	setPref: async () => {},
-	loadPrefs: async () => {},
-}));
+// Every prefs mock is complete (`test/prefsMock.ts`): module mocks are process-wide, so a partial one breaks the
+// `savePref` -> `setPref` link of whichever file runs after it.
+mock.module("#lib/stores/prefs.svelte.ts", () => prefsMock({ diff: { view: "unified" } }));
 mock.module("#lib/settings/savePref.ts", () => ({ savePref: () => {} }));
 mock.module("#lib/components/diff/highlight.ts", () => ({ highlightFile: async () => {} }));
 

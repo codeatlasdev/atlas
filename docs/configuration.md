@@ -103,6 +103,10 @@ services:
 | `hide_logs` | bool | `false` | No dedicated tab for this service, and its lines are left out of the **All** tab. Use for quiet infra like databases. Logs are still written to `.logs/<name>.log`. |
 | `lock_file` | string | none | Path (relative to project root) to a JSON file holding `{"pid": N}`, e.g. `apps/ai/.mastra/dev.lock`. Atlas cleans stale locks before the service starts, see [lock files](runtime.md#lock-files-lock_file). |
 | `max_memory` | size (`512M`, `4G`) | none | Memory ceiling for the service's whole process tree. Atlas samples memory and CPU every 5 s (on macOS the physical footprint, compressed pages included, as in Activity Monitor); over the ceiling for two samples in a row, the service is restarted with an alert; after 3 such restarts in a run it is stopped and marked failed. A guard for leaking dev servers. Usage is shown per service in Atlas Desktop and in `atlas_status` (`mem_mb`, `cpu`). |
+| `health_timeout` | seconds | `2` | How long one liveness probe (the `health` GET, or the TCP connect to `port`) may take before it counts as a miss. See [Health and readiness](#health-and-readiness). |
+| `failure_threshold` | integer | `3` | Liveness misses in a row, while the process is alive and after it answered once, before the service turns `unhealthy`. `0` is treated as `1`. |
+| `ready` | object | none | Readiness probe, separate from liveness: `http` (path or URL) with an optional `status`, or a `command`, plus `timeout`. While liveness passes but this fails, the service is `degraded`. See [Health and readiness](#health-and-readiness). |
+| `on_unhealthy` | `notify` \| `restart` | `notify` | What Atlas does when the service turns `unhealthy`: `notify` shows the state, raises an alert and keeps the log context; `restart` also restarts it (same budget and delays as `max_restarts`). |
 
 Notes:
 
@@ -111,6 +115,53 @@ Notes:
 - **Readiness** without `ready_log`: a successful `GET` of the `health` URL, else a TCP connect to `port`, else the process being alive. A command with no port, no health and no `ready_log` is `running` once it has stayed alive for **2 seconds** (a process that crashes inside that window, e.g. in a restart loop, never turns green and never satisfies a `healthy` dependent). `atlas config check` prints a non-fatal `warning:` (exit code stays `0`) when a `healthy` dependency targets such a service.
 - Commands starting with `docker` get a `DOCKER_HOST` pointed at OrbStack's socket when present (unless `DOCKER_HOST` is already set).
 - `open_key` and action `key` values must not collide with [built-in keys](tui.md#key-bindings) or each other; `atlas config check` rejects clashes.
+
+### Health and readiness
+
+Two separate questions, two separate settings:
+
+- **Liveness** (is it answering?) is the `health` URL or `port` probe. Each probe waits `health_timeout` seconds (default `2`). Once the service has answered at least once, `failure_threshold` misses in a row (default `3`) while the process is still alive turn it `unhealthy`. A single answer resets the count, and the misses before the first answer never count (startup is [`start_timeout`](#services)'s business). A service with a `ready_log` is not port-probed.
+- **Readiness** (is it usable?) is the optional `ready:` probe, run on every health tick **only while liveness passes** (a hung service's endpoints would time out too, and `unhealthy` already says so). A service without `ready:` behaves as before.
+
+```yaml
+services:
+  api:
+    command: bun run dev:api
+    port: 24310
+    health: http://localhost:24310/health     # liveness
+    health_timeout: 2                         # seconds per probe (default 2)
+    failure_threshold: 3                      # misses in a row before `unhealthy` (default 3)
+    on_unhealthy: restart                     # notify (default) | restart
+    ready:                                    # readiness
+      http: /ready                            # path on the service `port`, or a full http(s):// URL
+      status: 200                             # optional; default: any 2xx
+      timeout: 5                              # seconds per probe (default 5)
+  worker:
+    command: bun run dev:worker
+    ready:
+      command: ./scripts/queue-ready.sh       # sh -c in the service `dir`; exit 0 = ready
+```
+
+| `ready` field | Type | Default | Description |
+|---|---|---|---|
+| `http` | string | none | A path (`/ready`), resolved against the service `port` on `127.0.0.1`, or a full `http://` / `https://` URL. A bare path without a `port` on the service reports `ready http '/ready' needs the service port`. |
+| `status` | integer | any `2xx` | Exact status code expected from `http`. Any other code is a failure (`GET /ready → 503 (expected 200)`). |
+| `command` | string | none | Shell command run as `sh -c` in the service's `dir` (project root when unset), stdin `/dev/null`; exit `0` = ready. A failure reports the exit code and the last non-empty stderr line. |
+| `timeout` | seconds | `5` | How long one readiness probe may take (`` `cmd` timed out after 5s `` for a command). |
+
+Set **exactly one** of `http` or `command`; `atlas config check` rejects both or neither. Unknown keys under `ready` are errors like everywhere else.
+
+What the verdict is for a service with a live process:
+
+| Liveness | `ready` / log | State |
+|---|---|---|
+| answers | passes (or none configured), no repeating error | `running` |
+| answers | `ready` probe fails | `degraded`, reason `ready probe failed: <error>` |
+| answers | the same error line 3 times within 60 s (numbers, timestamps, UUIDs and hex ids normalised, so `timeout after 31ms` and `timeout after 87ms` count as one) | `degraded`, reason `repeating error: <line>` |
+| misses, fewer than `failure_threshold` | | unchanged (a dev server's hot restart closes its port for a moment) |
+| misses `failure_threshold` in a row after it answered once | | `unhealthy` |
+
+`unhealthy` beats `degraded`, and a failing `ready` probe beats a repeating log line (it carries the endpoint's own error). `degraded` clears by itself when the probe passes again or the error stops repeating; `unhealthy` clears when the service answers again. `unhealthy` is for a process that is **alive**: a process that exits is `failed`, as before, and a service that was never healthy is still `starting`. Concepts: [Service states](concepts.md#service). Runtime details: [Health states](runtime.md#unhealthy-and-degraded).
 
 ### depends_on
 
@@ -393,7 +444,7 @@ What can be overridden:
 | `name` | replaces |
 | `pre_command` | non-empty replaces; `""` disables; omitted keeps the base |
 | `pre_command_when` | replaces |
-| `services.<name>` | field-by-field for `command`, `port`, `health`, `critical`, `depends_on`, `enabled`, `restart`, `max_restarts`, `ready_log`, `oneshot`, `start_timeout`, `autostart`. Entries for services not in `atlas.yaml` are ignored. Other service fields (`dir`, `env`, `open_key`, `open_url`, `hide_logs`, `lock_file`, `critical_help`) cannot be overridden and are rejected as unknown keys. |
+| `services.<name>` | field-by-field for `command`, `port`, `health`, `critical`, `depends_on`, `enabled`, `restart`, `max_restarts`, `ready_log`, `oneshot`, `start_timeout`, `autostart`. Entries for services not in `atlas.yaml` are ignored. Other service fields (`dir`, `env`, `open_key`, `open_url`, `hide_logs`, `lock_file`, `critical_help`, `health_timeout`, `failure_threshold`, `ready`, `on_unhealthy`) cannot be overridden and are rejected as unknown keys. |
 | `tunnel` | field-by-field; ignored if `atlas.yaml` has no `tunnel` |
 | `infra` | replaces the whole block |
 | `profiles` | merged by name: same name replaces that profile's list, a new name is added. Members are validated against the merged `services` |
@@ -421,6 +472,7 @@ $ atlas config check
 - `depends_on` targets exist, no self-dependency, no cycles
 - `log_ready` needs `ready_log` on the target; `completed_successfully` needs a `command` on the target
 - `ready_log` is a valid regex
+- `ready` sets exactly one of `http` or `command`
 - enabled services have unique `port`s (disabled services hold no port)
 - every `profiles` member is a known service
 - action `key`s are unique and do not clash with built-in keys or a service `open_key`; an `open_key` must not be a built-in key either
@@ -472,6 +524,8 @@ services:
     command: bun run dev:server
     port: 3070
     health: http://localhost:3070/health/live
+    ready: { http: /health/ready }
+    on_unhealthy: restart
     depends_on: { migrate: completed_successfully, redis: healthy }
     restart: on_failure
     open_key: a

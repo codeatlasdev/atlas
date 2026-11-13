@@ -10,6 +10,19 @@ use super::ServiceManager;
 use crate::runtime::service::ServiceState;
 use crate::runtime::tunnel::TunnelStatus;
 
+/// A hung service as reported to the status file, the runner wire, MCP and the desktop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnhealthyReport {
+    /// Whole seconds since it turned `unhealthy`.
+    pub since_secs: u64,
+    /// Unix seconds it turned `unhealthy`.
+    pub since_epoch: u64,
+    /// Liveness misses in a row when it turned.
+    pub misses: u32,
+    /// The last output lines at that moment.
+    pub lines: Vec<String>,
+}
+
 /// What the runner knows about one service beyond its state.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MirrorFacts {
@@ -20,6 +33,12 @@ pub struct MirrorFacts {
     pub paused_by: Option<String>,
     pub deselected: bool,
     pub port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
+    /// Readiness column (`None` = no `ready` probe).
+    pub ready: Option<bool>,
+    /// Why the service is `degraded`.
+    pub probe_error: Option<String>,
+    /// Set while the service is `unhealthy`.
+    pub unhealthy: Option<UnhealthyReport>,
 }
 
 #[derive(Debug, Default)]

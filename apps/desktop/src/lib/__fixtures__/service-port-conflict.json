@@ -13,6 +13,11 @@
 		"cwd": "/work/app",
 		"pid": 12345
 	},
+	"probe_error": null,
+	"ready": null,
 	"restarts": 0,
-	"state": "failed"
+	"state": "failed",
+	"unhealthy_lines": null,
+	"unhealthy_misses": null,
+	"unhealthy_since": null
 }

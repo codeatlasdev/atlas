@@ -176,14 +176,35 @@ class SectionHeader extends StatelessWidget {
     final c = AtlasColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, Space.lg, 2, Space.sm),
-      child: Row(
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: Space.xs,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleSmall),
-          if (count != null) ...[
-            const SizedBox(width: 6),
-            Text('$count', style: TextStyle(color: c.faint, fontSize: 13)),
-          ],
-          const Spacer(),
+          // Never wider than the header: a long title wraps inside it.
+          LayoutBuilder(
+            builder: (context, box) => ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: box.maxWidth),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  if (count != null) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      '$count',
+                      style: TextStyle(color: c.faint, fontSize: 13),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
           ?trailing,
         ],
       ),
@@ -211,27 +232,44 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            icon ?? const Opacity(opacity: .9, child: AtlasLogo(size: 72)),
-            const SizedBox(height: Space.xl),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-              textAlign: TextAlign.center,
+    // Centred while it fits, scrolls when it does not (large text, a short phone,
+    // a long error message): a state screen must never hide its action.
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        child: ConstrainedBox(
+          // Centred in the room it has; inside a list (unbounded height) it is just as
+          // tall as its content.
+          constraints: BoxConstraints(
+            minHeight: box.hasBoundedHeight ? box.maxHeight : 0,
+          ),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(Space.xxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  icon ??
+                      const Opacity(opacity: .9, child: AtlasLogo(size: 72)),
+                  const SizedBox(height: Space.xl),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: Space.sm),
+                  SelectableText(
+                    message,
+                    style: TextStyle(color: c.muted, height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (action != null) ...[
+                    const SizedBox(height: Space.xl),
+                    action!,
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: Space.sm),
-            Text(
-              message,
-              style: TextStyle(color: c.muted, height: 1.4),
-              textAlign: TextAlign.center,
-            ),
-            if (action != null) ...[const SizedBox(height: Space.xl), action!],
-          ],
+          ),
         ),
       ),
     );
@@ -292,6 +330,20 @@ class _EnterFadeState extends State<EnterFade>
   }
 }
 
+/// [child] centred (and left-aligned) in a box at least 48 dp tall: the touch size
+/// Material asks for, however small the label inside is. A bare `ConstrainedBox` would
+/// leave the label at the top of the box.
+class MinTapTarget extends StatelessWidget {
+  const MinTapTarget({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 48),
+    child: Align(alignment: Alignment.centerLeft, child: child),
+  );
+}
+
 /// A rounded tinted pill: state labels, ports, counts.
 class Pill extends StatelessWidget {
   const Pill(
@@ -317,6 +369,8 @@ class Pill extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: color,
           fontSize: 12,
@@ -326,6 +380,18 @@ class Pill extends StatelessWidget {
         ),
       ),
     );
-    return onTap == null ? pill : GestureDetector(onTap: onTap, child: pill);
+    if (onTap == null) return pill;
+    // The pill is small; the touch area around it is not.
+    return Semantics(
+      button: true,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          child: Center(child: pill),
+        ),
+      ),
+    );
   }
 }

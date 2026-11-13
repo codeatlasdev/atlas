@@ -33,6 +33,16 @@ pub struct ServiceRow {
     pub off: bool,
     /// The foreign process holding this service's port (`port_conflict: {pid, cmd, cwd}`).
     pub port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
+    /// Readiness column: `None` = no `ready` probe (or not up), `Some(true/false)` = passes/fails.
+    pub ready: Option<bool>,
+    /// Why the service is `degraded` (failing `ready` probe, or the repeated log line).
+    pub probe_error: Option<String>,
+    /// Unix seconds the service turned `unhealthy` (None in any other state).
+    pub unhealthy_since: Option<u64>,
+    /// Liveness misses in a row when it turned `unhealthy`.
+    pub unhealthy_misses: Option<u64>,
+    /// The last output lines at the moment it turned `unhealthy`.
+    pub unhealthy_lines: Vec<String>,
 }
 
 /// The SSH tunnel row from the status file (absent when no `tunnel:` is running).
@@ -97,6 +107,18 @@ pub fn live_snapshot(root_dir: &Path) -> Result<Snapshot, String> {
                     note: s["note"].as_str().map(str::to_string),
                     off: s["deselected"].as_bool().unwrap_or(false),
                     port_conflict: serde_json::from_value(s["port_conflict"].clone()).ok(),
+                    ready: s["ready"].as_bool(),
+                    probe_error: s["probe_error"].as_str().map(str::to_string),
+                    unhealthy_since: s["unhealthy_since"].as_u64(),
+                    unhealthy_misses: s["unhealthy_misses"].as_u64(),
+                    unhealthy_lines: s["unhealthy_lines"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|l| l.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 })
                 .collect()
         })
@@ -139,19 +161,52 @@ pub fn live_status(root_dir: &Path) -> Result<String, String> {
         out.push_str(&format!(" · {} attached", snap.clients));
     }
     out.push('\n');
-    out.push_str(&format!(
-        "{:<20} {:<9} {:<6} {}\n",
-        "SERVICE", "STATE", "PORT", "HEALTH"
-    ));
-    for s in &snap.services {
-        let port = s.port.map_or("-".to_string(), |p| p.to_string());
+    // READY only for projects that use it, so `--status` stays byte-identical otherwise.
+    let with_ready = snap.services.iter().any(|s| s.ready.is_some());
+    if with_ready {
+        out.push_str(&format!(
+            "{:<20} {:<9} {:<6} {:<6} {}\n",
+            "SERVICE", "STATE", "PORT", "READY", "HEALTH"
+        ));
+    } else {
         out.push_str(&format!(
             "{:<20} {:<9} {:<6} {}\n",
-            s.name,
-            if s.off { "off" } else { s.state.as_str() },
-            port,
-            s.health.as_deref().unwrap_or("-"),
+            "SERVICE", "STATE", "PORT", "HEALTH"
         ));
+    }
+    for s in &snap.services {
+        let port = s.port.map_or("-".to_string(), |p| p.to_string());
+        let state = if s.off { "off" } else { s.state.as_str() };
+        let health = s.health.as_deref().unwrap_or("-");
+        if with_ready {
+            let ready = match s.ready {
+                Some(true) => "ok",
+                Some(false) => "fail",
+                None => "-",
+            };
+            out.push_str(&format!(
+                "{:<20} {:<9} {:<6} {:<6} {}\n",
+                s.name, state, port, ready, health
+            ));
+        } else {
+            out.push_str(&format!(
+                "{:<20} {:<9} {:<6} {}\n",
+                s.name, state, port, health
+            ));
+        }
+        if let Some(e) = &s.probe_error {
+            out.push_str(&format!("  ↳ {e}\n"));
+        }
+        if let Some(since) = s.unhealthy_since {
+            let secs = crate::runtime::clock::now_secs().saturating_sub(since);
+            out.push_str(&format!(
+                "  ↳ unhealthy for {secs}s ({} missed probes); last output:\n",
+                s.unhealthy_misses.unwrap_or(0)
+            ));
+            for l in &s.unhealthy_lines {
+                out.push_str(&format!("      {l}\n"));
+            }
+        }
         if let (Some(c), Some(p)) = (&s.port_conflict, s.port) {
             out.push_str(&format!("  ! {}\n", c.describe(p as u16)));
         }
@@ -296,5 +351,87 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_status(dir.path(), i32::MAX as u32, now());
         assert!(live_status(dir.path()).unwrap_err().contains("not alive"));
+    }
+
+    fn write_services(dir: &Path, services: serde_json::Value) {
+        std::fs::create_dir_all(dir.join(".logs")).unwrap();
+        let body = serde_json::json!({
+            "pid": std::process::id(), "updated_at": now(), "services": services,
+        });
+        std::fs::write(dir.join(".logs/.tui-status.json"), body.to_string()).unwrap();
+    }
+
+    /// A status file written by an older atlas (no probe keys) parses, and its table has no
+    /// READY column: output is byte-identical for projects that never opt in.
+    #[test]
+    fn no_ready_column_without_probe_facts() {
+        let dir = tempfile::tempdir().unwrap();
+        write_status(dir.path(), std::process::id(), now());
+        let snap = live_snapshot(dir.path()).unwrap();
+        let api = &snap.services[0];
+        assert_eq!(
+            (api.ready, &api.probe_error, api.unhealthy_since),
+            (None, &None, None)
+        );
+        assert!(api.unhealthy_lines.is_empty());
+        let out = live_status(dir.path()).unwrap();
+        assert!(!out.contains("READY"), "{out}");
+    }
+
+    #[test]
+    fn degraded_service_shows_ready_column_and_its_probe_error() {
+        let dir = tempfile::tempdir().unwrap();
+        write_services(
+            dir.path(),
+            serde_json::json!({
+                "api": { "state": "degraded", "port": 3000, "ready": false,
+                         "probe_error": "ready probe failed: GET /ready → 500" },
+                "web": { "state": "running", "port": 3001, "ready": true },
+                "db":  { "state": "running", "port": 5432 },
+            }),
+        );
+        let snap = live_snapshot(dir.path()).unwrap();
+        let by = |n: &str| snap.services.iter().find(|s| s.name == n).unwrap();
+        assert_eq!(by("api").ready, Some(false));
+        assert_eq!(by("web").ready, Some(true));
+        assert_eq!(by("db").ready, None);
+        let out = live_status(dir.path()).unwrap();
+        assert!(out.contains("READY"), "{out}");
+        let api = out.lines().find(|l| l.starts_with("api")).unwrap();
+        assert!(api.contains("degraded") && api.contains("fail"), "{api}");
+        let web = out.lines().find(|l| l.starts_with("web")).unwrap();
+        assert!(web.contains("ok"), "{web}");
+        let db = out.lines().find(|l| l.starts_with("db")).unwrap();
+        assert!(
+            !db.contains("ok") && !db.contains("fail"),
+            "no probe → no verdict: {db}"
+        );
+        assert!(
+            out.contains("GET /ready → 500"),
+            "the error text is shown: {out}"
+        );
+    }
+
+    #[test]
+    fn unhealthy_service_shows_since_and_the_captured_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        write_services(
+            dir.path(),
+            serde_json::json!({
+                "web": { "state": "unhealthy", "port": 3000,
+                         "unhealthy_since": now() - 30, "unhealthy_misses": 3,
+                         "unhealthy_lines": ["GET /slow 200 9000ms", "render queue: 412 pending"] },
+            }),
+        );
+        let snap = live_snapshot(dir.path()).unwrap();
+        let web = &snap.services[0];
+        assert_eq!(web.unhealthy_misses, Some(3));
+        assert_eq!(web.unhealthy_lines.len(), 2);
+        let out = live_status(dir.path()).unwrap();
+        assert!(
+            out.contains("unhealthy for 30s") || out.contains("unhealthy for 31s"),
+            "{out}"
+        );
+        assert!(out.contains("render queue: 412 pending"), "{out}");
     }
 }

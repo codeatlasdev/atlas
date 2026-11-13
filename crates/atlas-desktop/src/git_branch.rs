@@ -435,11 +435,12 @@ pub async fn git_switch(
     let run = hostd_runner(hub.inner().clone(), PathBuf::from(&e.root));
     let out = switch(&run, req).await?;
     if let Switched::Ok { branch, .. } = &out {
-        let mut all = registry::load()?;
-        if let Some(x) = all.iter_mut().find(|x| x.id == id) {
-            x.branch = Some(branch.clone());
-        }
-        registry::save(&all)?;
+        registry::edit(|all| {
+            if let Some(x) = all.iter_mut().find(|x| x.id == id) {
+                x.branch = Some(branch.clone());
+            }
+            Ok(())
+        })?;
         let _ = app.emit("projects://changed", ());
     }
     Ok(out)

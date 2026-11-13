@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -112,19 +114,22 @@ class _LauncherState extends ConsumerState<_Launcher> {
                   ),
                 )
               else ...[
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.sm,
-                  children: [
-                    for (final a in list)
-                      _AgentChoice(
-                        agent: a,
-                        selected: a.id == selected,
-                        onTap: _busy
-                            ? null
-                            : () => setState(() => _agent = a.id),
-                      ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, box) => Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      for (final a in list)
+                        _AgentChoice(
+                          agent: a,
+                          selected: a.id == selected,
+                          maxWidth: box.maxWidth,
+                          onTap: _busy
+                              ? null
+                              : () => setState(() => _agent = a.id),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: Space.md),
                 TextField(
@@ -177,11 +182,15 @@ class _AgentChoice extends StatelessWidget {
   const _AgentChoice({
     required this.agent,
     required this.selected,
+    required this.maxWidth,
     required this.onTap,
   });
 
   final AgentIntegration agent;
   final bool selected;
+
+  /// The row the choice sits in: a long label ellipsizes instead of overflowing it.
+  final double maxWidth;
   final VoidCallback? onTap;
 
   @override
@@ -206,26 +215,37 @@ class _AgentChoice extends StatelessWidget {
             border: Border.all(color: selected ? c.accent : c.borderSubtle),
             borderRadius: BorderRadius.circular(Space.radius),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AgentLogo(agent.id, size: 28),
-              const SizedBox(width: Space.sm + 2),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    agent.label,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+          // Never wider than the sheet: a long agent label ellipsizes.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              // The decoration's padding and border come off the row's width.
+              maxWidth: math.max(0, maxWidth - 2 * Space.md - 2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AgentLogo(agent.id, size: 28),
+                const SizedBox(width: Space.sm + 2),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        agent.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      if (!ok)
+                        Text(
+                          'hooks off',
+                          style: TextStyle(fontSize: 11, color: c.warning),
+                        ),
+                    ],
                   ),
-                  if (!ok)
-                    Text(
-                      'hooks off',
-                      style: TextStyle(fontSize: 11, color: c.warning),
-                    ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

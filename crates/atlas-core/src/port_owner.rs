@@ -220,7 +220,7 @@ mod imp {
             let t = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
             let rows = unsafe {
                 std::slice::from_raw_parts(
-                    t.table.as_ptr() as *const MIB_TCPROW_OWNER_PID,
+                    t.table.as_ptr(),
                     t.dwNumEntries as usize,
                 )
             };
@@ -234,7 +234,7 @@ mod imp {
             let t = unsafe { &*(buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID) };
             let rows = unsafe {
                 std::slice::from_raw_parts(
-                    t.table.as_ptr() as *const MIB_TCP6ROW_OWNER_PID,
+                    t.table.as_ptr(),
                     t.dwNumEntries as usize,
                 )
             };

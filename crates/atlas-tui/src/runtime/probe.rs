@@ -72,19 +72,27 @@ pub struct Inputs<'a> {
     pub ready_error: Option<&'a str>,
     /// Sample line while the same error repeats (≥ [`REPEAT_MIN`] in [`REPEAT_WINDOW`]).
     pub repeated: Option<&'a str>,
+    /// `Some(reason)` while the service is over its `memory_warn` budget.
+    pub memory: Option<&'a str>,
 }
 
 /// The state a service with a live child settles in, and why when it is not `Running`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict {
     pub state: ServiceState,
-    /// `degraded`: the failing probe's message or the repeated line; `unhealthy`: the miss count.
+    /// `degraded`: the failing probe's message, the repeated line or the memory overrun;
+    /// `unhealthy`: nothing.
     pub reason: Option<String>,
 }
 
 /// Precedence: `unhealthy` (liveness lost) beats `degraded`; a failing `ready` probe
-/// beats a repeated log line (it carries the endpoint's own error).
+/// beats a repeated log line (it carries the endpoint's own error), which beats a memory
+/// overrun (the least specific finding: the others say what is broken, this says it is big).
 pub fn judge(i: Inputs<'_>) -> Option<Verdict> {
+    let degraded = |reason: String| Verdict {
+        state: ServiceState::Degraded,
+        reason: Some(reason),
+    };
     match i.live {
         LiveVerdict::Unhealthy => Some(Verdict {
             state: ServiceState::Unhealthy,
@@ -92,16 +100,11 @@ pub fn judge(i: Inputs<'_>) -> Option<Verdict> {
         }),
         // Not answering yet / blipping: the caller keeps the current state.
         LiveVerdict::Starting | LiveVerdict::Grace => None,
-        LiveVerdict::Healthy => Some(match (i.ready_error, i.repeated) {
-            (Some(e), _) => Verdict {
-                state: ServiceState::Degraded,
-                reason: Some(format!("ready probe failed: {e}")),
-            },
-            (None, Some(line)) => Verdict {
-                state: ServiceState::Degraded,
-                reason: Some(format!("repeating error: {line}")),
-            },
-            (None, None) => Verdict {
+        LiveVerdict::Healthy => Some(match (i.ready_error, i.repeated, i.memory) {
+            (Some(e), ..) => degraded(format!("ready probe failed: {e}")),
+            (None, Some(line), _) => degraded(format!("repeating error: {line}")),
+            (None, None, Some(mem)) => degraded(mem.to_string()),
+            (None, None, None) => Verdict {
                 state: ServiceState::Running,
                 reason: None,
             },
@@ -204,14 +207,19 @@ impl RepeatDetector {
 }
 
 /// Per-spawn health context shared between a service's log pumps (writers) and
-/// the manager (reader): the last lines and the repeated-error detector.
+/// the manager (reader): the last lines, the repeated-error detector and the reloads seen.
 #[derive(Debug, Default)]
 pub struct LogContext {
     pub lines: VecDeque<String>,
     pub repeats: RepeatDetector,
+    /// Unix seconds of each reload line since the manager last drained them (bounded).
+    reloads: Vec<u64>,
 }
 
 pub type SharedContext = Arc<Mutex<LogContext>>;
+
+/// Reload lines kept between two drains (a sample every 5 s; a bundler in a loop must not grow it).
+const RELOADS_CAP: usize = 256;
 
 impl LogContext {
     /// Feed one output line; `error` is whether it is error-level.
@@ -223,6 +231,18 @@ impl LogContext {
         if error {
             self.repeats.push(line, now);
         }
+    }
+
+    /// `line` came at unix second `t`: remember it when it announces a code reload.
+    pub fn note_reload(&mut self, line: &str, t: u64) {
+        if self.reloads.len() < RELOADS_CAP && crate::runtime::memory::is_reload_line(line) {
+            self.reloads.push(t);
+        }
+    }
+
+    /// The reloads seen since the last call, oldest first.
+    pub fn take_reloads(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.reloads)
     }
 
     pub fn tail(&self) -> Vec<String> {
@@ -381,7 +401,56 @@ mod tests {
             live,
             ready_error: ready,
             repeated: rep,
+            memory: None,
         }
+    }
+
+    /// `memory_warn` (#131): a service over its soft budget, otherwise healthy, is `degraded`
+    /// with the memory reason, and it never outranks what the probes or the log say.
+    #[test]
+    fn a_memory_budget_overrun_alone_is_degraded_with_the_memory_reason() {
+        let v = judge(Inputs {
+            memory: Some("using 2.1 GB, over memory_warn 1.5 GB"),
+            ..inputs(LiveVerdict::Healthy, None, None)
+        })
+        .unwrap();
+        assert_eq!(v.state, ServiceState::Degraded);
+        assert_eq!(v.reason.unwrap(), "using 2.1 GB, over memory_warn 1.5 GB");
+    }
+
+    #[test]
+    fn probe_and_log_findings_outrank_the_memory_reason() {
+        let mem = Some("using 2.1 GB, over memory_warn 1.5 GB");
+        let v = judge(Inputs {
+            memory: mem,
+            ..inputs(LiveVerdict::Healthy, Some("boom"), Some("noise"))
+        })
+        .unwrap();
+        assert!(v.reason.unwrap().contains("boom"));
+        let v = judge(Inputs {
+            memory: mem,
+            ..inputs(LiveVerdict::Healthy, None, Some("noise"))
+        })
+        .unwrap();
+        assert!(v.reason.unwrap().contains("noise"));
+    }
+
+    #[test]
+    fn memory_never_masks_a_hung_service_or_decides_while_starting() {
+        let mem = Some("using 2.1 GB, over memory_warn 1.5 GB");
+        let hung = judge(Inputs {
+            memory: mem,
+            ..inputs(LiveVerdict::Unhealthy, None, None)
+        })
+        .unwrap();
+        assert_eq!(hung.state, ServiceState::Unhealthy);
+        assert!(
+            judge(Inputs {
+                memory: mem,
+                ..inputs(LiveVerdict::Grace, None, None)
+            })
+            .is_none()
+        );
     }
 
     #[test]
@@ -453,6 +522,31 @@ mod tests {
     fn blank_or_ansi_only_lines_normalise_empty() {
         assert_eq!(normalize_line("   "), "");
         assert_eq!(normalize_line("\x1b[0m"), "");
+    }
+
+    // ── reloads seen in the log ─────────────────────────────────────────
+
+    #[test]
+    fn reload_lines_are_queued_with_their_time_and_drained_once() {
+        let mut c = LogContext::default();
+        c.note_reload("listening on :3000", 100);
+        c.note_reload("[vite] hmr update /src/a.ts", 110);
+        c.note_reload("[nodemon] restarting due to changes...", 120);
+        assert_eq!(
+            c.take_reloads(),
+            vec![110, 120],
+            "ordinary output is skipped"
+        );
+        assert!(c.take_reloads().is_empty(), "drained");
+    }
+
+    #[test]
+    fn the_reload_queue_is_bounded_between_drains() {
+        let mut c = LogContext::default();
+        for i in 0..(RELOADS_CAP as u64 * 2) {
+            c.note_reload("[vite] hmr update /x", i);
+        }
+        assert_eq!(c.take_reloads().len(), RELOADS_CAP);
     }
 
     // ── repeated-error window ───────────────────────────────────────────

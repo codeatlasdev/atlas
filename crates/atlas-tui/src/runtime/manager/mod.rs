@@ -17,6 +17,9 @@ mod health_check;
 #[cfg(test)]
 mod health_tests;
 mod lifecycle;
+mod mem_watch;
+#[cfg(test)]
+mod mem_tests;
 mod mirror;
 mod mobile;
 pub mod policy;
@@ -35,6 +38,7 @@ mod tests;
 pub(crate) use disk_log::{log_file_stem, open_stream_log, rotate_stream_log};
 
 pub(crate) use devices::{parse_devicectl_json, parse_simctl_json};
+pub use mem_watch::MemoryFacts;
 pub use mirror::{MirrorFacts, UnhealthyReport};
 use types::{ManagedService, ManagedSession};
 pub use types::{ManagerEvent, MobileBuildPhase};
@@ -96,6 +100,8 @@ pub struct ServiceManager {
     pub(crate) adhoc: HashSet<String>,
     /// Last resource sample (`usage.rs`), taken every few seconds.
     pub(crate) sampled_at: Option<std::time::Instant>,
+    /// Gap between two resource samples ([`types::USAGE_EVERY`]); a field so tests can sample at will.
+    pub(crate) usage_every: std::time::Duration,
 }
 
 impl ServiceManager {

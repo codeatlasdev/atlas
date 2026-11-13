@@ -37,6 +37,7 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | Tool | Arguments | Needs `atlas dev` |
 |---|---|---|
 | [`atlas_status`](#atlas_status) | none | no |
+| [`atlas_metrics`](#atlas_metrics) | `service`, `last?` | no |
 | [`atlas_logs`](#atlas_logs) | `service?`, `lines?`, `since_minutes?`, `level?` | no |
 | [`atlas_logs_search`](#atlas_logs_search) | `query`, `service?`, `limit?`, `include_previous?` | no |
 | [`atlas_config`](#atlas_config) | none | no |
@@ -83,6 +84,10 @@ Health fields (see [Health and readiness](configuration.md#health-and-readiness)
 | `unhealthy_since` | unix seconds an `unhealthy` (hung) service stopped answering; `null` otherwise |
 | `unhealthy_misses` | liveness probes missed in a row at that moment; `null` otherwise |
 | `unhealthy_lines` | the service's last output lines (up to 20) at that moment, so you can see what it was doing when it hung; `[]` otherwise |
+| `memory_rss` | bytes of the service's whole process tree, rounded to whole MB; `null` while it is not running |
+| `memory_trend` / `memory_trend_mb_min` | `rising`, `flat` or `falling` and its signed MB per minute; `null` until ~30 s of samples exist |
+| `budget_state` | `ok`, `warn` (over `memory_warn`: the service is `degraded` and `probe_error` says `using 2.1 GB, over memory_warn 1.5 GB`) or `over` (over `max_memory`); see [Memory](configuration.md#memory) |
+| `memory_leak` | `leak suspected: +600 MB over 12 reloads` while RSS only grows from one reload or restart to the next; `null` otherwise. The whole series is [`atlas_metrics`](#atlas_metrics) |
 
 A hung service looks like this (`note` is `unhealthy for 42s: 3 missed probes`):
 
@@ -95,7 +100,28 @@ A hung service looks like this (`note` is `unhealthy for 42s: 3 missed probes`):
 
 `tunnel` is `null` when no [SSH tunnel](configuration.md#tunnel) is running; otherwise its `state` uses the same values as services (`failed` while reconnecting). Tunnel ssh output is readable with `atlas_logs` (`service: "tunnel"`).
 
-`state` is one of `starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (stopped by a user/agent, or left out of the run), `suspended` (paused by an action). `unhealthy` = the process is alive but stopped answering its health probe (hung; nothing exited, so not `failed`). `degraded` = it answers, but its `ready:` probe fails or the same error keeps repeating in its log; `probe_error` says which. `off: true` marks a service left out of this run by `atlas dev SERVICE…` / `--profile` (state `disabled`): start it with `atlas_start_service`, which clears the flag. When nothing is running: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Other reasons: the pid is dead, or the heartbeat is older than 120 s.
+`state` is one of `starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (stopped by a user/agent, or left out of the run), `suspended` (paused by an action). `unhealthy` = the process is alive but stopped answering its health probe (hung; nothing exited, so not `failed`). `degraded` = it answers, but its `ready:` probe fails, the same error keeps repeating in its log, or it is over its `memory_warn` budget; `probe_error` says which. `off: true` marks a service left out of this run by `atlas dev SERVICE…` / `--profile` (state `disabled`): start it with `atlas_start_service`, which clears the flag. When nothing is running: `{"running": false, "reason": "no status file", "hint": "atlas dev is not running; start it in a terminal"}`. Other reasons: the pid is dead, or the heartbeat is older than 120 s.
+
+### `atlas_metrics`
+
+Memory of one service over time ([#131](https://github.com/codeatlasdev/atlas/issues/131)): the series `atlas dev` keeps, so an agent can measure before and after a change (a refactor, a dependency bump, a suspected leak) without ad-hoc `ps` sampling. Works from `.logs/.tui-metrics.json`, so it needs no live control socket, but only a running `atlas dev` writes it.
+
+| Argument | Type | Default | Notes |
+|---|---|---|---|
+| `service` | string | required | Name exactly as in `atlas.yaml` (see `atlas_config`); an unknown one lists the known services. |
+| `last` | integer ≥ 1 | the whole series | Only the newest N samples. |
+
+```json
+{
+  "service": "web", "running": true, "state": "degraded", "updated_at": 1760000900, "interval_s": 5,
+  "samples": [[1760000890, 1363148800], [1760000895, 1420296192], [1760000900, 1426063360]],
+  "rss_bytes": 1426063360, "min_bytes": 1363148800, "max_bytes": 1426063360,
+  "trend": "rising", "trend_mb_per_min": 360.0, "budget_state": "warn", "cycles": 11,
+  "leak": "leak suspected: +660 MB over 11 reloads"
+}
+```
+
+`samples` are `[unix_seconds, bytes]` pairs, oldest first, one every `interval_s` (5 s), up to the last hour (720). Bytes are the whole process tree (on macOS the physical footprint). `trend` is `rising`, `flat` or `falling` (`null` until ~30 s of data), `trend_mb_per_min` its signed speed, `budget_state` `ok` / `warn` / `over` against the service's [`memory_warn` / `max_memory`](configuration.md#memory), `cycles` the reloads and restarts the leak watch has counted, and `leak` the suspicion (`null` when none). `running` is `false` when no live `atlas dev` owns the project: the series is then what the last run left, and `state` is `null`. Before anything was sampled the tool errors with `no metrics yet: …`.
 
 ### `atlas_logs`
 

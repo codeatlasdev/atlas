@@ -11,7 +11,8 @@ pub use loader::{
 pub use project::{
     ActionConfig, AndroidConfig, Condition, DEFAULT_START_TIMEOUT_SECS, DependsOn, DeployConfig,
     DeployHooks, DeployKind, DeployService, DeployTarget, HostMode, InfraConfig, IosConfig,
-    MobileConfig, OnUnhealthy, PreCommandWhen, ProjectConfig, ReadyProbe, RestartPolicy,
+    MobileConfig, OnMemoryMax, OnUnhealthy, PreCommandWhen, ProjectConfig, ReadyProbe,
+    RestartPolicy,
     ServiceDef, SessionPlatform, TunnelConfig, grouped_actions,
 };
 pub use selection::{Selection, SelectionRequest, resolve as resolve_selection};

@@ -211,7 +211,7 @@ fn poll_event(s: &status::Snapshot) -> Value {
         .services
         .iter()
         .map(|r| {
-            json!({
+            let mut row = json!({
                 "name": r.name, "state": r.state, "exit_code": r.exit_code,
                 "restarts": r.restarts, "note": r.note, "deselected": r.off,
                 "port_conflict": r.port_conflict,
@@ -220,7 +220,15 @@ fn poll_event(s: &status::Snapshot) -> Value {
                 "ready": r.ready, "probe_error": r.probe_error,
                 "unhealthy_since": r.unhealthy_since, "unhealthy_misses": r.unhealthy_misses,
                 "unhealthy_lines": r.unhealthy_lines,
-            })
+            });
+            // `memory_rss`, `memory_trend`, `budget_state`, …: the producer's own spelling.
+            if let (Some(o), Value::Object(mem)) = (
+                row.as_object_mut(),
+                atlas_tui::runtime::manager::MemoryFacts::to_json(Some(&r.memory)),
+            ) {
+                o.extend(mem);
+            }
+            row
         })
         .collect();
     let tunnel = s.tunnel.as_ref().map(|t| {
@@ -386,5 +394,59 @@ mod tests {
         );
         let db = by("db");
         assert!(db["ready"].is_null() && db["probe_error"].is_null());
+    }
+
+    /// The memory keys survive status file → poll event unchanged: the rows are the REAL wire
+    /// output (`service-memory.json`, which carries the same keys the status file gets from the
+    /// same producer), and a file from an older atlas yields `ok` / null, never a missing key.
+    #[test]
+    fn poll_event_carries_the_memory_keys_of_the_real_payload_and_tolerates_old_files() {
+        let rows: Value = serde_json::from_str(include_str!(
+            "../../../apps/desktop/src/lib/__fixtures__/service-memory.json"
+        ))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".logs")).unwrap();
+        let now = atlas_tui::runtime::clock::now_secs();
+        let mut services = serde_json::Map::new();
+        for r in rows.as_array().unwrap() {
+            services.insert(r["name"].as_str().unwrap().to_string(), r.clone());
+        }
+        services.insert("old".into(), json!({ "state": "running", "port": 1 }));
+        let body = json!({ "pid": std::process::id(), "updated_at": now, "services": services });
+        std::fs::write(dir.path().join(".logs/.tui-status.json"), body.to_string()).unwrap();
+
+        let ev = poll_event(&status::live_snapshot(dir.path()).unwrap());
+        let by = |n: &str| {
+            ev["services"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"] == n)
+                .unwrap()
+                .clone()
+        };
+        for (name, real) in [("api", &rows[0]), ("web", &rows[1])] {
+            let got = by(name);
+            for k in [
+                "memory_rss",
+                "memory_trend",
+                "memory_trend_mb_min",
+                "budget_state",
+                "memory_leak",
+            ] {
+                assert_eq!(got[k], real[k], "{name}.{k}");
+            }
+        }
+        let old = by("old");
+        assert_eq!(old["budget_state"], "ok");
+        for k in [
+            "memory_rss",
+            "memory_trend",
+            "memory_trend_mb_min",
+            "memory_leak",
+        ] {
+            assert!(old[k].is_null(), "{k}");
+        }
     }
 }

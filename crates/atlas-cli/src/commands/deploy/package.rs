@@ -307,6 +307,7 @@ mod tests {
         raw
     }
 
+    #[cfg(target_os = "macos")]
     fn contains(hay: &[u8], needle: &[u8]) -> bool {
         hay.windows(needle.len()).any(|w| w == needle)
     }

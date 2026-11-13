@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { useNow } from "#lib/clock.svelte.ts";
+	import { useNow, usePoll } from "#lib/clock.svelte.ts";
 	import { useSpace } from "#lib/shell/spaceCtx.ts";
 	import { EmptyState, ToggleGroup } from "@codeatlasdev/ui";
 	import { Activity } from "@lucide/svelte";
@@ -10,11 +10,19 @@
 	import DrawerRow from "./DrawerRow.svelte";
 	import DrawerShell from "./DrawerShell.svelte";
 	import { clock, counts, filterRows, fold, group, span, type Filter, type Row } from "./activity.ts";
+	import { active, describe, summary } from "./heavy.ts";
+	import { heavy } from "./heavy.svelte.ts";
 
 	let { projectId }: { projectId: string } = $props();
 	const space = useSpace();
 
 	const t = useNow(15_000);
+	// The machine-wide heavy-job queue (atlas run --heavy): polled only while the drawer is open.
+	usePoll(
+		3000,
+		() => activity.open,
+		() => void heavy.refresh(),
+	);
 	let rows = $derived(fold(store.live[projectId]?.events ?? []));
 	let tally = $derived(counts(rows));
 	let groups = $derived(group(filterRows(rows, activity.filter), t.now));
@@ -52,6 +60,23 @@
 </script>
 
 <DrawerShell bind:open={activity.open} title="Activity" width="400px">
+	{#if active(heavy.status)}
+		<section class="heavy" aria-label="Heavy jobs">
+			<div class="gl">Heavy jobs · {summary(heavy.status)}</div>
+			{#each [...heavy.status.running, ...heavy.status.queued] as j (j.id)}
+				{@const d = describe(j)}
+				<DrawerRow
+					tone={j.state === "running" ? "run" : "off"}
+					pulse={j.state === "running"}
+					disabled
+					title={j.command}
+				>
+					<span class="title">{d.title}</span>
+					<span class="detail">{d.detail}</span>
+				</DrawerRow>
+			{/each}
+		</section>
+	{/if}
 	<ToggleGroup
 		type="single"
 		size="sm"
@@ -96,6 +121,10 @@
 </DrawerShell>
 
 <style>
+	.heavy {
+		margin: 0 -8px;
+		padding: 0 8px;
+	}
 	.list {
 		flex: 1;
 		min-height: 0;

@@ -74,7 +74,7 @@ List form `[database, redis]` means each `healthy`. Map form conditions: `starte
 
 ## Actions
 
-Required: `key` (one char), `label`, `command` (`sh -c` in project root). Optional: `confirm` (modal in the TUI; MCP refuses until `confirmed: true`), `pause_services`, `group`, `open_tunnel` (needs a `tunnel:` block), and session options `session`, `input_map`, `platform` (`ios`|`android`), `device_id`, `host_mode` (`auto`|`lan`|`simulator`). Session and `platform` actions need the TUI; MCP cannot start `platform` actions under `--headless`. Details: `docs/configuration.md#actions`.
+Required: `key` (one char), `label`, `command` (`sh -c` in project root). Optional: `confirm` (modal in the TUI; MCP refuses until `confirmed: true`), `pause_services`, `heavy` (true: run through the machine-wide heavy-job queue, `atlas run --heavy`; use it for builds, test suites and benches), `group`, `open_tunnel` (needs a `tunnel:` block), and session options `session`, `input_map`, `platform` (`ios`|`android`), `device_id`, `host_mode` (`auto`|`lan`|`simulator`). Session and `platform` actions need the TUI; MCP cannot start `platform` actions under `--headless`. Details: `docs/configuration.md#actions`.
 
 ## deploy (`atlas deploy`)
 

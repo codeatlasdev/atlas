@@ -1,11 +1,13 @@
-//! `atlas run --heavy -- <cmd…>`: run a heavy job (build, test suite, bench) through the machine-wide
-//! queue (`atlas_core::heavy`), and `atlas heavy status`: who holds the slots, who waits, ETAs.
+//! `atlas run [--heavy] [--cache] -- <cmd…>`: run a command through the machine-wide queue of heavy
+//! jobs (`atlas_core::heavy`) and/or the task cache (`run_cache`), and `atlas heavy status`: who
+//! holds the slots, who waits, ETAs.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use atlas_core::heavy::{self, Dir, Entry, State, Status, Ticket};
+use atlas_core::taskcache::{Chunk, Stream};
 use clap::{Args, Subcommand};
 
 use super::AtlasCommand;
@@ -23,7 +25,7 @@ pub struct RunArgs {
     /// `min(cores / 2, GB of memory / 8)`; `ATLAS_HEAVY_SLOTS` or `heavy.slots` in
     /// ~/.atlas/config.json), first come first served, and only while load and memory pressure
     /// allow (`ATLAS_HEAVY_MAXLOAD`, `ATLAS_HEAVY_MINMEM`).
-    #[arg(long, required = true)]
+    #[arg(long, required_unless_present = "cache")]
     pub heavy: bool,
     /// Name of the job in the queue and its ETA history (default: the program's name).
     #[arg(long)]
@@ -31,6 +33,8 @@ pub struct RunArgs {
     /// Run the command at its own priority; by default it runs under `nice -n 10` (Unix).
     #[arg(long)]
     pub no_nice: bool,
+    #[command(flatten)]
+    pub cache: super::run_cache::CacheArgs,
     /// The command: one word is a shell command line, several are an argv.
     #[arg(last = true, required = true, num_args = 1..)]
     pub command: Vec<String>,
@@ -63,7 +67,11 @@ impl AtlasCommand for HeavyCommands {
 
 impl AtlasCommand for RunArgs {
     async fn run(self) -> Result<()> {
-        let code = run_heavy(&Dir::default_dir(), &self).await?;
+        let code = if self.cache.cache {
+            super::run_cache::run(&self).await?
+        } else {
+            run_job(Some(&Dir::default_dir()), &self, None).await?
+        };
         std::process::exit(code);
     }
 }
@@ -78,55 +86,69 @@ fn default_label(command: &[String]) -> String {
 }
 
 /// The project a job belongs to: the folder the project root resolves to (worktrees differ).
-fn project_of(cwd: &Path) -> String {
+pub(super) fn project_of(cwd: &Path) -> String {
     atlas_core::project_root::resolve(cwd)
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
 }
 
-/// Queue, run and report: returns the command's exit code.
-pub async fn run_heavy(dir: &Dir, args: &RunArgs) -> Result<i32> {
-    let cwd = std::env::current_dir()?;
-    let command_line = super::open::command_line(&args.command);
-    let label = args
-        .label
+/// The job's name: `--label`, else the program's name.
+pub(super) fn label_of(args: &RunArgs) -> String {
+    args.label
         .clone()
         .filter(|l| !l.trim().is_empty())
-        .unwrap_or_else(|| default_label(&args.command));
-    let slots = heavy::slots();
-    let mut ticket = dir
-        .enqueue(&label, &command_line, &cwd, &project_of(&cwd))
-        .with_context(|| format!("cannot join the heavy queue in {}", dir.root().display()))?;
+        .unwrap_or_else(|| default_label(&args.command))
+}
 
+/// Run the command, behind the heavy queue when `queue` is given, and report: returns its exit
+/// code. With `capture`, its stdout and stderr are also collected (still passed through live).
+pub(super) async fn run_job(
+    queue: Option<&Dir>,
+    args: &RunArgs,
+    capture: Option<&mut Vec<Chunk>>,
+) -> Result<i32> {
+    let cwd = std::env::current_dir()?;
+    let command_line = super::open::command_line(&args.command);
+    let label = label_of(args);
+    let slots = heavy::slots();
     let mut interrupt = Interrupt::new()?;
-    let mut said = false;
-    let queued_since = Instant::now();
-    while !ticket.try_start(slots)? {
-        if !said {
-            said = true;
-            eprintln!("{}", waiting_line(&dir.status(slots), &ticket, &label));
+    let mut ticket = None;
+    if let Some(dir) = queue {
+        let mut t = dir
+            .enqueue(&label, &command_line, &cwd, &project_of(&cwd))
+            .with_context(|| format!("cannot join the heavy queue in {}", dir.root().display()))?;
+        let mut said = false;
+        let queued_since = Instant::now();
+        while !t.try_start(slots)? {
+            if !said {
+                said = true;
+                eprintln!("{}", waiting_line(&dir.status(slots), &t, &label));
+            }
+            if interrupt.fired_within(POLL).await {
+                eprintln!("heavy: interrupted while queued ({label})");
+                return Ok(EXIT_INTERRUPTED);
+            }
         }
-        if interrupt.fired_within(POLL).await {
-            eprintln!("heavy: interrupted while queued ({label})");
+        if said {
+            eprintln!(
+                "heavy: {label} got a slot after {}",
+                human(queued_since.elapsed().as_secs())
+            );
+        }
+        if !wait_for_gates(&heavy::Gates::from_env(), &label, &mut interrupt).await {
             return Ok(EXIT_INTERRUPTED);
         }
-    }
-    if said {
-        eprintln!(
-            "heavy: {label} got a slot after {}",
-            human(queued_since.elapsed().as_secs())
-        );
-    }
-    if !wait_for_gates(&heavy::Gates::from_env(), &label, &mut interrupt).await {
-        return Ok(EXIT_INTERRUPTED);
+        ticket = Some(t);
     }
 
     let started = Instant::now();
-    let code = spawn_and_wait(&args.command, args.no_nice, slots, &mut interrupt).await?;
+    let code = spawn_and_wait(&args.command, args.no_nice, slots, &mut interrupt, capture).await?;
     // Only a command that ran to its end teaches the ETA: a killed or failing-fast run would drag
     // the average down.
     let ran = (code == 0).then(|| started.elapsed().as_secs());
-    Ticket::finish(ticket, ran);
+    if let Some(t) = ticket {
+        Ticket::finish(t, ran);
+    }
     Ok(code)
 }
 
@@ -175,28 +197,82 @@ fn describe_hold(h: &heavy::Hold) -> String {
 
 /// Run the command as our child, with our stdio, and return its exit code (128 + signal when a
 /// signal ended it). A SIGINT/SIGTERM/SIGHUP that reaches us is passed on to the child (its exact
-/// pid, never a process group), and we wait for it to end.
+/// pid, never a process group), and we wait for it to end. With `capture` the child's stdout and
+/// stderr are pipes that [`tee`] copies to ours while collecting them.
 async fn spawn_and_wait(
     command: &[String],
     no_nice: bool,
     slots: usize,
     interrupt: &mut Interrupt,
+    capture: Option<&mut Vec<Chunk>>,
 ) -> Result<i32> {
     let mut cmd = job_command(command, no_nice);
     // `slots` jobs share the machine: cap each one's build parallelism unless the user did.
     cmd.envs(heavy::job_env_now(slots));
+    if capture.is_some() {
+        cmd.stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+    }
     let mut child = cmd
         .spawn()
         .with_context(|| format!("failed to spawn: {}", command.join(" ")))?;
     let pid = child.id();
-    loop {
+    let pumps = capture.map(|sink| {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let out = tokio::spawn(tee(child.stdout.take(), Stream::Stdout, tx.clone()));
+        let err = tokio::spawn(tee(child.stderr.take(), Stream::Stderr, tx));
+        (sink, rx, out, err)
+    });
+    let code = loop {
         tokio::select! {
-            status = child.wait() => return Ok(exit_code(&status?)),
+            status = child.wait() => break exit_code(&status?),
             () = interrupt.wait() => {
                 if let Some(pid) = pid {
                     atlas_core::sys::terminate(pid);
                 }
             }
+        }
+    };
+    if let Some((sink, mut rx, out, err)) = pumps {
+        // The pipes close with the child (or its last holder): drain what is left, in order.
+        let _ = tokio::join!(out, err);
+        while let Ok(c) = rx.try_recv() {
+            sink.push(c);
+        }
+    }
+    Ok(code)
+}
+
+/// Copy a child's pipe to our own stdout/stderr as it arrives, and hand each chunk over for the
+/// log. Ordering between the two streams is the order chunks reached the channel.
+async fn tee(
+    pipe: Option<impl tokio::io::AsyncRead + Unpin>,
+    stream: Stream,
+    tx: tokio::sync::mpsc::UnboundedSender<Chunk>,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Some(mut pipe) = pipe else { return };
+    let mut buf = vec![0u8; 16 * 1024];
+    loop {
+        let n = match pipe.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => n,
+        };
+        let bytes = buf[..n].to_vec();
+        match stream {
+            Stream::Stdout => {
+                let mut o = tokio::io::stdout();
+                let _ = o.write_all(&bytes).await;
+                let _ = o.flush().await;
+            }
+            Stream::Stderr => {
+                let mut e = tokio::io::stderr();
+                let _ = e.write_all(&bytes).await;
+                let _ = e.flush().await;
+            }
+        }
+        if tx.send(Chunk { stream, bytes }).is_err() {
+            return;
         }
     }
 }

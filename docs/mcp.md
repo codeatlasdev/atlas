@@ -95,6 +95,7 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | [`atlas_hygiene`](#atlas_hygiene) | none | no |
 | [`atlas_wait_ready`](#atlas_wait_ready) | `service?`, `timeout_s?` | live heartbeat |
 | [`atlas_heavy_status`](#atlas_heavy_status) | none | no |
+| [`atlas_last_result`](#atlas_last_result) | `name`, `project?` | no |
 
 ### `atlas_status`
 
@@ -301,6 +302,18 @@ Read-only and machine-wide (it needs no project and no `atlas dev`): the queue o
 ```
 
 `load` is the 5-minute load average and `mem_available_pct` the percent of memory free (each `null` where the OS cannot tell). `eta_s` is the seconds until a running job ends, or until a queued job starts, computed from the rolling average of the last 8 successful runs of the same `label`; `null` when the label has no history. **Agents should run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy -- <cmd…>` instead of spawning them directly**, so a dozen agents never overload the machine; use this tool to see who holds the slots and how long the wait is.
+
+### `atlas_last_result`
+
+Read-only and machine-wide (no project, no `atlas dev`): the last outcome of a task, action or command that went through the [task cache](cli.md#task-cache-atlas-run---cache-atlas-cache), whoever ran it. `name` is the action label, the `--label` or the exact command line; `project` narrows it to one project (the folder name of its root). An unknown name is an error.
+
+```json
+{ "name": "test", "command": "cargo test", "project": "atlas", "key": "9f2c…64 hex…",
+  "hit": true, "exit": 0, "duration_ms": 184000, "at": 1763040000000,
+  "log_tail": "test result: ok. 412 passed…", "saved_ms": 184000 }
+```
+
+`hit: true` means the result came from the cache and nothing ran (`duration_ms` is how long the command took when it really ran, `saved_ms` the time the hit saved); `hit: false` means it ran. `log_tail` is the last ~2 KiB of both streams. Failures are reported too (`exit` ≠ 0) though only exit 0 is cached. Check it before rerunning a build or a suite, and run it as `atlas run --cache -- <cmd>` so another agent's identical run answers in milliseconds.
 
 ### Typical agent workflow
 

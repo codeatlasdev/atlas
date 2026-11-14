@@ -18,6 +18,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 - Never run an action that has a `confirm:` message without the user's explicit yes.
 - A control tool can answer `this project's atlas.yaml denies agents <tool> on <target>: ask the developer…`: the project's `agents:` policy forbids it. Do not retry, do not look for another way (no `kill`, no `atlas down`, no shell restart): tell the user which call you need and why, and let them run it or allow it under `agents:` in `atlas.yaml`. Every control call you make is recorded in `.logs/atlas-audit.log` (read it with `atlas_logs {"service": "audit"}`).
 - **Run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy [--label X] -- <cmd…>`, never directly.** Several agents and worktrees share one machine: Atlas keeps at most N heavy jobs running at once (default `min(cores / 2, GB of memory / 8)`, at least 1) and the rest wait their turn, first come first served, and a job waits while load or memory pressure is high (`ATLAS_HEAVY_MAXLOAD`, `ATLAS_HEAVY_MINMEM`). The command's output and exit code pass through. `atlas_heavy_status` (or `atlas heavy status`) shows who holds the slots and the ETA. Heavy actions in `atlas.yaml` (`heavy: true`) are already queued.
+- **Cache deterministic work: `atlas run --cache [--input GLOB] [--output PATH] [--env NAME] [--tool PROG] -- <cmd…>`.** The key is the argv plus the bytes of the input files as they are on disk now (your uncommitted edits too), so another worktree or agent with the same bytes gets the result in milliseconds and different edits never share one; only exit 0 is stored. Ask `atlas_last_result` what a task last did before rerunning it. `atlas cache status|gc|clear` manages the store. Actions with a `cache:` block in `atlas.yaml` are already cached.
 - New service or port? Follow **Ports** in [yaml.md](yaml.md#ports): never default ports (3000, 5173, 5432, 6379, 8080…), always a random per-project block.
 
 ## Tools
@@ -36,6 +37,7 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | `atlas_hygiene` | none | no (look-only: orphaned processes, disk per project, registered dirs; to free them the user runs `atlas doctor --hygiene --fix`) |
 | `atlas_wait_ready` | `service?`, `timeout_s?` (1-600, default 60) | yes (live heartbeat) |
 | `atlas_heavy_status` | none | no (machine-wide): `{slots, load, mem_available_pct, running[], queued[]}` with each job's `label`, `command`, `cwd`, `project`, `pid`, `age_s`, `avg_s`, `eta_s` |
+| `atlas_last_result` | `name`, `project?` | no (machine-wide): `{name, command, project, key, hit, exit, duration_ms, at, log_tail, saved_ms?}`, the last outcome of a cached task, action or command |
 
 Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines; on timeout it also names why each blocking service is not ready (the failing `ready:` probe's message for `degraded`, since-when plus last output for `unhealthy`).
 

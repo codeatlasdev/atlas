@@ -1276,3 +1276,49 @@ fn test_schema_lists_worktree_seed() {
     let props = &schema["definitions"]["WorktreeConfig"]["properties"];
     assert!(props.get("seed").is_some(), "schema missing worktree.seed");
 }
+
+// Issue #126: an action with a `cache:` block runs through `atlas run --cache` with its globs,
+// outputs, env names and tools as flags, and unknown keys inside the block are config errors.
+#[test]
+fn test_action_cache_block_wraps_the_command_in_atlas_run_cache() {
+    let cfg: ActionConfig = serde_norway::from_str(
+        "key: t\nlabel: Unit tests\ncommand: cargo test -p core\ncache:\n  inputs: ['crates/**', Cargo.lock]\n  outputs: [target/report]\n  env: [RUSTFLAGS]\n  tools: [rustc]\n",
+    )
+    .unwrap();
+    let line = cfg.spawn_command().into_owned();
+    assert!(line.contains(" run --cache --label 'Unit tests'"), "{line}");
+    for flag in [
+        "--input 'crates/**'",
+        "--input Cargo.lock",
+        "--output target/report",
+        "--env RUSTFLAGS",
+        "--tool rustc",
+    ] {
+        assert!(line.contains(flag), "{flag} missing in {line}");
+    }
+    assert!(line.ends_with("-- 'cargo test -p core'"), "{line}");
+    assert!(!line.contains("--heavy"));
+}
+
+#[test]
+fn test_action_cache_with_heavy_queues_and_caches_and_no_cache_is_unchanged() {
+    let both: ActionConfig = serde_norway::from_str(
+        "key: t\nlabel: T\ncommand: x\nheavy: true\ncache: { inputs: [src/**] }\n",
+    )
+    .unwrap();
+    let line = both.spawn_command().into_owned();
+    assert!(line.contains(" run --cache --heavy --label T"), "{line}");
+    let plain: ActionConfig =
+        serde_norway::from_str("key: t\nlabel: T\ncommand: echo hi\n").unwrap();
+    assert_eq!(plain.spawn_command(), "echo hi");
+}
+
+#[test]
+fn test_action_cache_block_rejects_unknown_keys() {
+    let err = serde_norway::from_str::<ActionConfig>(
+        "key: t\nlabel: T\ncommand: x\ncache: { input: [a] }\n",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("input"), "{err}");
+}

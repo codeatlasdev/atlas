@@ -833,6 +833,7 @@ fn tools_list_schemas_are_valid_and_described() {
         "atlas_run_action",
         "atlas_wait_ready",
         "atlas_heavy_status",
+        "atlas_last_result",
     ] {
         assert!(names.contains(&want), "missing tool {want}");
     }
@@ -848,6 +849,7 @@ fn tools_list_schemas_are_valid_and_described() {
         ("atlas_start_service", &["service"]),
         ("atlas_metrics", &["service"]),
         ("atlas_run_action", &["action"]),
+        ("atlas_last_result", &["name"]),
     ];
     for t in tools {
         let n = t["name"].as_str().unwrap();

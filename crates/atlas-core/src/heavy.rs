@@ -144,22 +144,23 @@ pub fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-/// `command` routed through the queue by the `atlas` CLI this machine uses (`$ATLAS_BIN`,
-/// `~/.atlas/bin/atlas`, the bundled one, `PATH`); a bare `atlas` when none is found, so the shell
-/// says "not found" at the point of use rather than the action silently skipping the queue.
-pub fn queued(label: &str, command: &str) -> String {
-    let atlas = crate::paths::resolve_atlas_cli(
+/// The `atlas` CLI this machine uses (`$ATLAS_BIN`, `~/.atlas/bin/atlas`, the bundled one,
+/// `PATH`); a bare `atlas` when none is found, so the shell says "not found" at the point of use
+/// rather than the action silently skipping the queue or the cache.
+pub fn atlas_cli_word() -> String {
+    crate::paths::resolve_atlas_cli(
         std::env::var_os("ATLAS_BIN").as_deref(),
         dirs::home_dir().as_deref(),
         crate::paths::bundled_cli(),
         None,
         std::env::var_os("PATH").as_deref(),
-    );
-    wrap_command(
-        &atlas.map_or_else(|| "atlas".to_string(), |p| p.to_string_lossy().into_owned()),
-        label,
-        command,
     )
+    .map_or_else(|| "atlas".to_string(), |p| p.to_string_lossy().into_owned())
+}
+
+/// `command` routed through the queue by [`atlas_cli_word`].
+pub fn queued(label: &str, command: &str) -> String {
+    wrap_command(&atlas_cli_word(), label, command)
 }
 
 /// `command` (a shell command line) routed through the queue: `<atlas> run --heavy --label <label>
@@ -175,7 +176,7 @@ pub fn wrap_command(atlas: &str, label: &str, command: &str) -> String {
 }
 
 /// One shell word: unchanged when plain; `'…'` on Unix and `"…"` for `cmd.exe` otherwise.
-fn sh_quote(arg: &str) -> String {
+pub fn sh_quote(arg: &str) -> String {
     let plain = !arg.is_empty()
         && arg
             .chars()

@@ -29,8 +29,15 @@ enum Commands {
     /// Check this machine: `--hygiene` finds orphaned Atlas processes and the disk Atlas owns
     Doctor(commands::doctor::DoctorArgs),
 
-    /// Run a command through the machine-wide queue of heavy jobs: `atlas run --heavy -- cargo test`
+    /// Run a command through the machine-wide queue of heavy jobs (`atlas run --heavy -- cargo test`)
+    /// and/or the task cache (`atlas run --cache -- cargo test`)
     Run(commands::heavy::RunArgs),
+
+    /// The task cache shared by every worktree: status, gc, clear
+    Cache {
+        #[command(subcommand)]
+        command: commands::cache::CacheCommands,
+    },
 
     /// The machine-wide queue of heavy jobs (builds, test suites): who runs, who waits
     Heavy {
@@ -229,6 +236,7 @@ async fn run() -> Result<()> {
             | Commands::Browser(_)
             | Commands::File(_)
             | Commands::Run(_)
+            | Commands::Cache { .. }
             | Commands::Heavy { .. }
     );
 
@@ -242,6 +250,7 @@ async fn run() -> Result<()> {
         Commands::Doctor(args) => args.run().await?,
         Commands::Init(args) => args.run().await?,
         Commands::Run(args) => args.run().await?,
+        Commands::Cache { command } => command.run().await?,
         Commands::Heavy { command } => command.run().await?,
         Commands::Config { command } => command.run()?,
         Commands::Deploy(args) => args.run().await?,

@@ -22,9 +22,10 @@ pub mod stats;
 mod store;
 #[cfg(test)]
 mod tests;
+pub mod wrap;
 
 pub use key::{Key, Spec};
 pub use log::{Chunk, Stream};
 pub use run::{Recorded, Restored, Run};
-pub use stats::{LastResult, Stats};
+pub use stats::{LastResult, Stats, Why};
 pub use store::{Cache, Entry, Freed, OutFile, Status};

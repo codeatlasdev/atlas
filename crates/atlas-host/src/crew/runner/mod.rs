@@ -41,12 +41,14 @@ use crate::crew::{now_s, pane};
 use crate::pty::Session;
 use crate::server::Hub;
 
-#[cfg(test)]
+// Re-exported for the crew integration tests, which spawn `/bin/sh` fake agents (unix only).
+#[cfg(all(test, unix))]
 pub(crate) use action::parse_atlas_action;
 #[cfg(all(test, unix))]
-pub(crate) use testing::{TEST_BIN_LOCK, set_test_agent_bin};
-#[cfg(test)]
-pub(crate) use testing::{TEST_FORCE_GITHUB_AUTH, TEST_GITHUB_LOGGED_IN, TEST_PAUSE_AFTER_SPAWN};
+pub(crate) use testing::{
+    TEST_BIN_LOCK, TEST_FORCE_GITHUB_AUTH, TEST_GITHUB_LOGGED_IN, TEST_PAUSE_AFTER_SPAWN,
+    set_test_agent_bin,
+};
 
 /// 2-hour hard timeout per task.
 const TASK_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);

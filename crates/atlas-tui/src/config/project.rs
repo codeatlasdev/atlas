@@ -213,6 +213,10 @@ pub struct ProjectConfig {
     /// Project-level only: `atlas.local.yaml` cannot loosen it.
     #[serde(default)]
     pub agents: super::agents::AgentsPolicy,
+    /// What a change affects, for the MCP tool `atlas_affected`: a plugin `command` or declared
+    /// `rules`. Absent: the actions whose `cache.inputs` match the changed files.
+    #[serde(default)]
+    pub affected: Option<super::affected::AffectedConfig>,
     /// Added to every port by `ATLAS_PORT_OFFSET` (parallel worktrees); 0 = none.
     #[serde(skip)]
     #[schemars(skip)]

@@ -240,8 +240,56 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     if let Some(d) = &config.deploy {
         deploy_rules(d, &mut errors);
     }
+    if let Some(a) = &config.affected {
+        affected_rules(a, config, &mut errors);
+    }
 
     errors
+}
+
+/// `affected:` — a rule must say which files it is about, with globs that parse, and may only
+/// name actions that exist (labels match case-insensitively, like MCP).
+fn affected_rules(
+    a: &crate::config::AffectedConfig,
+    config: &ProjectConfig,
+    errors: &mut Vec<ConfigError>,
+) {
+    let mut e = |path: String, message: String| {
+        errors.push(ConfigError {
+            file: String::new(),
+            path,
+            message,
+        });
+    };
+    if a.command.as_deref().is_some_and(|c| c.trim().is_empty()) {
+        e(
+            "affected.command".into(),
+            "is blank: give a command or remove it".into(),
+        );
+    }
+    for (i, r) in a.rules.iter().enumerate() {
+        let path = format!("affected.rules[{i}]");
+        if r.matches.is_empty() {
+            e(
+                format!("{path}.match"),
+                "needs at least one glob (e.g. 'crates/**')".into(),
+            );
+        } else if let Err(m) = atlas_core::affected::check_globs(&r.matches) {
+            e(format!("{path}.match"), m);
+        }
+        for t in &r.tasks {
+            if !config
+                .actions
+                .iter()
+                .any(|x| x.label.eq_ignore_ascii_case(t))
+            {
+                e(
+                    format!("{path}.tasks"),
+                    format!("'{t}' is not the label of any action"),
+                );
+            }
+        }
+    }
 }
 
 fn deploy_rules(d: &crate::config::project::DeployConfig, errors: &mut Vec<ConfigError>) {

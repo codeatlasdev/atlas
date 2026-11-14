@@ -17,6 +17,7 @@
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `isolation`   | crewmates as their own Linux users (#200): create/delete, files, hooks, engines |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
+//! | `mobile_payloads` | the audit, usage, engine-limits and settings replies the phone's crew screens read |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
 //! | `restart`     | tasks in flight when hostd restarts: resumed, capped, answered, held while paused |
@@ -51,6 +52,8 @@ mod github_e2e;
 mod isolation;
 #[cfg(unix)]
 mod limits;
+#[cfg(unix)]
+mod mobile_payloads;
 #[cfg(unix)]
 mod pause;
 #[cfg(unix)]

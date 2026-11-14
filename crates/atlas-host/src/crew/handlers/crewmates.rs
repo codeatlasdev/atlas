@@ -146,6 +146,8 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
             } else {
                 v["triggers"] = json!([]);
             }
+            // The cron routines, so a client can edit them (`crewmate_routine_set` replaces the whole list).
+            v["routines"] = json!(b.routines);
             v
         })
         .collect();

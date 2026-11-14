@@ -96,6 +96,8 @@ All tools return text. Failures set `isError: true` with a message the agent can
 | [`atlas_wait_ready`](#atlas_wait_ready) | `service?`, `timeout_s?` | live heartbeat |
 | [`atlas_heavy_status`](#atlas_heavy_status) | none | no |
 | [`atlas_last_result`](#atlas_last_result) | `name`, `project?` | no |
+| [`atlas_affected`](#atlas_affected) | `files?`, `base?` | no |
+| [`atlas_estimate`](#atlas_estimate) | `action` or `command`, `label?`, `inputs?`, `outputs?`, `env?`, `tools?` | no |
 
 ### `atlas_status`
 
@@ -315,6 +317,44 @@ Read-only and machine-wide (no project, no `atlas dev`): the last outcome of a t
 
 `hit: true` means the result came from the cache and nothing ran (`duration_ms` is how long the command took when it really ran, `saved_ms` the time the hit saved); `hit: false` means it ran. `log_tail` is the last ~2 KiB of both streams. Failures are reported too (`exit` ≠ 0) though only exit 0 is cached. Check it before rerunning a build or a suite, and run it as `atlas run --cache -- <cmd>` so another agent's identical run answers in milliseconds.
 
+### `atlas_affected`
+
+Read-only and it starts nothing: what a change affects, so an agent runs the few things the change can break instead of the whole suite. `files` are the changed files (relative to the project root, absolute paths inside it work too); omit them and the tool uses this worktree's change: committed since the merge base with `base` (default `origin/main`, else `main`, else `master`), plus staged, unstaged and untracked files (files git ignores are not changes). Outside a git repository `files` is required.
+
+```json
+{ "source": "rules", "base": null, "files_from": "git",
+  "files": ["crates/atlas-core/src/lib.rs"],
+  "tasks": ["Run checks"], "tests": ["cargo test -p atlas-core"],
+  "routes": ["/docs"], "builds": ["site"] }
+```
+
+`source` says which graph answered, in this order:
+
+1. `command`: the plugin the project declares as [`affected: { command }`](configuration.md#affected) in `atlas.yaml`. It runs in the project root, receives the changed files on stdin (one per line) and prints `{tasks, tests, routes, builds}` JSON (every key optional). A project that already has a test graph or a route-impact script plugs it in here (`bun scripts/affected.ts --json`). A failing plugin is an error carrying its stderr, never a silent fallback to another graph.
+2. `rules`: the graph declared inline as [`affected: { rules }`](configuration.md#affected): globs to tasks, tests, routes and builds.
+3. `cache_inputs` (fallback, no `affected:` block): the `atlas.yaml` actions with a `cache:` block whose `inputs` globs match a changed file, in `tasks` by label. `tests`, `routes` and `builds` are empty because nothing declares them.
+
+Empty lists mean nothing declared is affected. This repository uses the plugin form: `affected: { command: bun scripts/check-changed.ts --json }` returns the check commands in `tests` and the changed crates plus their dependents in `builds`.
+
+### `atlas_estimate`
+
+Read-only and it runs nothing: what running a task would cost right now. Pass `action` (an `atlas.yaml` action by label, case-insensitive, or by key) or `command` with optional `label`, `inputs`, `outputs`, `env` and `tools`, the same as the [`atlas run --cache`](cli.md#task-cache-atlas-run---cache-atlas-cache) flags so the key matches.
+
+```json
+{ "name": "Run checks", "command": "cargo test", "project": "atlas",
+  "runs": 5, "median_ms": 184000, "p90_ms": 231000, "sources": ["task cache"],
+  "would_hit": true, "saved_ms": 184000, "key": "9f2c…64 hex…", "key_error": null,
+  "run_with": "atlas run --cache --label 'Run checks' --input 'crates/**' -- 'cargo test'", "note": null,
+  "queue": { "slots": 3, "running": 1, "queued": 0, "load": 2.4, "mem_available_pct": 61, "wait_eta_s": 0, "label": "Run checks" } }
+```
+
+- **Duration.** `median_ms` and `p90_ms` (nearest rank) of the runs that really happened: the task cache's recorded misses of that label or command line (the last 64 runs the cache saw), else the [heavy queue's](cli.md#atlas-run---heavy) history of the same label (last 8 runs, whole seconds; not pooled with the cache's, because a cached `--heavy` action is written to both for the same run). Cache hits are not samples (they replay the original duration). With no history `runs` is `0` and the durations are `null`: no number is invented.
+- **`would_hit`.** The cache key is computed from the bytes on disk now (uncommitted edits included) and looked up without marking the entry as used: `true` means an identical run is stored, so `run_with` returns it in milliseconds from any worktree and `saved_ms` is what that saves. Editing an input flips it to `false`. `key_error` says why a key could not be computed (a bad glob, a tool without `--version`).
+- **`queue`.** The machine-wide heavy queue: slots, jobs running and waiting, 5-minute load, percent of memory free, and `wait_eta_s`, the seconds until a slot frees for a new job (`0` with a slot free, `null` when the history cannot tell). With many jobs ahead, run the cheap checks first.
+- An action without a `cache:` block has durations but no key and `run_with: null`; `note` says how to make it cacheable.
+
+An unknown action, both `action` and `command`, or an invalid glob in `inputs` is an `isError` result naming the problem.
+
 ### Typical agent workflow
 
 1. `atlas_status`: is it up, what is failing?
@@ -322,6 +362,12 @@ Read-only and machine-wide (no project, no `atlas dev`): the last outcome of a t
 3. Fix the code.
 4. `atlas_restart_service {"service": "api"}` then `atlas_wait_ready {"service": "api"}`. A `degraded` or `unhealthy` service shows up in step 1 with its reason (`probe_error`, `unhealthy_lines`): read those before the logs.
 5. Re-check logs.
+
+Deciding what to run after an edit, without starting anything:
+
+1. `atlas_affected {}`: which tasks, tests, routes and builds the change touches (add `files` to ask about an edit you have not made yet).
+2. `atlas_estimate {"action": "<task>"}` for each: `would_hit` (it costs nothing), `median_ms`/`p90_ms`, and the `queue` wait. Run the cheap ones first.
+3. Run each as the `run_with` line it returns (`atlas run --cache [--heavy] …`). `atlas_last_result` shows what it printed.
 
 ## Set up your client
 

@@ -1286,17 +1286,26 @@ fn test_action_cache_block_wraps_the_command_in_atlas_run_cache() {
     )
     .unwrap();
     let line = cfg.spawn_command().into_owned();
-    assert!(line.contains(" run --cache --label 'Unit tests'"), "{line}");
+    // Quoting is the platform shell's (single quotes for sh, double for cmd on Windows): build the
+    // expectations with the same `sh_quote` the wrapper uses (Windows CI, PR #221).
+    let q = atlas_core::heavy::sh_quote;
+    assert!(
+        line.contains(&format!(" run --cache --label {}", q("Unit tests"))),
+        "{line}"
+    );
     for flag in [
-        "--input 'crates/**'",
-        "--input Cargo.lock",
-        "--output target/report",
-        "--env RUSTFLAGS",
-        "--tool rustc",
+        format!("--input {}", q("crates/**")),
+        "--input Cargo.lock".to_string(),
+        "--output target/report".to_string(),
+        "--env RUSTFLAGS".to_string(),
+        "--tool rustc".to_string(),
     ] {
-        assert!(line.contains(flag), "{flag} missing in {line}");
+        assert!(line.contains(&flag), "{flag} missing in {line}");
     }
-    assert!(line.ends_with("-- 'cargo test -p core'"), "{line}");
+    assert!(
+        line.ends_with(&format!("-- {}", q("cargo test -p core"))),
+        "{line}"
+    );
     assert!(!line.contains("--heavy"));
 }
 

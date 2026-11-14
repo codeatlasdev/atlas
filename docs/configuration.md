@@ -453,7 +453,8 @@ Atlas does **not** scrub the environment it inherits (there is no allowlist): ev
 worktree:
   shared: [.env, node_modules]   # dirs symlinked, files copied from the main checkout
   seed: [node_modules, target]   # heavy dirs cloned copy-on-write before setup (omit = detect, [] = off)
-  setup: bun install && bun run db:migrate
+  setup: 'bun install && {{action: Build web}} && bun run db:migrate'
+  package_store: true            # bun/pnpm install from one machine-wide store (default; false = off)
   archive: docker compose -p "$ATLAS_WORKSPACE_NAME" down
   setup_timeout: 600             # seconds (default 600)
 ```
@@ -471,6 +472,30 @@ A new worktree starts with no `node_modules` and no `target/`, so `setup` reinst
 - **When it cannot clone** (another volume, ext4, tmpfs, Windows: block cloning on ReFS is not attempted), the directory is **skipped, never copied in full**, and the progress line and the ready toast say so. Remote (SSH) checkouts are not seeded.
 - **Cargo.** A cloned `target/` is safe to build and test in. Cargo hashes the workspace's absolute path into every crate's fingerprint and file names, so the worktree's own crates and test binaries are rebuilt under new names (the `CARGO_BIN_EXE_*` paths baked into the main checkout's test binaries stay in files nobody runs), while registry dependencies, the expensive part, are reused. The clone owns its blocks, so deleting the main checkout later breaks nothing. Never share one live `CARGO_TARGET_DIR` between worktrees for that reason.
 - **Timing.** The progress step `seed` carries `cloned … in N ms`; when the Setup terminal ends, a toast adds `setup N s`. The same numbers are in the `worktree://progress` `done` payload (`seed: {seeded, skipped, ms}`).
+
+### Cached steps in `setup`
+
+A `{{action: <label or key>}}` in `setup` is replaced by that action's command from `actions:`. When the action has a [`cache:` block](#actions) the step runs through `atlas run --cache`: a new worktree whose input files have the same bytes as one that already built **restores the outputs from the task cache and runs nothing**. The cache key ignores the directory, so the main checkout's build serves every worktree until the sources differ.
+
+```yaml
+actions:
+  - key: b
+    label: Build web
+    command: bun run build
+    cache: { inputs: ['src/**', bun.lock], outputs: [dist] }
+worktree:
+  setup: 'bun install && {{action: Build web}}'   # quote it: `: ` starts a mapping in a plain YAML scalar
+```
+
+An action without `cache:` is spliced as its plain command (still behind the heavy queue when `heavy: true`). A reference that names no action label or key is a config error (`atlas config check`), so a typo never leaves a half-made worktree.
+
+### Package store (`package_store`)
+
+While `setup` runs, a bun or pnpm project installs from one machine-wide store under `~/.atlas/pkgstore` (`ATLAS_PKGSTORE_DIR` moves it): `BUN_INSTALL_CACHE_DIR` for bun, `npm_config_store_dir` (pnpm's `store-dir`) for pnpm. A package is downloaded and unpacked once; every worktree's `node_modules` is cloned or hardlinked out of it by the package manager. The manager is detected from `bun.lock`/`bun.lockb` or `pnpm-lock.yaml`; npm and yarn are left alone, and a store variable already in your environment wins. `package_store: false` turns it off. Local checkouts only.
+
+### How fast is a new worktree
+
+`cargo test -p atlas-cli --test worktree_fast_start -- --nocapture` creates real `git worktree add` worktrees of a fixture repository (1 500-file `node_modules`, a 1.5 s stand-in build as a cached action) and prints the time to ready. Measured on an Apple M-series Mac, APFS: **cold 1.68 s** (install and build run), **warm 47 ms** (`node_modules` cloned in 13 ms, build restored from the cache in 8 ms). The stand-ins are fixed costs, so these prove the mechanism, not bun's or cargo's own times: with a real project the warm path is the package manager's incremental pass plus whatever is not cached. The issue's acceptance bound (an issue:start-like flow under 30 s) is asserted by that test, which also runs where the file system cannot clone (the seed is then skipped and only the cache saving counts).
 
 ### Port offset
 

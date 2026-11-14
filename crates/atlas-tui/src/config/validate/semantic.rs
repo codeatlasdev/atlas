@@ -210,6 +210,18 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         }
     }
 
+    // `{{action: X}}` in `worktree.setup` must name an action.
+    if let Some(setup) = config.worktree.as_ref().and_then(|w| w.setup.as_deref()) {
+        for reference in crate::config::worktree_setup::unknown_refs(setup, &config.actions) {
+            errors.push(err(
+                "worktree.setup".into(),
+                format!(
+                    "mentions action '{reference}', which is not an action label or key in `actions`"
+                ),
+            ));
+        }
+    }
+
     // `open_tunnel: true` has nothing to open without a `tunnel:` block.
     if config.tunnel.is_none() {
         for (i, a) in config.actions.iter().enumerate() {

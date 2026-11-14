@@ -1419,3 +1419,25 @@ fn schema_lists_affected() {
         assert!(rule.get(k).is_some(), "schema missing affected rule {k}");
     }
 }
+
+// Issue #130: `worktree.package_store` is on unless the project turns it off, whether or not a
+// `worktree:` block exists (the desktop falls back to `WorktreeConfig::default()`).
+#[test]
+fn test_worktree_package_store_defaults_on_and_false_opts_out() {
+    let base = "name: t\nservices:\n  a:\n    command: x\nworktree:\n  setup: bun install\n";
+    assert!(worktree_of(base).package_store);
+    assert!(!worktree_of(&format!("{base}  package_store: false\n")).package_store);
+    let none = crate::config::project::WorktreeConfig::default();
+    assert!(none.package_store);
+    assert_eq!(none.setup_timeout, 600);
+}
+
+#[test]
+fn test_schema_lists_worktree_package_store() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    let props = &schema["definitions"]["WorktreeConfig"]["properties"];
+    assert!(
+        props.get("package_store").is_some(),
+        "schema missing worktree.package_store"
+    );
+}

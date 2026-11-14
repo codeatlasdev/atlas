@@ -138,6 +138,20 @@ pub(super) fn finish_task(
     outcome: Result<String, String>,
     steps: Vec<Step>,
 ) {
+    // A cancel stores `Cancelled` while this run still holds the task it started with; a turn ended by
+    // that cancel (or a reply that raced it) reports `failed`/`done` here and must not overwrite it.
+    if task.state != TaskState::Cancelled
+        && let Some(stored) = hub
+            .crew
+            .store
+            .read_tasks(&crewmate.id, 10_000)
+            .into_iter()
+            .find(|t| t.id == task.id && t.state == TaskState::Cancelled)
+    {
+        task.state = TaskState::Cancelled;
+        // The reason the cancel stored (`paused`), not this run's "cancelled" error.
+        task.error = stored.error;
+    }
     task.finished_at = Some(now_s());
     // Every ending lands here: the commands of this run are no evidence for any other.
     hub.crew.tape.forget(&task.id);
@@ -146,6 +160,7 @@ pub(super) fn finish_task(
         task.steps = steps;
     }
     match outcome {
+        Ok(_) if task.state == TaskState::Cancelled => {}
         Ok(result) => {
             task.state = TaskState::Done;
             // Every path ends here, so the machine line never reaches what people read (desktop, phone, Telegram).

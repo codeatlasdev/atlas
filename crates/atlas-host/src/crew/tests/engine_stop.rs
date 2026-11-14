@@ -64,6 +64,48 @@ async fn wait_gone(pid: u32, within: Duration) -> bool {
     gone(pid)
 }
 
+/// The task stays `cancelled` (with the reason) after the killed turn has unwound: the turn's own
+/// "cancelled" error reaches the runner a moment after the cancel was stored, and it used to overwrite
+/// it with `failed` (`claude: cancelled`), which CI caught as a race on a loaded runner.
+async fn stays_cancelled(client: &HostClient, crewmate: &str, task: &str, reason: Option<&str>) {
+    // The runner is idle again (nothing running) once the turn has unwound.
+    let start = Instant::now();
+    loop {
+        let list = client.call("crewmate_list", json!({})).await.unwrap();
+        let me = list["crewmates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == crewmate)
+            .cloned()
+            .unwrap();
+        if me["state"] == "idle" {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "the crewmate never went idle after the cancel: {me}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let v = client
+        .call("crewmate_tasks", json!({"id": crewmate, "limit": 20}))
+        .await
+        .unwrap();
+    let t = v["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == task)
+        .cloned()
+        .unwrap();
+    assert_eq!(t["state"], "cancelled", "{t}");
+    match reason {
+        Some(r) => assert_eq!(t["error"], r, "{t}"),
+        None => assert!(t["error"].is_null(), "a user cancel has no error: {t}"),
+    }
+}
+
 async fn engine_crewmate(client: &HostClient, kind: &str) -> String {
     let v = client
         .call(
@@ -124,6 +166,7 @@ async fn pause_stops_the_engine_turn(kind: &str) {
     client.call("crew_pause", json!({})).await.unwrap();
     let cancelled = wait_task_state(&client, &id, &task, "cancelled", Duration::from_secs(5)).await;
     assert_eq!(cancelled["error"], "paused", "{cancelled}");
+    stays_cancelled(&client, &id, &task, Some("paused")).await;
     assert!(
         wait_gone(child, Duration::from_secs(5)).await,
         "{kind}: pause left the engine's child process {child} running"
@@ -173,6 +216,7 @@ async fn cancelling_one_task_ends_its_engine_turn_and_child() {
         .unwrap();
     let _ = v;
     wait_task_state(&client, &id, &task, "cancelled", Duration::from_secs(5)).await;
+    stays_cancelled(&client, &id, &task, None).await;
     assert!(
         wait_gone(child, Duration::from_secs(5)).await,
         "cancel left the engine's child process {child} running"

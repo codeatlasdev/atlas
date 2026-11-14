@@ -298,10 +298,18 @@ fn estimate_flips_to_a_miss_when_the_inputs_change_and_recommends_how_to_run() {
     // history survives the miss: the agent still learns the cost of running it
     assert_eq!(v["median_ms"], 8000);
     let run = v["run_with"].as_str().unwrap();
-    assert!(run.contains("atlas run --cache"), "{run}");
-    assert!(run.contains("--input 'crates/**'"), "{run}");
-    assert!(run.contains("--label 'Run checks'"), "{run}");
-    assert!(run.ends_with("-- 'cargo test'"), "{run}");
+    // The atlas path and the quoting are the platform's (`atlas.exe` and double quotes for cmd).
+    let q = atlas_core::heavy::sh_quote;
+    assert!(run.contains(" run --cache"), "{run}");
+    assert!(
+        run.contains(&format!("--input {}", q("crates/**"))),
+        "{run}"
+    );
+    assert!(
+        run.contains(&format!("--label {}", q("Run checks"))),
+        "{run}"
+    );
+    assert!(run.ends_with(&format!("-- {}", q("cargo test"))), "{run}");
 }
 
 #[test]

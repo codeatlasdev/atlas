@@ -187,6 +187,36 @@ Audit against Ghostty's documented features (ghostty.org/docs/config/reference a
 - Mouse reporting gaps: motion is reported only while a button is held, so a DECSET 1003 program (hover effects) gets drags but not bare motion; no focus events (DECSET 1004); middle-click paste is not implemented.
 - Ghostty bindings not carried over: tabs/windows/splits navigation beyond ⌘D (Atlas has its own pane keys), `write_screen_file`, `scroll_to_selection` (⌘J is the bottom dock), `adjust_selection` (⇧Home/End/arrows to extend a selection), `search_selection` (⌘E is Config), `toggle_fullscreen`, `inspector`, quick terminal (needs a global shortcut and an accessory window), `mouse-hide-while-typing`.
 
+## Roadmap: Windows and Linux
+
+Today the native terminal runs on macOS only; Windows and Linux use xterm.js (`term_stub.rs`). The goal is the same terminal at the same level on Windows 10 1809+ / Windows 11 and Linux: full GPU, integrated GPU first, near-zero CPU and memory with many agents streaming text. Design, research and measurements: [discussion #237](https://github.com/codeatlasdev/atlas/discussions/237). Tracking issue: [#249](https://github.com/codeatlasdev/atlas/issues/249); every issue is `area: terminal` in the milestone **Roadmap: native GPU terminal (Windows & Linux)**.
+
+| Layer | Decision | Why |
+|---|---|---|
+| Windows renderer | native D3D11 behind a GPU backend trait; VT, fonts, atlas and instance building shared | measured on Win11 Iris Xe: D3D11 32 MB / ~40 ms to create a device, wgpu 30 DX12 97 MB / ~115 ms; D3D11 also runs in VMs and on WARP |
+| Shaders | one source, `term.wgsl`; naga → HLSL → FXC SM 5.0 at build time | spike: all 10 entry points compile after replacing naga's DX12 sampler-heap lines |
+| macOS / Linux renderer | wgpu (Metal / Vulkan) | unchanged |
+| No GPU, VM, RDP | D3D11 WARP, then xterm.js | |
+| Windows PTY | own ConPTY layer in `atlas-host`, pinned bundled `conpty.dll` + `OpenConsole.exe`, first-use self-test, inbox fallback | Windows 10 gets no inbox ConPTY fixes; `portable-pty` loads the DLL by bare name and cannot request grapheme widths |
+| Windows text | DirectWrite shaping, fallback and rasterization into the atlas | same recipe as Windows Terminal and Zed |
+| Windows composition | child HWND first, then DirectComposition + WebView2 visual hosting | only DirectComposition lets HTML overlays cover the terminal |
+| Linux | X11 child window; Wayland stays on xterm.js until wry moves to GTK4 | |
+
+| Phase | Issue | Delivers |
+|---|---|---|
+| 0 | [#239](https://github.com/codeatlasdev/atlas/issues/239) | benchmark harness, macOS reference and Windows baselines, machine matrix |
+| 1 | [#240](https://github.com/codeatlasdev/atlas/issues/240) | own ConPTY layer |
+| spike | [#241](https://github.com/codeatlasdev/atlas/issues/241) | child HWND next to WebView2: input, focus, IME, z-order |
+| 2 | [#242](https://github.com/codeatlasdev/atlas/issues/242) | D3D11 backend, `term/win.rs` |
+| 3 | [#243](https://github.com/codeatlasdev/atlas/issues/243) | PTY bytes straight to the native terminal, on-demand rendering |
+| 4 | [#244](https://github.com/codeatlasdev/atlas/issues/244) | DirectWrite, IME (TSF), UI Automation, per-monitor DPI |
+| 5 | [#245](https://github.com/codeatlasdev/atlas/issues/245) | DirectComposition + WebView2 visual hosting |
+| 6 | [#246](https://github.com/codeatlasdev/atlas/issues/246) | on by default on Windows |
+| 7 | [#247](https://github.com/codeatlasdev/atlas/issues/247) | Linux X11 |
+| 8 | [#248](https://github.com/codeatlasdev/atlas/issues/248) | optional: WSL without ConPTY |
+
+Proposed targets, **not measured yet** (Phase 0 measures them, including the macOS reference, and may change them), all on an integrated GPU: parse ≥ 500 MB/s without blocking the UI; < 3% CPU with 4 agent TUIs at 30 redraws/s; key-to-pixel p95 ≤ one frame + 2 ms; 0 wakeups/s when idle; background tabs parse but do not draw; ≤ 8 MB per terminal with 10 000 lines; shell startup ≤ 150 ms over the bare process. On Windows, ConPTY caps throughput.
+
 ## Performance
 
 Preliminary, single runs. M4 Pro, 144×44 grid, 120 Hz. Atlas: `release` profile built with `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true` (needed for the debug bridge; overflow checks on), so shipped builds should be at least this fast. Ghostty 1.x as the reference. The two terminals ran one after the other on the same files and window size.

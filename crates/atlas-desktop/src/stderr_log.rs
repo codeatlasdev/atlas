@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 
 /// Past this size at startup the log moves to `stderr.log.1` (one generation).
+#[cfg(unix)]
 pub const MAX: u64 = 2 * 1024 * 1024;
 
 /// `<base>/desktop/stderr.log`.
@@ -18,6 +19,7 @@ pub fn path(base: &Path) -> PathBuf {
 }
 
 /// Move a log at or past `max` to `<name>.1`, replacing the previous one.
+#[cfg(unix)]
 fn rotate(p: &Path, max: u64) {
     if std::fs::metadata(p).is_ok_and(|m| m.len() >= max) {
         let mut old = p.as_os_str().to_os_string();

@@ -18,15 +18,23 @@ Thank you for helping with Atlas. This page is the long version of [CONTRIBUTING
 
 ## Set up
 
-You need `rustup`, [`bun`](https://bun.sh) and, for the desktop app, the Xcode command line tools. `gh` is optional.
+You need `rustup`, [`bun`](https://bun.sh), Python 3 (the release checks in `bun run check`) and, for the desktop app, the Xcode command line tools on macOS or the WebKitGTK packages `setup` names on Linux. `gh` is optional.
 
 ```bash
 git clone https://github.com/codeatlasdev/atlas.git
 cd atlas
-scripts/setup.sh        # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny, cargo-nextest, actionlint and zizmor
+bun run setup           # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny, cargo-nextest, actionlint and zizmor
 ```
 
 The Rust toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on the first `cargo` command. Workspace lints apply to every crate: fix warnings, do not add global `allow`s. Build profiles, the `cargo lint`/`cargo t` aliases, `bun run sweep` and the measured build times: [Build performance](build-perf.md).
+
+### Windows
+
+Install [Git for Windows](https://git-scm.com/download/win) (it brings Git Bash), [rustup](https://rustup.rs) with the MSVC toolchain (Visual Studio Build Tools, "Desktop development with C++"), [Bun](https://bun.sh) and [Python 3](https://www.python.org/downloads/) from python.org, not the Microsoft Store alias that `python3` points to by default. WebView2 ships with Windows 10 and 11.
+
+`bun run` scripts call repo shell scripts through `bun scripts/sh.ts`, which runs them with Git Bash: on Windows the `bash` first on `PATH` is often WSL's (`WindowsApps\bash.exe`), which would run them inside Linux where your Windows Rust and Bun do not exist. Call a script by hand the same way: `bun scripts/sh.ts scripts/heavy.sh cargo build`. `ATLAS_BASH` points it at another bash. Checked on Windows 11: `bun run setup`, `bun run check:changed`, `bun run lint:workflows` and `bun test scripts`. Not yet checked on Windows: `bun run desktop:dev` and `desktop:build`.
+
+Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are macOS only (see below). Tests of macOS-only or POSIX-only scripts (`dev-signing-identity`, `install.sh`, the load gate of `heavy.sh`) are skipped on Windows; CI runs the repo scripts and their tests on Linux and Windows (job "Repo scripts").
 
 ## The gate
 

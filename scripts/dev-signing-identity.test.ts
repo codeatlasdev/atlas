@@ -20,16 +20,19 @@ function run(securityOutput: string | null, env: Record<string, string> = {}) {
 	return r.stdout.toString().trim();
 }
 
-test("an Apple Development identity in the keychain signs the debug bundle", () => {
+// Signing a debug bundle is macOS-only, and the fake `security` lives on a POSIX PATH.
+const unixTest = test.skipIf(process.platform === "win32");
+
+unixTest("an Apple Development identity in the keychain signs the debug bundle", () => {
 	const out = `  1) 929FD4 "Apple Development: Created via API (A4FQ692QSS)"\n     1 valid identities found`;
 	expect(run(out)).toBe("Apple Development: Created via API (A4FQ692QSS)");
 });
 
-test("no development identity (or no security tool): ad hoc, as before", () => {
+unixTest("no development identity (or no security tool): ad hoc, as before", () => {
 	expect(run(`  0 valid identities found`)).toBe("-");
 	expect(run(`  1) AB "Developer ID Application: X (T)"\n     1 valid identities found`)).toBe("-");
 });
 
-test("an explicit APPLE_SIGNING_IDENTITY wins", () => {
+unixTest("an explicit APPLE_SIGNING_IDENTITY wins", () => {
 	expect(run(`  1) 92 "Apple Development: A (B)"`, { APPLE_SIGNING_IDENTITY: "Mine" })).toBe("Mine");
 });

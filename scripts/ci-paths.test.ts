@@ -1,11 +1,12 @@
 // ci-paths.sh decides which CI jobs a change skips. A source change classified as docs ships untested code;
 // so the rule is: only known docs-only patterns may skip anything, and an unknown path runs everything.
+import { shArgv } from "./sh";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 
 const script = join(import.meta.dir, "ci-paths.sh");
 function areas(files: string[]): Record<string, boolean> {
-	const p = Bun.spawnSync([script], { stdin: new Blob([files.join("\n")]) });
+	const p = Bun.spawnSync(shArgv(script), { stdin: new Blob([files.join("\n")]) });
 	return Object.fromEntries(
 		p.stdout.toString().trim().split("\n").map((l) => {
 			const [k, v] = l.split("=");

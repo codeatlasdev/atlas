@@ -80,6 +80,11 @@ impl CrewHub {
     /// clients. Pausing cancels every running task (`cancelled`, error "paused") and keeps the
     /// queues; resuming starts them. Doing either twice changes nothing.
     pub(crate) fn set_paused(&self, hub: &Hub, paused: bool) -> Result<(), String> {
+        // An unreadable crew.json holds the crew paused. Pausing again is safe to write; resuming is the
+        // user's explicit decision to leave that state: keep the old bytes aside and start from a clean file.
+        self.store
+            .recover_crew_settings()
+            .map_err(|e| format!("recover_crew_settings: {e}"))?;
         let mut settings = self.store.load_crew_settings();
         settings.paused = paused;
         self.store

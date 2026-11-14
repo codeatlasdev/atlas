@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::paths;
+use crate::paths::{self, Loaded};
 
 mod origin;
 pub use origin::{GithubOrigin, GithubOriginKind};
@@ -663,8 +663,21 @@ impl CrewStore {
         self.crewmate_dir(id).join("secrets.json")
     }
 
+    /// Add one secret. A `secrets.json` that cannot be parsed is an error (and was set aside by the read):
+    /// it holds every other secret of this crewmate and is never rewritten from `{}`.
     pub fn set_secret(&self, id: &str, key: &str, value: &str) -> io::Result<()> {
-        let mut secrets = self.load_secrets_raw(id);
+        let mut secrets = match self.read_secrets(id)? {
+            Secrets::Ok(m) => m,
+            Secrets::Corrupt(aside) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "secrets.json is unreadable and was kept as {}; set the secrets again",
+                        aside.display()
+                    ),
+                ));
+            }
+        };
         secrets.insert(key.to_string(), value.to_string());
         let data = serde_json::to_vec(&secrets)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -673,16 +686,25 @@ impl CrewStore {
         paths::write_private(&self.secrets_path(id), &data)
     }
 
-    /// Load secrets as env vars for the engine process (never expose to callers).
+    /// Load secrets as env vars for the engine process (never expose to callers). A corrupt file is set aside
+    /// (logged) and the run goes on without them, so the next `set_secret` starts a clean file.
     pub fn secret_env(&self, id: &str) -> std::collections::BTreeMap<String, String> {
-        self.load_secrets_raw(id)
+        match self.read_secrets(id) {
+            Ok(Secrets::Ok(m)) => m,
+            Ok(Secrets::Corrupt(_)) => Default::default(),
+            Err(e) => {
+                eprintln!("atlas crew: cannot read secrets of {id}: {e}");
+                Default::default()
+            }
+        }
     }
 
-    fn load_secrets_raw(&self, id: &str) -> std::collections::BTreeMap<String, String> {
-        let Ok(data) = std::fs::read(self.secrets_path(id)) else {
-            return Default::default();
-        };
-        serde_json::from_slice(&data).unwrap_or_default()
+    fn read_secrets(&self, id: &str) -> io::Result<Secrets> {
+        Ok(match paths::read_json_or_aside(&self.secrets_path(id))? {
+            Loaded::Missing => Secrets::Ok(Default::default()),
+            Loaded::Ok(m) => Secrets::Ok(m),
+            Loaded::Corrupt(aside) => Secrets::Corrupt(aside),
+        })
     }
 
     /// Append a usage record to `<crewmate_dir>/usage.jsonl` with engine_kind + timestamp.
@@ -743,18 +765,80 @@ impl CrewStore {
         self.base.join("crew.json")
     }
 
+    /// The crew settings. A `crew.json` that cannot be read or parsed (a torn write, zero bytes after a crash)
+    /// is NOT "defaults": the kill switch lives there, so the answer is `paused: true` and the file is left
+    /// as it is (a restart reads it the same way) until [`Self::recover_crew_settings`].
     pub fn load_crew_settings(&self) -> CrewSettings {
-        let Ok(data) = std::fs::read(self.crew_settings_path()) else {
-            return CrewSettings::default();
-        };
-        serde_json::from_slice(&data).unwrap_or_default()
+        match self.read_crew_settings() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!(
+                    "atlas crew: {} is unreadable ({e}); the crew stays paused until it is resumed",
+                    self.crew_settings_path().display()
+                );
+                CrewSettings {
+                    paused: true,
+                    ..Default::default()
+                }
+            }
+        }
     }
 
+    fn read_crew_settings(&self) -> io::Result<CrewSettings> {
+        match std::fs::read(self.crew_settings_path()) {
+            Ok(data) => serde_json::from_slice(&data)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(CrewSettings::default()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Whether `crew.json` cannot be read now (the crew is paused because of it).
+    pub fn crew_settings_unreadable(&self) -> bool {
+        self.read_crew_settings().is_err()
+    }
+
+    /// Replace an unreadable `crew.json` with a fresh paused one, the old bytes kept as
+    /// `crew.json.corrupt-<unix_ms>`. A no-op for a healthy or missing file. The one explicit way out of
+    /// the fail-closed state (`crew_resume` calls it before it writes).
+    pub fn recover_crew_settings(&self) -> io::Result<()> {
+        if self.read_crew_settings().is_ok() {
+            return Ok(());
+        }
+        let aside = paths::set_aside_corrupt(&self.crew_settings_path())?;
+        eprintln!(
+            "atlas crew: unreadable crew.json kept as {}",
+            aside.display()
+        );
+        self.save_crew_settings(&CrewSettings {
+            paused: true,
+            ..Default::default()
+        })
+    }
+
+    /// Write `crew.json`. Refuses (InvalidData) while the file on disk is unreadable: writing the caller's
+    /// view of it would persist `paused: false` from defaults. [`Self::recover_crew_settings`] first.
     pub fn save_crew_settings(&self, settings: &CrewSettings) -> io::Result<()> {
+        if let Err(e) = self.read_crew_settings()
+            && e.kind() == io::ErrorKind::InvalidData
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{} is unreadable and was not overwritten: {e}",
+                    self.crew_settings_path().display()
+                ),
+            ));
+        }
         let data = serde_json::to_vec_pretty(settings)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         paths::write_private(&self.crew_settings_path(), &data)
     }
+}
+
+enum Secrets {
+    Ok(std::collections::BTreeMap<String, String>),
+    Corrupt(PathBuf),
 }
 
 pub mod archive;

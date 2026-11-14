@@ -302,3 +302,45 @@ async fn pausing_pushes_the_event_to_every_client() {
     assert_eq!(ev["paused"], false);
     a.call("shutdown", json!({})).await.ok();
 }
+
+// Incident (#291): a `crew.json` that could not be parsed (a torn write, zero bytes after a crash) was
+// read as defaults, so a hostd restart quietly started every crewmate again. Unknown means paused.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_garbage_crew_json_keeps_the_crew_paused_after_a_restart() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let client = daemon(&dir).await;
+    client.call("crew_pause", json!({})).await.unwrap();
+    client.call("shutdown", json!({})).await.ok();
+    drop(client);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The kill switch file, cut mid-write.
+    std::fs::write(dir.join("crew.json"), b"{\"paus").unwrap();
+
+    let client = daemon(&dir).await;
+
+    assert!(
+        paused(&client).await,
+        "an unreadable crew.json must not un-pause the crew"
+    );
+    // Resuming is the user's explicit decision: it works, the garbage is kept aside, and it sticks.
+    client.call("crew_resume", json!({})).await.unwrap();
+    assert!(!paused(&client).await);
+    let aside: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("crew.json.corrupt-")
+        })
+        .collect();
+    assert_eq!(aside.len(), 1, "the unreadable file is kept");
+    assert_eq!(std::fs::read(aside[0].path()).unwrap(), b"{\"paus");
+    client.call("shutdown", json!({})).await.ok();
+    drop(client);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let client = daemon(&dir).await;
+    assert!(!paused(&client).await, "the resume is stored");
+    client.call("shutdown", json!({})).await.ok();
+}

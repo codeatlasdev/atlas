@@ -14,6 +14,7 @@ use std::sync::LazyLock;
 use serde_json::json;
 
 use crate::crew::now_s;
+use crate::paths::Loaded;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct PushToken {
@@ -115,12 +116,18 @@ fn tokens_path(dir: &Path) -> std::path::PathBuf {
     dir.join("push").join("tokens.json")
 }
 
-/// Load tokens from `<dir>/push/tokens.json`.
+/// Load tokens from `<dir>/push/tokens.json`. A file that cannot be parsed is set aside as
+/// `tokens.json.corrupt-<unix_ms>` (logged) and reads as no tokens, so the next register starts a clean file
+/// instead of overwriting the only copy of every phone's registration.
 pub fn load_tokens(dir: &Path) -> Vec<PushToken> {
-    std::fs::read(tokens_path(dir))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    match crate::paths::read_json_or_aside(&tokens_path(dir)) {
+        Ok(Loaded::Ok(t)) => t,
+        Ok(Loaded::Missing | Loaded::Corrupt(_)) => Vec::new(),
+        Err(e) => {
+            eprintln!("atlas crew: cannot read push tokens: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// Save tokens to `<dir>/push/tokens.json` atomically, 0600.

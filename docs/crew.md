@@ -157,7 +157,22 @@ A new crewmate starts with a short setup conversation (project, role, engine sig
 
 A task is one prompt. Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
-A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option or sign an engine in. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
+A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, or decide on work the [guards](#guards-against-the-agent-itself) refused. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
+
+### Guards against the agent itself
+
+A task that ends well is checked before it is `done` (`runner/guard.rs`), because "finished" is also what an agent says when it made the checks pass instead of the code. The guards read the crewmate's work tree and its own words:
+
+| Guard | Refused when |
+|---|---|
+| Weakened tests | The diff against the task's base (the branch's upstream, else `origin/HEAD`; committed and uncommitted work both count) removes assertions from a test file (`assert!`, `assert_eq!`, `expect(`, `.should`…, counted removed against added), deletes a test file or a test function, adds a skip (`#[ignore]`, `.skip`, `it.only`, `xit`, `skip:`, `@Skip`), or loosens a limit in any file: `timeout`, `threshold`, `budget`, `max_bytes`, `max_warnings`, `waiver(s)`, `tolerance`, `retries`… raised, and `coverage_threshold` / `fail_under` lowered. Rust, TypeScript/JavaScript and Dart |
+| Stray files | A new untracked file is a scratch name (`probe*`, `scratch*`, `tmp*`, `temp*`, `debug*`, `repro*`, `playground*`, `*.orig`, `*.rej`, `*.bak`, `*.log`) or sits in a `tmp`/`scratch`/`probes` folder; sits at the repository root where the repo tracks no file of that extension; or sits in a new folder whose parent folder the repo does not track either (a feature may add one folder next to tracked ones, not a tree of them). A new source file next to its siblings is expected, and so is anything under `.atlas/` (Atlas's own files, such as task attachments). A command that redirects or `tee`s into `/tmp` or `/var/tmp` is refused too: git cannot see those files, the tool calls can |
+| Invented references | A `#N` in the task's commits, in the reply, or in a command that publishes text (`gh pr`, `gh issue`, `gh api`, `git commit`) does not exist in the project's GitHub repo (checked through the same GitHub API the GitHub triggers use), or could not be checked |
+| Unproven claims | Not a refusal: a sentence of the result that says something was verified, tested, passes or compiles is removed, and a note says what was removed, unless a command of this task ran a test or check (`cargo test`, `bun test`, `bun run check`, `flutter test`, `pytest`, `go test`…) and printed output with no failure in it |
+
+Atlas learns what a command printed from the agent's own reports. Claude Code's `post_tool_use` carries it (`tool_response`). omp reports it when a call ends (`tool_execution_end`: the result's text and whether it failed): a terminal omp crewmate sends it through the status extension (`atlas setup omp --apply` rewrites it; before that omp still reports the commands but not their output, so its claims count as unproven), and an omp crewmate with an engine reports it on its RPC stream, which hostd reads itself. A result the tool marked as an error never proves a claim, whatever it printed. Output is kept to its last 16 KiB. A claim whose command has no recorded output counts as unproven. The commands are kept in memory per task and dropped when it ends; after a server restart the evidence is gone and the claim is judged without it. Engines that report nothing through a hook or a stream hostd reads (a headless `codex` or `opencode`, or a `claude` whose hooks `atlas setup claude-code` has not installed) leave no evidence, so their claims are removed.
+
+A refusal parks the task as `waiting_action` with a `refused` action, `{"kind": "refused", "reasons": ["…"]}`, shown by the action card on the desktop and the phone and as a Telegram message with **Override** and **Retry with reasons** buttons. Answer `crewmate_action_answer` with `"override"` (accept the work as it is: the task ends `done`) or `"retry"` (the task runs again from the start with the reasons added to its prompt). Any other value is an error and the task keeps waiting. A refusal survives a restart like any other card. An agent cannot raise a `refused` action itself: an `ATLAS_ACTION` line of that kind is ignored. The audit records `task_refused` (with the reasons) and `refusal_overridden`.
 
 ### Approvals
 
@@ -372,6 +387,8 @@ What a crewmate did and who decided what, kept on the crew server in `<crewmate 
 | `approval_decision` | the prompt ended | `task_id`, `req`, `tool_name`, `decision` (`allow`/`deny`/`timeout`), `by` |
 | `task_queued`, `task_started`, `task_finished` | task lifecycle | `task_id`, `source`, `prompt`; `state` and `error` at the end |
 | `config_changed` | approval, engine, project, agent, name, role length, short replies, triggers, routines | `field`, `from`, `to` (webhook tokens are left out) |
+| `task_refused` | the guards refused a finished task | `task_id`, `reasons` |
+| `refusal_overridden` | the owner accepted refused work | `task_id` |
 | `secret_set` | `crewmate_secret_set` | `name` |
 | `audit_gap` (crew-level) | the agent hub dropped events under load | `dropped` |
 
@@ -430,6 +447,10 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 | Layer | Where | Owns |
 |---|---|---|
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted, `guard`/`gate`/`tape` for the guards against the agent); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/hook/<token>` |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), and the export/import/uninstall scripts and decisions (`transfer.rs`) are pure functions with tests |
+
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/hook/<token>` |
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
@@ -535,7 +556,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crewmate_tasks` | `{id, limit?}` | `{tasks:[…]}` newest first, default 50 |
 | `crewmate_cancel` | `{id, task}` | `{}` |
 | `crewmate_answer` | `{id, ask_id, key?, text?}` | answer an `ask_user` question |
-| `crewmate_action_answer` | `{id, task, value}` | answer a waiting action: a secret, text, a choice, `add`/`skip` |
+| `crewmate_action_answer` | `{id, task, value}` | answer a waiting action: a secret, text, a choice, `add`/`skip`, `override`/`retry` for a refusal |
 | `crewmate_memory`, `crewmate_memory_set` | `{id}`, `{id, text}` | `{text}`, `{}` (64 KiB max) |
 | `crewmate_routine_set` | `{id, routines}` | `{}`; replaces the list, invalid cron rejected |
 | `crewmate_triggers_set` | `{id, triggers[]}` | `{}`; see [Automations](#automations) |

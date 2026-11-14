@@ -205,6 +205,42 @@ impl TelegramBridge {
         });
     }
 
+    /// Tell every linked chat that the guards refused a task's work, with Override / Retry buttons
+    /// (`r:<task>:<o|r>`, answered in `handle_callback` like the card on the apps).
+    pub(crate) fn send_refusal(&self, crewmate_name: &str, task_id: &str, reasons: &[String]) {
+        let token = self.config.lock().token.clone();
+        if token.is_empty() {
+            return;
+        }
+        let chats = self.config.lock().chats.clone();
+        let text = format!(
+            "{crewmate_name}: Atlas refused this work\n\n{}",
+            reasons
+                .iter()
+                .map(|r| format!("- {r}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+        .chars()
+        .take(4000)
+        .collect::<String>();
+        let keyboard = json!({"inline_keyboard": [[
+            {"text": "Override", "callback_data": format!("r:{task_id}:o")},
+            {"text": "Retry with reasons", "callback_data": format!("r:{task_id}:r")}
+        ]]});
+        let base = self.api_base.clone();
+        tokio::spawn(async move {
+            let Some(client) = crate::crew::push::HTTP.as_ref() else {
+                return;
+            };
+            for chat_id in chats {
+                let url = api_url(&base, &token, "sendMessage");
+                let body = json!({"chat_id": chat_id, "text": text, "reply_markup": keyboard});
+                let _ = client.post(&url).json(&body).send().await;
+            }
+        });
+    }
+
     /// Spawn the poll loop.
     pub(crate) fn start(self: Arc<Self>) {
         tokio::spawn(async move { self.poll_loop().await });
@@ -308,6 +344,12 @@ impl TelegramBridge {
 
         // Format: "a:{req}:{1|0}"
         let parts: Vec<&str> = data.splitn(3, ':').collect();
+        // Format: "r:{task}:{o|r}", the answer to a refusal (`send_refusal`).
+        if parts.len() == 3 && parts[0] == "r" {
+            self.answer_refusal(chat_id, msg_id, parts[1], parts[2] == "o")
+                .await;
+            return;
+        }
         if parts.len() == 3 && parts[0] == "a" {
             let req = parts[1];
             let allow = parts[2] == "1";
@@ -344,6 +386,33 @@ impl TelegramBridge {
                 };
                 let _ = client.post(&url).json(&body).send().await;
             }
+        }
+    }
+
+    /// A tap on a refusal's button: answer the parked task `override` or `retry`, and edit the
+    /// message to say what was chosen (or that the task no longer waits).
+    async fn answer_refusal(&self, chat_id: i64, msg_id: i64, task_id: &str, override_it: bool) {
+        let answer = if override_it {
+            crate::crew::runner::REFUSAL_OVERRIDE
+        } else {
+            crate::crew::runner::REFUSAL_RETRY
+        };
+        let delivered = self
+            .hub()
+            .is_some_and(|hub| hub.crew.answer_action(task_id, answer.to_string()));
+        let text = match (delivered, override_it) {
+            (false, _) => "This task is no longer waiting.",
+            (true, true) => "Overridden: the work is accepted.",
+            (true, false) => "Retrying with the reasons.",
+        };
+        let token = self.config.lock().token.clone();
+        if token.is_empty() {
+            return;
+        }
+        let url = api_url(&self.api_base, &token, "editMessageText");
+        let body = json!({"chat_id": chat_id, "message_id": msg_id, "text": text});
+        if let Some(client) = crate::crew::push::HTTP.as_ref() {
+            let _ = client.post(&url).json(&body).send().await;
         }
     }
 

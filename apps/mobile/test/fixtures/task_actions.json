@@ -26,5 +26,12 @@
   {
     "kind": "sign_in_engine",
     "engine": "omp"
+  },
+  {
+    "kind": "refused",
+    "reasons": [
+      "removes 1 assertion(s) from src/tests.rs (2 removed, 1 added)",
+      "cites #999, which does not exist in o/r"
+    ]
   }
 ]

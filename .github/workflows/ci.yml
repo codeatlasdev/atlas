@@ -167,6 +167,10 @@ jobs:
         with:
           no-cache: true
 
+      - name: ffmpeg (the flicker-sweep judge tests record with it)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: PyYAML (scripts/test-labels.sh)
         shell: bash
         run: bash scripts/py.sh -c "import yaml" 2>/dev/null || bash scripts/py.sh -m pip install --quiet pyyaml

@@ -47,6 +47,7 @@ pub(super) async fn run(
     hook_token: &str,
     pane_key: &str,
     yolo: bool,
+    tools: Option<&super::ToolSink<'_>>,
 ) -> Result<TurnResult, String> {
     let mut cmd = tokio::process::Command::new("omp");
     cmd.arg("--mode")
@@ -82,7 +83,7 @@ pub(super) async fn run(
     let mut stdin = child.stdin.take().ok_or("omp: no stdin pipe")?;
     let stdout = child.stdout.take().ok_or("omp: no stdout pipe")?;
 
-    let result = timeout(TASK_TIMEOUT, drive_rpc(&mut stdin, stdout, prompt)).await;
+    let result = timeout(TASK_TIMEOUT, drive_rpc(&mut stdin, stdout, prompt, tools)).await;
 
     // Always kill — the process is not expected to exit on its own.
     let _ = child.kill().await;
@@ -105,11 +106,14 @@ pub(super) async fn run(
 
 /// Send the prompt, collect the reply, obtain the session file path.
 async fn drive_rpc(
-    stdin: &mut tokio::process::ChildStdin,
-    stdout: tokio::process::ChildStdout,
+    stdin: &mut (impl tokio::io::AsyncWrite + Unpin),
+    stdout: impl tokio::io::AsyncRead + Unpin,
     prompt: &str,
+    tools: Option<&super::ToolSink<'_>>,
 ) -> Result<(String, Option<String>, Option<UsageRecord>), String> {
     let mut lines = BufReader::new(stdout).lines();
+    // Arguments of the tool calls that started, by call id: the end event carries the output only.
+    let mut started: BTreeMap<String, (String, Value)> = BTreeMap::new();
 
     // Send the prompt message.
     let prompt_msg = serde_json::json!({
@@ -136,6 +140,22 @@ async fn drive_rpc(
         };
 
         match val.get("type").and_then(|t| t.as_str()) {
+            Some("tool_execution_start") => {
+                let id = val["toolCallId"].as_str().unwrap_or_default().to_string();
+                let name = val["toolName"].as_str().unwrap_or_default().to_string();
+                started.insert(id, (name, val.get("args").cloned().unwrap_or(Value::Null)));
+            }
+            Some("tool_execution_end") => {
+                let id = val["toolCallId"].as_str().unwrap_or_default();
+                if let (Some(sink), Some((name, args))) = (tools, started.remove(id)) {
+                    sink(
+                        &name,
+                        &args,
+                        &tool_result_text(&val["result"]),
+                        val["isError"].as_bool() == Some(true),
+                    );
+                }
+            }
             Some("agent_end") => {
                 // Extract the last assistant message text.
                 if let Some(messages) = val.get("messages").and_then(|m| m.as_array()) {
@@ -205,6 +225,24 @@ async fn drive_rpc(
 
     Ok((reply, session_file, usage))
 }
+/// The text of a tool result: a string, or the text blocks of `{content: [{type: "text", text}]}`.
+fn tool_result_text(result: &Value) -> String {
+    match result {
+        Value::String(s) => s.clone(),
+        v => v["content"]
+            .as_array()
+            .map(|blocks| {
+                blocks
+                    .iter()
+                    .filter(|b| b["type"] == "text")
+                    .filter_map(|b| b["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default(),
+    }
+}
+
 /// Public wrapper for use from runner.rs.
 pub(crate) fn write_approval_extension_pub(
     path: &std::path::Path,
@@ -303,4 +341,80 @@ fn extract_text(msg: &Value) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+
+    /// An omp RPC stream as the protocol sends it (same shapes as `apps/desktop/src/lib/rpc.test.ts`): a bash call
+    /// whose result is text blocks, a read whose result is a plain string, and one failed call.
+    const STREAM: &str = concat!(
+        r#"{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash","args":{"command":"cargo test"}}"#,
+        "\n",
+        r#"{"type":"tool_execution_end","toolCallId":"c1","toolName":"bash","result":{"content":[{"type":"text","text":"test result: ok. 3 passed"}]},"isError":false}"#,
+        "\n",
+        r#"{"type":"tool_execution_start","toolCallId":"c2","toolName":"read","args":{"path":"a.rs"}}"#,
+        "\n",
+        r#"{"type":"tool_execution_end","toolCallId":"c2","toolName":"read","result":"fn main() {}","isError":false}"#,
+        "\n",
+        r#"{"type":"tool_execution_start","toolCallId":"c3","toolName":"bash","args":{"command":"cargo clippy"}}"#,
+        "\n",
+        r#"{"type":"tool_execution_end","toolCallId":"c3","toolName":"bash","result":"error: boom","isError":true}"#,
+        "\n",
+        r#"{"type":"agent_end","messages":[{"role":"assistant","content":"Done. All tests pass."}]}"#,
+        "\n",
+        r#"{"type":"prompt_result","id":"r1"}"#,
+        "\n",
+        r#"{"type":"response","id":"g","data":{"sessionFile":"/s.jsonl"}}"#,
+        "\n",
+    );
+
+    #[tokio::test]
+    async fn the_rpc_stream_reports_every_finished_tool_with_its_output() {
+        let seen: Mutex<Vec<(String, Value, String, bool)>> = Mutex::new(vec![]);
+        let sink = |tool: &str, args: &Value, out: &str, err: bool| {
+            seen.lock()
+                .unwrap()
+                .push((tool.into(), args.clone(), out.into(), err));
+        };
+        let mut stdin = tokio::io::sink();
+        let (reply, session_file, _) = drive_rpc(&mut stdin, STREAM.as_bytes(), "go", Some(&sink))
+            .await
+            .unwrap();
+        assert_eq!(reply, "Done. All tests pass.");
+        assert_eq!(session_file.as_deref(), Some("/s.jsonl"));
+        let seen = seen.into_inner().unwrap();
+        assert_eq!(seen.len(), 3);
+        assert_eq!(seen[0].0, "bash");
+        assert_eq!(seen[0].1["command"], "cargo test");
+        assert_eq!(seen[0].2, "test result: ok. 3 passed");
+        assert!(!seen[0].3);
+        assert_eq!(seen[1].2, "fn main() {}");
+        assert!(seen[2].3, "an isError result is reported as one");
+    }
+
+    // The same stream into the crew's tape: the passing test run proves the claim, the failed call does not.
+    #[tokio::test]
+    async fn a_claim_is_proven_by_an_rpc_stream_and_not_by_a_failed_call() {
+        use crate::crew::runner::{Tape, guard_strip_unproven};
+        let tape = Tape::default();
+        let sink = |tool: &str, args: &Value, out: &str, err: bool| {
+            tape.record_finished("t1", tool, args, out, err)
+        };
+        let mut stdin = tokio::io::sink();
+        drive_rpc(&mut stdin, STREAM.as_bytes(), "go", Some(&sink))
+            .await
+            .unwrap();
+        let ran = tape.of("t1");
+        assert_eq!(ran.len(), 2, "the read is no command: {ran:?}");
+        let (kept, removed) = guard_strip_unproven("All tests pass.", &ran);
+        assert_eq!(kept, "All tests pass.");
+        assert!(removed.is_empty());
+        // Only the failed run: nothing proves it.
+        let (kept, removed) = guard_strip_unproven("All tests pass.", &ran[1..]);
+        assert!(kept.is_empty() && removed.len() == 1);
+    }
 }

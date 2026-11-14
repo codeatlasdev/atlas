@@ -17,6 +17,7 @@ const READS: Record<string, string[]> = {
 	input: ["label", "reason", "placeholder"],
 	choose: ["question", "options"],
 	sign_in_engine: ["engine"],
+	refused: ["reasons"],
 };
 
 describe("TaskAction wire shape", () => {
@@ -30,6 +31,12 @@ describe("TaskAction wire shape", () => {
 			for (const k of keys) expect(a).toHaveProperty(k);
 		});
 	}
+
+	test("refused carries its reasons as plain strings (rendered as a list)", () => {
+		const r = actions.find((x) => x.kind === "refused");
+		expect(r.reasons.length).toBeGreaterThan(0);
+		expect(r.reasons.every((o) => typeof o === "string")).toBe(true);
+	});
 
 	test("choose options are plain strings (rendered as A, B, C…)", () => {
 		const c = actions.find((x) => x.kind === "choose");

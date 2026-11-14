@@ -62,6 +62,16 @@ void main() {
       expect(a.engine, 'omp');
     });
 
+    test('refused parses its reasons', () {
+      final j = fixture.firstWhere(
+        (e) => e['kind'] == 'refused',
+      ) as Map<String, dynamic>;
+      final a = TaskAction.fromJson(j);
+      expect(a.kind, 'refused');
+      expect(a.reasons, isNotEmpty);
+      expect(a.reasons.every((r) => r.isNotEmpty), isTrue);
+    });
+
     test('CrewmateTask with waiting_action state parses action', () {
       final j = <String, dynamic>{
         'id': 'task-1',

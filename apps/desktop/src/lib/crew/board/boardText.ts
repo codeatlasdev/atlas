@@ -35,6 +35,8 @@ export function actionLabel(card: BoardCard): string {
 			return `Sign in to ${a.engine}`;
 		case "add_trigger":
 			return "Add trigger";
+		case "refused":
+			return "Work refused";
 		default:
 			return "Needs input";
 	}

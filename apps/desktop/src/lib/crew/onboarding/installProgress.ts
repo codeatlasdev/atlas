@@ -4,7 +4,7 @@
  * reported. Pure, so the checklist rules are bun-testable.
  */
 import {
-	INSTALL_STEPS,
+	installSteps,
 	parseInstallLine,
 	parseInstallUser,
 	type InstallPhase,
@@ -21,9 +21,10 @@ export interface InstallProgress {
 
 export const initialInstallProgress = (): InstallProgress => ({ done: new Set(), active: null, user: "" });
 
-/** Every phase ticked, nothing spinning: the install finished. */
+/** Every phase ticked, nothing spinning: the install finished. `browsers` is ticked only if the install reached it. */
 export function completeInstall(p: InstallProgress): InstallProgress {
-	return { ...p, done: new Set(INSTALL_STEPS.map((s) => s.phase)), active: null };
+	const ran = p.done.has("browsers") || p.active === "browsers";
+	return { ...p, done: new Set(installSteps(ran).map((s) => s.phase)), active: null };
 }
 
 /** Fold one installer output line into the progress; lines that are not markers leave it unchanged. */

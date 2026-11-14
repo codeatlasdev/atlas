@@ -173,7 +173,7 @@ When a task ends or a crewmate needs your approval, the crew server pushes to yo
 
 Open the Atlas Crew workspace with **⌘⇧B** (command *Atlas Crew*, remappable). Two views, switched with **⌘⇧C** or the bar at the top edge:
 
-- **Chat**: the crewmate list (search, ⌘1…⌘9 to switch, server status in the footer) and the selected crewmate's thread: tasks, live steps, inline approval and action cards, and a composer that queues while another task runs. A settings window (General, Automations, Engine, Memory, Usage) saves each field on its own. A paused server shows a **Paused** banner over the workspace with a **Resume** button; the footer menu has **Pause all** / **Resume all**.
+- **Chat**: the crewmate list (search, ⌘1…⌘9 to switch, server status in the footer) and the selected crewmate's thread: tasks, live steps, inline approval and action cards, and a composer that queues while another task runs. A settings window (General, Automations, Engine, Memory, Usage, Audit) saves each field on its own. A paused server shows a **Paused** banner over the workspace with a **Resume** button; the footer menu has **Pause all** / **Resume all**.
 - **Board**: Queued, Working, Needs you and Done columns across every crewmate, with filters by crewmate, origin and text, a Done range, and a click that opens the chat at that task.
 
 Settings → Atlas Crew holds the crew servers (SSH target + name, listed in `~/.atlas/desktop/crew-servers.json`). The desktop reaches each server over SSH and an `ssh -L` tunnel to its `hostd.sock`. The server must already have `atlas crew install` done; Atlas Desktop can run the install for you and asks for the sudo password on stdin (never on argv).
@@ -205,7 +205,32 @@ The hook routes live on the same local HTTP server as the agent hooks and need i
 - **Scoped SSH key.** `atlas crew install` appends your key to the crew user's `authorized_keys` only, never to the admin user's.
 - **sudo once.** Install and uninstall need sudo; the running service never does. The sudo password, when Desktop passes it, comes over stdin and is dropped after the credential cache is primed.
 - **Secrets.** Per-crewmate secrets live in `<crewmate dir>/secrets.json` (mode 0600), are injected as environment into that crewmate's agent only and are never returned in any reply. Terminals and secrets are never relayed to a phone.
+- **Audit.** Every crewmate has an append-only log, written by hostd and never by the agent: each tool call the agent reports (full tool name and input, not the 80-character step), each approval asked and how it ended (`allow`, `deny` or `timeout`, and who answered: `desktop`, `phone:<node id>`, `telegram:<chat id>` or `none`), the task lifecycle, and changes to its approval mode, triggers, project, engine and secrets (a secret's name, never its value). See [Audit](#audit).
 - **No CodeAtlas servers.** The only optional outbound call is the push relay (kind only). Details: [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
+
+## Audit
+
+What a crewmate did and who decided what, kept on the crew server in `<crewmate dir>/audit.jsonl` (mode 0600, one JSON object per line: `seq`, `ts`, `kind`, `crewmate_id`, plus the fields of the kind). Crew-wide events (a crewmate created or deleted, the crew paused or resumed) go to `<hostd dir>/crew-audit.jsonl`, which outlives a deleted crewmate.
+
+| `kind` | Written when | Fields |
+|---|---|---|
+| `tool_call` | the agent reports a tool call (terminal agents and headless engines alike) | `task_id`, `tool_name`, `tool_input` |
+| `approval_asked` | an `ask` crewmate needs a decision | `task_id`, `req`, `tool_name`, `tool_input` |
+| `approval_decision` | the prompt ended | `task_id`, `req`, `tool_name`, `decision` (`allow`/`deny`/`timeout`), `by` |
+| `task_queued`, `task_started`, `task_finished` | task lifecycle | `task_id`, `source`, `prompt`; `state` and `error` at the end |
+| `config_changed` | approval, engine, project, agent, name, role length, short replies, triggers, routines | `field`, `from`, `to` (webhook tokens are left out) |
+| `secret_set` | `crewmate_secret_set` | `name` |
+| `audit_gap` (crew-level) | the agent hub dropped events under load | `dropped` |
+
+Crew-level kinds: `crewmate_created`, `crewmate_deleted`, `paused`, `resumed`, `audit_gap`.
+
+**Who answered.** `desktop` is any client on the server's socket, which includes the CLI and, for a crew server, the Mac's relay: an approval a phone sends through the relay to a crew server reads `desktop` there. A phone connected straight to a hostd is `phone:<node id>`; Telegram is `telegram:<chat id>`; a prompt nobody answered in 30 minutes is `timeout` / `none`.
+
+**Redaction.** The values of the crewmate's secrets and the hook token are replaced by `[secret:NAME]` / `[secret:hook_token]` before anything is written (the secrets are read on every write, so one set a minute ago is covered; values under 4 characters are not treated as secrets). A string over 8 KiB is cut with a marker that says how many bytes there were.
+
+**Bounded.** A file rotates at 1 MiB (`audit.jsonl.1` … `.4`); the oldest of five is dropped, so a log never exceeds about 5 MiB. A line that cannot be written is logged (`atlas crew logs`), never silently skipped. If the agent hub drops events under load, an `audit_gap` entry says so.
+
+Read it with `crewmate_audit` and `crew_audit` (Mobile scope `read`); Atlas Desktop shows it under a crewmate's settings → **Audit** (filter by tool calls, approvals, tasks or settings; copy one entry or everything shown). Atlas Mobile has no audit screen.
 
 ## Troubleshooting
 
@@ -264,6 +289,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 ```text
 <hostd dir>/crew.json                  crew-level settings
+<hostd dir>/crew-audit.jsonl            crew-wide audit (crewmates created/deleted, pause/resume)
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
     tasks.jsonl                        task log, last state per id wins
@@ -271,6 +297,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
     session.json                       agent session to resume
     secrets.json                       secrets (0600)
     usage.jsonl                        per-task usage records
+    audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled
 <hostd dir>/projects/<slug>/           shared clone per Git project
@@ -357,6 +384,8 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crewmate_triggers_set` | `{id, triggers[]}` | `{}`; see [Automations](#automations) |
 | `crewmate_secret_set` | `{id, key, value}` | `{}` |
 | `crewmate_usage` | `{id?, since?}` | usage records |
+| `crewmate_audit` | `{id, since?, limit?, kind?}` | `{entries:[…]}` newest first, default 200; `since` unix seconds. Mobile scope `read` |
+| `crew_audit` | `{since?, limit?, kind?}` | the crew-wide log, same shape |
 | `crew_telegram_status`, `crew_telegram_set`, `crew_telegram_link` | `{}`, `{token?}`, `{}` | `{configured, chats}`, `{}`, `{code}` (desktop only; the token is never returned) |
 | `crew_settings_get`, `crew_settings_set` | `{short_replies, short_replies_model?}` | crew settings |
 | `crew_github_status`, `_login_start`, `_login_poll`, `_logout`, `_connect_resume` | `{}` | see [GitHub](#github) |

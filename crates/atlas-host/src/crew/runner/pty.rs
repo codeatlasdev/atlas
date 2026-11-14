@@ -7,7 +7,7 @@ use super::action::{
     continuation_prompt, finish_unanswered, park_task, parse_atlas_action, resolve_action,
     user_answer, visible_reply,
 };
-use super::outcome::{broadcast_task, finish_task, persist, wait_for_outcome};
+use super::outcome::{audit_task, broadcast_task, finish_task, persist, wait_for_outcome};
 use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::summary::maybe_summarize;
 #[cfg(test)]
@@ -164,6 +164,7 @@ async fn run_pty_inner(
         hub.sessions.lock().remove(&pty_id);
         return (Err(msg), vec![]);
     }
+    audit_task(hub, &crewmate.id, "task_started", task);
     broadcast_task(hub, &crewmate.id, task);
 
     // Wait for completion.

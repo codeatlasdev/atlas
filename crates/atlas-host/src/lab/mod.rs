@@ -133,6 +133,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewmateSecretSet { .. }
         | C::CrewmateAnswer { .. }
         | C::CrewmateUsage { .. }
+        | C::CrewmateAudit { .. }
+        | C::CrewAudit { .. }
         | C::CrewTelegramSet { .. }
         | C::CrewTelegramLink {}
         | C::CrewTelegramStatus {}

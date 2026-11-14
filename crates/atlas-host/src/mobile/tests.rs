@@ -1140,6 +1140,21 @@ async fn agent_tree_fixture_is_the_real_payload() {
     c.call("shutdown", json!({})).await.ok();
 }
 
+/// #201: the audit is readable from a phone with `read` (the maintainer's decision), also through the relay's
+/// `crew_call`, and `crewmate_audit` / `crew_audit` are not terminals.
+#[test]
+fn reading_the_crew_audit_needs_read() {
+    use crate::protocol::HostCmd;
+    for cmd in [
+        json!({"cmd": "crewmate_audit", "args": {"id": "c"}}),
+        json!({"cmd": "crew_audit", "args": {}}),
+        json!({"cmd": "crew_call", "args": {"server": "s", "cmd": "crewmate_audit", "args": {"id": "c"}}}),
+    ] {
+        let c: HostCmd = serde_json::from_value(cmd).unwrap();
+        assert_eq!(super::required_scope(&c), Ok(super::Scope::Read));
+    }
+}
+
 /// A phone without `act` may watch agents but never start or stop one.
 #[test]
 fn starting_and_stopping_agents_need_act() {

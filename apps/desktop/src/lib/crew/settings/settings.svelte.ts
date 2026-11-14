@@ -10,6 +10,7 @@ import { crew } from "#lib/stores/crew.svelte.ts";
 import { AutosaveField } from "#lib/crew/settings/autosaveField.svelte.ts";
 import { isDirty, updateSavedRef } from "#lib/crew/settings/autosave.ts";
 import { upsertTrigger, withTriggerEnabled, withoutTrigger } from "#lib/crew/settings/triggers.ts";
+import type { AuditEntry } from "#lib/crew/settings/audit.ts";
 import { EMPTY_USAGE_TOTALS, usageBuckets, usageTotals } from "#lib/crew/settings/usage.ts";
 
 export type ShortReplies = "crew" | "on" | "off";
@@ -36,6 +37,11 @@ export class CrewmateSettings {
 	memoryLoading = $state(false);
 	readonly memoryField = new AutosaveField();
 
+	auditEntries = $state<AuditEntry[]>([]);
+	auditLoading = $state(false);
+	/** Set when the last load failed (an older crew server has no `crewmate_audit`): the section says so instead of "empty". */
+	auditError = $state("");
+
 	usageData = $state<number[]>([]);
 	usageTotals = $state({ ...EMPTY_USAGE_TOTALS });
 
@@ -50,6 +56,8 @@ export class CrewmateSettings {
 		this.memorySaved = "";
 		this.usageData = [];
 		this.usageTotals = { ...EMPTY_USAGE_TOTALS };
+		this.auditEntries = [];
+		this.auditError = "";
 		void this.loadMemory();
 		void this.loadUsage();
 	}
@@ -93,6 +101,19 @@ export class CrewmateSettings {
 		const attempted = this.memory;
 		const ok = await this.memoryField.run(() => crew.setMemory(attempted));
 		this.memorySaved = updateSavedRef(this.memorySaved, attempted, ok);
+	}
+
+	/** Load the audit; called when the Audit section opens (it can be long, so not with the dialog). */
+	async loadAudit() {
+		this.auditLoading = true;
+		this.auditError = "";
+		try {
+			this.auditEntries = await crew.getAudit();
+		} catch (e) {
+			this.auditEntries = [];
+			this.auditError = errText(e);
+		}
+		this.auditLoading = false;
 	}
 
 	async loadUsage() {

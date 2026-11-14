@@ -58,7 +58,10 @@ fn approval_and_question_push_needs_you_once_per_wait() {
     use State::*;
     assert_eq!(run(&mut t, "p", 0, &[Working, Blocked]), [KIND_NEEDS_YOU]);
     // Blocked → Waiting is the same wait, and the answer (Working) is not news.
-    assert_eq!(run(&mut t, "p", 5_000, &[Waiting, Working]), Vec::<&str>::new());
+    assert_eq!(
+        run(&mut t, "p", 5_000, &[Waiting, Working]),
+        Vec::<&str>::new()
+    );
     let mut t = Tracker::default();
     assert_eq!(run(&mut t, "p", 0, &[Working, Waiting]), [KIND_NEEDS_YOU]);
 }
@@ -69,11 +72,7 @@ fn a_turn_that_asked_then_finished_pushes_both() {
     let mut t = Tracker::default();
     use State::*;
     let mut out = run(&mut t, "p", 0, &[Working, Blocked, Working]);
-    out.extend(
-        [Done]
-            .iter()
-            .filter_map(|s| t.on_status("p", *s, 40_000)),
-    );
+    out.extend([Done].iter().filter_map(|s| t.on_status("p", *s, 40_000)));
     assert_eq!(out, [KIND_NEEDS_YOU, KIND_DONE]);
 }
 
@@ -87,11 +86,16 @@ fn quick_turns_are_throttled_per_kind() {
         &mut t,
         "p",
         0,
-        &[Working, Done, Working, Done, Working, Blocked, Working, Blocked],
+        &[
+            Working, Done, Working, Done, Working, Blocked, Working, Blocked,
+        ],
     );
     assert_eq!(out, [KIND_DONE, KIND_NEEDS_YOU]);
     // After the cooldown the next one speaks again.
-    assert_eq!(t.on_status("p", Done, COOLDOWN_MS + 10_000), Some(KIND_DONE));
+    assert_eq!(
+        t.on_status("p", Done, COOLDOWN_MS + 10_000),
+        Some(KIND_DONE)
+    );
 }
 
 #[test]
@@ -120,36 +124,52 @@ fn adopting_a_state_says_nothing_and_does_not_invent_work() {
 fn a_subagent_finishing_never_pushes_but_the_parent_does() {
     let hub = AgentHub::default();
     let mut t = Tracker::default();
-    let mut said = Vec::new();
     let mut now = 0u64;
     let mut send = |p: Value| {
         now += 2_000;
         let (pane, st) = hub
             .apply_at("omp", &json!({"pane_key": "t1", "payload": p}), now)
             .unwrap();
-        if let Some(k) = t.on_status(&pane, st.state, now) {
-            said.push(k);
-        }
+        t.on_status(&pane, st.state, now)
     };
     let parent = "/s/abc.jsonl";
     let sub = "/s/abc/HostScout.jsonl";
-    send(json!({"event": "before_agent_start", "session_file": parent}));
-    send(json!({"event": "before_agent_start", "session_file": sub}));
-    send(json!({"event": "agent_end", "session_file": sub}));
-    assert!(said.is_empty(), "a subagent finishing pushed: {said:?}");
-    send(json!({"event": "agent_end", "session_file": parent}));
-    assert_eq!(said, [KIND_DONE]);
+    assert_eq!(
+        send(json!({"event": "before_agent_start", "session_file": parent})),
+        None
+    );
+    assert_eq!(
+        send(json!({"event": "before_agent_start", "session_file": sub})),
+        None
+    );
+    assert_eq!(
+        send(json!({"event": "agent_end", "session_file": sub})),
+        None,
+        "a subagent finishing pushed"
+    );
+    assert_eq!(
+        send(json!({"event": "agent_end", "session_file": parent})),
+        Some(KIND_DONE)
+    );
 }
 
 #[test]
 fn titles_are_agent_and_folder_only() {
-    assert_eq!(title_for("omp", Some("/Users/me/code/atlas")), "omp · atlas");
-    assert_eq!(title_for("claude", Some("/Users/me/code/atlas/")), "claude · atlas");
+    assert_eq!(
+        title_for("omp", Some("/Users/me/code/atlas")),
+        "omp · atlas"
+    );
+    assert_eq!(
+        title_for("claude", Some("/Users/me/code/atlas/")),
+        "claude · atlas"
+    );
     assert_eq!(title_for("codex", None), "codex");
     assert_eq!(title_for("codex", Some("/")), "codex");
     let long = "x".repeat(200);
     assert_eq!(
-        title_for("omp", Some(&format!("/a/{long}"))).chars().count(),
+        title_for("omp", Some(&format!("/a/{long}")))
+            .chars()
+            .count(),
         TITLE_MAX
     );
 }
@@ -174,9 +194,16 @@ fn the_payload_has_kind_pane_and_title_only() {
 
 #[test]
 fn a_connected_phone_is_left_out_but_an_offline_one_is_told() {
-    let toks = [token("phone-a", "ta"), token("phone-b", "tb"), token("", "tc")];
+    let toks = [
+        token("phone-a", "ta"),
+        token("phone-b", "tb"),
+        token("", "tc"),
+    ];
     let live = ["phone-a".to_string()];
-    let who: Vec<_> = audience(&toks, &live).into_iter().map(|t| t.token).collect();
+    let who: Vec<_> = audience(&toks, &live)
+        .into_iter()
+        .map(|t| t.token)
+        .collect();
     assert_eq!(who, ["tb", "tc"]);
     assert_eq!(audience(&toks, &[]).len(), 3);
 }
@@ -201,5 +228,8 @@ fn push_payload_fixture_is_the_real_serializer_output() {
         "fixture missing: UPDATE_FIXTURES=1 cargo test -p atlas-host push_payload_fixture",
     ))
     .unwrap();
-    assert_eq!(stored, live, "push_agent_payload.json is stale: rerun with UPDATE_FIXTURES=1");
+    assert_eq!(
+        stored, live,
+        "push_agent_payload.json is stale: rerun with UPDATE_FIXTURES=1"
+    );
 }

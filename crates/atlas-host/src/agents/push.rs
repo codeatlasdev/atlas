@@ -142,7 +142,7 @@ impl std::fmt::Debug for Sender {
 }
 
 /// The production sender: relay notify, dropping the tokens the relay refuses for good.
-pub fn relay_sender(hub: Weak<Hub>) -> Sender {
+pub(crate) fn relay_sender(hub: Weak<Hub>) -> Sender {
     Sender(Arc::new(move |tokens, msg| {
         let hub = hub.clone();
         tokio::spawn(async move {

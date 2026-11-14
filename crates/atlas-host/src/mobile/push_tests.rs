@@ -59,7 +59,11 @@ async fn paired_and_registered(c: &HostClient, phone: &mut Phone, info: &Value) 
 }
 
 fn hook(dir: &Path, pane: &str, payload: Value) {
-    super::tests::post_hook(dir, "/hook/omp", json!({"pane_key": pane, "payload": payload}));
+    super::tests::post_hook(
+        dir,
+        "/hook/omp",
+        json!({"pane_key": pane, "payload": payload}),
+    );
 }
 
 async fn hook_async(dir: &Path, pane: &str, payload: Value) {
@@ -79,10 +83,32 @@ async fn sent_within(rx: &mut Sent, ms: u64) -> Vec<(Vec<PushToken>, PushMsg)> {
     out
 }
 
+/// What was sent, for failure messages: kinds and token names (a `PushToken` holds a grant and has no `Debug`).
+fn names(sent: &[(Vec<PushToken>, PushMsg)]) -> Vec<(String, Vec<String>)> {
+    sent.iter()
+        .map(|(t, m)| {
+            (
+                m.kind.to_string(),
+                t.iter().map(|t| t.token.clone()).collect(),
+            )
+        })
+        .collect()
+}
+
 /// A pane that works, then finishes.
 async fn work_then(dir: &Path, pane: &str, last: Value) {
-    hook_async(dir, pane, json!({"event": "before_agent_start", "prompt": "secret prompt text"})).await;
-    hook_async(dir, pane, json!({"event": "message_end", "text": "secret transcript text"})).await;
+    hook_async(
+        dir,
+        pane,
+        json!({"event": "before_agent_start", "prompt": "secret prompt text"}),
+    )
+    .await;
+    hook_async(
+        dir,
+        pane,
+        json!({"event": "message_end", "text": "secret transcript text"}),
+    )
+    .await;
     hook_async(dir, pane, last).await;
 }
 
@@ -104,7 +130,7 @@ async fn a_finished_agent_pushes_the_offline_phone_once_with_the_documented_payl
     hook_async(tmp.path(), "p1", json!({"event": "agent_end"})).await;
 
     let sent = sent_within(&mut rx, 1500).await;
-    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent.len(), 1, "{:?}", names(&sent));
     let (tokens, msg) = &sent[0];
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].token, "fcm-1");
@@ -129,7 +155,12 @@ async fn a_connected_phone_is_not_pushed() {
 
     work_then(tmp.path(), "p1", json!({"event": "agent_end"})).await;
     hook_async(tmp.path(), "p2", json!({"event": "before_agent_start"})).await;
-    hook_async(tmp.path(), "p2", json!({"event": "tool_approval_requested"})).await;
+    hook_async(
+        tmp.path(),
+        "p2",
+        json!({"event": "tool_approval_requested"}),
+    )
+    .await;
 
     assert!(sent_within(&mut rx, 1500).await.is_empty());
     // The same phone, gone, is told the next time.
@@ -152,11 +183,21 @@ async fn an_approval_needed_pushes_once() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     hook_async(tmp.path(), "p1", json!({"event": "before_agent_start"})).await;
-    hook_async(tmp.path(), "p1", json!({"event": "tool_approval_requested"})).await;
-    hook_async(tmp.path(), "p1", json!({"event": "tool_approval_requested"})).await;
+    hook_async(
+        tmp.path(),
+        "p1",
+        json!({"event": "tool_approval_requested"}),
+    )
+    .await;
+    hook_async(
+        tmp.path(),
+        "p1",
+        json!({"event": "tool_approval_requested"}),
+    )
+    .await;
 
     let sent = sent_within(&mut rx, 1500).await;
-    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent.len(), 1, "{:?}", names(&sent));
     assert_eq!(sent[0].1.kind, "agent_needs_you");
     assert_eq!(sent[0].1.pane, "p1");
     c.call("shutdown", json!({})).await.ok();
@@ -176,11 +217,31 @@ async fn a_subagent_finishing_never_pushes() {
 
     let parent = "/s/abc.jsonl";
     let sub = "/s/abc/Scout.jsonl";
-    hook_async(tmp.path(), "p1", json!({"event": "before_agent_start", "session_file": parent})).await;
-    hook_async(tmp.path(), "p1", json!({"event": "before_agent_start", "session_file": sub})).await;
-    hook_async(tmp.path(), "p1", json!({"event": "agent_end", "session_file": sub})).await;
+    hook_async(
+        tmp.path(),
+        "p1",
+        json!({"event": "before_agent_start", "session_file": parent}),
+    )
+    .await;
+    hook_async(
+        tmp.path(),
+        "p1",
+        json!({"event": "before_agent_start", "session_file": sub}),
+    )
+    .await;
+    hook_async(
+        tmp.path(),
+        "p1",
+        json!({"event": "agent_end", "session_file": sub}),
+    )
+    .await;
     assert!(sent_within(&mut rx, 1200).await.is_empty());
-    hook_async(tmp.path(), "p1", json!({"event": "agent_end", "session_file": parent})).await;
+    hook_async(
+        tmp.path(),
+        "p1",
+        json!({"event": "agent_end", "session_file": parent}),
+    )
+    .await;
     assert_eq!(sent_within(&mut rx, 1500).await.len(), 1);
     c.call("shutdown", json!({})).await.ok();
 }
@@ -222,7 +283,9 @@ async fn revoking_a_phone_removes_its_tokens_and_the_pushes_stop() {
     };
     assert_eq!(stored(tmp.path()).len(), 2);
 
-    c.call("mobile_revoke", json!({"node_id": node})).await.unwrap();
+    c.call("mobile_revoke", json!({"node_id": node}))
+        .await
+        .unwrap();
     let left = stored(tmp.path());
     assert_eq!(left.len(), 1, "{left:?}");
     assert_eq!(left[0]["token"], "fcm-desktop");
@@ -230,8 +293,10 @@ async fn revoking_a_phone_removes_its_tokens_and_the_pushes_stop() {
     work_then(tmp.path(), "p1", json!({"event": "agent_end"})).await;
     let sent = sent_within(&mut rx, 1500).await;
     assert!(
-        sent.iter().all(|(t, _)| t.iter().all(|t| t.token != "fcm-1")),
-        "the revoked phone was pushed: {sent:?}"
+        sent.iter()
+            .all(|(t, _)| t.iter().all(|t| t.token != "fcm-1")),
+        "the revoked phone was pushed: {:?}",
+        names(&sent)
     );
     c.call("shutdown", json!({})).await.ok();
 }
@@ -243,10 +308,21 @@ async fn a_plain_mac_takes_push_register_and_advertises_it() {
     let tmp = tempfile::tempdir().unwrap();
     let (c, _rx) = daemon(tmp.path()).await;
     let info = c.call("info", json!({})).await.unwrap();
-    let caps: Vec<&str> = info["caps"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
-    assert!(caps.contains(&"push") && !caps.contains(&"crew"), "{caps:?}");
-    c.call("push_register", json!({"token": "t", "platform": "fcm", "grant": "g"}))
-        .await
-        .expect("a Mac must accept push_register");
+    let caps: Vec<&str> = info["caps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(
+        caps.contains(&"push") && !caps.contains(&"crew"),
+        "{caps:?}"
+    );
+    c.call(
+        "push_register",
+        json!({"token": "t", "platform": "fcm", "grant": "g"}),
+    )
+    .await
+    .expect("a Mac must accept push_register");
     c.call("shutdown", json!({})).await.ok();
 }

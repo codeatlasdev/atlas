@@ -384,6 +384,17 @@ pub struct Task {
     /// `allow_auto`: the agent never runs with its bypass flags for it (`triggers::yolo_for`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub no_auto: bool,
+    /// How many times a hostd restart interrupted this task while it ran (`runner::recover`): it is
+    /// resumed up to a cap, then fails, so a task that takes the daemon down cannot loop.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub restarts: u32,
+    /// Set once a restart interrupted this task and it was started again: the chat can say so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resumed: bool,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl Task {
@@ -412,6 +423,8 @@ impl Task {
             action: None,
             tz: None,
             no_auto: false,
+            restarts: 0,
+            resumed: false,
         }
     }
 }

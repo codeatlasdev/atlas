@@ -1,6 +1,6 @@
-//! Copy-on-write clone of a directory tree (`sys::clone_dir`): the blocks are shared until one
-//! side writes, so cloning a 3 GB `target/` costs milliseconds and no disk, and writing the clone
-//! never changes the source (unlike a hardlink tree, which would).
+//! Copy-on-write clone of a directory tree (`sys::clone_dir`) or one file (`sys::clone_file`): the
+//! blocks are shared until one side writes, so cloning a 3 GB `target/` costs milliseconds and no
+//! disk, and writing the clone never changes the source (unlike a hardlink tree, which would).
 //!
 //! macOS: `clonefile(2)` on the whole directory (APFS). Linux: `FICLONE` per file on a reflink
 //! file system (btrfs, XFS with reflink, bcachefs). Anywhere else, or across volumes, the result
@@ -17,6 +17,13 @@ use std::path::Path;
 /// every error case no partial `dst` remains.
 pub fn clone_dir(src: &Path, dst: &Path) -> io::Result<()> {
     imp::clone_dir(src, dst)
+}
+
+/// Clone the file `src` to the new path `dst` (whose parent must exist). Same contract as
+/// [`clone_dir`]: `AlreadyExists` when `dst` exists, `Unsupported` when the file system cannot
+/// clone, and no partial `dst` on any error.
+pub fn clone_file(src: &Path, dst: &Path) -> io::Result<()> {
+    imp::clone_file(src, dst)
 }
 
 #[cfg(target_os = "macos")]
@@ -49,6 +56,11 @@ mod imp {
             Some(libc::ENOTSUP | libc::EXDEV) => io::ErrorKind::Unsupported.into(),
             _ => e,
         })
+    }
+
+    /// `clonefile(2)` clones a regular file exactly as it clones a directory.
+    pub fn clone_file(src: &Path, dst: &Path) -> io::Result<()> {
+        clone_dir(src, dst)
     }
 }
 
@@ -109,6 +121,18 @@ mod imp {
             input.metadata()?.permissions().mode(),
         ))
     }
+
+    pub fn clone_file(src: &Path, dst: &Path) -> io::Result<()> {
+        let r = file(src, dst);
+        // `file` creates `dst` before it knows the clone works: no partial file on failure
+        // (but never delete a `dst` that was already there: that is the AlreadyExists case).
+        if r.as_ref()
+            .is_err_and(|e| e.kind() != io::ErrorKind::AlreadyExists)
+        {
+            let _ = fs::remove_file(dst);
+        }
+        r
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -116,6 +140,10 @@ mod imp {
     use super::*;
 
     pub fn clone_dir(_src: &Path, _dst: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    pub fn clone_file(_src: &Path, _dst: &Path) -> io::Result<()> {
         Err(io::ErrorKind::Unsupported.into())
     }
 }
@@ -180,5 +208,28 @@ mod tests {
             Ok(()) => assert!(dst.is_dir()),
             Err(e) => assert_eq!(e.kind(), io::ErrorKind::Unsupported, "{e}"),
         }
+    }
+
+    /// A cloned file is its own file afterwards: writing it never changes the source (the point
+    /// of a clone over a hardlink), and a refusal leaves no partial `dst` (task cache, #126).
+    #[test]
+    fn a_cloned_file_is_independent_or_cloning_is_unsupported() {
+        let t = tempfile::tempdir().unwrap();
+        let (src, dst) = (t.path().join("s.txt"), t.path().join("d.txt"));
+        fs::write(&src, "original").unwrap();
+        match clone_file(&src, &dst) {
+            Ok(()) => {
+                fs::write(&dst, "changed").unwrap();
+                assert_eq!(fs::read_to_string(&src).unwrap(), "original");
+            }
+            Err(e) => {
+                assert_eq!(e.kind(), io::ErrorKind::Unsupported, "{e}");
+                assert!(dst.symlink_metadata().is_err(), "partial file left behind");
+            }
+        }
+        // An existing destination is refused and kept.
+        fs::write(&dst, "mine").unwrap();
+        assert!(clone_file(&src, &dst).is_err());
+        assert_eq!(fs::read_to_string(&dst).unwrap(), "mine");
     }
 }

@@ -18,6 +18,7 @@
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
+//! | `restart`     | tasks in flight when hostd restarts: resumed, capped, answered, held while paused |
 //! | `untrusted`   | text from GitHub/webhooks: author filter, quoting, no bypass flags       |
 
 mod payloads;
@@ -44,6 +45,8 @@ mod pause;
 mod projects;
 #[cfg(unix)]
 mod push;
+#[cfg(unix)]
+mod restart;
 #[cfg(unix)]
 mod tasks;
 #[cfg(unix)]

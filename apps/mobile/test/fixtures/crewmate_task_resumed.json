@@ -1,0 +1,18 @@
+{
+  "id": "task-resumed-1",
+  "ts": 1700000000,
+  "source": "desktop",
+  "prompt": "ship the release",
+  "state": "queued",
+  "pane": "crew:crewmate-working:task-resumed-1",
+  "started_at": 1700000005,
+  "steps": [
+    {
+      "ts": 1700000010,
+      "text": "The server restarted; running this task again"
+    }
+  ],
+  "summarized": false,
+  "restarts": 1,
+  "resumed": true
+}

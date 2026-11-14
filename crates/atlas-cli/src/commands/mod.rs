@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+pub mod cache;
 pub mod config;
 pub mod crew;
 pub mod deploy;
@@ -25,6 +26,7 @@ pub mod link;
 pub mod mcp;
 pub mod open;
 pub mod release;
+pub(crate) mod run_cache;
 pub mod self_update;
 pub mod setup;
 pub(crate) mod shellrc;

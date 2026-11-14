@@ -16,6 +16,7 @@
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
+//! | `mobile_payloads` | the audit, usage, engine-limits and settings replies the phone's crew screens read |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
 //! | `restart`     | tasks in flight when hostd restarts: resumed, capped, answered, held while paused |
@@ -39,6 +40,8 @@ mod engines;
 mod fixture;
 #[cfg(unix)]
 mod limits;
+#[cfg(unix)]
+mod mobile_payloads;
 #[cfg(unix)]
 mod pause;
 #[cfg(unix)]

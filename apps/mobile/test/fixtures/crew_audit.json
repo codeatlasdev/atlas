@@ -1,0 +1,25 @@
+{
+  "entries": [
+    {
+      "kind": "resumed",
+      "seq": 3,
+      "ts": 1700000000
+    },
+    {
+      "kind": "paused",
+      "seq": 2,
+      "ts": 1700000001
+    },
+    {
+      "agent": "claude",
+      "approval": "auto",
+      "engine": null,
+      "id": "crewmate-fixture",
+      "kind": "crewmate_created",
+      "name": "Fixture",
+      "project": null,
+      "seq": 1,
+      "ts": 1700000002
+    }
+  ]
+}

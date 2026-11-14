@@ -1,0 +1,59 @@
+{
+  "entries": [
+    {
+      "crewmate_id": "crewmate-fixture",
+      "error": null,
+      "kind": "task_finished",
+      "seq": 6,
+      "source": "test",
+      "state": "done",
+      "task_id": "task-fixture",
+      "ts": 1700000000
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "kind": "task_started",
+      "prompt": "run the tests",
+      "seq": 5,
+      "source": "test",
+      "task_id": "task-fixture",
+      "ts": 1700000001
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "kind": "tool_call",
+      "seq": 4,
+      "task_id": "task-fixture",
+      "tool_input": {
+        "command": "cargo test -p atlas-host"
+      },
+      "tool_name": "Bash",
+      "ts": 1700000002
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "kind": "task_queued",
+      "prompt": "run the tests",
+      "seq": 3,
+      "source": "test",
+      "task_id": "task-fixture",
+      "ts": 1700000003
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "field": "approval",
+      "from": "auto",
+      "kind": "config_changed",
+      "seq": 2,
+      "to": "ask",
+      "ts": 1700000004
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "kind": "secret_set",
+      "name": "GITHUB_TOKEN",
+      "seq": 1,
+      "ts": 1700000005
+    }
+  ]
+}

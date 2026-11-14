@@ -439,6 +439,8 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
         C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,
         C::CrewPause {} | C::CrewResume {} => Scope::Act,
+        C::CrewSettingsGet {} => Scope::Read,
+        C::CrewSettingsSet { .. } => Scope::Act,
         C::CrewServers {} => Scope::Read,
         // What the relayed command needs here. Terminals stay out: their output streams to the
         // relaying connection, not to one phone.

@@ -190,7 +190,8 @@ jobs:
           echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  /tmp/$AIT" | sha256sum -c -
           chmod +x "/tmp/$AIT"
           W=$(mktemp -d)
-          (cd "$W" && "$GITHUB_WORKSPACE"/"$B"/appimage/*.AppImage --appimage-extract >/dev/null)
+          APP=$(ls "$GITHUB_WORKSPACE/$B"/appimage/*.AppImage)
+          (cd "$W" && "$APP" --appimage-extract >/dev/null)
           scripts/appimage-patch.sh "$W/squashfs-root"
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "/tmp/$AIT" --no-appstream "$W/squashfs-root" "dist/Atlas-$V-$T.AppImage"
           cp "$B"/deb/*.deb "dist/atlas_${V}_amd64.deb"

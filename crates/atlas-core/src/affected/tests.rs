@@ -287,12 +287,13 @@ fn command_beats_rules_and_rules_beat_the_fallback() {
         ..rule(&["**"])
     }];
 
-    let declared = Declared {
-        command: Some(r#"printf '{"tests":["from command"]}'"#.into()),
-        rules: rules.clone(),
-    };
+    // The command is a POSIX `printf`: only checked where `sh` runs it.
     #[cfg(unix)]
     {
+        let declared = Declared {
+            command: Some(r#"printf '{"tests":["from command"]}'"#.into()),
+            rules: rules.clone(),
+        };
         let (src, got) = resolve(Some(&declared), &actions, t.path(), &files).unwrap();
         assert_eq!((src, got.tests), (Source::Command, strs(&["from command"])));
     }

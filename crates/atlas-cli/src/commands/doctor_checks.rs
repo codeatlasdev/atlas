@@ -228,6 +228,10 @@ impl Facts {
 /// `login_env`'s `-l -i` probe: that reads `~/.bash_profile`, which a Linux terminal never does,
 /// and would call #265's broken install healthy. Returns `(PATH, atlas or None)`.
 fn terminal_probe() -> Result<(String, Option<PathBuf>), String> {
+    if cfg!(windows) {
+        // A new terminal there reads the registry's user/system Path, not a shell rc: see #340.
+        return Err("not checked on Windows yet".into());
+    }
     let (shell, _) = atlas_core::login_env::resolve_shell();
     let name = Path::new(&shell)
         .file_name()

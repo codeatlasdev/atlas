@@ -14,9 +14,11 @@
 		taskId: string;
 		crewmateId: string;
 		hostKey: string;
+		/** Where the row sits: under the owner's bubble (`end`) or at the left of a card (`start`). */
+		align?: "start" | "end";
 	}
 
-	let { attachments, taskId, crewmateId, hostKey }: Props = $props();
+	let { attachments, taskId, crewmateId, hostKey, align = "end" }: Props = $props();
 
 	let opened = $state<string | null>(null);
 
@@ -37,7 +39,7 @@
 	);
 </script>
 
-<ul class="images" aria-label="Attached images">
+<ul class="images" class:start={align === "start"} aria-label="Attached images">
 	{#each loads as { a, load } (a.name)}
 		<li>
 			{#await load}
@@ -71,6 +73,10 @@
 		list-style: none;
 		margin: 6px 0 0;
 		padding: 0;
+	}
+	.images.start {
+		justify-content: flex-start;
+		margin-top: 0;
 	}
 	.ph {
 		display: flex;

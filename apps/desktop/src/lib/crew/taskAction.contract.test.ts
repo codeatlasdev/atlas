@@ -18,6 +18,7 @@ const READS: Record<string, string[]> = {
 	choose: ["question", "options"],
 	sign_in_engine: ["engine"],
 	refused: ["reasons"],
+	prove_ui: ["reason"],
 };
 
 describe("TaskAction wire shape", () => {

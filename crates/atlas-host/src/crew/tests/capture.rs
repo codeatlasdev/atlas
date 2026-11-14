@@ -48,6 +48,16 @@ async fn post_capture(dir: &Path, id: &str, pane: &str, args: Value) -> (String,
     (status, serde_json::from_str(body).unwrap_or(Value::Null))
 }
 
+/// Put a bare task `task_id` on the crewmate's log (a capture attaches to a task that exists) and
+/// return its id.
+fn log_task(dir: &Path, crewmate_id: &str, task_id: &str) -> String {
+    let store = crate::crew::store::CrewStore::new(dir);
+    let mut t = crate::crew::store::Task::new("test", "look");
+    t.id = task_id.to_string();
+    store.append_task(crewmate_id, &t).unwrap();
+    task_id.to_string()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_capture_tool_round_trip_through_a_real_hostd_attaches_every_shot() {
     let _g = capture::TEST_LOCK.lock().await;
@@ -59,7 +69,7 @@ async fn the_capture_tool_round_trip_through_a_real_hostd_attaches_every_shot() 
     );
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "Cap").await;
-    let pane = crate::crew::pane::key(&id, "task42");
+    let pane = crate::crew::pane::key(&id, &log_task(&dir, &id, "task42"));
 
     let (status, v) =
         post_capture(&dir, &id, &pane, json!({"url": "http://localhost:3000/"})).await;
@@ -69,13 +79,18 @@ async fn the_capture_tool_round_trip_through_a_real_hostd_attaches_every_shot() 
     assert_eq!(v["visited"], 8, "{v}");
     let shots = v["shots"].as_array().unwrap();
     assert_eq!(shots.len(), 8);
-    let kept = dir.join("crew").join(&id).join("captures").join("task42");
+    let kept = crate::crew::attachments::task_dir(
+        &crate::crew::store::CrewStore::new(&dir),
+        &id,
+        "task42",
+    );
     for s in shots {
         let name = s["name"].as_str().unwrap();
-        assert_eq!(
-            std::fs::read(kept.join(name)).unwrap(),
-            format!("PNG-{}", name.trim_end_matches(".png")).into_bytes(),
-            "{name} is kept in the task's captures dir"
+        assert!(
+            std::fs::read(kept.join(name))
+                .unwrap()
+                .ends_with(name.trim_end_matches(".png").as_bytes()),
+            "{name} is kept with the task's attachments"
         );
     }
     assert!(
@@ -97,7 +112,7 @@ async fn through_hostd_a_missing_combination_and_a_bad_request_are_errors_the_ag
     );
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "Cap2").await;
-    let pane = crate::crew::pane::key(&id, "t1");
+    let pane = crate::crew::pane::key(&id, &log_task(&dir, &id, "t1"));
 
     let (status, v) =
         post_capture(&dir, &id, &pane, json!({"url": "http://localhost:3000/"})).await;
@@ -107,7 +122,7 @@ async fn through_hostd_a_missing_combination_and_a_bad_request_are_errors_the_ag
         "{v}"
     );
     assert!(
-        !dir.join("crew").join(&id).join("captures").exists(),
+        !dir.join("crew").join(&id).join("attachments").exists(),
         "an incomplete capture attaches nothing"
     );
 
@@ -142,7 +157,7 @@ async fn the_mcp_capture_tool_returns_every_combination_visited_and_the_error_wh
     let dir = tmp.path().join("hostd");
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "McpCap").await;
-    let pane = crate::crew::pane::key(&id, "task7");
+    let pane = crate::crew::pane::key(&id, &log_task(&dir, &id, "task7"));
     let args = json!({"url": "http://localhost:3000/", "widths": [390], "themes": ["dark"]});
 
     // A full report: the result text is the JSON listing the cells asked for (2 engines x 1 x 1).
@@ -163,7 +178,8 @@ async fn the_mcp_capture_tool_returns_every_combination_visited_and_the_error_wh
         .map(|s| s["name"].as_str().unwrap())
         .collect();
     assert!(names.contains(&"chromium-390-dark.png") && names.contains(&"webkit-390-dark.png"));
-    let kept = dir.join("crew").join(&id).join("captures").join("task7");
+    let kept =
+        crate::crew::attachments::task_dir(&crate::crew::store::CrewStore::new(&dir), &id, "task7");
     assert!(kept.join("webkit-390-dark.png").is_file());
 
     // A missing combination: the MCP call is an error whose message names it.

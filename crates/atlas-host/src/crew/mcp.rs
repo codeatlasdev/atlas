@@ -155,6 +155,7 @@ async fn call_tool(
         "set_profile" => tool_set_profile(args, client, env).await,
         "capture" => tool_capture(args, client, env).await,
         "ui_gate" => tool_ui_gate(args, client, env).await,
+        "set_ui" => tool_set_ui(client, env).await,
         "approve" => tool_approve(args, client, env).await,
         other => Err(format!("unknown tool: {other}")),
     }
@@ -272,6 +273,30 @@ async fn post_task_tool(
         .send()
         .await
         .map_err(|e| format!("{tool}: HTTP error: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let why = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| v["error"].as_str().map(str::to_string))
+            .unwrap_or_else(|| format!("server returned {status}: {text}"));
+        return Err(why);
+    }
+    Ok(json!({ "content": [{ "type": "text", "text": text }] }))
+}
+
+// ─── set_ui ───────────────────────────────────────────────────────────────────
+
+/// Post the mark to hostd, which records it on the task the pane names.
+async fn tool_set_ui(client: &reqwest::Client, env: &Env) -> Result<Value, String> {
+    let url = env.hook_url(&format!("/crew/{}/set_ui", env.crewmate_id));
+    let resp = client
+        .post(&url)
+        .header("X-Atlas-Hook-Token", &env.hook_token)
+        .json(&json!({ "pane_key": env.pane_key }))
+        .send()
+        .await
+        .map_err(|e| format!("set_ui: HTTP error: {e}"))?;
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
@@ -421,6 +446,11 @@ fn tools_list() -> Value {
             }
         },
         {
+            "name": "set_ui",
+            "description": "Mark this task as a UI task: it changes what people see. A UI task is only done with at least two captures you took (use the capture tool, before and after your change); finishing without them asks the user instead. Call it when the task turns out to change the interface and nobody said so.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
             "name": "approve",
             "description": "Answer a Claude permission-prompt (use with --permission-prompt-tool atlas:approve).",
             "inputSchema": {
@@ -533,6 +563,7 @@ mod tests {
         assert!(names.contains(&"approve"));
         assert!(names.contains(&"capture"));
         assert!(names.contains(&"ui_gate"));
+        assert!(names.contains(&"set_ui"));
     }
 
     #[tokio::test]

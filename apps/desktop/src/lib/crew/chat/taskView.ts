@@ -78,3 +78,12 @@ export function withKey(set: Set<string>, key: string, on: boolean): Set<string>
 	else next.delete(key);
 	return next;
 }
+
+/**
+ * A leading `/ui ` marks the message as a UI task (hostd `Task.ui`: it needs two captures the agent took to be
+ * done). Same prefix as Telegram's. Returns whether it was there and the prompt without it.
+ */
+export function splitUi(prompt: string): { ui: boolean; prompt: string } {
+	const m = /^\/ui\s+(\S[\s\S]*)$/.exec(prompt);
+	return m ? { ui: true, prompt: m[1] } : { ui: false, prompt };
+}

@@ -19,6 +19,7 @@ pub(crate) fn send_task(
     source: String,
     tz: Option<String>,
     images: Vec<Sent>,
+    ui: bool,
 ) -> Result<Value, String> {
     let store = &hub.crew.store;
     // Whatever refuses the task also drops the pieces its images were uploaded in.
@@ -41,6 +42,7 @@ pub(crate) fn send_task(
     }
     let mut task = Task::new(source, prompt);
     task.tz = tz;
+    task.ui = ui;
     let incoming = match attachments::resolve(store, &id, &images) {
         Ok(v) => v,
         Err(e) => return refuse(e),
@@ -153,13 +155,29 @@ pub(crate) fn action_answer(
     id: String,
     task_id: String,
     value: String,
+    images: Vec<Sent>,
 ) -> Result<Value, String> {
     let tasks = hub.crew.store.read_tasks(&id, usize::MAX);
-    let task = tasks
+    let Some(task) = tasks
         .iter()
         .find(|t| t.id == task_id && t.state == TaskState::WaitingAction)
-        .ok_or_else(|| format!("no waiting-action task {task_id} for crewmate {id}"))?
-        .clone();
+        .cloned()
+    else {
+        attachments::discard_uploads(&hub.crew.store, &id, &images);
+        return Err(format!(
+            "no waiting-action task {task_id} for crewmate {id}"
+        ));
+    };
+    // Images only mean something on a card that can be retried.
+    if !images.is_empty()
+        && !matches!(
+            task.action,
+            Some(TaskAction::Refused { .. } | TaskAction::ProveUi { .. })
+        )
+    {
+        attachments::discard_uploads(&hub.crew.store, &id, &images);
+        return Err("only a refused or unproven task takes images with its answer".into());
+    }
     match &task.action {
         Some(TaskAction::ProvideSecret { name, .. }) => {
             let name = name.clone();
@@ -172,13 +190,36 @@ pub(crate) fn action_answer(
         Some(TaskAction::ConnectGithub { .. }) => {
             return Err("use crew_github_connect_resume for connect_github actions".into());
         }
-        Some(TaskAction::Refused { .. }) => {
+        Some(TaskAction::Refused { .. } | TaskAction::ProveUi { .. }) => {
+            let refused = |e: String| {
+                attachments::discard_uploads(&hub.crew.store, &id, &images);
+                Err(e)
+            };
             if value != runner::REFUSAL_OVERRIDE && value != runner::REFUSAL_RETRY {
-                return Err(format!(
-                    "a refused task is answered with \"{}\" or \"{}\"",
+                return refused(format!(
+                    "this card is answered with \"{}\" or \"{}\"",
                     runner::REFUSAL_OVERRIDE,
                     runner::REFUSAL_RETRY
                 ));
+            }
+            if !images.is_empty() {
+                // The owner's marked screenshot belongs to a new attempt: an override has nothing to
+                // carry it. It is stored on the task before the answer is delivered, so the retry's
+                // prompt (and the agent's work dir) has it.
+                if value != runner::REFUSAL_RETRY {
+                    return refused("images go with a retry, not with an override".into());
+                }
+                let incoming = match attachments::resolve(&hub.crew.store, &id, &images) {
+                    Ok(v) => v,
+                    Err(e) => return refused(e),
+                };
+                attachments::discard_uploads(&hub.crew.store, &id, &images);
+                let mut stored = task.clone();
+                attachments::add(&hub.crew.store, &id, &mut stored, &incoming, "")?;
+                hub.crew
+                    .store
+                    .append_task(&id, &stored)
+                    .map_err(|e| format!("append_task: {e}"))?;
             }
             hub.crew.answer_action(&task_id, value);
         }

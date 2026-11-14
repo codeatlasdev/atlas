@@ -40,7 +40,9 @@ pub(crate) fn full_report(skip: &[&str]) -> String {
                 if skip.contains(&key.as_str()) {
                     continue;
                 }
-                sh.push_str(&format!("printf 'PNG-{key}' > \"$OUT/{key}.png\"\n"));
+                sh.push_str(&format!(
+                    "printf '\\211PNG\\r\\n\\032\\n{key}' > \"$OUT/{key}.png\"\n"
+                ));
                 entries.push(format!(
                     "{{\"engine\":\"{e}\",\"width\":{w},\"theme\":\"{t}\",\"path\":\"'\"$OUT\"'/{key}.png\"}}"
                 ));
@@ -181,23 +183,54 @@ async fn without_the_browsers_installed_the_error_says_how_to_install_them() {
     assert!(e.contains("atlas crew browsers install"), "{e}");
 }
 
+/// A PNG as far as `attachments::sniff` is concerned: the signature, then `tag`.
+fn png(tag: &str) -> Vec<u8> {
+    let mut v = b"\x89PNG\r\n\x1a\n".to_vec();
+    v.extend_from_slice(tag.as_bytes());
+    v
+}
+
 #[test]
-fn attach_captures_keeps_the_files_under_the_task_with_their_names() {
+fn attach_captures_stores_the_files_as_the_agents_attachments_with_their_names() {
     let tmp = tempfile::tempdir().unwrap();
     let store = CrewStore::new(&tmp.path().join("hostd"));
+    let mut task = crate::crew::store::Task::new("test", "look");
+    task.id = "t1".into();
+    store.append_task("c1", &task).unwrap();
     let src = tmp.path().join("shots");
     std::fs::create_dir_all(&src).unwrap();
-    std::fs::write(src.join("a.png"), b"A").unwrap();
-    std::fs::write(src.join("b.png"), b"B").unwrap();
+    std::fs::write(src.join("a.png"), png("A")).unwrap();
+    std::fs::write(src.join("b.png"), png("B")).unwrap();
 
     let names =
         attach_captures(&store, "c1", "t1", &[src.join("a.png"), src.join("b.png")]).unwrap();
 
     assert_eq!(names, vec!["a.png", "b.png"]);
-    let dir = task_captures_dir(&store, "c1", "t1");
-    assert_eq!(std::fs::read(dir.join("a.png")).unwrap(), b"A");
-    assert_eq!(std::fs::read(dir.join("b.png")).unwrap(), b"B");
-    assert!(dir.ends_with("crew/c1/captures/t1"));
+    let t = store.read_tasks("c1", 10).remove(0);
+    assert_eq!(t.attachments.len(), 2);
+    assert!(t.attachments.iter().all(|a| a.source == "agent"));
+    let dir = crate::crew::attachments::task_dir(&store, "c1", "t1");
+    assert_eq!(std::fs::read(dir.join("a.png")).unwrap(), png("A"));
+    assert!(dir.ends_with("crew/c1/attachments/t1"));
+
+    // A second capture of the same page adds to them, with names that do not collide.
+    let again = attach_captures(&store, "c1", "t1", &[src.join("a.png")]).unwrap();
+    assert_eq!(again, vec!["a-2.png"]);
+    assert_eq!(store.read_tasks("c1", 10)[0].attachments.len(), 3);
+}
+
+// What is not an image by its bytes is refused: a capture runner that wrote garbage cannot put it on the task.
+#[test]
+fn attach_captures_refuses_a_file_that_is_not_an_image() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(&tmp.path().join("hostd"));
+    let mut task = crate::crew::store::Task::new("test", "look");
+    task.id = "t1".into();
+    store.append_task("c1", &task).unwrap();
+    std::fs::write(tmp.path().join("x.png"), b"not a png").unwrap();
+    let e = attach_captures(&store, "c1", "t1", &[tmp.path().join("x.png")]).unwrap_err();
+    assert!(e.contains("not a png"), "{e}");
+    assert!(store.read_tasks("c1", 10)[0].attachments.is_empty());
 }
 
 #[test]

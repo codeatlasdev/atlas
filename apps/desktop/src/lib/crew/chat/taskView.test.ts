@@ -9,6 +9,7 @@ import {
 	fmtTokens,
 	formatApprovalInput,
 	needsDateSeparator,
+	splitUi,
 	shouldCollapse,
 	withKey,
 } from "./taskView.ts";
@@ -112,5 +113,17 @@ describe("expanded set helpers", () => {
 		expect([...a]).toEqual(["x"]);
 		expect([...b].sort()).toEqual(["x", "y"]);
 		expect([...withKey(b, "x", false)]).toEqual(["y"]);
+	});
+});
+
+describe("splitUi", () => {
+	test("a leading /ui marks a UI task and is not part of the prompt", () => {
+		expect(splitUi("/ui restyle the header")).toEqual({ ui: true, prompt: "restyle the header" });
+		expect(splitUi("/ui   two\nlines")).toEqual({ ui: true, prompt: "two\nlines" });
+	});
+	test("anything else is left alone, including /ui inside the text and /ui alone", () => {
+		expect(splitUi("restyle the /ui header")).toEqual({ ui: false, prompt: "restyle the /ui header" });
+		expect(splitUi("/uikit rocks")).toEqual({ ui: false, prompt: "/uikit rocks" });
+		expect(splitUi("/ui")).toEqual({ ui: false, prompt: "/ui" });
 	});
 });

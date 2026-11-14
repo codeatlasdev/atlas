@@ -168,41 +168,16 @@ fn dir_or_cwd(dir: &Path) -> PathBuf {
     }
 }
 
-/// Where the screenshots of one task are kept: `<crewmate dir>/captures/<task id>/`.
-pub fn task_captures_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> PathBuf {
-    store
-        .crewmate_dir(crewmate_id)
-        .join("captures")
-        .join(task_id)
-}
-
-/// Attach `files` to the task and return the names they are kept under.
-///
-/// For now they are copied into the task's `captures/` directory. // #209: replace with
-/// crew::attachments::store_agent(..) (source "agent"), which owns the storage, the caps and the
-/// work-dir copy; this function is the one call to swap.
+/// Attach `files` to the task as images of the agent ([`crate::crew::attachments::SOURCE_AGENT`]) and
+/// return the names they are kept under. Storage, caps, names and the sniff of the bytes are
+/// `crew::attachments`'s; the thread, the cards and the ui gate read them from the task.
 pub fn attach_captures(
     store: &CrewStore,
     crewmate_id: &str,
     task_id: &str,
     files: &[PathBuf],
-) -> std::io::Result<Vec<String>> {
-    let dir = task_captures_dir(store, crewmate_id, task_id);
-    std::fs::create_dir_all(&dir)?;
-    let mut names = vec![];
-    for f in files {
-        let name = f
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| std::io::Error::other(format!("bad file name: {}", f.display())))?
-            .to_string();
-        let dest = dir.join(&name);
-        if f != &dest {
-            std::fs::copy(f, &dest)?;
-        }
-        names.push(name);
-    }
-    Ok(names)
+) -> Result<Vec<String>, String> {
+    crate::crew::attachments::store_agent(store, crewmate_id, task_id, files)
 }
 
 struct RemoveOnDrop(PathBuf);
@@ -224,7 +199,7 @@ pub async fn handle(
 ) -> Result<serde_json::Value, String> {
     let spec = Spec::from_args(args)?;
     // The runner writes into a scratch dir that is removed whatever happens; what is kept is the copy
-    // `attach_captures` makes.
+    // `attach_captures` stores with the task.
     let scratch = capture_dir(hostd_dir)
         .join("runs")
         .join(crate::paths::new_id());
@@ -243,7 +218,8 @@ pub async fn handle(
             json!({
                 "engine": c.engine.as_str(), "width": c.width, "theme": c.theme.as_str(),
                 "name": name,
-                "path": task_captures_dir(store, crewmate_id, task_id).join(name),
+                // Where the agent opens it: its copy in the work dir (staged when the task starts again).
+                "path": format!("{}/{task_id}/{name}", crate::crew::attachments::WORK_SUBDIR),
             })
         })
         .collect();

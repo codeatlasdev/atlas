@@ -16,6 +16,9 @@
 		{ ev: "issue_opened", label: "Issue opened" },
 		{ ev: "ci_failed", label: "CI failed" },
 		{ ev: "release", label: "Release" },
+		{ ev: "mention", label: "Mentioned" },
+		{ ev: "issue_assigned", label: "Issue assigned" },
+		{ ev: "pr_review_comment", label: "Review comment" },
 	];
 
 	const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"] as const;

@@ -19,6 +19,8 @@ mod addrs;
 mod session;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
+mod push_tests;
+#[cfg(all(test, unix))]
 pub(crate) mod tests;
 
 use std::collections::HashMap;

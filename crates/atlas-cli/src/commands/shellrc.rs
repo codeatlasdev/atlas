@@ -214,6 +214,7 @@ pub(crate) fn is_nu_file_ours(content: &str, dir: &Path) -> bool {
 
 /// The line that puts `dir` on `PATH` in the shell named `shell` (a basename: `fish`, `zsh`),
 /// for the installer's "run now" hint. `None` for a shell whose syntax Atlas does not write.
+#[cfg_attr(windows, allow(dead_code))]
 pub(crate) fn line_for_shell(shell: &str, dir: &Path) -> Option<String> {
     match shell {
         "fish" => Some(fish_line(dir)),

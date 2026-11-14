@@ -50,14 +50,14 @@ An agent's chat is read from its session file (`agent_history`, `crates/atlas-ho
 
 ### Worktrees and agents in a worktree
 
-The phone lists, creates and removes git worktrees of a project and starts an agent in a chosen one, **with the desktop app closed**: hostd does it itself (`crates/atlas-host/src/worktrees/`). The desktop uses the same code and the same registry file (`~/.atlas/desktop/projects.json`, edited under a cross-process lock), so both see the same worktrees, in the same folders (`<workspaceDir>/<repo>/<name>`), with the same branch rules, port offsets and `worktree:` hooks of `atlas.yaml` (`shared`, `seed`, `setup`, `archive`).
+The phone lists, creates and removes git worktrees of a project and starts an agent in a chosen one, **with the desktop app closed**: hostd does it itself (an agent launch goes to the desktop's tab when the app is running) (`crates/atlas-host/src/worktrees/`). The desktop uses the same code and the same registry file (`~/.atlas/desktop/projects.json`, edited under a cross-process lock), so both see the same worktrees, in the same folders (`<workspaceDir>/<repo>/<name>`), with the same branch rules, port offsets and `worktree:` hooks of `atlas.yaml` (`shared`, `seed`, `setup`, `archive`).
 
 | Command | Scope | Does |
 |---|---|---|
 | `worktree_list {project}` | `read` | the repo and its worktrees (`id`, `path`, `branch`, `main`, `dirty`, `portOffset`), git read live |
 | `worktree_create {project, name?, base?}` | `act` | `name` is slugged (empty picks a sea name), `base` must be an existing ref (never an option); `setup` runs headless and its result comes back, a failing setup keeps the checkout |
 | `worktree_remove {id}` | `act` | only when nothing would be lost, the desktop's auto clean-up rule: answers `{kept: "dirty" \| "secrets" \| "unpushed"}` otherwise. Never forced, the branch stays. A main checkout is refused |
-| `agent_launch {project, agent, prompt?, worktree?}` | `act` | hostd spawns the agent in the worktree's folder (the project's main checkout without `worktree`), never with the agent's yolo flags |
+| `agent_launch {project, agent, prompt?, worktree?}` | `act` | with Atlas Desktop running it opens a real tab there (`terminal_create` on the desktop's control socket, with the worktree's folder); with the app closed (nothing listens on the socket) hostd spawns the agent itself in that folder, never with the agent's yolo flags. A desktop that answers with an error is not "closed": the error is returned, nothing is started behind its back. The project's main checkout without `worktree` |
 
 All of them take registry ids, never paths, and ignore SSH checkouts (the desktop owns those). The lab hostd forwards `worktree_create`, `worktree_remove` and `agent_launch` to your real hostd and answers `worktree_list` itself.
 

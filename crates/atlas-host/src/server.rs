@@ -75,6 +75,8 @@ pub(crate) struct Hub {
     registry: PathBuf,
     /// Crewmate computers relayed to Atlas Mobile.
     pub(crate) crew_relay: Arc<crate::crew::relay::CrewRelay>,
+    /// The desktop's control socket: an agent a phone starts opens a tab there when the app is running.
+    desktop: atlas_core::desktop_ctl::Endpoint,
 }
 
 impl Hub {
@@ -311,6 +313,8 @@ pub struct ServeOpts {
     pub registry: Option<PathBuf>,
     /// How to reach the crew servers relayed to phones (`crate::crew`); `None`: ssh.
     pub crew_relay: Option<crate::crew::relay::Connector>,
+    /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
+    pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
 }
 
 /// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
@@ -477,6 +481,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         crew,
         crew_host: opts.crew_host,
         registry: registry.clone(),
+        desktop: opts.desktop.clone().unwrap_or_default(),
         crew_relay: Arc::new(crate::crew::relay::CrewRelay::new(
             &registry,
             dir,
@@ -1288,9 +1293,10 @@ fn agent_interrupt(hub: &Hub, pane: &str) -> Result<Value, String> {
     Ok(json!({}))
 }
 
-/// A new agent terminal in a project, or in one of its worktrees, started by hostd itself so it works with the
-/// desktop closed (see [`crate::agents::launch_plan`]). The agent's hooks report under the new pane, which is
-/// what the phone opens; a desktop that runs later lists the terminal with the others.
+/// A new agent terminal in a project, or in one of its worktrees. With Atlas Desktop running it opens a real
+/// tab there (`terminal_create` on its control socket: the app owns tabs, so the user sees it); with the app
+/// closed hostd starts the terminal itself (see [`crate::agents::launch_plan`]) and the agent's hooks report
+/// under its pane. A desktop that answers with an error is not "closed": the error is returned, never retried here.
 async fn agent_launch(
     hub: &Hub,
     project: &str,
@@ -1317,6 +1323,26 @@ async fn agent_launch(
     if !cwd.is_dir() {
         return Err(format!("{} no longer exists", cwd.display()));
     }
+    let prompt = prompt.filter(|p| !p.trim().is_empty());
+
+    // The desktop first. Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
+    let ctl = hub.desktop.clone();
+    let args = json!({
+        "worktree": cwd.to_string_lossy(),
+        "agent": agent,
+        "prompt": prompt,
+    });
+    let asked = tokio::task::spawn_blocking(move || {
+        ctl.call_checked("terminal_create", &args, std::time::Duration::from_secs(60))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    match asked {
+        Ok(tab) => return Ok(json!({"pane": tab["tab"], "pty": tab["pty"]})),
+        Err(atlas_core::desktop_ctl::CallError::Failed(e)) => return Err(format!("{e:#}")),
+        Err(atlas_core::desktop_ctl::CallError::NotRunning) => {}
+    }
+
     let bin = crate::agents::launch::resolve_bin(agent)?;
     let pane = paths::new_id();
     let mut req = crate::agents::launch_plan(
@@ -1326,7 +1352,7 @@ async fn agent_launch(
         &cwd,
         &worktree_id,
         &pane,
-        prompt.as_deref().filter(|p| !p.trim().is_empty()),
+        prompt.as_deref(),
     )?;
     hook_env(hub, &mut req);
     let scroll = hub.scroll_dir.clone();

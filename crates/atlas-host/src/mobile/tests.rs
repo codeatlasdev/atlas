@@ -11,10 +11,20 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::HostClient;
 
 async fn daemon(dir: &Path) -> HostClient {
+    // No desktop, whatever runs on the machine: a socket that is never there (`agent_launch` tries it first).
+    daemon_with(dir, dir.join("no-desktop.sock")).await
+}
+
+/// A daemon whose Atlas Desktop control socket is `socket` (token file beside it).
+async fn daemon_with(dir: &Path, socket: std::path::PathBuf) -> HostClient {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
         crew_host: true,
+        desktop: Some(atlas_core::desktop_ctl::Endpoint {
+            token: socket.with_extension("token"),
+            socket,
+        }),
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
@@ -290,7 +300,10 @@ impl Phone {
 
 /// A paired phone and the desktop-side client of the same daemon.
 async fn paired(dir: &Path) -> (HostClient, Phone, String) {
-    let c = daemon(dir).await;
+    paired_on(daemon(dir).await).await
+}
+
+async fn paired_on(c: HostClient) -> (HostClient, Phone, String) {
     let info = pair_start(&c).await;
     let mut phone = Phone::dial(&info).await;
     let r = phone
@@ -1195,6 +1208,7 @@ fn worktrees_are_listed_with_read_and_changed_with_act() {
 /// agent's terminal starts in that folder) and removes it, and a dirty worktree is kept.
 #[tokio::test]
 async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop_closed() {
+    let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
     use std::process::Command;
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().canonicalize().unwrap();
@@ -1376,5 +1390,259 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
         .unwrap();
     assert_eq!(gone["data"]["removed"], true, "{gone}");
     assert!(!wt_path.exists());
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A stand-in for Atlas Desktop's control socket (`ctl.rs`): checks the token, records the request and
+/// answers `reply`. Returns the requests it saw.
+#[cfg(unix)]
+fn fake_desktop(socket: &Path, reply: Value) -> std::sync::Arc<parking_lot::Mutex<Vec<Value>>> {
+    use std::io::{BufRead, BufReader, Write};
+    std::fs::write(socket.with_extension("token"), "t0ken\n").unwrap();
+    let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+    let seen = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let out = seen.clone();
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut s) = conn else { return };
+            let mut lines = BufReader::new(s.try_clone().unwrap()).lines();
+            let token: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            if token["token"] != "t0ken" {
+                continue;
+            }
+            let Some(Ok(req)) = lines.next() else {
+                continue;
+            };
+            out.lock().push(serde_json::from_str(&req).unwrap());
+            let _ = writeln!(s, "{reply}");
+        }
+    });
+    seen
+}
+
+/// A project with one worktree in a hostd dir; returns (project id, worktree id, worktree path).
+#[cfg(unix)]
+async fn project_with_worktree(hostd: &Path, repo: &Path) -> (String, String, std::path::PathBuf) {
+    let git = |dir: &Path, args: &[&str]| {
+        let o = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.email=a@b",
+                "-c",
+                "user.name=n",
+                "-c",
+                "init.defaultBranch=main",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            o.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+    };
+    std::fs::create_dir_all(repo).unwrap();
+    git(repo, &["init", "-q", "."]);
+    std::fs::write(repo.join("f.txt"), "x\n").unwrap();
+    git(repo, &["add", "."]);
+    git(repo, &["commit", "-qm", "base"]);
+    let id = crate::worktrees::registry::id_for(repo);
+    std::fs::create_dir_all(hostd.join("desktop")).unwrap();
+    std::fs::write(
+        hostd.join("desktop/projects.json"),
+        json!([{"id": id, "root": repo, "pinned": false, "added": "x"}]).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        hostd.join("desktop/settings.json"),
+        json!({"workspaceDir": hostd.join("wts"), "branchPrefix": "none"}).to_string(),
+    )
+    .unwrap();
+    let made = crate::worktrees::local::create(
+        hostd,
+        &id,
+        crate::worktrees::local::CreateReq {
+            name: Some("task".into()),
+            base: None,
+        },
+    )
+    .await
+    .unwrap();
+    let w = &made["worktree"];
+    (
+        id,
+        w["id"].as_str().unwrap().into(),
+        std::path::PathBuf::from(w["path"].as_str().unwrap()),
+    )
+}
+
+/// With Atlas Desktop running, a phone's `agent_launch` opens a real tab there (it owns tabs, the user sees it)
+/// with the worktree's folder, and hostd spawns nothing itself: no pty, even though the agent binary exists.
+#[cfg(unix)]
+#[tokio::test]
+async fn with_the_desktop_running_agent_launch_opens_its_tab_and_hostd_spawns_nothing() {
+    let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let hostd = root.join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
+    // If hostd wrongly spawned, this fake agent would leave a file.
+    let fake = root.join("claude");
+    let touched = root.join("spawned.txt");
+    std::fs::write(
+        &fake,
+        format!("#!/bin/sh\ntouch '{}'\nsleep 30\n", touched.display()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    crate::agents::launch_test_bin(Some(fake));
+    let socket = root.join("desktop.sock");
+    let seen = fake_desktop(
+        &socket,
+        json!({"ok": true, "data": {"tab": "tab-7", "pty": "pty-7"}}),
+    );
+
+    let (c, mut phone, _node) = paired_on(daemon_with(&hostd, socket).await).await;
+    let r = phone
+        .call(
+            "agent_launch",
+            json!({"project": id, "agent": "claude", "prompt": "hi", "worktree": wt_id}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(
+        (r["data"]["pane"].clone(), r["data"]["pty"].clone()),
+        (json!("tab-7"), json!("pty-7"))
+    );
+    let reqs = seen.lock().clone();
+    assert_eq!(reqs.len(), 1, "{reqs:?}");
+    assert_eq!(reqs[0]["cmd"], "terminal_create");
+    assert_eq!(reqs[0]["args"]["agent"], "claude");
+    assert_eq!(reqs[0]["args"]["prompt"], "hi");
+    assert_eq!(
+        reqs[0]["args"]["worktree"].as_str().unwrap(),
+        wt_path.to_string_lossy(),
+        "the resolved worktree folder, not the project root"
+    );
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        !touched.exists(),
+        "hostd spawned an agent although the desktop took the launch"
+    );
+    assert_eq!(
+        c.call("pty_list", json!({})).await.unwrap()["ptys"],
+        json!([])
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A desktop that answers with an error is running: the error goes back to the phone and hostd does not start a
+/// second, invisible agent behind its back.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_desktop_error_is_returned_and_never_falls_back_to_a_hostd_spawn() {
+    let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let hostd = root.join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    let (id, wt_id, _) = project_with_worktree(&hostd, &root.join("shop")).await;
+    let fake = root.join("claude");
+    let touched = root.join("spawned.txt");
+    std::fs::write(
+        &fake,
+        format!("#!/bin/sh\ntouch '{}'\nsleep 30\n", touched.display()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    crate::agents::launch_test_bin(Some(fake));
+    let socket = root.join("desktop.sock");
+    let seen = fake_desktop(&socket, json!({"ok": false, "error": "unknown worktree"}));
+
+    let (c, mut phone, _node) = paired_on(daemon_with(&hostd, socket).await).await;
+    let r = phone
+        .call(
+            "agent_launch",
+            json!({"project": id, "agent": "claude", "worktree": wt_id}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], false, "{r}");
+    assert!(
+        r["error"].as_str().unwrap().contains("unknown worktree"),
+        "{r}"
+    );
+    assert_eq!(seen.lock().len(), 1);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        !touched.exists(),
+        "fell back to a hostd spawn after a desktop error"
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A socket file left behind by a desktop that quit (nothing listens) is "not running": hostd spawns.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_stale_desktop_socket_file_still_means_not_running() {
+    let _bin = crate::agents::LAUNCH_TEST_BIN_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let hostd = root.join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
+    let record = root.join("cwd.txt");
+    let fake = root.join("claude");
+    std::fs::write(
+        &fake,
+        format!("#!/bin/sh\npwd > '{}'\nsleep 30\n", record.display()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    crate::agents::launch_test_bin(Some(fake));
+    // bind then drop the listener: the file stays, the connection is refused
+    let socket = root.join("desktop.sock");
+    drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
+    assert!(socket.exists());
+
+    let (c, mut phone, _node) = paired_on(daemon_with(&hostd, socket).await).await;
+    let r = phone
+        .call(
+            "agent_launch",
+            json!({"project": id, "agent": "claude", "worktree": wt_id}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    for _ in 0..100 {
+        if record.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        std::fs::read_to_string(&record).unwrap().trim(),
+        wt_path.canonicalize().unwrap().to_string_lossy()
+    );
+    for p in c.call("pty_list", json!({})).await.unwrap()["ptys"]
+        .as_array()
+        .unwrap()
+    {
+        c.call("pty_kill", json!({"pty": p["pty"]})).await.ok();
+    }
     c.call("shutdown", json!({})).await.ok();
 }

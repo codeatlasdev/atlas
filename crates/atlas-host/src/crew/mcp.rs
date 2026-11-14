@@ -1,11 +1,13 @@
 //! Crewmate MCP stdio server (`atlas mcp --crewmate <id>`).
 //!
 //! Implements a minimal JSON-RPC 2.0 MCP server over stdin/stdout.
-//! Exposes three tools to the agent running inside the crewmate:
+//! Exposes four tools to the agent running inside the crewmate:
 //!
 //! - **`ask_user`**  — post a question to the mobile/desktop UI and block until
 //!   answered (up to 30 min).
 //! - **`set_profile`**   — update this crewmate's name or role.
+//! - **`capture`**   — screenshots of a URL in real browsers (chromium + webkit, widths, themes),
+//!   attached to the task; an incomplete matrix is an error (`crew::capture`).
 //! - **`approve`**   — answer a Claude permission-prompt (used with
 //!   `--permission-prompt-tool atlas:approve`).
 //!
@@ -149,6 +151,7 @@ async fn call_tool(
     match name {
         "ask_user" => tool_ask_user(args, client, env).await,
         "set_profile" => tool_set_profile(args, client, env).await,
+        "capture" => tool_capture(args, client, env).await,
         "approve" => tool_approve(args, client, env).await,
         other => Err(format!("unknown tool: {other}")),
     }
@@ -233,6 +236,31 @@ async fn tool_set_profile(
     Ok(json!({
         "content": [{ "type": "text", "text": "{\"ok\":true}" }]
     }))
+}
+
+// ─── capture ──────────────────────────────────────────────────────────────────
+
+/// Post the request to hostd, which runs the browsers (they are on the crew server, not in this
+/// process) and answers with the combinations visited or `{"error": …}`.
+async fn tool_capture(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
+    let url = env.hook_url(&format!("/crew/{}/capture", env.crewmate_id));
+    let resp = client
+        .post(&url)
+        .header("X-Atlas-Hook-Token", &env.hook_token)
+        .json(&json!({ "pane_key": env.pane_key, "args": args }))
+        .send()
+        .await
+        .map_err(|e| format!("capture: HTTP error: {e}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let why = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| v["error"].as_str().map(str::to_string))
+            .unwrap_or_else(|| format!("server returned {status}: {text}"));
+        return Err(why);
+    }
+    Ok(json!({ "content": [{ "type": "text", "text": text }] }))
 }
 
 // ─── approve ──────────────────────────────────────────────────────────────────
@@ -331,6 +359,27 @@ fn tools_list() -> Value {
             }
         },
         {
+            "name": "capture",
+            "description": "Open a URL in real browsers and attach screenshots to this task: one per engine x width x theme (default chromium + webkit, 390 + 1440 px, light + dark, full page). Fails, naming them, when any combination is missing, so a capture that returns is complete. localhost and LAN URLs work. Use it to look at a UI change before and after you make it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": { "type": "string", "description": "http:// or https:// only." },
+                    "widths": { "type": "array", "items": { "type": "integer" }, "description": "Viewport widths in px (200-4000). Default [390, 1440]." },
+                    "themes": { "type": "array", "items": { "type": "string", "enum": ["light", "dark"] } },
+                    "engines": { "type": "array", "items": { "type": "string", "enum": ["chromium", "webkit"] } },
+                    "slow_network": { "type": "boolean", "description": "Delay every request (a poor connection)." },
+                    "full_page": { "type": "boolean", "description": "Scroll to the end and shoot the whole page. Default true." },
+                    "steps": {
+                        "type": "array",
+                        "description": "Before the screenshot, at most 20: {do:'click'|'fill'|'press'|'wait_for'|'wait_ms', selector?, text?, key?, ms?}.",
+                        "items": { "type": "object" }
+                    }
+                },
+                "required": ["url"]
+            }
+        },
+        {
             "name": "approve",
             "description": "Answer a Claude permission-prompt (use with --permission-prompt-tool atlas:approve).",
             "inputSchema": {
@@ -344,6 +393,38 @@ fn tools_list() -> Value {
             }
         }
     ])
+}
+
+/// What the agent's MCP client does for one `tools/call`, against the hostd whose hook endpoint is
+/// in `hostd_dir`: the real dispatch, the real HTTP request, as crewmate `crewmate_id` in pane
+/// `pane_key`. Lets a test cross the whole path (MCP, hook route, hostd, runner).
+#[cfg(all(test, unix))]
+pub(crate) async fn call_for_test(
+    hostd_dir: &std::path::Path,
+    crewmate_id: &str,
+    pane_key: &str,
+    tool: &str,
+    arguments: Value,
+) -> Result<Value, String> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let endpoint = std::fs::read_to_string(crate::paths::hook_endpoint(hostd_dir))
+        .map_err(|e| format!("no hook endpoint: {e}"))?;
+    let get = |k: &str| {
+        endpoint
+            .lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let env = Env {
+        hook_port: get("ATLAS_HOOK_PORT"),
+        hook_token: get("ATLAS_HOOK_TOKEN"),
+        crewmate_id: crewmate_id.to_string(),
+        pane_key: pane_key.to_string(),
+    };
+    let params = json!({"name": tool, "arguments": arguments});
+    dispatch("tools/call", params, &reqwest::Client::new(), &env).await
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -397,9 +478,9 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_has_three_tools() {
+    fn tools_list_has_four_tools() {
         let list = tools_list();
-        assert_eq!(list.as_array().unwrap().len(), 3);
+        assert_eq!(list.as_array().unwrap().len(), 4);
         let names: Vec<&str> = list
             .as_array()
             .unwrap()
@@ -409,6 +490,7 @@ mod tests {
         assert!(names.contains(&"ask_user"));
         assert!(names.contains(&"set_profile"));
         assert!(names.contains(&"approve"));
+        assert!(names.contains(&"capture"));
     }
 
     #[tokio::test]
@@ -442,7 +524,7 @@ mod tests {
             .await
             .unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 4);
     }
 
     #[tokio::test]

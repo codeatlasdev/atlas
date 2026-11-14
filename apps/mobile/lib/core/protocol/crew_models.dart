@@ -3,6 +3,8 @@
 /// login and the pairing invite pushed by a crew server. Plain Dart, no codegen.
 library;
 
+import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
+
 /// The kind discriminant of a crewmate automation trigger.
 /// JSON: `{"type": "schedule", "cron": "…"}` etc. (serde tag = "type").
 sealed class TriggerKind {
@@ -424,6 +426,7 @@ class CrewmateEntry {
     this.last,
     this.pendingApproval,
     this.triggers = const [],
+    this.routines = const [],
     this.shortReplies,
     this.look,
   });
@@ -443,6 +446,9 @@ class CrewmateEntry {
   final CrewmateLast? last;
   final CrewmatePendingApproval? pendingApproval;
   final List<Trigger> triggers;
+
+  /// Cron routines (`crewmate_list.routines`); `crewmate_routine_set` replaces the whole list.
+  final List<Routine> routines;
   final bool? shortReplies;
   factory CrewmateEntry.fromJson(Map<String, dynamic> j) => CrewmateEntry(
     id: j['id'] as String? ?? '',
@@ -467,6 +473,10 @@ class CrewmateEntry {
     triggers: [
       for (final t in (j['triggers'] as List<dynamic>?) ?? const [])
         Trigger.fromJson((t as Map).cast()),
+    ],
+    routines: [
+      for (final r in (j['routines'] as List<dynamic>?) ?? const [])
+        Routine.fromJson((r as Map).cast()),
     ],
     shortReplies: j['short_replies'] as bool?,
     look: (j['look'] as Map?)?.cast<String, dynamic>(),

@@ -34,6 +34,11 @@ services:
     open_key: w
     autostart: false
 
+# What a change affects, for the MCP tool atlas_affected: the same plan `bun run check:changed` runs
+# (changed crates + dependents, desktop, mobile, scripts, skills, workflows) as JSON, without running it.
+affected:
+  command: bun scripts/check-changed.ts --json
+
 actions:
   - key: c
     label: Gate (bun run check)
@@ -71,15 +76,15 @@ actions:
     label: Gesture bench
     group: bench
     command: scripts/heavy.sh bun scripts/gesture-bench.ts
-  - key: M
+  - key: O
     label: Mobile lab (build the branch, install Atlas Lab, pair)
     group: build
     command: bun run mobile:lab
-  - key: L
+  - key: Z
     label: Agents load bench (7 busy agents)
     group: bench
     command: scripts/heavy.sh bun scripts/agents-load-bench.ts
-  - key: T
+  - key: K
     label: Terminal agent bench (6 agent TUI flood patterns, scroll, mouse reports)
     group: bench
     command: scripts/heavy.sh bun scripts/term-agent-bench.ts

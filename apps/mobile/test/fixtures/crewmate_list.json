@@ -12,6 +12,7 @@
       "name": "Reviewer",
       "queued": 0,
       "role": "Reviews PRs",
+      "routines": [],
       "running_task": {
         "id": "task-working",
         "pane": "crew:crewmate-working:task-working"
@@ -31,6 +32,15 @@
       "name": "Nightly",
       "queued": 0,
       "role": "Nightly checks",
+      "routines": [
+        {
+          "cron": "30 2 * * *",
+          "enabled": true,
+          "id": "r-nightly",
+          "last_run": null,
+          "prompt": "Run the nightly checks"
+        }
+      ],
       "state": "idle",
       "triggers": [
         {
@@ -67,6 +77,7 @@
       "name": "Deployer",
       "queued": 0,
       "role": "Deploys releases",
+      "routines": [],
       "state": "idle",
       "triggers": []
     }

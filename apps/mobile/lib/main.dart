@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/push/push_provider.dart';
+import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
@@ -180,6 +182,8 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
   void initState() {
     super.initState();
     _life;
+    // Push is optional: without Firebase config this is a no-op and the token stays null.
+    PushService.init(ref);
   }
 
   @override
@@ -190,6 +194,8 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Registers the FCM token (and its relay grant) with the connected computers.
+    ref.watch(pushRegistrationProvider);
     return MaterialApp.router(
       title: 'Atlas',
       debugShowCheckedModeBanner: false,

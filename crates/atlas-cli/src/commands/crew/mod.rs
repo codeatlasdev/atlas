@@ -3,6 +3,7 @@
 //!
 //! Subcommands:
 //! - `install`   turn a Linux server into a crew server
+//! - `update`    bring a crew server's atlas to a release, rolling back if hostd does not come back
 //! - `uninstall` remove the crew service (offers an export first; never silent about the data)
 //! - `export`    back up crewmates, memory, tasks and automations as one archive; `import` restores it
 //! - `status`    show systemd and hostd status
@@ -12,9 +13,11 @@
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
 
+mod binary;
 pub mod install;
 mod layout;
 mod transfer;
+mod update;
 
 use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::PathBuf;
@@ -34,8 +37,10 @@ pub struct CrewArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum CrewCommands {
-    /// Turn a Linux x86_64 server into a crew server (installs atlas hostd as a service)
+    /// Turn a Linux x86_64 or aarch64 server into a crew server (installs atlas hostd as a service)
     Install(install::InstallArgs),
+    /// Update atlas on a crew server (keeps the previous binary, rolls back if hostd does not come back)
+    Update(update::UpdateArgs),
     /// Remove the crew service, user and binary from a server
     Uninstall(UninstallArgs),
     /// Back up a server's crewmates (memory, tasks, automations, usage) as one archive file
@@ -58,6 +63,7 @@ impl AtlasCommand for CrewArgs {
     async fn run(self) -> Result<()> {
         match self.command {
             CrewCommands::Install(a) => a.run().await,
+            CrewCommands::Update(a) => a.run().await,
             CrewCommands::Uninstall(a) => a.run().await,
             CrewCommands::Export(a) => a.run().await,
             CrewCommands::Import(a) => a.run().await,
@@ -315,6 +321,12 @@ impl AtlasCommand for StatusArgs {
             println!("\nhostd:");
             println!("{hostd_out}");
         }
+        // The server's atlas against this CLI's: the cue to run `atlas crew update`.
+        let server = binary::version_from_status(hostd_out);
+        println!(
+            "\n{}",
+            binary::version_line(server.as_deref(), env!("CARGO_PKG_VERSION"))
+        );
         Ok(())
     }
 }

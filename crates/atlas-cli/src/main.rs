@@ -455,6 +455,36 @@ mod tests {
         }
     }
 
+    // Issue #203: `atlas crew update <ssh-target> [--version X] [--rollback]`; the flags that cannot be combined
+    // are refused by the parser, before any ssh.
+    #[test]
+    fn crew_update_takes_a_target_with_version_or_rollback() {
+        use commands::crew::CrewCommands as C;
+        let update = |a: &[&str]| {
+            let mut v = vec!["crew", "update"];
+            v.extend_from_slice(a);
+            match parse(&argv(&v)) {
+                Ok(Action::Command(Commands::Crew(c))) => match c.command {
+                    C::Update(u) => Ok(u),
+                    other => panic!("{other:?}"),
+                },
+                Ok(other) => panic!("{other:?}"),
+                Err(e) => Err(e),
+            }
+        };
+        let u = update(&["me@server"]).unwrap();
+        assert_eq!(
+            (u.ssh_target.as_str(), u.version, u.rollback),
+            ("me@server", None, false)
+        );
+        let u = update(&["me@server", "--version", "1.5.2"]).unwrap();
+        assert_eq!(u.version.as_deref(), Some("1.5.2"));
+        assert!(update(&["me@server", "--rollback"]).unwrap().rollback);
+        assert!(update(&[]).is_err());
+        assert!(update(&["me@server", "--rollback", "--version", "1.5.2"]).is_err());
+        assert!(update(&["me@server", "--rollback", "--binary", "/tmp/a"]).is_err());
+    }
+
     // Decision (Atlas Bot -> Atlas Crew rename): scripts and crewmates set up before it keep working.
     // `atlas bot …` is `atlas crew …`, `atlas mcp --bot <id>` is `--crewmate <id>`, and neither shows
     // in help (docs/crew.md documents them as hidden aliases).

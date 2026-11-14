@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -19,10 +18,16 @@ const (
 	rateLimitPerMin = 60
 )
 
-// notifyReq is the inbound body for POST /v1/notify.
+// notifyReq is the inbound body for POST /v1/notify. Grant is what /v1/register returned for Token.
 type notifyReq struct {
 	Token string `json:"token"`
 	Kind  string `json:"kind"`
+	Grant string `json:"grant"`
+}
+
+// registerReq is the inbound body for POST /v1/register.
+type registerReq struct {
+	Token string `json:"token"`
 }
 
 var kindBody = map[string]string{
@@ -30,21 +35,20 @@ var kindBody = map[string]string{
 	"needs_you": "A crewmate needs you",
 }
 
-// bucket is a fixed-window counter (60 requests per 1-minute window).
-type bucket struct {
-	count     int
-	windowEnd time.Time
-}
-
-// relay handles /v1/notify, rate-limits per token, and forwards to FCM.
+// relay serves /v1/register and /v1/notify: it issues and checks grants, rate-limits per token and
+// per IP, and forwards to FCM.
 type relay struct {
 	fcmProject string
 	fcmBase    string                 // default "https://fcm.googleapis.com"; overridden in tests
 	getToken   func() (string, error) // nil skips Authorization header (tests)
 	client     *http.Client
 
-	mu      sync.Mutex
-	buckets map[string]*bucket
+	keys       []string // grant keys: [current, previous?]; see grant.go
+	trustProxy bool     // key per-IP limits on X-Forwarded-For (RELAY_TRUST_PROXY=1)
+
+	perToken    *limiter
+	perIP       *limiter
+	perIPRegist *limiter
 }
 
 func newRelay(project, fcmBase string, getToken func() (string, error)) *relay {
@@ -53,25 +57,11 @@ func newRelay(project, fcmBase string, getToken func() (string, error)) *relay {
 		fcmBase:    fcmBase,
 		getToken:   getToken,
 		client:     &http.Client{Timeout: 10 * time.Second},
-		buckets:    make(map[string]*bucket),
-	}
-}
 
-// allow returns false when the token has exhausted its 60-request-per-minute allowance.
-func (r *relay) allow(token string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	now := time.Now()
-	b, ok := r.buckets[token]
-	if !ok || now.After(b.windowEnd) {
-		r.buckets[token] = &bucket{count: 1, windowEnd: now.Add(time.Minute)}
-		return true
+		perToken:    newLimiter(rateLimitPerMin),
+		perIP:       newLimiter(ipLimitPerMin),
+		perIPRegist: newLimiter(registerLimitPerMin),
 	}
-	if b.count >= rateLimitPerMin {
-		return false
-	}
-	b.count++
-	return true
 }
 
 // fcmErrorBody is the subset of the FCM HTTP v1 error response we inspect.
@@ -146,15 +136,63 @@ func (r *relay) forward(token, kind string) (int, bool, error) {
 	return resp.StatusCode, isUnregistered(respBody), nil
 }
 
-// ServeHTTP handles POST /v1/notify.
+// ServeHTTP routes POST /v1/register and POST /v1/notify.
 func (r *relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost || req.URL.Path != "/v1/notify" {
+	if req.Method != http.MethodPost {
 		http.NotFound(w, req)
 		return
 	}
+	switch req.URL.Path {
+	case "/v1/register":
+		r.register(w, req)
+	case "/v1/notify":
+		r.notify(w, req)
+	default:
+		http.NotFound(w, req)
+	}
+}
 
+// decode reads a small JSON body into v.
+func decode(w http.ResponseWriter, req *http.Request, v any) bool {
+	req.Body = http.MaxBytesReader(w, req.Body, 16<<10)
+	if err := json.NewDecoder(req.Body).Decode(v); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// register answers {"grant": ...} for a token. It proves nothing about the caller (the relay has no
+// accounts): it only turns "knows the token" into "holds the grant", which the phone then shares
+// with its own crew servers. Rate-limited per IP so it cannot be used to mass-mint.
+func (r *relay) register(w http.ResponseWriter, req *http.Request) {
+	if !r.perIPRegist.allow(clientIP(req, r.trustProxy)) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+	var body registerReq
+	if !decode(w, req, &body) {
+		return
+	}
+	if body.Token == "" || len(body.Token) > maxTokenLen {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"grant": r.grant(body.Token)}) //nolint:errcheck
+}
+
+// notify forwards one push after checking the caller holds the token's grant.
+func (r *relay) notify(w http.ResponseWriter, req *http.Request) {
+	if !r.perIP.allow(clientIP(req, r.trustProxy)) {
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
 	var body notifyReq
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Token == "" || body.Kind == "" {
+	if !decode(w, req, &body) {
+		return
+	}
+	if body.Token == "" || body.Kind == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -163,7 +201,12 @@ func (r *relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !r.allow(body.Token) {
+	// Grant before the per-token limit: a stranger must not be able to burn a victim's quota.
+	if !r.verify(body.Token, body.Grant) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !r.perToken.allow(body.Token) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
 		return
 	}
@@ -181,10 +224,10 @@ func (r *relay) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case code >= 200 && code < 300:
 		w.WriteHeader(http.StatusNoContent)
 	case unreg:
-		// Token explicitly marked UNREGISTERED by FCM — safe to drop.
+		// Token explicitly marked UNREGISTERED by FCM: safe to drop.
 		w.WriteHeader(http.StatusGone)
 	default:
-		// All other non-2xx (wrong project ID, auth error, quota, etc.) → 502.
+		// All other non-2xx (wrong project ID, auth error, quota, etc.) -> 502.
 		http.Error(w, "fcm error", http.StatusBadGateway)
 	}
 }

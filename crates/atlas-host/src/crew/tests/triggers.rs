@@ -140,6 +140,8 @@ fn trigger_validation() {
         validate_trigger(&t(TriggerKind::Github {
             repo: "owner/repo".into(),
             events: vec!["pr_opened".into()],
+            authors: crate::crew::store::default_authors(),
+            allow_auto: false,
         }))
         .is_ok()
     );
@@ -147,6 +149,8 @@ fn trigger_validation() {
         validate_trigger(&t(TriggerKind::Github {
             repo: "".into(),
             events: vec![],
+            authors: crate::crew::store::default_authors(),
+            allow_auto: false,
         }))
         .is_err()
     );

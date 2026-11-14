@@ -53,7 +53,7 @@ pub(super) async fn wait_for_outcome(
                             && task.title.as_deref() != Some(title.as_str())
                         {
                             task.title = Some(title);
-                            let _ = hub.crew.store.append_task(crewmate_id, task);
+                            let _ = persist(hub, crewmate_id, task);
                             broadcast_task(hub, crewmate_id, task);
                         }
                         let state = v["status"]["state"].as_str().unwrap_or("");
@@ -82,7 +82,7 @@ pub(super) async fn wait_for_outcome(
                             steps.push(Step { ts: now_s(), text, group: task.title.clone() });
                             // Live, not only at the end: the working line shows the latest step while it runs.
                             task.steps = steps.clone();
-                            let _ = hub.crew.store.append_task(crewmate_id, task);
+                            let _ = persist(hub, crewmate_id, task);
                             broadcast_task(hub, crewmate_id, task);
                         }
                     }
@@ -137,7 +137,9 @@ pub(super) fn finish_task(
             }
         }
     }
-    let _ = hub.crew.store.append_task(&crewmate.id, task);
+    // The result is announced even when it cannot be stored: the clients and Telegram still hear it,
+    // and `persist` logged why the log lacks it.
+    let _ = persist(hub, &crewmate.id, task);
     broadcast_task(hub, &crewmate.id, task);
 
     // Telegram outbound — done and failed both get a message.
@@ -189,6 +191,36 @@ pub(super) fn finish_task(
     }
 }
 
+/// Append `task`'s current state to the crewmate's task log. A failure is never silent: it is logged
+/// with the crewmate and task id (`atlas crew logs`) and returned as the message a failed task shows.
+pub(super) fn persist(hub: &Hub, crewmate_id: &str, task: &Task) -> Result<(), String> {
+    hub.crew.store.append_task(crewmate_id, task).map_err(|e| {
+        let msg = format!(
+            "cannot record task state to {}: {e}",
+            hub.crew.store.tasks_path(crewmate_id).display()
+        );
+        eprintln!(
+            "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
+            task.id, task.state
+        );
+        msg
+    })
+}
+
+/// Record that `task` is now running. When that cannot be stored the task fails with the error
+/// (clients are told over the push event) and `false` is returned: the caller must stop, or not
+/// start, the agent. Without this the task showed "running" with nothing behind it on disk.
+pub(super) fn persist_running(hub: &Hub, crewmate_id: &str, task: &mut Task) -> bool {
+    let stored = persist(hub, crewmate_id, task);
+    if let Err(msg) = &stored {
+        task.state = TaskState::Failed;
+        task.error = Some(msg.clone());
+        task.finished_at = Some(now_s());
+    }
+    broadcast_task(hub, crewmate_id, task);
+    stored.is_ok()
+}
+
 /// Whether the user cancelled this task (a cancel records `Cancelled` in the store while a waiter sleeps).
 pub(super) fn was_cancelled(hub: &Hub, crewmate_id: &str, task_id: &str) -> bool {
     hub.crew
@@ -213,7 +245,9 @@ pub(super) fn update_task(
     let tasks = store.read_tasks(crewmate_id, 10_000);
     if let Some(mut t) = tasks.into_iter().find(|t| t.id == task_id) {
         f(&mut t);
-        let _ = store.append_task(crewmate_id, &t);
+        if let Err(msg) = persist(hub, crewmate_id, &t) {
+            t.error.get_or_insert(msg);
+        }
         broadcast_task(hub, crewmate_id, &t);
     }
 }

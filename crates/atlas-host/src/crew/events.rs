@@ -20,3 +20,9 @@ pub(crate) fn task(crewmate_id: &str, task: Option<&Task>) -> String {
 pub(crate) fn crewmate_updated(crewmate_id: &str) -> String {
     json!({"ev": "crewmate_updated", "crewmate_id": crewmate_id}).to_string()
 }
+
+/// `{"ev":"crew_paused","paused":bool}`: the kill switch flipped (`crew_pause` / `crew_resume`).
+/// The contract fixture `apps/desktop/src/__fixtures__/crew_paused_event.json` is made from this.
+pub(crate) fn crew_paused(paused: bool) -> String {
+    json!({"ev": "crew_paused", "paused": paused}).to_string()
+}

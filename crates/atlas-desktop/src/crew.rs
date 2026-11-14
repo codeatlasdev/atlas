@@ -236,27 +236,13 @@ pub async fn ssh_authorize_key(
         std::fs::read_to_string(&pub_key_path).map_err(|e| format!("reading public key: {e}"))?;
     let pubkey = pubkey.trim().to_string();
 
-    // Write a temporary askpass helper that prints the password.
-    // Single-quote-escape the password for embedding in the shell script.
-    let escaped = password.replace('\'', "'\\''");
-    let askpass = std::env::temp_dir().join(format!("atlas-askpass-{}.sh", std::process::id()));
-    let script = format!("#!/bin/sh\nprintf '%s' '{escaped}'\n");
-    std::fs::write(&askpass, &script).map_err(|e| e.to_string())?;
-    drop(password); // wipe from local scope (best-effort)
-    drop(escaped);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&askpass, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| e.to_string())?;
-    }
+    let pubkey_line = format!("{pubkey}\n");
 
     // Remote command: create ~/.ssh and append the public key.
     // Uses stdin for the key content (avoids quoting issues in the shell command).
     let remote_cmd = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
          cat >> ~/.ssh/authorized_keys && \
          chmod 600 ~/.ssh/authorized_keys";
-    let pubkey_line = format!("{pubkey}\n");
 
     let mut ssh_args: Vec<String> = vec![
         "-o".into(),
@@ -271,26 +257,17 @@ pub async fn ssh_authorize_key(
     if let Some(p) = port.filter(|&p| p != 22) {
         ssh_args.extend(["-p".into(), p.to_string()]);
     }
-    ssh_args.push(target.clone());
+    ssh_args.push(target);
     ssh_args.push(remote_cmd.into());
 
-    let mut child = tokio::process::Command::new("ssh")
-        .no_window()
-        .args(&ssh_args)
-        .env("SSH_ASKPASS", &askpass)
-        .env("SSH_ASKPASS_REQUIRE", "force")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("ssh: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(pubkey_line.as_bytes()).await;
-    }
-
-    let out = child.wait_with_output().await.map_err(|e| e.to_string())?;
-    let _ = std::fs::remove_file(&askpass); // always delete the helper
+    let out = run_ssh_with_password(
+        "ssh",
+        &ssh_args,
+        &std::env::temp_dir(),
+        &password,
+        &pubkey_line,
+    )
+    .await?;
 
     if out.status.success() {
         Ok(())
@@ -303,6 +280,68 @@ pub async fn ssh_authorize_key(
         } else {
             Err(err)
         }
+    }
+}
+
+/// Runs `program args` with `password` served through a temporary `SSH_ASKPASS` helper in `dir`
+/// and `stdin_data` on its stdin. The password is never on argv.
+async fn run_ssh_with_password(
+    program: &str,
+    args: &[String],
+    dir: &std::path::Path,
+    password: &str,
+    stdin_data: &str,
+) -> Result<std::process::Output, String> {
+    // Single-quote-escape the password for embedding in the shell script.
+    let escaped = password.replace('\'', "'\\''");
+    // The guard exists before the file does: whichever way this function returns (`?`, panic,
+    // cancelled future), the helper holding the password is deleted.
+    let askpass = AskpassFile(dir.join(format!("atlas-askpass-{}.sh", std::process::id())));
+    askpass.write(&format!("#!/bin/sh\nprintf '%s' '{escaped}'\n"))?;
+
+    let mut child = tokio::process::Command::new(program)
+        .no_window()
+        .args(args)
+        .env("SSH_ASKPASS", &askpass.0)
+        .env("SSH_ASKPASS_REQUIRE", "force")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("ssh: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(stdin_data.as_bytes()).await;
+    }
+
+    child.wait_with_output().await.map_err(|e| e.to_string())
+}
+
+/// The temporary `SSH_ASKPASS` helper. Deleted when dropped, on every path.
+struct AskpassFile(PathBuf);
+
+impl AskpassFile {
+    /// Creates the file owner-only (0700 from the first byte on unix) and writes `script` to it.
+    fn write(&self, script: &str) -> Result<(), String> {
+        use std::io::Write as _;
+        // A leftover from a crashed run (any mode) is replaced, never reused.
+        let _ = std::fs::remove_file(&self.0);
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            opts.mode(0o700);
+        }
+        opts.open(&self.0)
+            .and_then(|mut f| f.write_all(script.as_bytes()))
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl Drop for AskpassFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
     }
 }
 
@@ -642,5 +681,86 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&cfg).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    fn askpass_files(dir: &std::path::Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("atlas-askpass-"))
+            .collect()
+    }
+
+    // Crew review P0, PR #106 comment 6874910355: the SSH bootstrap wrote the account password to
+    // $TMPDIR/atlas-askpass-<pid>.sh and removed it only after ssh finished; a failed spawn (ssh not
+    // installed or not on PATH) returned early and left the password on disk.
+    #[tokio::test]
+    async fn a_failed_ssh_spawn_leaves_no_password_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = run_ssh_with_password(
+            "atlas-no-such-ssh-binary",
+            &[],
+            dir.path(),
+            "s3cret",
+            "ssh-ed25519 AAAA key\n",
+        )
+        .await
+        .unwrap_err();
+        assert!(err.starts_with("ssh:"), "{err}");
+        assert_eq!(askpass_files(dir.path()), Vec::<String>::new());
+    }
+
+    // Same class: the happy path and a failing ssh must also clean up, and the helper must hand the
+    // password to ssh (including a single quote) without it ever being on argv.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_helper_serves_the_password_and_is_gone_after_ssh_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        // A fake "ssh": runs the askpass helper like ssh does and fails when it prints something else.
+        let fake = dir.path().join("fake-ssh");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\n[ \"$($SSH_ASKPASS)\" = \"pa'ss\" ] || { echo 'Permission denied' >&2; exit 255; }\n",
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let ok = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "pa'ss", "k\n")
+            .await
+            .unwrap();
+        assert!(
+            ok.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ok.stderr)
+        );
+        assert_eq!(askpass_files(dir.path()), Vec::<String>::new());
+        let bad = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "nope", "k\n")
+            .await
+            .unwrap();
+        assert!(!bad.status.success());
+        assert_eq!(askpass_files(dir.path()), Vec::<String>::new());
+    }
+
+    // The helper holds the password: it must never exist with looser permissions than 0700, not
+    // even between the write and the chmod.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_helper_is_never_readable_by_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join("fake-ssh");
+        // ssh's stdout is discarded by the real code, so the mode goes to stderr. GNU `stat -c %a`
+        // first: on Linux `stat -f` is the *filesystem* status and succeeds with the wrong output
+        // (Linux CI); BSD/macOS `stat` rejects `-c` and falls back to `-f %Lp`.
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\n(stat -c %a \"$SSH_ASKPASS\" 2>/dev/null || stat -f %Lp \"$SSH_ASKPASS\") >&2\n",
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let out = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "x", "k\n")
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stderr).trim(), "700");
     }
 }

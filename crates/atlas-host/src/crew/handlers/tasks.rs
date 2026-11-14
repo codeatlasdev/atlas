@@ -7,6 +7,9 @@ use super::super::{events, now_s, runner, triggers};
 use crate::paths;
 use crate::server::Hub;
 
+/// The longest prompt a task takes (docs/crew.md): characters, not bytes.
+pub(crate) const MAX_PROMPT_CHARS: usize = 20_000;
+
 /// `CrewmateTask`
 pub(crate) fn send_task(
     hub: &Hub,
@@ -20,10 +23,16 @@ pub(crate) fn send_task(
         .store
         .load_crewmate(&id)
         .map_err(|_| format!("crewmate {id} not found"))?;
-    if prompt.trim().is_empty() {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
         return Err("prompt must not be empty".into());
     }
-    let mut task = Task::new(source, prompt.trim());
+    if prompt.chars().count() > MAX_PROMPT_CHARS {
+        return Err(format!(
+            "prompt must be at most {MAX_PROMPT_CHARS} characters"
+        ));
+    }
+    let mut task = Task::new(source, prompt);
     task.tz = tz;
     hub.crew
         .store

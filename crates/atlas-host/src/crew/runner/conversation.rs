@@ -7,10 +7,10 @@ use std::collections::BTreeMap;
 use super::action::{
     finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
 };
-use super::outcome::{broadcast_task, finish_task};
+use super::outcome::{finish_task, persist_running};
 use super::prompt::{Prepared, load_agent_env, load_hook_endpoint, prepare_task};
 use super::summary::maybe_summarize;
-use crate::crew::store::{Approval, Crewmate, EngineConfig, Task, TaskState};
+use crate::crew::store::{Crewmate, EngineConfig, Task, TaskState};
 use crate::crew::{engine, now_s, pane, triggers};
 use crate::server::Hub;
 
@@ -31,14 +31,28 @@ pub(super) async fn run_one_conversational(
 
     let (hook_port, hook_token) = load_hook_endpoint(&hub.dir);
 
-    // Mark running.
+    // A stranger's text (GitHub, webhook) never runs with the bypass flags unless its trigger said
+    // `allow_auto`. An engine that cannot ask has no other mode, so such a task is refused.
+    let yolo = triggers::yolo_for(crewmate.approval, &task);
+    if task.no_auto && !engine::can_ask(&engine_cfg.kind) {
+        let msg = format!(
+            "{} cannot ask for approval, and this task came from text anyone can write (a GitHub event or a webhook); \
+             set allow_auto on the trigger to run it without approval",
+            engine_cfg.kind
+        );
+        finish_task(hub, crewmate, &mut task, Err(msg), vec![]);
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
+
+    // Mark running. If that cannot be stored the task is failed (clients told) and nothing starts.
     task.state = TaskState::Running;
     task.started_at = Some(now_s());
     task.pane = Some(pane_key.clone());
-    let _ = hub.crew.store.append_task(&crewmate.id, &task);
-    broadcast_task(hub, &crewmate.id, &task);
-
-    let yolo = crewmate.approval == Approval::Auto;
+    if !persist_running(hub, &crewmate.id, &mut task) {
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
 
     // For omp with approval==ask: write the extension file before engine::run_turn
     // (even if TEST_ENGINE_BIN bypasses the real omp, the file must exist for the test).
@@ -142,12 +156,23 @@ impl Turn<'_> {
             self.yolo,
         )
         .await?;
-        let _ = hub.crew.store.save_session(&crewmate.id, &turn.session);
-        if let Some(u) = &turn.usage {
-            let _ = hub
-                .crew
-                .store
-                .append_usage(&crewmate.id, &self.engine_cfg.kind, now_s(), u);
+        if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
+            // The next turn would start a new conversation instead of continuing this one.
+            eprintln!(
+                "atlas crew: crewmate {} ({}): cannot save the session: {e}",
+                crewmate.id, self.pane_key
+            );
+        }
+        if let Some(u) = &turn.usage
+            && let Err(e) =
+                hub.crew
+                    .store
+                    .append_usage(&crewmate.id, &self.engine_cfg.kind, now_s(), u)
+        {
+            eprintln!(
+                "atlas crew: crewmate {} ({}): cannot record usage: {e}",
+                crewmate.id, self.pane_key
+            );
         }
         Ok((turn.reply, turn.usage, env))
     }

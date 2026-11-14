@@ -165,8 +165,10 @@ fn crew_settings_store_round_trip() {
     let settings = CrewSettings {
         short_replies: false,
         short_replies_model: None,
+        paused: true,
     };
     store.save_crew_settings(&settings).unwrap();
     let reloaded = store.load_crew_settings();
     assert!(!reloaded.short_replies);
+    assert!(reloaded.paused, "paused is stored with the settings");
 }

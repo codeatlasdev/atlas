@@ -47,6 +47,12 @@ pub struct HostdArgs {
     /// Restart the daemon now, ending its terminals, and verify the new one
     #[arg(long, conflicts_with_all = ["stop", "status", "upgrade"])]
     pub restart: bool,
+    /// Pause every crewmate: running tasks are cancelled, queues are held (`atlas crew pause` runs this on a server)
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_resume"])]
+    pub crew_pause: bool,
+    /// Resume the crewmates after `--crew-pause`
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause"])]
+    pub crew_resume: bool,
     /// Lab lane: run a SHADOW hostd that follows your real one (read-only) so a branch can be
     /// validated, with its own pairing and a Lab phone app, without touching your installation. Its
     /// files live in `<main dir>/lab` (override with --dir); combine with --stop/--status to manage it
@@ -116,6 +122,25 @@ impl AtlasCommand for HostdArgs {
         }
         if self.restart {
             restart_host(&dir, bundled).await?;
+            return Ok(());
+        }
+        if self.crew_pause || self.crew_resume {
+            let c = HostClient::connect_dir(&dir, "cli")
+                .await
+                .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+            c.call(
+                if self.crew_pause {
+                    "crew_pause"
+                } else {
+                    "crew_resume"
+                },
+                json!({}),
+            )
+            .await?;
+            println!(
+                "crew {}",
+                if self.crew_pause { "paused" } else { "resumed" }
+            );
             return Ok(());
         }
         if self.stop || self.status || self.upgrade {

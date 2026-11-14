@@ -12,14 +12,14 @@ use crate::server::Hub;
 /// A crewmate's name: 1–40 characters once trimmed.
 fn valid_name(name: &str) -> Result<String, String> {
     let name = name.trim().to_string();
-    if name.is_empty() || name.len() > 40 {
+    if name.is_empty() || name.chars().count() > 40 {
         return Err("name must be 1–40 characters".into());
     }
     Ok(name)
 }
 
 fn check_role(role: &str) -> Result<(), String> {
-    if role.len() > 2000 {
+    if role.chars().count() > 2000 {
         return Err("role must be ≤ 2000 characters".into());
     }
     Ok(())
@@ -32,14 +32,20 @@ fn check_agent(agent: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The approval mode named on the wire, refused for an opencode engine (it is forced `--auto`).
-fn parse_approval(approval: &str, engine_kind: &str) -> Result<Approval, String> {
+/// The approval mode named on the wire. A crewmate with an `engine` runs it headless, and `ask`
+/// is refused for an engine with no way to ask (`engine::can_ask`: `codex exec` and `opencode run`
+/// run unattended), so the setting never promises a pause that cannot happen (#206). Without an
+/// engine the agent runs in a terminal and asks through its hooks.
+fn parse_approval(approval: &str, engine_kind: Option<&str>) -> Result<Approval, String> {
     let approval_enum: Approval = serde_json::from_value(json!(approval))
         .map_err(|_| format!("invalid approval: {approval}"))?;
-    if engine_kind == "opencode" && approval_enum == Approval::Ask {
-        return Err(
-            "OpenCode crewmates run without approval prompts (approval must be auto)".into(),
-        );
+    if let Some(engine_kind) = engine_kind
+        && approval_enum == Approval::Ask
+        && !crate::crew::engine::can_ask(engine_kind)
+    {
+        return Err(format!(
+            "{engine_kind} crewmates cannot ask before a tool call; they run unattended (approval must be auto)"
+        ));
     }
     Ok(approval_enum)
 }
@@ -106,7 +112,7 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
                 v["last"] = l;
             }
             if let Some(engine) = &b.engine {
-                let approval_supported = engine.kind != "opencode";
+                let approval_supported = crate::crew::engine::can_ask(&engine.kind);
                 v["engine"] = json!({"kind": engine.kind});
                 v["approval_supported"] = json!(approval_supported);
             }
@@ -141,7 +147,7 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
             v
         })
         .collect();
-    Ok(json!({ "crewmates": list }))
+    Ok(json!({ "crewmates": list, "paused": hub.crew.is_paused() }))
 }
 
 /// `CrewmateCreate`
@@ -160,9 +166,7 @@ pub(crate) fn create(
 ) -> Result<Value, String> {
     let name = valid_name(&name)?;
     check_role(&role)?;
-    // opencode is forced --auto; reject ask at creation time.
-    let engine_kind = engine.as_ref().map_or("", |e| e.kind.as_str());
-    let approval_enum = parse_approval(&approval, engine_kind)?;
+    let approval_enum = parse_approval(&approval, engine.as_ref().map(|e| e.kind.as_str()))?;
     check_agent(&agent)?;
     if let Some(l) = &look {
         l.validate()?;
@@ -232,8 +236,7 @@ pub(crate) fn update(
         let effective_kind = engine
             .as_ref()
             .map(|e| e.kind.as_str())
-            .or_else(|| crewmate.engine.as_ref().map(|e| e.kind.as_str()))
-            .unwrap_or("");
+            .or_else(|| crewmate.engine.as_ref().map(|e| e.kind.as_str()));
         crewmate.approval = parse_approval(&ap, effective_kind)?;
     }
     if let Some(l) = look {

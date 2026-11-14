@@ -9,7 +9,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { CrewmateLook } from "#lib/crew/look.ts";
 import { hostCall } from "#lib/host.ts";
 import { errText } from "#lib/api.ts";
-import { normalizeCrewmate, normalizeTask } from "#lib/crew/wire.ts";
+import { normalizeTask } from "#lib/crew/wire.ts";
+import { anyPaused, parseCrewList, pausedFromEvent } from "#lib/crew/pause.ts";
 import { crewmateKey } from "#lib/crew/crewmateKey.ts";
 import { isUnread, loadSeen, saveSeen } from "#lib/crew/unread.ts";
 import { pairUrl, type PairStart } from "#lib/settings/mobile.ts";
@@ -42,6 +43,8 @@ interface ServerEntry {
 	key: string;
 	name: string;
 	crewmates: Crewmate[];
+	/** The crew server is paused (`crewmate_list.paused`, `crew_paused`): nothing runs, queues are held. */
+	paused?: boolean;
 	/** Whether the last `crewmate_list` call succeeded. */
 	ok: boolean;
 	/** Why the last `crewmate_list` failed (shown in the sidebar with Retry). */
@@ -94,6 +97,7 @@ class CrewStore {
 		this.off.push(
 			await listen<{
 				ev: string;
+				paused?: boolean;
 				crewmate_id?: string;
 				task?: { id: string; state: string; result?: string; error?: string };
 				pane_key?: string;
@@ -177,6 +181,28 @@ class CrewStore {
 		await hostCall("crewmate_delete", { ...hostArgs(hostKey), id });
 		if (this.selected?.hostKey === hostKey && this.selected?.crewmateId === id) this.selected = null;
 		await this.refreshHost(hostKey);
+	}
+
+	// ─── pause ────────────────────────────────────────────────────────────────
+
+	/** Kill switch: cancel every running task on this server and hold its queues until `resumeServer`. */
+	async pauseServer(hostKey: string): Promise<void> {
+		await hostCall("crew_pause", hostArgs(hostKey));
+		await this.refreshHost(hostKey);
+	}
+
+	async resumeServer(hostKey: string): Promise<void> {
+		await hostCall("crew_resume", hostArgs(hostKey));
+		await this.refreshHost(hostKey);
+	}
+
+	isPaused(hostKey: string): boolean {
+		return this.servers.find((h) => h.key === hostKey)?.paused === true;
+	}
+
+	/** Any server paused: the workspace banner. */
+	get anyPaused(): boolean {
+		return anyPaused(this.servers);
 	}
 
 	// ─── tasks ────────────────────────────────────────────────────────────────
@@ -400,9 +426,10 @@ class CrewStore {
 		const idx = this.servers.findIndex((h) => h.key === key);
 		if (idx < 0) return;
 		try {
-			const r = await hostCall<{ crewmates: Crewmate[] }>("crewmate_list", hostArgs(key));
-			const crewmates = r.crewmates.map(normalizeCrewmate);
-			this.servers[idx] = { ...this.servers[idx], crewmates, ok: true, error: undefined };
+			const { crewmates, paused } = parseCrewList(
+				await hostCall<{ crewmates: Crewmate[]; paused?: boolean }>("crewmate_list", hostArgs(key)),
+			);
+			this.servers[idx] = { ...this.servers[idx], crewmates, paused, ok: true, error: undefined };
 		} catch (e) {
 			// Keep the crewmates we last saw: a crew server that restarted (redeploy, reboot) must not make the crew vanish
 			// from the sidebar; say why instead, and the next refresh brings it back.
@@ -427,6 +454,7 @@ class CrewStore {
 
 	private async onHostEvent(payload: {
 		ev: string;
+		paused?: boolean;
 		crewmate_id?: string;
 		task?: { id: string; state: string; result?: string; error?: string };
 		pane_key?: string;
@@ -447,6 +475,12 @@ class CrewStore {
 			this.scheduleRefresh(ownerKey, 200);
 			if (this.selected?.crewmateId === crewmateId) void this.loadTasks();
 			if (this.boardOpen && crewmateId) void this.refreshCrewmateBoardTasks(crewmateId);
+			return;
+		}
+
+		if (pausedFromEvent(payload) !== null) {
+			// The event carries no server key (like every crew event): re-read them all, the lists are authoritative.
+			void Promise.all(this.servers.map((h) => this.refreshHost(h.key)));
 			return;
 		}
 

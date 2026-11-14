@@ -32,6 +32,14 @@ fn write_endpoint(dir: &Path, port: u16, token: &str) -> std::io::Result<()> {
     )
 }
 
+/// A delay before the hook server of the daemon in this directory binds, so a test can show that nothing
+/// starts an agent before the endpoint it reports to is published. Keyed by directory: daemons of other
+/// tests running at the same time are not slowed.
+#[cfg(test)]
+pub(crate) static TEST_DELAY_START: parking_lot::Mutex<
+    Option<(std::path::PathBuf, std::time::Duration)>,
+> = parking_lot::Mutex::new(None);
+
 /// Bind the hook server, publish its endpoint file and serve until the process exits.
 /// `mobile` says whether a connected phone may answer a permission prompt.
 /// `crew_hub` is an optional weak reference to the full `Hub`; when present, crewmate routes
@@ -42,6 +50,16 @@ pub(crate) async fn start(
     mobile: Arc<crate::mobile::Mobile>,
     crew_hub: Option<std::sync::Weak<crate::server::Hub>>,
 ) -> std::io::Result<()> {
+    #[cfg(test)]
+    let delay = TEST_DELAY_START
+        .lock()
+        .clone()
+        .filter(|(d, _)| d == dir)
+        .map(|(_, t)| t);
+    #[cfg(test)]
+    if let Some(delay) = delay {
+        tokio::time::sleep(delay).await;
+    }
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
     let token = paths::random_hex(24)?;

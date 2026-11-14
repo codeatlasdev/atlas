@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 
 use super::super::store::{Routine, Trigger, TriggerKind};
-use super::super::{events, now_s, push, schedule, triggers};
+use super::super::{events, now_s, schedule, triggers};
 use crate::server::Hub;
 
 /// `CrewmateMemory`
@@ -157,34 +157,6 @@ pub(crate) fn telegram_link(hub: &Hub) -> Result<Value, String> {
 /// `CrewTelegramStatus`: `{configured, chats}`; the token itself never leaves the server.
 pub(crate) fn telegram_status(hub: &Hub) -> Result<Value, String> {
     Ok(hub.crew.telegram.status())
-}
-
-/// `PushRegister`
-pub(crate) fn push_register(
-    hub: &Hub,
-    token: String,
-    platform: String,
-    grant: String,
-) -> Result<Value, String> {
-    // We need node_id; derive it from the mobile connection's node_id.
-    // For now accept as a separate field; node_id is passed implicitly by the
-    // mobile session layer.  We store an empty node_id when called from the desktop.
-    // The node_id is injected by server.rs before routing here.
-    // Use the token as a proxy for deduplication when node_id is unknown.
-    let mut tokens = hub.crew.push_tokens.lock();
-    // Replace existing entry with same token (any node_id).
-    tokens.retain(|t| t.token != token);
-    tokens.push(push::new_token("", &token, &platform, grant));
-    push::save_tokens(&hub.crew.dir, &tokens);
-    Ok(json!({}))
-}
-
-/// `PushUnregister`
-pub(crate) fn push_unregister(hub: &Hub, token: String) -> Result<Value, String> {
-    let mut tokens = hub.crew.push_tokens.lock();
-    tokens.retain(|t| t.token != token);
-    push::save_tokens(&hub.crew.dir, &tokens);
-    Ok(json!({}))
 }
 
 /// `CrewSettingsGet`

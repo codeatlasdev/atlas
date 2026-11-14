@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use serde_json::json;
 
 use super::audit::{self, Audit};
-use super::github::GithubLoginHandle;
+use super::github::{GhCli, GithubApi, GithubLoginHandle};
 use super::store::{self, CrewStore};
 use super::telegram::TelegramBridge;
 use super::{PushToken, pane, push, runner, schedule, triggers};
@@ -38,6 +38,9 @@ pub(crate) struct CrewHub {
     /// Senders for user-input actions keyed by task_id.
     pub(crate) action_waiters:
         parking_lot::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+    /// The GitHub reply of each running task that came from GitHub, by task id (`runner::reporting`).
+    pub(crate) reporters:
+        parking_lot::Mutex<std::collections::HashMap<String, runner::ReportingLive>>,
     /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
     paused: std::sync::atomic::AtomicBool,
 }
@@ -60,6 +63,7 @@ impl CrewHub {
             github_login: tokio::sync::Mutex::new(None),
             github_connect_waiters: parking_lot::Mutex::new(vec![]),
             action_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            reporters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(paused),
         })
     }
@@ -107,6 +111,15 @@ impl CrewHub {
         }
     }
 
+    /// The GitHub API the crew uses (the `gh` CLI as the crew user; a fake under test).
+    pub(crate) fn github(&self) -> Arc<dyn GithubApi> {
+        #[cfg(test)]
+        if let Some(api) = super::github::TEST_GITHUB_API.lock().clone() {
+            return api;
+        }
+        Arc::new(GhCli)
+    }
+
     /// Whether anyone can answer a crewmate's tool prompt right now: a linked Telegram chat, a
     /// desktop client connected, or a phone connected. A registered push token is not one: it only
     /// says where to notify, and with the phone offline nobody would ever answer (the prompt would
@@ -120,10 +133,35 @@ impl CrewHub {
         })
     }
 
+    /// `push_register` from `node_id`: the paired phone that sent it (a `phone:<node>` connection),
+    /// or `""` for a client that is not a phone (a crew server only hears the Mac's relay). The node
+    /// id is what lets revoking that phone take its tokens, and lets a connected phone be left out
+    /// of a push (`mobile.live_node_ids`). The same token registered again replaces its entry.
+    pub(crate) fn register_token(&self, node_id: &str, token: &str, platform: &str, grant: String) {
+        let mut tokens = self.push_tokens.lock();
+        tokens.retain(|t| t.token != token);
+        tokens.push(push::new_token(node_id, token, platform, grant));
+        push::save_tokens(&self.dir, &tokens);
+    }
+
+    /// `push_unregister`.
+    pub(crate) fn unregister_token(&self, token: &str) {
+        let mut tokens = self.push_tokens.lock();
+        tokens.retain(|t| t.token != token);
+        push::save_tokens(&self.dir, &tokens);
+    }
+
     /// Drop all push tokens for a revoked device.
     pub(crate) fn revoke_device_tokens(&self, node_id: &str) {
         let mut tokens = self.push_tokens.lock();
         tokens.retain(|t| t.node_id != node_id);
+        push::save_tokens(&self.dir, &tokens);
+    }
+
+    /// Drop the tokens the relay will never accept again (it answered 403 or 410).
+    pub(crate) fn drop_tokens(&self, expired: &[String]) {
+        let mut tokens = self.push_tokens.lock();
+        tokens.retain(|t| !expired.contains(&t.token));
         push::save_tokens(&self.dir, &tokens);
     }
 

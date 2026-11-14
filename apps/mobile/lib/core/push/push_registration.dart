@@ -2,18 +2,22 @@ import 'package:flutter/foundation.dart';
 
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
-/// Returns true when the `info` response data indicates the host supports crew.
+/// Whether the `info` response data says the host takes `push_register`: a crew server (`crew`, its
+/// crewmates push) or a hostd that pushes about its own agents (`push`, every hostd from this change
+/// on). An older plain hostd has neither and would answer an unknown command.
 ///
 /// Pure function; easy to unit-test independently.
-bool hostHasCrewCap(Map<String, dynamic>? data) =>
-    (data?['caps'] as List?)?.contains('crew') == true;
+bool hostCanPush(Map<String, dynamic>? data) {
+  final caps = data?['caps'] as List?;
+  return caps?.contains('crew') == true || caps?.contains('push') == true;
+}
 
-/// Calls `info` on [mux] and returns whether the host has the `crew` cap.
-Future<bool> checkCrewCap(Multiplexer mux) async {
+/// Calls `info` on [mux] and returns whether the host takes `push_register` ([hostCanPush]).
+Future<bool> checkCanPush(Multiplexer mux) async {
   try {
     final resp = await mux.call('info').timeout(const Duration(seconds: 5));
     if (resp['ok'] != true) return false;
-    return hostHasCrewCap(resp['data'] as Map<String, dynamic>?);
+    return hostCanPush(resp['data'] as Map<String, dynamic>?);
   } catch (_) {
     return false;
   }

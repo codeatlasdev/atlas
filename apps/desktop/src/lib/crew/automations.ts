@@ -95,6 +95,9 @@ const GITHUB_EVENT_PHRASE: Record<string, string> = {
 	issue_opened: "an issue is opened",
 	ci_failed: "CI fails",
 	release: "a release is published",
+	mention: "you are mentioned",
+	issue_assigned: "an issue is assigned to you",
+	pr_review_comment: "a PR gets a review comment",
 };
 
 /**

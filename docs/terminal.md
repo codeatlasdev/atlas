@@ -215,6 +215,8 @@ Today the native terminal runs on macOS only; Windows and Linux use xterm.js (`t
 | 7 | [#247](https://github.com/codeatlasdev/atlas/issues/247) | Linux X11 |
 | 8 | [#248](https://github.com/codeatlasdev/atlas/issues/248) | optional: WSL without ConPTY |
 
+Shared engine work (all platforms): [#252](https://github.com/codeatlasdev/atlas/issues/252) single pass over PTY bytes before the parser, [#253](https://github.com/codeatlasdev/atlas/issues/253) read and parse on separate threads, [#254](https://github.com/codeatlasdev/atlas/issues/254) release GPU resources of hidden terminals, [#255](https://github.com/codeatlasdev/atlas/issues/255) libghostty-vt spike, [#256](https://github.com/codeatlasdev/atlas/issues/256) idle compression of cold scrollback. On Linux, Wayland waits for wry on GTK4 and then follows Ghostty's model (frames exported as DMA-BUF to a GTK widget), see #247.
+
 Proposed targets, **not measured yet** on Windows or Linux, all on an integrated GPU: parse ≥ 500 MB/s without blocking the UI; < 3% CPU with 4 agent TUIs at 30 redraws/s; key-to-pixel p95 ≤ one frame + 2 ms; 0 wakeups/s when idle; background tabs parse but do not draw; ≤ 8 MB per terminal with 10 000 lines; shell startup ≤ 150 ms over the bare process. On Windows, ConPTY caps throughput. The macOS starting point is [Performance](#performance) below (M4 Pro, preliminary single runs, built with debug assertions on, so not directly comparable to shipped builds); Phase 0 adds what it lacks: an integrated-GPU Mac, idle wakeups, CPU and RAM with N agents, key-to-pixel latency, startup, and every Windows number.
 
 ## Performance

@@ -25,7 +25,8 @@ export type TaskAction =
 	| { kind: "input"; label: string; reason: string; placeholder?: string }
 	| { kind: "choose"; question: string; options: string[] }
 	| { kind: "sign_in_engine"; engine: string }
-	| { kind: "add_trigger"; trigger: Trigger["kind"]; prompt: string; reason: string };
+	| { kind: "add_trigger"; trigger: Trigger["kind"]; prompt: string; reason: string }
+	| { kind: "refused"; reasons: string[] };
 
 // ─── Triggers ────────────────────────────────────────────────────────────────
 

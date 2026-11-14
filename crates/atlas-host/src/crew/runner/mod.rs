@@ -15,12 +15,15 @@
 //! | `github`       | GitHub login a project needs                                      |
 //! | `reporting`    | a GitHub task's reply comment: posted, edited, finished           |
 //! | `outcome`      | waiting for the agent, recording and announcing the result        |
+//! | `guard`, `tape`| refusing work that weakens tests, strays, invents or overclaims   |
 //! | `summary`      | short replies                                                     |
 //! | `testing`      | test-only overrides                                               |
 
 mod action;
 mod conversation;
+mod gate;
 mod github;
+mod guard;
 mod outcome;
 mod prompt;
 mod pty;
@@ -30,6 +33,7 @@ pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;
 mod summary;
+mod tape;
 #[cfg(test)]
 mod testing;
 
@@ -40,11 +44,15 @@ use std::time::Duration;
 use parking_lot::Mutex;
 
 use conversation::run_one_conversational;
+#[cfg(test)]
+pub(crate) use guard::strip_unproven as guard_strip_unproven;
+pub(crate) use guard::{OVERRIDE as REFUSAL_OVERRIDE, RETRY as REFUSAL_RETRY};
 use outcome::{audit_task, update_task};
 use pty::run_one_pty;
 #[cfg(test)]
 pub(crate) use recover::interrupted_for_fixture;
 pub(crate) use recover::recover;
+pub(crate) use tape::{Tape, observe as observe_tape};
 
 use crate::crew::store::{CrewStore, Crewmate, Task, TaskState};
 use crate::crew::{now_s, pane};

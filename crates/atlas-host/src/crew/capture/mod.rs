@@ -91,6 +91,8 @@ pub fn capture_dir(hostd_dir: &Path) -> PathBuf {
 pub struct Captured {
     /// One PNG per requested combination, in matrix order, in `out_dir`.
     pub files: Vec<(Combo, PathBuf)>,
+    /// The DOM report of each combination, when the spec asked for `dom`, in the same order.
+    pub doms: Vec<(Combo, PathBuf)>,
 }
 
 /// Run the runner for `spec`, writing PNGs under `out_dir`, and check the report covers every
@@ -146,16 +148,25 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
     let report = spec::parse_report(&String::from_utf8_lossy(&out.stdout))?;
     let cells = spec::check_report(spec, &report)?;
     let mut files = vec![];
-    for (combo, path) in cells {
-        let p = PathBuf::from(&path);
-        if !p.is_file() {
-            return Err(format!(
-                "capture incomplete. {combo}: the runner reported {path} but the file does not exist"
-            ));
+    let mut doms = vec![];
+    for (combo, path, dom) in cells {
+        for (what, path) in std::iter::once(("screenshot", Some(path))).chain([("DOM report", dom)])
+        {
+            let Some(path) = path else { continue };
+            let p = PathBuf::from(&path);
+            if !p.is_file() {
+                return Err(format!(
+                    "capture incomplete. {combo}: the runner reported {path} but the {what} file does not exist"
+                ));
+            }
+            if what == "screenshot" {
+                files.push((combo, p));
+            } else {
+                doms.push((combo, p));
+            }
         }
-        files.push((combo, p));
     }
-    Ok(Captured { files })
+    Ok(Captured { files, doms })
 }
 
 /// The runner runs in the capture dir (Node finds `node_modules` from the script, not the cwd, but a
@@ -205,12 +216,20 @@ pub fn attach_captures(
     Ok(names)
 }
 
-struct RemoveOnDrop(PathBuf);
+/// Removes a directory when dropped: the scratch dir of a run, whatever way the run ended.
+pub(crate) struct RemoveOnDrop(pub(crate) PathBuf);
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// A fresh scratch directory path for one run (`<capture dir>/runs/<id>`; the caller creates it).
+pub(crate) fn scratch_dir(hostd_dir: &Path) -> PathBuf {
+    capture_dir(hostd_dir)
+        .join("runs")
+        .join(crate::paths::new_id())
 }
 
 /// What the `capture` hook route does: validate, run, attach, and answer with the combinations
@@ -225,9 +244,7 @@ pub async fn handle(
     let spec = Spec::from_args(args)?;
     // The runner writes into a scratch dir that is removed whatever happens; what is kept is the copy
     // `attach_captures` makes.
-    let scratch = capture_dir(hostd_dir)
-        .join("runs")
-        .join(crate::paths::new_id());
+    let scratch = scratch_dir(hostd_dir);
     std::fs::create_dir_all(&scratch)
         .map_err(|e| format!("capture: cannot make {}: {e}", scratch.display()))?;
     let _cleanup = RemoveOnDrop(scratch.clone());
@@ -235,16 +252,26 @@ pub async fn handle(
     let paths: Vec<PathBuf> = captured.files.iter().map(|(_, p)| p.clone()).collect();
     let names = attach_captures(store, crewmate_id, task_id, &paths)
         .map_err(|e| format!("capture: cannot keep the screenshots: {e}"))?;
+    // The DOM reports are kept beside their PNGs: the scratch dir goes away with this call.
+    let dom_paths: Vec<PathBuf> = captured.doms.iter().map(|(_, p)| p.clone()).collect();
+    let dom_names = attach_captures(store, crewmate_id, task_id, &dom_paths)
+        .map_err(|e| format!("capture: cannot keep the DOM reports: {e}"))?;
+    let kept = task_captures_dir(store, crewmate_id, task_id);
     let shots: Vec<_> = captured
         .files
         .iter()
         .zip(&names)
         .map(|((c, _), name)| {
-            json!({
+            let mut shot = json!({
                 "engine": c.engine.as_str(), "width": c.width, "theme": c.theme.as_str(),
                 "name": name,
-                "path": task_captures_dir(store, crewmate_id, task_id).join(name),
-            })
+                "path": kept.join(name),
+            });
+            if let Some(i) = captured.doms.iter().position(|(dc, _)| dc == c) {
+                shot["dom"] = json!(dom_names[i]);
+                shot["dom_path"] = json!(kept.join(&dom_names[i]));
+            }
+            shot
         })
         .collect();
     Ok(json!({"url": spec.url, "visited": shots.len(), "shots": shots}))

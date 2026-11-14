@@ -416,8 +416,15 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
-        C::CrewmateList {} | C::CrewmateTasks { .. } | C::CrewmateMemory { .. } => Scope::Read,
-        C::CrewmateTask { .. } | C::CrewmateCancel { .. } => Scope::Act,
+        C::CrewmateList {}
+        | C::CrewmateTasks { .. }
+        | C::CrewmateMemory { .. }
+        // The bytes of an image sent with a task: reading what the thread shows.
+        | C::CrewmateAttachment { .. } => Scope::Read,
+        // Uploading the pieces of an image only ever feeds the `crewmate_task` that names it.
+        C::CrewmateTask { .. } | C::CrewmateAttachmentPut { .. } | C::CrewmateCancel { .. } => {
+            Scope::Act
+        }
         C::CrewmateCreate { .. }
         | C::CrewmateUpdate { .. }
         | C::CrewmateDelete { .. }

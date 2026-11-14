@@ -1,0 +1,652 @@
+//! Images on a task (#209): what a user sends with a prompt (a screenshot, a photo of a screen), kept on the
+//! crew server next to the task and shown to the agent as files in its work dir.
+//!
+//! The rules live here and nowhere else, so every way in (the apps' `crewmate_task`, a Telegram photo) is
+//! held to the same ones:
+//! - at most [`MAX_ATTACHMENTS`] per task, [`MAX_BYTES`] each;
+//! - png, jpeg, webp or gif **by the file's own first bytes**: the declared mime is never believed;
+//! - the name is the sender's, so it is reduced to one safe path component ([`safe_name`]): a `../` or an
+//!   absolute path can never leave the task's folder.
+//!
+//! On disk: `<crewmate dir>/attachments/<task id>/<name>` is the task's copy (the source of truth the apps
+//! fetch with `crewmate_attachment`); `<work dir>/.atlas/attachments/<task id>/<name>` is the agent's copy,
+//! rewritten each time the task starts so a restart or an edited work tree never loses it.
+//!
+//! A line on the hostd protocol is at most 1 MiB (`protocol::MAX_LINE_BYTES`, both ways), so bytes travel in
+//! pieces of [`CHUNK`]: `crewmate_attachment_put` uploads, `crewmate_attachment` downloads. An image small
+//! enough for one line may instead ride inline in `crewmate_task` itself.
+
+use std::io;
+use std::path::{Path, PathBuf};
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as B64;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use super::store::CrewStore;
+
+/// Images a task takes.
+pub(crate) const MAX_ATTACHMENTS: usize = 4;
+/// The largest image, in bytes (5 MiB).
+pub(crate) const MAX_BYTES: usize = 5 * 1024 * 1024;
+/// Raw bytes per protocol line: base64 makes 4/3 of it, well under `MAX_LINE_BYTES`.
+pub(crate) const CHUNK: usize = 512 * 1024;
+/// The longest file name kept, in bytes.
+const MAX_NAME: usize = 100;
+
+/// An image kept with a task: what `Task.attachments` holds and the apps read. The bytes are never in it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Attachment {
+    /// A single safe path component, unique within its task.
+    pub name: String,
+    /// `image/png|jpeg|webp|gif`, from the bytes.
+    pub mime: String,
+    pub bytes_len: u64,
+    /// Lowercase hex SHA-256 of the bytes.
+    pub sha256: String,
+    /// Where the agent finds it, relative to its work dir: `.atlas/attachments/<task id>/<name>`.
+    pub path: String,
+}
+
+/// The image kind of `bytes` by its signature, `None` for anything else (an SVG, a PDF, a renamed `.exe`).
+pub(crate) fn sniff(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// The extension a kind gets when the sender's name has none that fits.
+fn ext(mime: &str) -> &'static str {
+    match mime {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        _ => "webp",
+    }
+}
+
+/// `name` as one path component that stays inside a folder: its last path segment, with every character
+/// outside `[A-Za-z0-9._-]` turned into `_`, no leading dot, cut to [`MAX_NAME`]. Its extension is made to
+/// match `mime` (the bytes decide what the file is, not what the sender called it).
+pub(crate) fn safe_name(name: &str, mime: &str) -> String {
+    let last = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = last
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let (stem, _) = cleaned.rsplit_once('.').unwrap_or((&cleaned, ""));
+    let stem = stem.trim_matches(|c| c == '.' || c == '_');
+    let stem = if stem.is_empty() { "image" } else { stem };
+    let mut stem: String = stem.chars().take(MAX_NAME - 5).collect();
+    stem.push('.');
+    stem.push_str(ext(mime));
+    stem
+}
+
+/// One image as it arrives, before it is stored.
+pub(crate) struct Incoming {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Check `images` and turn them into the records the task keeps. Refused with a message the sender can
+/// read: too many, empty, over [`MAX_BYTES`], not an image by its bytes. Names are made safe and unique
+/// (`a.png`, `a-2.png`) in order. Nothing is written.
+pub(crate) fn check(
+    task_id: &str,
+    images: &[Incoming],
+) -> Result<Vec<(Attachment, Vec<u8>)>, String> {
+    if images.len() > MAX_ATTACHMENTS {
+        return Err(format!(
+            "a task takes at most {MAX_ATTACHMENTS} images, got {}",
+            images.len()
+        ));
+    }
+    let mut out: Vec<(Attachment, Vec<u8>)> = Vec::with_capacity(images.len());
+    for img in images {
+        if img.bytes.is_empty() {
+            return Err(format!("{} is empty", shown(&img.name)));
+        }
+        if img.bytes.len() > MAX_BYTES {
+            return Err(format!(
+                "{} is over {} MiB",
+                shown(&img.name),
+                MAX_BYTES / (1024 * 1024)
+            ));
+        }
+        let Some(mime) = sniff(&img.bytes) else {
+            return Err(format!(
+                "{} is not a png, jpeg, webp or gif image",
+                shown(&img.name)
+            ));
+        };
+        let mut name = safe_name(&img.name, mime);
+        let mut n = 2;
+        while out.iter().any(|(a, _)| a.name == name) {
+            let (stem, e) = name.rsplit_once('.').unwrap_or((&name, ""));
+            let stem = stem.trim_end_matches(|c: char| c.is_ascii_digit() || c == '-');
+            name = format!("{stem}-{n}.{e}");
+            n += 1;
+        }
+        let mut sha = Sha256::new();
+        sha.update(&img.bytes);
+        out.push((
+            Attachment {
+                path: format!("{}/{task_id}/{name}", WORK_SUBDIR),
+                name,
+                mime: mime.to_string(),
+                bytes_len: img.bytes.len() as u64,
+                sha256: hex::encode(sha.finalize()),
+            },
+            img.bytes.clone(),
+        ));
+    }
+    Ok(out)
+}
+
+/// A name for an error message: the sender's, shortened and printable.
+fn shown(name: &str) -> String {
+    let n: String = name.chars().filter(|c| !c.is_control()).take(40).collect();
+    if n.is_empty() {
+        "an image".to_string()
+    } else {
+        format!("\"{n}\"")
+    }
+}
+
+/// Where the agent's copies live inside its work dir.
+pub(crate) const WORK_SUBDIR: &str = ".atlas/attachments";
+
+/// `<crewmate dir>/attachments/<task id>/`
+pub(crate) fn task_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> PathBuf {
+    store
+        .crewmate_dir(crewmate_id)
+        .join("attachments")
+        .join(task_id)
+}
+
+/// Write the checked images under the task's folder (0600). Either all land or the folder is removed.
+pub(crate) fn save(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task_id: &str,
+    files: &[(Attachment, Vec<u8>)],
+) -> io::Result<()> {
+    let dir = task_dir(store, crewmate_id, task_id);
+    for (a, bytes) in files {
+        if let Err(e) = crate::paths::write_private(&dir.join(&a.name), bytes) {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+/// The bytes of one stored image, `name` being one of the task's recorded names (anything else is a miss:
+/// the name is looked up in the record, never joined to a path as given).
+pub(crate) fn read(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task: &super::store::Task,
+    name: &str,
+) -> Result<(Attachment, Vec<u8>), String> {
+    let a = task
+        .attachments
+        .iter()
+        .find(|a| a.name == name)
+        .ok_or_else(|| format!("task {} has no attachment {name:?}", task.id))?;
+    let bytes = std::fs::read(task_dir(store, crewmate_id, &task.id).join(&a.name))
+        .map_err(|e| format!("attachment {name:?} cannot be read: {e}"))?;
+    Ok((a.clone(), bytes))
+}
+
+/// Copy the task's images into `work_dir/.atlas/attachments/<task id>/` for the agent, and return the
+/// paths (relative to the work dir) that now exist. An image whose stored copy is gone is skipped and
+/// named in hostd's log: the task still runs, the prompt only lists what the agent can open.
+pub(crate) fn stage(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task: &super::store::Task,
+    work_dir: &Path,
+) -> Vec<String> {
+    let mut staged = vec![];
+    for a in &task.attachments {
+        let src = task_dir(store, crewmate_id, &task.id).join(&a.name);
+        let rel = format!("{WORK_SUBDIR}/{}/{}", task.id, a.name);
+        let dst = work_dir.join(&rel);
+        let copied = dst
+            .parent()
+            .map(std::fs::create_dir_all)
+            .transpose()
+            .and_then(|_| std::fs::copy(&src, &dst));
+        match copied {
+            Ok(_) => staged.push(rel),
+            Err(e) => eprintln!(
+                "atlas crew: attachment {} of task {} not staged: {e}",
+                a.name, task.id
+            ),
+        }
+    }
+    if !staged.is_empty() {
+        keep_out_of_git(work_dir);
+    }
+    staged
+}
+
+/// Add `.atlas/attachments/` to the checkout's local `info/exclude`, so an agent's `git add -A` never commits
+/// the user's screenshots (the project's own `.gitignore` is never touched). Best effort: a work dir that is
+/// not a git checkout has nothing to exclude from.
+fn keep_out_of_git(work_dir: &Path) {
+    let Ok(out) = std::process::Command::new("git")
+        .args(["rev-parse", "--git-path", "info/exclude"])
+        .current_dir(work_dir)
+        .output()
+    else {
+        return;
+    };
+    if !out.status.success() {
+        return;
+    }
+    let rel = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let path = if Path::new(&rel).is_absolute() {
+        PathBuf::from(rel)
+    } else {
+        work_dir.join(rel)
+    };
+    let line = format!("/{WORK_SUBDIR}/");
+    let have = std::fs::read_to_string(&path).unwrap_or_default();
+    if have.lines().any(|l| l.trim() == line) {
+        return;
+    }
+    let sep = if have.is_empty() || have.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let _ = path
+        .parent()
+        .map(std::fs::create_dir_all)
+        .transpose()
+        .and_then(|_| std::fs::write(&path, format!("{have}{sep}{line}\n")));
+}
+
+/// The line of the prompt that names the task's images, empty without any. Ours, not the sender's: it holds
+/// only paths built from sanitized names, so it goes before the (possibly untrusted) task text.
+pub(crate) fn prompt_block(staged: &[String]) -> String {
+    if staged.is_empty() {
+        return String::new();
+    }
+    let list = staged.join(", ");
+    format!(
+        "The user attached {} image{} to this task, in your working directory: {list}. Open and look at {} before you answer.\n\n",
+        staged.len(),
+        if staged.len() == 1 { "" } else { "s" },
+        if staged.len() == 1 { "it" } else { "them" },
+    )
+}
+
+/// A reply piece of a stored image, for `crewmate_attachment`: `limit` is clamped to [`CHUNK`].
+pub(crate) fn piece(bytes: &[u8], offset: u64, limit: Option<u64>) -> (String, bool) {
+    let start = usize::try_from(offset)
+        .unwrap_or(usize::MAX)
+        .min(bytes.len());
+    let n = usize::try_from(limit.unwrap_or(CHUNK as u64))
+        .unwrap_or(CHUNK)
+        .clamp(1, CHUNK);
+    let end = (start + n).min(bytes.len());
+    (B64.encode(&bytes[start..end]), end >= bytes.len())
+}
+
+/// The `crewmate_attachment` reply for the piece of `bytes` at `offset`. Built here for the handler and for
+/// the contract fixtures both apps read, so they cannot drift.
+pub(crate) fn reply(
+    a: &Attachment,
+    bytes: &[u8],
+    offset: u64,
+    limit: Option<u64>,
+) -> serde_json::Value {
+    let (data_b64, last) = piece(bytes, offset, limit);
+    serde_json::json!({
+        "name": a.name,
+        "mime": a.mime,
+        "bytes_len": a.bytes_len,
+        "offset": offset,
+        "data_b64": data_b64,
+        "last": last,
+    })
+}
+
+/// Decode a sender's base64, refusing early what could never fit so a huge string is not decoded at all.
+pub(crate) fn decode(name: &str, data_b64: &str) -> Result<Vec<u8>, String> {
+    if data_b64.len() > MAX_BYTES.div_ceil(3) * 4 + 4 {
+        return Err(format!(
+            "{} is over {} MiB",
+            shown(name),
+            MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    B64.decode(data_b64.trim())
+        .map_err(|_| format!("{} is not valid base64", shown(name)))
+}
+
+/// One image in a `crewmate_task`: its bytes inline (`data_b64`, for one that fits a protocol line) or
+/// by the id of an upload (`crewmate_attachment_put`). The `mime` a client declares is ignored.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Sent {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub mime: Option<String>,
+    #[serde(default)]
+    pub data_b64: Option<String>,
+    #[serde(default)]
+    pub upload: Option<String>,
+}
+
+/// An upload id is a client-chosen token that becomes a folder name: only `[A-Za-z0-9_-]`, 8 to 64 long.
+fn valid_upload(id: &str) -> bool {
+    (8..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// `<crewmate dir>/uploads/<upload id>/`: pieces of images on their way, before a task owns them.
+fn upload_dir(store: &CrewStore, crewmate_id: &str, upload: &str) -> PathBuf {
+    store.crewmate_dir(crewmate_id).join("uploads").join(upload)
+}
+
+/// Stage piece `seq` of upload `upload`. Pieces arrive in order from 0 (a gap, a repeat or a piece over
+/// [`CHUNK`] is refused), and the whole may never pass [`MAX_BYTES`]: a client cannot fill the disk with
+/// an upload it never finishes. Returns the bytes staged so far.
+pub(crate) fn put_piece(
+    store: &CrewStore,
+    crewmate_id: &str,
+    upload: &str,
+    seq: u32,
+    data_b64: &str,
+) -> Result<u64, String> {
+    use std::io::Write as _;
+    if !valid_upload(upload) {
+        return Err("upload must be 8 to 64 letters, digits, - or _".into());
+    }
+    if data_b64.len() > CHUNK.div_ceil(3) * 4 + 4 {
+        return Err(format!("a piece is at most {} KiB", CHUNK / 1024));
+    }
+    let bytes = B64
+        .decode(data_b64.trim())
+        .map_err(|_| "piece is not valid base64".to_string())?;
+    let dir = upload_dir(store, crewmate_id, upload);
+    let file = dir.join("data");
+    let have = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+    let expected = std::fs::read_to_string(dir.join("seq"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    if seq != expected {
+        return Err(format!("expected piece {expected}, got {seq}"));
+    }
+    if have + bytes.len() as u64 > MAX_BYTES as u64 {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(format!("upload is over {} MiB", MAX_BYTES / (1024 * 1024)));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    atlas_core::sys::owner_only(std::fs::OpenOptions::new().create(true).append(true))
+        .open(&file)
+        .and_then(|mut f| f.write_all(&bytes))
+        .map_err(|e| format!("upload: {e}"))?;
+    std::fs::write(dir.join("seq"), (seq + 1).to_string()).map_err(|e| e.to_string())?;
+    Ok(have + bytes.len() as u64)
+}
+
+/// The staged bytes of `upload`, which is then removed (an upload belongs to one task).
+fn take_upload(store: &CrewStore, crewmate_id: &str, upload: &str) -> Result<Vec<u8>, String> {
+    if !valid_upload(upload) {
+        return Err("upload must be 8 to 64 letters, digits, - or _".into());
+    }
+    let dir = upload_dir(store, crewmate_id, upload);
+    let bytes = std::fs::read(dir.join("data"))
+        .map_err(|_| format!("upload {upload} was not found (send its pieces first)"))?;
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(bytes)
+}
+
+/// Remove the staged pieces of `uploads` (a task that was refused must not leave its images on disk).
+pub(crate) fn discard_uploads(store: &CrewStore, crewmate_id: &str, sent: &[Sent]) {
+    for u in sent.iter().filter_map(|s| s.upload.as_deref()) {
+        if valid_upload(u) {
+            let _ = std::fs::remove_dir_all(upload_dir(store, crewmate_id, u));
+        }
+    }
+}
+
+/// The images of a `crewmate_task`, decoded and read from their uploads, ready for [`check`]. An item with
+/// neither bytes nor an upload, or with both, is refused.
+pub(crate) fn resolve(
+    store: &CrewStore,
+    crewmate_id: &str,
+    sent: &[Sent],
+) -> Result<Vec<Incoming>, String> {
+    if sent.len() > MAX_ATTACHMENTS {
+        return Err(format!(
+            "a task takes at most {MAX_ATTACHMENTS} images, got {}",
+            sent.len()
+        ));
+    }
+    sent.iter()
+        .map(|s| {
+            let bytes = match (&s.data_b64, &s.upload) {
+                (Some(d), None) => decode(&s.name, d)?,
+                (None, Some(u)) => take_upload(store, crewmate_id, u)?,
+                _ => {
+                    return Err(format!(
+                        "{} needs data_b64 or upload, not both or neither",
+                        shown(&s.name)
+                    ));
+                }
+            };
+            Ok(Incoming {
+                name: s.name.clone(),
+                bytes,
+            })
+        })
+        .collect()
+}
+
+/// Check `images`, store them and record them on `task` (`task.attachments`). The one door every way in
+/// goes through (the apps' `crewmate_task`, a Telegram photo). Nothing is left on disk when it fails.
+pub(crate) fn attach(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task: &mut super::store::Task,
+    images: &[Incoming],
+) -> Result<(), String> {
+    if images.is_empty() {
+        return Ok(());
+    }
+    let files = check(&task.id, images)?;
+    save(store, crewmate_id, &task.id, &files).map_err(|e| format!("attachment: {e}"))?;
+    task.attachments = files.into_iter().map(|(a, _)| a).collect();
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+    const JPG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10];
+
+    fn img(name: &str, bytes: &[u8]) -> Incoming {
+        Incoming {
+            name: name.into(),
+            bytes: bytes.to_vec(),
+        }
+    }
+
+    // The declared mime is the sender's word; the bytes are the file. Each kind by its signature,
+    // and the formats that look like images but are not allowed (SVG can carry script).
+    #[test]
+    fn the_type_comes_from_the_bytes() {
+        assert_eq!(sniff(PNG), Some("image/png"));
+        assert_eq!(sniff(JPG), Some("image/jpeg"));
+        assert_eq!(sniff(b"GIF89a\x01\0"), Some("image/gif"));
+        assert_eq!(sniff(b"GIF87a\x01\0"), Some("image/gif"));
+        assert_eq!(sniff(b"RIFF\x24\0\0\0WEBPVP8 "), Some("image/webp"));
+        assert_eq!(sniff(b"RIFF\x24\0\0\0WAVEfmt "), None, "RIFF is not WebP");
+        assert_eq!(sniff(b"<svg xmlns='http://www.w3.org/2000/svg'/>"), None);
+        assert_eq!(sniff(b"%PDF-1.7"), None);
+        assert_eq!(sniff(b"MZ\x90\0"), None);
+        assert_eq!(sniff(b""), None);
+        assert_eq!(
+            sniff(b"\x89PNG"),
+            None,
+            "a truncated signature is not a PNG"
+        );
+    }
+
+    // A path in the name must never leave the task's folder, on either separator.
+    #[test]
+    fn a_name_is_one_safe_component() {
+        for hostile in [
+            "../../etc/passwd",
+            "..\\..\\windows\\system32\\x.png",
+            "/etc/shadow",
+            "C:\\Users\\me\\a.png",
+            "a/b/c.png",
+            "..",
+            ".",
+            "",
+            "....png",
+            "a\0b.png",
+            "sub/../..",
+        ] {
+            let n = safe_name(hostile, "image/png");
+            assert!(
+                !n.contains('/') && !n.contains('\\') && !n.contains('\0') && !n.starts_with('.'),
+                "{hostile:?} -> {n:?}"
+            );
+            assert!(n.ends_with(".png"), "{hostile:?} -> {n:?}");
+            assert!(
+                Path::new(&n).components().count() == 1,
+                "{hostile:?} -> {n:?}"
+            );
+        }
+        assert_eq!(
+            safe_name("shot 1 (final).PNG", "image/png"),
+            "shot_1__final.png"
+        );
+        // The extension follows the bytes, not the sender: a JPEG called .png is saved .jpg.
+        assert_eq!(safe_name("a.png", "image/jpeg"), "a.jpg");
+        let long = "x".repeat(500);
+        assert!(safe_name(&long, "image/png").len() <= MAX_NAME);
+    }
+
+    #[test]
+    fn five_images_are_refused_and_four_are_taken() {
+        let four: Vec<_> = (0..4).map(|i| img(&format!("{i}.png"), PNG)).collect();
+        assert_eq!(check("t", &four).unwrap().len(), 4);
+        let five: Vec<_> = (0..5).map(|i| img(&format!("{i}.png"), PNG)).collect();
+        let e = check("t", &five).unwrap_err();
+        assert!(e.contains("at most 4"), "{e}");
+    }
+
+    // The edge: exactly the cap passes, one byte over is refused.
+    #[test]
+    fn the_size_cap_is_five_mib_exactly() {
+        let mut at = PNG.to_vec();
+        at.resize(MAX_BYTES, 0);
+        assert!(check("t", &[img("a.png", &at)]).is_ok());
+        at.push(0);
+        let e = check("t", &[img("a.png", &at)]).unwrap_err();
+        assert!(e.contains("over 5 MiB"), "{e}");
+    }
+
+    #[test]
+    fn an_empty_or_non_image_file_is_refused_by_name() {
+        assert!(
+            check("t", &[img("a.png", b"")])
+                .unwrap_err()
+                .contains("empty")
+        );
+        // Named .png, declared image/png by the client, but it is a script.
+        let e = check("t", &[img("evil.png", b"#!/bin/sh\nrm -rf /")]).unwrap_err();
+        assert!(e.contains("not a png, jpeg, webp or gif"), "{e}");
+        assert!(e.contains("evil.png"), "{e}");
+    }
+
+    // Two screenshots with the same name (every phone camera roll does this) both survive.
+    #[test]
+    fn equal_names_are_made_unique_in_order() {
+        let got = check(
+            "t",
+            &[
+                img("shot.png", PNG),
+                img("shot.png", PNG),
+                img("shot.png", PNG),
+            ],
+        )
+        .unwrap();
+        let names: Vec<_> = got.iter().map(|(a, _)| a.name.as_str()).collect();
+        assert_eq!(names, ["shot.png", "shot-2.png", "shot-3.png"]);
+    }
+
+    #[test]
+    fn the_record_describes_the_bytes() {
+        let got = check("task9", &[img("a.png", PNG)]).unwrap();
+        let (a, bytes) = &got[0];
+        assert_eq!(a.mime, "image/png");
+        assert_eq!(a.bytes_len, PNG.len() as u64);
+        assert_eq!(a.path, ".atlas/attachments/task9/a.png");
+        assert_eq!(a.sha256.len(), 64);
+        assert_eq!(bytes, PNG);
+        // Same bytes, same hash; other bytes, other hash.
+        let again = check("task9", &[img("b.png", PNG)]).unwrap();
+        assert_eq!(again[0].0.sha256, a.sha256);
+        let other = check("task9", &[img("c.jpg", JPG)]).unwrap();
+        assert_ne!(other[0].0.sha256, a.sha256);
+    }
+
+    #[test]
+    fn a_piece_is_at_most_a_chunk_and_the_last_says_so() {
+        let bytes = vec![7u8; CHUNK * 2 + 10];
+        let (a, last) = piece(&bytes, 0, None);
+        assert!(!last);
+        assert_eq!(B64.decode(a).unwrap().len(), CHUNK);
+        let (b, last) = piece(&bytes, (CHUNK * 2) as u64, None);
+        assert!(last);
+        assert_eq!(B64.decode(b).unwrap().len(), 10);
+        // A limit over the chunk is clamped; an offset past the end is an empty last piece.
+        let (c, _) = piece(&bytes, 0, Some(u64::MAX));
+        assert_eq!(B64.decode(c).unwrap().len(), CHUNK);
+        let (d, last) = piece(&bytes, u64::MAX, None);
+        assert!(last && d.is_empty());
+    }
+
+    #[test]
+    fn a_huge_base64_string_is_refused_before_it_is_decoded() {
+        let huge = "A".repeat(MAX_BYTES * 2);
+        assert!(decode("a.png", &huge).unwrap_err().contains("over 5 MiB"));
+        assert!(
+            decode("a.png", "!!!not base64")
+                .unwrap_err()
+                .contains("base64")
+        );
+        assert_eq!(decode("a.png", &B64.encode(PNG)).unwrap(), PNG);
+    }
+}

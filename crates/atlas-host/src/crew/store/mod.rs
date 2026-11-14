@@ -404,6 +404,10 @@ pub struct Task {
     /// Set once a restart interrupted this task and it was started again: the chat can say so.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resumed: bool,
+    /// Images sent with the prompt (`crew::attachments`): records only, the bytes live next to the task
+    /// and are fetched with `crewmate_attachment`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<super::attachments::Attachment>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -439,6 +443,7 @@ impl Task {
             origin: None,
             restarts: 0,
             resumed: false,
+            attachments: vec![],
         }
     }
 }

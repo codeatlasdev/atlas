@@ -36,6 +36,11 @@ fn api_url(base: &str, token: &str, method: &str) -> String {
     format!("{base}/bot{token}/{method}")
 }
 
+/// Where Telegram serves the files `getFile` names: the same `/bot<token>/` segment, behind `/file`.
+fn file_url(base: &str, token: &str, file_path: &str) -> String {
+    format!("{base}/file/bot{token}/{file_path}")
+}
+
 // ─── link code ───────────────────────────────────────────────────────────────
 
 struct LinkCode {
@@ -392,6 +397,12 @@ impl TelegramBridge {
             return;
         }
 
+        // A photo: its caption is the prompt.
+        if msg["photo"].is_array() {
+            self.handle_photo(chat_id, msg).await;
+            return;
+        }
+
         // /crewmates
         if text == "/crew" {
             if let Some(hub) = self.hub() {
@@ -420,7 +431,7 @@ impl TelegramBridge {
                     .await;
                 return;
             }
-            self.create_task(chat_id, name, prompt).await;
+            self.create_task(chat_id, name, prompt, &[]).await;
             return;
         }
 
@@ -429,7 +440,7 @@ impl TelegramBridge {
             let crewmates = hub.crew.store.list_crewmates();
             if crewmates.len() == 1 {
                 let name = crewmates[0].name.clone();
-                self.create_task(chat_id, &name, text).await;
+                self.create_task(chat_id, &name, text, &[]).await;
             } else {
                 self.reply(chat_id, "Which crewmate? Use /task <name> <text>")
                     .await;
@@ -437,7 +448,130 @@ impl TelegramBridge {
         }
     }
 
-    async fn create_task(&self, chat_id: i64, crewmate_name: &str, prompt: &str) {
+    /// A photo message: the largest size Telegram made of it becomes the image of a task whose prompt is the
+    /// caption (`/task <name> <text>` picks the crewmate; without it a single crewmate takes it). Telegram sends
+    /// every size of one photo in one message, smallest first; an album is several messages.
+    async fn handle_photo(&self, chat_id: i64, msg: &Value) {
+        let Some(hub) = self.hub() else {
+            return;
+        };
+        let caption = msg["caption"].as_str().unwrap_or("").trim();
+        let (name, prompt) = match caption.strip_prefix("/task ") {
+            Some(rest) => match rest.split_once(' ') {
+                Some((n, p)) => (Some(n.trim().to_string()), p.trim()),
+                None => (Some(rest.trim().to_string()), ""),
+            },
+            None => (None, caption),
+        };
+        let prompt = if prompt.is_empty() {
+            "Look at the attached image."
+        } else {
+            prompt
+        };
+        let name = match name {
+            Some(n) => n,
+            None => {
+                let crewmates = hub.crew.store.list_crewmates();
+                if crewmates.len() != 1 {
+                    self.reply(
+                        chat_id,
+                        "Which crewmate? Send the photo with the caption /task <name> <text>",
+                    )
+                    .await;
+                    return;
+                }
+                crewmates[0].name.clone()
+            }
+        };
+        let Some(file_id) = msg["photo"]
+            .as_array()
+            .and_then(|sizes| {
+                sizes.iter().max_by_key(|s| {
+                    s["width"].as_u64().unwrap_or(0) * s["height"].as_u64().unwrap_or(0)
+                })
+            })
+            .and_then(|s| s["file_id"].as_str())
+        else {
+            return;
+        };
+        match self.download_file(file_id).await {
+            Ok(bytes) => {
+                let image = crate::crew::attachments::Incoming {
+                    name: format!("telegram-{}.jpg", msg["message_id"].as_i64().unwrap_or(0)),
+                    bytes,
+                };
+                self.create_task(chat_id, &name, prompt, &[image]).await;
+            }
+            Err(e) => {
+                self.reply(
+                    chat_id,
+                    &format!("Not queued: the photo could not be fetched ({e})"),
+                )
+                .await;
+            }
+        }
+    }
+
+    /// The bytes of a Telegram file: `getFile` for its path, then the file endpoint. Through the same base URL
+    /// and `/bot<token>/` segment as every other call (`api_url`, `file_url`), never more than the image cap.
+    async fn download_file(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        let token = self.config.lock().token.clone();
+        if token.is_empty() {
+            return Err("no token".into());
+        }
+        let client = crate::crew::push::HTTP
+            .as_ref()
+            .ok_or_else(|| "no http client".to_string())?;
+        let info: Value = client
+            .post(api_url(&self.api_base, &token, "getFile"))
+            .json(&json!({"file_id": file_id}))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+        let path = info["result"]["file_path"]
+            .as_str()
+            .filter(|_| info["ok"] == true)
+            .ok_or_else(|| "getFile refused".to_string())?;
+        // Telegram says how big it is before it is downloaded: refuse an oversize file without fetching it.
+        if info["result"]["file_size"].as_u64().unwrap_or(0)
+            > crate::crew::attachments::MAX_BYTES as u64
+        {
+            return Err(format!(
+                "over {} MiB",
+                crate::crew::attachments::MAX_BYTES / (1024 * 1024)
+            ));
+        }
+        let mut resp = client
+            .get(file_url(&self.api_base, &token, path))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("HTTP {}", resp.status()));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() > crate::crew::attachments::MAX_BYTES {
+                return Err(format!(
+                    "over {} MiB",
+                    crate::crew::attachments::MAX_BYTES / (1024 * 1024)
+                ));
+            }
+        }
+        Ok(bytes)
+    }
+
+    async fn create_task(
+        &self,
+        chat_id: i64,
+        crewmate_name: &str,
+        prompt: &str,
+        images: &[crate::crew::attachments::Incoming],
+    ) {
         let Some(hub) = self.hub() else {
             return;
         };
@@ -456,9 +590,20 @@ impl TelegramBridge {
                 .await;
             return;
         }
-        let task = crate::crew::store::Task::new("telegram", prompt);
+        let mut task = crate::crew::store::Task::new("telegram", prompt);
         let task_id = task.id.clone();
+        if let Err(e) =
+            crate::crew::attachments::attach(&hub.crew.store, &crewmate.id, &mut task, images)
+        {
+            self.reply(chat_id, &format!("Not queued: {e}")).await;
+            return;
+        }
         if let Err(e) = hub.crew.store.append_task(&crewmate.id, &task) {
+            let _ = std::fs::remove_dir_all(crate::crew::attachments::task_dir(
+                &hub.crew.store,
+                &crewmate.id,
+                &task.id,
+            ));
             self.reply(chat_id, &format!("Error: {e}")).await;
             return;
         }

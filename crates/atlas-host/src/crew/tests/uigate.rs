@@ -57,7 +57,8 @@ async fn the_ui_gate_round_trip_plans_captures_hits_the_cache_and_replays_a_regr
     assert_eq!(v["scenarios"].as_array().unwrap().len(), 1);
     assert_eq!(v["scenarios"][0]["captures"].as_array().unwrap().len(), 8);
     assert_eq!(runs(), 1);
-    let kept = dir.join("crew").join(&id).join("captures").join("task9");
+    // The gate's own folder (its shots and verdicts), not the task's attachments.
+    let kept = dir.join("crew").join(&id).join("ui-gate").join("task9");
     for n in v["scenarios"][0]["captures"].as_array().unwrap() {
         assert!(kept.join(n.as_str().unwrap()).is_file(), "{n}");
     }

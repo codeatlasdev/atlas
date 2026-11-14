@@ -30,6 +30,7 @@
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
+//! | `prove_ui`    | a `ui` task needs two agent captures to be done: the card, override/retry, Telegram |
 
 pub(crate) mod github_fake;
 mod github_in;
@@ -68,6 +69,8 @@ mod mobile_payloads;
 mod pause;
 #[cfg(unix)]
 mod projects;
+#[cfg(unix)]
+mod prove_ui;
 #[cfg(unix)]
 mod push;
 #[cfg(unix)]

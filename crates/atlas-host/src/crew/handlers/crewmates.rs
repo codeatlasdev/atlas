@@ -111,6 +111,31 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
             if let Some(l) = last {
                 v["last"] = l;
             }
+            // A task parked on a card (a guard refused it, a UI task owes captures, a question): the
+            // phone's "Captain's call" shows it with the agent's captures. Only the agent's images are
+            // listed (the owner's own are under their prompt), as records: the bytes are fetched.
+            if let Some(t) = hub
+                .crew
+                .store
+                .read_tasks(&b.id, 20)
+                .into_iter()
+                .rev()
+                .find(|t| {
+                    t.state == crate::crew::store::TaskState::WaitingAction && t.action.is_some()
+                })
+            {
+                let agent: Vec<_> = t
+                    .attachments
+                    .iter()
+                    .filter(|a| a.source == crate::crew::attachments::SOURCE_AGENT)
+                    .collect();
+                v["waiting_task"] = json!({
+                    "id": t.id,
+                    "action": t.action,
+                    "result": t.result,
+                    "attachments": agent,
+                });
+            }
             if let Some(engine) = &b.engine {
                 let approval_supported = crate::crew::engine::can_ask(&engine.kind);
                 v["engine"] = json!({"kind": engine.kind});

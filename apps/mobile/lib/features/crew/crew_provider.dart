@@ -74,6 +74,27 @@ Future<void> answerApproval(
   });
 }
 
+/// Answers the card a task is parked on (`refused` / `prove_ui`: `retry` or `override`) from the list; the list
+/// follows by the `crewmate_task` push. Throws a [StateError] with the server's message when it refuses.
+Future<void> answerWaitingAction(
+  WidgetRef ref,
+  MacDevice device,
+  String crewmateId,
+  CrewmateWaitingTask task,
+  String value,
+) async {
+  final mux = ref.read(connectionNotifierProvider(device)).value;
+  if (mux == null) throw StateError('${device.name} is offline');
+  final resp = await mux.call('crewmate_action_answer', {
+    'id': crewmateId,
+    'task': task.id,
+    'value': value,
+  });
+  if (resp['ok'] != true) {
+    throw StateError(resp['error'] as String? ?? 'the server refused');
+  }
+}
+
 /// Every computer that can host crewmates: the paired Macs (one may be a crew server
 /// itself) and the crew servers each Mac's desktop knows, reached through that Mac.
 /// In the demo, the demo computer stands in for the paired ones (as on the home).

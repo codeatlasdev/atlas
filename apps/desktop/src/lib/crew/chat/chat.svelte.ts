@@ -7,8 +7,8 @@ import { toast } from "@codeatlasdev/ui";
 import { errText } from "#lib/api.ts";
 import { hostCall } from "#lib/host.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
-import { expandKey, withKey } from "./taskView.ts";
-import { addImages, type PendingImage } from "#lib/crew/attachments.ts";
+import { UI_USAGE, expandKey, splitUi, withKey } from "./taskView.ts";
+import { addImages, toSent, type PendingImage } from "#lib/crew/attachments.ts";
 
 /** Host args for a call on the selected crew server ("" is the local hostd). */
 function hostArgs(): { host?: string } {
@@ -40,6 +40,8 @@ export class ChatState {
 	// action cards: taskId -> value (secrets are never logged)
 	actionInputs = $state<Record<string, string>>({});
 	actionSecrets = $state<Record<string, string>>({});
+	/** Images the owner added to a card (a marked screenshot), sent with a retry. */
+	actionImages = $state<Record<string, PendingImage[]>>({});
 	actionSubmitting = $state<Set<string>>(new Set());
 
 	// ─── composer ──────────────────────────────────────────────────────────
@@ -49,7 +51,14 @@ export class ChatState {
 		if (!this.prompt.trim() || this.sending) return;
 		this.sending = true;
 		try {
-			await crew.sendTask(this.prompt.trim(), withImages ? this.images : []);
+			const { ui, prompt } = splitUi(this.prompt.trim());
+			// A bare `/ui` is not a task (an empty prompt is never useful): say how to use it, send nothing,
+			// and leave what was typed in the box.
+			if (ui && !prompt) {
+				toast.error(UI_USAGE);
+				return;
+			}
+			await crew.sendTask(prompt, withImages ? this.images : [], ui);
 			this.prompt = "";
 			if (withImages) this.images = [];
 		} catch (e) {
@@ -107,16 +116,43 @@ export class ChatState {
 	async answerAction(taskId: string, crewmateId: string, value: string): Promise<void> {
 		this.actionSubmitting = withKey(this.actionSubmitting, taskId, true);
 		try {
-			await hostCall("crewmate_action_answer", { ...hostArgs(), id: crewmateId, task: taskId, value });
+			// A marked screenshot belongs to a new attempt: only a retry carries it (hostd refuses it on an
+			// override), and it goes the way a task's images go (inline, or uploaded in pieces).
+			const images = value === "retry" ? (this.actionImages[taskId] ?? []) : [];
+			const route = { ...hostArgs(), id: crewmateId };
+			const attachments = await toSent(
+				images,
+				(cmd, args) => hostCall(cmd, args),
+				() => crypto.randomUUID(),
+				route,
+			);
+			await hostCall("crewmate_action_answer", { ...route, task: taskId, value, attachments });
 			const i = { ...this.actionInputs };
 			delete i[taskId];
 			this.actionInputs = i;
 			const s = { ...this.actionSecrets };
 			delete s[taskId];
 			this.actionSecrets = s;
+			const m = { ...this.actionImages };
+			delete m[taskId];
+			this.actionImages = m;
 		} finally {
 			this.actionSubmitting = withKey(this.actionSubmitting, taskId, false);
 		}
+	}
+
+	/** Images from the picker or a paste join the ones waiting on this task's card; each refusal is a toast. */
+	async attachToAction(taskId: string, files: File[]): Promise<void> {
+		const r = await addImages(this.actionImages[taskId] ?? [], files);
+		this.actionImages = { ...this.actionImages, [taskId]: r.images };
+		for (const msg of r.errors) toast.error(msg);
+	}
+
+	removeActionImage(taskId: string, index: number): void {
+		this.actionImages = {
+			...this.actionImages,
+			[taskId]: (this.actionImages[taskId] ?? []).filter((_, i) => i !== index),
+		};
 	}
 
 	async cancelAction(taskId: string, crewmateId: string): Promise<void> {

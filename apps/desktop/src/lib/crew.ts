@@ -28,7 +28,8 @@ export type TaskAction =
 	| { kind: "choose"; question: string; options: string[] }
 	| { kind: "sign_in_engine"; engine: string }
 	| { kind: "add_trigger"; trigger: Trigger["kind"]; prompt: string; reason: string }
-	| { kind: "refused"; reasons: string[] };
+	| { kind: "refused"; reasons: string[] }
+	| { kind: "prove_ui"; reason: string };
 
 // ─── Triggers ────────────────────────────────────────────────────────────────
 
@@ -229,6 +230,8 @@ export interface CrewmateTask {
 	origin?: GithubOrigin;
 	/** Images sent with the prompt; the bytes are fetched with `crewmate_attachment` (`lib/crew/attachments.ts`). */
 	attachments?: Attachment[];
+	/** The task changes what people see: it is only done with two captures the agent took (`prove_ui` otherwise). */
+	ui?: boolean;
 }
 
 export interface CrewSettingsData {

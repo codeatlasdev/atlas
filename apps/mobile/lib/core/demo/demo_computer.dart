@@ -20,6 +20,11 @@ bool isDemo(MacDevice d) => d.nodeId == demoDevice.nodeId;
 Transport demoTransport({List<Map<String, String>> integrations = const []}) =>
     _DemoComputer(integrations);
 
+/// A real 1x1 PNG: the capture the demo agent "took", which the thread and the cards decode and draw.
+final _demoCapture = base64.decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+);
+
 int _now() => DateTime.now().millisecondsSinceEpoch;
 
 /// Crewmate tasks and `last` carry SECONDS (hostd crew/store.rs `now_s()`); agent status, ms.
@@ -574,12 +579,16 @@ class _DemoComputer implements Transport {
           args['prompt'] as String? ?? '',
           args['source'] as String? ?? 'mobile',
           (args['attachments'] as List?) ?? const [],
+          ui: args['ui'] as bool? ?? false,
         );
         data = error == null
             ? {
                 'task': {'id': 'task-$_seq', 'state': 'queued'},
               }
             : null;
+      case 'crewmate_action_answer':
+        error = _answerAction(args);
+        data = error == null ? <String, Object?>{} : null;
       case 'crewmate_attachment_put':
         error = _putPiece(args);
         data = error == null ? <String, Object?>{'staged': 0} : null;
@@ -918,8 +927,9 @@ class _DemoComputer implements Transport {
   /// records and keeps the bytes by task and name, or the refusal.
   ({List<Map<String, dynamic>> records, String? error}) _takeImages(
     String taskId,
-    List<dynamic> sent,
-  ) {
+    List<dynamic> sent, {
+    List<dynamic> existing = const [],
+  }) {
     if (sent.length > maxAttachments) {
       return (
         records: const [],
@@ -971,7 +981,10 @@ class _DemoComputer implements Transport {
           ? 'image.${imageExt[mime]}'
           : safe;
       var unique = base;
-      for (var n = 2; records.any((r) => r['name'] == unique); n++) {
+      bool taken(String n) =>
+          records.any((r) => r['name'] == n) ||
+          existing.any((r) => (r as Map)['name'] == n);
+      for (var n = 2; taken(unique); n++) {
         final dot = base.lastIndexOf('.');
         unique = dot < 0
             ? '$base-$n'
@@ -1076,8 +1089,9 @@ class _DemoComputer implements Transport {
     String? crewmateId,
     String prompt,
     String source,
-    List<dynamic> images,
-  ) {
+    List<dynamic> images, {
+    bool ui = false,
+  }) {
     final crewmate = _crewmates[crewmateId];
     if (crewmate == null) return 'crewmate not found';
     final taskId = 'task-${_seq + 1}';
@@ -1097,6 +1111,7 @@ class _DemoComputer implements Transport {
       'finished_at': null,
       'steps': <Object?>[],
       if (taken.records.isNotEmpty) 'attachments': taken.records,
+      if (ui) 'ui': true,
     };
     crewmate.tasks.insert(0, task);
     crewmate.queued++;
@@ -1109,6 +1124,7 @@ class _DemoComputer implements Transport {
       _pushCrewmateTask(crewmate, task);
     });
     _later(const Duration(milliseconds: 2800), () {
+      if (ui) return _parkUnproven(crewmate, task);
       task['state'] = 'done';
       task['finished_at'] = demoNowSeconds();
       task['result'] =
@@ -1121,6 +1137,77 @@ class _DemoComputer implements Transport {
       };
       _pushCrewmateTask(crewmate, task);
     });
+    return null;
+  }
+
+  /// A UI task finishes with one capture of its own: not the two it needs, so it parks on `prove_ui` like
+  /// hostd's gate does (`runner/gate.rs`), with the capture attached as the agent's image.
+  void _parkUnproven(DemoCrewmate crewmate, Map<String, dynamic> task) {
+    final id = task['id'] as String;
+    final name = 'chromium-390-light.png';
+    _images['$id/$name'] = (mime: 'image/png', bytes: _demoCapture);
+    final records = [...?(task['attachments'] as List?)];
+    records.add({
+      'name': name,
+      'mime': 'image/png',
+      'bytes_len': _demoCapture.length,
+      'sha256': _digest(_demoCapture),
+      'path': '.atlas/attachments/$id/$name',
+      'source': 'agent',
+    });
+    task['attachments'] = records;
+    task['state'] = 'waiting_action';
+    task['result'] = 'Restyled the header.';
+    task['action'] = {
+      'kind': 'prove_ui',
+      'reason': 'Could not prove it: this is a UI task and the agent attached 1 of 2 captures. It must look at the result (the capture tool: before and after, top and end of the page) before it is done.',
+    };
+    crewmate.state = 'idle';
+    crewmate.waiting = task;
+    _pushCrewmateTask(crewmate, task);
+  }
+
+  /// `crewmate_action_answer` for the cards the demo raises: `override` accepts the work, `retry` runs it
+  /// again (with the owner's marked screenshot stored on the task); images go with a retry only, checked
+  /// with the same rules as a task's. Anything else is refused, and the card keeps waiting.
+  String? _answerAction(Map<String, dynamic> args) {
+    final crewmate = _crewmates[args['id'] as String?];
+    final task = crewmate?.tasks
+        .where((t) => t['id'] == args['task'] && t['state'] == 'waiting_action')
+        .firstOrNull;
+    if (crewmate == null || task == null) {
+      return 'no waiting-action task ${args['task']} for crewmate ${args['id']}';
+    }
+    final value = args['value'] as String? ?? '';
+    final kind = (task['action'] as Map?)?['kind'];
+    if (kind != 'prove_ui' && kind != 'refused') return null;
+    if (value != 'override' && value != 'retry') {
+      return 'this card is answered with "override" or "retry"';
+    }
+    final sent = (args['attachments'] as List?) ?? const [];
+    if (sent.isNotEmpty && value != 'retry') {
+      return 'images go with a retry, not with an override';
+    }
+    final existing = (task['attachments'] as List?) ?? const [];
+    final taken = _takeImages(task['id'] as String, sent, existing: existing);
+    if (taken.error != null) return taken.error;
+    task['attachments'] = [...existing, ...taken.records];
+    task['action'] = null;
+    crewmate.waiting = null;
+    if (value == 'override') {
+      task['state'] = 'done';
+      task['finished_at'] = demoNowSeconds();
+      _pushCrewmateTask(crewmate, task);
+    } else {
+      // Run again: the demo agent takes its second capture and the work is proven.
+      task['state'] = 'running';
+      _pushCrewmateTask(crewmate, task);
+      _later(const Duration(milliseconds: 1500), () {
+        task['state'] = 'done';
+        task['finished_at'] = demoNowSeconds();
+        _pushCrewmateTask(crewmate, task);
+      });
+    }
     return null;
   }
 

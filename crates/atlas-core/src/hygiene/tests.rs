@@ -473,6 +473,29 @@ fn a_reused_pid_is_never_signalled() {
     assert!(crate::sys::pid_alive(me));
 }
 
+// Regression: the lock budget was 200 tries of a 10 ms sleep, so a writer that waited ~2 s behind
+// others failed with "hygiene registry is locked" and its root was never recorded (an orphan it
+// would have reaped). Windows CI hit it with 8 concurrent writers (sleep is ~15.6 ms there and every
+// save fsyncs). A writer held up longer than that old budget must still get its turn.
+#[test]
+fn a_writer_waits_out_a_lock_held_longer_than_two_seconds() {
+    let (d, reg) = registry();
+    reg.add_root(root("first", Owner::current(), 1, 1)).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .write(true)
+        .open(d.path().join("hygiene/registry.lock"))
+        .unwrap();
+    assert!(crate::sys::try_lock(&lock).unwrap());
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(3000));
+        drop(lock);
+    });
+    reg.add_root(root("second", Owner::current(), 2, 1))
+        .expect("a 3 s wait is inside the budget");
+    release.join().unwrap();
+    assert_eq!(reg.roots().len(), 2);
+}
+
 #[test]
 fn the_registry_survives_concurrent_writers_and_replaces_a_repeated_root_or_dir() {
     let (d, reg) = registry();

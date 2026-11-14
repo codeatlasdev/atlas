@@ -13,7 +13,9 @@
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
 
+mod apt;
 mod binary;
+mod browsers;
 pub mod install;
 mod isolation;
 mod layout;
@@ -58,6 +60,8 @@ pub enum CrewCommands {
     Resume(PauseArgs),
     /// Open an interactive agent sign-in session as the crew user on a server
     Login(LoginArgs),
+    /// Install or check the browsers behind the crewmates' `capture` tool (Playwright chromium + webkit)
+    Browsers(browsers::BrowsersArgs),
 }
 
 impl AtlasCommand for CrewArgs {
@@ -73,6 +77,7 @@ impl AtlasCommand for CrewArgs {
             CrewCommands::Pause(a) => a.run(true).await,
             CrewCommands::Resume(a) => a.run(false).await,
             CrewCommands::Login(a) => a.run().await,
+            CrewCommands::Browsers(a) => a.run().await,
         }
     }
 }

@@ -10,6 +10,7 @@
 //! | `engine`    | the conversational engines (omp, claude, codex, opencode)                   |
 //! | `store`     | on-disk definitions, task logs, secrets, usage (`<hostd dir>/crew/<id>/`)   |
 //! | `triggers`  | webhook, GitHub, file, service, crewmate-chain and schedule triggers        |
+//! | `capture`   | the `capture` tool: Playwright screenshots of a URL, widths x themes x engines |
 //! | `schedule`  | cron routines                                                               |
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
@@ -20,6 +21,7 @@
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
 
 pub(crate) mod audit;
+pub mod capture;
 pub(crate) mod engine;
 pub(crate) mod events;
 pub(crate) mod github;

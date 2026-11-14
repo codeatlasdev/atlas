@@ -413,7 +413,7 @@ affected:
       routes: ['/docs']
 ```
 
-**Results per task.** Each scenario's verdict (pass/fail, capture names, the problems found) is saved in `<crewmate dir>/captures/<task id>/ui-gate.json` after every scenario, so a restart, or a killed run, still knows what failed. The shots are kept next to it as `<scenario id>-<engine>-<width>-<theme>.png`.
+**Results per task.** Each scenario's verdict (pass/fail, capture names, the problems found) is saved in `<crewmate dir>/ui-gate/<task id>/ui-gate.json` after every scenario, so a restart, or a killed run, still knows what failed. The shots are kept next to it as `<scenario id>-<engine>-<width>-<theme>.png`.
 
 **Cache.** A scenario's verdict is stored in the [task cache](cli.md) (`~/.atlas/cache`, shared with every worktree and `atlas run --cache`), keyed by the scenario id, the registered checks and the bytes of every project file git does not ignore, uncommitted edits included. A scenario that already passed over the same bytes is a **hit**: the runner is not started and the answer says `"source": "cached"`. Only passes are stored, so a failing scenario is always captured again; a hit whose screenshots are no longer in the task's folder is a miss. The cache cannot see the running app's data: pass `force: true` when the data behind a page changed.
 
@@ -545,14 +545,14 @@ For contributors. One concept per file; the module doc comment at the top of eac
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
     tasks.jsonl                        task log, last state per id wins
-    attachments/<task id>/<name>       images sent with a task (0600), the copy the apps fetch
+    attachments/<task id>/<name>       a task's images (0600): sent with it, or screenshots the agent took (`capture`)
     uploads/<upload id>/               pieces of an image on its way to a task (removed when the task takes it, or after 1 hour without a piece)
     memory.md                          memory, 64 KiB max
     session.json                       agent session to resume
     secrets.json                       secrets (0600)
     usage.jsonl                        per-task usage records
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
-    captures/<task id>/                screenshots of the capture tool, and the UI gate's shots and ui-gate.json
+    ui-gate/<task id>/                 the UI gate's shots and ui-gate.json
 
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled

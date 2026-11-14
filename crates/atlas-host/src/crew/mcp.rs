@@ -549,21 +549,27 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_has_five_tools() {
+    fn tools_list_names_every_tool_exactly_once() {
+        // By name, not by count: a count went stale every time two branches each added a tool.
         let list = tools_list();
-        assert_eq!(list.as_array().unwrap().len(), 5);
-        let names: Vec<&str> = list
+        let mut all: Vec<&str> = list
             .as_array()
             .unwrap()
             .iter()
             .filter_map(|t| t["name"].as_str())
             .collect();
-        assert!(names.contains(&"ask_user"));
-        assert!(names.contains(&"set_profile"));
-        assert!(names.contains(&"approve"));
-        assert!(names.contains(&"capture"));
-        assert!(names.contains(&"ui_gate"));
-        assert!(names.contains(&"set_ui"));
+        all.sort_unstable();
+        assert_eq!(
+            all,
+            [
+                "approve",
+                "ask_user",
+                "capture",
+                "set_profile",
+                "set_ui",
+                "ui_gate"
+            ]
+        );
     }
 
     #[tokio::test]
@@ -596,8 +602,8 @@ mod tests {
         let result = dispatch("tools/list", Value::Null, &client, &env)
             .await
             .unwrap();
-        let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 5);
+        // The same list the MCP client is told about.
+        assert_eq!(result["tools"], tools_list());
     }
 
     #[tokio::test]

@@ -21,6 +21,7 @@ use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Output, Remote};
 
 use super::apt::{self, Deps};
+use super::install::prime_sudo;
 use super::layout::WHICH_USER;
 
 /// The oldest Node the pinned Playwright runs on (its `engines`: `>=20`). Ubuntu 24.04's
@@ -45,15 +46,49 @@ pub enum BrowsersCommands {
 pub struct TargetArgs {
     /// SSH target for the crew server (e.g. user@hostname or hostname)
     pub ssh_target: String,
+    /// SSH port (default 22). Used when the server listens on a non-standard port.
+    #[arg(long, default_value_t = 22)]
+    pub port: u16,
+    /// Read the sudo password from stdin instead of requiring passwordless sudo.
+    /// Used by Atlas Desktop; the password is NEVER placed on argv.
+    #[arg(long, hide = true)]
+    pub sudo_password_stdin: bool,
+}
+
+impl TargetArgs {
+    fn remote(&self) -> Remote {
+        if self.port == 22 {
+            Remote::new(&self.ssh_target)
+        } else {
+            Remote::with_port(&self.ssh_target, self.port)
+        }
+    }
+
+    /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either.
+    async fn prime_sudo(&self, r: &Remote, verb: &str) -> Result<()> {
+        prime_sudo(
+            r,
+            &self.ssh_target,
+            self.sudo_password_stdin,
+            &format!("atlas crew browsers {verb} {}", self.ssh_target),
+        )
+        .await
+    }
 }
 
 impl AtlasCommand for BrowsersArgs {
     async fn run(self) -> Result<()> {
         match self.command {
             BrowsersCommands::Install(a) => {
-                install(&Remote::new(&a.ssh_target), &a.ssh_target).await
+                let r = a.remote();
+                a.prime_sudo(&r, "install").await?;
+                install(&r, &a.ssh_target).await
             }
-            BrowsersCommands::Status(a) => status(&Remote::new(&a.ssh_target), &a.ssh_target).await,
+            BrowsersCommands::Status(a) => {
+                let r = a.remote();
+                a.prime_sudo(&r, "status").await?;
+                status(&r, &a.ssh_target).await
+            }
         }
     }
 }
@@ -275,25 +310,41 @@ pub async fn install(r: &Remote, target: &str) -> Result<()> {
     Ok(())
 }
 
+/// What `status` prints on stdout for the host's answer (`code`, `stdout` of the status script): the ready line, or
+/// one red `✗ ` line per missing piece. Not a success when the script said nothing and failed, or ssh failed (255).
+/// Atlas Desktop reads exactly this text (`apps/desktop/src/lib/crew/browsers.ts`).
+fn status_report(target: &str, code: Option<i32>, stdout: &str) -> Result<String> {
+    let lines = stdout.trim();
+    if code == Some(255) {
+        bail!("cannot reach {target}");
+    }
+    if lines.is_empty() {
+        if code == Some(0) {
+            return Ok(format!(
+                "\x1b[32m✓\x1b[0m capture is ready on {target} (playwright {PLAYWRIGHT_VERSION}: chromium, webkit).\n"
+            ));
+        }
+        bail!("checking {target} failed");
+    }
+    Ok(lines
+        .lines()
+        .map(|l| format!("\x1b[31m✗\x1b[0m {l}\n"))
+        .collect())
+}
+
 async fn status(r: &Remote, target: &str) -> Result<()> {
     let o = r.exec(&status_script()).await?;
     if o.code == 255 {
         bail!("cannot reach {target}: {}", o.stderr.trim());
     }
-    let lines = o.stdout.trim();
-    if lines.is_empty() && o.code == 0 {
-        println!(
-            "\x1b[32m✓\x1b[0m capture is ready on {target} (playwright {PLAYWRIGHT_VERSION}: chromium, webkit)."
-        );
-        return Ok(());
-    }
-    for l in lines.lines() {
-        println!("\x1b[31m✗\x1b[0m {l}");
-    }
-    if lines.is_empty() {
+    if o.stdout.trim().is_empty() && o.code != 0 {
         bail!("checking {target} failed: {}", o.stderr.trim());
     }
-    std::process::exit(1);
+    print!("{}", status_report(target, Some(o.code), &o.stdout)?);
+    if o.code != 0 {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -737,6 +788,47 @@ mod tests {
             !text.contains("deps:"),
             "no launch probe while pieces are missing: {text}"
         );
+        // Contract with Atlas Desktop (`parseBrowsersStatus`, `crew_browsers_status`): what the command prints for
+        // this real output is committed as a fixture both read. `UPDATE_FIXTURES=1` regenerates it.
+        let printed = status_report("ubuntu@srv", out.status.code(), &text).unwrap();
+        check_fixture("browsers-status-missing.txt", &printed);
+        check_fixture(
+            "browsers-status-ready.txt",
+            &status_report("ubuntu@srv", Some(0), "").unwrap(),
+        );
+    }
+
+    #[cfg(unix)]
+    fn check_fixture(name: &str, fresh: &str) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/commands/crew/fixtures")
+            .join(name);
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, fresh).unwrap();
+        }
+        let committed = std::fs::read_to_string(&path)
+            .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it");
+        assert_eq!(
+            committed, fresh,
+            "stale fixture {name}: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    // The text the command prints is a pure function of the host's answer: pieces missing (one line each),
+    // all there, and a failure that is not "missing" (nothing on stdout).
+    #[test]
+    fn status_report_says_what_the_command_prints() {
+        assert_eq!(
+            status_report("h", Some(1), "node: missing (x)\nrunner: missing\n").unwrap(),
+            "\x1b[31m✗\x1b[0m node: missing (x)\n\x1b[31m✗\x1b[0m runner: missing\n"
+        );
+        assert!(
+            status_report("h", Some(0), "")
+                .unwrap()
+                .contains("capture is ready on h (playwright 1.65.1: chromium, webkit)")
+        );
+        assert!(status_report("h", Some(1), "").is_err());
+        assert!(status_report("h", Some(255), "").is_err());
     }
 
     /// Run the install scripts for real (node, npm, `npm ci` from the embedded lock against the

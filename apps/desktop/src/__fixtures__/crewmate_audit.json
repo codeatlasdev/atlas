@@ -9,48 +9,44 @@
       "seq": 8,
       "task_id": "task-fixture",
       "tool_name": "Bash",
-      "ts": 1700000000
-    },
-    {
-      "crewmate_id": "crewmate-fixture",
-      "kind": "approval_asked",
-      "req": "req-fixture",
-      "seq": 7,
-      "task_id": "task-fixture",
-      "tool_input": {
-        "command": "ls"
-      },
-      "tool_name": "Bash",
-      "ts": 1700000001
+      "ts": 1700000008
     },
     {
       "crewmate_id": "crewmate-fixture",
       "error": null,
       "kind": "task_finished",
-      "seq": 6,
+      "seq": 7,
       "source": "test",
       "state": "done",
       "task_id": "task-fixture",
-      "ts": 1700000002
+      "ts": 1700000007
     },
     {
       "crewmate_id": "crewmate-fixture",
-      "kind": "tool_call",
+      "field": "approval",
+      "from": "auto",
+      "kind": "config_changed",
+      "seq": 6,
+      "to": "ask",
+      "ts": 1700000006
+    },
+    {
+      "crewmate_id": "crewmate-fixture",
+      "kind": "approval_asked",
+      "req": "req-fixture",
       "seq": 5,
       "task_id": "task-fixture",
       "tool_input": {
-        "command": "cargo test -p atlas-host"
+        "command": "ls"
       },
       "tool_name": "Bash",
-      "ts": 1700000003
+      "ts": 1700000005
     },
     {
       "crewmate_id": "crewmate-fixture",
-      "kind": "task_started",
-      "prompt": "run the tests",
+      "kind": "secret_set",
+      "name": "GITHUB_TOKEN",
       "seq": 4,
-      "source": "test",
-      "task_id": "task-fixture",
       "ts": 1700000004
     },
     {
@@ -60,23 +56,27 @@
       "seq": 3,
       "source": "test",
       "task_id": "task-fixture",
-      "ts": 1700000005
+      "ts": 1700000003
     },
     {
       "crewmate_id": "crewmate-fixture",
-      "field": "approval",
-      "from": "auto",
-      "kind": "config_changed",
+      "kind": "task_started",
+      "prompt": "run the tests",
       "seq": 2,
-      "to": "ask",
-      "ts": 1700000006
+      "source": "test",
+      "task_id": "task-fixture",
+      "ts": 1700000002
     },
     {
       "crewmate_id": "crewmate-fixture",
-      "kind": "secret_set",
-      "name": "GITHUB_TOKEN",
+      "kind": "tool_call",
       "seq": 1,
-      "ts": 1700000007
+      "task_id": "task-fixture",
+      "tool_input": {
+        "command": "cargo test -p atlas-host"
+      },
+      "tool_name": "Bash",
+      "ts": 1700000001
     }
   ]
 }

@@ -6,13 +6,15 @@
 //! with step `fetch|add|shared|done|error`. The frontend opens the "Setup"
 //! terminal from the `done` payload (it owns tabs).
 //!
-//! `exec` runs commands, `naming` picks names/offsets, `create` builds a worktree and
-//! `manage` removes, imports and inspects existing ones.
+//! `exec` runs commands, `naming` picks names/offsets, `create` builds a worktree,
+//! `setup_payload` builds the Setup terminal's command and env, and `manage` removes, imports
+//! and inspects existing ones.
 
 mod create;
 mod exec;
 mod manage;
 mod naming;
+mod setup_payload;
 
 pub use create::*;
 pub use manage::*;

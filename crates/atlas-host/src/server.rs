@@ -53,6 +53,9 @@ pub(crate) struct Hub {
     pub(crate) lsp: atlas_lsp::Manager,
     /// Live connections' outgoing queues: LSP pushes are broadcast to all of them.
     pub(crate) subscribers: Mutex<HashMap<u64, Out>>,
+    /// Who a connection is when it is not the desktop or the CLI: `phone:<node id>` for a paired phone's
+    /// session. The crew audit names the answerer of an approval with it (`origin_of`).
+    conn_origins: Mutex<HashMap<u64, String>>,
     /// Open LSP documents → the connection that opened them last. A connection that drops
     /// without `lsp_close` has its documents closed, so idle servers can shut down; a document
     /// re-opened by a reconnected client now belongs to the new connection.
@@ -174,6 +177,22 @@ impl Hub {
 
     pub(crate) fn remove_subscriber(&self, id: u64) {
         self.subscribers.lock().remove(&id);
+        self.conn_origins.lock().remove(&id);
+    }
+
+    /// Name connection `id` (`phone:<node id>`), until it is removed.
+    pub(crate) fn set_origin(&self, id: u64, origin: String) {
+        self.conn_origins.lock().insert(id, origin);
+    }
+
+    /// Who is on connection `id`: what [`set_origin`](Self::set_origin) named, else `desktop` (the desktop
+    /// app and the CLI both reach hostd over its socket).
+    pub(crate) fn origin_of(&self, id: u64) -> String {
+        self.conn_origins
+            .lock()
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| "desktop".to_string())
     }
 
     /// Push `line` to every connection. One over its byte cap (it stopped reading) misses this
@@ -451,6 +470,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         lock,
         lsp: atlas_lsp::Manager::new(dir, atlas_lsp::Config::default(), lsp_tx),
         subscribers: Mutex::new(HashMap::new()),
+        conn_origins: Mutex::new(HashMap::new()),
         lsp_docs: Mutex::new(HashMap::new()),
         agents,
         mobile,
@@ -1077,9 +1097,10 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::MobileSetScopes { node_id, scopes } => {
             hub.mobile.set_scopes(&node_id, scopes).map(|()| json!({}))
         }
-        HostCmd::AgentApprove { pane, req, allow } => {
-            hub.agents.approve(&pane, &req, allow).map(|()| json!({}))
-        }
+        HostCmd::AgentApprove { pane, req, allow } => hub
+            .agents
+            .approve_as(&pane, &req, allow, &hub.origin_of(conn_id))
+            .map(|()| json!({})),
         HostCmd::AgentStatusAll {} => Ok(json!({
             "panes": hub.agents.all(),
             "hook_port": *hub.agents.port.lock(),
@@ -1101,6 +1122,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewmateSecretSet { .. }
         | HostCmd::CrewmateAnswer { .. }
         | HostCmd::CrewmateUsage { .. }
+        | HostCmd::CrewmateAudit { .. }
+        | HostCmd::CrewAudit { .. }
         | HostCmd::EngineLimits {}
         | HostCmd::PushRegister { .. }
         | HostCmd::PushUnregister { .. }

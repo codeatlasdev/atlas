@@ -84,6 +84,7 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
         })
     };
     let conn_id = hub.add_subscriber(push.clone());
+    hub.set_origin(conn_id, format!("phone:{node}"));
     let mut attached = Vec::new();
     let mut link = crate::lab::Link::default();
     while let Some(line) = read_line(&mut lines, LongLine::Close).await {

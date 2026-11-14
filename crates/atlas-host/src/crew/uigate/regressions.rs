@@ -51,7 +51,7 @@ pub fn load(root: &Path) -> Result<Vec<Regression>, String> {
     })?;
     for (i, r) in doc.regressions.iter().enumerate() {
         r.scenario
-            .spec()
+            .spec(false)
             .map_err(|e| format!("ui gate: {FILE}, entry {}: {e}", i + 1))?;
     }
     Ok(doc.regressions)
@@ -59,7 +59,7 @@ pub fn load(root: &Path) -> Result<Vec<Regression>, String> {
 
 /// Register `scenario`; the same scenario again only updates its note. Returns the registry.
 pub fn add(root: &Path, scenario: Scenario, note: &str) -> Result<Vec<Regression>, String> {
-    scenario.spec()?;
+    scenario.spec(false)?;
     let mut all = load(root)?;
     let id = scenario.id()?;
     match all

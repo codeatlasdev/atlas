@@ -11,10 +11,13 @@ use serde_json::json;
 use super::*;
 use crate::crew::capture::Captured;
 
-/// Counts calls per URL; fails the URLs in `fail`.
+/// Counts calls per URL; fails the URLs in `fail`; writes `findings` (a JSON list) next to every
+/// PNG of the URLs in it, the way the runner does when the spec asks for `checks`.
 struct Fake {
     calls: Mutex<Vec<String>>,
     fail: Mutex<Vec<String>>,
+    findings: Mutex<Vec<(String, String)>>,
+    asked_checks: Mutex<Vec<bool>>,
     total: AtomicUsize,
 }
 
@@ -23,6 +26,8 @@ impl Fake {
         Self {
             calls: Mutex::new(vec![]),
             fail: Mutex::new(vec![]),
+            findings: Mutex::new(vec![]),
+            asked_checks: Mutex::new(vec![]),
             total: AtomicUsize::new(0),
         }
     }
@@ -34,6 +39,12 @@ impl Fake {
     }
     fn heal(&self) {
         self.fail.lock().clear();
+        self.findings.lock().clear();
+    }
+    fn find_on(&self, url: &str, findings: serde_json::Value) {
+        self.findings
+            .lock()
+            .push((url.to_string(), findings.to_string()));
     }
     fn reset(&self) {
         self.calls.lock().clear();
@@ -47,7 +58,15 @@ impl Capturer for Fake {
         if self.fail.lock().contains(&spec.url) {
             return Err(format!("capture incomplete. {}: boom", spec.url));
         }
+        self.asked_checks.lock().push(spec.checks);
+        let planted = self
+            .findings
+            .lock()
+            .iter()
+            .find(|(u, _)| *u == spec.url)
+            .map(|(_, f)| f.clone());
         let mut files = vec![];
+        let mut findings = vec![];
         for c in spec.combos() {
             let p = out_dir.join(format!(
                 "{}-{}-{}.png",
@@ -56,12 +75,19 @@ impl Capturer for Fake {
                 c.theme.as_str()
             ));
             std::fs::write(&p, format!("PNG {} {c}", spec.url)).unwrap();
+            // What the runner does when the spec asks for `checks`: a findings file next to the PNG.
+            if spec.checks {
+                let f = crate::crew::capture::detectors::findings_path(&p);
+                std::fs::write(&f, planted.as_deref().unwrap_or("[]")).unwrap();
+                findings.push((c, f));
+            }
             files.push((c, p));
         }
         // The gate never asks for `dom`: no reports.
         Ok(Captured {
             files,
             doms: Vec::new(),
+            findings,
         })
     }
 }
@@ -487,4 +513,146 @@ async fn a_registered_check_fails_the_scenario_and_is_part_of_the_cache_key() {
             .contains("overflow: horizontal scroll"),
         "{v}"
     );
+}
+
+/// The gate with the real registry (the detectors), as `handle` builds it.
+fn with_detectors(w: &World) -> (Vec<Box<dyn Check>>, Ctx<'_, Fake>) {
+    let checks = check::registered();
+    let ctx = Ctx {
+        checks: &[],
+        ..w.ctx()
+    };
+    (checks, ctx)
+}
+
+async fn run_with_detectors(w: &World, file: &str) -> serde_json::Value {
+    let (checks, ctx) = with_detectors(w);
+    let ctx = Ctx {
+        checks: &checks,
+        ..ctx
+    };
+    dispatch(
+        &ctx,
+        Action::from_args(
+            &json!({"action": "run", "base_url": "http://localhost:5173", "files": [file]}),
+        )
+        .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn the_ui_detectors_fail_a_scenario_with_an_error_finding_and_name_what_and_where() {
+    let w = World::new();
+    w.fake.find_on(
+        "http://localhost:5173/docs",
+        json!([
+            {"detector": "empty-band", "severity": "error", "message": "554 px of the page hold no content",
+             "rect": {"x": 0, "y": 81, "width": 390, "height": 554}},
+            {"detector": "raw-text", "severity": "error", "message": "\"user_profile\" looks like an internal identifier", "selector": "h1"},
+            {"detector": "cls", "severity": "warn", "message": "layout shifted 0.04"}
+        ]),
+    );
+    let v = run_with_detectors(&w, "src/docs.svelte").await;
+    assert_eq!(v["passed"], false, "{v}");
+    assert!(
+        w.fake.asked_checks.lock().iter().all(|c| *c),
+        "the gate asks the runner for the detectors"
+    );
+    let problems: Vec<String> = v["scenarios"][0]["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("empty-band: 554 px of the page hold no content")),
+        "{problems:?}"
+    );
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("raw-text:") && p.contains("(h1)")),
+        "the selector is in the message: {problems:?}"
+    );
+    assert!(
+        problems.iter().all(|p| !p.contains("layout shifted 0.04")),
+        "a warning does not fail the gate: {problems:?}"
+    );
+    // 8 cells each: every cell is judged on its own.
+    assert!(
+        problems.iter().any(|p| p.starts_with("webkit/390px/dark:")),
+        "{problems:?}"
+    );
+}
+
+#[tokio::test]
+async fn warnings_alone_pass_and_a_clean_page_passes_and_is_cached() {
+    let w = World::new();
+    w.fake.find_on(
+        "http://localhost:5173/docs",
+        json!([{"detector": "cls", "severity": "warn", "message": "layout shifted 0.04"}]),
+    );
+    let v = run_with_detectors(&w, "src/docs.svelte").await;
+    assert_eq!(v["passed"], true, "{v}");
+    w.fake.reset();
+    let v = run_with_detectors(&w, "src/docs.svelte").await;
+    assert_eq!(v["passed"], true, "{v}");
+    assert!(
+        w.fake.calls().is_empty(),
+        "the clean pass is a cache hit: {v}"
+    );
+}
+
+#[tokio::test]
+async fn a_cell_without_findings_or_with_garbage_fails_the_gate_instead_of_passing_it() {
+    let w = World::new();
+    // The runner wrote nothing for a cell (an old runner): the check cannot run, which fails.
+    let (checks, _) = with_detectors(&w);
+    let tmp = tempfile::tempdir().unwrap();
+    let png = tmp.path().join("chromium-390px-light.png");
+    std::fs::write(&png, "PNG").unwrap();
+    let combo = crate::crew::capture::Combo {
+        engine: crate::crew::capture::spec::Engine::Chromium,
+        width: 390,
+        theme: crate::crew::capture::spec::Theme::Light,
+    };
+    let e = checks[0].run(combo, &png).unwrap_err();
+    assert!(e.contains("wrote no"), "{e}");
+    std::fs::write(
+        tmp.path().join("chromium-390px-light.findings.json"),
+        "{\"nope\": true}",
+    )
+    .unwrap();
+    let e = checks[0].run(combo, &png).unwrap_err();
+    assert!(e.contains("not a list of findings"), "{e}");
+    std::fs::write(tmp.path().join("chromium-390px-light.findings.json"), "[]").unwrap();
+    assert!(checks[0].run(combo, &png).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn fixing_the_page_turns_the_failing_scenario_green_on_rerun() {
+    let w = World::new();
+    w.fake.find_on(
+        "http://localhost:5173/docs",
+        json!([{"detector": "gutter", "severity": "error", "message": "4.0 px from the left edge", "selector": "p"}]),
+    );
+    let v = run_with_detectors(&w, "src/docs.svelte").await;
+    assert_eq!(v["passed"], false, "{v}");
+    w.fake.heal();
+    let (checks, ctx) = with_detectors(&w);
+    let ctx = Ctx {
+        checks: &checks,
+        ..ctx
+    };
+    let v = dispatch(
+        &ctx,
+        Action::from_args(&json!({"action": "rerun_failed"})).unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["passed"], true, "{v}");
 }

@@ -12,7 +12,9 @@
 //! functions, pinned by tests; `atlas crew install --browsers` runs the same [`install`].
 
 use anyhow::{Result, bail};
-use atlas_host::crew::capture::{PACKAGE_LOCK, PLAYWRIGHT_VERSION, RUNNER_MJS, package_json};
+use atlas_host::crew::capture::{
+    DETECTORS_MJS, PACKAGE_LOCK, PLAYWRIGHT_VERSION, RUNNER_MJS, package_json,
+};
 use clap::{Args, Subcommand};
 
 use crate::commands::AtlasCommand;
@@ -89,7 +91,7 @@ pub fn mkdir_script() -> String {
 }
 
 /// As the crew user: write `file` of the capture dir from stdin (the caller pipes the text; a
-/// rewrite of the same text is harmless). `file` is one of our three constants, never user input.
+/// rewrite of the same text is harmless). `file` is one of our four constants, never user input.
 pub fn write_file_script(file: &str) -> String {
     format!("{}as sh -c 'cat > \"$1\"' _ \"$d/{file}\"", prelude())
 }
@@ -131,6 +133,7 @@ pub fn status_script() -> String {
         "{prelude}miss=0; m() {{ echo \"$1\"; miss=1; }}; \
          nc=$({node_check}); [ -z \"$nc\" ] || {{ echo \"$nc\"; miss=1; }}; \
          [ -f \"$d/runner.mjs\" ] || m 'runner: missing, run atlas crew browsers install'; \
+         [ -f \"$d/detectors.mjs\" ] || m 'detectors: missing (the runner imports it), run atlas crew browsers install'; \
          if [ ! -d \"$d/node_modules/playwright\" ]; then m 'playwright: package missing, run atlas crew browsers install'; \
          else v=$(sed -n 's/.*\"version\": *\"\\([^\"]*\\)\".*/\\1/p' \"$d/node_modules/playwright/package.json\" | head -n1); \
          [ \"$v\" = {pin} ] || m \"playwright: $v installed, atlas wants {pin}: run atlas crew browsers install\"; fi; \
@@ -179,6 +182,7 @@ pub async fn install(r: &Remote, target: &str) -> Result<()> {
         ("package.json", package_json()),
         ("package-lock.json", PACKAGE_LOCK.to_string()),
         ("runner.mjs", RUNNER_MJS.to_string()),
+        ("detectors.mjs", DETECTORS_MJS.to_string()),
     ] {
         let o = r
             .exec_stdin(&write_file_script(file), Some(text.as_bytes()))
@@ -424,6 +428,7 @@ mod tests {
         let s = status_script();
         for piece in [
             "runner: missing",
+            "detectors: missing",
             "playwright: package missing",
             "browsers: $e missing",
             "deps: $e does not start",
@@ -646,6 +651,7 @@ mod tests {
                 ("package.json", package_json()),
                 ("package-lock.json", PACKAGE_LOCK.to_string()),
                 ("runner.mjs", RUNNER_MJS.to_string()),
+                ("detectors.mjs", DETECTORS_MJS.to_string()),
             ] {
                 ok(&sh(&write_file_script(file), Some(&text)), file);
             }
@@ -660,6 +666,11 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(cap.join("runner.mjs")).unwrap(),
             RUNNER_MJS
+        );
+        assert_eq!(
+            std::fs::read_to_string(cap.join("detectors.mjs")).unwrap(),
+            DETECTORS_MJS,
+            "the runner imports it: without the file the whole capture dies at load"
         );
         // The lock was honoured: the installed package is exactly the pin.
         let pkg =

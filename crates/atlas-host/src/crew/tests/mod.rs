@@ -15,6 +15,7 @@
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
+//! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
 //! | `untrusted`   | text from GitHub/webhooks: author filter, quoting, no bypass flags       |
 
@@ -38,6 +39,8 @@ mod limits;
 mod pause;
 #[cfg(unix)]
 mod projects;
+#[cfg(unix)]
+mod push;
 #[cfg(unix)]
 mod tasks;
 #[cfg(unix)]

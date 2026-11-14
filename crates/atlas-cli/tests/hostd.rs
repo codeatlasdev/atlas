@@ -286,10 +286,18 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
+    // `after` waits for `go`, created once the raw attach is in place: with `sleep 0.4` a loaded
+    // runner (load 66) finished the program before the attach and `exited` was already set.
+    // `before` may land before or after the attach; either way it reaches the reader (replay or live).
+    let go = dir.join("go-raw");
+    let script = format!(
+        "printf before; while [ ! -e '{}' ]; do sleep 0.01; done; printf after",
+        go.display()
+    );
     let pty = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "printf before; sleep 0.4; printf after"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -301,6 +309,7 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
         .await
         .unwrap();
     assert!(raw.info["exited"].is_null());
+    std::fs::write(&go, b"").unwrap();
     let mut out = Vec::new();
     // EOF arrives when the pty exits; bytes are unframed (no JSON, no base64).
     tokio::time::timeout(Duration::from_secs(5), raw.reader.read_to_end(&mut out))
@@ -309,12 +318,19 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&out), "beforeafter");
 
-    // Events-only attach (`output: false`): exit arrives, output does not.
+    // Events-only attach (`output: false`): exit arrives, output does not. The program waits for
+    // `go`, created after the attach: with `sleep 0.2` alone a loaded runner could finish it before
+    // the attach, and its `pty_exit` went to nobody (seen at load 46). Same gate as the title tests.
     let mut ev = c.events();
+    let go = dir.join("go-events-only");
+    let script = format!(
+        "while [ ! -e '{}' ]; do sleep 0.01; done; printf x",
+        go.display()
+    );
     let pty2 = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "sleep 0.2; printf x"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -324,6 +340,7 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
     c.call("pty_attach", json!({"pty": pty2, "output": false}))
         .await
         .unwrap();
+    std::fs::write(&go, b"").unwrap();
     loop {
         let e = tokio::time::timeout(Duration::from_secs(5), ev.recv())
             .await

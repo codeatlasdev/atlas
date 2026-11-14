@@ -4,6 +4,7 @@ mod loader;
 mod project;
 mod selection;
 mod validate;
+mod worktree_setup;
 
 pub use agents::{AgentsPolicy, Mode as AgentMode, POLICY_TOOLS, Verdict};
 pub use loader::{

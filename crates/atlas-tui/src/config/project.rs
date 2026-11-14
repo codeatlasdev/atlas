@@ -220,11 +220,14 @@ pub struct ProjectConfig {
 }
 
 /// `worktree:` — used by Atlas Desktop when it creates/deletes a git worktree.
-#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct WorktreeConfig {
     /// Run (`sh -c`, cwd = new worktree) after creation. Env: ATLAS_ROOT_PATH,
-    /// ATLAS_WORKTREE_PATH, ATLAS_WORKSPACE_NAME, ATLAS_PORT_OFFSET.
+    /// ATLAS_WORKTREE_PATH, ATLAS_WORKSPACE_NAME, ATLAS_PORT_OFFSET. A `{{action: <label or
+    /// key>}}` step is replaced by that action's command, through the task cache when the action
+    /// has a `cache:` block: a worktree with the same input bytes restores the outputs instead
+    /// of rebuilding. Quote the value in YAML (`: ` starts a mapping in a plain scalar).
     pub setup: Option<String>,
     /// Run before the worktree is deleted.
     pub archive: Option<String>,
@@ -240,9 +243,35 @@ pub struct WorktreeConfig {
     /// skipped, never copied in full.
     #[serde(default)]
     pub seed: Option<Vec<String>>,
+    /// Point bun (`BUN_INSTALL_CACHE_DIR`) or pnpm (`store-dir`) at one machine-wide store under
+    /// `~/.atlas/pkgstore` while `setup` runs, so every worktree installs by clone/hardlink from
+    /// it instead of downloading again. Detected from `bun.lock`/`bun.lockb`/`pnpm-lock.yaml`;
+    /// npm and yarn are left alone, and a store variable you already set wins. Default `true`;
+    /// `false` turns it off.
+    #[serde(default = "default_true")]
+    pub package_store: bool,
     /// Seconds before `setup` is considered hung (default 600).
     #[serde(default = "default_setup_timeout")]
     pub setup_timeout: u64,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// The values an absent field gets from serde, so a project with no `worktree:` block behaves
+/// like one with an empty block.
+impl Default for WorktreeConfig {
+    fn default() -> Self {
+        Self {
+            setup: None,
+            archive: None,
+            shared: Vec::new(),
+            seed: None,
+            package_store: true,
+            setup_timeout: default_setup_timeout(),
+        }
+    }
 }
 
 fn default_setup_timeout() -> u64 {

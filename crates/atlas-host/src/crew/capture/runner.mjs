@@ -1,12 +1,14 @@
 // Atlas Crew capture runner. Embedded in atlas (`crew/capture/mod.rs`) and written next to the pinned
 // `playwright` package on the crew server by `atlas crew browsers install`.
 //
-// stdin : one JSON spec {url, widths[], themes[], engines[], slow_network, full_page, steps[], out_dir}
-// stdout: one JSON report {shots: [{engine, width, theme, path} | {engine, width, theme, error}]}
+// stdin : one JSON spec {url, widths[], themes[], engines[], slow_network, full_page, steps[], dom?, out_dir}
+// stdout: one JSON report {shots: [{engine, width, theme, path, dom?} | {engine, width, theme, error}]}
+// With `dom: true` every cell also writes `<engine>-<width>px-<theme>.dom.json` next to the PNG: the
+// element boxes of the page (see `collectDom`), which the `locate` tool ranks.
 // Exit 0 whenever a report was printed (a failed cell is an `error` entry, not a crash); the
 // caller checks that every requested combination is present. Anything else goes to stderr.
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 
@@ -53,6 +55,125 @@ async function scrollThrough(page) {
 	});
 }
 
+const DOM_MAX_ELEMENTS = 4000;
+const DOM_TEXT_MAX = 120;
+
+/**
+ * The boxes of the page's visible elements, in CSS px from the top-left of the whole page. Runs in
+ * the page; reads only (no clicks, no network). Elements with no box, `display: none` and
+ * `visibility: hidden` ones are left out; `script`/`style` never appear.
+ */
+function collectDom([maxElements, textMax]) {
+	const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "META", "LINK", "HEAD", "TITLE", "BR", "WBR", "PATH", "DEFS"]);
+	const IMPLICIT = {
+		A: (e) => (e.hasAttribute("href") ? "link" : null),
+		BUTTON: () => "button",
+		H1: () => "heading", H2: () => "heading", H3: () => "heading",
+		H4: () => "heading", H5: () => "heading", H6: () => "heading",
+		INPUT: (e) => ({ checkbox: "checkbox", radio: "radio", button: "button", submit: "button", range: "slider" })[e.type] || "textbox",
+		TEXTAREA: () => "textbox",
+		SELECT: () => "combobox",
+		IMG: () => "img",
+		NAV: () => "navigation",
+		MAIN: () => "main",
+		HEADER: () => "banner",
+		FOOTER: () => "contentinfo",
+		ASIDE: () => "complementary",
+		FORM: () => "form",
+		UL: () => "list", OL: () => "list", LI: () => "listitem",
+		TABLE: () => "table",
+		DIALOG: () => "dialog",
+	};
+	const clip = (s) => {
+		const t = (s || "").replace(/\s+/g, " ").trim();
+		return t.length > textMax ? t.slice(0, textMax) + "…" : t;
+	};
+	const cssEscape = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/[^a-zA-Z0-9_-]/g, "\\$&"));
+	const unique = (sel) => {
+		try {
+			return document.querySelectorAll(sel).length === 1;
+		} catch {
+			return false;
+		}
+	};
+	// The shortest selector that finds exactly this element and does not depend on generated class
+	// names: data-testid, then id, then a chain of tag:nth-of-type up to the nearest anchor.
+	const selectorOf = (el) => {
+		const tid = el.getAttribute("data-testid");
+		if (tid) {
+			const s = `[data-testid="${tid.replace(/"/g, '\\"')}"]`;
+			if (unique(s)) return s;
+		}
+		if (el.id) {
+			const s = `#${cssEscape(el.id)}`;
+			if (unique(s)) return s;
+		}
+		const parts = [];
+		for (let cur = el; cur && cur.nodeType === 1 && cur !== document.documentElement; cur = cur.parentElement) {
+			if (cur !== el && cur.id && unique(`#${cssEscape(cur.id)}`)) {
+				parts.unshift(`#${cssEscape(cur.id)}`);
+				break;
+			}
+			const tag = cur.tagName.toLowerCase();
+			const same = cur.parentElement ? [...cur.parentElement.children].filter((c) => c.tagName === cur.tagName) : [cur];
+			parts.unshift(same.length > 1 ? `${tag}:nth-of-type(${same.indexOf(cur) + 1})` : tag);
+			if (cur === document.body) break;
+		}
+		return parts.join(" > ");
+	};
+	const nameOf = (el) => {
+		const aria = el.getAttribute("aria-label");
+		if (aria) return clip(aria);
+		const by = el.getAttribute("aria-labelledby");
+		if (by) {
+			const t = by.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ");
+			if (t.trim()) return clip(t);
+		}
+		if (el.tagName === "IMG") return clip(el.getAttribute("alt"));
+		if (el.labels && el.labels.length) return clip(el.labels[0].textContent);
+		if (["BUTTON", "A", "SUMMARY"].includes(el.tagName) || /^H[1-6]$/.test(el.tagName)) return clip(el.textContent);
+		return clip(el.getAttribute("title") || el.getAttribute("placeholder"));
+	};
+	const ownText = (el) => {
+		let t = "";
+		for (const n of el.childNodes) if (n.nodeType === 3) t += n.textContent + " ";
+		return clip(t);
+	};
+	const sx = window.scrollX, sy = window.scrollY;
+	const out = [];
+	const walk = (el, depth) => {
+		if (out.length >= maxElements || SKIP.has(el.tagName) || el.namespaceURI !== "http://www.w3.org/1999/xhtml") return;
+		const cs = getComputedStyle(el);
+		if (cs.display === "none") return;
+		const r = el.getBoundingClientRect();
+		if (cs.visibility !== "hidden" && r.width > 0 && r.height > 0) {
+			const explicit = el.getAttribute("role");
+			const role = explicit || (IMPLICIT[el.tagName] ? IMPLICIT[el.tagName](el) : null);
+			const data = {};
+			for (const a of el.attributes) if (a.name.startsWith("data-") && a.name !== "data-testid") data[a.name.slice(5)] = clip(a.value);
+			out.push({
+				tag: el.tagName.toLowerCase(),
+				role: role || null,
+				name: nameOf(el) || null,
+				text: ownText(el) || null,
+				testid: el.getAttribute("data-testid") || null,
+				data,
+				selector: selectorOf(el),
+				x: Math.round((r.left + sx) * 10) / 10,
+				y: Math.round((r.top + sy) * 10) / 10,
+				w: Math.round(r.width * 10) / 10,
+				h: Math.round(r.height * 10) / 10,
+				depth,
+				main: el.tagName === "MAIN" || explicit === "main",
+			});
+		}
+		for (const c of el.children) walk(c, depth + 1);
+	};
+	if (document.body) walk(document.body, 0);
+	const de = document.documentElement;
+	return { page_w: Math.max(de.scrollWidth, window.innerWidth), page_h: Math.max(de.scrollHeight, window.innerHeight), elements: out };
+}
+
 async function shot(browser, spec, engine, width, theme) {
 	const base = { engine, width, theme };
 	const context = await browser.newContext({
@@ -74,7 +195,13 @@ async function shot(browser, spec, engine, width, theme) {
 		if (spec.full_page) await scrollThrough(page);
 		const path = join(spec.out_dir, `${engine}-${width}px-${theme}.png`);
 		await page.screenshot({ path, fullPage: !!spec.full_page });
-		return { ...base, path };
+		if (!spec.dom) return { ...base, path };
+		// After the screenshot: the page is where the picture shows it (scrolled back to the top).
+		await page.evaluate(() => window.scrollTo(0, 0));
+		const found = await page.evaluate(collectDom, [DOM_MAX_ELEMENTS, DOM_TEXT_MAX]);
+		const dom = join(spec.out_dir, `${engine}-${width}px-${theme}.dom.json`);
+		writeFileSync(dom, JSON.stringify({ url: page.url(), width, ...found }));
+		return { ...base, path, dom };
 	} catch (e) {
 		return { ...base, error: String(e && e.message ? e.message : e).split("\n")[0] };
 	} finally {

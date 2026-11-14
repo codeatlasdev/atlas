@@ -58,7 +58,11 @@ impl Capturer for Fake {
             std::fs::write(&p, format!("PNG {} {c}", spec.url)).unwrap();
             files.push((c, p));
         }
-        Ok(Captured { files })
+        // The gate never asks for `dom`: no reports.
+        Ok(Captured {
+            files,
+            doms: Vec::new(),
+        })
     }
 }
 

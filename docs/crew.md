@@ -349,6 +349,8 @@ Each crewmate's agent gets a stdio MCP server, `atlas-crew-mcp` (`atlas mcp --cr
 | `set_profile` | change this crewmate's own name or role. Backed by `POST /crew/<id>/set_profile` |
 | `set_ui` | mark this task as a [UI task](#ui-tasks-and-proof): it needs two captures the agent took to be done. Backed by `POST /crew/<id>/set_ui` |
 | `capture` | screenshots of a URL in real browsers, attached to the task ([Captures](#captures)). Backed by `POST /crew/<id>/capture` |
+| `locate` | which route file, component and selector draw a region of a screenshot ([Locate](#locate)). Backed by `POST /crew/<id>/locate` |
+
 | `ui_gate` | the fast UI gate: capture only what a change needs, rerun only failures, replay past bugs ([UI gate](#ui-gate)). Backed by `POST /crew/<id>/ui_gate` |
 | `approve` | answer a Claude permission prompt (`--permission-prompt-tool atlas:approve`) |
 
@@ -373,6 +375,7 @@ Only `url` is required. Each field and what it means:
 | `slow_network` | `false` | every request is delayed 400 ms, on every engine |
 | `full_page` | `true` | scroll to the end (so lazy content loads), then shoot the whole page; `false` shoots the first screen |
 | `steps` | none | at most 20 things to do before the shot: `click`, `fill`, `press`, `wait_for`, `wait_ms`. Selectors and text only, no script |
+| `dom` | `false` | also write the page's element boxes next to each PNG (`<engine>-<width>px-<theme>.dom.json`): per visible element its tag, role, accessible name, visible text (clipped to 120 characters), `data-testid` and other `data-*` attributes, a stable CSS selector (`[data-testid=…]`, then `#id`, then a short `tag:nth-of-type` chain) and `x`, `y`, `w`, `h` in CSS px of the whole page at that width. A cell without its file is a failed cell. The files are kept next to the PNGs and each shot in the answer lists its `dom` (file name) and `dom_path`. This is what [`locate`](#locate) reads |
 
 A call may ask for at most **16 combinations** (engines × widths × themes; repeats count once): split bigger matrices into several calls. The runner is stopped after 5 minutes. The default is 8 shots (2 engines × 2 widths × 2 themes).
 
@@ -391,6 +394,48 @@ A call may ask for at most **16 combinations** (engines × widths × themes; rep
 - About 1 GB of disk for the two browsers and a few hundred MB of RAM per capture.
 
 `atlas crew browsers status <ssh-target>` prints one line per missing piece, and a crewmate that calls `capture` on a server without the browsers gets the same instruction as the tool's error.
+
+## Locate
+
+"Make this button bigger" arrives with a screenshot, not a file name. The `locate` tool turns a region of a screenshot into the files to edit: it reads the **live page** (the element boxes come from the same Playwright runner as [Captures](#captures), with `dom: true`) and the **work tree**, never the pixels, so there is no OCR and no guessing from the picture.
+
+```json
+{"image": ".atlas/attachments/task9/shot.png", "rect": [235, 615, 170, 58], "url": "http://localhost:5173/pricing", "width": 1440}
+```
+
+| Field | Meaning |
+|---|---|
+| `image` | required. Path of the screenshot **inside the crewmate's work tree**, where image attachments are staged (`.atlas/attachments/<task>/<name>`). A path that resolves outside the work tree (`..`, an absolute path elsewhere, a symlink out) is refused |
+| `url` | required. The `http(s)` page the image shows (a dev server on the crew server works). The boxes cannot come from a picture, so without it the tool says so |
+| `rect` | `[x, y, w, h]` in the **image's** pixels. Omit it to ask "what is this page": the page's main landmark comes first |
+| `width` | viewport width to open the page at. Default: the image's own width when it is 390 or 1440 (the two widths `capture` defaults to), else 1440. A `rect` of an image of another width (a retina shot) is scaled onto the page |
+
+**What it does**, in order: opens `url` in chromium at `width` (light theme, whole page) with `dom: true`; keeps the elements whose box **intersects** `rect` (the whole page without one); ranks them; maps the URL path and each candidate to source files; answers.
+
+**Ranking.** For a `rect`, an element scores the geometric mean of the share of the element the region covers and the share of the region the element fills, so a button the region is drawn around beats the page-wide container that merely contains it. That is multiplied by a *specificity* (`data-testid` 1.0, role plus accessible name 0.7, visible text 0.4, nothing 0.1) and nudged up to 20% by depth (a deeper element is a narrower answer). Without a `rect` the `<main>` / `role=main` landmark leads, then the biggest named elements.
+
+**Route files** are found by matching the URL's segments against the path of each file in the work tree (monorepo prefixes like `apps/web/` work; `node_modules`, `target`, `build`, dot folders and symlinks are not read):
+
+| Framework | Files | Notes |
+|---|---|---|
+| SvelteKit | `src/routes/**/+page.svelte` | `[id]` is one segment, `[...rest]` one or more, `[[lang]]` optional, `(group)` folders are not in the URL |
+| Next app router | `app/**/page.tsx` (also `.jsx`, `.ts`, `.js`, `.mdx`, and under `src/`) | same segment rules, `@slot` folders are not in the URL |
+| Next pages router | `pages/**` (`index` is its folder; `_app` and `pages/api/**` are not pages) | |
+| Flutter | `GoRoute(path: '/computers/:id')` in `.dart` files | `:id` is a parameter; a relative nested path (`settings`) matches the tail of the URL. Reported as `file:line` |
+
+A static segment beats a parameter that also matches (`/settings` over `/[tab]`). The **component file** is the first file other than the route that contains the candidate's `data-testid`, else its visible text (3 characters or more); when only the route file has it, that is the answer.
+
+**Answer.**
+
+```json
+{"url": "…", "width": 1440, "image_width": 1440, "ambiguous": false,
+ "candidates": [{"route_file": "src/routes/pricing/+page.svelte", "component_file": "src/lib/PlanCard.svelte",
+                 "selector": "[data-testid=\"buy-button\"]", "testid": "buy-button", "text": "Buy now", "score": 0.912}]}
+```
+
+At most 5 candidates, best first. **`ambiguous: true` when the top two scores are within 10% of each other**, and the answer then carries a `next` line; the tool's description tells the agent to `ask_user` with the candidates (selector and text) as the options and only then edit, never to pick one. A `rect` that touches no element, a `url` that fails to load and an image outside the work tree are errors the agent reads.
+
+It needs the capture browsers ([Requirements](#captures)) and only works for a crewmate's own task pane, since it reads that crewmate's files.
 
 ## UI gate
 
@@ -520,6 +565,9 @@ For contributors. One concept per file; the module doc comment at the top of eac
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/set_ui`, `/crew/<id>/hook/<token>` |
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
 
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `locate/` (the `locate` tool: `route.rs` URL path to route files per framework, `rank.rs` the page's element boxes and their ranking, `mod.rs` the request, the `dom: true` capture and the mapping to source); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/locate`, `/crew/<id>/hook/<token>` |
+
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `attachments.rs` (images on a task: caps, the by-the-bytes type check, safe names, storage, the agent's copy, chunked upload and fetch); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted, `guard`/`gate`/`tape` for the guards against the agent); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
@@ -553,6 +601,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
     usage.jsonl                        per-task usage records
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
     ui-gate/<task id>/                 the UI gate's shots and ui-gate.json
+    dom/<task id>/                     element boxes of `capture {dom: true}` (JSON, one per combination)
 
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled

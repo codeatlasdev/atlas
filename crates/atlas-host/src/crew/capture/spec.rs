@@ -70,6 +70,9 @@ pub struct Spec {
     pub slow_network: bool,
     pub full_page: bool,
     pub steps: Vec<Step>,
+    /// Also write the element boxes of the page next to each PNG (`*.dom.json`), for `locate`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dom: bool,
 }
 
 /// One (engine, width, theme) cell of the matrix.
@@ -105,6 +108,7 @@ impl Spec {
             slow_network: Option<bool>,
             full_page: Option<bool>,
             steps: Option<Vec<Step>>,
+            dom: Option<bool>,
         }
         let raw: Raw = serde_json::from_value(args.clone())
             .map_err(|e| format!("capture: bad arguments: {e}"))?;
@@ -120,6 +124,7 @@ impl Spec {
             slow_network: raw.slow_network.unwrap_or(false),
             full_page: raw.full_page.unwrap_or(true),
             steps: raw.steps.unwrap_or_default(),
+            dom: raw.dom.unwrap_or(false),
         };
         spec.validate()?;
         Ok(spec)
@@ -199,6 +204,9 @@ pub struct Shot {
     pub theme: Theme,
     #[serde(default)]
     pub path: Option<String>,
+    /// The element boxes of the page, when the spec asked for `dom`.
+    #[serde(default)]
+    pub dom: Option<String>,
     #[serde(default)]
     pub error: Option<String>,
 }
@@ -212,6 +220,9 @@ impl Shot {
         }
     }
 }
+
+/// One checked cell of a report: the combination, its PNG and, when asked for, its DOM file.
+pub type Cell = (Combo, String, Option<String>);
 
 /// The runner's JSON report.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -229,9 +240,10 @@ pub fn parse_report(stdout: &str) -> Result<Report, String> {
 }
 
 /// The rule of the tool: every requested combination is in the report with a PNG. A missing
-/// combination, a failed one, or a path-less entry is an error that names each of them. Returns
-/// the `(combination, path)` of every cell, in matrix order.
-pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<(Combo, String)>, String> {
+/// combination, a failed one, or a path-less entry is an error that names each of them. With `dom`
+/// asked for, a cell without its DOM file is a failed cell too. Returns `(combination, png path,
+/// dom path)` of every cell, in matrix order.
+pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
     let mut found: std::collections::BTreeMap<Combo, &Shot> = Default::default();
     for s in &report.shots {
         found.insert(s.combo(), s);
@@ -243,7 +255,14 @@ pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<(Combo, String)>
         match found.get(&c) {
             None => missing.push(c.to_string()),
             Some(s) => match (&s.path, &s.error) {
-                (Some(p), None) if !p.is_empty() => out.push((c, p.clone())),
+                (Some(p), None) if !p.is_empty() => {
+                    let dom = s.dom.clone().filter(|d| !d.is_empty());
+                    if spec.dom && dom.is_none() {
+                        failed.push(format!("{c}: no DOM report written"));
+                    } else {
+                        out.push((c, p.clone(), dom));
+                    }
+                }
                 (_, Some(e)) => failed.push(format!("{c}: {e}")),
                 _ => failed.push(format!("{c}: no screenshot written")),
             },
@@ -389,7 +408,46 @@ mod tests {
         let r = parse_report(&json!({"shots": full()}).to_string()).unwrap();
         let got = check_report(&s, &r).unwrap();
         assert_eq!(got.len(), 8);
-        assert!(got.iter().any(|(c, p)| c.to_string() == "webkit/390px/dark" && p == "/c/webkit-390-dark.png"));
+        assert!(
+            got.iter()
+                .any(|(c, p, d)| c.to_string() == "webkit/390px/dark"
+                    && p == "/c/webkit-390-dark.png"
+                    && d.is_none())
+        );
+    }
+
+    #[test]
+    fn dom_is_off_by_default_and_not_sent_to_the_runner_unless_asked() {
+        let s = spec(json!({"url": "http://x/"})).unwrap();
+        assert!(!s.dom);
+        assert!(
+            serde_json::to_value(&s).unwrap().get("dom").is_none(),
+            "the runner contract of a plain capture is unchanged"
+        );
+        let s = spec(json!({"url": "http://x/", "dom": true})).unwrap();
+        assert_eq!(serde_json::to_value(&s).unwrap()["dom"], true);
+    }
+
+    #[test]
+    fn with_dom_every_cell_must_name_its_dom_file() {
+        let s = spec(json!({"url": "http://x/", "dom": true, "engines": ["webkit"], "widths": [390], "themes": ["light", "dark"]})).unwrap();
+        let mut light = shot("webkit", 390, "light");
+        light["dom"] = json!("/c/webkit-390-light.dom.json");
+        // dark has a PNG but no DOM report.
+        let dark = shot("webkit", 390, "dark");
+        let r = parse_report(&json!({"shots": [light.clone(), dark]}).to_string()).unwrap();
+        let e = check_report(&s, &r).unwrap_err();
+        assert!(
+            e.contains("webkit/390px/dark: no DOM report written"),
+            "{e}"
+        );
+
+        let mut dark = shot("webkit", 390, "dark");
+        dark["dom"] = json!("/c/webkit-390-dark.dom.json");
+        let r = parse_report(&json!({"shots": [light, dark]}).to_string()).unwrap();
+        let got = check_report(&s, &r).unwrap();
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|(_, _, d)| d.is_some()));
     }
 
     #[test]

@@ -362,7 +362,9 @@ fn install_runner_package(dir: &Path) -> Result<(), String> {
 const PAGE: &str = "<!doctype html><meta name=viewport content='width=device-width'>\
 <style>body{margin:0;font:20px sans-serif;background:#fff;color:#000}\
 @media (prefers-color-scheme:dark){body{background:#000;color:#fff}}\
-@media (min-width:800px){body{background:#06c}}</style><h1>capture probe</h1>";
+@media (min-width:800px){body{background:#06c}}</style><h1>capture probe</h1>\
+<main><button data-testid=\"probe-button\" data-kind=\"primary\">Probe me</button></main>\
+<div style=\"height:2000px\"></div>";
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_real_playwright_run_captures_the_matrix() {
@@ -406,13 +408,65 @@ async fn a_real_playwright_run_captures_the_matrix() {
     } else {
         json!(["chromium"])
     };
-    let s =
-        Spec::from_args(&json!({"url": format!("http://127.0.0.1:{port}/"), "engines": engines}))
-            .unwrap();
+    let s = Spec::from_args(
+        &json!({"url": format!("http://127.0.0.1:{port}/"), "engines": engines, "dom": true}),
+    )
+    .unwrap();
     let out = tmp.path().join("out");
     match run(&dir, &s, &out).await {
         Ok(got) => {
             assert_eq!(got.files.len(), s.combos().len());
+            // `dom: true`: one element-box report per cell, next to the PNG, that the ranking reads.
+            assert_eq!(got.doms.len(), s.combos().len());
+            for (c, p) in &got.doms {
+                let dom: crate::crew::locate::rank::DomReport =
+                    serde_json::from_slice(&std::fs::read(p).unwrap())
+                        .unwrap_or_else(|e| panic!("{c}: the DOM report does not parse: {e}"));
+                assert_eq!(dom.width, c.width, "{c}");
+                assert!(
+                    dom.page_h >= 2000.0,
+                    "{c}: the page height is the whole page"
+                );
+                let button = dom
+                    .elements
+                    .iter()
+                    .find(|e| e.testid.as_deref() == Some("probe-button"))
+                    .unwrap_or_else(|| panic!("{c}: the testid'd button is in the report"));
+                assert_eq!(button.tag, "button");
+                assert_eq!(button.role.as_deref(), Some("button"));
+                assert_eq!(button.name.as_deref(), Some("Probe me"));
+                assert_eq!(button.text.as_deref(), Some("Probe me"));
+                assert_eq!(button.data.get("kind").map(String::as_str), Some("primary"));
+                assert_eq!(button.selector, "[data-testid=\"probe-button\"]");
+                assert!(
+                    button.w > 0.0 && button.h > 0.0 && button.depth >= 2,
+                    "{c}: {button:?}"
+                );
+                assert!(
+                    dom.elements.iter().any(|e| e.main && e.tag == "main"),
+                    "{c}: the main landmark is flagged"
+                );
+                assert!(
+                    dom.elements
+                        .iter()
+                        .all(|e| e.tag != "script" && e.tag != "style"),
+                    "{c}: no script or style"
+                );
+                // The ranking finds the button from a rect drawn around it.
+                let r = crate::crew::locate::rank::Rect::from_array([
+                    button.x - 4.0,
+                    button.y - 4.0,
+                    button.w + 8.0,
+                    button.h + 8.0,
+                ])
+                .unwrap();
+                let top = crate::crew::locate::rank::rank(&dom, Some(r), 3);
+                assert_eq!(
+                    top[0].element.testid.as_deref(),
+                    Some("probe-button"),
+                    "{c}: {top:?}"
+                );
+            }
             let mut sizes = std::collections::BTreeSet::new();
             for (c, p) in &got.files {
                 let bytes = std::fs::read(p).unwrap();

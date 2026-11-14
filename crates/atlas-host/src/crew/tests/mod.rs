@@ -6,6 +6,7 @@
 //! |---------------|--------------------------------------------------------------------------|
 //! | `tasks`       | a task from queue to done/failed/cancelled, steps, usage, JSON contracts |
 //! | `capture`     | the `capture` tool through a real hostd with a fake runner                |
+//! | `locate`      | the `locate` tool through a real hostd with a fake runner                 |
 //! | `uigate`      | the `ui_gate` tool through a real hostd: plan, cache hit, regression replay |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
@@ -62,6 +63,8 @@ mod guards;
 mod isolation;
 #[cfg(unix)]
 mod limits;
+#[cfg(unix)]
+mod locate;
 #[cfg(unix)]
 mod mobile_payloads;
 #[cfg(unix)]

@@ -42,6 +42,34 @@ pub fn work_dir_for(base_dir: &Path, crewmate_id: &str, iso: Option<&Isolated>) 
     }
 }
 
+/// Where this crewmate's agent works, without preparing anything: the `work/` checkout of a Git
+/// project, the folder of a Path project, else its own `workdir` or `work/`. The same answer
+/// `runner::prompt::prepare_work_dir` ends up with, for code that only needs to read the tree.
+/// A crewmate that runs as its own Linux user works in its own folder (`iso`), like the agent does.
+pub fn current_work_dir(
+    base_dir: &Path,
+    crewmate: &crate::crew::store::Crewmate,
+    iso: Option<&Isolated>,
+) -> Result<PathBuf, String> {
+    let dir = match &crewmate.project {
+        Some(ProjectRef::Git { .. }) => work_dir_for(base_dir, &crewmate.id, iso),
+        Some(ProjectRef::Path { path }) => prepare_path(path)?,
+        None => crewmate
+            .workdir
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| work_dir_for(base_dir, &crewmate.id, iso)),
+    };
+    if dir.is_dir() {
+        Ok(dir)
+    } else {
+        Err(format!(
+            "no work tree yet at {}: the crewmate has not run a task here",
+            dir.display()
+        ))
+    }
+}
+
 /// Ensure the project is checked out and return the working directory for the crewmate.
 ///
 /// For `Git`: shared clone + per-crewmate worktree, or, for a crewmate that runs as its own user, its
@@ -607,6 +635,33 @@ mod tests {
         assert_eq!(
             parse_github_repo("https://github.com/owner/repo"),
             Some("owner/repo".to_string())
+        );
+    }
+
+    // Merge of #223 (isolation) with #262 (`locate` reads the work tree): `locate` asked for the
+    // store's `work/` checkout, but an isolated crewmate's agent works in its own folder, so the tool
+    // would have read a tree that does not exist (or a stale one).
+    #[test]
+    fn the_current_work_dir_of_an_isolated_crewmate_is_its_own_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("hostd");
+        let root = tmp.path().join("cm");
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let mate: crate::crew::store::Crewmate = serde_json::from_value(serde_json::json!({
+            "id": id, "name": "Iso", "role": "r", "agent": "omp", "approval": "auto",
+            "created_at": 1, "project": {"kind": "git", "url": "https://example.com/o/r.git"},
+        }))
+        .unwrap();
+        let iso = Isolated::under(root.to_str().unwrap(), id).unwrap();
+        std::fs::create_dir_all(iso.work()).unwrap();
+        std::fs::create_dir_all(work_dir(&base, id)).unwrap();
+        assert_eq!(
+            current_work_dir(&base, &mate, Some(&iso)).unwrap(),
+            iso.work()
+        );
+        assert_eq!(
+            current_work_dir(&base, &mate, None).unwrap(),
+            work_dir(&base, id)
         );
     }
 

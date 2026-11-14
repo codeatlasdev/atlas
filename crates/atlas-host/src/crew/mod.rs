@@ -12,6 +12,7 @@
 //! | `store`     | on-disk definitions, task logs, secrets, usage (`<hostd dir>/crew/<id>/`)   |
 //! | `triggers`  | webhook, GitHub, file, service, crewmate-chain and schedule triggers        |
 //! | `capture`   | the `capture` tool: Playwright screenshots of a URL, widths x themes x engines |
+//! | `locate`    | the `locate` tool: which route, component and selector draw a region of a screenshot |
 //! | `uigate`    | the `ui_gate` tool: plan per change, rerun only failures, regression replay |
 //! | `schedule`  | cron routines                                                               |
 //! | `events`    | the push events broadcast to clients                                        |
@@ -30,6 +31,7 @@ pub(crate) mod events;
 pub(crate) mod github;
 mod handlers;
 mod hub;
+pub mod locate;
 pub mod mcp;
 pub(crate) mod pane;
 pub(crate) mod project;

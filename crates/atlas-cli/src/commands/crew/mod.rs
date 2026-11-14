@@ -12,6 +12,7 @@
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
 
 pub mod install;
+mod isolation;
 mod layout;
 
 use anyhow::{Context, Result, bail};

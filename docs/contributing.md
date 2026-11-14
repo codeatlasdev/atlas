@@ -74,6 +74,16 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | the log pipeline benchmark |
 | `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench` | the terminal renderer benchmark |
 
+### Tests that need root (Linux only)
+
+`crates/atlas-host/src/crew/spawn/exec.rs` has one test that creates a system user and starts a process as it (`a_real_spawn_runs_as_the_crewmates_user_and_hostd_cannot_touch_it`: the child runs as that uid, and another user cannot read its directory). It is `#[ignore]`d with its reason, so `bun run check` and the normal CI jobs skip it. A root Linux job runs it explicitly:
+
+```sh
+sudo -E env "PATH=$PATH" cargo test -p atlas-host crew::spawn -- --ignored
+```
+
+Run it on a disposable Linux machine or VM, never on your Mac (it is compiled out there) and not in a container that shares the host's user database. It adds `atlas-cm-ffffffffffff` and removes it when it finishes. No CI job runs it yet; until one does, a change under `crew/spawn/` must run it by hand and say so in the pull request.
+
 ### Updating JS dependencies
 
 `bun run deps:update` runs `npm-check-updates -u` in the root, `apps/desktop`, `site` and `studio` (config: `.ncurc.json`) and then reinstalls. `typescript` is rejected on purpose: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7. `studio` pins `hyperframes` exactly; after an update run `bun studio check` and keep the old pin if it fails.

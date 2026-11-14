@@ -4,6 +4,14 @@
 
 use atlas_core::crew::{LEGACY_USER, USER};
 
+// The helper's units and the per-crewmate user scripts live next door (`layout` stays the one place
+// that names what a crew server looks like).
+#[allow(unused_imports)]
+pub use super::isolation::{
+    deprovision_script, install_steps, provision_script, service_unit, socket_unit, start_steps,
+    unit_files,
+};
+
 /// Binary dir. The old `/usr/local/lib/atlas-bot` is removed by the migration.
 pub const INSTALL_DIR: &str = "/usr/local/lib/atlas-crew";
 const LEGACY_INSTALL_DIR: &str = "/usr/local/lib/atlas-bot";

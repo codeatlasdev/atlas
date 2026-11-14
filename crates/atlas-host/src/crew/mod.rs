@@ -14,6 +14,7 @@
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
 //! | `project`   | Git/path project checkout                                                   |
+//! | `spawn`     | the root helper protocol that starts each crewmate as its own Linux user    |
 //! | `telegram`, `push` | delivery channels                                                    |
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
@@ -30,6 +31,8 @@ pub(crate) mod push;
 pub mod relay;
 pub(crate) mod runner;
 pub(crate) mod schedule;
+#[cfg(unix)]
+pub mod spawn;
 pub(crate) mod store;
 pub(crate) mod telegram;
 #[cfg(test)]

@@ -184,7 +184,15 @@ jobs:
           mkdir -p dist
           cp target/release/atlas dist/
           (cd dist && tar czf "atlas-$V-$T.tar.gz" atlas && rm atlas)
-          cp "$B"/appimage/*.AppImage "dist/Atlas-$V-$T.AppImage"
+          # Our AppRun env and no host-ABI libs (#266): extract, patch, repack with a pinned appimagetool.
+          AIT=appimagetool-1.9.1
+          curl -fsSL -o "/tmp/$AIT" "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  /tmp/$AIT" | sha256sum -c -
+          chmod +x "/tmp/$AIT"
+          W=$(mktemp -d)
+          (cd "$W" && "$GITHUB_WORKSPACE"/"$B"/appimage/*.AppImage --appimage-extract >/dev/null)
+          scripts/appimage-patch.sh "$W/squashfs-root"
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "/tmp/$AIT" --no-appstream "$W/squashfs-root" "dist/Atlas-$V-$T.AppImage"
           cp "$B"/deb/*.deb "dist/atlas_${V}_amd64.deb"
           cp "$B"/rpm/*.rpm "dist/atlas-$V-1.x86_64.rpm"
           cd dist

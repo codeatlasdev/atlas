@@ -49,6 +49,7 @@ mod fixture;
 mod github_e2e;
 #[cfg(unix)]
 mod guards;
+#[cfg(unix)]
 mod limits;
 #[cfg(unix)]
 mod pause;

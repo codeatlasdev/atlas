@@ -1,0 +1,16 @@
+{
+	"missing": {
+		"problems": [
+			"node: Node 18.19.1 found, need >= 20 (install a newer Node.js, for example from nodesource)",
+			"runner: missing, run atlas crew browsers install",
+			"playwright: package missing, run atlas crew browsers install",
+			"browsers: chromium missing, run atlas crew browsers install",
+			"browsers: webkit missing, run atlas crew browsers install"
+		],
+		"ready": false
+	},
+	"ready": {
+		"problems": [],
+		"ready": true
+	}
+}

@@ -23,6 +23,7 @@ const KIT_COMPONENTS = [
 	"Kbd",
 	"Select",
 	"Switch",
+	"Checkbox",
 	"Chip",
 	"DropdownMenu",
 	"DropdownMenuItem",

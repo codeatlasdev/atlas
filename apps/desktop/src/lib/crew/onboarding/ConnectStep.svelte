@@ -1,14 +1,16 @@
 <!-- Connect step form: SSH key check, address + port, the password flows and the "prefer the terminal" disclosure. -->
 <script lang="ts">
 	import { Check } from "@lucide/svelte";
-	import { CopyButton } from "@codeatlasdev/ui";
+	import { Checkbox, CopyButton } from "@codeatlasdev/ui";
 	import CrewFlag from "#lib/crew/CrewFlag.svelte";
+	import { BROWSERS_COST, BROWSERS_WHY } from "#lib/crew/browsers.ts";
 	import type { Onboarding } from "./onboarding.svelte.ts";
 
 	let { ob }: { ob: Onboarding } = $props();
 
 	const shownTarget = $derived(ob.sshTarget.trim() || "user@host");
 	const locked = $derived(ob.installRunning || ob.installDone || ob.authRunning);
+	const terminalCmd = $derived(`atlas crew install ${shownTarget}${ob.browsers ? " --browsers" : ""}`);
 </script>
 
 <div class="form-block" style:--stagger={3}>
@@ -55,6 +57,16 @@
 				bind:value={ob.sshPort}
 				disabled={locked}
 			/>
+		</div>
+
+		<!-- Opt-in, off by default: it costs a download and needs Node on the server, so it is never a surprise. -->
+		<div class="browsers-opt">
+			<Checkbox
+				bind:checked={ob.browsers}
+				label="Screenshots for UI work (Chromium + WebKit)"
+				disabled={locked}
+			/>
+			<p class="field-hint">{BROWSERS_WHY} {BROWSERS_COST}</p>
 		</div>
 
 		{#if ob.authMode === "authorize"}
@@ -110,13 +122,8 @@
 		<details class="terminal-disclosure">
 			<summary>Prefer the terminal?</summary>
 			<div class="code-block">
-				<code>atlas crew install {shownTarget}</code>
-				<CopyButton
-					value="atlas crew install {shownTarget}"
-					label=""
-					size="sm"
-					aria-label="Copy install command"
-				/>
+				<code>{terminalCmd}</code>
+				<CopyButton value={terminalCmd} label="" size="sm" aria-label="Copy install command" />
 			</div>
 			<p class="disclosure-hint">Run on your Mac. It SSHes into the server and sets everything up.</p>
 		</details>
@@ -173,6 +180,12 @@
 		80% {
 			transform: translateX(6px);
 		}
+	}
+
+	.browsers-opt {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
 	}
 
 	.port-row {

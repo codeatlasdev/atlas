@@ -1,0 +1,68 @@
+{
+  "event": {
+    "crewmate_id": "crewmate-working",
+    "ev": "crewmate_task",
+    "task": {
+      "action": {
+        "kind": "prove_ui",
+        "reason": "Could not prove it: this is a UI task and the agent attached 1 of 2 captures."
+      },
+      "attachments": [
+        {
+          "bytes_len": 33,
+          "mime": "image/png",
+          "name": "mock.png",
+          "path": ".atlas/attachments/task-ui-1/mock.png",
+          "sha256": "4ffd8bb30991e3a6f28d1d03f1aedcd02ccf8e0cc16bb9e969e7bc2bda1ddf03"
+        },
+        {
+          "bytes_len": 33,
+          "mime": "image/png",
+          "name": "chromium-390-light.png",
+          "path": ".atlas/attachments/task-ui-1/chromium-390-light.png",
+          "sha256": "4ffd8bb30991e3a6f28d1d03f1aedcd02ccf8e0cc16bb9e969e7bc2bda1ddf03",
+          "source": "agent"
+        }
+      ],
+      "id": "task-ui-1",
+      "prompt": "restyle the header",
+      "result": "Restyled the header.",
+      "source": "desktop",
+      "state": "waiting_action",
+      "summarized": false,
+      "ts": 1700000000,
+      "ui": true
+    }
+  },
+  "task": {
+    "action": {
+      "kind": "prove_ui",
+      "reason": "Could not prove it: this is a UI task and the agent attached 1 of 2 captures."
+    },
+    "attachments": [
+      {
+        "bytes_len": 33,
+        "mime": "image/png",
+        "name": "mock.png",
+        "path": ".atlas/attachments/task-ui-1/mock.png",
+        "sha256": "4ffd8bb30991e3a6f28d1d03f1aedcd02ccf8e0cc16bb9e969e7bc2bda1ddf03"
+      },
+      {
+        "bytes_len": 33,
+        "mime": "image/png",
+        "name": "chromium-390-light.png",
+        "path": ".atlas/attachments/task-ui-1/chromium-390-light.png",
+        "sha256": "4ffd8bb30991e3a6f28d1d03f1aedcd02ccf8e0cc16bb9e969e7bc2bda1ddf03",
+        "source": "agent"
+      }
+    ],
+    "id": "task-ui-1",
+    "prompt": "restyle the header",
+    "result": "Restyled the header.",
+    "source": "desktop",
+    "state": "waiting_action",
+    "summarized": false,
+    "ts": 1700000000,
+    "ui": true
+  }
+}

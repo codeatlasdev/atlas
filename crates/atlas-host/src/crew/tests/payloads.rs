@@ -263,3 +263,77 @@ fn crewmate_task_attachments_fixtures_are_real_payloads() {
         );
     }
 }
+
+// #210/#212: a `ui` task parked on `prove_ui` with the agent's one capture and the owner's own image, the
+// card both apps render. Records come from `attachments::add` (agent and owner sources), the task and its
+// event from the real serializers.
+// Regenerate: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_task_prove_ui_fixtures_are_real_payloads
+#[test]
+fn crewmate_task_prove_ui_fixtures_are_real_payloads() {
+    use crate::crew::attachments::{self, Incoming, SOURCE_AGENT};
+    use crate::crew::store::{CrewStore, TaskAction};
+    const PNG: &[u8] =
+        b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0\x1f\x15\xc4\x89";
+
+    let tmp = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(tmp.path());
+    let mut task = Task::new("desktop", "restyle the header");
+    task.id = "task-ui-1".to_string();
+    task.ts = 1700000000;
+    task.ui = true;
+    let img = |name: &str| Incoming {
+        name: name.into(),
+        bytes: PNG.to_vec(),
+    };
+    attachments::add(&store, "c", &mut task, &[img("mock.png")], "").unwrap();
+    attachments::add(
+        &store,
+        "c",
+        &mut task,
+        &[img("chromium-390-light.png")],
+        SOURCE_AGENT,
+    )
+    .unwrap();
+    task.state = TaskState::WaitingAction;
+    task.result = Some("Restyled the header.".to_string());
+    task.action = Some(TaskAction::ProveUi {
+        reason: "Could not prove it: this is a UI task and the agent attached 1 of 2 captures."
+            .to_string(),
+    });
+
+    let live = json!({
+        "task": task,
+        "event": serde_json::from_str::<Value>(&events::task("crewmate-working", Some(&task))).unwrap(),
+    });
+    // The keys the clients read.
+    assert_eq!(live["task"]["ui"], true);
+    assert_eq!(live["task"]["action"]["kind"], "prove_ui");
+    assert_eq!(live["task"]["attachments"][1]["source"], "agent");
+    assert!(
+        live["task"]["attachments"][0].get("source").is_none(),
+        "an owner's image carries no source"
+    );
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let paths = [
+        root.join("apps/mobile/test/fixtures/crewmate_task_prove_ui.json"),
+        root.join("apps/desktop/src/__fixtures__/crewmate_task_prove_ui.json"),
+    ];
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        for p in &paths {
+            std::fs::write(p, serde_json::to_string_pretty(&live).unwrap() + "\n").unwrap();
+        }
+    }
+    for p in &paths {
+        let stored: Value = serde_json::from_str(&std::fs::read_to_string(p).expect(
+            "fixture missing — run: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_task_prove_ui_fixtures_are_real_payloads",
+        ))
+        .unwrap();
+        assert_eq!(
+            stored,
+            live,
+            "{} changed: rerun with UPDATE_FIXTURES=1",
+            p.display()
+        );
+    }
+}

@@ -11,8 +11,13 @@
 	import GithubDeviceFlow from "#lib/crew/GithubDeviceFlow.svelte";
 	import ActionTextAnswer from "./ActionTextAnswer.svelte";
 	import type { ChatState } from "./chat.svelte.ts";
+	import type { Attachment } from "#lib/crew/attachments.ts";
+	import ActionImages from "./ActionImages.svelte";
+	import TaskImages from "./TaskImages.svelte";
 
 	interface Props {
+		/** The task's images (`Task.attachments`); the card shows the agent's. */
+		attachments?: Attachment[];
 		action: TaskAction;
 		taskId: string;
 		crewmateId: string;
@@ -21,7 +26,14 @@
 		chat: ChatState;
 	}
 
-	let { action, taskId, crewmateId, crewmateName, hostKey, chat }: Props = $props();
+	let { action, taskId, crewmateId, crewmateName, hostKey, attachments = [], chat }: Props = $props();
+
+	/** What the card is about: the agent's own captures (a user's image is under their prompt, not here). */
+	const agentImages = $derived(attachments.filter((a) => a.source === "agent"));
+	/** The sentences under the title, for the two kinds that can be retried. */
+	const reasons = $derived(
+		action.kind === "refused" ? action.reasons : action.kind === "prove_ui" ? [action.reason] : [],
+	);
 
 	const flow = $derived(githubCrew.flows.get(hostKey));
 	const polling = $derived(githubCrew.isPolling(hostKey));
@@ -111,13 +123,27 @@
 			<Button size="sm" disabled={submitting} onclick={() => answer("add")}>Add</Button>
 			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("skip")}>Not now</Button>
 		</div>
-	{:else if action.kind === "refused"}
-		<div class="action-title">{crewmateName}'s work was refused</div>
+	{:else if action.kind === "refused" || action.kind === "prove_ui"}
+		<div class="action-title">
+			{action.kind === "prove_ui"
+				? `${crewmateName} could not prove this UI work`
+				: `${crewmateName}'s work was refused`}
+		</div>
+		{#if agentImages.length}
+			<TaskImages attachments={agentImages} {taskId} {crewmateId} {hostKey} align="start" />
+		{/if}
 		<ul class="action-reasons">
-			{#each action.reasons as reason (reason)}
+			{#each reasons as reason (reason)}
 				<li>{reason}</li>
 			{/each}
 		</ul>
+		<!-- The marked screenshot goes with a retry, never with an override (hostd refuses it there). -->
+		<ActionImages
+			images={chat.actionImages[taskId] ?? []}
+			disabled={submitting}
+			onfiles={(files) => void chat.attachToAction(taskId, files)}
+			onremove={(i) => chat.removeActionImage(taskId, i)}
+		/>
 		<div class="action-btns">
 			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}>Retry with these reasons</Button
 			>

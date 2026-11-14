@@ -33,5 +33,9 @@
       "removes 1 assertion(s) from src/tests.rs (2 removed, 1 added)",
       "cites #999, which does not exist in o/r"
     ]
+  },
+  {
+    "kind": "prove_ui",
+    "reason": "Could not prove it: this is a UI task and the agent attached 1 of 2 captures."
   }
 ]

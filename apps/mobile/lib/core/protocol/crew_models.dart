@@ -236,13 +236,20 @@ class TaskAttachment {
   /// Where the agent finds it, relative to its work dir.
   final String path;
 
+  /// `agent` for a capture the crewmate took; empty for an image the owner sent.
+  final String source;
+
   const TaskAttachment({
     required this.name,
     required this.mime,
     required this.bytesLen,
     required this.sha256,
     required this.path,
+    this.source = '',
   });
+
+  /// A capture the crewmate took (what the cards show), not an image the owner sent.
+  bool get fromAgent => source == 'agent';
 
   factory TaskAttachment.fromJson(Map<String, dynamic> j) => TaskAttachment(
     name: j['name'] as String? ?? '',
@@ -250,6 +257,7 @@ class TaskAttachment {
     bytesLen: (j['bytes_len'] as num?)?.toInt() ?? 0,
     sha256: j['sha256'] as String? ?? '',
     path: j['path'] as String? ?? '',
+    source: j['source'] as String? ?? '',
   );
 }
 
@@ -292,6 +300,9 @@ class CrewmateTask {
   /// (`features/crew/chat/attachments.dart`).
   final List<TaskAttachment> attachments;
 
+  /// The task changes what people see: it needs two captures the agent took to be done (`prove_ui`).
+  final bool ui;
+
   const CrewmateTask({
     required this.id,
     required this.ts,
@@ -314,7 +325,20 @@ class CrewmateTask {
     this.resumed = false,
     this.restarts = 0,
     this.attachments = const [],
+    this.ui = false,
   });
+
+  /// The images the owner sent with the prompt (shown under it).
+  List<TaskAttachment> get ownerImages => [
+    for (final a in attachments)
+      if (!a.fromAgent) a,
+  ];
+
+  /// The captures the agent took (shown on its card and under its reply).
+  List<TaskAttachment> get agentImages => [
+    for (final a in attachments)
+      if (a.fromAgent) a,
+  ];
 
   factory CrewmateTask.fromJson(Map<String, dynamic> j) => CrewmateTask(
     id: j['id'] as String? ?? '',
@@ -348,6 +372,7 @@ class CrewmateTask {
       for (final a in (j['attachments'] as List<dynamic>?) ?? const [])
         TaskAttachment.fromJson((a as Map).cast<String, dynamic>()),
     ],
+    ui: j['ui'] as bool? ?? false,
   );
 }
 
@@ -401,6 +426,38 @@ class CrewmatePendingApproval {
         toolName: j['tool_name'] as String?,
         toolInput: j['tool_input'],
         paneKey: j['pane_key'] as String? ?? '',
+      );
+}
+
+/// A task parked on a card (`crewmate_list.waiting_task`): the card and the captures the agent took, as records.
+class CrewmateWaitingTask {
+  const CrewmateWaitingTask({
+    required this.id,
+    required this.action,
+    this.result,
+    this.attachments = const [],
+  });
+  final String id;
+  final TaskAction action;
+
+  /// What the agent said before the card.
+  final String? result;
+  final List<TaskAttachment> attachments;
+
+  /// Kinds that offer Retry / Override: the list card can answer them without opening the chat.
+  bool get retryable => action.kind == 'refused' || action.kind == 'prove_ui';
+
+  factory CrewmateWaitingTask.fromJson(Map<String, dynamic> j) =>
+      CrewmateWaitingTask(
+        id: j['id'] as String? ?? '',
+        action: TaskAction.fromJson(
+          (j['action'] as Map).cast<String, dynamic>(),
+        ),
+        result: j['result'] as String?,
+        attachments: [
+          for (final a in (j['attachments'] as List<dynamic>?) ?? const [])
+            TaskAttachment.fromJson((a as Map).cast<String, dynamic>()),
+        ],
       );
 }
 
@@ -461,6 +518,7 @@ class CrewmateEntry {
     this.queued = 0,
     this.last,
     this.pendingApproval,
+    this.waitingTask,
     this.triggers = const [],
     this.routines = const [],
     this.shortReplies,
@@ -481,6 +539,9 @@ class CrewmateEntry {
   final int queued;
   final CrewmateLast? last;
   final CrewmatePendingApproval? pendingApproval;
+
+  /// A task parked on a card (refused, unproven UI, a question): shown in the crew list's "Captain's call".
+  final CrewmateWaitingTask? waitingTask;
   final List<Trigger> triggers;
 
   /// Cron routines (`crewmate_list.routines`); `crewmate_routine_set` replaces the whole list.
@@ -506,6 +567,9 @@ class CrewmateEntry {
         : CrewmatePendingApproval.fromJson(
             (j['pending_approval'] as Map).cast(),
           ),
+    waitingTask: j['waiting_task'] == null
+        ? null
+        : CrewmateWaitingTask.fromJson((j['waiting_task'] as Map).cast()),
     triggers: [
       for (final t in (j['triggers'] as List<dynamic>?) ?? const [])
         Trigger.fromJson((t as Map).cast()),

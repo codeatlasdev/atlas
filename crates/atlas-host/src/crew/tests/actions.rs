@@ -110,6 +110,10 @@ fn task_action_fixture_is_real_payload() {
                 "cites #999, which does not exist in o/r".to_string(),
             ],
         },
+        TaskAction::ProveUi {
+            reason: "Could not prove it: this is a UI task and the agent attached 1 of 2 captures."
+                .to_string(),
+        },
     ];
     let json = serde_json::to_string_pretty(&actions).expect("serialize actions");
     // The file the phone's contract test reads; a cwd-relative path made cargo (cwd = this crate) write and

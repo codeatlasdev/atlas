@@ -452,7 +452,7 @@ pub async fn handle(
             root.display()
         ));
     }
-    let task_dir = capture::task_captures_dir(store, crewmate_id, task_id);
+    let task_dir = gate_dir(store, crewmate_id, task_id);
     let scratch = capture::capture_dir(hostd_dir)
         .join("runs")
         .join(crate::paths::new_id());
@@ -476,3 +476,13 @@ pub async fn handle(
 
 #[cfg(all(test, unix))]
 mod tests;
+
+/// The gate's own state for one task: its shots and `ui-gate.json`. Not the task's attachments:
+/// proof a crewmate shows goes through `capture` (stored as agent attachments); the gate keeps
+/// what it needs to rerun only failures and to tell a cached pass from one whose shots are gone.
+pub(crate) fn gate_dir(store: &CrewStore, crewmate_id: &str, task_id: &str) -> PathBuf {
+    store
+        .crewmate_dir(crewmate_id)
+        .join("ui-gate")
+        .join(task_id)
+}

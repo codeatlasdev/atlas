@@ -205,6 +205,7 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
 /// - `POST /crew/<id>/capture`       — the capture tool: Playwright screenshots, attached to the task
 /// - `POST /crew/<id>/locate`        — the locate tool: route, component and selector of a screenshot region
 /// - `POST /crew/<id>/ui_gate`       — the ui_gate tool: plan per change, rerun failures, regressions
+/// - `POST /crew/<id>/set_ui`        — the agent marks its task as a UI task (needs captures to be done)
 async fn route_crew(
     hub: &Arc<crate::server::Hub>,
     path: &str,
@@ -228,6 +229,7 @@ async fn route_crew(
         "capture" => handle_capture(hub, crewmate_id, &v()).await,
         "locate" => handle_locate(hub, crewmate_id, &v()).await,
         "ui_gate" => handle_ui_gate(hub, crewmate_id, &v()).await,
+        "set_ui" => handle_set_ui(hub, crewmate_id, &v()),
         _ => ("404 Not Found", String::new()),
     }
 }
@@ -310,6 +312,47 @@ async fn handle_ui_gate(
         )
         .await,
     )
+}
+
+/// Handle `POST /crew/<id>/set_ui`: the agent marks its own task as a UI task (`Task.ui`), so it only
+/// ends `done` with captures. Only a task of this crewmate (the pane key names it); `422` otherwise.
+/// The mark only ever turns the rule on: a task cannot be un-marked by the agent that must satisfy it.
+fn handle_set_ui(
+    hub: &Arc<crate::server::Hub>,
+    crewmate_id: &str,
+    v: &Value,
+) -> (&'static str, String) {
+    let err = |msg: &str| {
+        (
+            "422 Unprocessable Entity",
+            serde_json::json!({ "error": msg }).to_string(),
+        )
+    };
+    let Some(task_id) = v["pane_key"]
+        .as_str()
+        .filter(|p| crate::crew::pane::is_pane_of(p, crewmate_id))
+        .and_then(|p| p.splitn(3, ':').nth(2))
+        .filter(|t| !t.is_empty())
+    else {
+        return err("set_ui: only a crewmate's task can be marked (no task pane)");
+    };
+    let Some(mut task) = hub
+        .crew
+        .store
+        .read_tasks(crewmate_id, usize::MAX)
+        .into_iter()
+        .find(|t| t.id == task_id)
+    else {
+        return err("set_ui: task not found");
+    };
+    if !task.ui {
+        task.ui = true;
+        if let Err(e) = hub.crew.store.append_task(crewmate_id, &task) {
+            return err(&format!("set_ui: cannot record it: {e}"));
+        }
+        hub.broadcast(crate::crew::events::task(crewmate_id, Some(&task)));
+    }
+    ("200 OK", serde_json::json!({ "ui": true }).to_string())
 }
 
 /// Handle `POST /crew/<id>/locate`: rank the elements a screenshot region points at and map them to

@@ -34,6 +34,9 @@ class DemoCrewmate {
   final List<Map<String, dynamic>> tasks = [];
   int queued = 0;
   Map<String, dynamic>? pendingApproval;
+
+  /// The task parked on a card (`prove_ui`), listed as `waiting_task` for the Captain's call.
+  Map<String, dynamic>? waiting;
   Map<String, dynamic>? lastEntry;
   String? memory;
 
@@ -51,6 +54,16 @@ class DemoCrewmate {
     'queued': queued,
     'last': lastEntry,
     'pending_approval': pendingApproval,
+    if (waiting != null)
+      'waiting_task': {
+        'id': waiting!['id'],
+        'action': waiting!['action'],
+        'result': waiting!['result'],
+        'attachments': [
+          for (final a in (waiting!['attachments'] as List? ?? const []))
+            if ((a as Map)['source'] == 'agent') a,
+        ],
+      },
     'triggers': <Object>[],
     'routines': routines,
   };

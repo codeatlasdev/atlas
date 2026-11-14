@@ -1243,7 +1243,12 @@ async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop
     let record = root.join("cwd.txt");
     std::fs::write(
         &fake,
-        format!("#!/bin/sh\npwd > '{}'\nsleep 30\n", record.display()),
+        // Written aside then renamed: the test waits for the file to exist, and `pwd > file` makes
+        // it exist empty before the path is in it (macOS CI read "" on PR #223).
+        format!(
+            "#!/bin/sh\npwd > '{0}.tmp' && mv '{0}.tmp' '{0}'\nsleep 30\n",
+            record.display()
+        ),
     )
     .unwrap();
     {
@@ -1577,7 +1582,11 @@ async fn a_stale_desktop_socket_file_still_means_not_running() {
     let fake = root.join("claude");
     std::fs::write(
         &fake,
-        format!("#!/bin/sh\npwd > '{}'\nsleep 30\n", record.display()),
+        // Written aside then renamed, as above: never seen half written.
+        format!(
+            "#!/bin/sh\npwd > '{0}.tmp' && mv '{0}.tmp' '{0}'\nsleep 30\n",
+            record.display()
+        ),
     )
     .unwrap();
     {

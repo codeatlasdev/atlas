@@ -209,7 +209,7 @@ class CrewStore {
 
 	// ─── tasks ────────────────────────────────────────────────────────────────
 
-	async sendTask(prompt: string, images: PendingImage[] = []): Promise<void> {
+	async sendTask(prompt: string, images: PendingImage[] = [], ui = false): Promise<void> {
 		if (!this.selected) return;
 		const { hostKey, crewmateId } = this.selected;
 		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -220,7 +220,14 @@ class CrewStore {
 			() => crypto.randomUUID(),
 			route,
 		);
-		await hostCall("crewmate_task", { ...route, prompt, source: "desktop", tz, attachments });
+		await hostCall("crewmate_task", {
+			...route,
+			prompt,
+			source: "desktop",
+			tz,
+			attachments,
+			...(ui ? { ui } : {}),
+		});
 		await this.refreshHost(hostKey);
 		await this.loadTasks();
 	}

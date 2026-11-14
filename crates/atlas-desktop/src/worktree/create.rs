@@ -312,12 +312,13 @@ pub(super) async fn create(
     let offset = entry.port_offset;
     let _ = app.emit("projects://changed", ());
 
-    let setup = wcfg.setup.filter(|_| args.run_setup).map(|cmd| {
-        json!({
-            "argv": super::exec::shell_argv(&host, &cmd),
-            "env": hook_env(&root, &real, &s, offset),
-        })
-    });
+    let setup = match cfg.as_ref().filter(|_| args.run_setup) {
+        Some(c) => {
+            let store = super::setup_payload::store_vars(&host, c, &root);
+            super::setup_payload::build(&host, c, &root, &real, &s, offset, &store)?
+        }
+        None => None,
+    };
     Ok(json!({
         "worktree": {"id": entry.id, "path": entry.root, "branch": branch, "base": base,
                      "portOffset": offset, "repoId": repo.id, "name": s, "linkedPr": args.pr},

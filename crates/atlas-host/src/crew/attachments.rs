@@ -118,6 +118,7 @@ pub(crate) struct Incoming {
 /// Check `images` and turn them into the records the task keeps. Refused with a message the sender can
 /// read: too many, empty, over [`MAX_BYTES`], not an image by its bytes. Names are made safe and unique
 /// (`a.png`, `a-2.png`) in order. Nothing is written.
+#[cfg(test)]
 pub(crate) fn check(
     task_id: &str,
     images: &[Incoming],

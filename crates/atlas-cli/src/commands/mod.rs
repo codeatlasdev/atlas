@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 pub mod config;
+pub mod crew;
 pub mod deploy;
 pub mod desktop;
 #[cfg(unix)]

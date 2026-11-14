@@ -1,9 +1,12 @@
-name: Mobile beta
+name: Mobile release
 
-# Atlas Mobile to testers: TestFlight and the Play internal testing track, through fastlane
-# (apps/mobile/fastlane/Fastfile). Runs when a `mobile-v*` tag is pushed, or by hand. Both jobs
-# use one build number (the run's start, in minutes) so the two stores stay in step. The
-# secrets live in the `mobile-beta` environment; docs/mobile.md, "Testers", lists them.
+# Atlas Mobile, from a `mobile-v1.2.0` tag to the stores, through fastlane
+# (apps/mobile/fastlane/Fastfile):
+#   1. unattended: build, sign, upload to TestFlight and the Play internal testing track;
+#   2. after a maintainer approves the `mobile-store` environment: that same build goes to App
+#      Store review (released on approval) and to Play production (every user at once).
+# Not approved, it stays with testers. Both stores share one build number (the run's start, in
+# minutes), and the version comes from the tag. Secrets: docs/mobile.md, "Releases".
 on:
   push:
     tags: ["mobile-v*"]
@@ -13,19 +16,29 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-beta
+  group: mobile-release
   cancel-in-progress: false
 
 jobs:
   number:
-    name: Build number
+    name: Version and build number
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
       n: ${{ steps.n.outputs.n }}
+      version: ${{ steps.n.outputs.version }}
     steps:
       - id: n
-        run: echo "n=$(( $(date +%s) / 60 ))" >> "$GITHUB_OUTPUT"
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          echo "n=$(( $(date +%s) / 60 ))" >> "$GITHUB_OUTPUT"
+          # mobile-v1.2.0 -> 1.2.0; a run by hand keeps pubspec.yaml's version.
+          v="${REF#mobile-v}"
+          if [[ "$REF" == mobile-v* ]]; then
+            [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag must be mobile-vX.Y.Z, got $REF"; exit 1; }
+            echo "version=$v" >> "$GITHUB_OUTPUT"
+          fi
 
   ios:
     name: TestFlight
@@ -59,6 +72,7 @@ jobs:
         working-directory: apps/mobile
         env:
           BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          VERSION: ${{ needs.number.outputs.version }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
@@ -98,9 +112,43 @@ jobs:
         working-directory: apps/mobile
         env:
           BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          VERSION: ${{ needs.number.outputs.version }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bundle exec fastlane android_beta
+
+  store:
+    name: To the stores (needs approval)
+    # Only a tagged release can go public; a run by hand is for testers.
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: [number, ios, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Required reviewers on this environment hold the job until one of them approves.
+    environment: mobile-store
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@824c0e29fdfc7d689c191c27acc969d2d04b7dd8 # v1.331.0
+        with:
+          working-directory: apps/mobile
+
+      - name: fastlane
+        working-directory: apps/mobile
+        run: bundle install
+
+      - name: Promote the tested build
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ needs.number.outputs.n }}
+          VERSION: ${{ needs.number.outputs.version }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane release

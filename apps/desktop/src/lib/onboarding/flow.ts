@@ -167,6 +167,8 @@ export function showWelcome(
 	adding = false,
 	fromOverlay = false,
 ): boolean {
+	// Agent instances never need the onboarding flow.
+	if (typeof window !== "undefined" && "__ATLAS_AGENT__" in window && window.__ATLAS_AGENT__) return false;
 	if (!loaded || phase === "done") return false;
 	// The deck is adding the first project: the project list grows BEFORE the phase moves to `starting`, and in that gap
 	// the old rule ("no projects") unmounted the overlay and remounted it on `starting` from its first slide.

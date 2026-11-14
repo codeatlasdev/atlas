@@ -22,12 +22,24 @@ pub fn tick(limit: Duration) -> Duration {
         .max(Duration::from_millis(100))
 }
 
-/// The quiet period: `ATLAS_HOSTD_IDLE_SECS` when it parses, else [`IDLE_EXIT`].
-pub fn limit_from_env() -> Duration {
-    std::env::var(IDLE_ENV)
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .map_or(IDLE_EXIT, Duration::from_secs)
+/// Parse the quiet period from an env-var value: `"never"` → `None`,
+/// a decimal integer → `Some(that many seconds)`, anything else → `Some(IDLE_EXIT)`.
+/// Empty string (var unset) also yields `Some(IDLE_EXIT)`.
+pub(crate) fn parse_limit(v: &str) -> Option<Duration> {
+    match v.trim() {
+        "" => Some(IDLE_EXIT),
+        "never" => None,
+        s => Some(
+            s.parse::<u64>()
+                .map(Duration::from_secs)
+                .unwrap_or(IDLE_EXIT),
+        ),
+    }
+}
+
+/// The quiet period from `ATLAS_HOSTD_IDLE_SECS`. `None` → idle exit disabled.
+pub fn limit_from_env() -> Option<Duration> {
+    parse_limit(&std::env::var(IDLE_ENV).unwrap_or_default())
 }
 
 /// True once the daemon has been idle for `limit`: never while a terminal runs or a client is
@@ -74,6 +86,22 @@ mod tests {
         assert_eq!(tick(Duration::ZERO), Duration::from_millis(100));
     }
 
+    #[test]
+    fn never_disables_idle_exit() {
+        assert!(parse_limit("never").is_none());
+    }
+
+    #[test]
+    fn numeric_env_overrides_default() {
+        assert_eq!(parse_limit("300"), Some(Duration::from_secs(300)));
+        assert_eq!(parse_limit("0"), Some(Duration::from_secs(0)));
+    }
+
+    #[test]
+    fn unset_or_invalid_env_uses_default_limit() {
+        assert_eq!(parse_limit(""), Some(IDLE_EXIT));
+        assert_eq!(parse_limit("banana"), Some(IDLE_EXIT));
+    }
     #[test]
     fn dir_gone_when_the_dir_or_the_pid_file_is_missing() {
         let tmp = tempfile::tempdir().unwrap();

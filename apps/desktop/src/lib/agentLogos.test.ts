@@ -1,7 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 /**
  * Every agent Atlas can launch shows its official logo in the New-tab menu and on its tab. The agent ids come
- * from the Rust registry (`crates/atlas-desktop/src/agent/registry.rs`), read from the real source, so adding an
+ * from the Rust registry (`crates/atlas-core/src/agents.rs`), read from the real source, so adding an
  * agent there without a logo here turns this red instead of silently falling back to the generic robot.
  */
 import { expect, test } from "bun:test";
@@ -9,10 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { LOGO_FILES, agentLogo } from "./agentLogos.ts";
 
-const registry = readFileSync(
-	join(import.meta.dir, "../../../../crates/atlas-desktop/src/agent/registry.rs"),
-	"utf8",
-);
+const registry = readFileSync(join(import.meta.dir, "../../../../crates/atlas-core/src/agents.rs"), "utf8");
 const ids = [...registry.matchAll(/^\s*id:\s*"([^"]+)",/gm)].map((m) => m[1]);
 const dir = join(import.meta.dir, "agent-logos");
 

@@ -129,6 +129,9 @@ pub struct HostHub {
     connected: tokio::sync::Notify,
     /// Woken when a pty exits, so an armed "restart when idle" reacts at once.
     ptys_changed: tokio::sync::Notify,
+    /// Why each remote host is not connected (last reconnect error), so a call to it says what is wrong instead of
+    /// pointing at Settings ("not connected" showed even when the ship was simply powered off).
+    remote_errors: Mutex<HashMap<String, String>>,
     /// Debug only: `ATLAS_DEBUG_FAKE_HOST` is on and restarts only clear the fake state.
     #[cfg(debug_assertions)]
     fake: Mutex<Option<Fake>>,
@@ -169,9 +172,10 @@ impl HostHub {
             if let Some(c) = self.clients.read().await.get(host).cloned() {
                 return Ok(c);
             }
-            return Err(format!(
-                "{host} is not connected (Settings → Integrations → SSH hosts)"
-            ));
+            return Err(match self.remote_errors.lock().get(host) {
+                Some(why) => format!("{host} is not reachable: {why}"),
+                None => format!("{host} is still connecting; try again in a few seconds"),
+            });
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {
@@ -189,12 +193,22 @@ impl HostHub {
 
     pub async fn set(&self, host: &str, c: Option<HostClient>) {
         let mut m = self.clients.write().await;
+        if c.is_some() {
+            self.remote_errors.lock().remove(host);
+        }
         match c {
             Some(c) => m.insert(host.to_string(), c),
             None => m.remove(host),
         };
         drop(m);
         self.connected.notify_waiters();
+    }
+
+    /// The last reason `host` could not be (re)connected, shown by `client()` instead of a generic "not connected".
+    pub fn set_remote_error(&self, host: &str, why: &str) {
+        self.remote_errors
+            .lock()
+            .insert(host.to_string(), why.to_string());
     }
 
     fn route(&self, args: &Value) -> String {

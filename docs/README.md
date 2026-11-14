@@ -21,6 +21,7 @@ Atlas boots a project's whole dev environment from one `atlas.yaml`: infra, serv
 | [TUI](tui.md) | learn the dashboard, every key binding and the log viewer |
 | [Logs](logs.md) | understand how logs are collected, stored, searched and exposed |
 | [Agent setup](agents.md) | run `atlas setup omp\|claude-code\|codex` |
+| [Atlas Crew](crew.md) | run named agents 24/7 on your own Linux server and drive them from desktop, phone or Telegram |
 | [MCP](mcp.md) | connect any MCP client to your running environment |
 | [Deploy](deploy.md) | ship releases to a server with atomic swap and automatic rollback |
 

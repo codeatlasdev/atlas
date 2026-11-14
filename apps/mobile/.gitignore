@@ -51,3 +51,11 @@ app.*.map.json
 fastlane/report.xml
 fastlane/README.md
 build/fastlane/
+
+# Firebase config files (written from CI secrets, never committed)
+google-services.json
+GoogleService-Info.plist
+
+# Flutter golden mismatch output and SwiftPM lockfiles Xcode writes on its own
+test/failures/
+**/xcshareddata/swiftpm/Package.resolved

@@ -7,6 +7,7 @@
 //! status arrives as `agent_status` pushes over this connection.
 //! Reconnects with backoff while the host stays in `settings.sshHosts`.
 
+use atlas_core::ssh::valid_target as valid_alias;
 use atlas_core::sys::CommandExt as _;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -39,17 +40,6 @@ pub struct Remotes {
 
 pub fn host_id(alias: &str) -> String {
     format!("ssh:{alias}")
-}
-
-fn valid_alias(a: &str) -> Result<(), String> {
-    if !a.is_empty()
-        && a.chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-    {
-        Ok(())
-    } else {
-        Err(format!("invalid ssh host alias {a:?}"))
-    }
 }
 
 async fn ssh(alias: &str, script: &str, timeout: Duration) -> Result<String, String> {
@@ -187,6 +177,23 @@ async fn connect_once(app: &AppHandle, alias: &str) -> Result<HostClient, String
     Err(format!("{alias}: tunnel up but hostd unreachable: {last}"))
 }
 
+/// The reconnect error in words a user can act on; ssh's own text stays at the end for detail.
+fn plain_reason(e: &str) -> String {
+    let hint = if e.contains("Connection refused")
+        || e.contains("No route to host")
+        || e.contains("timed out")
+    {
+        "the server does not answer (is it powered on?)"
+    } else if e.contains("Permission denied") {
+        "SSH refused this Mac's key"
+    } else if e.contains("Could not resolve hostname") {
+        "the server name does not resolve"
+    } else {
+        return e.to_string();
+    };
+    format!("{hint}. {e}")
+}
+
 fn set_status(app: &AppHandle, alias: &str, s: &str) {
     app.state::<Arc<Remotes>>()
         .status
@@ -238,7 +245,11 @@ pub fn keep(app: &AppHandle, alias: String) {
                     }
                     crate::host::serve_client(&app, &host_id(&alias), c).await;
                 }
-                Err(e) => set_status(&app, &alias, &format!("error: {e}")),
+                Err(e) => {
+                    set_status(&app, &alias, &format!("error: {e}"));
+                    app.state::<Arc<crate::host::HostHub>>()
+                        .set_remote_error(&host_id(&alias), &plain_reason(&e));
+                }
             }
             if let Some(mut c) = app.state::<Arc<Remotes>>().tunnels.lock().remove(&alias) {
                 let _ = c.start_kill();
@@ -405,4 +416,35 @@ pub fn ssh_forwards(state: tauri::State<'_, Arc<Remotes>>) -> Vec<Value> {
         .iter()
         .map(|(a, r, l, _)| json!({"alias": a, "remote": r, "local": l}))
         .collect()
+}
+
+#[cfg(test)]
+mod reason_tests {
+    use super::plain_reason;
+
+    // Incident: the test ship's container was stopped and the app said "not connected (Settings → Integrations →
+    // SSH hosts)", which sent the user to settings that were fine. The reason must say what is actually wrong.
+    #[test]
+    fn a_server_that_is_down_is_named_as_down() {
+        let r = plain_reason("ssh: connect to host 127.0.0.1 port 2222: Connection refused");
+        assert!(r.starts_with("the server does not answer"), "{r}");
+        assert!(
+            r.contains("Connection refused"),
+            "ssh's own words stay for detail"
+        );
+    }
+
+    #[test]
+    fn a_rejected_key_is_not_called_a_dead_server() {
+        let r = plain_reason("atlas-bot@h: Permission denied (publickey).");
+        assert!(r.starts_with("SSH refused this Mac's key"), "{r}");
+    }
+
+    #[test]
+    fn anything_else_is_passed_through_unchanged() {
+        assert_eq!(
+            plain_reason("tunnel up but hostd unreachable: x"),
+            "tunnel up but hostd unreachable: x"
+        );
+    }
 }

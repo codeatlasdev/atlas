@@ -43,6 +43,7 @@ tracing = "0.1"
 thiserror = "2.0"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = { version = "0.10", features = ["serde"] }
 semver = "1.0"
 dirs = "7"
 tempfile = "3.27"

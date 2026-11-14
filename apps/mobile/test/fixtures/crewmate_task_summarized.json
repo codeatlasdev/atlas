@@ -1,0 +1,10 @@
+{
+  "id": "task-sum-1",
+  "ts": 1700000000,
+  "source": "desktop",
+  "prompt": "list the files",
+  "state": "done",
+  "result": "Listed 3 files in src/.",
+  "reply_full": "Found the following main files:\n- foo.rs: main module\n- bar.rs: utilities\n- baz.rs: tests\n\nAll files are in the src/ directory. No changes were made.",
+  "summarized": true
+}

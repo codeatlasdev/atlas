@@ -166,7 +166,27 @@ impl KillTree {
     /// stale root whose group we do not trust). Never includes pid <= 1, ourselves
     /// or our ancestors, nor the pgid of any of those.
     pub fn collect(root: i32, root_pgid: Option<i32>, table: &[ProcEntry]) -> Self {
-        let protected = protected_pids(table);
+        let me = std::process::id() as i32;
+        Self::collect_as(
+            root,
+            root_pgid,
+            table,
+            me,
+            atlas_core::sys::parent_pid() as i32,
+        )
+    }
+
+    /// [`collect`](Self::collect) as process `me` whose OS parent is `parent`, so a test can use a
+    /// process table that is entirely made up (the real parent pid once collided with a fake one
+    /// on Windows, #208).
+    fn collect_as(
+        root: i32,
+        root_pgid: Option<i32>,
+        table: &[ProcEntry],
+        me: i32,
+        parent: i32,
+    ) -> Self {
+        let protected = protected_pids(table, me, parent);
         let mut tree = KillTree::default();
         if let Some(g) = root_pgid {
             tree.add_pgid(g, &protected);
@@ -243,21 +263,20 @@ impl KillTree {
     }
 }
 
-/// Pids that must never be signalled: init, ourselves, and our ancestors.
-fn protected_pids(table: &[ProcEntry]) -> Vec<i32> {
-    let parent: HashMap<i32, i32> = table.iter().map(|e| (e.pid, e.ppid)).collect();
-    let me = std::process::id() as i32;
+/// Pids that must never be signalled: init, ourselves (`me`), our ancestors in `table`, and our
+/// OS parent (`parent`, protected even when `ps` is unavailable or empty).
+fn protected_pids(table: &[ProcEntry], me: i32, parent: i32) -> Vec<i32> {
+    let parents: HashMap<i32, i32> = table.iter().map(|e| (e.pid, e.ppid)).collect();
     let mut out = vec![1, me];
     let mut p = me;
-    while let Some(&pp) = parent.get(&p) {
+    while let Some(&pp) = parents.get(&p) {
         if pp <= 1 || out.contains(&pp) {
             break;
         }
         out.push(pp);
         p = pp;
     }
-    // `ps` may be unavailable/empty: the direct parent is always protected.
-    out.push(atlas_core::sys::parent_pid() as i32);
+    out.push(parent);
     out
 }
 
@@ -497,25 +516,42 @@ mod tests {
         assert_eq!(t, vec![e(1, 0, 1), e(42, 1, 42)]);
     }
 
+    // The table is entirely made up, including who "we" are and our OS parent: with the real pid
+    // and parent the Windows runner's real parent once equalled a fake pid here, and the code
+    // rightly protected it (#208).
     #[test]
     fn kill_tree_collects_descendant_groups_but_never_protected() {
-        let me = std::process::id() as i32;
-        // me's parent 500 (a shell); root 100 has a child that (oddly) is us.
+        let (me, parent) = (7000, 500);
+        // me's parent 500 (a shell); root 100 has a grandchild 8000.
         let table = [
             e(500, 1, 500),
             e(me, 500, 500),
             e(100, 1, 100),
             e(101, 100, 101),
-            e(me + 1000, 101, me + 1000),
+            e(8000, 101, 8000),
             e(102, 100, 500), // child sharing our ancestor's group
         ];
-        let tree = KillTree::collect(100, Some(100), &table);
+        let tree = KillTree::collect_as(100, Some(100), &table, me, parent);
         assert!(tree.pgids.contains(&100) && tree.pgids.contains(&101));
-        assert!(tree.pids.contains(&101) && tree.pids.contains(&(me + 1000)));
+        assert!(tree.pids.contains(&101) && tree.pids.contains(&8000));
         assert!(!tree.pgids.contains(&500), "never our ancestor's group");
         assert!(!tree.pids.contains(&1) && !tree.pgids.contains(&1));
-        let init_child = KillTree::collect(1, None, &table);
+        let init_child = KillTree::collect_as(1, None, &table, me, parent);
         assert!(!init_child.pids.contains(&1));
+    }
+
+    // Our OS parent is protected even when the process table does not show it (no `ps`, or the
+    // parent is not in the snapshot): it must never be killed as part of a tree.
+    #[test]
+    fn the_os_parent_is_protected_even_when_the_table_omits_it() {
+        let table = [e(100, 1, 100), e(101, 100, 101), e(4242, 101, 4242)];
+        let tree = KillTree::collect_as(100, Some(100), &table, 7000, 4242);
+        assert!(tree.pids.contains(&101));
+        assert!(
+            !tree.pids.contains(&4242),
+            "our parent, though under the root here"
+        );
+        assert!(!tree.pgids.contains(&4242));
     }
 
     #[cfg(unix)]

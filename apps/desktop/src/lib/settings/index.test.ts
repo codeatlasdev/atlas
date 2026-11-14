@@ -181,7 +181,7 @@ describe("settings index", () => {
 		const by = (k: string) => SECTIONS.filter((s) => s.cluster === k).map((s) => s.id);
 		expect(by("app")).toEqual(["general", "appearance", "notifications", "capture", "keyboard", "help"]);
 		expect(by("work")).toEqual(["workspaces", "editor", "terminal", "git", "agents"]);
-		expect(by("connect")).toEqual(["integrations"]);
+		expect(by("connect")).toEqual(["integrations", "crew"]);
 	});
 
 	// The incident this reorganisation fixes: General held updates, shell, links, notifications and sounds.

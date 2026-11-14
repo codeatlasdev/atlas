@@ -15,7 +15,7 @@ import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/crew_widgets.dart';
 
-import 'fixtures/demo_computer.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 
 class _Storage extends MacStorage {
   _Storage() : super(storage: null);

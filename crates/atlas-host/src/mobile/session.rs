@@ -6,7 +6,7 @@ use iroh::endpoint::Connection;
 use serde_json::{Value, json};
 use tokio::io::BufReader;
 
-use super::{Scope, push_scope, required_scope};
+use super::{Scope, line_scope, required_scope};
 use crate::protocol::{self, HostCmd, Request};
 use crate::server::{Hub, LongLine, read_line};
 
@@ -65,17 +65,9 @@ pub(super) async fn run(hub: Arc<Hub>, conn: Connection) {
     let filter = {
         let (m, node, tx) = (m.clone(), node.clone(), tx.clone());
         tokio::spawn(async move {
-            #[derive(serde::Deserialize)]
-            struct Ev<'a> {
-                #[serde(borrow)]
-                ev: std::borrow::Cow<'a, str>,
-            }
             while let Some(line) = pushes.recv().await {
                 let Some(dev) = m.device(&node) else { break };
-                let allowed = serde_json::from_str::<Ev>(&line)
-                    .ok()
-                    .and_then(|e| push_scope(&e.ev))
-                    .is_some_and(|s| dev.scopes.contains(&s));
+                let allowed = line_scope(&line).is_some_and(|s| dev.scopes.contains(&s));
                 if !allowed {
                     continue;
                 }

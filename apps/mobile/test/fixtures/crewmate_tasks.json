@@ -1,0 +1,47 @@
+{
+  "tasks": [
+    {
+      "finished_at": 1761213000,
+      "id": "task-done",
+      "pane": "crew:843f98ce-69c7-ca2b-fa09-6db1e1aa6070:88c409d9-0c1e-daa1-d7f9-5e7ab96c45ff",
+      "prompt": "review the PR",
+      "result": "LGTM",
+      "source": "desktop",
+      "started_at": 1761212900,
+      "state": "done",
+      "summarized": false,
+      "ts": 1761213000
+    },
+    {
+      "action": {
+        "kind": "add_trigger",
+        "prompt": "Review open PRs",
+        "reason": "You asked for a daily review",
+        "trigger": {
+          "cron": "0 9 * * 1-5",
+          "type": "schedule"
+        }
+      },
+      "id": "task-running",
+      "preparing": "codeatlasdev/ui",
+      "prompt": "write tests",
+      "source": "desktop",
+      "started_at": 1761213090,
+      "state": "running",
+      "steps": [
+        {
+          "text": "Reading files",
+          "ts": 1761213092
+        },
+        {
+          "group": "Test suite",
+          "text": "Writing tests",
+          "ts": 1761213095
+        }
+      ],
+      "title": "Writing unit tests for store",
+      "ts": 1761213100,
+      "tz": "America/Sao_Paulo"
+    }
+  ]
+}

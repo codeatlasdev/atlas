@@ -47,6 +47,12 @@ enum Commands {
         command: commands::config::ConfigCommands,
     },
 
+    #[command(next_help_heading = "Crew")]
+    /// Manage Atlas Crew servers (where crewmates run): install, login, status, logs
+    // `bot` is the pre-rename name: kept (hidden) for scripts and docs written before Atlas Crew.
+    #[command(alias = "bot")]
+    Crew(commands::crew::CrewArgs),
+
     #[command(next_help_heading = "Deploy")]
     /// Ship a release to a server: atomic swap, health-gated restarts, auto-rollback
     Deploy(commands::deploy::DeployArgs),
@@ -256,6 +262,7 @@ async fn run() -> Result<()> {
         Commands::Skills { command } => command.run().await?,
         Commands::Link(args) => args.run().await?,
         Commands::Unlink(args) => args.run().await?,
+        Commands::Crew(args) => args.run().await?,
     }
 
     // The TUI is gone and its services are stopped: install an update the user accepted
@@ -334,5 +341,93 @@ mod tests {
             Action::Adhoc(v) => assert_eq!(v, ["node", "-e", "x"]),
             other => panic!("{other:?}"),
         }
+    }
+
+    // Crew review P0, PR #106 (no kill switch): `atlas crew pause|resume <ssh-target>` exist, take the same
+    // target as `status`, and keep working under the hidden `atlas bot` alias.
+    #[test]
+    fn crew_pause_and_resume_take_an_ssh_target() {
+        use commands::crew::CrewCommands as C;
+        for w in ["crew", "bot"] {
+            match parse(&argv(&[w, "pause", "me@server"])) {
+                Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                    C::Pause(t) => assert_eq!(t.ssh_target, "me@server"),
+                    other => panic!("{w} pause: {other:?}"),
+                },
+                other => panic!("{w} pause: {other:?}"),
+            }
+        }
+        match parse(&argv(&["crew", "resume", "me@server"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Resume(t) => assert_eq!(t.ssh_target, "me@server"),
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        // The target is required, like for `status`.
+        assert!(parse(&argv(&["crew", "pause"])).is_err());
+        assert!(parse(&argv(&["crew", "resume"])).is_err());
+    }
+
+    // The server side of those commands: `atlas hostd --crew-pause|--crew-resume`, one at a time,
+    // never together with the flags that stop or restart the daemon.
+    #[test]
+    fn hostd_crew_pause_and_resume_flags_are_exclusive() {
+        let hostd = |flags: &[&str]| {
+            let mut v = vec!["hostd"];
+            v.extend_from_slice(flags);
+            parse(&argv(&v))
+        };
+        match hostd(&["--crew-pause", "--dir", "/d"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => {
+                assert!(h.crew_pause && !h.crew_resume)
+            }
+            other => panic!("{other:?}"),
+        }
+        match hostd(&["--crew-resume"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => {
+                assert!(h.crew_resume && !h.crew_pause)
+            }
+            other => panic!("{other:?}"),
+        }
+        for bad in [
+            &["--crew-pause", "--crew-resume"][..],
+            &["--crew-pause", "--stop"],
+            &["--crew-resume", "--status"],
+            &["--crew-pause", "--restart"],
+        ] {
+            assert!(hostd(bad).is_err(), "{bad:?} should conflict");
+        }
+    }
+
+    // Decision (Atlas Bot -> Atlas Crew rename): scripts and crewmates set up before it keep working.
+    // `atlas bot …` is `atlas crew …`, `atlas mcp --bot <id>` is `--crewmate <id>`, and neither shows
+    // in help (docs/crew.md documents them as hidden aliases).
+    #[test]
+    fn pre_rename_bot_spellings_still_parse_and_stay_out_of_help() {
+        let status = |w: &str| match parse(&argv(&[w, "status", "me@server"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                commands::crew::CrewCommands::Status(s) => s.ssh_target,
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{w}: {other:?}"),
+        };
+        assert_eq!(status("crew"), "me@server");
+        assert_eq!(status("bot"), "me@server");
+        for flag in ["--crewmate", "--bot"] {
+            match parse(&argv(&["mcp", flag, "c1"])) {
+                Ok(Action::Command(Commands::Mcp(m))) => {
+                    assert_eq!(m.crewmate.as_deref(), Some("c1"))
+                }
+                other => panic!("{flag}: {other:?}"),
+            }
+        }
+        use clap::CommandFactory as _;
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("crew"), "{help}");
+        assert!(
+            !help.contains("bot"),
+            "the old name leaked into help: {help}"
+        );
     }
 }

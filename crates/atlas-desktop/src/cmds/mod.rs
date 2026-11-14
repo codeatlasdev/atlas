@@ -8,7 +8,7 @@
 //! registry lookups they share.
 
 mod config_edit;
-mod discover;
+pub(crate) mod discover;
 mod heavy;
 mod hygiene;
 mod machine;

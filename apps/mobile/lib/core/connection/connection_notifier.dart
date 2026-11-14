@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/frb_transport.dart';
+import 'package:atlas_mobile/core/transport/crew_transport.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// Factory that creates a [Transport] for a given [MacDevice].
@@ -16,15 +19,18 @@ typedef TransportFactory = Future<Transport> Function(
   String secretKeyHex,
 );
 
+/// The demo computer is answered in the app; every other one is dialled.
 Future<Transport> _defaultTransportFactory(
   MacDevice device,
   String secretKeyHex,
-) async => FrbTransport.connect(
-  secretKeyHex: secretKeyHex,
-  nodeId: device.nodeId,
-  addrs: device.addrs,
-  relay: device.relay,
-);
+) async => isDemo(device)
+    ? demoTransport()
+    : await FrbTransport.connect(
+        secretKeyHex: secretKeyHex,
+        nodeId: device.nodeId,
+        addrs: device.addrs,
+        relay: device.relay,
+      );
 
 final transportFactoryProvider = Provider<TransportFactory>(
   (ref) => _defaultTransportFactory,
@@ -32,6 +38,16 @@ final transportFactoryProvider = Provider<TransportFactory>(
 
 /// Provides the [MacStorage] singleton.
 final macStorageProvider = Provider<MacStorage>((ref) => MacStorage());
+
+/// Paired computers from secure storage. The one copy: pairing and forgetting
+/// invalidate it, and every tab reads it.
+final pairedDevicesProvider = FutureProvider.autoDispose<List<MacDevice>>(
+  (ref) => ref.read(macStorageProvider).loadDevices(),
+);
+
+/// Showing the in-app demo computer instead of the paired ones. Not saved: a relaunch
+/// leaves the demo.
+final demoModeProvider = StateProvider<bool>((ref) => false);
 
 /// Manages the [Multiplexer] lifecycle for a single paired Mac.
 ///
@@ -68,13 +84,25 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   }
 
   Future<Multiplexer?> _connect() async {
+    // A crew server rides its Mac's connection: rebuilt whenever that one is.
+    final via = _device.via;
+    final parent = via == null
+        ? null
+        : ref.watch(connectionNotifierProvider(via).future);
     try {
-      final secretKey =
-          await ref.read(macStorageProvider).loadSecretKey() ?? '';
-      final transport = await ref.read(transportFactoryProvider)(
-        _device,
-        secretKey,
-      );
+      final Transport transport;
+      if (parent != null) {
+        final mac = await parent;
+        if (mac == null) return null;
+        transport = CrewTransport(mac, _device.crewServer!);
+      } else {
+        final secretKey =
+            await ref.read(macStorageProvider).loadSecretKey() ?? '';
+        transport = await ref.read(transportFactoryProvider)(
+          _device,
+          secretKey,
+        );
+      }
       final mux = Multiplexer(transport);
       _mux = mux;
       _backoffSeconds = 1;

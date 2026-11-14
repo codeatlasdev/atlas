@@ -67,6 +67,8 @@ function payload(name: string, event: Record<string, unknown>, ctx: Ctx): Record
 	} catch {}
 	p.model = ctx.model?.id;
 	if (name === "tool_call" || name.startsWith("tool_")) p.tool_name = event.toolName ?? event.name;
+	// What the tool acts on (a path, a command), so the crew's working line can say "Reading app.ts".
+	if (name === "tool_call") p.tool_input = event.input ?? event.args ?? event.arguments ?? event.params;
 	if (name === "before_agent_start" && typeof event.prompt === "string") p.prompt = event.prompt;
 	if (name === "message_end") p.text = text(event.message);
 	if (name === "agent_end") p.will_continue = event.willContinue === true;

@@ -25,7 +25,7 @@ Rust workspace (`crates/*`: `atlas-cli` = the `atlas` binary, `atlas-tui` = runt
 
 ## Debugging Atlas Desktop (agents: `desktop:agent`)
 
-**An agent never shows an Atlas window on the user's desktop, takes his focus, or sends input to it.** Not for a screenshot, not for a recording, not "just for a second". Start your own instance:
+**An agent never shows an Atlas window on the user's desktop, takes his focus, or sends input to it.** The one exception is the user asking for it: then start the `desktop` service of this repo's atlas.yaml (`atlas_start_service desktop`, the real Atlas Dev window) and stop it (`atlas_stop_service desktop`) when he says so. Not for a screenshot, not for a recording, not "just for a second". Start your own instance:
 
 ```bash
 bun run desktop:agent                    # builds the debug app (`bun run desktop:build:app`: `.app` only, never a DMG, which would open Finder on the user's screen) + CLI the first time; same as `atlas desktop --agent`

@@ -47,6 +47,17 @@ struct Child {
     wait: Waiter,
 }
 
+/// Who a terminal is, set per terminal by hostd (or by the launcher in the request). Never
+/// inherited: a hostd started from inside an Atlas terminal carried that terminal's pane key and
+/// hook endpoint, and every terminal it opened reported its agent as that other pane.
+const TERMINAL_IDENTITY: [&str; 5] = [
+    "ATLAS_PANE_KEY",
+    "ATLAS_HOOK_ENDPOINT",
+    "ATLAS_PTY_ID",
+    "ATLAS_TAB_ID",
+    "ATLAS_WORKTREE_ID",
+];
+
 /// Line protocols (omp --mode rpc-ui): stdin/stdout pipes, stderr dropped so it
 /// can't corrupt the JSONL stream.
 fn spawn_pipe(argv: &[String], cwd: &str, env: Vec<(String, String)>) -> Result<Child> {
@@ -58,8 +69,15 @@ fn spawn_pipe(argv: &[String], cwd: &str, env: Vec<(String, String)>) -> Result<
             c
         }
     };
+    for k in TERMINAL_IDENTITY {
+        cmd.env_remove(k);
+    }
     cmd.current_dir(cwd)
-        .envs(atlas_core::login_env::vars())
+        .envs(
+            atlas_core::login_env::vars()
+                .into_iter()
+                .filter(|(k, _)| !TERMINAL_IDENTITY.contains(&k.as_str())),
+        )
         .envs(env)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -144,7 +162,14 @@ fn spawn_pty(
     let mut cmd = CommandBuilder::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.cwd(cwd);
-    for (k, v) in atlas_core::login_env::vars().into_iter().chain(env) {
+    for k in TERMINAL_IDENTITY {
+        cmd.env_remove(k);
+    }
+    let inherited = atlas_core::login_env::vars()
+        .into_iter()
+        .filter(|(k, _)| !TERMINAL_IDENTITY.contains(&k.as_str()));
+    // The request's own values come last: hostd's per-terminal identity always wins.
+    for (k, v) in inherited.chain(env) {
         cmd.env(k, v);
     }
     let mut child = pair

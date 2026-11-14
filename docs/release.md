@@ -9,6 +9,8 @@ Releases are built and published by GitHub Actions on hosted runners when a main
 
 What the channels mean for users, and what Atlas promises on each, is in [Versioning and release channels](versioning.md). This page is how to cut them.
 
+Atlas Mobile ships separately, from its own `mobile-v*` tags: `bun run mobile:release X.Y.Z`, then a maintainer's approval sends the tested build to the stores. Steps: [Atlas Mobile, "Releases"](mobile.md#releases-testers-then-the-stores).
+
 ## The flow
 
 ```text

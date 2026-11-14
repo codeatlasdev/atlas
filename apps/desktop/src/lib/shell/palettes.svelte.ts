@@ -19,6 +19,8 @@ import { goTab, goWorktree, recentWorktrees, wtLabel } from "#lib/shell/navigate
 /** Open flags for each palette plus the file list the "Go to file" palette searches. */
 export const palettes = $state({
 	jump: false,
+	/** The Atlas Crew palette (crewmates + crew commands); ⌘K opens it instead of Jump while the Crew workspace is shown. */
+	crew: false,
 	commands: false,
 	files: false,
 	symbols: false,

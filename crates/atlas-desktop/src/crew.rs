@@ -973,7 +973,10 @@ mod tests {
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(!text.contains(secret));
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
-        let keys: Vec<&String> = v[0]["admin"].as_object().unwrap().keys().collect();
+        // A set: serde_json orders keys by insertion only with its `preserve_order` feature, which feature
+        // unification turns on in some builds and not others (CI on Linux and Windows read the other order).
+        let mut keys: Vec<&String> = v[0]["admin"].as_object().unwrap().keys().collect();
+        keys.sort();
         assert_eq!(
             keys,
             ["port", "target"],

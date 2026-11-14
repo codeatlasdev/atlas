@@ -90,7 +90,10 @@ const order = (text: string, needles: string[]) => {
 	}
 };
 
-describe("deploy-push-relay.sh", () => {
+// The fakes are a POSIX PATH of stubs (a `:`-joined tmp dir that Git Bash reads as a PATH), as in
+// install-sh.test.ts, which is skipped on Windows for the same reason; these are maintainer deploy scripts
+// (gcloud, openssl, /tmp) that nobody runs on Windows. The argument checks below need no fakes and still run there.
+describe.skipIf(process.platform === "win32")("deploy-push-relay.sh", () => {
 	const script = "scripts/deploy-push-relay.sh";
 
 	test("--dry-run lists every mutating command in order, runs none, and needs no login", () => {
@@ -175,7 +178,7 @@ describe("deploy-push-relay.sh", () => {
 	});
 });
 
-describe("firebase-mobile-config.sh", () => {
+describe.skipIf(process.platform === "win32")("firebase-mobile-config.sh", () => {
 	const script = "scripts/firebase-mobile-config.sh";
 
 	test("--dry-run registers all four apps, then sets both secrets in both environments", () => {
@@ -240,10 +243,18 @@ esac\n`,
 		for (const b of bytes) expect(b).toBeGreaterThan(20);
 		never(calls.join("\n") + r.out + r.err);
 	});
+});
 
-	test("rejects a malformed project id and a missing one", () => {
-		const f = fakes();
-		expect(run(script, ["Not A Project"], f.dir).code).toBe(1);
-		expect(run(script, [], f.dir).code).toBe(1);
+describe("argument validation (no tools needed, runs on every OS)", () => {
+	test("firebase-mobile-config.sh rejects a malformed project id and a missing one", () => {
+		const run_ = (...args: string[]) => Bun.spawnSync(shArgv("scripts/firebase-mobile-config.sh", ...args), { cwd: root });
+		expect(run_("Not A Project").exitCode).toBe(1);
+		expect(run_().exitCode).toBe(1);
+	});
+
+	test("deploy-push-relay.sh rejects an unknown flag", () => {
+		const p = Bun.spawnSync(shArgv("scripts/deploy-push-relay.sh", "--nope"), { cwd: root });
+		expect(p.exitCode).toBe(2);
+		expect(p.stderr.toString()).toContain("unknown arg");
 	});
 });

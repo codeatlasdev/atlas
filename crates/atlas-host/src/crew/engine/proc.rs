@@ -302,6 +302,8 @@ async fn rpc_isolated(client: Client, user: String, cmd: Cmd) -> Result<Rpc, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the Unix rpc tests read and write lines.
+    #[cfg(unix)]
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     fn cmd(program: &'static str, args: &[&str]) -> Cmd {

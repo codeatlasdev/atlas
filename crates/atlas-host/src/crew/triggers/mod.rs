@@ -21,7 +21,8 @@ pub(crate) mod github_events;
 mod service;
 pub(crate) mod webhook;
 
-#[cfg(test)]
+// Only the Unix e2e tests use it (`crew/tests/github_e2e.rs` is `cfg(unix)`).
+#[cfg(all(test, unix))]
 pub(crate) use github::TEST_GITHUB_POLL;
 
 use std::sync::{Arc, Weak};

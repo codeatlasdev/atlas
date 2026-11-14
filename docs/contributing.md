@@ -18,15 +18,39 @@ Thank you for helping with Atlas. This page is the long version of [CONTRIBUTING
 
 ## Set up
 
-You need `rustup`, [`bun`](https://bun.sh) and, for the desktop app, the Xcode command line tools. `gh` is optional.
+You need `rustup`, [`bun`](https://bun.sh) and Python 3 with PyYAML (the release checks in `bun run check`) on every OS, plus the per-OS pieces below. `gh` is optional.
 
 ```bash
 git clone https://github.com/codeatlasdev/atlas.git
 cd atlas
-scripts/setup.sh        # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny, cargo-nextest, actionlint and zizmor
+bun run setup           # idempotent: checks tools, installs frontend deps, cargo-tauri, cargo-deny, cargo-nextest, actionlint and zizmor
 ```
 
 The Rust toolchain is pinned in `rust-toolchain.toml`; `rustup` installs it on the first `cargo` command. Workspace lints apply to every crate: fix warnings, do not add global `allow`s. Build profiles, the `cargo lint`/`cargo t` aliases, `bun run sweep` and the measured build times: [Build performance](build-perf.md).
+
+### macOS
+
+The Xcode command line tools (`xcode-select --install`). Everything in this page works, including agent instances, Atlas Lab and the native GPU terminal.
+
+### Linux
+
+WebKitGTK 4.1 and its build dependencies for Atlas Desktop (`bun run setup` names them when they are missing; the CLI alone needs none):
+
+```bash
+sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module libappindicator-gtk3 librsvg xdotool   # Arch
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev   # Debian/Ubuntu
+sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel   # Fedora
+```
+
+Terminals use xterm.js; agent instances, Atlas Lab and the mirror are macOS only for now (#280, #282). The Linux roadmap is #289.
+
+### Windows
+
+Install [Git for Windows](https://git-scm.com/download/win) (it brings Git Bash), [rustup](https://rustup.rs) with the MSVC toolchain (Visual Studio Build Tools, "Desktop development with C++"), [Bun](https://bun.sh) and [Python 3](https://www.python.org/downloads/) from python.org, not the Microsoft Store alias that `python3` points to by default. WebView2 ships with Windows 10 and 11.
+
+`bun run` scripts call repo shell scripts through `bun scripts/sh.ts`, which runs them with Git Bash: on Windows the `bash` first on `PATH` is often WSL's (`WindowsApps\bash.exe`), which would run them inside Linux where your Windows Rust and Bun do not exist. Call a script by hand the same way: `bun scripts/sh.ts scripts/heavy.sh cargo build`. `ATLAS_BASH` points it at another bash. Checked on Windows 11: `bun run setup`, `bun run check:changed`, `bun run lint:workflows` and `bun run check` (rc 0 at 40e8b67, Git `usr\bin` on `PATH`). Run the gate from Git Bash, or put `C:\Program Files\Git\usr\bin` on `PATH` in PowerShell: some Rust tests spawn `sh` and `sleep`, and from a plain PowerShell `PATH` they fail with `program not found`. Not yet checked on Windows: `bun run desktop:dev` and `desktop:build`.
+
+Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are macOS only (see below). Tests of macOS-only or POSIX-only scripts (`dev-signing-identity`, `install.sh`, the load gate of `heavy.sh`) are skipped on Windows; CI runs the repo scripts and their tests on Linux and Windows (job "Repo scripts").
 
 ## The gate
 
@@ -44,7 +68,10 @@ bun run check
 6. `scripts/lint-workflows.sh` (actionlint and zizmor over `.github/`; also `bun run lint:workflows`)
 7. `bun run desktop:check` (svelte-check, prettier and the frontend tests, `bun run test` in `apps/desktop`: `bun test --conditions browser src`; a bare `bun test` there stops at once, since without the `browser` condition Svelte resolves its server build and no component can mount). `bun run test` at the root runs those tests plus `release:test`.
 8. `scripts/mobile-check.sh` (the native crate's fmt and clippy, then Flutter analyze and test for `apps/mobile`; skipped with a notice when Flutter is not installed)
-9. `bun run release:test` (the release tooling's and CI scripts' own tests)
+9. `scripts/push-relay-check.sh` (the Go push relay in `services/push-relay`; skipped with a notice when Go is not installed)
+10. `bun run release:test` (the repo scripts' own tests, the release manifest tests in Python, the bootstrap channel vectors and the label checks); CI runs it on Linux and Windows in the "Repo scripts" job
+
+Steps 5, 6, 8 and 9 run through `bun scripts/sh.ts`, so they use Git Bash on Windows (see [Windows](#windows)).
 
 Run it on its own and read the exit code before you push. A pull request should pass it.
 
@@ -253,7 +280,7 @@ Before you open it: make the change with its tests and doc updates, run `bun run
 
 ## CI and releases
 
-CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS and Linux run the Rust gate (one composite action, `.github/actions/rust-gate`, so the two cannot drift), plus the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:
+CI (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main` and `release/**`: macOS, Linux and Windows run the Rust gate (one composite action, `.github/actions/rust-gate`, so they cannot drift), Linux and Windows run the repo scripts and their tests (`bun run release:test`, job "Repo scripts"), plus the desktop frontend checks, the site build, `cargo deny`, the duplication report and the workflow lint. Fork pull requests run it with a read-only token and no secrets. How it is wired:
 
 - **One required check.** The last job, `CI`, passes only when every other job passed, so jobs can be renamed or split without touching the ruleset. `pr.yml` adds `Signed-off-by` (DCO) and `Conventional title` (the pull request title becomes the squash commit subject). These three are the required checks.
 - **No second test run after a merge.** The branch must be up to date to merge, so the squash commit on `main` has exactly the tree its pull request tested. `scripts/ci-tested.sh` checks that (same tree as the pull request head, and a green CI run for it) and then the push skips the tests and only builds what keeps the cache warm. A different tree, a direct push or any API error runs everything.

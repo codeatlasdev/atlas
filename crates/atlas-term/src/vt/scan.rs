@@ -131,7 +131,16 @@ impl ClearScan {
     /// Offsets just past each full pattern in `bytes`.
     pub(super) fn scan(&mut self, bytes: &[u8]) -> Vec<usize> {
         let mut out = Vec::new();
-        for (i, &b) in bytes.iter().enumerate() {
+        let mut i = 0;
+        while i < bytes.len() {
+            // Outside a match only an ESC can start one: jump to it instead of testing every byte.
+            if self.at == 0 {
+                match bytes[i..].iter().position(|&b| b == 0x1b) {
+                    Some(k) => i += k,
+                    None => break,
+                }
+            }
+            let b = bytes[i];
             if b == Self::PATTERN[self.at] {
                 self.at += 1;
             } else {
@@ -142,6 +151,7 @@ impl ClearScan {
                 out.push(i + 1);
                 self.at = 0;
             }
+            i += 1;
         }
         out
     }
@@ -180,5 +190,64 @@ mod tests {
         // Two clears back to back.
         let two = [&whole[1..whole.len() - 1], &whole[1..whole.len() - 1]].concat();
         assert_eq!(ClearScan::default().scan(&two).len(), 2);
+    }
+
+    // #252: the scan jumps over plain text to the next ESC; the cut offsets must stay exact (they split
+    // the chunk fed to the parser) with text before, between and after the clears, at every split.
+    #[test]
+    fn clear_offsets_stay_exact_across_skipped_text() {
+        let clear = b"\x1b[3J\x1b[H\x1b[2J";
+        let text = "ab\u{e9} line\r\n".repeat(40);
+        let mut whole = text.clone().into_bytes();
+        whole.extend_from_slice(clear);
+        let first = whole.len();
+        whole.extend_from_slice(text.as_bytes());
+        whole.extend_from_slice(b"\x1b[3J\x1b[H\x1b[");
+        whole.extend_from_slice(text.as_bytes()); // aborted clear in the middle
+        whole.extend_from_slice(clear);
+        let second = whole.len();
+        whole.extend_from_slice(b"tail");
+        assert_eq!(ClearScan::default().scan(&whole), vec![first, second]);
+        for k in 0..=whole.len() {
+            let mut s = ClearScan::default();
+            let mut got = s.scan(&whole[..k]);
+            got.extend(s.scan(&whole[k..]).into_iter().map(|o| o + k));
+            assert_eq!(got, vec![first, second], "split at {k}");
+        }
+    }
+
+    // #252: the skipping scan must match the old byte-at-a-time loop, incl. a partial match broken by a
+    // non-ESC byte (`ESC[3` then `x`), the one path where no skip happens.
+    #[test]
+    fn skipping_text_matches_the_byte_wise_scan() {
+        fn reference(at: &mut usize, bytes: &[u8]) -> Vec<usize> {
+            let p = ClearScan::PATTERN;
+            let mut out = Vec::new();
+            for (i, &b) in bytes.iter().enumerate() {
+                *at = if b == p[*at] {
+                    *at + 1
+                } else {
+                    usize::from(b == 0x1b)
+                };
+                if *at == p.len() {
+                    out.push(i + 1);
+                    *at = 0;
+                }
+            }
+            out
+        }
+        let corpus: &[u8] =
+            b"text\x1b[3x\x1b[3J\x1b[H\x1b[2Jmid\x1b\x1b[3J\x1b[H\x1b[2J\x1b[3J\x1b[H\x1b[2J\
+            \x1b[3J\x1b[H\x1b[2x\x1b[31mred\x1b[3J\x1b[H\x1b[2Jend\x1b[3J";
+        let want = reference(&mut 0, corpus);
+        assert_eq!(want.len(), 4);
+        for k in 0..=corpus.len() {
+            let (mut s, mut at) = (ClearScan::default(), 0);
+            for (a, b) in [(0, k), (k, corpus.len())] {
+                let got = s.scan(&corpus[a..b]);
+                assert_eq!(got, reference(&mut at, &corpus[a..b]), "split at {k}");
+                assert_eq!(s.at, at, "split at {k}");
+            }
+        }
     }
 }

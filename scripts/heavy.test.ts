@@ -4,6 +4,7 @@
 // repo's atlas.yaml (whose actions call the script) works on any installed version. A job that overlaps another
 // froze the machine (2026-10-15) and made timing tests flaky (PR #106); a lock that outlives its owner would block
 // every job.
+import { shArgv } from "./sh";
 import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +30,7 @@ function fakeAtlas(dir: string, name: string, log: string, { code = 0, queue = t
 /** A PATH with only the basics, so a developer's real atlas never leaks into a test. */
 const bare = "/usr/bin:/bin";
 const run = (args: string[], env: Record<string, string>) =>
-	Bun.spawnSync([script, ...args], { env: { PATH: bare, HOME: env.HOME ?? "/nonexistent", ...env }, timeout: 10_000 });
+	Bun.spawnSync(shArgv(script, ...args), { env: { PATH: bare, HOME: env.HOME ?? "/nonexistent", ...env }, timeout: 10_000 });
 
 /** Env that keeps the fallback away from the real machine: its own lock, no load gate, a memory reading of its own. */
 const fallbackEnv = (dir: string) => ({
@@ -40,15 +41,17 @@ const fallbackEnv = (dir: string) => ({
 });
 
 describe("heavy.sh with an atlas that has the queue", () => {
-	test("hands the command to `atlas run --heavy`, labelled by its program, arguments intact", () => {
+	test("hands the command to `atlas run --heavy`, labelled by the command itself, arguments intact", () => {
 		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
 		const log = join(dir, "argv");
 		const atlas = fakeAtlas(dir, "atlas", log);
 		const p = run(["bun", "run", "check:changed", "a b"], { ATLAS_BIN: atlas });
 		expect(p.exitCode).toBe(0);
 		// The probe (`heavy status --json`) is not logged by the queue-less branch of the fake; the run is.
+		// The label is the whole command (#228: the queue's history is keyed by it, so `bun run check` and
+		// `bun run check:changed` get separate estimates), not just the program.
 		expect(readFileSync(log, "utf8").trimEnd().split("\n")).toEqual([
-			"heavy", "status", "--json", "run", "--heavy", "--label", "bun", "--", "bun", "run", "check:changed", "a b",
+			"heavy", "status", "--json", "run", "--heavy", "--label", "bun run check:changed a b", "--", "bun", "run", "check:changed", "a b",
 		]);
 	});
 
@@ -109,7 +112,7 @@ describe("heavy.sh with an atlas that predates the queue, or none", () => {
 		const log = join(dir, "log");
 		const env = { PATH: bare, ...fallbackEnv(dir) };
 		const job = (n: string) =>
-			Bun.spawn([script, "sh", "-c", `echo start-${n} >> ${log}; sleep 1; echo end-${n} >> ${log}`], { env });
+			Bun.spawn([...shArgv(script), "sh", "-c", `echo start-${n} >> ${log.replaceAll("\\", "/")}; sleep 1; echo end-${n} >> ${log.replaceAll("\\", "/")}`], { env });
 		const [a, b] = [job("a"), job("b")];
 		expect([await a.exited, await b.exited]).toEqual([0, 0]);
 		const lines = readFileSync(log, "utf8").trim().split("\n");
@@ -135,7 +138,8 @@ describe("heavy.sh with an atlas that predates the queue, or none", () => {
 		expect(p.exitCode).toBe(3);
 	});
 
-	test("a machine that never calms down still runs the job after the wait, and says so", () => {
+	// Needs a load reading: Git Bash on Windows has no `uptime`, so there the load gate is open by design.
+	test.skipIf(process.platform === "win32")("a machine that never calms down still runs the job after the wait, and says so", () => {
 		const dir = mkdtempSync(join(tmpdir(), "heavy-"));
 		const p = run(["sh", "-c", "echo ran"], { ...fallbackEnv(dir), ATLAS_HEAVY_MAXLOAD: "0", ATLAS_HEAVY_WAIT: "0" });
 		expect(p.exitCode).toBe(0);

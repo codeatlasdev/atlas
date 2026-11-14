@@ -111,7 +111,8 @@ esac`,
 	};
 }
 
-describe("install.sh", () => {
+// install.sh is the macOS and Linux installer (Windows uses install.ps1); its sandbox is a POSIX PATH of stubs.
+describe.skipIf(process.platform === "win32")("install.sh", () => {
 	test("verifies the checksum, runs `atlas install`, then moves to the default channel", () => {
 		const r = install();
 		expect(r.code).toBe(0);

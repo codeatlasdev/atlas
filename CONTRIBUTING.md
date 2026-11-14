@@ -52,7 +52,7 @@ These rules are enforced by a GitHub ruleset on `main` and `release/*` (pull req
 
 **Agents** never push to `main`, merge a pull request or use the bypass on their own initiative. An agent run by a maintainer may merge, or use the bypass, when that maintainer says so for that change. An agent working for an external contributor opens a branch and a pull request like that contributor would, and stops there; it is not one of the two approvals. Why the approval rule exists is in [GOVERNANCE.md](GOVERNANCE.md#why-external-contributors-do-not-merge-their-own-pull-requests).
 
-CI runs on every pull request on macOS and Linux and on pushes to `main` and `release/**`. What Stable, Beta and Alpha mean is in [docs/versioning.md](docs/versioning.md).
+CI runs on every pull request on macOS, Linux and Windows and on pushes to `main` and `release/**`. What Stable, Beta and Alpha mean is in [docs/versioning.md](docs/versioning.md).
 
 ### Release branches
 
@@ -64,7 +64,7 @@ Every command, the gate and the CI design: [docs/contributing.md](docs/contribut
 
 ### Platforms and toolchain
 
-- The prebuilt product targets macOS on Apple silicon. Atlas Desktop and the GPU terminal (`atlas-desktop`, `atlas-term`) are macOS-only. Everything else builds on Linux: `cargo build`/`cargo test` use the workspace `default-members` (all crates except those two), and CI runs that set on Ubuntu. Use `--workspace` on a Mac for the full gate.
+- Atlas Desktop and the CLI build and are tested on macOS (Apple silicon), Linux (x64) and Windows (x64); CI runs the whole workspace on all three. The native GPU terminal, agent instances, Atlas Lab and the mirror are macOS only (Linux and Windows terminals use xterm.js). Per-OS setup: [docs/contributing.md](docs/contributing.md#set-up).
 - **MSRV policy:** the Rust version is pinned in `rust-toolchain.toml` and `rust-version` in `Cargo.toml` is the same version (currently 1.99). We only support building with that toolchain or newer stable; bumping it is a normal change, called out in the changelog.
 
 ## Developer Certificate of Origin (DCO)

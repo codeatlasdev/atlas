@@ -19,8 +19,8 @@ import {
 
 describe("labDir", () => {
 	test("is <main>/lab, with main from ATLAS_HOSTD_DIR or ~/.atlas", () => {
-		expect(labDir({ ATLAS_HOSTD_DIR: "/x/atlas" }, "/home/u")).toBe("/x/atlas/lab");
-		expect(labDir({}, "/home/u")).toBe("/home/u/.atlas/lab");
+		expect(labDir({ ATLAS_HOSTD_DIR: "/x/atlas" }, "/home/u")).toBe(join("/x/atlas", "lab"));
+		expect(labDir({}, "/home/u")).toBe(join("/home/u", ".atlas", "lab"));
 	});
 
 	// An inherited ATLAS_HOSTD_DIR pointing at the lab itself would nest lab/lab: refuse to guess.
@@ -36,7 +36,7 @@ describe("labEnv", () => {
 		const e = labEnv({ ATLAS_HOSTD_DIR: "/m", PATH: "/bin" }, "/home/u");
 		expect(e.ATLAS_HOSTD_DIR).toBe("/m");
 		expect(e.PATH).toBe("/bin");
-		expect(labEnv({ PATH: "/bin" }, "/home/u").ATLAS_HOSTD_DIR).toBe("/home/u/.atlas");
+		expect(labEnv({ PATH: "/bin" }, "/home/u").ATLAS_HOSTD_DIR).toBe(join("/home/u", ".atlas"));
 	});
 });
 

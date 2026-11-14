@@ -168,7 +168,12 @@ export class AutomationForm {
 			case "interval":
 				return { type: "interval", every_secs: intervalToSecs(this.intervalValue, this.intervalUnit) };
 			case "github":
-				return { ...this.githubExtra, type: "github", repo: this.githubRepo.trim(), events: [...this.githubEvents] };
+				return {
+					...this.githubExtra,
+					type: "github",
+					repo: this.githubRepo.trim(),
+					events: [...this.githubEvents],
+				};
 			case "file":
 				return { type: "file", path: this.filePath.trim(), glob: this.fileGlob.trim() || undefined };
 			case "crewmate":

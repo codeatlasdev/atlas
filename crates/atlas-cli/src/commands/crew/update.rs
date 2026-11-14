@@ -1,7 +1,9 @@
 //! `atlas crew update <ssh-target> [--version X] [--rollback]` — bring a crew server's `atlas` to a release
 //! (the CLI's own by default), keeping the previous binary as `atlas.prev` and rolling back by itself when
 //! hostd does not come back. Only the binary dir changes: the crew home (crewmates, memory, secrets, the paused
-//! flag) is never touched, so a paused crew stays paused.
+//! flag) is never touched, so a paused crew stays paused. The one other thing it writes is the capture runner
+//! (`runner.mjs` and `detectors.mjs`), and only on a server that already has the browsers: the new hostd asks
+//! that runner for things an old one does not do.
 
 use anyhow::{Result, bail};
 use clap::Args;
@@ -10,6 +12,7 @@ use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::Remote;
 
 use super::binary;
+use super::browsers;
 use super::install::{self, host_from_target};
 use super::layout::SERVICE;
 
@@ -132,6 +135,11 @@ impl AtlasCommand for UpdateArgs {
         };
         if let Some(warning) = binary::report(&o.stdout, expected) {
             eprintln!("\x1b[33m◆\x1b[0m {warning}");
+        }
+        // A new hostd asks the runner for the UI detectors; an old runner writes no findings and
+        // would fail every scenario of the UI gate. A rollback keeps the runner it has.
+        if matches!(plan, Plan::Install { .. }) && browsers::refresh(&r, &self.ssh_target).await? {
+            eprintln!("\x1b[36m▸\x1b[0m refreshed the capture runner on {host}");
         }
         println!(
             "\x1b[32m✓\x1b[0m atlas on {host} updated; the previous binary is kept (atlas crew update {} --rollback).",

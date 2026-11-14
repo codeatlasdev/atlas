@@ -622,6 +622,10 @@ async fn a_cell_without_findings_or_with_garbage_fails_the_gate_instead_of_passi
     };
     let e = checks[0].run(combo, &png).unwrap_err();
     assert!(e.contains("wrote no"), "{e}");
+    assert!(
+        e.contains("predates the UI detectors") && e.contains("atlas crew browsers install"),
+        "the error names the fix: {e}"
+    );
     std::fs::write(
         tmp.path().join("chromium-390px-light.findings.json"),
         "{\"nope\": true}",

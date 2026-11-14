@@ -268,6 +268,7 @@ pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
     let mut missing = vec![];
     let mut failed = vec![];
     let mut out = vec![];
+    let mut no_findings = false;
     for c in spec.combos() {
         match found.get(&c) {
             None => missing.push(c.to_string()),
@@ -278,6 +279,7 @@ pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
                     if spec.dom && dom.is_none() {
                         failed.push(format!("{c}: no DOM report written"));
                     } else if spec.checks && findings.is_none() {
+                        no_findings = true;
                         failed.push(format!("{c}: no findings written"));
                     } else {
                         out.push(Cell {
@@ -302,6 +304,9 @@ pub fn check_report(spec: &Spec, report: &Report) -> Result<Vec<Cell>, String> {
     }
     if !failed.is_empty() {
         msg.push_str(&format!(" Failed: {}.", failed.join("; ")));
+    }
+    if no_findings {
+        msg.push_str(&format!(" {}.", super::detectors::OLD_RUNNER_HINT));
     }
     Err(msg)
 }
@@ -512,6 +517,27 @@ mod tests {
             e.contains("webkit/390px/dark: no screenshot written"),
             "{e}"
         );
+    }
+
+    // An old runner (installed before the detectors) ignores `checks` and reports shots without
+    // findings. The error says why and how to fix it, and the capture still fails: a gate that could
+    // not look must not pass.
+    #[test]
+    fn checks_asked_of_a_runner_that_predates_them_fail_and_name_the_fix() {
+        let s = spec(json!({"url": "http://x/", "engines": ["webkit"], "widths": [390], "themes": ["light"], "checks": true})).unwrap();
+        let r =
+            parse_report(&json!({"shots": [shot("webkit", 390, "light")]}).to_string()).unwrap();
+        let e = check_report(&s, &r).unwrap_err();
+        assert!(e.contains("webkit/390px/light: no findings written"), "{e}");
+        assert!(
+            e.contains("predates the UI detectors")
+                && e.contains("atlas crew browsers install")
+                && e.contains("atlas crew update"),
+            "{e}"
+        );
+        // Asked for nothing, the hint is not noise.
+        let s = spec(json!({"url": "http://x/", "engines": ["webkit"], "widths": [390], "themes": ["light"]})).unwrap();
+        assert!(check_report(&s, &r).is_ok());
     }
 
     #[test]

@@ -40,7 +40,11 @@ impl Check for Detectors {
     fn run(&self, _combo: Combo, png: &Path) -> Result<Vec<Finding>, String> {
         let file = detectors::findings_path(png);
         if !file.is_file() {
-            return Err(format!("the runner wrote no {}", file.display()));
+            return Err(format!(
+                "the runner wrote no {}: {}",
+                file.display(),
+                detectors::OLD_RUNNER_HINT
+            ));
         }
         Ok(detectors::read(&file)?
             .into_iter()

@@ -47,6 +47,11 @@ pub struct Rect {
     pub height: f64,
 }
 
+/// What to do when a runner that was asked for the detectors wrote no findings: it is older than
+/// them (a server whose capture was installed before they existed and not refreshed since).
+pub const OLD_RUNNER_HINT: &str = "this server's capture runner predates the UI detectors: run \
+`atlas crew browsers install <ssh-target>` (or `atlas crew update <ssh-target>`) from your computer";
+
 /// The findings file of one capture cell. A file that is not a list of findings is an error
 /// naming it: a gate must not read garbage as "nothing wrong".
 pub fn read(path: &Path) -> Result<Vec<Finding>, String> {

@@ -468,14 +468,17 @@ async fn crewmate_audit_fixture_is_real_payload() {
             "the fixture lacks a {k} entry: {kinds:?}"
         );
     }
-    // Stable values for the clock and the random ids.
-    for (i, e) in live["entries"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .enumerate()
-    {
-        e["ts"] = json!(1_700_000_000 + i as u64);
+    let entries = live["entries"].as_array_mut().unwrap();
+    // The contract the desktop reads: newest first.
+    let seqs: Vec<u64> = entries.iter().map(|e| e["seq"].as_u64().unwrap()).collect();
+    assert!(
+        seqs.windows(2).all(|w| w[0] > w[1]),
+        "entries are not newest first: {seqs:?}"
+    );
+    // Stable values for the clock, the random ids and the order. Hooks, the task's end and the
+    // approval are written by different tasks, so how they interleave varies from run to run
+    // (CI on PR #228 got another order than the fixture); the fixture pins the shapes, not that.
+    for e in entries.iter_mut() {
         e["crewmate_id"] = json!("crewmate-fixture");
         e["req"]
             .is_string()
@@ -483,6 +486,29 @@ async fn crewmate_audit_fixture_is_real_payload() {
         if e["task_id"].is_string() {
             e["task_id"] = json!("task-fixture");
         }
+        e["ts"] = json!(0);
+        e["seq"] = json!(0);
+    }
+    // Keys sorted at every level, so the order does not depend on serde_json's `preserve_order`.
+    fn canon(v: &Value) -> String {
+        match v {
+            Value::Object(m) => {
+                let mut kv: Vec<_> = m
+                    .iter()
+                    .map(|(k, v)| format!("{k:?}:{}", canon(v)))
+                    .collect();
+                kv.sort();
+                format!("{{{}}}", kv.join(","))
+            }
+            Value::Array(a) => format!("[{}]", a.iter().map(canon).collect::<Vec<_>>().join(",")),
+            v => v.to_string(),
+        }
+    }
+    entries.sort_by_cached_key(canon);
+    let n = entries.len() as u64;
+    for (i, e) in entries.iter_mut().enumerate() {
+        e["seq"] = json!(n - i as u64);
+        e["ts"] = json!(1_700_000_000 + n - i as u64);
     }
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/desktop/src/__fixtures__/crewmate_audit.json");

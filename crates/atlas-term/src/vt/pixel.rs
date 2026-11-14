@@ -64,7 +64,17 @@ impl PixelScan {
     /// The changes `bytes` make, in order.
     pub(super) fn scan(&mut self, bytes: &[u8]) -> Vec<Change> {
         let mut out = Vec::new();
-        for &b in bytes {
+        let mut i = 0;
+        while i < bytes.len() {
+            // Plain text never changes the state: jump to the next ESC instead of matching every byte.
+            if self.st == St::Text {
+                match bytes[i..].iter().position(|&b| b == 0x1b) {
+                    Some(k) => i += k,
+                    None => break,
+                }
+            }
+            let b = bytes[i];
+            i += 1;
             if b == 0x1b {
                 self.restart(St::Esc);
                 continue;

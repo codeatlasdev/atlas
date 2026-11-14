@@ -215,4 +215,39 @@ mod tests {
             assert_eq!(got, vec![first, second], "split at {k}");
         }
     }
+
+    // #252: the skipping scan must match the old byte-at-a-time loop, incl. a partial match broken by a
+    // non-ESC byte (`ESC[3` then `x`), the one path where no skip happens.
+    #[test]
+    fn skipping_text_matches_the_byte_wise_scan() {
+        fn reference(at: &mut usize, bytes: &[u8]) -> Vec<usize> {
+            let p = ClearScan::PATTERN;
+            let mut out = Vec::new();
+            for (i, &b) in bytes.iter().enumerate() {
+                *at = if b == p[*at] {
+                    *at + 1
+                } else {
+                    usize::from(b == 0x1b)
+                };
+                if *at == p.len() {
+                    out.push(i + 1);
+                    *at = 0;
+                }
+            }
+            out
+        }
+        let corpus: &[u8] =
+            b"text\x1b[3x\x1b[3J\x1b[H\x1b[2Jmid\x1b\x1b[3J\x1b[H\x1b[2J\x1b[3J\x1b[H\x1b[2J\
+            \x1b[3J\x1b[H\x1b[2x\x1b[31mred\x1b[3J\x1b[H\x1b[2Jend\x1b[3J";
+        let want = reference(&mut 0, corpus);
+        assert_eq!(want.len(), 4);
+        for k in 0..=corpus.len() {
+            let (mut s, mut at) = (ClearScan::default(), 0);
+            for (a, b) in [(0, k), (k, corpus.len())] {
+                let got = s.scan(&corpus[a..b]);
+                assert_eq!(got, reference(&mut at, &corpus[a..b]), "split at {k}");
+                assert_eq!(s.at, at, "split at {k}");
+            }
+        }
+    }
 }

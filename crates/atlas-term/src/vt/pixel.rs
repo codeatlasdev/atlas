@@ -73,53 +73,57 @@ impl PixelScan {
                     None => break,
                 }
             }
-            let b = bytes[i];
+            self.step(bytes[i], &mut out);
             i += 1;
-            if b == 0x1b {
-                self.restart(St::Esc);
-                continue;
-            }
-            match (self.st, b) {
-                (St::Text, _) => {}
-                (St::Esc, b'[') => self.restart(St::Csi),
-                (St::Esc, b'c') => {
-                    out.push(Change::Reset);
-                    self.restart(St::Text);
-                }
-                (St::Csi, b'?') => self.restart(St::Private),
-                (St::Csi, b'!') => self.restart(St::Bang),
-                (St::Bang, b'p') => {
-                    out.push(Change::Reset);
-                    self.restart(St::Text);
-                }
-                (St::Private, b'0'..=b'9') => {
-                    let d = u32::from(b - b'0');
-                    // A huge parameter is not a mode; saturate rather than wrap onto 1016.
-                    self.cur = Some(self.cur.unwrap_or(0).saturating_mul(10).saturating_add(d));
-                }
-                (St::Private, b';') => self.end_param(),
-                (St::Private, b'$') => {
-                    self.end_param();
-                    self.dollar = true;
-                }
-                (St::Private, b'h' | b'l') if !self.dollar => {
-                    self.end_param();
-                    if self.has {
-                        out.push(Change::Set(b == b'h'));
-                    }
-                    self.restart(St::Text);
-                }
-                (St::Private, b'p') if self.dollar => {
-                    if self.has && self.n == 1 {
-                        out.push(Change::Query);
-                    }
-                    self.restart(St::Text);
-                }
-                // Anything else ends the sequence (a different final byte, a control character).
-                _ => self.restart(St::Text),
-            }
         }
         out
+    }
+
+    /// One byte of the state machine (the whole scan before plain text was skipped; tests use it as the reference).
+    fn step(&mut self, b: u8, out: &mut Vec<Change>) {
+        if b == 0x1b {
+            self.restart(St::Esc);
+            return;
+        }
+        match (self.st, b) {
+            (St::Text, _) => {}
+            (St::Esc, b'[') => self.restart(St::Csi),
+            (St::Esc, b'c') => {
+                out.push(Change::Reset);
+                self.restart(St::Text);
+            }
+            (St::Csi, b'?') => self.restart(St::Private),
+            (St::Csi, b'!') => self.restart(St::Bang),
+            (St::Bang, b'p') => {
+                out.push(Change::Reset);
+                self.restart(St::Text);
+            }
+            (St::Private, b'0'..=b'9') => {
+                let d = u32::from(b - b'0');
+                // A huge parameter is not a mode; saturate rather than wrap onto 1016.
+                self.cur = Some(self.cur.unwrap_or(0).saturating_mul(10).saturating_add(d));
+            }
+            (St::Private, b';') => self.end_param(),
+            (St::Private, b'$') => {
+                self.end_param();
+                self.dollar = true;
+            }
+            (St::Private, b'h' | b'l') if !self.dollar => {
+                self.end_param();
+                if self.has {
+                    out.push(Change::Set(b == b'h'));
+                }
+                self.restart(St::Text);
+            }
+            (St::Private, b'p') if self.dollar => {
+                if self.has && self.n == 1 {
+                    out.push(Change::Query);
+                }
+                self.restart(St::Text);
+            }
+            // Anything else ends the sequence (a different final byte, a control character).
+            _ => self.restart(St::Text),
+        }
     }
 }
 
@@ -224,5 +228,31 @@ mod tests {
         assert_eq!(scan_all(&[b"\x1b[?10\x1b[?1016h"]), [Change::Set(true)]);
         assert!(scan_all(&[b"\x1b[?10\x1b[6h"]).is_empty());
         assert!(scan_all(&[b"\x1b[?1016\n16h"]).is_empty());
+    }
+
+    // #252: skipping plain text must find exactly what the byte-at-a-time machine finds, at every split.
+    #[test]
+    fn skipping_text_matches_the_byte_wise_scan() {
+        let corpus: &[u8] = b"plain \xc3\xa9 text\x1b[?1000;1016;1006h more text\x1b[?10\x1b[?1016hx\x1b[?1016\n16h\
+            \x1b[31mred\x1b[0m\x1b[?1016$p\x1bc\x1b[!p tail \x1b[?1016l\x1b";
+        let reference = |chunks: &[&[u8]]| {
+            let mut s = PixelScan::default();
+            let mut out = Vec::new();
+            for &b in chunks.iter().flat_map(|c| c.iter()) {
+                s.step(b, &mut out);
+            }
+            out
+        };
+        let want = reference(&[corpus]);
+        assert!(want.len() >= 5, "{want:?}");
+        for k in 0..=corpus.len() {
+            assert_eq!(
+                scan_all(&[&corpus[..k], &corpus[k..]]),
+                want,
+                "split at {k}"
+            );
+        }
+        let bytes: Vec<&[u8]> = corpus.chunks(1).collect();
+        assert_eq!(scan_all(&bytes), want);
     }
 }

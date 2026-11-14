@@ -25,10 +25,11 @@ fn omp_fresh_config(registry: &Path) -> Result<PathBuf, String> {
 static TEST_BIN: parking_lot::Mutex<Option<PathBuf>> = parking_lot::Mutex::new(None);
 
 /// Tests that override the launched program hold this for their whole run (the override is process-wide).
-#[cfg(test)]
+/// Its users are the Unix-only `mobile::tests`.
+#[cfg(all(test, unix))]
 pub(crate) static TEST_BIN_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn set_test_bin(bin: Option<PathBuf>) {
     *TEST_BIN.lock() = bin;
 }

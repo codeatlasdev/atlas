@@ -451,7 +451,7 @@ Skills are agent instructions compiled into the `atlas` binary, so they always m
 
 Prints `atlas <version>`, OS and architecture.
 
-If the CLI panics it writes a crash report (`crash-<timestamp>.toml`) to its data directory and prints the issue tracker URL. Reports stay on your machine; review one for private data before attaching it to an issue.
+If the CLI panics it writes a crash report (`crash-<unix_ms>-<pid>.toml`, newest 20 kept) to its data directory and prints the issue tracker URL. Reports stay on your machine; tokens in the command line and message are redacted and your home directory is written as `~`, but review one before attaching it to an issue.
 
 ## `atlas uninstall`
 

@@ -1198,6 +1198,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewmateUpdate { .. }
         | HostCmd::CrewmateDelete { .. }
         | HostCmd::CrewmateTask { .. }
+        | HostCmd::CrewmateAttachmentPut { .. }
+        | HostCmd::CrewmateAttachment { .. }
         | HostCmd::CrewmateTasks { .. }
         | HostCmd::CrewmateCancel { .. }
         | HostCmd::CrewmateMemory { .. }

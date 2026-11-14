@@ -203,6 +203,7 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
 /// - `POST /crew/<id>/ask`           — ask_user call from an engine; blocks until answered
 /// - `POST /crew/<id>/set_profile`   — update crewmate name/role from within a task
 /// - `POST /crew/<id>/capture`       — the capture tool: Playwright screenshots, attached to the task
+/// - `POST /crew/<id>/ui_gate`       — the ui_gate tool: plan per change, rerun failures, regressions
 async fn route_crew(
     hub: &Arc<crate::server::Hub>,
     path: &str,
@@ -224,7 +225,41 @@ async fn route_crew(
         "ask" => handle_ask(hub, crewmate_id, &v()).await,
         "set_profile" => handle_set_profile(hub, crewmate_id, &v()),
         "capture" => handle_capture(hub, crewmate_id, &v()).await,
+        "ui_gate" => handle_ui_gate(hub, crewmate_id, &v()).await,
         _ => ("404 Not Found", String::new()),
+    }
+}
+
+/// The task a crewmate's tool call belongs to (the pane key names it), or the `422` body that says
+/// only a task can call `tool`.
+fn task_of_pane(
+    crewmate_id: &str,
+    v: &Value,
+    tool: &str,
+) -> Result<String, (&'static str, String)> {
+    v["pane_key"]
+        .as_str()
+        .filter(|p| crate::crew::pane::is_pane_of(p, crewmate_id))
+        .and_then(|p| p.splitn(3, ':').nth(2))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            (
+                "422 Unprocessable Entity",
+                serde_json::json!({"error": format!("{tool}: only a crewmate's task can call it (no task pane)")})
+                    .to_string(),
+            )
+        })
+}
+
+/// `200` with the tool's answer, or `422 {"error": …}` with what the agent must read.
+fn tool_reply(r: Result<Value, String>) -> (&'static str, String) {
+    match r {
+        Ok(r) => ("200 OK", r.to_string()),
+        Err(e) => (
+            "422 Unprocessable Entity",
+            serde_json::json!({ "error": e }).to_string(),
+        ),
     }
 }
 
@@ -236,33 +271,43 @@ async fn handle_capture(
     crewmate_id: &str,
     v: &Value,
 ) -> (&'static str, String) {
-    let task_id = v["pane_key"]
-        .as_str()
-        .filter(|p| crate::crew::pane::is_pane_of(p, crewmate_id))
-        .and_then(|p| p.splitn(3, ':').nth(2))
-        .filter(|t| !t.is_empty());
-    let Some(task_id) = task_id else {
-        return (
-            "422 Unprocessable Entity",
-            serde_json::json!({"error": "capture: only a crewmate's task can capture (no task pane)"})
-                .to_string(),
-        );
+    let task_id = match task_of_pane(crewmate_id, v, "capture") {
+        Ok(t) => t,
+        Err(e) => return e,
     };
-    match crate::crew::capture::handle(
-        &hub.crew.dir,
-        &hub.crew.store,
-        crewmate_id,
-        task_id,
-        &v["args"],
+    tool_reply(
+        crate::crew::capture::handle(
+            &hub.crew.dir,
+            &hub.crew.store,
+            crewmate_id,
+            &task_id,
+            &v["args"],
+        )
+        .await,
     )
-    .await
-    {
-        Ok(r) => ("200 OK", r.to_string()),
-        Err(e) => (
-            "422 Unprocessable Entity",
-            serde_json::json!({ "error": e }).to_string(),
-        ),
-    }
+}
+
+/// Handle `POST /crew/<id>/ui_gate`: plan, capture, rerun failures or register a regression for the
+/// crewmate's current task. Same answers as `capture`.
+async fn handle_ui_gate(
+    hub: &Arc<crate::server::Hub>,
+    crewmate_id: &str,
+    v: &Value,
+) -> (&'static str, String) {
+    let task_id = match task_of_pane(crewmate_id, v, "ui_gate") {
+        Ok(t) => t,
+        Err(e) => return e,
+    };
+    tool_reply(
+        crate::crew::uigate::handle(
+            &hub.crew.dir,
+            &hub.crew.store,
+            crewmate_id,
+            &task_id,
+            &v["args"],
+        )
+        .await,
+    )
 }
 
 /// Handle `POST /crew/<id>/ask`: record the ask on the task, block until answered (≤30 min).

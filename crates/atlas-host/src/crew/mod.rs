@@ -8,9 +8,11 @@
 //! | `github`    | `crew_github_*` commands and the `gh` CLI helpers                           |
 //! | `runner`    | one task at a time per crewmate: conversational engines or a terminal agent |
 //! | `engine`    | the conversational engines (omp, claude, codex, opencode)                   |
+//! | `attachments` | images on a task: caps, type check, storage, the agent's copy             |
 //! | `store`     | on-disk definitions, task logs, secrets, usage (`<hostd dir>/crew/<id>/`)   |
 //! | `triggers`  | webhook, GitHub, file, service, crewmate-chain and schedule triggers        |
 //! | `capture`   | the `capture` tool: Playwright screenshots of a URL, widths x themes x engines |
+//! | `uigate`    | the `ui_gate` tool: plan per change, rerun only failures, regression replay |
 //! | `schedule`  | cron routines                                                               |
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
@@ -20,6 +22,7 @@
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
 
+pub(crate) mod attachments;
 pub(crate) mod audit;
 pub mod capture;
 pub(crate) mod engine;
@@ -40,6 +43,7 @@ pub(crate) mod telegram;
 #[cfg(test)]
 mod tests;
 pub(crate) mod triggers;
+pub mod uigate;
 
 use serde_json::{Value, json};
 
@@ -125,7 +129,22 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             prompt,
             source,
             tz,
-        } => t::send_task(hub, id, prompt, source, tz),
+            attachments,
+        } => t::send_task(hub, id, prompt, source, tz, attachments),
+        HostCmd::CrewmateAttachmentPut {
+            id,
+            upload,
+            seq,
+            data_b64,
+            last,
+        } => t::attachment_put(hub, id, upload, seq, data_b64, last),
+        HostCmd::CrewmateAttachment {
+            id,
+            task,
+            name,
+            offset,
+            limit,
+        } => t::attachment(hub, id, task, name, offset, limit),
         HostCmd::CrewmateTasks { id, limit } => t::tasks(hub, id, limit),
         HostCmd::CrewmateCancel { id, task } => t::cancel(hub, id, task),
         HostCmd::CrewmateAnswer {

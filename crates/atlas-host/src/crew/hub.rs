@@ -106,6 +106,9 @@ impl CrewHub {
 
     pub(crate) fn start(self: &Arc<Self>, hub: std::sync::Weak<Hub>) {
         let _ = self.hub_ref.set(hub.clone());
+        // Uploads abandoned before this start (an app killed mid-send) are thrown away now, not at the next
+        // upload of their crewmate, which may never come.
+        super::attachments::sweep_stale_uploads(&self.store);
         self.telegram.set_hub(hub.clone());
         self.telegram.clone().start();
         schedule::start(hub.clone());

@@ -8,7 +8,7 @@ use super::action::park_task;
 use super::github::{WaitResult, needs_github_auth, wait_for_github_connect};
 use super::outcome::{broadcast_task, finish_task, persist};
 use crate::crew::store::{ProjectRef, Task, TaskAction};
-use crate::crew::{Crewmate, project, triggers};
+use crate::crew::{Crewmate, attachments, project, triggers};
 use crate::server::Hub;
 
 /// What a task needs before its agent can start.
@@ -64,11 +64,23 @@ pub(super) async fn prepare_task(
         }
     };
     let memory = hub.crew.store.memory_path(&crewmate.id);
+    // The images sent with the task, copied where the agent works. Rewritten at every start, so a task
+    // resumed after a restart or run on a fresh checkout still has them.
+    let staged = attachments::stage(
+        &hub.crew.store,
+        &crewmate.id,
+        task,
+        std::path::Path::new(&work_dir),
+    );
     let prompt = task_prompt(
         crewmate,
         &work_dir,
         &memory,
-        &with_branch_instruction(task),
+        &format!(
+            "{}{}",
+            attachments::prompt_block(&staged),
+            with_branch_instruction(task)
+        ),
         task.tz.as_deref(),
     );
     Some(Prepared { work_dir, prompt })

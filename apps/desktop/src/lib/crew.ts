@@ -4,6 +4,8 @@
  * the right crew server (e.g. `{ host: "ssh:atlas-crew@server" }`).
  */
 
+import type { Attachment } from "#lib/crew/attachments.ts";
+
 /** An entry from `~/.atlas/desktop/crew-servers.json`. */
 export interface CrewServer {
 	/** SSH target, e.g. `atlas-crew@server`. */
@@ -225,6 +227,8 @@ export interface CrewmateTask {
 	preparing?: string;
 	/** The GitHub issue, PR or comment this task answers; hostd posts and edits its progress comment there. */
 	origin?: GithubOrigin;
+	/** Images sent with the prompt; the bytes are fetched with `crewmate_attachment` (`lib/crew/attachments.ts`). */
+	attachments?: Attachment[];
 }
 
 export interface CrewSettingsData {

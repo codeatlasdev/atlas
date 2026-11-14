@@ -3,12 +3,14 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
+import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/step_views.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
@@ -72,6 +74,8 @@ class CrewmateTaskPair extends StatelessWidget {
             ),
           ),
         _UserBubble(task: task, enter: enter, delay: delay),
+        if (task.attachments.isNotEmpty)
+          _TaskImages(task: task, device: device, crewmateId: crewmateId),
         _CrewmateBubble(
           task: task,
           enter: enter,
@@ -107,6 +111,133 @@ class CrewmateTaskPair extends StatelessWidget {
 
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+/// The images sent with a task, right-aligned under the prompt bubble. Each is fetched from the crew server when
+/// it first shows (`taskImageProvider`) and tapped to see large. A fetch that fails says so on that image only,
+/// with a retry: a phone without the `read` scope sees exactly this, never a broken thread.
+class _TaskImages extends ConsumerWidget {
+  const _TaskImages({
+    required this.task,
+    required this.device,
+    required this.crewmateId,
+  });
+  final CrewmateTask task;
+  final MacDevice device;
+  final String crewmateId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 64),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.end,
+          children: [
+            for (final a in task.attachments)
+              _TaskImage(
+                attachment: a,
+                request: (device, crewmateId, task.id, a.name),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskImage extends ConsumerWidget {
+  const _TaskImage({required this.attachment, required this.request});
+  final TaskAttachment attachment;
+  final (MacDevice, String, String, String) request;
+  static const double side = 112;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AtlasColors.of(context);
+    final image = ref.watch(taskImageProvider(request));
+    Widget frame(Widget child) => ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox.square(dimension: side, child: child),
+    );
+    return image.when(
+      loading: () => Semantics(
+        container: true,
+        label: 'Loading ${attachment.name}',
+        child: frame(
+          ColoredBox(
+            color: c.overlay,
+            child: Center(
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: c.faint,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      error: (e, _) => Semantics(
+        container: true,
+        button: true,
+        label: '${attachment.name} could not be loaded, tap to retry',
+        child: GestureDetector(
+          onTap: () => ref.invalidate(taskImageProvider(request)),
+          child: frame(
+            ColoredBox(
+              color: c.overlay,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.refresh_rounded, color: c.faint),
+                  const SizedBox(height: 4),
+                  ExcludeSemantics(
+                    child: Text(
+                      'Tap to retry',
+                      style: TextStyle(fontSize: 11, color: c.faint),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      data: (img) => Semantics(
+        container: true,
+        button: true,
+        image: true,
+        label: attachment.name,
+        child: GestureDetector(
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.black,
+              insetPadding: const EdgeInsets.all(12),
+              child: InteractiveViewer(
+                child: Image.memory(img.bytes, fit: BoxFit.contain),
+              ),
+            ),
+          ),
+          child: frame(
+            Image.memory(
+              img.bytes,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => ColoredBox(
+                color: c.overlay,
+                child: Icon(Icons.broken_image_outlined, color: c.faint),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

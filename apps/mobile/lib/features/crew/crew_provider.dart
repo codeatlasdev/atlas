@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
@@ -166,6 +167,27 @@ final crewmateTasksProvider = FutureProvider.autoDispose
         for (final t in (data['tasks'] as List<dynamic>?) ?? const [])
           CrewmateTask.fromJson((t as Map).cast()),
       ];
+    });
+
+/// The bytes of one image sent with a task, fetched from the crew server (`crewmate_attachment`, in pieces) and
+/// kept for the session: the thread rebuilds on every push and an image is up to ten round trips. Not
+/// auto-disposed, so scrolling a bubble away and back never fetches again; a failure is an `AsyncError` the
+/// bubble shows on that image, and `invalidate` retries it.
+final taskImageProvider =
+    FutureProvider.family<
+      LoadedImage,
+      (MacDevice device, String crewmateId, String taskId, String name)
+    >((ref, arg) async {
+      final (device, crewmateId, taskId, name) = arg;
+      final mux = await ref.watch(connectionNotifierProvider(device).future);
+      // Offline: an error the bubble shows with a retry, not a crash or a hole.
+      if (mux == null) throw StateError('${device.name} is offline');
+      return fetchAttachment(
+        mux.call,
+        crewmateId: crewmateId,
+        taskId: taskId,
+        name: name,
+      );
     });
 
 /// Accumulates pending computer invites from push events and on-connect fetch.

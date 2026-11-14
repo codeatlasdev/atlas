@@ -408,6 +408,10 @@ pub struct Task {
     /// Set once a restart interrupted this task and it was started again: the chat can say so.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resumed: bool,
+    /// Images sent with the prompt (`crew::attachments`): records only, the bytes live next to the task
+    /// and are fetched with `crewmate_attachment`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<super::attachments::Attachment>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -443,6 +447,7 @@ impl Task {
             origin: None,
             restarts: 0,
             resumed: false,
+            attachments: vec![],
         }
     }
 }
@@ -570,6 +575,18 @@ impl CrewStore {
                 .ok()
         })
         .collect()
+    }
+
+    /// The directory of every crewmate on disk, whether or not its definition can be read: housekeeping (the
+    /// stale-upload sweep) has to reach the dir of a crewmate `list_crewmates` skips.
+    pub(crate) fn list_crewmate_dirs(&self) -> Vec<PathBuf> {
+        let Ok(rd) = std::fs::read_dir(self.base.join(DIR)) else {
+            return vec![];
+        };
+        rd.filter_map(Result::ok)
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+            .map(|e| e.path())
+            .collect()
     }
 
     pub fn delete_crewmate_dir(&self, id: &str) -> io::Result<()> {

@@ -4,7 +4,8 @@
 //! Subcommands:
 //! - `install`   turn a Linux server into a crew server
 //! - `update`    bring a crew server's atlas to a release, rolling back if hostd does not come back
-//! - `uninstall` remove the crew service
+//! - `uninstall` remove the crew service (offers an export first; never silent about the data)
+//! - `export`    back up crewmates, memory, tasks and automations as one archive; `import` restores it
 //! - `status`    show systemd and hostd status
 //! - `logs`      stream journalctl output
 //! - `pause`     stop every crewmate's work and hold the queues; `resume` starts them again
@@ -15,7 +16,11 @@
 mod binary;
 pub mod install;
 mod layout;
+mod transfer;
 mod update;
+
+use std::io::{BufRead as _, IsTerminal as _, Write as _};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
@@ -38,6 +43,10 @@ pub enum CrewCommands {
     Update(update::UpdateArgs),
     /// Remove the crew service, user and binary from a server
     Uninstall(UninstallArgs),
+    /// Back up a server's crewmates (memory, tasks, automations, usage) as one archive file
+    Export(ExportArgs),
+    /// Restore an archive made by `atlas crew export` into a server
+    Import(ImportArgs),
     /// Show the crew service status on a server
     Status(StatusArgs),
     /// Stream the crew service logs from a server
@@ -56,6 +65,8 @@ impl AtlasCommand for CrewArgs {
             CrewCommands::Install(a) => a.run().await,
             CrewCommands::Update(a) => a.run().await,
             CrewCommands::Uninstall(a) => a.run().await,
+            CrewCommands::Export(a) => a.run().await,
+            CrewCommands::Import(a) => a.run().await,
             CrewCommands::Status(a) => a.run().await,
             CrewCommands::Logs(a) => a.run().await,
             CrewCommands::Pause(a) => a.run(true).await,
@@ -71,30 +82,50 @@ impl AtlasCommand for CrewArgs {
 pub struct UninstallArgs {
     /// SSH target for the host (e.g. user@hostname or hostname)
     pub ssh_target: String,
-    /// Skip the confirmation prompt
+    /// Delete without asking (for scripts). The data is still listed before and after, and is gone
     #[arg(short, long)]
     pub yes: bool,
 }
 
 impl AtlasCommand for UninstallArgs {
     async fn run(self) -> Result<()> {
-        if !self.yes {
-            eprintln!(
-                "This will stop and remove the crew service, user and binary on {}.",
-                self.ssh_target
-            );
-            eprint!("Continue? [y/N] ");
-            use std::io::BufRead as _;
-            let line = std::io::BufReader::new(std::io::stdin())
-                .lines()
-                .next()
-                .unwrap_or(Ok(String::new()))?;
-            if !matches!(line.trim(), "y" | "Y" | "yes") {
-                eprintln!("Aborted.");
-                return Ok(());
-            }
-        }
         let r = Remote::new(&self.ssh_target);
+        // What will be deleted is always printed first, whatever the flags.
+        let inv = match r.exec(transfer::INVENTORY_SCRIPT).await {
+            Ok(o) if o.code == 255 => bail!(
+                "could not connect to {} over SSH: {}",
+                self.ssh_target,
+                o.stderr.trim()
+            ),
+            Ok(o) => transfer::parse_inventory(&o.stdout),
+            Err(e) => return Err(e),
+        };
+        eprint!("{}", transfer::uninstall_notice(&self.ssh_target, &inv));
+        let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+        match transfer::flow(self.yes, interactive) {
+            transfer::Flow::Refuse => bail!(
+                "uninstall deletes data and needs a decision: run it in a terminal to confirm, or pass --yes (take a copy first: atlas crew export {})",
+                self.ssh_target
+            ),
+            transfer::Flow::Ask => {
+                if inv.home.is_some()
+                    && inv.crewmates > 0
+                    && ask_yes_no("Export a copy first? [Y/n] ", true)?
+                {
+                    // A failed export stops the uninstall: never delete after a backup that did not happen.
+                    ExportArgs::for_uninstall(&self.ssh_target).run().await?;
+                }
+                eprint!(
+                    "Type the server name ({}) to delete it: ",
+                    transfer::server_name(&self.ssh_target)
+                );
+                if !transfer::confirms_server_name(&self.ssh_target, &read_line()?) {
+                    eprintln!("Not the server name. Nothing was deleted.");
+                    return Ok(());
+                }
+            }
+            transfer::Flow::Unattended => {}
+        }
         // userdel refuses while the crew user has processes (the desktop's SSH sessions). Report it instead of
         // killing them: a `pkill -KILL -u <user>` / `loginctl terminate-user` here coincided with the test server's
         // sshd going down, so uninstall never kills processes on someone's server.
@@ -104,6 +135,154 @@ impl AtlasCommand for UninstallArgs {
         }
         println!(
             "\x1b[32m✓\x1b[0m crew server removed from {}.",
+            self.ssh_target
+        );
+        println!("{}", transfer::gone_notice(&self.ssh_target, &inv));
+        Ok(())
+    }
+}
+
+fn read_line() -> Result<String> {
+    let mut line = String::new();
+    std::io::stdin().lock().read_line(&mut line)?;
+    Ok(line)
+}
+
+/// A yes/no question on stderr; an empty answer is `default`.
+fn ask_yes_no(question: &str, default: bool) -> Result<bool> {
+    eprint!("{question}");
+    std::io::stderr().flush().ok();
+    Ok(match read_line()?.trim().to_ascii_lowercase().as_str() {
+        "" => default,
+        a => matches!(a, "y" | "yes"),
+    })
+}
+
+// ── export / import ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    /// SSH target for the host (e.g. user@hostname or hostname)
+    pub ssh_target: String,
+    /// File to write (default: atlas-crew-<host>-<date>.tar.gz here). Never overwritten
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+    /// Only this crewmate id (repeat for several); default every crewmate
+    #[arg(long = "crewmate", value_name = "ID")]
+    pub crewmates: Vec<String>,
+    /// Include per-crewmate secrets and webhook tokens (the file is then written 0600: guard it)
+    #[arg(long)]
+    pub with_secrets: bool,
+}
+
+impl ExportArgs {
+    /// The export an interactive uninstall offers: everything, secrets included only when asked there.
+    fn for_uninstall(target: &str) -> Self {
+        let with_secrets = ask_yes_no("Include secrets (API keys, webhook tokens)? [y/N] ", false)
+            .unwrap_or(false);
+        Self {
+            ssh_target: target.to_string(),
+            output: None,
+            crewmates: vec![],
+            with_secrets,
+        }
+    }
+}
+
+impl AtlasCommand for ExportArgs {
+    async fn run(self) -> Result<()> {
+        let dest = self.output.clone().unwrap_or_else(|| {
+            PathBuf::from(transfer::default_export_name(
+                &self.ssh_target,
+                chrono::Utc::now(),
+            ))
+        });
+        transfer::check_output_free(&dest)?;
+        let (code, stderr) = Remote::new(&self.ssh_target)
+            .exec_to_file(
+                &transfer::export_script(&self.crewmates, self.with_secrets),
+                &dest,
+            )
+            .await?;
+        if code != 0 {
+            bail!(transfer::explain_failure(
+                &self.ssh_target,
+                "export",
+                code,
+                &stderr
+            ));
+        }
+        // Read it back: an archive that does not open is not a backup.
+        let m =
+            atlas_host::crew::archive::read_manifest(std::fs::File::open(&dest)?).map_err(|e| {
+                anyhow::anyhow!(
+                    "the export on {} is unreadable ({e}); {} was kept for inspection",
+                    self.ssh_target,
+                    dest.display()
+                )
+            })?;
+        println!(
+            "\x1b[32m✓\x1b[0m exported {} crewmate(s) from {} to {}",
+            m.crewmates.len(),
+            self.ssh_target,
+            dest.display()
+        );
+        for c in &m.crewmates {
+            println!("    {} ({})", c.name, c.id);
+        }
+        if m.secrets {
+            println!(
+                "\x1b[33m!\x1b[0m this file contains secrets and webhook tokens (mode 0600). Keep it private and delete it when done."
+            );
+        } else {
+            println!("  secrets and webhook tokens were left out (--with-secrets includes them)");
+        }
+        println!(
+            "  agent sign-ins and project checkouts are never exported: sign in again with `atlas crew login`"
+        );
+        Ok(())
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct ImportArgs {
+    /// SSH target for the host (e.g. user@hostname or hostname)
+    pub ssh_target: String,
+    /// Archive made by `atlas crew export`
+    pub file: PathBuf,
+    /// A crewmate whose id already exists gets a new id instead of refusing the import
+    #[arg(long)]
+    pub rename: bool,
+}
+
+impl AtlasCommand for ImportArgs {
+    async fn run(self) -> Result<()> {
+        // Checked here first, so a wrong file or format fails before anything is sent.
+        let m = atlas_host::crew::archive::read_manifest(
+            std::fs::File::open(&self.file)
+                .with_context(|| format!("opening {}", self.file.display()))?,
+        )?;
+        eprintln!(
+            "{}: {} crewmate(s), written by atlas {}{}",
+            self.file.display(),
+            m.crewmates.len(),
+            m.atlas_version,
+            if m.secrets { ", with secrets" } else { "" }
+        );
+        let o = Remote::new(&self.ssh_target)
+            .exec_with_file(&transfer::import_script(self.rename), &self.file)
+            .await?;
+        if o.code != 0 {
+            bail!(transfer::explain_failure(
+                &self.ssh_target,
+                "import",
+                o.code,
+                &o.stderr
+            ));
+        }
+        print!("{}", o.stdout);
+        println!(
+            "\x1b[32m✓\x1b[0m imported into {}. Sign agents in with `atlas crew login` if this server has none.",
             self.ssh_target
         );
         Ok(())

@@ -1,0 +1,62 @@
+{
+  "attachment": {
+    "bytes_len": 33,
+    "data_b64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ",
+    "last": true,
+    "mime": "image/png",
+    "name": "IMG_0412.png",
+    "offset": 0
+  },
+  "event": {
+    "crewmate_id": "crewmate-working",
+    "ev": "crewmate_task",
+    "task": {
+      "attachments": [
+        {
+          "bytes_len": 33,
+          "mime": "image/png",
+          "name": "IMG_0412.png",
+          "path": ".atlas/attachments/task-img-1/IMG_0412.png",
+          "sha256": "4ffd8bb30991e3a6f28d1d03f1aedcd02ccf8e0cc16bb9e969e7bc2bda1ddf03"
+        },
+        {
+          "bytes_len": 12,
+          "mime": "image/jpeg",
+          "name": "marked.jpg",
+          "path": ".atlas/attachments/task-img-1/marked.jpg",
+          "sha256": "3c4bae649b6c0fade21c149e6ee9773e734d620fda91248a44c58b11c71f3ba9"
+        }
+      ],
+      "id": "task-img-1",
+      "prompt": "the header is cut off on this screen",
+      "source": "mobile",
+      "state": "queued",
+      "summarized": false,
+      "ts": 1700000000
+    }
+  },
+  "task": {
+    "attachments": [
+      {
+        "bytes_len": 33,
+        "mime": "image/png",
+        "name": "IMG_0412.png",
+        "path": ".atlas/attachments/task-img-1/IMG_0412.png",
+        "sha256": "4ffd8bb30991e3a6f28d1d03f1aedcd02ccf8e0cc16bb9e969e7bc2bda1ddf03"
+      },
+      {
+        "bytes_len": 12,
+        "mime": "image/jpeg",
+        "name": "marked.jpg",
+        "path": ".atlas/attachments/task-img-1/marked.jpg",
+        "sha256": "3c4bae649b6c0fade21c149e6ee9773e734d620fda91248a44c58b11c71f3ba9"
+      }
+    ],
+    "id": "task-img-1",
+    "prompt": "the header is cut off on this screen",
+    "source": "mobile",
+    "state": "queued",
+    "summarized": false,
+    "ts": 1700000000
+  }
+}

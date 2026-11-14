@@ -188,3 +188,78 @@ fn crewmate_task_resumed_fixture_is_real_payload() {
         "fixture out of date: run UPDATE_FIXTURES=1 ..."
     );
 }
+
+// #209: a task with images. The phone and the desktop render the thread from these keys and fetch the bytes
+// with `crewmate_attachment`. The records come from `attachments::check` (the code that makes them for real),
+// the task and its push event from the real serializers, the reply from `attachments::reply`.
+// Regenerate: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_task_attachments_fixtures_are_real_payloads
+#[test]
+fn crewmate_task_attachments_fixtures_are_real_payloads() {
+    use crate::crew::attachments::{self, Incoming};
+    const PNG: &[u8] =
+        b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0\x1f\x15\xc4\x89";
+    const JPG: &[u8] = &[
+        0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1,
+    ];
+
+    let mut task = Task::new("mobile", "the header is cut off on this screen");
+    task.id = "task-img-1".to_string();
+    task.ts = 1700000000;
+    task.state = TaskState::Queued;
+    let files = attachments::check(
+        &task.id,
+        &[
+            Incoming {
+                name: "IMG_0412.PNG".into(),
+                bytes: PNG.to_vec(),
+            },
+            Incoming {
+                name: "marked.jpg".into(),
+                bytes: JPG.to_vec(),
+            },
+        ],
+    )
+    .unwrap();
+    task.attachments = files.iter().map(|(a, _)| a.clone()).collect();
+
+    let live = json!({
+        "task": task,
+        "event": serde_json::from_str::<Value>(&events::task("crewmate-working", Some(&task))).unwrap(),
+        "attachment": attachments::reply(&files[0].0, &files[0].1, 0, None),
+    });
+    // The keys the clients read.
+    assert_eq!(live["task"]["attachments"][0]["name"], "IMG_0412.png");
+    assert_eq!(live["task"]["attachments"][1]["mime"], "image/jpeg");
+    assert_eq!(
+        live["event"]["task"]["attachments"][0]["bytes_len"],
+        PNG.len()
+    );
+    assert_eq!(live["attachment"]["last"], true);
+    assert!(
+        live["task"]["attachments"][0].get("data_b64").is_none(),
+        "a task carries records, never bytes"
+    );
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let paths = [
+        root.join("apps/mobile/test/fixtures/crewmate_task_attachments.json"),
+        root.join("apps/desktop/src/__fixtures__/crewmate_task_attachments.json"),
+    ];
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        for p in &paths {
+            std::fs::write(p, serde_json::to_string_pretty(&live).unwrap() + "\n").unwrap();
+        }
+    }
+    for p in &paths {
+        let stored: Value = serde_json::from_str(&std::fs::read_to_string(p).expect(
+            "fixture missing — run: UPDATE_FIXTURES=1 cargo test -p atlas-host crewmate_task_attachments_fixtures_are_real_payloads",
+        ))
+        .unwrap();
+        assert_eq!(
+            stored,
+            live,
+            "{} changed: rerun with UPDATE_FIXTURES=1",
+            p.display()
+        );
+    }
+}

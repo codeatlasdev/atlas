@@ -3,14 +3,16 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
+import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/glass.dart';
 
 // ── Composer: a floating pill, like the desktop's ────────────────────────────
 
-class ChatComposer extends StatelessWidget {
+class ChatComposer extends ConsumerStatefulWidget {
   const ChatComposer({
     super.key,
     required this.controller,
@@ -24,7 +26,80 @@ class ChatComposer extends StatelessWidget {
   final bool sending;
   final bool online;
   final int queued;
-  final VoidCallback onSend;
+
+  /// Sends the text with the images picked so far. `true`: it went, and the images are let go; `false`:
+  /// it failed, and they stay for the next try.
+  final Future<bool> Function(List<PendingImage> images) onSend;
+
+  @override
+  ConsumerState<ChatComposer> createState() => _ChatComposerState();
+}
+
+class _ChatComposerState extends ConsumerState<ChatComposer> {
+  final List<PendingImage> _images = [];
+  String? _error;
+
+  TextEditingController get controller => widget.controller;
+  bool get sending => widget.sending;
+  bool get online => widget.online;
+  int get queued => widget.queued;
+
+  void _fail(String message) => setState(() => _error = message);
+
+  Future<void> _chooseSource() async {
+    final source = await showModalBottomSheet<_Source>(
+      context: context,
+      backgroundColor: AtlasColors.of(context).overlay,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.of(ctx).pop(_Source.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo library'),
+              onTap: () => Navigator.of(ctx).pop(_Source.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final picker = ref.read(imagePickerProvider);
+    final List<PickedImage> picked;
+    try {
+      picked = source == _Source.camera
+          ? await picker.camera()
+          : await picker.gallery();
+    } on Object catch (e) {
+      // A permission refused in the system sheet, or no camera: say so, never a silent nothing.
+      if (mounted) _fail('Could not open the ${source.name}: $e');
+      return;
+    }
+    if (!mounted) return;
+    final r = addImages(_images, picked);
+    setState(() {
+      _images
+        ..clear()
+        ..addAll(r.images);
+      _error = r.errors.isEmpty ? null : r.errors.join('\n');
+    });
+  }
+
+  Future<void> _send() async {
+    final images = List<PendingImage>.of(_images);
+    final ok = await widget.onSend(images);
+    if (ok && mounted) {
+      setState(() {
+        _images.clear();
+        _error = null;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +125,35 @@ class ChatComposer extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: c.faint),
                 ),
               ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
+                child: Text(
+                  _error!,
+                  style: TextStyle(fontSize: 12, color: c.error),
+                ),
+              ),
+            if (_images.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  height: 64,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    itemCount: _images.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) {
+                      final image = _images[i];
+                      return _PendingThumb(
+                        key: ObjectKey(image),
+                        image: image,
+                        onRemove: () => setState(() => _images.remove(image)),
+                      );
+                    },
+                  ),
+                ),
+              ),
             // The field keeps its shape; once there is text, the send dot detaches from
             // its right end and floats beside it (_SendSlot).
             ValueListenableBuilder<TextEditingValue>(
@@ -59,6 +163,19 @@ class ChatComposer extends StatelessWidget {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    // Attach: the camera or the photo library; the picked images wait above the field.
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GlassRoundButton(
+                        icon: Icons.add_photo_alternate_outlined,
+                        label: 'Attach image',
+                        onTap: _images.length >= maxAttachments
+                            ? () => _fail(
+                                'A task takes at most $maxAttachments images',
+                              )
+                            : _chooseSource,
+                      ),
+                    ),
                     Expanded(
                       child: GlassPill(
                         child: TextField(
@@ -103,7 +220,7 @@ class ChatComposer extends StatelessWidget {
                           onTap: ready
                               ? () {
                                   HapticFeedback.lightImpact();
-                                  onSend();
+                                  _send();
                                 }
                               : null,
                           child: Container(
@@ -137,6 +254,72 @@ class ChatComposer extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+enum _Source { camera, gallery }
+
+/// One picked image above the field: a small square with a remove button.
+class _PendingThumb extends StatelessWidget {
+  const _PendingThumb({super.key, required this.image, required this.onRemove});
+  final PendingImage image;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return SizedBox.square(
+      dimension: 64,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              image.bytes,
+              width: 64,
+              height: 64,
+              fit: BoxFit.cover,
+              // A truncated file passes the signature check; it must not break the composer.
+              errorBuilder: (_, _, _) => Container(
+                width: 64,
+                height: 64,
+                color: c.overlay,
+                child: Icon(Icons.broken_image_outlined, color: c.faint),
+              ),
+            ),
+          ),
+          // Inside the thumbnail, never poking out of the list: a badge half outside its slot lost half its
+          // taps. A 32 px target around the 24 px dot.
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Semantics(
+              container: true,
+              button: true,
+              label: 'Remove ${image.name}',
+              child: Pressable(
+                onTap: onRemove,
+                child: SizedBox.square(
+                  dimension: 32,
+                  child: Center(
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: c.overlay,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: c.border),
+                      ),
+                      child: Icon(Icons.close_rounded, size: 14, color: c.text),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

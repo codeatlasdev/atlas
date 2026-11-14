@@ -168,7 +168,9 @@
 						: `Message ${crewmate.name ?? "crewmate"}…`}
 					label="Task prompt"
 					busy={chat.sending}
-					onattach={() => {}}
+					onfiles={(files) => void chat.attach(files)}
+					images={chat.images}
+					onremoveimage={(i) => chat.removeImage(i)}
 					queued={queuedCount}
 					onsend={() => void chat.send()}
 				/>

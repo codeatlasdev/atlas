@@ -34,14 +34,18 @@ pub(crate) struct CrewHub {
     /// Senders for user-input actions keyed by task_id.
     pub(crate) action_waiters:
         parking_lot::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+    /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
+    paused: std::sync::atomic::AtomicBool,
 }
 
 impl CrewHub {
     pub(crate) fn new(dir: &std::path::Path) -> Arc<Self> {
         let push_tokens = push::load_tokens(dir);
+        let store = CrewStore::new(dir);
+        let paused = store.load_crew_settings().paused;
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));
         Arc::new(Self {
-            store: CrewStore::new(dir),
+            store,
             dir: dir.to_path_buf(),
             push_tokens: Mutex::new(push_tokens),
             telegram,
@@ -51,7 +55,34 @@ impl CrewHub {
             github_login: tokio::sync::Mutex::new(None),
             github_connect_waiters: parking_lot::Mutex::new(vec![]),
             action_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            paused: std::sync::atomic::AtomicBool::new(paused),
         })
+    }
+
+    /// Whether the kill switch is on. Every path that would start a task or fire an automation asks.
+    pub(crate) fn is_paused(&self) -> bool {
+        self.paused.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Flip the kill switch (`crew_pause` / `crew_resume`), store it in `crew.json` and tell the
+    /// clients. Pausing cancels every running task (`cancelled`, error "paused") and keeps the
+    /// queues; resuming starts them. Doing either twice changes nothing.
+    pub(crate) fn set_paused(&self, hub: &Hub, paused: bool) -> Result<(), String> {
+        let mut settings = self.store.load_crew_settings();
+        settings.paused = paused;
+        self.store
+            .save_crew_settings(&settings)
+            .map_err(|e| format!("save_crew_settings: {e}"))?;
+        let was = self
+            .paused
+            .swap(paused, std::sync::atomic::Ordering::SeqCst);
+        if paused {
+            runner::cancel_all(hub, "paused");
+        } else if was {
+            runner::resume_all(hub);
+        }
+        hub.broadcast(super::events::crew_paused(paused));
+        Ok(())
     }
 
     pub(crate) fn start(self: &Arc<Self>, hub: std::sync::Weak<Hub>) {
@@ -84,7 +115,12 @@ impl CrewHub {
                         t2.action = None;
                         t2.error = Some("interrupted by daemon restart".to_string());
                         t2.finished_at = Some(now_s());
-                        let _ = self.store.append_task(&crewmate.id, &t2);
+                        if let Err(e) = self.store.append_task(&crewmate.id, &t2) {
+                            eprintln!(
+                                "atlas crew: crewmate {} task {}: cannot record the restart interruption: {e}",
+                                crewmate.id, t2.id
+                            );
+                        }
                     }
                     _ => {}
                 }
@@ -92,12 +128,17 @@ impl CrewHub {
         }
     }
 
+    /// Whether anyone can answer a crewmate's tool prompt right now: a linked Telegram chat, a
+    /// desktop client connected, or a phone connected. A registered push token is not one: it only
+    /// says where to notify, and with the phone offline nobody would ever answer (the prompt would
+    /// hold the task for its whole 30 minutes).
     pub(crate) fn can_answer_crewmate_pane(&self) -> bool {
-        if self.telegram.has_linked_chat() || !self.push_tokens.lock().is_empty() {
+        if self.telegram.has_linked_chat() {
             return true;
         }
-        self.hub_arc()
-            .is_some_and(|h| !h.subscribers.lock().is_empty())
+        self.hub_arc().is_some_and(|h| {
+            !h.subscribers.lock().is_empty() || !h.mobile.live_node_ids().is_empty()
+        })
     }
 
     /// Drop all push tokens for a revoked device.

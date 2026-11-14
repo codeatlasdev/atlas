@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use super::super::store::{CrewSettings, Routine, Trigger, TriggerKind};
+use super::super::store::{Routine, Trigger, TriggerKind};
 use super::super::{events, now_s, push, schedule, triggers};
 use crate::server::Hub;
 
@@ -165,10 +165,10 @@ pub(crate) fn set(
     short_replies: bool,
     short_replies_model: Option<String>,
 ) -> Result<Value, String> {
-    let settings = CrewSettings {
-        short_replies,
-        short_replies_model,
-    };
+    // Load, change, save: the file also holds `paused`, which this command must never reset.
+    let mut settings = hub.crew.store.load_crew_settings();
+    settings.short_replies = short_replies;
+    settings.short_replies_model = short_replies_model;
     hub.crew
         .store
         .save_crew_settings(&settings)

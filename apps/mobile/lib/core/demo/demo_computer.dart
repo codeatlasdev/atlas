@@ -384,6 +384,7 @@ class _DemoComputer implements Transport {
 
   // Crew server demo data
   final _crewmates = <String, DemoCrewmate>{};
+  var _paused = false;
   final _pendingInvites = <Map<String, String>>[];
 
   @override
@@ -500,7 +501,12 @@ class _DemoComputer implements Transport {
         data = {
           'host_name': 'demo-mac',
           'crewmates': [for (final b in _crewmates.values) b.toListEntry()],
+          'paused': _paused,
         };
+      case 'crew_pause' || 'crew_resume':
+        _paused = req['cmd'] == 'crew_pause';
+        _emit({'ev': 'crew_paused', 'paused': _paused});
+        data = <String, Object?>{};
       case 'crewmate_tasks':
         final crewmateId = args['id'] as String?;
         final crewmate = _crewmates[crewmateId];

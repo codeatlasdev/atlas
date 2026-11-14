@@ -6,12 +6,48 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 
-/// Result of `crewmate_list`: whether the server is a crew server, and its crewmates.
+/// Result of `crewmate_list`: whether the server is a crew server, its crewmates, and whether
+/// the kill switch is on (`paused`: nothing runs, queues are held).
 typedef CrewListResult = ({
   bool isCrewServer,
   String hostName,
   List<CrewmateEntry> crewmates,
+  bool paused,
 });
+
+/// The `data` of a `crewmate_list` reply. `paused` is strictly a boolean `true`: a crew
+/// server older than the kill switch sends nothing and must not look paused.
+CrewListResult parseCrewList(Map<String, dynamic> data, String deviceName) => (
+  isCrewServer: true,
+  hostName: data['host_name'] as String? ?? deviceName,
+  crewmates: [
+    for (final b in (data['crewmates'] as List<dynamic>?) ?? const [])
+      CrewmateEntry.fromJson((b as Map).cast()),
+  ],
+  paused: data['paused'] == true,
+);
+
+/// Whether hostd push [e] changes what `crewmate_list` answers (a task, a profile, a status
+/// or the pause state): the Crew tab re-reads the list on these.
+bool isCrewListPush(Map<String, dynamic> e) {
+  final ev = e['ev'] as String? ?? '';
+  return ev == 'crewmate_task' ||
+      ev == 'crewmate_updated' ||
+      ev == 'crew_paused' ||
+      ev.startsWith('agent_status');
+}
+
+/// Pauses (cancels running tasks, holds the queues) or resumes a crew server (`crew_pause` /
+/// `crew_resume`, `Act` scope). Throws with the server's message when it refuses.
+Future<void> setCrewPaused(WidgetRef ref, MacDevice device, bool paused) async {
+  final mux = ref.read(connectionNotifierProvider(device)).value;
+  if (mux == null) throw StateError('${device.name} is offline');
+  final resp = await mux.call(paused ? 'crew_pause' : 'crew_resume', {});
+  if (resp['ok'] != true) {
+    throw StateError(resp['error'] as String? ?? 'the server refused');
+  }
+  ref.invalidate(crewProvider(device));
+}
 
 /// One crewmate with where it lives: what the Crew tab lists.
 typedef CrewEntry = ({
@@ -75,13 +111,7 @@ class CrewNotifier extends AsyncNotifier<CrewListResult> {
     // Re-fetch on push events for this device.
     ref.listen(devicePushEventsProvider(device), (_, ev) {
       if (!ev.hasValue) return;
-      final e = ev.value!;
-      final evName = e['ev'] as String? ?? '';
-      if (evName == 'crewmate_task' ||
-          evName == 'crewmate_updated' ||
-          evName.startsWith('agent_status')) {
-        ref.invalidateSelf();
-      }
+      if (isCrewListPush(ev.value!)) ref.invalidateSelf();
     });
     final mux = ref.watch(connectionNotifierProvider(device)).value;
     if (mux == null) {
@@ -89,6 +119,7 @@ class CrewNotifier extends AsyncNotifier<CrewListResult> {
         isCrewServer: false,
         hostName: device.name,
         crewmates: const <CrewmateEntry>[],
+        paused: false,
       );
     }
     final resp = await mux.call('crewmate_list', {});
@@ -97,15 +128,13 @@ class CrewNotifier extends AsyncNotifier<CrewListResult> {
         isCrewServer: false,
         hostName: device.name,
         crewmates: const <CrewmateEntry>[],
+        paused: false,
       );
     }
-    final data = (resp['data'] as Map).cast<String, dynamic>();
-    final hostName = data['host_name'] as String? ?? device.name;
-    final crewmates = [
-      for (final b in (data['crewmates'] as List<dynamic>?) ?? const [])
-        CrewmateEntry.fromJson((b as Map).cast()),
-    ];
-    return (isCrewServer: true, hostName: hostName, crewmates: crewmates);
+    return parseCrewList(
+      (resp['data'] as Map).cast<String, dynamic>(),
+      device.name,
+    );
   }
 }
 

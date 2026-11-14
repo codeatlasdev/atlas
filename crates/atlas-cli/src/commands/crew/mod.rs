@@ -6,6 +6,7 @@
 //! - `uninstall` remove the crew service
 //! - `status`    show systemd and hostd status
 //! - `logs`      stream journalctl output
+//! - `pause`     stop every crewmate's work and hold the queues; `resume` starts them again
 //! - `login`     open an interactive agent sign-in session as the crew user
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
@@ -36,6 +37,10 @@ pub enum CrewCommands {
     Status(StatusArgs),
     /// Stream the crew service logs from a server
     Logs(LogsArgs),
+    /// Pause every crewmate on a server: running tasks are cancelled, queues are held, automations skip
+    Pause(PauseArgs),
+    /// Resume the crewmates on a server after a pause
+    Resume(PauseArgs),
     /// Open an interactive agent sign-in session as the crew user on a server
     Login(LoginArgs),
 }
@@ -47,6 +52,8 @@ impl AtlasCommand for CrewArgs {
             CrewCommands::Uninstall(a) => a.run().await,
             CrewCommands::Status(a) => a.run().await,
             CrewCommands::Logs(a) => a.run().await,
+            CrewCommands::Pause(a) => a.run(true).await,
+            CrewCommands::Resume(a) => a.run(false).await,
             CrewCommands::Login(a) => a.run().await,
         }
     }
@@ -129,6 +136,40 @@ impl AtlasCommand for StatusArgs {
             println!("\nhostd:");
             println!("{hostd_out}");
         }
+        Ok(())
+    }
+}
+
+// ── pause / resume ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Args)]
+pub struct PauseArgs {
+    /// SSH target for the host (e.g. user@hostname or hostname)
+    pub ssh_target: String,
+}
+
+impl PauseArgs {
+    async fn run(self, pause: bool) -> Result<()> {
+        let o = Remote::new(&self.ssh_target)
+            .exec(&layout::pause_script(pause))
+            .await?;
+        if o.code != 0 {
+            let why = if o.stderr.trim().is_empty() {
+                o.stdout.trim()
+            } else {
+                o.stderr.trim()
+            };
+            bail!(
+                "could not {} the crew on {}: {why}",
+                if pause { "pause" } else { "resume" },
+                self.ssh_target
+            );
+        }
+        println!(
+            "\x1b[32m✓\x1b[0m crew on {} {}.",
+            self.ssh_target,
+            if pause { "paused" } else { "resumed" }
+        );
         Ok(())
     }
 }

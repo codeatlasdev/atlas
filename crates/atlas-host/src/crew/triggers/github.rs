@@ -23,6 +23,10 @@ pub(super) async fn run(hub_weak: Weak<Hub>) {
 }
 
 async fn poll_all(hub: &Arc<Hub>) {
+    // Paused: not even polled, so nothing is fired and nothing is marked seen behind the user's back.
+    if hub.crew.is_paused() {
+        return;
+    }
     let crewmates = hub.crew.store.list_crewmates();
     for crewmate in crewmates {
         let crewmate_dir = hub.crew.store.crewmate_dir(&crewmate.id);
@@ -30,8 +34,23 @@ async fn poll_all(hub: &Arc<Hub>) {
             if !trigger.enabled {
                 continue;
             }
-            if let TriggerKind::Github { repo, events } = &trigger.kind {
-                poll_trigger(hub, &crewmate.id, &crewmate_dir, trigger, repo, events).await;
+            if let TriggerKind::Github {
+                repo,
+                events,
+                authors,
+                ..
+            } = &trigger.kind
+            {
+                poll_trigger(
+                    hub,
+                    &crewmate.id,
+                    &crewmate_dir,
+                    trigger,
+                    repo,
+                    events,
+                    authors,
+                )
+                .await;
             }
         }
     }
@@ -44,6 +63,7 @@ async fn poll_trigger(
     trigger: &Trigger,
     repo: &str,
     wanted: &[String],
+    authors: &[String],
 ) {
     let seen_path = crewmate_dir.join(format!("{}_seen.jsonl", trigger.id));
     let mut seen = load_seen(&seen_path);
@@ -92,25 +112,24 @@ async fn poll_trigger(
 
         let ev_type = ev["type"].as_str().unwrap_or("");
         let action = ev["payload"]["action"].as_str().unwrap_or("");
-        let title = ev["payload"]["pull_request"]["title"]
-            .as_str()
-            .or_else(|| ev["payload"]["issue"]["title"].as_str())
-            .or_else(|| ev["payload"]["release"]["name"].as_str())
-            .or_else(|| ev["payload"]["check_run"]["name"].as_str())
-            .unwrap_or("(no title)");
 
-        let matched = wanted
+        let wanted_event = wanted
             .iter()
             .any(|w| event_matches(w, ev_type, action, &ev));
-        if matched {
-            let event_summary = format!("{ev_type} in {repo}: {title}");
-            super::fire(
-                hub,
-                crewmate_id,
-                &trigger.id,
-                &trigger.prompt,
-                &event_summary,
-            );
+        if wanted_event {
+            // Only events from accepted authors fire; the text reaches the agent wrapped as untrusted.
+            match super::github_event_prompt(&ev, repo, wanted, authors) {
+                Some(event) => super::fire(
+                    hub,
+                    crewmate_id,
+                    &trigger.id,
+                    &trigger.prompt,
+                    super::Event::Wrapped(&event),
+                ),
+                None => eprintln!(
+                    "triggers/github: {ev_type} {id} in {repo} skipped for crewmate {crewmate_id}: its author is not in the trigger's authors"
+                ),
+            }
         }
 
         // Mark seen regardless of match, to avoid re-processing on next poll.
@@ -119,7 +138,12 @@ async fn poll_trigger(
     }
 }
 
-fn event_matches(wanted: &str, ev_type: &str, action: &str, ev: &serde_json::Value) -> bool {
+pub(super) fn event_matches(
+    wanted: &str,
+    ev_type: &str,
+    action: &str,
+    ev: &serde_json::Value,
+) -> bool {
     match wanted {
         "pr_opened" => ev_type == "PullRequestEvent" && action == "opened",
         "pr_review_requested" => ev_type == "PullRequestReviewRequestedEvent",

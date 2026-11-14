@@ -148,6 +148,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewGithubLogout {}
         | C::CrewmateActionAnswer { .. }
         | C::CrewGithubConnectResume {}
+        | C::CrewPause {}
+        | C::CrewResume {}
         | C::CrewSettingsGet {}
         | C::CrewSettingsSet { .. } => Route::Refuse("lab hostd does not run crewmates"),
     }

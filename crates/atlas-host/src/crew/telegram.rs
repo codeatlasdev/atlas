@@ -41,6 +41,17 @@ fn api_url(base: &str, token: &str, method: &str) -> String {
 struct LinkCode {
     code: String,
     expires: Instant,
+    /// Wrong `/start` codes since this code was issued, from any chat.
+    wrong: u8,
+}
+
+/// Wrong codes a link code survives. The fifth kills it: six digits are guessable by brute force
+/// within the ten minutes it lives, and a linked chat can queue tasks and answer every approval.
+const MAX_WRONG_CODES: u8 = 5;
+
+enum LinkAttempt {
+    Linked,
+    Wrong,
 }
 
 // ─── bridge ──────────────────────────────────────────────────────────────────
@@ -112,6 +123,7 @@ impl TelegramBridge {
         *self.link.lock() = Some(LinkCode {
             code: code.clone(),
             expires: Instant::now() + Duration::from_secs(600),
+            wrong: 0,
         });
         code
     }
@@ -340,15 +352,27 @@ impl TelegramBridge {
         // /start <code>
         if let Some(rest) = text.strip_prefix("/start") {
             let code = rest.trim();
-            let is_match = {
-                let g = self.link.lock();
-                g.as_ref()
-                    .filter(|lc| lc.expires > Instant::now() && lc.code == code)
-                    .is_some()
+            let outcome = {
+                let mut g = self.link.lock();
+                match g.as_mut() {
+                    Some(lc) if lc.expires > Instant::now() && lc.code == code => {
+                        *g = None;
+                        LinkAttempt::Linked
+                    }
+                    Some(lc) if !code.is_empty() => {
+                        lc.wrong += 1;
+                        if lc.wrong >= MAX_WRONG_CODES {
+                            eprintln!(
+                                "atlas telegram: {MAX_WRONG_CODES} wrong link codes; the code is invalidated, start a new link"
+                            );
+                            *g = None;
+                        }
+                        LinkAttempt::Wrong
+                    }
+                    _ => LinkAttempt::Wrong,
+                }
             };
-            if is_match {
-                // Clear the code.
-                *self.link.lock() = None;
+            if let LinkAttempt::Linked = outcome {
                 let hostname = crate::server::hostname();
                 let _ = self.add_chat(chat_id);
                 self.reply(chat_id, &format!("Linked to {hostname}.")).await;
@@ -424,6 +448,12 @@ impl TelegramBridge {
                 .await;
             return;
         };
+        let max = crate::crew::handlers::tasks::MAX_PROMPT_CHARS;
+        if prompt.chars().count() > max {
+            self.reply(chat_id, &format!("The prompt is over {max} characters."))
+                .await;
+            return;
+        }
         let task = crate::crew::store::Task::new("telegram", prompt);
         let task_id = task.id.clone();
         if let Err(e) = hub.crew.store.append_task(&crewmate.id, &task) {
@@ -523,6 +553,81 @@ mod tests {
         });
         b.handle_update(&update).await;
         assert!(b.has_linked_chat(), "chat 42 should be linked after /start");
+    }
+
+    /// A `/start <text>` from `chat` as the poll loop would hand it over.
+    async fn start_from(b: &TelegramBridge, chat: i64, text: &str) {
+        b.handle_update(&serde_json::json!({
+            "update_id": 1,
+            "message": {"message_id": 1, "chat": {"id": chat}, "text": format!("/start {text}")}
+        }))
+        .await;
+    }
+
+    fn bridge(tmp: &tempfile::TempDir) -> TelegramBridge {
+        let b = TelegramBridge::new_with_api(tmp.path().to_path_buf(), "http://127.0.0.1:1");
+        b.config.lock().token = "tok".to_string();
+        b
+    }
+
+    // Crew review P0, PR #106 comment 6874910355: the 6-digit code (10 min) had no attempt limit, so
+    // a stranger could try a million codes and link their chat, which can queue tasks and approve
+    // every tool call. After 5 wrong codes, from any chats, the live code dies: even the right one
+    // is refused until the owner starts a new link.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn five_wrong_codes_kill_the_link_code_even_for_the_right_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = bridge(&tmp);
+        let code = b.start_link();
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+
+        // Spread over several chats: the limit is on the code, not on a chat.
+        for chat in 1..=5 {
+            start_from(&b, 100 + chat, wrong).await;
+        }
+        assert_eq!(b.link_code(), None, "the code must be invalidated");
+
+        start_from(&b, 7, &code).await;
+        assert!(
+            !b.has_linked_chat(),
+            "the right code after the lockout must not link"
+        );
+
+        // A new link starts clean: its code works, and the earlier failures do not carry over.
+        let fresh = b.start_link();
+        start_from(&b, 7, &fresh).await;
+        assert!(b.has_linked_chat(), "a new link must work again");
+    }
+
+    // The edge of the same rule: four wrong codes still leave the code alive (a typo is not an attack),
+    // and a right one links.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn four_wrong_codes_leave_the_code_usable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = bridge(&tmp);
+        let code = b.start_link();
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        for _ in 0..4 {
+            start_from(&b, 5, wrong).await;
+        }
+        assert_eq!(b.link_code().as_deref(), Some(code.as_str()));
+        start_from(&b, 5, &code).await;
+        assert!(b.has_linked_chat());
+    }
+
+    // Without any link in progress there is nothing to guess: /start with a code is refused, and
+    // those attempts must not poison the next link.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn start_without_a_link_in_progress_never_links_and_does_not_poison_the_next_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = bridge(&tmp);
+        for _ in 0..20 {
+            start_from(&b, 9, "123456").await;
+        }
+        assert!(!b.has_linked_chat());
+        let code = b.start_link();
+        start_from(&b, 9, &code).await;
+        assert!(b.has_linked_chat());
     }
 
     #[tokio::test]

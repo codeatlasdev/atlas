@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use super::TASK_TIMEOUT;
 use super::github::{WaitResult, wait_for_github_connect};
-use super::outcome::{broadcast_task, finish_task, was_cancelled};
+use super::outcome::{broadcast_task, finish_task, persist, was_cancelled};
 use crate::crew::store::{Crewmate, Task, TaskAction, TaskState, Trigger};
 use crate::crew::triggers;
 use crate::server::Hub;
@@ -105,7 +105,8 @@ pub(super) async fn wait_for_action_answer(
 pub(super) fn park_task(hub: &Hub, crewmate: &Crewmate, task: &mut Task, action: TaskAction) {
     task.state = TaskState::WaitingAction;
     task.action = Some(action);
-    let _ = hub.crew.store.append_task(&crewmate.id, task);
+    // A parked task the log does not know would come back as "running" after a restart; say so.
+    let _ = persist(hub, &crewmate.id, task);
     broadcast_task(hub, &crewmate.id, task);
 }
 

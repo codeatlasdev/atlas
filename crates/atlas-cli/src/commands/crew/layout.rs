@@ -79,6 +79,19 @@ pub fn remove_legacy_install_dir() -> String {
 /// The same rule as [`account`], for commands that only need the name (login, status, uninstall).
 pub const WHICH_USER: &str = "if id atlas-crew >/dev/null 2>&1; then echo atlas-crew; elif id atlas-bot >/dev/null 2>&1; then echo atlas-bot; else echo atlas-crew; fi";
 
+/// Shell that pauses (`true`) or resumes (`false`) every crewmate on a host: the hostd client runs as
+/// the crew user in its data dir, the same daemon `status` reports. A failure is the caller's to see.
+pub fn pause_script(pause: bool) -> String {
+    let flag = if pause {
+        "--crew-pause"
+    } else {
+        "--crew-resume"
+    };
+    format!(
+        "u=$({WHICH_USER}); sudo -u \"$u\" {INSTALL_DIR}/atlas hostd {flag} --dir \"/var/lib/$u/.atlas\""
+    )
+}
+
 /// The systemd units to query on a host: the current one, then the pre-rename one.
 pub fn status_script() -> String {
     format!(
@@ -126,6 +139,11 @@ pub fn uninstall_script() -> String {
 }
 
 /// The systemd unit text for a crew server running as `a`.
+///
+/// Hardening, all valid since systemd 245: the filesystem is read-only except the crew home
+/// (`ProtectSystem=strict`, `ProtectHome=read-only`, `ReadWritePaths`; every agent dir on `PATH`
+/// is inside that home), `MemoryMax=80%` and `TasksMax=4096` keep a runaway crewmate from taking
+/// the host down, and the kernel tunables, cgroups and setuid bits are off limits.
 pub fn systemd_unit(a: &Account) -> String {
     format!(
         "[Unit]\n\
@@ -142,8 +160,14 @@ Restart=always\n\
 RestartSec=5\n\
 NoNewPrivileges=true\n\
 ProtectSystem=strict\n\
+ProtectHome=read-only\n\
 ReadWritePaths={h}\n\
 PrivateTmp=true\n\
+ProtectKernelTunables=true\n\
+ProtectControlGroups=true\n\
+RestrictSUIDSGID=true\n\
+MemoryMax=80%\n\
+TasksMax=4096\n\
 [Install]\n\
 WantedBy=multi-user.target\n",
         user = a.user,
@@ -250,6 +274,97 @@ mod tests {
             ".npm-global/bin",
         ] {
             assert!(unit.contains(needle), "missing {needle}");
+        }
+    }
+
+    // Crew review P0, PR #106 (no kill switch): pause/resume run the hostd client as the crew user, in its data
+    // dir, so they reach the same daemon `status` shows (also for a server installed as atlas-bot).
+    #[test]
+    fn pause_and_resume_scripts_call_hostd_as_the_crew_user_in_its_dir() {
+        let pause = pause_script(true);
+        let resume = pause_script(false);
+        for (sh, flag, other) in [
+            (&pause, "--crew-pause", "--crew-resume"),
+            (&resume, "--crew-resume", "--crew-pause"),
+        ] {
+            assert!(sh.contains(WHICH_USER), "{sh}");
+            assert!(sh.contains("sudo -u \"$u\""), "{sh}");
+            assert!(
+                sh.contains("/usr/local/lib/atlas-crew/atlas hostd --crew-"),
+                "{sh}"
+            );
+            assert!(sh.contains(flag) && !sh.contains(other), "{sh}");
+            assert!(sh.contains("--dir \"/var/lib/$u/.atlas\""), "{sh}");
+            // Unlike `status`, a failure must reach the caller: no `|| true`.
+            assert!(!sh.contains("|| true"), "{sh}");
+        }
+    }
+
+    // Crew review P0, PR #106 comment 6874910355: the unit only had NoNewPrivileges/ProtectSystem/PrivateTmp,
+    // so a crewmate could read other users' homes, fork-bomb the host or eat all its memory. Every
+    // directive here exists in systemd 245 (Ubuntu 20.04, the oldest server we install on): ProtectHome
+    // 214, TasksMax 227, MemoryMax 231 (a percentage since 238), ProtectKernelTunables and
+    // ProtectControlGroups 232, RestrictSUIDSGID 242.
+    #[test]
+    fn the_unit_confines_homes_memory_tasks_and_the_kernel() {
+        for a in [account(Probe::default()), account(probe(true, true, false))] {
+            let unit = systemd_unit(&a);
+            for needle in [
+                "ProtectHome=read-only\n",
+                "MemoryMax=80%\n",
+                "TasksMax=4096\n",
+                "ProtectKernelTunables=true\n",
+                "ProtectControlGroups=true\n",
+                "RestrictSUIDSGID=true\n",
+            ] {
+                assert!(unit.contains(needle), "{}: missing {needle}", a.user);
+            }
+        }
+    }
+
+    // ProtectHome=read-only makes /home, /root and /run/user read-only; the crew home must stay
+    // writable wherever it is, and every dir the agents install into (omp, claude, codex, opencode,
+    // bun) is under it and on PATH, so nothing an agent needs falls outside ReadWritePaths.
+    #[test]
+    fn the_crew_home_stays_writable_and_holds_every_agent_dir() {
+        let a = account(Probe::default());
+        let unit = systemd_unit(&a);
+        assert!(unit.contains(&format!("ReadWritePaths={}\n", a.home)));
+        let path = unit
+            .lines()
+            .find_map(|l| l.strip_prefix("Environment=PATH="))
+            .unwrap();
+        for dir in path.split(':').filter(|d| d.contains("/.")) {
+            assert!(
+                dir.starts_with(&format!("{}/", a.home)),
+                "{dir} is outside the writable home {}",
+                a.home
+            );
+        }
+        for want in [
+            ".atlas/bin",
+            ".bun/bin",
+            ".local/bin",
+            ".opencode/bin",
+            ".npm-global/bin",
+        ] {
+            assert!(path.contains(want), "{want} not on PATH");
+        }
+    }
+
+    // A directive in [Service] only counts there: all hardening must sit before [Install].
+    #[test]
+    fn hardening_lives_in_the_service_section() {
+        let unit = systemd_unit(&account(Probe::default()));
+        let svc = unit.split("[Service]").nth(1).unwrap();
+        let svc = svc.split("[Install]").next().unwrap();
+        for d in [
+            "ProtectHome=",
+            "MemoryMax=",
+            "TasksMax=",
+            "RestrictSUIDSGID=",
+        ] {
+            assert!(svc.contains(d), "{d} is not in [Service]");
         }
     }
 

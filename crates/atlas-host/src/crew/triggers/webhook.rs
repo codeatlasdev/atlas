@@ -33,26 +33,36 @@ pub(crate) fn parse_webhook_path(path: &str) -> Option<(String, String)> {
 
 /// Handle a webhook POST for `crewmate_id` / `token`.
 ///
-/// Returns an HTTP status line suitable for a response header.
-/// Body is truncated to 200 chars for the `{{event}}` summary.
+/// Body is truncated to 200 chars for the `{{event}}` summary, and handed over as untrusted text
+/// (quoted, behind a fixed preamble); the task runs as `ask` unless the trigger has `allow_auto`.
 pub(crate) fn handle(hub: &Arc<Hub>, crewmate_id: &str, token: &str, body: &str) -> &'static str {
     let Ok(crewmate) = hub.crew.store.load_crewmate(crewmate_id) else {
         return "404 Not Found";
     };
     let trigger = crewmate.triggers.iter().find(|t| {
-        t.enabled && matches!(&t.kind, TriggerKind::Webhook { token: tk } if tk == token)
+        t.enabled && matches!(&t.kind, TriggerKind::Webhook { token: tk, .. } if tk == token)
     });
     let Some(trigger) = trigger else {
         return "403 Forbidden";
     };
-    // Trim body to a reasonable summary length.
-    let event: String = if body.len() <= 200 {
-        body.trim().to_string()
+    // Trim body to a reasonable summary length (by characters: a byte cut can split a letter).
+    let body = body.trim();
+    let event: String = if body.chars().count() <= 200 {
+        body.to_string()
     } else {
-        format!("{}…", body[..200].trim_end())
+        format!("{}…", body.chars().take(200).collect::<String>().trim_end())
     };
     let prompt_template = trigger.prompt.clone();
     let trigger_id = trigger.id.clone();
-    super::fire(hub, crewmate_id, &trigger_id, &prompt_template, &event);
+    super::fire(
+        hub,
+        crewmate_id,
+        &trigger_id,
+        &prompt_template,
+        super::Event::Stranger {
+            source: "a webhook request body",
+            text: &event,
+        },
+    );
     "204 No Content"
 }

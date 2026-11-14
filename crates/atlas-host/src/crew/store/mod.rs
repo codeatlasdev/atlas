@@ -64,6 +64,13 @@ pub struct EngineConfig {
     pub model: Option<String>,
 }
 
+/// Who may fire a GitHub trigger unless it says otherwise.
+pub(crate) fn default_authors() -> Vec<String> {
+    ["owner", "member", "collaborator"]
+        .map(String::from)
+        .to_vec()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TriggerKind {
@@ -75,10 +82,20 @@ pub enum TriggerKind {
     },
     Webhook {
         token: String,
+        /// Run the task with the agent's bypass flags (an `auto` crewmate). Off: the task runs as `ask`.
+        #[serde(default)]
+        allow_auto: bool,
     },
     Github {
         repo: String,
         events: Vec<String>,
+        /// Whose events may fire it, by GitHub `author_association`: "owner", "member",
+        /// "collaborator", "contributor", "anyone".
+        #[serde(default = "default_authors")]
+        authors: Vec<String>,
+        /// As for `Webhook`.
+        #[serde(default)]
+        allow_auto: bool,
     },
     File {
         path: String,
@@ -363,6 +380,10 @@ pub struct Task {
     /// Stamped onto any `add_trigger` action that lands in this task.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tz: Option<String>,
+    /// Started by text strangers can write (a GitHub event, a webhook body) from a trigger without
+    /// `allow_auto`: the agent never runs with its bypass flags for it (`triggers::yolo_for`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_auto: bool,
 }
 
 impl Task {
@@ -390,6 +411,7 @@ impl Task {
             usage: None,
             action: None,
             tz: None,
+            no_auto: false,
         }
     }
 }
@@ -404,6 +426,9 @@ pub struct CrewSettings {
     pub short_replies: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_replies_model: Option<String>,
+    /// The kill switch (`crew_pause` / `crew_resume`): no task runs and no automation fires.
+    #[serde(default)]
+    pub paused: bool,
 }
 
 impl Default for CrewSettings {
@@ -411,6 +436,7 @@ impl Default for CrewSettings {
         Self {
             short_replies: true,
             short_replies_model: None,
+            paused: false,
         }
     }
 }

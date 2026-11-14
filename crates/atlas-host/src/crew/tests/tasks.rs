@@ -831,3 +831,71 @@ fn crewmate_setup_step_serializes_as_snake_case() {
         panic!("wrong variant");
     }
 }
+
+// Crew review P0, PR #106 comment 6874910355: about a dozen `let _ = store.append_task(..)` dropped
+// every store error, so on a full or read-only disk the UI kept showing the task as running (or
+// queued) while nothing was recorded, and the user never learned why. A task whose state cannot be
+// recorded must fail loudly: the clients are told (push event) with the error, and the agent is
+// not left running behind a task that says nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_whose_state_cannot_be_stored_fails_with_the_error_instead_of_staying_running() {
+    use std::os::unix::fs::PermissionsExt;
+    let _bin_lock = lock_agent_bin().await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    // The agent outlives the test's patience: only a failed store write can end the task.
+    let fake_bin = fake_agent(tmp.path(), "claude", "sleep 30\nexit 0");
+    use_agent_bin(&fake_bin);
+    // After the spawn the runner pauses; that is when the disk "fills up".
+    *crate::crew::runner::TEST_PAUSE_AFTER_SPAWN.lock() = Some(Duration::from_millis(1500));
+
+    let client = daemon(&dir).await;
+    let mut events = client.events();
+    let id = super::fixture::create_crewmate(&client, "FullDisk").await;
+    let v = client
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
+        .await
+        .unwrap();
+    let task_id = v["task"]["id"].as_str().unwrap().to_string();
+
+    // Read-only crewmate dir: the `running` record cannot be appended any more.
+    let crewmate_dir = crate::crew::store::crewmate_dir_in(&dir, &id);
+    std::fs::set_permissions(
+        crewmate_dir.join("tasks.jsonl"),
+        std::fs::Permissions::from_mode(0o444),
+    )
+    .unwrap();
+
+    // The event the clients get for this task must say failed, with a reason that names the store.
+    let failed = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            let e = events.recv().await.unwrap();
+            if e["ev"] == "crewmate_task"
+                && e["task"]["id"] == task_id.as_str()
+                && e["task"]["state"] == "failed"
+            {
+                return (*e).clone();
+            }
+        }
+    })
+    .await
+    .expect("the task stayed running/queued: the store error was swallowed");
+    let error = failed["task"]["error"].as_str().unwrap_or_default();
+    assert!(
+        error.contains("cannot record") && error.contains("tasks.jsonl"),
+        "the failure must name what could not be stored, got: {error:?}"
+    );
+
+    std::fs::set_permissions(
+        crewmate_dir.join("tasks.jsonl"),
+        std::fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    *crate::crew::runner::TEST_PAUSE_AFTER_SPAWN.lock() = None;
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}

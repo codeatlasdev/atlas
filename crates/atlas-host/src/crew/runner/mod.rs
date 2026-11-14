@@ -107,7 +107,8 @@ impl Default for RunnerMap {
 
 // ─── public API ──────────────────────────────────────────────────────────────
 
-/// Append `task` to the crewmate's queue and start the worker if needed.
+/// Append `task` to the crewmate's queue and start the worker if needed. While the crew is paused
+/// the task waits in the queue (a new task still queues) and no worker starts.
 pub(crate) fn enqueue(hub: &Hub, store: &CrewStore, crewmate: &Crewmate, task: Task) {
     let crewmate_id = crewmate.id.clone();
     let notify;
@@ -119,7 +120,7 @@ pub(crate) fn enqueue(hub: &Hub, store: &CrewStore, crewmate: &Crewmate, task: T
             .or_insert_with(CrewmateRunner::new);
         runner.queue.push_back(task);
         notify = runner.notify.clone();
-        should_spawn = !runner.worker_active;
+        should_spawn = !hub.crew.is_paused() && !runner.worker_active;
         if should_spawn {
             runner.worker_active = true;
         }
@@ -135,12 +136,72 @@ pub(crate) fn enqueue(hub: &Hub, store: &CrewStore, crewmate: &Crewmate, task: T
     let _ = store; // store already written by caller before enqueue
 }
 
+/// `crew_pause`: cancel every running task with `reason` as its error. Queued tasks stay queued,
+/// and the workers stop at their next pop (`run_worker` checks the switch).
+pub(crate) fn cancel_all(hub: &Hub, reason: &str) {
+    let running: Vec<(String, String)> = {
+        let map = hub.crew.runners.0.lock();
+        map.iter()
+            .filter_map(|(c, r)| r.running.clone().map(|t| (c.clone(), t)))
+            .collect()
+    };
+    for (crewmate_id, task_id) in running {
+        if let Err(e) = cancel_with(hub, &hub.crew.store, &crewmate_id, &task_id, Some(reason)) {
+            eprintln!("atlas crew: pause: cannot cancel task {task_id} of {crewmate_id}: {e}");
+        }
+    }
+}
+
+/// `crew_resume`: start a worker for every crewmate that has queued tasks and none running.
+pub(crate) fn resume_all(hub: &Hub) {
+    let Some(hub_arc) = hub.crew.hub_arc() else {
+        return;
+    };
+    let waiting: Vec<String> = {
+        let mut map = hub.crew.runners.0.lock();
+        map.iter_mut()
+            .filter(|(_, r)| !r.queue.is_empty() && !r.worker_active)
+            .map(|(id, r)| {
+                r.worker_active = true;
+                id.clone()
+            })
+            .collect()
+    };
+    for id in waiting {
+        // A fresh definition: it may have changed while the crew was paused.
+        match hub.crew.store.load_crewmate(&id) {
+            Ok(crewmate) => {
+                let hub_arc = hub_arc.clone();
+                tokio::spawn(async move { run_worker(hub_arc, crewmate).await });
+            }
+            Err(e) => {
+                eprintln!(
+                    "atlas crew: resume: crewmate {id} unreadable, its queue stays held: {e}"
+                );
+                if let Some(r) = hub.crew.runners.0.lock().get_mut(&id) {
+                    r.worker_active = false;
+                }
+            }
+        }
+    }
+}
+
 /// Cancel a task: remove from queue if pending, kill pty if running.
 pub(crate) fn cancel(
     hub: &Hub,
     store: &CrewStore,
     crewmate_id: &str,
     task_id: &str,
+) -> Result<(), String> {
+    cancel_with(hub, store, crewmate_id, task_id, None)
+}
+
+fn cancel_with(
+    hub: &Hub,
+    store: &CrewStore,
+    crewmate_id: &str,
+    task_id: &str,
+    reason: Option<&str>,
 ) -> Result<(), String> {
     let is_running;
     {
@@ -165,6 +226,9 @@ pub(crate) fn cancel(
     update_task(hub, store, crewmate_id, task_id, |t| {
         t.state = TaskState::Cancelled;
         t.finished_at = Some(now_s());
+        if let Some(reason) = reason {
+            t.error = Some(reason.to_string());
+        }
     });
 
     // Kill the pty if the task is currently running.
@@ -196,6 +260,12 @@ async fn run_worker(hub: Arc<Hub>, crewmate: Crewmate) {
             let runner = map
                 .get_mut(&crewmate.id)
                 .expect("runner entry always present");
+            // Checked under the same lock `enqueue` and `resume_all` use, so a pause between two
+            // tasks can never be missed: the worker ends and the queue stays for `resume_all`.
+            if hub.crew.is_paused() {
+                runner.worker_active = false;
+                return;
+            }
             match runner.queue.pop_front() {
                 Some(t) => {
                     runner.running = Some(t.id.clone());

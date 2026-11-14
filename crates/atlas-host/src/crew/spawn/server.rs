@@ -82,6 +82,10 @@ impl Server {
         })
     }
 
+    pub fn config(&self) -> &Config {
+        &self.cfg
+    }
+
     /// Serve `listener` until it fails. One thread per connection (hostd opens a handful), one
     /// reaper for all of them.
     pub fn serve(self: &Arc<Self>, listener: UnixListener) -> io::Result<()> {
@@ -436,59 +440,17 @@ mod tests {
 
     // ---- the whole path: a real server on a socket, a real client, real fds and processes ----
 
-    use super::super::client::{Client, is_unknown_session};
+    use super::super::client::is_unknown_session;
     use super::super::protocol::{Mode, SpawnReq};
+    use super::super::testing::{Rig, USER, rig as new_rig};
     use std::io::{Read, Write};
-    use std::os::unix::fs::PermissionsExt;
 
-    const USER: &str = "atlas-cm-3f2a9c1e5b7d";
-
-    fn me(_: &str) -> io::Result<Ids> {
-        // SAFETY: plain getters.
-        Ok(Ids {
-            uid: unsafe { libc::geteuid() },
-            gid: unsafe { libc::getegid() },
-        })
-    }
-
-    struct Rig {
-        _t: tempfile::TempDir,
-        client: Client,
-        work: String,
-        server: Arc<Server>,
-    }
-
-    /// A helper serving a temp socket as the current user, with a fake `claude` that reports on
-    /// itself and then runs `$FAKE` (a shell snippet from the request's env) so each test chooses
-    /// how the child behaves.
+    /// The shared rig with one engine, `claude`: it reports on itself and then runs `$FAKE` (a shell
+    /// snippet from the request's env) so each test chooses how the child behaves.
     fn rig() -> Rig {
-        let t = tempfile::tempdir().unwrap();
-        let engines = t.path().join("engines");
-        let work = t.path().join("cm/3f2a9c1e5b7d/work");
-        std::fs::create_dir_all(&engines).unwrap();
-        std::fs::create_dir_all(&work).unwrap();
-        std::fs::create_dir_all(t.path().join("cm/3f2a9c1e5b7d/home")).unwrap();
-        let bin = engines.join("claude");
-        std::fs::write(&bin, "#!/bin/sh\necho started pid=$$\neval \"$FAKE\"\n").unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let server = Server::new(Config {
-            crew_uid: unsafe { libc::geteuid() },
-            cm_root: t.path().join("cm").to_string_lossy().into(),
-            engines: vec![engines.to_string_lossy().into()],
-            resolve: me,
-        });
-        let sock = t.path().join("spawn.sock");
-        let listener = bind(&sock).unwrap();
-        let s2 = server.clone();
-        std::thread::spawn(move || {
-            let _ = s2.serve(listener);
-        });
-        Rig {
-            client: Client::at(sock),
-            work: work.to_string_lossy().into(),
-            server,
-            _t: t,
-        }
+        let r = new_rig();
+        r.engine("claude", "echo started pid=$$\neval \"$FAKE\"");
+        r
     }
 
     fn req(r: &Rig, mode: Mode, fake: &str) -> SpawnReq {
@@ -496,7 +458,7 @@ mod tests {
             user: USER.into(),
             argv: vec!["claude".into()],
             env: [("FAKE".to_string(), fake.to_string())].into(),
-            cwd: r.work.clone(),
+            cwd: r.work().to_string_lossy().into_owned(),
             mode,
             cols: 80,
             rows: 24,
@@ -650,7 +612,7 @@ mod tests {
         let me_uid = unsafe { libc::geteuid() };
         let s = Server::new(Config {
             crew_uid: me_uid.wrapping_add(1).max(1),
-            ..r.server.cfg.clone()
+            ..r.server.config().clone()
         });
         // Root (uid 0) is always allowed, so this proves the refusal only when not running as root.
         if me_uid == 0 {

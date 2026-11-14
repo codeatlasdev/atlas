@@ -34,6 +34,8 @@ pub mod provision;
 pub mod protocol;
 #[cfg(unix)]
 pub mod server;
+#[cfg(all(test, unix))]
+pub(crate) mod testing;
 pub mod validate;
 #[cfg(unix)]
 pub mod wire;

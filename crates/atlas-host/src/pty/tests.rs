@@ -143,15 +143,23 @@ async fn a_title_set_before_attach_comes_back_as_a_title_event() {
 async fn stuck_raw_reader_does_not_block_the_program() {
     let dir = std::env::temp_dir().join(format!("atlas-host-raw-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    // Far more output than the queues hold (ConPTY renders it, so Windows prints lines).
+    // Far more output than the queues hold (ConPTY renders it, so Windows prints lines). On Unix
+    // the output waits for `go`, created once the reader is attached: otherwise a loaded machine
+    // could finish the program first and the test passed without a reader to stall on (#198).
+    let go = dir.join("go-raw");
+    let _ = std::fs::remove_file(&go);
     let script = if cfg!(windows) {
-        "for /L %i in (1,1,20000) do @echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "for /L %i in (1,1,20000) do @echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx".to_string()
     } else {
-        "head -c 20000000 /dev/zero"
+        format!(
+            "while [ ! -e '{}' ]; do sleep 0.01; done; head -c 20000000 /dev/zero",
+            go.display()
+        )
     };
-    let s = Session::spawn(shell_req(script), &dir).unwrap();
+    let s = Session::spawn(shell_req(&script), &dir).unwrap();
     let (tx, _rx_never_read) = mpsc::channel(RAW_QUEUE);
     s.attach_raw(1, tx, false);
+    std::fs::write(&go, "").unwrap();
     let t0 = std::time::Instant::now();
     while s.exited().is_none() {
         assert!(
@@ -745,13 +753,17 @@ async fn closing_a_terminal_ends_the_process_it_daemonized() {
 async fn a_shell_that_exits_by_itself_does_not_leave_its_daemon_behind() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("daemon.pid");
-    let s = Session::spawn(
-        shell_req(&daemonizing_shell(&marker, "sleep 1; exit 0")),
-        dir.path(),
-    )
-    .unwrap();
+    // The shell exits only after `go`, created once the registry has seen its daemon: with
+    // `sleep 1` a loaded machine could end the shell before `track` (#198).
+    let go = dir.path().join("go-exit");
+    let then = format!(
+        "while [ ! -e '{}' ]; do sleep 0.01; done; exit 0",
+        go.display()
+    );
+    let s = Session::spawn(shell_req(&daemonizing_shell(&marker, &then)), dir.path()).unwrap();
     let daemon = daemon_pid(&marker).await;
     track(dir.path());
+    std::fs::write(&go, "").unwrap();
     until_exited(&s).await;
     assert!(
         gone_within(daemon, Duration::from_secs(10)).await,

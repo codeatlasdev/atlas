@@ -196,6 +196,14 @@ pub(crate) fn create(
         .save_crewmate(&crewmate)
         .map_err(|e| format!("save_crewmate: {e}"))?;
     let _ = hub.crew.store.write_memory(&id, "");
+    hub.crew.audit.record(
+        None,
+        "crewmate_created",
+        json!({
+            "id": id, "name": crewmate.name, "agent": crewmate.agent, "approval": crewmate.approval,
+            "engine": crewmate.engine, "project": crewmate.project,
+        }),
+    );
     warm_checkout(hub, &crewmate);
     serde_json::to_value(&crewmate).map_err(|e| e.to_string())
 }
@@ -220,6 +228,7 @@ pub(crate) fn update(
         .store
         .load_crewmate(&id)
         .map_err(|_| format!("crewmate {id} not found"))?;
+    let before = crewmate.clone();
     if let Some(n) = name {
         crewmate.name = valid_name(&n)?;
     }
@@ -265,6 +274,7 @@ pub(crate) fn update(
         .store
         .save_crewmate(&crewmate)
         .map_err(|e| format!("save_crewmate: {e}"))?;
+    audit_changes(hub, &before, &crewmate);
     // Notify connected clients that the crewmate changed.
     hub.broadcast(events::crewmate_updated(&crewmate.id));
     warm_checkout(hub, &crewmate);
@@ -283,11 +293,45 @@ pub(crate) fn delete(hub: &Hub, id: String) -> Result<Value, String> {
             let _ = runner::cancel(hub, &hub.crew.store, &id, &t.id);
         }
     }
+    let name = hub.crew.store.load_crewmate(&id).ok().map(|c| c.name);
     hub.crew
         .store
         .delete_crewmate_dir(&id)
         .map_err(|e| format!("delete: {e}"))?;
+    // The crewmate's own log goes with its directory; the crew-level one keeps that it existed and who it was.
+    hub.crew
+        .audit
+        .record(None, "crewmate_deleted", json!({"id": id, "name": name}));
     Ok(json!({}))
+}
+
+/// Record what an update changed on the crewmate: approval, engine, project, agent, role and name
+/// (the role by length only: it is prose, not a setting). One `config_changed` per field.
+fn audit_changes(hub: &Hub, before: &Crewmate, after: &Crewmate) {
+    let audit = |field: &str, from: Value, to: Value| {
+        if from != to {
+            hub.crew.audit.record(
+                Some(&after.id),
+                "config_changed",
+                json!({"field": field, "from": from, "to": to}),
+            );
+        }
+    };
+    audit("name", json!(before.name), json!(after.name));
+    audit("agent", json!(before.agent), json!(after.agent));
+    audit("approval", json!(before.approval), json!(after.approval));
+    audit("engine", json!(before.engine), json!(after.engine));
+    audit("project", json!(before.project), json!(after.project));
+    audit(
+        "role_chars",
+        json!(before.role.chars().count()),
+        json!(after.role.chars().count()),
+    );
+    audit(
+        "short_replies",
+        json!(before.short_replies),
+        json!(after.short_replies),
+    );
 }
 
 /// Start checking out a Git project in the background as soon as the crewmate has it, so the first task does not wait for

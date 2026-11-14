@@ -179,8 +179,11 @@ impl HostHub {
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {
-            // Register interest before checking, so a `set` in between is not missed.
+            // Register interest before checking, so a `set` in between is not missed. A
+            // `Notified` only counts for `notify_waiters` once polled or enabled (#226).
             let woken = self.connected.notified();
+            tokio::pin!(woken);
+            woken.as_mut().enable();
             if let Some(c) = self.clients.read().await.get(LOCAL).cloned() {
                 return Ok(c);
             }

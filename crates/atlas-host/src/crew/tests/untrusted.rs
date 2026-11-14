@@ -391,13 +391,17 @@ async fn a_webhook_task_on_an_engine_that_cannot_ask_is_refused_not_run_auto() {
     let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
-    // If the engine ran, this marker would appear.
+    // The fake engine logs every prompt it is started with. The override is process-wide and a
+    // daemon from an earlier test can still be running a task when this one starts, so the
+    // assertions look for this test's own webhook text, never at whether the file exists
+    // (that raced: "the engine must not have been started" failed with another test's run).
     let marker = tmp.path().join("engine-ran");
     let fake = fake_agent(
         tmp.path(),
         "opencode",
-        &format!("touch {}\necho ran", marker.display()),
+        &format!("printf '%s\\n' \"$*\" >> {}\necho ran", marker.display()),
     );
+    let ran = |text: &str| std::fs::read_to_string(&marker).is_ok_and(|s| s.contains(text));
     use_agent_bin(&fake);
     crate::crew::engine::set_test_engine_bin(Some(&fake.to_string_lossy()));
 
@@ -420,7 +424,7 @@ async fn a_webhook_task_on_an_engine_that_cannot_ask_is_refused_not_run_auto() {
         )
         .await
         .unwrap();
-    post_webhook(&dir, &id, "t-oc", "hello").await;
+    post_webhook(&dir, &id, "t-oc", "refused-webhook-7f3").await;
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     let task = loop {
         let v = client
@@ -443,7 +447,10 @@ async fn a_webhook_task_on_an_engine_that_cannot_ask_is_refused_not_run_auto() {
         err.contains("cannot ask") && err.contains("allow_auto"),
         "the error must say why and how to allow it: {err:?}"
     );
-    assert!(!marker.exists(), "the engine must not have been started");
+    assert!(
+        !ran("refused-webhook-7f3"),
+        "the engine must not have been started"
+    );
 
     // With `allow_auto: true` the owner opted in: the same webhook runs the engine.
     client
@@ -455,9 +462,9 @@ async fn a_webhook_task_on_an_engine_that_cannot_ask_is_refused_not_run_auto() {
         )
         .await
         .unwrap();
-    post_webhook(&dir, &id, "t-oc", "hello again").await;
+    post_webhook(&dir, &id, "t-oc", "opted-in-webhook-7f3").await;
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while !marker.exists() {
+    while !ran("opted-in-webhook-7f3") {
         assert!(
             std::time::Instant::now() < deadline,
             "allow_auto must run the engine"

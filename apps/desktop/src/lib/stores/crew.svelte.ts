@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { CrewmateLook } from "#lib/crew/look.ts";
 import { hostCall } from "#lib/host.ts";
+import { parseAudit, type AuditEntry } from "#lib/crew/settings/audit.ts";
 import { errText } from "#lib/api.ts";
 import { normalizeTask } from "#lib/crew/wire.ts";
 import { anyPaused, parseCrewList, pausedFromEvent } from "#lib/crew/pause.ts";
@@ -348,6 +349,19 @@ class CrewStore {
 			id: this.selected.crewmateId,
 			...(opts?.since ? { since: opts.since } : {}),
 		});
+	}
+
+	// ─── audit ────────────────────────────────────────────────────────────────
+
+	/** The selected crewmate's append-only audit, newest first (`crewmate_audit`); the Audit section filters by kind client-side. */
+	async getAudit(opts?: { limit?: number }): Promise<AuditEntry[]> {
+		if (!this.selected) return [];
+		const reply = await hostCall<unknown>("crewmate_audit", {
+			...hostArgs(this.selected.hostKey),
+			id: this.selected.crewmateId,
+			limit: opts?.limit ?? 500,
+		});
+		return parseAudit(reply);
 	}
 
 	// ─── approvals ────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import type { HeavyStatus } from "./heavy.ts";
+import { human, type HeavyStatus } from "./heavy.ts";
 
 /**
  * The Machine view (#129): why the machine is slow and what each agent runs. These are the shapes the
@@ -41,6 +41,31 @@ export interface MachineRunHistory {
 	max_s: number;
 }
 
+export interface MachineCacheProject {
+	name: string;
+	hits: number;
+	misses: number;
+	saved_ms: number;
+	/** Whole percent, null before the first run. */
+	hit_rate: number | null;
+}
+
+/** The task cache (#126); `atlas cache status`. */
+export interface MachineCache {
+	entries: number;
+	bytes: number;
+	max_bytes: number;
+	hits: number;
+	misses: number;
+	/** Whole percent of runs served from the cache, null before the first run. */
+	hit_rate: number | null;
+	saved_ms: number;
+	/** Saved over the last 7 days. */
+	saved_7d_ms: number;
+	/** Most time saved first. */
+	projects: MachineCacheProject[];
+}
+
 export interface MachineReport {
 	/** Unix ms. */
 	at: number;
@@ -53,6 +78,7 @@ export interface MachineReport {
 	history: MachineRunHistory[];
 	services: MachineService[];
 	terminals: MachineTerminal[];
+	cache: MachineCache;
 }
 
 const MB = 1 << 20;
@@ -190,6 +216,56 @@ export function agentRows(
 		const [gb, mb] = rank(b);
 		return ga - gb || ma - mb;
 	});
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const pct = (r: number | null) => (r == null ? "–" : `${r}%`);
+const saved = (ms: number) => human(Math.round(ms / 1000));
+
+/** The store is "nearly full" from here: the next runs evict the least recently used entries. */
+const CACHE_FULL = 0.9;
+
+export interface CacheRow {
+	name: string;
+	/** `75% · 3 hits · 1 miss`. */
+	detail: string;
+	saved: string;
+}
+
+export interface CacheViewModel {
+	/** Hit rate, `–` before the first run. */
+	rate: string;
+	hits: string;
+	saved: string;
+	savedWeek: string;
+	/** `512 MB of 2.0 GB`. */
+	size: string;
+	/** 0..1 of the bar; never past the end when the store is over its cap. */
+	fill: number;
+	full: boolean;
+	projects: CacheRow[];
+}
+
+/** What the Cache section draws, from the report's `cache` block. */
+export function cacheView(c: MachineCache): CacheViewModel {
+	const fill = c.max_bytes > 0 ? clamp(c.bytes / c.max_bytes) : 0;
+	return {
+		rate: pct(c.hit_rate),
+		hits:
+			c.hits + c.misses === 0
+				? "No runs yet"
+				: `${plural(c.hits, "hit")} · ${plural(c.misses, "miss", "misses")}`,
+		saved: saved(c.saved_ms),
+		savedWeek: saved(c.saved_7d_ms),
+		size: `${bytes(c.bytes)} of ${bytes(c.max_bytes)}`,
+		fill,
+		full: c.max_bytes > 0 && c.bytes / c.max_bytes >= CACHE_FULL,
+		projects: c.projects.map((p) => ({
+			name: p.name,
+			detail: `${[pct(p.hit_rate), plural(p.hits, "hit")].join(" · ")}${p.misses ? ` · ${plural(p.misses, "miss", "misses")}` : ""}`,
+			saved: saved(p.saved_ms),
+		})),
+	};
 }
 
 export interface RunTrend {

@@ -164,6 +164,13 @@ pub(super) async fn gate_success(
     }
 
     // The work passed the guards (or the owner accepted it): a UI task must also have shown itself.
+    prove_ui(hub, crewmate, task, kept).await
+}
+
+/// The proof a `ui` task owes before it is `done`: finish when it has it, else park on `ProveUi` and wait for
+/// the owner. The one place that decides it, for a run that just finished and for a `refused` card the owner
+/// overrode after a restart: an override accepts what the guards refused, never the missing proof.
+async fn prove_ui(hub: &Arc<Hub>, crewmate: &Crewmate, task: &mut Task, kept: String) -> Gate {
     refresh_from_store(hub, crewmate, task);
     let Some(reason) = unproven(task) else {
         return Gate::Finish(kept);
@@ -209,13 +216,16 @@ pub(super) async fn resume_refusal(hub: &Arc<Hub>, crewmate: &Crewmate, task: &m
         return false;
     }
     let kept = task.result.clone().unwrap_or_default();
-    match answer_card(hub, crewmate, task, kept, card).await {
-        Gate::Finish(result) => {
-            // Overridden: the work stands as it was, with the same end any task gets.
-            task.reply = Some(result.clone());
-            super::outcome::finish_task(hub, crewmate, task, Ok(result), vec![]);
-        }
-        Gate::Handled => {}
+    let refused = matches!(card, Card::Refused(_));
+    let mut gate = answer_card(hub, crewmate, task, kept, card).await;
+    // As when nothing restarted: the guards were overridden, the proof a UI task owes still has to be shown.
+    if refused && let Gate::Finish(kept) = gate {
+        gate = prove_ui(hub, crewmate, task, kept).await;
+    }
+    if let Gate::Finish(result) = gate {
+        // Accepted: the work stands as it was, with the same end any task gets.
+        task.reply = Some(result.clone());
+        super::outcome::finish_task(hub, crewmate, task, Ok(result), vec![]);
     }
     true
 }

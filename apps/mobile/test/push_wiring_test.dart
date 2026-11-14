@@ -176,4 +176,31 @@ void main() {
     expect(asked, isEmpty);
     expect(computer.registered, isEmpty);
   });
+
+  // A phone paired only to a Mac gets pushes about that Mac's agents: a hostd that advertises `push`
+  // takes the registration itself, whether or not it is a crew server.
+  test(
+    'registers with a Mac that advertises push, with no crew server',
+    () async {
+      computer.caps = ['mobile', 'agents', 'push'];
+      final c = container([mac]);
+      c.listen(pushRegistrationProvider, (_, _) {});
+      c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+      await _settle();
+      expect(computer.registered, [
+        {'token': 'fcm-1', 'platform': 'fcm', 'grant': 'grant:fcm-1'},
+      ]);
+    },
+  );
+
+  // An older hostd (agents but no push cap) would answer an unknown command: do not ask it.
+  test('skips a Mac from before the push cap', () async {
+    computer.caps = ['mobile', 'agents', 'lsp'];
+    final c = container([mac]);
+    c.listen(pushRegistrationProvider, (_, _) {});
+    c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+    await _settle();
+    expect(asked, isEmpty);
+    expect(computer.registered, isEmpty);
+  });
 }

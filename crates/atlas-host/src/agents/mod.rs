@@ -12,6 +12,7 @@ pub(crate) mod launch;
 pub(crate) use launch::plan as launch_plan;
 #[cfg(test)]
 pub(crate) use launch::{TEST_BIN_LOCK as LAUNCH_TEST_BIN_LOCK, set_test_bin as launch_test_bin};
+pub mod push;
 #[cfg(test)]
 mod tests;
 pub mod tree;

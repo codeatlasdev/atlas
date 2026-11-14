@@ -6,13 +6,14 @@
 //! with step `fetch|add|shared|done|error`. The frontend opens the "Setup"
 //! terminal from the `done` payload (it owns tabs).
 //!
-//! `exec` runs commands, `create` builds a worktree and `manage` removes, imports and inspects existing
-//! ones. Names/offsets, the registry and the "nothing would be lost" rule are shared with hostd
-//! (`atlas_host::worktrees`).
+//! `exec` runs commands, `create` builds a worktree, `setup_payload` builds the Setup terminal's
+//! command and env, and `manage` removes, imports and inspects existing ones. Names/offsets, the
+//! registry and the "nothing would be lost" rule are shared with hostd (`atlas_host::worktrees`).
 
 mod create;
 mod exec;
 mod manage;
+mod setup_payload;
 
 pub use create::*;
 pub use manage::*;

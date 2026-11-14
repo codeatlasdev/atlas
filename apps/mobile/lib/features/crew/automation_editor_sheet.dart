@@ -183,6 +183,11 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       _Kind.github => GithubTrigger(
         repo: _githubRepoCtrl.text.trim(),
         events: _githubEvents.toList(),
+        // What the sheet has no control for comes back untouched (see GithubTrigger.extra).
+        extra: switch (widget.existing?.kind) {
+          GithubTrigger(:final extra) => extra,
+          _ => const {},
+        },
       ),
       _Kind.file => FileTrigger(
         path: _filePathCtrl.text.trim(),
@@ -418,6 +423,9 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
     ('issue_opened', 'Issue opened'),
     ('ci_failed', 'CI fails'),
     ('release', 'Release published'),
+    ('mention', 'You are mentioned'),
+    ('issue_assigned', 'Issue assigned to you'),
+    ('pr_review_comment', 'Review comment on a PR'),
   ];
 
   Widget _githubBuilder(BuildContext context) {

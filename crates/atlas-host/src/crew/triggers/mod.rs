@@ -17,8 +17,13 @@
 
 mod file_watch;
 mod github;
+pub(crate) mod github_events;
 mod service;
 pub(crate) mod webhook;
+
+// Only the Unix e2e tests use it (`crew/tests/github_e2e.rs` is `cfg(unix)`).
+#[cfg(all(test, unix))]
+pub(crate) use github::TEST_GITHUB_POLL;
 
 use std::sync::{Arc, Weak};
 
@@ -43,6 +48,8 @@ pub(crate) fn validate_trigger(t: &Trigger) -> Result<(), String> {
             repo,
             events,
             authors,
+            handle,
+            assignee,
             ..
         } => {
             if repo.is_empty() {
@@ -54,6 +61,9 @@ pub(crate) fn validate_trigger(t: &Trigger) -> Result<(), String> {
                 "issue_opened",
                 "ci_failed",
                 "release",
+                "mention",
+                "issue_assigned",
+                "pr_review_comment",
             ];
             for e in events {
                 if !VALID.contains(&e.as_str()) {
@@ -70,6 +80,22 @@ pub(crate) fn validate_trigger(t: &Trigger) -> Result<(), String> {
                         AUTHORS.join(", ")
                     ));
                 }
+            }
+            if events.iter().any(|e| e == "issue_assigned")
+                && assignee
+                    .as_deref()
+                    .is_none_or(|a| !github_events::valid_handle(a))
+            {
+                return Err(
+                    "github event issue_assigned needs an assignee (a GitHub login)".into(),
+                );
+            }
+            if let Some(h) = handle
+                && !github_events::valid_handle(h)
+            {
+                return Err(format!(
+                    "github handle must be a GitHub login (letters, digits, hyphens; no @): {h:?}"
+                ));
             }
         }
         TriggerKind::File { path, .. } => {
@@ -126,55 +152,14 @@ pub(crate) fn untrusted_event(source: &str, text: &str) -> String {
 }
 
 /// Whether a GitHub `author_association` ("OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", …) is
-/// accepted by `authors`. No association at all (a release, a check run) is not an outsider's text.
+/// accepted by `authors`. No association is never accepted: the events feed carries none (checked
+/// against the live API), so a missing one means the author was not resolved, not that nobody wrote it.
 pub(crate) fn author_allowed(authors: &[String], association: Option<&str>) -> bool {
     let Some(assoc) = association else {
-        return true;
+        return false;
     };
     let assoc = assoc.to_ascii_lowercase();
     authors.iter().any(|a| a == "anyone" || *a == assoc)
-}
-
-/// What one GitHub event (as `gh api repos/<r>/events` lists it) tells a trigger: `None` when it is not
-/// an event the trigger wants or its author (of the PR/issue and of the comment) is not accepted,
-/// otherwise the `{{event}}` text, already wrapped as untrusted.
-pub(crate) fn github_event_prompt(
-    ev: &serde_json::Value,
-    repo: &str,
-    wanted: &[String],
-    authors: &[String],
-) -> Option<String> {
-    let ev_type = ev["type"].as_str().unwrap_or("");
-    let action = ev["payload"]["action"].as_str().unwrap_or("");
-    if !wanted
-        .iter()
-        .any(|w| github::event_matches(w, ev_type, action, ev))
-    {
-        return None;
-    }
-    let payload = &ev["payload"];
-    let subject = ["pull_request", "issue"]
-        .iter()
-        .map(|k| &payload[*k])
-        .find(|v| v.is_object());
-    // Everyone who wrote text that reaches the prompt must be accepted: the PR/issue author and,
-    // for a comment, the commenter.
-    let writers = [
-        subject.and_then(|s| s["author_association"].as_str()),
-        payload["comment"]["author_association"].as_str(),
-    ];
-    if !writers.iter().all(|a| author_allowed(authors, *a)) {
-        return None;
-    }
-    let title = subject
-        .and_then(|s| s["title"].as_str())
-        .or_else(|| payload["release"]["name"].as_str())
-        .or_else(|| payload["check_run"]["name"].as_str())
-        .unwrap_or("(no title)");
-    Some(untrusted_event(
-        "a GitHub event",
-        &format!("{ev_type} in {repo}: {title}"),
-    ))
 }
 
 /// Whether a task runs with the agent's bypass flags: the crewmate is `auto` and the task is not one
@@ -451,8 +436,12 @@ pub(crate) enum Event<'a> {
     Local(&'a str),
     /// Text a stranger can write that is still raw (a webhook body): wrapped as untrusted here.
     Stranger { source: &'a str, text: &'a str },
-    /// Text already wrapped by [`untrusted_event`] (a GitHub event).
-    Wrapped(&'a str),
+    /// A GitHub event: its text already wrapped by [`untrusted_event`], and where the crewmate
+    /// replies (none for an event with no issue or PR, such as a release).
+    Github {
+        text: &'a str,
+        origin: Option<crate::crew::store::GithubOrigin>,
+    },
 }
 
 /// Enqueue a trigger-fired task and update `last_fired` on the trigger.
@@ -475,14 +464,15 @@ pub(crate) fn fire(
     let Ok(mut crewmate) = hub.crew.store.load_crewmate(crewmate_id) else {
         return;
     };
-    let (text, stranger) = match event {
-        Event::Local(t) => (t.to_string(), false),
-        Event::Stranger { source, text } => (untrusted_event(source, text), true),
-        Event::Wrapped(t) => (t.to_string(), true),
+    let (text, stranger, origin) = match event {
+        Event::Local(t) => (t.to_string(), false, None),
+        Event::Stranger { source, text } => (untrusted_event(source, text), true, None),
+        Event::Github { text, origin } => (text.to_string(), true, origin),
     };
     let prompt = render_prompt(prompt_template, &text);
     let mut task = Task::new("trigger", &prompt);
     task.trigger_id = Some(trigger_id.to_string());
+    task.origin = origin;
     if stranger {
         let allow_auto = crewmate.triggers.iter().any(|t| {
             t.id == trigger_id

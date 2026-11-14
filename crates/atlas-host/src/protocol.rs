@@ -56,12 +56,13 @@ where
 }
 
 pub const PROTO: u32 = 2;
-/// Capabilities reported by `info`; the desktop gates features on these.
+/// Capabilities reported by `info`; the desktop gates features on these. `push`: the daemon takes a
+/// phone's `push_register` and pushes about its plain agents (the phone registers only where it is).
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
 pub fn caps(crew_host: bool) -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents"];
+    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents", "push"];
     #[cfg(unix)]
     v.push("upgrade");
     if crew_host {

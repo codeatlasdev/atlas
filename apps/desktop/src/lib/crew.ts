@@ -39,7 +39,18 @@ export interface Trigger {
 		| { type: "schedule"; cron: string }
 		| { type: "interval"; every_secs: number }
 		| { type: "webhook"; token: string }
-		| { type: "github"; repo: string; events: string[] }
+		| {
+				type: "github";
+				repo: string;
+				events: string[];
+				/** Whose events may fire it, by `author_association`. Unset = owner, member, collaborator. */
+				authors?: string[];
+				allow_auto?: boolean;
+				/** The `@handle` of a `mention`; unset = the crewmate's name as a slug. */
+				handle?: string;
+				/** The GitHub login `issue_assigned` waits for. */
+				assignee?: string;
+		  }
 		| { type: "file"; path: string; glob?: string }
 		| { type: "crewmate"; from_crewmate: string; on: "done" | "failed" }
 		| { type: "service"; project_dir: string; service: string; on: "failed" | "recovered" };
@@ -153,6 +164,16 @@ export interface Crewmate {
 	short_replies?: boolean;
 }
 
+/** Where a task from GitHub came from and where its reply goes (hostd's `GithubOrigin`). */
+export interface GithubOrigin {
+	repo: string;
+	kind: "mention" | "issue_assigned" | "ci_failed" | "pr_review_comment";
+	number?: number;
+	comment_id?: number;
+	branch?: string;
+	reply_comment_id?: number;
+}
+
 export interface CrewmateTask {
 	id: string;
 	ts: number;
@@ -201,6 +222,8 @@ export interface CrewmateTask {
 	restarts?: number;
 	/** Set while the task waits for the crewmate's project to download ("codeatlasdev/ui"); gone once it can start. */
 	preparing?: string;
+	/** The GitHub issue, PR or comment this task answers; hostd posts and edits its progress comment there. */
+	origin?: GithubOrigin;
 }
 
 export interface CrewSettingsData {

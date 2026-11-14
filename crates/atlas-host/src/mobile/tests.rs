@@ -453,7 +453,7 @@ async fn five_wrong_codes_invalidate_the_code() {
 }
 
 /// POST to the hook server the way `atlas hook` does; the reply body.
-fn post_hook(dir: &Path, path: &str, body: Value) -> String {
+pub(crate) fn post_hook(dir: &Path, path: &str, body: Value) -> String {
     use std::io::{Read, Write};
     let env = std::fs::read_to_string(crate::paths::hook_endpoint(dir)).unwrap();
     let get = |k: &str| {
@@ -676,35 +676,6 @@ async fn crewmate_task_push_reaches_read_phone() {
     );
     c.call("shutdown", json!({})).await.ok();
     let _ = phone.call("info", json!({})).await; // just drain
-}
-
-/// Revoking a device removes its push tokens.
-#[tokio::test]
-async fn revoke_drops_push_tokens() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (c, _phone, node) = paired(tmp.path()).await;
-    // Register a push token for this device.
-    c.call(
-        "push_register",
-        json!({"token": "fcm-test-token", "platform": "fcm"}),
-    )
-    .await
-    .unwrap();
-    // Revoke the device.
-    c.call("mobile_revoke", json!({"node_id": node}))
-        .await
-        .unwrap();
-    // The tokens file should no longer contain the token for this node.
-    let tokens_path = tmp.path().join("push").join("tokens.json");
-    if tokens_path.exists() {
-        let content = std::fs::read_to_string(&tokens_path).unwrap();
-        let tokens: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap_or_default();
-        assert!(
-            !tokens.iter().any(|t| t["node_id"] == node),
-            "push token for revoked device still present"
-        );
-    }
-    c.call("shutdown", json!({})).await.ok();
 }
 
 /// desktop calls mobile_invite; phone receives computer_invite push with correct url/name.

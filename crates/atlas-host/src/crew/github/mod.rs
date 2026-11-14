@@ -1,7 +1,19 @@
 //! GitHub for a crew server: is `gh` there and signed in, the device-flow login the apps drive
 //! (start, poll, logout) and waking tasks that wait for the connection. `cli` has the `gh` helpers.
 
+mod api;
 mod cli;
+pub(crate) mod reply;
+#[cfg(test)]
+pub(crate) use api::{Call, PullRequest};
+pub(crate) use api::{GhCli, GithubApi};
+pub(crate) use reply::REPLY_MARKER;
+
+/// Test-only: the API every `CrewHub::github()` returns. Process-wide, so a test that sets it holds
+/// the agent-bin lock (`tests::fixture::lock_agent_bin`) for its whole run.
+#[cfg(test)]
+pub(crate) static TEST_GITHUB_API: parking_lot::Mutex<Option<Arc<dyn GithubApi>>> =
+    parking_lot::Mutex::new(None);
 
 use std::sync::Arc;
 

@@ -30,13 +30,15 @@ void main() {
       expect(seqs, [...seqs]..sort((a, b) => b.compareTo(a)));
     });
 
-    test('the crew-wide audit parses its own kinds', () {
+    test('the crew-wide audit parses its own kinds, newest first', () {
       final entries = parseAudit(_fixture('crew_audit.json'));
-      expect(entries.map((e) => e.kind), [
+      expect(entries.map((e) => e.kind).toSet(), {
         'resumed',
         'paused',
         'crewmate_created',
-      ]);
+      });
+      final seqs = entries.map((e) => e.seq).toList();
+      expect(seqs, [...seqs]..sort((a, b) => b.compareTo(a)));
     });
 
     test('summaries read like the desktop Audit section', () {

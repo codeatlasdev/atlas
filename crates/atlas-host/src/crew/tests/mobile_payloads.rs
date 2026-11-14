@@ -106,23 +106,55 @@ async fn audit_fixtures_are_real_payloads() {
             assert!(kinds.contains(k), "no {k} entry in {kinds:?}");
         }
     }
-    for reply in [&mut mate, &mut crew] {
-        for (i, e) in reply["entries"]
-            .as_array_mut()
+    // The contract the phone reads: newest first.
+    for reply in [&mate, &crew] {
+        let seqs: Vec<u64> = reply["entries"]
+            .as_array()
             .unwrap()
-            .iter_mut()
-            .enumerate()
-        {
-            e["ts"] = json!(1_700_000_000 + i as u64);
-            if e["crewmate_id"].is_string() {
-                e["crewmate_id"] = json!("crewmate-fixture");
+            .iter()
+            .map(|e| e["seq"].as_u64().unwrap())
+            .collect();
+        assert!(
+            seqs.windows(2).all(|w| w[0] > w[1]),
+            "entries are not newest first: {seqs:?}"
+        );
+    }
+    // Stable ids, times and order: hooks, the task's end and the approval are written by different tasks,
+    // so how they interleave varies between runs (as in the desktop fixture, #231); pin the shapes.
+    // Keys sorted at every level, so the order does not depend on serde_json's `preserve_order`.
+    fn canon(v: &Value) -> String {
+        match v {
+            Value::Object(m) => {
+                let mut kv: Vec<_> = m
+                    .iter()
+                    .map(|(k, v)| format!("{k:?}:{}", canon(v)))
+                    .collect();
+                kv.sort();
+                format!("{{{}}}", kv.join(","))
             }
-            if e["id"].is_string() {
-                e["id"] = json!("crewmate-fixture");
+            Value::Array(a) => format!("[{}]", a.iter().map(canon).collect::<Vec<_>>().join(",")),
+            v => v.to_string(),
+        }
+    }
+    for reply in [&mut mate, &mut crew] {
+        let entries = reply["entries"].as_array_mut().unwrap();
+        for e in entries.iter_mut() {
+            for key in ["crewmate_id", "id"] {
+                if e[key].is_string() {
+                    e[key] = json!("crewmate-fixture");
+                }
             }
             if e["task_id"].is_string() {
                 e["task_id"] = json!("task-fixture");
             }
+            e["ts"] = json!(0);
+            e["seq"] = json!(0);
+        }
+        entries.sort_by_cached_key(canon);
+        let n = entries.len() as u64;
+        for (i, e) in entries.iter_mut().enumerate() {
+            e["seq"] = json!(n - i as u64);
+            e["ts"] = json!(1_700_000_000 + n - i as u64);
         }
     }
     fixture("crewmate_audit.json", &mate);

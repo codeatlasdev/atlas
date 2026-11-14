@@ -85,7 +85,7 @@ void main() {
         expect(find.text('Changed approval: "auto" → "ask"'), findsOneWidget);
         expect(find.textContaining('Asked to run Bash'), findsNothing);
         await t.ensureVisible(find.text('All'));
-      await t.tap(find.text('All'));
+        await t.tap(find.text('All'));
         await settle(t);
         expect(find.text('Bash: bun test --filter payments'), findsOneWidget);
         await end(t);

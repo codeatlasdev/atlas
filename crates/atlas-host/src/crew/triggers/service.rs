@@ -86,7 +86,13 @@ fn check(
             State::Unknown => "unknown",
         };
         let event = format!("Service {service} {label} in {project_dir}");
-        super::fire(hub, crewmate_id, &trigger.id, &trigger.prompt, &event);
+        super::fire(
+            hub,
+            crewmate_id,
+            &trigger.id,
+            &trigger.prompt,
+            super::Event::Local(&event),
+        );
     }
 }
 

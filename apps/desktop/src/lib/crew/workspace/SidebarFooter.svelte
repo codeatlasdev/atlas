@@ -3,7 +3,9 @@
 	 * SidebarFooter — user avatar and the crew server pill. With no crew server the pill is the "Add a crew server"
 	 * call to action; otherwise it opens a click menu (integrations, crew server settings, help).
 	 */
-	import { Settings, CircleHelp, User, Plug2 } from "@lucide/svelte";
+	import { Settings, CircleHelp, User, Plug2, Pause, Play } from "@lucide/svelte";
+	import { toast } from "@codeatlasdev/ui";
+	import { errText } from "#lib/api.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
 	import { githubCrew } from "#lib/crew/githubCrew.svelte.ts";
 	import { connectedIntegrationIds } from "#lib/crew/integrations.ts";
@@ -36,6 +38,21 @@
 	const remoteServers = $derived(crew.servers.filter((h) => h.key !== ""));
 	const connectedCount = $derived(connectedIntegrationIds(githubCrew.connected).size);
 
+	const paused = $derived(remoteServers.some((h) => h.paused === true));
+
+	/** Pause every crew server, or resume the paused ones: the kill switch next to the server pill. */
+	async function togglePause() {
+		try {
+			if (paused) {
+				await Promise.all(remoteServers.filter((h) => h.paused).map((h) => crew.resumeServer(h.key)));
+			} else {
+				await Promise.all(remoteServers.map((h) => crew.pauseServer(h.key)));
+			}
+		} catch (e) {
+			toast.error(errText(e));
+		}
+	}
+
 	/** Run a menu action, then close the menu. */
 	function pick(action: () => void) {
 		action();
@@ -67,6 +84,7 @@
 				<CrewFlag size={13} />
 				<span class="server-dot" class:online={crew.serverOk(remoteServers[0].key)} aria-hidden="true"></span>
 				<span class="footer-server-name">{remoteServers[0].name}</span>
+				{#if paused}<span class="paused-tag">Paused</span>{/if}
 			</button>
 			{#if open}
 				<div class="footer-popover" role="menu">
@@ -86,6 +104,15 @@
 						{/if}
 					</button>
 					<div class="popover-divider" role="separator" aria-hidden="true"></div>
+					<button class="popover-item" role="menuitem" onclick={() => pick(() => void togglePause())}>
+						{#if paused}
+							<Play size={13} />
+							<span>Resume all</span>
+						{:else}
+							<Pause size={13} />
+							<span>Pause all</span>
+						{/if}
+					</button>
 					<button class="popover-item" role="menuitem" onclick={() => pick(onsettings)}>
 						<Settings size={13} />
 						<span>Crew server settings</span>
@@ -173,6 +200,15 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.paused-tag {
+		flex: none;
+		margin-left: auto;
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--ca-semantic-warning, #e8a33d);
 	}
 	.footer-popover {
 		position: absolute;

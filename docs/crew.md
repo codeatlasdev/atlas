@@ -55,6 +55,8 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH]` | install or migrate a crew server (above). `--port` for a non-standard SSH port; `--binary` uploads that Linux x86_64 `atlas` instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`) |
 | `atlas crew uninstall <ssh-target> [--yes]` | stops and removes the service, the crew user (and its home, so your crewmates) and `/usr/local/lib/atlas-crew`. Asks first unless `--yes`. Refuses while the user still has a login session; it never kills processes |
 | `atlas crew status <ssh-target>` | `systemctl status` of the service plus `atlas hostd --status` as the crew user |
+| `atlas crew pause <ssh-target>` | the kill switch: cancels every running task, holds the queues, skips automations. Runs `atlas hostd --crew-pause` on the server as the crew user ([Pause and resume](#pause-and-resume)) |
+| `atlas crew resume <ssh-target>` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent>` | opens `ssh -t <crew-user>@<host> <agent-binary>` so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
 
@@ -82,7 +84,7 @@ You manage crewmates from Atlas Desktop, Atlas Mobile, Telegram or the hostd pro
 - **name**: 1 to 40 characters.
 - **role**: up to 2000 characters, prepended to every task as context.
 - **agent**: `omp`, `claude`, `codex` or `opencode`, with an optional model and provider.
-- **approval**: `ask` (hold each tool call for your answer) or `auto` (allow all without prompting). omp crewmates always run `auto`, because omp's hook protocol cannot take a remote decision.
+- **approval**: `ask` (hold each tool call for your answer) or `auto` (allow all without prompting). Where `ask` works depends on how the crewmate runs. In a terminal (no `engine` set), Claude Code and Codex ask through their hook and omp through an approval extension Atlas writes into the crewmate's directory (fail-closed: an error or timeout denies the call). With a headless `engine`, only `claude` and `omp` can ask; `codex` and `opencode` engines run unattended, so the server refuses `ask` for them (`approval_supported: false` in `crewmate_list`).
 - **project**: a Git URL (cloned once per server and checked out as a per-crewmate worktree) or a path on the server. Default working directory: `<crewmate dir>/work`.
 - **memory**: a markdown file (up to 64 KiB) the agent reads and edits across tasks.
 - **look**: see [Crewmate look](#crewmate-look).
@@ -94,13 +96,19 @@ A new crewmate starts with a short setup conversation (project, role, engine sig
 
 ## Tasks and approvals
 
-A task is one prompt. Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
+A task is one prompt. Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
 A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option or sign an engine in. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
 
 ### Approvals
 
-With `approval: ask`, a tool call pauses the task and waits up to 30 minutes for `agent_approve {pane, req, allow}`; the pane key is `crew:<crewmate id>:<task id>`. The wait only starts when someone can answer: a desktop client is connected, a push token is registered, or a Telegram chat is linked. Otherwise the prompt times out at once, so configure one of them before creating an `ask` crewmate. Claude Code and Codex: re-run `atlas setup claude-code|codex --apply` once so their hook uses the matching 1805 s timeout.
+With `approval: ask`, a tool call pauses the task and waits up to 30 minutes for `agent_approve {pane, req, allow}`; the pane key is `crew:<crewmate id>:<task id>`. The wait only starts when someone can answer now: a connected desktop client, a connected phone, or a linked Telegram chat. A registered push token alone does not count (that phone may be offline). Otherwise the prompt is denied at once, so set one of them up before relying on an `ask` crewmate. Claude Code and Codex: re-run `atlas setup claude-code|codex --apply` once so their hook uses the matching 1805 s timeout.
+
+### Pause and resume
+
+A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`), keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
+
+Trigger it from the CLI (`atlas crew pause|resume <ssh-target>`), Atlas Desktop (footer menu **Pause all** / **Resume all**, and Settings → Atlas Crew per server) or Atlas Mobile (Crew tab, needs the `act` scope). The state is saved in `<hostd dir>/crew.json` (`"paused": true`), so a restart of the service keeps the crew paused. Clients read it from `crewmate_list.paused` and the `crew_paused` push event; a server older than this feature sends neither and reads as running.
 
 ## Automations
 
@@ -111,7 +119,7 @@ Automations (`triggers` on the wire) start a task by themselves. Build one in a 
 | Schedule | `schedule` | `cron`: 5 fields, evaluated in the automation's `tz` (UTC when unset) |
 | Interval | `interval` | `every_secs` ≥ 60 |
 | Webhook | `webhook` | `token`, called as `POST /crew/<crewmate id>/hook/<token>` on the hook server (webhooks set up before the rename keep working at `/bots/<crewmate id>/hook/<token>`) |
-| GitHub | `github` | `repo` (`owner/repo`), `events`: `pr_opened`, `pr_review_requested`, `issue_opened`, `ci_failed`, `release`. Polled every 2 minutes with `gh` |
+| GitHub | `github` | `repo` (`owner/repo`), `events`: `pr_opened`, `pr_review_requested`, `issue_opened`, `ci_failed`, `release`, and `authors`: who may start a task, see below. Polled every 2 minutes with `gh` |
 | File | `file` | `path`, optional `glob` |
 | After crewmate | `crewmate` | `from_crewmate` (id), `on`: `done` or `failed` |
 | Service | `service` | `project_dir`, `service`, `on`: `failed` or `recovered` |
@@ -121,6 +129,10 @@ Rules the server enforces:
 - Every automation has an `enabled` flag, a `prompt` (it may contain `{{event}}`) and an optional IANA `tz` (`"America/Sao_Paulo"`); an unknown zone is rejected with `unknown timezone: <tz>`.
 - `crewmate_triggers_set` replaces the whole list. An existing `id` keeps its `last_fired`; a **new** schedule or interval starts from now, so it first fires at the next real time, not on the next 30 s tick.
 - `next_fire` is computed by the server on every `crewmate_list`; a client value is ignored.
+- **GitHub author filter.** Anyone who can open an issue or PR on a watched repo controls the text of the event, so a GitHub automation only fires for authors whose `author_association` is in `authors`. The default is `["owner", "member", "collaborator"]`; add `"contributor"` or others only for repos where you trust them. Events from anyone else are skipped.
+- **Tasks from outside ask.** A task started by a **GitHub** or **webhook** automation runs with `approval: ask` even on an `auto` crewmate, because its text comes from outside: a tool call waits for your answer. Set `allow_auto: true` on that automation (default `false`) to keep `auto`, only where strangers cannot write the event. Schedule, interval, file, after-crewmate and service automations keep the crewmate's own approval, so unattended routines keep running. A crewmate that cannot ask (a `codex` or `opencode` engine) refuses to run a GitHub or webhook task without `allow_auto`.
+- **Untrusted content.** `{{event}}` is text from outside (a GitHub title, a webhook body). Before it reaches the agent, hostd wraps it in an untrusted-content block and tells the agent not to follow instructions inside it. This lowers the risk but does not remove it, which is why the author filter and `ask` exist.
+- A paused crew skips automations ([Pause and resume](#pause-and-resume)).
 - `crewmate_task` takes the caller's `tz`; it is stored on the task and stamped on any automation proposed in it.
 - An agent proposes an automation with `ATLAS_ACTION: {"kind":"add_trigger","trigger":{...},"prompt":"...","reason":"..."}`. An invalid one resolves the task with `The automation was invalid: <error>` so the agent can retry. Otherwise a card shows **Add** / **Not now**, answered with `crewmate_action_answer {id, task, value: "add"|"skip"}`. Webhooks are not offered to agents.
 
@@ -136,7 +148,7 @@ One Telegram bot per crew server; every linked chat sees all of its crewmates.
 
 1. Create a Telegram bot with [@BotFather](https://t.me/BotFather) and copy its token.
 2. In Atlas Desktop, **Settings → Atlas Crew**, under the server (it must be online), paste the token in **Telegram** and click **Save** (`crew_telegram_set`). The token is write-only: the row shows only whether one is set and how many chats are linked (`crew_telegram_status`).
-3. Click **Link chat** to get a 6-digit code valid 10 minutes (`crew_telegram_link`), and send your bot `/start <code>` in Telegram. Repeat for each chat.
+3. Click **Link chat** to get a 6-digit code valid 10 minutes (`crew_telegram_link`), and send your bot `/start <code>` in Telegram. Repeat for each chat. **Lockout:** the fifth wrong code (from any chat) kills the live code, even the right one is then refused; click **Link chat** again for a new one. Four typos do not.
 4. **Remove** deletes the token; linked chats stop receiving.
 
 Linked chats receive task results (truncated to 4000 characters) and approval prompts as Allow / Deny buttons. Commands:
@@ -161,7 +173,7 @@ When a task ends or a crewmate needs your approval, the crew server pushes to yo
 
 Open the Atlas Crew workspace with **⌘⇧B** (command *Atlas Crew*, remappable). Two views, switched with **⌘⇧C** or the bar at the top edge:
 
-- **Chat**: the crewmate list (search, ⌘1…⌘9 to switch, server status in the footer) and the selected crewmate's thread: tasks, live steps, inline approval and action cards, and a composer that queues while another task runs. A settings window (General, Automations, Engine, Memory, Usage) saves each field on its own.
+- **Chat**: the crewmate list (search, ⌘1…⌘9 to switch, server status in the footer) and the selected crewmate's thread: tasks, live steps, inline approval and action cards, and a composer that queues while another task runs. A settings window (General, Automations, Engine, Memory, Usage) saves each field on its own. A paused server shows a **Paused** banner over the workspace with a **Resume** button; the footer menu has **Pause all** / **Resume all**.
 - **Board**: Queued, Working, Needs you and Done columns across every crewmate, with filters by crewmate, origin and text, a Done range, and a click that opens the chat at that task.
 
 Settings → Atlas Crew holds the crew servers (SSH target + name, listed in `~/.atlas/desktop/crew-servers.json`). The desktop reaches each server over SSH and an `ssh -L` tunnel to its `hostd.sock`. The server must already have `atlas crew install` done; Atlas Desktop can run the install for you and asks for the sudo password on stdin (never on argv).
@@ -170,7 +182,7 @@ Settings → Atlas Crew holds the crew servers (SSH target + name, listed in `~/
 
 The phone talks only to its paired Macs; the Mac's hostd relays to the crew servers in the desktop list. Details and scopes: [Atlas Mobile → Crew on the phone](mobile.md#crew-on-the-phone).
 
-The **Crew** tab lists every crewmate across paired computers (state dot, last message, time). Crewmates waiting for you appear in a "needs you" card at the top of the Computers and Crew tabs. A crewmate opens as a chat (prompt and reply bubbles, steps collapsed, inline Allow / Deny, composer that queues) and a profile screen: role, approval, automations, memory (View / Edit), delete.
+The **Crew** tab lists every crewmate across paired computers (state dot, last message, time). Each crew server has a **Pause all** button, and a **Crew paused** banner with **Resume** while it is paused. Crewmates waiting for you appear in a "needs you" card at the top of the Computers and Crew tabs. A crewmate opens as a chat (prompt and reply bubbles, steps collapsed, inline Allow / Deny, composer that queues) and a profile screen: role, approval, automations, memory (View / Edit), delete.
 
 When you add a Mac in Atlas Desktop, phones get a `mobile_invite` push (`computer_invite` event) and show a **Pair** sheet; dismissing it calls `mobile_invite_dismiss`.
 
@@ -189,7 +201,7 @@ The hook routes live on the same local HTTP server as the agent hooks and need i
 ## Security model
 
 - **Dedicated user.** The crew user (`atlas-crew`, or the reused `atlas-bot`) has no sudo; it writes only its home and what agents create in `workdir`.
-- **Systemd hardening.** `NoNewPrivileges=true`, `ProtectSystem=strict`, `ReadWritePaths=<crew home>`, `PrivateTmp=true`.
+- **Systemd hardening.** `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=read-only` with `ReadWritePaths=<crew home>`, `PrivateTmp=true`, `ProtectKernelTunables=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `MemoryMax=80%`, `TasksMax=4096` ([the unit](#the-systemd-unit)). The crewmates still share one user: they are not isolated from each other.
 - **Scoped SSH key.** `atlas crew install` appends your key to the crew user's `authorized_keys` only, never to the admin user's.
 - **sudo once.** Install and uninstall need sudo; the running service never does. The sudo password, when Desktop passes it, comes over stdin and is dropped after the credential cache is primed.
 - **Secrets.** Per-crewmate secrets live in `<crewmate dir>/secrets.json` (mode 0600), are injected as environment into that crewmate's agent only and are never returned in any reply. Terminals and secrets are never relayed to a phone.
@@ -201,8 +213,8 @@ The hook routes live on the same local HTTP server as the agent hooks and need i
 |---|---|
 | `crewmate_*` commands answer `this computer is not a crew server (atlas crew install)` | hostd runs without `ATLAS_CREW_HOST=1`. The unit sets it; do not run `atlas hostd` by hand on a crew server |
 | `info.caps` has no `"crew"` | same cause; clients check this before showing the Crew UI |
-| Approval prompt times out at once | no desktop client, push token or Telegram chat to answer; set one up ([Approvals](#approvals)) |
-| omp crewmate never asks | by design, omp always runs `auto` |
+| Approval prompt is denied at once | nobody can answer right now: no connected desktop client or phone, and no linked Telegram chat ([Approvals](#approvals)) |
+| An `ask` crewmate never asks | check its approval really is `ask` (a GitHub or webhook task asks too, see [Automations](#automations)), and that someone can answer ([Approvals](#approvals)). `codex` and `opencode` engines cannot ask, so `ask` is refused for them |
 | `could not connect … over SSH` | SSH itself failed (refused, timeout, key rejected), not the server's OS; fix SSH first |
 | `sudo … asks for a password` | grant passwordless sudo, or run the install from Atlas Desktop |
 | Uninstall says the user is still logged in | close Atlas Desktop and any ssh session as the crew user, run it again |
@@ -296,13 +308,33 @@ Restart=always
 RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
+ProtectHome=read-only
 ReadWritePaths=<home>
 PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+MemoryMax=80%
+TasksMax=4096
 [Install]
 WantedBy=multi-user.target
 ```
 
 `User=` is `atlas-bot` and `<home>` is `/var/lib/atlas-bot` on a server that already had that user.
+
+What the hardening does, and what it costs (every directive exists in systemd 245, Ubuntu 20.04, the oldest server the installer accepts):
+
+| Directive | Effect |
+|---|---|
+| `ProtectSystem=strict` | the whole filesystem is read-only except `ReadWritePaths` and `/dev`, `/proc`, `/sys` |
+| `ProtectHome=read-only` | `/home`, `/root` and `/run/user` are read-only: a crewmate cannot change other users' files there |
+| `ReadWritePaths=<home>` | the crew home stays writable, wherever it is. Everything agents install lives inside it and is on `PATH` (`~/.atlas`, `~/.bun`, `~/.local`, `~/.opencode`, `~/.npm-global`), so agents keep working |
+| `ProtectKernelTunables=true`, `ProtectControlGroups=true` | `/proc/sys`, `/sys` and the cgroup tree are read-only |
+| `RestrictSUIDSGID=true` | the service cannot create setuid or setgid files |
+| `MemoryMax=80%` | the service (hostd and every agent under it) is killed by the kernel past 80 % of the server's memory, instead of taking the host down. Needs cgroup v2 (the default since Ubuntu 21.10, Debian 11); on cgroup v1 the limit is ignored |
+| `TasksMax=4096` | at most 4096 processes and threads, which stops a fork bomb. A very parallel build can hit it: raise it with a drop-in (`systemctl edit atlas-crew`) |
+
+To change a limit without reinstalling, use a drop-in; `atlas crew install` rewrites the unit file but not `/etc/systemd/system/atlas-crew.service.d/`.
 
 ### Protocol commands
 
@@ -310,7 +342,8 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 
 | Command | Args | Reply |
 |---|---|---|
-| `crewmate_list` | `{}` | `{crewmates:[…]}` |
+| `crewmate_list` | `{}` | `{crewmates:[…], paused}` |
+| `crew_pause`, `crew_resume` | `{}` | `{}`; see [Pause and resume](#pause-and-resume). Pushes `{"ev":"crew_paused","paused":bool}` (Mobile scope `act`) |
 | `crewmate_create` | `{name, role, agent, approval, workdir?, look?, engine?, project?}` | the crewmate |
 | `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | the crewmate |
 | `crewmate_delete` | `{id}` | `{}`; cancels running and queued tasks first |

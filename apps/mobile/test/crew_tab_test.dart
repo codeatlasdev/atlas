@@ -78,6 +78,31 @@ void main() {
     await settle(t);
   });
 
+  // Crew review P0, PR #106 comment 6874910355 (no kill switch): the Crew tab can pause a crew server and
+  // shows that it is paused with a Resume. The state round-trips through the transport (crew_pause, the
+  // crew_paused push, a fresh crewmate_list), not through local widget state.
+  testWidgets('pause all then resume from the Crew tab', (t) async {
+    await t.binding.setSurfaceSize(const Size(393, 852));
+    await t.pumpWidget(demoWrap(const CrewScreen(), [mac]));
+    await settle(t);
+
+    expect(find.text('Crew paused'), findsNothing);
+    expect(find.text('Pause all'), findsOneWidget);
+
+    await t.tap(find.text('Pause all'));
+    await settle(t);
+    expect(find.text('Crew paused'), findsOneWidget);
+    expect(find.text('Pause all'), findsNothing);
+
+    await t.tap(find.text('Resume'));
+    await settle(t);
+    expect(find.text('Crew paused'), findsNothing);
+    expect(find.text('Pause all'), findsOneWidget);
+
+    await t.pumpWidget(const SizedBox());
+    await settle(t);
+  });
+
   // 2. Approve from the list — open Nightly's CrewmateChatScreen, see approval bubble,
   //    tap Allow, banner goes away.
   testWidgets('approve from the list', (t) async {

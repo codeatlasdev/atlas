@@ -341,6 +341,13 @@ async fn crewmate_list_json_contract() {
         "crewmate C must have engine.kind=opencode: {c}"
     );
 
+    // The top-level `paused` of the real reply (the kill switch; off by default).
+    assert_eq!(
+        list["paused"],
+        json!(false),
+        "crewmate_list has paused: {list}"
+    );
+
     // ── Build deterministic fixture ───────────────────────────────────────
     // Normalise volatile fields (random UUIDs, real timestamps) so the
     // stored fixture has a stable diff.
@@ -375,7 +382,7 @@ async fn crewmate_list_json_contract() {
     c_fix["id"] = json!("crewmate-opencode");
     c_fix["queued"] = json!(0);
 
-    let fixture = json!({ "crewmates": [a_fix, b_fix, c_fix] });
+    let fixture = json!({ "crewmates": [a_fix, b_fix, c_fix], "paused": list["paused"] });
 
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/mobile/test/fixtures/crewmate_list.json");

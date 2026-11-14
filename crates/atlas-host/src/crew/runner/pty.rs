@@ -7,12 +7,12 @@ use super::action::{
     continuation_prompt, finish_unanswered, park_task, parse_atlas_action, resolve_action,
     user_answer, visible_reply,
 };
-use super::outcome::{broadcast_task, finish_task, wait_for_outcome};
+use super::outcome::{broadcast_task, finish_task, persist, wait_for_outcome};
 use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::summary::maybe_summarize;
 #[cfg(test)]
 use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN};
-use crate::crew::store::{Approval, Crewmate, Step, Task, TaskState};
+use crate::crew::store::{Crewmate, Step, Task, TaskState};
 use crate::crew::{now_s, pane, triggers};
 use crate::paths;
 use crate::protocol::{Mode, PtyCreate, Scope};
@@ -94,11 +94,17 @@ async fn run_pty_inner(
     #[cfg(test)]
     let argv = match TEST_AGENT_BIN.lock().clone() {
         Some(bin) => vec![bin],
-        None => agent_def.argv(crewmate.approval == Approval::Auto, Some(full_prompt)),
+        None => agent_def.argv(
+            triggers::yolo_for(crewmate.approval, task),
+            Some(full_prompt),
+        ),
     };
     #[cfg(not(test))]
     let argv = {
-        let mut argv = agent_def.argv(crewmate.approval == Approval::Auto, Some(full_prompt));
+        let mut argv = agent_def.argv(
+            triggers::yolo_for(crewmate.approval, task),
+            Some(full_prompt),
+        );
         if crewmate.agent == "omp" {
             let overlay =
                 crate::crew::engine::omp::overlay_args(&hub.crew.store.crewmate_dir(&crewmate.id));
@@ -148,11 +154,16 @@ async fn run_pty_inner(
         tokio::time::sleep(pause).await;
     }
 
-    // Mark task as running and record start time.
+    // Mark task as running and record start time. If that cannot be stored there is no honest
+    // "running" to show: stop the agent and fail the task with the store error.
     task.state = TaskState::Running;
     task.started_at = Some(now_s());
     task.pane = Some(pane_key.to_string());
-    let _ = hub.crew.store.append_task(&crewmate.id, task);
+    if let Err(msg) = persist(hub, &crewmate.id, task) {
+        session.kill().await;
+        hub.sessions.lock().remove(&pty_id);
+        return (Err(msg), vec![]);
+    }
     broadcast_task(hub, &crewmate.id, task);
 
     // Wait for completion.

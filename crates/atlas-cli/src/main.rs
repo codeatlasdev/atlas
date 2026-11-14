@@ -343,6 +343,63 @@ mod tests {
         }
     }
 
+    // Crew review P0, PR #106 (no kill switch): `atlas crew pause|resume <ssh-target>` exist, take the same
+    // target as `status`, and keep working under the hidden `atlas bot` alias.
+    #[test]
+    fn crew_pause_and_resume_take_an_ssh_target() {
+        use commands::crew::CrewCommands as C;
+        for w in ["crew", "bot"] {
+            match parse(&argv(&[w, "pause", "me@server"])) {
+                Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                    C::Pause(t) => assert_eq!(t.ssh_target, "me@server"),
+                    other => panic!("{w} pause: {other:?}"),
+                },
+                other => panic!("{w} pause: {other:?}"),
+            }
+        }
+        match parse(&argv(&["crew", "resume", "me@server"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Resume(t) => assert_eq!(t.ssh_target, "me@server"),
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        // The target is required, like for `status`.
+        assert!(parse(&argv(&["crew", "pause"])).is_err());
+        assert!(parse(&argv(&["crew", "resume"])).is_err());
+    }
+
+    // The server side of those commands: `atlas hostd --crew-pause|--crew-resume`, one at a time,
+    // never together with the flags that stop or restart the daemon.
+    #[test]
+    fn hostd_crew_pause_and_resume_flags_are_exclusive() {
+        let hostd = |flags: &[&str]| {
+            let mut v = vec!["hostd"];
+            v.extend_from_slice(flags);
+            parse(&argv(&v))
+        };
+        match hostd(&["--crew-pause", "--dir", "/d"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => {
+                assert!(h.crew_pause && !h.crew_resume)
+            }
+            other => panic!("{other:?}"),
+        }
+        match hostd(&["--crew-resume"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => {
+                assert!(h.crew_resume && !h.crew_pause)
+            }
+            other => panic!("{other:?}"),
+        }
+        for bad in [
+            &["--crew-pause", "--crew-resume"][..],
+            &["--crew-pause", "--stop"],
+            &["--crew-resume", "--status"],
+            &["--crew-pause", "--restart"],
+        ] {
+            assert!(hostd(bad).is_err(), "{bad:?} should conflict");
+        }
+    }
+
     // Decision (Atlas Bot -> Atlas Crew rename): scripts and crewmates set up before it keep working.
     // `atlas bot …` is `atlas crew …`, `atlas mcp --bot <id>` is `--crewmate <id>`, and neither shows
     // in help (docs/crew.md documents them as hidden aliases).

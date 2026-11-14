@@ -16,6 +16,7 @@
 	import CrewPalette from "#lib/crew/CrewPalette.svelte";
 	import CrewViewBar from "#lib/crew/CrewViewBar.svelte";
 	import CrewBoard from "#lib/crew/CrewBoard.svelte";
+	import PauseBanner from "#lib/crew/PauseBanner.svelte";
 	import { crewView } from "#lib/crew/crewView.svelte.ts";
 	import CrewSidebar from "#lib/crew/workspace/CrewSidebar.svelte";
 	import WorkspaceEmpty from "#lib/crew/workspace/WorkspaceEmpty.svelte";
@@ -70,6 +71,7 @@
 
 	<!-- Right panel -->
 	<div class="col-right">
+		<PauseBanner />
 		{#if crewView.value === "board"}
 			<CrewBoard />
 		{:else if crew.selectedCrewmate}

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use super::action::park_task;
 use super::github::{WaitResult, needs_github_auth, wait_for_github_connect};
-use super::outcome::{broadcast_task, finish_task};
+use super::outcome::{broadcast_task, finish_task, persist};
 use crate::crew::store::{ProjectRef, Task, TaskAction};
 use crate::crew::{Crewmate, project, triggers};
 use crate::server::Hub;
@@ -92,12 +92,12 @@ async fn prepare_work_dir(
                     .trim_start_matches("https://github.com/")
                     .to_string(),
             );
-            let _ = hub.crew.store.append_task(&crewmate.id, task);
+            let _ = persist(hub, &crewmate.id, task);
             broadcast_task(hub, &crewmate.id, task);
         }
         let p = project::prepare(proj, &crewmate.id, &hub.crew.dir).await;
         if task.preparing.take().is_some() {
-            let _ = hub.crew.store.append_task(&crewmate.id, task);
+            let _ = persist(hub, &crewmate.id, task);
             broadcast_task(hub, &crewmate.id, task);
         }
         let p = p.map_err(|e| format!("project prepare: {e}"))?;

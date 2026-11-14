@@ -19,6 +19,7 @@ import 'package:atlas_mobile/features/crew/invite_sheet.dart';
 import 'package:atlas_mobile/features/crew/list/crew_deck.dart';
 import 'package:atlas_mobile/features/crew/list/crewmate_row.dart';
 import 'package:atlas_mobile/features/crew/list/needs_you_card.dart';
+import 'package:atlas_mobile/features/crew/list/pause_card.dart';
 import 'package:atlas_mobile/features/crew/new_crewmate_sheet.dart';
 
 class CrewScreen extends ConsumerStatefulWidget {
@@ -82,6 +83,8 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
     // Collect and sort all crewmates across devices.
     final allEntries = <CrewEntry>[];
     final crewServerDevices = <MacDevice>[];
+    // Each crew server with something to pause, and whether it is paused.
+    final pausable = <({MacDevice device, String name, bool paused})>[];
     // The computer's name only matters when crewmates live on more than one.
 
     for (final device in devices) {
@@ -90,6 +93,13 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
           ref.watch(connectionNotifierProvider(device)).value != null;
       if (data != null) {
         if (data.isCrewServer) crewServerDevices.add(device);
+        if (data.isCrewServer && data.crewmates.isNotEmpty) {
+          pausable.add((
+            device: device,
+            name: data.hostName,
+            paused: data.paused,
+          ));
+        }
         for (final crewmate in data.crewmates) {
           allEntries.add((
             crewmate: crewmate,
@@ -177,6 +187,15 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                   )
                 : CustomScrollView(
                     slivers: [
+                      for (final p in pausable)
+                        SliverToBoxAdapter(
+                          child: PauseCard(
+                            serverName: p.name,
+                            paused: p.paused,
+                            showServer: pausable.length > 1,
+                            onSet: (v) => setCrewPaused(ref, p.device, v),
+                          ),
+                        ),
                       SliverToBoxAdapter(
                         child: CrewDeck(
                           entries: allEntries,

@@ -26,6 +26,7 @@
 	let hostDevices = $state<Record<string, Device[]>>({});
 	let crewSettings = $state<Record<string, CrewServerSettings>>({});
 	let crewSettingsSaving = $state<Record<string, boolean>>({});
+	let pausing = $state<Record<string, boolean>>({});
 	let now = $state(Date.now());
 	let addServer = $state("");
 	let addName = $state("");
@@ -104,6 +105,17 @@
 		}
 	}
 
+	async function togglePause(key: string, pause: boolean) {
+		pausing = { ...pausing, [key]: true };
+		try {
+			await (pause ? crew.pauseServer(key) : crew.resumeServer(key));
+		} catch (e) {
+			toast.error(errText(e));
+		} finally {
+			pausing = { ...pausing, [key]: false };
+		}
+	}
+
 	async function saveServerSettings(key: string, short_replies: boolean, short_replies_model: string) {
 		crewSettingsSaving = { ...crewSettingsSaving, [key]: true };
 		try {
@@ -134,6 +146,23 @@
 			<span class="status" class:online>
 				{online ? "Online" : "Offline"}
 			</span>
+		</Row>
+
+		<Row
+			id="crew-paused-{h.key}"
+			label={h.paused ? "Paused" : "Pause crew"}
+			description={h.paused
+				? "Nothing runs on this server: queued tasks wait and automations are skipped."
+				: "Cancels every running task and holds the queues until you resume."}
+		>
+			<Button
+				size="sm"
+				variant={h.paused ? "filled" : "ghost"}
+				disabled={!online || pausing[h.key]}
+				onclick={() => void togglePause(h.key, !h.paused)}
+			>
+				{h.paused ? "Resume" : "Pause all"}
+			</Button>
 		</Row>
 
 		{#if integrations.length > 0}

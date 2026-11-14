@@ -14,6 +14,9 @@
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
+//! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
+//! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
+//! | `untrusted`   | text from GitHub/webhooks: author filter, quoting, no bypass flags       |
 
 mod payloads;
 
@@ -30,6 +33,10 @@ mod engines;
 #[cfg(unix)]
 mod fixture;
 #[cfg(unix)]
+mod limits;
+#[cfg(unix)]
+mod pause;
+#[cfg(unix)]
 mod projects;
 #[cfg(unix)]
 mod tasks;
@@ -37,3 +44,5 @@ mod tasks;
 mod telegram;
 #[cfg(unix)]
 mod triggers;
+#[cfg(unix)]
+mod untrusted;

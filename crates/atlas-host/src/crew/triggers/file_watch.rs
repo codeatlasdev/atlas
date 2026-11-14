@@ -111,7 +111,13 @@ async fn notify_loop(
         let Some(hub) = hub_weak.upgrade() else {
             return;
         };
-        super::fire(&hub, &crewmate_id, &trigger.id, &trigger.prompt, &last);
+        super::fire(
+            &hub,
+            &crewmate_id,
+            &trigger.id,
+            &trigger.prompt,
+            super::Event::Local(&last),
+        );
     }
 }
 
@@ -132,7 +138,13 @@ async fn poll_fallback(hub_weak: Weak<Hub>, crewmate_id: String, trigger: Trigge
             .and_then(|m| m.modified().ok());
         if mtime.is_some() && mtime != last_mtime {
             last_mtime = mtime;
-            super::fire(&hub, &crewmate_id, &trigger.id, &trigger.prompt, &path);
+            super::fire(
+                &hub,
+                &crewmate_id,
+                &trigger.id,
+                &trigger.prompt,
+                super::Event::Local(&path),
+            );
         }
     }
 }

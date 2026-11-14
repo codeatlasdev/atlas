@@ -36,7 +36,7 @@ pub(crate) mod telegram;
 mod tests;
 pub(crate) mod triggers;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::protocol::HostCmd;
 use crate::server::Hub;
@@ -124,6 +124,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             short_replies,
             short_replies_model,
         } => s::set(hub, short_replies, short_replies_model),
+        HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
+        HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),
 
         HostCmd::CrewGithubStatus {} => github::status().await,

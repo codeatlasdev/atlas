@@ -33,6 +33,10 @@ pub(crate) fn start(hub_weak: Weak<Hub>) {
 }
 
 pub(crate) fn tick(hub: &std::sync::Arc<Hub>, now_s: u64) {
+    // Paused: a due routine is skipped, not queued for later.
+    if hub.crew.is_paused() {
+        return;
+    }
     let crewmates = hub.crew.store.list_crewmates();
     for mut crewmate in crewmates {
         let mut fired: Vec<(usize, crate::crew::store::Task)> = Vec::new();
@@ -55,8 +59,12 @@ pub(crate) fn tick(hub: &std::sync::Arc<Hub>, now_s: u64) {
 
             if should_fire {
                 let task = crate::crew::store::Task::new("routine", &routine.prompt);
-                if hub.crew.store.append_task(&crewmate.id, &task).is_ok() {
-                    fired.push((i, task));
+                match hub.crew.store.append_task(&crewmate.id, &task) {
+                    Ok(()) => fired.push((i, task)),
+                    Err(e) => eprintln!(
+                        "atlas crew: crewmate {} task {}: routine {} due but the task cannot be stored: {e}",
+                        crewmate.id, task.id, routine.id
+                    ),
                 }
             }
         }
@@ -67,8 +75,11 @@ pub(crate) fn tick(hub: &std::sync::Arc<Hub>, now_s: u64) {
             hub.broadcast(super::events::task(&crewmate.id, None));
             changed = true;
         }
-        if changed {
-            let _ = hub.crew.store.save_crewmate(&crewmate);
+        if changed && let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
+            eprintln!(
+                "atlas crew: crewmate {}: cannot save the routines' last_run: {e}",
+                crewmate.id
+            );
         }
     }
 }

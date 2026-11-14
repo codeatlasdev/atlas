@@ -1113,6 +1113,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewGithubLogout {}
         | HostCmd::CrewmateActionAnswer { .. }
         | HostCmd::CrewGithubConnectResume {}
+        | HostCmd::CrewPause {}
+        | HostCmd::CrewResume {}
         | HostCmd::CrewSettingsGet {}
         | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
         HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),

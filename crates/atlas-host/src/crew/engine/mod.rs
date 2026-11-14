@@ -18,6 +18,13 @@ use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 /// 2-hour hard timeout per crewmate task (mirrors runner::TASK_TIMEOUT).
 pub(super) const TASK_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 
+/// Whether a crewmate's engine can pause for the user's approval of a tool call. `claude` asks
+/// through its permission-prompt tool and `omp` through the approval extension; `codex exec` and
+/// `opencode run --auto` have no approval channel here, so they only ever run unattended.
+pub(crate) fn can_ask(kind: &str) -> bool {
+    matches!(kind, "claude" | "omp")
+}
+
 /// Result of one conversational turn.
 pub struct TurnResult {
     /// The engine's reply text.

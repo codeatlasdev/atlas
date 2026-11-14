@@ -569,6 +569,12 @@ pub enum HostCmd {
     /// If gh is already logged in, wake any connect_github waiters immediately.
     #[serde(rename = "crew_github_connect_resume")]
     CrewGithubConnectResume {},
+    /// The kill switch: cancel every running crewmate task, hold every queue, stop automations.
+    #[serde(rename = "crew_pause")]
+    CrewPause {},
+    /// Undo `crew_pause`: queues start again.
+    #[serde(rename = "crew_resume")]
+    CrewResume {},
     /// Read crew-level reply-summary settings.
     #[serde(rename = "crew_settings_get")]
     CrewSettingsGet {},

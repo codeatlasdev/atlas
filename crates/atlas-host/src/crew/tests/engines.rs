@@ -212,31 +212,49 @@ exit 0"#,
     client.call("shutdown", json!({})).await.ok();
 }
 
-// ── Test Trigger-1: webhook POST with wrong token → no task enqueued ─────
-
+// Incident (#206): a Codex crewmate set to `ask` ran unattended (`codex exec` has no approval
+// channel), so the setting promised a safety it did not give. Every engine that cannot ask
+// (`engine::can_ask`) refuses `ask` on create and on update; the ones that can accept it.
 #[tokio::test(flavor = "multi_thread")]
-async fn opencode_crewmate_ask_approval_rejected() {
+async fn ask_is_refused_for_every_engine_that_cannot_ask() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
     let client = daemon(&dir).await;
 
-    let r = client
+    for kind in ["opencode", "codex", "claude", "omp"] {
+        let r = client
+            .call(
+                "crewmate_create",
+                json!({
+                    "name": format!("{kind}Mate"), "role": "r", "agent": kind,
+                    "approval": "ask", "engine": {"kind": kind}
+                }),
+            )
+            .await;
+        let refused = r.as_ref().map_or(true, |v| v.get("error").is_some());
+        assert_eq!(
+            refused,
+            !crate::crew::engine::can_ask(kind),
+            "{kind}+ask: {r:?}"
+        );
+    }
+
+    // Switching an existing auto crewmate to ask is refused the same way.
+    let auto = client
         .call(
             "crewmate_create",
-            json!({
-                "name": "OCMate",
-                "role": "r",
-                "agent": "opencode",
-                "approval": "ask",
-                "engine": {"kind": "opencode"}
-            }),
+            json!({"name": "CxAuto", "role": "r", "agent": "codex", "approval": "auto",
+                   "engine": {"kind": "codex"}}),
+        )
+        .await
+        .unwrap();
+    let r = client
+        .call(
+            "crewmate_update",
+            json!({"id": auto["id"], "approval": "ask"}),
         )
         .await;
-    let is_err = match &r {
-        Err(_) => true,
-        Ok(v) => v.get("error").is_some(),
-    };
-    assert!(is_err, "opencode+ask must be rejected; got: {r:?}");
+    assert!(r.is_err(), "codex auto -> ask must be refused: {r:?}");
     client.call("shutdown", json!({})).await.ok();
 }
 

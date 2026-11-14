@@ -207,7 +207,10 @@ fn dom_report_runner(dir: &Path) -> std::path::PathBuf {
     let mut entries = vec![];
     for e in ["chromium", "webkit"] {
         let key = format!("{e}-390px-dark");
-        body.push_str(&format!("printf 'PNG-{key}' > \"$OUT/{key}.png\"\n"));
+        // A PNG signature: the agent's shots are kept as the task's images, checked by content.
+        body.push_str(&format!(
+            "printf '\\211PNG\\r\\n\\032\\n{key}' > \"$OUT/{key}.png\"\n"
+        ));
         body.push_str(&format!(
             "printf '{{\"elements\":[]}}' > \"$OUT/{key}.dom.json\"\n"
         ));
@@ -229,7 +232,8 @@ async fn a_dom_capture_keeps_each_dom_file_next_to_its_png_and_lists_it() {
     use_runner(&dom_report_runner(tmp.path()), Duration::from_secs(20));
     let client = super::fixture::daemon(&dir).await;
     let id = super::fixture::create_crewmate(&client, "CapDom").await;
-    let pane = crate::crew::pane::key(&id, "task5");
+    // The screenshots become the task's images, so the task must exist.
+    let pane = crate::crew::pane::key(&id, &log_task(&dir, &id, "task5"));
 
     let (status, v) = post_capture(
         &dir,
@@ -239,7 +243,8 @@ async fn a_dom_capture_keeps_each_dom_file_next_to_its_png_and_lists_it() {
     )
     .await;
     assert!(status.contains("200"), "{status} {v}");
-    let kept = dir.join("crew").join(&id).join("captures").join("task5");
+    // DOM reports are JSON, not images: kept in the task's `dom/` folder, never as attachments.
+    let kept = dir.join("crew").join(&id).join("dom").join("task5");
     for s in v["shots"].as_array().unwrap() {
         let dom = s["dom"]
             .as_str()

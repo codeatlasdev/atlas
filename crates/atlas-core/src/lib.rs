@@ -1,6 +1,8 @@
 pub mod agent_store;
+pub mod agents;
 pub mod channel;
 pub mod crash;
+pub mod crew;
 pub mod desktop_ctl;
 pub mod domain;
 pub mod error;
@@ -14,6 +16,7 @@ pub mod port_owner;
 pub mod procs;
 pub mod project_root;
 pub mod seed;
+pub mod ssh;
 pub mod sys;
 mod sys_clone;
 pub mod util;

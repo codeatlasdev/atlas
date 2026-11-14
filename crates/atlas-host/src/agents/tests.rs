@@ -66,6 +66,34 @@ fn apply_keeps_session_fields_across_events() {
     assert!(hub.apply("omp", &json!({"payload":{}})).is_none());
 }
 
+// Incident: an omp crewmate showed only "Working" / "Planning", never "Reading app.ts": omp's extension reports a tool
+// as `tool_call`, and hostd only turned Claude's `pre_tool_use`/`post_tool_use` into steps, so no crewmate task ever had one.
+#[test]
+fn an_omp_tool_call_becomes_a_step_once() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let body = |p: Value| json!({"pane_key": "crew:b:t", "payload": p});
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_call","tool_name":"read","tool_input":{"path":"src/app.ts"}})),
+    );
+    // Its start/end events for the same call must not add two more.
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_execution_start","tool_name":"read"})),
+    );
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_execution_end","tool_name":"read"})),
+    );
+    let steps: Vec<Value> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|v| v["ev"] == "agent_step")
+        .collect();
+    assert_eq!(steps.len(), 1, "{steps:?}");
+    assert_eq!(steps[0]["tool_name"], "read");
+    assert_eq!(steps[0]["tool_input"]["path"], "src/app.ts");
+}
+
 #[test]
 fn events_without_pane_key_resolve_by_agent_and_cwd() {
     let hub = AgentHub::default();

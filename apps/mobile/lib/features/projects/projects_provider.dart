@@ -10,7 +10,10 @@ final projectListProvider = FutureProvider.autoDispose
       if (mux == null) return [];
       final resp = await mux.call('project_list');
       if (resp['ok'] != true) return [];
-      final list = resp['data']['projects'] as List<dynamic>;
+      final list =
+          (resp['data'] as Map<dynamic, dynamic>?)?['projects']
+              as List<dynamic>? ??
+          const [];
       return list
           .map((e) => ProjectInfo.fromJson(e as Map<String, dynamic>))
           .toList();

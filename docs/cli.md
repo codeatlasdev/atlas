@@ -252,6 +252,18 @@ atlas config schema
 - `check` validates `atlas.yaml` plus `atlas.local.yaml`. Prints `OK: <path> is valid` and exits `0`, or prints every error and exits `1`. A missing or unparsable file is an `error:` and exits `1`. Details: [Validation](configuration.md#validation).
 - `schema` prints the JSON Schema (draft-07) for `atlas.yaml` to stdout.
 
+## `atlas crew`
+
+```text
+atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--binary <PATH>]
+atlas crew uninstall <ssh-target> [-y|--yes]
+atlas crew status <ssh-target>
+atlas crew logs <ssh-target> [-f|--follow]
+atlas crew login <ssh-target> <omp|claude|codex|opencode>
+```
+
+Turn a Linux x86_64 server with systemd and sudo into a crew server that runs crewmates around the clock, and manage it over SSH. `install` also migrates a server installed under the old `atlas-bot` name and keeps its data and system user; `atlas bot …` is a hidden alias of `atlas crew …`. `--binary` (or `ATLAS_CREW_BINARY`) uploads a Linux build instead of downloading this version's release. Full guide: [Atlas Crew](crew.md).
+
 ## `atlas deploy`
 
 Build locally, upload, and let a driver on the host do lock → swap → health gate → rollback. Subcommands: `rollback`, `status`, `logs`, `history`. Exit codes 0/1/2/3/4. Full reference: [deploy.md](deploy.md).

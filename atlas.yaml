@@ -17,6 +17,16 @@ services:
     start_timeout: 0
     open_key: l
     autostart: false
+  desktop:
+    # The real Atlas Dev window on YOUR screen (orange icon, id br.com.codeatlas.atlas.dev), with HMR on :1420
+    # and Rust rebuilds: for native parts (title bar, traffic lights, toolbar buttons, terminal, gestures).
+    # On demand: `atlas dev desktop`, the TUI, or ask your agent (atlas_start_service desktop; stop it the same
+    # way). An agent starts it only when you ask: on its own it uses `lab` + the mirror.
+    command: bun run desktop:dev
+    port: 1420
+    ready_log: "Local:.*1420"
+    start_timeout: 0
+    autostart: false
   site:
     command: cd site && bun install --frozen-lockfile && bunx astro dev --port 13451
     port: 13451

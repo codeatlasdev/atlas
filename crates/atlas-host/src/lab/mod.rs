@@ -115,7 +115,41 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::LspUninstall { .. }
         | C::LspRestart { .. }
         | C::LspLog { .. }
-        | C::LspApplyEditResult { .. } => Route::Local,
+        | C::LspApplyEditResult { .. }
+        // The lab reaches the crew servers itself (they are remote: nothing on this Mac to spare).
+        | C::CrewServers {}
+        | C::CrewCall { .. } => Route::Local,
+        C::CrewmateList {}
+        | C::CrewmateCreate { .. }
+        | C::CrewmateUpdate { .. }
+        | C::CrewmateDelete { .. }
+        | C::CrewmateTask { .. }
+        | C::CrewmateTasks { .. }
+        | C::CrewmateCancel { .. }
+        | C::CrewmateMemory { .. }
+        | C::CrewmateMemorySet { .. }
+        | C::CrewmateRoutineSet { .. }
+        | C::CrewmateTriggersSet { .. }
+        | C::CrewmateSecretSet { .. }
+        | C::CrewmateAnswer { .. }
+        | C::CrewmateUsage { .. }
+        | C::CrewTelegramSet { .. }
+        | C::CrewTelegramLink {}
+        | C::CrewTelegramStatus {}
+        | C::PushRegister { .. }
+        | C::PushUnregister { .. }
+        | C::MobileInvite { .. }
+        | C::MobileInvites {}
+        | C::MobileInviteDismiss { .. }
+        | C::EngineLimits {}
+        | C::CrewGithubStatus {}
+        | C::CrewGithubLoginStart {}
+        | C::CrewGithubLoginPoll {}
+        | C::CrewGithubLogout {}
+        | C::CrewmateActionAnswer { .. }
+        | C::CrewGithubConnectResume {}
+        | C::CrewSettingsGet {}
+        | C::CrewSettingsSet { .. } => Route::Refuse("lab hostd does not run crewmates"),
     }
 }
 

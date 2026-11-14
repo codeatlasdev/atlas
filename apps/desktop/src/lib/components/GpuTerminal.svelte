@@ -263,6 +263,12 @@
 			if (t) t.cwd = e.payload.cwd;
 		});
 		const unwatch = watchSlot(area!, view.sync);
+		// The workspace rail slides the whole page; the native view follows on its own layer.
+		const onRail = (e: Event) => {
+			const { dx, ms } = (e as CustomEvent<{ dx: number; ms: number }>).detail;
+			view.slide(dx, ms);
+		};
+		window.addEventListener("atlas:rail-slide", onRail);
 		// ⌘ pressed or released while another element has the keyboard (the sink only hears it when focused), and
 		// switching away with ⌘ down (⌘-Tab never delivers the keyup): links must not stay lit.
 		const meta = (down: boolean) => (e: KeyboardEvent) => e.key === "Meta" && void pointer.metaChanged(down);
@@ -279,6 +285,7 @@
 			void cwd.then((f) => f());
 			void osc52.then((f) => f());
 			unwatch();
+			window.removeEventListener("atlas:rail-slide", onRail);
 			window.removeEventListener("keydown", metaDown);
 			window.removeEventListener("keyup", metaUp);
 			window.removeEventListener("blur", blurred);

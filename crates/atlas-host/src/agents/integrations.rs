@@ -13,8 +13,8 @@ const AGENTS: &[(&str, &str, &str)] = &[
     ("codex", "Codex", "codex"),
 ];
 
-/// `{agents: [{id, label, setup, state: ok|missing|unknown}]}` for the agents on the login
-/// `PATH`, in [`AGENTS`] order; the checks run in parallel.
+/// `{agents: [{id, label, setup, state: ok|missing|other_version|unknown}]}` for the agents
+/// on the login `PATH`, in [`AGENTS`] order; the checks run in parallel.
 pub async fn all() -> Value {
     let exe = std::env::current_exe().ok();
     let checks = AGENTS.iter().map(|&(id, label, setup)| {
@@ -54,6 +54,8 @@ async fn check(exe: &std::path::Path, setup: &str) -> &'static str {
     match tokio::time::timeout(Duration::from_secs(10), status).await {
         Ok(Ok(s)) if s.code() == Some(0) => "ok",
         Ok(Ok(s)) if s.code() == Some(1) => "missing",
+        // Hooks on, written by another atlas (e.g. the installed one while Atlas Dev runs).
+        Ok(Ok(s)) if s.code() == Some(2) => "other_version",
         _ => "unknown",
     }
 }

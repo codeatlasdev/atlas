@@ -358,7 +358,7 @@ class _HowToPair extends StatelessWidget {
           index: 1,
           child: step(
             2,
-            'Settings → Integrations → Mobile → Pair a phone',
+            'Settings → Mobile → Pair a phone',
             'A code appears for two minutes.',
           ),
         ),

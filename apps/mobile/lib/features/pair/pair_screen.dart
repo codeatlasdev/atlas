@@ -12,7 +12,6 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 
 /// State for the pairing flow.
@@ -107,14 +106,36 @@ class _PairScreenState extends ConsumerState<PairScreen> {
   }
 
   void _done() {
-    // Home lists paired Macs from storage: reload it.
+    // Home lists paired Macs from storage: reload it. A real computer replaces the demo.
     ref.invalidate(pairedDevicesProvider);
+    ref.read(demoModeProvider.notifier).state = false;
+    context.pop();
+  }
+
+  /// No computer at hand (or App Review): the home shows the in-app demo computer.
+  void _demo() {
+    ref.read(demoModeProvider.notifier).state = true;
     context.pop();
   }
 
   void _retry() {
     _scanned = false;
     ref.invalidate(pairNotifierProvider);
+  }
+
+  Future<void> _paste() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
+    if (!mounted || _scanned) return;
+    if (text == null || !text.startsWith('atlas-mobile://pair')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Copy the atlas-mobile://pair link first.'),
+        ),
+      );
+      return;
+    }
+    _scanned = true;
+    ref.read(pairNotifierProvider.notifier).pair(text);
   }
 
   @override
@@ -129,6 +150,17 @@ class _PairScreenState extends ConsumerState<PairScreen> {
         title: const Text('Pair a computer'),
         backgroundColor: scanning ? Colors.transparent : null,
         foregroundColor: scanning ? Colors.white : null,
+        actions: [
+          // No camera (a simulator) or the code is on screen elsewhere: paste the link
+          // printed under the QR.
+          if (scanning)
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              icon: const Icon(Icons.content_paste_rounded, size: 18),
+              label: const Text('Paste link'),
+              onPressed: _paste,
+            ),
+        ],
       ),
       body: AnimatedSwitcher(
         duration: Motion.slow,
@@ -136,6 +168,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
           _ when scanning => _Scanner(
             key: const ValueKey('scan'),
             onDetect: _onDetect,
+            onDemo: _demo,
           ),
           PairStatus.success => EmptyState(
             key: const ValueKey('ok'),
@@ -181,10 +214,11 @@ class _PairScreenState extends ConsumerState<PairScreen> {
   }
 }
 
-/// Camera with a framed target and the hint where the code is.
+/// Camera with a framed target, the hint where the code is and, under it, the demo.
 class _Scanner extends StatelessWidget {
-  const _Scanner({super.key, required this.onDetect});
+  const _Scanner({super.key, required this.onDetect, required this.onDemo});
   final void Function(BarcodeCapture) onDetect;
+  final VoidCallback onDemo;
 
   @override
   Widget build(BuildContext context) {
@@ -198,17 +232,34 @@ class _Scanner extends StatelessWidget {
           left: Space.xl,
           right: Space.xl,
           bottom: Space.xxl + MediaQuery.paddingOf(context).bottom,
-          child: Container(
-            padding: const EdgeInsets.all(Space.lg),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: .6),
-              borderRadius: BorderRadius.circular(Space.radius),
-            ),
-            child: const Text(
-              'On your computer: Atlas Desktop → Settings → Integrations → Mobile → Pair a phone',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(Space.lg),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: .6),
+                  borderRadius: BorderRadius.circular(Space.radius),
+                ),
+                child: const Text(
+                  'On your computer: Atlas Desktop → Settings → Mobile → Pair a phone',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: Space.sm),
+              // Sample data that connects to nothing: for App Review and anyone without
+              // Atlas on a computer yet.
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                onPressed: onDemo,
+                child: const Text('No computer at hand? Explore a demo'),
+              ),
+            ],
           ),
         ),
       ],

@@ -35,7 +35,7 @@ describe("plan", () => {
 	});
 
 	test("the frontend also rebuilds the desktop shell; skills also the crate that embeds them", () => {
-		const p = plan(["apps/desktop/src/lib/bots/look.ts"], graph);
+		const p = plan(["apps/desktop/src/lib/crew/board.ts"], graph);
 		expect(p.steps).toEqual(["bun run desktop:check"]);
 		expect(p.crates).toEqual(["atlas-desktop"]);
 		expect(plan(["skills/atlas/yaml.md"], graph).crates).toEqual(["atlas-cli", "atlas-skills"]);

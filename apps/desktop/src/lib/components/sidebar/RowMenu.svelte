@@ -10,6 +10,8 @@
 	import { ws, type Worktree } from "#lib/stores/workspace.svelte.ts";
 	import { sidebar } from "./state.svelte.ts";
 	import type { ProjectView } from "#lib/api.ts";
+	import { crew } from "#lib/stores/crew.svelte.ts";
+	import type { CrewmateProject } from "#lib/crew.ts";
 
 	let { p, w, onAgent }: { p: ProjectView; w: Worktree | undefined; onAgent?: (worktreeId: string) => void } =
 		$props();
@@ -29,6 +31,16 @@
 	function toggleStack() {
 		store.run(`stack:${p.id}`, () => (p.running ? api.stop(p.id) : api.start(p.id)));
 	}
+
+	function createCrewmateForProject() {
+		ws.appMode = "crew";
+		const project: CrewmateProject = {
+			name: p.name,
+			kind: "path",
+			branch: w?.branch || undefined,
+		};
+		crew.pendingProjectLink = project;
+	}
 </script>
 
 {#if p.missing}
@@ -45,6 +57,7 @@
 	<DropdownMenuItem onclick={() => store.run("reveal", () => api.reveal(p.id))}
 		>{revealLabel()}</DropdownMenuItem
 	>
+	<DropdownMenuItem onclick={createCrewmateForProject}>Create crewmate for this project</DropdownMenuItem>
 {/if}
 <DropdownMenuItem onclick={() => store.run("pin", () => api.pin(p.id, !p.pinned))}>
 	{p.pinned ? "Unpin" : "Pin to top"}

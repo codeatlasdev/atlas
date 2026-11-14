@@ -6,6 +6,7 @@
 
 pub mod agents;
 pub mod client;
+pub mod crew;
 mod exec;
 mod fs;
 #[cfg(unix)]

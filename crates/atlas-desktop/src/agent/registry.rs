@@ -3,41 +3,9 @@
 
 use std::collections::BTreeMap;
 
+use atlas_core::agents::{AGENTS, AgentDef};
 use atlas_core::sys::CommandExt as _;
 use serde_json::{Value, json};
-
-pub struct AgentDef {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub bin: &'static str,
-    pub yolo_args: &'static [&'static str],
-    /// Resume argv; `{session}` is replaced by the session id (or file, for omp).
-    pub resume: &'static [&'static str],
-}
-
-pub const AGENTS: &[AgentDef] = &[
-    AgentDef {
-        id: "omp",
-        label: "omp",
-        bin: "omp",
-        yolo_args: &["--auto-approve"],
-        resume: &["--resume", "{session}"],
-    },
-    AgentDef {
-        id: "claude",
-        label: "Claude Code",
-        bin: "claude",
-        yolo_args: &["--dangerously-skip-permissions"],
-        resume: &["--resume", "{session}"],
-    },
-    AgentDef {
-        id: "codex",
-        label: "Codex",
-        bin: "codex",
-        yolo_args: &["--dangerously-bypass-approvals-and-sandbox"],
-        resume: &["resume", "{session}"],
-    },
-];
 
 /// A launchable agent, built-in or custom.
 #[derive(Debug, Clone, PartialEq)]
@@ -53,11 +21,9 @@ pub struct Agent {
     /// Extra environment (custom agents only); the `ATLAS_*` hook variables always win.
     pub env: BTreeMap<String, String>,
     pub custom: bool,
-}
-
-/// A built-in agent (commit messages use their non-interactive flags, which a custom CLI has no equivalent for).
-pub fn get(id: &str) -> Option<&'static AgentDef> {
-    AGENTS.iter().find(|a| a.id == id)
+    /// The flag that carries the initial prompt into the TUI, e.g. `--prompt`.
+    /// `None` means the prompt is appended as a positional argument.
+    pub prompt_flag: Option<String>,
 }
 
 impl From<&AgentDef> for Agent {
@@ -72,6 +38,7 @@ impl From<&AgentDef> for Agent {
             resume: owned(d.resume),
             env: BTreeMap::new(),
             custom: false,
+            prompt_flag: d.prompt_flag.map(str::to_string),
         }
     }
 }
@@ -130,6 +97,7 @@ pub fn customs(settings: &serde_json::Map<String, Value>) -> Vec<Agent> {
             resume: strings(&c["resume"]),
             env,
             custom: true,
+            prompt_flag: None,
         });
     }
     out
@@ -167,7 +135,12 @@ pub fn tail_args(
     );
     match resume.filter(|r| !r.is_empty() && !a.resume.is_empty()) {
         Some(r) => argv.extend(a.resume.iter().map(|t| t.replace("{session}", &r))),
-        None => argv.extend(prompt.filter(|p| !p.trim().is_empty())),
+        None => {
+            argv.extend(atlas_core::agents::prompt_argv(
+                a.prompt_flag.as_deref(),
+                prompt.as_deref(),
+            ));
+        }
     }
     argv
 }
@@ -230,6 +203,7 @@ pub async fn agent_list() -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use atlas_core::agents::AGENTS;
 
     fn settings(v: Value) -> serde_json::Map<String, Value> {
         v.as_object().unwrap().clone()
@@ -240,10 +214,11 @@ mod tests {
     #[test]
     fn custom_agents_keep_only_valid_unique_entries() {
         let s = settings(json!({"customAgents": [
-            {"id": "opencode", "label": "OpenCode", "command": "opencode", "args": ["--x", 1],
+            {"id": "gemini", "label": "Gemini CLI", "command": "gemini", "args": ["--x", 1],
              "resume": ["-s", "{session}"], "env": {"FOO": "1", "ATLAS_AGENT": "spoof", "N": 2}},
             {"id": "claude", "label": "Fake", "command": "evil"},
-            {"id": "opencode", "label": "Dup", "command": "x"},
+            {"id": "opencode", "label": "Built-in shadow attempt", "command": "x"},
+            {"id": "gemini", "label": "Dup", "command": "x"},
             {"id": "Bad Id", "label": "x", "command": "x"},
             {"id": "nocmd", "label": "x", "command": "  "},
             {"id": "nolabel", "command": "x"},
@@ -254,7 +229,7 @@ mod tests {
         let a = &c[0];
         assert_eq!(
             (a.id.as_str(), a.label.as_str(), a.bin.as_str()),
-            ("opencode", "OpenCode", "opencode")
+            ("gemini", "Gemini CLI", "gemini")
         );
         assert_eq!(a.args, ["--x"]);
         assert_eq!(
@@ -278,12 +253,12 @@ mod tests {
         let a = &c[0];
         assert_eq!(
             (a.id.as_str(), a.label.as_str(), a.bin.as_str()),
-            ("opencode", "OpenCode", "opencode")
+            ("gemini-cli", "Gemini CLI", "gemini")
         );
         assert_eq!(a.env, BTreeMap::from([("FOO".into(), "1".into())]));
         assert_eq!(
             tail_args(a, false, None, None, Some("S".into())),
-            ["run", "--model", "x", "--session", "S"]
+            ["--model", "gemini-2.5-pro", "--session", "S"]
         );
     }
 
@@ -318,6 +293,32 @@ mod tests {
         assert_eq!(
             tail_args(&c[1], false, None, Some("go".into()), Some("S3".into())),
             ["go"]
+        );
+    }
+
+    #[test]
+    fn tail_args_prompt_flag() {
+        // opencode uses --prompt for the initial prompt (not positional)
+        let opencode = Agent::from(&AGENTS[3]);
+        assert_eq!(
+            tail_args(&opencode, false, None, Some("p".into()), None),
+            ["--prompt", "p"]
+        );
+        // claude uses positional prompt
+        let claude = Agent::from(&AGENTS[1]);
+        assert_eq!(
+            tail_args(&claude, false, None, Some("p".into()), None),
+            ["p"]
+        );
+        // empty prompt with prompt_flag: no args emitted
+        assert_eq!(
+            tail_args(&opencode, false, None, Some("   ".into()), None),
+            Vec::<String>::new()
+        );
+        // resume takes priority over prompt_flag
+        assert_eq!(
+            tail_args(&opencode, false, None, Some("p".into()), Some("S1".into())),
+            ["--session", "S1"]
         );
     }
 }

@@ -24,7 +24,7 @@ use crate::commands::hook::{Event, Harness};
 const TIMEOUT_SECS: u64 = 10;
 /// `PermissionRequest` may wait for an answer from Atlas Mobile: hostd's wait plus the
 /// margin `atlas hook` adds, so the harness never kills a hook that is still answering.
-const DECISION_TIMEOUT_SECS: u64 = atlas_host::agents::hook_server::DECISION_WAIT.as_secs() + 5;
+const DECISION_TIMEOUT_SECS: u64 = 1805;
 
 /// What one event registers: harness event name, tool matcher (None = every occurrence).
 struct Registration {

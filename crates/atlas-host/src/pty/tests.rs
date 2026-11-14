@@ -48,24 +48,30 @@ fn sh(cmd: &str) -> PtyCreate {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn listeners_get_activity_only_from_output() {
-    let dir = std::env::temp_dir().join(format!("atlas-host-act-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    for (cmd, want) in [("printf hello", true), ("sleep 0.2", false)] {
-        let s = Session::spawn(sh(cmd), &dir).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    for (i, (cmd, want)) in [("printf hello", true), ("sleep 0.2", false)]
+        .into_iter()
+        .enumerate()
+    {
+        // The program waits for `go`, created after the attach: output printed before the listener
+        // attached sends it no activity, so on a loaded CI runner (Linux, PR #106) `printf hello`
+        // could finish first and the test saw nothing. Same race as the title tests (#193).
+        let go = dir.path().join(format!("go{i}"));
+        let script = format!(
+            "while [ ! -e '{}' ]; do sleep 0.01; done; {cmd}",
+            go.display()
+        );
+        let s = Session::spawn(sh(&script), dir.path()).unwrap();
         let (tx, mut rx) = super::out_channel();
         s.attach(1, tx, false, false);
-        let t0 = std::time::Instant::now();
-        while s.exited().is_none() {
-            assert!(t0.elapsed() < Duration::from_secs(10), "{cmd} never exited");
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        std::fs::write(&go, b"").unwrap();
+        until_exited(&s).await;
         let mut got = false;
         while let Some(l) = rx.try_recv() {
             got |= l.contains(r#""ev":"pty_activity""#);
         }
         assert_eq!(got, want, "{cmd}");
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // Incident: on Windows every terminal tab read "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe":

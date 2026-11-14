@@ -10,11 +10,20 @@ pub struct McpArgs {
     /// `atlas.yaml`, else nearest `.git` or package manifest, else the directory itself).
     #[arg(short, long)]
     pub dir: Option<String>,
+
+    /// Serve the crew MCP protocol for the given crewmate ID instead of the project MCP server.
+    // `--bot` is the pre-rename flag: crewmates configured before Atlas Crew pass it.
+    #[arg(long, alias = "bot")]
+    pub crewmate: Option<String>,
 }
 
 impl AtlasCommand for McpArgs {
     /// Serve MCP over stdio. stdout is reserved for protocol messages.
     async fn run(self) -> Result<()> {
+        if let Some(crewmate_id) = self.crewmate {
+            return atlas_host::crew::mcp::serve(&crewmate_id).await;
+        }
+
         let root = match &self.dir {
             Some(d) => std::path::PathBuf::from(expand_tilde(d)),
             None => atlas_core::project_root::resolve(&std::env::current_dir()?),

@@ -14,6 +14,7 @@ import 'package:atlas_mobile/features/agents/agent_switcher.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/home/onboarding.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
+import 'package:atlas_mobile/features/settings/settings_screen.dart';
 import 'package:atlas_mobile/features/projects/project_detail_screen.dart';
 import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
@@ -21,7 +22,8 @@ import 'package:atlas_mobile/core/lab/lab.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 
-import 'fixtures/demo_computer.dart';
+import 'package:atlas_mobile/core/demo/demo_computer.dart';
+
 import 'support/layout_harness.dart';
 import 'support/stress_computer.dart';
 
@@ -159,19 +161,15 @@ void main() {
       );
     });
 
-    testWidgets('settings sheet', (t) async {
+    // Settings is a tab of its own now (no sheet behind a header button).
+    testWidgets('settings tab, long names', (t) async {
       await _check(
         t,
-        'home settings sheet',
-        (_) => const HomeScreen(),
+        'settings',
+        (_) => const SettingsScreen(),
         computer: _stress,
-        devices: const [stressDevice],
-        prepare: (t) async {
-          await _openDashboard(t);
-          await t.tap(find.byTooltip('Settings'));
-          await settle(t, 600);
-        },
-        settleMs: 300,
+        devices: const [stressDevice, demoDevice],
+        settleMs: 600,
       );
     });
   });

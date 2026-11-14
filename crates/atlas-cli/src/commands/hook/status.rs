@@ -74,12 +74,13 @@ pub(super) fn ask_decision(harness: Harness, stdin: &str) -> Option<bool> {
         "tool_input": input.get("tool_input"),
         "cwd": input.get("cwd"),
     });
-    let body = post(
-        harness,
-        "/decision",
-        payload,
-        hook_server::DECISION_WAIT + std::time::Duration::from_secs(2),
-    )?;
+    let body = post(harness, "/decision", payload, {
+        let wait_secs = std::env::var("ATLAS_HOOK_DECISION_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(hook_server::DECISION_WAIT.as_secs());
+        std::time::Duration::from_secs(wait_secs + 2)
+    })?;
     hook_server::parse_decision(&body)
 }
 

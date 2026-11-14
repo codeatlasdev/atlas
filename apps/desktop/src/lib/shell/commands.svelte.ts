@@ -17,6 +17,9 @@ import { projectCommands } from "#lib/shell/projectCommands.svelte.ts";
 import { shell } from "#lib/shell/shell.svelte.ts";
 import { switchTab } from "#lib/shell/switcher.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
+import { crew } from "#lib/stores/crew.svelte.ts";
+import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
+import { crewView } from "#lib/crew/crewView.svelte.ts";
 import {
 	docks,
 	toggleAllDocks,
@@ -113,7 +116,12 @@ function panelCommands(): Command[] {
 function paletteCommands(): Command[] {
 	return [
 		{ id: "command_palette::Toggle", label: "Command palette", run: () => (palettes.commands = true) },
-		{ id: "atlas::Jump", label: "Jump to worktree or terminal", run: () => (palettes.jump = true) },
+		{
+			id: "atlas::Jump",
+			label: "Jump to worktree or terminal",
+			// One ⌘K: in the Crew workspace it jumps between crewmates, elsewhere between worktrees and terminals.
+			run: () => (ws.appMode === "crew" ? (palettes.crew = true) : (palettes.jump = true)),
+		},
 		{ id: "file_finder::Toggle", label: "Go to file…", run: () => void openQuick(), when: hasWt },
 		{
 			id: "outline::Toggle",
@@ -213,8 +221,9 @@ function tabCommands(): Command[] {
 		{
 			id: "pane::ActivateLastItem",
 			label: "Go to last tab",
-			run: () => ws.activateNth(ws.selected!.id, 9),
-			when: hasWt,
+			// In the Crew workspace the same chord picks the last crewmate of the sidebar.
+			run: () => (ws.appMode === "crew" ? crew.selectAt("last") : ws.activateNth(ws.selected!.id, 9)),
+			when: () => (ws.appMode === "crew" ? crew.sidebarOrder.length > 0 : hasWt()),
 		},
 		{
 			id: "atlas::CloseEditors",
@@ -260,8 +269,9 @@ function numberedCommands(): Command[] {
 		list.push({
 			id: `pane::ActivateItem${n}`,
 			label: `Go to tab ${n}`,
-			run: () => ws.activateNth(ws.selected!.id, n),
-			when: hasWt,
+			// ⌘n: the n-th tab in the IDE, the n-th crewmate of the sidebar in the Crew workspace (where there are no tabs).
+			run: () => (ws.appMode === "crew" ? crew.selectAt(n) : ws.activateNth(ws.selected!.id, n)),
+			when: () => (ws.appMode === "crew" ? !!crew.sidebarOrder[n - 1] : hasWt()),
 		});
 	for (let n = 1; n <= 6; n++)
 		list.push({
@@ -325,6 +335,20 @@ export function shellCommands(): Command[] {
 			run: () => (ws.view = ws.view === "agents" ? "worktree" : "agents"),
 		},
 		{ id: "atlas::Dashboard", label: "Dashboard", run: () => (ws.view = "dashboard") },
+		{
+			id: "atlas::ToggleCrewWorkspace",
+			label: "Atlas Crew",
+			run: () => (ws.appMode = ws.appMode === "crew" ? "ide" : "crew"),
+		},
+		{ id: "atlas::ReplayCrewOnboarding", label: "Atlas Crew: replay onboarding", run: replayCrewOnboarding },
+		{
+			id: "atlas::ToggleCrewBoard",
+			label: "Atlas Crew: toggle board view",
+			run: () => {
+				crewView.value = crewView.value === "chat" ? "board" : "chat";
+			},
+			when: () => ws.appMode === "crew",
+		},
 		{
 			id: "atlas::NewWorktree",
 			label: "New worktree…",

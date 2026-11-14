@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:atlas_mobile/core/demo/demo_crew.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
@@ -11,11 +12,14 @@ bool isDemo(MacDevice d) => d.nodeId == demoDevice.nodeId;
 
 /// A computer that lives in the app: it answers the same protocol as `atlas hostd`
 /// (replies by id, pushes with `ev`), so every screen runs its real code against it.
-/// Used by tests that need a self-contained Transport without a real host.
+/// "Explore a demo" on the pairing screen opens it (App Review, and anyone without a
+/// computer at hand); tests use it as a self-contained Transport.
 Transport demoTransport({List<Map<String, String>> integrations = const []}) =>
     _DemoComputer(integrations);
 
 int _now() => DateTime.now().millisecondsSinceEpoch;
+
+/// Crewmate tasks and `last` carry SECONDS (hostd crew/store.rs `now_s()`); agent status, ms.
 
 class _Agent {
   _Agent(
@@ -109,6 +113,12 @@ class _DemoComputer implements Transport {
 
   _DemoComputer(this._integrations) {
     _tick = Timer.periodic(const Duration(seconds: 3), (_) => _jitter());
+    _crewmates.addAll(seedDemoCrew());
+    // Add pending invite
+    _pendingInvites.add({
+      'url': 'atlas-mobile://pair?node=crew-server-1&code=CREWCODE&name=myserver&addr=192.168.1.10:4040',
+      'name': 'myserver',
+    });
   }
 
   final _lines = StreamController<String>.broadcast();
@@ -372,6 +382,10 @@ class _DemoComputer implements Transport {
   /// The pending approval of `demo-claude`, until answered.
   String? _approvalReq = 'demo-1';
 
+  // Crew server demo data
+  final _crewmates = <String, DemoCrewmate>{};
+  final _pendingInvites = <Map<String, String>>[];
+
   @override
   Stream<String> get incomingLines => _lines.stream;
 
@@ -481,6 +495,76 @@ class _DemoComputer implements Transport {
           'pty': args['pty'],
           'data': base64.encode(utf8.encode(text.replaceAll('\r', '\r\n'))),
         });
+        data = <String, Object?>{};
+      case 'crewmate_list':
+        data = {
+          'host_name': 'demo-mac',
+          'crewmates': [for (final b in _crewmates.values) b.toListEntry()],
+        };
+      case 'crewmate_tasks':
+        final crewmateId = args['id'] as String?;
+        final crewmate = _crewmates[crewmateId];
+        data = {'tasks': crewmate?.tasks ?? const []};
+      case 'crewmate_task':
+        error = _createCrewmateTask(
+          args['id'] as String?,
+          args['prompt'] as String? ?? '',
+          args['source'] as String? ?? 'mobile',
+        );
+        data = error == null
+            ? {
+                'task': {'id': 'task-$_seq', 'state': 'queued'},
+              }
+            : null;
+      case 'crewmate_memory':
+        final crewmate = _crewmates[args['id'] as String?];
+        data = {'text': crewmate?.memory ?? '# Memory\nNothing saved yet.'};
+      case 'crewmate_memory_set':
+        final crewmate = _crewmates[args['id'] as String?];
+        crewmate?.memory = args['text'] as String? ?? '';
+        data = <String, Object?>{};
+      case 'crewmate_routine_set':
+        data = <String, Object?>{};
+      case 'crewmate_create':
+        final newId = 'crewmate-${_crewmates.length + 1}';
+        _crewmates[newId] = DemoCrewmate(
+          newId,
+          args['name'] as String? ?? 'Crewmate',
+          args['agent'] as String? ?? 'claude',
+          args['role'] as String? ?? '',
+        );
+        data = _crewmates[newId]!.toListEntry();
+      case 'crewmate_delete':
+        _crewmates.remove(args['id'] as String?);
+        data = <String, Object?>{};
+      case 'crewmate_cancel':
+        data = <String, Object?>{};
+      case 'mobile_invites':
+        data = {'invites': _pendingInvites};
+      case 'mobile_invite_dismiss':
+        final url = args['url'] as String?;
+        _pendingInvites.removeWhere((i) => i['url'] == url);
+        data = <String, Object?>{};
+      case 'push_register':
+        data = <String, Object?>{};
+      case 'push_unregister':
+        data = <String, Object?>{};
+      case 'info':
+        data = {
+          'caps': ['mobile', 'crew'],
+          'version': '1.0.0',
+          'hostname': 'Demo MacBook',
+        };
+      case 'crew_github_status':
+        data = {'installed': true, 'login': null};
+      case 'crew_github_login_start':
+        data = {
+          'user_code': 'DEMO-1234',
+          'verification_uri': 'https://github.com/login/device',
+        };
+      case 'crew_github_login_poll':
+        data = {'state': 'pending'};
+      case 'crew_github_logout':
         data = <String, Object?>{};
       default:
         data = <String, Object?>{};
@@ -612,6 +696,22 @@ class _DemoComputer implements Transport {
   };
 
   String? _approve(String? pane, String? req, bool allow) {
+    // Handle crewmate panes (pane_key = "crew:<crewmateId>:<taskId>")
+    if (pane != null && pane.startsWith('crew:')) {
+      final parts = pane.split(':');
+      if (parts.length < 2) return 'invalid crewmate pane';
+      final crewmateId = parts[1];
+      final crewmate = _crewmates[crewmateId];
+      if (crewmate == null ||
+          req == null ||
+          crewmate.pendingApproval?['req'] != req) {
+        return 'no such pending request';
+      }
+      crewmate.pendingApproval = null;
+      crewmate.state = 'idle';
+      _emit({'ev': 'agent_approval_done', 'req': req, 'pane_key': pane});
+      return null;
+    }
     final a = _agents[pane];
     if (a == null || req == null || req != _approvalReq) {
       return 'no such pending request';
@@ -633,6 +733,66 @@ class _DemoComputer implements Transport {
       _pushStatus(a);
     });
     return null;
+  }
+
+  String? _createCrewmateTask(
+    String? crewmateId,
+    String prompt,
+    String source,
+  ) {
+    final crewmate = _crewmates[crewmateId];
+    if (crewmate == null) return 'crewmate not found';
+    final taskId = 'task-${++_seq}';
+    final ts = demoNowSeconds();
+    final task = <String, dynamic>{
+      'id': taskId,
+      'ts': ts,
+      'source': source,
+      'prompt': prompt,
+      'state': 'queued',
+      'result': null,
+      'error': null,
+      'started_at': null,
+      'finished_at': null,
+      'steps': <Object?>[],
+    };
+    crewmate.tasks.insert(0, task);
+    crewmate.queued++;
+    // Simulate task running then done.
+    _later(const Duration(milliseconds: 500), () {
+      task['state'] = 'running';
+      task['started_at'] = demoNowSeconds();
+      crewmate.state = 'working';
+      crewmate.queued = (crewmate.queued - 1).clamp(0, 999);
+      _pushCrewmateTask(crewmate, task);
+    });
+    _later(const Duration(milliseconds: 2800), () {
+      task['state'] = 'done';
+      task['finished_at'] = demoNowSeconds();
+      task['result'] =
+          'This is a demo. On your real crew server, ${crewmate.agent} would run and return the result here.';
+      crewmate.state = 'idle';
+      crewmate.lastEntry = {
+        'text': task['result'],
+        'state': 'done',
+        'ts': demoNowSeconds(),
+      };
+      _pushCrewmateTask(crewmate, task);
+    });
+    return null;
+  }
+
+  void _pushCrewmateTask(DemoCrewmate crewmate, Map<String, dynamic> task) {
+    _emit({
+      'ev': 'crewmate_task',
+      'crewmate_id': crewmate.id,
+      'task': {
+        'id': task['id'],
+        'state': task['state'],
+        'result': task['result'],
+        'error': task['error'],
+      },
+    });
   }
 
   Map<String, Object?> _service(String? name, String op) {

@@ -2,20 +2,26 @@
 library;
 
 /// An agent installed on the computer and whether its hooks report to Atlas
-/// (hostd `agent_integrations`). `state`: `ok` | `missing` | `unknown`.
+/// (hostd `agent_integrations`). `state`: `ok` | `missing` | `other_version`
+/// (hooks on, written by another atlas) | `unknown`. Only `missing` is "off".
 class AgentIntegration {
   const AgentIntegration({
     required this.id,
     required this.label,
+    required this.setup,
     required this.state,
   });
   final String id;
   final String label;
+
+  /// `atlas setup` name, e.g. `claude-code`.
+  final String setup;
   final String state;
 
   factory AgentIntegration.fromJson(Map<String, dynamic> j) => AgentIntegration(
     id: j['id'] as String,
     label: j['label'] as String? ?? j['id'] as String,
+    setup: j['setup'] as String? ?? j['id'] as String,
     state: j['state'] as String? ?? 'unknown',
   );
 }
@@ -146,19 +152,39 @@ class MacDevice {
   final String name;
   final List<String> addrs;
   final String? relay;
+  final List<String> caps;
+
+  /// A crew server reached through the paired Mac [via] (its hostd relays to
+  /// [crewServer], the desktop's ssh target). Never stored: listed by `crew_servers`.
+  final MacDevice? via;
+  final String? crewServer;
 
   const MacDevice({
     required this.nodeId,
     required this.name,
     this.addrs = const [],
     this.relay,
+    this.caps = const [],
+    this.via,
+    this.crewServer,
   });
+
+  /// Crew server [server] behind [mac]; its id is stable so providers keyed on it are
+  /// too, and holds no `/`, so it fits one segment of the `/crew/:nodeId/:crewmateId` route.
+  factory MacDevice.crew(MacDevice mac, String server, String name) =>
+      MacDevice(
+        nodeId: '${mac.nodeId}~crew~$server',
+        name: name,
+        via: mac,
+        crewServer: server,
+      );
 
   factory MacDevice.fromJson(Map<String, dynamic> j) => MacDevice(
     nodeId: j['nodeId'] as String? ?? j['node_id'] as String? ?? '',
     name: j['name'] as String? ?? '',
     addrs: (j['addrs'] as List<dynamic>?)?.cast<String>() ?? [],
     relay: j['relay'] as String?,
+    caps: (j['caps'] as List<dynamic>?)?.cast<String>() ?? [],
   );
 
   Map<String, dynamic> toJson() => {
@@ -166,6 +192,7 @@ class MacDevice {
     'name': name,
     'addrs': addrs,
     if (relay != null) 'relay': relay,
+    if (caps.isNotEmpty) 'caps': caps,
   };
 
   @override
@@ -251,7 +278,6 @@ bool canSendChat(AgentStatus? status) {
   return status.state == 'idle' || status.state == 'done';
 }
 
-/// One entry of an agent's conversation, as `agent_history` returns it.
 sealed class TimelineItem {
   const TimelineItem();
 
@@ -398,7 +424,6 @@ class ToolItem extends TimelineItem {
   );
 }
 
-/// A subagent's live state in the parent's `agent_history.subagents`.
 /// [state]: `running` | `done`.
 class SubagentInfo {
   const SubagentInfo({

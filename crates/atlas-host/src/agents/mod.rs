@@ -72,6 +72,8 @@ impl AgentStatus {
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
 type Pending = (String, Value, oneshot::Sender<bool>);
 
+type CrewmateAnswerFn = Box<dyn Fn(&str) -> bool + Send>;
+
 pub struct AgentHub {
     panes: Mutex<HashMap<String, AgentStatus>>,
     /// `agent|cwd` → pane key, for hooks that arrive without one (Codex runs
@@ -85,6 +87,8 @@ pub struct AgentHub {
     /// event as pushed, answer channel). The event is kept so a client that subscribes
     /// after the push can still list it.
     pending: Mutex<HashMap<String, Pending>>,
+    /// For crewmate panes: callback that returns true when telegram or push tokens can receive approvals.
+    crewmate_pane_can_answer: Mutex<Option<CrewmateAnswerFn>>,
     /// Prompts raised by ANOTHER hostd that this one mirrors (the lab lane, [`crate::lab`]):
     /// `req` → its `agent_approval` event. Listed and pushed like a local one, but answered
     /// through that daemon, so there is no answer channel here.
@@ -101,6 +105,7 @@ impl Default for AgentHub {
             port: Mutex::new(0),
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
+            crewmate_pane_can_answer: Mutex::new(None),
             mirrored: Mutex::default(),
             pushed: Mutex::default(),
         }
@@ -264,7 +269,9 @@ impl AgentHub {
                 st.prompt = Some(pr);
             }
             if let Some(t) = str_of("text") {
-                st.last_message = Some(t.chars().take(2000).collect());
+                // A crewmate's whole answer comes from here; 2000 chars cut long replies mid-sentence and split the trailing
+                // ATLAS_ACTION line, which then showed raw instead of becoming a card. Still bounded for the phone.
+                st.last_message = Some(t.chars().take(32_000).collect());
             }
             if let Some(next) = normalize(Some(st.state), p)
                 && next != st.state
@@ -282,6 +289,17 @@ impl AgentHub {
         let changed = !known || !before.same_view(st);
         let out = (pane, st.clone());
         drop(panes);
+        let payload_ev = p["event"].as_str().unwrap_or("");
+        // One step per tool call: Claude/Codex send pre/post_tool_use, omp sends `tool_call` (its tool_execution_*
+        // events are the same call again and are not counted).
+        if matches!(payload_ev, "pre_tool_use" | "post_tool_use" | "tool_call") {
+            let _ = self.tx.send(json!({
+                "ev": "agent_step",
+                "pane_key": out.0,
+                "tool_name": p["tool_name"],
+                "tool_input": p["tool_input"],
+            }));
+        }
         if changed || self.heartbeat_due(&out.0, now) {
             self.push_status(&out.0, &out.1, now);
         }
@@ -332,10 +350,22 @@ impl AgentHub {
         wait: Duration,
         someone_can_answer: bool,
     ) -> Option<bool> {
-        // Never make an agent wait on a phone that is not there or may not approve.
-        if !someone_can_answer {
+        // Crewmate panes can also be answered by telegram or push.
+        let is_crewmate = crate::crew::pane::is_crewmate_pane(pane);
+        let crewmate_can = is_crewmate
+            && self
+                .crewmate_pane_can_answer
+                .lock()
+                .as_deref()
+                .is_some_and(|f| f(pane));
+        if !someone_can_answer && !crewmate_can {
             return None;
         }
+        let wait = if is_crewmate {
+            std::time::Duration::from_secs(30 * 60) // CREWMATE_DECISION_WAIT
+        } else {
+            wait
+        };
         let req = crate::paths::random_hex(6).ok()?;
         let (otx, orx) = oneshot::channel();
         let event = json!({
@@ -469,5 +499,9 @@ impl AgentHub {
 
     pub fn all(&self) -> HashMap<String, AgentStatus> {
         self.panes.lock().clone()
+    }
+
+    pub fn set_crewmate_pane_can_answer(&self, f: CrewmateAnswerFn) {
+        *self.crewmate_pane_can_answer.lock() = Some(f);
     }
 }

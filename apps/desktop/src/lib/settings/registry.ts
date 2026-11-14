@@ -1227,6 +1227,63 @@ const DEFS = [
 			},
 		],
 	},
+	{
+		id: "crew",
+		label: "Atlas Crew",
+		description: "Crewmates running on your crew servers — agents working around the clock.",
+		cluster: "connect",
+		pages: [
+			{
+				files: ["components/CrewSettings.svelte"],
+				groups: [
+					{
+						title: "Crew servers",
+						items: [
+							item(
+								"crew-add",
+								"Add crew server",
+								"Connect a crew server running `atlas crew install`.",
+								"ssh server crew agent",
+							),
+						],
+					},
+					{
+						title: "GitHub",
+						items: [
+							item(
+								"crew-github",
+								"GitHub",
+								"Connect GitHub so your crew can clone private repositories.",
+								"git private repo token oauth pat",
+							),
+						],
+					},
+					{
+						title: "Short replies",
+						items: [
+							item(
+								"short-replies",
+								"Short replies",
+								"Summarize long crewmate replies with a cheap model before showing them.",
+								"summary compact ai model cheap",
+							),
+						],
+					},
+					{
+						title: "Onboarding",
+						items: [
+							item(
+								"crew-onboarding",
+								"Replay onboarding",
+								"Shows the Atlas Crew introduction again from the first step.",
+								"onboarding intro tour crew atlas crew",
+							),
+						],
+					},
+				],
+			},
+		],
+	},
 ] as const satisfies readonly CategoryDef[];
 
 /** The registry as plain definitions, for code that walks it without needing the literal ids. Every platform's rows. */

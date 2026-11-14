@@ -1,0 +1,149 @@
+/*
+ * Rules the sections of the crewmate settings dialog share: cards, rows, labels, inputs, the switch. The shell
+ * imports this once; everything lives under `.crewmate-settings` (the Dialog's class) so nothing leaks. Rules used
+ * by a single section stay in that section's component.
+ */
+
+/* The kit's overlay surface is a lighter blue-grey than the app; use the app's own surfaces (sidebar sunken, pane
+   base), like the chat behind it. */
+dialog.ca-dialog.crewmate-settings {
+	background: var(--ca-surface-base);
+}
+
+/* ── Cards and rows (macOS Settings style) ─────────────────────────── */
+.crewmate-settings .card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 14px 16px;
+	border-radius: 12px;
+	background: color-mix(in oklab, var(--ca-text-primary) 3%, transparent);
+	border: 0.5px solid var(--ca-outline-subtle);
+}
+.crewmate-settings .card.rows {
+	padding: 0 16px;
+	gap: 0;
+}
+.crewmate-settings .card-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+.crewmate-settings .row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 24px;
+	padding: 14px 0;
+}
+.crewmate-settings .row + .row {
+	border-top: 0.5px solid var(--ca-outline-subtle);
+}
+.crewmate-settings .row-text {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+.crewmate-settings .row-label {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--ca-text-primary);
+	display: inline-flex;
+	align-items: baseline;
+	gap: 8px;
+}
+.crewmate-settings .row-hint {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--ca-text-secondary);
+	margin: 0;
+}
+.crewmate-settings .row-value {
+	font-size: 13px;
+	color: var(--ca-text-secondary);
+	flex: none;
+}
+.crewmate-settings .pane-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────── */
+.crewmate-settings .field-textarea {
+	width: 100%;
+	font-size: 13px;
+	padding: 9px 10px;
+	border-radius: 8px;
+	border: 0.5px solid var(--ca-outline-subtle);
+	background: var(--ca-surface-sunken);
+	color: var(--ca-text-primary);
+	resize: vertical;
+	box-sizing: border-box;
+	line-height: 1.4;
+	font-family: inherit;
+}
+.crewmate-settings .field-select {
+	appearance: none;
+	font: inherit;
+	font-size: 13px;
+	height: 36px;
+	padding: 0 32px 0 10px;
+	border-radius: 8px;
+	border: 0.5px solid var(--ca-outline-subtle);
+	background: var(--ca-surface-sunken)
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa3b5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+		no-repeat right 12px center;
+	color: var(--ca-text-primary);
+	width: 100%;
+	box-sizing: border-box;
+	cursor: pointer;
+}
+.crewmate-settings .field-select:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.crewmate-settings .field-select.compact {
+	width: auto;
+	min-width: 160px;
+	flex: none;
+}
+.crewmate-settings .field-input {
+	width: 100%;
+	font: inherit;
+	font-size: 13px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 0.5px solid var(--ca-outline-subtle);
+	background: var(--ca-surface-sunken);
+	color: var(--ca-text-primary);
+	box-sizing: border-box;
+}
+.crewmate-settings .field-textarea:focus,
+.crewmate-settings .field-select:focus,
+.crewmate-settings .field-input:focus {
+	outline: none;
+	border-color: var(--ca-action-focus, var(--ca-brand-main));
+}
+
+/* A row led by a round icon chip (project, automations). */
+.crewmate-settings .auto-icon {
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	width: 30px;
+	height: 30px;
+	border-radius: 8px;
+	background: color-mix(in oklab, var(--ca-brand-main) 14%, transparent);
+	color: var(--ca-brand-main);
+}
+.crewmate-settings .auto-text {
+	flex: 1;
+}
+.crewmate-settings .auto-prompt {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

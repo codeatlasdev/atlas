@@ -24,6 +24,7 @@ const UNSUPPORTED: &str = "the GPU terminal needs macOS; this build uses xterm.j
 unsupported!(
     term_open,
     term_bounds,
+    term_slide,
     term_close,
     term_reload,
     term_stats,

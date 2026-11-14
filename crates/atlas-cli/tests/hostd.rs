@@ -286,10 +286,18 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
+    // `after` waits for `go`, created once the raw attach is in place: with `sleep 0.4` a loaded
+    // runner (load 66) finished the program before the attach and `exited` was already set.
+    // `before` may land before or after the attach; either way it reaches the reader (replay or live).
+    let go = dir.join("go-raw");
+    let script = format!(
+        "printf before; while [ ! -e '{}' ]; do sleep 0.01; done; printf after",
+        go.display()
+    );
     let pty = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "printf before; sleep 0.4; printf after"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -301,6 +309,7 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
         .await
         .unwrap();
     assert!(raw.info["exited"].is_null());
+    std::fs::write(&go, b"").unwrap();
     let mut out = Vec::new();
     // EOF arrives when the pty exits; bytes are unframed (no JSON, no base64).
     tokio::time::timeout(Duration::from_secs(5), raw.reader.read_to_end(&mut out))
@@ -309,12 +318,19 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&out), "beforeafter");
 
-    // Events-only attach (`output: false`): exit arrives, output does not.
+    // Events-only attach (`output: false`): exit arrives, output does not. The program waits for
+    // `go`, created after the attach: with `sleep 0.2` alone a loaded runner could finish it before
+    // the attach, and its `pty_exit` went to nobody (seen at load 46). Same gate as the title tests.
     let mut ev = c.events();
+    let go = dir.join("go-events-only");
+    let script = format!(
+        "while [ ! -e '{}' ]; do sleep 0.01; done; printf x",
+        go.display()
+    );
     let pty2 = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "sleep 0.2; printf x"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -324,6 +340,7 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
     c.call("pty_attach", json!({"pty": pty2, "output": false}))
         .await
         .unwrap();
+    std::fs::write(&go, b"").unwrap();
     loop {
         let e = tokio::time::timeout(Duration::from_secs(5), ev.recv())
             .await
@@ -1471,12 +1488,15 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
-    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty.
+    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty. The output
+    // waits for a line on stdin, sent once both clients are attached: with `replay: false` a chunk
+    // written before the healthy client attached never reached it (CI: 99 934 469 of 100 000 000
+    // bytes, one 64 KiB read short, PR #106).
     let pty = c
         .call(
             "pty_create",
             json!({"cwd": dir, "argv": ["sh", "-c",
-                "head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
+                "read go; head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
         )
         .await
         .unwrap()["pty"]
@@ -1500,10 +1520,25 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         )
         .await
         .unwrap();
+    // Its attach is answered before it goes silent, so it really holds a subscription when the
+    // output starts (otherwise the cap below would be checked against nothing).
+    let mut reply = Vec::new();
+    while !String::from_utf8_lossy(&reply).contains("\"id\":1") {
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(10), stuck.read(&mut buf))
+            .await
+            .expect("the stuck client's attach was never answered")
+            .unwrap();
+        assert!(n > 0, "hostd closed the stuck client before its attach");
+        reply.extend_from_slice(&buf[..n]);
+    }
 
     // A healthy client keeps receiving the whole time.
     let mut ev = c.events();
     c.call("pty_attach", json!({"pty": pty, "replay": false}))
+        .await
+        .unwrap();
+    c.call("pty_write", json!({"pty": pty, "data": B64.encode("go\n")}))
         .await
         .unwrap();
     let mut healthy_bytes = 0usize;

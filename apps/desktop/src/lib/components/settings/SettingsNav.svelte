@@ -12,6 +12,7 @@
 		Keyboard,
 		Palette,
 		Plug,
+		Server,
 		SlidersHorizontal,
 		SquareTerminal,
 	} from "@lucide/svelte";
@@ -32,6 +33,7 @@
 		git: GitBranch,
 		agents: Bot,
 		integrations: Plug,
+		crew: Server,
 	};
 
 	let { searching }: { searching: boolean } = $props();

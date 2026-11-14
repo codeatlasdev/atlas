@@ -31,6 +31,7 @@ import { shellCommands } from "#lib/shell/commands.svelte.ts";
 import { offerGhostty, startThemeCommands } from "#lib/shell/themeCommands.svelte.ts";
 import { shell } from "#lib/shell/shell.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
+import { crew } from "#lib/stores/crew.svelte.ts";
 import { browserPrefs } from "#lib/stores/browser.svelte.ts";
 import { initHostStatus } from "#lib/stores/hostStatus.svelte.ts";
 import { onboarding } from "#lib/onboarding/state.svelte.ts";
@@ -61,7 +62,7 @@ import { easeInOutCubic } from "#lib/capture/motion.ts";
 
 /** The live stores, shared with `ctl.ts` (HMR-safe) and, in debug builds, `atlas desktop debug eval`. */
 function exposeStores() {
-	const stores = { ws, store, agents, worktrees, api, host };
+	const stores = { ws, store, agents, worktrees, api, host, crew };
 	if ("__ATLAS_DEBUG__" in window) {
 		Object.assign(window, {
 			__atlas: {
@@ -196,6 +197,7 @@ export function startSession(): () => void {
 	updates.init().catch(fail);
 	ws.init().then(() => bootMark("workspace:loaded"), fail);
 	agents.init().catch(fail);
+	crew.init().catch(fail);
 	quick.init().catch(fail);
 	const stopSound = sound.init().then(
 		(f) => {
@@ -265,6 +267,7 @@ export function startSession(): () => void {
 		updates.dispose();
 		ws.dispose();
 		agents.dispose();
+		crew.dispose();
 		stopFeel();
 		stopHoverDismiss();
 		stopNativeClicks();

@@ -283,14 +283,19 @@ fn terminal_probe() -> Result<(String, Option<PathBuf>), String> {
 mod tests {
     use super::*;
 
+    /// A `PATH` value in this OS's separator (`:` here, `;` on Windows).
+    fn p(dirs: &[&str]) -> String {
+        std::env::join_paths(dirs).unwrap().into_string().unwrap()
+    }
+
     fn healthy() -> Facts {
         let dir = PathBuf::from("/home/u/.atlas/bin");
         Facts {
             install_dir: dir.clone(),
             cli_version: "1.5.0".into(),
-            login_path: Some("/home/u/.atlas/bin:/usr/bin".into()),
+            login_path: Some(p(&["/home/u/.atlas/bin", "/usr/bin"])),
             login_atlas: Some(dir.join("atlas")),
-            process_path: Some("/home/u/.atlas/bin:/usr/bin".into()),
+            process_path: Some(p(&["/home/u/.atlas/bin", "/usr/bin"])),
             app: Some((
                 PathBuf::from("/home/u/.local/bin/atlas-desktop"),
                 Some("1.5.0".into()),
@@ -329,7 +334,7 @@ mod tests {
     #[test]
     fn another_atlas_first_on_path_is_named() {
         let mut f = healthy();
-        f.login_path = Some("/usr/bin:/home/u/.atlas/bin".into());
+        f.login_path = Some(p(&["/usr/bin", "/home/u/.atlas/bin"]));
         f.login_atlas = Some(PathBuf::from("/usr/bin/atlas"));
         let t = evaluate(&f)
             .into_iter()
@@ -342,7 +347,7 @@ mod tests {
     #[test]
     fn the_local_bin_link_counts_as_this_install() {
         let mut f = healthy();
-        f.login_path = Some("/home/u/.local/bin:/usr/bin".into());
+        f.login_path = Some(p(&["/home/u/.local/bin", "/usr/bin"]));
         f.login_atlas = Some(PathBuf::from("/home/u/.local/bin/atlas"));
         assert_eq!(get(&evaluate(&f), "new terminal").status, Status::Ok);
     }

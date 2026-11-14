@@ -71,6 +71,19 @@ class Manifest(unittest.TestCase):
         self.assertEqual(a["desktop_arch"]["sha256"], pkg)
         self.assertNotIn("desktop_dmg", a)
 
+    # Issue #203: the aarch64 Linux build is the CLI only (crew servers), so the manifest lists the tarball as
+    # `cli` and `daemon` and no desktop package.
+    def test_linux_arm64_lists_only_the_cli_tarball(self):
+        version = "1.6.0-alpha.1"
+        root = tempfile.mkdtemp()
+        plat = os.path.join(root, "atlas-aarch64-unknown-linux-gnu")
+        os.makedirs(plat)
+        cli = write_asset(plat, f"atlas-{version}-aarch64-unknown-linux-gnu.tar.gz", b"cli")
+        a = run_cli(version, root)["assets"]["aarch64-unknown-linux-gnu"]
+        self.assertEqual(a["cli"]["sha256"], cli)
+        self.assertTrue(a["cli"]["url"].endswith(f"/v{version}/atlas-{version}-aarch64-unknown-linux-gnu.tar.gz"))
+        self.assertEqual(sorted(a), ["cli", "daemon"])
+
     def test_windows_lists_the_cli_tarball_and_the_installer_as_the_desktop(self):
         # The names release.yml uploads; `desktop` must be what `atlas desktop` downloads on Windows.
         version = "1.6.0-alpha.1"

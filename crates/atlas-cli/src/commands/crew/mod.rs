@@ -3,6 +3,7 @@
 //!
 //! Subcommands:
 //! - `install`   turn a Linux server into a crew server
+//! - `update`    bring a crew server's atlas to a release, rolling back if hostd does not come back
 //! - `uninstall` remove the crew service
 //! - `status`    show systemd and hostd status
 //! - `logs`      stream journalctl output
@@ -11,8 +12,10 @@
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
 
+mod binary;
 pub mod install;
 mod layout;
+mod update;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
@@ -29,8 +32,10 @@ pub struct CrewArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum CrewCommands {
-    /// Turn a Linux x86_64 server into a crew server (installs atlas hostd as a service)
+    /// Turn a Linux x86_64 or aarch64 server into a crew server (installs atlas hostd as a service)
     Install(install::InstallArgs),
+    /// Update atlas on a crew server (keeps the previous binary, rolls back if hostd does not come back)
+    Update(update::UpdateArgs),
     /// Remove the crew service, user and binary from a server
     Uninstall(UninstallArgs),
     /// Show the crew service status on a server
@@ -49,6 +54,7 @@ impl AtlasCommand for CrewArgs {
     async fn run(self) -> Result<()> {
         match self.command {
             CrewCommands::Install(a) => a.run().await,
+            CrewCommands::Update(a) => a.run().await,
             CrewCommands::Uninstall(a) => a.run().await,
             CrewCommands::Status(a) => a.run().await,
             CrewCommands::Logs(a) => a.run().await,
@@ -136,6 +142,12 @@ impl AtlasCommand for StatusArgs {
             println!("\nhostd:");
             println!("{hostd_out}");
         }
+        // The server's atlas against this CLI's: the cue to run `atlas crew update`.
+        let server = binary::version_from_status(hostd_out);
+        println!(
+            "\n{}",
+            binary::version_line(server.as_deref(), env!("CARGO_PKG_VERSION"))
+        );
         Ok(())
     }
 }

@@ -29,6 +29,7 @@ const KIT_COMPONENTS = [
 	"DropdownMenuSeparator",
 	"SchemeAsset",
 	"Popover",
+	"CopyButton",
 ];
 const Stub = () => {};
 const kit = {

@@ -526,7 +526,7 @@ async fn a_crew_server_start_removes_uploads_abandoned_before_it() {
 /// A fake Telegram Bot API on loopback: `getUpdates` hands over `updates` once, `getFile` names a path,
 /// `/file/bot<token>/<path>` serves `photo`, and every `sendMessage` text is recorded. Returns the base URL,
 /// the paths requested (in order) and the texts sent.
-async fn fake_telegram(
+pub(super) async fn fake_telegram(
     updates: Value,
     photo: Vec<u8>,
     file_size: u64,
@@ -614,7 +614,7 @@ async fn fake_telegram(
 
 /// A hostd whose Telegram bridge talks to `base`, with chat 42 already linked. `ATLAS_TELEGRAM_API` is read
 /// when the daemon starts and is process-wide, so it is held only for that moment, under one lock.
-async fn daemon_with_telegram(dir: &std::path::Path, base: &str) -> HostClient {
+pub(super) async fn daemon_with_telegram(dir: &std::path::Path, base: &str) -> HostClient {
     static ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(
@@ -630,7 +630,7 @@ async fn daemon_with_telegram(dir: &std::path::Path, base: &str) -> HostClient {
     client
 }
 
-async fn wait_for<T>(what: &str, mut f: impl FnMut() -> Option<T>) -> T {
+pub(super) async fn wait_for<T>(what: &str, mut f: impl FnMut() -> Option<T>) -> T {
     for _ in 0..200 {
         if let Some(v) = f() {
             return v;

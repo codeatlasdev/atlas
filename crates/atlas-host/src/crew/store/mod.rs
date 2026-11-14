@@ -324,6 +324,11 @@ pub enum TaskAction {
     Refused {
         reasons: Vec<String>,
     },
+    /// A `ui` task finished without two images of its own (`runner::gate`): "could not prove it". The owner
+    /// answers `override` or `retry`, as for `Refused`, and may attach new images to a retry.
+    ProveUi {
+        reason: String,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -412,6 +417,11 @@ pub struct Task {
     /// and are fetched with `crewmate_attachment`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<super::attachments::Attachment>,
+    /// The task changes what people see: it only ends `done` with at least `PROOF_IMAGES` images the agent
+    /// attached (captures), else it parks on `TaskAction::ProveUi`. Set by the sender (`crewmate_task`, the
+    /// `/ui` prefix on Telegram) or by the agent (`set_ui`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ui: bool,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -448,6 +458,7 @@ impl Task {
             restarts: 0,
             resumed: false,
             attachments: vec![],
+            ui: false,
         }
     }
 }

@@ -11,6 +11,8 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/crew/chat/attachments.dart';
+import 'package:atlas_mobile/features/crew/chat/task_images.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/widgets/github_device_login.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
@@ -36,6 +38,10 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   bool _submitting = false;
   late final _login = GithubDeviceLogin(onChanged: () => setState(() {}));
 
+  /// A marked screenshot the owner added to a retryable card (refused / prove_ui), sent with `retry`.
+  final _images = <PendingImage>[];
+  String? _error;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -47,17 +53,80 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     if (value.isEmpty || _submitting) return;
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
     if (mux == null) return;
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
-      await mux.call('crewmate_action_answer', {
+      // Images only ride on a retry (hostd refuses them on an override); big ones go up in pieces first.
+      var n = 0;
+      final stamp = DateTime.now().microsecondsSinceEpoch;
+      final attachments = value == 'retry' && _images.isNotEmpty
+          ? await toSent(
+              List.of(_images),
+              mux.call,
+              () => '$stamp-${n++}-up', // one upload id per image
+              crewmateId: widget.crewmateId,
+            )
+          : const <Map<String, dynamic>>[];
+      final resp = await mux.call('crewmate_action_answer', {
         'id': widget.crewmateId,
         'task': widget.task.id,
         'value': value,
+        if (attachments.isNotEmpty) 'attachments': attachments,
       });
+      if (resp['ok'] != true) {
+        throw StateError(resp['error'] as String? ?? 'the server refused');
+      }
       _controller.clear();
+      _images.clear();
+    } on Object catch (e) {
+      // The card stays: what the server said, not a silent nothing.
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _addImages() async {
+    final source = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AtlasColors.of(context).overlay,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.of(ctx).pop(true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from library'),
+              onTap: () => Navigator.of(ctx).pop(false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final picker = ref.read(imagePickerProvider);
+    final List<PickedImage> picked;
+    try {
+      picked = source ? await picker.camera() : await picker.gallery();
+    } on Object catch (e) {
+      if (mounted) setState(() => _error = 'Could not open the picker: $e');
+      return;
+    }
+    if (!mounted) return;
+    final r = addImages(_images, picked);
+    setState(() {
+      _images
+        ..clear()
+        ..addAll(r.images);
+      _error = r.errors.isEmpty ? null : r.errors.join('\n');
+    });
   }
 
   void _submitText() {
@@ -135,7 +204,18 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       'choose' => _choose(c, action, busy),
       'sign_in_engine' => _signInEngine(c, action, busy),
       'add_trigger' => _addTrigger(c, action, busy),
-      'refused' => _refused(c, action, busy),
+      'refused' => _retryable(
+        c,
+        busy,
+        title: 'This work was refused',
+        reasons: action.reasons,
+      ),
+      'prove_ui' => _retryable(
+        c,
+        busy,
+        title: 'Could not prove this UI work',
+        reasons: [if (action.reason != null) action.reason!],
+      ),
       _ => _textCard(c, action, busy, title: action.label ?? 'Response needed'),
     };
 
@@ -400,14 +480,28 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     );
   }
 
-  /// Atlas's guards refused the work: the reasons, then Retry (the task runs again with them in
-  /// its prompt) or Override (accept the work as it is).
-  Widget _refused(AtlasColors c, TaskAction action, bool busy) => Column(
+  /// A card that can be retried: Atlas's guards refused the work, or a UI task finished without two captures.
+  /// The captures the agent took (tap to enlarge), the reasons, a marked screenshot the owner may add, then
+  /// Retry (the task runs again with the reasons in its prompt and the screenshot staged for the agent) or
+  /// Override (accept the work as it is; images never go with it).
+  Widget _retryable(
+    AtlasColors c,
+    bool busy, {
+    required String title,
+    required List<String> reasons,
+  }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _title(c, 'This work was refused'),
+      _title(c, title),
+      TaskImageRow(
+        images: widget.task.agentImages,
+        taskId: widget.task.id,
+        device: widget.device,
+        crewmateId: widget.crewmateId,
+        alignEnd: false,
+      ),
       const SizedBox(height: 6),
-      for (final reason in action.reasons)
+      for (final reason in reasons)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: Text(
@@ -415,6 +509,34 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
             style: TextStyle(fontSize: 12, color: c.muted),
           ),
         ),
+      const SizedBox(height: 8),
+      if (_images.isNotEmpty)
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (var i = 0; i < _images.length; i++)
+              InputChip(
+                label: Text(
+                  _images[i].name,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                onDeleted: busy
+                    ? null
+                    : () => setState(() => _images.removeAt(i)),
+                deleteButtonTooltipMessage: 'Remove ${_images[i].name}',
+              ),
+          ],
+        ),
+      OutlinePillButton(
+        label: 'Add a screenshot',
+        fontSize: 13,
+        onPressed: busy ? null : _addImages,
+      ),
+      if (_error != null) ...[
+        const SizedBox(height: 6),
+        Text(_error!, style: TextStyle(fontSize: 12, color: c.error)),
+      ],
       const SizedBox(height: 8),
       Row(
         children: [

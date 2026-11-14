@@ -386,6 +386,30 @@ pub enum HostCmd {
         agent: String,
         #[serde(default)]
         prompt: Option<String>,
+        /// A worktree id of `worktree_list` (of `project`'s repo): the agent starts in that folder
+        /// instead of the main checkout.
+        #[serde(default)]
+        worktree: Option<String>,
+    },
+    /// The repo of `project` and its worktrees: `{repoId, worktrees: [{id, path, name, branch, main,
+    /// dirty, exists, portOffset}]}`, git state read live. SSH checkouts are not listed.
+    WorktreeList {
+        project: String,
+    },
+    /// New worktree of `project` (`atlas.yaml`'s `worktree:` setup/shared/seed run like on the desktop):
+    /// `{worktree: {id, path, branch, base, portOffset, repoId, name}, setup: {ok, code, output}|null}`.
+    /// `name` is slugged (empty = a sea name); `base` must be an existing ref.
+    WorktreeCreate {
+        project: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        base: Option<String>,
+    },
+    /// Remove a worktree only when nothing would be lost (the desktop's auto clean-up rule): `{removed:
+    /// true, branch}` or `{kept: "dirty"|"secrets"|"unpushed"}`. Never forced, the branch is kept.
+    WorktreeRemove {
+        id: String,
     },
     /// Local projects of the desktop registry with their live service state.
     ProjectList {},

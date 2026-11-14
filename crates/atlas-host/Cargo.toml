@@ -36,6 +36,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 croner = "2"
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+sha1_smol = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

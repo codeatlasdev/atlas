@@ -70,7 +70,8 @@ impl AgentStatus {
 }
 
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
-type Pending = (String, Value, oneshot::Sender<bool>);
+/// The answer carries who gave it (`desktop`, `phone:<node>`, `telegram:<chat>`): the crew audit records it.
+type Pending = (String, Value, oneshot::Sender<(bool, String)>);
 
 type CrewmateAnswerFn = Box<dyn Fn(&str) -> bool + Send>;
 
@@ -385,22 +386,34 @@ impl AgentHub {
             .ok()
             .and_then(Result::ok);
         self.pending.lock().remove(&req);
-        let _ = self
-            .tx
-            .send(json!({"ev": "agent_approval_done", "req": req, "pane_key": pane}));
-        res
+        // How it ended and who answered, for the audit (`decision`: allow|deny|timeout; `by`: `none` for a timeout).
+        let (decision, by) = match &res {
+            Some((true, by)) => ("allow", by.as_str()),
+            Some((false, by)) => ("deny", by.as_str()),
+            None => ("timeout", "none"),
+        };
+        let _ = self.tx.send(json!({
+            "ev": "agent_approval_done", "req": req, "pane_key": pane, "decision": decision, "by": by,
+        }));
+        res.map(|(allow, _)| allow)
     }
 
-    /// Answer a pending prompt. A `req` that is unknown, expired or belongs to another pane
-    /// is refused, so a stale tap can never answer a newer prompt.
+    /// Answer a pending prompt from the desktop (or any client that is not named). A `req` that is
+    /// unknown, expired or belongs to another pane is refused, so a stale tap can never answer a
+    /// newer prompt.
     pub fn approve(&self, pane: &str, req: &str, allow: bool) -> Result<(), String> {
+        self.approve_as(pane, req, allow, "desktop")
+    }
+
+    /// [`approve`](Self::approve) naming who answered: `phone:<node id>`, `telegram:<chat id>`, `desktop`.
+    pub fn approve_as(&self, pane: &str, req: &str, allow: bool, by: &str) -> Result<(), String> {
         let mut p = self.pending.lock();
         match p.get(req) {
             Some((owner, _, _)) if owner == pane => {}
             _ => return Err("no such pending request".into()),
         }
         let (_, _, tx) = p.remove(req).expect("checked above");
-        tx.send(allow)
+        tx.send((allow, by.to_string()))
             .map_err(|_| "no such pending request".to_string())
     }
 

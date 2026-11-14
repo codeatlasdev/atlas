@@ -6,7 +6,9 @@
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use serde_json::json;
 
+use super::audit::{self, Audit};
 use super::github::GithubLoginHandle;
 use super::store::{self, CrewStore};
 use super::telegram::TelegramBridge;
@@ -15,6 +17,8 @@ use crate::server::Hub;
 
 pub(crate) struct CrewHub {
     pub(crate) store: CrewStore,
+    /// The append-only audit (`audit::Audit`): the one writer of every `audit.jsonl`.
+    pub(crate) audit: Audit,
     pub(crate) dir: std::path::PathBuf,
     /// Live push tokens.
     pub(crate) push_tokens: Mutex<Vec<PushToken>>,
@@ -46,6 +50,7 @@ impl CrewHub {
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));
         Arc::new(Self {
             store,
+            audit: Audit::new(dir),
             dir: dir.to_path_buf(),
             push_tokens: Mutex::new(push_tokens),
             telegram,
@@ -81,6 +86,10 @@ impl CrewHub {
         } else if was {
             runner::resume_all(hub);
         }
+        if was != paused {
+            self.audit
+                .record(None, if paused { "paused" } else { "resumed" }, json!({}));
+        }
         hub.broadcast(super::events::crew_paused(paused));
         Ok(())
     }
@@ -91,6 +100,7 @@ impl CrewHub {
         self.telegram.clone().start();
         schedule::start(hub.clone());
         triggers::start(hub.clone());
+        audit::observe(hub.clone());
         forward_approvals(hub.clone());
         if let Some(hub_arc) = hub.upgrade() {
             runner::recover(&hub_arc);

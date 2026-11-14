@@ -20,6 +20,7 @@
 	import EngineSection from "#lib/crew/settings/EngineSection.svelte";
 	import MemorySection from "#lib/crew/settings/MemorySection.svelte";
 	import UsageSection from "#lib/crew/settings/UsageSection.svelte";
+	import AuditSection from "#lib/crew/settings/AuditSection.svelte";
 	import "#lib/crew/settings/settings.css";
 
 	interface Props {
@@ -49,7 +50,7 @@
 
 	// ─── section nav ──────────────────────────────────────────────────────────
 
-	type SectionId = "general" | "automations" | "engine" | "memory" | "usage";
+	type SectionId = "general" | "automations" | "engine" | "memory" | "usage" | "audit";
 
 	const sections = $derived([
 		{ id: "general" as SectionId, label: "General" },
@@ -59,6 +60,7 @@
 			: []),
 		{ id: "memory" as SectionId, label: "Memory" },
 		{ id: "usage" as SectionId, label: "Usage" },
+		{ id: "audit" as SectionId, label: "Audit" },
 	]);
 	let activeSection = $state<SectionId>("general");
 	const activeLabel = $derived(sections.find((s) => s.id === activeSection)?.label ?? "Settings");
@@ -150,6 +152,8 @@
 					<EngineSection {crewmate} {agentLabel} {provider} />
 				{:else if activeSection === "memory"}
 					<MemorySection {crewmate} {settings} />
+				{:else if activeSection === "audit"}
+					<AuditSection {crewmate} {settings} />
 				{:else}
 					<UsageSection {settings} />
 				{/if}

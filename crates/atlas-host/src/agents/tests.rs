@@ -152,6 +152,61 @@ async fn approvals_resolve_only_their_own_pending_request() {
     assert!(hub.approve("p1", &req, true).is_err(), "already answered");
 }
 
+/// #201: the audit needs to know how a prompt ended and who answered. The `agent_approval_done` push
+/// carries `decision` (allow|deny|timeout) and `by` (who: whatever `approve_as` was given, `none` when
+/// nobody did).
+#[tokio::test]
+async fn approval_done_says_how_it_ended_and_who_answered() {
+    let hub = std::sync::Arc::new(AgentHub::default());
+    let mut ev = hub.subscribe();
+    let ask = |h: std::sync::Arc<AgentHub>, wait: u64| {
+        tokio::spawn(async move {
+            h.ask(
+                "p1",
+                "claude",
+                &json!({"tool_name": "Bash", "tool_input": {}}),
+                Duration::from_millis(wait),
+                true,
+            )
+            .await
+        })
+    };
+
+    let t = ask(hub.clone(), 5000);
+    let req = ev.recv().await.unwrap()["req"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    hub.approve_as("p1", &req, true, "phone:node-abc").unwrap();
+    assert_eq!(t.await.unwrap(), Some(true));
+    let done = ev.recv().await.unwrap();
+    assert_eq!(done["ev"], "agent_approval_done");
+    assert_eq!(done["decision"], "allow");
+    assert_eq!(done["by"], "phone:node-abc");
+
+    let t = ask(hub.clone(), 5000);
+    let req = ev.recv().await.unwrap()["req"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    hub.approve("p1", &req, false).unwrap();
+    t.await.unwrap();
+    let done = ev.recv().await.unwrap();
+    assert_eq!(
+        (done["decision"].clone(), done["by"].clone()),
+        (json!("deny"), json!("desktop"))
+    );
+
+    let t = ask(hub.clone(), 50);
+    ev.recv().await.unwrap();
+    assert_eq!(t.await.unwrap(), None);
+    let done = ev.recv().await.unwrap();
+    assert_eq!(
+        (done["decision"].clone(), done["by"].clone()),
+        (json!("timeout"), json!("none"))
+    );
+}
+
 #[tokio::test]
 async fn unanswered_prompt_times_out_to_no_decision() {
     let hub = AgentHub::default();

@@ -35,7 +35,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 
 use conversation::run_one_conversational;
-use outcome::update_task;
+use outcome::{audit_task, update_task};
 use pty::run_one_pty;
 #[cfg(test)]
 pub(crate) use recover::interrupted_for_fixture;
@@ -127,6 +127,7 @@ pub(crate) fn enqueue_front(hub: &Hub, crewmate: &Crewmate, task: Task) {
 
 fn push(hub: &Hub, crewmate: &Crewmate, task: Task, front: bool) {
     let crewmate_id = crewmate.id.clone();
+    audit_task(hub, &crewmate_id, "task_queued", &task);
     let notify;
     let should_spawn;
     {
@@ -248,6 +249,7 @@ fn cancel_with(
         if let Some(reason) = reason {
             t.error = Some(reason.to_string());
         }
+        audit_task(hub, crewmate_id, "task_finished", t);
     });
 
     // Kill the pty if the task is currently running.

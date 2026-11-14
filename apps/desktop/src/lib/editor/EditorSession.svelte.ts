@@ -73,6 +73,8 @@ export class EditorSession {
 	conflict = $state<{ text: string } | null>(null);
 	/** The file was deleted on disk. */
 	deleted = $state(false);
+	/** Why external changes are not followed live (the watcher failed); empty when they are. */
+	watchError = $state("");
 	cursor = $state({ line: 1, col: 1, count: 1, chars: 0, lines: 1 });
 
 	/** What is on disk, as bytes written (see file header). */
@@ -85,6 +87,8 @@ export class EditorSession {
 		dirty: false,
 		autoReload: true,
 	};
+	/** Size and mtime of the file as this editor last read or wrote it: the save precondition. */
+	#disk: { mtime: number; size: number } | null = null;
 	#saveTimer: number | undefined;
 	#saving: Promise<void> = Promise.resolve();
 	#closing = false;
@@ -122,6 +126,7 @@ export class EditorSession {
 		this.text = plan.text;
 		this.lastSaved = raw;
 		this.#ext = { ...this.#ext, bufferText: raw, lastSaved: raw, mtime: st.mtime, dirty: false };
+		this.#disk = { mtime: st.mtime, size: st.size };
 		this.#ext.autoReload = editorPrefs().auto_reload;
 		return plan;
 	}
@@ -232,7 +237,9 @@ export class EditorSession {
 	/**
 	 * Write the buffer. `beforeWrite` may transform the document first (format on save): it runs
 	 * on the view, then the final text is read. A dirty buffer in conflict with the disk is never
-	 * written by the autosave timer: that would silently overwrite the other change.
+	 * written by the autosave timer: that would silently overwrite the other change. Neither is a
+	 * file that changed since this editor read or wrote it, even if the watcher has not said so yet
+	 * (it can be dead, or inside its debounce): `force` (the user's "keep my version") skips that.
 	 */
 	save(beforeWrite?: () => Promise<void>, force = false): Promise<void> {
 		this.#saving = this.#saving.then(() => this.#save(beforeWrite, force));
@@ -246,8 +253,10 @@ export class EditorSession {
 		const out = this.diskText();
 		if (out === undefined || (out === this.lastSaved && !this.deleted)) return;
 		try {
+			if (!force && (await this.#changedOnDisk())) return;
 			await host.fsWrite(this.abs, out);
 			const st = await host.fsStat(this.abs).catch(() => null);
+			this.#disk = st ? { mtime: st.mtime, size: st.size } : null;
 			this.lastSaved = out;
 			this.deleted = false;
 			this.#ext = reduceExternal(this.#ext, { kind: "saved", text: out, mtime: st?.mtime ?? 0 }).state;
@@ -257,6 +266,19 @@ export class EditorSession {
 		} catch (e) {
 			toast.error(`Save failed: ${errText(e)}`);
 		}
+	}
+
+	/**
+	 * The file differs from what this editor last read or wrote: hand the disk text to the external
+	 * change path (conflict for a dirty buffer, reload for a clean one) and tell the caller not to
+	 * write. A file that is gone is not a change: saving recreates it.
+	 */
+	async #changedOnDisk(): Promise<boolean> {
+		const known = this.#disk;
+		const st = await host.fsStat(this.abs).catch(() => null);
+		if (!known || !st || (st.mtime === known.mtime && st.size === known.size)) return false;
+		await this.#diskChanged();
+		return true;
 	}
 
 	/** Discard the buffer and show what is on disk (Revert file). */
@@ -334,7 +356,10 @@ export class EditorSession {
 	#watch() {
 		const dir = this.abs.slice(0, this.abs.lastIndexOf("/"));
 		this.#watchId = `ed:${this.abs}:${Math.random().toString(36).slice(2, 8)}`;
-		void host.fsWatch(dir, this.#watchId).catch(() => {});
+		host.fsWatch(dir, this.#watchId).catch((e) => {
+			// Saves still compare the file with what we last read (`#changedOnDisk`); only live updates are lost.
+			this.watchError = `External changes to this file are not watched: ${errText(e)}`;
+		});
 		let timer: number | undefined;
 		this.#off = listen<{ ev: string; id?: string; paths?: string[]; kind?: string }>("host://event", (e) => {
 			const p = e.payload;
@@ -346,7 +371,7 @@ export class EditorSession {
 
 	async #diskChanged() {
 		if (this.#closing) return;
-		let st: { mtime: number } | null = null;
+		let st: { mtime: number; size: number } | null = null;
 		try {
 			st = await host.fsStat(this.abs);
 		} catch {
@@ -355,6 +380,7 @@ export class EditorSession {
 		}
 		const text = await this.#readDisk();
 		if (text === null) return;
+		this.#disk = { mtime: st.mtime, size: st.size };
 		this.#feed({ kind: "disk-changed", text, mtime: st.mtime }, text);
 	}
 

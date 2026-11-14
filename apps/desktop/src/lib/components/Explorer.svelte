@@ -57,7 +57,9 @@
 		children[rel] = r.entries;
 		if (!watchIds[rel]) {
 			watchIds[rel] = uid();
-			void host.fsWatch(rel ? `${root}/${rel}` : root, watchIds[rel]).catch(() => {});
+			void host
+				.fsWatch(rel ? `${root}/${rel}` : root, watchIds[rel])
+				.catch((e) => toast.error(`File tree changes are not watched: ${errText(e)}`));
 		}
 	}
 

@@ -51,6 +51,8 @@ pub(crate) struct Input<'a> {
 pub(crate) struct Ran {
     pub command: String,
     pub output: Option<String>,
+    /// The tool that ran it (`bash`, `Bash`…), to match the output omp reports when the call ends.
+    pub tool: Option<String>,
 }
 
 /// What the guard decided.

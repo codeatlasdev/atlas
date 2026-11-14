@@ -293,6 +293,7 @@ async fn a_file_written_to_tmp_by_a_command_is_refused_reading_it_is_not() {
     let ran = |c: &str| Ran {
         command: c.into(),
         output: None,
+        tool: None,
     };
     let v = run(t.path(), "Done.", &[ran("cat /tmp/x.log"), ran("ls /tmp/")]).await;
     assert!(!v.refused(), "{:?}", v.reasons);
@@ -353,6 +354,7 @@ async fn references_in_commits_and_in_a_published_comment_are_checked() {
     let cmds = [Ran {
         command: "gh pr create --body \"See #888\"".into(),
         output: None,
+        tool: None,
     }];
     let v = review(
         &Input {
@@ -385,6 +387,7 @@ fn ran(command: &str, output: Option<&str>) -> Ran {
     Ran {
         command: command.into(),
         output: output.map(str::to_string),
+        tool: None,
     }
 }
 

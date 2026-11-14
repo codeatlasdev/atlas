@@ -29,7 +29,13 @@ pub(crate) struct Tape(Mutex<HashMap<String, Vec<Ran>>>);
 impl Tape {
     /// A tool call of `task_id`. Only shell-like calls carry a command; the rest are not evidence of
     /// anything the guards ask for.
-    pub(crate) fn record(&self, task_id: &str, tool_input: &Value, tool_output: &Value) {
+    pub(crate) fn record(
+        &self,
+        task_id: &str,
+        tool_name: &Value,
+        tool_input: &Value,
+        tool_output: &Value,
+    ) {
         let Some(command) = tool_input["command"]
             .as_str()
             .or(tool_input["cmd"].as_str())
@@ -54,7 +60,56 @@ impl Tape {
         list.push(Ran {
             command: command.to_string(),
             output,
+            tool: tool_name.as_str().map(str::to_string),
         });
+    }
+
+    /// A tool call that already finished (an engine's RPC stream reports start and end together):
+    /// its command, with its output, an error marked as one.
+    pub(crate) fn record_finished(
+        &self,
+        task_id: &str,
+        tool: &str,
+        args: &Value,
+        output: &str,
+        is_error: bool,
+    ) {
+        self.record(task_id, &Value::String(tool.into()), args, &Value::Null);
+        self.attach_output(
+            task_id,
+            &Value::String(tool.into()),
+            &Value::String(output.into()),
+            is_error,
+        );
+    }
+
+    /// The output of the tool that ended for `task_id`: it belongs to the latest command that has none yet
+    /// (omp reports a call when it starts and its output when it ends). An error result is stored with a
+    /// failure marker, so it never proves anything.
+    pub(crate) fn attach_output(
+        &self,
+        task_id: &str,
+        tool_name: &Value,
+        tool_output: &Value,
+        is_error: bool,
+    ) {
+        let Some(text) = output_text(tool_output).or_else(|| is_error.then(String::new)) else {
+            return;
+        };
+        let text = if is_error {
+            format!("{text}\nerror: the tool reported a failure")
+        } else {
+            text
+        };
+        let mut map = self.0.lock();
+        if let Some(c) = map.get_mut(task_id).and_then(|l| {
+            // Only the tool that ended: a `read` ending is not the output of the `bash` before it.
+            l.iter_mut()
+                .rev()
+                .find(|c| c.output.is_none() && c.tool.as_deref() == tool_name.as_str())
+        }) {
+            c.output = Some(text);
+        }
     }
 
     /// What `task_id` ran so far.
@@ -107,7 +162,8 @@ pub(crate) fn observe(hub_w: Weak<Hub>) {
                 }
                 Err(RecvError::Closed) => return,
             };
-            if ev["ev"] != "agent_step" {
+            let is_step = ev["ev"] == "agent_step";
+            if !is_step && ev["ev"] != "agent_tool_output" {
                 continue;
             }
             let Some(pane_key) = ev["pane_key"]
@@ -120,9 +176,21 @@ pub(crate) fn observe(hub_w: Weak<Hub>) {
                 continue;
             };
             let Some(h) = hub_w.upgrade() else { return };
-            h.crew
-                .tape
-                .record(task_id, &ev["tool_input"], &ev["tool_output"]);
+            if is_step {
+                h.crew.tape.record(
+                    task_id,
+                    &ev["tool_name"],
+                    &ev["tool_input"],
+                    &ev["tool_output"],
+                );
+            } else {
+                h.crew.tape.attach_output(
+                    task_id,
+                    &ev["tool_name"],
+                    &ev["tool_output"],
+                    ev["is_error"].as_bool() == Some(true),
+                );
+            }
         }
     });
 }
@@ -136,9 +204,15 @@ mod tests {
     #[test]
     fn a_call_reported_before_and_after_is_one_command_with_its_output() {
         let t = Tape::default();
-        t.record("t1", &json!({"command": "cargo test"}), &Value::Null);
         t.record(
             "t1",
+            &json!("Bash"),
+            &json!({"command": "cargo test"}),
+            &Value::Null,
+        );
+        t.record(
+            "t1",
+            &json!("Bash"),
             &json!({"command": "cargo test"}),
             &json!({"stdout": "test result: ok. 3 passed"}),
         );
@@ -147,10 +221,61 @@ mod tests {
         assert_eq!(ran[0].output.as_deref(), Some("test result: ok. 3 passed"));
     }
 
+    // omp reports a call when it starts and its output when it ends; the output belongs to the call of the same tool.
+    #[test]
+    fn an_omp_output_attaches_to_the_command_of_its_tool() {
+        let t = Tape::default();
+        t.record(
+            "t1",
+            &json!("bash"),
+            &json!({"command": "cargo test"}),
+            &Value::Null,
+        );
+        t.record("t1", &json!("read"), &json!({"path": "a.rs"}), &Value::Null);
+        // A `read` ending is not the output of the bash before it.
+        t.attach_output("t1", &json!("read"), &json!("file text"), false);
+        assert_eq!(t.of("t1")[0].output, None);
+        t.attach_output(
+            "t1",
+            &json!("bash"),
+            &json!("test result: ok. 3 passed"),
+            false,
+        );
+        assert_eq!(
+            t.of("t1")[0].output.as_deref(),
+            Some("test result: ok. 3 passed")
+        );
+    }
+
+    #[test]
+    fn an_error_result_never_proves_anything() {
+        let t = Tape::default();
+        t.record(
+            "t1",
+            &json!("bash"),
+            &json!({"command": "cargo test"}),
+            &Value::Null,
+        );
+        t.attach_output(
+            "t1",
+            &json!("bash"),
+            &json!("test result: ok. 3 passed"),
+            true,
+        );
+        let ran = t.of("t1");
+        let (out, removed) = crate::crew::runner::guard::strip_unproven("All tests pass.", &ran);
+        assert!(out.is_empty() && removed.len() == 1, "{ran:?}");
+    }
+
     #[test]
     fn calls_without_a_command_are_not_evidence() {
         let t = Tape::default();
-        t.record("t1", &json!({"path": "src/a.rs"}), &Value::Null);
+        t.record(
+            "t1",
+            &json!("read"),
+            &json!({"path": "src/a.rs"}),
+            &Value::Null,
+        );
         assert!(t.of("t1").is_empty());
     }
 
@@ -164,8 +289,8 @@ mod tests {
     #[test]
     fn forgetting_a_task_drops_only_its_commands() {
         let t = Tape::default();
-        t.record("a", &json!({"command": "ls"}), &Value::Null);
-        t.record("b", &json!({"command": "ls"}), &Value::Null);
+        t.record("a", &json!("Bash"), &json!({"command": "ls"}), &Value::Null);
+        t.record("b", &json!("Bash"), &json!({"command": "ls"}), &Value::Null);
         t.forget("a");
         assert!(t.of("a").is_empty());
         assert_eq!(t.of("b").len(), 1);

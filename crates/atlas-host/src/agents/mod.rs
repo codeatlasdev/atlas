@@ -303,6 +303,17 @@ impl AgentHub {
                 "tool_output": p["tool_response"],
             }));
         }
+        // omp reports what a tool printed when it ends (`tool_execution_end`), apart from the call it reported
+        // earlier (`tool_call`): not a step of its own, so it travels as its own event for the crew's guards.
+        if payload_ev == "tool_execution_end" {
+            let _ = self.tx.send(json!({
+                "ev": "agent_tool_output",
+                "pane_key": out.0,
+                "tool_name": p["tool_name"],
+                "tool_output": p["tool_output"],
+                "is_error": p["is_error"],
+            }));
+        }
         if changed || self.heartbeat_due(&out.0, now) {
             self.push_status(&out.0, &out.1, now);
         }

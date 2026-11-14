@@ -278,3 +278,58 @@ async fn an_unproven_claim_is_stripped_from_the_result() {
     client.call("shutdown", json!({})).await.ok();
     crate::crew::runner::set_test_agent_bin(None);
 }
+
+/// The hooks of a terminal omp as `atlas_status.ts` posts them: `tool_call` with the command when it starts,
+/// `tool_execution_end` with the output (text blocks flattened) and `is_error` when it ends.
+fn omp_test_run(output: &str, is_error: bool, reply: &str) -> Hooks {
+    Hooks::new()
+        .sleep(1)
+        .post(json!({"event": "tool_call", "tool_name": "bash",
+                     "tool_input": {"command": "cargo test"}}))
+        .post(json!({"event": "tool_execution_end", "tool_name": "bash",
+                     "tool_output": output, "is_error": is_error}))
+        .done(reply)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_omp_test_run_that_printed_a_pass_proves_the_claim() {
+    let _bin = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = project(tmp.path());
+    let hooks = omp_test_run(
+        "test result: ok. 4 passed; 0 failed",
+        false,
+        "Fixed it. All tests pass.",
+    );
+    use_agent_bin(&fake_agent(tmp.path(), "claude", &hooks.script()));
+    let client = daemon(&tmp.path().join("hostd")).await;
+    let id = crewmate_on(&client, &proj).await;
+    let task = send(&client, &id, "fix the cart").await;
+    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    assert_eq!(done["result"], "Fixed it. All tests pass.", "{done}");
+    client.call("shutdown", json!({})).await.ok();
+    crate::crew::runner::set_test_agent_bin(None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_omp_test_run_that_errored_does_not_prove_the_claim() {
+    let _bin = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let proj = project(tmp.path());
+    // The output reads fine, but omp said the call failed.
+    let hooks = omp_test_run(
+        "test result: ok. 4 passed; 0 failed",
+        true,
+        "Fixed it. All tests pass.",
+    );
+    use_agent_bin(&fake_agent(tmp.path(), "claude", &hooks.script()));
+    let client = daemon(&tmp.path().join("hostd")).await;
+    let id = crewmate_on(&client, &proj).await;
+    let task = send(&client, &id, "fix the cart").await;
+    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(30)).await;
+    let result = done["result"].as_str().unwrap();
+    assert!(result.starts_with("Fixed it."), "{result}");
+    assert!(!result.starts_with("Fixed it. All tests pass."), "{result}");
+    client.call("shutdown", json!({})).await.ok();
+    crate::crew::runner::set_test_agent_bin(None);
+}

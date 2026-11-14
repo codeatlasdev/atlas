@@ -44,6 +44,8 @@ use std::time::Duration;
 use parking_lot::Mutex;
 
 use conversation::run_one_conversational;
+#[cfg(test)]
+pub(crate) use guard::strip_unproven as guard_strip_unproven;
 pub(crate) use guard::{OVERRIDE as REFUSAL_OVERRIDE, RETRY as REFUSAL_RETRY};
 use outcome::{audit_task, update_task};
 use pty::run_one_pty;

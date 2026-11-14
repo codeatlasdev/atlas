@@ -161,6 +161,23 @@ impl Turn<'_> {
         for (k, v) in load_agent_env(&hub.dir, &crewmate.agent) {
             env.entry(k).or_insert(v);
         }
+        // What the engine's stream says the agent ran, for the guards (`runner::tape`).
+        let task_id = self
+            .pane_key
+            .rsplit(':')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let tools = {
+            let hub_w = hub.crew.hub_arc().map(|h| std::sync::Arc::downgrade(&h));
+            move |tool: &str, args: &serde_json::Value, output: &str, is_error: bool| {
+                if let Some(h) = hub_w.as_ref().and_then(std::sync::Weak::upgrade) {
+                    h.crew
+                        .tape
+                        .record_finished(&task_id, tool, args, output, is_error);
+                }
+            }
+        };
         let turn = engine::run_turn(
             self.engine_cfg,
             session,
@@ -173,6 +190,7 @@ impl Turn<'_> {
             &env,
             self.work_dir,
             self.yolo,
+            Some(&tools),
         )
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {

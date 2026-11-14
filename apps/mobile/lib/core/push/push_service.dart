@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/push/push_payload.dart';
+import 'package:atlas_mobile/core/push/push_tap.dart';
 
 /// Provider that exposes the current FCM token, or null when push is unavailable.
 final fcmTokenProvider = StateProvider<String?>((ref) => null);
@@ -49,6 +51,18 @@ class PushService {
           ref.read(fcmTokenProvider.notifier).state = newToken;
         }
       });
+      // A tap on a push opens what it is about: while the app was in the background, or the tap
+      // that launched it. Unknown payloads (a newer hostd) are ignored by `PushPayload.fromData`.
+      void tapped(RemoteMessage m) {
+        final p = PushPayload.fromData(m.data);
+        if (p != null && ref != null && ref.context.mounted) {
+          ref.read(pushTapProvider.notifier).state = p;
+        }
+      }
+
+      FirebaseMessaging.onMessageOpenedApp.listen(tapped);
+      final launch = await messaging.getInitialMessage();
+      if (launch != null) tapped(launch);
     } catch (e) {
       debugPrint(
         'atlas-mobile: push unavailable (Firebase not configured): $e',

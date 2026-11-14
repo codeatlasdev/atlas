@@ -107,11 +107,19 @@ mod tests {
     fn a_cached_action_in_setup_runs_through_the_task_cache() {
         let (_d, cfg) = config("  setup: 'bun install && {{action: Build web}} && echo ready'\n");
         let line = cfg.setup_command().unwrap().unwrap();
+        // Quoting is the shell's (single quotes for sh, double for cmd on Windows).
+        let q = atlas_core::heavy::sh_quote;
         assert!(line.starts_with("bun install && "), "{line}");
-        assert!(line.contains(" run --cache --label 'Build web'"), "{line}");
-        assert!(line.contains("--input 'src/**'"), "{line}");
+        assert!(
+            line.contains(&format!(" run --cache --label {}", q("Build web"))),
+            "{line}"
+        );
+        assert!(line.contains(&format!("--input {}", q("src/**"))), "{line}");
         assert!(line.contains("--output dist"), "{line}");
-        assert!(line.contains("-- 'bun run build'"), "{line}");
+        assert!(
+            line.contains(&format!("-- {}", q("bun run build"))),
+            "{line}"
+        );
         assert!(line.ends_with(" && echo ready"), "{line}");
         assert!(!line.contains("{{"), "{line}");
     }

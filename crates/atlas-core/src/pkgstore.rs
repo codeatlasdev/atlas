@@ -174,11 +174,9 @@ mod tests {
     #[test]
     fn the_store_root_honours_an_absolute_override_only() {
         let home = Path::new("/home/me/.atlas");
-        let over = std::ffi::OsString::from("/mnt/fast/pkgs");
-        assert_eq!(
-            root_from(Some(over.as_os_str()), home),
-            PathBuf::from("/mnt/fast/pkgs")
-        );
+        // Absolute on every OS (`/mnt/...` is not absolute on Windows).
+        let fast = std::env::temp_dir().join("fast-pkgs");
+        assert_eq!(root_from(Some(fast.as_os_str()), home), fast);
         let rel = std::ffi::OsString::from("relative/dir");
         assert_eq!(
             root_from(Some(rel.as_os_str()), home),

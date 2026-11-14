@@ -913,12 +913,14 @@ fn text_update(id: i64, text: &str) -> Value {
     json!({"update_id": id, "message": {"message_id": id, "chat": {"id": 42}, "text": text}})
 }
 
-/// The tasks a crewmate's log holds, as the store wrote them.
+/// The tasks a crewmate has, as the store reads them: the log is append-only (a task is a line per state
+/// change), so one task is one entry, its last state.
 fn logged(dir: &Path, crewmate: &str) -> Vec<Value> {
-    std::fs::read_to_string(dir.join(format!("crew/{crewmate}/tasks.jsonl")))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
+    let mut tasks = crate::crew::store::CrewStore::new(dir).read_tasks(crewmate, usize::MAX);
+    tasks.reverse(); // oldest first
+    tasks
+        .iter()
+        .map(|t| serde_json::to_value(t).unwrap())
         .collect()
 }
 

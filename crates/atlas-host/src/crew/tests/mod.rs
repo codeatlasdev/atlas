@@ -5,6 +5,7 @@
 //! | file          | what it covers                                                           |
 //! |---------------|--------------------------------------------------------------------------|
 //! | `tasks`       | a task from queue to done/failed/cancelled, steps, usage, JSON contracts |
+//! | `capture`     | the `capture` tool through a real hostd with a fake runner                |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
@@ -40,6 +41,8 @@ mod approvals;
 mod audit;
 #[cfg(unix)]
 mod automations;
+#[cfg(unix)]
+mod capture;
 #[cfg(unix)]
 mod crewmates;
 #[cfg(unix)]

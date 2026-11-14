@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use super::action::{
     finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
 };
+use super::gate::{Gate, gate_success};
 use super::outcome::{finish_task, persist_running};
 use super::prompt::{Prepared, load_agent_env, load_hook_endpoint, prepare_task};
 use super::recover::{recovered_wait, resume_prompt};
@@ -42,6 +43,14 @@ pub(super) async fn run_one_conversational(
             engine_cfg.kind
         );
         finish_task(hub, crewmate, &mut task, Err(msg), vec![]);
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
+
+    // A refusal parked when hostd stopped is decided by the owner's answer, not by running again.
+    if let Some(hub_arc) = hub.crew.hub_arc()
+        && super::gate::resume_refusal(&hub_arc, crewmate, &mut task).await
+    {
         triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
         return;
     }
@@ -109,7 +118,7 @@ pub(super) async fn run_one_conversational(
                     park_task(hub, crewmate, &mut task, action.clone());
                     answer_action_turn(&turn, &mut task, &action).await;
                 }
-                _ => settle_reply(hub, crewmate, &mut task, reply, usage, &env).await,
+                _ => settle_reply(&turn, &mut task, reply, usage, &env).await,
             }
         }
         Err(e) => finish_task(hub, crewmate, &mut task, Err(e), vec![]),
@@ -152,6 +161,23 @@ impl Turn<'_> {
         for (k, v) in load_agent_env(&hub.dir, &crewmate.agent) {
             env.entry(k).or_insert(v);
         }
+        // What the engine's stream says the agent ran, for the guards (`runner::tape`).
+        let task_id = self
+            .pane_key
+            .rsplit(':')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let tools = {
+            let hub_w = hub.crew.hub_arc().map(|h| std::sync::Arc::downgrade(&h));
+            move |tool: &str, args: &serde_json::Value, output: &str, is_error: bool| {
+                if let Some(h) = hub_w.as_ref().and_then(std::sync::Weak::upgrade) {
+                    h.crew
+                        .tape
+                        .record_finished(&task_id, tool, args, output, is_error);
+                }
+            }
+        };
         let turn = engine::run_turn(
             self.engine_cfg,
             session,
@@ -164,6 +190,7 @@ impl Turn<'_> {
             &env,
             self.work_dir,
             self.yolo,
+            Some(&tools),
         )
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
@@ -205,9 +232,7 @@ async fn answer_action_turn(
             task.answer = user_answer(action, &follow_up);
             // The env is read again: it may include secrets written while waiting.
             match turn.run(&follow_up).await {
-                Ok((reply2, usage2, env2)) => {
-                    settle_reply(hub, crewmate, task, reply2, usage2, &env2).await
-                }
+                Ok((reply2, usage2, env2)) => settle_reply(turn, task, reply2, usage2, &env2).await,
                 Err(e) => finish_task(hub, crewmate, task, Err(e), vec![]),
             }
         }
@@ -215,17 +240,25 @@ async fn answer_action_turn(
     }
 }
 
-/// The turn's final reply becomes the task's result: stored as `reply`, shortened when the crew allows it.
+/// The turn's final reply becomes the task's result: guarded, stored as `reply`, shortened when the
+/// crew allows it.
 async fn settle_reply(
-    hub: &Hub,
-    crewmate: &Crewmate,
+    turn: &Turn<'_>,
     task: &mut Task,
     reply: String,
     usage: Option<crate::crew::store::UsageRecord>,
     env: &BTreeMap<String, String>,
 ) {
-    task.reply = Some(reply.clone());
+    let (hub, crewmate) = (turn.hub, turn.crewmate);
     task.usage = usage;
+    let reply = match hub.crew.hub_arc() {
+        Some(hub_arc) => match gate_success(&hub_arc, crewmate, task, reply, turn.work_dir).await {
+            Gate::Finish(reply) => reply,
+            Gate::Handled => return,
+        },
+        None => reply,
+    };
+    task.reply = Some(reply.clone());
     let (final_outcome, reply_full, was_summarized) =
         maybe_summarize(hub, crewmate, Ok(reply), env).await;
     task.reply_full = reply_full;

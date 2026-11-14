@@ -29,6 +29,11 @@ pub(crate) fn parse_atlas_action(text: &str) -> Option<TaskAction> {
         .find(|l| l.trim().starts_with(ATLAS_ACTION_PREFIX))?;
     let json_str = line.trim().strip_prefix(ATLAS_ACTION_PREFIX)?;
     if let Ok(action) = serde_json::from_str::<TaskAction>(json_str) {
+        // A refusal is Atlas's own verdict (`gate`); an agent cannot raise one, least of all to
+        // park itself past the guards.
+        if matches!(action, TaskAction::Refused { .. }) {
+            return None;
+        }
         return Some(action);
     }
     // Unknown kind → fall back to Input
@@ -167,6 +172,8 @@ pub(super) async fn resolve_action(
                 _ => None,
             }
         }
+        // Decided by `gate` (a recovered one by `resume_refusal`), never by a continuation prompt.
+        TaskAction::Refused { .. } => None,
         TaskAction::AddTrigger { trigger, .. } => {
             // Validate the trigger before waiting; if invalid, resolve immediately so
             // the agent can correct and retry (no user card is shown for a bad proposal).

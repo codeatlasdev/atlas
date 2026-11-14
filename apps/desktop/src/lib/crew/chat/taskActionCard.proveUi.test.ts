@@ -25,6 +25,7 @@ const { flushSync, mount, unmount, tick } = await import("svelte");
 const { default: TaskActionCard } = await import("./TaskActionCard.svelte");
 const { ChatState } = await import("./chat.svelte.ts");
 const { clearAttachmentCache } = await import("../attachmentCache.ts");
+const { crew } = await import("#lib/stores/crew.svelte.ts");
 
 URL.createObjectURL = () => "blob:test/x";
 URL.revokeObjectURL = () => {};
@@ -164,5 +165,38 @@ describe("the refused card shows what it is about", () => {
 		const { target } = setup(task);
 		await settle();
 		expect(target.querySelector("ul[aria-label]")).toBeNull();
+	});
+});
+
+describe("the composer's /ui", () => {
+	const sentTasks = () => calls.filter((c) => c.cmd === "crewmate_task");
+
+	test("`/ui <message>` sends a ui task without the prefix", async () => {
+		crew.selected = { hostKey: "", crewmateId: "crewmate-working" };
+		const chat = new ChatState();
+		chat.prompt = "/ui restyle the header";
+		await chat.send();
+		expect(sentTasks()).toHaveLength(1);
+		expect(sentTasks()[0].args).toMatchObject({ prompt: "restyle the header", ui: true });
+	});
+
+	test("a bare `/ui` sends nothing and stays in the box", async () => {
+		crew.selected = { hostKey: "", crewmateId: "crewmate-working" };
+		for (const typed of ["/ui", "/ui   "]) {
+			const chat = new ChatState();
+			chat.prompt = typed;
+			await chat.send();
+			expect(sentTasks(), typed).toHaveLength(0);
+			expect(chat.prompt, "what was typed is kept").toBe(typed);
+			expect(chat.sending).toBe(false);
+		}
+	});
+
+	test("an ordinary prompt carries no ui flag", async () => {
+		crew.selected = { hostKey: "", crewmateId: "crewmate-working" };
+		const chat = new ChatState();
+		chat.prompt = "rename x";
+		await chat.send();
+		expect(sentTasks()[0].args).not.toHaveProperty("ui");
 	});
 });

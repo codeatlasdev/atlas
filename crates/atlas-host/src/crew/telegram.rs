@@ -44,14 +44,21 @@ fn file_url(base: &str, token: &str, file_path: &str) -> String {
 /// The most photos Telegram takes in one `sendMediaGroup`.
 pub(crate) const MEDIA_GROUP_MAX: usize = 10;
 
-/// A leading `/ui ` marks the message as a UI task: `(true, rest)`; anything else is `(false, text)`. The
-/// rest is read as always (`/task <name> <text>`, a plain prompt), so `/ui /task Ana fix the header` works.
+/// A leading `/ui` marks the message as a UI task: `(true, rest)` (`rest` is empty for a bare `/ui`); anything
+/// else is `(false, text)`. The rest is read as always (`/task <name> <text>`, a plain prompt), so
+/// `/ui /task Ana fix the header` works. `/uikit` is not `/ui`.
 fn strip_ui(text: &str) -> (bool, &str) {
+    if text == "/ui" {
+        return (true, "");
+    }
     match text.strip_prefix("/ui ") {
         Some(rest) => (true, rest.trim()),
         None => (false, text),
     }
 }
+
+/// What a `/ui` with nothing to do says (one line).
+const UI_USAGE: &str = "Usage: /ui <message>, or /ui /task <crewmate-name> <message>";
 
 /// The agent's images of a task, `(name, bytes)`, up to [`MEDIA_GROUP_MAX`] of them: the newest, the ones
 /// the agent took last being the "after". An image whose file cannot be read is left out and logged.
@@ -581,6 +588,11 @@ impl TelegramBridge {
 
         // `/ui <message>`: the same message, for a task that changes what people see (`Task.ui`).
         let (ui, text) = strip_ui(text);
+        // A UI task needs its message: a task with an empty prompt is never useful, so say how and queue nothing.
+        if ui && text.is_empty() {
+            self.reply(chat_id, UI_USAGE).await;
+            return;
+        }
 
         // /crewmates
         if text == "/crew" {
@@ -1032,7 +1044,11 @@ mod tests {
             (false, "restyle the /ui header")
         );
         assert_eq!(strip_ui("/uikit"), (false, "/uikit"));
-        assert_eq!(strip_ui("/ui"), (false, "/ui"));
+        assert_eq!(
+            strip_ui("/ui"),
+            (true, ""),
+            "bare: the handler replies with usage"
+        );
     }
 
     // The body Telegram parses: the chat id first, a `media` array whose items point at the file parts, each

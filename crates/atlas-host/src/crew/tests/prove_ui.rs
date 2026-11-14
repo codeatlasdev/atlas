@@ -658,3 +658,316 @@ async fn the_crewmate_list_carries_the_waiting_card_and_only_the_agents_images()
     client.call("shutdown", json!({})).await.ok();
     crate::crew::runner::set_test_agent_bin(None);
 }
+
+// ── a card parked when hostd restarted (#264 follow-up) ──────────────────────────────────────
+
+/// Stop `client`'s daemon and wait until its socket is gone, so the next `daemon` binds a new one.
+async fn stop(client: HostClient) {
+    client.call("shutdown", json!({})).await.ok();
+    drop(client);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+}
+
+/// A ui task parked on `action` and left on disk as a daemon killed while it waited would have left it.
+async fn strand_parked(
+    dir: &Path,
+    tmp: &Path,
+    name: &str,
+    action: crate::crew::store::TaskAction,
+) -> (String, String) {
+    use crate::crew::store::{CrewStore, TaskState};
+    let hang = fake_agent(tmp, "claude", "sleep 60\nexit 0");
+    use_agent_bin(&hang);
+    let client = daemon(dir).await;
+    let id = create_crewmate(&client, name).await;
+    let task = send(&client, &id, "restyle the header", true).await;
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    stop(client).await;
+    let store = CrewStore::new(dir);
+    let mut t = store
+        .read_tasks(&id, 10)
+        .into_iter()
+        .find(|t| t.id == task)
+        .unwrap();
+    t.state = TaskState::WaitingAction;
+    t.action = Some(action);
+    t.result = Some("Restyled the header.".into());
+    store.append_task(&id, &t).unwrap();
+    (id, task)
+}
+
+async fn audit_kinds(client: &HostClient, id: &str) -> Vec<String> {
+    client
+        .call("crewmate_audit", json!({"id": id, "limit": 500}))
+        .await
+        .unwrap()["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap_or("").to_string())
+        .collect()
+}
+
+// `override` on a prove_ui card after a restart is what it was before: the owner's explicit choice, the task
+// ends done and the audit says it was overridden.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_restart_override_of_a_prove_ui_card_ends_done_and_is_audited() {
+    use crate::crew::store::TaskAction;
+    let _bin = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let (id, task) = strand_parked(
+        &dir,
+        tmp.path(),
+        "OverrideAfter",
+        TaskAction::ProveUi {
+            reason: "Could not prove it: 0 of 2".into(),
+        },
+    )
+    .await;
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "exit 1"));
+    let client = daemon(&dir).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let waiting = task_of(&client, &id, &task).await;
+    assert_eq!(waiting["state"], "waiting_action", "{waiting}");
+    assert_eq!(waiting["action"]["kind"], "prove_ui", "{waiting}");
+
+    client
+        .call(
+            "crewmate_action_answer",
+            json!({"id": id, "task": task, "value": "override"}),
+        )
+        .await
+        .unwrap();
+    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    assert_eq!(done["result"], "Restyled the header.", "{done}");
+    assert!(done["action"].is_null(), "{done}");
+    assert!(
+        audit_kinds(&client, &id)
+            .await
+            .contains(&"refusal_overridden".to_string()),
+        "the override is on the record"
+    );
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// `retry` after a restart runs the task again with the reason, and the proof is checked again when it
+// finishes: an agent that still attaches nothing parks on prove_ui once more.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_restart_retry_of_a_prove_ui_card_checks_the_proof_again() {
+    use crate::crew::store::TaskAction;
+    let _bin = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let (id, task) = strand_parked(
+        &dir,
+        tmp.path(),
+        "RetryAfter",
+        TaskAction::ProveUi {
+            reason: "Could not prove it: 0 of 2".into(),
+        },
+    )
+    .await;
+    use_agent_bin(&fake_agent(
+        tmp.path(),
+        "claude",
+        &Hooks::new().sleep(1).done("Tried again.").script(),
+    ));
+    let client = daemon(&dir).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client
+        .call(
+            "crewmate_action_answer",
+            json!({"id": id, "task": task, "value": "retry"}),
+        )
+        .await
+        .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        let t = task_of(&client, &id, &task).await;
+        let prompt = t["prompt"].as_str().unwrap();
+        if t["state"] == "waiting_action"
+            && t["action"]["kind"] == "prove_ui"
+            && t["result"] == "Tried again."
+        {
+            assert!(prompt.contains("could not prove"), "{prompt}");
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never re-checked: {t}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// The gap: override of a *refused* card used to finish a recovered ui task at once, skipping the proof
+// the same override still owes when nothing restarted. One path now: the proof is checked next.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_restart_override_of_a_refused_card_still_owes_the_proof() {
+    use crate::crew::store::TaskAction;
+    let _bin = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let (id, task) = strand_parked(
+        &dir,
+        tmp.path(),
+        "RefusedAfter",
+        TaskAction::Refused {
+            reasons: vec!["removes 1 assertion(s) from src/tests.rs".into()],
+        },
+    )
+    .await;
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "exit 1"));
+    let client = daemon(&dir).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client
+        .call(
+            "crewmate_action_answer",
+            json!({"id": id, "task": task, "value": "override"}),
+        )
+        .await
+        .unwrap();
+    // The old card is `waiting_action` too: wait for the proof card itself, not for any waiting state.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let parked = loop {
+        let t = task_of(&client, &id, &task).await;
+        if t["action"]["kind"] == "prove_ui" {
+            break t;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the override never asked for the proof: {t}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    assert_eq!(parked["state"], "waiting_action", "{parked}");
+    let kinds = audit_kinds(&client, &id).await;
+    assert!(
+        kinds.contains(&"refusal_overridden".to_string()),
+        "{kinds:?}"
+    );
+    assert!(kinds.contains(&"task_unproven_ui".to_string()), "{kinds:?}");
+    // And that card is answerable: override accepts, as for any other.
+    client
+        .call(
+            "crewmate_action_answer",
+            json!({"id": id, "task": task, "value": "override"}),
+        )
+        .await
+        .unwrap();
+    wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// A refused card on a task that is NOT ui: override after a restart is simply done, as before.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_restart_override_of_a_refused_card_on_a_plain_task_is_done() {
+    use crate::crew::store::{CrewStore, TaskAction, TaskState};
+    let _bin = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let hang = fake_agent(tmp.path(), "claude", "sleep 60\nexit 0");
+    use_agent_bin(&hang);
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "PlainAfter").await;
+    let task = send(&client, &id, "rename x", false).await;
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+    stop(client).await;
+    let store = CrewStore::new(&dir);
+    let mut t = store
+        .read_tasks(&id, 10)
+        .into_iter()
+        .find(|t| t.id == task)
+        .unwrap();
+    t.state = TaskState::WaitingAction;
+    t.action = Some(TaskAction::Refused {
+        reasons: vec!["stray file".into()],
+    });
+    t.result = Some("Renamed.".into());
+    store.append_task(&id, &t).unwrap();
+
+    use_agent_bin(&fake_agent(tmp.path(), "claude", "exit 1"));
+    let client = daemon(&dir).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    client
+        .call(
+            "crewmate_action_answer",
+            json!({"id": id, "task": task, "value": "override"}),
+        )
+        .await
+        .unwrap();
+    let done = wait_task_state(&client, &id, &task, "done", Duration::from_secs(20)).await;
+    assert_eq!(done["result"], "Renamed.", "{done}");
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// ── `/ui` on Telegram ────────────────────────────────────────────────────────────────────────
+
+fn text_update(id: i64, text: &str) -> Value {
+    json!({"update_id": id, "message": {"message_id": id, "chat": {"id": 42}, "text": text}})
+}
+
+/// The tasks a crewmate's log holds, as the store wrote them.
+fn logged(dir: &Path, crewmate: &str) -> Vec<Value> {
+    std::fs::read_to_string(dir.join(format!("crew/{crewmate}/tasks.jsonl")))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+// A `/ui` with nothing after it is not a task: the chat is told how to use it and nothing is queued. Same for
+// `/ui /task <name>` with no text. A message after them, in the same poll, still works: `/ui <text>` is a ui task.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_bare_ui_on_telegram_gets_a_usage_hint_and_creates_no_task() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let updates = json!([
+        text_update(1, "/ui"),
+        text_update(2, "/ui   "),
+        text_update(3, "/ui /task Eyes"),
+        text_update(4, "/ui restyle the header"),
+    ]);
+    let (base, _paths, sent) = fake_telegram(updates, PNG.to_vec(), PNG.len() as u64).await;
+    let first = daemon(&dir).await;
+    let id = create_crewmate(&first, "Eyes").await;
+    first.call("shutdown", json!({})).await.ok();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let client = daemon_with_telegram(&dir, &base).await;
+    // Two `/ui` hints, the `/task` hint for `/ui /task Eyes`, and one confirmation: every update was answered.
+    wait_for("all four answers", || {
+        (sent.lock().len() >= 4).then_some(())
+    })
+    .await;
+    let texts = sent.lock().clone();
+    let hints: Vec<_> = texts.iter().filter(|t| t.contains("Usage: /")).collect();
+    assert_eq!(hints.len(), 3, "{texts:?}");
+    assert_eq!(
+        texts.iter().filter(|t| t.starts_with("Usage: /ui")).count(),
+        2,
+        "a bare /ui is told how to use /ui: {texts:?}"
+    );
+    assert!(
+        hints.iter().all(|h| !h.contains('\n')),
+        "a one-line hint: {hints:?}"
+    );
+    let tasks = logged(&dir, &id);
+    let prompts: Vec<_> = tasks
+        .iter()
+        .map(|t| t["prompt"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        prompts,
+        ["restyle the header"],
+        "only the real one: {tasks:?}"
+    );
+    assert_eq!(tasks[0]["ui"], true, "{tasks:?}");
+    client.call("shutdown", json!({})).await.ok();
+}

@@ -80,10 +80,14 @@ export function withKey(set: Set<string>, key: string, on: boolean): Set<string>
 }
 
 /**
- * A leading `/ui ` marks the message as a UI task (hostd `Task.ui`: it needs two captures the agent took to be
- * done). Same prefix as Telegram's. Returns whether it was there and the prompt without it.
+ * A leading `/ui` marks the message as a UI task (hostd `Task.ui`: it needs two captures the agent took to be
+ * done). Same prefix as Telegram's. Returns whether it was there and the prompt without it, empty for a bare
+ * `/ui` (which is not a task: the composer says how to use it instead of sending it).
  */
 export function splitUi(prompt: string): { ui: boolean; prompt: string } {
-	const m = /^\/ui\s+(\S[\s\S]*)$/.exec(prompt);
-	return m ? { ui: true, prompt: m[1] } : { ui: false, prompt };
+	const m = /^\/ui(?:\s+([\s\S]*))?$/.exec(prompt);
+	return m ? { ui: true, prompt: (m[1] ?? "").trim() } : { ui: false, prompt };
 }
+
+/** What the composer says for a `/ui` with no message. */
+export const UI_USAGE = "Add a message after /ui, for example: /ui restyle the header";

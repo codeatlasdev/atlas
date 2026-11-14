@@ -124,6 +124,9 @@ describe("splitUi", () => {
 	test("anything else is left alone, including /ui inside the text and /ui alone", () => {
 		expect(splitUi("restyle the /ui header")).toEqual({ ui: false, prompt: "restyle the /ui header" });
 		expect(splitUi("/uikit rocks")).toEqual({ ui: false, prompt: "/uikit rocks" });
-		expect(splitUi("/ui")).toEqual({ ui: false, prompt: "/ui" });
+	});
+	test("a bare /ui is a UI mark with no message, which the composer does not send", () => {
+		expect(splitUi("/ui")).toEqual({ ui: true, prompt: "" });
+		expect(splitUi("/ui   ")).toEqual({ ui: true, prompt: "" });
 	});
 });

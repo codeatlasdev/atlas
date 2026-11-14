@@ -75,8 +75,8 @@ fn card_images_of(
     let skip = agent.len().saturating_sub(MEDIA_GROUP_MAX);
     agent[skip..]
         .iter()
-        .filter_map(|a| {
-            match crate::crew::attachments::read(store, crewmate_id, &task, &a.name) {
+        .filter_map(
+            |a| match crate::crew::attachments::read(store, crewmate_id, &task, &a.name) {
                 Ok((a, bytes)) => Some((a.name, bytes)),
                 Err(e) => {
                     eprintln!(
@@ -85,8 +85,8 @@ fn card_images_of(
                     );
                     None
                 }
-            }
-        })
+            },
+        )
         .collect()
 }
 
@@ -1019,12 +1019,18 @@ mod tests {
     #[test]
     fn a_leading_ui_command_marks_the_message_and_is_dropped() {
         use super::strip_ui;
-        assert_eq!(strip_ui("/ui restyle the header"), (true, "restyle the header"));
+        assert_eq!(
+            strip_ui("/ui restyle the header"),
+            (true, "restyle the header")
+        );
         assert_eq!(
             strip_ui("/ui /task Ana fix the header"),
             (true, "/task Ana fix the header")
         );
-        assert_eq!(strip_ui("restyle the /ui header"), (false, "restyle the /ui header"));
+        assert_eq!(
+            strip_ui("restyle the /ui header"),
+            (false, "restyle the /ui header")
+        );
         assert_eq!(strip_ui("/uikit"), (false, "/uikit"));
         assert_eq!(strip_ui("/ui"), (false, "/ui"));
     }
@@ -1038,7 +1044,9 @@ mod tests {
             ("b.png".to_string(), b"\x89PNG\r\n\x1a\nBBBB".to_vec()),
         ];
         let (ctype, body) = super::media_group_body(42, &imgs);
-        let boundary = ctype.strip_prefix("multipart/form-data; boundary=").unwrap();
+        let boundary = ctype
+            .strip_prefix("multipart/form-data; boundary=")
+            .unwrap();
         let text = String::from_utf8_lossy(&body).to_string();
         assert!(text.starts_with(&format!(
             "--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n42\r\n"

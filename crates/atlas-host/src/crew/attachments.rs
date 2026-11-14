@@ -598,7 +598,11 @@ pub(crate) fn add(
     if have + images.len() > cap {
         return Err(format!(
             "a task takes at most {cap} {}images, it has {have} and {} more were sent",
-            if source == SOURCE_AGENT { "capture " } else { "" },
+            if source == SOURCE_AGENT {
+                "capture "
+            } else {
+                ""
+            },
             images.len()
         ));
     }

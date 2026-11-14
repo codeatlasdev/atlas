@@ -148,8 +148,15 @@ pub(super) async fn gate_success(
         let action = TaskAction::Refused {
             reasons: verdict.reasons.clone(),
         };
-        match park_and_wait(hub, crewmate, task, &kept, action, Card::Refused(verdict.reasons))
-            .await
+        match park_and_wait(
+            hub,
+            crewmate,
+            task,
+            &kept,
+            action,
+            Card::Refused(verdict.reasons),
+        )
+        .await
         {
             Gate::Finish(_) => {} // overridden: the proof below still applies
             handled => return handled,

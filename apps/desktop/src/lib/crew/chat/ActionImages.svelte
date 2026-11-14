@@ -38,7 +38,8 @@
 			{#each images as im, i (im.name + i)}
 				<li>
 					<span class="name">{im.name}</span>
-					<button class="rm" aria-label={`Remove ${im.name}`} {disabled} onclick={() => onremove(i)}>×</button>
+					<button class="rm" aria-label={`Remove ${im.name}`} {disabled} onclick={() => onremove(i)}>×</button
+					>
 				</li>
 			{/each}
 		</ul>

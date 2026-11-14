@@ -178,11 +178,8 @@ async fn the_mcp_capture_tool_returns_every_combination_visited_and_the_error_wh
         .map(|s| s["name"].as_str().unwrap())
         .collect();
     assert!(names.contains(&"chromium-390-dark.png") && names.contains(&"webkit-390-dark.png"));
-    let kept = crate::crew::attachments::task_dir(
-        &crate::crew::store::CrewStore::new(&dir),
-        &id,
-        "task7",
-    );
+    let kept =
+        crate::crew::attachments::task_dir(&crate::crew::store::CrewStore::new(&dir), &id, "task7");
     assert!(kept.join("webkit-390-dark.png").is_file());
 
     // A missing combination: the MCP call is an error whose message names it.

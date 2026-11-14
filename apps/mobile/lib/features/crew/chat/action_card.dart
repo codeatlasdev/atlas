@@ -521,7 +521,9 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
                   _images[i].name,
                   style: const TextStyle(fontSize: 12),
                 ),
-                onDeleted: busy ? null : () => setState(() => _images.removeAt(i)),
+                onDeleted: busy
+                    ? null
+                    : () => setState(() => _images.removeAt(i)),
                 deleteButtonTooltipMessage: 'Remove ${_images[i].name}',
               ),
           ],

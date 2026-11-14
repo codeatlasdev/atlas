@@ -9,8 +9,8 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::attachments::{daemon_with_telegram, fake_telegram, wait_for};
-use super::fixture::{Hooks, create_crewmate, daemon, fake_agent, lock_agent_bin, use_agent_bin};
 use super::fixture::wait_task_state;
+use super::fixture::{Hooks, create_crewmate, daemon, fake_agent, lock_agent_bin, use_agent_bin};
 use crate::HostClient;
 use crate::crew::capture::tests::{fake_runner, full_report};
 use crate::crew::capture::{self, TEST_RUNNER};
@@ -129,7 +129,14 @@ async fn a_ui_task_finishing_without_captures_parks_as_prove_ui_with_a_clear_rea
     let id = create_crewmate(&client, "Ui").await;
     let task = send(&client, &id, "restyle the header", true).await;
 
-    let parked = wait_task_state(&client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    let parked = wait_task_state(
+        &client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
     let reason = parked["action"]["reason"].as_str().unwrap();
     assert!(
@@ -158,11 +165,21 @@ async fn one_agent_image_is_not_enough_and_the_reason_counts_it() {
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "OneShot").await;
     let task = send(&client, &id, "restyle", true).await;
-    let parked = wait_task_state(&client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    let parked = wait_task_state(
+        &client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
     clear_runner();
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
     assert!(
-        parked["action"]["reason"].as_str().unwrap().contains("1 of 2"),
+        parked["action"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("1 of 2"),
         "{parked}"
     );
     client.call("shutdown", json!({})).await.ok();
@@ -173,7 +190,9 @@ async fn one_agent_image_is_not_enough_and_the_reason_counts_it() {
 fn capturing_one_shot_agent(root: &Path) -> std::path::PathBuf {
     capture_calls_agent(
         root,
-        &[json!({"url": "http://localhost:3000/", "engines": ["chromium"], "widths": [390], "themes": ["light"]})],
+        &[
+            json!({"url": "http://localhost:3000/", "engines": ["chromium"], "widths": [390], "themes": ["light"]}),
+        ],
         "Restyled it.",
     )
 }
@@ -238,17 +257,24 @@ async fn images_the_user_sent_do_not_count_as_proof() {
         .call(
             "crewmate_task",
             json!({"id": id, "prompt": "match this mock", "source": "test", "ui": true,
-                   "attachments": [
-                       {"name": "a.png", "mime": "image/png", "data_b64": b64(PNG)},
-                       {"name": "b.png", "mime": "image/png", "data_b64": b64(PNG)},
-                   ]}),
+            "attachments": [
+                {"name": "a.png", "mime": "image/png", "data_b64": b64(PNG)},
+                {"name": "b.png", "mime": "image/png", "data_b64": b64(PNG)},
+            ]}),
         )
         .await
         .unwrap()["task"]["id"]
         .as_str()
         .unwrap()
         .to_string();
-    let parked = wait_task_state(&client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    let parked = wait_task_state(
+        &client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
     client.call("shutdown", json!({})).await.ok();
     crate::crew::runner::set_test_agent_bin(None);
@@ -278,7 +304,14 @@ async fn the_agent_can_mark_its_task_ui_and_the_gate_then_applies() {
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "SelfMark").await;
     let task = send(&client, &id, "tweak the layout", false).await;
-    let parked = wait_task_state(&client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    let parked = wait_task_state(
+        &client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
     assert_eq!(parked["action"]["kind"], "prove_ui", "{parked}");
     assert_eq!(parked["ui"], true);
     // A pane that is not this crewmate's cannot mark anything.
@@ -293,7 +326,14 @@ async fn the_agent_can_mark_its_task_ui_and_the_gate_then_applies() {
 async fn parked_ui_task(client: &HostClient, name: &str) -> (String, String) {
     let id = create_crewmate(client, name).await;
     let task = send(client, &id, "restyle the header", true).await;
-    wait_task_state(client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    wait_task_state(
+        client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
     (id, task)
 }
 
@@ -316,7 +356,10 @@ async fn override_accepts_the_work_and_a_wrong_answer_is_an_error_not_a_failed_t
         )
         .await;
     assert!(bad.is_err(), "{bad:?}");
-    assert_eq!(task_of(&client, &id, &task).await["state"], "waiting_action");
+    assert_eq!(
+        task_of(&client, &id, &task).await["state"],
+        "waiting_action"
+    );
 
     client
         .call(
@@ -396,11 +439,17 @@ async fn a_retry_with_images_carries_them_into_the_next_run() {
         let atts = t["attachments"].as_array().cloned().unwrap_or_default();
         if t["state"] == "waiting_action" && atts.iter().any(|a| a["name"] == "marked.png") {
             let marked = atts.iter().find(|a| a["name"] == "marked.png").unwrap();
-            assert!(marked["source"].is_null(), "a user image has no source: {marked}");
+            assert!(
+                marked["source"].is_null(),
+                "a user image has no source: {marked}"
+            );
             // The agent was told about it on the second run: the prompt block names the staged file.
             break;
         }
-        assert!(std::time::Instant::now() < deadline, "the image never landed: {t}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the image never landed: {t}"
+        );
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
     // The bytes are fetchable like any attachment.
@@ -460,6 +509,9 @@ async fn images_only_ride_on_a_retry_and_a_bad_image_refuses_the_answer() {
 // task's records, fetchable with `crewmate_attachment`, not a side folder.
 #[tokio::test(flavor = "multi_thread")]
 async fn captures_land_as_agent_attachments_the_thread_can_fetch() {
+    // Same order as every test here (the agent binary first, then the capture runner): the other way round
+    // deadlocks two tests that each hold one and wait for the other.
+    let _bin = lock_agent_bin().await;
     let _cap = capture::TEST_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
@@ -467,7 +519,6 @@ async fn captures_land_as_agent_attachments_the_thread_can_fetch() {
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Caps").await;
     // A task must exist for a capture to attach to: a long-running one.
-    let _bin = lock_agent_bin().await;
     use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 20"));
     let task = send(&client, &id, "look", false).await;
     wait_task_state(&client, &id, &task, "running", Duration::from_secs(20)).await;
@@ -485,7 +536,10 @@ async fn captures_land_as_agent_attachments_the_thread_can_fetch() {
     let t = task_of(&client, &id, &task).await;
     let atts = t["attachments"].as_array().unwrap();
     assert_eq!(atts.len(), 8, "{t}");
-    assert!(atts.iter().all(|a| a["source"] == "agent" && a["mime"] == "image/png"));
+    assert!(
+        atts.iter()
+            .all(|a| a["source"] == "agent" && a["mime"] == "image/png")
+    );
     let first = atts[0]["name"].as_str().unwrap();
     let piece = client
         .call(
@@ -521,7 +575,14 @@ async fn telegram_gets_the_agent_images_as_a_media_group_then_the_buttons() {
     let client = daemon_with_telegram(&tmp.path().join("hostd"), &base).await;
     let id = create_crewmate(&client, "Tg").await;
     let task = send(&client, &id, "restyle", true).await;
-    wait_task_state(&client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    wait_task_state(
+        &client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
     clear_runner();
 
     let order = wait_for("the card on Telegram", || {
@@ -537,7 +598,10 @@ async fn telegram_gets_the_agent_images_as_a_media_group_then_the_buttons() {
         paths.lock()
     );
     assert!(
-        paths.lock().iter().all(|p| p.starts_with("/bot123:abc/") || p.starts_with("/file/")),
+        paths
+            .lock()
+            .iter()
+            .all(|p| p.starts_with("/bot123:abc/") || p.starts_with("/file/")),
         "{:?}",
         paths.lock()
     );
@@ -572,7 +636,14 @@ async fn the_crewmate_list_carries_the_waiting_card_and_only_the_agents_images()
         .as_str()
         .unwrap()
         .to_string();
-    wait_task_state(&client, &id, &task, "waiting_action", Duration::from_secs(30)).await;
+    wait_task_state(
+        &client,
+        &id,
+        &task,
+        "waiting_action",
+        Duration::from_secs(30),
+    )
+    .await;
 
     let list = client.call("crewmate_list", json!({})).await.unwrap();
     let w = &list["crewmates"][0]["waiting_task"];

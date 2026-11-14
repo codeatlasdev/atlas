@@ -120,7 +120,13 @@
 				<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
 				<TaskReply task={t} {chat} />
 				{#if agentImages.length}
-					<TaskImages attachments={agentImages} taskId={t.id} crewmateId={crewmate.id} {hostKey} align="start" />
+					<TaskImages
+						attachments={agentImages}
+						taskId={t.id}
+						crewmateId={crewmate.id}
+						{hostKey}
+						align="start"
+					/>
 				{/if}
 			</div>
 		</div>

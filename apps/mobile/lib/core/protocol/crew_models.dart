@@ -450,7 +450,9 @@ class CrewmateWaitingTask {
   factory CrewmateWaitingTask.fromJson(Map<String, dynamic> j) =>
       CrewmateWaitingTask(
         id: j['id'] as String? ?? '',
-        action: TaskAction.fromJson((j['action'] as Map).cast<String, dynamic>()),
+        action: TaskAction.fromJson(
+          (j['action'] as Map).cast<String, dynamic>(),
+        ),
         result: j['result'] as String?,
         attachments: [
           for (final a in (j['attachments'] as List<dynamic>?) ?? const [])

@@ -240,19 +240,21 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                                   e.crewmate.pendingApproval!,
                                   allow,
                                 ),
-                                onAnswerTask: (value) => answerWaitingAction(
-                                  ref,
-                                  e.device,
-                                  e.crewmate.id,
-                                  e.crewmate.waitingTask!,
-                                  value,
-                                ).catchError((Object err) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('$err')),
-                                    );
-                                  }
-                                }),
+                                onAnswerTask: (value) =>
+                                    answerWaitingAction(
+                                      ref,
+                                      e.device,
+                                      e.crewmate.id,
+                                      e.crewmate.waitingTask!,
+                                      value,
+                                    ).catchError((Object err) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                              SnackBar(content: Text('$err')),
+                                            );
+                                      }
+                                    }),
                                 onTap: () => _openCrewmate(context, e),
                               ),
                           ],

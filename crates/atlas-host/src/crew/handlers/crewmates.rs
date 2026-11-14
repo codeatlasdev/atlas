@@ -120,7 +120,9 @@ pub(crate) fn list(hub: &Hub) -> Result<Value, String> {
                 .read_tasks(&b.id, 20)
                 .into_iter()
                 .rev()
-                .find(|t| t.state == crate::crew::store::TaskState::WaitingAction && t.action.is_some())
+                .find(|t| {
+                    t.state == crate::crew::store::TaskState::WaitingAction && t.action.is_some()
+                })
             {
                 let agent: Vec<_> = t
                     .attachments

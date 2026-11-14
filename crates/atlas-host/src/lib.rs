@@ -9,6 +9,7 @@ pub mod client;
 pub mod crew;
 mod exec;
 mod fs;
+mod git;
 #[cfg(unix)]
 pub mod handoff;
 mod idle;

@@ -98,12 +98,50 @@ pub struct ActionConfig {
     /// Use it for actions that build, run test suites or benches.
     #[serde(default)]
     pub heavy: bool,
+    /// Cache the action's result machine-wide (`atlas run --cache`): an identical run (same command,
+    /// same bytes in `inputs`, same `env` values and `tools` versions) restores `outputs`, replays
+    /// the log and runs nothing. Only a successful run is stored.
+    pub cache: Option<ActionCache>,
+}
+
+/// The `cache:` block of an action: what its result depends on and what it produces.
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
+#[schemars(deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct ActionCache {
+    /// Globs of the files the command reads, relative to the project root (`.gitignore` respected;
+    /// uncommitted edits count). Omit: every file git would not ignore.
+    #[serde(default)]
+    pub inputs: Vec<String>,
+    /// Files or folders inside the project the command produces: stored on a miss, restored on a hit.
+    #[serde(default)]
+    pub outputs: Vec<String>,
+    /// Names of environment variables the command reads; their values are part of the key.
+    #[serde(default)]
+    pub env: Vec<String>,
+    /// Programs whose `--version` is part of the key (a toolchain upgrade misses).
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 impl ActionConfig {
-    /// The command to spawn: `command`, routed through the heavy-job queue when `heavy: true`.
+    /// The command to spawn: `command`, through the task cache when there is a `cache:` block, and
+    /// through the heavy-job queue when `heavy: true`.
     pub fn spawn_command(&self) -> std::borrow::Cow<'_, str> {
-        if self.heavy {
+        if let Some(c) = &self.cache {
+            atlas_core::taskcache::wrap::cached(
+                &self.label,
+                &self.command,
+                self.heavy,
+                atlas_core::taskcache::wrap::Declared {
+                    inputs: &c.inputs,
+                    outputs: &c.outputs,
+                    env: &c.env,
+                    tools: &c.tools,
+                },
+            )
+            .into()
+        } else if self.heavy {
             atlas_core::heavy::queued(&self.label, &self.command).into()
         } else {
             (&self.command).into()

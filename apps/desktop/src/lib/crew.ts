@@ -216,6 +216,10 @@ export interface CrewmateTask {
 	title?: string;
 	/** IANA timezone sent with the task; hostd uses it for cron evaluation and agent context. */
 	tz?: string;
+	/** True once a server restart interrupted the task and it was started again (the chat says so). */
+	resumed?: boolean;
+	/** How many restarts interrupted it; the server fails the task after too many. */
+	restarts?: number;
 	/** Set while the task waits for the crewmate's project to download ("codeatlasdev/ui"); gone once it can start. */
 	preparing?: string;
 	/** The GitHub issue, PR or comment this task answers; hostd posts and edits its progress comment there. */

@@ -1,16 +1,16 @@
 //! The crew server's shared state: the store, push tokens, the Telegram bridge, the per-crewmate
 //! runners and the waiters a task parks on (an answer to `ask_user`, an action, a GitHub login).
 //! `start` brings it up when hostd does: schedulers, triggers, Telegram, approval forwarding, and the
-//! recovery of tasks a restart interrupted.
+//! recovery of tasks a restart interrupted (`runner::recover`).
 
 use std::sync::Arc;
 
 use parking_lot::Mutex;
 
 use super::github::{GhCli, GithubApi, GithubLoginHandle};
-use super::store::{self, CrewStore, TaskState};
+use super::store::{self, CrewStore};
 use super::telegram::TelegramBridge;
-use super::{PushToken, now_s, pane, push, runner, schedule, triggers};
+use super::{PushToken, pane, push, runner, schedule, triggers};
 use crate::server::Hub;
 
 pub(crate) struct CrewHub {
@@ -97,7 +97,7 @@ impl CrewHub {
         triggers::start(hub.clone());
         forward_approvals(hub.clone());
         if let Some(hub_arc) = hub.upgrade() {
-            self.recover_tasks(&hub_arc);
+            runner::recover(&hub_arc);
         }
     }
 
@@ -108,37 +108,6 @@ impl CrewHub {
             return api;
         }
         Arc::new(GhCli)
-    }
-
-    /// Re-enqueue any tasks that were Queued/Running when the daemon last stopped.
-    /// Mark Running → Failed (interrupted), leave Queued for re-enqueue.
-    fn recover_tasks(&self, hub: &Arc<Hub>) {
-        for crewmate in &self.store.list_crewmates() {
-            let tasks = self
-                .store
-                .read_tasks(&crewmate.id, store::default_task_limit());
-            for t in tasks.into_iter().rev() {
-                match t.state {
-                    TaskState::Queued => {
-                        runner::enqueue(hub, &self.store, crewmate, t);
-                    }
-                    TaskState::Running | TaskState::WaitingAction => {
-                        let mut t2 = t;
-                        t2.state = TaskState::Failed;
-                        t2.action = None;
-                        t2.error = Some("interrupted by daemon restart".to_string());
-                        t2.finished_at = Some(now_s());
-                        if let Err(e) = self.store.append_task(&crewmate.id, &t2) {
-                            eprintln!(
-                                "atlas crew: crewmate {} task {}: cannot record the restart interruption: {e}",
-                                crewmate.id, t2.id
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
     }
 
     /// Whether anyone can answer a crewmate's tool prompt right now: a linked Telegram chat, a

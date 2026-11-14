@@ -249,6 +249,12 @@ class CrewmateTask {
   /// The GitHub issue, PR or comment this task answers (a task from a GitHub automation).
   final GithubOrigin? origin;
 
+  /// Set once a server restart interrupted the task and it was started again.
+  final bool resumed;
+
+  /// How many restarts interrupted it (the server fails it after too many).
+  final int restarts;
+
   const CrewmateTask({
     required this.id,
     required this.ts,
@@ -268,6 +274,8 @@ class CrewmateTask {
     this.preparing,
     this.tz,
     this.origin,
+    this.resumed = false,
+    this.restarts = 0,
   });
 
   factory CrewmateTask.fromJson(Map<String, dynamic> j) => CrewmateTask(
@@ -296,6 +304,8 @@ class CrewmateTask {
     origin: j['origin'] == null
         ? null
         : GithubOrigin.fromJson((j['origin'] as Map).cast<String, dynamic>()),
+    resumed: j['resumed'] as bool? ?? false,
+    restarts: (j['restarts'] as num?)?.toInt() ?? 0,
   );
 }
 

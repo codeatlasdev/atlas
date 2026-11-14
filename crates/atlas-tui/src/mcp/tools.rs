@@ -109,10 +109,28 @@ const TOOLS: &[ToolDef] = &[
         schema: schema_no_args,
         control: None,
     },
+    ToolDef {
+        name: "atlas_last_result",
+        description: "Read-only. The last outcome of a task, atlas.yaml action or command that ran through the machine-wide task cache (`atlas run --cache`, or an action with a `cache:` block), whichever worktree or agent ran it: {name, command, project, key, hit, exit, duration_ms, at (unix ms), log_tail (last ~2 KiB, both streams), saved_ms (only on a hit)}. `hit: true` means the result came from the cache and nothing ran (duration_ms is how long the command took when it really ran); `hit: false` means it ran. Failures are reported too (exit != 0) although only exit 0 is cached. Ask before rerunning a build or test suite: if another agent already ran it on the same bytes, `atlas run --cache -- <cmd>` returns that result in milliseconds. `name` is the action label, the `--label` or the command line. Works without `atlas dev`.",
+        schema: schema_last_result,
+        control: None,
+    },
 ];
 
 fn schema_no_args() -> Value {
     json!({"type": "object", "properties": {}, "additionalProperties": false})
+}
+
+fn schema_last_result() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "Action label, `atlas run --label` value or the exact command line."},
+            "project": {"type": "string", "description": "Only runs of this project (the folder name of its root). Omit for any."}
+        },
+        "required": ["name"],
+        "additionalProperties": false
+    })
 }
 
 fn schema_service() -> Value {
@@ -220,6 +238,7 @@ pub async fn call_with(root: &Path, name: &str, args: &Value, caller: &Caller) -
         "atlas_config" => config_tool(root),
         "atlas_hygiene" => hygiene_tool().await,
         "atlas_heavy_status" => heavy_status_tool(),
+        "atlas_last_result" => last_result_in(&atlas_core::taskcache::Cache::default_cache(), args),
         _ => wait_ready(root, args).await,
     }
 }
@@ -447,6 +466,16 @@ fn hygiene_json(registry: &atlas_core::hygiene::Registry, base: &Path) -> ToolRe
 fn heavy_status_tool() -> ToolResult {
     let st = atlas_core::heavy::Dir::default_dir().status(atlas_core::heavy::slots());
     serde_json::to_string_pretty(&st).map_err(|e| e.to_string())
+}
+
+/// `atlas_last_result` against a given store (the tool uses the machine-wide one).
+fn last_result_in(cache: &atlas_core::taskcache::Cache, args: &Value) -> ToolResult {
+    let name = opt_str(args, "name")?.ok_or("'name' is required")?;
+    let project = opt_str(args, "project")?;
+    let found = cache
+        .last_result(name, project)
+        .ok_or_else(|| format!("no cached or recorded run named '{name}' (run it with `atlas run --cache --label {name} -- <cmd>`)"))?;
+    serde_json::to_string_pretty(&found).map_err(|e| e.to_string())
 }
 
 pub(crate) fn config_tool(root: &Path) -> ToolResult {
@@ -722,7 +751,8 @@ mod tests {
                 "atlas_run_action",
                 "atlas_hygiene",
                 "atlas_wait_ready",
-                "atlas_heavy_status"
+                "atlas_heavy_status",
+                "atlas_last_result"
             ]
         );
         for t in c.as_array().unwrap() {
@@ -1089,5 +1119,67 @@ mod tests {
         );
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    // The tool `atlas_last_result` answers from what the real cache recorded: the contract is the
+    // serialized `LastResult`, never a hand-written payload. Guards issue #126.
+    #[test]
+    fn last_result_reports_the_last_outcome_with_hit_exit_duration_and_log_tail() {
+        use atlas_core::taskcache::{Cache, Chunk, Run, Spec, Stream};
+        let d = tempfile::TempDir::new().unwrap();
+        let cache = Cache::at(d.path().join("store"), 64 << 20);
+        let spec = Spec {
+            cwd: d.path().to_path_buf(),
+            argv: vec!["true".into()],
+            inputs: vec!["nothing-matches".into()],
+            outputs: vec![],
+            env: vec![],
+            tools: vec![],
+        };
+        let key = spec.key().unwrap();
+        let run = Run {
+            project: "demo".into(),
+            label: "test".into(),
+            command: "cargo test".into(),
+            exit: 0,
+            duration_ms: 4200,
+            log: vec![Chunk {
+                stream: Stream::Stdout,
+                bytes: b"all green\n".to_vec(),
+            }],
+        };
+        assert!(last_result_in(&cache, &json!({"name": "test"})).is_err());
+
+        cache.record(&key, &spec, &run).unwrap();
+        let miss: Value =
+            serde_json::from_str(&last_result_in(&cache, &json!({"name": "test"})).unwrap())
+                .unwrap();
+        assert_eq!(miss["hit"], false);
+        assert_eq!(miss["exit"], 0);
+        assert_eq!(miss["duration_ms"], 4200);
+        assert_eq!(miss["command"], "cargo test");
+        assert_eq!(miss["log_tail"], "all green\n");
+        assert!(miss["at"].as_u64().unwrap() > 0);
+
+        let entry = cache.lookup(&key).unwrap();
+        cache.note_hit(&entry, &key);
+        // Found by the command line as well as the label.
+        let hit: Value =
+            serde_json::from_str(&last_result_in(&cache, &json!({"name": "cargo test"})).unwrap())
+                .unwrap();
+        assert_eq!(hit["hit"], true);
+        assert_eq!(hit["saved_ms"], 4200);
+        assert_eq!(hit["key"], key.as_str());
+    }
+
+    #[test]
+    fn last_result_filters_by_project_and_rejects_a_missing_name() {
+        use atlas_core::taskcache::Cache;
+        let d = tempfile::TempDir::new().unwrap();
+        let cache = Cache::at(d.path().join("store"), 1 << 20);
+        let e = last_result_in(&cache, &json!({})).unwrap_err();
+        assert!(e.contains("name"), "{e}");
+        let e = last_result_in(&cache, &json!({"name": "x", "project": 3})).unwrap_err();
+        assert!(e.contains("project"), "{e}");
     }
 }

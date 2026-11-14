@@ -34,7 +34,8 @@ pub(super) async fn wait_for_outcome(
 ) -> (Result<String, String>, Vec<Step>) {
     let deadline = tokio::time::sleep(TASK_TIMEOUT);
     tokio::pin!(deadline);
-    let mut steps: Vec<Step> = Vec::new();
+    // Steps from before a restart ("the server restarted") stay above the run's own.
+    let mut steps: Vec<Step> = task.steps.clone();
 
     loop {
         tokio::select! {
@@ -124,7 +125,10 @@ pub(super) fn finish_task(
     steps: Vec<Step>,
 ) {
     task.finished_at = Some(now_s());
-    task.steps = steps;
+    // A caller with no steps of its own (a conversational turn) keeps the ones the task has.
+    if !steps.is_empty() {
+        task.steps = steps;
+    }
     match outcome {
         Ok(result) => {
             task.state = TaskState::Done;

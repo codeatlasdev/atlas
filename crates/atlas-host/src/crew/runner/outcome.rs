@@ -33,7 +33,8 @@ pub(super) async fn wait_for_outcome(
 ) -> (Result<String, String>, Vec<Step>) {
     let deadline = tokio::time::sleep(TASK_TIMEOUT);
     tokio::pin!(deadline);
-    let mut steps: Vec<Step> = Vec::new();
+    // Steps from before a restart ("the server restarted") stay above the run's own.
+    let mut steps: Vec<Step> = task.steps.clone();
 
     loop {
         tokio::select! {
@@ -114,6 +115,20 @@ pub(super) async fn wait_for_outcome(
     }
 }
 
+/// Audit a task's lifecycle step (`task_queued`, `task_started`, `task_finished`): the task's source and a
+/// prompt excerpt when it enters, its end state and error when it leaves.
+pub(super) fn audit_task(hub: &Hub, crewmate_id: &str, kind: &str, task: &Task) {
+    let mut f = serde_json::json!({"task_id": task.id, "source": task.source});
+    match kind {
+        "task_finished" => {
+            f["state"] = serde_json::json!(task.state);
+            f["error"] = serde_json::json!(task.error);
+        }
+        _ => f["prompt"] = serde_json::json!(task.prompt),
+    }
+    hub.crew.audit.record(Some(crewmate_id), kind, f);
+}
+
 pub(super) fn finish_task(
     hub: &Hub,
     crewmate: &Crewmate,
@@ -122,7 +137,10 @@ pub(super) fn finish_task(
     steps: Vec<Step>,
 ) {
     task.finished_at = Some(now_s());
-    task.steps = steps;
+    // A caller with no steps of its own (a conversational turn) keeps the ones the task has.
+    if !steps.is_empty() {
+        task.steps = steps;
+    }
     match outcome {
         Ok(result) => {
             task.state = TaskState::Done;
@@ -137,6 +155,7 @@ pub(super) fn finish_task(
             }
         }
     }
+    audit_task(hub, &crewmate.id, "task_finished", task);
     // The result is announced even when it cannot be stored: the clients and Telegram still hear it,
     // and `persist` logged why the log lacks it.
     let _ = persist(hub, &crewmate.id, task);
@@ -216,6 +235,9 @@ pub(super) fn persist_running(hub: &Hub, crewmate_id: &str, task: &mut Task) -> 
         task.state = TaskState::Failed;
         task.error = Some(msg.clone());
         task.finished_at = Some(now_s());
+        audit_task(hub, crewmate_id, "task_finished", task);
+    } else {
+        audit_task(hub, crewmate_id, "task_started", task);
     }
     broadcast_task(hub, crewmate_id, task);
     stored.is_ok()

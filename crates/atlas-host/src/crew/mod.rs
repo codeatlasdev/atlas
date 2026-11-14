@@ -19,6 +19,7 @@
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
 
+pub(crate) mod audit;
 pub(crate) mod engine;
 pub(crate) mod events;
 pub(crate) mod github;
@@ -44,13 +45,36 @@ use serde_json::{Value, json};
 use crate::protocol::HostCmd;
 use crate::server::Hub;
 
+pub use store::archive::{self, ImportError, ImportReport, Manifest};
+
+/// `atlas hostd --crew-export`: the archive of this hostd dir's crewmates to `out`. Reads the files
+/// directly, so it works with the daemon stopped (an uninstall exports before it removes anything).
+pub fn export_archive(
+    dir: &std::path::Path,
+    ids: &[String],
+    with_secrets: bool,
+    out: &mut impl std::io::Write,
+) -> anyhow::Result<Manifest> {
+    archive::export(&store::CrewStore::new(dir), ids, with_secrets, out)
+}
+
+/// `atlas hostd --crew-import`: the other direction. A running daemon picks the new crewmates up on its
+/// next list; nothing here needs it.
+pub fn import_archive(
+    dir: &std::path::Path,
+    input: impl std::io::Read,
+    rename: bool,
+) -> Result<ImportReport, ImportError> {
+    archive::import(&store::CrewStore::new(dir), input, rename)
+}
+
 pub(crate) use hub::CrewHub;
 pub(crate) use push::PushToken;
 pub(crate) use store::{Crewmate, Task, now_s};
 
 /// Route a crew `HostCmd`. Called from `server.rs handle()`.
 pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
-    use handlers::{crewmates as c, settings as s, tasks as t};
+    use handlers::{audit as a, crewmates as c, settings as s, tasks as t};
     if !hub.crew_host {
         return Err("this computer is not a crew server (atlas crew install)".into());
     }
@@ -111,6 +135,13 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         } => t::answer(hub, id, ask_id, key, text),
         HostCmd::CrewmateActionAnswer { id, task, value } => t::action_answer(hub, id, task, value),
         HostCmd::CrewmateUsage { id, since } => t::usage(hub, id, since),
+        HostCmd::CrewmateAudit {
+            id,
+            since,
+            limit,
+            kind,
+        } => a::read(hub, Some(id), since, limit, kind),
+        HostCmd::CrewAudit { since, limit, kind } => a::read(hub, None, since, limit, kind),
 
         HostCmd::CrewmateMemory { id } => s::memory(hub, id),
         HostCmd::CrewmateMemorySet { id, text } => s::set_memory(hub, id, text),
@@ -120,7 +151,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewTelegramSet { token } => s::telegram_set(hub, token),
         HostCmd::CrewTelegramLink {} => s::telegram_link(hub),
         HostCmd::CrewTelegramStatus {} => s::telegram_status(hub),
-        HostCmd::PushRegister { token, platform } => s::push_register(hub, token, platform),
+        HostCmd::PushRegister {
+            token,
+            platform,
+            grant,
+        } => s::push_register(hub, token, platform, grant),
         HostCmd::PushUnregister { token } => s::push_unregister(hub, token),
         HostCmd::CrewSettingsGet {} => s::get(hub),
         HostCmd::CrewSettingsSet {

@@ -12,10 +12,13 @@
 //! | `engines`     | conversational engines: sessions, secrets, approvals, omp extension      |
 //! | `actions`     | `ATLAS_ACTION` parsing, `waiting_action`, GitHub login                   |
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
+//! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
+//! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
+//! | `restart`     | tasks in flight when hostd restarts: resumed, capped, answered, held while paused |
 //! | `untrusted`   | text from GitHub/webhooks: author filter, quoting, no bypass flags       |
 
 mod payloads;
@@ -24,6 +27,8 @@ mod payloads;
 mod actions;
 #[cfg(unix)]
 mod approvals;
+#[cfg(unix)]
+mod audit;
 #[cfg(unix)]
 mod automations;
 #[cfg(unix)]
@@ -38,6 +43,10 @@ mod limits;
 mod pause;
 #[cfg(unix)]
 mod projects;
+#[cfg(unix)]
+mod push;
+#[cfg(unix)]
+mod restart;
 #[cfg(unix)]
 mod tasks;
 #[cfg(unix)]

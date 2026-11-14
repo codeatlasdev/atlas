@@ -242,6 +242,24 @@ Run a heavy command (a build, a test suite, a bench) through the **machine-wide 
 - `atlas heavy status` lists who holds the slots and who waits, with ages and ETAs (`--json` is what the MCP tool [`atlas_heavy_status`](mcp.md#atlas_heavy_status) returns).
 - In `atlas.yaml`, `heavy: true` (this release and later) on an [action](configuration.md#actions) (and `deploy.build_heavy: true` for [`deploy.build`](deploy.md)) routes it through the queue. `scripts/heavy.sh <cmd>` in this repo is a wrapper over `atlas run --heavy`.
 
+## Task cache (`atlas run --cache`, `atlas cache`)
+
+```text
+atlas run --cache [--input <GLOB>]... [--output <PATH>]... [--env <NAME>]... [--tool <PROG>]... [--cache-failures] [--heavy] [--label <NAME>] -- <cmd...>
+atlas cache status [--json]
+atlas cache gc
+atlas cache clear
+```
+
+Run a command through the **machine-wide task cache** so identical work never runs twice, whichever worktree or agent asks. The key is a sha256 of the argv, the **bytes of every input file as they are on disk now** (uncommitted edits included, `.gitignore` respected), the values of the declared `--env` names and the `--version` of the declared `--tool`s. The folder the command runs in is not part of the key: two worktrees with the same bytes share one result, two with different edits never do.
+
+- **Hit:** the stored outputs are put back (copy-on-write clone where the file system can, a copy otherwise; a declared folder is emptied first), the log is replayed to the same stdout/stderr, a line `atlas cache: hit <key> (…)` goes to stderr and the exit code is `0`. Nothing runs; a small entry takes a few milliseconds.
+- **Miss:** the command runs (with `--heavy`, behind the [heavy queue](#atlas-run---heavy)), its output passes through live, and **only an exit code of 0 is stored** (`--cache-failures` also stores a failure, and a hit replays its exit code). A failing run is still reported to `atlas_last_result`.
+- **Inputs:** `--input` globs (repeatable) pick the files that count; with none, every file under the current folder that git would not ignore does. **Outputs:** `--output` paths (files or folders inside the current folder, no `..`) are what a hit restores; without any, only the log and the exit code are cached. A bad output path or a `--tool` that cannot print its version stops the run before the command starts.
+- **Store:** `~/.atlas/cache/` (`ATLAS_CACHE_DIR` moves it). Contents are blobs by sha256 (outputs and logs, stored once however many entries and worktrees share them) and entries by key. The size cap is `ATLAS_CACHE_MAX_BYTES`, else `cache.max_bytes` in `~/.atlas/config.json` (`{"cache": {"max_bytes": 4294967296}}`), else 2 GiB: the least recently used entries are evicted so the store never ends a write above it, and an entry larger than the cap alone is not stored. Writes are atomic and one lock serialises mutations, so two agents caching the same key at once leave one valid entry. A log is kept up to its newest 8 MiB.
+- `atlas cache status` shows the entries, size against the cap and the counters (hits, misses, time saved: the original duration, once per hit; total and per project; `--json` is `stats.json`'s shape, which Atlas Desktop reads). `atlas cache gc` drops blobs no entry uses and trims to the cap; `atlas cache clear` empties everything.
+- In `atlas.yaml`, an [action](configuration.md#actions) with a `cache:` block (`inputs`, `outputs`, `env`, `tools`) runs through `atlas run --cache`. The MCP tool [`atlas_last_result`](mcp.md#atlas_last_result) answers what a task last did: exit, duration, when, log tail, hit or miss.
+
 ## `atlas config`
 
 ```text
@@ -256,13 +274,16 @@ atlas config schema
 
 ```text
 atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--binary <PATH>]
+atlas crew update <ssh-target> [--version <X.Y.Z>] [--rollback] [--port <N>] [--binary <PATH>]
 atlas crew uninstall <ssh-target> [-y|--yes]
+atlas crew export <ssh-target> [-o <FILE>] [--crewmate <ID>]... [--with-secrets]
+atlas crew import <ssh-target> <FILE> [--rename]
 atlas crew status <ssh-target>
 atlas crew logs <ssh-target> [-f|--follow]
 atlas crew login <ssh-target> <omp|claude|codex|opencode>
 ```
 
-Turn a Linux x86_64 server with systemd and sudo into a crew server that runs crewmates around the clock, and manage it over SSH. `install` also migrates a server installed under the old `atlas-bot` name and keeps its data and system user; `atlas bot …` is a hidden alias of `atlas crew …`. `--binary` (or `ATLAS_CREW_BINARY`) uploads a Linux build instead of downloading this version's release. Full guide: [Atlas Crew](crew.md).
+Turn a Linux server (x86_64 or aarch64) with systemd and sudo into a crew server that runs crewmates around the clock, and manage it over SSH. `install` also migrates a server installed under the old `atlas-bot` name and keeps its data and system user; `atlas bot …` is a hidden alias of `atlas crew …`. `--binary` (or `ATLAS_CREW_BINARY` for `install`) uploads a Linux build instead of downloading this version's release. `update` puts this CLI's version (or `--version X`) on the server, keeps the previous binary as `atlas.prev`, waits for hostd and rolls back by itself if it does not answer; `--rollback` restores `atlas.prev`. `status` ends with the server's atlas version and whether it is behind this CLI. `uninstall` lists what it deletes first, offers an export and asks for the server name in a terminal (`--yes` skips the questions, still prints what is gone; no terminal and no `--yes` refuses). `export` writes a versioned `.tar.gz` of the crewmates, memory, task history, automations and usage (secrets only with `--with-secrets`, then the file is 0600; never the `work/` checkout or agent sign-ins); `import` restores it, refusing id collisions unless `--rename`. Full guide: [Atlas Crew](crew.md#back-up-and-move-crewmates).
 
 ## `atlas deploy`
 

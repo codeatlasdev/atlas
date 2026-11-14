@@ -1,20 +1,24 @@
 //! The crew server's shared state: the store, push tokens, the Telegram bridge, the per-crewmate
 //! runners and the waiters a task parks on (an answer to `ask_user`, an action, a GitHub login).
 //! `start` brings it up when hostd does: schedulers, triggers, Telegram, approval forwarding, and the
-//! recovery of tasks a restart interrupted.
+//! recovery of tasks a restart interrupted (`runner::recover`).
 
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use serde_json::json;
 
+use super::audit::{self, Audit};
 use super::github::GithubLoginHandle;
-use super::store::{self, CrewStore, TaskState};
+use super::store::{self, CrewStore};
 use super::telegram::TelegramBridge;
-use super::{PushToken, now_s, pane, push, runner, schedule, triggers};
+use super::{PushToken, pane, push, runner, schedule, triggers};
 use crate::server::Hub;
 
 pub(crate) struct CrewHub {
     pub(crate) store: CrewStore,
+    /// The append-only audit (`audit::Audit`): the one writer of every `audit.jsonl`.
+    pub(crate) audit: Audit,
     pub(crate) dir: std::path::PathBuf,
     /// Live push tokens.
     pub(crate) push_tokens: Mutex<Vec<PushToken>>,
@@ -46,6 +50,7 @@ impl CrewHub {
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));
         Arc::new(Self {
             store,
+            audit: Audit::new(dir),
             dir: dir.to_path_buf(),
             push_tokens: Mutex::new(push_tokens),
             telegram,
@@ -81,6 +86,10 @@ impl CrewHub {
         } else if was {
             runner::resume_all(hub);
         }
+        if was != paused {
+            self.audit
+                .record(None, if paused { "paused" } else { "resumed" }, json!({}));
+        }
         hub.broadcast(super::events::crew_paused(paused));
         Ok(())
     }
@@ -91,40 +100,10 @@ impl CrewHub {
         self.telegram.clone().start();
         schedule::start(hub.clone());
         triggers::start(hub.clone());
+        audit::observe(hub.clone());
         forward_approvals(hub.clone());
         if let Some(hub_arc) = hub.upgrade() {
-            self.recover_tasks(&hub_arc);
-        }
-    }
-
-    /// Re-enqueue any tasks that were Queued/Running when the daemon last stopped.
-    /// Mark Running → Failed (interrupted), leave Queued for re-enqueue.
-    fn recover_tasks(&self, hub: &Arc<Hub>) {
-        for crewmate in &self.store.list_crewmates() {
-            let tasks = self
-                .store
-                .read_tasks(&crewmate.id, store::default_task_limit());
-            for t in tasks.into_iter().rev() {
-                match t.state {
-                    TaskState::Queued => {
-                        runner::enqueue(hub, &self.store, crewmate, t);
-                    }
-                    TaskState::Running | TaskState::WaitingAction => {
-                        let mut t2 = t;
-                        t2.state = TaskState::Failed;
-                        t2.action = None;
-                        t2.error = Some("interrupted by daemon restart".to_string());
-                        t2.finished_at = Some(now_s());
-                        if let Err(e) = self.store.append_task(&crewmate.id, &t2) {
-                            eprintln!(
-                                "atlas crew: crewmate {} task {}: cannot record the restart interruption: {e}",
-                                crewmate.id, t2.id
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            runner::recover(&hub_arc);
         }
     }
 

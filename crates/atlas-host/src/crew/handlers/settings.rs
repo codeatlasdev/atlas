@@ -35,11 +35,16 @@ pub(crate) fn set_routines(hub: &Hub, id: String, routines: Vec<Value>) -> Resul
     for r in &parsed {
         schedule::validate_cron(&r.cron)?;
     }
-    crewmate.routines = parsed;
+    let old = std::mem::replace(&mut crewmate.routines, parsed);
     hub.crew
         .store
         .save_crewmate(&crewmate)
         .map_err(|e| format!("save_crewmate: {e}"))?;
+    hub.crew.audit.record(
+        Some(&id),
+        "config_changed",
+        json!({"field": "routines", "from": old, "to": crewmate.routines}),
+    );
     Ok(json!({}))
 }
 
@@ -84,8 +89,31 @@ pub(crate) fn set_triggers(hub: &Hub, id: String, triggers: Vec<Value>) -> Resul
         .store
         .save_crewmate(&crewmate)
         .map_err(|e| format!("save_crewmate: {e}"))?;
+    // The whole list goes in: a trigger is what lets text from outside start a task, so what it allows
+    // (authors, allow_auto) is exactly what an audit has to show. Webhook tokens are secrets of a kind:
+    // only their presence is kept.
+    hub.crew.audit.record(
+        Some(&id),
+        "config_changed",
+        json!({
+            "field": "triggers",
+            "from": audit_triggers(&old_triggers),
+            "to": audit_triggers(&crewmate.triggers),
+        }),
+    );
     hub.broadcast(events::crewmate_updated(&id));
     Ok(json!({}))
+}
+
+/// A trigger list for the audit: webhook tokens replaced by `"[token]"`.
+fn audit_triggers(list: &[Trigger]) -> Value {
+    let mut v = serde_json::to_value(list).unwrap_or_default();
+    for t in v.as_array_mut().into_iter().flatten() {
+        if t["kind"]["token"].is_string() {
+            t["kind"]["token"] = json!("[token]");
+        }
+    }
+    v
 }
 
 /// `CrewmateSecretSet`
@@ -104,6 +132,10 @@ pub(crate) fn set_secret(
         .store
         .set_secret(&id, &key, &value)
         .map_err(|e| format!("set_secret: {e}"))?;
+    // The name only, never the value.
+    hub.crew
+        .audit
+        .record(Some(&id), "secret_set", json!({"name": key}));
     Ok(json!({}))
 }
 
@@ -128,7 +160,12 @@ pub(crate) fn telegram_status(hub: &Hub) -> Result<Value, String> {
 }
 
 /// `PushRegister`
-pub(crate) fn push_register(hub: &Hub, token: String, platform: String) -> Result<Value, String> {
+pub(crate) fn push_register(
+    hub: &Hub,
+    token: String,
+    platform: String,
+    grant: String,
+) -> Result<Value, String> {
     // We need node_id; derive it from the mobile connection's node_id.
     // For now accept as a separate field; node_id is passed implicitly by the
     // mobile session layer.  We store an empty node_id when called from the desktop.
@@ -137,7 +174,7 @@ pub(crate) fn push_register(hub: &Hub, token: String, platform: String) -> Resul
     let mut tokens = hub.crew.push_tokens.lock();
     // Replace existing entry with same token (any node_id).
     tokens.retain(|t| t.token != token);
-    tokens.push(push::new_token("", &token, &platform));
+    tokens.push(push::new_token("", &token, &platform, grant));
     push::save_tokens(&hub.crew.dir, &tokens);
     Ok(json!({}))
 }

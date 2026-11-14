@@ -429,7 +429,7 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         }
         C::CrewmateTriggersSet { .. } => Scope::Act,
         C::CrewmateAnswer { .. } => Scope::Act,
-        C::CrewmateUsage { .. } => Scope::Read,
+        C::CrewmateUsage { .. } | C::CrewmateAudit { .. } | C::CrewAudit { .. } => Scope::Read,
         C::EngineLimits {} => Scope::Read,
         C::CrewmateSecretSet { .. } => return Err("not available on mobile"),
         C::MobileInvite { .. } => return Err("not available on mobile"),

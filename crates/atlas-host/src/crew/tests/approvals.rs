@@ -52,7 +52,7 @@ fn crewmate_pane_decision_wait_is_longer() {
 
 /// POST a permission prompt for crewmate pane `pane` to the hook server of the hostd in `dir`
 /// (what a crewmate's claude does through `atlas:approve`) and return the reply body.
-async fn decision(dir: &std::path::Path, pane: &str) -> String {
+pub(super) async fn decision(dir: &std::path::Path, pane: &str) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let env = std::fs::read_to_string(crate::paths::hook_endpoint(dir)).unwrap();
     let get = |k: &str| {

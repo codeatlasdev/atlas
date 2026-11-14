@@ -15,7 +15,7 @@ Atlas Crew runs AI agents around the clock on a Linux server you own, without yo
 | **task** | one prompt a crewmate works on, one at a time per crewmate |
 | **automation** | something that starts a task by itself: a schedule, an interval, a webhook, a GitHub event, a file change, another crewmate or a service (`triggers` on the wire) |
 
-Sections: [Install a crew server](#install-a-crew-server) · [Sign agents in](#sign-agents-in) · [Crewmates](#crewmates) · [Tasks and approvals](#tasks-and-approvals) · [Automations](#automations) · [GitHub](#github) · [Telegram](#telegram) · [Push notifications](#push-notifications) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [MCP tools](#mcp-tools-for-the-agent) · [Security model](#security-model) · [Troubleshooting](#troubleshooting) · [Crewmate look](#crewmate-look) · [Code map](#code-map) · [Reference](#reference)
+Sections: [Install a crew server](#install-a-crew-server) · [Back up and move crewmates](#back-up-and-move-crewmates) · [Sign agents in](#sign-agents-in) · [Crewmates](#crewmates) · [Tasks and approvals](#tasks-and-approvals) · [Automations](#automations) · [GitHub](#github) · [Telegram](#telegram) · [Push notifications](#push-notifications) · [Desktop](#atlas-desktop) · [Mobile](#atlas-mobile) · [MCP tools](#mcp-tools-for-the-agent) · [Security model](#security-model) · [Troubleshooting](#troubleshooting) · [Crewmate look](#crewmate-look) · [Code map](#code-map) · [Reference](#reference)
 
 ## Install a crew server
 
@@ -31,11 +31,11 @@ atlas crew login ubuntu@myserver.example.com claude
 
 Requirements:
 
-- A Linux x86_64 server with `systemd` and `sudo` (passwordless sudo when you run the command from a terminal).
+- A Linux server, x86_64 or aarch64 (arm64: Graviton, Oracle A1, Hetzner CAX), with `systemd` and `sudo` (passwordless sudo when you run the command from a terminal). Any other architecture is refused with a message saying so.
 - An SSH public key at `~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub` on your machine.
-- Internet access on the server, or a cached binary at `~/.atlas/remote/atlas-x86_64-linux` on your machine (see [Offline install](#offline-install)).
+- Internet access on the server, or a Linux `atlas` of the server's architecture on your machine (see [Offline install](#offline-install)).
 
-`atlas crew install <ssh-target>` does, in order: checks the host is Linux x86_64 with systemd and sudo; installs `atlas` to `/usr/local/lib/atlas-crew/`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
+`atlas crew install <ssh-target>` does, in order: checks the host is Linux (x86_64 or aarch64) with systemd and sudo; installs `atlas` to `/usr/local/lib/atlas-crew/`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
 
 ### On a server that already runs crewmates
 
@@ -52,9 +52,12 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 
 | Command | What it does |
 |---|---|
-| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH]` | install or migrate a crew server (above). `--port` for a non-standard SSH port; `--binary` uploads that Linux x86_64 `atlas` instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`) |
-| `atlas crew uninstall <ssh-target> [--yes]` | stops and removes the service, the crew user (and its home, so your crewmates) and `/usr/local/lib/atlas-crew`. Asks first unless `--yes`. Refuses while the user still has a login session; it never kills processes |
-| `atlas crew status <ssh-target>` | `systemctl status` of the service plus `atlas hostd --status` as the crew user |
+| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH]` | install or migrate a crew server (above), x86_64 or aarch64. `--port` for a non-standard SSH port; `--binary` uploads that Linux `atlas` (the server's architecture) instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`) |
+| `atlas crew update <ssh-target> [--version X] [--rollback] [--port N] [--binary PATH]` | put a release (default: this CLI's version) on a crew server, keep the old binary as `atlas.prev`, restart, wait for hostd, roll back by itself when it does not come back; `--rollback` restores `atlas.prev` ([Update a crew server](#update-a-crew-server)) |
+| `atlas crew uninstall <ssh-target> [--yes]` | lists what it will delete (the crew home, the number of crewmates and its size), stops and removes the service, the crew user (and its home, so your crewmates) and `/usr/local/lib/atlas-crew`. In a terminal it offers an export first and asks you to type the server name; `--yes` skips the questions but still prints what was deleted and that it is gone; with neither a terminal nor `--yes` it refuses. Refuses while the user still has a login session; it never kills processes |
+| `atlas crew export <ssh-target> [-o FILE] [--crewmate ID]… [--with-secrets]` | writes one archive of the crewmates ([Back up and move crewmates](#back-up-and-move-crewmates)) |
+| `atlas crew import <ssh-target> <FILE> [--rename]` | restores an archive into a server |
+| `atlas crew status <ssh-target>` | `systemctl status` of the service plus `atlas hostd --status` as the crew user, then one line with the server's atlas version: up to date, **behind** this CLI (run `atlas crew update`), ahead, or unknown |
 | `atlas crew pause <ssh-target>` | the kill switch: cancels every running task, holds the queues, skips automations. Runs `atlas hostd --crew-pause` on the server as the crew user ([Pause and resume](#pause-and-resume)) |
 | `atlas crew resume <ssh-target>` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
@@ -62,7 +65,61 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 
 ### Offline install
 
-If the server has no internet, run `atlas update` on a connected machine so `~/.atlas/remote/atlas-x86_64-linux` is current, then `atlas crew install`. When `curl` fails on the server, the command uploads the cached binary. The downloaded release is checked against its `.sha256` before it is installed.
+If the server has no internet, put a Linux `atlas` of the server's architecture on your machine at `~/.atlas/remote/atlas-x86_64-linux` (x86_64) or `~/.atlas/remote/atlas-aarch64-linux` (arm64), or pass it with `--binary`, then run `atlas crew install`. When `curl` fails on the server, the command uploads that cached binary. The downloaded release is checked against its `.sha256` before it is installed.
+
+## Update a crew server
+
+```sh
+atlas crew update ubuntu@myserver.example.com                 # to this CLI's version
+atlas crew update ubuntu@myserver.example.com --version 1.6.0 # to a specific release
+atlas crew update ubuntu@myserver.example.com --rollback      # back to the binary before the last update
+```
+
+`atlas crew status <ssh-target>` ends with the server's atlas version and says when it is **behind** this CLI (or ahead of it, or unknown because hostd is not running). That is the cue to update.
+
+`atlas crew update` needs the server already installed (`atlas crew install`), passwordless sudo and the same Linux x86_64 or aarch64 host as install. In order, on the server:
+
+1. Downloads the release asset for the server's architecture (`atlas-<version>-x86_64-unknown-linux-gnu.tar.gz` or `…-aarch64-unknown-linux-gnu.tar.gz`), checks its `.sha256` and stages it as `/usr/local/lib/atlas-crew/atlas.new`. With no internet on the server it uploads the [offline](#offline-install) binary instead; `--binary PATH` uploads that file (no version check then: any hostd that answers is accepted).
+2. Copies the running `atlas` to `atlas.prev`, moves `atlas.new` over `atlas` and restarts `atlas-crew.service`.
+3. Waits up to 60 s for `atlas hostd --status` to answer as the crew user.
+4. If hostd does not answer, **restores `atlas.prev` and restarts again by itself**, then exits with an error saying it rolled back (exit code of the command is non-zero). If even the old binary does not come up it says so and points at `atlas crew logs`.
+
+`--rollback` does steps 2 and 3 with `atlas.prev` explicitly; the binary it replaces becomes the new `atlas.prev`, so running it twice goes back to where you were. It fails with a clear message when there is no `atlas.prev`.
+
+Only `/usr/local/lib/atlas-crew/` changes. The crew home (crewmates, memory, secrets, `crew.json`) is never touched, and the update never calls pause or resume: the paused flag lives in `crew.json` and hostd reads it again on start, so **a paused crew stays paused**. The restart is a daemon restart: a task that was running is recorded as failed (`interrupted by daemon restart`) and queued tasks are picked up again when hostd is back. Pause the crew first (`atlas crew pause`) if you do not want a task cut in the middle.
+
+### arm64 servers
+
+Graviton, Oracle Ampere A1 and Hetzner CAX servers work the same way: `atlas crew install` and `atlas crew update` read `uname -m` on the server (`x86_64` or `aarch64`/`arm64`) and download the matching asset. Any other architecture is refused before anything changes. The aarch64 build is the CLI only (it is what a crew server runs); it is built on Ubuntu 22.04, so it runs on glibc 2.35 or newer (Ubuntu 22.04, Debian 12).
+
+## Back up and move crewmates
+
+```sh
+atlas crew export ubuntu@myserver.example.com                      # atlas-crew-myserver.example.com-<date>.tar.gz here
+atlas crew export ubuntu@myserver.example.com -o aria.tar.gz --crewmate <id> --with-secrets
+atlas crew import ubuntu@newserver.example.com aria.tar.gz [--rename]
+```
+
+`export` runs `atlas hostd --crew-export` on the server as the crew user and streams one `.tar.gz` back over SSH. It reads the files directly, so it works with the service stopped, and it never overwrites a local file (`-o` names another). The command reads the archive back and lists the crewmates in it. A server whose `atlas` predates this feature says so; run `atlas crew install <ssh-target>` to update it.
+
+| In the archive | Notes |
+|---|---|
+| `manifest.json` (always first) | `format` (currently `1`), `atlas_version`, `created_at`, whether it has secrets, and the crewmates' ids and names |
+| `crew.json` | the crew-wide settings; `paused` is never carried |
+| `crew/<id>/crewmate.json` | definition and automations, written in the current shape (a server installed as Atlas Bot exports in the new names) |
+| `crew/<id>/memory.md`, `tasks.jsonl`, `usage.jsonl` | memory, task history, usage |
+| `crew/<id>/secrets.json` | **only with `--with-secrets`** |
+
+- **Secrets are opt-in.** Without `--with-secrets` the archive has no `secrets.json`, and a webhook automation (whose token is a credential) arrives with its token cleared and **disabled**; create a new webhook after the import. With `--with-secrets` the file holds credentials in clear text: it is written with mode 0600 and the command says so. Guard it and delete it when done.
+- **Never exported:** the `work/` checkout, the saved agent session (`session.json`), the GitHub "already seen" files, and the agents' sign-in files (they live outside the crew data). After an import, run `atlas crew login <ssh-target> <agent>` on the new server.
+- **Across servers.** The archive is plain `tar.gz` of text, so it moves between x86_64 and arm64 servers and between Atlas versions that read the same `format`.
+
+`import` checks the manifest on your machine first, then sends the file; the server writes nothing until every check has passed.
+
+- **Unknown format.** An archive with a `format` this version does not read is refused whole ("update atlas").
+- **Id collisions.** A crewmate id that already exists on the server is refused, and nothing is imported. `--rename` gives colliding crewmates new ids; an after-crewmate automation that followed one of them follows its new id. Imported automations start fresh (`last_fired` cleared).
+- **Settings.** `crew.json` is restored only on a server that has none: a running crew keeps its own settings and its pause state.
+- **Safe paths.** An entry that is not `manifest.json`, `crew.json` or `crew/<id>/<one of the files above>` (a `..`, an absolute path, nesting) refuses the whole archive.
 
 ## Sign agents in
 
@@ -109,6 +166,20 @@ With `approval: ask`, a tool call pauses the task and waits up to 30 minutes for
 A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`), keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
 
 Trigger it from the CLI (`atlas crew pause|resume <ssh-target>`), Atlas Desktop (footer menu **Pause all** / **Resume all**, and Settings → Atlas Crew per server) or Atlas Mobile (Crew tab, needs the `act` scope). The state is saved in `<hostd dir>/crew.json` (`"paused": true`), so a restart of the service keeps the crew paused. Clients read it from `crewmate_list.paused` and the `crew_paused` push event; a server older than this feature sends neither and reads as running.
+
+### What survives a restart
+
+Restarting the service (an upgrade, a reboot, a crash) loses nothing a user started:
+
+| Task was | After the restart |
+|---|---|
+| `queued` | still queued, in order |
+| `running`, crewmate with an engine | back at the head of its queue, same id, marked `resumed`; the agent continues its saved session with a prompt saying the previous run was interrupted |
+| `running`, agent in a terminal | back at the head of its queue, same id, marked `resumed`; the agent runs the task again |
+| `waiting_action` | still waiting with its card; the answer (`crewmate_action_answer`) still continues it |
+| holding an `ask_user` question | the question is dropped (its agent is gone) and a step says so |
+
+A resumed task carries `resumed: true`, a `restarts` count and a step "The server restarted; running this task again". After 2 restarts a task is not resumed again: the third one fails it with an error that names the restarts, so a task that takes the server down cannot loop. A paused crew resumes nothing until **Resume**. Pending tool approvals do not survive: the prompt belonged to the dead agent process.
 
 ## Automations
 
@@ -165,15 +236,17 @@ Telegram sees your bot token and the messages above. Nothing goes to CodeAtlas.
 
 When a task ends or a crewmate needs your approval, the crew server pushes to your phone.
 
-- After pairing, push is automatic: the app registers its FCM token with each crew server (`push_register`, `push_unregister`).
-- The relay at `push.codeatlas.com.br` gets the token and the event kind (`task_done` or `needs_you`), never content. Phones that are connected at that moment are skipped.
-- Disable: set `Environment=ATLAS_PUSH_RELAY=off` in the unit, then `sudo systemctl daemon-reload && sudo systemctl restart atlas-crew`. Or point it at a self-hosted relay (`services/push-relay/`).
+- After pairing, push is automatic: the app gets a **grant** for its FCM token from the relay (`POST /v1/register`) and registers `{token, grant}` with each crew server (`push_register`, `push_unregister`). It does so on every launch and connect and whenever FCM refreshes the token.
+- The relay at `push.codeatlas.com.br` gets the token, the grant and the event kind (`task_done` or `needs_you`), never content. Phones that are connected at that moment are skipped.
+- The relay only notifies a caller that holds the token's grant, so knowing a token is not enough to ping a phone. A crew server drops a token the relay refuses (`403`) or that FCM no longer has (`410`).
+- **Updating from an earlier alpha:** a token registered before grants existed has no grant. The crew server keeps it but sends nothing for it; open the updated app once and it registers again with a grant. Until then that phone gets no push.
+- Disable: set `Environment=ATLAS_PUSH_RELAY=off` in the unit, then `sudo systemctl daemon-reload && sudo systemctl restart atlas-crew`. Or point it at a self-hosted relay (`services/push-relay/`, see its README for `RELAY_GRANT_KEY`); build the app with `--dart-define=ATLAS_PUSH_RELAY=<url>` to match.
 
 ## Atlas Desktop
 
 Open the Atlas Crew workspace with **⌘⇧B** (command *Atlas Crew*, remappable). Two views, switched with **⌘⇧C** or the bar at the top edge:
 
-- **Chat**: the crewmate list (search, ⌘1…⌘9 to switch, server status in the footer) and the selected crewmate's thread: tasks, live steps, inline approval and action cards, and a composer that queues while another task runs. A settings window (General, Automations, Engine, Memory, Usage) saves each field on its own. A paused server shows a **Paused** banner over the workspace with a **Resume** button; the footer menu has **Pause all** / **Resume all**.
+- **Chat**: the crewmate list (search, ⌘1…⌘9 to switch, server status in the footer) and the selected crewmate's thread: tasks, live steps, inline approval and action cards, and a composer that queues while another task runs. A settings window (General, Automations, Engine, Memory, Usage, Audit) saves each field on its own. A paused server shows a **Paused** banner over the workspace with a **Resume** button; the footer menu has **Pause all** / **Resume all**.
 - **Board**: Queued, Working, Needs you and Done columns across every crewmate, with filters by crewmate, origin and text, a Done range, and a click that opens the chat at that task.
 
 Settings → Atlas Crew holds the crew servers (SSH target + name, listed in `~/.atlas/desktop/crew-servers.json`). The desktop reaches each server over SSH and an `ssh -L` tunnel to its `hostd.sock`. The server must already have `atlas crew install` done; Atlas Desktop can run the install for you and asks for the sudo password on stdin (never on argv).
@@ -206,7 +279,32 @@ The hook routes live on the same local HTTP server as the agent hooks and need i
 - **Scoped SSH key.** `atlas crew install` appends your key to the crew user's `authorized_keys` only, never to the admin user's.
 - **sudo once.** Install and uninstall need sudo; the running service never does. The sudo password, when Desktop passes it, comes over stdin and is dropped after the credential cache is primed.
 - **Secrets.** Per-crewmate secrets live in `<crewmate dir>/secrets.json` (mode 0600), are injected as environment into that crewmate's agent only and are never returned in any reply. Terminals and secrets are never relayed to a phone.
+- **Audit.** Every crewmate has an append-only log, written by hostd and never by the agent: each tool call the agent reports (full tool name and input, not the 80-character step), each approval asked and how it ended (`allow`, `deny` or `timeout`, and who answered: `desktop`, `phone:<node id>`, `telegram:<chat id>` or `none`), the task lifecycle, and changes to its approval mode, triggers, project, engine and secrets (a secret's name, never its value). See [Audit](#audit).
 - **No CodeAtlas servers.** The only optional outbound call is the push relay (kind only). Details: [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
+
+## Audit
+
+What a crewmate did and who decided what, kept on the crew server in `<crewmate dir>/audit.jsonl` (mode 0600, one JSON object per line: `seq`, `ts`, `kind`, `crewmate_id`, plus the fields of the kind). Crew-wide events (a crewmate created or deleted, the crew paused or resumed) go to `<hostd dir>/crew-audit.jsonl`, which outlives a deleted crewmate.
+
+| `kind` | Written when | Fields |
+|---|---|---|
+| `tool_call` | the agent reports a tool call (terminal agents and headless engines alike) | `task_id`, `tool_name`, `tool_input` |
+| `approval_asked` | an `ask` crewmate needs a decision | `task_id`, `req`, `tool_name`, `tool_input` |
+| `approval_decision` | the prompt ended | `task_id`, `req`, `tool_name`, `decision` (`allow`/`deny`/`timeout`), `by` |
+| `task_queued`, `task_started`, `task_finished` | task lifecycle | `task_id`, `source`, `prompt`; `state` and `error` at the end |
+| `config_changed` | approval, engine, project, agent, name, role length, short replies, triggers, routines | `field`, `from`, `to` (webhook tokens are left out) |
+| `secret_set` | `crewmate_secret_set` | `name` |
+| `audit_gap` (crew-level) | the agent hub dropped events under load | `dropped` |
+
+Crew-level kinds: `crewmate_created`, `crewmate_deleted`, `paused`, `resumed`, `audit_gap`.
+
+**Who answered.** `desktop` is any client on the server's socket, which includes the CLI and, for a crew server, the Mac's relay: an approval a phone sends through the relay to a crew server reads `desktop` there. A phone connected straight to a hostd is `phone:<node id>`; Telegram is `telegram:<chat id>`; a prompt nobody answered in 30 minutes is `timeout` / `none`.
+
+**Redaction.** The values of the crewmate's secrets and the hook token are replaced by `[secret:NAME]` / `[secret:hook_token]` before anything is written (the secrets are read on every write, so one set a minute ago is covered; values under 4 characters are not treated as secrets). A string over 8 KiB is cut with a marker that says how many bytes there were.
+
+**Bounded.** A file rotates at 1 MiB (`audit.jsonl.1` … `.4`); the oldest of five is dropped, so a log never exceeds about 5 MiB. A line that cannot be written is logged (`atlas crew logs`), never silently skipped. If the agent hub drops events under load, an `audit_gap` entry says so.
+
+Read it with `crewmate_audit` and `crew_audit` (Mobile scope `read`); Atlas Desktop shows it under a crewmate's settings → **Audit** (filter by tool calls, approvals, tasks or settings; copy one entry or everything shown). Atlas Mobile has no audit screen.
 
 ## Troubleshooting
 
@@ -219,6 +317,8 @@ The hook routes live on the same local HTTP server as the agent hooks and need i
 | `could not connect … over SSH` | SSH itself failed (refused, timeout, key rejected), not the server's OS; fix SSH first |
 | `sudo … asks for a password` | grant passwordless sudo, or run the install from Atlas Desktop |
 | Uninstall says the user is still logged in | close Atlas Desktop and any ssh session as the crew user, run it again |
+| Uninstall says it needs a decision | no terminal and no `--yes`: run it in a terminal, or pass `--yes` after `atlas crew export` |
+| Export or import says the server's atlas is too old | `atlas crew install <ssh-target>` updates the server's binary, then retry |
 | A first task shows `Downloading <repo>…` | the project clones before the task starts; a missing folder is refused when you set it |
 | Old `atlas bot` command in a script | still works; switch to `atlas crew` when convenient |
 
@@ -251,9 +351,9 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 | Layer | Where | Owns |
 |---|---|---|
-| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/hook/<token>` |
-| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|uninstall\|status\|logs\|login`; the unit text and migration plan are pure functions with tests |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), and the export/import/uninstall scripts and decisions (`transfer.rs`) are pure functions with tests |
 | Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
 | Desktop UI | `apps/desktop/src/lib/crew/` and `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, board, editor, settings, onboarding, automations, the look catalogue |
 | Mobile | `apps/mobile/lib/features/crew/` | crew tab, chat, profile, automations, relay transport |
@@ -265,6 +365,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 ```text
 <hostd dir>/crew.json                  crew-level settings
+<hostd dir>/crew-audit.jsonl            crew-wide audit (crewmates created/deleted, pause/resume)
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
     tasks.jsonl                        task log, last state per id wins
@@ -272,13 +373,14 @@ For contributors. One concept per file; the module doc comment at the top of eac
     session.json                       agent session to resume
     secrets.json                       secrets (0600)
     usage.jsonl                        per-task usage records
+    audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled
 <hostd dir>/projects/<slug>/           shared clone per Git project
 ~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers
 ```
 
-Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_event.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
+Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
 
 ## Reference
 
@@ -288,7 +390,7 @@ Tests that pin the contract: Rust tests write the JSON fixtures from the real se
 |---|---|---|
 | `ATLAS_CREW_HOST=1` | the unit | turns on the crew subsystem; without it every `crewmate_*` and `crew_*` command errors |
 | `ATLAS_HOSTD_IDLE_SECS=never` | the unit | disables hostd's idle exit so the service stays up |
-| `ATLAS_PUSH_RELAY` | the unit | `off` disables push; a URL selects a self-hosted relay |
+| `ATLAS_PUSH_RELAY` | the unit | `off` disables push; a URL selects a self-hosted relay (the app's build must use the same one) |
 | `ATLAS_CREW_BINARY` | your machine | same as `atlas crew install --binary` |
 | `ATLAS_CREWMATE_ID` | inside a task | the crewmate running it (read by `atlas-crew-mcp`) |
 
@@ -358,10 +460,12 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crewmate_triggers_set` | `{id, triggers[]}` | `{}`; see [Automations](#automations) |
 | `crewmate_secret_set` | `{id, key, value}` | `{}` |
 | `crewmate_usage` | `{id?, since?}` | usage records |
+| `crewmate_audit` | `{id, since?, limit?, kind?}` | `{entries:[…]}` newest first, default 200; `since` unix seconds. Mobile scope `read` |
+| `crew_audit` | `{since?, limit?, kind?}` | the crew-wide log, same shape |
 | `crew_telegram_status`, `crew_telegram_set`, `crew_telegram_link` | `{}`, `{token?}`, `{}` | `{configured, chats}`, `{}`, `{code}` (desktop only; the token is never returned) |
 | `crew_settings_get`, `crew_settings_set` | `{short_replies, short_replies_model?}` | crew settings |
 | `crew_github_status`, `_login_start`, `_login_poll`, `_logout`, `_connect_resume` | `{}` | see [GitHub](#github) |
-| `push_register`, `push_unregister` | `{token, platform:"fcm"}`, `{token}` | `{}` |
+| `push_register`, `push_unregister` | `{token, platform:"fcm", grant}`, `{token}` | `{}`; `grant` is what the relay issued for the token (optional on the wire for apps older than relay auth, which are then not notified) |
 | `mobile_invite`, `mobile_invites`, `mobile_invite_dismiss` | `{url, name}`, `{}`, `{url}` | desktop-only invites to phones (TTL 120 s) |
 | `crew_servers`, `crew_call`, `crew_event` | `{}`, `{server, cmd, args}`, push | phone to crew server relay |
 
@@ -415,4 +519,4 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 
 - `source`: `mobile`, `desktop`, `telegram`, `routine` or `trigger`.
 - `state`: `queued`, `running`, `waiting_action`, `done`, `failed` or `cancelled`.
-- `steps` may be empty; `started_at` and `finished_at` are absent until reached. Other optional fields: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`.
+- `steps` may be empty; `started_at` and `finished_at` are absent until reached. Other optional fields: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`, `resumed` (a restart interrupted it and it started again) and `restarts` (how many).

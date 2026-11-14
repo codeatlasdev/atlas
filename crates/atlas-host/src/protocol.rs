@@ -502,6 +502,10 @@ pub enum HostCmd {
     PushRegister {
         token: String,
         platform: String,
+        /// What the push relay issued for `token` (`POST /v1/register`); hostd presents it on every
+        /// notify. Absent from an app older than relay auth: it registers but is not notified.
+        #[serde(default)]
+        grant: String,
     },
     PushUnregister {
         token: String,
@@ -543,6 +547,27 @@ pub enum HostCmd {
         id: Option<String>,
         #[serde(default)]
         since: Option<u64>,
+    },
+    /// The crewmate's append-only audit, newest first: `{entries: [{seq, ts, kind, ...}]}`. `since` is unix
+    /// seconds, `kind` one of `tool_call`, `approval_asked`, `approval_decision`, `task_queued`, `task_started`,
+    /// `task_finished`, `config_changed`, `secret_set`. Secret values never appear in it.
+    CrewmateAudit {
+        id: String,
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default = "crate::crew::audit::default_limit")]
+        limit: usize,
+        #[serde(default)]
+        kind: Option<String>,
+    },
+    /// The crew-wide audit (crewmate created/deleted, crew paused/resumed), same shape as `crewmate_audit`.
+    CrewAudit {
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default = "crate::crew::audit::default_limit")]
+        limit: usize,
+        #[serde(default)]
+        kind: Option<String>,
     },
     EngineLimits {},
     /// `gh auth status` without secrets. snake_case of `GitHub` would be wrong.

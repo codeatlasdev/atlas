@@ -223,10 +223,20 @@ async fn agent_exit_3_yields_failed() {
 
 // ── Test 3: queued task survives restart ─────────────────────────────────
 
+// The crew is paused so the task is still `queued` when the daemon stops (a running one is the
+// subject of `restart.rs`). After the restart it must still be queued, untouched, and run to the end
+// once the crew resumes: "the task exists" alone would also hold for a task recovery had failed.
 #[tokio::test(flavor = "multi_thread")]
 async fn queued_task_survives_restart() {
+    let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
+    let quick = fake_agent(
+        tmp.path(),
+        "claude",
+        &Hooks::new().done("persisted").script(),
+    );
+    use_agent_bin(&quick);
     let client = daemon(&dir).await;
 
     let crewmate = client
@@ -237,6 +247,7 @@ async fn queued_task_survives_restart() {
         .await
         .unwrap();
     let crewmate_id = crewmate["id"].as_str().unwrap().to_string();
+    client.call("crew_pause", json!({})).await.unwrap();
 
     // Enqueue a task.
     let v = client
@@ -250,19 +261,40 @@ async fn queued_task_survives_restart() {
 
     // Stop the daemon via shutdown.
     let _ = client.call("shutdown", json!({})).await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    drop(client);
+    tokio::time::sleep(Duration::from_millis(600)).await;
 
-    // Restart.
+    // Restart: the task is still queued, with its prompt, not failed and not run.
     let client2 = daemon(&dir).await;
-
-    // The task should exist (possibly re-tried or marked interrupted).
+    tokio::time::sleep(Duration::from_secs(1)).await;
     let v2 = client2
         .call("crewmate_tasks", json!({"id": crewmate_id, "limit": 20}))
         .await
         .unwrap();
-    let tasks = v2["tasks"].as_array().unwrap();
-    let found = tasks.iter().any(|t| t["id"] == task_id);
-    assert!(found, "task {task_id} not found after restart");
+    let task = v2["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == task_id)
+        .unwrap_or_else(|| panic!("task {task_id} not found after restart"))
+        .clone();
+    assert_eq!(task["state"], "queued", "{task}");
+    assert_eq!(task["prompt"], "persist me", "{task}");
+    assert!(task.get("error").is_none_or(|e| e.is_null()), "{task}");
+
+    // And it runs to the end once the crew is allowed to.
+    client2.call("crew_resume", json!({})).await.unwrap();
+    let done = wait_task_state(
+        &client2,
+        &crewmate_id,
+        &task_id,
+        "done",
+        Duration::from_secs(20),
+    )
+    .await;
+    assert_eq!(done["result"], "persisted", "{done}");
+    crate::crew::runner::set_test_agent_bin(None);
+    client2.call("shutdown", json!({})).await.ok();
 }
 
 // ── Test 4: omp+ask is now allowed (omp engine supports ask approvals) ──

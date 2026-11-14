@@ -1,4 +1,4 @@
-//! `atlas crew install <ssh-target>` — turn a Linux x86_64 server into a crew server.
+//! `atlas crew install <ssh-target>` — turn a Linux x86_64 or aarch64 server into a crew server.
 //!
 //! Steps (what the host looks like is probed first, see [`layout`]):
 //! 1. Preflight: uname -sm, systemctl, sudo
@@ -13,6 +13,7 @@ use clap::Args;
 use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Remote, shq};
 
+use super::binary;
 use super::layout::{self, Account, INSTALL_DIR, Probe, SERVICE};
 
 #[derive(Debug, Args)]
@@ -29,7 +30,7 @@ pub struct InstallArgs {
     /// Used by Atlas Desktop; the password is NEVER placed on argv.
     #[arg(long, hide = true)]
     pub sudo_password_stdin: bool,
-    /// Upload this Linux x86_64 `atlas` instead of downloading the release of this version.
+    /// Upload this Linux `atlas` (the host's architecture) instead of downloading the release of this version.
     /// For builds whose hostd is not published yet (the release would lack the crew commands).
     /// Also read from `ATLAS_CREW_BINARY`, so Atlas Desktop picks it up.
     #[arg(long)]
@@ -91,27 +92,7 @@ async fn run_install(args: InstallArgs) -> Result<()> {
     // --- Preflight ---
     step_marker("check");
     step(&format!("preflight {}", args.ssh_target));
-    let out = r
-        .exec(
-            "uname -sm && command -v systemctl >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1",
-        )
-        .await?;
-    if out.code == 255 {
-        // ssh's own failure (refused, timeout, key rejected): not the host's OS. Saying "needs Linux with systemd"
-        // here sent the user hunting for the wrong problem on a server whose sshd was simply down.
-        bail!(
-            "could not connect to {} over SSH: {}",
-            args.ssh_target,
-            out.stderr.trim()
-        );
-    }
-    if out.code != 0 {
-        bail!("atlas crew install needs a Linux x86_64 host with systemd and sudo");
-    }
-    let uname = out.stdout.trim().to_string();
-    if !uname.starts_with("Linux x86_64") {
-        bail!("atlas crew install needs a Linux x86_64 host with systemd and sudo (got: {uname})");
-    }
+    let target = preflight(&r, &args.ssh_target).await?;
 
     // --- Sudo check / credential cache ---
     if args.sudo_password_stdin {
@@ -156,7 +137,7 @@ or run the install from a terminal: atlas crew install {}",
         .or_else(|| std::env::var_os("ATLAS_CREW_BINARY").map(Into::into));
     match &binary {
         Some(path) => upload_binary(&r, path).await?,
-        None => get_binary(&r).await?,
+        None => get_binary(&r, target).await?,
     }
 
     // --- User ---
@@ -262,67 +243,80 @@ Add it in Atlas Desktop → Crew, then sign the agents in (atlas crew login <age
     Ok(())
 }
 
-/// Install the atlas binary on the host.
-///
-/// Tries `curl` from the GitHub release first (checksummed); falls back to uploading
-/// `~/.atlas/remote/atlas-x86_64-linux` when the host has no internet.
-async fn get_binary(r: &Remote) -> Result<()> {
-    let version = env!("CARGO_PKG_VERSION");
-    let asset = format!("atlas-{version}-x86_64-unknown-linux-gnu.tar.gz");
-    let url = format!(
-        "https://github.com/codeatlasdev/atlas/releases/download/v{version}/{}",
-        asset
-    );
-    let sha_url = format!("{url}.sha256");
+/// Check the host over ssh (Linux with systemd and sudo, x86_64 or aarch64) and return the release target
+/// its `uname -m` maps to. Shared with `atlas crew update`.
+pub(super) async fn preflight(r: &Remote, ssh_target: &str) -> Result<&'static str> {
+    let out = r
+        .exec(
+            "uname -sm && command -v systemctl >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1",
+        )
+        .await?;
+    if out.code == 255 {
+        // ssh's own failure (refused, timeout, key rejected): not the host's OS. Saying "needs Linux with systemd"
+        // here sent the user hunting for the wrong problem on a server whose sshd was simply down.
+        bail!(
+            "could not connect to {ssh_target} over SSH: {}",
+            out.stderr.trim()
+        );
+    }
+    if out.code != 0 {
+        bail!("atlas crew needs a Linux x86_64 or aarch64 host with systemd and sudo");
+    }
+    binary::target_for_uname(&out.stdout)
+}
 
-    let script = format!(
-        r#"sudo mkdir -p {dir_q} &&
-tmpf=$(mktemp /tmp/atlas-crew-XXXXXX.tar.gz) &&
-curl -fsSL {url_q} -o "$tmpf" &&
-WANT=$(curl -fsSL {sha_q} | awk '{{print $1}}') &&
-GOT=$(sha256sum "$tmpf" | awk '{{print $1}}') &&
-[ "$WANT" = "$GOT" ] || {{ echo 'checksum mismatch' >&2; exit 1; }} &&
-sudo tar -xzf "$tmpf" -C {dir_q} atlas &&
-sudo chmod +x {dir_q}/atlas &&
-rm -f "$tmpf""#,
-        dir_q = shq(INSTALL_DIR),
-        url_q = shq(&url),
-        sha_q = shq(&sha_url),
-    );
+/// Install the atlas binary on the host: download of this version's release (checksummed) staged as
+/// `atlas.new`, then swapped in. Falls back to uploading the locally cached Linux binary for the host's
+/// arch when the host has no internet.
+async fn get_binary(r: &Remote, target: &str) -> Result<()> {
+    stage_release(r, env!("CARGO_PKG_VERSION"), target).await?;
+    let out = r.exec(&binary::install_staged_script()).await?;
+    if out.code != 0 {
+        bail!("installing the binary failed: {}", out.stderr.trim());
+    }
+    Ok(())
+}
 
-    let out = r.exec(&script).await?;
+/// Leave `version`'s binary for `target` at `<INSTALL_DIR>/atlas.new`: download on the host, else upload the
+/// offline cache (`~/.atlas/remote/atlas-<arch>-linux`, filled by `atlas update`).
+pub(super) async fn stage_release(r: &Remote, version: &str, target: &str) -> Result<()> {
+    let out = r.exec(&binary::download_script(version, target)).await?;
     if out.code == 0 {
         return Ok(());
     }
-
-    // Fallback: upload the locally cached Linux binary
     let local_bin = dirs::home_dir()
         .context("no home directory")?
-        .join(".atlas/remote/atlas-x86_64-linux");
-
+        .join(binary::offline_cache_path(target));
     if !local_bin.exists() {
         bail!(
-            "could not download atlas on the host ({})\n  \
+            "could not download atlas {version} on the host ({})\n  \
 and no offline fallback found at {}\n  \
 Run `atlas update` on this machine to populate the cache, or ensure the host has internet access.",
             out.stderr.trim(),
             local_bin.display()
         );
     }
-
     eprintln!("\x1b[33m◆\x1b[0m online download failed; uploading local binary (offline mode)");
-    upload_binary(r, &local_bin).await
+    stage_upload(r, &local_bin).await
 }
 
-/// Upload a local Linux `atlas` to the host's install dir.
+/// Upload a local Linux `atlas` to the host's install dir and put it in place.
 async fn upload_binary(r: &Remote, local_bin: &std::path::Path) -> Result<()> {
+    stage_upload(r, local_bin).await?;
+    let o = r.exec(&binary::install_staged_script()).await?;
+    if o.code != 0 {
+        bail!("binary upload failed: {}", o.stderr.trim());
+    }
+    Ok(())
+}
+
+/// Stream a local binary to `<INSTALL_DIR>/atlas.new`.
+pub(super) async fn stage_upload(r: &Remote, local_bin: &std::path::Path) -> Result<()> {
     let content =
         std::fs::read(local_bin).with_context(|| format!("reading {}", local_bin.display()))?;
-    let upload = format!(
-        "sudo mkdir -p {dir_q} && sudo tee {dir_q}/atlas.new > /dev/null && sudo chmod +x {dir_q}/atlas.new && sudo mv -f {dir_q}/atlas.new {dir_q}/atlas",
-        dir_q = shq(INSTALL_DIR),
-    );
-    let o = r.exec_stdin(&upload, Some(&content)).await?;
+    let o = r
+        .exec_stdin(&binary::stage_upload_script(), Some(&content))
+        .await?;
     if o.code != 0 {
         bail!("binary upload failed: {}", o.stderr.trim());
     }

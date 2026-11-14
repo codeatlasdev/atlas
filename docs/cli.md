@@ -256,13 +256,16 @@ atlas config schema
 
 ```text
 atlas crew install <ssh-target> [-y|--yes] [--port <N>] [--binary <PATH>]
+atlas crew update <ssh-target> [--version <X.Y.Z>] [--rollback] [--port <N>] [--binary <PATH>]
 atlas crew uninstall <ssh-target> [-y|--yes]
+atlas crew export <ssh-target> [-o <FILE>] [--crewmate <ID>]... [--with-secrets]
+atlas crew import <ssh-target> <FILE> [--rename]
 atlas crew status <ssh-target>
 atlas crew logs <ssh-target> [-f|--follow]
 atlas crew login <ssh-target> <omp|claude|codex|opencode>
 ```
 
-Turn a Linux x86_64 server with systemd and sudo into a crew server that runs crewmates around the clock, and manage it over SSH. `install` also migrates a server installed under the old `atlas-bot` name and keeps its data and system user; `atlas bot …` is a hidden alias of `atlas crew …`. `--binary` (or `ATLAS_CREW_BINARY`) uploads a Linux build instead of downloading this version's release. Full guide: [Atlas Crew](crew.md).
+Turn a Linux server (x86_64 or aarch64) with systemd and sudo into a crew server that runs crewmates around the clock, and manage it over SSH. `install` also migrates a server installed under the old `atlas-bot` name and keeps its data and system user; `atlas bot …` is a hidden alias of `atlas crew …`. `--binary` (or `ATLAS_CREW_BINARY` for `install`) uploads a Linux build instead of downloading this version's release. `update` puts this CLI's version (or `--version X`) on the server, keeps the previous binary as `atlas.prev`, waits for hostd and rolls back by itself if it does not answer; `--rollback` restores `atlas.prev`. `status` ends with the server's atlas version and whether it is behind this CLI. `uninstall` lists what it deletes first, offers an export and asks for the server name in a terminal (`--yes` skips the questions, still prints what is gone; no terminal and no `--yes` refuses). `export` writes a versioned `.tar.gz` of the crewmates, memory, task history, automations and usage (secrets only with `--with-secrets`, then the file is 0600; never the `work/` checkout or agent sign-ins); `import` restores it, refusing id collisions unless `--rename`. Full guide: [Atlas Crew](crew.md#back-up-and-move-crewmates).
 
 ## `atlas deploy`
 

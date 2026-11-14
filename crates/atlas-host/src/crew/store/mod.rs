@@ -712,5 +712,8 @@ impl CrewStore {
     }
 }
 
+pub mod archive;
+#[cfg(test)]
+mod archive_tests;
 #[cfg(test)]
 mod tests;

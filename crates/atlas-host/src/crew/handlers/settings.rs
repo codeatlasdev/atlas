@@ -128,7 +128,12 @@ pub(crate) fn telegram_status(hub: &Hub) -> Result<Value, String> {
 }
 
 /// `PushRegister`
-pub(crate) fn push_register(hub: &Hub, token: String, platform: String) -> Result<Value, String> {
+pub(crate) fn push_register(
+    hub: &Hub,
+    token: String,
+    platform: String,
+    grant: String,
+) -> Result<Value, String> {
     // We need node_id; derive it from the mobile connection's node_id.
     // For now accept as a separate field; node_id is passed implicitly by the
     // mobile session layer.  We store an empty node_id when called from the desktop.
@@ -137,7 +142,7 @@ pub(crate) fn push_register(hub: &Hub, token: String, platform: String) -> Resul
     let mut tokens = hub.crew.push_tokens.lock();
     // Replace existing entry with same token (any node_id).
     tokens.retain(|t| t.token != token);
-    tokens.push(push::new_token("", &token, &platform));
+    tokens.push(push::new_token("", &token, &platform, grant));
     push::save_tokens(&hub.crew.dir, &tokens);
     Ok(json!({}))
 }

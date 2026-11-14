@@ -343,6 +343,61 @@ mod tests {
         }
     }
 
+    // Issue #202: export/import take the server first; secrets and rename are opt-in flags that default off,
+    // and the selection repeats. Also under the hidden `atlas bot` alias.
+    #[test]
+    fn crew_export_and_import_parse_their_flags() {
+        use commands::crew::CrewCommands as C;
+        match parse(&argv(&["crew", "export", "me@box"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Export(e) => {
+                    assert_eq!(e.ssh_target, "me@box");
+                    assert!(!e.with_secrets && e.output.is_none() && e.crewmates.is_empty());
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        match parse(&argv(&[
+            "bot",
+            "export",
+            "me@box",
+            "-o",
+            "b.tar.gz",
+            "--crewmate",
+            "a",
+            "--crewmate",
+            "b",
+            "--with-secrets",
+        ])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Export(e) => {
+                    assert_eq!(e.output.as_deref(), Some(std::path::Path::new("b.tar.gz")));
+                    assert_eq!(e.crewmates, ["a", "b"]);
+                    assert!(e.with_secrets);
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        match parse(&argv(&["crew", "import", "me@box", "b.tar.gz", "--rename"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Import(i) => {
+                    assert_eq!(i.ssh_target, "me@box");
+                    assert_eq!(i.file, std::path::Path::new("b.tar.gz"));
+                    assert!(i.rename);
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            parse(&argv(&["crew", "import", "me@box"])).is_err(),
+            "the file is required"
+        );
+        assert!(parse(&argv(&["crew", "export"])).is_err());
+    }
+
     // Crew review P0, PR #106 (no kill switch): `atlas crew pause|resume <ssh-target>` exist, take the same
     // target as `status`, and keep working under the hidden `atlas bot` alias.
     #[test]
@@ -398,6 +453,36 @@ mod tests {
         ] {
             assert!(hostd(bad).is_err(), "{bad:?} should conflict");
         }
+    }
+
+    // Issue #203: `atlas crew update <ssh-target> [--version X] [--rollback]`; the flags that cannot be combined
+    // are refused by the parser, before any ssh.
+    #[test]
+    fn crew_update_takes_a_target_with_version_or_rollback() {
+        use commands::crew::CrewCommands as C;
+        let update = |a: &[&str]| {
+            let mut v = vec!["crew", "update"];
+            v.extend_from_slice(a);
+            match parse(&argv(&v)) {
+                Ok(Action::Command(Commands::Crew(c))) => match c.command {
+                    C::Update(u) => Ok(u),
+                    other => panic!("{other:?}"),
+                },
+                Ok(other) => panic!("{other:?}"),
+                Err(e) => Err(e),
+            }
+        };
+        let u = update(&["me@server"]).unwrap();
+        assert_eq!(
+            (u.ssh_target.as_str(), u.version, u.rollback),
+            ("me@server", None, false)
+        );
+        let u = update(&["me@server", "--version", "1.5.2"]).unwrap();
+        assert_eq!(u.version.as_deref(), Some("1.5.2"));
+        assert!(update(&["me@server", "--rollback"]).unwrap().rollback);
+        assert!(update(&[]).is_err());
+        assert!(update(&["me@server", "--rollback", "--version", "1.5.2"]).is_err());
+        assert!(update(&["me@server", "--rollback", "--binary", "/tmp/a"]).is_err());
     }
 
     // Decision (Atlas Bot -> Atlas Crew rename): scripts and crewmates set up before it keep working.

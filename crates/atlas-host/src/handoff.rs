@@ -484,9 +484,22 @@ mod tests {
             .read_exact(&mut started)
             .unwrap();
         drop(fds);
+        // Bounded wait, not a single try: another test in this binary may fork between our open and
+        // its own `exec`, and that child holds every open fd (ours included) until it execs. It lets
+        // go within milliseconds; our `sleep 30` child would hold the lock for the whole window if
+        // the fd leaked, so a real leak still fails (CI flake, run of PR #205's gate at load 9.7).
         let again = std::fs::File::open(&path).unwrap();
-        // SAFETY: valid fd owned by `again`.
-        let free = unsafe { libc::flock(again.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let free = loop {
+            // SAFETY: valid fd owned by `again`.
+            if unsafe { libc::flock(again.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                break true;
+            }
+            if std::time::Instant::now() >= deadline {
+                break false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
         child.kill().unwrap();
         child.wait().unwrap();
         assert!(

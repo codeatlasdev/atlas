@@ -9,9 +9,16 @@
 # time per user (a lock), started when the 5-minute load is under ATLAS_HEAVY_MAXLOAD (default: 0.75 * the number of
 # CPUs) and, on macOS and Linux, at least ATLAS_HEAVY_MINMEM percent of memory is free (default 20), under `nice`. Several
 # worktrees or agents building at once froze the machine and made timing tests flaky (2026-10-15, PR #106; again 2026-11-13).
+# The label is the command itself (`bun run check`, not `bun`): the queue's run history is keyed by it, and
+# `atlas_estimate` reads that history to tell one action's duration from another's. ATLAS_HEAVY_LABEL overrides it.
 for atlas in "${ATLAS_BIN:-}" "$(command -v atlas 2>/dev/null)" "$HOME/.atlas/bin/atlas"; do
 	if [ -n "$atlas" ] && [ -x "$atlas" ] && "$atlas" heavy status --json >/dev/null 2>&1; then
-		exec "$atlas" run --heavy --label "$(basename "$1")" -- "$@"
+		label=${ATLAS_HEAVY_LABEL:-$(basename "$1")}
+		if [ -z "${ATLAS_HEAVY_LABEL:-}" ] && [ $# -gt 1 ]; then
+			rest=$(shift; printf '%s ' "$@")
+			label=$(printf '%s %s' "$label" "$rest" | cut -c1-60 | sed 's/ *$//')
+		fi
+		exec "$atlas" run --heavy --label "$label" -- "$@"
 	fi
 done
 

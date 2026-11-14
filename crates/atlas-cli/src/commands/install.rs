@@ -327,6 +327,10 @@ fn setup_path_unix(install_dir: &Path, dest: &Path) {
     let env = ShellEnv::current();
     for (shell, outcome) in setup_path_all_shells(&env, install_dir) {
         match outcome {
+            Ok(PathSetup::NoFile) => println!(
+                "\x1b[33m◆\x1b[0m {shell}: no startup file to add to; create ~/.bash_profile with:\n  {}",
+                shellrc::path_line(install_dir)
+            ),
             Ok(s) => {
                 if let Some(label) = setup_label(shell, &s) {
                     println!("\x1b[32m✓\x1b[0m Added to PATH  [{label}]");
@@ -603,13 +607,24 @@ fn setup_zsh(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
 }
 
 /// bash: [`ShellEnv::bash_file`]. On macOS with none of the login files that is not an error, but
-/// not a success either.
+/// not a success either. On Linux, a login file (ssh, `bash -l`) that does not source `~/.bashrc`
+/// gets the block too, so login shells find `atlas` as well.
 #[cfg_attr(windows, allow(dead_code))]
 fn setup_bash(env: &ShellEnv, install_dir: &Path) -> Result<PathSetup> {
-    match env.bash_file() {
-        Some(rc) => append_block(rc, install_dir),
-        None => Ok(PathSetup::NoFile),
+    let Some(rc) = env.bash_file() else {
+        return Ok(PathSetup::NoFile);
+    };
+    let s = append_block(rc, install_dir)?;
+    if !cfg!(target_os = "macos")
+        && let Some(login) = [".bash_profile", ".bash_login", ".profile"]
+            .iter()
+            .map(|f| env.home.join(f))
+            .find(|p| p.is_file())
+        && !std::fs::read_to_string(&login).is_ok_and(|c| c.contains(".bashrc"))
+    {
+        append_block(login, install_dir)?;
     }
+    Ok(s)
 }
 
 /// Append the PATH block to `rc` unless it already has the exact line.
@@ -792,6 +807,19 @@ mod tests {
         assert!(
             path.split(':').any(|p| p.trim() == bin.to_str().unwrap()),
             "{path}"
+        );
+        // ssh / `bash -l` read only the login file, which here does not source ~/.bashrc.
+        let login = std::process::Command::new("bash")
+            .args(["-l", "-c", "echo \"$PATH\""])
+            .env("HOME", &env.home)
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let lp = String::from_utf8_lossy(&login.stdout);
+        assert!(
+            lp.split(':').any(|p| p.trim() == bin.to_str().unwrap()),
+            "{lp}"
         );
     }
 

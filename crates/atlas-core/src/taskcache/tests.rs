@@ -420,6 +420,60 @@ fn stats_count_hits_misses_and_the_time_a_hit_saved() {
     assert_eq!(last.saved_ms, Some(9000));
 }
 
+// Guards #129: the drawer shows "time saved, last 7 days", so hits are also counted per UTC day.
+#[test]
+fn saved_time_is_counted_per_day_and_the_last_week_ignores_older_days() {
+    const DAY: u64 = 86_400_000;
+    let mut st = Stats::default();
+    let now = 100 * DAY + 5_000;
+    st.add_hit_at(now - 10 * DAY, 4_000);
+    st.add_hit_at(now - 6 * DAY - 1_000, 1_000);
+    st.add_hit_at(now - DAY, 2_000);
+    st.add_hit_at(now, 3_000);
+    // Today plus the six days before it; the hit 10 days ago is out.
+    assert_eq!(st.saved_since(now, 7), 1_000 + 2_000 + 3_000);
+    assert_eq!(st.saved_since(now, 1), 3_000);
+    assert_eq!(st.saved_since(now, 30), 10_000);
+    // A clock that went backwards never counts the future as "recent" nor panics.
+    assert_eq!(st.saved_since(5, 7), 0);
+}
+
+#[test]
+fn per_day_counters_are_bounded_and_a_hit_through_the_store_lands_on_today() {
+    const DAY: u64 = 86_400_000;
+    let mut st = Stats::default();
+    for d in 0..(stats::DAYS_KEEP as u64 + 10) {
+        st.add_hit_at(d * DAY, 1);
+    }
+    assert_eq!(st.days.len(), stats::DAYS_KEEP);
+    // The oldest days went, the newest stayed.
+    assert!(!st.days.contains_key(&0u64.to_string()));
+    assert!(
+        st.days
+            .contains_key(&(stats::DAYS_KEEP as u64 + 9).to_string())
+    );
+
+    let t = tempfile::tempdir().unwrap();
+    let c = cache(t.path());
+    let a = tree(&t.path().join("a"), "x");
+    let s = spec(&a);
+    let k = s.key().unwrap();
+    c.record(&k, &s, &run(0, 9000)).unwrap();
+    let entry = c.lookup(&k).unwrap();
+    c.note_hit(&entry, &k);
+    let st = c.stats();
+    assert_eq!(st.saved_since(store::now_ms(), 7), 9_000);
+}
+
+// A `stats.json` written before the daily counters existed still loads (counters kept, no days).
+#[test]
+fn a_stats_file_without_daily_counters_still_loads() {
+    let old = r#"{"total":{"hits":2,"misses":1,"saved_ms":18000},"projects":{},"keys":{}}"#;
+    let st: Stats = serde_json::from_str(old).unwrap();
+    assert_eq!(st.total.saved_ms, 18_000);
+    assert!(st.days.is_empty());
+}
+
 #[test]
 fn clear_empties_the_store_and_gc_drops_blobs_no_entry_uses() {
     let t = tempfile::tempdir().unwrap();
@@ -546,6 +600,9 @@ fn stats_fixture_is_the_real_serialization() {
     for ks in real.keys.values_mut() {
         ks.last_at = 1_763_040_000_000;
     }
+    // The day the hits landed on is the wall clock's: move it to the fixed time above.
+    let today = real.days.values().next().cloned().unwrap();
+    real.days = [((1_763_040_000_000u64 / 86_400_000).to_string(), today)].into();
     let fresh = serde_json::to_value(&real).unwrap();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../apps/desktop/src/__fixtures__/task_cache_stats.json");

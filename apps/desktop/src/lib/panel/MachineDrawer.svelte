@@ -2,14 +2,25 @@
 	import { usePoll } from "#lib/clock.svelte.ts";
 	import { agents } from "#lib/stores/agents.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
-	import { EmptyState } from "@codeatlasdev/ui";
+	import { errText } from "#lib/api.ts";
+	import { confirmDialog } from "#lib/stores/ask.svelte.ts";
+	import { Button, EmptyState, toast } from "@codeatlasdev/ui";
 	import { Gauge } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import DrawerRow from "./DrawerRow.svelte";
 	import DrawerShell from "./DrawerShell.svelte";
 	import type { DotTone } from "./StatusDot.svelte";
 	import { describe, human, summary } from "./heavy.ts";
-	import { agentRows, bytes, gauge, hygieneView, runTrend, serviceNote, type Gauge as G } from "./machine.ts";
+	import {
+		agentRows,
+		bytes,
+		cacheView,
+		gauge,
+		hygieneView,
+		runTrend,
+		serviceNote,
+		type Gauge as G,
+	} from "./machine.ts";
 	import { machine } from "./machine.svelte.ts";
 
 	// Polled only while the drawer is open and the page visible; the report is a `ps` and a few small files.
@@ -23,6 +34,22 @@
 	let jobs = $derived(r ? [...r.heavy.running, ...r.heavy.queued] : []);
 	let rows = $derived(r ? agentRows(r.terminals, ws.doc.tabs, agents.status) : []);
 	let hygiene = $derived(hygieneView(machine.hygiene));
+	let cache = $derived(r ? cacheView(r.cache) : null);
+
+	async function clearCache() {
+		const ok = await confirmDialog("Clear the task cache?", {
+			description: "Every cached result, output and counter is deleted. The next runs execute for real.",
+			confirmLabel: "Clear cache",
+			destructive: true,
+		});
+		if (!ok) return;
+		try {
+			const freed = await machine.clearCache();
+			toast.success(`Cache cleared · freed ${bytes(freed.bytes)}`);
+		} catch (e) {
+			toast.error(errText(e));
+		}
+	}
 
 	const AGENT_TONE: Record<string, DotTone> = {
 		working: "run",
@@ -141,6 +168,42 @@
 				{/each}
 			</section>
 
+			<section aria-label="Task cache">
+				<div class="gl">Task cache</div>
+				{#if cache && r}
+					<DrawerRow tone={cache.full ? "warn" : "ok"} disabled title={cache.hits}>
+						<span class="title">Hit rate {cache.rate}</span>
+						<span class="detail">{cache.hits}</span>
+					</DrawerRow>
+					<DrawerRow tone="off" disabled>
+						<span class="title">Time saved {cache.saved}</span>
+						<span class="detail">{cache.savedWeek} in the last 7 days</span>
+					</DrawerRow>
+					<div
+						class="gauge"
+						title={cache.full ? "Nearly full: the least recently used entries are evicted" : undefined}
+					>
+						<span class="gname">Size</span>
+						<div class="track" class:over={cache.full}>
+							<span class="fill" style:transform="scaleX({cache.fill})"></span>
+						</div>
+						<span class="glabel">{cache.size}</span>
+					</div>
+					{#each cache.projects as p (p.name)}
+						<DrawerRow tone="off" disabled title={p.detail}>
+							<span class="title">{p.name}</span>
+							<span class="detail">{p.detail}</span>
+							<span class="num mono">{p.saved}</span>
+						</DrawerRow>
+					{/each}
+					<div class="actions">
+						<Button size="sm" variant="ghost" disabled={r.cache.entries === 0} onclick={clearCache}>
+							Clear cache
+						</Button>
+					</div>
+				{/if}
+			</section>
+
 			<section aria-label="Orphans and disk">
 				<div class="gl">Orphans and disk</div>
 				{#if hygiene.available}
@@ -244,6 +307,9 @@
 		flex: none;
 	}
 	.none {
+		padding: 4px 6px;
+	}
+	.actions {
 		padding: 4px 6px;
 	}
 	.empty {

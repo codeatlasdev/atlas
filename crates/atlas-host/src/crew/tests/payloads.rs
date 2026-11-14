@@ -91,3 +91,41 @@ fn crewmate_task_event_fixture_is_real_payload() {
         json!({"ev": "crewmate_task", "crewmate_id": "crewmate-working"})
     );
 }
+
+// #199: a task a hostd restart interrupted goes back to the queue marked `resumed` with its `restarts`
+// count; the desktop and the phone read those keys. The fixture is the task exactly as the restart
+// recovery (`runner::recover`) leaves it and the serializer writes it.
+#[test]
+fn crewmate_task_resumed_fixture_is_real_payload() {
+    let mut task = Task::new("desktop", "ship the release");
+    task.id = "task-resumed-1".to_string();
+    task.ts = 1700000000;
+    task.state = TaskState::Running;
+    task.started_at = Some(1700000005);
+    task.pane = Some("crew:crewmate-working:task-resumed-1".to_string());
+    let mut task = crate::crew::runner::interrupted_for_fixture(task);
+    for step in &mut task.steps {
+        step.ts = 1700000010; // the recovery stamps the clock; a fixture must not move
+    }
+    assert!(task.resumed && task.restarts == 1, "{task:?}");
+    let json = serde_json::to_string_pretty(&task).expect("serialize task");
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/mobile/test/fixtures/crewmate_task_resumed.json");
+    if std::env::var("UPDATE_FIXTURES").is_ok() {
+        std::fs::create_dir_all(fixture_path.parent().unwrap()).ok();
+        std::fs::write(&fixture_path, &json).expect("write fixture");
+        return;
+    }
+    let stored = std::fs::read_to_string(&fixture_path).unwrap_or_else(|_| {
+        panic!(
+            "fixture missing: run UPDATE_FIXTURES=1 cargo test -p atlas-host \
+             crewmate_task_resumed_fixture_is_real_payload to generate it"
+        )
+    });
+    let stored_v: Value = serde_json::from_str(&stored).expect("parse stored");
+    let live_v: Value = serde_json::from_str(&json).expect("parse live");
+    assert_eq!(
+        stored_v, live_v,
+        "fixture out of date: run UPDATE_FIXTURES=1 ..."
+    );
+}

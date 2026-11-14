@@ -9,6 +9,7 @@ use super::action::{
 };
 use super::outcome::{finish_task, persist_running};
 use super::prompt::{Prepared, load_agent_env, load_hook_endpoint, prepare_task};
+use super::recover::{recovered_wait, resume_prompt};
 use super::summary::maybe_summarize;
 use crate::crew::store::{Crewmate, EngineConfig, Task, TaskState};
 use crate::crew::{engine, now_s, pane, triggers};
@@ -45,13 +46,17 @@ pub(super) async fn run_one_conversational(
         return;
     }
 
+    // A task parked on an action when hostd stopped keeps waiting (it is not running again).
+    let waiting = recovered_wait(&task);
     // Mark running. If that cannot be stored the task is failed (clients told) and nothing starts.
-    task.state = TaskState::Running;
-    task.started_at = Some(now_s());
-    task.pane = Some(pane_key.clone());
-    if !persist_running(hub, &crewmate.id, &mut task) {
-        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
-        return;
+    if !waiting {
+        task.state = TaskState::Running;
+        task.started_at = Some(now_s());
+        task.pane = Some(pane_key.clone());
+        if !persist_running(hub, &crewmate.id, &mut task) {
+            triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+            return;
+        }
     }
 
     // For omp with approval==ask: write the extension file before engine::run_turn
@@ -75,29 +80,34 @@ pub(super) async fn run_one_conversational(
         hook: (hook_port, &hook_token),
         yolo,
     };
-    match turn.run(&full_prompt).await {
+    // A task parked on an action when hostd stopped goes straight back to waiting for the answer;
+    // one a restart interrupted mid-turn continues the stored session instead of starting over.
+    if waiting {
+        let action = task.action.clone().expect("recovered_wait has an action");
+        answer_action_turn(&turn, &mut task, &action).await;
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
+    let first = if task.resumed
+        && hub
+            .crew
+            .store
+            .load_session(&crewmate.id)
+            .session_id
+            .is_some()
+    {
+        resume_prompt(&task.prompt)
+    } else {
+        full_prompt
+    };
+    match turn.run(&first).await {
         Ok((reply, usage, env)) => {
             // Check for ATLAS_ACTION in the reply.
             let action = parse_atlas_action(&reply);
             match (action, hub.crew.hub_arc()) {
-                (Some(action), Some(hub_arc)) => {
+                (Some(action), Some(_)) => {
                     park_task(hub, crewmate, &mut task, action.clone());
-                    match resolve_action(&hub_arc, &crewmate.id, &task.id, &action).await {
-                        Some(follow_up) => {
-                            // The action stays on the task (cards only show while waiting): with `answer` it lets the
-                            // chat show what was asked and what the user picked.
-                            task.answer = user_answer(&action, &follow_up);
-                            // The env is read again: it may include secrets written while waiting.
-                            match turn.run(&follow_up).await {
-                                Ok((reply2, usage2, env2)) => {
-                                    settle_reply(hub, crewmate, &mut task, reply2, usage2, &env2)
-                                        .await
-                                }
-                                Err(e) => finish_task(hub, crewmate, &mut task, Err(e), vec![]),
-                            }
-                        }
-                        None => finish_unanswered(hub, crewmate, &mut task),
-                    }
+                    answer_action_turn(&turn, &mut task, &action).await;
                 }
                 _ => settle_reply(hub, crewmate, &mut task, reply, usage, &env).await,
             }
@@ -175,6 +185,33 @@ impl Turn<'_> {
             );
         }
         Ok((turn.reply, turn.usage, env))
+    }
+}
+
+/// Wait for the user's answer to `action` (the task is parked), then run it as the next turn.
+async fn answer_action_turn(
+    turn: &Turn<'_>,
+    task: &mut Task,
+    action: &crate::crew::store::TaskAction,
+) {
+    let (hub, crewmate) = (turn.hub, turn.crewmate);
+    let Some(hub_arc) = hub.crew.hub_arc() else {
+        return;
+    };
+    match resolve_action(&hub_arc, &crewmate.id, &task.id, action).await {
+        Some(follow_up) => {
+            // The action stays on the task (cards only show while waiting): with `answer` it lets the
+            // chat show what was asked and what the user picked.
+            task.answer = user_answer(action, &follow_up);
+            // The env is read again: it may include secrets written while waiting.
+            match turn.run(&follow_up).await {
+                Ok((reply2, usage2, env2)) => {
+                    settle_reply(hub, crewmate, task, reply2, usage2, &env2).await
+                }
+                Err(e) => finish_task(hub, crewmate, task, Err(e), vec![]),
+            }
+        }
+        None => finish_unanswered(hub, crewmate, task),
     }
 }
 

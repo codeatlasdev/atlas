@@ -128,16 +128,10 @@ impl Runner {
         }
     }
 
-    #[cfg(test)]
+    // Only the Unix isolation tests ask (`runner/isolation.rs`, `cfg(all(test, unix))`).
+    #[cfg(all(test, unix))]
     pub fn is_isolated(&self) -> bool {
-        #[cfg(unix)]
-        {
-            self.iso.is_some()
-        }
-        #[cfg(not(unix))]
-        {
-            false
-        }
+        self.iso.is_some()
     }
 
     /// Run `cmd` to the end and collect its output, giving up after `limit` (the process is ended).

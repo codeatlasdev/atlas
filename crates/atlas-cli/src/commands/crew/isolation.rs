@@ -15,8 +15,7 @@
 //! The installer runs the same steps with sudo for the first install and for crewmates that already
 //! exist ([`provision_script`], [`migrate_script`]).
 //!
-use atlas_host::crew::spawn::layout::{PROVISION_SOCKET_PATH, SOCKET_PATH};
-use atlas_host::crew::spawn::provision::EGRESS_FILE;
+use atlas_host::crew::spawn::layout::{EGRESS_FILE, PROVISION_SOCKET_PATH, SOCKET_PATH};
 use atlas_host::crew::spawn::validate::{CM_ROOT, USER_PREFIX, slug_of};
 
 use super::layout::{Account, INSTALL_DIR};
@@ -780,6 +779,8 @@ mod tests {
         assert!(sh.contains(r"sh -c 'echo '\''x'\'''"), "{sh}");
     }
 
+    // The helper (`spawn::exec`) is Unix-only; the installer's scripts are built on every OS.
+    #[cfg(unix)]
     #[test]
     fn the_engine_dir_the_installer_links_into_is_the_one_the_helper_searches_first() {
         use atlas_host::crew::spawn::exec::ENGINE_DIRS;

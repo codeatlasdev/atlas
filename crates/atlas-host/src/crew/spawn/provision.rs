@@ -242,10 +242,7 @@ fn describe(step: &Step) -> String {
 
 // ---- egress -----------------------------------------------------------------------------------
 
-/// Where the rules live so a reboot restores them (`atlas-crew-egress.service` loads this file).
-pub const EGRESS_FILE: &str = "/etc/atlas-crew/egress.nft";
-
-pub use super::layout::HOOK_PORT;
+pub use super::layout::{EGRESS_FILE, HOOK_PORT};
 
 /// What one crewmate's processes may reach.
 #[derive(Debug, Clone, PartialEq, Eq)]

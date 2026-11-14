@@ -130,6 +130,11 @@ pub fn active_at(_sock: &std::path::Path) -> bool {
 /// here, not in the Unix-only `provision`, so every platform's build can name it.
 pub const HOOK_PORT: u16 = 47631;
 
+/// Where the egress rules live so a reboot restores them (`atlas-crew-egress.service` loads this
+/// file). Here for the same reason as [`HOOK_PORT`]: the CLI writes install scripts naming it on
+/// every platform.
+pub const EGRESS_FILE: &str = "/etc/atlas-crew/egress.nft";
+
 /// Where isolation lives on this machine, decided once when hostd starts: `Some` exactly when the
 /// helper's socket exists. hostd keeps it (in the crew store) instead of looking at the filesystem on
 /// every call, so a server never has some paths isolated and others not within one run, and a test

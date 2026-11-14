@@ -108,7 +108,10 @@ fn an_archive_round_trips_crewmates_memory_tasks_and_usage_into_an_empty_store()
 
     assert_eq!(report.imported.len(), 2);
     for id in ["aaa", "bbb"] {
-        let (a, b) = (src.load_crewmate(id).unwrap(), dst.load_crewmate(id).unwrap());
+        let (a, b) = (
+            src.load_crewmate(id).unwrap(),
+            dst.load_crewmate(id).unwrap(),
+        );
         assert_eq!(a.name, b.name);
         assert_eq!(a.role, b.role);
         assert_eq!(a.created_at, b.created_at);
@@ -174,7 +177,11 @@ fn secrets_are_excluded_by_default() {
 fn with_secrets_the_secrets_and_webhook_tokens_travel_and_the_manifest_says_so() {
     let (_t, src) = populated();
     let bytes = export_bytes(&src, &[], true);
-    assert!(entry_names(&bytes).iter().any(|n| n == "crew/aaa/secrets.json"));
+    assert!(
+        entry_names(&bytes)
+            .iter()
+            .any(|n| n == "crew/aaa/secrets.json")
+    );
     assert!(archive::read_manifest(&bytes[..]).unwrap().secrets);
 
     let t2 = tempfile::tempdir().unwrap();
@@ -202,9 +209,15 @@ fn only_the_allowed_files_are_exported() {
         assert!(
             n == MANIFEST
                 || n == "crew.json"
-                || ["crewmate.json", "memory.md", "tasks.jsonl", "usage.jsonl", "secrets.json"]
-                    .iter()
-                    .any(|f| n.ends_with(&format!("/{f}"))),
+                || [
+                    "crewmate.json",
+                    "memory.md",
+                    "tasks.jsonl",
+                    "usage.jsonl",
+                    "secrets.json"
+                ]
+                .iter()
+                .any(|f| n.ends_with(&format!("/{f}"))),
             "unexpected entry {n}"
         );
     }
@@ -233,8 +246,18 @@ fn a_selection_exports_only_those_crewmates() {
     let (_t, src) = populated();
     let bytes = export_bytes(&src, &["bbb".to_string()], false);
     let m = archive::read_manifest(&bytes[..]).unwrap();
-    assert_eq!(m.crewmates.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["bbb"]);
-    assert!(!entry_names(&bytes).iter().any(|n| n.starts_with("crew/aaa")));
+    assert_eq!(
+        m.crewmates
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        ["bbb"]
+    );
+    assert!(
+        !entry_names(&bytes)
+            .iter()
+            .any(|n| n.starts_with("crew/aaa"))
+    );
 }
 
 #[test]
@@ -253,7 +276,11 @@ fn the_manifest_records_version_format_crewmates_and_time() {
     assert_eq!(m.atlas_version, env!("CARGO_PKG_VERSION"));
     assert!(m.created_at > 0);
     assert!(!m.secrets);
-    let mut ids: Vec<_> = m.crewmates.iter().map(|c| (c.id.as_str(), c.name.as_str())).collect();
+    let mut ids: Vec<_> = m
+        .crewmates
+        .iter()
+        .map(|c| (c.id.as_str(), c.name.as_str()))
+        .collect();
     ids.sort();
     assert_eq!(ids, [("aaa", "Aria"), ("bbb", "Bo")]);
 }
@@ -269,9 +296,18 @@ fn an_unknown_format_version_is_refused_and_nothing_is_written() {
 
     let e = archive::import(&dst, &future[..], false).unwrap_err();
 
-    assert!(matches!(e, ImportError::UnsupportedFormat(v) if v == FORMAT_VERSION + 1), "{e}");
+    assert!(
+        matches!(e, ImportError::UnsupportedFormat(v) if v == FORMAT_VERSION + 1),
+        "{e}"
+    );
     assert!(dst.list_crewmates().is_empty());
-    assert!(!t2.path().join("crew").exists() || std::fs::read_dir(t2.path().join("crew")).unwrap().next().is_none());
+    assert!(
+        !t2.path().join("crew").exists()
+            || std::fs::read_dir(t2.path().join("crew"))
+                .unwrap()
+                .next()
+                .is_none()
+    );
 }
 
 #[test]
@@ -289,7 +325,8 @@ fn a_file_that_is_not_an_archive_or_has_no_manifest_is_refused() {
     let mut h = tar::Header::new_gnu();
     h.set_size(0);
     h.set_cksum();
-    b.append_data(&mut h, "crew/x/crewmate.json", &b""[..]).unwrap();
+    b.append_data(&mut h, "crew/x/crewmate.json", &b""[..])
+        .unwrap();
     let no_manifest = b.into_inner().unwrap().finish().unwrap();
     assert!(matches!(
         archive::import(&dst, &no_manifest[..], false),
@@ -309,10 +346,16 @@ fn a_colliding_id_is_refused_without_rename_and_the_store_is_untouched() {
 
     let e = archive::import(&dst, &bytes[..], false).unwrap_err();
 
-    assert!(matches!(&e, ImportError::Collision(ids) if ids == &["aaa".to_string()]), "{e}");
+    assert!(
+        matches!(&e, ImportError::Collision(ids) if ids == &["aaa".to_string()]),
+        "{e}"
+    );
     assert_eq!(dst.load_crewmate("aaa").unwrap().name, "Already here");
     assert_eq!(dst.read_memory("aaa"), "mine");
-    assert!(dst.load_crewmate("bbb").is_err(), "nothing of the archive was written");
+    assert!(
+        dst.load_crewmate("bbb").is_err(),
+        "nothing of the archive was written"
+    );
 }
 
 // With --rename the colliding crewmates get new ids, and a chain trigger that pointed at one of
@@ -329,7 +372,11 @@ fn rename_gives_new_ids_and_remaps_chain_triggers_to_them() {
 
     let new_a = report.imported.iter().find(|i| i.old_id == "aaa").unwrap();
     assert_ne!(new_a.new_id, "aaa");
-    assert_eq!(dst.load_crewmate("aaa").unwrap().name, "Already here", "the original is untouched");
+    assert_eq!(
+        dst.load_crewmate("aaa").unwrap().name,
+        "Already here",
+        "the original is untouched"
+    );
     assert_eq!(dst.load_crewmate(&new_a.new_id).unwrap().id, new_a.new_id);
     assert_eq!(dst.read_memory(&new_a.new_id), "memory of aaa");
     // bbb did not collide: it keeps its id, and its chain follows aaa's new id.
@@ -411,7 +458,12 @@ fn remap_rewrites_only_chain_triggers_that_point_at_a_remapped_id() {
 fn hostile_entry_paths_are_refused() {
     let (_t, src) = populated();
     let good = export_bytes(&src, &[], false);
-    for bad in ["crew/aaa/../../evil", "/etc/passwd", "crew/../x/memory.md", "crew/aaa/sub/memory.md"] {
+    for bad in [
+        "crew/aaa/../../evil",
+        "/etc/passwd",
+        "crew/../x/memory.md",
+        "crew/aaa/sub/memory.md",
+    ] {
         let evil = with_extra_entry(&good, bad);
         let t2 = tempfile::tempdir().unwrap();
         let dst = CrewStore::new(t2.path());
@@ -494,7 +546,10 @@ fn imported_files_are_private() {
     let dst = CrewStore::new(t2.path());
     archive::import(&dst, &bytes[..], false).unwrap();
     for f in ["secrets.json", "crewmate.json", "memory.md"] {
-        let mode = std::fs::metadata(dst.crewmate_dir("aaa").join(f)).unwrap().permissions().mode();
+        let mode = std::fs::metadata(dst.crewmate_dir("aaa").join(f))
+            .unwrap()
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o077, 0, "{f} is {mode:o}");
     }
 }

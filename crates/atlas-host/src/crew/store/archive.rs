@@ -135,7 +135,8 @@ pub fn plan_ids(
         return Err(ImportError::Collision(colliding));
     }
     let mut used: HashSet<String> = incoming.iter().cloned().collect();
-    let mut map: HashMap<String, String> = incoming.iter().map(|i| (i.clone(), i.clone())).collect();
+    let mut map: HashMap<String, String> =
+        incoming.iter().map(|i| (i.clone(), i.clone())).collect();
     for old in &colliding {
         let new = (0..FRESH_TRIES)
             .map(|_| fresh())
@@ -227,14 +228,27 @@ pub fn export(
             })
             .collect(),
     };
-    let mut b = tar::Builder::new(flate2::write::GzEncoder::new(out, flate2::Compression::default()));
-    append(&mut b, MANIFEST, &serde_json::to_vec_pretty(&manifest)?, false)?;
+    let mut b = tar::Builder::new(flate2::write::GzEncoder::new(
+        out,
+        flate2::Compression::default(),
+    ));
+    append(
+        &mut b,
+        MANIFEST,
+        &serde_json::to_vec_pretty(&manifest)?,
+        false,
+    )?;
     // `paused` is this server's live kill switch, not a setting to carry to another.
     let settings = CrewSettings {
         paused: false,
         ..store.load_crew_settings()
     };
-    append(&mut b, SETTINGS, &serde_json::to_vec_pretty(&settings)?, false)?;
+    append(
+        &mut b,
+        SETTINGS,
+        &serde_json::to_vec_pretty(&settings)?,
+        false,
+    )?;
     for mut c in crewmates {
         let id = c.id.clone();
         let dir = store.crewmate_dir(&id);
@@ -253,7 +267,12 @@ pub fn export(
                 continue;
             }
             match std::fs::read(dir.join(file)) {
-                Ok(data) => append(&mut b, &format!("crew/{id}/{file}"), &data, file == "secrets.json")?,
+                Ok(data) => append(
+                    &mut b,
+                    &format!("crew/{id}/{file}"),
+                    &data,
+                    file == "secrets.json",
+                )?,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => return Err(e).with_context(|| format!("reading {id}/{file}")),
             }
@@ -360,7 +379,12 @@ pub fn read_manifest(r: impl Read) -> Result<Manifest, ImportError> {
 /// (chain triggers follow). Returns what went where.
 pub fn import(store: &CrewStore, r: impl Read, rename: bool) -> Result<ImportReport, ImportError> {
     let parsed = parse(r)?;
-    let incoming: Vec<String> = parsed.manifest.crewmates.iter().map(|c| c.id.clone()).collect();
+    let incoming: Vec<String> = parsed
+        .manifest
+        .crewmates
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
     let map = plan_ids(
         &incoming,
         |id| store.crewmate_dir(id).exists(),
@@ -373,7 +397,9 @@ pub fn import(store: &CrewStore, r: impl Read, rename: bool) -> Result<ImportRep
         let data = parsed
             .files
             .get(&(m.id.clone(), DEFINITION.to_string()))
-            .ok_or_else(|| ImportError::BadEntry(format!("crew/{}/{DEFINITION} is missing", m.id)))?;
+            .ok_or_else(|| {
+                ImportError::BadEntry(format!("crew/{}/{DEFINITION} is missing", m.id))
+            })?;
         let mut c: Crewmate = serde_json::from_slice(data)
             .map_err(|e| ImportError::Unreadable(format!("{}: {e}", m.id)))?;
         if c.id != m.id {

@@ -1,0 +1,18 @@
+{
+  "ab": null,
+  "branch": "main",
+  "entries": [
+    {
+      "conflict": false,
+      "path": "a.txt",
+      "x": "M",
+      "y": "M"
+    },
+    {
+      "path": "new.txt",
+      "x": "?",
+      "y": "?"
+    }
+  ],
+  "upstream": null
+}

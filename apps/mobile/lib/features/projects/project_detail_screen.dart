@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
+import 'package:atlas_mobile/features/git/changes_tile.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
@@ -399,6 +400,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   Widget _overview(ProjectSnapshot s) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      ChangesTile(device: widget.device, project: widget.project),
       SectionHeader('Services', count: s.services.length),
       // Two per row; tap a tile for its details and controls.
       LayoutBuilder(

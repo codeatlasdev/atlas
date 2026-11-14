@@ -441,6 +441,50 @@ pub enum HostCmd {
         #[serde(default)]
         confirmed: bool,
     },
+    /// `{branch, upstream, ab, entries: [{path, x, y, ...}]}`: porcelain v2 status of a project
+    /// checkout (`root` is a registered project or worktree, never a free path).
+    GitStatus {
+        root: String,
+    },
+    /// `{files: [FileDiff], truncated}`: parsed diff, the index vs HEAD with `staged`, else the
+    /// working tree plus untracked files; `path` narrows it to one file. Size-capped.
+    GitDiff {
+        root: String,
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        staged: bool,
+    },
+    GitStage {
+        root: String,
+        paths: Vec<String>,
+    },
+    GitUnstage {
+        root: String,
+        paths: Vec<String>,
+    },
+    /// `git commit -F -` of what is staged: `{sha}`.
+    GitCommit {
+        root: String,
+        message: String,
+    },
+    /// AI commit message from the staged diff, by the agent CLI of Settings → Git: `{message, agent,
+    /// scope, withheld}`. Nothing is committed.
+    GitCommitMessage {
+        root: String,
+    },
+    /// Push the current branch (sets `origin` as upstream the first time): `{branch, output}`.
+    GitPush {
+        root: String,
+    },
+    /// `gh pr create`: `{url, number}`.
+    GitPrCreate {
+        root: String,
+        title: String,
+        body: String,
+        #[serde(default)]
+        base: Option<String>,
+    },
     /// New one-time pairing code + this host's iroh address (desktop only).
     MobilePairStart {},
     MobileDevices {},

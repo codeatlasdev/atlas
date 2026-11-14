@@ -197,6 +197,57 @@ jobs:
           name: atlas-x86_64-unknown-linux-gnu
           path: dist/*
 
+  # Linux aarch64: the CLI tarball only, for crew servers on Graviton, Oracle A1 or Hetzner CAX
+  # (`atlas crew install|update` downloads it). A native GitHub arm64 runner builds it; the desktop app is not
+  # built for this target. Same oldest-Ubuntu rule as build-linux, so it runs on any glibc >= 2.35.
+  build-linux-arm64:
+    name: Build (aarch64-unknown-linux-gnu)
+    needs: gate
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: System libraries
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
+
+      - name: Install Rust
+        run: |
+          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+
+      - name: Build CLI
+        run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          cargo build --release --locked -p atlas-cli
+
+      - name: Package
+        run: |
+          V=${TAG#v}
+          T=aarch64-unknown-linux-gnu
+          mkdir -p dist
+          cp target/release/atlas dist/
+          cd dist
+          tar czf "atlas-$V-$T.tar.gz" atlas
+          rm atlas
+          sha256sum "atlas-$V-$T.tar.gz" > "atlas-$V-$T.tar.gz.sha256"
+          ls -l
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: atlas-aarch64-unknown-linux-gnu
+          path: dist/*
+          if-no-files-found: error
+
   # Windows x64: the CLI tarball (atlas.exe), Atlas Desktop's per-user NSIS installer (what
   # `atlas desktop` runs) and Atlas-Setup.exe, cross-compiled on Linux the way Tauri documents it
   # (cargo-xwin fetches the MSVC CRT and Windows SDK, makensis packs the installer). The installer also
@@ -603,10 +654,10 @@ jobs:
 
   publish:
     name: Publish Release
-    needs: [build, build-linux, build-arch, build-windows]
+    needs: [build, build-linux, build-linux-arm64, build-arch, build-windows]
     # Explicit: without an `if`, a skipped job anywhere upstream (the optional SignPath jobs feeding build-windows)
     # skips publish too, and v1.5.0-alpha.25's first full run built everything and published nothing.
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && needs.build-linux-arm64.result == 'success' && needs.build-arch.result == 'success' && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -701,8 +752,8 @@ jobs:
           ```
 
           Or download `atlas-*-aarch64-apple-darwin.tar.gz` (macOS), `atlas-*-x86_64-unknown-linux-gnu.tar.gz`
-          (Linux) or `atlas-*-x86_64-pc-windows-msvc.tar.gz` (Windows) below, verify it against its `.sha256`
-          (or `SHA256SUMS`), extract it and run `./atlas install`.
+          or `atlas-*-aarch64-unknown-linux-gnu.tar.gz` (Linux) or `atlas-*-x86_64-pc-windows-msvc.tar.gz` (Windows)
+          below, verify it against its `.sha256` (or `SHA256SUMS`), extract it and run `./atlas install`.
 
           ## Desktop app
 

@@ -71,9 +71,11 @@ func fakeFCM(t *testing.T) (srv *httptest.Server, okToken, unregToken, notFoundT
 	return
 }
 
+// post notifies with the grant the relay would issue for token (see grant_test.go for the
+// unauthenticated cases).
 func post(t *testing.T, srv *httptest.Server, token, kind string) *http.Response {
 	t.Helper()
-	body, _ := json.Marshal(notifyReq{Token: token, Kind: kind})
+	body, _ := json.Marshal(notifyReq{Token: token, Kind: kind, Grant: mint(testKey, token)})
 	resp, err := http.Post(srv.URL+"/v1/notify", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("post: %v", err)
@@ -83,7 +85,7 @@ func post(t *testing.T, srv *httptest.Server, token, kind string) *http.Response
 
 func newTestRelay(t *testing.T, fcmSrv *httptest.Server) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(newRelay("test-project", fcmSrv.URL, nil))
+	return newAuthedRelay(t, fcmSrv)
 }
 
 func TestNotify_204(t *testing.T) {

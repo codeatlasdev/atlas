@@ -275,7 +275,13 @@ mod tests {
         let env = git_env(Some(&i));
         assert_eq!(env.len(), 1);
         assert_eq!(env[0].0, "GIT_CONFIG_GLOBAL");
-        assert!(env[0].1.ends_with("crew-runtime/gitconfig"));
+        // Compared by path components: the separator is the platform's.
+        assert!(
+            std::path::Path::new(&env[0].1)
+                .ends_with(std::path::Path::new("crew-runtime").join("gitconfig")),
+            "{}",
+            env[0].1
+        );
         assert!(GITCONFIG.contains("directory = *"));
         assert!(GITCONFIG.contains("sharedRepository = group"));
     }

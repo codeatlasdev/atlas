@@ -123,7 +123,10 @@ class NeedsYouCard extends StatelessWidget {
       const SizedBox(height: 10),
       Row(
         children: [
-          WarnPillButton(label: 'Retry', onPressed: () => onAnswerTask('retry')),
+          WarnPillButton(
+            label: 'Retry',
+            onPressed: () => onAnswerTask('retry'),
+          ),
           const SizedBox(width: 8),
           OutlinePillButton(
             label: 'Override',

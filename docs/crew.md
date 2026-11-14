@@ -157,7 +157,7 @@ A new crewmate starts with a short setup conversation (project, role, engine sig
 
 A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
-A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, or decide on work the [guards](#guards-against-the-agent-itself) refused. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
+A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, decide on work the [guards](#guards-against-the-agent-itself) refused, or show a [UI task](#ui-tasks-and-proof) that came back without proof. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
 
 ### Guards against the agent itself
 
@@ -172,7 +172,20 @@ A task that ends well is checked before it is `done` (`runner/guard.rs`), becaus
 
 Atlas learns what a command printed from the agent's own reports. Claude Code's `post_tool_use` carries it (`tool_response`). omp reports it when a call ends (`tool_execution_end`: the result's text and whether it failed): a terminal omp crewmate sends it through the status extension (`atlas setup omp --apply` rewrites it; before that omp still reports the commands but not their output, so its claims count as unproven), and an omp crewmate with an engine reports it on its RPC stream, which hostd reads itself. A result the tool marked as an error never proves a claim, whatever it printed. Output is kept to its last 16 KiB. A claim whose command has no recorded output counts as unproven. The commands are kept in memory per task and dropped when it ends; after a server restart the evidence is gone and the claim is judged without it. Engines that report nothing through a hook or a stream hostd reads (a headless `codex` or `opencode`, or a `claude` whose hooks `atlas setup claude-code` has not installed) leave no evidence, so their claims are removed.
 
-A refusal parks the task as `waiting_action` with a `refused` action, `{"kind": "refused", "reasons": ["…"]}`, shown by the action card on the desktop and the phone and as a Telegram message with **Override** and **Retry with reasons** buttons. Answer `crewmate_action_answer` with `"override"` (accept the work as it is: the task ends `done`) or `"retry"` (the task runs again from the start with the reasons added to its prompt). Any other value is an error and the task keeps waiting. A refusal survives a restart like any other card. An agent cannot raise a `refused` action itself: an `ATLAS_ACTION` line of that kind is ignored. The audit records `task_refused` (with the reasons) and `refusal_overridden`.
+A refusal parks the task as `waiting_action` with a `refused` action, `{"kind": "refused", "reasons": ["…"]}`, shown by the action card on the desktop and the phone and as a Telegram message with **Override** and **Retry with reasons** buttons. Answer `crewmate_action_answer` with `"override"` (accept the work as it is: the task ends `done`) or `"retry"` (the task runs again from the start with the reasons added to its prompt; you may attach images to a retry, see [UI tasks and proof](#ui-tasks-and-proof)). Any other value is an error and the task keeps waiting. A refusal survives a restart like any other card. An agent cannot raise a `refused` action itself: an `ATLAS_ACTION` line of that kind is ignored. The audit records `task_refused` (with the reasons) and `refusal_overridden`.
+
+### UI tasks and proof
+
+A task marked **`ui`** changes what people see, so it only ends `done` with at least **2 images the agent attached itself** (its `capture` tool, before and after, top and end of the page). An image *you* sent with the prompt never counts: the proof is what the agent looked at. A `ui` task that finishes with fewer parks as `waiting_action` with a `prove_ui` action, `{"kind": "prove_ui", "reason": "Could not prove it: this is a UI task and the agent attached 1 of 2 captures. …"}`, shown on the same card as a refusal. The gate runs after the [guards](#guards-against-the-agent-itself): work the guards refused and you overrode still has to show itself.
+
+Mark a task `ui` with `crewmate_task {ui: true}`, with a leading `/ui ` in the desktop composer or in Telegram (`/ui /task Ana restyle the header`, or `/ui restyle the header` for a single crewmate), or let the agent do it with the `set_ui` MCP tool when the task turns out to change the interface. The mark only turns the rule on: an agent cannot take it off, and cannot raise a `prove_ui` card itself (an `ATLAS_ACTION` line of that kind is ignored).
+
+The card shows the agent's captures (thumbnails you tap to enlarge) and the reason, on Atlas Desktop, Atlas Mobile (the task's card in the chat and the Crew tab's Captain's call) and Telegram (the images as one media group of at most 10, the newest, then the message with the buttons). Answer `crewmate_action_answer` with:
+
+- `"override"`: accept the work as it is; the task ends `done`.
+- `"retry"`: the task runs again from the start with the reason in its prompt. You can attach new images to a retry (`attachments`, uploaded like a task's, for a screenshot with the broken part circled): they are stored on the task as yours, staged in the agent's work dir and named in its prompt. Images with an `override`, or with an answer to any other card, are refused and the card keeps waiting.
+
+The agent's captures are the task's `attachments` with `"source": "agent"` (yours have no `source`); they are stored through the same code as your images, so the same checks apply (png, jpeg, webp or gif by the bytes). An agent may attach up to 32 per task (one `capture` call makes up to 16); your own cap stays 4. The audit records `task_unproven_ui` (`task_id`, `reason`, `captures`).
 
 ### Images on tasks
 
@@ -293,6 +306,7 @@ Linked chats receive task results (truncated to 4000 characters) and approval pr
 |---|---|
 | `/crew` | list the crewmates and their agents |
 | `/task <crewmate name> <text>` | queue a task |
+| `/ui <message>` | the same message for a [UI task](#ui-tasks-and-proof): `/ui /task <name> <text>`, or `/ui <text>` for a single crewmate; also at the start of a photo's caption |
 | plain text | goes to the only crewmate when exactly one exists |
 | a photo | becomes a task with the image: the caption is the prompt (`/task <name> <text>` picks the crewmate, otherwise the only crewmate takes it; no caption: "Look at the attached image."). Telegram's largest size is downloaded through the Bot API (`getFile`), a file over 5 MiB is refused without being fetched, and the chat is told why when it is refused. See [Images on tasks](#images-on-tasks) |
 
@@ -333,6 +347,7 @@ Each crewmate's agent gets a stdio MCP server, `atlas-crew-mcp` (`atlas mcp --cr
 |---|---|
 | `ask_user` | post a question to Desktop, Mobile or Telegram and block until answered (up to 30 min). Backed by `POST /crew/<id>/ask` |
 | `set_profile` | change this crewmate's own name or role. Backed by `POST /crew/<id>/set_profile` |
+| `set_ui` | mark this task as a [UI task](#ui-tasks-and-proof): it needs two captures the agent took to be done. Backed by `POST /crew/<id>/set_ui` |
 | `capture` | screenshots of a URL in real browsers, attached to the task ([Captures](#captures)). Backed by `POST /crew/<id>/capture` |
 | `ui_gate` | the fast UI gate: capture only what a change needs, rerun only failures, replay past bugs ([UI gate](#ui-gate)). Backed by `POST /crew/<id>/ui_gate` |
 | `approve` | answer a Claude permission prompt (`--permission-prompt-tool atlas:approve`) |
@@ -361,7 +376,7 @@ Only `url` is required. Each field and what it means:
 
 A call may ask for at most **16 combinations** (engines × widths × themes; repeats count once): split bigger matrices into several calls. The runner is stopped after 5 minutes. The default is 8 shots (2 engines × 2 widths × 2 themes).
 
-**Where the shots go.** They are kept under the task, in `<hostd dir>/crew/<crewmate id>/captures/<task id>/`, and the tool's answer lists every combination visited with its file name. (Showing them in the chat and using them as the proof a UI task needs arrive with image attachments, #209, #210.)
+**Where the shots go.** They are attached to the task as the agent's images (`source: "agent"`, through `crew::attachments`, so they are stored under `attachments/<task id>/`, fetched with `crewmate_attachment` and shown in the chat like any other image), and the tool's answer lists every combination visited with its file name. They are the proof a [UI task](#ui-tasks-and-proof) needs.
 
 **Requirements** on the crew server, for this feature only:
 
@@ -436,6 +451,7 @@ What a crewmate did and who decided what, kept on the crew server in `<crewmate 
 | `config_changed` | approval, engine, project, agent, name, role length, short replies, triggers, routines | `field`, `from`, `to` (webhook tokens are left out) |
 | `task_refused` | the guards refused a finished task | `task_id`, `reasons` |
 | `refusal_overridden` | the owner accepted refused work | `task_id` |
+| `task_unproven_ui` | a `ui` task finished without two agent captures | `task_id`, `reason`, `captures` |
 | `secret_set` | `crewmate_secret_set` | `name` |
 | `audit_gap` (crew-level) | the agent hub dropped events under load | `dropped` |
 
@@ -494,6 +510,16 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 | Layer | Where | Owns |
 |---|---|---|
+
+
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted, `guard`/`gate`/`tape` for the guards against the agent); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/hook/<token>` |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), and the export/import/uninstall scripts and decisions (`transfer.rs`) are pure functions with tests |
+
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/set_ui`, `/crew/<id>/hook/<token>` |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
+
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `attachments.rs` (images on a task: caps, the by-the-bytes type check, safe names, storage, the agent's copy, chunked upload and fetch); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted, `guard`/`gate`/`tape` for the guards against the agent); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
@@ -527,13 +553,14 @@ For contributors. One concept per file; the module doc comment at the top of eac
     usage.jsonl                        per-task usage records
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
     captures/<task id>/                screenshots of the capture tool, and the UI gate's shots and ui-gate.json
+
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled
 <hostd dir>/projects/<slug>/           shared clone per Git project
 ~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers
 ```
 
-Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crewmate_task_attachments.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crewmate_task_attachments.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
+Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `task_actions.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
 
 ## Reference
 
@@ -603,13 +630,13 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crewmate_create` | `{name, role, agent, approval, workdir?, look?, engine?, project?}` | the crewmate |
 | `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | the crewmate |
 | `crewmate_delete` | `{id}` | `{}`; cancels running and queued tasks first |
-| `crewmate_task` | `{id, prompt, source, tz?, attachments?}` | `{task}`; `attachments` is up to 4 images, `[{name, data_b64}]` or `[{name, upload}]`, see [Images on tasks](#images-on-tasks) |
+| `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?}` | `{task}`; `ui: true` makes it a [UI task](#ui-tasks-and-proof); `attachments` is up to 4 images, `[{name, data_b64}]` or `[{name, upload}]`, see [Images on tasks](#images-on-tasks) |
 | `crewmate_attachment_put` | `{id, upload, seq, data_b64, last?}` | `{staged, last}`; one piece (at most 512 KiB raw) of an image too big for a protocol line, pieces in order from `seq` 0. Mobile scope `act` |
 | `crewmate_attachment` | `{id, task, name, offset?, limit?}` | `{name, mime, bytes_len, offset, data_b64, last}`; one piece (at most 512 KiB raw) of a stored image, `name` being one of the task's `attachments`. Mobile scope `read` |
 | `crewmate_tasks` | `{id, limit?}` | `{tasks:[…]}` newest first, default 50 |
 | `crewmate_cancel` | `{id, task}` | `{}` |
 | `crewmate_answer` | `{id, ask_id, key?, text?}` | answer an `ask_user` question |
-| `crewmate_action_answer` | `{id, task, value}` | answer a waiting action: a secret, text, a choice, `add`/`skip`, `override`/`retry` for a refusal |
+| `crewmate_action_answer` | `{id, task, value, attachments?}` | answer a waiting action: a secret, text, a choice, `add`/`skip`, `override`/`retry` for a refusal; `attachments` (up to 4 images, like a task's) only with `retry` on a `refused` or `prove_ui` card |
 | `crewmate_memory`, `crewmate_memory_set` | `{id}`, `{id, text}` | `{text}`, `{}` (64 KiB max) |
 | `crewmate_routine_set` | `{id, routines}` | `{}`; replaces the list, invalid cron rejected |
 | `crewmate_triggers_set` | `{id, triggers[]}` | `{}`; see [Automations](#automations) |
@@ -652,6 +679,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 - `running_task` exists only while a task runs; `pane` is the key to attach a terminal.
 - `last`: the most recent task's result, error or prompt (first 140 characters), final state and time.
 - `pending_approval` exists only in `needs_you`.
+- `waiting_task` (absent unless a task is parked on a card): `{id, action, result, attachments}`, the card the oldest waiting task is on and the images the agent took for it (only the agent's, as records). Atlas Mobile's Captain's call lists a crewmate with a `refused` or `prove_ui` card from it, with Retry and Override in place. It does not change `state`.
 - `triggers` is always present; `next_fire` is computed by the server.
 
 ### Task object
@@ -675,4 +703,5 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 - `source`: `mobile`, `desktop`, `telegram`, `routine` or `trigger`.
 - `state`: `queued`, `running`, `waiting_action`, `done`, `failed` or `cancelled`.
 - `steps` may be empty; `started_at` and `finished_at` are absent until reached. Other optional fields: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`, `resumed` (a restart interrupted it and it started again) and `restarts` (how many).
-- `attachments` (absent without images): the images sent with the prompt, `[{name, mime, bytes_len, sha256, path}]`. `name` is one safe file name unique within the task, `mime` comes from the file's own bytes, `path` is where the agent finds it in its work dir (`.atlas/attachments/<task id>/<name>`). The bytes are never part of a task: fetch them with `crewmate_attachment`. See [Images on tasks](#images-on-tasks).
+- `attachments` (absent without images): the images sent with the prompt, `[{name, mime, bytes_len, sha256, path, source?}]`. `name` is one safe file name unique within the task, `mime` comes from the file's own bytes, `path` is where the agent finds it in its work dir (`.atlas/attachments/<task id>/<name>`). The bytes are never part of a task: fetch them with `crewmate_attachment`. See [Images on tasks](#images-on-tasks). `source` is `"agent"` for a capture the crewmate took and absent for what you sent.
+- `ui` (absent unless true): the task is a [UI task](#ui-tasks-and-proof).

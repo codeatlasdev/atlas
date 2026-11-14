@@ -509,6 +509,9 @@ async fn images_only_ride_on_a_retry_and_a_bad_image_refuses_the_answer() {
 // task's records, fetchable with `crewmate_attachment`, not a side folder.
 #[tokio::test(flavor = "multi_thread")]
 async fn captures_land_as_agent_attachments_the_thread_can_fetch() {
+    // Same order as every test here (the agent binary first, then the capture runner): the other way round
+    // deadlocks two tests that each hold one and wait for the other.
+    let _bin = lock_agent_bin().await;
     let _cap = capture::TEST_LOCK.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
@@ -516,7 +519,6 @@ async fn captures_land_as_agent_attachments_the_thread_can_fetch() {
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Caps").await;
     // A task must exist for a capture to attach to: a long-running one.
-    let _bin = lock_agent_bin().await;
     use_agent_bin(&fake_agent(tmp.path(), "claude", "sleep 20"));
     let task = send(&client, &id, "look", false).await;
     wait_task_state(&client, &id, &task, "running", Duration::from_secs(20)).await;

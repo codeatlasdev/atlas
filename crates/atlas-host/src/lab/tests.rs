@@ -590,6 +590,8 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
             json!({"pane": "p", "req": "r", "allow": true}),
         ),
         ("agent_launch", json!({"project": "p", "agent": "omp"})),
+        ("worktree_create", json!({"project": "p"})),
+        ("worktree_remove", json!({"id": "w"})),
     ];
     for (c, a) in main_cmds {
         assert!(matches!(route(&parse(c, a)), Route::Main), "{c} → main");
@@ -599,11 +601,23 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
         ("agent_integrations", json!({})),
         ("agent_tree", json!({"pane": "p"})),
         ("agent_history", json!({"pane": "p"})),
+        ("worktree_list", json!({"project": "p"})),
         ("project_list", json!({})),
         ("project_detail", json!({"id": "a"})),
         ("project_logs", json!({"id": "a"})),
         ("project_service", json!({"id": "a", "op": "restart"})),
         ("project_action", json!({"id": "a", "key": "k"})),
+        ("git_status", json!({"root": "/r"})),
+        ("git_diff", json!({"root": "/r"})),
+        ("git_stage", json!({"root": "/r", "paths": ["a"]})),
+        ("git_unstage", json!({"root": "/r", "paths": ["a"]})),
+        ("git_commit", json!({"root": "/r", "message": "m"})),
+        ("git_commit_message", json!({"root": "/r"})),
+        ("git_push", json!({"root": "/r"})),
+        (
+            "git_pr_create",
+            json!({"root": "/r", "title": "t", "body": "b"}),
+        ),
         ("info", json!({})),
         ("mobile_pair_start", json!({})),
         ("mobile_devices", json!({})),

@@ -8,6 +8,10 @@
 pub mod history;
 pub mod hook_server;
 pub mod integrations;
+pub(crate) mod launch;
+pub(crate) use launch::plan as launch_plan;
+#[cfg(all(test, unix))]
+pub(crate) use launch::{TEST_BIN_LOCK as LAUNCH_TEST_BIN_LOCK, set_test_bin as launch_test_bin};
 pub mod push;
 #[cfg(test)]
 mod tests;

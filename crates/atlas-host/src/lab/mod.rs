@@ -66,7 +66,9 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentApprove { .. }
-        | C::AgentLaunch { .. } => Route::Main,
+        | C::AgentLaunch { .. }
+        | C::WorktreeCreate { .. }
+        | C::WorktreeRemove { .. } => Route::Main,
         C::PtyAttach { .. } | C::PtyDetach { .. } => Route::Attach,
         C::PtyCreate(_) | C::PtyKill { .. } | C::PtyClear { .. } | C::PtyResize { .. } => {
             Route::Refuse("lab hostd mirrors terminals, it never creates, kills or resizes one")
@@ -93,11 +95,20 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentHistory { .. }
         | C::AgentStatusAll {}
         | C::AgentIntegrations {}
+        | C::WorktreeList { .. }
         | C::ProjectList {}
         | C::ProjectDetail { .. }
         | C::ProjectLogs { .. }
         | C::ProjectService { .. }
         | C::ProjectAction { .. }
+        | C::GitStatus { .. }
+        | C::GitDiff { .. }
+        | C::GitStage { .. }
+        | C::GitUnstage { .. }
+        | C::GitCommit { .. }
+        | C::GitCommitMessage { .. }
+        | C::GitPush { .. }
+        | C::GitPrCreate { .. }
         | C::MobilePairStart {}
         | C::MobileDevices {}
         | C::MobileRevoke { .. }

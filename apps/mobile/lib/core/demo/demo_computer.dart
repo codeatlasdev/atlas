@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:atlas_mobile/core/demo/demo_crew.dart';
 import 'package:atlas_mobile/core/protocol/image_rules.dart';
+import 'package:atlas_mobile/core/demo/demo_git.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
@@ -398,6 +399,7 @@ class _DemoComputer implements Transport {
   late final _ops = DemoCrewOps(_crewmates);
   var _paused = false;
   final _pendingInvites = <Map<String, String>>[];
+  final _git = DemoGit();
 
   @override
   Stream<String> get incomingLines => _lines.stream;
@@ -455,10 +457,32 @@ class _DemoComputer implements Transport {
         error = _interrupt(args['pane'] as String?);
         data = error == null ? <String, Object?>{} : null;
       case 'agent_launch':
-        data = _launch(
-          args['agent'] as String? ?? 'omp',
-          args['prompt'] as String?,
-        );
+        final wt = args['worktree'] as String?;
+        if (wt != null && !_worktrees.any((w) => w['id'] == wt)) {
+          error = 'unknown worktree $wt in this project';
+        } else {
+          data = _launch(
+            args['agent'] as String? ?? 'omp',
+            args['prompt'] as String?,
+          );
+        }
+      case 'worktree_list':
+        data = {'repoId': 'demo-shop', 'worktrees': _worktrees};
+      case 'worktree_create':
+        final made = _createWorktree(args['name'] as String?);
+        data = {'worktree': made, 'setup': null, 'seed': null};
+      case 'worktree_remove':
+        final w = _worktrees.where((w) => w['id'] == args['id']).firstOrNull;
+        if (w == null) {
+          error = 'unknown worktree';
+        } else if (w['main'] == true) {
+          error = 'the main checkout cannot be deleted';
+        } else if (w['dirty'] == true) {
+          data = {'kept': 'dirty'};
+        } else {
+          _worktrees.remove(w);
+          data = {'removed': true, 'branch': w['branch']};
+        }
       case 'agent_send':
         error = _send(
           args['pane'] as String?,
@@ -482,6 +506,26 @@ class _DemoComputer implements Transport {
         data = {'text': 'Seeded 3 batches of demo orders.'};
       case 'project_logs':
         data = {'text': _logs(args['service'] as String?)};
+      case 'git_status':
+        data = _git.status();
+      case 'git_diff':
+        data = _git.diff(args['path'] as String?, args['staged'] == true);
+      case 'git_stage' || 'git_unstage':
+        error = _git.stage(
+          (args['paths'] as List?)?.cast<String>() ?? const [],
+          on: req['cmd'] == 'git_stage',
+        );
+        data = error == null ? <String, Object?>{} : null;
+      case 'git_commit_message':
+        data = _git.message();
+      case 'git_commit':
+        final r = _git.commit(args['message'] as String? ?? '');
+        data = r.data;
+        error = r.error;
+      case 'git_push':
+        data = _git.push();
+      case 'git_pr_create':
+        data = _git.pr(args['title'] as String? ?? '');
       case 'pty_list':
         data = {
           'ptys': [
@@ -755,6 +799,59 @@ class _DemoComputer implements Transport {
     a.updatedAt = _now();
     _pushStatus(a);
     return null;
+  }
+
+  /// The demo project's checkouts, like `worktree_list` answers (the dirty one is kept on removal).
+  final _worktrees = <Map<String, Object?>>[
+    {
+      'id': 'demo-shop',
+      'path': '/Users/demo/Projetos/orbit-shop',
+      'name': 'orbit-shop',
+      'branch': 'main',
+      'main': true,
+      'dirty': false,
+      'exists': true,
+      'portOffset': 0,
+    },
+    {
+      'id': 'demo-wt-fix',
+      'path': '/Users/demo/.atlas/worktrees/orbit-shop/fix-checkout',
+      'name': 'fix-checkout',
+      'branch': 'fix-checkout',
+      'main': false,
+      'dirty': true,
+      'exists': true,
+      'portOffset': 100,
+    },
+  ];
+
+  Map<String, Object?> _createWorktree(String? name) {
+    final slug = (name ?? '')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final n = slug.isEmpty ? 'coral' : slug;
+    final offset = 100 * (_worktrees.length);
+    final w = <String, Object?>{
+      'id': 'demo-wt-$n',
+      'path': '/Users/demo/.atlas/worktrees/orbit-shop/$n',
+      'name': n,
+      'branch': n,
+      'main': false,
+      'dirty': false,
+      'exists': true,
+      'portOffset': offset,
+    };
+    _worktrees.add(w);
+    return {
+      'id': w['id'],
+      'path': w['path'],
+      'branch': n,
+      'base': 'origin/main',
+      'portOffset': offset,
+      'repoId': 'demo-shop',
+      'name': n,
+    };
   }
 
   /// A new agent in a demo project: it takes the first prompt and answers like the others.

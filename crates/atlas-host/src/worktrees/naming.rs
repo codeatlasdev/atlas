@@ -1,6 +1,6 @@
 //! Names and port offsets for new worktrees.
 
-use crate::registry::Entry;
+use super::registry::Entry;
 
 const SEA_NAMES: [&str; 48] = [
     "anchovy",
@@ -53,7 +53,7 @@ const SEA_NAMES: [&str; 48] = [
     "walrus",
 ];
 
-pub(super) fn slug(s: &str) -> String {
+pub fn slug(s: &str) -> String {
     let mut out = String::new();
     for c in s.to_lowercase().chars() {
         if c.is_ascii_alphanumeric() {
@@ -70,8 +70,8 @@ pub(super) fn slug(s: &str) -> String {
         .to_string()
 }
 
-pub(super) fn random_sea_name() -> String {
-    let n = atlas_host::paths::random_hex(2)
+pub fn random_sea_name() -> String {
+    let n = crate::paths::random_hex(2)
         .ok()
         .and_then(|h| usize::from_str_radix(&h, 16).ok())
         .unwrap_or(0);
@@ -79,7 +79,7 @@ pub(super) fn random_sea_name() -> String {
 }
 
 /// Smallest free multiple of 100 among the repo's worktrees.
-pub(super) fn free_offset(entries: &[Entry], repo: &str) -> u16 {
+pub fn free_offset(entries: &[Entry], repo: &str) -> u16 {
     (1..100)
         .map(|k| k * 100)
         .find(|o| {

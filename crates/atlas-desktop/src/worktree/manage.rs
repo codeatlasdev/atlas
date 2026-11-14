@@ -9,10 +9,10 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::create::hook_env;
 use super::exec::{exec, exec_on, git};
-use super::naming::free_offset;
 use crate::host::HostHub;
 use crate::live::LiveHub;
 use crate::registry::{self, Entry};
+use atlas_host::worktrees::naming::free_offset;
 
 #[tauri::command]
 pub async fn worktree_remove(

@@ -94,6 +94,27 @@ fn an_omp_tool_call_becomes_a_step_once() {
     assert_eq!(steps[0]["tool_input"]["path"], "src/app.ts");
 }
 
+// omp reports what a tool printed when the call ends, apart from the call itself: that is the crew's evidence that a
+// test run passed, and it must not become a second step.
+#[test]
+fn an_omp_tool_execution_end_carries_its_output_and_is_not_a_step() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let body = |p: Value| json!({"pane_key": "crew:b:t", "payload": p});
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_execution_end","tool_name":"bash",
+                     "tool_output":"test result: ok. 3 passed; 0 failed","is_error":false})),
+    );
+    let evs: Vec<Value> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(evs.iter().all(|v| v["ev"] != "agent_step"), "{evs:?}");
+    let out = evs.iter().find(|v| v["ev"] == "agent_tool_output").unwrap();
+    assert_eq!(out["pane_key"], "crew:b:t");
+    assert_eq!(out["tool_name"], "bash");
+    assert_eq!(out["tool_output"], "test result: ok. 3 passed; 0 failed");
+    assert_eq!(out["is_error"], false);
+}
+
 #[test]
 fn events_without_pane_key_resolve_by_agent_and_cwd() {
     let hub = AgentHub::default();

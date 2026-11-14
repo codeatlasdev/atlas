@@ -5,6 +5,7 @@
 //! | file          | what it covers                                                           |
 //! |---------------|--------------------------------------------------------------------------|
 //! | `tasks`       | a task from queue to done/failed/cancelled, steps, usage, JSON contracts |
+//! | `capture`     | the `capture` tool through a real hostd with a fake runner                |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
@@ -15,6 +16,7 @@
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
+//! | `guards`      | the guards against the agent: refusal parks the task, override and retry |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `mobile_payloads` | the audit, usage, engine-limits and settings replies the phone's crew screens read |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
@@ -27,7 +29,7 @@
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
 //! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
 
-mod github_fake;
+pub(crate) mod github_fake;
 mod github_in;
 mod github_out;
 mod payloads;
@@ -43,6 +45,8 @@ mod audit;
 #[cfg(unix)]
 mod automations;
 #[cfg(unix)]
+mod capture;
+#[cfg(unix)]
 mod crewmates;
 #[cfg(unix)]
 mod engines;
@@ -50,6 +54,8 @@ mod engines;
 mod fixture;
 #[cfg(unix)]
 mod github_e2e;
+#[cfg(unix)]
+mod guards;
 #[cfg(unix)]
 mod limits;
 #[cfg(unix)]

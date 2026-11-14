@@ -302,8 +302,11 @@ impl Mobile {
         if let Some(d) = args.get("data").and_then(Value::as_str) {
             args["data"] = json!(format!("<{} bytes base64>", d.len()));
         }
-        if let Some(t) = args.get("text").and_then(Value::as_str) {
-            args["text"] = json!(format!("<{} chars>", t.chars().count()));
+        // Typed text (a prompt, a commit message, a PR title or body) is logged as its length only.
+        for k in ["text", "message", "title", "body"] {
+            if let Some(t) = args.get(k).and_then(Value::as_str) {
+                args[k] = json!(format!("<{} chars>", t.chars().count()));
+            }
         }
         let line = json!({"ts": now_s(), "node_id": node_id, "cmd": cmd, "args": args});
         if let Ok(mut f) =
@@ -414,6 +417,13 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentLaunch { .. } => Scope::Act,
+        C::GitStatus { .. } | C::GitDiff { .. } => Scope::Read,
+        C::GitStage { .. }
+        | C::GitUnstage { .. }
+        | C::GitCommit { .. }
+        | C::GitCommitMessage { .. }
+        | C::GitPush { .. }
+        | C::GitPrCreate { .. } => Scope::Act,
         C::AgentApprove { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,

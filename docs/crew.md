@@ -52,7 +52,7 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 
 | Command | What it does |
 |---|---|
-| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH]` | install or migrate a crew server (above), x86_64 or aarch64. `--port` for a non-standard SSH port; `--binary` uploads that Linux `atlas` (the server's architecture) instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`) |
+| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH] [--browsers]` | install or migrate a crew server (above), x86_64 or aarch64. `--port` for a non-standard SSH port; `--binary` uploads that Linux `atlas` (the server's architecture) instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`); `--browsers` also installs the capture browsers ([Captures](#captures)) |
 | `atlas crew update <ssh-target> [--version X] [--rollback] [--port N] [--binary PATH]` | put a release (default: this CLI's version) on a crew server, keep the old binary as `atlas.prev`, restart, wait for hostd, roll back by itself when it does not come back; `--rollback` restores `atlas.prev` ([Update a crew server](#update-a-crew-server)) |
 | `atlas crew uninstall <ssh-target> [--yes]` | lists what it will delete (the crew home, the number of crewmates and its size), stops and removes the service, the crew user (and its home, so your crewmates) and `/usr/local/lib/atlas-crew`. In a terminal it offers an export first and asks you to type the server name; `--yes` skips the questions but still prints what was deleted and that it is gone; with neither a terminal nor `--yes` it refuses. Refuses while the user still has a login session; it never kills processes |
 | `atlas crew export <ssh-target> [-o FILE] [--crewmate ID]… [--with-secrets]` | writes one archive of the crewmates ([Back up and move crewmates](#back-up-and-move-crewmates)) |
@@ -62,6 +62,8 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew resume <ssh-target>` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent>` | opens `ssh -t <crew-user>@<host> <agent-binary>` so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
+| `atlas crew browsers install <ssh-target>` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
+| `atlas crew browsers status <ssh-target>` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
 
 ### Offline install
 
@@ -155,7 +157,22 @@ A new crewmate starts with a short setup conversation (project, role, engine sig
 
 A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
-A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option or sign an engine in. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
+A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, or decide on work the [guards](#guards-against-the-agent-itself) refused. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
+
+### Guards against the agent itself
+
+A task that ends well is checked before it is `done` (`runner/guard.rs`), because "finished" is also what an agent says when it made the checks pass instead of the code. The guards read the crewmate's work tree and its own words:
+
+| Guard | Refused when |
+|---|---|
+| Weakened tests | The diff against the task's base (the branch's upstream, else `origin/HEAD`; committed and uncommitted work both count) removes assertions from a test file (`assert!`, `assert_eq!`, `expect(`, `.should`…, counted removed against added), deletes a test file or a test function, adds a skip (`#[ignore]`, `.skip`, `it.only`, `xit`, `skip:`, `@Skip`), or loosens a limit in any file: `timeout`, `threshold`, `budget`, `max_bytes`, `max_warnings`, `waiver(s)`, `tolerance`, `retries`… raised, and `coverage_threshold` / `fail_under` lowered. Rust, TypeScript/JavaScript and Dart |
+| Stray files | A new untracked file is a scratch name (`probe*`, `scratch*`, `tmp*`, `temp*`, `debug*`, `repro*`, `playground*`, `*.orig`, `*.rej`, `*.bak`, `*.log`) or sits in a `tmp`/`scratch`/`probes` folder; sits at the repository root where the repo tracks no file of that extension; or sits in a new folder whose parent folder the repo does not track either (a feature may add one folder next to tracked ones, not a tree of them). A new source file next to its siblings is expected, and so is anything under `.atlas/` (Atlas's own files, such as task attachments). A command that redirects or `tee`s into `/tmp` or `/var/tmp` is refused too: git cannot see those files, the tool calls can |
+| Invented references | A `#N` in the task's commits, in the reply, or in a command that publishes text (`gh pr`, `gh issue`, `gh api`, `git commit`) does not exist in the project's GitHub repo (checked through the same GitHub API the GitHub triggers use), or could not be checked |
+| Unproven claims | Not a refusal: a sentence of the result that says something was verified, tested, passes or compiles is removed, and a note says what was removed, unless a command of this task ran a test or check (`cargo test`, `bun test`, `bun run check`, `flutter test`, `pytest`, `go test`…) and printed output with no failure in it |
+
+Atlas learns what a command printed from the agent's own reports. Claude Code's `post_tool_use` carries it (`tool_response`). omp reports it when a call ends (`tool_execution_end`: the result's text and whether it failed): a terminal omp crewmate sends it through the status extension (`atlas setup omp --apply` rewrites it; before that omp still reports the commands but not their output, so its claims count as unproven), and an omp crewmate with an engine reports it on its RPC stream, which hostd reads itself. A result the tool marked as an error never proves a claim, whatever it printed. Output is kept to its last 16 KiB. A claim whose command has no recorded output counts as unproven. The commands are kept in memory per task and dropped when it ends; after a server restart the evidence is gone and the claim is judged without it. Engines that report nothing through a hook or a stream hostd reads (a headless `codex` or `opencode`, or a `claude` whose hooks `atlas setup claude-code` has not installed) leave no evidence, so their claims are removed.
+
+A refusal parks the task as `waiting_action` with a `refused` action, `{"kind": "refused", "reasons": ["…"]}`, shown by the action card on the desktop and the phone and as a Telegram message with **Override** and **Retry with reasons** buttons. Answer `crewmate_action_answer` with `"override"` (accept the work as it is: the task ends `done`) or `"retry"` (the task runs again from the start with the reasons added to its prompt). Any other value is an error and the task keeps waiting. A refusal survives a restart like any other card. An agent cannot raise a `refused` action itself: an `ATLAS_ACTION` line of that kind is ignored. The audit records `task_refused` (with the reasons) and `refusal_overridden`.
 
 ### Images on tasks
 
@@ -316,9 +333,48 @@ Each crewmate's agent gets a stdio MCP server, `atlas-crew-mcp` (`atlas mcp --cr
 |---|---|
 | `ask_user` | post a question to Desktop, Mobile or Telegram and block until answered (up to 30 min). Backed by `POST /crew/<id>/ask` |
 | `set_profile` | change this crewmate's own name or role. Backed by `POST /crew/<id>/set_profile` |
+| `capture` | screenshots of a URL in real browsers, attached to the task ([Captures](#captures)). Backed by `POST /crew/<id>/capture` |
 | `approve` | answer a Claude permission prompt (`--permission-prompt-tool atlas:approve`) |
 
 The hook routes live on the same local HTTP server as the agent hooks and need its token.
+
+## Captures
+
+The `capture` tool lets a crewmate look at a UI instead of guessing: it opens a URL in **Playwright's chromium and webkit**, at several widths and in light and dark, and hands back one PNG per combination. A capture that returns is complete: if any requested combination is missing or failed, the tool returns an error that names each one (`webkit/390px/dark`), never a partial set.
+
+```json
+{"url": "http://localhost:5173/settings", "widths": [390, 1440], "themes": ["light", "dark"], "engines": ["chromium", "webkit"], "slow_network": false, "full_page": true, "steps": [{"do": "click", "selector": "#menu"}]}
+```
+
+Only `url` is required. Each field and what it means:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `url` | | `http://` or `https://` only. `localhost` and LAN addresses are allowed on purpose (the page is usually a dev server on the crew server); `file:`, `data:`, `javascript:` and the like are refused |
+| `widths` | `[390, 1440]` | viewport widths in px, 200 to 4000: a phone and a desktop |
+| `themes` | `["light", "dark"]` | the page's `prefers-color-scheme` |
+| `engines` | `["chromium", "webkit"]` | chromium is Chrome/Edge/Android; webkit is Safari, iOS and Tauri's WKWebView, where most "works on my machine" layout bugs live |
+| `slow_network` | `false` | every request is delayed 400 ms, on every engine |
+| `full_page` | `true` | scroll to the end (so lazy content loads), then shoot the whole page; `false` shoots the first screen |
+| `steps` | none | at most 20 things to do before the shot: `click`, `fill`, `press`, `wait_for`, `wait_ms`. Selectors and text only, no script |
+
+A call may ask for at most **16 combinations** (engines × widths × themes; repeats count once): split bigger matrices into several calls. The runner is stopped after 5 minutes. The default is 8 shots (2 engines × 2 widths × 2 themes).
+
+**Where the shots go.** They are kept under the task, in `<hostd dir>/crew/<crewmate id>/captures/<task id>/`, and the tool's answer lists every combination visited with its file name. (Showing them in the chat and using them as the proof a UI task needs arrive with image attachments, #209, #210.)
+
+**Requirements** on the crew server, for this feature only:
+
+- **Node.js 20 or newer** with npm (`node`, `npm`, `npx` on `PATH`), the floor of the pinned Playwright. `apt install nodejs` on Ubuntu 24.04 is Node 18 and is refused: use Node from [nodesource](https://github.com/nodesource/distributions) or another source. `atlas crew browsers status` says it plainly (`Node 18.19.1 found, need >= 20`). Nothing else in Atlas Crew needs Node.
+- `atlas crew browsers install <ssh-target>` (or `atlas crew install <ssh-target> --browsers`), once, on Debian or Ubuntu. **No npm code runs as root.** In order:
+  1. as the crew user, `package.json`, a `package-lock.json` embedded in atlas (`crates/atlas-host/src/crew/capture/package-lock.json`) and `runner.mjs` are written to `<hostd dir>/capture/` (`/var/lib/<crew user>/.atlas/capture/`);
+  2. as the crew user, `npm ci`: it installs exactly the locked `playwright` and `playwright-core` (one version, `PLAYWRIGHT_VERSION` in `crates/atlas-host/src/crew/capture/mod.rs`) and checks every tarball against the integrity hash in the lock, so a registry that serves something else fails the install instead of running;
+  3. as the crew user, `npx --no-install playwright install chromium webkit` downloads the browsers into `<capture dir>/browsers/`, readable by every user on the server;
+  4. as the crew user, `npx --no-install playwright install-deps --dry-run chromium webkit` only *reports* which system libraries are missing (`Missing system dependencies (N):` and one package name per line);
+  5. atlas reads that report and accepts only package names matching `^[a-z0-9][a-z0-9.+-]*$` (so no space, quote, `;`, `&`, `|`, `$`, backtick or leading `-`), a count that equals the list, and nothing else: any other line is an error shown to you and nothing runs as root. **Atlas builds the one root command itself**, `sudo apt-get update && sudo apt-get install -y --no-install-recommends <those names>`: nothing npm prints is ever executed as a command.
+  Re-run it to repair, or after an `atlas crew update` that moves the pin.
+- About 1 GB of disk for the two browsers and a few hundred MB of RAM per capture.
+
+`atlas crew browsers status <ssh-target>` prints one line per missing piece, and a crewmate that calls `capture` on a server without the browsers gets the same instruction as the tool's error.
 
 ## Security model
 
@@ -326,6 +382,7 @@ The hook routes live on the same local HTTP server as the agent hooks and need i
 - **Systemd hardening.** `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=read-only` with `ReadWritePaths=<crew home>`, `PrivateTmp=true`, `ProtectKernelTunables=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `MemoryMax=80%`, `TasksMax=4096` ([the unit](#the-systemd-unit)). The crewmates still share one user: they are not isolated from each other.
 - **Scoped SSH key.** `atlas crew install` appends your key to the crew user's `authorized_keys` only, never to the admin user's.
 - **sudo once.** Install and uninstall need sudo; the running service never does. The sudo password, when Desktop passes it, comes over stdin and is dropped after the credential cache is primed.
+- **No npm code as root.** `atlas crew browsers install` runs `npm ci` (from a lock embedded in atlas, integrity-checked), the browser download and Playwright's dependency report as the crew user. Only one command runs as root: `apt-get install -y --no-install-recommends <names>` that atlas builds itself from package names that matched `^[a-z0-9][a-z0-9.+-]*$` in the report; anything else in the report is an error and nothing runs as root. See [Captures](#captures).
 - **Secrets.** Per-crewmate secrets live in `<crewmate dir>/secrets.json` (mode 0600), are injected as environment into that crewmate's agent only and are never returned in any reply. Terminals and secrets are never relayed to a phone.
 - **Audit.** Every crewmate has an append-only log, written by hostd and never by the agent: each tool call the agent reports (full tool name and input, not the 80-character step), each approval asked and how it ended (`allow`, `deny` or `timeout`, and who answered: `desktop`, `phone:<node id>`, `telegram:<chat id>` or `none`), the task lifecycle, and changes to its approval mode, triggers, project, engine and secrets (a secret's name, never its value). See [Audit](#audit).
 - **No CodeAtlas servers.** The only optional outbound call is the push relay (kind only). Details: [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
@@ -341,6 +398,8 @@ What a crewmate did and who decided what, kept on the crew server in `<crewmate 
 | `approval_decision` | the prompt ended | `task_id`, `req`, `tool_name`, `decision` (`allow`/`deny`/`timeout`), `by` |
 | `task_queued`, `task_started`, `task_finished` | task lifecycle | `task_id`, `source`, `prompt`; `state` and `error` at the end |
 | `config_changed` | approval, engine, project, agent, name, role length, short replies, triggers, routines | `field`, `from`, `to` (webhook tokens are left out) |
+| `task_refused` | the guards refused a finished task | `task_id`, `reasons` |
+| `refusal_overridden` | the owner accepted refused work | `task_id` |
 | `secret_set` | `crewmate_secret_set` | `name` |
 | `audit_gap` (crew-level) | the agent hub dropped events under load | `dropped` |
 
@@ -400,8 +459,14 @@ For contributors. One concept per file; the module doc comment at the top of eac
 | Layer | Where | Owns |
 |---|---|---|
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `attachments.rs` (images on a task: caps, the by-the-bytes type check, safe names, storage, the agent's copy, chunked upload and fetch); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted, `guard`/`gate`/`tape` for the guards against the agent); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/hook/<token>` |
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), and the export/import/uninstall scripts and decisions (`transfer.rs`) are pure functions with tests |
+
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/hook/<token>` |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
 | Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
 | Desktop UI | `apps/desktop/src/lib/crew/` and `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, board, editor, settings, onboarding, automations, the look catalogue |
 | Mobile | `apps/mobile/lib/features/crew/` | crew tab, chat, profile, automations, relay transport |
@@ -414,6 +479,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 ```text
 <hostd dir>/crew.json                  crew-level settings
 <hostd dir>/crew-audit.jsonl            crew-wide audit (crewmates created/deleted, pause/resume)
+<hostd dir>/capture/                      package.json, package-lock.json, runner.mjs, node_modules/playwright, browsers/ (atlas crew browsers install)
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
     tasks.jsonl                        task log, last state per id wins
@@ -424,6 +490,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
     secrets.json                       secrets (0600)
     usage.jsonl                        per-task usage records
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
+    captures/<task id>/                screenshots of the capture tool
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled
 <hostd dir>/projects/<slug>/           shared clone per Git project
@@ -506,7 +573,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crewmate_tasks` | `{id, limit?}` | `{tasks:[…]}` newest first, default 50 |
 | `crewmate_cancel` | `{id, task}` | `{}` |
 | `crewmate_answer` | `{id, ask_id, key?, text?}` | answer an `ask_user` question |
-| `crewmate_action_answer` | `{id, task, value}` | answer a waiting action: a secret, text, a choice, `add`/`skip` |
+| `crewmate_action_answer` | `{id, task, value}` | answer a waiting action: a secret, text, a choice, `add`/`skip`, `override`/`retry` for a refusal |
 | `crewmate_memory`, `crewmate_memory_set` | `{id}`, `{id, text}` | `{text}`, `{}` (64 KiB max) |
 | `crewmate_routine_set` | `{id, routines}` | `{}`; replaces the list, invalid cron rejected |
 | `crewmate_triggers_set` | `{id, triggers[]}` | `{}`; see [Automations](#automations) |

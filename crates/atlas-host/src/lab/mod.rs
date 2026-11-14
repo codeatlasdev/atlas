@@ -98,6 +98,14 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::ProjectLogs { .. }
         | C::ProjectService { .. }
         | C::ProjectAction { .. }
+        | C::GitStatus { .. }
+        | C::GitDiff { .. }
+        | C::GitStage { .. }
+        | C::GitUnstage { .. }
+        | C::GitCommit { .. }
+        | C::GitCommitMessage { .. }
+        | C::GitPush { .. }
+        | C::GitPrCreate { .. }
         | C::MobilePairStart {}
         | C::MobileDevices {}
         | C::MobileRevoke { .. }

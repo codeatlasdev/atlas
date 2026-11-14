@@ -1,5 +1,5 @@
 /// The card a crewmate raises when a task is `waiting_action`: connect GitHub, give a secret
-/// or a value, pick an option, sign in to an engine, or approve an automation it proposes.
+/// or a value, pick an option, sign in to an engine, approve an automation it proposes, or decide on work Atlas's guards refused.
 /// Every kind is a title, an optional reason, its own body and a Submit / Cancel row; the
 /// answers go out as `crewmate_action_answer`, a cancel as `crewmate_cancel`.
 library;
@@ -135,6 +135,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       'choose' => _choose(c, action, busy),
       'sign_in_engine' => _signInEngine(c, action, busy),
       'add_trigger' => _addTrigger(c, action, busy),
+      'refused' => _refused(c, action, busy),
       _ => _textCard(c, action, busy, title: action.label ?? 'Response needed'),
     };
 
@@ -398,6 +399,39 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       ],
     );
   }
+
+  /// Atlas's guards refused the work: the reasons, then Retry (the task runs again with them in
+  /// its prompt) or Override (accept the work as it is).
+  Widget _refused(AtlasColors c, TaskAction action, bool busy) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _title(c, 'This work was refused'),
+      const SizedBox(height: 6),
+      for (final reason in action.reasons)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text(
+            '• $reason',
+            style: TextStyle(fontSize: 12, color: c.muted),
+          ),
+        ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          WarnPillButton(
+            label: 'Retry',
+            onPressed: busy ? null : () => _submit('retry'),
+          ),
+          const SizedBox(width: 8),
+          OutlinePillButton(
+            label: 'Override',
+            fontSize: 13,
+            onPressed: busy ? null : () => _submit('override'),
+          ),
+        ],
+      ),
+    ],
+  );
 
   /// The crewmate proposes an automation; the user adds it or skips.
   Widget _addTrigger(AtlasColors c, TaskAction action, bool busy) {

@@ -1096,6 +1096,27 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::ProjectAction { id, key, confirmed } => {
             crate::projects::action(hub.data_dir(), &id, &key, confirmed).await
         }
+        HostCmd::GitStatus { root } => crate::git::status(hub.data_dir(), &root).await,
+        HostCmd::GitDiff { root, path, staged } => {
+            crate::git::diff(hub.data_dir(), &root, path, staged).await
+        }
+        HostCmd::GitStage { root, paths } => crate::git::stage(hub.data_dir(), &root, &paths).await,
+        HostCmd::GitUnstage { root, paths } => {
+            crate::git::unstage(hub.data_dir(), &root, &paths).await
+        }
+        HostCmd::GitCommit { root, message } => {
+            crate::git::commit(hub.data_dir(), &root, &message).await
+        }
+        HostCmd::GitCommitMessage { root } => {
+            crate::git::commit_message(hub.data_dir(), &root).await
+        }
+        HostCmd::GitPush { root } => crate::git::push(hub.data_dir(), &root).await,
+        HostCmd::GitPrCreate {
+            root,
+            title,
+            body,
+            base,
+        } => crate::git::pr_create(hub.data_dir(), &root, &title, &body, base.as_deref()).await,
         HostCmd::MobilePairStart {} => {
             hub.mobile.ensure_endpoint().await?;
             hub.mobile.pair_start()

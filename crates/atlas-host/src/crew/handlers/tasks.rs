@@ -172,6 +172,16 @@ pub(crate) fn action_answer(
         Some(TaskAction::ConnectGithub { .. }) => {
             return Err("use crew_github_connect_resume for connect_github actions".into());
         }
+        Some(TaskAction::Refused { .. }) => {
+            if value != runner::REFUSAL_OVERRIDE && value != runner::REFUSAL_RETRY {
+                return Err(format!(
+                    "a refused task is answered with \"{}\" or \"{}\"",
+                    runner::REFUSAL_OVERRIDE,
+                    runner::REFUSAL_RETRY
+                ));
+            }
+            hub.crew.answer_action(&task_id, value);
+        }
         Some(TaskAction::AddTrigger {
             trigger: trigger_kind,
             prompt: trigger_prompt,

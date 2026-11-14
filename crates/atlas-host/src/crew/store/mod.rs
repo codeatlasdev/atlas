@@ -320,6 +320,10 @@ pub enum TaskAction {
         prompt: String,
         reason: String,
     },
+    /// Atlas's guards refused the work (`runner::guard`): the owner answers `override` or `retry`.
+    Refused {
+        reasons: Vec<String>,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -1,0 +1,43 @@
+{
+  "files": [
+    {
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -1,2 +1,3 @@",
+          "lines": [
+            {
+              "kind": "ctx",
+              "new_no": 1,
+              "old_no": 1,
+              "text": "one"
+            },
+            {
+              "kind": "del",
+              "old_no": 2,
+              "text": "two"
+            },
+            {
+              "kind": "add",
+              "new_no": 2,
+              "text": "TWO"
+            },
+            {
+              "kind": "add",
+              "new_no": 3,
+              "text": "three"
+            }
+          ],
+          "new_lines": 3,
+          "new_start": 1,
+          "old_lines": 2,
+          "old_start": 1
+        }
+      ],
+      "path": "a.txt",
+      "staged": true,
+      "status": "modified"
+    }
+  ],
+  "truncated": false
+}

@@ -12,15 +12,15 @@ use serde_json::{Value, json};
 use atlas_tui::mcp::tools;
 
 #[derive(Deserialize)]
-struct Entry {
-    id: String,
-    root: String,
+pub(crate) struct Entry {
+    pub(crate) id: String,
+    pub(crate) root: String,
     /// SSH host: not reachable from this host's runner, skipped.
     #[serde(default)]
     host: Option<String>,
 }
 
-fn entries(dir: &Path) -> Result<Vec<Entry>, String> {
+pub(crate) fn entries(dir: &Path) -> Result<Vec<Entry>, String> {
     let p = dir.join("desktop").join("projects.json");
     match std::fs::read_to_string(&p) {
         Ok(t) => serde_json::from_str::<Vec<Entry>>(&t)

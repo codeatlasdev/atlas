@@ -6,6 +6,7 @@
 //! |---------------|--------------------------------------------------------------------------|
 //! | `tasks`       | a task from queue to done/failed/cancelled, steps, usage, JSON contracts |
 //! | `capture`     | the `capture` tool through a real hostd with a fake runner                |
+//! | `uigate`      | the `ui_gate` tool through a real hostd: plan, cache hit, regression replay |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
@@ -68,5 +69,7 @@ mod tasks;
 mod telegram;
 #[cfg(unix)]
 mod triggers;
+#[cfg(unix)]
+mod uigate;
 #[cfg(unix)]
 mod untrusted;

@@ -286,3 +286,99 @@ printf '{"type":"result","session_id":"ses-iso","result":"cwd=%s cfg=%s secret=%
     assert!(reply.contains("secret=s3cr3t-value"), "{reply}");
     client.call("shutdown", json!({})).await.ok();
 }
+
+// A crewmate that exists without a Linux user (imported from an archive, or created before the helper
+// was installed) is provisioned the first time it works, and its memory moves into its own directory so
+// the agent can reach it: neither a failed task nor lost memory.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_its_memory() {
+    let _bin_lock = lock_agent_bin().await;
+    crate::crew::engine::set_test_engine_bin(None);
+    let r = rig();
+    r.engine(
+        "claude",
+        r#"printf '{"type":"result","session_id":"s","result":"mem=%s","is_error":false}\n' "$(/bin/cat "$MEMORY_FILE")""#,
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let hostd = tmp.path().join("hostd");
+    // The crewmate was made by a hostd without a helper: definition and memory in the crew home.
+    let plain = crate::crew::store::CrewStore::new(&hostd);
+    let id = "5a2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+    plain
+        .save_crewmate(&crate::crew::Crewmate {
+            id: id.into(),
+            name: "Old".into(),
+            role: "r".into(),
+            agent: "claude".into(),
+            workdir: None,
+            approval: crate::crew::store::Approval::Auto,
+            routines: vec![],
+            triggers: vec![],
+            look: None,
+            engine: Some(crate::crew::store::EngineConfig {
+                kind: "claude".into(),
+                model: None,
+                provider: None,
+                base_url: None,
+            }),
+            project: None,
+            setup_step: None,
+            short_replies: None,
+            created_at: 1,
+        })
+        .unwrap();
+    plain.write_memory(id, "remember the milk").unwrap();
+    plain.set_secret(id, "MEMORY_FILE", "unused").unwrap();
+
+    let client = daemon_with(&hostd, Some(r.setup())).await;
+    let t = client
+        .call("crewmate_task", json!({"id": id, "prompt": "hi", "source": "test"}))
+        .await
+        .unwrap();
+    let task_id = t["task"]["id"].as_str().unwrap().to_string();
+    wait_task_state(&client, id, &task_id, "done", Duration::from_secs(20)).await;
+    let user = user_of(id);
+    assert!(
+        r.prov_log.lock().iter().any(|l| l.starts_with("useradd") && l.ends_with(&user)),
+        "{:?}",
+        r.prov_log.lock()
+    );
+    // The memory is now where the agent (and the prompt) look, with its content.
+    let moved = slug_dir(&r, id).join("memory.md");
+    assert_eq!(std::fs::read_to_string(&moved).unwrap(), "remember the milk");
+    // The UI reads and edits it there too.
+    let v = client.call("crewmate_memory", json!({"id": id})).await.unwrap();
+    assert_eq!(v["text"], "remember the milk");
+    client.call("shutdown", json!({})).await.ok();
+}
+
+// Backups follow the memory: an export on an isolated server contains what is in the crewmate's own
+// directory, not the stale crew-home copy.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_export_of_an_isolated_crewmate_carries_its_current_memory() {
+    let r = rig();
+    let tmp = tempfile::tempdir().unwrap();
+    let hostd = tmp.path().join("hostd");
+    let client = daemon_with(&hostd, Some(r.setup())).await;
+    let id = create(&client, "Ana").await;
+    client
+        .call("crewmate_memory_set", json!({"id": id, "text": "likes tabs"}))
+        .await
+        .unwrap();
+    let store =
+        crate::crew::store::CrewStore::new(&hostd).with_isolation(Some(r.setup()));
+    let mut out = Vec::new();
+    crate::crew::store::archive::export(&store, &[], false, &mut out).unwrap();
+    let mut a = tar::Archive::new(flate2::read::GzDecoder::new(&out[..]));
+    let mut found = None;
+    for e in a.entries().unwrap() {
+        let mut e = e.unwrap();
+        if e.path().unwrap().ends_with("memory.md") {
+            let mut t = String::new();
+            std::io::Read::read_to_string(&mut e, &mut t).unwrap();
+            found = Some(t);
+        }
+    }
+    assert_eq!(found.as_deref(), Some("likes tabs"));
+    client.call("shutdown", json!({})).await.ok();
+}

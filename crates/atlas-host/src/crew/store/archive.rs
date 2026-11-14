@@ -266,7 +266,13 @@ pub fn export(
             if !is_exported(file, with_secrets) {
                 continue;
             }
-            match std::fs::read(dir.join(file)) {
+            // Memory follows the crewmate: under isolation it is in its own directory.
+            let path = if file == "memory.md" {
+                store.memory_path(&id)
+            } else {
+                dir.join(file)
+            };
+            match std::fs::read(path) {
                 Ok(data) => append(
                     &mut b,
                     &format!("crew/{id}/{file}"),

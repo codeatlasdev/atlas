@@ -107,6 +107,15 @@ impl Ctx {
         let Some(iso) = self.isolated() else {
             return Ok(());
         };
+        // A crewmate imported from an archive, or made before the helper existed, has no user yet:
+        // the first task creates it (idempotent, so a crewmate that has one costs one quick call).
+        #[cfg(unix)]
+        if let Some(setup) = hub.crew.store.isolation() {
+            crate::crew::spawn::provision::ProvClient::at(&setup.provision_socket)
+                .provision(&iso.user)
+                .map_err(|e| std::io::Error::other(format!("creating the Linux user {}: {e}", iso.user)))?;
+        }
+        adopt_memory(&hub.crew.store.crewmate_dir(id).join("memory.md"), &iso.memory())?;
         let (port, token) = self.hook_endpoint(hub, id);
         write_readable(
             &iso.hook_endpoint(),
@@ -133,6 +142,23 @@ impl Ctx {
         env.extend(layout::git_env(Some(iso)));
         env
     }
+}
+
+/// Move a crewmate's memory from the crew home (where it lived before isolation) into its own
+/// directory, once: only when the new file is empty and the old one has content. The old file is kept
+/// as `memory.md.pre-isolation`, never deleted.
+fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
+    let have = std::fs::read_to_string(new).unwrap_or_default();
+    let before = match std::fs::read_to_string(old) {
+        Ok(t) if !t.trim().is_empty() => t,
+        _ => return Ok(()),
+    };
+    if !have.trim().is_empty() {
+        return Ok(());
+    }
+    // In place: the file is the crewmate's (group-writable), not replaced by hostd's.
+    std::fs::write(new, before)?;
+    std::fs::rename(old, old.with_extension("md.pre-isolation"))
 }
 
 /// Replace `path` with `data`, mode 0640 (the crewmate reads it through the group, nobody else does).
@@ -178,6 +204,27 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "two-longer");
         assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o640);
         assert!(!p.with_extension("tmp~").exists());
+    }
+
+    // Memory written before isolation is not lost, not overwritten, and not moved twice.
+    #[test]
+    fn memory_moves_into_the_crewmates_directory_once_and_never_overwrites() {
+        let t = tempfile::tempdir().unwrap();
+        let (old, new) = (t.path().join("old.md"), t.path().join("new.md"));
+        std::fs::write(&new, "").unwrap();
+        // Nothing to move.
+        adopt_memory(&old, &new).unwrap();
+        std::fs::write(&old, "milk").unwrap();
+        adopt_memory(&old, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(&new).unwrap(), "milk");
+        assert_eq!(std::fs::read_to_string(t.path().join("old.md.pre-isolation")).unwrap(), "milk");
+        assert!(!old.exists());
+        // The agent wrote to the new file since: a leftover old file must not clobber it.
+        std::fs::write(&old, "stale").unwrap();
+        std::fs::write(&new, "fresh").unwrap();
+        adopt_memory(&old, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(&new).unwrap(), "fresh");
+        assert!(old.exists(), "left alone when the new file has content");
     }
 
     #[test]

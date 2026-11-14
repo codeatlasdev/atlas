@@ -323,7 +323,9 @@ impl TelegramBridge {
                     .and_then(|v| v["pane_key"].as_str())
                     .map(str::to_string)
                 {
-                    let _ = hub.agents.approve(&pane, req, allow);
+                    let _ =
+                        hub.agents
+                            .approve_as(&pane, req, allow, &format!("telegram:{chat_id}"));
                 }
             }
 

@@ -8,7 +8,6 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use super::layout;
 use super::protocol::{Request, Response, SpawnReq};
 use super::wire;
 
@@ -32,11 +31,6 @@ pub struct Client {
 impl Client {
     pub fn at(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
-    }
-
-    /// The helper, if isolation is on (its socket exists): `None` is "run as today".
-    pub fn detect() -> Option<Self> {
-        layout::active().then(|| Self::at(layout::socket_path()))
     }
 
     pub fn path(&self) -> &Path {

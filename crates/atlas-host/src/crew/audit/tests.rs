@@ -102,6 +102,24 @@ fn secret_values_and_the_hook_token_are_redacted_by_name() {
     assert_eq!(e["tool_input"]["nested"][0], "[secret:hook_token]");
 }
 
+// Issue #200: an isolated crewmate holds a hook token of its own, and the agent sees it in its
+// environment, so a tool input can contain it. It is redacted like the global one.
+#[test]
+fn a_crewmates_own_hook_token_is_redacted_from_its_audit_file() {
+    let f = fx();
+    let c = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+    let token = f.store.ensure_hook_token(c).unwrap();
+    let a = Audit::new(&f.base);
+    a.record(
+        Some(c),
+        "tool_call",
+        json!({"tool_input": {"command": format!("env | grep {token}")}}),
+    );
+    let raw = std::fs::read_to_string(f.store.crewmate_dir(c).join("audit.jsonl")).unwrap();
+    assert!(!raw.contains(&token), "token leaked: {raw}");
+    assert!(raw.contains("[secret:hook_token]"), "{raw}");
+}
+
 // A secret set AFTER the audit was created is still redacted: the values are read per write, not cached.
 #[test]
 fn a_secret_set_later_is_redacted_too() {

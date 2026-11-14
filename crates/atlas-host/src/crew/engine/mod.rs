@@ -8,6 +8,7 @@ pub mod claude;
 pub mod codex;
 pub mod omp;
 pub mod opencode;
+pub mod proc;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -40,7 +41,10 @@ pub struct TurnResult {
 /// * `engine`     — engine kind + optional model/provider/base_url
 /// * `session`    — prior session state (empty for first turn)
 /// * `prompt`     — the full prompt text to send
-/// * `crewmate_dir`    — `<store>/crew/<id>/` — scratch space (mcp config, codex output file, …)
+/// * `runner`     — where the process runs: the crew user, or the crewmate's own user through the helper
+/// * `crewmate_dir`    — where the engine writes what its agent reads (mcp config, codex output file, omp
+///                    extension): `<store>/crew/<id>/`, or `crew-runtime/` under isolation, where the
+///                    agent can read it but not change it
 /// * `crewmate_id`     — crewmate identifier, forwarded to the MCP server
 /// * `hook_port`  — running hook server port
 /// * `hook_token` — running hook server token
@@ -53,6 +57,7 @@ pub async fn run_turn(
     engine: &EngineConfig,
     session: CrewmateSession,
     prompt: &str,
+    runner: &proc::Runner,
     crewmate_dir: &Path,
     crewmate_id: &str,
     hook_port: u16,
@@ -91,6 +96,7 @@ pub async fn run_turn(
                 engine,
                 session,
                 prompt,
+                runner,
                 crewmate_dir,
                 crewmate_id,
                 hook_port,
@@ -102,14 +108,26 @@ pub async fn run_turn(
             )
             .await
         }
-        "codex" => codex::run(engine, session, prompt, crewmate_dir, extra_env, work_dir).await,
-        "opencode" => opencode::run(engine, session, prompt, extra_env, work_dir).await,
+        "codex" => {
+            codex::run(
+                engine,
+                session,
+                prompt,
+                runner,
+                crewmate_dir,
+                extra_env,
+                work_dir,
+            )
+            .await
+        }
+        "opencode" => opencode::run(engine, session, prompt, runner, extra_env, work_dir).await,
         "omp" => {
             omp::run(
                 engine,
                 session,
                 prompt,
                 extra_env,
+                runner,
                 work_dir,
                 crewmate_dir,
                 hook_port,

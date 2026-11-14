@@ -92,6 +92,13 @@ async fn run_pty_inner(
     pane_key: &str,
     work_dir: &str,
 ) -> (Result<String, String>, Vec<Step>) {
+    let ctx = super::isolation::Ctx::of(hub, &crewmate.id);
+    if let Err(e) = ctx.prepare(hub, &crewmate.id) {
+        return (
+            Err(format!("cannot prepare the crewmate's runtime files: {e}")),
+            vec![],
+        );
+    }
     // Resolve the agent definition.
     let Some(agent_def) = atlas_core::agents::get(&crewmate.agent) else {
         return (Err(format!("unknown agent '{}'", crewmate.agent)), vec![]);
@@ -99,7 +106,8 @@ async fn run_pty_inner(
 
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
-    let argv = match TEST_AGENT_BIN.lock().clone() {
+    let argv = match TEST_AGENT_BIN.lock().clone().filter(|_| ctx.isolated().is_none()) {
+        // An isolated agent is an engine by name, found by the helper in its own directories.
         Some(bin) => vec![bin],
         None => agent_def.argv(
             triggers::yolo_for(crewmate.approval, task),
@@ -114,7 +122,7 @@ async fn run_pty_inner(
         );
         if crewmate.agent == "omp" {
             let overlay =
-                crate::crew::engine::omp::overlay_args(&hub.crew.store.crewmate_dir(&crewmate.id));
+                crate::crew::engine::omp::overlay_args(&ctx.runtime_dir(hub, &crewmate.id));
             argv.splice(1..1, overlay);
         }
         argv
@@ -138,6 +146,9 @@ async fn run_pty_inner(
     // Per-agent env overrides from <dir>/agent-env/<agent>.env.
     req.env.extend(load_agent_env(&hub.dir, &crewmate.agent));
 
+    // An isolated agent reports to its own endpoint (a token that opens only its routes); the
+    // request's values win over `hook_env`'s defaults, which name the crew user's global endpoint.
+    req.env.extend(ctx.agent_env(hub, &crewmate.id));
     // Inject hook endpoint env vars (must come after crewmate env so ATLAS_* always wins).
     crate::server::hook_env(hub, &mut req);
 
@@ -147,7 +158,12 @@ async fn run_pty_inner(
     let agent_rx = hub.agents.subscribe();
 
     // Spawn the pty.
-    let session = match Session::spawn(req, &paths::scrollback_dir(&hub.dir)) {
+    let scroll = paths::scrollback_dir(&hub.dir);
+    #[cfg(unix)]
+    let spawned = Session::spawn_as(req, &scroll, ctx.as_user());
+    #[cfg(not(unix))]
+    let spawned = Session::spawn(req, &scroll);
+    let session = match spawned {
         Ok(s) => s,
         Err(e) => return (Err(format!("spawn failed: {e:#}")), vec![]),
     };

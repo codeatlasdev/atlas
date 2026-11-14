@@ -3,20 +3,21 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 
+use super::proc::{Cmd, Runner};
 use super::{TASK_TIMEOUT, TurnResult};
 
 pub(super) async fn run(
     engine: &EngineConfig,
     session: CrewmateSession,
     prompt: &str,
+    runner: &Runner,
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
 ) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new("opencode");
+    let mut cmd = Cmd::new("opencode", work_dir);
     cmd.arg("run")
         .arg("--format")
         .arg("json")
@@ -27,28 +28,19 @@ pub(super) async fn run(
     }
 
     cmd.arg("--auto").arg(prompt);
+    cmd.envs(extra_env);
 
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    let out = runner.output(cmd, TASK_TIMEOUT).await?;
 
-    let out = timeout(TASK_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| "opencode: timed out after 2 h".to_string())?
-        .map_err(|e| format!("opencode: spawn failed: {e}"))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.success() {
         return Err(format!(
-            "opencode: exited {}: {stderr}",
-            out.status.code().unwrap_or(-1)
+            "opencode: exited {}: {}",
+            out.code.unwrap_or(-1),
+            out.error_text()
         ));
     }
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = out.stdout.as_str();
 
     // opencode may emit a single JSON object or JSONL; find the result line.
     // Prefer lines that carry a reply field; fall back to parsing the whole stdout.

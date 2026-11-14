@@ -15,6 +15,7 @@
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
+//! | `isolation`   | crewmates as their own Linux users (#200): create/delete, files, hooks, engines |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
@@ -37,6 +38,8 @@ mod crewmates;
 mod engines;
 #[cfg(unix)]
 mod fixture;
+#[cfg(unix)]
+mod isolation;
 #[cfg(unix)]
 mod limits;
 #[cfg(unix)]

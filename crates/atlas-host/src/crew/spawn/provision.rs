@@ -574,11 +574,6 @@ impl ProvClient {
         Self { path: path.into() }
     }
 
-    /// The service, when isolation is on.
-    pub fn detect() -> Option<Self> {
-        super::layout::active().then(|| Self::at(super::layout::provision_socket_path()))
-    }
-
     fn call(&self, req: &ProvRequest) -> io::Result<()> {
         let conn = UnixStream::connect(&self.path)?;
         // `useradd` and `nft` are quick; a minute is a hung service.

@@ -7,6 +7,7 @@ use super::action::visible_reply;
 #[cfg(test)]
 use super::testing::TEST_SUMMARIZER_BIN;
 use crate::crew::Crewmate;
+use crate::crew::engine::proc::{Cmd, Output, Runner};
 use crate::server::Hub;
 
 fn default_cheap_model(engine_kind: &str) -> &'static str {
@@ -22,6 +23,8 @@ async fn summarize(
     model: &str,
     agent_env: &BTreeMap<String, String>,
     crewmate_dir: &std::path::Path,
+    runner: &Runner,
+    work_dir: &str,
 ) -> Option<String> {
     use std::process::Stdio;
     use tokio::time::timeout;
@@ -48,56 +51,60 @@ async fn summarize(
             .await
             .ok()?
             .ok()?;
-            return shorter(&out, text);
+            return shorter(
+                &Output {
+                    code: out.status.code(),
+                    stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+                    stderr: String::new(),
+                },
+                text,
+            );
         }
     }
 
     let mut cmd = match engine_kind {
         "omp" => {
-            let mut c = tokio::process::Command::new("omp");
+            let mut c = Cmd::new("omp", work_dir);
             // A one-shot rewrite: no tools, LSP, extensions, skills or rules to load.
-            c.args(["-p", &prompt, "--model", model])
-                .args([
+            c.args(
+                [
+                    "-p",
+                    &prompt,
+                    "--model",
+                    model,
                     "--no-tools",
                     "--no-lsp",
                     "--no-extensions",
                     "--no-skills",
                     "--no-rules",
-                ])
-                .args(crate::crew::engine::omp::overlay_args(crewmate_dir));
+                ]
+                .map(String::from),
+            )
+            .args(crate::crew::engine::omp::overlay_args(crewmate_dir));
             c
         }
         "claude" => {
-            let mut c = tokio::process::Command::new("claude");
-            c.args(["-p", &prompt, "--model", model, "--output-format", "text"]);
+            let mut c = Cmd::new("claude", work_dir);
+            c.args(
+                ["-p", &prompt, "--model", model, "--output-format", "text"].map(String::from),
+            );
             c
         }
         _ => return None,
     };
-    for (k, v) in agent_env {
-        cmd.env(k, v);
-    }
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::null());
+    cmd.envs(agent_env);
     // Every failure is logged: a silent fallback hid for days that every summary timed out (omp waited 25 s on D-Bus).
-    let out = match timeout(TIMEOUT, cmd.output()).await {
-        Ok(Ok(out)) => out,
-        Ok(Err(e)) => {
-            eprintln!("atlas crew: summary: could not start {engine_kind}: {e}");
-            return None;
-        }
-        Err(_) => {
-            eprintln!(
-                "atlas crew: summary: {engine_kind} took over {}s, sending the full reply",
-                TIMEOUT.as_secs()
-            );
+    let out = match runner.output(cmd, TIMEOUT).await {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("atlas crew: summary: {engine_kind}: {e}");
             return None;
         }
     };
-    if !out.status.success() {
+    if !out.success() {
         eprintln!(
             "atlas crew: summary: {engine_kind} exited with {}",
-            out.status
+            out.code.map_or("a signal".to_string(), |c| c.to_string())
         );
         return None;
     }
@@ -106,11 +113,11 @@ async fn summarize(
 
 /// The summarizer's stdout when it succeeded and is really shorter than `text`; otherwise `None`
 /// (the full reply is sent: a "summary" that is empty or longer helps nobody).
-fn shorter(out: &std::process::Output, text: &str) -> Option<String> {
-    if !out.status.success() {
+fn shorter(out: &Output, text: &str) -> Option<String> {
+    if !out.success() {
         return None;
     }
-    let summary = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let summary = out.stdout.trim().to_string();
     (!summary.is_empty() && summary.len() < text.len()).then_some(summary)
 }
 
@@ -146,8 +153,19 @@ pub(super) async fn maybe_summarize(
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default_cheap_model(engine_kind));
-    let crewmate_dir = hub.crew.store.crewmate_dir(&crewmate.id);
-    match summarize(&visible, engine_kind, model, agent_env, &crewmate_dir).await {
+    let ctx = super::isolation::Ctx::of(hub, &crewmate.id);
+    let runtime = ctx.runtime_dir(hub, &crewmate.id);
+    match summarize(
+        &visible,
+        engine_kind,
+        model,
+        agent_env,
+        &runtime,
+        &ctx.runner(),
+        &ctx.work_dir(hub, &crewmate.id),
+    )
+    .await
+    {
         Some(summary) => (Ok(summary), Some(visible), true),
         None => (outcome, None, false),
     }
@@ -188,6 +206,8 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
+            &Runner::local(),
+            "/tmp",
         )
         .await;
         set_test_summarizer_bin(None);
@@ -210,7 +230,16 @@ mod tests {
             .lock()
             .await;
         set_test_summarizer_bin(Some(&bin));
-        let result = summarize("hi", "omp", "model", &env, std::path::Path::new("/tmp")).await;
+        let result = summarize(
+            "hi",
+            "omp",
+            "model",
+            &env,
+            std::path::Path::new("/tmp"),
+            &Runner::local(),
+            "/tmp",
+        )
+        .await;
         set_test_summarizer_bin(None);
         assert!(result.is_none(), "longer output must return None");
     }
@@ -240,6 +269,8 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
+            &Runner::local(),
+            "/tmp",
         )
         .await;
         set_test_summarizer_bin(None);
@@ -273,6 +304,8 @@ mod tests {
             "model",
             &env,
             std::path::Path::new("/tmp"),
+            &Runner::local(),
+            "/tmp",
         )
         .await;
         set_test_summarizer_bin(None);

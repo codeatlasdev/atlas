@@ -62,6 +62,7 @@ impl Session {
         st: SessionState,
         fd: Option<std::os::fd::OwnedFd>,
         scroll_dir: &Path,
+        helper: Option<&crate::crew::spawn::client::Client>,
     ) -> Result<Arc<Session>> {
         let data = std::fs::read(bin_path(scroll_dir, &st.id)).unwrap_or_default();
         let (ring, file_len) = ring_tail(&data);
@@ -75,13 +76,16 @@ impl Session {
         // An isolated session keeps being driven through the helper after an upgrade. When the helper
         // is gone (isolation removed) the session cannot be signalled any more: it is adopted as a
         // plain one and ends with its pty.
-        let iso = st.iso.clone().zip(st.pid).and_then(|(r, pid)| {
-            crate::crew::spawn::client::Client::detect().map(|client| Isolation {
-                client,
+        let iso = st
+            .iso
+            .clone()
+            .zip(st.pid)
+            .zip(helper)
+            .map(|((r, pid), client)| Isolation {
+                client: client.clone(),
                 iso: r,
                 pid,
-            })
-        });
+            });
         let mut io = None;
         let mut run = None;
         if let (Some(fd), false) = (fd, st.exited) {

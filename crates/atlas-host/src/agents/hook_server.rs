@@ -16,6 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
 use super::AgentHub;
+use super::hook_auth::{Caller, Verdict, authorize};
 use crate::paths;
 
 const MAX_BODY: usize = 1024 * 1024;
@@ -24,6 +25,23 @@ const MAX_BODY: usize = 1024 * 1024;
 pub const DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(55);
 /// How long a crewmate-pane permission prompt waits (30 min). Read from ATLAS_HOOK_DECISION_SECS in the pty env.
 pub const CREWMATE_DECISION_WAIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// Bind the hook server. When crewmates run as their own users, the firewall names the port they may
+/// reach on loopback (`fixed`, `spawn::provision::HOOK_PORT`), so it listens there; if that port is
+/// taken it falls back to a random one and says so (hooks then fail loudly for isolated crewmates
+/// instead of the firewall silently opening more). Otherwise a random port, as always.
+async fn bind_loopback(fixed: Option<u16>) -> std::io::Result<TcpListener> {
+    // 0 is "any free port": the same as not asking for one.
+    if let Some(want) = fixed.filter(|p| *p != 0) {
+        match TcpListener::bind(("127.0.0.1", want)).await {
+            Ok(l) => return Ok(l),
+            Err(e) => eprintln!(
+                "atlas hostd: hook port {want} unavailable ({e}); isolated crewmates cannot report until it is free"
+            ),
+        }
+    }
+    TcpListener::bind("127.0.0.1:0").await
+}
 
 fn write_endpoint(dir: &Path, port: u16, token: &str) -> std::io::Result<()> {
     paths::write_private(
@@ -41,8 +59,9 @@ pub(crate) async fn start(
     hub: Arc<AgentHub>,
     mobile: Arc<crate::mobile::Mobile>,
     crew_hub: Option<std::sync::Weak<crate::server::Hub>>,
+    fixed_port: Option<u16>,
 ) -> std::io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let listener = bind_loopback(fixed_port).await?;
     let port = listener.local_addr()?.port();
     let token = paths::random_hex(24)?;
     *hub.port.lock() = port;
@@ -87,18 +106,25 @@ async fn serve(
             }
         }
     }
+    let caller = caller_of(&tok, token, crew_hub.as_ref());
     let (status, body) = if method.as_str() != "POST" {
         ("405 Method Not Allowed", String::new())
-    } else if tok != token {
+    } else if caller.is_none() {
         ("401 Unauthorized", String::new())
     } else if len > MAX_BODY {
         ("413 Payload Too Large", String::new())
     } else {
         let mut body_bytes = vec![0u8; len];
         r.read_exact(&mut body_bytes).await?;
-        // Crewmate routes may have non-JSON bodies (webhook payloads). `/bots/` is only the
-        // pre-rename webhook URL (`crew::triggers::webhook`).
-        if path.starts_with("/crew/")
+        // A crewmate's own token opens its own routes only. Webhook payloads are not JSON, so a body that
+        // does not parse is `Null` here (and every rule that needs a field then refuses it).
+        let parsed = serde_json::from_slice::<Value>(&body_bytes).unwrap_or(Value::Null);
+        let verdict = caller
+            .as_ref()
+            .map_or(Verdict::Forbidden, |c| authorize(c, &path, &parsed));
+        if verdict == Verdict::Forbidden {
+            ("403 Forbidden", String::new())
+        } else if path.starts_with("/crew/")
             || path.starts_with(crate::crew::triggers::webhook::LEGACY_PREFIX)
         {
             if let Some(bh) = crew_hub.as_ref().and_then(|w| w.upgrade()) {
@@ -119,6 +145,24 @@ async fn serve(
         body.len()
     );
     w.write_all(resp.as_bytes()).await
+}
+
+/// Who a presented token is: the global one, a crewmate's own, or nobody (`None`: 401). Compared without
+/// stopping at the first different byte.
+fn caller_of(
+    presented: &str,
+    global: &str,
+    crew_hub: Option<&std::sync::Weak<crate::server::Hub>>,
+) -> Option<Caller> {
+    use crate::crew::store::constant_time_eq;
+    if constant_time_eq(presented.as_bytes(), global.as_bytes()) {
+        return Some(Caller::Global);
+    }
+    let hub = crew_hub?.upgrade()?;
+    hub.crew
+        .store
+        .crewmate_of_hook_token(presented)
+        .map(Caller::Crewmate)
 }
 
 async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'static str, String) {

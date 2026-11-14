@@ -908,11 +908,7 @@ mod isolated {
         let dup = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) }
             .try_clone_to_owned()
             .unwrap();
-        // Without a socket the successor cannot find the helper, so point it at the rig's.
-        // SAFETY: the variable is only read by `Client::detect` inside adopt, in this test.
-        unsafe { std::env::set_var(crate::crew::spawn::layout::SOCKET_ENV, r.client.path()) };
-        let s2 = Session::adopt(state, Some(dup), scroll.path()).unwrap();
-        unsafe { std::env::remove_var(crate::crew::spawn::layout::SOCKET_ENV) };
+        let s2 = Session::adopt(state, Some(dup), scroll.path(), Some(&r.client)).unwrap();
         s2.signal("TERM").unwrap();
         assert_eq!(until_exited(&s2).await, Some(9));
     }

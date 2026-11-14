@@ -14,11 +14,12 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 
+use super::proc::{Cmd, Rpc, Runner};
 use super::{TASK_TIMEOUT, TurnResult};
 
 /// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
@@ -41,6 +42,7 @@ pub(super) async fn run(
     session: CrewmateSession,
     prompt: &str,
     extra_env: &BTreeMap<String, String>,
+    runner: &Runner,
     work_dir: &str,
     crewmate_dir: &std::path::Path,
     hook_port: u16,
@@ -48,7 +50,7 @@ pub(super) async fn run(
     pane_key: &str,
     yolo: bool,
 ) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new("omp");
+    let mut cmd = Cmd::new("omp", work_dir);
     cmd.arg("--mode")
         .arg("rpc")
         .args(overlay_args(crewmate_dir));
@@ -59,7 +61,7 @@ pub(super) async fn run(
         // Write the approval extension and load it.
         let ext_path = crewmate_dir.join("omp-approval.ts");
         write_approval_extension(&ext_path, hook_port, hook_token, pane_key)?;
-        cmd.arg("--extension").arg(&ext_path);
+        cmd.arg("--extension").arg(ext_path.to_string_lossy());
         // Inject env so the extension can reach hostd.
         cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
         cmd.env("ATLAS_HOOK_TOKEN", hook_token);
@@ -70,23 +72,17 @@ pub(super) async fn run(
         cmd.arg("--resume").arg(session_file);
     }
 
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::null());
-    let mut child = cmd.spawn().map_err(|e| format!("omp: spawn failed: {e}"))?;
+    cmd.envs(extra_env);
+    let Rpc {
+        mut writer,
+        reader,
+        killer,
+    } = runner.rpc(cmd).await?;
 
-    let mut stdin = child.stdin.take().ok_or("omp: no stdin pipe")?;
-    let stdout = child.stdout.take().ok_or("omp: no stdout pipe")?;
-
-    let result = timeout(TASK_TIMEOUT, drive_rpc(&mut stdin, stdout, prompt)).await;
+    let result = timeout(TASK_TIMEOUT, drive_rpc(&mut writer, reader, prompt)).await;
 
     // Always kill — the process is not expected to exit on its own.
-    let _ = child.kill().await;
-    let _ = child.wait().await;
+    killer.kill();
 
     let (reply, new_session_file, usage) = result
         .map_err(|_| "omp: timed out after 2 h".to_string())?
@@ -105,8 +101,8 @@ pub(super) async fn run(
 
 /// Send the prompt, collect the reply, obtain the session file path.
 async fn drive_rpc(
-    stdin: &mut tokio::process::ChildStdin,
-    stdout: tokio::process::ChildStdout,
+    stdin: &mut (impl AsyncWrite + Unpin),
+    stdout: impl AsyncRead + Unpin,
     prompt: &str,
 ) -> Result<(String, Option<String>, Option<UsageRecord>), String> {
     let mut lines = BufReader::new(stdout).lines();

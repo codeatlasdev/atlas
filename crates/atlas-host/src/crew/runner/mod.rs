@@ -20,6 +20,7 @@
 mod action;
 mod conversation;
 mod github;
+pub(crate) mod isolation;
 mod outcome;
 mod prompt;
 mod pty;

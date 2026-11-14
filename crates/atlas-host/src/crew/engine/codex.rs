@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 use crate::paths;
 
+use super::proc::{Cmd, Runner};
 use super::{TASK_TIMEOUT, TurnResult};
 
 /// Build the codex argv (excluding the binary name) for one turn.
@@ -34,6 +34,7 @@ pub(super) async fn run(
     engine: &EngineConfig,
     session: CrewmateSession,
     prompt: &str,
+    runner: &Runner,
     crewmate_dir: &Path,
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
@@ -44,33 +45,22 @@ pub(super) async fn run(
     // codex writes the last agent message to this file.
     let result_file = crewmate_dir.join(format!("codex-out-{}.txt", paths::new_id()));
 
-    let mut cmd = tokio::process::Command::new("codex");
-    for arg in exec_args(session.session_id.as_deref(), &result_file, prompt) {
-        cmd.arg(arg);
-    }
+    let mut cmd = Cmd::new("codex", work_dir);
+    cmd.args(exec_args(session.session_id.as_deref(), &result_file, prompt));
+    cmd.envs(extra_env);
 
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    let out = runner.output(cmd, TASK_TIMEOUT).await?;
 
-    let out = timeout(TASK_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| "codex: timed out after 2 h".to_string())?
-        .map_err(|e| format!("codex: spawn failed: {e}"))?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.success() {
         return Err(format!(
-            "codex: exited {}: {stderr}",
-            out.status.code().unwrap_or(-1)
+            "codex: exited {}: {}",
+            out.code.unwrap_or(-1),
+            out.error_text()
         ));
     }
 
     // Parse JSONL stdout for session id and usage.
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = out.stdout.as_str();
     let mut thread_id: Option<String> = session.session_id.clone();
     let mut usage_in: Option<u64> = None;
     let mut usage_out: Option<u64> = None;

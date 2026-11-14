@@ -11,12 +11,21 @@ use crate::server::ServeOpts;
 
 /// A crew-server hostd on `dir`, ready to take commands. The daemon dies with the test runtime.
 pub(super) async fn daemon(dir: &Path) -> HostClient {
+    daemon_with(dir, None).await
+}
+
+/// [`daemon`] whose crewmates run as their own users through the helper `isolation` names.
+pub(super) async fn daemon_with(
+    dir: &Path,
+    isolation: Option<crate::crew::spawn::layout::Setup>,
+) -> HostClient {
     let d = dir.to_path_buf();
     tokio::spawn(async move {
         let _ = crate::server::serve_with(
             &d,
             ServeOpts {
                 crew_host: true,
+                isolation,
                 ..Default::default()
             },
         )
@@ -172,7 +181,7 @@ impl Hooks {
         let quoted = payload.to_string().replace('\'', "'\\''");
         self.sh.push_str(&format!(
             "PAYLOAD='{quoted}'\n\
-             curl -s -X POST \"http://127.0.0.1:${{ATLAS_HOOK_PORT}}/hook/claude\" \\\n  \
+             ${{CURL:-curl}} -s -X POST \"http://127.0.0.1:${{ATLAS_HOOK_PORT}}/hook/claude\" \\\n  \
              -H \"X-Atlas-Hook-Token: ${{ATLAS_HOOK_TOKEN}}\" -H \"Content-Type: application/json\" \\\n  \
              -d \"{{\\\"pane_key\\\":\\\"${{ATLAS_PANE_KEY}}\\\",\\\"payload\\\":$PAYLOAD}}\" || true\n"
         ));

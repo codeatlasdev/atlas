@@ -40,12 +40,7 @@ pub struct Isolated {
 }
 
 impl Isolated {
-    /// The isolated layout of crewmate `id` under [`cm_root`]; `None` when `id` is not a crewmate id.
-    pub fn of(id: &str) -> Option<Self> {
-        Self::under(&cm_root(), id)
-    }
-
-    /// [`of`](Self::of) under another root.
+    /// The isolated layout of crewmate `id` under `root`; `None` when `id` is not a crewmate id.
     pub fn under(root: &str, id: &str) -> Option<Self> {
         Some(Self {
             user: user_for(id)?,
@@ -112,12 +107,12 @@ pub fn provision_socket_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(PROVISION_SOCKET_PATH))
 }
 
-/// Is there a helper to ask? Its socket exists and is a socket (not a stale file, not a directory).
+/// [`active_at`] for the configured socket path.
 pub fn active() -> bool {
     active_at(&socket_path())
 }
 
-/// [`active`] for a given socket path.
+/// Is there a helper to ask? Its socket exists and is a socket (not a stale file, not a directory).
 #[cfg(unix)]
 pub fn active_at(sock: &std::path::Path) -> bool {
     use std::os::unix::fs::FileTypeExt;
@@ -130,9 +125,38 @@ pub fn active_at(_sock: &std::path::Path) -> bool {
     false
 }
 
-/// The isolated layout of crewmate `id` when isolation is on, else `None` (today's behaviour).
-pub fn isolated(id: &str) -> Option<Isolated> {
-    if active() { Isolated::of(id) } else { None }
+/// Where isolation lives on this machine, decided once when hostd starts: `Some` exactly when the
+/// helper's socket exists. hostd keeps it (in the crew store) instead of looking at the filesystem on
+/// every call, so a server never has some paths isolated and others not within one run, and a test
+/// can run its own helper without touching process-wide state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Setup {
+    /// The spawn helper's socket.
+    pub socket: PathBuf,
+    /// The provisioning service's socket.
+    pub provision_socket: PathBuf,
+    /// Parent of the crewmates' directories.
+    pub root: String,
+    /// The loopback port hostd's hook server listens on, which the firewall lets crewmates reach
+    /// (`provision::HOOK_PORT`). 0 asks for any free port (tests, where many daemons share a machine).
+    pub hook_port: u16,
+}
+
+impl Setup {
+    /// What this machine has: `Some` when the helper's socket exists (at the default or configured paths).
+    pub fn detect() -> Option<Self> {
+        active().then(|| Self {
+            socket: socket_path(),
+            provision_socket: provision_socket_path(),
+            root: cm_root(),
+            hook_port: super::provision::HOOK_PORT,
+        })
+    }
+
+    /// The isolated layout of crewmate `id`; `None` when `id` is not a crewmate id.
+    pub fn of(&self, id: &str) -> Option<Isolated> {
+        Isolated::under(&self.root, id)
+    }
 }
 
 /// `git` environment for a checkout two users share: the config file that trusts it, and a
@@ -200,6 +224,18 @@ mod tests {
         ] {
             assert!(Isolated::under("/r", bad).is_none(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn setup_gives_each_crewmate_its_layout_under_its_root_and_none_for_a_bad_id() {
+        let s = Setup {
+            socket: "/s".into(),
+            provision_socket: "/p".into(),
+            root: "/r".into(),
+            hook_port: 0,
+        };
+        assert_eq!(s.of(ID).unwrap().dir(), PathBuf::from("/r/3f2a9c1e5b7d"));
+        assert!(s.of("../x").is_none());
     }
 
     // The point of "no helper = today's behaviour": a missing socket, a regular file at the path

@@ -83,7 +83,8 @@ async fn prepare_work_dir(
 ) -> Result<String, String> {
     let dir = if let Some(proj) = &crewmate.project {
         // Not checked out yet (a first task, or one sent while the background clone runs): say so on the task.
-        let work = project::work_dir(&hub.crew.dir, &crewmate.id);
+        let iso = hub.crew.store.isolated(&crewmate.id);
+        let work = project::work_dir_for(&hub.crew.dir, &crewmate.id, iso.as_ref());
         if let ProjectRef::Git { url, .. } = proj
             && !work.join(".git").exists()
         {
@@ -95,19 +96,24 @@ async fn prepare_work_dir(
             let _ = persist(hub, &crewmate.id, task);
             broadcast_task(hub, &crewmate.id, task);
         }
-        let p = project::prepare(proj, &crewmate.id, &hub.crew.dir).await;
+        let p = project::prepare(proj, &crewmate.id, &hub.crew.dir, iso.clone()).await;
         if task.preparing.take().is_some() {
             let _ = persist(hub, &crewmate.id, task);
             broadcast_task(hub, &crewmate.id, task);
         }
         let p = p.map_err(|e| format!("project prepare: {e}"))?;
-        let _ = project::fetch(&p).await; // non-fatal
+        // non-fatal; an isolated checkout is fetched with the config that trusts it
+        let _ = project::fetch(&p, &crate::crew::spawn::layout::git_env(iso.as_ref())).await;
         p.to_string_lossy().to_string()
     } else {
         crewmate.workdir.clone().unwrap_or_else(|| {
-            project::work_dir(&hub.crew.dir, &crewmate.id)
-                .to_string_lossy()
-                .to_string()
+            project::work_dir_for(
+                &hub.crew.dir,
+                &crewmate.id,
+                hub.crew.store.isolated(&crewmate.id).as_ref(),
+            )
+            .to_string_lossy()
+            .to_string()
         })
     };
     let _ = std::fs::create_dir_all(&dir);

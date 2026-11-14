@@ -14,6 +14,10 @@ const MIN_SECRET_LEN: usize = 4;
 /// replaced whole.
 pub(super) fn secrets_of(store: &CrewStore, crewmate_id: &str) -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = store.secret_env(crewmate_id).into_iter().collect();
+    // The crewmate's own hook token (an isolated agent has it in its environment).
+    if let Some(t) = store.hook_token_of(crewmate_id) {
+        v.push(("hook_token".to_string(), t));
+    }
     v.sort_by_key(|(_, val)| std::cmp::Reverse(val.len()));
     v
 }

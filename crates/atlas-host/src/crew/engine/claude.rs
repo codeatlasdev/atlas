@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 
+use super::proc::{Cmd, Runner};
 use super::{TASK_TIMEOUT, TurnResult};
 
 #[allow(clippy::too_many_arguments)]
@@ -15,6 +15,7 @@ pub(super) async fn run(
     engine: &EngineConfig,
     session: CrewmateSession,
     prompt: &str,
+    runner: &Runner,
     crewmate_dir: &Path,
     crewmate_id: &str,
     hook_port: u16,
@@ -28,12 +29,12 @@ pub(super) async fn run(
 
     let mcp_config_path = crewmate_dir.join("mcp-config.json");
 
-    let mut cmd = tokio::process::Command::new("claude");
+    let mut cmd = Cmd::new("claude", work_dir);
     cmd.arg("-p")
         .arg("--output-format")
         .arg("json")
         .arg("--mcp-config")
-        .arg(&mcp_config_path)
+        .arg(mcp_config_path.to_string_lossy())
         .arg("--permission-prompt-tool")
         .arg("atlas:approve");
 
@@ -46,11 +47,8 @@ pub(super) async fn run(
     }
 
     cmd.arg(prompt);
-    cmd.current_dir(work_dir);
 
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
+    cmd.envs(extra_env);
     // ATLAS_* always win over crewmate secrets.
     cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
     cmd.env("ATLAS_HOOK_TOKEN", hook_token);
@@ -58,21 +56,18 @@ pub(super) async fn run(
     cmd.env("ATLAS_PANE_KEY", pane_key);
     cmd.env("ATLAS_HOOK_DECISION_SECS", "1800");
 
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let out = timeout(TASK_TIMEOUT, cmd.output())
+    let out = runner
+        .output(cmd, TASK_TIMEOUT)
         .await
-        .map_err(|_| "claude: timed out after 2 h".to_string())?
-        .map_err(|e| format!("claude: spawn failed: {e}"))?;
+        ?;
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = out.stdout.as_str();
 
-    if !out.status.success() && stdout.trim().is_empty() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.success() && stdout.trim().is_empty() {
         return Err(format!(
-            "claude: exited {}: {stderr}",
-            out.status.code().unwrap_or(-1)
+            "claude: exited {}: {}",
+            out.code.unwrap_or(-1),
+            out.error_text()
         ));
     }
 

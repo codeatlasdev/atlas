@@ -8,12 +8,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';
 import 'package:atlas_mobile/features/crew/automation_editor_sheet.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_audit_screen.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/crewmate_usage_screen.dart';
+import 'package:atlas_mobile/features/crew/ops/routines_section.dart';
 import 'package:atlas_mobile/features/crew/profile/automations_section.dart';
 import 'package:atlas_mobile/features/crew/profile/github_card.dart';
 import 'package:atlas_mobile/features/crew/profile/profile_dialogs.dart';
@@ -165,6 +170,56 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
       crewmate.triggers.where((t) => t.id != trigger.id).toList(),
     );
   }
+
+  // ── routines ──────────────────────────────────────────────────────────────
+
+  CrewmateEntry? get _crewmate => ref
+      .read(crewProvider(widget.device))
+      .value
+      ?.crewmates
+      .where((b) => b.id == widget.crewmateId)
+      .firstOrNull;
+
+  /// Saves the whole list; the error text hostd (or the connection) gave, or null when saved.
+  Future<String?> _saveRoutines(List<Routine> routines) async {
+    try {
+      await saveRoutines(ref, widget.device, widget.crewmateId, routines);
+      return null;
+    } catch (e) {
+      return e is StateError ? e.message : e.toString();
+    }
+  }
+
+  Future<void> _editRoutine(Routine? existing) async {
+    await showRoutineEditor(
+      context,
+      existing: existing,
+      save: (r) =>
+          _saveRoutines(upsertRoutine(_crewmate?.routines ?? const [], r)),
+    );
+  }
+
+  Future<void> _toggleRoutine(Routine r, bool enabled) async {
+    final err = await _saveRoutines(
+      upsertRoutine(
+        _crewmate?.routines ?? const [],
+        r.copyWith(enabled: enabled),
+      ),
+    );
+    if (err != null && mounted) _toast(err);
+  }
+
+  Future<void> _deleteRoutine(Routine r) async {
+    if (!await confirmRemoveRoutine(context, r.prompt) || !mounted) return;
+    final err = await _saveRoutines(
+      removeRoutine(_crewmate?.routines ?? const [], r.id),
+    );
+    if (err != null && mounted) _toast(err);
+  }
+
+  void _open(Widget screen) =>
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => screen));
 
   // ── github ────────────────────────────────────────────────────────────────
 
@@ -392,6 +447,50 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: Space.lg),
+
+                    EnterFade(
+                      index: 3,
+                      child: RoutinesSection(
+                        crewmateName: crewmate.name,
+                        routines: crewmate.routines,
+                        onAdd: () => _editRoutine(null),
+                        onEdit: _editRoutine,
+                        onToggle: _toggleRoutine,
+                        onDelete: _deleteRoutine,
+                      ),
+                    ),
+                    const SizedBox(height: Space.lg),
+
+                    EnterFade(
+                      index: 4,
+                      child: ProfileGroup(
+                        title: 'Activity',
+                        children: [
+                          ProfileRow(
+                            icon: Icons.fact_check_outlined,
+                            label: 'Audit',
+                            onTap: () => _open(
+                              CrewAuditScreen(
+                                device: widget.device,
+                                crewmateId: widget.crewmateId,
+                                title: crewmate.name,
+                              ),
+                            ),
+                          ),
+                          ProfileRow(
+                            icon: Icons.stacked_bar_chart_rounded,
+                            label: 'Usage',
+                            onTap: () => _open(
+                              CrewmateUsageScreen(
+                                device: widget.device,
+                                crewmateId: widget.crewmateId,
+                                name: crewmate.name,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
                     EnterFade(
                       index: 4,

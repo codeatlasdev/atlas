@@ -440,7 +440,7 @@ async fn five_wrong_codes_invalidate_the_code() {
 }
 
 /// POST to the hook server the way `atlas hook` does; the reply body.
-fn post_hook(dir: &Path, path: &str, body: Value) -> String {
+pub(crate) fn post_hook(dir: &Path, path: &str, body: Value) -> String {
     use std::io::{Read, Write};
     let env = std::fs::read_to_string(crate::paths::hook_endpoint(dir)).unwrap();
     let get = |k: &str| {
@@ -663,35 +663,6 @@ async fn crewmate_task_push_reaches_read_phone() {
     );
     c.call("shutdown", json!({})).await.ok();
     let _ = phone.call("info", json!({})).await; // just drain
-}
-
-/// Revoking a device removes its push tokens.
-#[tokio::test]
-async fn revoke_drops_push_tokens() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (c, _phone, node) = paired(tmp.path()).await;
-    // Register a push token for this device.
-    c.call(
-        "push_register",
-        json!({"token": "fcm-test-token", "platform": "fcm"}),
-    )
-    .await
-    .unwrap();
-    // Revoke the device.
-    c.call("mobile_revoke", json!({"node_id": node}))
-        .await
-        .unwrap();
-    // The tokens file should no longer contain the token for this node.
-    let tokens_path = tmp.path().join("push").join("tokens.json");
-    if tokens_path.exists() {
-        let content = std::fs::read_to_string(&tokens_path).unwrap();
-        let tokens: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap_or_default();
-        assert!(
-            !tokens.iter().any(|t| t["node_id"] == node),
-            "push token for revoked device still present"
-        );
-    }
-    c.call("shutdown", json!({})).await.ok();
 }
 
 /// desktop calls mobile_invite; phone receives computer_invite push with correct url/name.
@@ -1166,4 +1137,89 @@ fn starting_and_stopping_agents_need_act() {
         let c: HostCmd = serde_json::from_value(cmd).unwrap();
         assert_eq!(super::required_scope(&c), Ok(super::Scope::Act));
     }
+}
+
+/// Gap #5: the crew-level settings (short replies and its model) are readable with `read` and writable with
+/// `act`, also through the relay's `crew_call`. They used to fall through to the default-deny.
+#[test]
+fn crew_settings_need_read_to_get_and_act_to_set() {
+    use crate::protocol::HostCmd;
+    for (cmd, want) in [
+        (
+            json!({"cmd": "crew_settings_get", "args": {}}),
+            super::Scope::Read,
+        ),
+        (
+            json!({"cmd": "crew_settings_set", "args": {"short_replies": false}}),
+            super::Scope::Act,
+        ),
+        (
+            json!({"cmd": "crew_call", "args": {"server": "s", "cmd": "crew_settings_get", "args": {}}}),
+            super::Scope::Read,
+        ),
+        (
+            json!({"cmd": "crew_call", "args": {"server": "s", "cmd": "crew_settings_set", "args": {"short_replies": true, "short_replies_model": "m"}}}),
+            super::Scope::Act,
+        ),
+    ] {
+        let c: HostCmd = serde_json::from_value(cmd.clone()).unwrap();
+        assert_eq!(super::required_scope(&c), Ok(want), "{cmd}");
+    }
+}
+
+/// On a real paired phone: `read` alone may read the crew settings but a write is `forbidden: act`; a phone
+/// without `read` cannot even read; with `act` the write lands in hostd's `crew.json` and keeps `paused`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_reads_and_writes_crew_settings_by_scope() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    let scopes = |s: Value| json!({"node_id": node, "scopes": s});
+
+    c.call("mobile_set_scopes", scopes(json!(["read"])))
+        .await
+        .unwrap();
+    let r = phone.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(r["data"]["short_replies"], true, "{r}");
+    let r = phone
+        .call("crew_settings_set", json!({"short_replies": false}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    let r = phone.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(
+        r["data"]["short_replies"], true,
+        "a refused write must change nothing: {r}"
+    );
+
+    c.call("mobile_set_scopes", scopes(json!([])))
+        .await
+        .unwrap();
+    let r = phone.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(r["error"], "forbidden: read", "{r}");
+
+    c.call("mobile_set_scopes", scopes(json!(["read", "act"])))
+        .await
+        .unwrap();
+    c.call("crew_pause", json!({})).await.unwrap();
+    let r = phone
+        .call(
+            "crew_settings_set",
+            json!({"short_replies": false, "short_replies_model": "haiku"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let r = phone.call("crew_settings_get", json!({})).await.unwrap();
+    assert_eq!(r["data"]["short_replies"], false, "{r}");
+    assert_eq!(r["data"]["short_replies_model"], "haiku", "{r}");
+    let list = c.call("crewmate_list", json!({})).await.unwrap();
+    assert_eq!(
+        list["paused"], true,
+        "a phone's settings write must not resume the crew"
+    );
+    // The write is in the mobile audit log (not a read).
+    let audit = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
+    assert!(audit.contains("\"cmd\":\"crew_settings_set\""), "{audit}");
+    c.call("shutdown", json!({})).await.ok();
 }

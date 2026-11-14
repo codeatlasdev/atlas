@@ -279,6 +279,23 @@ async fn crewmate_list_json_contract() {
         )
         .await
         .expect("crewmate_triggers_set B");
+    // A routine the phone's editor reads back (gap #5): `crewmate_list` carries each crewmate's `routines`.
+    client
+        .call(
+            "crewmate_routine_set",
+            json!({
+                "id": crewmate_b_id,
+                "routines": [{
+                    "id": "r-nightly",
+                    "cron": "30 2 * * *",
+                    "prompt": "Run the nightly checks",
+                    "enabled": true,
+                    "last_run": null
+                }]
+            }),
+        )
+        .await
+        .expect("crewmate_routine_set B");
 
     // ── Phase 3: capture real crewmate_list ────────────────────────────────────
     let list = client
@@ -378,6 +395,7 @@ async fn crewmate_list_json_contract() {
             }
         }
     }
+    // Routines carry no volatile field here (`last_run` stays null until the scheduler fires one).
     let mut c_fix = c.clone();
     c_fix["id"] = json!("crewmate-opencode");
     c_fix["queued"] = json!(0);
@@ -453,6 +471,23 @@ async fn crewmate_list_json_contract() {
     assert!(
         sched["next_fire"].is_number(),
         "schedule trigger must have next_fire"
+    );
+
+    // Structural invariant: the phone's routines editor reads them from the list; a crewmate with none has `[]`.
+    let sroutines = sd["routines"]
+        .as_array()
+        .expect("crewmate-done must have a routines array");
+    assert_eq!(sroutines.len(), 1, "{sd}");
+    assert_eq!(sroutines[0]["id"].as_str(), Some("r-nightly"));
+    assert_eq!(sroutines[0]["cron"].as_str(), Some("30 2 * * *"));
+    assert_eq!(sroutines[0]["enabled"].as_bool(), Some(true));
+    assert_eq!(
+        sb.iter()
+            .find(|b| b["id"] == "crewmate-working")
+            .and_then(|b| b["routines"].as_array())
+            .map(Vec::len),
+        Some(0),
+        "a crewmate without routines lists an empty array"
     );
 
     assert_eq!(

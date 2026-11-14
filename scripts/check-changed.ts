@@ -2,6 +2,10 @@
 // The edit-loop gate: runs only the checks the changed files can affect (a crate, every crate that depends on it,
 // the desktop app, mobile, scripts, skills, workflows). `bun run check` stays the gate before a push.
 // Changed = committed since the merge base with --base (default origin/main), plus staged, unstaged and untracked.
+//
+// bun scripts/check-changed.ts --json   (the `affected:` plugin of atlas.yaml, read by the MCP tool atlas_affected)
+// Changed files on stdin, one per line; prints {tasks, tests, routes, builds, crates, workspace, steps} and runs nothing:
+// `tests` are the commands below, `builds` the crates they cover.
 import { $ } from "bun";
 
 export type Graph = Record<string, string[]>; // crate -> workspace crates it depends on
@@ -54,8 +58,47 @@ export function plan(files: string[], graph: Graph): Plan {
 	return { crates, workspace, steps: [...steps].sort() };
 }
 
+/** The shell commands that check `p`, in the order `check:changed` runs them. */
+export function commands(p: Plan): string[] {
+	const cmds: string[] = [];
+	const rust = p.workspace || p.crates.length > 0;
+	if (rust) cmds.push("cargo fmt --all -- --check");
+	const pk = p.workspace ? "--workspace" : p.crates.map((c) => `-p ${c}`).join(" ");
+	if (rust) cmds.push(`cargo clippy ${pk} --all-targets --locked -- -D warnings`, `cargo nextest run ${pk} --locked`);
+	cmds.push(...p.steps);
+	return cmds;
+}
+
+/** `p` as the plugin answer of atlas.yaml's `affected:`: the commands are the tests, the crates the builds. */
+export function impact(p: Plan) {
+	return {
+		tasks: [] as string[],
+		tests: commands(p),
+		routes: [] as string[],
+		builds: p.crates,
+		crates: p.crates,
+		workspace: p.workspace,
+		steps: p.steps,
+	};
+}
+
+async function workspaceGraph(): Promise<Graph> {
+	const meta = JSON.parse(await $`cargo metadata --no-deps --format-version 1`.quiet().text());
+	const names = new Set<string>(meta.packages.map((p: { name: string }) => p.name));
+	return Object.fromEntries(
+		meta.packages.map((p: { name: string; dependencies: { name: string }[] }) => [
+			p.name,
+			[...new Set(p.dependencies.map((d) => d.name).filter((d) => names.has(d)))],
+		]),
+	);
+}
+
 async function main() {
 	const args = process.argv.slice(2);
+	if (args.includes("--json")) {
+		const files = (await Bun.stdin.text()).split("\n").filter(Boolean);
+		return console.log(JSON.stringify(impact(plan(files, await workspaceGraph()))));
+	}
 	const base = args.includes("--base") ? args[args.indexOf("--base") + 1] : "origin/main";
 	const dry = args.includes("--dry-run");
 	const mb = (await $`git merge-base ${base} HEAD`.nothrow().quiet().text()).trim();
@@ -64,21 +107,7 @@ async function main() {
 		await $`git ls-files --others --exclude-standard`.quiet().text(),
 	];
 	const files = [...new Set(lines.join("\n").split("\n").filter(Boolean))];
-	const meta = JSON.parse(await $`cargo metadata --no-deps --format-version 1`.quiet().text());
-	const names = new Set<string>(meta.packages.map((p: { name: string }) => p.name));
-	const graph: Graph = Object.fromEntries(
-		meta.packages.map((p: { name: string; dependencies: { name: string }[] }) => [
-			p.name,
-			[...new Set(p.dependencies.map((d) => d.name).filter((d) => names.has(d)))],
-		]),
-	);
-	const p = plan(files, graph);
-	const cmds: string[] = [];
-	const rust = p.workspace || p.crates.length > 0;
-	if (rust) cmds.push("cargo fmt --all -- --check");
-	const pk = p.workspace ? "--workspace" : p.crates.map((c) => `-p ${c}`).join(" ");
-	if (rust) cmds.push(`cargo clippy ${pk} --all-targets --locked -- -D warnings`, `cargo nextest run ${pk} --locked`);
-	cmds.push(...p.steps);
+	const cmds = commands(plan(files, await workspaceGraph()));
 	console.log(`${files.length} changed file(s) since ${base}`);
 	if (cmds.length === 0) return console.log("nothing to check");
 	for (const c of cmds) {

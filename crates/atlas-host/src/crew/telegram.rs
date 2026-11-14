@@ -1068,9 +1068,20 @@ mod tests {
             "--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n42\r\n"
         )));
         assert!(text.ends_with(&format!("--{boundary}--\r\n")));
-        assert!(text.contains(
-            r#"[{"media":"attach://f0","type":"photo"},{"media":"attach://f1","type":"photo"}]"#
-        ));
+        // The `media` field is JSON: compared as a value, since its key order depends on whether
+        // serde_json's `preserve_order` is on in the build (CI failed on the raw text).
+        let media = text
+            .split("name=\"media\"\r\n\r\n")
+            .nth(1)
+            .and_then(|rest| rest.split("\r\n--").next())
+            .expect("a media part");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(media).unwrap(),
+            serde_json::json!([
+                {"type": "photo", "media": "attach://f0"},
+                {"type": "photo", "media": "attach://f1"}
+            ])
+        );
         assert!(text.contains("name=\"f0\"; filename=\"a.png\""));
         assert!(text.contains("name=\"f1\"; filename=\"b.png\""));
         assert!(body.windows(12).any(|w| w == b"\x89PNG\r\n\x1a\nAAAA"));

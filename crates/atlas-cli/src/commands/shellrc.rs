@@ -8,11 +8,11 @@
 
 use std::path::{Path, PathBuf};
 
-/// First line of the block Atlas appends to an rc file (and of the fish `conf.d` file).
+/// First line of the block Atlas appends to an rc file (and of the fish and nushell files).
 pub(crate) const MARKER: &str = "# Atlas CLI";
 
 /// Where shells look for their startup files.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ShellEnv {
     pub home: PathBuf,
     /// `$ZDOTDIR` (zsh reads `.zshenv` there instead of in `$HOME`).
@@ -50,6 +50,30 @@ impl ShellEnv {
         self.fish_conf_d().join("atlas.fish")
     }
 
+    /// nushell's user autoload dir (0.102+ loads every `*.nu` in it): under `$XDG_CONFIG_HOME`
+    /// when set, else `~/.config/nushell` (`~/Library/Application Support/nushell` on macOS).
+    pub(crate) fn nu_autoload(&self) -> PathBuf {
+        let config = match &self.xdg_config {
+            Some(x) => x.clone(),
+            None if cfg!(target_os = "macos") => self.home.join("Library/Application Support"),
+            None => self.home.join(".config"),
+        };
+        config.join("nushell").join("autoload")
+    }
+
+    /// The file install writes for nushell.
+    pub(crate) fn nu_file(&self) -> PathBuf {
+        self.nu_autoload().join("atlas.nu")
+    }
+
+    /// `~/.local/bin/atlas`: the link install makes when `~/.local/bin` is already on `PATH`, so
+    /// `atlas` works at once, in non-interactive shells and in GUI-launched tools too.
+    pub(crate) fn local_bin_link(&self) -> PathBuf {
+        self.home
+            .join(".local/bin")
+            .join(atlas_core::paths::exe("atlas"))
+    }
+
     /// `$ZDOTDIR/.zshenv`, else `~/.zshenv`: where install puts the zsh line.
     pub(crate) fn zsh_file(&self) -> PathBuf {
         self.zdotdir
@@ -58,13 +82,19 @@ impl ShellEnv {
             .join(".zshenv")
     }
 
-    /// The first bash startup file that exists (bash reads only the first of these for a login
-    /// shell), if any.
+    /// Where install puts the bash line. macOS terminals start login shells, which read only the
+    /// first of the login files that exists, so it goes there (none: nothing to write). Linux
+    /// terminals start non-login interactive shells, which read only `~/.bashrc` (distros' login
+    /// files source it), so it goes there, created when missing.
     pub(crate) fn bash_file(&self) -> Option<PathBuf> {
-        [".bash_profile", ".bash_login", ".bashrc"]
-            .iter()
-            .map(|f| self.home.join(f))
-            .find(|p| p.is_file())
+        if cfg!(target_os = "macos") {
+            [".bash_profile", ".bash_login", ".bashrc"]
+                .iter()
+                .map(|f| self.home.join(f))
+                .find(|p| p.is_file())
+        } else {
+            Some(self.home.join(".bashrc"))
+        }
     }
 
     /// Every file that may hold an Atlas block: where install writes, plus the other places an
@@ -92,9 +122,31 @@ pub(crate) fn path_line(dir: &Path) -> String {
     format!("export PATH=\"{}:$PATH\"", dir.display())
 }
 
-/// The fish line.
+/// The fish line. `-g` (global, this session) because the default is the *universal*
+/// `fish_user_paths`, which fish keeps on disk: deleting the file would leave the dir on `PATH`
+/// forever. Quoted with fish's double-quote escapes so a path with a space or `$` survives.
 pub(crate) fn fish_line(dir: &Path) -> String {
+    let d = dir.display().to_string();
+    let q = d
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$");
+    format!("fish_add_path -g \"{q}\"")
+}
+
+/// The line install wrote up to 1.5.0-alpha.25 (universal, unquoted). A file with it is still
+/// ours: install rewrites it, uninstall deletes it.
+fn fish_line_legacy(dir: &Path) -> String {
     format!("fish_add_path {}", dir.display())
+}
+
+/// The nushell line: prepend `dir` to `PATH` (a string or a list at that point), without dupes.
+/// A raw string, so nothing in the path is interpreted.
+pub(crate) fn nu_line(dir: &Path) -> String {
+    format!(
+        "$env.PATH = ($env.PATH | split row (char esep) | prepend r#'{}'# | uniq)",
+        dir.display()
+    )
 }
 
 /// What install appends to a POSIX rc file.
@@ -105,6 +157,11 @@ pub(crate) fn block(dir: &Path) -> String {
 /// Contents install gives the fish `conf.d` file.
 pub(crate) fn fish_contents(dir: &Path) -> String {
     format!("{MARKER}\n{}\n", fish_line(dir))
+}
+
+/// Contents install gives the nushell autoload file.
+pub(crate) fn nu_contents(dir: &Path) -> String {
+    format!("{MARKER}\n{}\n", nu_line(dir))
 }
 
 /// Whether `content` already puts `dir` on `PATH`: the exact line install writes (or the
@@ -143,15 +200,112 @@ pub(crate) fn strip_block(content: &str, dir: &Path) -> Option<String> {
     Some(strip_block(&s, dir).unwrap_or(s))
 }
 
-/// Whether `content` is exactly what install writes for fish (so deleting the file removes only
-/// Atlas's own).
+/// Whether `content` is a fish file install wrote, this version's or an older one (so deleting
+/// the file removes only Atlas's own).
 pub(crate) fn is_fish_file_ours(content: &str, dir: &Path) -> bool {
-    content.trim() == fish_contents(dir).trim()
+    let c = content.trim();
+    c == fish_contents(dir).trim() || c == format!("{MARKER}\n{}", fish_line_legacy(dir))
+}
+
+/// Whether `content` is exactly the nushell file install writes.
+pub(crate) fn is_nu_file_ours(content: &str, dir: &Path) -> bool {
+    content.trim() == nu_contents(dir).trim()
+}
+
+/// The line that puts `dir` on `PATH` in the shell named `shell` (a basename: `fish`, `zsh`),
+/// for the installer's "run now" hint. `None` for a shell whose syntax Atlas does not write.
+pub(crate) fn line_for_shell(shell: &str, dir: &Path) -> Option<String> {
+    match shell {
+        "fish" => Some(fish_line(dir)),
+        "nu" => Some(nu_line(dir)),
+        "bash" | "zsh" | "sh" | "dash" | "ksh" | "mksh" | "yash" => Some(path_line(dir)),
+        _ => None,
+    }
+}
+
+/// Run `script` in fish with `dir` as `$argv[1]`. A plain `fish -c`: `--no-config` would also skip
+/// the universal variables this is about. `Ok(exit status success)`; `Err` when fish cannot run.
+fn fish_run(env: &ShellEnv, script: &str, dir: &Path) -> anyhow::Result<bool> {
+    let mut cmd = std::process::Command::new("fish");
+    // The same HOME/XDG Atlas resolved every other path from, so fish changes the same files.
+    cmd.env("HOME", &env.home);
+    match &env.xdg_config {
+        Some(x) => cmd.env("XDG_CONFIG_HOME", x),
+        None => cmd.env_remove("XDG_CONFIG_HOME"),
+    };
+    let st = cmd
+        .args(["-c", script])
+        .arg(dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()?;
+    Ok(st.success())
+}
+
+/// Erases the global `fish_user_paths` first: the `-g` line in `conf.d` (loaded by `fish -c`)
+/// makes a global copy that shadows the universal one these two read and change.
+const FISH_UNSHADOW: &str = "set -eg fish_user_paths 2>/dev/null;";
+
+/// Whether fish's universal `fish_user_paths` holds `dir` (put there by the pre-`-g` fish line).
+pub(crate) fn fish_universal_has(env: &ShellEnv, dir: &Path) -> bool {
+    fish_run(
+        env,
+        &format!("{FISH_UNSHADOW} contains -- $argv[1] $fish_user_paths"),
+        dir,
+    )
+    .unwrap_or(false)
+}
+
+/// Take `dir` out of fish's universal `fish_user_paths`. `Ok(true)` when it was there.
+pub(crate) fn fish_forget_universal(env: &ShellEnv, dir: &Path) -> anyhow::Result<bool> {
+    fish_run(
+        env,
+        &format!(
+            "{FISH_UNSHADOW} contains -- $argv[1] $fish_user_paths; or exit 1; \
+             set -U fish_user_paths (string match -v -- $argv[1] $fish_user_paths)"
+        ),
+        dir,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A home with a space (or `$`, `"`) must still give fish one path argument.
+    #[test]
+    fn fish_line_quotes_the_path() {
+        let d = PathBuf::from("/home/a b/$x\"/.atlas/bin");
+        assert_eq!(
+            fish_line(&d),
+            "fish_add_path -g \"/home/a b/\\$x\\\"/.atlas/bin\""
+        );
+        // The file an older install wrote is still recognized as ours, a user edit is not.
+        let legacy = format!("{MARKER}\nfish_add_path {}\n", dir().display());
+        assert!(is_fish_file_ours(&legacy, &dir()));
+        assert!(!is_fish_file_ours(&format!("{legacy}set -x A 1\n"), &dir()));
+    }
+
+    #[test]
+    fn line_for_shell_speaks_each_shells_syntax() {
+        assert!(
+            line_for_shell("fish", &dir())
+                .unwrap()
+                .starts_with("fish_add_path -g")
+        );
+        assert!(
+            line_for_shell("nu", &dir())
+                .unwrap()
+                .starts_with("$env.PATH")
+        );
+        assert!(
+            line_for_shell("zsh", &dir())
+                .unwrap()
+                .starts_with("export PATH=")
+        );
+        assert_eq!(line_for_shell("tcsh", &dir()), None);
+    }
 
     fn dir() -> PathBuf {
         PathBuf::from("/home/u/.atlas/bin")
@@ -301,6 +455,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn bash_file_is_the_first_existing_of_the_login_files() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().to_path_buf();
@@ -314,5 +469,28 @@ mod tests {
         assert_eq!(env.bash_file(), Some(home.join(".bashrc")));
         std::fs::write(home.join(".bash_profile"), "").unwrap();
         assert_eq!(env.bash_file(), Some(home.join(".bash_profile")));
+    }
+
+    /// Incident (Omarchy, 1.5.0-alpha.25): `~/.bash_profile` existed, so install wrote the PATH
+    /// there; a Linux terminal starts a non-login bash that reads only `~/.bashrc`, and every new
+    /// shell said `atlas: command not found`. On Linux the line goes to `~/.bashrc`, created when
+    /// missing, whatever login files exist.
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn bash_file_on_linux_is_bashrc_even_with_a_login_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().to_path_buf();
+        let env = ShellEnv {
+            home: home.clone(),
+            zdotdir: None,
+            xdg_config: None,
+        };
+        assert_eq!(env.bash_file(), Some(home.join(".bashrc")));
+        std::fs::write(
+            home.join(".bash_profile"),
+            "[[ -f ~/.bashrc ]] && . ~/.bashrc\n",
+        )
+        .unwrap();
+        assert_eq!(env.bash_file(), Some(home.join(".bashrc")));
     }
 }

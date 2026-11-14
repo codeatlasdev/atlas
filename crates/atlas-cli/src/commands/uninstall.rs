@@ -47,6 +47,8 @@ pub(crate) struct Env {
     /// Windows: the install dir is on the user's `Path` (registry). Always false elsewhere, where
     /// the shell files carry the `PATH` lines. Only a dir that is there is planned for removal.
     pub user_path: bool,
+    /// fish is installed: its universal variables are worth asking about (tests leave it off).
+    pub fish: bool,
 }
 
 impl Env {
@@ -61,6 +63,7 @@ impl Env {
             shell: ShellEnv::current(),
             app: atlas_core::paths::installed_app(),
             user_path,
+            fish: atlas_core::paths::which("fish").is_some(),
         })
     }
 
@@ -78,8 +81,10 @@ pub(crate) enum Item {
     Link { path: PathBuf, note: &'static str },
     /// The `# Atlas CLI` block install appended to a shell startup file.
     RcBlock { file: PathBuf, dir: PathBuf },
-    /// The fish `conf.d/atlas.fish` install wrote.
-    FishFile { file: PathBuf },
+    /// A startup file all of Atlas's own (fish `conf.d/atlas.fish`, nushell `autoload/atlas.nu`).
+    ShellFile { file: PathBuf },
+    /// `dir` in fish's universal `fish_user_paths` (the fish line before 1.5.0-alpha.26 put it there).
+    FishUniversal { dir: PathBuf, shell: ShellEnv },
     /// Windows: the install dir on the user's `Path`.
     UserPath { dir: PathBuf },
 }
@@ -93,7 +98,10 @@ impl Item {
             Item::RcBlock { file, .. } => {
                 format!("{}  (the PATH lines Atlas added)", file.display())
             }
-            Item::FishFile { file } => format!("{}  (the PATH file Atlas wrote)", file.display()),
+            Item::ShellFile { file } => format!("{}  (the PATH file Atlas wrote)", file.display()),
+            Item::FishUniversal { dir, .. } => {
+                format!("{}  (fish universal fish_user_paths entry)", dir.display())
+            }
             Item::UserPath { dir } => format!("{}  (user PATH entry)", dir.display()),
         }
     }
@@ -187,9 +195,31 @@ pub(crate) fn plan(env: &Env, purge: bool) -> Plan {
             });
         }
     }
-    let fish = env.shell.fish_file();
-    if std::fs::read_to_string(&fish).is_ok_and(|c| shellrc::is_fish_file_ours(&c, &bin)) {
-        p.remove.push(Item::FishFile { file: fish });
+    let owned = [
+        (
+            env.shell.fish_file(),
+            shellrc::is_fish_file_ours as fn(&str, &Path) -> bool,
+        ),
+        (env.shell.nu_file(), shellrc::is_nu_file_ours),
+    ];
+    for (file, ours) in owned {
+        if std::fs::read_to_string(&file).is_ok_and(|c| ours(&c, &bin)) {
+            p.remove.push(Item::ShellFile { file });
+        }
+    }
+    if env.fish && shellrc::fish_universal_has(&env.shell, &bin) {
+        p.remove.push(Item::FishUniversal {
+            dir: bin.clone(),
+            shell: env.shell.clone(),
+        });
+    }
+    // `~/.local/bin/atlas`, only when it is the link install made to this install's binary.
+    let link = env.shell.local_bin_link();
+    if std::fs::read_link(&link).is_ok_and(|to| to == bin.join(atlas_core::paths::exe("atlas"))) {
+        p.remove.push(Item::Link {
+            path: link,
+            note: "link on PATH",
+        });
     }
 
     // `~/.atlas`: all of it, or only what Atlas itself put there.
@@ -280,7 +310,10 @@ fn apply_item(item: &Item) -> Result<()> {
             std::fs::write(file, stripped)
                 .with_context(|| format!("cannot write {}", file.display()))
         }
-        Item::FishFile { file } => remove_file_if_present(file),
+        Item::ShellFile { file } => remove_file_if_present(file),
+        Item::FishUniversal { dir, shell } => {
+            shellrc::fish_forget_universal(shell, dir).map(|_| ())
+        }
         Item::UserPath { dir } => {
             #[cfg(windows)]
             {
@@ -455,15 +488,23 @@ mod tests {
             &home.join(".config/fish/conf.d/atlas.fish"),
             &shellrc::fish_contents(&bin),
         );
+        let shell = ShellEnv {
+            home: home.clone(),
+            zdotdir: None,
+            xdg_config: None,
+        };
+        write(&shell.nu_file(), &shellrc::nu_contents(&bin));
+        #[cfg(unix)]
+        {
+            std::fs::create_dir_all(home.join(".local/bin")).unwrap();
+            std::os::unix::fs::symlink(bin.join("atlas"), home.join(".local/bin/atlas")).unwrap();
+        }
         let env = Env {
             atlas_home: atlas,
-            shell: ShellEnv {
-                home,
-                zdotdir: None,
-                xdg_config: None,
-            },
+            shell,
             app: None,
             user_path: false,
+            fish: false,
         };
         Machine { _tmp: tmp, env }
     }
@@ -534,6 +575,12 @@ mod tests {
             "alias ll='ls -l'\n"
         );
         assert!(!home.join(".config/fish/conf.d/atlas.fish").exists());
+        assert!(!m.env.shell.nu_file().exists());
+        assert!(
+            home.join(".local/bin/atlas").symlink_metadata().is_err(),
+            "the link install made is gone"
+        );
+        assert!(home.join(".local/bin").is_dir(), "the user's dir stays");
     }
 
     /// Incident class: install writes `$ZDOTDIR/.zshenv`; uninstall only looked at `~/.zshenv`.
@@ -561,9 +608,44 @@ mod tests {
         let fish = m.env.shell.fish_file();
         write(&fish, "function atlas\n  echo my own wrapper\nend\n");
         let p = plan(&m.env, false);
-        assert!(!p.remove.iter().any(|i| matches!(i, Item::FishFile { .. })));
+        assert!(!p.remove.contains(&Item::ShellFile { file: fish.clone() }));
         assert!(p.apply(&mut Vec::new()).is_empty());
         assert!(fish.exists());
+    }
+
+    /// Up to 1.5.0-alpha.25 the fish file held `fish_add_path <dir>` (universal, unquoted): still
+    /// Atlas's file, so uninstall deletes it instead of leaving `atlas` on PATH.
+    #[test]
+    fn the_fish_file_an_older_install_wrote_is_removed() {
+        let m = machine();
+        let bin = m.env.atlas_home.join("bin");
+        let fish = m.env.shell.fish_file();
+        write(
+            &fish,
+            &format!("# Atlas CLI\nfish_add_path {}\n", bin.display()),
+        );
+        assert!(plan(&m.env, false).apply(&mut Vec::new()).is_empty());
+        assert!(!fish.exists());
+    }
+
+    /// `~/.local/bin/atlas` that is not the link install made (the user's own script, or a link to
+    /// another binary) is never removed.
+    #[test]
+    #[cfg(unix)]
+    fn a_local_bin_atlas_that_is_not_our_link_stays() {
+        let m = machine();
+        let link = m.env.shell.local_bin_link();
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("/opt/other/atlas", &link).unwrap();
+        assert!(plan(&m.env, false).apply(&mut Vec::new()).is_empty());
+        assert!(link.symlink_metadata().is_ok());
+        std::fs::remove_file(&link).unwrap();
+        write(&link, "#!/bin/sh\necho mine\n");
+        assert!(plan(&m.env, false).apply(&mut Vec::new()).is_empty());
+        assert_eq!(
+            std::fs::read_to_string(&link).unwrap(),
+            "#!/bin/sh\necho mine\n"
+        );
     }
 
     /// Dry run: building the plan and printing it changes nothing.
@@ -611,6 +693,7 @@ mod tests {
             },
             app: None,
             user_path: false,
+            fish: false,
         };
         assert!(plan(&env, false).is_empty());
         assert!(plan(&env, true).is_empty());
@@ -793,6 +876,7 @@ mod tests {
             },
             app: None,
             user_path: false,
+            fish: false,
         };
         assert!(plan(&env, false).is_empty());
         env.user_path = true;

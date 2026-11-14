@@ -398,7 +398,7 @@ fn tools_list() -> Value {
 /// What the agent's MCP client does for one `tools/call`, against the hostd whose hook endpoint is
 /// in `hostd_dir`: the real dispatch, the real HTTP request, as crewmate `crewmate_id` in pane
 /// `pane_key`. Lets a test cross the whole path (MCP, hook route, hostd, runner).
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) async fn call_for_test(
     hostd_dir: &std::path::Path,
     crewmate_id: &str,

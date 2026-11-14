@@ -47,7 +47,8 @@ const TIMEOUT: Duration = Duration::from_secs(300);
 #[cfg(test)]
 pub(crate) static TEST_RUNNER: parking_lot::Mutex<Option<(PathBuf, Duration)>> =
     parking_lot::Mutex::new(None);
-#[cfg(test)]
+// Its users (`capture::tests`, `crew::tests::capture`) are Unix-only.
+#[cfg(all(test, unix))]
 pub(crate) static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The program that runs the capture, and how long it may take.

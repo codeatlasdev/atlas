@@ -106,6 +106,37 @@ jobs:
         with:
           tests: ${{ needs.plan.outputs.tested != 'true' }}
 
+  # The release's Linux aarch64 CLI (crew servers on Graviton, Oracle A1, Hetzner CAX) is built on
+  # `ubuntu-22.04-arm`, and `publish` waits for it. Building it here on every push to main means a
+  # break on that target (a dependency, the runner image) shows on main, not in the middle of a
+  # release. Not on pull requests: the native arm64 runner is the slow, scarce one.
+  rust-linux-arm64:
+    name: Rust (Linux aarch64 CLI)
+    needs: plan
+    if: ${{ github.event_name != 'pull_request' && needs.plan.outputs.rust == 'true' }}
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: System libraries
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends build-essential curl pkg-config libssl-dev
+
+      # Same steps as the release job (release.yml, build-linux-arm64): the arm64 image may lack rustup.
+      - name: Install Rust
+        run: |
+          command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" show active-toolchain || "$HOME/.cargo/bin/rustup" toolchain install
+
+      - name: Build the CLI
+        run: cargo build --locked -p atlas-cli
+
   # Windows: the whole workspace, Atlas Desktop included (WebView2, xterm.js terminals over ConPTY),
   # and the Windows end-to-end hostd test (named pipe, ConPTY, cmd.exe). No Unix tools assumed.
   rust-windows:
@@ -331,7 +362,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, rust-linux-arm64, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

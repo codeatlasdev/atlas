@@ -6,10 +6,7 @@ import { join } from "node:path";
 // The task as hostd serializes it after a restart interrupted it (#199); written by the Rust test
 // `crewmate_task_resumed_fixture_is_real_payload` (UPDATE_FIXTURES=1), never by hand.
 const task = JSON.parse(
-	readFileSync(
-		join(import.meta.dir, "../../../../mobile/test/fixtures/crewmate_task_resumed.json"),
-		"utf8",
-	),
+	readFileSync(join(import.meta.dir, "../../../../mobile/test/fixtures/crewmate_task_resumed.json"), "utf8"),
 );
 
 describe("CrewmateTask resumed wire shape", () => {

@@ -18,8 +18,8 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 
 | Permission                                  | Allows                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| See projects, logs, agents                  | project and service state, logs and search, agent tabs and replies, terminal list                                                                   |
-| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done |
+| See projects, logs, agents                  | project and service state, logs and search, agent tabs and replies, terminal list; read the images of a crewmate's task |
+| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done; send a task, with images, to a crewmate (uploading an image is the same permission) |
 | Answer agent permission prompts             | allow or deny a Claude Code / Codex tool call                                                                                                       |
 | Watch terminals                             | live terminal output                                                                                                                                |
 | Type in terminals                           | keystrokes; the app also asks for Face ID / biometrics before each session                                                                          |
@@ -51,6 +51,12 @@ An agent's chat is read from its session file (`agent_history`, `crates/atlas-ho
 ## Crew on the phone
 
 Crewmates live on crew servers (`atlas crew install`, see [Atlas Crew](crew.md)), which Atlas Desktop reaches over SSH; the phone talks only to its paired Macs. The Mac's hostd relays: `crew_servers` lists the crew servers in `~/.atlas/desktop/crew-servers.json`, and `crew_call {server, cmd, args}` runs a command there through hostd's own SSH connection to it (`$HOME` and the token read over `ssh`, then `ssh -N -L` to its `hostd.sock`, like the desktop; `crates/atlas-host/src/crew/relay/`). The crew server's pushes come back as `{"ev":"crew_event","server":…,"event":…}`. A relayed command needs the scope it would need sent to the Mac (`mobile::required_scope`); terminals and secrets are never relayed, and a relayed push passes the phone's scopes like the push inside. The phone shows each crew server as its own computer behind the Mac (`CrewTransport`, `crewDevicesProvider`). The Mac must reach the crew server with this user's SSH key (`BatchMode`, no prompt). macOS and Linux only.
+
+### Images on a task
+
+The composer has an image button (**Attach image**): **Take photo** (camera) or **Photo library**, up to 4 images of at most 5 MiB (png, jpeg, webp, gif by their bytes; anything else is refused with its name before it is uploaded). Photos are scaled to at most 2048 px and re-encoded at 85 % quality first, so a camera shot fits the cap. The pending images show above the field with a remove button; **Send** needs text (a task is a prompt) and keeps text and images with the server's reason on screen when the task is refused. `image_picker` asks for camera access only when you take a photo, and the photo library through the system picker; the iOS usage strings say so.
+
+In the thread, a task's images show right-aligned under its prompt, fetched from the crew server when they first appear and kept for the session (tap one to see it large). They travel through the Mac's `crew_call` like every other crew command, in pieces of at most 512 KiB (a protocol line is at most 1 MiB): `crewmate_attachment_put` (needs `act`) uploads, `crewmate_attachment` (needs `read`) fetches. A phone granted `act` but not `read` can send an image and then sees it as "Tap to retry" with `forbidden: read`; the rest of the thread is unaffected. The push relay never sees an image. The demo computer answers both commands and enforces the same caps, so the screens run against it.
 
 ### Audit, usage, routines and crew settings
 

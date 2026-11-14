@@ -479,6 +479,30 @@ pub enum HostCmd {
         source: String,
         #[serde(default)]
         tz: Option<String>,
+        /// Images (`crew::attachments`): inline, or by the id of an upload (`crewmate_attachment_put`).
+        #[serde(default)]
+        attachments: Vec<crate::crew::attachments::Sent>,
+    },
+    /// One piece of an image too big for a protocol line, staged for the next `crewmate_task`
+    /// that names `upload`. The last piece (`last: true`) completes it.
+    CrewmateAttachmentPut {
+        id: String,
+        upload: String,
+        /// Piece number from 0; they arrive in order.
+        seq: u32,
+        data_b64: String,
+        #[serde(default)]
+        last: bool,
+    },
+    /// One piece of a stored image (`name` of a task's `attachments`), at most 512 KiB raw.
+    CrewmateAttachment {
+        id: String,
+        task: String,
+        name: String,
+        #[serde(default)]
+        offset: u64,
+        #[serde(default)]
+        limit: Option<u64>,
     },
     CrewmateTasks {
         id: String,

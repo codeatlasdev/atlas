@@ -26,6 +26,7 @@
 //! | `github_out`  | the progress comment: created, edited (throttled), finished, failed      |
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
+//! | `attachments` | images on tasks: stored, staged, refused, fetched, from Telegram, scopes |
 
 mod github_fake;
 mod github_in;
@@ -36,6 +37,8 @@ mod payloads;
 mod actions;
 #[cfg(unix)]
 mod approvals;
+#[cfg(unix)]
+mod attachments;
 #[cfg(unix)]
 mod audit;
 #[cfg(unix)]

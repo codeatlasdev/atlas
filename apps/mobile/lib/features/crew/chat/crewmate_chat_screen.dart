@@ -14,6 +14,7 @@ import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
+import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/composer.dart';
 import 'package:atlas_mobile/features/crew/chat/glass.dart';
 import 'package:atlas_mobile/features/crew/chat/task_thread.dart';
@@ -81,27 +82,49 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     );
   }
 
-  Future<void> _send() async {
+  /// Sends the composer's text with its [images]. `true` when the crew server took the task (the composer then
+  /// lets the images go); `false` keeps text and images for another try, with the server's reason on screen.
+  Future<bool> _send(List<PendingImage> images) async {
     final text = _msg.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) return false;
     final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return;
+    if (mux == null) return false;
     setState(() => _sending = true);
-    final resp = await mux.call('crewmate_task', {
-      'id': widget.crewmateId,
-      'prompt': text,
-      'source': 'mobile',
-    });
-    if (!mounted) return;
+    String? failure;
+    try {
+      final attachments = await toSent(
+        images,
+        mux.call,
+        () => '${DateTime.now().microsecondsSinceEpoch}-${images.length}-up',
+        crewmateId: widget.crewmateId,
+      );
+      final resp = await mux.call('crewmate_task', {
+        'id': widget.crewmateId,
+        'prompt': text,
+        'source': 'mobile',
+        if (attachments.isNotEmpty) 'attachments': attachments,
+      });
+      if (resp['ok'] != true) {
+        failure = resp['error'] as String? ?? 'the server refused the task';
+      }
+    } on StateError catch (e) {
+      failure = e.message;
+    }
+    if (!mounted) return failure == null;
     setState(() {
       _sending = false;
-      if (resp['ok'] == true) {
+      if (failure == null) {
         _msg.clear();
         ref.invalidate(
           crewmateTasksProvider((widget.device, widget.crewmateId)),
         );
       }
     });
+    if (failure != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(failure)));
+    }
+    return failure == null;
   }
 
   Future<void> _cancel(String taskId) async {

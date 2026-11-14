@@ -124,6 +124,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewmateUpdate { .. }
         | C::CrewmateDelete { .. }
         | C::CrewmateTask { .. }
+        | C::CrewmateAttachmentPut { .. }
+        | C::CrewmateAttachment { .. }
         | C::CrewmateTasks { .. }
         | C::CrewmateCancel { .. }
         | C::CrewmateMemory { .. }

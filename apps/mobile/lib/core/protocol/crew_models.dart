@@ -222,6 +222,33 @@ class TaskAction {
       TaskAction(kind: j['kind'] as String? ?? '', data: j);
 }
 
+/// An image kept with a task (hostd `Attachment`). Never carries the bytes.
+class TaskAttachment {
+  final String name;
+  final String mime;
+  final int bytesLen;
+  final String sha256;
+
+  /// Where the agent finds it, relative to its work dir.
+  final String path;
+
+  const TaskAttachment({
+    required this.name,
+    required this.mime,
+    required this.bytesLen,
+    required this.sha256,
+    required this.path,
+  });
+
+  factory TaskAttachment.fromJson(Map<String, dynamic> j) => TaskAttachment(
+    name: j['name'] as String? ?? '',
+    mime: j['mime'] as String? ?? '',
+    bytesLen: (j['bytes_len'] as num?)?.toInt() ?? 0,
+    sha256: j['sha256'] as String? ?? '',
+    path: j['path'] as String? ?? '',
+  );
+}
+
 /// A task enqueued or completed on a crewmate.
 class CrewmateTask {
   final String id;
@@ -257,6 +284,10 @@ class CrewmateTask {
   /// How many restarts interrupted it (the server fails it after too many).
   final int restarts;
 
+  /// Images sent with the prompt: records only. The bytes are fetched with `crewmate_attachment`
+  /// (`features/crew/chat/attachments.dart`).
+  final List<TaskAttachment> attachments;
+
   const CrewmateTask({
     required this.id,
     required this.ts,
@@ -278,6 +309,7 @@ class CrewmateTask {
     this.origin,
     this.resumed = false,
     this.restarts = 0,
+    this.attachments = const [],
   });
 
   factory CrewmateTask.fromJson(Map<String, dynamic> j) => CrewmateTask(
@@ -308,6 +340,10 @@ class CrewmateTask {
         : GithubOrigin.fromJson((j['origin'] as Map).cast<String, dynamic>()),
     resumed: j['resumed'] as bool? ?? false,
     restarts: (j['restarts'] as num?)?.toInt() ?? 0,
+    attachments: [
+      for (final a in (j['attachments'] as List<dynamic>?) ?? const [])
+        TaskAttachment.fromJson((a as Map).cast<String, dynamic>()),
+    ],
   );
 }
 

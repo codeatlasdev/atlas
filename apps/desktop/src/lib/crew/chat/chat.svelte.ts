@@ -8,6 +8,7 @@ import { errText } from "#lib/api.ts";
 import { hostCall } from "#lib/host.ts";
 import { crew } from "#lib/stores/crew.svelte.ts";
 import { expandKey, withKey } from "./taskView.ts";
+import { addImages, type PendingImage } from "#lib/crew/attachments.ts";
 
 /** Host args for a call on the selected crew server ("" is the local hostd). */
 function hostArgs(): { host?: string } {
@@ -20,6 +21,8 @@ export class ChatState {
 	prompt = $state("");
 	sending = $state(false);
 	composerFocused = $state(false);
+	/** Images waiting to go with the next prompt. */
+	images = $state<PendingImage[]>([]);
 
 	// approvals answered in this view (req ids); reset when the selected crewmate changes
 	approvedReqs = $state<Set<string>>(new Set());
@@ -41,12 +44,14 @@ export class ChatState {
 
 	// ─── composer ──────────────────────────────────────────────────────────
 
-	async send(): Promise<void> {
+	/** Send the composer's prompt, with its pending images unless `withImages` is false. A failure keeps both. */
+	async send(withImages = true): Promise<void> {
 		if (!this.prompt.trim() || this.sending) return;
 		this.sending = true;
 		try {
-			await crew.sendTask(this.prompt.trim());
+			await crew.sendTask(this.prompt.trim(), withImages ? this.images : []);
 			this.prompt = "";
+			if (withImages) this.images = [];
 		} catch (e) {
 			toast.error(errText(e));
 		} finally {
@@ -54,10 +59,22 @@ export class ChatState {
 		}
 	}
 
-	/** Put `text` in the composer and send it (ask option, typed answer, retry). A failure leaves it in the box. */
+	/** Images from the picker or a paste join the pending ones; each refusal is a toast naming the file. */
+	async attach(files: File[]): Promise<void> {
+		const r = await addImages(this.images, files);
+		this.images = r.images;
+		for (const msg of r.errors) toast.error(msg);
+	}
+
+	removeImage(index: number): void {
+		this.images = this.images.filter((_, i) => i !== index);
+	}
+
+	/** Put `text` in the composer and send it (ask option, typed answer, retry). A failure leaves it in the box.
+	 *  Images pending for something the user is still typing are not part of an answer or a retry: they stay. */
 	sendText(text: string): Promise<void> {
 		this.prompt = text;
-		return this.send();
+		return this.send(false);
 	}
 
 	// ─── approvals ─────────────────────────────────────────────────────────

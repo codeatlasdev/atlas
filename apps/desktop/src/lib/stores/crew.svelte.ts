@@ -11,6 +11,7 @@ import { hostCall } from "#lib/host.ts";
 import { parseAudit, type AuditEntry } from "#lib/crew/settings/audit.ts";
 import { errText } from "#lib/api.ts";
 import { normalizeTask } from "#lib/crew/wire.ts";
+import { toSent, type PendingImage } from "#lib/crew/attachments.ts";
 import { anyPaused, parseCrewList, pausedFromEvent } from "#lib/crew/pause.ts";
 import { crewmateKey } from "#lib/crew/crewmateKey.ts";
 import { isUnread, loadSeen, saveSeen } from "#lib/crew/unread.ts";
@@ -208,11 +209,18 @@ class CrewStore {
 
 	// ─── tasks ────────────────────────────────────────────────────────────────
 
-	async sendTask(prompt: string): Promise<void> {
+	async sendTask(prompt: string, images: PendingImage[] = []): Promise<void> {
 		if (!this.selected) return;
 		const { hostKey, crewmateId } = this.selected;
 		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-		await hostCall("crewmate_task", { ...hostArgs(hostKey), id: crewmateId, prompt, source: "desktop", tz });
+		const route = { ...hostArgs(hostKey), id: crewmateId };
+		const attachments = await toSent(
+			images,
+			(cmd, args) => hostCall(cmd, args),
+			() => crypto.randomUUID(),
+			route,
+		);
+		await hostCall("crewmate_task", { ...route, prompt, source: "desktop", tz, attachments });
 		await this.refreshHost(hostKey);
 		await this.loadTasks();
 	}

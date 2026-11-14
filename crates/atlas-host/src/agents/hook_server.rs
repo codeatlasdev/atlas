@@ -159,6 +159,7 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
 /// - `POST /crew/<id>/ask`           — ask_user call from an engine; blocks until answered
 /// - `POST /crew/<id>/set_profile`   — update crewmate name/role from within a task
 /// - `POST /crew/<id>/capture`       — the capture tool: Playwright screenshots, attached to the task
+/// - `POST /crew/<id>/locate`        — the locate tool: route, component and selector of a screenshot region
 async fn route_crew(
     hub: &Arc<crate::server::Hub>,
     path: &str,
@@ -180,6 +181,7 @@ async fn route_crew(
         "ask" => handle_ask(hub, crewmate_id, &v()).await,
         "set_profile" => handle_set_profile(hub, crewmate_id, &v()),
         "capture" => handle_capture(hub, crewmate_id, &v()).await,
+        "locate" => handle_locate(hub, crewmate_id, &v()).await,
         _ => ("404 Not Found", String::new()),
     }
 }
@@ -212,6 +214,34 @@ async fn handle_capture(
         &v["args"],
     )
     .await
+    {
+        Ok(r) => ("200 OK", r.to_string()),
+        Err(e) => (
+            "422 Unprocessable Entity",
+            serde_json::json!({ "error": e }).to_string(),
+        ),
+    }
+}
+
+/// Handle `POST /crew/<id>/locate`: rank the elements a screenshot region points at and map them to
+/// the crewmate's work tree. Only a crewmate's own task may call it (same pane rule as `capture`),
+/// because it reads that crewmate's files. `200` with the candidates, or `422 {"error": …}`.
+async fn handle_locate(
+    hub: &Arc<crate::server::Hub>,
+    crewmate_id: &str,
+    v: &Value,
+) -> (&'static str, String) {
+    let in_task = v["pane_key"]
+        .as_str()
+        .is_some_and(|p| crate::crew::pane::is_pane_of(p, crewmate_id));
+    if !in_task {
+        return (
+            "422 Unprocessable Entity",
+            serde_json::json!({"error": "locate: only a crewmate's task can locate (no task pane)"})
+                .to_string(),
+        );
+    }
+    match crate::crew::locate::handle(&hub.crew.dir, &hub.crew.store, crewmate_id, &v["args"]).await
     {
         Ok(r) => ("200 OK", r.to_string()),
         Err(e) => (

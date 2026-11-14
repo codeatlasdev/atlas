@@ -32,6 +32,32 @@ pub fn work_dir(base_dir: &Path, crewmate_id: &str) -> PathBuf {
     crewmate_dir_in(base_dir, crewmate_id).join("work")
 }
 
+/// Where this crewmate's agent works, without preparing anything: the `work/` checkout of a Git
+/// project, the folder of a Path project, else its own `workdir` or `work/`. The same answer
+/// `runner::prompt::prepare_work_dir` ends up with, for code that only needs to read the tree.
+pub fn current_work_dir(
+    base_dir: &Path,
+    crewmate: &crate::crew::store::Crewmate,
+) -> Result<PathBuf, String> {
+    let dir = match &crewmate.project {
+        Some(ProjectRef::Git { .. }) => work_dir(base_dir, &crewmate.id),
+        Some(ProjectRef::Path { path }) => prepare_path(path)?,
+        None => crewmate
+            .workdir
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| work_dir(base_dir, &crewmate.id)),
+    };
+    if dir.is_dir() {
+        Ok(dir)
+    } else {
+        Err(format!(
+            "no work tree yet at {}: the crewmate has not run a task here",
+            dir.display()
+        ))
+    }
+}
+
 /// Ensure the project is checked out and return the working directory for the crewmate.
 ///
 /// For `Git`: shared clone + per-crewmate worktree.

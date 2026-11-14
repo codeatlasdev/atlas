@@ -6,6 +6,7 @@
 //! |---------------|--------------------------------------------------------------------------|
 //! | `tasks`       | a task from queue to done/failed/cancelled, steps, usage, JSON contracts |
 //! | `capture`     | the `capture` tool through a real hostd with a fake runner                |
+//! | `locate`      | the `locate` tool through a real hostd with a fake runner                 |
 //! | `crewmates`   | create/update, the look, caps, secrets, the `crewmate_list` contract     |
 //! | `triggers`    | routines, webhooks, crewmate-chain triggers, trigger validation          |
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
@@ -52,6 +53,8 @@ mod fixture;
 mod github_e2e;
 #[cfg(unix)]
 mod limits;
+#[cfg(unix)]
+mod locate;
 #[cfg(unix)]
 mod mobile_payloads;
 #[cfg(unix)]

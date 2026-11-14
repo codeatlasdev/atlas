@@ -184,3 +184,67 @@ async fn the_mcp_capture_tool_returns_every_combination_visited_and_the_error_wh
     assert!(err.contains("http"), "{err}");
     clear_runner();
 }
+
+/// A fake runner that also writes a DOM report per cell, the way the real one does for `dom: true`.
+fn dom_report_runner(dir: &Path) -> std::path::PathBuf {
+    let mut body = String::new();
+    let mut entries = vec![];
+    for e in ["chromium", "webkit"] {
+        let key = format!("{e}-390px-dark");
+        body.push_str(&format!("printf 'PNG-{key}' > \"$OUT/{key}.png\"\n"));
+        body.push_str(&format!(
+            "printf '{{\"elements\":[]}}' > \"$OUT/{key}.dom.json\"\n"
+        ));
+        entries.push(format!(
+            "{{\"engine\":\"{e}\",\"width\":390,\"theme\":\"dark\",\"path\":\"'\"$OUT\"'/{key}.png\",\"dom\":\"'\"$OUT\"'/{key}.dom.json\"}}"
+        ));
+    }
+    body.push_str(&format!("printf '{{\"shots\":[{}]}}'\n", entries.join(",")));
+    fake_runner(dir, &body)
+}
+
+// `dom: true` asks the runner for the element boxes; the report lists the file per shot, and the file
+// is kept next to its PNG (the scratch dir of the run is removed, so a path into it would dangle).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dom_capture_keeps_each_dom_file_next_to_its_png_and_lists_it() {
+    let _g = capture::TEST_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    use_runner(&dom_report_runner(tmp.path()), Duration::from_secs(20));
+    let client = super::fixture::daemon(&dir).await;
+    let id = super::fixture::create_crewmate(&client, "CapDom").await;
+    let pane = crate::crew::pane::key(&id, "task5");
+
+    let (status, v) = post_capture(
+        &dir,
+        &id,
+        &pane,
+        json!({"url": "http://localhost:3000/", "widths": [390], "themes": ["dark"], "dom": true}),
+    )
+    .await;
+    assert!(status.contains("200"), "{status} {v}");
+    let kept = dir.join("crew").join(&id).join("captures").join("task5");
+    for s in v["shots"].as_array().unwrap() {
+        let dom = s["dom"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no dom listed: {s}"));
+        assert!(dom.ends_with(".dom.json"), "{dom}");
+        assert!(kept.join(dom).is_file(), "{dom} is kept under the task");
+        assert!(s["dom_path"].as_str().unwrap().ends_with(dom), "{s}");
+    }
+
+    // Without `dom` the answer has no dom entries and the runner is not asked for one.
+    use_runner(
+        &fake_runner(tmp.path(), &full_report(&[])),
+        Duration::from_secs(20),
+    );
+    let (_, v) = post_capture(
+        &dir,
+        &id,
+        &pane,
+        json!({"url": "http://localhost:3000/", "widths": [390], "themes": ["dark"]}),
+    )
+    .await;
+    clear_runner();
+    assert!(v["shots"][0].get("dom").is_none(), "{v}");
+}

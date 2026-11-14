@@ -1,13 +1,15 @@
 //! Crewmate MCP stdio server (`atlas mcp --crewmate <id>`).
 //!
 //! Implements a minimal JSON-RPC 2.0 MCP server over stdin/stdout.
-//! Exposes four tools to the agent running inside the crewmate:
+//! Exposes five tools to the agent running inside the crewmate:
 //!
 //! - **`ask_user`**  — post a question to the mobile/desktop UI and block until
 //!   answered (up to 30 min).
 //! - **`set_profile`**   — update this crewmate's name or role.
 //! - **`capture`**   — screenshots of a URL in real browsers (chromium + webkit, widths, themes),
 //!   attached to the task; an incomplete matrix is an error (`crew::capture`).
+//! - **`locate`**    — which route, component and selector draw a region of a screenshot
+//!   (`crew::locate`); asks for `ask_user` when two candidates are equally likely.
 //! - **`approve`**   — answer a Claude permission-prompt (used with
 //!   `--permission-prompt-tool atlas:approve`).
 //!
@@ -152,6 +154,7 @@ async fn call_tool(
         "ask_user" => tool_ask_user(args, client, env).await,
         "set_profile" => tool_set_profile(args, client, env).await,
         "capture" => tool_capture(args, client, env).await,
+        "locate" => tool_locate(args, client, env).await,
         "approve" => tool_approve(args, client, env).await,
         other => Err(format!("unknown tool: {other}")),
     }
@@ -243,14 +246,32 @@ async fn tool_set_profile(
 /// Post the request to hostd, which runs the browsers (they are on the crew server, not in this
 /// process) and answers with the combinations visited or `{"error": …}`.
 async fn tool_capture(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    let url = env.hook_url(&format!("/crew/{}/capture", env.crewmate_id));
+    hook_tool("capture", args, client, env).await
+}
+
+// ─── locate ───────────────────────────────────────────────────────────────────
+
+/// Same transport as `capture`: hostd reads the work tree and runs the browser.
+async fn tool_locate(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
+    hook_tool("locate", args, client, env).await
+}
+
+/// POST `{pane_key, args}` to `/crew/<id>/<tool>` and return the body as the tool's text, or the
+/// route's `{"error": …}` as the tool's error.
+async fn hook_tool(
+    tool: &str,
+    args: Value,
+    client: &reqwest::Client,
+    env: &Env,
+) -> Result<Value, String> {
+    let url = env.hook_url(&format!("/crew/{}/{tool}", env.crewmate_id));
     let resp = client
         .post(&url)
         .header("X-Atlas-Hook-Token", &env.hook_token)
         .json(&json!({ "pane_key": env.pane_key, "args": args }))
         .send()
         .await
-        .map_err(|e| format!("capture: HTTP error: {e}"))?;
+        .map_err(|e| format!("{tool}: HTTP error: {e}"))?;
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
@@ -370,6 +391,7 @@ fn tools_list() -> Value {
                     "engines": { "type": "array", "items": { "type": "string", "enum": ["chromium", "webkit"] } },
                     "slow_network": { "type": "boolean", "description": "Delay every request (a poor connection)." },
                     "full_page": { "type": "boolean", "description": "Scroll to the end and shoot the whole page. Default true." },
+                    "dom": { "type": "boolean", "description": "Also write each cell's element boxes (tag, role, name, text, data-testid, selector, x/y/w/h in CSS px) as <name>.dom.json next to the PNG; each shot then lists it as `dom`. Default false. The `locate` tool does this for you." },
                     "steps": {
                         "type": "array",
                         "description": "Before the screenshot, at most 20: {do:'click'|'fill'|'press'|'wait_for'|'wait_ms', selector?, text?, key?, ms?}.",
@@ -377,6 +399,20 @@ fn tools_list() -> Value {
                     }
                 },
                 "required": ["url"]
+            }
+        },
+        {
+            "name": "locate",
+            "description": "Find where a screenshot is drawn in the code. Give the image (a path in your work tree, e.g. .atlas/attachments/<task>/<name>), optionally a rect [x, y, w, h] in the image's pixels, and the `url` of the page it shows (a dev server on this machine works): atlas opens that page in a real browser, ranks the elements under the rect (or the page's main landmark when there is no rect) and maps the URL to route files (SvelteKit src/routes/**/+page.svelte, Next app/**/page.tsx and pages/**, Flutter GoRoute(path:)) and the element's data-testid or text to the files that contain it. Returns `candidates` [{route_file, component_file, selector, testid, text, score}] best first, and `ambiguous: true` when the top two are within 10% of each other. When `ambiguous` is true you MUST call ask_user with the candidates as options (each option: its selector and text) and only then edit; never pick one yourself.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "image": { "type": "string", "description": "Path of the screenshot inside your work tree." },
+                    "rect": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4, "description": "[x, y, w, h] of the region, in the image's pixels. Omit for the whole page." },
+                    "url": { "type": "string", "description": "http(s) URL of the page the image shows. Required: the element boxes come from the live page." },
+                    "width": { "type": "integer", "description": "Viewport width in px to open the page at. Default: the image's width when it is 390 or 1440, else 1440." }
+                },
+                "required": ["image", "url"]
             }
         },
         {
@@ -478,9 +514,9 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_has_four_tools() {
+    fn tools_list_has_five_tools() {
         let list = tools_list();
-        assert_eq!(list.as_array().unwrap().len(), 4);
+        assert_eq!(list.as_array().unwrap().len(), 5);
         let names: Vec<&str> = list
             .as_array()
             .unwrap()
@@ -491,6 +527,25 @@ mod tests {
         assert!(names.contains(&"set_profile"));
         assert!(names.contains(&"approve"));
         assert!(names.contains(&"capture"));
+        assert!(names.contains(&"locate"));
+    }
+
+    // The description is the only place the agent learns the ask_user rule.
+    #[test]
+    fn the_locate_description_tells_the_agent_to_ask_when_ambiguous() {
+        let list = tools_list();
+        let t = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == "locate")
+            .unwrap();
+        let d = t["description"].as_str().unwrap();
+        assert!(
+            d.contains("ambiguous") && d.contains("ask_user") && d.contains("10%"),
+            "{d}"
+        );
+        assert_eq!(t["inputSchema"]["required"], json!(["image", "url"]));
     }
 
     #[tokio::test]
@@ -524,7 +579,7 @@ mod tests {
             .await
             .unwrap();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
     }
 
     #[tokio::test]

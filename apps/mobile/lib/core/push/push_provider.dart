@@ -27,7 +27,7 @@ final pushRegistrationProvider = FutureProvider<void>((ref) async {
   final devices = await ref.watch(crewDevicesProvider.future);
   for (final device in devices.where((d) => !isDemo(d))) {
     final mux = ref.watch(connectionNotifierProvider(device)).value;
-    if (mux == null || !await checkCrewCap(mux)) continue;
+    if (mux == null || !await checkCanPush(mux)) continue;
     await registerPush(mux, token, fetch);
   }
 });

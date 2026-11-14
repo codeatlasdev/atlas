@@ -1,13 +1,13 @@
 # push-relay
 
-The relay Atlas Crew servers notify through (`push.codeatlas.com.br`): it holds the Firebase credentials, so a crew server needs none. It forwards **only the event kind** (`task_done` or `needs_you`) to the FCM token, never content, and has no accounts and no database.
+The relay Atlas Crew servers and Macs notify through (`push.codeatlas.com.br`): it holds the Firebase credentials, so a crew server or a Mac needs none. It forwards **the event kind** to the FCM token (`task_done` or `needs_you` from a crewmate; `agent_done` or `agent_needs_you` from a plain agent on a Mac) and, for the agent kinds only, the agent's **pane key and a title** (`<agent> · <project folder>`, at most 60 characters, control characters dropped) so the phone can open that agent's chat. Never transcript text, never a prompt. It has no accounts and no database. A crew kind carries neither pane nor title even if a caller sends them.
 
 ## API
 
 | Endpoint | Body | Answer |
 |---|---|---|
 | `POST /v1/register` | `{token}` | `200 {"grant": "<base64url>"}` (`400` bad body, `429` per-IP limit) |
-| `POST /v1/notify` | `{token, kind, grant}` | `204` sent, `403` grant does not match, `410` FCM says the token is gone, `429` limit, `502` FCM/upstream error |
+| `POST /v1/notify` | `{token, kind, grant}`; for `agent_done` / `agent_needs_you` also `{pane, title}` | `204` sent, `400` bad body / unknown kind / agent kind without a pane, `403` grant does not match, `410` FCM says the token is gone, `429` limit, `502` FCM/upstream error |
 
 **Grants.** `grant = base64url(HMAC-SHA256(K, token))`, a pure function of the server secret `K` and the token, so the relay stores nothing per user. The phone asks `/v1/register` for the grant when it gets its FCM token and gives `{token, grant}` to each of its crew servers (`push_register`); a crew server presents the grant on every notify and the relay recomputes it (constant-time compare). Without the grant, knowing a token is not enough to notify it. `/v1/register` proves nothing about the caller (there are no accounts); it only turns "knows the token" into "holds the grant", which is what the phone then shares with its own servers.
 

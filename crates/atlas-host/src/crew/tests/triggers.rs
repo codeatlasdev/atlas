@@ -142,6 +142,8 @@ fn trigger_validation() {
             events: vec!["pr_opened".into()],
             authors: crate::crew::store::default_authors(),
             allow_auto: false,
+            handle: None,
+            assignee: None,
         }))
         .is_ok()
     );
@@ -151,6 +153,8 @@ fn trigger_validation() {
             events: vec![],
             authors: crate::crew::store::default_authors(),
             allow_auto: false,
+            handle: None,
+            assignee: None,
         }))
         .is_err()
     );

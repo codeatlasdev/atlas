@@ -1,0 +1,42 @@
+{
+  "task": {
+    "id": "task-gh-1",
+    "no_auto": true,
+    "origin": {
+      "branch": "feat/parser",
+      "comment_id": 200,
+      "kind": "pr_review_comment",
+      "number": 12,
+      "reply_comment_id": 9001,
+      "repo": "o/r"
+    },
+    "prompt": "Handle this: [UNTRUSTED CONTENT ...]",
+    "source": "trigger",
+    "state": "running",
+    "summarized": false,
+    "trigger_id": "gh",
+    "ts": 1700000000
+  },
+  "trigger": {
+    "enabled": true,
+    "id": "gh",
+    "kind": {
+      "allow_auto": true,
+      "assignee": "nami-bot",
+      "authors": [
+        "owner",
+        "member"
+      ],
+      "events": [
+        "mention",
+        "issue_assigned",
+        "pr_review_comment",
+        "ci_failed"
+      ],
+      "handle": "nami",
+      "repo": "o/r",
+      "type": "github"
+    },
+    "prompt": "Handle this: {{event}}"
+  }
+}

@@ -194,6 +194,14 @@ async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
     }
 }
 
+/// The branch checked out in `dir`; `None` for a detached HEAD or a folder that is not a git repo.
+pub async fn current_branch(dir: &Path) -> Option<String> {
+    let b = git_run(&["symbolic-ref", "--short", "-q", "HEAD"], Some(dir))
+        .await
+        .ok()?;
+    (!b.is_empty()).then_some(b)
+}
+
 async fn prepare_git(
     url: &str,
     branch: Option<&str>,

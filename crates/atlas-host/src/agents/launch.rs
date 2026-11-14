@@ -149,7 +149,9 @@ mod tests {
             None,
         )
         .unwrap();
-        let overlay = reg.path().join("desktop/omp-fresh.yml");
+        // Built the way `plan` builds it: one component at a time (a `/` inside one is not a
+        // separator on Windows).
+        let overlay = reg.path().join("desktop").join("omp-fresh.yml");
         assert_eq!(
             omp.argv,
             [

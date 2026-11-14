@@ -69,6 +69,9 @@ function fakeAppDir(): string {
 		writeFileSync(join(a, "usr/lib", f), "x");
 	}
 	writeFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gtk.sh"), "export GDK_BACKEND=x11\nexport GTK_THEME=Adwaita\n");
+	// bundleMediaFramework: linuxdeploy's GStreamer plugin points GST_PLUGIN_PATH inside the AppImage.
+	writeFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gstreamer.sh"), "export GST_PLUGIN_PATH=$APPDIR/usr/lib/gstreamer-1.0\n");
+	writeFileSync(join(a, "usr/lib/libgstreamer-1.0.so.0"), "x");
 	return a;
 }
 
@@ -77,8 +80,10 @@ describe.skipIf(process.platform === "win32")("appimage-patch.sh", () => {
 		const a = fakeAppDir();
 		const p = Bun.spawnSync(["bash", PATCH, a]);
 		expect(p.exitCode).toBe(0);
-		expect(readdirSync(join(a, "usr/lib")).sort()).toEqual(["libwebkit2gtk-4.1.so.0"]);
+		expect(readdirSync(join(a, "usr/lib")).sort()).toEqual(["libgstreamer-1.0.so.0", "libwebkit2gtk-4.1.so.0"]);
 		expect(readFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gtk.sh"), "utf8")).toBe(readFileSync(HOOK, "utf8"));
+		// The bundled GStreamer and its plugins' hook stay (#265: no plugins → `appsrc not found`).
+		expect(readFileSync(join(a, "apprun-hooks/linuxdeploy-plugin-gstreamer.sh"), "utf8")).toContain("GST_PLUGIN_PATH");
 	});
 	test("refuses a dir that is not an AppDir", () => {
 		const d = tmp();

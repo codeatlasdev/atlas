@@ -23,7 +23,8 @@ export const BROWSERS_WHY =
 export const BROWSERS_COST = "Needs Node.js 20+ on the server and about 500 MB of downloads.";
 
 /** The kind of a missing piece, from the prefix the CLI's status script gives each line. */
-export type ProblemKind = "node" | "npm" | "runner" | "playwright" | "browsers" | "deps" | "other";
+export type ProblemKind =
+	"node" | "npm" | "runner" | "detectors" | "playwright" | "browsers" | "deps" | "other";
 
 export interface Problem {
 	kind: ProblemKind;
@@ -31,7 +32,7 @@ export interface Problem {
 	text: string;
 }
 
-const KINDS: ProblemKind[] = ["node", "npm", "runner", "playwright", "browsers", "deps"];
+const KINDS: ProblemKind[] = ["node", "npm", "runner", "detectors", "playwright", "browsers", "deps"];
 
 /** `: run atlas crew browsers install` (or `, run …`) ends most lines; the Install button is that instruction. */
 const RUN_TAIL = /[:,]\s*run atlas crew browsers install\s*$/;

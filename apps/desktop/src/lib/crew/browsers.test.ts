@@ -21,7 +21,14 @@ describe("viewOf the real status", () => {
 	test("a host with Node 18 and nothing installed lists every missing piece, Node first", () => {
 		const v = viewOf(fixture.missing);
 		expect(v.phase).toBe("missing");
-		expect(v.problems.map((p) => p.kind)).toEqual(["node", "runner", "playwright", "browsers", "browsers"]);
+		expect(v.problems.map((p) => p.kind)).toEqual([
+			"node",
+			"runner",
+			"detectors",
+			"playwright",
+			"browsers",
+			"browsers",
+		]);
 		expect(v.needsNode).toBe(true);
 	});
 
@@ -30,6 +37,7 @@ describe("viewOf the real status", () => {
 		expect(v.problems.map((p) => p.text)).toEqual([
 			"node: Node 18.19.1 found, need >= 20 (install a newer Node.js, for example from nodesource)",
 			"runner: missing",
+			"detectors: missing (the runner imports it)",
 			"playwright: package missing",
 			"browsers: chromium missing",
 			"browsers: webkit missing",

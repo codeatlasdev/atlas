@@ -120,10 +120,35 @@ impl CrewHub {
         })
     }
 
+    /// `push_register` from `node_id`: the paired phone that sent it (a `phone:<node>` connection),
+    /// or `""` for a client that is not a phone (a crew server only hears the Mac's relay). The node
+    /// id is what lets revoking that phone take its tokens, and lets a connected phone be left out
+    /// of a push (`mobile.live_node_ids`). The same token registered again replaces its entry.
+    pub(crate) fn register_token(&self, node_id: &str, token: &str, platform: &str, grant: String) {
+        let mut tokens = self.push_tokens.lock();
+        tokens.retain(|t| t.token != token);
+        tokens.push(push::new_token(node_id, token, platform, grant));
+        push::save_tokens(&self.dir, &tokens);
+    }
+
+    /// `push_unregister`.
+    pub(crate) fn unregister_token(&self, token: &str) {
+        let mut tokens = self.push_tokens.lock();
+        tokens.retain(|t| t.token != token);
+        push::save_tokens(&self.dir, &tokens);
+    }
+
     /// Drop all push tokens for a revoked device.
     pub(crate) fn revoke_device_tokens(&self, node_id: &str) {
         let mut tokens = self.push_tokens.lock();
         tokens.retain(|t| t.node_id != node_id);
+        push::save_tokens(&self.dir, &tokens);
+    }
+
+    /// Drop the tokens the relay will never accept again (it answered 403 or 410).
+    pub(crate) fn drop_tokens(&self, expired: &[String]) {
+        let mut tokens = self.push_tokens.lock();
+        tokens.retain(|t| !expired.contains(&t.token));
         push::save_tokens(&self.dir, &tokens);
     }
 

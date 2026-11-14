@@ -58,6 +58,20 @@ pub async fn notify(tokens: &[PushToken], kind: &str) -> Vec<String> {
     notify_via(client, &base, tokens, kind).await
 }
 
+/// [`notify`] for a plain agent pane: the same relay call, carrying the pane key and a short title
+/// (`agent_done` / `agent_needs_you`, see [`crate::agents::push`]).
+pub async fn notify_agent(tokens: &[PushToken], msg: &crate::agents::push::PushMsg) -> Vec<String> {
+    let (Some(client), Some(base)) = (HTTP.as_ref(), relay_base()) else {
+        return vec![];
+    };
+    send_all(client, &base, tokens, agent_body(msg)).await
+}
+
+/// The relay's notify body for `msg`, before each token's own `token` and `grant` join it.
+pub(crate) fn agent_body(msg: &crate::agents::push::PushMsg) -> serde_json::Value {
+    json!({"kind": msg.kind, "pane": msg.pane, "title": msg.title})
+}
+
 /// [`notify`] against an explicit relay `base` (tests point it at a fake).
 pub(crate) async fn notify_via(
     client: &reqwest::Client,
@@ -65,13 +79,25 @@ pub(crate) async fn notify_via(
     tokens: &[PushToken],
     kind: &str,
 ) -> Vec<String> {
+    send_all(client, base, tokens, json!({"kind": kind})).await
+}
+
+/// POST `body` plus each token's own `token` and `grant` to the relay's `/v1/notify`.
+pub(crate) async fn send_all(
+    client: &reqwest::Client,
+    base: &str,
+    tokens: &[PushToken],
+    body: serde_json::Value,
+) -> Vec<String> {
     let url = format!("{base}/v1/notify");
     let mut expired = vec![];
     for t in tokens {
         if t.grant.is_empty() {
             continue; // registered before relay auth: the relay would refuse it; wait for the phone
         }
-        let body = json!({"token": t.token, "kind": kind, "grant": t.grant});
+        let mut body = body.clone();
+        body["token"] = json!(t.token);
+        body["grant"] = json!(t.grant);
         match client.post(&url).json(&body).send().await {
             Ok(r) if matches!(r.status().as_u16(), 403 | 410) => {
                 expired.push(t.token.clone());

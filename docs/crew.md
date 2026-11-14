@@ -31,11 +31,11 @@ atlas crew login ubuntu@myserver.example.com claude
 
 Requirements:
 
-- A Linux x86_64 server with `systemd` and `sudo` (passwordless sudo when you run the command from a terminal).
+- A Linux server, x86_64 or aarch64 (arm64: Graviton, Oracle A1, Hetzner CAX), with `systemd` and `sudo` (passwordless sudo when you run the command from a terminal). Any other architecture is refused with a message saying so.
 - An SSH public key at `~/.ssh/id_ed25519.pub` or `~/.ssh/id_rsa.pub` on your machine.
-- Internet access on the server, or a cached binary at `~/.atlas/remote/atlas-x86_64-linux` on your machine (see [Offline install](#offline-install)).
+- Internet access on the server, or a Linux `atlas` of the server's architecture on your machine (see [Offline install](#offline-install)).
 
-`atlas crew install <ssh-target>` does, in order: checks the host is Linux x86_64 with systemd and sudo; installs `atlas` to `/usr/local/lib/atlas-crew/`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
+`atlas crew install <ssh-target>` does, in order: checks the host is Linux (x86_64 or aarch64) with systemd and sudo; installs `atlas` to `/usr/local/lib/atlas-crew/`; creates the `atlas-crew` system user (home `/var/lib/atlas-crew`); links the binary at `<home>/.atlas/bin/atlas`; writes and enables `/etc/systemd/system/atlas-crew.service`; appends your SSH public key to the crew user's `authorized_keys`. The service starts on boot and restarts on failure.
 
 ### On a server that already runs crewmates
 
@@ -52,9 +52,10 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 
 | Command | What it does |
 |---|---|
-| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH]` | install or migrate a crew server (above). `--port` for a non-standard SSH port; `--binary` uploads that Linux x86_64 `atlas` instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`) |
+| `atlas crew install <ssh-target> [--yes] [--port N] [--binary PATH]` | install or migrate a crew server (above), x86_64 or aarch64. `--port` for a non-standard SSH port; `--binary` uploads that Linux `atlas` (the server's architecture) instead of downloading this version's release (also read from `ATLAS_CREW_BINARY`) |
+| `atlas crew update <ssh-target> [--version X] [--rollback] [--port N] [--binary PATH]` | put a release (default: this CLI's version) on a crew server, keep the old binary as `atlas.prev`, restart, wait for hostd, roll back by itself when it does not come back; `--rollback` restores `atlas.prev` ([Update a crew server](#update-a-crew-server)) |
 | `atlas crew uninstall <ssh-target> [--yes]` | stops and removes the service, the crew user (and its home, so your crewmates) and `/usr/local/lib/atlas-crew`. Asks first unless `--yes`. Refuses while the user still has a login session; it never kills processes |
-| `atlas crew status <ssh-target>` | `systemctl status` of the service plus `atlas hostd --status` as the crew user |
+| `atlas crew status <ssh-target>` | `systemctl status` of the service plus `atlas hostd --status` as the crew user, then one line with the server's atlas version: up to date, **behind** this CLI (run `atlas crew update`), ahead, or unknown |
 | `atlas crew pause <ssh-target>` | the kill switch: cancels every running task, holds the queues, skips automations. Runs `atlas hostd --crew-pause` on the server as the crew user ([Pause and resume](#pause-and-resume)) |
 | `atlas crew resume <ssh-target>` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
@@ -62,7 +63,32 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 
 ### Offline install
 
-If the server has no internet, run `atlas update` on a connected machine so `~/.atlas/remote/atlas-x86_64-linux` is current, then `atlas crew install`. When `curl` fails on the server, the command uploads the cached binary. The downloaded release is checked against its `.sha256` before it is installed.
+If the server has no internet, put a Linux `atlas` of the server's architecture on your machine at `~/.atlas/remote/atlas-x86_64-linux` (x86_64) or `~/.atlas/remote/atlas-aarch64-linux` (arm64), or pass it with `--binary`, then run `atlas crew install`. When `curl` fails on the server, the command uploads that cached binary. The downloaded release is checked against its `.sha256` before it is installed.
+
+## Update a crew server
+
+```sh
+atlas crew update ubuntu@myserver.example.com                 # to this CLI's version
+atlas crew update ubuntu@myserver.example.com --version 1.6.0 # to a specific release
+atlas crew update ubuntu@myserver.example.com --rollback      # back to the binary before the last update
+```
+
+`atlas crew status <ssh-target>` ends with the server's atlas version and says when it is **behind** this CLI (or ahead of it, or unknown because hostd is not running). That is the cue to update.
+
+`atlas crew update` needs the server already installed (`atlas crew install`), passwordless sudo and the same Linux x86_64 or aarch64 host as install. In order, on the server:
+
+1. Downloads the release asset for the server's architecture (`atlas-<version>-x86_64-unknown-linux-gnu.tar.gz` or `…-aarch64-unknown-linux-gnu.tar.gz`), checks its `.sha256` and stages it as `/usr/local/lib/atlas-crew/atlas.new`. With no internet on the server it uploads the [offline](#offline-install) binary instead; `--binary PATH` uploads that file (no version check then: any hostd that answers is accepted).
+2. Copies the running `atlas` to `atlas.prev`, moves `atlas.new` over `atlas` and restarts `atlas-crew.service`.
+3. Waits up to 60 s for `atlas hostd --status` to answer as the crew user.
+4. If hostd does not answer, **restores `atlas.prev` and restarts again by itself**, then exits with an error saying it rolled back (exit code of the command is non-zero). If even the old binary does not come up it says so and points at `atlas crew logs`.
+
+`--rollback` does steps 2 and 3 with `atlas.prev` explicitly; the binary it replaces becomes the new `atlas.prev`, so running it twice goes back to where you were. It fails with a clear message when there is no `atlas.prev`.
+
+Only `/usr/local/lib/atlas-crew/` changes. The crew home (crewmates, memory, secrets, `crew.json`) is never touched, and the update never calls pause or resume: the paused flag lives in `crew.json` and hostd reads it again on start, so **a paused crew stays paused**. The restart is a daemon restart: a task that was running is recorded as failed (`interrupted by daemon restart`) and queued tasks are picked up again when hostd is back. Pause the crew first (`atlas crew pause`) if you do not want a task cut in the middle.
+
+### arm64 servers
+
+Graviton, Oracle Ampere A1 and Hetzner CAX servers work the same way: `atlas crew install` and `atlas crew update` read `uname -m` on the server (`x86_64` or `aarch64`/`arm64`) and download the matching asset. Any other architecture is refused before anything changes. The aarch64 build is the CLI only (it is what a crew server runs); it is built on Ubuntu 22.04, so it runs on glibc 2.35 or newer (Ubuntu 22.04, Debian 12).
 
 ## Sign agents in
 
@@ -252,7 +278,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 |---|---|---|
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/hook/<token>` |
-| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|uninstall\|status\|logs\|login`; the unit text and migration plan are pure functions with tests |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|status\|logs\|login`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`) are pure functions with tests |
 | Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
 | Desktop UI | `apps/desktop/src/lib/crew/` and `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, board, editor, settings, onboarding, automations, the look catalogue |
 | Mobile | `apps/mobile/lib/features/crew/` | crew tab, chat, profile, automations, relay transport |

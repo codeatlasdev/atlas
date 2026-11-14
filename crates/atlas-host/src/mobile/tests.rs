@@ -1219,6 +1219,14 @@ async fn a_read_phone_reviews_but_cannot_commit_and_act_can() {
         String::from_utf8_lossy(&o.stdout).into_owned()
     };
     git(&["init", "-q", "."]);
+    // hostd commits with the repo's own config: CI runners have no global identity.
+    for (k, v) in [
+        ("user.email", "a@b"),
+        ("user.name", "n"),
+        ("commit.gpgsign", "false"),
+    ] {
+        git(&["config", k, v]);
+    }
     std::fs::write(work.path().join("a.txt"), "one\n").unwrap();
     git(&["add", "."]);
     git(&["commit", "-qm", "init"]);

@@ -494,6 +494,14 @@ mod tests {
             let remote = tempfile::tempdir().unwrap();
             sh(remote.path(), &["init", "-q", "--bare", "."]);
             sh(work.path(), &["init", "-q", "."]);
+            // hostd commits with the repo's own config: CI runners have no global identity.
+            for (k, v) in [
+                ("user.email", "a@b"),
+                ("user.name", "n"),
+                ("commit.gpgsign", "false"),
+            ] {
+                sh(work.path(), &["config", k, v]);
+            }
             std::fs::write(work.path().join("a.txt"), "one\ntwo\n").unwrap();
             sh(work.path(), &["add", "."]);
             sh(work.path(), &["commit", "-qm", "init"]);

@@ -204,6 +204,10 @@ class TaskAction {
       (data['options'] as List?)?.cast<String>() ?? const [];
   String? get engine => data['engine'] as String?;
 
+  /// For `refused` actions: why Atlas's guards refused the work.
+  List<String> get reasons =>
+      (data['reasons'] as List?)?.cast<String>() ?? const [];
+
   /// For `add_trigger` actions: the proposed trigger kind.
   TriggerKind? get triggerKind {
     if (kind != 'add_trigger') return null;

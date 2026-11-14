@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * TaskActionCard — the card shown while a task is `waiting_action`: connect GitHub, provide a secret, answer a
-	 * question, pick an option, sign in to the engine, or approve an automation. One card, one header and one
+	 * question, pick an option, sign in to the engine, approve an automation, or decide on work Atlas's guards refused. One card, one header and one
 	 * Cancel path for every kind; the free-text kinds share ActionTextAnswer.
 	 */
 	import { Button } from "@codeatlasdev/ui";
@@ -111,6 +111,17 @@
 			<Button size="sm" disabled={submitting} onclick={() => answer("add")}>Add</Button>
 			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("skip")}>Not now</Button>
 		</div>
+	{:else if action.kind === "refused"}
+		<div class="action-title">{crewmateName}'s work was refused</div>
+		<ul class="action-reasons">
+			{#each action.reasons as reason (reason)}
+				<li>{reason}</li>
+			{/each}
+		</ul>
+		<div class="action-btns">
+			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}>Retry with these reasons</Button>
+			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("override")}>Override</Button>
+		</div>
 	{:else}
 		<div class="action-title">{(action as { label?: string }).label ?? "Response needed"}</div>
 		<ActionTextAnswer
@@ -162,6 +173,12 @@
 	}
 	.action-btns :global(button) {
 		white-space: nowrap;
+	}
+	.action-reasons {
+		margin: 0;
+		padding-left: 18px;
+		font-size: 12px;
+		color: var(--ca-text-secondary);
 	}
 	.action-options {
 		display: flex;

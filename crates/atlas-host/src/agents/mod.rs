@@ -299,6 +299,8 @@ impl AgentHub {
                 "pane_key": out.0,
                 "tool_name": p["tool_name"],
                 "tool_input": p["tool_input"],
+                // What the tool printed, when the hook reports it (Claude's `post_tool_use` sends `tool_response`).
+                "tool_output": p["tool_response"],
             }));
         }
         if changed || self.heartbeat_due(&out.0, now) {

@@ -384,6 +384,49 @@ pub fn kill_uid(uid: u32) -> io::Result<usize> {
     Ok(n)
 }
 
+/// Name of the group with this gid (`getgrgid_r`).
+pub fn group_name(gid: u32) -> io::Result<String> {
+    let mut buf = vec![0u8; 4096];
+    // SAFETY: zeroed group is a valid out-parameter for getgrgid_r.
+    let mut gr: libc::group = unsafe { std::mem::zeroed() };
+    let mut out: *mut libc::group = std::ptr::null_mut();
+    // SAFETY: all pointers are live for the call; the buffer length is passed.
+    let rc = unsafe { libc::getgrgid_r(gid, &mut gr, buf.as_mut_ptr().cast(), buf.len(), &mut out) };
+    if rc != 0 {
+        return Err(io::Error::from_raw_os_error(rc));
+    }
+    if out.is_null() {
+        return Err(io::Error::new(io::ErrorKind::NotFound, format!("no group with gid {gid}")));
+    }
+    // SAFETY: gr_name points into `buf`, NUL terminated, alive here.
+    Ok(unsafe { std::ffi::CStr::from_ptr(gr.gr_name) }
+        .to_string_lossy()
+        .into_owned())
+}
+
+/// The crew user the helper serves, from the group of the socket it was given: the socket unit sets
+/// `SocketGroup=<crew user>` (the group of `atlas-crew`, or of a migrated `atlas-bot`), so the group's
+/// name is the user's. Returns `(user, uid)`.
+pub fn crew_user_of_socket(fd: std::os::fd::RawFd) -> io::Result<(String, u32)> {
+    // SAFETY: zeroed stat is a valid out-parameter; fd is a live socket.
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // SAFETY: fstat on a live fd with a valid out pointer.
+    if unsafe { libc::fstat(fd, &mut st) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let name = group_name(st.st_gid)?;
+    let ids = exec::lookup(&name)?;
+    if ids.uid == 0 {
+        // A socket group of root would serve root only; the helper refuses to start rather than
+        // run with "the crew user" being nobody in particular.
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("the socket's group {name} is not a crew user"),
+        ));
+    }
+    Ok((name, ids.uid))
+}
+
 /// Bind the helper's socket at `path` (mode 0660, replacing a stale file), for running a helper by
 /// hand and for tests. Under systemd the socket comes in as fd 3 instead ([`listener_from_systemd`]).
 pub fn bind(path: &std::path::Path) -> io::Result<UnixListener> {
@@ -640,6 +683,37 @@ mod tests {
         assert!(is_unknown_session(&r.client.wait(done.session).unwrap_err()));
         assert_eq!(r.client.wait(live.session).unwrap(), (false, None));
         r.client.signal(live.session, libc::SIGKILL).unwrap();
+    }
+
+    #[test]
+    fn group_names_are_looked_up_and_an_unknown_gid_is_not_found() {
+        assert!(!group_name(0).unwrap().is_empty());
+        assert_eq!(
+            group_name(4_294_967_294).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+    }
+
+    // The helper serves "the user named like the socket's group". A socket in root's group has no
+    // crew user, and the helper must refuse to start instead of serving nobody in particular.
+    #[test]
+    fn a_socket_in_a_group_with_no_crew_user_is_refused() {
+        use std::os::fd::AsRawFd;
+        let t = tempfile::tempdir().unwrap();
+        let l = bind(&t.path().join("s.sock")).unwrap();
+        // The socket belongs to our primary group, whose name is not a user of this machine (or is
+        // a real user: either way the answer is a clean Ok or an error, never a panic or uid 0).
+        match crew_user_of_socket(l.as_raw_fd()) {
+            Ok((name, uid)) => assert!(uid != 0 && !name.is_empty()),
+            Err(e) => assert!(
+                matches!(
+                    e.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+                ),
+                "{e}"
+            ),
+        }
+        assert!(crew_user_of_socket(-1).is_err());
     }
 
     #[cfg(target_os = "linux")]

@@ -26,8 +26,6 @@ async fn summarize(
     runner: &Runner,
     work_dir: &str,
 ) -> Option<String> {
-    use std::process::Stdio;
-    use tokio::time::timeout;
     const TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(25);
     let system = "Same language as the reply. \
         Keep every file path, command, number, error and every question or decision asked of the user. \
@@ -38,6 +36,8 @@ async fn summarize(
     // Copied out first: the lock guard must not live across the await below.
     #[cfg(test)]
     {
+        use std::process::Stdio;
+        use tokio::time::timeout;
         let test_bin = TEST_SUMMARIZER_BIN.lock().clone();
         if let Some(bin) = test_bin {
             let out = timeout(

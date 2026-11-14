@@ -43,8 +43,8 @@ pub struct TurnResult {
 /// * `prompt`     — the full prompt text to send
 /// * `runner`     — where the process runs: the crew user, or the crewmate's own user through the helper
 /// * `crewmate_dir`    — where the engine writes what its agent reads (mcp config, codex output file, omp
-///                    extension): `<store>/crew/<id>/`, or `crew-runtime/` under isolation, where the
-///                    agent can read it but not change it
+///   extension): `<store>/crew/<id>/`, or `crew-runtime/` under isolation, where the agent can read
+///   it but not change it
 /// * `crewmate_id`     — crewmate identifier, forwarded to the MCP server
 /// * `hook_port`  — running hook server port
 /// * `hook_token` — running hook server token

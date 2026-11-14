@@ -125,6 +125,7 @@ impl Runner {
         }
     }
 
+    #[cfg(test)]
     pub fn is_isolated(&self) -> bool {
         #[cfg(unix)]
         {
@@ -202,7 +203,7 @@ fn rpc_local(cmd: Cmd) -> Result<Rpc, String> {
 
 fn human(d: Duration) -> String {
     let s = d.as_secs();
-    if s >= 3600 && s % 3600 == 0 {
+    if s >= 3600 && s.is_multiple_of(3600) {
         format!("{} h", s / 3600)
     } else {
         format!("{s} s")

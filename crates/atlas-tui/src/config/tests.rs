@@ -1332,6 +1332,94 @@ fn test_action_cache_block_rejects_unknown_keys() {
     assert!(err.contains("input"), "{err}");
 }
 
+// Issue #128: `affected:` is the project's declared graph. It loads through the real loader, maps
+// to the core types, and mistakes are config errors, never a silently empty answer.
+const AFFECTED_BASE: &str = "name: p\nservices:\n  api: { command: run }\nactions:\n  - { key: c, label: Run checks, command: x, cache: { inputs: ['crates/**'] } }\n";
+
+#[test]
+fn affected_rules_and_command_load_through_the_real_loader() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!(
+            "{AFFECTED_BASE}affected:\n  command: bun scripts/affected.ts --json\n  rules:\n    - match: ['crates/**']\n      tasks: [Run checks]\n      tests: [cargo test]\n      routes: [/docs]\n      builds: [site]\n"
+        ),
+    );
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    let a = cfg.affected.as_ref().expect("affected loaded");
+    let declared = a.declared();
+    assert_eq!(
+        declared.command.as_deref(),
+        Some("bun scripts/affected.ts --json")
+    );
+    assert_eq!(declared.rules.len(), 1);
+    assert_eq!(declared.rules[0].matches, ["crates/**"]);
+    assert_eq!(declared.rules[0].tasks, ["Run checks"]);
+    assert_eq!(declared.rules[0].routes, ["/docs"]);
+    // Without the block there is nothing declared: the fallback applies.
+    write_config(&dir, "atlas.yaml", AFFECTED_BASE);
+    let (cfg, _) = load_checked(dir.path()).unwrap();
+    assert!(cfg.affected.is_none());
+}
+
+#[test]
+fn affected_typos_are_config_errors() {
+    let dir = TempDir::new().unwrap();
+    for (yaml, needle) in [
+        ("affected:\n  comand: x\n", "comand"),
+        (
+            "affected:\n  rules:\n    - { mach: ['a'], tasks: [t] }\n",
+            "mach",
+        ),
+        (
+            "affected:\n  rules:\n    - { match: ['a'], test: [t] }\n",
+            "test",
+        ),
+    ] {
+        write_config(&dir, "atlas.yaml", &format!("{AFFECTED_BASE}{yaml}"));
+        // An unknown key fails the load itself (like the action `cache:` block): never ignored.
+        let err = format!("{:#}", load_checked(dir.path()).unwrap_err());
+        assert!(err.contains(needle), "{needle}: {err}");
+    }
+}
+
+#[test]
+fn affected_semantic_errors_name_the_rule_and_the_problem() {
+    let errs = errors_for(&format!(
+        "{AFFECTED_BASE}affected:\n  rules:\n    - {{ match: [], tasks: [Run checks] }}\n    - {{ match: ['a/[**'], tasks: [Run checks] }}\n    - {{ match: ['ok/**'], tasks: [No such action] }}\n"
+    ));
+    assert_has(&errs, "affected.rules[0].match");
+    assert_has(&errs, "at least one glob");
+    assert_has(&errs, "affected.rules[1].match");
+    assert_has(&errs, "a/[**");
+    assert_has(&errs, "affected.rules[2].tasks");
+    assert_has(&errs, "No such action");
+    // A blank command is an error too; a good declaration has none.
+    assert_has(
+        &errors_for(&format!("{AFFECTED_BASE}affected:\n  command: '  '\n")),
+        "affected.command",
+    );
+    assert!(
+        errors_for(&format!(
+            "{AFFECTED_BASE}affected:\n  rules:\n    - {{ match: ['crates/**'], tasks: [run checks], tests: [t] }}\n"
+        ))
+        .is_empty(),
+        "task names match action labels case-insensitively, like MCP"
+    );
+}
+
+#[test]
+fn schema_lists_affected() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    assert!(schema["properties"].get("affected").is_some());
+    let rule = &schema["definitions"]["AffectedRule"]["properties"];
+    for k in ["match", "tasks", "tests", "routes", "builds"] {
+        assert!(rule.get(k).is_some(), "schema missing affected rule {k}");
+    }
+}
+
 // Issue #130: `worktree.package_store` is on unless the project turns it off, whether or not a
 // `worktree:` block exists (the desktop falls back to `WorktreeConfig::default()`).
 #[test]

@@ -115,6 +115,18 @@ const TOOLS: &[ToolDef] = &[
         schema: schema_last_result,
         control: None,
     },
+    ToolDef {
+        name: "atlas_affected",
+        description: "Read-only; starts nothing. What a change affects, so you run the few things it can break instead of the whole suite: {source, base, files_from, files, tasks, tests, routes, builds}. `files` defaults to this worktree's change: committed since the merge base with `base` (default origin/main, else main), plus staged, unstaged and untracked files (ignored files do not count); pass `files` (project-relative or absolute paths) to ask about a change you have not made yet. `source` says which graph answered: `command` (the project's plugin declared as `affected: {command}` in atlas.yaml, e.g. its test graph or route-impact script), `rules` (the `affected: {rules}` the project declared: globs to tasks, tests, routes, builds) or `cache_inputs` (fallback: the atlas.yaml actions whose `cache.inputs` globs match a changed file, listed in `tasks` by label; `tests`, `routes` and `builds` are empty then because nothing declares them). Empty lists mean nothing declared is affected. A failing plugin is an error, never a silent fallback. Next: `atlas_estimate` the tasks, then run them with `atlas run --cache` (add `--heavy` for builds and suites).",
+        schema: schema_affected,
+        control: None,
+    },
+    ToolDef {
+        name: "atlas_estimate",
+        description: "Read-only; runs nothing. What running a task would cost right now: {name, command, project, runs, median_ms, p90_ms, sources, would_hit, saved_ms, key, key_error, run_with, note, queue}. The duration is the median and p90 of runs that really happened (the task cache's recorded runs, else the heavy queue's history of the same label; `runs: 0` and null durations when it never ran: no guess is made). `would_hit: true` means an identical run (same command, same input bytes as on disk now, same declared env and tools) is stored, so `run_with` returns it in milliseconds from any worktree and `saved_ms` is what that saves; it turns false the moment you edit an input. `queue` is the machine-wide heavy queue: {slots, running, queued, load, mem_available_pct, wait_eta_s (seconds until a slot frees for you, 0 when one is free, null when unknown)}: with many jobs ahead, run the cheap checks first. Pass `action` (an atlas.yaml action label or key; its `cache:` block defines the key) or `command` (+ optional `inputs`/`outputs`/`env`/`tools`/`label`, the same as the `atlas run --cache` flags, so the key matches). An action without a `cache:` block has durations but no key (`note` says so). `run_with` is the exact command line to run it through the cache.",
+        schema: schema_estimate,
+        control: None,
+    },
 ];
 
 fn schema_no_args() -> Value {
@@ -129,6 +141,33 @@ fn schema_last_result() -> Value {
             "project": {"type": "string", "description": "Only runs of this project (the folder name of its root). Omit for any."}
         },
         "required": ["name"],
+        "additionalProperties": false
+    })
+}
+
+fn schema_affected() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "files": {"type": "array", "items": {"type": "string"}, "description": "Changed files, relative to the project root (absolute paths inside it work too). Omit to use this worktree's change from git."},
+            "base": {"type": "string", "description": "Ref the change is measured against (merge base with HEAD). Default origin/main, else main, else master. Ignored when `files` is given."}
+        },
+        "additionalProperties": false
+    })
+}
+
+fn schema_estimate() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "description": "An atlas.yaml action, by label (case-insensitive) or key (see atlas_config). Give this or `command`."},
+            "command": {"type": "string", "description": "A command line, as you would pass it to `atlas run --cache -- <cmd>`. Give this or `action`."},
+            "label": {"type": "string", "description": "With `command`: the `atlas run --label` it runs under (its history is looked up by it). Default: the command line."},
+            "inputs": {"type": "array", "items": {"type": "string"}, "description": "With `command`: the `--input` globs (default: every file git would not ignore)."},
+            "outputs": {"type": "array", "items": {"type": "string"}, "description": "With `command`: the `--output` paths."},
+            "env": {"type": "array", "items": {"type": "string"}, "description": "With `command`: the `--env` variable names."},
+            "tools": {"type": "array", "items": {"type": "string"}, "description": "With `command`: the `--tool` programs."}
+        },
         "additionalProperties": false
     })
 }
@@ -239,11 +278,18 @@ pub async fn call_with(root: &Path, name: &str, args: &Value, caller: &Caller) -
         "atlas_hygiene" => hygiene_tool().await,
         "atlas_heavy_status" => heavy_status_tool(),
         "atlas_last_result" => last_result_in(&atlas_core::taskcache::Cache::default_cache(), args),
+        "atlas_affected" => super::affected::affected_in(root, args),
+        "atlas_estimate" => super::affected::estimate_in(
+            root,
+            args,
+            &atlas_core::taskcache::Cache::default_cache(),
+            &atlas_core::heavy::Dir::default_dir(),
+        ),
         _ => wait_ready(root, args).await,
     }
 }
 
-fn opt_str<'a>(args: &'a Value, k: &str) -> Result<Option<&'a str>, String> {
+pub(super) fn opt_str<'a>(args: &'a Value, k: &str) -> Result<Option<&'a str>, String> {
     match args.get(k) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
@@ -752,7 +798,9 @@ mod tests {
                 "atlas_hygiene",
                 "atlas_wait_ready",
                 "atlas_heavy_status",
-                "atlas_last_result"
+                "atlas_last_result",
+                "atlas_affected",
+                "atlas_estimate"
             ]
         );
         for t in c.as_array().unwrap() {

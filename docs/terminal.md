@@ -252,7 +252,7 @@ scripts/heavy.sh bun scripts/term-agent-bench.ts [--seconds 8] [--only ink-2026,
 bun scripts/term-agent-bench.ts --judge docs/perf/term-agent.json      # re-judge a saved report, no app
 ```
 
-(or the **Terminal agent bench** action, key `T`, in this repo's `atlas.yaml`). Needs Screen Recording permission, like the flicker sweep. The generator is `scripts/term-agent-gen.ts`:
+(or the **Terminal agent bench** action, key `K`, in this repo's `atlas.yaml`). Needs Screen Recording permission, like the flicker sweep. The generator is `scripts/term-agent-gen.ts`:
 
 | Pattern | Imitates | What it catches |
 |---|---|---|

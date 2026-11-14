@@ -7,6 +7,7 @@ use super::action::{
     continuation_prompt, finish_unanswered, park_task, parse_atlas_action, resolve_action,
     user_answer, visible_reply,
 };
+use super::gate::{Gate, gate_success};
 use super::outcome::{audit_task, broadcast_task, finish_task, persist, wait_for_outcome};
 use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::recovered_wait;
@@ -33,6 +34,14 @@ pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) 
     // The summarizer runs with the same agent env as the terminal agent.
     let agent_env = load_agent_env(&hub.dir, &crewmate.agent);
 
+    // A refusal parked when hostd stopped is decided by the owner's answer, not by running again.
+    if let Some(hub_arc) = hub.crew.hub_arc()
+        && super::gate::resume_refusal(&hub_arc, crewmate, &mut task).await
+    {
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
+
     // A task parked on an action when hostd stopped keeps waiting: the agent's last reply is the
     // `result` stored with the card, and the answer starts the next run as it would have before.
     let (outcome, steps) = if recovered_wait(&task) {
@@ -55,18 +64,24 @@ pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) 
                 let next = continuation_prompt(&full_prompt, result_text, &answer);
                 let (outcome2, steps2) =
                     run_pty_inner(hub, crewmate, &mut task, &next, &pane_key, &work_dir).await;
-                finish_summarized(hub, crewmate, &mut task, outcome2, steps2, &agent_env).await;
+                finish_summarized(
+                    hub, crewmate, &mut task, outcome2, steps2, &agent_env, &work_dir,
+                )
+                .await;
             }
             None => finish_unanswered(hub, crewmate, &mut task),
         }
         triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
         return;
     }
-    finish_summarized(hub, crewmate, &mut task, outcome, steps, &agent_env).await;
+    finish_summarized(
+        hub, crewmate, &mut task, outcome, steps, &agent_env, &work_dir,
+    )
+    .await;
     triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
 }
 
-/// Shorten the reply when the crew allows it, then record the task's end.
+/// Guard the work, shorten the reply when the crew allows it, then record the task's end.
 async fn finish_summarized(
     hub: &Hub,
     crewmate: &Crewmate,
@@ -74,7 +89,17 @@ async fn finish_summarized(
     outcome: Result<String, String>,
     steps: Vec<Step>,
     agent_env: &BTreeMap<String, String>,
+    work_dir: &str,
 ) {
+    let outcome = match (outcome, hub.crew.hub_arc()) {
+        (Ok(result), Some(hub_arc)) => {
+            match gate_success(&hub_arc, crewmate, task, result, work_dir).await {
+                Gate::Finish(result) => Ok(result),
+                Gate::Handled => return,
+            }
+        }
+        (outcome, _) => outcome,
+    };
     let (final_outcome, reply_full, was_summarized) =
         maybe_summarize(hub, crewmate, outcome, agent_env).await;
     task.reply_full = reply_full;

@@ -17,6 +17,7 @@
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
+//! | `guards`      | the guards against the agent: refusal parks the task, override and retry |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `mobile_payloads` | the audit, usage, engine-limits and settings replies the phone's crew screens read |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
@@ -28,7 +29,7 @@
 //! | `github_fake` | the `GithubApi` fake both of those run against                           |
 //! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
 
-mod github_fake;
+pub(crate) mod github_fake;
 mod github_in;
 mod github_out;
 mod payloads;
@@ -51,6 +52,8 @@ mod engines;
 mod fixture;
 #[cfg(unix)]
 mod github_e2e;
+#[cfg(unix)]
+mod guards;
 #[cfg(unix)]
 mod limits;
 #[cfg(unix)]

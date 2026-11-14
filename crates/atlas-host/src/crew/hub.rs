@@ -41,6 +41,8 @@ pub(crate) struct CrewHub {
     /// The GitHub reply of each running task that came from GitHub, by task id (`runner::reporting`).
     pub(crate) reporters:
         parking_lot::Mutex<std::collections::HashMap<String, runner::ReportingLive>>,
+    /// What each running task ran, for the guards (`runner::guard`).
+    pub(crate) tape: runner::Tape,
     /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
     paused: std::sync::atomic::AtomicBool,
 }
@@ -64,6 +66,7 @@ impl CrewHub {
             github_connect_waiters: parking_lot::Mutex::new(vec![]),
             action_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             reporters: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            tape: runner::Tape::default(),
             paused: std::sync::atomic::AtomicBool::new(paused),
         })
     }
@@ -105,6 +108,7 @@ impl CrewHub {
         schedule::start(hub.clone());
         triggers::start(hub.clone());
         audit::observe(hub.clone());
+        runner::observe_tape(hub.clone());
         forward_approvals(hub.clone());
         if let Some(hub_arc) = hub.upgrade() {
             runner::recover(&hub_arc);

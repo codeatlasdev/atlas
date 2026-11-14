@@ -18,8 +18,8 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 
 | Permission                                  | Allows                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| See projects, logs, agents                  | project and service state, logs and search, agent tabs and replies, terminal list                                                                   |
-| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done |
+| See projects, logs, agents                  | project and service state, logs and search, agent tabs and replies, terminal list, a project's changed files and their diffs (`git_status`, `git_diff`) |
+| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done, stage and unstage files, commit (with the AI message), push and open a pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`) |
 | Answer agent permission prompts             | allow or deny a Claude Code / Codex tool call                                                                                                       |
 | Watch terminals                             | live terminal output                                                                                                                                |
 | Type in terminals                           | keystrokes; the app also asks for Face ID / biometrics before each session                                                                          |
@@ -37,6 +37,10 @@ What this does **not** settle: whether a phone on the same Wi-Fi reaches the com
 1. Make sure `ATLAS_MOBILE_RELAY=0` is **not** set (it turns the relay off, so only the LAN addresses remain).
 2. Pause the VPN, or add the LAN (`192.168.0.0/16`, your Wi-Fi subnet) to its split-tunnel exclusions, then pair again.
 3. Check what is published: Settings → Integrations → Mobile shows the addresses in the pairing link (`addr=` parameters).
+
+## Review and ship from the phone
+
+A project's page has **Review changes**: the changed files (staged and not), the diff of each (the same code block the chat uses, `diff` mode), a stage toggle per file, **Commit** (type a message or **Write with AI**, which runs the agent CLI of Settings → Git on the staged diff exactly as the desktop does: secrets withheld, lockfiles named), **Push** and **Open a pull request** (`gh pr create`). It is a fixed set of hostd commands, never a git command line: `root` must be a registered project or one of its worktrees (compared after canonicalization), paths must be relative and stay inside it (a symlink out is refused), the commit message goes on stdin, a push is never forced and only sends the current branch (`--set-upstream origin` the first time). Reading needs the first permission; everything that changes a repo or reaches GitHub needs the second. The audit log records the call but only the length of the message, title and body. hostd does the work itself (`crates/atlas-host/src/git.rs`, parsers and the commit-message logic shared with the desktop in `atlas_core::git_review`), so it works with the Atlas window closed; `gh` must be signed in on the computer.
 
 ## Approvals
 

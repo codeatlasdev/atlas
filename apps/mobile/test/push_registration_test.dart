@@ -8,42 +8,61 @@ import 'package:atlas_mobile/core/push/push_registration.dart';
 import 'fake_transport.dart';
 
 void main() {
-  test('hostHasCrewCap returns false for null data', () {
-    expect(hostHasCrewCap(null), isFalse);
+  test('hostCanPush returns false for null data', () {
+    expect(hostCanPush(null), isFalse);
   });
 
-  test('hostHasCrewCap returns false when caps absent', () {
-    expect(hostHasCrewCap({'version': '1.0'}), isFalse);
+  test('hostCanPush returns false when caps absent', () {
+    expect(hostCanPush({'version': '1.0'}), isFalse);
   });
 
-  test('hostHasCrewCap returns false when caps is empty list', () {
-    expect(hostHasCrewCap({'caps': <String>[]}), isFalse);
+  test('hostCanPush returns false when caps is empty list', () {
+    expect(hostCanPush({'caps': <String>[]}), isFalse);
   });
 
-  test('hostHasCrewCap returns false when caps lacks crew', () {
+  test('hostCanPush returns false when caps lacks crew', () {
     expect(
-      hostHasCrewCap({
+      hostCanPush({
         'caps': ['mobile', 'agents'],
       }),
       isFalse,
     );
   });
 
-  test('hostHasCrewCap returns true when caps includes crew', () {
+  test('hostCanPush returns true when caps includes crew', () {
     expect(
-      hostHasCrewCap({
+      hostCanPush({
         'caps': ['mobile', 'crew', 'agents'],
       }),
       isTrue,
     );
   });
 
-  test('hostHasCrewCap returns true when crew is the only cap', () {
+  test('hostCanPush returns true when crew is the only cap', () {
     expect(
-      hostHasCrewCap({
+      hostCanPush({
         'caps': ['crew'],
       }),
       isTrue,
+    );
+  });
+
+  // A plain Mac pushes about its own agents and says so with `push`, crew server or not.
+  test('hostCanPush returns true for a plain Mac that advertises push', () {
+    expect(
+      hostCanPush({
+        'caps': ['pty_attach_raw', 'lsp', 'agents', 'push', 'upgrade'],
+      }),
+      isTrue,
+    );
+  });
+
+  test('hostCanPush returns false for a hostd from before the push cap', () {
+    expect(
+      hostCanPush({
+        'caps': ['pty_attach_raw', 'lsp', 'agents', 'upgrade'],
+      }),
+      isFalse,
     );
   });
 

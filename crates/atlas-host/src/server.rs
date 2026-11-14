@@ -315,6 +315,8 @@ pub struct ServeOpts {
     /// what the machine has (`Setup::detect`, the helper's socket); `None` runs every crewmate as the
     /// crew user, which is also what tests get unless they run a helper of their own.
     pub isolation: Option<crate::crew::spawn::layout::Setup>,
+    /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
+    pub agent_push: Option<crate::agents::push::Sender>,
 }
 
 /// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
@@ -498,6 +500,15 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     crate::mobile::start(&hub);
     hub.crew_relay.start(&hub);
     hub.crew.start(Arc::downgrade(&hub));
+    // Plain agents push to the phones' tokens (not on a lab: it mirrors the real hostd's agents,
+    // which notifies for them). Subscribed here, before any hook can arrive.
+    if hub.lab.is_none() {
+        let send = opts
+            .agent_push
+            .clone()
+            .unwrap_or_else(|| crate::agents::push::relay_sender(Arc::downgrade(&hub)));
+        crate::agents::push::observe(&hub, send);
+    }
     {
         let crew = hub.crew.clone();
         hub.agents
@@ -1110,6 +1121,22 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::MobileSetScopes { node_id, scopes } => {
             hub.mobile.set_scopes(&node_id, scopes).map(|()| json!({}))
         }
+        // Any hostd takes a phone's push registration, not only a crew server: a phone paired to a
+        // Mac alone hears about its agents. The phone's node id comes from its connection.
+        HostCmd::PushRegister {
+            token,
+            platform,
+            grant,
+        } => {
+            let origin = hub.origin_of(conn_id);
+            let node = origin.strip_prefix("phone:").unwrap_or("");
+            hub.crew.register_token(node, &token, &platform, grant);
+            Ok(json!({}))
+        }
+        HostCmd::PushUnregister { token } => {
+            hub.crew.unregister_token(&token);
+            Ok(json!({}))
+        }
         HostCmd::AgentApprove { pane, req, allow } => hub
             .agents
             .approve_as(&pane, &req, allow, &hub.origin_of(conn_id))
@@ -1138,8 +1165,6 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewmateAudit { .. }
         | HostCmd::CrewAudit { .. }
         | HostCmd::EngineLimits {}
-        | HostCmd::PushRegister { .. }
-        | HostCmd::PushUnregister { .. }
         | HostCmd::CrewTelegramSet { .. }
         | HostCmd::CrewTelegramLink {}
         | HostCmd::CrewTelegramStatus {}

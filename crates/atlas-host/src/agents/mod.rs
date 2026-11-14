@@ -9,6 +9,7 @@ pub mod history;
 pub(crate) mod hook_auth;
 pub mod hook_server;
 pub mod integrations;
+pub mod push;
 #[cfg(test)]
 mod tests;
 pub mod tree;

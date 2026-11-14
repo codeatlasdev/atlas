@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
+import 'package:atlas_mobile/core/push/push_tap.dart';
 import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
@@ -201,6 +202,9 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
       debugShowCheckedModeBanner: false,
       theme: atlasTheme(),
       routerConfig: _router,
+      // Tapping a push opens the agent it is about, over whatever tab is showing.
+      builder: (context, child) =>
+          PushTapHost(navigatorKey: _rootNavigatorKey, child: child!),
     );
   }
 }

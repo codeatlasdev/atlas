@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"unicode"
 
 	"golang.org/x/oauth2/google"
 )
@@ -19,10 +20,13 @@ const (
 )
 
 // notifyReq is the inbound body for POST /v1/notify. Grant is what /v1/register returned for Token.
+// Pane and Title are only read for the agent kinds.
 type notifyReq struct {
 	Token string `json:"token"`
 	Kind  string `json:"kind"`
 	Grant string `json:"grant"`
+	Pane  string `json:"pane"`
+	Title string `json:"title"`
 }
 
 // registerReq is the inbound body for POST /v1/register.
@@ -31,8 +35,40 @@ type registerReq struct {
 }
 
 var kindBody = map[string]string{
-	"task_done": "A crewmate finished a task",
-	"needs_you": "A crewmate needs you",
+	"task_done":       "A crewmate finished a task",
+	"needs_you":       "A crewmate needs you",
+	"agent_done":      "An agent finished",
+	"agent_needs_you": "An agent needs you",
+}
+
+// agentKinds are the pushes about a plain agent pane (omp, Claude Code, Codex on the Mac). They
+// carry the pane key and a short title; crew pushes carry neither.
+var agentKinds = map[string]bool{"agent_done": true, "agent_needs_you": true}
+
+const (
+	maxTitleRunes = 60
+	maxPaneBytes  = 200
+)
+
+// message is what is forwarded to FCM beyond the token: the kind and, for agent kinds, the pane
+// and a title. Never conversation text.
+type message struct {
+	Kind, Pane, Title string
+}
+
+// cleanTitle bounds a title for a lock screen: no control characters, at most maxTitleRunes runes.
+func cleanTitle(s string) string {
+	out := make([]rune, 0, maxTitleRunes)
+	for _, r := range s {
+		if unicode.IsControl(r) || r == unicode.ReplacementChar {
+			continue
+		}
+		if len(out) == maxTitleRunes {
+			break
+		}
+		out = append(out, r)
+	}
+	return string(out)
 }
 
 // relay serves /v1/register and /v1/notify: it issues and checks grants, rate-limits per token and
@@ -93,15 +129,26 @@ func isUnregistered(body []byte) bool {
 // forward sends one FCM HTTP v1 message.
 // Returns (fcmStatus, unregistered, err).
 // unregistered is true only when FCM explicitly says the token is UNREGISTERED.
-func (r *relay) forward(token, kind string) (int, bool, error) {
+func (r *relay) forward(token string, m message) (int, bool, error) {
+	text := kindBody[m.Kind]
+	if m.Title != "" {
+		text = m.Title + ": " + text
+	}
+	data := map[string]string{"kind": m.Kind}
+	if m.Pane != "" {
+		data["pane"] = m.Pane
+	}
+	if m.Title != "" {
+		data["title"] = m.Title
+	}
 	msg := map[string]any{
 		"message": map[string]any{
 			"token": token,
 			"notification": map[string]string{
 				"title": "Atlas",
-				"body":  kindBody[kind],
+				"body":  text,
 			},
-			"data": map[string]string{"kind": kind},
+			"data": data,
 		},
 	}
 	payload, _ := json.Marshal(msg)
@@ -200,6 +247,15 @@ func (r *relay) notify(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "bad request: unknown kind", http.StatusBadRequest)
 		return
 	}
+	msg := message{Kind: body.Kind}
+	if agentKinds[body.Kind] {
+		// A plain agent's push opens that agent's chat on the phone: it cannot without the pane.
+		if body.Pane == "" || len(body.Pane) > maxPaneBytes {
+			http.Error(w, "bad request: agent kinds need a pane", http.StatusBadRequest)
+			return
+		}
+		msg.Pane, msg.Title = body.Pane, cleanTitle(body.Title)
+	}
 
 	// Grant before the per-token limit: a stranger must not be able to burn a victim's quota.
 	if !r.verify(body.Token, body.Grant) {
@@ -211,7 +267,7 @@ func (r *relay) notify(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	code, unreg, err := r.forward(body.Token, body.Kind)
+	code, unreg, err := r.forward(body.Token, msg)
 	if err != nil {
 		log.Printf("fcm error: %v", err)
 		http.Error(w, "upstream error", http.StatusBadGateway)

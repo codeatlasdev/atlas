@@ -150,12 +150,6 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewTelegramSet { token } => s::telegram_set(hub, token),
         HostCmd::CrewTelegramLink {} => s::telegram_link(hub),
         HostCmd::CrewTelegramStatus {} => s::telegram_status(hub),
-        HostCmd::PushRegister {
-            token,
-            platform,
-            grant,
-        } => s::push_register(hub, token, platform, grant),
-        HostCmd::PushUnregister { token } => s::push_unregister(hub, token),
         HostCmd::CrewSettingsGet {} => s::get(hub),
         HostCmd::CrewSettingsSet {
             short_replies,

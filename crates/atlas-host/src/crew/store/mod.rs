@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths;
 
+mod origin;
+pub use origin::{GithubOrigin, GithubOriginKind};
+
 /// `<hostd dir>/crew/<id>/`: where a crewmate keeps everything (definition, tasks, memory, work tree).
 pub(crate) fn crewmate_dir_in(base: &Path, id: &str) -> PathBuf {
     base.join(DIR).join(id)
@@ -96,6 +99,12 @@ pub enum TriggerKind {
         /// As for `Webhook`.
         #[serde(default)]
         allow_auto: bool,
+        /// The `@handle` that fires a `mention` event. Unset: the crewmate's name as a slug.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handle: Option<String>,
+        /// The GitHub login an issue must be assigned to for `issue_assigned` to fire.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assignee: Option<String>,
     },
     File {
         path: String,
@@ -384,6 +393,10 @@ pub struct Task {
     /// `allow_auto`: the agent never runs with its bypass flags for it (`triggers::yolo_for`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub no_auto: bool,
+    /// The GitHub issue, PR or comment this task answers (set by a GitHub automation): the runner
+    /// posts and edits its progress comment there. Structured, never parsed from `prompt`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<GithubOrigin>,
     /// How many times a hostd restart interrupted this task while it ran (`runner::recover`): it is
     /// resumed up to a cap, then fails, so a task that takes the daemon down cannot loop.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -423,6 +436,7 @@ impl Task {
             action: None,
             tz: None,
             no_auto: false,
+            origin: None,
             restarts: 0,
             resumed: false,
         }

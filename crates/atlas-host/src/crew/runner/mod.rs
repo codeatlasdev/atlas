@@ -13,6 +13,7 @@
 //! | `prompt`       | working directory, instructions, agent env files, hook endpoint   |
 //! | `action`       | `ATLAS_ACTION` lines: parse, park, wait for the answer            |
 //! | `github`       | GitHub login a project needs                                      |
+//! | `reporting`    | a GitHub task's reply comment: posted, edited, finished           |
 //! | `outcome`      | waiting for the agent, recording and announcing the result        |
 //! | `summary`      | short replies                                                     |
 //! | `testing`      | test-only overrides                                               |
@@ -25,6 +26,10 @@ mod outcome;
 mod prompt;
 mod pty;
 mod recover;
+mod reporting;
+pub(crate) use reporting::Live as ReportingLive;
+#[cfg(test)]
+pub(crate) use reporting::branch_to_report;
 mod summary;
 #[cfg(test)]
 mod testing;
@@ -326,7 +331,10 @@ async fn run_worker(hub: Arc<Hub>, crewmate: Crewmate) {
     }
 }
 
-async fn run_one(hub: &Hub, crewmate: &Crewmate, task: Task) {
+async fn run_one(hub: &Hub, crewmate: &Crewmate, mut task: Task) {
+    // A task from GitHub answers there from the start, so a failure before the agent even runs
+    // (project checkout, GitHub login) still edits a comment instead of leaving the issue silent.
+    reporting::start(hub, &crewmate.id, &mut task).await;
     if let Some(engine_cfg) = &crewmate.engine {
         run_one_conversational(hub, crewmate, engine_cfg, task).await;
     } else {

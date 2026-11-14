@@ -41,6 +41,92 @@ fn file_url(base: &str, token: &str, file_path: &str) -> String {
     format!("{base}/file/bot{token}/{file_path}")
 }
 
+/// The most photos Telegram takes in one `sendMediaGroup`.
+pub(crate) const MEDIA_GROUP_MAX: usize = 10;
+
+/// A leading `/ui ` marks the message as a UI task: `(true, rest)`; anything else is `(false, text)`. The
+/// rest is read as always (`/task <name> <text>`, a plain prompt), so `/ui /task Ana fix the header` works.
+fn strip_ui(text: &str) -> (bool, &str) {
+    match text.strip_prefix("/ui ") {
+        Some(rest) => (true, rest.trim()),
+        None => (false, text),
+    }
+}
+
+/// The agent's images of a task, `(name, bytes)`, up to [`MEDIA_GROUP_MAX`] of them: the newest, the ones
+/// the agent took last being the "after". An image whose file cannot be read is left out and logged.
+fn card_images_of(
+    store: &crate::crew::store::CrewStore,
+    crewmate_id: &str,
+    task_id: &str,
+) -> Vec<(String, Vec<u8>)> {
+    let Some(task) = store
+        .read_tasks(crewmate_id, usize::MAX)
+        .into_iter()
+        .find(|t| t.id == task_id)
+    else {
+        return vec![];
+    };
+    let agent: Vec<_> = task
+        .attachments
+        .iter()
+        .filter(|a| a.source == crate::crew::attachments::SOURCE_AGENT)
+        .collect();
+    let skip = agent.len().saturating_sub(MEDIA_GROUP_MAX);
+    agent[skip..]
+        .iter()
+        .filter_map(|a| {
+            match crate::crew::attachments::read(store, crewmate_id, &task, &a.name) {
+                Ok((a, bytes)) => Some((a.name, bytes)),
+                Err(e) => {
+                    eprintln!(
+                        "atlas telegram: image {} of task {task_id} not sent: {e}",
+                        a.name
+                    );
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
+/// The `multipart/form-data` body of a `sendMediaGroup` for `chat_id`: a `media` JSON array whose items
+/// point (`attach://f<i>`) at the file parts, then one part per image. Built by hand, so no `multipart`
+/// feature of reqwest is needed for it. Returns the `content-type` (with the boundary) and the body.
+pub(crate) fn media_group_body(chat_id: i64, images: &[(String, Vec<u8>)]) -> (String, Vec<u8>) {
+    let boundary = format!("atlas-{}", crate::paths::new_id());
+    let media: Vec<Value> = images
+        .iter()
+        .enumerate()
+        .map(|(i, _)| json!({"type": "photo", "media": format!("attach://f{i}")}))
+        .collect();
+    let mut body = Vec::new();
+    let text_part = |body: &mut Vec<u8>, name: &str, value: &str| {
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .as_bytes(),
+        );
+    };
+    text_part(&mut body, "chat_id", &chat_id.to_string());
+    text_part(&mut body, "media", &Value::Array(media).to_string());
+    for (i, (name, bytes)) in images.iter().enumerate() {
+        // The name is ours (`attachments::safe_name`: `[A-Za-z0-9._-]`), so it needs no escaping here.
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"f{i}\"; filename=\"{name}\"\r\n\
+                 Content-Type: application/octet-stream\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
 // ─── link code ───────────────────────────────────────────────────────────────
 
 struct LinkCode {
@@ -210,16 +296,28 @@ impl TelegramBridge {
         });
     }
 
-    /// Tell every linked chat that the guards refused a task's work, with Override / Retry buttons
-    /// (`r:<task>:<o|r>`, answered in `handle_callback` like the card on the apps).
-    pub(crate) fn send_refusal(&self, crewmate_name: &str, task_id: &str, reasons: &[String]) {
+    /// Tell every linked chat that a task waits on a card (`Refused` by the guards, `ProveUi` without
+    /// captures): the agent's images of the task first, as one media group (at most
+    /// [`MEDIA_GROUP_MAX`]), then the message with the reasons and the Override / Retry buttons
+    /// (`r:<task>:<o|r>`, answered in `handle_callback` like the card on the apps). Sent in this order
+    /// from one task, so the buttons never arrive before the pictures they are about.
+    pub(crate) fn send_card(
+        &self,
+        crewmate_name: &str,
+        crewmate_id: &str,
+        task_id: &str,
+        reasons: &[String],
+    ) {
         let token = self.config.lock().token.clone();
         if token.is_empty() {
             return;
         }
         let chats = self.config.lock().chats.clone();
+        let images = self
+            .hub()
+            .map(|hub| card_images_of(&hub.crew.store, crewmate_id, task_id));
         let text = format!(
-            "{crewmate_name}: Atlas refused this work\n\n{}",
+            "{crewmate_name}: this work needs you\n\n{}",
             reasons
                 .iter()
                 .map(|r| format!("- {r}"))
@@ -239,6 +337,15 @@ impl TelegramBridge {
                 return;
             };
             for chat_id in chats {
+                if let Some(images) = images.as_ref().filter(|i| !i.is_empty()) {
+                    let (content_type, body) = media_group_body(chat_id, images);
+                    let _ = client
+                        .post(api_url(&base, &token, "sendMediaGroup"))
+                        .header("content-type", content_type)
+                        .body(body)
+                        .send()
+                        .await;
+                }
                 let url = api_url(&base, &token, "sendMessage");
                 let body = json!({"chat_id": chat_id, "text": text, "reply_markup": keyboard});
                 let _ = client.post(&url).json(&body).send().await;
@@ -472,6 +579,9 @@ impl TelegramBridge {
             return;
         }
 
+        // `/ui <message>`: the same message, for a task that changes what people see (`Task.ui`).
+        let (ui, text) = strip_ui(text);
+
         // /crewmates
         if text == "/crew" {
             if let Some(hub) = self.hub() {
@@ -500,7 +610,7 @@ impl TelegramBridge {
                     .await;
                 return;
             }
-            self.create_task(chat_id, name, prompt, &[]).await;
+            self.create_task(chat_id, name, prompt, &[], ui).await;
             return;
         }
 
@@ -509,7 +619,7 @@ impl TelegramBridge {
             let crewmates = hub.crew.store.list_crewmates();
             if crewmates.len() == 1 {
                 let name = crewmates[0].name.clone();
-                self.create_task(chat_id, &name, text, &[]).await;
+                self.create_task(chat_id, &name, text, &[], ui).await;
             } else {
                 self.reply(chat_id, "Which crewmate? Use /task <name> <text>")
                     .await;
@@ -524,7 +634,7 @@ impl TelegramBridge {
         let Some(hub) = self.hub() else {
             return;
         };
-        let caption = msg["caption"].as_str().unwrap_or("").trim();
+        let (ui, caption) = strip_ui(msg["caption"].as_str().unwrap_or("").trim());
         let (name, prompt) = match caption.strip_prefix("/task ") {
             Some(rest) => match rest.split_once(' ') {
                 Some((n, p)) => (Some(n.trim().to_string()), p.trim()),
@@ -569,7 +679,7 @@ impl TelegramBridge {
                     name: format!("telegram-{}.jpg", msg["message_id"].as_i64().unwrap_or(0)),
                     bytes,
                 };
-                self.create_task(chat_id, &name, prompt, &[image]).await;
+                self.create_task(chat_id, &name, prompt, &[image], ui).await;
             }
             Err(e) => {
                 self.reply(
@@ -640,6 +750,7 @@ impl TelegramBridge {
         crewmate_name: &str,
         prompt: &str,
         images: &[crate::crew::attachments::Incoming],
+        ui: bool,
     ) {
         let Some(hub) = self.hub() else {
             return;
@@ -660,6 +771,7 @@ impl TelegramBridge {
             return;
         }
         let mut task = crate::crew::store::Task::new("telegram", prompt);
+        task.ui = ui;
         let task_id = task.id.clone();
         if let Err(e) =
             crate::crew::attachments::attach(&hub.crew.store, &crewmate.id, &mut task, images)
@@ -901,5 +1013,66 @@ mod tests {
             .unwrap_or("")
             .to_string();
         assert_eq!(request_line, "POST /bot123:abc/sendMessage HTTP/1.1");
+    }
+
+    // `/ui` marks a UI task and is not part of the prompt; only a leading `/ui ` counts.
+    #[test]
+    fn a_leading_ui_command_marks_the_message_and_is_dropped() {
+        use super::strip_ui;
+        assert_eq!(strip_ui("/ui restyle the header"), (true, "restyle the header"));
+        assert_eq!(
+            strip_ui("/ui /task Ana fix the header"),
+            (true, "/task Ana fix the header")
+        );
+        assert_eq!(strip_ui("restyle the /ui header"), (false, "restyle the /ui header"));
+        assert_eq!(strip_ui("/uikit"), (false, "/uikit"));
+        assert_eq!(strip_ui("/ui"), (false, "/ui"));
+    }
+
+    // The body Telegram parses: the chat id first, a `media` array whose items point at the file parts, each
+    // part named as pointed, the closing boundary last. The bytes are copied untouched.
+    #[test]
+    fn the_media_group_body_is_the_multipart_telegram_reads() {
+        let imgs = vec![
+            ("a.png".to_string(), b"\x89PNG\r\n\x1a\nAAAA".to_vec()),
+            ("b.png".to_string(), b"\x89PNG\r\n\x1a\nBBBB".to_vec()),
+        ];
+        let (ctype, body) = super::media_group_body(42, &imgs);
+        let boundary = ctype.strip_prefix("multipart/form-data; boundary=").unwrap();
+        let text = String::from_utf8_lossy(&body).to_string();
+        assert!(text.starts_with(&format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n42\r\n"
+        )));
+        assert!(text.ends_with(&format!("--{boundary}--\r\n")));
+        assert!(text.contains(
+            r#"[{"media":"attach://f0","type":"photo"},{"media":"attach://f1","type":"photo"}]"#
+        ));
+        assert!(text.contains("name=\"f0\"; filename=\"a.png\""));
+        assert!(text.contains("name=\"f1\"; filename=\"b.png\""));
+        assert!(body.windows(12).any(|w| w == b"\x89PNG\r\n\x1a\nAAAA"));
+        assert!(body.windows(12).any(|w| w == b"\x89PNG\r\n\x1a\nBBBB"));
+    }
+
+    // The bridge never sends more than ten in a group (the Bot API limit) and keeps the newest: the last
+    // captures are the "after".
+    #[test]
+    fn a_card_sends_at_most_ten_images_and_the_newest() {
+        use crate::crew::attachments::{self, Incoming, SOURCE_AGENT};
+        use crate::crew::store::{CrewStore, Task};
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        let mut task = Task::new("test", "look");
+        task.id = "t1".into();
+        let png = |i: usize| Incoming {
+            name: format!("{i:02}.png"),
+            bytes: b"\x89PNG\r\n\x1a\nx".to_vec(),
+        };
+        let all: Vec<_> = (0..14).map(png).collect();
+        attachments::add(&store, "c", &mut task, &all, SOURCE_AGENT).unwrap();
+        store.append_task("c", &task).unwrap();
+        let picked = super::card_images_of(&store, "c", "t1");
+        assert_eq!(picked.len(), super::MEDIA_GROUP_MAX);
+        assert_eq!(picked[0].0, "04.png");
+        assert_eq!(picked[9].0, "13.png");
     }
 }

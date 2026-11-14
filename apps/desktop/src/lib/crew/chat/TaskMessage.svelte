@@ -45,6 +45,9 @@
 
 	const look = $derived(crewmate.look as CrewmateLook | undefined);
 	const approval = $derived(crewmate.running_task?.id === t.id ? crewmate.pending_approval : undefined);
+	/** What the owner sent with the prompt (under it) and what the agent captured (under its reply, or on its card). */
+	const ownerImages = $derived((t.attachments ?? []).filter((a) => a.source !== "agent"));
+	const agentImages = $derived((t.attachments ?? []).filter((a) => a.source === "agent"));
 </script>
 
 <div class="msg-row" data-task-id={t.id} class:flash={chat.flashTask === t.id} class:group-start={groupStart}>
@@ -56,8 +59,8 @@
 	{/if}
 	<div class="msg-out" in:msgOut>
 		<div class="bubble out ca-selectable">{t.prompt}</div>
-		{#if t.attachments?.length}
-			<TaskImages attachments={t.attachments} taskId={t.id} crewmateId={crewmate.id} {hostKey} />
+		{#if ownerImages.length}
+			<TaskImages attachments={ownerImages} taskId={t.id} crewmateId={crewmate.id} {hostKey} />
 		{/if}
 		{#if t.source !== "desktop"}
 			<div class="msg-meta">· {t.source}</div>
@@ -116,6 +119,9 @@
 				<!-- The work before the reply, folded per section; it stays in the conversation. -->
 				<TaskWork steps={t.steps ?? []} title={t.title} running={false} />
 				<TaskReply task={t} {chat} />
+				{#if agentImages.length}
+					<TaskImages attachments={agentImages} taskId={t.id} crewmateId={crewmate.id} {hostKey} align="start" />
+				{/if}
 			</div>
 		</div>
 	{:else if t.state === "failed"}
@@ -141,6 +147,7 @@
 					crewmateId={crewmate.id}
 					crewmateName={crewmate.name}
 					{hostKey}
+					attachments={t.attachments}
 					{chat}
 				/>
 			</div>

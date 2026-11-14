@@ -126,7 +126,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             source,
             tz,
             attachments,
-        } => t::send_task(hub, id, prompt, source, tz, attachments),
+            ui,
+        } => t::send_task(hub, id, prompt, source, tz, attachments, ui),
         HostCmd::CrewmateAttachmentPut {
             id,
             upload,
@@ -149,7 +150,12 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             key,
             text,
         } => t::answer(hub, id, ask_id, key, text),
-        HostCmd::CrewmateActionAnswer { id, task, value } => t::action_answer(hub, id, task, value),
+        HostCmd::CrewmateActionAnswer {
+            id,
+            task,
+            value,
+            attachments,
+        } => t::action_answer(hub, id, task, value, attachments),
         HostCmd::CrewmateUsage { id, since } => t::usage(hub, id, since),
         HostCmd::CrewmateAudit {
             id,

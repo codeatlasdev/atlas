@@ -482,6 +482,9 @@ pub enum HostCmd {
         /// Images (`crew::attachments`): inline, or by the id of an upload (`crewmate_attachment_put`).
         #[serde(default)]
         attachments: Vec<crate::crew::attachments::Sent>,
+        /// The task changes what people see: it needs the agent's own captures to be `done` (`prove_ui`).
+        #[serde(default)]
+        ui: bool,
     },
     /// One piece of an image too big for a protocol line, staged for the next `crewmate_task`
     /// that names `upload`. The last piece (`last: true`) completes it.
@@ -615,6 +618,10 @@ pub enum HostCmd {
         /// For provide_secret: the secret value (written to crewmate secrets, never stored in task).
         /// For other kinds: the user's response text or chosen option.
         value: String,
+        /// New images that go with a `retry` of a `refused` / `prove_ui` card (the owner's marked
+        /// screenshot), uploaded like a task's (`crewmate_attachment_put`). Any other answer refuses them.
+        #[serde(default)]
+        attachments: Vec<crate::crew::attachments::Sent>,
     },
     /// If gh is already logged in, wake any connect_github waiters immediately.
     #[serde(rename = "crew_github_connect_resume")]
@@ -720,10 +727,17 @@ mod tests {
             r#"{"id":10,"cmd":"crewmate_action_answer","args":{"id":"bot1","task":"t1","value":"secret"}}"#,
         ).unwrap();
         assert!(matches!(answer.cmd, HostCmd::CrewmateActionAnswer { .. }));
-        if let HostCmd::CrewmateActionAnswer { id, task, value } = answer.cmd {
+        if let HostCmd::CrewmateActionAnswer {
+            id,
+            task,
+            value,
+            attachments,
+        } = answer.cmd
+        {
             assert_eq!(id, "bot1");
             assert_eq!(task, "t1");
             assert_eq!(value, "secret");
+            assert!(attachments.is_empty(), "optional: older clients send none");
         }
         let resume: Request =
             serde_json::from_str(r#"{"id":11,"cmd":"crew_github_connect_resume","args":{}}"#)

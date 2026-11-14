@@ -47,7 +47,18 @@ pub struct Attachment {
     pub sha256: String,
     /// Where the agent finds it, relative to its work dir: `.atlas/attachments/<task id>/<name>`.
     pub path: String,
+    /// Who attached it: `"agent"` for a capture the crewmate took, empty for what the owner sent (left out of
+    /// the JSON then, so records and clients that predate this read exactly what they always did).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
 }
+
+/// [`Attachment::source`] of the captures an agent took.
+pub(crate) const SOURCE_AGENT: &str = "agent";
+/// Images the agent may attach to one task (captures: a matrix is up to 16 a call). Not the owner's cap.
+pub(crate) const MAX_AGENT_ATTACHMENTS: usize = 32;
+/// Agent images a `ui` task needs before it is `done` (before and after).
+pub(crate) const PROOF_IMAGES: usize = 2;
 
 /// The image kind of `bytes` by its signature, `None` for anything else (an SVG, a PDF, a renamed `.exe`).
 pub(crate) fn sniff(bytes: &[u8]) -> Option<&'static str> {
@@ -117,6 +128,16 @@ pub(crate) fn check(
             images.len()
         ));
     }
+    check_more(task_id, &[], images)
+}
+
+/// [`check`] for images that join the `taken` ones: the names it makes are unique against those too, and
+/// the count is not capped here (the caller owns the cap: [`add`]).
+fn check_more(
+    task_id: &str,
+    taken: &[Attachment],
+    images: &[Incoming],
+) -> Result<Vec<(Attachment, Vec<u8>)>, String> {
     let mut out: Vec<(Attachment, Vec<u8>)> = Vec::with_capacity(images.len());
     for img in images {
         if img.bytes.is_empty() {
@@ -137,7 +158,7 @@ pub(crate) fn check(
         };
         let mut name = safe_name(&img.name, mime);
         let mut n = 2;
-        while out.iter().any(|(a, _)| a.name == name) {
+        while out.iter().any(|(a, _)| a.name == name) || taken.iter().any(|a| a.name == name) {
             let (stem, e) = name.rsplit_once('.').unwrap_or((&name, ""));
             let stem = stem.trim_end_matches(|c: char| c.is_ascii_digit() || c == '-');
             name = format!("{stem}-{n}.{e}");
@@ -152,6 +173,7 @@ pub(crate) fn check(
                 mime: mime.to_string(),
                 bytes_len: img.bytes.len() as u64,
                 sha256: hex::encode(sha.finalize()),
+                source: String::new(),
             },
             img.bytes.clone(),
         ));
@@ -546,13 +568,86 @@ pub(crate) fn attach(
     task: &mut super::store::Task,
     images: &[Incoming],
 ) -> Result<(), String> {
+    add(store, crewmate_id, task, images, "")
+}
+
+/// [`attach`] for images that join the ones the task already has: the owner's marked screenshot with a
+/// retry (`source` ""), or the agent's captures ([`SOURCE_AGENT`]). Names stay unique against what is
+/// there, and the cap is the task's total for that source ([`MAX_ATTACHMENTS`] for the owner,
+/// [`MAX_AGENT_ATTACHMENTS`] for the agent). Nothing is left on disk when it fails.
+pub(crate) fn add(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task: &mut super::store::Task,
+    images: &[Incoming],
+    source: &str,
+) -> Result<(), String> {
     if images.is_empty() {
         return Ok(());
     }
-    let files = check(&task.id, images)?;
+    let cap = if source == SOURCE_AGENT {
+        MAX_AGENT_ATTACHMENTS
+    } else {
+        MAX_ATTACHMENTS
+    };
+    let have = task
+        .attachments
+        .iter()
+        .filter(|a| a.source == source)
+        .count();
+    if have + images.len() > cap {
+        return Err(format!(
+            "a task takes at most {cap} {}images, it has {have} and {} more were sent",
+            if source == SOURCE_AGENT { "capture " } else { "" },
+            images.len()
+        ));
+    }
+    let mut files = check_more(&task.id, &task.attachments, images)?;
+    for (a, _) in &mut files {
+        a.source = source.to_string();
+    }
     save(store, crewmate_id, &task.id, &files).map_err(|e| format!("attachment: {e}"))?;
-    task.attachments = files.into_iter().map(|(a, _)| a).collect();
+    task.attachments.extend(files.into_iter().map(|(a, _)| a));
     Ok(())
+}
+
+/// Store the agent's `files` (PNGs a capture wrote) as images of the task `task_id`, source
+/// [`SOURCE_AGENT`], and return the names they are kept under. Runs from the hook route while the runner
+/// holds its own copy of the task, so it records on the task as the log last has it and the runner
+/// re-reads the attachments before it judges (`runner::gate`).
+pub(crate) fn store_agent(
+    store: &CrewStore,
+    crewmate_id: &str,
+    task_id: &str,
+    files: &[PathBuf],
+) -> Result<Vec<String>, String> {
+    let mut task = store
+        .read_tasks(crewmate_id, usize::MAX)
+        .into_iter()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| format!("task {task_id} not found"))?;
+    let incoming = files
+        .iter()
+        .map(|f| {
+            Ok(Incoming {
+                name: f
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .ok_or_else(|| format!("bad file name: {}", f.display()))?
+                    .to_string(),
+                bytes: std::fs::read(f).map_err(|e| format!("{}: {e}", f.display()))?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let before = task.attachments.len();
+    add(store, crewmate_id, &mut task, &incoming, SOURCE_AGENT)?;
+    store
+        .append_task(crewmate_id, &task)
+        .map_err(|e| format!("append_task: {e}"))?;
+    Ok(task.attachments[before..]
+        .iter()
+        .map(|a| a.name.clone())
+        .collect())
 }
 
 #[cfg(test)]

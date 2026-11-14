@@ -134,9 +134,7 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
       return tb.compareTo(ta);
     });
 
-    final needsYou = allEntries
-        .where((e) => e.crewmate.state == 'needs_you')
-        .toList();
+    final needsYou = allEntries.where(needsCaptain).toList();
 
     return Scaffold(
       body: Stack(
@@ -242,6 +240,19 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                                   e.crewmate.pendingApproval!,
                                   allow,
                                 ),
+                                onAnswerTask: (value) => answerWaitingAction(
+                                  ref,
+                                  e.device,
+                                  e.crewmate.id,
+                                  e.crewmate.waitingTask!,
+                                  value,
+                                ).catchError((Object err) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('$err')),
+                                    );
+                                  }
+                                }),
                                 onTap: () => _openCrewmate(context, e),
                               ),
                           ],

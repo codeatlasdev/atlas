@@ -22,6 +22,8 @@ export interface Attachment {
 	bytes_len: number;
 	sha256: string;
 	path: string;
+	/** "agent" for a capture the crewmate took; absent for an image the owner sent. */
+	source?: "agent";
 }
 
 /** An image waiting in the composer. */

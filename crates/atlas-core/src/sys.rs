@@ -223,9 +223,9 @@ pub fn shell_script(argv: &[String]) -> Option<&str> {
     }
 }
 
-/// Copy-on-write clone of a directory tree; `Unsupported` where the file system cannot (never a
-/// full copy). See `sys_clone`.
-pub use crate::sys_clone::clone_dir;
+/// Copy-on-write clone of a directory tree or of one file; `Unsupported` where the file system
+/// cannot (never a full copy). See `sys_clone`.
+pub use crate::sys_clone::{clone_dir, clone_file};
 
 /// [`shell`] for a tokio command.
 pub fn shell_tokio(script: &str) -> tokio::process::Command {

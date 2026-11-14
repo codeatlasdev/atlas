@@ -1,0 +1,10 @@
+[
+  {
+    "host": "atlas-crew@10.0.0.5",
+    "name": "Ship"
+  },
+  {
+    "host": "atlas-bot@legacy.example.com",
+    "name": "Old Atlas Bot server"
+  }
+]

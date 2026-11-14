@@ -7,6 +7,7 @@
 	import PageHead from "#lib/settings/PageHead.svelte";
 	import Row from "#lib/settings/Row.svelte";
 	import PairQr from "#lib/components/PairQr.svelte";
+	import BrowsersRow from "#lib/crew/settings/BrowsersRow.svelte";
 	import TelegramRow from "#lib/crew/settings/TelegramRow.svelte";
 	import { secondsLeft, type PairStart } from "#lib/settings/mobile.ts";
 	import { crew } from "#lib/stores/crew.svelte.ts";
@@ -235,6 +236,7 @@
 		{/if}
 
 		{#if online}
+			<BrowsersRow hostKey={h.key} />
 			<TelegramRow hostKey={h.key} />
 		{/if}
 

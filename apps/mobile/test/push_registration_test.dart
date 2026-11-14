@@ -2,40 +2,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/push/push_registration.dart';
 
 void main() {
-  test('hostHasBotsCap returns false for null data', () {
-    expect(hostHasBotsCap(null), isFalse);
+  test('hostHasCrewCap returns false for null data', () {
+    expect(hostHasCrewCap(null), isFalse);
   });
 
-  test('hostHasBotsCap returns false when caps absent', () {
-    expect(hostHasBotsCap({'version': '1.0'}), isFalse);
+  test('hostHasCrewCap returns false when caps absent', () {
+    expect(hostHasCrewCap({'version': '1.0'}), isFalse);
   });
 
-  test('hostHasBotsCap returns false when caps is empty list', () {
-    expect(hostHasBotsCap({'caps': <String>[]}), isFalse);
+  test('hostHasCrewCap returns false when caps is empty list', () {
+    expect(hostHasCrewCap({'caps': <String>[]}), isFalse);
   });
 
-  test('hostHasBotsCap returns false when caps lacks bots', () {
+  test('hostHasCrewCap returns false when caps lacks crew', () {
     expect(
-      hostHasBotsCap({
+      hostHasCrewCap({
         'caps': ['mobile', 'agents'],
       }),
       isFalse,
     );
   });
 
-  test('hostHasBotsCap returns true when caps includes bots', () {
+  test('hostHasCrewCap returns true when caps includes crew', () {
     expect(
-      hostHasBotsCap({
-        'caps': ['mobile', 'bots', 'agents'],
+      hostHasCrewCap({
+        'caps': ['mobile', 'crew', 'agents'],
       }),
       isTrue,
     );
   });
 
-  test('hostHasBotsCap returns true when bots is the only cap', () {
+  test('hostHasCrewCap returns true when crew is the only cap', () {
     expect(
-      hostHasBotsCap({
-        'caps': ['bots'],
+      hostHasCrewCap({
+        'caps': ['crew'],
       }),
       isTrue,
     );

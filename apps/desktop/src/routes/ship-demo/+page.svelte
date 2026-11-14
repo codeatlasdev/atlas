@@ -1,9 +1,9 @@
 <script lang="ts">
-	import BotArtIntro from "#lib/bots/BotArtIntro.svelte";
+	import CrewArtIntro from "#lib/crew/CrewArtIntro.svelte";
 </script>
 
 <div class="stage">
-	<BotArtIntro />
+	<CrewArtIntro />
 </div>
 
 <style>

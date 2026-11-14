@@ -14,7 +14,7 @@ async fn daemon(dir: &Path) -> HostClient {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
-        bot_host: true,
+        crew_host: true,
         ..Default::default()
     };
     tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
@@ -626,9 +626,9 @@ async fn settings_fixtures_are_the_real_payloads() {
     }
 }
 
-/// A paired phone with only Read scope gets forbidden: act on bot_task.
+/// A paired phone with only Read scope gets forbidden: act on crewmate_task.
 #[tokio::test]
-async fn bot_task_requires_act_scope() {
+async fn crewmate_task_requires_act_scope() {
     let tmp = tempfile::tempdir().unwrap();
     let (c, mut phone, node) = paired(tmp.path()).await;
     c.call(
@@ -639,7 +639,7 @@ async fn bot_task_requires_act_scope() {
     .unwrap();
     let r = phone
         .call(
-            "bot_task",
+            "crewmate_task",
             json!({"id": "x", "prompt": "hi", "source": "mobile"}),
         )
         .await
@@ -648,17 +648,17 @@ async fn bot_task_requires_act_scope() {
     c.call("shutdown", json!({})).await.ok();
 }
 
-/// bot_task push events reach a Read phone.
+/// crewmate_task push events reach a Read phone.
 #[tokio::test]
-async fn bot_task_push_reaches_read_phone() {
+async fn crewmate_task_push_reaches_read_phone() {
     let tmp = tempfile::tempdir().unwrap();
     let (c, mut phone, _node) = paired(tmp.path()).await;
-    // Simulate a bot_task push by broadcasting it from the desktop side.
+    // Simulate a crewmate_task push by broadcasting it from the desktop side.
     // We reach into the daemon via exec + a raw connection to send an event.
     // Simpler: shutdown and check the scope mapping.
-    // push_scope("bot_task") == Some(Scope::Read)
+    // push_scope("crewmate_task") == Some(Scope::Read)
     assert_eq!(
-        crate::mobile::push_scope("bot_task"),
+        crate::mobile::push_scope("crewmate_task"),
         Some(crate::mobile::Scope::Read)
     );
     c.call("shutdown", json!({})).await.ok();

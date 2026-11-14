@@ -2,10 +2,11 @@
 	import { ws } from "#lib/stores/workspace.svelte.ts";
 	import { shortcutFor } from "#lib/keymap.svelte.ts";
 	import { SHOW_DELAY_MS, HIDE_DELAY_MS } from "./workspaceRail.ts";
-	import { bots } from "#lib/stores/bots.svelte.ts";
+	import { crew } from "#lib/stores/crew.svelte.ts";
 	import { CodeXml } from "@lucide/svelte";
-	import ShipFlag from "#lib/bots/ShipFlag.svelte";
-	import { reducedMotion } from "#lib/bots/motion.ts";
+	import CrewFlag from "#lib/crew/CrewFlag.svelte";
+	import { reducedMotion } from "#lib/crew/motion.ts";
+	import "#lib/crew/crew.css";
 
 	// visible = rail is shown; everything else in the window slides right by RAIL_W to make room
 	let visible = $state(false);
@@ -18,8 +19,8 @@
 	const RAIL_W = 72;
 	const SLIDE_MS = 180;
 
-	const shortcut = $derived(shortcutFor("atlas::ToggleBotsWorkspace") ?? "Cmd+Shift+B");
-	const needsYouCount = $derived(bots.needsYouCount);
+	const shortcut = $derived(shortcutFor("atlas::ToggleCrewWorkspace") ?? "Cmd+Shift+B");
+	const needsYouCount = $derived(crew.needsYouCount);
 
 	// "Push everything aside" without reflowing: animating a width relays out the sidebar, the page and every
 	// terminal on each frame, which stuttered. The siblings slide by `translate` on the compositor instead.
@@ -80,7 +81,7 @@
 		clearTimeout(hideTimer);
 	}
 
-	function setMode(mode: "ide" | "bots") {
+	function setMode(mode: "ide" | "crew") {
 		ws.appMode = mode;
 		visible = false;
 		pinned = false;
@@ -108,9 +109,14 @@
 ></div>
 
 <!-- Always-visible handle: tells the user something lives at this edge. -->
-<div class="edge-handle" class:hidden={visible} class:alert={needsYouCount > 0} aria-hidden="true"></div>
+<div
+	class="crew-edge-handle edge-handle"
+	class:hidden={visible}
+	class:alert={needsYouCount > 0}
+	aria-hidden="true"
+></div>
 {#if hint && !visible}
-	<button class="edge-hint" onclick={() => (visible = true)} onmouseenter={onHotZoneEnter}>
+	<button class="crew-edge-hint edge-hint" onclick={() => (visible = true)} onmouseenter={onHotZoneEnter}>
 		Workspaces <span class="kbd">{shortcut}</span>
 	</button>
 {/if}
@@ -142,15 +148,15 @@
 	<!-- Atlas Crew workspace -->
 	<button
 		class="item"
-		class:active={ws.appMode === "bots"}
-		onclick={() => setMode("bots")}
+		class:active={ws.appMode === "crew"}
+		onclick={() => setMode("crew")}
 		aria-label="Atlas Crew workspace"
 		title="Atlas Crew  {shortcut}"
 	>
 		<div class="pill" aria-hidden="true"></div>
-		<ShipFlag size={34} />
+		<CrewFlag size={34} />
 		{#if needsYouCount > 0}
-			<span class="needs-badge" aria-label="{needsYouCount} crewmates need your attention">
+			<span class="crew-badge needs-badge" aria-label="{needsYouCount} crewmates need your attention">
 				{needsYouCount > 9 ? "9+" : needsYouCount}
 			</span>
 		{/if}
@@ -162,17 +168,13 @@
 	   It grows and brightens when the pointer reaches the edge (the hot-zone sits above it), and turns red
 	   when a crewmate needs you. */
 	.edge-handle {
-		position: fixed;
 		left: 2px;
 		top: 50%;
 		translate: 0 -50%;
 		width: 3px;
 		height: 28px;
-		border-radius: 2px;
-		background: var(--ca-text-secondary);
 		opacity: 0.35;
 		z-index: 1700;
-		pointer-events: none;
 		transition:
 			opacity 150ms ease,
 			height 150ms ease,
@@ -191,39 +193,13 @@
 	}
 	/* First run only: names the handle. */
 	.edge-hint {
-		position: fixed;
+		/* keep the vertical centering: `translate` is separate from `transform` */
+		--crew-hint-from: translateX(-6px);
 		left: 12px;
 		top: 50%;
 		translate: 0 -50%;
 		z-index: 1700;
-		display: flex;
-		align-items: center;
-		gap: 6px;
 		padding: 5px 10px;
-		border: 0.5px solid var(--ca-outline-subtle);
-		border-radius: 999px;
-		background: var(--ca-surface-base);
-		color: var(--ca-text-secondary);
-		font-size: 11.5px;
-		box-shadow: var(--ca-shadow-sm);
-		cursor: default;
-		animation: hint-in 400ms ease-out 800ms both;
-	}
-	.edge-hint .kbd {
-		opacity: 0.7;
-		font-size: 10.5px;
-	}
-	@keyframes hint-in {
-		from {
-			opacity: 0;
-			transform: translateX(-6px);
-			/* keep the vertical centering: `translate` is separate from `transform` */
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.edge-hint {
-			animation: none;
-		}
 	}
 	/* Hot-zone: fixed thin strip at window left edge, triggers rail expand */
 	.hot-zone {
@@ -333,7 +309,7 @@
 		height: 20px;
 	}
 
-	/* Separator line between IDE and Bots (32px wide, 2px tall, centered) */
+	/* Separator line between IDE and Crewmates (32px wide, 2px tall, centered) */
 	.separator {
 		width: 32px;
 		height: 2px;
@@ -348,19 +324,8 @@
 		position: absolute;
 		bottom: 2px;
 		right: 2px;
-		min-width: 16px;
-		height: 16px;
-		border-radius: 8px;
-		background: var(--ca-semantic-error, #e03131);
 		/* Dark ring cut in the rail color */
 		box-shadow: 0 0 0 2px color-mix(in oklab, var(--ca-surface-sunken) 100%, black 4%);
-		color: var(--ca-surface-base);
-		font-size: 9px;
-		font-weight: 700;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0 3px;
 		pointer-events: none;
 	}
 </style>

@@ -2,7 +2,7 @@
 // (seconds) was read as milliseconds, and previews showed raw markdown.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/features/bots/crew_text.dart';
+import 'package:atlas_mobile/features/crew/crew_text.dart';
 
 void main() {
   final now = DateTime(2026, 11, 12, 13, 35);

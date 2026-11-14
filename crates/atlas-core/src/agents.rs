@@ -59,7 +59,7 @@ pub fn get(id: &str) -> Option<&'static AgentDef> {
 
 impl AgentDef {
     /// Build argv for launching this agent: [bin, yolo_args?, prompt_args?].
-    /// Used by the bot runner (atlas-host). Desktop uses prompt_argv() directly.
+    /// Used by the crew runner (atlas-host). Desktop uses prompt_argv() directly.
     pub fn argv(&self, yolo: bool, prompt: Option<&str>) -> Vec<String> {
         let mut v = vec![self.bin.to_string()];
         if yolo {

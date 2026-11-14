@@ -17,9 +17,9 @@ import { projectCommands } from "#lib/shell/projectCommands.svelte.ts";
 import { shell } from "#lib/shell/shell.svelte.ts";
 import { switchTab } from "#lib/shell/switcher.svelte.ts";
 import { agents } from "#lib/stores/agents.svelte.ts";
-import { bots } from "#lib/stores/bots.svelte.ts";
-import { replayCrewOnboarding } from "#lib/bots/crewOnboarding.svelte.ts";
-import { crewView } from "#lib/bots/crewView.svelte.ts";
+import { crew } from "#lib/stores/crew.svelte.ts";
+import { replayCrewOnboarding } from "#lib/crew/crewOnboarding.svelte.ts";
+import { crewView } from "#lib/crew/crewView.svelte.ts";
 import {
 	docks,
 	toggleAllDocks,
@@ -120,7 +120,7 @@ function paletteCommands(): Command[] {
 			id: "atlas::Jump",
 			label: "Jump to worktree or terminal",
 			// One ⌘K: in the Crew workspace it jumps between crewmates, elsewhere between worktrees and terminals.
-			run: () => (ws.appMode === "bots" ? (palettes.crew = true) : (palettes.jump = true)),
+			run: () => (ws.appMode === "crew" ? (palettes.crew = true) : (palettes.jump = true)),
 		},
 		{ id: "file_finder::Toggle", label: "Go to file…", run: () => void openQuick(), when: hasWt },
 		{
@@ -221,9 +221,9 @@ function tabCommands(): Command[] {
 		{
 			id: "pane::ActivateLastItem",
 			label: "Go to last tab",
-			// In the Bots workspace the same chord picks the last bot of the sidebar.
-			run: () => (ws.appMode === "bots" ? bots.selectAt("last") : ws.activateNth(ws.selected!.id, 9)),
-			when: () => (ws.appMode === "bots" ? bots.sidebarOrder.length > 0 : hasWt()),
+			// In the Crew workspace the same chord picks the last crewmate of the sidebar.
+			run: () => (ws.appMode === "crew" ? crew.selectAt("last") : ws.activateNth(ws.selected!.id, 9)),
+			when: () => (ws.appMode === "crew" ? crew.sidebarOrder.length > 0 : hasWt()),
 		},
 		{
 			id: "atlas::CloseEditors",
@@ -269,9 +269,9 @@ function numberedCommands(): Command[] {
 		list.push({
 			id: `pane::ActivateItem${n}`,
 			label: `Go to tab ${n}`,
-			// ⌘n: the n-th tab in the IDE, the n-th bot of the sidebar in the Bots workspace (where there are no tabs).
-			run: () => (ws.appMode === "bots" ? bots.selectAt(n) : ws.activateNth(ws.selected!.id, n)),
-			when: () => (ws.appMode === "bots" ? !!bots.sidebarOrder[n - 1] : hasWt()),
+			// ⌘n: the n-th tab in the IDE, the n-th crewmate of the sidebar in the Crew workspace (where there are no tabs).
+			run: () => (ws.appMode === "crew" ? crew.selectAt(n) : ws.activateNth(ws.selected!.id, n)),
+			when: () => (ws.appMode === "crew" ? !!crew.sidebarOrder[n - 1] : hasWt()),
 		});
 	for (let n = 1; n <= 6; n++)
 		list.push({
@@ -336,9 +336,9 @@ export function shellCommands(): Command[] {
 		},
 		{ id: "atlas::Dashboard", label: "Dashboard", run: () => (ws.view = "dashboard") },
 		{
-			id: "atlas::ToggleBotsWorkspace",
+			id: "atlas::ToggleCrewWorkspace",
 			label: "Atlas Crew",
-			run: () => (ws.appMode = ws.appMode === "bots" ? "ide" : "bots"),
+			run: () => (ws.appMode = ws.appMode === "crew" ? "ide" : "crew"),
 		},
 		{ id: "atlas::ReplayCrewOnboarding", label: "Atlas Crew: replay onboarding", run: replayCrewOnboarding },
 		{
@@ -347,7 +347,7 @@ export function shellCommands(): Command[] {
 			run: () => {
 				crewView.value = crewView.value === "chat" ? "board" : "chat";
 			},
-			when: () => ws.appMode === "bots",
+			when: () => ws.appMode === "crew",
 		},
 		{
 			id: "atlas::NewWorktree",

@@ -84,7 +84,7 @@ class ConnectionNotifier extends AsyncNotifier<Multiplexer?> {
   }
 
   Future<Multiplexer?> _connect() async {
-    // A bot computer rides its Mac's connection: rebuilt whenever that one is.
+    // A crew server rides its Mac's connection: rebuilt whenever that one is.
     final via = _device.via;
     final parent = via == null
         ? null

@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/features/bots/chat_motion.dart';
+import 'package:atlas_mobile/features/crew/chat_motion.dart';
 
 Widget _host(Widget child) => MaterialApp(
   home: Scaffold(

@@ -2,8 +2,8 @@
 // No Flutter widgets; just the Dart port of the TS logic.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:atlas_mobile/features/bots/automations.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/features/crew/automations.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
 
 void main() {
   // ─── scheduleFromCron ──────────────────────────────────────────────────────
@@ -235,16 +235,20 @@ void main() {
       );
     });
 
-    test('bot done', () {
+    test('crewmate done', () {
       expect(
-        describeTrigger(const BotTrigger(fromBot: 'Reviewer', on: 'done')),
+        describeTrigger(
+          const CrewmateTrigger(fromCrewmate: 'Reviewer', on: 'done'),
+        ),
         'When Reviewer finishes',
       );
     });
 
-    test('bot failed', () {
+    test('crewmate failed', () {
       expect(
-        describeTrigger(const BotTrigger(fromBot: 'Reviewer', on: 'failed')),
+        describeTrigger(
+          const CrewmateTrigger(fromCrewmate: 'Reviewer', on: 'failed'),
+        ),
         'When Reviewer fails',
       );
     });

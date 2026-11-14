@@ -35,9 +35,9 @@ describe("listen → drain → deliver", () => {
 			invoke: async (cmd, a) => (expect(cmd).toBe("plugin:event|listen"), expect(a.handler).toBe(99), 7),
 		};
 		const exec = (b) => new Function("window", `return (async () => { ${b} })();`)(win);
-		expect(await exec(listenBody("A", 5, { event: "bots://changed", target: { kind: "Any" } }))).toBe(7);
-		fire({ event: "bots://changed", payload: 1 });
-		fire({ event: "bots://changed", payload: 2 });
+		expect(await exec(listenBody("A", 5, { event: "crew://changed", target: { kind: "Any" } }))).toBe(7);
+		fire({ event: "crew://changed", payload: 1 });
+		fire({ event: "crew://changed", payload: 2 });
 		expect(await exec(drainBody("B", 0))).toEqual([]); // another tab does not steal A's events
 		const events = await exec(drainBody("A", 0));
 		expect(await exec(drainBody("A", 0))).toEqual([]); // drained once

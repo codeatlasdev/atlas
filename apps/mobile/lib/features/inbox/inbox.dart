@@ -4,15 +4,17 @@ import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
-import 'package:atlas_mobile/features/bots/bots_provider.dart';
-import 'package:atlas_mobile/features/bots/crew_text.dart';
-import 'package:atlas_mobile/features/bots/crewmate.dart';
+import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/crew_text.dart';
+import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
+import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/projects/projects_provider.dart';
 
 /// One thing on a paired computer that needs the user.
@@ -35,18 +37,18 @@ class ServiceAttention extends Attention {
 }
 
 /// A crewmate waiting on the captain: it asked for approval, or says it needs you.
-class BotAttention extends Attention {
-  const BotAttention(super.device, this.bot);
-  final BotListEntry bot;
+class CrewmateAttention extends Attention {
+  const CrewmateAttention(super.device, this.crewmate);
+  final CrewmateEntry crewmate;
 }
 
 /// Whether a project agent is waiting on the user.
 bool agentNeedsYou(AgentStatus s) =>
     s.state == 'blocked' || s.state == 'waiting';
 
-/// Whether a crewmate is waiting on the user. Either signal counts: a bot can say
+/// Whether a crewmate is waiting on the user. Either signal counts: a crewmate can say
 /// `needs_you` without a pending approval, and the reverse.
-bool botNeedsYou(BotListEntry b) =>
+bool crewmateNeedsYou(CrewmateEntry b) =>
     b.state == 'needs_you' || b.pendingApproval != null;
 
 /// What needs the user on one computer, most urgent first: someone waiting on an
@@ -55,7 +57,7 @@ List<Attention> attentionFor(
   MacDevice device, {
   required List<ProjectInfo> projects,
   required Map<String, AgentStatus> live,
-  required List<BotListEntry> bots,
+  required List<CrewmateEntry> crewmates,
 }) {
   final agents = <Attention>[];
   final failed = <Attention>[];
@@ -72,14 +74,14 @@ List<Attention> attentionFor(
   }
   return [
     ...agents,
-    for (final b in bots)
-      if (botNeedsYou(b)) BotAttention(device, b),
+    for (final b in crewmates)
+      if (crewmateNeedsYou(b)) CrewmateAttention(device, b),
     ...failed,
   ];
 }
 
-/// Everything that needs the user across every paired computer and the bot computers
-/// behind them (crewmates only: a bot computer's projects are not the user's).
+/// Everything that needs the user across every paired computer and the crew servers
+/// behind them (crewmates only: a crew server's projects are not the user's).
 final inboxProvider = Provider.autoDispose<List<Attention>>((ref) {
   final devices = ref.watch(crewDevicesProvider).value ?? const [];
   return [
@@ -93,7 +95,7 @@ final inboxProvider = Provider.autoDispose<List<Attention>>((ref) {
             ? const {}
             : ref.watch(agentStatusMapNotifierProvider(device)).value ??
                   const {},
-        bots: ref.watch(botsProvider(device)).value?.bots ?? const [],
+        crewmates: ref.watch(crewProvider(device)).value?.crewmates ?? const [],
       ),
   ];
 });
@@ -109,12 +111,17 @@ sealed class Activity {
   final DateTime at;
 }
 
-/// A crewmate's last task ended (`bot_list`'s `last`: state done|failed, `ts` in seconds).
+/// A crewmate's last task ended (`crewmate_list`'s `last`: state done|failed, `ts` in seconds).
 class CrewActivity extends Activity {
-  const CrewActivity(super.device, super.at, this.bot, {required this.failed});
-  final BotListEntry bot;
+  const CrewActivity(
+    super.device,
+    super.at,
+    this.crewmate, {
+    required this.failed,
+  });
+  final CrewmateEntry crewmate;
   final bool failed;
-  String get text => bot.last?.text ?? '';
+  String get text => crewmate.last?.text ?? '';
 }
 
 /// A project agent finished its turn (`state_started_at` is milliseconds).
@@ -139,13 +146,13 @@ List<Activity> activityFor(
   MacDevice device, {
   required List<ProjectInfo> projects,
   required Map<String, AgentStatus> live,
-  required List<BotListEntry> bots,
+  required List<CrewmateEntry> crewmates,
   required DateTime now,
 }) {
   final out = <Activity>[];
-  for (final b in bots) {
+  for (final b in crewmates) {
     final last = b.last;
-    if (last == null || botNeedsYou(b) || b.state == 'working') continue;
+    if (last == null || crewmateNeedsYou(b) || b.state == 'working') continue;
     if (last.state != 'done' && last.state != 'failed') continue;
     out.add(
       CrewActivity(
@@ -192,7 +199,7 @@ final recentActivityProvider = Provider.autoDispose<List<Activity>>((ref) {
             ? const {}
             : ref.watch(agentStatusMapNotifierProvider(device)).value ??
                   const {},
-        bots: ref.watch(botsProvider(device)).value?.bots ?? const [],
+        crewmates: ref.watch(crewProvider(device)).value?.crewmates ?? const [],
         now: now,
       ),
   ]..sort((a, b) => b.at.compareTo(a.at));
@@ -239,8 +246,8 @@ void openAttention(BuildContext context, Attention item) => switch (item) {
     '/project',
     extra: {'device': device, 'project': project},
   ),
-  BotAttention(:final device, :final bot) => context.push(
-    '/bots/${device.nodeId}/${bot.id}',
+  CrewmateAttention(:final device, :final crewmate) => context.push(
+    '/crew/${device.nodeId}/${crewmate.id}',
     extra: {'device': device},
   ),
 };
@@ -273,13 +280,15 @@ class AttentionHero extends StatelessWidget {
         'Open the project to see its logs and restart it.',
         'View',
       ),
-      BotAttention(:final bot) => (
+      CrewmateAttention(:final crewmate) => (
         c.warning,
         Icons.front_hand_rounded,
-        'Crew · ${bot.name}',
-        bot.pendingApproval != null ? 'Waiting for your approval' : 'Needs you',
-        bot.last?.text,
-        bot.pendingApproval != null ? 'Review' : 'Open',
+        'Crew · ${crewmate.name}',
+        crewmate.pendingApproval != null
+            ? 'Waiting for your approval'
+            : 'Needs you',
+        crewmate.last?.text,
+        crewmate.pendingApproval != null ? 'Review' : 'Open',
       ),
     };
     return Semantics(
@@ -368,7 +377,10 @@ class AttentionMore extends StatelessWidget {
         c.warning,
         '${status.agent} needs you · ${project.name}',
       ),
-      BotAttention(:final bot) => (c.warning, '${bot.name} needs you · Crew'),
+      CrewmateAttention(:final crewmate) => (
+        c.warning,
+        '${crewmate.name} needs you · Crew',
+      ),
       ServiceAttention(:final project, :final service) => (
         c.error,
         '${service.name} failed · ${project.name}',
@@ -517,8 +529,8 @@ class _ActivityRow extends StatelessWidget {
   final bool last;
 
   void _open(BuildContext context) => switch (item) {
-    CrewActivity(:final device, :final bot) => context.push(
-      '/bots/${device.nodeId}/${bot.id}',
+    CrewActivity(:final device, :final crewmate) => context.push(
+      '/crew/${device.nodeId}/${crewmate.id}',
       extra: {'device': device},
     ),
     AgentActivity(:final device, :final project, :final pane, :final status) =>
@@ -529,15 +541,15 @@ class _ActivityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final (avatar, title, line, color) = switch (item) {
-      CrewActivity(:final bot, :final failed, :final text) => (
+      CrewActivity(:final crewmate, :final failed, :final text) => (
         Crewmate(
-          seed: bot.id,
-          look: bot.look,
+          seed: crewmate.id,
+          look: crewmate.look,
           state: CrewState.idle,
           size: 46,
           animate: false,
         ),
-        failed ? '${bot.name} failed' : '${bot.name} finished',
+        failed ? '${crewmate.name} failed' : '${crewmate.name} finished',
         crewPreview(text),
         failed ? c.error : c.success,
       ),

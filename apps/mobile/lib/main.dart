@@ -9,8 +9,8 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
-import 'package:atlas_mobile/features/bots/bots_screen.dart';
-import 'package:atlas_mobile/features/bots/bot_screen.dart';
+import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
+import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 import 'package:atlas_mobile/features/pair/pair_screen.dart';
@@ -36,7 +36,7 @@ final _router = GoRouter(
         // Branch 1 – Atlas Crew
         StatefulShellBranch(
           routes: [
-            GoRoute(path: '/crew', builder: (_, _) => const BotsScreen()),
+            GoRoute(path: '/crew', builder: (_, _) => const CrewScreen()),
           ],
         ),
         // Branch 2 – Inbox
@@ -89,12 +89,12 @@ final _router = GoRouter(
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
-      path: '/bots/:nodeId/:botId',
+      path: '/crew/:nodeId/:crewmateId',
       builder: (_, state) {
         final args = (state.extra ?? {}) as Map<String, dynamic>;
-        return BotScreen(
+        return CrewmateChatScreen(
           device: args['device'] as MacDevice,
-          botId: state.pathParameters['botId']!,
+          crewmateId: state.pathParameters['crewmateId']!,
           scrollToTaskId: args['scrollToTaskId'] as String?,
         );
       },

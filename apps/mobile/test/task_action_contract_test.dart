@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
 
 void main() {
   group('TaskAction contract', () {
@@ -62,7 +62,7 @@ void main() {
       expect(a.engine, 'omp');
     });
 
-    test('BotTask with waiting_action state parses action', () {
+    test('CrewmateTask with waiting_action state parses action', () {
       final j = <String, dynamic>{
         'id': 'task-1',
         'ts': 1700000000000,
@@ -71,7 +71,7 @@ void main() {
         'state': 'waiting_action',
         'action': {'kind': 'connect_github', 'reason': 'to clone x/y'},
       };
-      final t = BotTask.fromJson(j);
+      final t = CrewmateTask.fromJson(j);
       expect(t.state, 'waiting_action');
       expect(t.action?.kind, 'connect_github');
       expect(t.action?.reason, 'to clone x/y');

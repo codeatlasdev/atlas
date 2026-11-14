@@ -1,0 +1,94 @@
+/*
+ * Atlas Crew shared styles: the few rules several components repeated.
+ * Global, imported once by CrewWorkspace.svelte and WorkspaceRail.svelte.
+ * Every class is prefixed `crew-` so it cannot collide with a scoped one.
+ */
+
+/* ── text shimmer ("working…", "Thinking") ───────────────────────
+   Set --crew-shimmer-duration / --crew-shimmer-timing on the element to retune. */
+.crew-shimmer {
+	background: linear-gradient(
+		90deg,
+		var(--ca-text-secondary) 0%,
+		var(--ca-text-primary) 40%,
+		var(--ca-text-primary) 60%,
+		var(--ca-text-secondary) 100%
+	);
+	background-size: 200% 100%;
+	background-clip: text;
+	-webkit-background-clip: text;
+	color: transparent;
+	animation: crew-shimmer var(--crew-shimmer-duration, 2s) var(--crew-shimmer-timing, ease-in-out) infinite;
+}
+@keyframes crew-shimmer {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.crew-shimmer {
+		animation: none;
+		color: var(--ca-text-secondary);
+		background: none;
+		-webkit-background-clip: initial;
+		background-clip: initial;
+	}
+}
+
+/* ── edge handle + first-run hint ────────────────────────────────
+   Base look only. Each owner sets position (left/top/translate), size, z-index,
+   and --crew-hint-from (the hint-in start transform) in its own scoped css. */
+.crew-edge-handle {
+	position: fixed;
+	border-radius: 2px;
+	background: var(--ca-text-secondary);
+	pointer-events: none;
+}
+.crew-edge-hint {
+	position: fixed;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	border: 0.5px solid var(--ca-outline-subtle);
+	border-radius: 999px;
+	background: var(--ca-surface-base);
+	color: var(--ca-text-secondary);
+	font-size: 11.5px;
+	box-shadow: var(--ca-shadow-sm);
+	cursor: default;
+	animation: crew-hint-in 400ms ease-out 800ms both;
+}
+.crew-edge-hint .kbd {
+	opacity: var(--crew-kbd-opacity, 0.7);
+	font-size: 10.5px;
+}
+@keyframes crew-hint-in {
+	from {
+		opacity: 0;
+		transform: var(--crew-hint-from);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.crew-edge-hint {
+		animation: none;
+	}
+}
+
+/* ── needs-you count badge (red pill) ────────────────────────────
+   Position/ring is the owner's; this is the pill itself. */
+.crew-badge {
+	min-width: 16px;
+	height: 16px;
+	border-radius: 8px;
+	background: var(--ca-semantic-error, #e03131);
+	color: var(--ca-surface-base);
+	font-size: 9px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 3px;
+}

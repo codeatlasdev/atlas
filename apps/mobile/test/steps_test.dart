@@ -1,8 +1,8 @@
-/// Tests for steps.dart — mirrors apps/desktop/src/lib/bots/stepPhrase.test.ts cases.
+/// Tests for steps.dart — mirrors apps/desktop/src/lib/crew/stepPhrase.test.ts cases.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:atlas_mobile/features/bots/steps.dart';
+import 'package:atlas_mobile/features/crew/steps.dart';
 
 // ── test step type ────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ void main() {
     test('reading a file names the file, not its full path', () {
       expect(
         stepPhrase(
-          'Read /var/lib/atlas-bot/.atlas/bots/x/work/src/routes/login.svelte',
+          'Read /var/lib/atlas-crew/.atlas/crew/x/work/src/routes/login.svelte',
         ),
         'Reading login.svelte',
       );

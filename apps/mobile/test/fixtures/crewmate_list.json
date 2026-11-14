@@ -1,0 +1,74 @@
+{
+  "crewmates": [
+    {
+      "agent": "claude",
+      "approval": "ask",
+      "id": "crewmate-working",
+      "last": {
+        "state": "running",
+        "text": "review PR",
+        "ts": 1700000001
+      },
+      "name": "Reviewer",
+      "queued": 0,
+      "role": "Reviews PRs",
+      "running_task": {
+        "id": "task-working",
+        "pane": "crew:crewmate-working:task-working"
+      },
+      "state": "working",
+      "triggers": []
+    },
+    {
+      "agent": "claude",
+      "approval": "auto",
+      "id": "crewmate-done",
+      "last": {
+        "state": "done",
+        "text": "nightly done",
+        "ts": 1700000000
+      },
+      "name": "Nightly",
+      "queued": 0,
+      "role": "Nightly checks",
+      "state": "idle",
+      "triggers": [
+        {
+          "enabled": true,
+          "id": "t-sched",
+          "kind": {
+            "cron": "0 9 * * 1-5",
+            "type": "schedule"
+          },
+          "next_fire": 1700100000,
+          "prompt": "Review open PRs",
+          "tz": "America/Sao_Paulo"
+        },
+        {
+          "enabled": false,
+          "id": "t-interval",
+          "kind": {
+            "every_secs": 3600,
+            "type": "interval"
+          },
+          "next_fire": 1700103600,
+          "prompt": "Check deployments"
+        }
+      ]
+    },
+    {
+      "agent": "opencode",
+      "approval": "auto",
+      "approval_supported": false,
+      "engine": {
+        "kind": "opencode"
+      },
+      "id": "crewmate-opencode",
+      "name": "Deployer",
+      "queued": 0,
+      "role": "Deploys releases",
+      "state": "idle",
+      "triggers": []
+    }
+  ]
+}

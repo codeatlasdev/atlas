@@ -1,9 +1,9 @@
-/// Tests for board.dart — mirrors apps/desktop/src/lib/bots/board.test.ts cases.
+/// Tests for board.dart — mirrors apps/desktop/src/lib/crew/board.test.ts cases.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:atlas_mobile/core/protocol/models.dart';
-import 'package:atlas_mobile/features/bots/board.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/features/crew/board.dart';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -19,12 +19,12 @@ int _localMidnight(int ts) {
 final _kTodayStart = _localMidnight(_kNow);
 final _kYesterday = _kTodayStart - 1; // 1 ms before today
 
-BotListEntry _makeBot({
-  String id = 'bot1',
-  String name = 'TestBot',
+CrewmateEntry _makeCrewmate({
+  String id = 'crewmate1',
+  String name = 'TestCrewmate',
   String state = 'idle',
-  BotPendingApproval? pendingApproval,
-}) => BotListEntry(
+  CrewmatePendingApproval? pendingApproval,
+}) => CrewmateEntry(
   id: id,
   name: name,
   role: '',
@@ -34,7 +34,7 @@ BotListEntry _makeBot({
   pendingApproval: pendingApproval,
 );
 
-BotTask _makeTask({
+CrewmateTask _makeTask({
   String id = 'task1',
   int? ts,
   String source = 'trigger',
@@ -43,7 +43,7 @@ BotTask _makeTask({
   String? title,
   int? startedAt,
   int? finishedAt,
-}) => BotTask(
+}) => CrewmateTask(
   id: id,
   ts: ts ?? _kNow - 10000,
   source: source,
@@ -54,8 +54,8 @@ BotTask _makeTask({
   finishedAt: finishedAt,
 );
 
-BoardEntry _entry(BotTask task, {BotListEntry? bot}) =>
-    BoardEntry(hostKey: '', bot: bot ?? _makeBot(), task: task);
+BoardEntry _entry(CrewmateTask task, {CrewmateEntry? crewmate}) =>
+    BoardEntry(hostKey: '', crewmate: crewmate ?? _makeCrewmate(), task: task);
 
 // ── column assignment ─────────────────────────────────────────────────────────
 
@@ -76,22 +76,25 @@ void main() {
       expect(cols[1].cards, hasLength(1));
     });
 
-    test('running task whose bot has pending_approval goes to Needs you', () {
-      final bot = _makeBot(
-        pendingApproval: const BotPendingApproval(
-          req: 'r',
-          toolName: 'bash',
-          toolInput: {},
-          paneKey: 'p',
-        ),
-      );
-      final cols = boardColumns([
-        _entry(_makeTask(state: 'running'), bot: bot),
-      ], _kNow);
-      expect(cols[2].id, ColumnId.needsYou);
-      expect(cols[2].cards, hasLength(1));
-      expect(cols[1].cards, isEmpty);
-    });
+    test(
+      'running task whose crewmate has pending_approval goes to Needs you',
+      () {
+        final crewmate = _makeCrewmate(
+          pendingApproval: const CrewmatePendingApproval(
+            req: 'r',
+            toolName: 'bash',
+            toolInput: {},
+            paneKey: 'p',
+          ),
+        );
+        final cols = boardColumns([
+          _entry(_makeTask(state: 'running'), crewmate: crewmate),
+        ], _kNow);
+        expect(cols[2].id, ColumnId.needsYou);
+        expect(cols[2].cards, hasLength(1));
+        expect(cols[1].cards, isEmpty);
+      },
+    );
 
     test('waiting_action task goes to Needs you', () {
       final cols = boardColumns([
@@ -249,16 +252,16 @@ void main() {
       ]);
     });
 
-    test('cards carry hostKey and bot reference', () {
+    test('cards carry hostKey and crewmate reference', () {
       final cols = boardColumns([
         BoardEntry(
-          hostKey: 'ssh:atlas-bot@server',
-          bot: _makeBot(id: 'b1'),
+          hostKey: 'ssh:atlas-crew@server',
+          crewmate: _makeCrewmate(id: 'b1'),
           task: _makeTask(),
         ),
       ], _kNow);
-      expect(cols[0].cards[0].hostKey, 'ssh:atlas-bot@server');
-      expect(cols[0].cards[0].bot.id, 'b1');
+      expect(cols[0].cards[0].hostKey, 'ssh:atlas-crew@server');
+      expect(cols[0].cards[0].crewmate.id, 'b1');
     });
 
     test(
@@ -280,20 +283,20 @@ void main() {
   });
 
   // Incident: the board listed every chat message ("oi", "e agora?", "opaa") as a task.
-  // Steps don't tell them apart (a bot reads its memory and checks git before any reply),
-  // so on the real ship "oi" had 2 steps. A task is the work the agent names itself
+  // Steps don't tell them apart (a crewmate reads its memory and checks git before any reply),
+  // so on a real crew server "oi" had 2 steps. A task is the work the agent names itself
   // ("STORE: Explicar scripts e api.ts da store"); one card per task, however many
   // messages it took.
   group('what is a task', () {
     final stepTs = _kNow ~/ 1000;
-    final step = BotStep(ts: stepTs, text: 'read memory.md');
+    final step = CrewmateStep(ts: stepTs, text: 'read memory.md');
 
     List<BoardCard> where(List<BoardColumn> cols) =>
         cols.expand((c) => c.cards).toList();
     String label(BoardCard c) => c.title ?? c.task.prompt;
 
     test('a message the agent never named as work is not a card, even if it ran steps', () {
-      final task = BotTask(
+      final task = CrewmateTask(
         id: 't0',
         ts: _kNow - 60000,
         source: 'desktop',
@@ -311,7 +314,7 @@ void main() {
     test(
       'a finished task shows the agent\'s name for the work, not the message',
       () {
-        final task = BotTask(
+        final task = CrewmateTask(
           id: 't0',
           ts: _kNow - 60000,
           source: 'desktop',
@@ -329,7 +332,7 @@ void main() {
     test(
       'messages about the same work are one card, in the state of the latest',
       () {
-        final t1 = BotTask(
+        final t1 = CrewmateTask(
           id: 't1',
           ts: _kNow - 65000,
           source: 'desktop',
@@ -338,7 +341,7 @@ void main() {
           title: 'BILL: Wait on billing fix',
           finishedAt: _kNow - 5000,
         );
-        final t2 = BotTask(
+        final t2 = CrewmateTask(
           id: 't2',
           ts: _kNow - 60000,
           source: 'desktop',
@@ -353,15 +356,15 @@ void main() {
       },
     );
 
-    test('the same title on two bots is two tasks', () {
+    test('the same title on two crewmates is two tasks', () {
       final a = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(id: 'a', title: 'PR: Review', state: 'running'),
       );
       final b = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 'b', title: 'PR: Review', state: 'running'),
       );
       expect(boardColumns([a, b], _kNow)[1].cards, hasLength(2));
@@ -425,77 +428,77 @@ void main() {
   // ── filters ────────────────────────────────────────────────────────────────
 
   group('boardColumns: filters', () {
-    // bot filter
-    test('bot filter: only cards from selected bot are shown', () {
+    // crewmate filter
+    test('crewmate filter: only cards from selected crewmate are shown', () {
       final a = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(id: 't1', state: 'queued'),
       );
       final b = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 't2', state: 'queued'),
       );
       final cols = boardColumns(
         [a, b],
         _kNow,
-        opts: BoardFilterOptions(bots: {'h1\x00b1'}),
+        opts: BoardFilterOptions(crewmates: {'h1\x00b1'}),
       );
       expect(cols.expand((c) => c.cards).toList(), hasLength(1));
-      expect(cols.expand((c) => c.cards).first.bot.id, 'b1');
+      expect(cols.expand((c) => c.cards).first.crewmate.id, 'b1');
     });
 
-    test('bot filter: empty Set shows all', () {
+    test('crewmate filter: empty Set shows all', () {
       final a = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(id: 't1', state: 'queued'),
       );
       final b = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 't2', state: 'queued'),
       );
       final cols = boardColumns(
         [a, b],
         _kNow,
-        opts: const BoardFilterOptions(bots: {}),
+        opts: const BoardFilterOptions(crewmates: {}),
       );
       expect(cols.expand((c) => c.cards).toList(), hasLength(2));
     });
 
-    test('bot filter: multiple bots selected', () {
+    test('crewmate filter: multiple crewmates selected', () {
       final a = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(id: 't1', state: 'queued'),
       );
       final b = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 't2', state: 'queued'),
       );
       final c = BoardEntry(
         hostKey: 'h1',
-        bot: _makeBot(id: 'b3'),
+        crewmate: _makeCrewmate(id: 'b3'),
         task: _makeTask(id: 't3', state: 'queued'),
       );
       final cols = boardColumns(
         [a, b, c],
         _kNow,
-        opts: BoardFilterOptions(bots: {'h1\x00b1', 'h1\x00b3'}),
+        opts: BoardFilterOptions(crewmates: {'h1\x00b1', 'h1\x00b3'}),
       );
       final cards = cols.expand((c) => c.cards).toList();
       expect(cards, hasLength(2));
-      expect(cards.map((c) => c.bot.id).toList()..sort(), ['b1', 'b3']);
+      expect(cards.map((c) => c.crewmate.id).toList()..sort(), ['b1', 'b3']);
     });
 
     // source filter
     test("source 'chat': only desktop/mobile tasks", () {
       final chat = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(
           id: 't1',
           source: 'desktop',
@@ -505,7 +508,7 @@ void main() {
       );
       final auto = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 't2', source: 'trigger', state: 'running'),
       );
       final cols = boardColumns(
@@ -521,7 +524,7 @@ void main() {
     test("source 'auto': only non-chat tasks", () {
       final chat = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(
           id: 't1',
           source: 'desktop',
@@ -531,12 +534,12 @@ void main() {
       );
       final auto1 = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 't2', source: 'trigger', state: 'running'),
       );
       final auto2 = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b3'),
+        crewmate: _makeCrewmate(id: 'b3'),
         task: _makeTask(id: 't3', source: 'routine', state: 'running'),
       );
       final cols = boardColumns(
@@ -557,7 +560,7 @@ void main() {
     test("source 'all': no filtering applied", () {
       final a = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(
           id: 't1',
           source: 'desktop',
@@ -567,7 +570,7 @@ void main() {
       );
       final b = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(id: 't2', source: 'trigger', state: 'running'),
       );
       final cols = boardColumns(
@@ -582,7 +585,7 @@ void main() {
     test('query: matches title case-insensitively', () {
       final a = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(
           id: 't1',
           state: 'queued',
@@ -592,7 +595,7 @@ void main() {
       );
       final b = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(
           id: 't2',
           state: 'queued',
@@ -613,7 +616,7 @@ void main() {
     test('query: matches prompt when no title', () {
       final a = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(
           id: 't1',
           source: 'trigger',
@@ -623,7 +626,7 @@ void main() {
       );
       final b = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(
           id: 't2',
           source: 'trigger',
@@ -644,7 +647,7 @@ void main() {
     test('query: no match returns empty columns', () {
       final a = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(id: 't1', state: 'queued', title: 'STORE: Deploy'),
       );
       final cols = boardColumns(
@@ -695,10 +698,10 @@ void main() {
     });
 
     // combined
-    test('combined bot + source: intersection', () {
+    test('combined crewmate + source: intersection', () {
       final b1chat = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(
           id: 't1',
           source: 'desktop',
@@ -708,12 +711,12 @@ void main() {
       );
       final b1auto = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b1'),
+        crewmate: _makeCrewmate(id: 'b1'),
         task: _makeTask(id: 't2', source: 'trigger', state: 'running'),
       );
       final b2chat = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(
           id: 't3',
           source: 'desktop',
@@ -724,11 +727,11 @@ void main() {
       final cols = boardColumns(
         [b1chat, b1auto, b2chat],
         _kNow,
-        opts: BoardFilterOptions(bots: {'\x00b1'}, source: 'chat'),
+        opts: BoardFilterOptions(crewmates: {'\x00b1'}, source: 'chat'),
       );
       final cards = cols.expand((c) => c.cards).toList();
       expect(cards, hasLength(1));
-      expect(cards[0].bot.id, 'b1');
+      expect(cards[0].crewmate.id, 'b1');
       expect(cards[0].task.source, 'desktop');
     });
 
@@ -743,7 +746,7 @@ void main() {
       );
       final recent = BoardEntry(
         hostKey: '',
-        bot: _makeBot(id: 'b2'),
+        crewmate: _makeCrewmate(id: 'b2'),
         task: _makeTask(
           id: 't2',
           state: 'done',

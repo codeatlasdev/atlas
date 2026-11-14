@@ -1,4 +1,4 @@
-// Guards 2026-11-12: the Inbox said "All clear" while carlos, on a bot computer behind
+// Guards 2026-11-12: the Inbox said "All clear" while carlos, on a crew server behind
 // the paired Mac, had finished a task minutes before.
 import 'dart:async';
 import 'dart:convert';
@@ -14,7 +14,7 @@ import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 
-/// A paired Mac that is no bot computer itself and relays one, like hostd does.
+/// A paired Mac that is no crew server itself and relays one, like hostd does.
 class _Mac implements Transport {
   _Mac(this.finishedAt);
   final DateTime finishedAt;
@@ -26,11 +26,11 @@ class _Mac implements Transport {
   Object? _answer(String cmd, Map<String, dynamic> args) => switch (cmd) {
     'crew_servers' => {
       'servers': [
-        {'id': 'atlas-bot@ship', 'name': 'ship', 'state': 'connected'},
+        {'id': 'atlas-crew@server', 'name': 'server', 'state': 'connected'},
       ],
     },
-    'crew_call' when args['cmd'] == 'bot_list' => {
-      'bots': [
+    'crew_call' when args['cmd'] == 'crewmate_list' => {
+      'crewmates': [
         {
           'id': 'b1',
           'name': 'carlos',
@@ -59,7 +59,7 @@ class _Mac implements Transport {
       _lines.add(
         jsonEncode(
           data == null
-              ? {'id': req['id'], 'ok': false, 'error': 'not a bot server'}
+              ? {'id': req['id'], 'ok': false, 'error': 'not a crew server'}
               : {'id': req['id'], 'ok': true, 'data': data},
         ),
       );
@@ -85,7 +85,7 @@ class _Storage extends MacStorage {
 }
 
 void main() {
-  test('a crewmate on a bot computer that just finished is recent', () async {
+  test('a crewmate on a crew server that just finished is recent', () async {
     final c = ProviderContainer(
       overrides: [
         macStorageProvider.overrideWithValue(_Storage()),
@@ -104,7 +104,7 @@ void main() {
     }
     sub.close();
     expect(recent, hasLength(1));
-    expect((recent.single as CrewActivity).bot.name, 'carlos');
+    expect((recent.single as CrewActivity).crewmate.name, 'carlos');
   });
 
   testWidgets('the Inbox screen lists it under Recent', (t) async {

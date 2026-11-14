@@ -155,7 +155,7 @@ impl Agent {
             Agent::OpenCode => &[
                 "Restart opencode so it picks up the plugin from `~/.config/opencode/plugins/`",
                 "Verify: Atlas Desktop shows agent state changes when opencode runs in its terminal",
-                "For bot computers: the plugin proxies remote permission approvals via Atlas",
+                "For crew servers: the plugin proxies remote permission approvals via Atlas",
             ],
         }
     }

@@ -67,12 +67,12 @@ fn apply_keeps_session_fields_across_events() {
 }
 
 // Incident: an omp crewmate showed only "Working" / "Planning", never "Reading app.ts": omp's extension reports a tool
-// as `tool_call`, and hostd only turned Claude's `pre_tool_use`/`post_tool_use` into steps, so no bot task ever had one.
+// as `tool_call`, and hostd only turned Claude's `pre_tool_use`/`post_tool_use` into steps, so no crewmate task ever had one.
 #[test]
 fn an_omp_tool_call_becomes_a_step_once() {
     let hub = AgentHub::default();
     let mut rx = hub.subscribe();
-    let body = |p: Value| json!({"pane_key": "bot:b:t", "payload": p});
+    let body = |p: Value| json!({"pane_key": "crew:b:t", "payload": p});
     hub.apply(
         "omp",
         &body(json!({"event":"tool_call","tool_name":"read","tool_input":{"path":"src/app.ts"}})),

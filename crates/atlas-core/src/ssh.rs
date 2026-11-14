@@ -1,4 +1,4 @@
-//! ssh targets handed to `ssh` as an argument (Atlas Desktop's SSH hosts, the bot computers
+//! ssh targets handed to `ssh` as an argument (Atlas Desktop's SSH hosts, the crew servers
 //! hostd relays to Atlas Mobile).
 
 /// An ssh target: a `~/.ssh/config` alias or `user@host`. Only `[A-Za-z0-9._-]` on each side of
@@ -25,13 +25,13 @@ pub fn valid_target(a: &str) -> Result<(), String> {
 mod tests {
     use super::valid_target;
 
-    // Bot computers are added as `atlas-bot@host`; the old check rejected every `@`, so
-    // `bot_hosts_add` could never connect one.
+    // Crew servers are added as `atlas-crew@host`; the old check rejected every `@`, so
+    // `crew_servers_add` could never connect one.
     #[test]
     fn user_at_host_and_plain_aliases_are_accepted() {
         for a in [
-            "atlas-bot@myserver.example.com",
-            "atlas-bot@10.0.0.5",
+            "atlas-crew@myserver.example.com",
+            "atlas-crew@10.0.0.5",
             "devbox",
             "my_host-1",
         ] {

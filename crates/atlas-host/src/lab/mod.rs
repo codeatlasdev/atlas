@@ -116,39 +116,40 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::LspRestart { .. }
         | C::LspLog { .. }
         | C::LspApplyEditResult { .. }
-        // The lab reaches the bot computers itself (they are remote: nothing on this Mac to spare).
+        // The lab reaches the crew servers itself (they are remote: nothing on this Mac to spare).
         | C::CrewServers {}
         | C::CrewCall { .. } => Route::Local,
-        C::BotList {}
-        | C::BotCreate { .. }
-        | C::BotUpdate { .. }
-        | C::BotDelete { .. }
-        | C::BotTask { .. }
-        | C::BotTasks { .. }
-        | C::BotCancel { .. }
-        | C::BotMemory { .. }
-        | C::BotMemorySet { .. }
-        | C::BotRoutineSet { .. }
-        | C::BotTriggersSet { .. }
-        | C::BotSecretSet { .. }
-        | C::BotAnswer { .. }
-        | C::BotUsage { .. }
-        | C::BotTelegramSet { .. }
-        | C::BotTelegramLink {}
+        C::CrewmateList {}
+        | C::CrewmateCreate { .. }
+        | C::CrewmateUpdate { .. }
+        | C::CrewmateDelete { .. }
+        | C::CrewmateTask { .. }
+        | C::CrewmateTasks { .. }
+        | C::CrewmateCancel { .. }
+        | C::CrewmateMemory { .. }
+        | C::CrewmateMemorySet { .. }
+        | C::CrewmateRoutineSet { .. }
+        | C::CrewmateTriggersSet { .. }
+        | C::CrewmateSecretSet { .. }
+        | C::CrewmateAnswer { .. }
+        | C::CrewmateUsage { .. }
+        | C::CrewTelegramSet { .. }
+        | C::CrewTelegramLink {}
+        | C::CrewTelegramStatus {}
         | C::PushRegister { .. }
         | C::PushUnregister { .. }
         | C::MobileInvite { .. }
         | C::MobileInvites {}
         | C::MobileInviteDismiss { .. }
         | C::EngineLimits {}
-        | C::BotGithubStatus {}
-        | C::BotGithubLoginStart {}
-        | C::BotGithubLoginPoll {}
-        | C::BotGithubLogout {}
-        | C::BotActionAnswer { .. }
-        | C::BotGithubConnectResume {}
-        | C::BotCrewGet {}
-        | C::BotCrewSet { .. } => Route::Refuse("lab hostd does not run bots"),
+        | C::CrewGithubStatus {}
+        | C::CrewGithubLoginStart {}
+        | C::CrewGithubLoginPoll {}
+        | C::CrewGithubLogout {}
+        | C::CrewmateActionAnswer { .. }
+        | C::CrewGithubConnectResume {}
+        | C::CrewSettingsGet {}
+        | C::CrewSettingsSet { .. } => Route::Refuse("lab hostd does not run crewmates"),
     }
 }
 

@@ -1,57 +1,71 @@
 // The Inbox replaced the Crew tab's red dot, which fired on `state == 'needs_you'`,
-// while the Inbox counted only bots with a pending approval. These pin that a
+// while the Inbox counted only crewmates with a pending approval. These pin that a
 // crewmate shows up on either signal, so nothing the old dot showed is lost.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 
 const _mac = MacDevice(nodeId: 'n1', name: 'mac');
 
-BotListEntry _bot(String id, String state, {BotPendingApproval? pending}) =>
-    BotListEntry(
-      id: id,
-      name: id,
-      role: '',
-      agent: 'omp',
-      approval: 'ask',
-      state: state,
-      pendingApproval: pending,
-    );
+CrewmateEntry _crewmate(
+  String id,
+  String state, {
+  CrewmatePendingApproval? pending,
+}) => CrewmateEntry(
+  id: id,
+  name: id,
+  role: '',
+  agent: 'omp',
+  approval: 'ask',
+  state: state,
+  pendingApproval: pending,
+);
 
 AgentStatus _agent(String state) =>
     AgentStatus(state: state, agent: 'omp', updatedAt: 0, stateStartedAt: 0);
 
 List<Attention> _inbox({
   List<ProjectInfo> projects = const [],
-  List<BotListEntry> bots = const [],
-}) => attentionFor(_mac, projects: projects, live: const {}, bots: bots);
+  List<CrewmateEntry> crewmates = const [],
+}) => attentionFor(
+  _mac,
+  projects: projects,
+  live: const {},
+  crewmates: crewmates,
+);
 
 void main() {
   test(
     'a crewmate that says it needs you is in the inbox without an approval',
     () {
-      final items = _inbox(bots: [_bot('scout', 'needs_you')]);
-      expect(items.single, isA<BotAttention>());
-      expect((items.single as BotAttention).bot.id, 'scout');
+      final items = _inbox(crewmates: [_crewmate('scout', 'needs_you')]);
+      expect(items.single, isA<CrewmateAttention>());
+      expect((items.single as CrewmateAttention).crewmate.id, 'scout');
     },
   );
 
   test(
     'a crewmate with a pending approval is in the inbox whatever its state',
     () {
-      final pending = BotPendingApproval.fromJson({
+      final pending = CrewmatePendingApproval.fromJson({
         'pane_key': 'p',
         'req': 'r',
         'tool_name': 'bash',
       });
-      final items = _inbox(bots: [_bot('deploy', 'working', pending: pending)]);
-      expect((items.single as BotAttention).bot.id, 'deploy');
+      final items = _inbox(
+        crewmates: [_crewmate('deploy', 'working', pending: pending)],
+      );
+      expect((items.single as CrewmateAttention).crewmate.id, 'deploy');
     },
   );
 
   test('idle and working crewmates are not in the inbox', () {
-    expect(_inbox(bots: [_bot('a', 'idle'), _bot('b', 'working')]), isEmpty);
+    expect(
+      _inbox(crewmates: [_crewmate('a', 'idle'), _crewmate('b', 'working')]),
+      isEmpty,
+    );
   });
 
   test('someone waiting comes before something broken', () {
@@ -67,11 +81,11 @@ void main() {
     );
     final items = _inbox(
       projects: [project],
-      bots: [_bot('scout', 'needs_you')],
+      crewmates: [_crewmate('scout', 'needs_you')],
     );
     expect(items.map((i) => i.runtimeType), [
       AgentAttention,
-      BotAttention,
+      CrewmateAttention,
       ServiceAttention,
     ]);
   });
@@ -95,15 +109,15 @@ void main() {
   group('recent activity', () {
     final now = DateTime(2026, 11, 12, 18);
     int sec(DateTime d) => d.millisecondsSinceEpoch ~/ 1000;
-    BotListEntry ended(
+    CrewmateEntry ended(
       String id,
       String state,
       DateTime at, {
-      String bot = 'idle',
-    }) => BotListEntry.fromJson({
+      String crewmate = 'idle',
+    }) => CrewmateEntry.fromJson({
       'id': id,
       'name': id,
-      'state': bot,
+      'state': crewmate,
       'last': {'text': 'ok', 'state': state, 'ts': sec(at)},
     });
 
@@ -114,7 +128,7 @@ void main() {
           _mac,
           projects: const [],
           live: const {},
-          bots: [
+          crewmates: [
             ended('a', 'done', now.subtract(const Duration(minutes: 5))),
             ended('b', 'failed', now.subtract(const Duration(hours: 2))),
           ],
@@ -132,10 +146,10 @@ void main() {
           _mac,
           projects: const [],
           live: const {},
-          bots: [
+          crewmates: [
             ended('old', 'done', now.subtract(const Duration(days: 8))),
-            ended('busy', 'done', now, bot: 'working'),
-            ended('asks', 'done', now, bot: 'needs_you'),
+            ended('busy', 'done', now, crewmate: 'working'),
+            ended('asks', 'done', now, crewmate: 'needs_you'),
           ],
           now: now,
         );
@@ -167,7 +181,7 @@ void main() {
         _mac,
         projects: [p],
         live: const {},
-        bots: const [],
+        crewmates: const [],
         now: now,
       );
       expect(items.single, isA<AgentActivity>());
@@ -179,7 +193,7 @@ void main() {
         _mac,
         projects: const [],
         live: const {},
-        bots: [
+        crewmates: [
           ended('a', 'done', now.subtract(const Duration(minutes: 5))),
           ended('b', 'done', now.subtract(const Duration(hours: 2))),
         ],

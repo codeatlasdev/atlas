@@ -72,7 +72,7 @@ impl AgentStatus {
 /// A prompt waiting for a remote answer: (pane, its `agent_approval` event, answer channel).
 type Pending = (String, Value, oneshot::Sender<bool>);
 
-type BotAnswerFn = Box<dyn Fn(&str) -> bool + Send>;
+type CrewmateAnswerFn = Box<dyn Fn(&str) -> bool + Send>;
 
 pub struct AgentHub {
     panes: Mutex<HashMap<String, AgentStatus>>,
@@ -87,8 +87,8 @@ pub struct AgentHub {
     /// event as pushed, answer channel). The event is kept so a client that subscribes
     /// after the push can still list it.
     pending: Mutex<HashMap<String, Pending>>,
-    /// For bot panes: callback that returns true when telegram or push tokens can receive approvals.
-    bot_pane_can_answer: Mutex<Option<BotAnswerFn>>,
+    /// For crewmate panes: callback that returns true when telegram or push tokens can receive approvals.
+    crewmate_pane_can_answer: Mutex<Option<CrewmateAnswerFn>>,
     /// Prompts raised by ANOTHER hostd that this one mirrors (the lab lane, [`crate::lab`]):
     /// `req` → its `agent_approval` event. Listed and pushed like a local one, but answered
     /// through that daemon, so there is no answer channel here.
@@ -105,7 +105,7 @@ impl Default for AgentHub {
             port: Mutex::new(0),
             tx: broadcast::channel(256).0,
             pending: Mutex::default(),
-            bot_pane_can_answer: Mutex::new(None),
+            crewmate_pane_can_answer: Mutex::new(None),
             mirrored: Mutex::default(),
             pushed: Mutex::default(),
         }
@@ -269,7 +269,7 @@ impl AgentHub {
                 st.prompt = Some(pr);
             }
             if let Some(t) = str_of("text") {
-                // A bot's whole answer comes from here; 2000 chars cut long replies mid-sentence and split the trailing
+                // A crewmate's whole answer comes from here; 2000 chars cut long replies mid-sentence and split the trailing
                 // ATLAS_ACTION line, which then showed raw instead of becoming a card. Still bounded for the phone.
                 st.last_message = Some(t.chars().take(32_000).collect());
             }
@@ -350,19 +350,19 @@ impl AgentHub {
         wait: Duration,
         someone_can_answer: bool,
     ) -> Option<bool> {
-        // Bot panes can also be answered by telegram or push.
-        let is_bot = pane.starts_with("bot:");
-        let bot_can = is_bot
+        // Crewmate panes can also be answered by telegram or push.
+        let is_crewmate = crate::crew::pane::is_crewmate_pane(pane);
+        let crewmate_can = is_crewmate
             && self
-                .bot_pane_can_answer
+                .crewmate_pane_can_answer
                 .lock()
                 .as_deref()
                 .is_some_and(|f| f(pane));
-        if !someone_can_answer && !bot_can {
+        if !someone_can_answer && !crewmate_can {
             return None;
         }
-        let wait = if is_bot {
-            std::time::Duration::from_secs(30 * 60) // BOT_DECISION_WAIT
+        let wait = if is_crewmate {
+            std::time::Duration::from_secs(30 * 60) // CREWMATE_DECISION_WAIT
         } else {
             wait
         };
@@ -501,7 +501,7 @@ impl AgentHub {
         self.panes.lock().clone()
     }
 
-    pub fn set_bot_pane_can_answer(&self, f: BotAnswerFn) {
-        *self.bot_pane_can_answer.lock() = Some(f);
+    pub fn set_crewmate_pane_can_answer(&self, f: CrewmateAnswerFn) {
+        *self.crewmate_pane_can_answer.lock() = Some(f);
     }
 }

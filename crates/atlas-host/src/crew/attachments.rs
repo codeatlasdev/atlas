@@ -912,13 +912,25 @@ mod tests {
         let store = CrewStore::new(tmp.path());
         let dir = upload_dir(&store, "c1", "no-seq-upload-01");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::File::open(&dir)
-            .unwrap()
-            .set_modified(
-                std::time::SystemTime::now() - UPLOAD_TTL - std::time::Duration::from_secs(60),
-            )
-            .unwrap();
+        set_dir_mtime(
+            &dir,
+            std::time::SystemTime::now() - UPLOAD_TTL - std::time::Duration::from_secs(60),
+        );
         sweep_stale_uploads(&store);
         assert!(!dir.exists());
+    }
+
+    /// Set a directory's mtime. Windows opens a directory only with FILE_FLAG_BACKUP_SEMANTICS
+    /// (a plain open is "Access is denied").
+    fn set_dir_mtime(dir: &std::path::Path, t: std::time::SystemTime) {
+        let mut o = std::fs::OpenOptions::new();
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            o.write(true).custom_flags(0x0200_0000); // FILE_FLAG_BACKUP_SEMANTICS
+        }
+        #[cfg(not(windows))]
+        o.read(true);
+        o.open(dir).unwrap().set_modified(t).unwrap();
     }
 }

@@ -10,12 +10,14 @@ import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/features/agents/agent_chat_screen.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 import 'package:atlas_mobile/features/agents/agent_launcher.dart';
+import 'package:atlas_mobile/features/git/changes_tile.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/features/projects/charts.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
+import 'package:atlas_mobile/features/projects/worktrees_section.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
 /// health over time. Polls `project_detail` every [_poll] while open.
@@ -389,6 +391,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                 ],
               ),
             ),
+          WorktreesSection(device: widget.device, projectId: widget.project.id),
         ],
       ),
     );
@@ -397,6 +400,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   Widget _overview(ProjectSnapshot s) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      ChangesTile(device: widget.device, project: widget.project),
       SectionHeader('Services', count: s.services.length),
       // Two per row; tap a tile for its details and controls.
       LayoutBuilder(

@@ -386,6 +386,30 @@ pub enum HostCmd {
         agent: String,
         #[serde(default)]
         prompt: Option<String>,
+        /// A worktree id of `worktree_list` (of `project`'s repo): the agent starts in that folder
+        /// instead of the main checkout.
+        #[serde(default)]
+        worktree: Option<String>,
+    },
+    /// The repo of `project` and its worktrees: `{repoId, worktrees: [{id, path, name, branch, main,
+    /// dirty, exists, portOffset}]}`, git state read live. SSH checkouts are not listed.
+    WorktreeList {
+        project: String,
+    },
+    /// New worktree of `project` (`atlas.yaml`'s `worktree:` setup/shared/seed run like on the desktop):
+    /// `{worktree: {id, path, branch, base, portOffset, repoId, name}, setup: {ok, code, output}|null}`.
+    /// `name` is slugged (empty = a sea name); `base` must be an existing ref.
+    WorktreeCreate {
+        project: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        base: Option<String>,
+    },
+    /// Remove a worktree only when nothing would be lost (the desktop's auto clean-up rule): `{removed:
+    /// true, branch}` or `{kept: "dirty"|"secrets"|"unpushed"}`. Never forced, the branch is kept.
+    WorktreeRemove {
+        id: String,
     },
     /// Local projects of the desktop registry with their live service state.
     ProjectList {},
@@ -416,6 +440,50 @@ pub enum HostCmd {
         key: String,
         #[serde(default)]
         confirmed: bool,
+    },
+    /// `{branch, upstream, ab, entries: [{path, x, y, ...}]}`: porcelain v2 status of a project
+    /// checkout (`root` is a registered project or worktree, never a free path).
+    GitStatus {
+        root: String,
+    },
+    /// `{files: [FileDiff], truncated}`: parsed diff, the index vs HEAD with `staged`, else the
+    /// working tree plus untracked files; `path` narrows it to one file. Size-capped.
+    GitDiff {
+        root: String,
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        staged: bool,
+    },
+    GitStage {
+        root: String,
+        paths: Vec<String>,
+    },
+    GitUnstage {
+        root: String,
+        paths: Vec<String>,
+    },
+    /// `git commit -F -` of what is staged: `{sha}`.
+    GitCommit {
+        root: String,
+        message: String,
+    },
+    /// AI commit message from the staged diff, by the agent CLI of Settings → Git: `{message, agent,
+    /// scope, withheld}`. Nothing is committed.
+    GitCommitMessage {
+        root: String,
+    },
+    /// Push the current branch (sets `origin` as upstream the first time): `{branch, output}`.
+    GitPush {
+        root: String,
+    },
+    /// `gh pr create`: `{url, number}`.
+    GitPrCreate {
+        root: String,
+        title: String,
+        body: String,
+        #[serde(default)]
+        base: Option<String>,
     },
     /// New one-time pairing code + this host's iroh address (desktop only).
     MobilePairStart {},

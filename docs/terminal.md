@@ -215,7 +215,7 @@ Today the native terminal runs on macOS only; Windows and Linux use xterm.js (`t
 | 7 | [#247](https://github.com/codeatlasdev/atlas/issues/247) | Linux X11 |
 | 8 | [#248](https://github.com/codeatlasdev/atlas/issues/248) | optional: WSL without ConPTY |
 
-Proposed targets, **not measured yet** (Phase 0 measures them, including the macOS reference, and may change them), all on an integrated GPU: parse ≥ 500 MB/s without blocking the UI; < 3% CPU with 4 agent TUIs at 30 redraws/s; key-to-pixel p95 ≤ one frame + 2 ms; 0 wakeups/s when idle; background tabs parse but do not draw; ≤ 8 MB per terminal with 10 000 lines; shell startup ≤ 150 ms over the bare process. On Windows, ConPTY caps throughput.
+Proposed targets, **not measured yet** on Windows or Linux, all on an integrated GPU: parse ≥ 500 MB/s without blocking the UI; < 3% CPU with 4 agent TUIs at 30 redraws/s; key-to-pixel p95 ≤ one frame + 2 ms; 0 wakeups/s when idle; background tabs parse but do not draw; ≤ 8 MB per terminal with 10 000 lines; shell startup ≤ 150 ms over the bare process. On Windows, ConPTY caps throughput. The macOS starting point is [Performance](#performance) below (M4 Pro, preliminary single runs, built with debug assertions on, so not directly comparable to shipped builds); Phase 0 adds what it lacks: an integrated-GPU Mac, idle wakeups, CPU and RAM with N agents, key-to-pixel latency, startup, and every Windows number.
 
 ## Performance
 

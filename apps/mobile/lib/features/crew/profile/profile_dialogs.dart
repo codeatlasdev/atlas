@@ -92,6 +92,14 @@ Future<bool> confirmRemoveAutomation(BuildContext context, String what) =>
       action: 'Remove',
     );
 
+Future<bool> confirmRemoveRoutine(BuildContext context, String what) =>
+    _confirm(
+      context,
+      title: 'Remove routine?',
+      message: 'Remove "$what"?',
+      action: 'Remove',
+    );
+
 Future<bool> _confirm(
   BuildContext context, {
   required String title,

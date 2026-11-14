@@ -50,6 +50,8 @@ export interface Diagnostics {
 	};
 	hostdLog: string;
 	appLog: string;
+	/** What GTK, WebKit and the web processes printed (`desktop/stderr.log`, #273). */
+	stderrLog: string;
 	lastCrash: string | null;
 	incidents: { at: number; kind: string; detail: string }[];
 }
@@ -328,6 +330,7 @@ const diagLines = (r: ErrorReport): string[] => {
 			: []),
 		...(d.hostdLog ? ["", "## hostd.log (tail)", ...fence(redactText(d.hostdLog))] : []),
 		...(d.appLog ? ["", "## app.log (tail)", ...fence(redactText(d.appLog))] : []),
+		...(d.stderrLog ? ["", "## stderr.log (tail)", ...fence(redactText(d.stderrLog))] : []),
 	];
 };
 

@@ -51,6 +51,8 @@ describe("redaction on the way out", () => {
 		...fixture,
 		hostdLog: "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789 at /Users/bob/work",
 		appLog: "Authorization: Bearer abc.def.ghi",
+		// stderr.log carries whatever GTK/WebKit or a child printed, env dumps included (#273).
+		stderrLog: "WebKitWebProcess: OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz012345 failed",
 	};
 
 	test("a report never contains a secret even if the log still did", () => {
@@ -61,7 +63,15 @@ describe("redaction on the way out", () => {
 			expect(out).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
 			expect(out).not.toContain("abc.def.ghi");
 			expect(out).not.toContain("/Users/bob");
+			expect(out).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz012345");
 		}
+	});
+
+	// #265: the line that explained a blank window only existed on a terminal; now it is in the report.
+	test("the stderr tail reaches the report", () => {
+		const md = markdownReport(hostErrorReport("x", parseDiagnostics(fixture)), 100_000);
+		expect(md).toContain("## stderr.log (tail)");
+		expect(md).toContain("EGL_BAD_PARAMETER");
 	});
 
 	test("redactText keeps ordinary text and drops named secrets", () => {

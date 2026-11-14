@@ -17,6 +17,7 @@ import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
+import 'package:atlas_mobile/features/projects/worktrees_section.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
 /// health over time. Polls `project_detail` every [_poll] while open.
@@ -390,6 +391,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                 ],
               ),
             ),
+          WorktreesSection(device: widget.device, projectId: widget.project.id),
         ],
       ),
     );

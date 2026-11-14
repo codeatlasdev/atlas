@@ -9,6 +9,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
+import 'package:atlas_mobile/features/projects/worktree.dart';
 
 /// A freshly launched agent: its pane key (and the agent id it runs).
 typedef LaunchedAgent = ({String pane, String agent});
@@ -39,6 +40,9 @@ class _Launcher extends ConsumerStatefulWidget {
 class _LauncherState extends ConsumerState<_Launcher> {
   final _prompt = TextEditingController();
   String? _agent;
+
+  /// The worktree to start in (`null` = the project's main checkout).
+  String? _worktree;
   bool _busy = false;
   String? _error;
 
@@ -64,6 +68,7 @@ class _LauncherState extends ConsumerState<_Launcher> {
       'project': widget.projectId,
       'agent': agent,
       if (text.isNotEmpty) 'prompt': text,
+      'worktree': ?_worktree,
     });
     if (!mounted) return;
     final data = resp['data'];
@@ -85,6 +90,15 @@ class _LauncherState extends ConsumerState<_Launcher> {
     final c = AtlasColors.of(context);
     final installed = ref.watch(installedAgentsProvider(widget.device));
     final list = installed.value;
+    final worktrees = ref
+        .watch(
+          worktreesProvider((
+            device: widget.device,
+            projectId: widget.projectId,
+          )),
+        )
+        .value
+        ?.worktrees;
     // The agent to start: the user's pick, else the first that reports to Atlas.
     final selected =
         _agent ?? (list?.isNotEmpty == true ? list!.first.id : null);
@@ -131,6 +145,27 @@ class _LauncherState extends ConsumerState<_Launcher> {
                     ],
                   ),
                 ),
+                if (worktrees != null && worktrees.length > 1) ...[
+                  const SizedBox(height: Space.md),
+                  Text('Where', style: TextStyle(color: c.muted, fontSize: 12)),
+                  const SizedBox(height: Space.xs),
+                  Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      for (final w in worktrees)
+                        ChoiceChip(
+                          label: Text(w.main ? 'main' : w.name),
+                          selected: (_worktree ?? worktrees.first.id) == w.id,
+                          onSelected: _busy
+                              ? null
+                              : (_) => setState(
+                                  () => _worktree = w.main ? null : w.id,
+                                ),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: Space.md),
                 TextField(
                   controller: _prompt,

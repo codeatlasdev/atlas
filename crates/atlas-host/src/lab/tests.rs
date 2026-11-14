@@ -590,6 +590,8 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
             json!({"pane": "p", "req": "r", "allow": true}),
         ),
         ("agent_launch", json!({"project": "p", "agent": "omp"})),
+        ("worktree_create", json!({"project": "p"})),
+        ("worktree_remove", json!({"id": "w"})),
     ];
     for (c, a) in main_cmds {
         assert!(matches!(route(&parse(c, a)), Route::Main), "{c} → main");
@@ -599,6 +601,7 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
         ("agent_integrations", json!({})),
         ("agent_tree", json!({"pane": "p"})),
         ("agent_history", json!({"pane": "p"})),
+        ("worktree_list", json!({"project": "p"})),
         ("project_list", json!({})),
         ("project_detail", json!({"id": "a"})),
         ("project_logs", json!({"id": "a"})),

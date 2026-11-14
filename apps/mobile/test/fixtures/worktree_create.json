@@ -1,0 +1,13 @@
+{
+  "seed": null,
+  "setup": null,
+  "worktree": {
+    "base": "origin/main",
+    "branch": "phone-task",
+    "id": "wt00000000b1",
+    "name": "phone-task",
+    "path": "/Users/me/worktrees/shop/phone-task",
+    "portOffset": 100,
+    "repoId": "repo0000000a"
+  }
+}

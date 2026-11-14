@@ -119,8 +119,11 @@
 			{/each}
 		</ul>
 		<div class="action-btns">
-			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}>Retry with these reasons</Button>
-			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("override")}>Override</Button>
+			<Button size="sm" disabled={submitting} onclick={() => answer("retry")}>Retry with these reasons</Button
+			>
+			<Button variant="ghost" size="sm" disabled={submitting} onclick={() => answer("override")}
+				>Override</Button
+			>
 		</div>
 	{:else}
 		<div class="action-title">{(action as { label?: string }).label ?? "Response needed"}</div>

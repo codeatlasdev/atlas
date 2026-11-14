@@ -172,3 +172,114 @@ fn crew_settings_store_round_trip() {
     assert!(!reloaded.short_replies);
     assert!(reloaded.paused, "paused is stored with the settings");
 }
+
+fn image(name: &str) -> super::super::attachments::Attachment {
+    super::super::attachments::Attachment {
+        name: name.into(),
+        mime: "image/png".into(),
+        bytes_len: 1,
+        sha256: "0".repeat(64),
+        path: format!(".atlas/attachments/t/{name}"),
+        source: "agent".into(),
+    }
+}
+
+// Incident (main CI, 2026-11-14): `prove_ui::the_agent_can_mark_its_task_ui_and_the_gate_then_applies` ended
+// `done` instead of held for captures. The agent's `set_ui` hook route appended the task with `ui: true`; the
+// runner, holding its own copy from before (`ui: false`), then appended that copy on the next title or step,
+// and the last line won. Hook routes own `ui`, the agent's captures and the open question: a runner snapshot
+// must never take them back, whatever the order.
+#[test]
+fn a_runner_snapshot_never_erases_what_hook_routes_recorded() {
+    let t = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(t.path());
+    let task = Task::new("test", "tweak the layout");
+    store.append_task("c", &task).unwrap();
+    let runner_copy = task.clone();
+
+    store
+        .update_task("c", &task.id, |t| {
+            t.ui = true;
+            t.attachments.push(image("after.png"));
+            t.ask = Some(AskRequest {
+                id: "a1".into(),
+                question: "which one?".into(),
+                options: vec![],
+                allow_text: true,
+                answered: None,
+            });
+            Ok(())
+        })
+        .unwrap()
+        .expect("the task exists");
+
+    let mut runner_copy = runner_copy;
+    runner_copy.state = TaskState::Running;
+    runner_copy.title = Some("Changing the layout".into());
+    store.append_runner_state("c", &runner_copy).unwrap();
+
+    let stored = store
+        .read_tasks("c", 10)
+        .into_iter()
+        .find(|s| s.id == task.id)
+        .unwrap();
+    assert!(stored.ui, "the ui mark survives the runner's write");
+    assert_eq!(stored.attachments.len(), 1, "the capture survives");
+    assert_eq!(
+        stored.ask.as_ref().map(|a| a.id.as_str()),
+        Some("a1"),
+        "the open question survives"
+    );
+    assert_eq!(
+        stored.title.as_deref(),
+        Some("Changing the layout"),
+        "the runner's own fields are its own"
+    );
+    assert_eq!(stored.state, TaskState::Running);
+}
+
+// The same class between two hook routes: each reads the task, changes it and appends it. Interleaved,
+// the second append was built from a read that predates the first, and the first change was lost.
+#[test]
+fn concurrent_updates_of_one_task_all_land() {
+    let t = tempfile::tempdir().unwrap();
+    let base = t.path().to_path_buf();
+    let task = Task::new("test", "p");
+    CrewStore::new(&base).append_task("c", &task).unwrap();
+    let threads: Vec<_> = (0..16)
+        .map(|i| {
+            let (base, id) = (base.clone(), task.id.clone());
+            std::thread::spawn(move || {
+                // A store per thread, like separate handlers: the guard must not live in one instance.
+                CrewStore::new(&base)
+                    .update_task("c", &id, |t| {
+                        t.attachments.push(image(&format!("{i}.png")));
+                        Ok(())
+                    })
+                    .unwrap();
+            })
+        })
+        .collect();
+    for th in threads {
+        th.join().unwrap();
+    }
+    let stored = CrewStore::new(&base).read_tasks("c", 10).remove(0);
+    assert_eq!(
+        stored.attachments.len(),
+        16,
+        "every concurrent change is kept"
+    );
+}
+
+#[test]
+fn updating_a_task_that_does_not_exist_writes_nothing() {
+    let t = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(t.path());
+    assert!(
+        store
+            .update_task("c", "nope", |_| Ok(()))
+            .unwrap()
+            .is_none()
+    );
+    assert!(store.read_tasks("c", 10).is_empty());
+}

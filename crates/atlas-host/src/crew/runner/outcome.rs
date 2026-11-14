@@ -225,20 +225,24 @@ pub(super) fn finish_task(
     }
 }
 
-/// Append `task`'s current state to the crewmate's task log. A failure is never silent: it is logged
+/// Append `task`'s current state to the crewmate's task log, keeping what hook routes recorded on the
+/// stored task meanwhile (`CrewStore::append_runner_state`). A failure is never silent: it is logged
 /// with the crewmate and task id (`atlas crew logs`) and returned as the message a failed task shows.
 pub(super) fn persist(hub: &Hub, crewmate_id: &str, task: &Task) -> Result<(), String> {
-    hub.crew.store.append_task(crewmate_id, task).map_err(|e| {
-        let msg = format!(
-            "cannot record task state to {}: {e}",
-            hub.crew.store.tasks_path(crewmate_id).display()
-        );
-        eprintln!(
-            "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
-            task.id, task.state
-        );
-        msg
-    })
+    hub.crew
+        .store
+        .append_runner_state(crewmate_id, task)
+        .map_err(|e| {
+            let msg = format!(
+                "cannot record task state to {}: {e}",
+                hub.crew.store.tasks_path(crewmate_id).display()
+            );
+            eprintln!(
+                "atlas crew: crewmate {crewmate_id} task {}: {msg} (state {:?})",
+                task.id, task.state
+            );
+            msg
+        })
 }
 
 /// Record that `task` is now running. When that cannot be stored the task fails with the error

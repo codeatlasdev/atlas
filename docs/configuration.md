@@ -38,6 +38,7 @@ Every run on a detected config prints one line, e.g. `no atlas.yaml: using detec
 | `env_files` | string list | `[]` | [Dotenv files](#env_files) injected into every service and action. |
 | `mobile` | object | `{}` | [iOS/Android settings](#mobile) for `platform:` actions (normally in `atlas.local.yaml`). |
 | `deploy` | object | none | Release engine for `atlas deploy`. See [deploy.md](deploy.md). |
+| `affected` | object | none | What a change affects, for the MCP tool [`atlas_affected`](mcp.md#atlas_affected): a plugin `command` or declared `rules`. See [affected](#affected). |
 | `agents` | object | everything allowed | What AI agents may do through [MCP control tools](#agents). `agents: { control: deny }` makes them read-only. |
 
 ### pre_command
@@ -474,6 +475,28 @@ A new worktree starts with no `node_modules` and no `target/`, so `setup` reinst
 ### Port offset
 
 Each worktree gets a port offset (100, 200, …). When `ATLAS_PORT_OFFSET=N` is set, atlas adds `N` to every service `port`, to `tunnel.local_port`, to every service `env` value equal to some service's port, and to `:<port>` in `open_url`/`health`. Try it: `ATLAS_PORT_OFFSET=100 atlas config check`. The TUI title shows `ports +N`.
+
+## affected
+
+The project's own answer to "what does this change affect?", read by the MCP tool [`atlas_affected`](mcp.md#atlas_affected) so an agent runs the tests, routes and builds a change can break instead of the whole suite. Two forms, both optional; without the block `atlas_affected` falls back to the actions whose [`cache.inputs`](#actions) match the changed files.
+
+```yaml
+affected:
+  command: bun scripts/affected.ts --json   # a plugin: changed files on stdin, JSON on stdout
+  rules:                                    # or declare the graph inline
+    - match: ['crates/atlas-core/**']
+      tasks: [Run checks]                   # action labels
+      tests: ['cargo test -p atlas-core']
+      routes: [/docs]
+      builds: [site]
+```
+
+| Key | Type | Description |
+|---|---|---|
+| `command` | string | Run with `sh -c` in the project root (`cmd /c` on Windows). It receives the changed files on stdin, one per line, relative to the project root, and prints JSON `{"tasks": [], "tests": [], "routes": [], "builds": []}` to stdout (every key optional, each a list of strings; other keys are ignored). A non-zero exit or output that is not that JSON is an error returned to the agent, never a silent fallback. Wins over `rules`. |
+| `rules` | list | `match` (globs relative to the project root, `**` crosses folders; at least one), and any of `tasks` (must be an action `label`, case-insensitive), `tests`, `routes`, `builds`. A rule applies when any changed file matches any of its globs; the answer is the union of the matching rules, without duplicates, in file order. |
+
+Unknown keys are config errors; so are a rule without `match`, a glob that does not parse, a blank `command` and a `tasks` entry that names no action. `atlas.local.yaml` can override `affected` like any other top-level key. This repository declares `affected: { command: bun scripts/check-changed.ts --json }`: the plan `bun run check:changed` would run, as JSON, without running it.
 
 ## agents
 

@@ -158,6 +158,7 @@ async fn route(hub: &AgentHub, can_approve: bool, path: &str, v: &Value) -> (&'s
 /// - `POST /crew/<id>/hook/<token>`  — webhook trigger (`webhook::parse_webhook_path` owns the shape)
 /// - `POST /crew/<id>/ask`           — ask_user call from an engine; blocks until answered
 /// - `POST /crew/<id>/set_profile`   — update crewmate name/role from within a task
+/// - `POST /crew/<id>/capture`       — the capture tool: Playwright screenshots, attached to the task
 async fn route_crew(
     hub: &Arc<crate::server::Hub>,
     path: &str,
@@ -178,7 +179,45 @@ async fn route_crew(
     match subpath {
         "ask" => handle_ask(hub, crewmate_id, &v()).await,
         "set_profile" => handle_set_profile(hub, crewmate_id, &v()),
+        "capture" => handle_capture(hub, crewmate_id, &v()).await,
         _ => ("404 Not Found", String::new()),
+    }
+}
+
+/// Handle `POST /crew/<id>/capture`: run the capture for the crewmate's current task (the pane key
+/// names it). Answers `200` with the combinations visited, or `422 {"error": …}` with what the agent
+/// must read: a bad request, no browsers installed, a missing combination.
+async fn handle_capture(
+    hub: &Arc<crate::server::Hub>,
+    crewmate_id: &str,
+    v: &Value,
+) -> (&'static str, String) {
+    let task_id = v["pane_key"]
+        .as_str()
+        .filter(|p| crate::crew::pane::is_pane_of(p, crewmate_id))
+        .and_then(|p| p.splitn(3, ':').nth(2))
+        .filter(|t| !t.is_empty());
+    let Some(task_id) = task_id else {
+        return (
+            "422 Unprocessable Entity",
+            serde_json::json!({"error": "capture: only a crewmate's task can capture (no task pane)"})
+                .to_string(),
+        );
+    };
+    match crate::crew::capture::handle(
+        &hub.crew.dir,
+        &hub.crew.store,
+        crewmate_id,
+        task_id,
+        &v["args"],
+    )
+    .await
+    {
+        Ok(r) => ("200 OK", r.to_string()),
+        Err(e) => (
+            "422 Unprocessable Entity",
+            serde_json::json!({ "error": e }).to_string(),
+        ),
     }
 }
 

@@ -35,6 +35,10 @@ pub struct InstallArgs {
     /// Also read from `ATLAS_CREW_BINARY`, so Atlas Desktop picks it up.
     #[arg(long)]
     pub binary: Option<std::path::PathBuf>,
+    /// Also install Playwright's chromium and webkit (pinned) for the crewmates' `capture` tool.
+    /// Needs Node.js on the server and sudo for the apt libraries; the same as `atlas crew browsers install`.
+    #[arg(long)]
+    pub browsers: bool,
 }
 
 impl AtlasCommand for InstallArgs {
@@ -233,6 +237,11 @@ or run the install from a terminal: atlas crew install {}",
     step_marker("ssh");
     step(&format!("configuring SSH access for {}", account.user));
     add_ssh_key(&r, &account).await?;
+
+    if args.browsers {
+        step_marker("browsers");
+        super::browsers::install(&r, &args.ssh_target).await?;
+    }
 
     println!(
         "\x1b[32m✓\x1b[0m Crew server ready: {user}@{host}. \
@@ -445,6 +454,7 @@ or run the install from a terminal: atlas crew install {}",
             port: 22,
             sudo_password_stdin: true,
             binary: None,
+            browsers: false,
         };
     }
 }

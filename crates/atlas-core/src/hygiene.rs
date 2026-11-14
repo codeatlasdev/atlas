@@ -36,6 +36,10 @@ use crate::procs::{self, Proc};
 /// The environment variable that names a process's owner session.
 pub const SESSION_ENV: &str = "ATLAS_SESSION";
 
+/// How long a write waits for the registry lock before giving up. Writers hold it for one
+/// read-modify-fsync; ten seconds is far past any honest queue and still ends a stuck one.
+const LOCK_WAIT: Duration = Duration::from_secs(10);
+
 /// SIGTERM-to-SIGKILL grace of a reap.
 pub const GRACE: Duration = Duration::from_secs(3);
 
@@ -250,11 +254,13 @@ impl Registry {
             .truncate(false)
             .write(true)
             .open(&lock_path)?;
-        // Short critical section: spin briefly instead of blocking a runtime thread.
-        let mut tries = 0;
+        // Short critical sections, but many writers (every daemon's ticker, every spawn) and an
+        // fsync per save: wait up to LOCK_WAIT by the clock. Counting tries undercounted time on
+        // Windows, where a 10 ms sleep lasts a timer tick, and gave up after ~2 s of honest
+        // contention, losing the write (CI, 8 concurrent writers).
+        let deadline = std::time::Instant::now() + LOCK_WAIT;
         while !crate::sys::try_lock(&lock)? {
-            tries += 1;
-            if tries > 200 {
+            if std::time::Instant::now() >= deadline {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     "hygiene registry is locked",

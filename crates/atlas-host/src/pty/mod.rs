@@ -42,11 +42,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::protocol::Scope;
-use master::Master;
 #[cfg(unix)]
 pub use isolation::IsoRef;
 #[cfg(unix)]
 use isolation::Isolation;
+use master::Master;
 
 const RING_MAX: usize = 2 * 1024 * 1024;
 

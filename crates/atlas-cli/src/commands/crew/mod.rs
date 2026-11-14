@@ -130,6 +130,12 @@ impl AtlasCommand for UninstallArgs {
         // userdel refuses while the crew user has processes (the desktop's SSH sessions). Report it instead of
         // killing them: a `pkill -KILL -u <user>` / `loginctl terminate-user` here coincided with the test server's
         // sshd going down, so uninstall never kills processes on someone's server.
+        // Crewmate users and the helpers first: `KillMode=process` leaves their agents running when
+        // a service stops, so this kills them itself, before the crew user (their group member) goes.
+        let o = r.exec(&isolation::uninstall_script()).await?;
+        if o.code != 0 {
+            bail!("removing the crewmates' users failed: {}", o.stderr.trim());
+        }
         let o = r.exec(&layout::uninstall_script()).await?;
         if o.code != 0 {
             bail!("uninstall failed: {}", o.stderr.trim());
@@ -408,6 +414,10 @@ pub struct LoginArgs {
     pub ssh_target: String,
     /// Agent to sign in: omp, claude, codex, opencode
     pub agent: String,
+    /// Sign in as this crewmate's own Linux user (its id). On a server where crewmates run as their
+    /// own users each one has its own sign-in: this is the way to give it one
+    #[arg(long, value_name = "ID")]
+    pub crewmate: Option<String>,
 }
 
 impl AtlasCommand for LoginArgs {
@@ -420,6 +430,9 @@ impl AtlasCommand for LoginArgs {
                     self.agent
                 )
             })?;
+        if let Some(id) = &self.crewmate {
+            return self.login_as_crewmate(id);
+        }
         let host = host_from_target(&self.ssh_target).to_owned();
         // The crew user differs on a server installed as "Atlas Bot": ask the host which one it has.
         let user = Remote::new(&self.ssh_target)
@@ -446,6 +459,36 @@ impl AtlasCommand for LoginArgs {
             .status()
             .context("could not launch ssh")?;
 
+        if !status.success() {
+            std::process::exit(status.code().unwrap_or(1));
+        }
+        Ok(())
+    }
+}
+
+impl LoginArgs {
+    /// The crewmate's own sign-in: ssh to the server as the person's admin user (the crew user is not
+    /// in sudoers, and cannot become another user), then run the engine as the crewmate.
+    fn login_as_crewmate(&self, id: &str) -> Result<()> {
+        let user = atlas_host::crew::spawn::validate::user_for(id).with_context(|| {
+            format!(
+                "'{id}' is not a crewmate id (see `atlas crew status`: 36 characters, lowercase)"
+            )
+        })?;
+        let command = isolation::login_command(&user, &self.agent).map_err(|e| {
+            anyhow::anyhow!(
+                "cannot build the sign-in command for {:?}: not a crewmate or agent",
+                e.0
+            )
+        })?;
+        println!(
+            "\x1b[36m▸\x1b[0m Opening sign-in session as {user}: ssh -t {} {}",
+            self.ssh_target, self.agent
+        );
+        let status = std::process::Command::new("ssh")
+            .args(["-t", &self.ssh_target, &command])
+            .status()
+            .context("could not launch ssh")?;
         if !status.success() {
             std::process::exit(status.code().unwrap_or(1));
         }

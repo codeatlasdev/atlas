@@ -46,7 +46,11 @@ pub(super) async fn run(
     let result_file = crewmate_dir.join(format!("codex-out-{}.txt", paths::new_id()));
 
     let mut cmd = Cmd::new("codex", work_dir);
-    cmd.args(exec_args(session.session_id.as_deref(), &result_file, prompt));
+    cmd.args(exec_args(
+        session.session_id.as_deref(),
+        &result_file,
+        prompt,
+    ));
     cmd.envs(extra_env);
 
     let out = runner.output(cmd, TASK_TIMEOUT).await?;

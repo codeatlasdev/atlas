@@ -172,9 +172,8 @@ pub trait Host {
 /// Run `steps` in order; the first failure stops the plan and is returned with the step named.
 pub fn execute(host: &dyn Host, cfg: &PlanCfg, crewmate: &str, steps: &[Step]) -> io::Result<()> {
     for step in steps {
-        run_step(host, cfg, crewmate, step).map_err(|e| {
-            io::Error::new(e.kind(), format!("{}: {e}", describe(step)))
-        })?;
+        run_step(host, cfg, crewmate, step)
+            .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", describe(step))))?;
     }
     Ok(())
 }
@@ -307,7 +306,10 @@ pub fn egress_ruleset(users: &[(String, Policy)]) -> String {
         out.push_str(&format!("    ip6 daddr {{ {} }} drop\n", NEVER6.join(", ")));
         let ports: Vec<String> = policy.tcp_ports.iter().map(u16::to_string).collect();
         if !ports.is_empty() {
-            out.push_str(&format!("    tcp dport {{ {} }} accept\n", ports.join(", ")));
+            out.push_str(&format!(
+                "    tcp dport {{ {} }} accept\n",
+                ports.join(", ")
+            ));
         }
         out.push_str("    drop\n  }\n");
     }
@@ -340,7 +342,12 @@ impl System {
     pub fn new(cfg: PlanCfg) -> Self {
         Self {
             cfg,
-            sbin: vec!["/usr/sbin".into(), "/sbin".into(), "/usr/bin".into(), "/bin".into()],
+            sbin: vec![
+                "/usr/sbin".into(),
+                "/sbin".into(),
+                "/usr/bin".into(),
+                "/bin".into(),
+            ],
         }
     }
 
@@ -609,7 +616,7 @@ impl ProvClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     const USER: &str = "atlas-cm-3f2a9c1e5b7d";
 
     fn cfg() -> PlanCfg {
@@ -638,11 +645,15 @@ mod tests {
             Ok(())
         }
         fn dir(&self, p: &Path, m: u32, o: &Who, _: &str) -> io::Result<()> {
-            self.log.lock().push(format!("dir {} {m:o} {o:?}", p.display()));
+            self.log
+                .lock()
+                .push(format!("dir {} {m:o} {o:?}", p.display()));
             Ok(())
         }
         fn file(&self, p: &Path, m: u32, o: &Who, _: &str) -> io::Result<()> {
-            self.log.lock().push(format!("file {} {m:o} {o:?}", p.display()));
+            self.log
+                .lock()
+                .push(format!("file {} {m:o} {o:?}", p.display()));
             Ok(())
         }
         fn kill_user(&self, u: &str) -> io::Result<()> {
@@ -707,7 +718,11 @@ mod tests {
         run_plan(&rec, &deprovision_plan(&cfg(), USER, false).unwrap()).unwrap();
         assert_eq!(
             *rec.log.lock(),
-            ["kill atlas-cm-3f2a9c1e5b7d", "userdel atlas-cm-3f2a9c1e5b7d", "egress"]
+            [
+                "kill atlas-cm-3f2a9c1e5b7d",
+                "userdel atlas-cm-3f2a9c1e5b7d",
+                "egress"
+            ]
         );
         let rec = Rec {
             exists: true,
@@ -744,7 +759,11 @@ mod tests {
             ..Rec::default()
         };
         let e = run_plan(&rec, &provision_plan(&cfg(), USER).unwrap()).unwrap_err();
-        assert!(e.to_string().contains("creating user atlas-cm-3f2a9c1e5b7d"), "{e}");
+        assert!(
+            e.to_string()
+                .contains("creating user atlas-cm-3f2a9c1e5b7d"),
+            "{e}"
+        );
         assert_eq!(rec.log.lock().len(), 1, "nothing ran after the failure");
     }
 
@@ -752,7 +771,14 @@ mod tests {
     // every plan refuses what is not exactly a crewmate user.
     #[test]
     fn plans_refuse_anything_that_is_not_a_crewmate_user() {
-        for bad in ["root", "atlas-crew", "", "atlas-cm-../../etc", "atlas-cm-3f2a9c1e5b7d/x", "-r"] {
+        for bad in [
+            "root",
+            "atlas-crew",
+            "",
+            "atlas-cm-../../etc",
+            "atlas-cm-3f2a9c1e5b7d/x",
+            "-r",
+        ] {
             assert!(provision_plan(&cfg(), bad).is_err(), "{bad:?}");
             assert!(deprovision_plan(&cfg(), bad, true).is_err(), "{bad:?}");
         }
@@ -763,7 +789,13 @@ mod tests {
     #[test]
     fn remove_tree_only_deletes_a_direct_child_of_the_crewmates_root() {
         let rec = Rec::default();
-        for bad in ["/", "/var/lib", "/var/lib/atlas-cm", "/var/lib/atlas-cm/x/y", "/etc"] {
+        for bad in [
+            "/",
+            "/var/lib",
+            "/var/lib/atlas-cm",
+            "/var/lib/atlas-cm/x/y",
+            "/etc",
+        ] {
             let e = run_plan(&rec, &[Step::RemoveTree { path: bad.into() }]).unwrap_err();
             assert_eq!(e.kind(), io::ErrorKind::PermissionDenied, "{bad}");
         }
@@ -782,7 +814,9 @@ mod tests {
             user: "root".into(),
             purge: true,
         }) {
-            ProvResponse::Error { reason } => assert!(reason.contains("not a provisioned"), "{reason}"),
+            ProvResponse::Error { reason } => {
+                assert!(reason.contains("not a provisioned"), "{reason}")
+            }
             other => panic!("{other:?}"),
         }
     }
@@ -800,7 +834,9 @@ mod tests {
             ("atlas-cm-bbbbbbbbbbbb".into(), pol()),
         ]);
         // Replace-whole idiom: create (no error if missing), delete, define.
-        assert!(r.starts_with("table inet atlas_crew\ndelete table inet atlas_crew\ntable inet atlas_crew {\n"));
+        assert!(r.starts_with(
+            "table inet atlas_crew\ndelete table inet atlas_crew\ntable inet atlas_crew {\n"
+        ));
         assert!(r.contains("chain cm_aaaaaaaaaaaa {"));
         assert!(r.contains("chain cm_bbbbbbbbbbbb {"));
         assert!(r.contains("\"atlas-cm-aaaaaaaaaaaa\" : jump cm_aaaaaaaaaaaa"));
@@ -812,7 +848,10 @@ mod tests {
     #[test]
     fn within_a_chain_replies_dns_and_the_hook_port_come_before_the_private_range_drops() {
         let r = egress_ruleset(&[("atlas-cm-aaaaaaaaaaaa".into(), pol())]);
-        let at = |needle: &str| r.find(needle).unwrap_or_else(|| panic!("missing {needle}\n{r}"));
+        let at = |needle: &str| {
+            r.find(needle)
+                .unwrap_or_else(|| panic!("missing {needle}\n{r}"))
+        };
         let established = at("ct state established,related accept");
         let dns = at("udp dport 53 accept");
         let hook = at(&format!("ip daddr 127.0.0.1 tcp dport {HOOK_PORT} accept"));
@@ -823,7 +862,13 @@ mod tests {
         assert!(established < dns && dns < hook && hook < loopback_drop);
         assert!(loopback_drop < private_drop && private_drop < ports && ports < last_drop);
         // The cloud metadata service and the private ranges are named.
-        for must in ["169.254.0.0/16", "192.168.0.0/16", "172.16.0.0/12", "100.64.0.0/10", "fc00::/7"] {
+        for must in [
+            "169.254.0.0/16",
+            "192.168.0.0/16",
+            "172.16.0.0/12",
+            "100.64.0.0/10",
+            "fc00::/7",
+        ] {
             assert!(r.contains(must), "{must}");
         }
     }
@@ -888,5 +933,87 @@ atlas-cm-AAAAAAAAAAAA:x:994:994::/x:/bin/false\n";
         write_atomic(&p, b"two").unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "two");
         assert!(!p.with_extension("tmp~").exists());
+    }
+
+    // Needs root on Linux: the real `useradd`/`userdel`/`chown` path of the provisioning service. Run by
+    // the root CI job (`sudo -E cargo test -p atlas-host crew::spawn -- --ignored`). Creates a throwaway
+    // crewmate user and directory tree and removes both.
+    #[test]
+    #[ignore = "needs root on Linux: creates and deletes a system user (see docs/contributing.md)"]
+    fn a_real_provision_creates_the_user_and_modes_and_a_real_deprovision_removes_them() {
+        // SAFETY: plain getter.
+        assert_eq!(unsafe { libc::geteuid() }, 0, "this test must run as root");
+        let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(t.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let user = "atlas-cm-eeeeeeeeeeee";
+        let cfg = PlanCfg {
+            crew: "root".into(),
+            cm_root: t.path().to_string_lossy().into_owned(),
+        };
+        // No nft in the sandbox: the real host minus the firewall step.
+        struct NoNft(System);
+        impl Host for NoNft {
+            fn user_exists(&self, u: &str) -> bool {
+                self.0.user_exists(u)
+            }
+            fn run(&self, a: &[&str]) -> io::Result<()> {
+                self.0.run(a)
+            }
+            fn dir(&self, p: &Path, m: u32, o: &Who, c: &str) -> io::Result<()> {
+                self.0.dir(p, m, o, c)
+            }
+            fn file(&self, p: &Path, m: u32, o: &Who, c: &str) -> io::Result<()> {
+                self.0.file(p, m, o, c)
+            }
+            fn kill_user(&self, u: &str) -> io::Result<()> {
+                self.0.kill_user(u)
+            }
+            fn remove_tree(&self, p: &Path) -> io::Result<()> {
+                self.0.remove_tree(p)
+            }
+            fn egress(&self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let host = NoNft(System::new(cfg.clone()));
+        struct Cleanup<'a>(&'a NoNft, &'a PlanCfg);
+        impl Drop for Cleanup<'_> {
+            fn drop(&mut self) {
+                let _ = execute(
+                    self.0,
+                    self.1,
+                    "atlas-cm-eeeeeeeeeeee",
+                    &deprovision_plan(self.1, "atlas-cm-eeeeeeeeeeee", true).unwrap(),
+                );
+            }
+        }
+        let _guard = Cleanup(&host, &cfg);
+        // `usermod -aG <group> root` is harmless for root; the crew user stands in as root here.
+        execute(&host, &cfg, user, &provision_plan(&cfg, user).unwrap()).unwrap();
+        let ids = super::super::exec::lookup(user).unwrap();
+        assert_ne!(ids.uid, 0);
+        let dir = t.path().join("eeeeeeeeeeee");
+        let meta = |p: &str| std::fs::metadata(dir.join(p)).unwrap();
+        use std::os::unix::fs::MetadataExt;
+        let work = meta("work");
+        assert_eq!(work.permissions().mode() & 0o7777, 0o2770);
+        assert_eq!((work.uid(), work.gid()), (ids.uid, ids.gid));
+        assert_eq!(meta("home").permissions().mode() & 0o7777, 0o700);
+        // crew-runtime: owned by the crew user (root here), group the crewmate's.
+        let rt = meta("crew-runtime");
+        assert_eq!((rt.uid(), rt.gid()), (0, ids.gid));
+        assert_eq!(meta("memory.md").permissions().mode() & 0o7777, 0o660);
+        // Idempotent.
+        execute(&host, &cfg, user, &provision_plan(&cfg, user).unwrap()).unwrap();
+        // Removal takes the user and the tree.
+        execute(
+            &host,
+            &cfg,
+            user,
+            &deprovision_plan(&cfg, user, true).unwrap(),
+        )
+        .unwrap();
+        assert!(super::super::exec::lookup(user).is_err());
+        assert!(!dir.exists());
     }
 }

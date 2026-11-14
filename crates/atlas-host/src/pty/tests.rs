@@ -838,7 +838,10 @@ mod isolated {
     #[tokio::test(flavor = "multi_thread")]
     async fn kill_ends_an_isolated_program_through_the_helper() {
         let r = rig();
-        r.engine("claude", "echo up; trap '' TERM; while :; do /bin/sleep 0.05; done");
+        r.engine(
+            "claude",
+            "echo up; trap '' TERM; while :; do /bin/sleep 0.05; done",
+        );
         let scroll = tempfile::tempdir().unwrap();
         let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
         until_text(&s, "up").await;
@@ -852,7 +855,10 @@ mod isolated {
     #[tokio::test(flavor = "multi_thread")]
     async fn signal_reaches_an_isolated_program_and_unknown_names_are_refused() {
         let r = rig();
-        r.engine("claude", "trap 'exit 42' INT; echo up; while :; do /bin/sleep 0.05; done");
+        r.engine(
+            "claude",
+            "trap 'exit 42' INT; echo up; while :; do /bin/sleep 0.05; done",
+        );
         let scroll = tempfile::tempdir().unwrap();
         let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
         until_text(&s, "up").await;
@@ -872,7 +878,10 @@ mod isolated {
         let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
         until_text(&s, "up").await;
         let cwd = s.cwd_now().await.unwrap();
-        assert_eq!(std::fs::canonicalize(cwd).unwrap(), std::fs::canonicalize("/tmp").unwrap());
+        assert_eq!(
+            std::fs::canonicalize(cwd).unwrap(),
+            std::fs::canonicalize("/tmp").unwrap()
+        );
         s.kill().await;
     }
 
@@ -893,12 +902,18 @@ mod isolated {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_live_upgrade_keeps_an_isolated_session_signalable() {
         let r = rig();
-        r.engine("claude", "trap 'exit 9' TERM; echo up; while :; do /bin/sleep 0.05; done");
+        r.engine(
+            "claude",
+            "trap 'exit 9' TERM; echo up; while :; do /bin/sleep 0.05; done",
+        );
         let scroll = tempfile::tempdir().unwrap();
         let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
         until_text(&s, "up").await;
         let (state, fd) = s.freeze().await.unwrap();
-        let iso = state.iso.clone().expect("the helper session travels with the state");
+        let iso = state
+            .iso
+            .clone()
+            .expect("the helper session travels with the state");
         assert_eq!(iso.user, USER);
         // The wire form is what the successor reads.
         let state: crate::handoff::SessionState =

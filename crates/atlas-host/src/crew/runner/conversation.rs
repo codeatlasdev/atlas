@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use super::action::{
     finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
 };
-use super::outcome::{finish_task, persist_running};
 use super::isolation::Ctx;
+use super::outcome::{finish_task, persist_running};
 use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::{recovered_wait, resume_prompt};
 use super::summary::maybe_summarize;

@@ -29,9 +29,9 @@ pub mod exec;
 pub mod layout;
 #[cfg(unix)]
 pub mod peer;
+pub mod protocol;
 #[cfg(unix)]
 pub mod provision;
-pub mod protocol;
 #[cfg(unix)]
 pub mod server;
 #[cfg(all(test, unix))]

@@ -76,13 +76,15 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 
 ### Tests that need root (Linux only)
 
-`crates/atlas-host/src/crew/spawn/exec.rs` has one test that creates a system user and starts a process as it (`a_real_spawn_runs_as_the_crewmates_user_and_hostd_cannot_touch_it`: the child runs as that uid, and another user cannot read its directory). It is `#[ignore]`d with its reason, so `bun run check` and the normal CI jobs skip it. A root Linux job runs it explicitly:
+Two tests create a system user: `crates/atlas-host/src/crew/spawn/exec.rs` (`a_real_spawn_runs_as_the_crewmates_user_and_hostd_cannot_touch_it`: the child runs as that uid and another user cannot read its directory) and `crew/spawn/provision.rs` (`a_real_provision_creates_the_user_and_modes_and_a_real_deprovision_removes_them`: real `useradd`, `chown`, modes, `userdel`). Both are `#[ignore]`d with their reason, so `bun run check` and the normal CI jobs skip them. The CI job **Rust (Linux, root tests)** runs them on a throwaway runner (part of the `CI` aggregate):
 
 ```sh
-sudo -E env "PATH=$PATH" cargo test -p atlas-host crew::spawn -- --ignored
+sudo -E env "PATH=$PATH" cargo test -p atlas-host --lib crew::spawn -- --ignored
 ```
 
-Run it on a disposable Linux machine or VM, never on your Mac (it is compiled out there) and not in a container that shares the host's user database. It adds `atlas-cm-ffffffffffff` and removes it when it finishes. No CI job runs it yet; until one does, a change under `crew/spawn/` must run it by hand and say so in the pull request.
+To run them yourself use a disposable Linux machine or VM, never your Mac (they are compiled out of the run there) and not a container that shares the host's user database. They add `atlas-cm-ffffffffffff` and `atlas-cm-eeeeeeeeeeee` and remove them when they finish.
+
+The egress rules (`nft`) and the engine installers are not covered by it: the ruleset is a pure string tested for order and content, and applying it needs `nft` and a real server.
 
 ### Updating JS dependencies
 

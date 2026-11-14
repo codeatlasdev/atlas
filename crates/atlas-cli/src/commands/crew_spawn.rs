@@ -35,7 +35,9 @@ impl AtlasCommand for CrewSpawnArgs {
 
         // SAFETY: plain getter.
         if unsafe { libc::geteuid() } != 0 {
-            bail!("atlas crew-spawn runs as root (it is started by systemd: atlas-crew-spawn.service)");
+            bail!(
+                "atlas crew-spawn runs as root (it is started by systemd: atlas-crew-spawn.service)"
+            );
         }
         let (listener, user, uid) = match (&self.socket, &self.crew_user) {
             (Some(path), Some(user)) => {
@@ -90,8 +92,15 @@ mod tests {
     #[test]
     fn socket_and_crew_user_go_together_and_provision_is_a_flag() {
         assert!(Cli::try_parse_from(["x"]).is_ok());
-        assert!(Cli::try_parse_from(["x", "--provision"]).unwrap().a.provision);
-        let a = Cli::try_parse_from(["x", "--socket", "/s", "--crew-user", "u"]).unwrap().a;
+        assert!(
+            Cli::try_parse_from(["x", "--provision"])
+                .unwrap()
+                .a
+                .provision
+        );
+        let a = Cli::try_parse_from(["x", "--socket", "/s", "--crew-user", "u"])
+            .unwrap()
+            .a;
         assert_eq!(a.crew_user.as_deref(), Some("u"));
         assert!(Cli::try_parse_from(["x", "--socket", "/s"]).is_err());
         assert!(Cli::try_parse_from(["x", "--crew-user", "u"]).is_err());

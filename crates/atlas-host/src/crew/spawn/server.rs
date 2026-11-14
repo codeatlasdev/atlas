@@ -391,12 +391,16 @@ pub fn group_name(gid: u32) -> io::Result<String> {
     let mut gr: libc::group = unsafe { std::mem::zeroed() };
     let mut out: *mut libc::group = std::ptr::null_mut();
     // SAFETY: all pointers are live for the call; the buffer length is passed.
-    let rc = unsafe { libc::getgrgid_r(gid, &mut gr, buf.as_mut_ptr().cast(), buf.len(), &mut out) };
+    let rc =
+        unsafe { libc::getgrgid_r(gid, &mut gr, buf.as_mut_ptr().cast(), buf.len(), &mut out) };
     if rc != 0 {
         return Err(io::Error::from_raw_os_error(rc));
     }
     if out.is_null() {
-        return Err(io::Error::new(io::ErrorKind::NotFound, format!("no group with gid {gid}")));
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no group with gid {gid}"),
+        ));
     }
     // SAFETY: gr_name points into `buf`, NUL terminated, alive here.
     Ok(unsafe { std::ffi::CStr::from_ptr(gr.gr_name) }
@@ -467,7 +471,10 @@ mod tests {
     #[test]
     fn exit_code_maps_a_signal_death_like_a_shell() {
         use std::os::unix::process::ExitStatusExt;
-        assert_eq!(exit_code(std::process::ExitStatus::from_raw(3 << 8)), Some(3));
+        assert_eq!(
+            exit_code(std::process::ExitStatus::from_raw(3 << 8)),
+            Some(3)
+        );
         assert_eq!(exit_code(std::process::ExitStatus::from_raw(9)), Some(137));
     }
 
@@ -475,10 +482,7 @@ mod tests {
     // caller computed.
     #[test]
     fn kill_uid_never_touches_root_or_the_caller() {
-        assert_eq!(
-            kill_uid(0).unwrap_err().kind(),
-            io::ErrorKind::InvalidInput
-        );
+        assert_eq!(kill_uid(0).unwrap_err().kind(), io::ErrorKind::InvalidInput);
     }
 
     // ---- the whole path: a real server on a socket, a real client, real fds and processes ----
@@ -543,7 +547,10 @@ mod tests {
     #[test]
     fn a_running_session_reports_not_exited_until_it_ends() {
         let r = rig();
-        let (sp, _fd) = r.client.spawn(&req(&r, Mode::Pipe, "/bin/sleep 30")).unwrap();
+        let (sp, _fd) = r
+            .client
+            .spawn(&req(&r, Mode::Pipe, "/bin/sleep 30"))
+            .unwrap();
         assert_eq!(r.client.wait(sp.session).unwrap(), (false, None));
         r.client.signal(sp.session, libc::SIGKILL).unwrap();
         // 137 = 128 + SIGKILL: the same code a shell shows for a killed child.
@@ -555,7 +562,11 @@ mod tests {
         let r = rig();
         let (sp, _fd) = r
             .client
-            .spawn(&req(&r, Mode::Pipe, "trap 'exit 42' TERM; while :; do /bin/sleep 0.05; done"))
+            .spawn(&req(
+                &r,
+                Mode::Pipe,
+                "trap 'exit 42' TERM; while :; do /bin/sleep 0.05; done",
+            ))
             .unwrap();
         // The trap is installed once the script printed its banner; give the shell a moment.
         std::thread::sleep(Duration::from_millis(300));
@@ -568,7 +579,10 @@ mod tests {
     #[test]
     fn a_signal_outside_the_list_is_refused_by_the_helper() {
         let r = rig();
-        let (sp, _fd) = r.client.spawn(&req(&r, Mode::Pipe, "/bin/sleep 30")).unwrap();
+        let (sp, _fd) = r
+            .client
+            .spawn(&req(&r, Mode::Pipe, "/bin/sleep 30"))
+            .unwrap();
         let e = r.client.signal(sp.session, libc::SIGSTOP).unwrap_err();
         assert!(e.to_string().contains("signal not allowed"), "{e}");
         assert_eq!(r.client.wait(sp.session).unwrap(), (false, None));
@@ -644,7 +658,10 @@ mod tests {
         let mut io = std::fs::File::from(mut_fd);
         read_until(&mut io, "cd\n");
         let now = r.client.cwd(sp.session).unwrap();
-        assert_eq!(std::fs::canonicalize(now).unwrap(), std::fs::canonicalize("/tmp").unwrap());
+        assert_eq!(
+            std::fs::canonicalize(now).unwrap(),
+            std::fs::canonicalize("/tmp").unwrap()
+        );
         r.client.signal(sp.session, libc::SIGKILL).unwrap();
     }
 
@@ -677,10 +694,16 @@ mod tests {
     fn exited_sessions_are_forgotten_after_a_while_and_running_ones_never() {
         let r = rig();
         let (done, _f1) = r.client.spawn(&req(&r, Mode::Pipe, "exit 0")).unwrap();
-        let (live, _f2) = r.client.spawn(&req(&r, Mode::Pipe, "/bin/sleep 30")).unwrap();
+        let (live, _f2) = r
+            .client
+            .spawn(&req(&r, Mode::Pipe, "/bin/sleep 30"))
+            .unwrap();
         assert_eq!(r.client.wait_exit(done.session), Some(0));
-        r.server.reap_once(Instant::now() + KEEP_EXITED + Duration::from_secs(1));
-        assert!(is_unknown_session(&r.client.wait(done.session).unwrap_err()));
+        r.server
+            .reap_once(Instant::now() + KEEP_EXITED + Duration::from_secs(1));
+        assert!(is_unknown_session(
+            &r.client.wait(done.session).unwrap_err()
+        ));
         assert_eq!(r.client.wait(live.session).unwrap(), (false, None));
         r.client.signal(live.session, libc::SIGKILL).unwrap();
     }
@@ -688,8 +711,12 @@ mod tests {
     #[test]
     fn group_names_are_looked_up_and_an_unknown_gid_is_not_found() {
         assert!(!group_name(0).unwrap().is_empty());
+        // Some gid with no group: macOS maps (gid_t)-2 to `nobody`, so look for one that is free.
+        let free = (60_000u32..70_000)
+            .find(|g| matches!(group_name(*g), Err(e) if e.kind() == io::ErrorKind::NotFound))
+            .expect("no free gid in 60000..70000");
         assert_eq!(
-            group_name(4_294_967_294).unwrap_err().kind(),
+            group_name(free).unwrap_err().kind(),
             io::ErrorKind::NotFound
         );
     }

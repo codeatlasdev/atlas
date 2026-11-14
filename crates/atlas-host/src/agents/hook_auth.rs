@@ -60,7 +60,11 @@ pub(crate) fn authorize(caller: &Caller, path: &str, body: &Value) -> Verdict {
 }
 
 fn verdict(ok: bool) -> Verdict {
-    if ok { Verdict::Allow } else { Verdict::Forbidden }
+    if ok {
+        Verdict::Allow
+    } else {
+        Verdict::Forbidden
+    }
 }
 
 #[cfg(test)]
@@ -77,15 +81,28 @@ mod tests {
 
     #[test]
     fn the_global_token_opens_everything_as_before() {
-        for path in ["/hook/claude", "/hook/omp/decision", "/crew/x/ask", "/crew/x/hook/tok", "/nope"] {
-            assert_eq!(authorize(&Caller::Global, path, &Value::Null), Verdict::Allow, "{path}");
+        for path in [
+            "/hook/claude",
+            "/hook/omp/decision",
+            "/crew/x/ask",
+            "/crew/x/hook/tok",
+            "/nope",
+        ] {
+            assert_eq!(
+                authorize(&Caller::Global, path, &Value::Null),
+                Verdict::Allow,
+                "{path}"
+            );
         }
     }
 
     #[test]
     fn a_crewmate_may_ask_and_set_its_profile_only_as_itself() {
         for sub in ["ask", "set_profile"] {
-            assert_eq!(authorize(&me(), &format!("/crew/{A}/{sub}"), &Value::Null), Verdict::Allow);
+            assert_eq!(
+                authorize(&me(), &format!("/crew/{A}/{sub}"), &Value::Null),
+                Verdict::Allow
+            );
             // The incident this module exists for: asking, or renaming, as another crewmate.
             assert_eq!(
                 authorize(&me(), &format!("/crew/{B}/{sub}"), &Value::Null),
@@ -111,7 +128,11 @@ mod tests {
             format!("/crew/{A}x/ask"),
             format!("/crew/{}/ask", &A[..35]),
         ] {
-            assert_eq!(authorize(&me(), &path, &json!({})), Verdict::Forbidden, "{path}");
+            assert_eq!(
+                authorize(&me(), &path, &json!({})),
+                Verdict::Forbidden,
+                "{path}"
+            );
         }
     }
 
@@ -121,10 +142,20 @@ mod tests {
         let other = json!({"pane_key": format!("crew:{B}:t1"), "payload": {}});
         for path in ["/hook/claude", "/hook/omp", "/hook/codex/decision"] {
             assert_eq!(authorize(&me(), path, &own), Verdict::Allow, "{path}");
-            assert_eq!(authorize(&me(), path, &other), Verdict::Forbidden, "{path}: another's pane");
+            assert_eq!(
+                authorize(&me(), path, &other),
+                Verdict::Forbidden,
+                "{path}: another's pane"
+            );
         }
         // A terminal pane of the person's own desktop is not a crewmate's.
-        for pane in [json!("p1"), json!(""), json!(null), json!(7), json!(format!("crew:{A}x:t"))] {
+        for pane in [
+            json!("p1"),
+            json!(""),
+            json!(null),
+            json!(7),
+            json!(format!("crew:{A}x:t")),
+        ] {
             assert_eq!(
                 authorize(&me(), "/hook/claude", &json!({"pane_key": pane})),
                 Verdict::Forbidden,
@@ -132,14 +163,26 @@ mod tests {
             );
         }
         // No pane key at all: unattributable, so not allowed.
-        assert_eq!(authorize(&me(), "/hook/claude", &json!({})), Verdict::Forbidden);
-        assert_eq!(authorize(&me(), "/hook/claude", &Value::Null), Verdict::Forbidden);
+        assert_eq!(
+            authorize(&me(), "/hook/claude", &json!({})),
+            Verdict::Forbidden
+        );
+        assert_eq!(
+            authorize(&me(), "/hook/claude", &Value::Null),
+            Verdict::Forbidden
+        );
     }
 
     #[test]
     fn malformed_hook_paths_are_forbidden_even_with_an_own_pane() {
         let own = json!({"pane_key": format!("crew:{A}:t1")});
-        for path in ["/hook/", "/hook//decision", "/hook/a/b", "/hook/a/b/decision", "/hook"] {
+        for path in [
+            "/hook/",
+            "/hook//decision",
+            "/hook/a/b",
+            "/hook/a/b/decision",
+            "/hook",
+        ] {
             assert_eq!(authorize(&me(), path, &own), Verdict::Forbidden, "{path}");
         }
     }

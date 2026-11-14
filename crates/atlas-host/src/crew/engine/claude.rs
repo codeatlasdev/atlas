@@ -56,10 +56,7 @@ pub(super) async fn run(
     cmd.env("ATLAS_PANE_KEY", pane_key);
     cmd.env("ATLAS_HOOK_DECISION_SECS", "1800");
 
-    let out = runner
-        .output(cmd, TASK_TIMEOUT)
-        .await
-        ?;
+    let out = runner.output(cmd, TASK_TIMEOUT).await?;
 
     let stdout = out.stdout.as_str();
 

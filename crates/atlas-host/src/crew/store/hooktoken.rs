@@ -110,11 +110,20 @@ mod tests {
         let s = CrewStore::new(t.path());
         s.save_crewmate(&crewmate(A)).unwrap();
         s.save_crewmate(&crewmate(B)).unwrap();
-        let (ta, tb) = (s.ensure_hook_token(A).unwrap(), s.ensure_hook_token(B).unwrap());
+        let (ta, tb) = (
+            s.ensure_hook_token(A).unwrap(),
+            s.ensure_hook_token(B).unwrap(),
+        );
         assert_ne!(ta, tb);
         assert_eq!(s.crewmate_of_hook_token(&ta).as_deref(), Some(A));
         assert_eq!(s.crewmate_of_hook_token(&tb).as_deref(), Some(B));
-        for bad in ["", "x", &ta[..ta.len() - 1], &format!("{ta}0"), "0".repeat(48).as_str()] {
+        for bad in [
+            "",
+            "x",
+            &ta[..ta.len() - 1],
+            &format!("{ta}0"),
+            "0".repeat(48).as_str(),
+        ] {
             assert_eq!(s.crewmate_of_hook_token(bad), None, "{bad:?}");
         }
     }

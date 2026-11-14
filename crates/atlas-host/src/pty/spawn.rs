@@ -7,9 +7,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
-use super::master::{Master, Waiter};
 #[cfg(unix)]
 use super::isolation::{IsoRef, Isolation};
+use super::master::{Master, Waiter};
 use super::{Buf, Init, Io, Meta, Session, bin_path, meta_path, now_s, open_append};
 use crate::protocol::{Mode, PtyCreate};
 
@@ -220,8 +220,14 @@ fn spawn_isolated(
     let (sp, fd) = client
         .spawn(&wire)
         .with_context(|| format!("spawn {} as {user}", argv[0]))?;
-    let reader = fd.try_clone().context("pty reader").map(std::fs::File::from)?;
-    let writer = fd.try_clone().context("pty writer").map(std::fs::File::from)?;
+    let reader = fd
+        .try_clone()
+        .context("pty reader")
+        .map(std::fs::File::from)?;
+    let writer = fd
+        .try_clone()
+        .context("pty writer")
+        .map(std::fs::File::from)?;
     let iso = Isolation {
         client: client.clone(),
         iso: IsoRef {
@@ -285,7 +291,11 @@ impl Session {
     }
 
     #[cfg(not(unix))]
-    pub fn spawn_as(req: PtyCreate, scroll_dir: &Path, _as_user: Option<()>) -> Result<Arc<Session>> {
+    pub fn spawn_as(
+        req: PtyCreate,
+        scroll_dir: &Path,
+        _as_user: Option<()>,
+    ) -> Result<Arc<Session>> {
         Self::spawn_inner(req, scroll_dir, None)
     }
 

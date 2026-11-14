@@ -318,7 +318,10 @@ mod tests {
         let mut c = cmd("/bin/sh", &["-c", "echo out; echo err >&2; exit 3"]);
         c.env("X", "1");
         // `program` is 'static by design (engine names); a literal is.
-        let o = Runner::local().output(c, Duration::from_secs(10)).await.unwrap();
+        let o = Runner::local()
+            .output(c, Duration::from_secs(10))
+            .await
+            .unwrap();
         assert_eq!(o.code, Some(3));
         assert_eq!(o.stdout.trim(), "out");
         assert_eq!(o.stderr.trim(), "err");
@@ -351,7 +354,9 @@ mod tests {
             .rpc(cmd("/bin/sh", &["-c", "read l; echo echo=$l; sleep 30"]))
             .await
             .unwrap();
-        let Rpc { mut writer, reader, .. } = rpc;
+        let Rpc {
+            mut writer, reader, ..
+        } = rpc;
         writer.write_all(b"hi\n").await.unwrap();
         let mut lines = BufReader::new(reader).lines();
         assert_eq!(lines.next_line().await.unwrap().unwrap(), "echo=hi");
@@ -423,7 +428,9 @@ mod tests {
             let r = rig();
             r.engine("claude", "read l; echo echo=$l; read m; echo echo=$m");
             let rpc = run(&r).rpc(c(&r, "")).await.unwrap();
-            let Rpc { mut writer, reader, .. } = rpc;
+            let Rpc {
+                mut writer, reader, ..
+            } = rpc;
             let mut lines = BufReader::new(reader).lines();
             writer.write_all(b"one\n").await.unwrap();
             assert_eq!(lines.next_line().await.unwrap().unwrap(), "echo=one");

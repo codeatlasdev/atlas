@@ -106,7 +106,11 @@ async fn run_pty_inner(
 
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
-    let argv = match TEST_AGENT_BIN.lock().clone().filter(|_| ctx.isolated().is_none()) {
+    let argv = match TEST_AGENT_BIN
+        .lock()
+        .clone()
+        .filter(|_| ctx.isolated().is_none())
+    {
         // An isolated agent is an engine by name, found by the helper in its own directories.
         Some(bin) => vec![bin],
         None => agent_def.argv(

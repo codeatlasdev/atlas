@@ -113,9 +113,14 @@ impl Ctx {
         if let Some(setup) = hub.crew.store.isolation() {
             crate::crew::spawn::provision::ProvClient::at(&setup.provision_socket)
                 .provision(&iso.user)
-                .map_err(|e| std::io::Error::other(format!("creating the Linux user {}: {e}", iso.user)))?;
+                .map_err(|e| {
+                    std::io::Error::other(format!("creating the Linux user {}: {e}", iso.user))
+                })?;
         }
-        adopt_memory(&hub.crew.store.crewmate_dir(id).join("memory.md"), &iso.memory())?;
+        adopt_memory(
+            &hub.crew.store.crewmate_dir(id).join("memory.md"),
+            &iso.memory(),
+        )?;
         let (port, token) = self.hook_endpoint(hub, id);
         write_readable(
             &iso.hook_endpoint(),
@@ -202,7 +207,10 @@ mod tests {
         write_readable(&p, b"one").unwrap();
         write_readable(&p, b"two-longer").unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "two-longer");
-        assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o640);
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
         assert!(!p.with_extension("tmp~").exists());
     }
 
@@ -217,7 +225,10 @@ mod tests {
         std::fs::write(&old, "milk").unwrap();
         adopt_memory(&old, &new).unwrap();
         assert_eq!(std::fs::read_to_string(&new).unwrap(), "milk");
-        assert_eq!(std::fs::read_to_string(t.path().join("old.md.pre-isolation")).unwrap(), "milk");
+        assert_eq!(
+            std::fs::read_to_string(t.path().join("old.md.pre-isolation")).unwrap(),
+            "milk"
+        );
         assert!(!old.exists());
         // The agent wrote to the new file since: a leftover old file must not clobber it.
         std::fs::write(&old, "stale").unwrap();

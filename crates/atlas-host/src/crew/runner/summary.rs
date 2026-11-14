@@ -85,9 +85,7 @@ async fn summarize(
         }
         "claude" => {
             let mut c = Cmd::new("claude", work_dir);
-            c.args(
-                ["-p", &prompt, "--model", model, "--output-format", "text"].map(String::from),
-            );
+            c.args(["-p", &prompt, "--model", model, "--output-format", "text"].map(String::from));
             c
         }
         _ => return None,

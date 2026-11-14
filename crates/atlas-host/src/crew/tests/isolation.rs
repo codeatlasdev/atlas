@@ -39,7 +39,8 @@ async fn creating_a_crewmate_provisions_its_user_and_directories() {
     let user = user_of(&id);
     let log = r.prov_log.lock().clone();
     assert!(
-        log.iter().any(|l| l.starts_with("useradd") && l.ends_with(&user)),
+        log.iter()
+            .any(|l| l.starts_with("useradd") && l.ends_with(&user)),
         "no useradd for {user}: {log:?}"
     );
     let dir = slug_dir(&r, &id);
@@ -82,7 +83,10 @@ async fn deleting_a_crewmate_removes_its_user_and_directory() {
     let (user, dir) = (user_of(&id), slug_dir(&r, &id));
     assert!(dir.is_dir());
     r.prov_log.lock().clear();
-    client.call("crewmate_delete", json!({"id": id})).await.unwrap();
+    client
+        .call("crewmate_delete", json!({"id": id}))
+        .await
+        .unwrap();
     let log = r.prov_log.lock().clone();
     assert!(log.contains(&format!("kill {user}")), "{log:?}");
     assert!(log.contains(&format!("userdel {user}")), "{log:?}");
@@ -98,7 +102,10 @@ async fn without_a_helper_crewmates_are_created_exactly_as_before() {
     let client = daemon_with(&dir, None).await;
     let id = create(&client, "Ana").await;
     assert!(dir.join("crew").join(&id).join("crewmate.json").is_file());
-    client.call("crewmate_delete", json!({"id": id})).await.unwrap();
+    client
+        .call("crewmate_delete", json!({"id": id}))
+        .await
+        .unwrap();
     client.call("shutdown", json!({})).await.ok();
 }
 
@@ -121,7 +128,10 @@ async fn an_isolated_terminal_agent_runs_in_its_directory_and_reports_through_it
     let client = daemon_with(&hostd, Some(r.setup())).await;
     let id = create(&client, "Ana").await;
     let v = client
-        .call("crewmate_task", json!({"id": id, "prompt": "hi", "source": "test"}))
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
         .await
         .unwrap();
     let task_id = v["task"]["id"].as_str().unwrap().to_string();
@@ -132,17 +142,26 @@ async fn an_isolated_terminal_agent_runs_in_its_directory_and_reports_through_it
     let endpoint = dir.join("crew-runtime/hook-endpoint.env");
     let file = std::fs::read_to_string(&endpoint).unwrap();
     let own = std::fs::read_to_string(hostd.join("crew").join(&id).join("hook-token")).unwrap();
-    assert!(file.contains(&format!("ATLAS_HOOK_TOKEN={}", own.trim())), "{file}");
+    assert!(
+        file.contains(&format!("ATLAS_HOOK_TOKEN={}", own.trim())),
+        "{file}"
+    );
     let global = std::fs::read_to_string(hostd.join("desktop/hook-endpoint.env")).unwrap();
     let global_token = global
         .lines()
         .find_map(|l| l.strip_prefix("ATLAS_HOOK_TOKEN="))
         .unwrap();
-    assert!(!file.contains(global_token), "the global token reached the agent's files");
+    assert!(
+        !file.contains(global_token),
+        "the global token reached the agent's files"
+    );
     // What the agent saw: its own directory, its own endpoint file and token.
     let seen = std::fs::read_to_string(dir.join("crew-runtime/hook-endpoint.env.seen")).unwrap();
     let real_work = std::fs::canonicalize(dir.join("work")).unwrap();
-    assert!(seen.contains(&format!("cwd={}", real_work.display())), "{seen}");
+    assert!(
+        seen.contains(&format!("cwd={}", real_work.display())),
+        "{seen}"
+    );
     assert!(seen.contains(&format!("token={}", own.trim())), "{seen}");
     assert!(!seen.contains(global_token), "{seen}");
     client.call("shutdown", json!({})).await.ok();
@@ -198,15 +217,30 @@ async fn a_crewmates_hook_token_opens_only_its_own_routes() {
     let foreign = json!({"pane_key": others_pane, "payload": {"event": "agent_end", "text": "x"}});
     assert_eq!(post(&port, &ta, "/hook/claude", &foreign).await, 403);
     assert_eq!(
-        post(&port, &ta, &format!("/crew/{b}/set_profile"), &json!({"name": "pwned"})).await,
+        post(
+            &port,
+            &ta,
+            &format!("/crew/{b}/set_profile"),
+            &json!({"name": "pwned"})
+        )
+        .await,
         403
     );
     assert_eq!(
-        post(&port, &ta, &format!("/crew/{a}/set_profile"), &json!({"name": "Mine"})).await,
+        post(
+            &port,
+            &ta,
+            &format!("/crew/{a}/set_profile"),
+            &json!({"name": "Mine"})
+        )
+        .await,
         204
     );
     // The webhook route is for outsiders with the webhook's token, never an agent.
-    assert_eq!(post(&port, &ta, &format!("/crew/{a}/hook/anything"), &json!({})).await, 403);
+    assert_eq!(
+        post(&port, &ta, &format!("/crew/{a}/hook/anything"), &json!({})).await,
+        403
+    );
     // B was not renamed by A's attempt.
     let list = client.call("crewmate_list", json!({})).await.unwrap();
     let name_of = |id: &str| {
@@ -226,7 +260,10 @@ async fn a_crewmates_hook_token_opens_only_its_own_routes() {
     assert_eq!(post(&port, &tb, "/hook/claude", &bev).await, 204);
     // Nobody's token, and an almost-right one.
     assert_eq!(post(&port, "nope", "/hook/claude", &ev).await, 401);
-    assert_eq!(post(&port, &ta[..ta.len() - 1], "/hook/claude", &ev).await, 401);
+    assert_eq!(
+        post(&port, &ta[..ta.len() - 1], "/hook/claude", &ev).await,
+        401
+    );
     // The global token is unchanged.
     assert_eq!(post(&port, &global, "/hook/claude", &foreign).await, 204);
     client.call("shutdown", json!({})).await.ok();
@@ -262,26 +299,48 @@ printf '{"type":"result","session_id":"ses-iso","result":"cwd=%s cfg=%s secret=%
         .unwrap();
     let id = v["id"].as_str().unwrap().to_string();
     client
-        .call("crewmate_secret_set", json!({"id": id, "key": "MY_SECRET", "value": "s3cr3t-value"}))
+        .call(
+            "crewmate_secret_set",
+            json!({"id": id, "key": "MY_SECRET", "value": "s3cr3t-value"}),
+        )
         .await
         .unwrap();
     let t = client
-        .call("crewmate_task", json!({"id": id, "prompt": "hi", "source": "test"}))
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
         .await
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
     let task = wait_task_state(&client, &id, &task_id, "done", Duration::from_secs(20)).await;
-    let reply = task["reply"].as_str().or(task["result"].as_str()).unwrap().to_string();
+    let reply = task["reply"]
+        .as_str()
+        .or(task["result"].as_str())
+        .unwrap()
+        .to_string();
     let dir = slug_dir(&r, &id);
     let real_work = std::fs::canonicalize(dir.join("work")).unwrap();
-    assert!(reply.contains(&format!("cwd={}", real_work.display())), "{reply}");
+    assert!(
+        reply.contains(&format!("cwd={}", real_work.display())),
+        "{reply}"
+    );
     // The MCP config the agent was pointed at is in crew-runtime/, not in the crew home.
     assert!(
-        reply.contains(&format!("cfg={}", dir.join("crew-runtime/mcp-config.json").display())),
+        reply.contains(&format!(
+            "cfg={}",
+            dir.join("crew-runtime/mcp-config.json").display()
+        )),
         "{reply}"
     );
     assert!(dir.join("crew-runtime/mcp-config.json").is_file());
-    assert!(!hostd.join("crew").join(&id).join("mcp-config.json").exists());
+    assert!(
+        !hostd
+            .join("crew")
+            .join(&id)
+            .join("mcp-config.json")
+            .exists()
+    );
     // The secret reached the agent's environment (through the helper's socket, never a file).
     assert!(reply.contains("secret=s3cr3t-value"), "{reply}");
     client.call("shutdown", json!({})).await.ok();
@@ -332,22 +391,34 @@ async fn a_crewmate_without_a_user_is_provisioned_by_its_first_task_and_keeps_it
 
     let client = daemon_with(&hostd, Some(r.setup())).await;
     let t = client
-        .call("crewmate_task", json!({"id": id, "prompt": "hi", "source": "test"}))
+        .call(
+            "crewmate_task",
+            json!({"id": id, "prompt": "hi", "source": "test"}),
+        )
         .await
         .unwrap();
     let task_id = t["task"]["id"].as_str().unwrap().to_string();
     wait_task_state(&client, id, &task_id, "done", Duration::from_secs(20)).await;
     let user = user_of(id);
     assert!(
-        r.prov_log.lock().iter().any(|l| l.starts_with("useradd") && l.ends_with(&user)),
+        r.prov_log
+            .lock()
+            .iter()
+            .any(|l| l.starts_with("useradd") && l.ends_with(&user)),
         "{:?}",
         r.prov_log.lock()
     );
     // The memory is now where the agent (and the prompt) look, with its content.
     let moved = slug_dir(&r, id).join("memory.md");
-    assert_eq!(std::fs::read_to_string(&moved).unwrap(), "remember the milk");
+    assert_eq!(
+        std::fs::read_to_string(&moved).unwrap(),
+        "remember the milk"
+    );
     // The UI reads and edits it there too.
-    let v = client.call("crewmate_memory", json!({"id": id})).await.unwrap();
+    let v = client
+        .call("crewmate_memory", json!({"id": id}))
+        .await
+        .unwrap();
     assert_eq!(v["text"], "remember the milk");
     client.call("shutdown", json!({})).await.ok();
 }
@@ -362,11 +433,13 @@ async fn an_export_of_an_isolated_crewmate_carries_its_current_memory() {
     let client = daemon_with(&hostd, Some(r.setup())).await;
     let id = create(&client, "Ana").await;
     client
-        .call("crewmate_memory_set", json!({"id": id, "text": "likes tabs"}))
+        .call(
+            "crewmate_memory_set",
+            json!({"id": id, "text": "likes tabs"}),
+        )
         .await
         .unwrap();
-    let store =
-        crate::crew::store::CrewStore::new(&hostd).with_isolation(Some(r.setup()));
+    let store = crate::crew::store::CrewStore::new(&hostd).with_isolation(Some(r.setup()));
     let mut out = Vec::new();
     crate::crew::store::archive::export(&store, &[], false, &mut out).unwrap();
     let mut a = tar::Archive::new(flate2::read::GzDecoder::new(&out[..]));

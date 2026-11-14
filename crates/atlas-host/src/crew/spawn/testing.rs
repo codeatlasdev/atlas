@@ -128,7 +128,6 @@ impl Rig {
         std::fs::write(&bin, format!("#!/bin/sh\n{script}\n")).unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-
 }
 
 pub fn rig() -> Rig {

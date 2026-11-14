@@ -76,9 +76,13 @@ pub async fn fetch(work_dir: &Path, env: &[(String, String)]) -> Result<(), Stri
 
     // Find the shared (main) worktree via `git worktree list --porcelain`. An isolated checkout is
     // a full clone: its list names itself, and the fetch below runs there.
-    let list = git_run_env(&["-C", &work_str, "worktree", "list", "--porcelain"], None, env)
-        .await
-        .unwrap_or_default();
+    let list = git_run_env(
+        &["-C", &work_str, "worktree", "list", "--porcelain"],
+        None,
+        env,
+    )
+    .await
+    .unwrap_or_default();
 
     let shared = list
         .lines()
@@ -100,7 +104,12 @@ pub async fn fetch(work_dir: &Path, env: &[(String, String)]) -> Result<(), Stri
         .await
         .unwrap_or_default();
     if status.is_empty() {
-        let _ = git_run_env(&["-C", &work_str, "pull", "--ff-only", "--quiet"], None, env).await;
+        let _ = git_run_env(
+            &["-C", &work_str, "pull", "--ff-only", "--quiet"],
+            None,
+            env,
+        )
+        .await;
     }
 
     Ok(())
@@ -533,7 +542,15 @@ mod tests {
         sh(
             &src,
             &[
-                "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "two",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "two",
             ],
         );
         fetch(&w, &layout::git_env(Some(&iso))).await.unwrap();
@@ -551,7 +568,10 @@ mod tests {
         let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
         assert_eq!(work_dir_for(base, id, None), work_dir(base, id));
         let iso = Isolated::under("/r", id).unwrap();
-        assert_eq!(work_dir_for(base, id, Some(&iso)), PathBuf::from("/r/3f2a9c1e5b7d/work"));
+        assert_eq!(
+            work_dir_for(base, id, Some(&iso)),
+            PathBuf::from("/r/3f2a9c1e5b7d/work")
+        );
     }
 
     #[test]

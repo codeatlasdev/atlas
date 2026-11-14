@@ -135,7 +135,13 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
     let tty = matches!(req.mode, Mode::Pty);
     // SAFETY: plain getters.
     let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let identity = drop_for(Ids { uid: euid, gid: egid }, ids)?;
+    let identity = drop_for(
+        Ids {
+            uid: euid,
+            gid: egid,
+        },
+        ids,
+    )?;
     // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
     // (setsid, ioctl, setgroups, setgid, setuid); it allocates nothing.
     unsafe {
@@ -163,21 +169,22 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
 /// pty with the slave owned by the crewmate; the child's stdio is the slave. Returns the master.
 fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, [Stdio; 3])> {
     let (mut m, mut s): (RawFd, RawFd) = (-1, -1);
-    let mut ws = libc::winsize {
+    let ws = libc::winsize {
         ws_row: req.rows,
         ws_col: req.cols,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    // SAFETY: out-pointers are live; null name/termios are allowed. `*mut` for termios and winsize:
-    // macOS declares them mutable, and a `*mut` coerces to Linux's `*const`.
+    // SAFETY: out-pointers are live; null name/termios are allowed. macOS declares termios and winsize
+    // `*mut` where Linux has `*const`; a cast to the type the platform wants is a no-op on Linux and
+    // the only way to a single call on both (openpty never writes through them).
     if unsafe {
         libc::openpty(
             &mut m,
             &mut s,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            &mut ws,
+            std::ptr::from_ref(&ws).cast_mut().cast(),
         )
     } != 0
     {
@@ -357,10 +364,7 @@ mod tests {
         assert!(out.contains("secret=s3"), "{out}");
         // `pwd` reports the resolved path (macOS temp dirs sit behind the /var -> /private/var link).
         let real = std::fs::canonicalize(&f.work).unwrap();
-        assert!(
-            out.contains(&format!("cwd={}", real.display())),
-            "{out}"
-        );
+        assert!(out.contains(&format!("cwd={}", real.display())), "{out}");
         assert!(
             out.contains("home=/home/x") && out.contains(&format!("user={USER}")),
             "{out}"
@@ -417,7 +421,10 @@ mod tests {
             drop_for(ids(0, 0), ids(990, 990)).unwrap(),
             Identity::To(ids(990, 990))
         );
-        assert_eq!(drop_for(ids(1000, 1000), ids(1000, 1000)).unwrap(), Identity::Nothing);
+        assert_eq!(
+            drop_for(ids(1000, 1000), ids(1000, 1000)).unwrap(),
+            Identity::Nothing
+        );
         for want in [ids(990, 990), ids(1000, 990), ids(990, 1000), ids(0, 0)] {
             let e = drop_for(ids(1000, 1000), want).unwrap_err();
             assert_eq!(e.kind(), io::ErrorKind::PermissionDenied, "{want:?}");

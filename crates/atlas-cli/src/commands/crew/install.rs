@@ -14,6 +14,7 @@ use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Remote, shq};
 
 use super::binary;
+use super::isolation;
 use super::layout::{self, Account, INSTALL_DIR, Probe, SERVICE};
 
 #[derive(Debug, Args)]
@@ -210,6 +211,29 @@ or run the install from a terminal: atlas crew install {}",
         bail!("writing service file failed: {}", o.stderr.trim());
     }
 
+    // --- One Linux user per crewmate ---
+    // The helpers, the engines every crewmate user runs, and a user for each crewmate that already
+    // exists. All before hostd restarts: it looks for the helper's socket when it starts.
+    let ids = list_crewmates(&r, &account).await?;
+    step(&format!(
+        "setting up one Linux user per crewmate ({} existing)",
+        ids.len()
+    ));
+    let engines = isolation_engines();
+    for action in isolation::install_actions(
+        &account,
+        &ids,
+        &engines
+            .iter()
+            .map(|(a, c)| (*a, c.as_str()))
+            .collect::<Vec<_>>(),
+    ) {
+        run_action(&r, &action).await?;
+    }
+    if let Some(n) = isolation::migration_notice(ids.len()) {
+        step(&n);
+    }
+
     // --- Enable and start ---
     step(&format!("enabling and starting {SERVICE}"));
     let o = r
@@ -319,6 +343,52 @@ pub(super) async fn stage_upload(r: &Remote, local_bin: &std::path::Path) -> Res
         .await?;
     if o.code != 0 {
         bail!("binary upload failed: {}", o.stderr.trim());
+    }
+    Ok(())
+}
+
+/// The ids of the crewmates the crew user already has (their directories under its home).
+async fn list_crewmates(r: &Remote, a: &Account) -> Result<Vec<String>> {
+    let o = r.exec(&isolation::list_crewmates_script(a)).await?;
+    if o.code != 0 {
+        bail!("listing the crewmates failed: {}", o.stderr.trim());
+    }
+    Ok(o.stdout
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+/// The engines installed system-wide: each agent with the vendor's own install line
+/// (`agent_install_hint`, the lines `atlas crew login` prints).
+fn isolation_engines() -> Vec<(&'static str, String)> {
+    ["omp", "claude", "codex", "opencode"]
+        .into_iter()
+        .filter_map(|a| super::agent_install_hint(a).map(|c| (a, c.to_string())))
+        .collect()
+}
+
+/// Run one isolation action on the server.
+async fn run_action(r: &Remote, action: &isolation::Action) -> Result<()> {
+    let (what, o) = match action {
+        isolation::Action::Run(sh) => (sh.clone(), r.exec(sh).await?),
+        isolation::Action::Write { file, contents } => (
+            format!("writing {file}"),
+            r.exec_stdin(
+                &format!("sudo tee {} > /dev/null", shq(file)),
+                Some(contents.as_bytes()),
+            )
+            .await?,
+        ),
+    };
+    if o.code != 0 {
+        bail!(
+            "`{}` failed: {}",
+            what.chars().take(120).collect::<String>(),
+            o.stderr.trim()
+        );
     }
     Ok(())
 }

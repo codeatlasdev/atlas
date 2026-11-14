@@ -48,7 +48,7 @@ mod live;
 mod live_server;
 mod menu;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
-mod bots;
+mod crew;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -224,16 +224,16 @@ macro_rules! handlers {
             remote::ssh_forward,
             remote::ssh_forwards,
             remote::projects_add_remote,
-            bots::bot_hosts_list,
-            bots::bot_hosts_add,
-            bots::bot_hosts_remove,
-            bots::bot_install,
-            bots::ssh_key_find,
-            bots::ssh_keygen,
-            bots::ssh_authorize_key,
-            bots::bot_agent_check,
-            bots::bot_agent_install,
-            bots::provider_probe,
+            crew::crew_servers_list,
+            crew::crew_servers_add,
+            crew::crew_servers_remove,
+            crew::crew_server_install,
+            crew::ssh_key_find,
+            crew::ssh_keygen,
+            crew::ssh_authorize_key,
+            crew::crew_agent_check,
+            crew::crew_agent_install,
+            crew::provider_probe,
             github_auth::project_git_info,
             menu::menu_sync,
             zoom::zoom_set,

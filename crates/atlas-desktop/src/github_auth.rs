@@ -1,4 +1,4 @@
-//! Git metadata helpers for bot project tracking.
+//! Git metadata helpers for crewmate project tracking.
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]

@@ -48,8 +48,10 @@ enum Commands {
     },
 
     #[command(next_help_heading = "Crew")]
-    /// Manage Atlas Crew ships (bot servers): install, login, status, logs
-    Bot(commands::bot::BotArgs),
+    /// Manage Atlas Crew servers (where crewmates run): install, login, status, logs
+    // `bot` is the pre-rename name: kept (hidden) for scripts and docs written before Atlas Crew.
+    #[command(alias = "bot")]
+    Crew(commands::crew::CrewArgs),
 
     #[command(next_help_heading = "Deploy")]
     /// Ship a release to a server: atomic swap, health-gated restarts, auto-rollback
@@ -260,7 +262,7 @@ async fn run() -> Result<()> {
         Commands::Skills { command } => command.run().await?,
         Commands::Link(args) => args.run().await?,
         Commands::Unlink(args) => args.run().await?,
-        Commands::Bot(args) => args.run().await?,
+        Commands::Crew(args) => args.run().await?,
     }
 
     // The TUI is gone and its services are stopped: install an update the user accepted
@@ -339,5 +341,36 @@ mod tests {
             Action::Adhoc(v) => assert_eq!(v, ["node", "-e", "x"]),
             other => panic!("{other:?}"),
         }
+    }
+
+    // Decision (Atlas Bot -> Atlas Crew rename): scripts and crewmates set up before it keep working.
+    // `atlas bot …` is `atlas crew …`, `atlas mcp --bot <id>` is `--crewmate <id>`, and neither shows
+    // in help (docs/crew.md documents them as hidden aliases).
+    #[test]
+    fn pre_rename_bot_spellings_still_parse_and_stay_out_of_help() {
+        let status = |w: &str| match parse(&argv(&[w, "status", "me@server"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                commands::crew::CrewCommands::Status(s) => s.ssh_target,
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{w}: {other:?}"),
+        };
+        assert_eq!(status("crew"), "me@server");
+        assert_eq!(status("bot"), "me@server");
+        for flag in ["--crewmate", "--bot"] {
+            match parse(&argv(&["mcp", flag, "c1"])) {
+                Ok(Action::Command(Commands::Mcp(m))) => {
+                    assert_eq!(m.crewmate.as_deref(), Some("c1"))
+                }
+                other => panic!("{flag}: {other:?}"),
+            }
+        }
+        use clap::CommandFactory as _;
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("crew"), "{help}");
+        assert!(
+            !help.contains("bot"),
+            "the old name leaked into help: {help}"
+        );
     }
 }

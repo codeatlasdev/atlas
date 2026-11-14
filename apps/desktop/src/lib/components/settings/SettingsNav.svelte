@@ -33,7 +33,7 @@
 		git: GitBranch,
 		agents: Bot,
 		integrations: Plug,
-		bots: Server,
+		crew: Server,
 	};
 
 	let { searching }: { searching: boolean } = $props();

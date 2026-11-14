@@ -1,5 +1,5 @@
-// A bot computer reached through the paired Mac (2026-11-12: the Crew tab was empty because
-// the phone only talks to its Mac). The Mac's side is crates/atlas-host/src/crew.rs.
+// A crew server reached through the paired Mac (2026-11-12: the Crew tab was empty because
+// the phone only talks to its Mac). The Mac's side is crates/atlas-host/src/crew/relay.rs.
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,24 +12,24 @@ import 'fake_transport.dart';
 void main() {
   late FakeTransport wire;
   late Multiplexer mac;
-  late Multiplexer bot;
+  late Multiplexer crewmate;
 
   setUp(() {
     wire = FakeTransport();
     mac = Multiplexer(wire);
-    bot = Multiplexer(CrewTransport(mac, 'atlas-bot@ship'));
+    crewmate = Multiplexer(CrewTransport(mac, 'atlas-crew@server'));
   });
 
   test(
     'a call goes to the Mac as crew_call and its answer comes back',
     () async {
-      final reply = bot.call('bot_list', {'x': 1});
+      final reply = crewmate.call('crewmate_list', {'x': 1});
       await pumpEventQueue();
       final sent = jsonDecode(wire.sentLines.single) as Map<String, dynamic>;
       expect(sent['cmd'], 'crew_call');
       expect(sent['args'], {
-        'server': 'atlas-bot@ship',
-        'cmd': 'bot_list',
+        'server': 'atlas-crew@server',
+        'cmd': 'crewmate_list',
         'args': {'x': 1},
       });
       wire.injectLine(
@@ -37,7 +37,7 @@ void main() {
           'id': sent['id'],
           'ok': true,
           'data': {
-            'bots': [
+            'crewmates': [
               {'name': 'Jorge'},
             ],
           },
@@ -45,14 +45,14 @@ void main() {
       );
       final r = await reply;
       expect(r['ok'], true);
-      expect((r['data'] as Map)['bots'], [
+      expect((r['data'] as Map)['crewmates'], [
         {'name': 'Jorge'},
       ]);
     },
   );
 
   test('the Mac refusing the relay is the call failing', () async {
-    final reply = bot.call('bot_list');
+    final reply = crewmate.call('crewmate_list');
     await pumpEventQueue();
     final sent = jsonDecode(wire.sentLines.single) as Map<String, dynamic>;
     wire.injectLine(
@@ -63,32 +63,32 @@ void main() {
 
   test("only this server's relayed pushes arrive, unwrapped", () async {
     final got = <Map<String, dynamic>>[];
-    bot.pushEvents.listen(got.add);
+    crewmate.pushEvents.listen(got.add);
     for (final (server, ev) in [
-      ('atlas-bot@ship', 'bot_task'),
-      ('atlas-bot@other', 'bot_task'),
-      ('atlas-bot@ship', 'agent_approval'),
+      ('atlas-crew@server', 'crewmate_task'),
+      ('atlas-crew@other', 'crewmate_task'),
+      ('atlas-crew@server', 'agent_approval'),
     ]) {
       wire.injectLine(
         jsonEncode({
           'ev': 'crew_event',
           'server': server,
-          'event': {'ev': ev, 'bot_id': 'b'},
+          'event': {'ev': ev, 'crewmate_id': 'b'},
         }),
       );
     }
-    // The Mac's own pushes are not the bot computer's.
+    // The Mac's own pushes are not the crew server's.
     wire.injectLine(jsonEncode({'ev': 'agent_status', 'pane': 'p'}));
     await pumpEventQueue();
-    expect(got.map((e) => e['ev']), ['bot_task', 'agent_approval']);
-    expect(got.first['bot_id'], 'b');
+    expect(got.map((e) => e['ev']), ['crewmate_task', 'agent_approval']);
+    expect(got.first['crewmate_id'], 'b');
   });
 
-  test('the bot computer is gone when the Mac connection drops', () async {
-    final pending = bot.call('bot_list');
+  test('the crew server is gone when the Mac connection drops', () async {
+    final pending = crewmate.call('crewmate_list');
     await pumpEventQueue();
     await wire.simulateRemoteClose();
     expect((await pending)['ok'], false);
-    await expectLater(bot.done, completes);
+    await expectLater(crewmate.done, completes);
   });
 }

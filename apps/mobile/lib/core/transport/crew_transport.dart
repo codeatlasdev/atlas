@@ -1,5 +1,5 @@
-/// A bot computer reached through a paired Mac: the phone only talks to its Macs, and the
-/// Mac's hostd relays to the bot computers its desktop knows (`crew_call`, `crew_event`).
+/// A crew server reached through a paired Mac: the phone only talks to its Macs, and the
+/// Mac's hostd relays to the crew servers its desktop knows (`crew_call`, `crew_event`).
 library;
 
 import 'dart:async';
@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
-/// Lines to and from bot computer [server], carried by the Mac's [parent] connection.
+/// Lines to and from crew server [server], carried by the Mac's [parent] connection.
 ///
 /// A request `{id, cmd, args}` becomes `crew_call {server, cmd, args}` on the Mac, and its
 /// answer comes back under the original id; the Mac's `crew_event` pushes for [server] come

@@ -364,13 +364,13 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         // The prompt carries the tool input (a shell command, a file path).
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
-        "bot_task" => Scope::Read,
+        "crewmate_task" => Scope::Read,
         "computer_invite" => Scope::Read,
         _ => return None,
     })
 }
 
-/// [`push_scope`] of a whole push line. A `crew_event` (a bot computer's push relayed by
+/// [`push_scope`] of a whole push line. A `crew_event` (a crew server's push relayed by
 /// `crate::crew`) needs what the event inside it needs, and never a terminal's.
 pub fn line_scope(line: &str) -> Option<Scope> {
     #[derive(serde::Deserialize)]
@@ -416,26 +416,28 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
-        C::BotList {} | C::BotTasks { .. } | C::BotMemory { .. } => Scope::Read,
-        C::BotTask { .. } | C::BotCancel { .. } => Scope::Act,
-        C::BotCreate { .. }
-        | C::BotUpdate { .. }
-        | C::BotDelete { .. }
-        | C::BotMemorySet { .. }
-        | C::BotRoutineSet { .. } => Scope::Act,
+        C::CrewmateList {} | C::CrewmateTasks { .. } | C::CrewmateMemory { .. } => Scope::Read,
+        C::CrewmateTask { .. } | C::CrewmateCancel { .. } => Scope::Act,
+        C::CrewmateCreate { .. }
+        | C::CrewmateUpdate { .. }
+        | C::CrewmateDelete { .. }
+        | C::CrewmateMemorySet { .. }
+        | C::CrewmateRoutineSet { .. } => Scope::Act,
         C::PushRegister { .. } | C::PushUnregister { .. } => Scope::Read,
-        C::BotTelegramSet { .. } | C::BotTelegramLink {} => return Err("not available on mobile"),
-        C::BotTriggersSet { .. } => Scope::Act,
-        C::BotAnswer { .. } => Scope::Act,
-        C::BotUsage { .. } => Scope::Read,
+        C::CrewTelegramSet { .. } | C::CrewTelegramLink {} | C::CrewTelegramStatus {} => {
+            return Err("not available on mobile");
+        }
+        C::CrewmateTriggersSet { .. } => Scope::Act,
+        C::CrewmateAnswer { .. } => Scope::Act,
+        C::CrewmateUsage { .. } => Scope::Read,
         C::EngineLimits {} => Scope::Read,
-        C::BotSecretSet { .. } => return Err("not available on mobile"),
+        C::CrewmateSecretSet { .. } => return Err("not available on mobile"),
         C::MobileInvite { .. } => return Err("not available on mobile"),
         C::MobileInvites {} => Scope::Read,
         C::MobileInviteDismiss { .. } => Scope::Act,
-        C::BotGithubStatus {} | C::BotGithubLoginPoll {} => Scope::Read,
-        C::BotGithubLoginStart {} | C::BotGithubLogout {} => Scope::Act,
-        C::BotActionAnswer { .. } | C::BotGithubConnectResume {} => Scope::Act,
+        C::CrewGithubStatus {} | C::CrewGithubLoginPoll {} => Scope::Read,
+        C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
+        C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,
         C::CrewServers {} => Scope::Read,
         // What the relayed command needs here. Terminals stay out: their output streams to the
         // relaying connection, not to one phone.

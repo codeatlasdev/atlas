@@ -1,0 +1,139 @@
+/*
+ * Styles shared by the connect, engine and sign-in parts of the Atlas Crew onboarding (buttons, inputs, field text,
+ * the spinner dot). Imported once by CrewOnboarding.svelte and scoped under its `.crew-onboarding` root, so the
+ * rules reach the child components without being copied into each one.
+ */
+.crew-onboarding .action-group {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.crew-onboarding .primary-btn {
+	height: 48px;
+	padding: 0 32px;
+	background: var(--ca-accent, #4f8ef7);
+	color: var(--ca-surface-base);
+	border: none;
+	border-radius: 999px;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+	transition:
+		opacity 150ms,
+		transform 120ms;
+}
+
+.crew-onboarding .primary-btn:hover:not(:disabled) {
+	opacity: 0.88;
+}
+
+.crew-onboarding .primary-btn:active:not(:disabled) {
+	transform: scale(0.98);
+}
+
+.crew-onboarding .primary-btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.crew-onboarding .back-btn {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	padding: 8px 4px;
+	background: none;
+	border: none;
+	color: var(--ca-text-secondary);
+	font-size: 14px;
+	cursor: pointer;
+	border-radius: 6px;
+	transition: color 120ms;
+}
+
+.crew-onboarding .back-btn:hover {
+	color: var(--ca-text-primary);
+}
+
+.crew-onboarding .text-link {
+	padding: 8px 4px;
+	background: none;
+	border: none;
+	color: var(--ca-text-secondary);
+	font-size: 14px;
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	transition: color 120ms;
+}
+
+.crew-onboarding .text-link:hover {
+	color: var(--ca-text-primary);
+}
+
+.crew-onboarding .field-label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ca-text-secondary);
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+.crew-onboarding .ssh-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 11px 14px;
+	border-radius: 8px;
+	border: 1.5px solid var(--ca-border-subtle);
+	background: var(--ca-surface-base);
+	color: var(--ca-text-primary);
+	font-size: 15px;
+	outline: none;
+	transition: border-color 150ms;
+}
+
+.crew-onboarding .ssh-input:focus {
+	border-color: var(--ca-accent, #4f8ef7);
+}
+
+.crew-onboarding .ssh-input:disabled {
+	opacity: 0.5;
+}
+
+.crew-onboarding .field-error {
+	font-size: 13px;
+	color: var(--ca-danger, #ef4444);
+	margin: 0;
+}
+
+.crew-onboarding .field-hint {
+	font-size: 12px;
+	color: var(--ca-text-secondary);
+	margin: 0;
+	line-height: 1.5;
+}
+
+.crew-onboarding .field-hint code {
+	font-family: monospace;
+	font-size: 11.5px;
+	background: var(--ca-surface-sunken);
+	padding: 1px 4px;
+	border-radius: 3px;
+}
+
+.crew-onboarding .spin-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	border: 2px solid var(--ca-accent, #4f8ef7);
+	border-top-color: transparent;
+	animation: onboarding-spin 700ms linear infinite;
+}
+
+@keyframes onboarding-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}

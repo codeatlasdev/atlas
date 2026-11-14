@@ -2,6 +2,7 @@ pub mod agent_store;
 pub mod agents;
 pub mod channel;
 pub mod crash;
+pub mod crew;
 pub mod desktop_ctl;
 pub mod domain;
 pub mod error;

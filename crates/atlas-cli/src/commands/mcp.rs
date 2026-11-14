@@ -11,16 +11,17 @@ pub struct McpArgs {
     #[arg(short, long)]
     pub dir: Option<String>,
 
-    /// Serve the bot MCP protocol for the given bot ID instead of the project MCP server.
-    #[arg(long)]
-    pub bot: Option<String>,
+    /// Serve the crew MCP protocol for the given crewmate ID instead of the project MCP server.
+    // `--bot` is the pre-rename flag: crewmates configured before Atlas Crew pass it.
+    #[arg(long, alias = "bot")]
+    pub crewmate: Option<String>,
 }
 
 impl AtlasCommand for McpArgs {
     /// Serve MCP over stdio. stdout is reserved for protocol messages.
     async fn run(self) -> Result<()> {
-        if let Some(bot_id) = self.bot {
-            return atlas_host::bots::mcp::serve(&bot_id).await;
+        if let Some(crewmate_id) = self.crewmate {
+            return atlas_host::crew::mcp::serve(&crewmate_id).await;
         }
 
         let root = match &self.dir {

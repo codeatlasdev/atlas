@@ -26,8 +26,8 @@ type notifyReq struct {
 }
 
 var kindBody = map[string]string{
-	"task_done": "A bot finished a task",
-	"needs_you": "A bot needs you",
+	"task_done": "A crewmate finished a task",
+	"needs_you": "A crewmate needs you",
 }
 
 // bucket is a fixed-window counter (60 requests per 1-minute window).

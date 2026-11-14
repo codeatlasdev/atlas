@@ -61,17 +61,17 @@ pub(crate) struct Hub {
     pub(crate) agents: Arc<crate::agents::AgentHub>,
     /// Atlas Mobile: identity, paired phones, pairing codes (`crate::mobile`).
     pub(crate) mobile: Arc<crate::mobile::Mobile>,
-    /// Bot runner: manages bot definitions, task queues, push/telegram delivery.
-    pub(crate) bots: Arc<crate::bots::BotHub>,
-    /// Whether this daemon was started as a bot server (`ATLAS_BOT_HOST=1`).
-    pub(crate) bot_host: bool,
+    /// Crewmate runner: manages crewmate definitions, task queues, push/telegram delivery.
+    pub(crate) crew: Arc<crate::crew::CrewHub>,
+    /// Whether this daemon was started as a crew server (`ATLAS_CREW_HOST=1`).
+    pub(crate) crew_host: bool,
     /// `Some` when this is the lab lane's shadow daemon (`atlas hostd --lab`): it mirrors and
     /// forwards to the main hostd instead of owning terminals (`crate::lab`).
     pub(crate) lab: Option<Arc<crate::lab::Lab>>,
     /// The desktop's registry dir (`<registry>/desktop/projects.json`).
     registry: PathBuf,
-    /// Bot computers relayed to Atlas Mobile.
-    pub(crate) crew: Arc<crate::crew::Crew>,
+    /// Crewmate computers relayed to Atlas Mobile.
+    pub(crate) crew_relay: Arc<crate::crew::relay::CrewRelay>,
 }
 
 impl Hub {
@@ -114,7 +114,7 @@ impl Hub {
         json!({
             "version": env!("CARGO_PKG_VERSION"),
             "proto": protocol::PROTO,
-            "caps": protocol::caps(self.bot_host),
+            "caps": protocol::caps(self.crew_host),
             "pid": std::process::id(),
             "uptime_s": self.started.elapsed().as_secs(),
             "ptys": all.len(),
@@ -280,8 +280,8 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
-    /// Whether this daemon is a bot server (adds "bots" to caps, gates bot commands).
-    pub bot_host: bool,
+    /// Whether this daemon is a crew server (adds "crew" to caps, gates crewmate commands).
+    pub crew_host: bool,
     /// Run as the lab lane's shadow daemon following the main hostd in this directory
     /// (`atlas hostd --lab`, see [`crate::lab`]). `serve_with`'s `dir` is then the lab's own.
     pub lab: Option<PathBuf>,
@@ -290,8 +290,8 @@ pub struct ServeOpts {
     /// says (Atlas Dev runs its daemon in `~/.atlas/dev`). `None`: the lab's main dir, else the
     /// daemon's own (tests).
     pub registry: Option<PathBuf>,
-    /// How to reach the bot computers relayed to phones (`crate::crew`); `None`: ssh.
-    pub crew: Option<crate::crew::Connector>,
+    /// How to reach the crew servers relayed to phones (`crate::crew`); `None`: ssh.
+    pub crew_relay: Option<crate::crew::relay::Connector>,
 }
 
 /// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
@@ -300,11 +300,11 @@ pub fn desktop_registry() -> PathBuf {
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
-    let bot_host = std::env::var("ATLAS_BOT_HOST").as_deref() == Ok("1");
+    let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
     serve_with(
         dir,
         ServeOpts {
-            bot_host,
+            crew_host,
             registry: Some(desktop_registry()),
             ..Default::default()
         },
@@ -433,7 +433,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
     let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
-    let bots = crate::bots::BotHub::new(dir);
+    let crew = crate::crew::CrewHub::new(dir);
     let registry = opts
         .registry
         .clone()
@@ -454,19 +454,23 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         lsp_docs: Mutex::new(HashMap::new()),
         agents,
         mobile,
-        bots,
-        bot_host: opts.bot_host,
+        crew,
+        crew_host: opts.crew_host,
         registry: registry.clone(),
-        crew: Arc::new(crate::crew::Crew::new(&registry, dir, opts.crew.clone())),
+        crew_relay: Arc::new(crate::crew::relay::CrewRelay::new(
+            &registry,
+            dir,
+            opts.crew_relay.clone(),
+        )),
         lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
     crate::mobile::start(&hub);
-    hub.crew.start(&hub);
-    hub.bots.start(Arc::downgrade(&hub));
+    hub.crew_relay.start(&hub);
+    hub.crew.start(Arc::downgrade(&hub));
     {
-        let bots = hub.bots.clone();
+        let crew = hub.crew.clone();
         hub.agents
-            .set_bot_pane_can_answer(Box::new(move |_pane| bots.can_answer_bot_pane()));
+            .set_crewmate_pane_can_answer(Box::new(move |_pane| crew.can_answer_crewmate_pane()));
     }
     // Adopted terminals (live handoff) keep idling their agent when they exit.
     for s in hub.sessions_snapshot() {
@@ -901,7 +905,7 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
 }
 
 /// Any agent started in a terminal of a pane reports to the hook server (the omp extension and
-/// `atlas hook` need both); a launcher's own values win. Shared by `PtyCreate` and the bot runner.
+/// `atlas hook` need both); a launcher's own values win. Shared by `PtyCreate` and the crewmate runner.
 pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
     if let Some(pane) = req.scope.pane_key.clone() {
         let endpoint = paths::hook_endpoint(&hub.dir)
@@ -1067,7 +1071,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         }
         HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
         HostCmd::MobileRevoke { node_id } => {
-            hub.bots.revoke_device_tokens(&node_id);
+            hub.crew.revoke_device_tokens(&node_id);
             hub.mobile.revoke(&node_id).map(|()| json!({}))
         }
         HostCmd::MobileSetScopes { node_id, scopes } => {
@@ -1083,35 +1087,36 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         })),
         HostCmd::AgentIntegrations {} => Ok(crate::agents::integrations::all().await),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
-        bot @ (HostCmd::BotList {}
-        | HostCmd::BotCreate { .. }
-        | HostCmd::BotUpdate { .. }
-        | HostCmd::BotDelete { .. }
-        | HostCmd::BotTask { .. }
-        | HostCmd::BotTasks { .. }
-        | HostCmd::BotCancel { .. }
-        | HostCmd::BotMemory { .. }
-        | HostCmd::BotMemorySet { .. }
-        | HostCmd::BotRoutineSet { .. }
-        | HostCmd::BotTriggersSet { .. }
-        | HostCmd::BotSecretSet { .. }
-        | HostCmd::BotAnswer { .. }
-        | HostCmd::BotUsage { .. }
+        crewmate @ (HostCmd::CrewmateList {}
+        | HostCmd::CrewmateCreate { .. }
+        | HostCmd::CrewmateUpdate { .. }
+        | HostCmd::CrewmateDelete { .. }
+        | HostCmd::CrewmateTask { .. }
+        | HostCmd::CrewmateTasks { .. }
+        | HostCmd::CrewmateCancel { .. }
+        | HostCmd::CrewmateMemory { .. }
+        | HostCmd::CrewmateMemorySet { .. }
+        | HostCmd::CrewmateRoutineSet { .. }
+        | HostCmd::CrewmateTriggersSet { .. }
+        | HostCmd::CrewmateSecretSet { .. }
+        | HostCmd::CrewmateAnswer { .. }
+        | HostCmd::CrewmateUsage { .. }
         | HostCmd::EngineLimits {}
         | HostCmd::PushRegister { .. }
         | HostCmd::PushUnregister { .. }
-        | HostCmd::BotTelegramSet { .. }
-        | HostCmd::BotTelegramLink {}
-        | HostCmd::BotGithubStatus {}
-        | HostCmd::BotGithubLoginStart {}
-        | HostCmd::BotGithubLoginPoll {}
-        | HostCmd::BotGithubLogout {}
-        | HostCmd::BotActionAnswer { .. }
-        | HostCmd::BotGithubConnectResume {}
-        | HostCmd::BotCrewGet {}
-        | HostCmd::BotCrewSet { .. }) => crate::bots::handle(hub, bot).await,
-        HostCmd::CrewServers {} => Ok(hub.crew.servers()),
-        HostCmd::CrewCall { server, cmd, args } => hub.crew.call(&server, &cmd, args).await,
+        | HostCmd::CrewTelegramSet { .. }
+        | HostCmd::CrewTelegramLink {}
+        | HostCmd::CrewTelegramStatus {}
+        | HostCmd::CrewGithubStatus {}
+        | HostCmd::CrewGithubLoginStart {}
+        | HostCmd::CrewGithubLoginPoll {}
+        | HostCmd::CrewGithubLogout {}
+        | HostCmd::CrewmateActionAnswer { .. }
+        | HostCmd::CrewGithubConnectResume {}
+        | HostCmd::CrewSettingsGet {}
+        | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
+        HostCmd::CrewCall { server, cmd, args } => hub.crew_relay.call(&server, &cmd, args).await,
         HostCmd::MobileInvite { url, name } => {
             hub.mobile.mobile_invite(url, name, hub);
             Ok(json!({}))

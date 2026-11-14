@@ -1228,22 +1228,22 @@ const DEFS = [
 		],
 	},
 	{
-		id: "bots",
+		id: "crew",
 		label: "Atlas Crew",
-		description: "Crewmates running on your ships — agents working around the clock.",
+		description: "Crewmates running on your crew servers — agents working around the clock.",
 		cluster: "connect",
 		pages: [
 			{
-				files: ["components/BotsSettings.svelte"],
+				files: ["components/CrewSettings.svelte"],
 				groups: [
 					{
-						title: "Ships",
+						title: "Crew servers",
 						items: [
 							item(
-								"bots-add",
-								"Add ship",
-								"Connect a ship running `atlas bot install`.",
-								"ssh ship crew agent",
+								"crew-add",
+								"Add crew server",
+								"Connect a crew server running `atlas crew install`.",
+								"ssh server crew agent",
 							),
 						],
 					},
@@ -1264,7 +1264,7 @@ const DEFS = [
 							item(
 								"short-replies",
 								"Short replies",
-								"Summarize long bot replies with a cheap model before showing them.",
+								"Summarize long crewmate replies with a cheap model before showing them.",
 								"summary compact ai model cheap",
 							),
 						],
@@ -1273,7 +1273,7 @@ const DEFS = [
 						title: "Onboarding",
 						items: [
 							item(
-								"bots-onboarding",
+								"crew-onboarding",
 								"Replay onboarding",
 								"Shows the Atlas Crew introduction again from the first step.",
 								"onboarding intro tour crew atlas crew",

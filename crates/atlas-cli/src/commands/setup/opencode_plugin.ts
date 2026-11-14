@@ -18,7 +18,7 @@ const PANE_KEY = process.env.ATLAS_PANE_KEY;
 const LAUNCH_TOKEN = process.env.ATLAS_LAUNCH_TOKEN;
 const TAB_ID = process.env.ATLAS_TAB_ID;
 const WORKTREE_ID = process.env.ATLAS_WORKTREE_ID;
-// Bot runner sets ATLAS_HOOK_DECISION_SECS=1800; interactive sessions default to 55 s.
+// The crew runner sets ATLAS_HOOK_DECISION_SECS=1800; interactive sessions default to 55 s.
 const DECISION_SECS = Number(process.env.ATLAS_HOOK_DECISION_SECS ?? 55);
 
 interface Endpoint {

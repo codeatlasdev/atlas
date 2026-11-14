@@ -36,7 +36,7 @@ class PushService {
       await messaging.requestPermission(alert: true, badge: true, sound: true);
       // firebase_messaging 17 deprecates getToken/onTokenRefresh for register()/onRegistered,
       // which yield a Firebase Installation ID, not the FCM registration token that
-      // atlas-host's push sender (bots/push.rs, FCM HTTP v1 `token`) targets. Moving needs
+      // atlas-host's push sender (crew/push.rs, FCM HTTP v1 `token`) targets. Moving needs
       // the sender changed and real FCM delivery verified together.
       // ignore: deprecated_member_use
       final token = await messaging.getToken();
@@ -57,7 +57,7 @@ class PushService {
     }
   }
 
-  /// Register the current FCM token with a bot computer.
+  /// Register the current FCM token with a crew server.
   static Future<void> registerWithComputer(
     Multiplexer mux,
     String token,
@@ -69,7 +69,7 @@ class PushService {
     }
   }
 
-  /// Unregister a FCM token from a bot computer.
+  /// Unregister a FCM token from a crew server.
   static Future<void> unregisterFromComputer(
     Multiplexer mux,
     String token,

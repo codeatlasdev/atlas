@@ -60,12 +60,12 @@ pub const PROTO: u32 = 2;
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
-pub fn caps(bot_host: bool) -> Vec<&'static str> {
+pub fn caps(crew_host: bool) -> Vec<&'static str> {
     let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents"];
     #[cfg(unix)]
     v.push("upgrade");
-    if bot_host {
-        v.push("bots");
+    if crew_host {
+        v.push("crew");
     }
     v
 }
@@ -146,9 +146,6 @@ fn default_log_lines() -> usize {
 }
 fn default_history_limit() -> usize {
     200
-}
-fn default_bot_task_limit() -> usize {
-    50
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -429,8 +426,8 @@ pub enum HostCmd {
         node_id: String,
         scopes: Vec<crate::mobile::Scope>,
     },
-    BotList {},
-    BotCreate {
+    CrewmateList {},
+    CrewmateCreate {
         name: String,
         role: String,
         agent: String,
@@ -438,16 +435,16 @@ pub enum HostCmd {
         #[serde(default)]
         workdir: Option<String>,
         #[serde(default)]
-        look: Option<crate::bots::store::BotLook>,
+        look: Option<crate::crew::store::CrewmateLook>,
         #[serde(default)]
-        engine: Option<crate::bots::store::EngineConfig>,
+        engine: Option<crate::crew::store::EngineConfig>,
         #[serde(default)]
-        project: Option<crate::bots::store::ProjectRef>,
+        project: Option<crate::crew::store::ProjectRef>,
         /// Initial setup step; None = no setup needed.
         #[serde(default)]
         setup_step: Option<String>,
     },
-    BotUpdate {
+    CrewmateUpdate {
         id: String,
         #[serde(default)]
         name: Option<String>,
@@ -458,11 +455,11 @@ pub enum HostCmd {
         #[serde(default)]
         approval: Option<String>,
         #[serde(default)]
-        look: Option<crate::bots::store::BotLook>,
+        look: Option<crate::crew::store::CrewmateLook>,
         #[serde(default)]
-        engine: Option<crate::bots::store::EngineConfig>,
+        engine: Option<crate::crew::store::EngineConfig>,
         #[serde(default)]
-        project: Option<crate::bots::store::ProjectRef>,
+        project: Option<crate::crew::store::ProjectRef>,
         /// `None` = don't touch; `Some(None)` = clear (setup done); `Some(Some(s))` = set step.
         /// serde's default maps `null` to `None` like a missing key, so "Looks good" (which sends `null`) never
         /// ended the setup: `present` keeps `null` as `Some(None)`.
@@ -472,33 +469,33 @@ pub enum HostCmd {
         #[serde(default, deserialize_with = "present")]
         short_replies: Option<Option<bool>>,
     },
-    BotDelete {
+    CrewmateDelete {
         id: String,
     },
-    BotTask {
+    CrewmateTask {
         id: String,
         prompt: String,
         source: String,
         #[serde(default)]
         tz: Option<String>,
     },
-    BotTasks {
+    CrewmateTasks {
         id: String,
-        #[serde(default = "default_bot_task_limit")]
+        #[serde(default = "crate::crew::store::default_task_limit")]
         limit: usize,
     },
-    BotCancel {
+    CrewmateCancel {
         id: String,
         task: String,
     },
-    BotMemory {
+    CrewmateMemory {
         id: String,
     },
-    BotMemorySet {
+    CrewmateMemorySet {
         id: String,
         text: String,
     },
-    BotRoutineSet {
+    CrewmateRoutineSet {
         id: String,
         routines: Vec<serde_json::Value>,
     },
@@ -509,11 +506,13 @@ pub enum HostCmd {
     PushUnregister {
         token: String,
     },
-    BotTelegramSet {
+    CrewTelegramSet {
         #[serde(default)]
         token: Option<String>,
     },
-    BotTelegramLink {},
+    CrewTelegramLink {},
+    /// Whether Telegram is configured and how many chats are linked. Never returns the token.
+    CrewTelegramStatus {},
     MobileInvite {
         url: String,
         name: String,
@@ -522,16 +521,16 @@ pub enum HostCmd {
     MobileInviteDismiss {
         url: String,
     },
-    BotTriggersSet {
+    CrewmateTriggersSet {
         id: String,
         triggers: Vec<serde_json::Value>,
     },
-    BotSecretSet {
+    CrewmateSecretSet {
         id: String,
         key: String,
         value: String,
     },
-    BotAnswer {
+    CrewmateAnswer {
         id: String,
         ask_id: String,
         #[serde(default)]
@@ -539,7 +538,7 @@ pub enum HostCmd {
         #[serde(default)]
         text: Option<String>,
     },
-    BotUsage {
+    CrewmateUsage {
         #[serde(default)]
         id: Option<String>,
         #[serde(default)]
@@ -547,43 +546,43 @@ pub enum HostCmd {
     },
     EngineLimits {},
     /// `gh auth status` without secrets. snake_case of `GitHub` would be wrong.
-    #[serde(rename = "bot_github_status")]
-    BotGithubStatus {},
+    #[serde(rename = "crew_github_status")]
+    CrewGithubStatus {},
     /// Ensure gh installed, start `gh auth login --web`, return device code+URL.
-    #[serde(rename = "bot_github_login_start")]
-    BotGithubLoginStart {},
+    #[serde(rename = "crew_github_login_start")]
+    CrewGithubLoginStart {},
     /// Poll running login: pending/done/error. On done configures git.
-    #[serde(rename = "bot_github_login_poll")]
-    BotGithubLoginPoll {},
+    #[serde(rename = "crew_github_login_poll")]
+    CrewGithubLoginPoll {},
     /// `gh auth logout` and remove setup-git/insteadOf config.
-    #[serde(rename = "bot_github_logout")]
-    BotGithubLogout {},
+    #[serde(rename = "crew_github_logout")]
+    CrewGithubLogout {},
     /// Answer a waiting-action task (provide_secret, input, choose, sign_in_engine).
-    #[serde(rename = "bot_action_answer")]
-    BotActionAnswer {
+    #[serde(rename = "crewmate_action_answer")]
+    CrewmateActionAnswer {
         id: String,
         task: String,
-        /// For provide_secret: the secret value (written to bot secrets, never stored in task).
+        /// For provide_secret: the secret value (written to crewmate secrets, never stored in task).
         /// For other kinds: the user's response text or chosen option.
         value: String,
     },
     /// If gh is already logged in, wake any connect_github waiters immediately.
-    #[serde(rename = "bot_github_connect_resume")]
-    BotGithubConnectResume {},
+    #[serde(rename = "crew_github_connect_resume")]
+    CrewGithubConnectResume {},
     /// Read crew-level reply-summary settings.
-    #[serde(rename = "bot_crew_get")]
-    BotCrewGet {},
+    #[serde(rename = "crew_settings_get")]
+    CrewSettingsGet {},
     /// Write crew-level reply-summary settings.
-    #[serde(rename = "bot_crew_set")]
-    BotCrewSet {
+    #[serde(rename = "crew_settings_set")]
+    CrewSettingsSet {
         short_replies: bool,
         #[serde(default)]
         short_replies_model: Option<String>,
     },
-    /// The bot computers this Mac's desktop knows (`~/.atlas/desktop/bot-hosts.json`), which
+    /// The crew servers this Mac's desktop knows (`~/.atlas/desktop/crew-servers.json`), which
     /// Atlas Mobile reaches through this hostd (`crate::crew`).
     CrewServers {},
-    /// Run `cmd` on bot computer `server` through this hostd. A phone may only send what it
+    /// Run `cmd` on crew server `server` through this hostd. A phone may only send what it
     /// could send this hostd directly, with the same scope (`mobile::required_scope`).
     CrewCall {
         server: String,
@@ -646,34 +645,34 @@ mod tests {
     #[test]
     fn github_commands_parse_under_their_wire_names() {
         let status: Request =
-            serde_json::from_str(r#"{"id":1,"cmd":"bot_github_status","args":{}}"#).unwrap();
-        assert!(matches!(status.cmd, HostCmd::BotGithubStatus {}));
+            serde_json::from_str(r#"{"id":1,"cmd":"crew_github_status","args":{}}"#).unwrap();
+        assert!(matches!(status.cmd, HostCmd::CrewGithubStatus {}));
         let start: Request =
-            serde_json::from_str(r#"{"id":2,"cmd":"bot_github_login_start","args":{}}"#).unwrap();
-        assert!(matches!(start.cmd, HostCmd::BotGithubLoginStart {}));
+            serde_json::from_str(r#"{"id":2,"cmd":"crew_github_login_start","args":{}}"#).unwrap();
+        assert!(matches!(start.cmd, HostCmd::CrewGithubLoginStart {}));
         let poll: Request =
-            serde_json::from_str(r#"{"id":3,"cmd":"bot_github_login_poll","args":{}}"#).unwrap();
-        assert!(matches!(poll.cmd, HostCmd::BotGithubLoginPoll {}));
+            serde_json::from_str(r#"{"id":3,"cmd":"crew_github_login_poll","args":{}}"#).unwrap();
+        assert!(matches!(poll.cmd, HostCmd::CrewGithubLoginPoll {}));
         let logout: Request =
-            serde_json::from_str(r#"{"id":4,"cmd":"bot_github_logout","args":{}}"#).unwrap();
-        assert!(matches!(logout.cmd, HostCmd::BotGithubLogout {}));
+            serde_json::from_str(r#"{"id":4,"cmd":"crew_github_logout","args":{}}"#).unwrap();
+        assert!(matches!(logout.cmd, HostCmd::CrewGithubLogout {}));
     }
 
     #[test]
-    fn bot_action_answer_and_resume_parse_under_wire_names() {
+    fn crewmate_action_answer_and_resume_parse_under_wire_names() {
         let answer: Request = serde_json::from_str(
-            r#"{"id":10,"cmd":"bot_action_answer","args":{"id":"bot1","task":"t1","value":"secret"}}"#,
+            r#"{"id":10,"cmd":"crewmate_action_answer","args":{"id":"bot1","task":"t1","value":"secret"}}"#,
         ).unwrap();
-        assert!(matches!(answer.cmd, HostCmd::BotActionAnswer { .. }));
-        if let HostCmd::BotActionAnswer { id, task, value } = answer.cmd {
+        assert!(matches!(answer.cmd, HostCmd::CrewmateActionAnswer { .. }));
+        if let HostCmd::CrewmateActionAnswer { id, task, value } = answer.cmd {
             assert_eq!(id, "bot1");
             assert_eq!(task, "t1");
             assert_eq!(value, "secret");
         }
         let resume: Request =
-            serde_json::from_str(r#"{"id":11,"cmd":"bot_github_connect_resume","args":{}}"#)
+            serde_json::from_str(r#"{"id":11,"cmd":"crew_github_connect_resume","args":{}}"#)
                 .unwrap();
-        assert!(matches!(resume.cmd, HostCmd::BotGithubConnectResume {}));
+        assert!(matches!(resume.cmd, HostCmd::CrewGithubConnectResume {}));
     }
 
     #[test]

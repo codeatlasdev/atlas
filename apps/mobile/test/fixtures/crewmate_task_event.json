@@ -1,0 +1,14 @@
+{
+  "crewmate_id": "crewmate-working",
+  "ev": "crewmate_task",
+  "task": {
+    "id": "task-event-1",
+    "pane": "crew:crewmate-working:task-event-1",
+    "prompt": "review the PR",
+    "source": "desktop",
+    "started_at": 1700000005,
+    "state": "running",
+    "summarized": false,
+    "ts": 1700000000
+  }
+}

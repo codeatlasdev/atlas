@@ -610,7 +610,7 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
         ("crew_servers", json!({})),
         (
             "crew_call",
-            json!({"server": "s", "cmd": "bot_list", "args": {}}),
+            json!({"server": "s", "cmd": "crewmate_list", "args": {}}),
         ),
     ];
     for (c, a) in local_cmds {

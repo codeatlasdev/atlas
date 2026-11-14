@@ -253,7 +253,7 @@ class _DashboardState extends ConsumerState<_Dashboard> {
       widget.device,
       projects: list,
       live: live,
-      bots: const [],
+      crewmates: const [],
     );
     // Projects that need you, then running, then stopped.
     final flagged = {

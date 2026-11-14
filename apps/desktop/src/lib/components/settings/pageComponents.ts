@@ -5,7 +5,7 @@
  * Keep one `key: Component,` per line: the test reads this file.
  */
 import type { Component } from "svelte";
-import BotsSettings from "../BotsSettings.svelte";
+import CrewSettings from "../CrewSettings.svelte";
 import HelpSettings from "#lib/onboarding/HelpSettings.svelte";
 import LanguagesTab from "#lib/settings/LanguagesTab.svelte";
 import type { RegistryDefs } from "#lib/settings/index.ts";
@@ -50,5 +50,5 @@ export const PAGE_COMPONENTS: Record<PageKey, Component> = {
 	"integrations/agents": AgentHooks,
 	"integrations/ssh": SshSettings,
 	"integrations/mobile": MobileSettings,
-	bots: BotsSettings,
+	crew: CrewSettings,
 };

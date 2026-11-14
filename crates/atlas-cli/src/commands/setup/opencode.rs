@@ -303,7 +303,7 @@ mod tests {
         assert!(src.contains("/hook/opencode"));
         // Must read ATLAS_HOOK_ENDPOINT
         assert!(src.contains("ATLAS_HOOK_ENDPOINT"));
-        // Must respect ATLAS_HOOK_DECISION_SECS for bot wait time
+        // Must respect ATLAS_HOOK_DECISION_SECS for crewmate wait time
         assert!(src.contains("ATLAS_HOOK_DECISION_SECS"));
     }
 }

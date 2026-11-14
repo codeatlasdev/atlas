@@ -46,7 +46,7 @@
 	import { updates } from "#lib/stores/updates.svelte.ts";
 	import { worktrees } from "#lib/stores/worktrees.svelte.ts";
 	import { ws } from "#lib/stores/workspace.svelte.ts";
-	import BotsWorkspace from "#lib/bots/BotsWorkspace.svelte";
+	import CrewWorkspace from "#lib/crew/CrewWorkspace.svelte";
 	import WorkspaceRail from "#lib/shell/WorkspaceRail.svelte";
 
 	let { children }: { children: Snippet } = $props();
@@ -97,8 +97,8 @@
 	style:--space-tint={shell.active ? shell.tint(shell.active.id) : undefined}
 >
 	<WorkspaceRail />
-	{#if ws.appMode === "bots"}
-		<BotsWorkspace />
+	{#if ws.appMode === "crew"}
+		<CrewWorkspace />
 	{:else}
 		<div class="window-ground" aria-hidden="true"></div>
 		<div class="sidebar-slot" class:hidden={!docks.sidebar} inert={!docks.sidebar}>
@@ -141,7 +141,7 @@
 <UpdatedCard />
 <GhosttyOffer />
 <DevLine />
-{#if ws.appMode !== "bots"}<Onboarding />{/if}
+{#if ws.appMode !== "crew"}<Onboarding />{/if}
 <AskDialog />
 <TabSwitcher />
 <CornerStack />

@@ -1,13 +1,13 @@
 <script lang="ts">
-	import BotEditor from "#lib/bots/BotEditor.svelte";
-	import BotFace from "#lib/bots/BotFace.svelte";
-	import type { BotState } from "#lib/bots/botFace.ts";
-	import type { BotLook } from "#lib/bots/look.ts";
+	import CrewmateEditor from "#lib/crew/CrewmateEditor.svelte";
+	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
+	import type { CrewmateState } from "#lib/crew/crewmateFace.ts";
+	import type { CrewmateLook } from "#lib/crew/look.ts";
 
-	const STATES: BotState[] = ["idle", "working", "needs_you", "offline"];
+	const STATES: CrewmateState[] = ["idle", "working", "needs_you", "offline"];
 
 	// One crewmate per CodeAtlas product, dressed for its job.
-	const CREW: { name: string; look: BotLook }[] = [
+	const CREW: { name: string; look: CrewmateLook }[] = [
 		{
 			name: "Atlas",
 			look: {
@@ -91,9 +91,9 @@
 		},
 	];
 
-	let crewState = $state<BotState>("idle");
+	let crewState = $state<CrewmateState>("idle");
 	let building = $state(false);
-	let draft = $state<BotLook>({
+	let draft = $state<CrewmateLook>({
 		color: "#38bdf8",
 		eyes: "round",
 		hat: "none",
@@ -119,13 +119,13 @@
 	</div>
 	{#if building}
 		<div class="editor">
-			<BotEditor bind:open={building} look={draft} seed="builder" onsave={(l) => (draft = l)} />
+			<CrewmateEditor bind:open={building} look={draft} seed="builder" onsave={(l) => (draft = l)} />
 		</div>
 	{:else}
 		<div class="grid">
 			{#each CREW as c (c.name)}
 				<div class="cell">
-					<BotFace seed={c.name} look={c.look} state={crewState} size={150} track />
+					<CrewmateFace seed={c.name} look={c.look} state={crewState} size={150} track />
 					<span class="lbl">{c.name}</span>
 				</div>
 			{/each}

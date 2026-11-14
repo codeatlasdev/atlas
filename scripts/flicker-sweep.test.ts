@@ -26,7 +26,8 @@ const judge = (file: string, surface = "t") => {
 	return { code: r.exitCode, err: r.stderr.toString(), out: r.stdout.toString() };
 };
 
-describe("--judge on a real recording", () => {
+// The recordings are made with ffmpeg; without it these cannot run (dev machines have it, CI runners do not).
+describe.skipIf(!Bun.which("ffmpeg"))("--judge on a real recording", () => {
 	test("a steady page exits 0", async () => {
 		const r = judge(await clip("clean", 90));
 		expect(r.code).toBe(0);
@@ -109,7 +110,8 @@ describe("the surface list", () => {
 	});
 });
 
-describe("the fixture projects", () => {
+// The fixtures live under /private/tmp and need a built atlas: they belong to the macOS sweep.
+describe.skipIf(process.platform !== "darwin")("the fixture projects", () => {
 	// Incident (first full run): the fixture's action used key `m`, a built-in dashboard key, so atlas.yaml was invalid, the
 	// stack never started and the "Panel" surface was filmed with no services at all while reporting a clean pass.
 	test("every fixture atlas.yaml passes the real validator (`atlas config`)", () => {
@@ -125,7 +127,7 @@ describe("the fixture projects", () => {
 	});
 });
 
-describe("fixtures.cleanup leaves no process behind", () => {
+describe.skipIf(process.platform !== "darwin")("fixtures.cleanup leaves no process behind", () => {
 	// Incident (three full sweep runs): the app starts each fixture stack as a detached `atlas dev --runner` (ppid 1). Stopping
 	// the agent instance does not stop them, so every run leaked a runner with its services. cleanup() must `atlas down`.
 	const alive = (root: string) => Bun.spawnSync(["pgrep", "-f", "--", `dev --runner --dir ${root}`]).stdout.toString().trim().split("\n").filter(Boolean);

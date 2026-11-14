@@ -96,6 +96,10 @@ describe("--json (the atlas_affected plugin)", () => {
 		});
 	});
 
+	// Both run the real script, which calls `cargo metadata`: on a fresh CI runner (no cache, first resolve of the
+	// workspace) that alone takes longer than bun's 5 s default (seen at 5000 ms, killed with 143).
+	const COLD_CARGO_MS = 60_000;
+
 	test("the real script reads the files from stdin and prints only JSON", async () => {
 		const { out, code } = await run(["scripts/check-changed.ts", "docs/contributing.md"]);
 		expect(code).toBe(0);
@@ -103,7 +107,7 @@ describe("--json (the atlas_affected plugin)", () => {
 		expect(j.tests).toEqual(["bun test scripts"]);
 		expect(j.steps).toEqual(["bun test scripts"]);
 		expect(j.builds).toEqual([]);
-	});
+	}, COLD_CARGO_MS);
 
 	test("a crate under crates/ resolves through cargo metadata to its dependents", async () => {
 		const { out, code } = await run(["crates/atlas-core/src/lib.rs"]);
@@ -112,5 +116,5 @@ describe("--json (the atlas_affected plugin)", () => {
 		expect(j.crates).toContain("atlas-core");
 		expect(j.crates).toContain("atlas-cli");
 		expect(j.builds).toEqual(j.crates);
-	});
+	}, COLD_CARGO_MS);
 });

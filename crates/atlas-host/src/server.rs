@@ -75,6 +75,8 @@ pub(crate) struct Hub {
     registry: PathBuf,
     /// Crewmate computers relayed to Atlas Mobile.
     pub(crate) crew_relay: Arc<crate::crew::relay::CrewRelay>,
+    /// The desktop's control socket: an agent a phone starts opens a tab there when the app is running.
+    desktop: atlas_core::desktop_ctl::Endpoint,
 }
 
 impl Hub {
@@ -311,6 +313,8 @@ pub struct ServeOpts {
     pub registry: Option<PathBuf>,
     /// How to reach the crew servers relayed to phones (`crate::crew`); `None`: ssh.
     pub crew_relay: Option<crate::crew::relay::Connector>,
+    /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
+    pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
     pub agent_push: Option<crate::agents::push::Sender>,
 }
@@ -479,6 +483,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         crew,
         crew_host: opts.crew_host,
         registry: registry.clone(),
+        desktop: opts.desktop.clone().unwrap_or_default(),
         crew_relay: Arc::new(crate::crew::relay::CrewRelay::new(
             &registry,
             dir,
@@ -1075,7 +1080,26 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             project,
             agent,
             prompt,
-        } => agent_launch(hub, &project, &agent, prompt).await,
+            worktree,
+        } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::WorktreeList { project } => {
+            crate::worktrees::local::list(hub.data_dir(), &project).await
+        }
+        HostCmd::WorktreeCreate {
+            project,
+            name,
+            base,
+        } => {
+            crate::worktrees::local::create(
+                hub.data_dir(),
+                &project,
+                crate::worktrees::local::CreateReq { name, base },
+            )
+            .await
+        }
+        HostCmd::WorktreeRemove { id } => {
+            crate::worktrees::local::remove(hub.data_dir(), &id).await
+        }
         HostCmd::ProjectList {} => {
             let (panes, status) = agent_panes(hub).await;
             crate::projects::list(hub.data_dir(), &panes, &status).await
@@ -1315,28 +1339,77 @@ fn agent_interrupt(hub: &Hub, pane: &str) -> Result<Value, String> {
     Ok(json!({}))
 }
 
-/// A new agent tab in a project, made by the desktop (it owns tabs, worktrees and the
-/// agent's launch env): `terminal_create` on its control socket.
+/// A new agent terminal in a project, or in one of its worktrees. With Atlas Desktop running it opens a real
+/// tab there (`terminal_create` on its control socket: the app owns tabs, so the user sees it); with the app
+/// closed hostd starts the terminal itself (see [`crate::agents::launch_plan`]) and the agent's hooks report
+/// under its pane. A desktop that answers with an error is not "closed": the error is returned, never retried here.
 async fn agent_launch(
     hub: &Hub,
     project: &str,
     agent: &str,
     prompt: Option<String>,
+    worktree: Option<String>,
 ) -> Result<Value, String> {
-    let root = crate::projects::root_of(&hub.dir, project)?;
+    let dir = hub.data_dir();
+    let (worktree_id, cwd) = match worktree.filter(|w| !w.is_empty()) {
+        Some(w) => {
+            // A worktree of THIS project's repo, by id: another repo's, or a path, is refused.
+            let listed = crate::worktrees::local::list(dir, project).await?;
+            let ok = listed["worktrees"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|r| r["id"] == w.as_str()));
+            if !ok {
+                return Err(format!("unknown worktree {w} in this project"));
+            }
+            let cwd = crate::worktrees::local::dir_of(dir, &w)?;
+            (w, cwd)
+        }
+        None => (project.to_string(), crate::projects::root_of(dir, project)?),
+    };
+    if !cwd.is_dir() {
+        return Err(format!("{} no longer exists", cwd.display()));
+    }
+    let prompt = prompt.filter(|p| !p.trim().is_empty());
+
+    // The desktop first. Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
+    let ctl = hub.desktop.clone();
     let args = json!({
-        "worktree": root.to_string_lossy(),
+        "worktree": cwd.to_string_lossy(),
         "agent": agent,
-        "prompt": prompt.filter(|p| !p.trim().is_empty()),
+        "prompt": prompt,
     });
-    // Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
-    let tab = tokio::task::spawn_blocking(move || {
-        atlas_core::desktop_ctl::call("terminal_create", &args, std::time::Duration::from_secs(60))
+    let asked = tokio::task::spawn_blocking(move || {
+        ctl.call_checked("terminal_create", &args, std::time::Duration::from_secs(60))
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| format!("{e:#}"))?;
-    Ok(json!({"pane": tab["tab"], "pty": tab["pty"]}))
+    .map_err(|e| e.to_string())?;
+    match asked {
+        Ok(tab) => return Ok(json!({"pane": tab["tab"], "pty": tab["pty"]})),
+        Err(atlas_core::desktop_ctl::CallError::Failed(e)) => return Err(format!("{e:#}")),
+        Err(atlas_core::desktop_ctl::CallError::NotRunning) => {}
+    }
+
+    let bin = crate::agents::launch::resolve_bin(agent)?;
+    let pane = paths::new_id();
+    let mut req = crate::agents::launch_plan(
+        dir,
+        agent,
+        &bin,
+        &cwd,
+        &worktree_id,
+        &pane,
+        prompt.as_deref(),
+    )?;
+    hook_env(hub, &mut req);
+    let scroll = hub.scroll_dir.clone();
+    let session = tokio::task::spawn_blocking(move || Session::spawn(req, &scroll))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?;
+    let pty = session.id.clone();
+    idle_agent_on_exit(hub, &session);
+    hub.sessions.lock().insert(pty.clone(), session);
+    Ok(json!({"pane": pane, "pty": pty}))
 }
 
 #[cfg(all(test, unix))]

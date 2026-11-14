@@ -22,6 +22,7 @@ pub mod protocol;
 mod pty;
 pub mod server;
 pub mod upgrade;
+pub mod worktrees;
 
 pub use client::HostClient;
 

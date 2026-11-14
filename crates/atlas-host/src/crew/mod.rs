@@ -13,6 +13,7 @@
 //! | `triggers`  | webhook, GitHub, file, service, crewmate-chain and schedule triggers        |
 //! | `capture`   | the `capture` tool: Playwright screenshots of a URL, widths x themes x engines |
 //! | `locate`    | the `locate` tool: which route, component and selector draw a region of a screenshot |
+//! | `uigate`    | the `ui_gate` tool: plan per change, rerun only failures, regression replay |
 //! | `schedule`  | cron routines                                                               |
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
@@ -42,6 +43,7 @@ pub(crate) mod telegram;
 #[cfg(test)]
 mod tests;
 pub(crate) mod triggers;
+pub mod uigate;
 
 use serde_json::{Value, json};
 

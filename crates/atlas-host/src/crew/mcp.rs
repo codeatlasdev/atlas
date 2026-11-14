@@ -10,6 +10,8 @@
 //!   attached to the task; an incomplete matrix is an error (`crew::capture`).
 //! - **`locate`**    — which route, component and selector draw a region of a screenshot
 //!   (`crew::locate`); asks for `ask_user` when two candidates are equally likely.
+//! - **`ui_gate`**   — the fast UI gate: capture only the scenarios a change needs, rerun only the
+//!   failed ones, register a fixed bug as a permanent regression (`crew::uigate`).
 //! - **`approve`**   — answer a Claude permission-prompt (used with
 //!   `--permission-prompt-tool atlas:approve`).
 //!
@@ -155,6 +157,7 @@ async fn call_tool(
         "set_profile" => tool_set_profile(args, client, env).await,
         "capture" => tool_capture(args, client, env).await,
         "locate" => tool_locate(args, client, env).await,
+        "ui_gate" => tool_ui_gate(args, client, env).await,
         "approve" => tool_approve(args, client, env).await,
         other => Err(format!("unknown tool: {other}")),
     }
@@ -246,19 +249,26 @@ async fn tool_set_profile(
 /// Post the request to hostd, which runs the browsers (they are on the crew server, not in this
 /// process) and answers with the combinations visited or `{"error": …}`.
 async fn tool_capture(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    hook_tool("capture", args, client, env).await
+    post_task_tool("capture", args, client, env).await
 }
 
 // ─── locate ───────────────────────────────────────────────────────────────────
 
 /// Same transport as `capture`: hostd reads the work tree and runs the browser.
 async fn tool_locate(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    hook_tool("locate", args, client, env).await
+    post_task_tool("locate", args, client, env).await
 }
 
-/// POST `{pane_key, args}` to `/crew/<id>/<tool>` and return the body as the tool's text, or the
-/// route's `{"error": …}` as the tool's error.
-async fn hook_tool(
+// ─── ui_gate ──────────────────────────────────────────────────────────────────
+
+/// Same road as `capture`: hostd plans, captures and remembers; this process only relays.
+async fn tool_ui_gate(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
+    post_task_tool("ui_gate", args, client, env).await
+}
+
+/// `POST /crew/<id>/<tool>` with the pane key and the arguments; the answer text is the tool result,
+/// `{"error": …}` is the tool's error.
+async fn post_task_tool(
     tool: &str,
     args: Value,
     client: &reqwest::Client,
@@ -416,6 +426,26 @@ fn tools_list() -> Value {
             }
         },
         {
+            "name": "ui_gate",
+            "description": "The fast UI gate. `run {base_url}` plans from your change: the routes the diff touches (atlas.yaml `affected:` rules) plus every registered regression, captures each scenario (chromium + webkit, 390 + 1440 px, light + dark) and answers pass/fail per scenario with the capture names. A scenario that already passed over the same project bytes is a cache hit and is not captured again. `rerun_failed` captures only the scenarios that failed last time. `add_regression {url, note}` registers a UI bug you just fixed in `.atlas/ui-regressions.json`: commit that file with your fix, and every later run replays it. Run it before you finish a UI task.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string", "enum": ["run", "rerun_failed", "add_regression"] },
+                    "base_url": { "type": "string", "description": "run: where the app is served, e.g. http://localhost:5173. Routes are joined to it." },
+                    "routes": { "type": "array", "items": { "type": "string" }, "description": "run: pages to check instead of the ones the diff implies (paths starting with /)." },
+                    "files": { "type": "array", "items": { "type": "string" }, "description": "run: changed files instead of the git diff, project-relative." },
+                    "force": { "type": "boolean", "description": "run: ignore the cache and capture everything (the data behind the page changed)." },
+                    "url": { "type": "string", "description": "add_regression: the page that was broken." },
+                    "note": { "type": "string", "description": "add_regression: what was wrong." },
+                    "widths": { "type": "array", "items": { "type": "integer" }, "description": "add_regression: widths of the scenario (default 390, 1440)." },
+                    "themes": { "type": "array", "items": { "type": "string", "enum": ["light", "dark"] } },
+                    "engines": { "type": "array", "items": { "type": "string", "enum": ["chromium", "webkit"] } }
+                },
+                "required": ["action"]
+            }
+        },
+        {
             "name": "approve",
             "description": "Answer a Claude permission-prompt (use with --permission-prompt-tool atlas:approve).",
             "inputSchema": {
@@ -514,20 +544,27 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_has_five_tools() {
+    fn tools_list_names_every_tool_exactly_once() {
+        // By name, not by count: a count went stale every time two branches each added a tool.
         let list = tools_list();
-        assert_eq!(list.as_array().unwrap().len(), 5);
-        let names: Vec<&str> = list
+        let mut all: Vec<&str> = list
             .as_array()
             .unwrap()
             .iter()
             .filter_map(|t| t["name"].as_str())
             .collect();
-        assert!(names.contains(&"ask_user"));
-        assert!(names.contains(&"set_profile"));
-        assert!(names.contains(&"approve"));
-        assert!(names.contains(&"capture"));
-        assert!(names.contains(&"locate"));
+        all.sort_unstable();
+        assert_eq!(
+            all,
+            [
+                "approve",
+                "ask_user",
+                "capture",
+                "locate",
+                "set_profile",
+                "ui_gate"
+            ]
+        );
     }
 
     // The description is the only place the agent learns the ask_user rule.
@@ -578,8 +615,8 @@ mod tests {
         let result = dispatch("tools/list", Value::Null, &client, &env)
             .await
             .unwrap();
-        let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 5);
+        // The same list the MCP client is told about.
+        assert_eq!(result["tools"], tools_list());
     }
 
     #[tokio::test]

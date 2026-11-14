@@ -335,6 +335,8 @@ Each crewmate's agent gets a stdio MCP server, `atlas-crew-mcp` (`atlas mcp --cr
 | `set_profile` | change this crewmate's own name or role. Backed by `POST /crew/<id>/set_profile` |
 | `capture` | screenshots of a URL in real browsers, attached to the task ([Captures](#captures)). Backed by `POST /crew/<id>/capture` |
 | `locate` | which route file, component and selector draw a region of a screenshot ([Locate](#locate)). Backed by `POST /crew/<id>/locate` |
+
+| `ui_gate` | the fast UI gate: capture only what a change needs, rerun only failures, replay past bugs ([UI gate](#ui-gate)). Backed by `POST /crew/<id>/ui_gate` |
 | `approve` | answer a Claude permission prompt (`--permission-prompt-tool atlas:approve`) |
 
 The hook routes live on the same local HTTP server as the agent hooks and need its token.
@@ -419,6 +421,41 @@ A static segment beats a parameter that also matches (`/settings` over `/[tab]`)
 At most 5 candidates, best first. **`ambiguous: true` when the top two scores are within 10% of each other**, and the answer then carries a `next` line; the tool's description tells the agent to `ask_user` with the candidates (selector and text) as the options and only then edit, never to pick one. A `rect` that touches no element, a `url` that fails to load and an image outside the work tree are errors the agent reads.
 
 It needs the capture browsers ([Requirements](#captures)) and only works for a crewmate's own task pane, since it reads that crewmate's files.
+
+## UI gate
+
+`capture` looks at one page. The `ui_gate` tool decides **which** pages a change needs, remembers what failed, and never lets a fixed UI bug come back unnoticed. It uses `capture` underneath, so it needs the same browsers ([Captures](#captures)).
+
+A **scenario** is one URL in a matrix of engine x width x theme (default chromium + webkit, 390 + 1440 px, light + dark). It has a stable id (12 hex digits of the URL and its sorted cells).
+
+| Call | What it does |
+|---|---|
+| `ui_gate {action: "run", base_url}` | plans, captures, answers pass/fail per scenario with the capture names. `base_url` is where the app is served (`http://localhost:5173`); routes are joined to it. Optional: `routes` (pages to check instead of the ones the diff implies), `files` (changed files instead of the git diff), `force` (ignore the cache) |
+| `ui_gate {action: "rerun_failed"}` | captures only the scenarios that failed last time on this task. Passed ones keep their verdict and are not touched |
+| `ui_gate {action: "add_regression", url, note?, widths?, themes?, engines?}` | registers a UI bug the crewmate just fixed |
+
+**The plan.** The changed files are the worktree's diff (`atlas_core::affected::changed_files`: committed since the merge base with `origin/main`, plus staged, unstaged and untracked). The routes they touch come from the same graph as the MCP tool `atlas_affected`: the `affected:` block of `atlas.yaml` (a plugin `command`, or `rules` with `routes:`), else nothing. Each route becomes a default-matrix scenario. **Every regression is always added**, whatever the diff touches. A route that is not a page path (a wildcard, `GET /api`) is an error naming it, not a skipped page. A change that touches no route and a project with no regressions plans nothing and passes.
+
+```yaml
+affected:
+  rules:
+    - match: ['src/routes/docs/**']
+      routes: ['/docs']
+```
+
+**Results per task.** Each scenario's verdict (pass/fail, capture names, the problems found) is saved in `<crewmate dir>/captures/<task id>/ui-gate.json` after every scenario, so a restart, or a killed run, still knows what failed. The shots are kept next to it as `<scenario id>-<engine>-<width>-<theme>.png`.
+
+**Cache.** A scenario's verdict is stored in the [task cache](cli.md) (`~/.atlas/cache`, shared with every worktree and `atlas run --cache`), keyed by the scenario id, the registered checks and the bytes of every project file git does not ignore, uncommitted edits included. A scenario that already passed over the same bytes is a **hit**: the runner is not started and the answer says `"source": "cached"`. Only passes are stored, so a failing scenario is always captured again; a hit whose screenshots are no longer in the task's folder is a miss. The cache cannot see the running app's data: pass `force: true` when the data behind a page changed.
+
+**Regression registry.** `.atlas/ui-regressions.json` in the project:
+
+```json
+{ "regressions": [ { "url": "http://localhost:5173/pricing", "widths": [390], "themes": ["dark"], "note": "toggle clipped at 390" } ] }
+```
+
+`add_regression` writes it (the same scenario again only updates its note). **The crewmate commits the file with its fix**, which is how every other worktree and crewmate replays the bug. A file that is not valid JSON, has an unknown field or an entry `capture` would refuse is an error naming the file and what is wrong; the gate never treats an unreadable registry as an empty one, and `add_regression` never overwrites a file it could not read. Regressions are stored with their URL as written, so keep `base_url` stable across runs (a dev server on another port is another scenario).
+
+**Passing.** A scenario passes when every requested combination captured without error and no registered check found a problem. Checks are the extension point for the UI detectors (codeatlasdev/ui#1290): implement `crew::uigate::Check` (`fn name`, `fn run(combo, png) -> Result<Vec<Finding>, String>`) and register it in `uigate::check::registered()`. None is registered yet, so today a pass means the capture was complete. A check that cannot run fails the scenario (a gate that cannot look must not pass), and the registered check names are part of the cache key, so adding a detector re-captures what passed without it.
 
 ## Security model
 
@@ -512,7 +549,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), and the export/import/uninstall scripts and decisions (`transfer.rs`) are pure functions with tests |
 
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
-| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/hook/<token>` |
+| hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/ui_gate`, `/crew/<id>/hook/<token>` |
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
 | Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
 | Desktop UI | `apps/desktop/src/lib/crew/` and `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, board, editor, settings, onboarding, automations, the look catalogue |
@@ -537,7 +574,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
     secrets.json                       secrets (0600)
     usage.jsonl                        per-task usage records
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
-    captures/<task id>/                screenshots of the capture tool
+    captures/<task id>/                screenshots of the capture tool, and the UI gate's shots and ui-gate.json
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled
 <hostd dir>/projects/<slug>/           shared clone per Git project

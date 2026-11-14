@@ -60,6 +60,8 @@ export class Onboarding {
 	// ─── connect step ─────────────────────────────────────────────────────────
 	sshTarget = $state("");
 	sshPort = $state(22);
+	/** Opt-in: also install the capture browsers (`atlas crew install --browsers`). Off for a first install. */
+	browsers = $state(false);
 	install = $state<InstallProgress>(initialInstallProgress());
 	/** Phase that failed (shown in red). */
 	failedPhase = $state<InstallPhase | null>(null);
@@ -204,7 +206,11 @@ export class Onboarding {
 		});
 
 		try {
-			const args: Record<string, unknown> = { target, port: this.sshPort !== 22 ? this.sshPort : null };
+			const args: Record<string, unknown> = {
+				target,
+				port: this.sshPort !== 22 ? this.sshPort : null,
+				browsers: this.browsers,
+			};
 			if (sudoPassword !== undefined) args.sudoPassword = sudoPassword;
 			await invoke("crew_server_install", args);
 			// hostd runs as the service user the installer reported (a server that kept `atlas-bot` keeps it).

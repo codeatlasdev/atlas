@@ -85,41 +85,76 @@ pub struct CrewInstallLine {
     pub is_err: bool,
 }
 
-/// Run `atlas crew install <target> --yes`, streaming each output line as
-/// `crew://install-line` to the frontend. Returns the error message on failure.
-/// When `sudo_password` is provided the install runs with `--sudo-password-stdin`;
-/// the password is piped to the child's stdin and never placed on argv.
-#[tauri::command]
-pub async fn crew_server_install(
-    app: AppHandle,
-    target: String,
+/// argv of `atlas crew install <target> --yes [--sudo-password-stdin] [--port N] [--browsers]`. A password is read
+/// from stdin by the CLI, never from argv; port 22 is the CLI's default and is left out.
+fn install_argv(
+    target: &str,
     port: Option<u16>,
-    sudo_password: Option<String>,
-) -> Result<(), String> {
+    with_password: bool,
+    browsers: bool,
+) -> Vec<String> {
+    let mut a: Vec<String> = ["crew", "install", target, "--yes"]
+        .map(String::from)
+        .into();
+    if with_password {
+        a.push("--sudo-password-stdin".into());
+    }
+    push_port(&mut a, port);
+    if browsers {
+        a.push("--browsers".into());
+    }
+    a
+}
+
+/// argv of `atlas crew browsers <verb> <target> [--sudo-password-stdin] [--port N]`.
+fn browsers_argv(verb: &str, target: &str, port: Option<u16>, with_password: bool) -> Vec<String> {
+    let mut a: Vec<String> = ["crew", "browsers", verb, target].map(String::from).into();
+    if with_password {
+        a.push("--sudo-password-stdin".into());
+    }
+    push_port(&mut a, port);
+    a
+}
+
+fn push_port(a: &mut Vec<String>, port: Option<u16>) {
+    if let Some(p) = port.filter(|&p| p != 22) {
+        a.extend(["--port".into(), p.to_string()]);
+    }
+}
+
+/// The `atlas` child for `argv`, with the user's shell environment and no colour.
+async fn atlas_command(argv: &[String], stdin: Stdio) -> Result<tokio::process::Command, String> {
     let bin = crate::cmds::atlas_bin()?;
     let mut cmd = tokio::process::Command::new(bin);
     cmd.no_window()
         .envs(crate::shell_env::vars_async().await)
         .env("NO_COLOR", "1")
+        .args(argv)
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let port_s = port.filter(|&p| p != 22).map(|p| p.to_string());
-    if sudo_password.is_some() {
-        let mut a = vec!["crew", "install", &target, "--yes", "--sudo-password-stdin"];
-        if let Some(ps) = &port_s {
-            a.extend(["--port", ps]);
-        }
-        cmd.args(a).stdin(Stdio::piped());
+    Ok(cmd)
+}
+
+/// Run `atlas <argv>`, streaming each output line as `crew://install-line`. When `sudo_password` is given it is
+/// piped to the child's stdin (the argv carries `--sudo-password-stdin`), never placed on argv. Returns the last
+/// output line as the error on failure.
+async fn run_streamed(
+    app: AppHandle,
+    argv: Vec<String>,
+    sudo_password: Option<String>,
+    what: &str,
+) -> Result<(), String> {
+    let stdin = if sudo_password.is_some() {
+        Stdio::piped()
     } else {
-        let mut a = vec!["crew", "install", &target, "--yes"];
-        if let Some(ps) = &port_s {
-            a.extend(["--port", ps]);
-        }
-        cmd.args(a).stdin(Stdio::null());
-    }
-    let mut child = cmd.spawn().map_err(|e| format!("cannot run atlas: {e}"))?;
-    // Pipe sudo password to stdin, then close it so the child can proceed
-    // stdin and the password are dropped at the end of the block, closing the pipe.
+        Stdio::null()
+    };
+    let mut child = atlas_command(&argv, stdin)
+        .await?
+        .spawn()
+        .map_err(|e| format!("cannot run atlas: {e}"))?;
+    // Pipe the sudo password to stdin, then drop it, closing the pipe so the child can proceed.
     if let Some(pw) = sudo_password
         && let Some(mut stdin) = child.stdin.take()
     {
@@ -138,9 +173,122 @@ pub async fn crew_server_install(
         let msg = [last_err, last_out]
             .into_iter()
             .find(|s| !s.is_empty())
-            .unwrap_or_else(|| format!("atlas crew install failed ({st})"));
+            .unwrap_or_else(|| format!("{what} failed ({st})"));
         Err(msg)
     }
+}
+
+/// Run `atlas crew install <target> --yes`, streaming each output line as
+/// `crew://install-line` to the frontend. Returns the error message on failure.
+/// When `sudo_password` is provided the install runs with `--sudo-password-stdin`;
+/// the password is piped to the child's stdin and never placed on argv. `browsers` adds
+/// `--browsers` (Playwright's chromium and webkit for the `capture` tool).
+#[tauri::command]
+pub async fn crew_server_install(
+    app: AppHandle,
+    target: String,
+    port: Option<u16>,
+    sudo_password: Option<String>,
+    browsers: Option<bool>,
+) -> Result<(), String> {
+    let argv = install_argv(
+        &target,
+        port,
+        sudo_password.is_some(),
+        browsers.unwrap_or(false),
+    );
+    run_streamed(app, argv, sudo_password, "atlas crew install").await
+}
+
+/// What `atlas crew browsers status` found: `ready` when nothing is missing, else one `problems` line per
+/// missing piece, as the CLI wrote them (`node: Node 18.19.1 found, need >= 20 …`).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CrewBrowsersStatus {
+    pub ready: bool,
+    pub problems: Vec<String>,
+}
+
+/// Read `atlas crew browsers status` output: exit 0 is ready, exit 1 lists the missing pieces on stdout (each
+/// prefixed `✗ `, colour already off); anything else (ssh refused, sudo asks for a password) is the error.
+fn parse_browsers_status(
+    code: Option<i32>,
+    stdout: &str,
+    stderr: &str,
+) -> Result<CrewBrowsersStatus, String> {
+    let lines = |s: &str| -> Vec<String> {
+        s.lines()
+            .map(|l| l.trim().trim_start_matches('✗').trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect()
+    };
+    match code {
+        Some(0) => Ok(CrewBrowsersStatus {
+            ready: true,
+            problems: vec![],
+        }),
+        Some(1) if !lines(stdout).is_empty() => Ok(CrewBrowsersStatus {
+            ready: false,
+            problems: lines(stdout),
+        }),
+        _ => {
+            let why = lines(stderr)
+                .pop()
+                .or_else(|| lines(stdout).pop())
+                .unwrap_or_else(|| "atlas crew browsers status failed".into());
+            Err(why)
+        }
+    }
+}
+
+/// `atlas crew browsers status <target>`: needs the admin SSH target (the one that can `sudo`), not the crew
+/// service user.
+#[tauri::command]
+pub async fn crew_browsers_status(
+    target: String,
+    port: Option<u16>,
+    sudo_password: Option<String>,
+) -> Result<CrewBrowsersStatus, String> {
+    let argv = browsers_argv("status", &target, port, sudo_password.is_some());
+    let stdin = if sudo_password.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    };
+    let mut child = atlas_command(&argv, stdin)
+        .await?
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("cannot run atlas: {e}"))?;
+    if let Some(pw) = sudo_password
+        && let Some(mut stdin) = child.stdin.take()
+    {
+        let _ = stdin.write_all(format!("{pw}\n").as_bytes()).await;
+    }
+    // A server that never answers must not leave the row on "Checking…".
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| format!("{target} did not answer in 120 s"))?
+    .map_err(|e| e.to_string())?;
+    parse_browsers_status(
+        out.status.code(),
+        &atlas_tui::runtime::text::strip_ansi(&String::from_utf8_lossy(&out.stdout)),
+        &atlas_tui::runtime::text::strip_ansi(&String::from_utf8_lossy(&out.stderr)),
+    )
+}
+
+/// `atlas crew browsers install <target>`, streaming each line as `crew://install-line` like the server install.
+#[tauri::command]
+pub async fn crew_browsers_install(
+    app: AppHandle,
+    target: String,
+    port: Option<u16>,
+    sudo_password: Option<String>,
+) -> Result<(), String> {
+    let argv = browsers_argv("install", &target, port, sudo_password.is_some());
+    run_streamed(app, argv, sudo_password, "atlas crew browsers install").await
 }
 
 async fn pump_install<R: tokio::io::AsyncRead + Unpin>(
@@ -587,6 +735,140 @@ pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn argv(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    // The opt-in must reach the CLI: `--browsers` only when asked, next to `--yes`, with the sudo password
+    // flag and the port exactly as before (22 is the CLI's default and stays off argv).
+    #[test]
+    fn install_passes_browsers_only_when_the_user_opted_in() {
+        assert_eq!(
+            install_argv("ubuntu@srv", None, false, false),
+            argv(&["crew", "install", "ubuntu@srv", "--yes"])
+        );
+        assert_eq!(
+            install_argv("ubuntu@srv", Some(22), false, true),
+            argv(&["crew", "install", "ubuntu@srv", "--yes", "--browsers"])
+        );
+        assert_eq!(
+            install_argv("ubuntu@srv", Some(2222), true, true),
+            argv(&[
+                "crew",
+                "install",
+                "ubuntu@srv",
+                "--yes",
+                "--sudo-password-stdin",
+                "--port",
+                "2222",
+                "--browsers"
+            ])
+        );
+    }
+
+    #[test]
+    fn browsers_commands_target_the_admin_ssh_address_with_port_and_password_flags() {
+        assert_eq!(
+            browsers_argv("status", "ubuntu@srv", None, false),
+            argv(&["crew", "browsers", "status", "ubuntu@srv"])
+        );
+        assert_eq!(
+            browsers_argv("install", "ubuntu@srv", Some(2222), true),
+            argv(&[
+                "crew",
+                "browsers",
+                "install",
+                "ubuntu@srv",
+                "--sudo-password-stdin",
+                "--port",
+                "2222"
+            ])
+        );
+        // The password is never an argument.
+        let a = browsers_argv("install", "ubuntu@srv", None, true);
+        assert!(a.iter().all(|s| !s.contains("secret")));
+    }
+
+    /// What `atlas crew browsers status` printed, as the CLI's own test wrote it (`UPDATE_FIXTURES=1` there).
+    fn cli_fixture(name: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../atlas-cli/src/commands/crew/fixtures")
+            .join(name);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    }
+
+    // Incident class: the screen reads the CLI's printed text. The real output for a host with Node 18 and
+    // nothing installed lists each missing piece; the real output for a ready host says ready.
+    #[test]
+    fn status_reads_the_real_cli_output() {
+        let missing =
+            atlas_tui::runtime::text::strip_ansi(&cli_fixture("browsers-status-missing.txt"));
+        let s = parse_browsers_status(Some(1), &missing, "").unwrap();
+        assert!(!s.ready);
+        assert!(
+            s.problems[0].starts_with("node: Node 18.19.1 found, need >= 20"),
+            "{:?}",
+            s.problems
+        );
+        assert!(
+            s.problems
+                .iter()
+                .any(|p| p.starts_with("browsers: webkit missing"))
+        );
+        assert!(
+            s.problems
+                .iter()
+                .all(|p| !p.contains('✗') && !p.contains('\x1b'))
+        );
+
+        let ready = atlas_tui::runtime::text::strip_ansi(&cli_fixture("browsers-status-ready.txt"));
+        assert_eq!(
+            parse_browsers_status(Some(0), &ready, "").unwrap(),
+            CrewBrowsersStatus {
+                ready: true,
+                problems: vec![]
+            }
+        );
+
+        // Contract with the screen: `apps/desktop/src/__fixtures__/crew_browsers_status.json` is what
+        // `crew_browsers_status` really serializes; `browsers.test.ts` feeds it to the frontend's own reader.
+        // `UPDATE_FIXTURES=1` regenerates it.
+        let fresh = serde_json::json!({
+            "missing": s,
+            "ready": parse_browsers_status(Some(0), &ready, "").unwrap(),
+        });
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/src/__fixtures__/crew_browsers_status.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            // Tab-indented, as `prettier --check src` (useTabs) wants the committed file.
+            let mut buf = Vec::new();
+            let mut ser = serde_json::Serializer::with_formatter(
+                &mut buf,
+                serde_json::ser::PrettyFormatter::with_indent(b"\t"),
+            );
+            serde::Serialize::serialize(&fresh, &mut ser).unwrap();
+            std::fs::write(&path, String::from_utf8(buf).unwrap() + "\n").unwrap();
+        }
+        let committed: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .expect("fixture missing: run with UPDATE_FIXTURES=1 to create it"),
+        )
+        .unwrap();
+        assert_eq!(
+            committed, fresh,
+            "stale fixture: re-run with UPDATE_FIXTURES=1"
+        );
+    }
+
+    // A failure that is not "pieces missing" is an error with the reason, never an empty "missing" list.
+    #[test]
+    fn status_failures_are_errors_not_empty_lists() {
+        let e = parse_browsers_status(Some(1), "", "Error: cannot reach ubuntu@srv: refused\n")
+            .unwrap_err();
+        assert_eq!(e, "Error: cannot reach ubuntu@srv: refused");
+        assert!(parse_browsers_status(None, "", "").is_err());
+    }
 
     fn roundtrip(hosts: &[CrewServer]) {
         let tmp = tempfile::NamedTempFile::new().unwrap();

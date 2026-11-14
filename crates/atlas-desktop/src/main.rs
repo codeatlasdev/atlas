@@ -229,6 +229,8 @@ macro_rules! handlers {
             crew::crew_servers_add,
             crew::crew_servers_remove,
             crew::crew_server_install,
+            crew::crew_browsers_status,
+            crew::crew_browsers_install,
             crew::ssh_key_find,
             crew::ssh_keygen,
             crew::ssh_authorize_key,

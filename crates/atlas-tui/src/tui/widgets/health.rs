@@ -9,6 +9,10 @@ pub struct Health {
     pub running: usize,
     pub starting: usize,
     pub failed: usize,
+    /// Alive but not answering its liveness probe.
+    pub unhealthy: usize,
+    /// Answering, but its `ready` probe fails or the same error keeps repeating.
+    pub degraded: usize,
     /// Completed one-shots.
     pub done: usize,
     /// Stopped by the user, disabled, or suspended by an action.
@@ -24,6 +28,8 @@ impl Health {
                 ServiceState::Running => h.running += 1,
                 ServiceState::Starting => h.starting += 1,
                 ServiceState::Failed => h.failed += 1,
+                ServiceState::Unhealthy => h.unhealthy += 1,
+                ServiceState::Degraded => h.degraded += 1,
                 ServiceState::Stopped if completed_ok => h.done += 1,
                 ServiceState::Stopped | ServiceState::Disabled | ServiceState::Suspended => {
                     h.stopped += 1
@@ -35,7 +41,7 @@ impl Health {
 
     /// Services that are expected to be up (running, coming up, or broken).
     pub fn expected(&self) -> usize {
-        self.running + self.starting + self.failed
+        self.running + self.starting + self.failed + self.unhealthy + self.degraded
     }
 
     pub fn total(&self) -> usize {
@@ -49,7 +55,7 @@ impl Health {
 
     /// Pulse the status dot only while something is coming up or broken.
     pub fn pulses(&self) -> bool {
-        self.failed > 0 || self.starting > 0
+        self.failed > 0 || self.starting > 0 || self.unhealthy > 0
     }
 
     pub fn percent(&self) -> usize {
@@ -61,6 +67,12 @@ impl Health {
     /// `5/5 running · 1 done · 1 stopped`.
     pub fn label(&self) -> String {
         let mut s = format!("{}/{} running", self.running, self.expected());
+        if self.unhealthy > 0 {
+            s.push_str(&format!(" · {} unhealthy", self.unhealthy));
+        }
+        if self.degraded > 0 {
+            s.push_str(&format!(" · {} degraded", self.degraded));
+        }
         if self.done > 0 {
             s.push_str(&format!(" · {} done", self.done));
         }
@@ -120,5 +132,24 @@ mod tests {
         assert!(!x.all_ok());
         assert_eq!(x.percent(), 0);
         assert_eq!(x.label(), "0/0 running · 1 done");
+    }
+
+    /// Incidents #132/#136: a hung or degraded service must never read as green.
+    #[test]
+    fn unhealthy_and_degraded_are_expected_and_not_running() {
+        let x = h(&[(Running, false), (Unhealthy, false), (Degraded, false)]);
+        assert_eq!(x.label(), "1/3 running · 1 unhealthy · 1 degraded");
+        assert!(!x.all_ok(), "a green strip would hide the hung service");
+        assert!(x.pulses(), "unhealthy pulses like failed");
+        assert_eq!(x.percent(), 33);
+        assert_eq!(x.total(), 3);
+    }
+
+    #[test]
+    fn degraded_alone_does_not_pulse_but_is_not_ok() {
+        let x = h(&[(Running, false), (Degraded, false)]);
+        assert!(!x.all_ok());
+        assert!(!x.pulses());
+        assert_eq!(x.label(), "1/2 running · 1 degraded");
     }
 }

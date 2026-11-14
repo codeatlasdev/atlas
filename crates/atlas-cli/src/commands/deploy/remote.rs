@@ -17,6 +17,8 @@ pub fn shq(s: &str) -> String {
 
 pub struct Remote {
     pub host: String,
+    /// Non-default SSH port; `None` means standard port 22.
+    pub port: Option<u16>,
 }
 
 pub struct Output {
@@ -27,7 +29,18 @@ pub struct Output {
 
 impl Remote {
     pub fn new(host: &str) -> Self {
-        Self { host: host.into() }
+        Self {
+            host: host.into(),
+            port: None,
+        }
+    }
+
+    /// Create with an explicit port. `port` of 22 is stored as-is.
+    pub fn with_port(host: &str, port: u16) -> Self {
+        Self {
+            host: host.into(),
+            port: Some(port),
+        }
     }
 
     fn is_local(&self) -> bool {
@@ -56,10 +69,14 @@ impl Remote {
             "ControlPath=~/.ssh/atlas-%C",
             "-o",
             "ControlPersist=120",
-        ])
-        .arg(&self.host)
-        .arg("--")
-        .arg(format!("bash -c {}", shq(script)));
+        ]);
+        if let Some(p) = self.port {
+            let port_s = p.to_string();
+            c.args(["-p", &port_s]);
+        }
+        c.arg(&self.host)
+            .arg("--")
+            .arg(format!("bash -c {}", shq(script)));
         c
     }
 
@@ -142,6 +159,37 @@ impl Remote {
         anyhow::bail!("upload to {} failed: {}", self.host, last.trim())
     }
 
+    /// Run `script` with its stdout streamed into `dest` (binary-safe, never held in memory). `dest`
+    /// is created new (0600 on unix): an existing file is an error, and a failed run removes it, so a
+    /// partial archive never passes for a whole one. Never retried. Returns `(exit code, stderr)`.
+    pub async fn exec_to_file(&self, script: &str, dest: &Path) -> Result<(i32, String)> {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        let file = atlas_core::sys::owner_only(&mut opts)
+            .open(dest)
+            .with_context(|| format!("creating {}", dest.display()))?;
+        let mut cmd = self.command(script);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::from(file))
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let out = cmd
+            .spawn()
+            .context("spawning ssh")?
+            .wait_with_output()
+            .await?;
+        let code = out.status.code().unwrap_or(-1);
+        if code != 0 {
+            let _ = std::fs::remove_file(dest);
+        }
+        Ok((code, String::from_utf8_lossy(&out.stderr).into_owned()))
+    }
+
+    /// Run `script` with `file` piped to its stdin. Never retried (an import is not idempotent).
+    pub async fn exec_with_file(&self, script: &str, file: &Path) -> Result<Output> {
+        self.run(script, None, Some(file)).await
+    }
+
     /// Run with inherited stdout/stderr (for `logs -f`).
     pub async fn stream(&self, script: &str) -> Result<i32> {
         let status = self.command(script).stdin(Stdio::null()).status().await?;
@@ -169,5 +217,58 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.stdout, "it's $HOME");
+    }
+
+    // Issue #202: an export is binary (gzip), so it goes from the remote stdout to a file untouched, a
+    // failed run leaves no partial file, and an existing file is never overwritten.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exec_to_file_keeps_binary_bytes_and_removes_a_failed_partial() {
+        let t = tempfile::tempdir().unwrap();
+        let r = Remote::new("local");
+        let ok = t.path().join("ok.bin");
+        let (code, _) = r
+            .exec_to_file(r"printf '\000\377\200abc'", &ok)
+            .await
+            .unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(
+            std::fs::read(&ok).unwrap(),
+            [0u8, 0xff, 0x80, b'a', b'b', b'c']
+        );
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&ok).unwrap().permissions().mode() & 0o077,
+                0
+            );
+        }
+
+        let bad = t.path().join("bad.bin");
+        let (code, err) = r
+            .exec_to_file("printf partial; echo boom >&2; exit 3", &bad)
+            .await
+            .unwrap();
+        assert_eq!((code, err.trim()), (3, "boom"));
+        assert!(!bad.exists(), "a partial export must not stay behind");
+
+        assert!(
+            r.exec_to_file("true", &ok).await.is_err(),
+            "never overwrites"
+        );
+        assert_eq!(std::fs::read(&ok).unwrap().len(), 6);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exec_with_file_pipes_the_file_to_stdin() {
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("in.bin");
+        std::fs::write(&f, [0u8, 1, 2, 255]).unwrap();
+        let out = Remote::new("local")
+            .exec_with_file("od -An -tu1 | tr -s ' '", &f)
+            .await
+            .unwrap();
+        assert_eq!(out.stdout.trim(), "0 1 2 255");
     }
 }

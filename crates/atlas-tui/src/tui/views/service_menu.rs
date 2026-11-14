@@ -11,9 +11,10 @@ use crate::tui::widgets::modal::Modal;
 /// Shared with the key handler so hidden entries can't be triggered.
 pub fn visible_actions(state: &ServiceState) -> &'static [ServiceMenuAction] {
     match state {
-        ServiceState::Running | ServiceState::Starting => {
-            &[ServiceMenuAction::Restart, ServiceMenuAction::Stop]
-        }
+        ServiceState::Running
+        | ServiceState::Starting
+        | ServiceState::Unhealthy
+        | ServiceState::Degraded => &[ServiceMenuAction::Restart, ServiceMenuAction::Stop],
         // Start and Restart both dispatch RestartService, so one entry suffices.
         ServiceState::Failed => &[ServiceMenuAction::Restart],
         ServiceState::Stopped | ServiceState::Disabled | ServiceState::Suspended => {
@@ -39,6 +40,8 @@ pub fn render(frame: &mut Frame, service_name: &str, state: &ServiceState, click
         ServiceState::Stopped => ("○", t.status_stopped),
         ServiceState::Disabled => ("⊘", t.text_muted),
         ServiceState::Suspended => ("⏸", t.text_dim),
+        ServiceState::Unhealthy => ("‼", t.status_failed),
+        ServiceState::Degraded => ("◐", t.warning),
     };
     let state_label = format!("{state:?}");
 

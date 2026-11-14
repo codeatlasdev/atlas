@@ -323,7 +323,8 @@ struct MiniRunner {
 fn mini_runner() -> MiniRunner {
     let dir = tempfile::tempdir().unwrap();
     let mut c = cfg();
-    let (server, mut control_rx) = ControlServer::bind(dir.path()).unwrap();
+    let (server, mut control_rx) =
+        ControlServer::bind(dir.path(), control::Guard::new(&c, dir.path())).unwrap();
     let (events, mut event_rx) = mpsc::unbounded_channel::<ManagerEvent>();
     let (stop_tx, stopped) = tokio::sync::oneshot::channel();
     let root = dir.path().to_path_buf();

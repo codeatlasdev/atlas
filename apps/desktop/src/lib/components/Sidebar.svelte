@@ -451,7 +451,14 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--ca-text-secondary);
 	}
+	/* `PR #12 · merged`, `ssh:long-host-name`, `+2`: a tag never pushes the name out of the row. It keeps its content up
+	   to a cap and then truncates with an ellipsis. */
 	.list :global(.chip) {
+		flex: 0 1 auto;
+		min-width: 0;
+		max-width: 45%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		font-size: 10px;
 		padding: 0 5px;
 		border-radius: 4px;

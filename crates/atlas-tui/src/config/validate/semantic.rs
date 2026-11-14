@@ -30,6 +30,45 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     let sorted = sorted_services(config);
 
     for (name, def) in &sorted {
+        if let Some(r) = &def.remote {
+            let path = format!("services.{name}.remote");
+            if def.command.is_some() {
+                errors.push(err(
+                    path.clone(),
+                    "a remote service runs no local command: remove `command`".into(),
+                ));
+            }
+            if def.port.is_none() {
+                errors.push(err(
+                    path.clone(),
+                    "needs the service's local `port` (where atlas forwards it)".into(),
+                ));
+            }
+            // Both go on an ssh command line: one plain word each, never an option (`-o…`).
+            let word = |s: &str| {
+                !s.is_empty()
+                    && !s.starts_with('-')
+                    && s.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "._-@:[]".contains(c))
+            };
+            if !word(&r.ssh) {
+                errors.push(err(
+                    format!("{path}.ssh"),
+                    format!(
+                        "'{}' is not an SSH destination (a host alias or user@host)",
+                        r.ssh
+                    ),
+                ));
+            }
+            if let Some(h) = &r.host
+                && !word(h)
+            {
+                errors.push(err(
+                    format!("{path}.host"),
+                    format!("'{h}' is not a host name"),
+                ));
+            }
+        }
         for (dep, cond) in def.deps() {
             let path = format!("services.{name}.depends_on.{dep}");
             if dep == *name {
@@ -55,12 +94,26 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
                 _ => {}
             }
         }
-        if let Some(m) = &def.max_memory
-            && crate::runtime::usage::parse_size(m).is_none()
+        fn size(v: &Option<String>) -> Option<(&str, Option<u64>)> {
+            v.as_deref()
+                .map(|m| (m, crate::runtime::usage::parse_size(m)))
+        }
+        let (max, warn) = (size(&def.max_memory), size(&def.memory_warn));
+        for (key, v) in [("max_memory", max), ("memory_warn", warn)] {
+            if let Some((m, None)) = v {
+                errors.push(err(
+                    format!("services.{name}.{key}"),
+                    format!("'{m}' is not a size (use e.g. 512M or 4G)"),
+                ));
+            }
+        }
+        // The soft budget must be reachable before the hard one.
+        if let (Some((max_text, Some(max_b))), Some((_, Some(warn_b)))) = (max, warn)
+            && warn_b >= max_b
         {
             errors.push(err(
-                format!("services.{name}.max_memory"),
-                format!("'{m}' is not a size (use e.g. 512M or 4G)"),
+                format!("services.{name}.memory_warn"),
+                format!("must be below max_memory ({max_text})"),
             ));
         }
         if let Some(rx) = &def.ready_log
@@ -72,6 +125,14 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
                     "invalid regex: {}",
                     e.to_string().lines().last().unwrap_or("")
                 ),
+            ));
+        }
+        if let Some(r) = &def.ready
+            && r.http.is_some() == r.command.is_some()
+        {
+            errors.push(err(
+                format!("services.{name}.ready"),
+                "set exactly one of `http` (path or URL) or `command`".into(),
             ));
         }
     }
@@ -149,6 +210,18 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
         }
     }
 
+    // `{{action: X}}` in `worktree.setup` must name an action.
+    if let Some(setup) = config.worktree.as_ref().and_then(|w| w.setup.as_deref()) {
+        for reference in crate::config::worktree_setup::unknown_refs(setup, &config.actions) {
+            errors.push(err(
+                "worktree.setup".into(),
+                format!(
+                    "mentions action '{reference}', which is not an action label or key in `actions`"
+                ),
+            ));
+        }
+    }
+
     // `open_tunnel: true` has nothing to open without a `tunnel:` block.
     if config.tunnel.is_none() {
         for (i, a) in config.actions.iter().enumerate() {
@@ -167,8 +240,56 @@ pub fn semantic(config: &ProjectConfig) -> Vec<ConfigError> {
     if let Some(d) = &config.deploy {
         deploy_rules(d, &mut errors);
     }
+    if let Some(a) = &config.affected {
+        affected_rules(a, config, &mut errors);
+    }
 
     errors
+}
+
+/// `affected:` — a rule must say which files it is about, with globs that parse, and may only
+/// name actions that exist (labels match case-insensitively, like MCP).
+fn affected_rules(
+    a: &crate::config::AffectedConfig,
+    config: &ProjectConfig,
+    errors: &mut Vec<ConfigError>,
+) {
+    let mut e = |path: String, message: String| {
+        errors.push(ConfigError {
+            file: String::new(),
+            path,
+            message,
+        });
+    };
+    if a.command.as_deref().is_some_and(|c| c.trim().is_empty()) {
+        e(
+            "affected.command".into(),
+            "is blank: give a command or remove it".into(),
+        );
+    }
+    for (i, r) in a.rules.iter().enumerate() {
+        let path = format!("affected.rules[{i}]");
+        if r.matches.is_empty() {
+            e(
+                format!("{path}.match"),
+                "needs at least one glob (e.g. 'crates/**')".into(),
+            );
+        } else if let Err(m) = atlas_core::affected::check_globs(&r.matches) {
+            e(format!("{path}.match"), m);
+        }
+        for t in &r.tasks {
+            if !config
+                .actions
+                .iter()
+                .any(|x| x.label.eq_ignore_ascii_case(t))
+            {
+                e(
+                    format!("{path}.tasks"),
+                    format!("'{t}' is not the label of any action"),
+                );
+            }
+        }
+    }
 }
 
 fn deploy_rules(d: &crate::config::project::DeployConfig, errors: &mut Vec<ConfigError>) {

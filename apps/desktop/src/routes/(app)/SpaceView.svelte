@@ -6,6 +6,7 @@
 	import { Alert, Button } from "@codeatlasdev/ui";
 	import Contain from "#lib/errors/Contain.svelte";
 	import ActivityDrawer from "#lib/panel/ActivityDrawer.svelte";
+	import MachineDrawer from "#lib/panel/MachineDrawer.svelte";
 	import { corner } from "#lib/shell/cornerStack.ts";
 	import ConfirmAction from "./ConfirmAction.svelte";
 	import MissingProject from "./MissingProject.svelte";
@@ -33,7 +34,7 @@
 	<MissingProject {p} />
 {:else if p}
 	<ProjectHeader {p} />
-	{#if space.current}<ActivityDrawer projectId={p.id} />{/if}
+	{#if space.current}<ActivityDrawer projectId={p.id} /><MachineDrawer />{/if}
 
 	{#if p.error}
 		<div class="banner">
@@ -44,7 +45,9 @@
 	{/if}
 
 	<div class="rule"></div>
-	{#if offer}
+	<!-- `corner` moves the card into the one window-wide corner column: only the space on screen may put it there,
+	     or every mounted space adds its own copy (three projects open = three identical cards). -->
+	{#if offer && space.current}
 		{@const o = offer}
 		<div use:corner class="floating">
 			<Alert severity="info" title="Enable {o.label} integration">

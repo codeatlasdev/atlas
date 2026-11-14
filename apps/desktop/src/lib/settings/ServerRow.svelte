@@ -186,13 +186,15 @@
 	.head {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 6px 12px;
 	}
 	.title {
 		display: flex;
 		align-items: baseline;
 		flex-wrap: wrap;
+		flex: 1 1 200px;
 		gap: 6px 8px;
 		min-width: 0;
 	}
@@ -213,20 +215,27 @@
 		color: var(--ca-text-secondary);
 	}
 	.badge {
+		display: inline-flex;
+		align-items: center;
+		flex: none;
 		padding: 1px 6px;
 		border-radius: 999px;
 		font-size: 10.5px;
 		font-weight: 550;
+		line-height: 1.3;
+		white-space: nowrap;
 		color: var(--ca-text-secondary);
 		background: var(--ca-surface-sunken);
 		border: 0.5px solid var(--ca-outline-subtle);
 	}
+	/* The status keeps its full text (it is what the row is for); when the row is too narrow for name and status side by
+	   side, the status drops under the name instead of being squeezed to nothing. */
 	.state {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		flex-shrink: 0;
-		max-width: 50%;
+		flex: none;
+		max-width: 100%;
 	}
 	.langs {
 		display: flex;

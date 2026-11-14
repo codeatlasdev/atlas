@@ -45,27 +45,40 @@ class LinesChart extends StatelessWidget {
           painter: _LinesPainter([for (final n in names) series[n]!], colors),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 4,
-          children: [
-            for (var i = 0; i < names.length; i++)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: colors[i],
-                      shape: BoxShape.circle,
-                    ),
+        LayoutBuilder(
+          builder: (context, box) => Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              for (var i = 0; i < names.length; i++)
+                // A service name has no length limit: cap the legend entry at the card's width.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: box.maxWidth),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: colors[i],
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          names[i],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: muted),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Text(names[i], style: TextStyle(fontSize: 11, color: muted)),
-                ],
-              ),
-          ],
+                ),
+            ],
+          ),
         ),
       ],
     );

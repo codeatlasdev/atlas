@@ -19,6 +19,8 @@ mod addrs;
 mod session;
 // Unix like the daemon's other end-to-end tests: they spawn `sh` and `cat` in ptys.
 #[cfg(all(test, unix))]
+mod push_tests;
+#[cfg(all(test, unix))]
 pub(crate) mod tests;
 
 use std::collections::HashMap;
@@ -75,6 +77,13 @@ pub struct Device {
     pub revoked: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invite {
+    pub url: String,
+    pub name: String,
+    pub created_at: u64,
+}
+
 struct PairCode {
     code: String,
     expires: std::time::Instant,
@@ -95,6 +104,8 @@ pub struct Mobile {
     relay: bool,
     /// The daemon, for the sessions the endpoint accepts (set once it exists).
     hub: std::sync::OnceLock<std::sync::Weak<Hub>>,
+    /// Pending mobile invites (url, name, created_at); pruned on expiry.
+    invites: Mutex<Vec<Invite>>,
 }
 
 fn now_s() -> u64 {
@@ -144,6 +155,10 @@ impl Mobile {
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default();
+        let invites = std::fs::read_to_string(mobile_dir(dir).join("invites.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
         Ok(Self {
             dir: dir.to_path_buf(),
             key,
@@ -154,6 +169,7 @@ impl Mobile {
             binding: tokio::sync::Mutex::new(()),
             relay,
             hub: std::sync::OnceLock::new(),
+            invites: Mutex::new(invites),
         })
     }
 
@@ -286,8 +302,11 @@ impl Mobile {
         if let Some(d) = args.get("data").and_then(Value::as_str) {
             args["data"] = json!(format!("<{} bytes base64>", d.len()));
         }
-        if let Some(t) = args.get("text").and_then(Value::as_str) {
-            args["text"] = json!(format!("<{} chars>", t.chars().count()));
+        // Typed text (a prompt, a commit message, a PR title or body) is logged as its length only.
+        for k in ["text", "message", "title", "body"] {
+            if let Some(t) = args.get(k).and_then(Value::as_str) {
+                args[k] = json!(format!("<{} chars>", t.chars().count()));
+            }
         }
         let line = json!({"ts": now_s(), "node_id": node_id, "cmd": cmd, "args": args});
         if let Ok(mut f) =
@@ -296,6 +315,47 @@ impl Mobile {
         {
             let _ = writeln!(f, "{line}");
         }
+    }
+
+    fn save_invites(&self, invites: &[Invite]) {
+        if let Ok(text) = serde_json::to_string_pretty(invites) {
+            let _ =
+                paths::write_private(&mobile_dir(&self.dir).join("invites.json"), text.as_bytes());
+        }
+    }
+
+    /// Desktop-only: store a pending invite and push it to connected phones.
+    pub(crate) fn mobile_invite(&self, url: String, name: String, hub: &crate::server::Hub) {
+        let now = now_s();
+        let ttl = CODE_TTL.as_secs();
+        let mut invites = self.invites.lock();
+        invites.retain(|i| now.saturating_sub(i.created_at) < ttl);
+        invites.push(Invite {
+            url: url.clone(),
+            name: name.clone(),
+            created_at: now,
+        });
+        self.save_invites(&invites);
+        drop(invites);
+        hub.broadcast(json!({"ev": "computer_invite", "url": url, "name": name}).to_string());
+    }
+
+    /// Phone-facing: return non-expired pending invites (pruning as a side-effect).
+    pub fn mobile_invites(&self) -> Vec<Invite> {
+        let now = now_s();
+        let ttl = CODE_TTL.as_secs();
+        let mut invites = self.invites.lock();
+        invites.retain(|i| now.saturating_sub(i.created_at) < ttl);
+        let out = invites.clone();
+        self.save_invites(&invites);
+        out
+    }
+
+    /// Phone-facing: remove a specific invite by url.
+    pub fn mobile_invite_dismiss(&self, url: &str) {
+        let mut invites = self.invites.lock();
+        invites.retain(|i| i.url != url);
+        self.save_invites(&invites);
     }
 }
 
@@ -309,8 +369,34 @@ pub fn push_scope(ev: &str) -> Option<Scope> {
         // The prompt carries the tool input (a shell command, a file path).
         "agent_approval" | "agent_approval_done" => Scope::Approve,
         "agent_status" => Scope::Read,
+        "crewmate_task" => Scope::Read,
+        "computer_invite" => Scope::Read,
         _ => return None,
     })
+}
+
+/// [`push_scope`] of a whole push line. A `crew_event` (a crew server's push relayed by
+/// `crate::crew`) needs what the event inside it needs, and never a terminal's.
+pub fn line_scope(line: &str) -> Option<Scope> {
+    #[derive(serde::Deserialize)]
+    struct Ev<'a> {
+        #[serde(borrow)]
+        ev: std::borrow::Cow<'a, str>,
+        #[serde(default)]
+        event: Option<Inner>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Inner {
+        ev: String,
+    }
+    let e = serde_json::from_str::<Ev>(line).ok()?;
+    if e.ev != "crew_event" {
+        return push_scope(&e.ev);
+    }
+    match push_scope(&e.event?.ev)? {
+        Scope::TermRead | Scope::TermWrite => None,
+        s => Some(s),
+    }
 }
 
 /// The scope a mobile request needs; `Err` = never available from a phone.
@@ -326,15 +412,70 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
             Scope::Read
         }
+        C::WorktreeList { .. } => Scope::Read,
         C::ProjectService { .. }
         | C::ProjectAction { .. }
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
-        | C::AgentLaunch { .. } => Scope::Act,
+        | C::AgentLaunch { .. }
+        | C::WorktreeCreate { .. }
+        | C::WorktreeRemove { .. } => Scope::Act,
+        C::GitStatus { .. } | C::GitDiff { .. } => Scope::Read,
+        C::GitStage { .. }
+        | C::GitUnstage { .. }
+        | C::GitCommit { .. }
+        | C::GitCommitMessage { .. }
+        | C::GitPush { .. }
+        | C::GitPrCreate { .. } => Scope::Act,
         C::AgentApprove { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,
         C::PtyWrite { .. } | C::PtySignal { .. } => Scope::TermWrite,
+        C::CrewmateList {}
+        | C::CrewmateTasks { .. }
+        | C::CrewmateMemory { .. }
+        // The bytes of an image sent with a task: reading what the thread shows.
+        | C::CrewmateAttachment { .. } => Scope::Read,
+        // Uploading the pieces of an image only ever feeds the `crewmate_task` that names it.
+        C::CrewmateTask { .. } | C::CrewmateAttachmentPut { .. } | C::CrewmateCancel { .. } => {
+            Scope::Act
+        }
+        C::CrewmateCreate { .. }
+        | C::CrewmateUpdate { .. }
+        | C::CrewmateDelete { .. }
+        | C::CrewmateMemorySet { .. }
+        | C::CrewmateRoutineSet { .. } => Scope::Act,
+        C::PushRegister { .. } | C::PushUnregister { .. } => Scope::Read,
+        C::CrewTelegramSet { .. } | C::CrewTelegramLink {} | C::CrewTelegramStatus {} => {
+            return Err("not available on mobile");
+        }
+        C::CrewmateTriggersSet { .. } => Scope::Act,
+        C::CrewmateAnswer { .. } => Scope::Act,
+        C::CrewmateUsage { .. } | C::CrewmateAudit { .. } | C::CrewAudit { .. } => Scope::Read,
+        C::EngineLimits {} => Scope::Read,
+        C::CrewmateSecretSet { .. } => return Err("not available on mobile"),
+        C::MobileInvite { .. } => return Err("not available on mobile"),
+        C::MobileInvites {} => Scope::Read,
+        C::MobileInviteDismiss { .. } => Scope::Act,
+        C::CrewGithubStatus {} | C::CrewGithubLoginPoll {} => Scope::Read,
+        C::CrewGithubLoginStart {} | C::CrewGithubLogout {} => Scope::Act,
+        C::CrewmateActionAnswer { .. } | C::CrewGithubConnectResume {} => Scope::Act,
+        C::CrewPause {} | C::CrewResume {} => Scope::Act,
+        C::CrewSettingsGet {} => Scope::Read,
+        C::CrewSettingsSet { .. } => Scope::Act,
+        C::CrewServers {} => Scope::Read,
+        // What the relayed command needs here. Terminals stay out: their output streams to the
+        // relaying connection, not to one phone.
+        C::CrewCall { cmd, args, .. } => {
+            let inner = HostCmd::crew_inner(cmd, args).map_err(|_| "bad crew request")?;
+            if matches!(inner, C::CrewCall { .. } | C::CrewServers {}) {
+                return Err("not available on mobile");
+            }
+            match required_scope(&inner)? {
+                Scope::TermRead | Scope::TermWrite => return Err("not available on mobile"),
+                s => s,
+            }
+        }
         _ => return Err("not available on mobile"),
     })
 }
@@ -398,6 +539,11 @@ impl Mobile {
         self.devices.lock().iter().any(|d| {
             !d.revoked && d.scopes.contains(&Scope::Approve) && live.contains_key(&d.node_id)
         })
+    }
+
+    /// Node IDs of phones currently connected (at least one live stream).
+    pub fn live_node_ids(&self) -> Vec<String> {
+        self.live.lock().keys().cloned().collect()
     }
 
     fn track(&self, node: &str, c: &Connection) {

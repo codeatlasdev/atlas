@@ -263,13 +263,43 @@ fn on_main<T: Send + 'static>(
 ) -> Result<T, String> {
     let (tx, rx) = std::sync::mpsc::channel();
     app.run_on_main_thread(move || {
-        let _ = tx.send(f());
+        let _ = tx.send(guarded(f));
     })
     .map_err(|e| e.to_string())?;
     rx.recv().map_err(|e| e.to_string())?
 }
+
+/// Run `f`, turning a panic into the `Err` it would have been. Incident (#166): a wgpu panic inside
+/// the surface creation unwound the main-thread closure, dropping the reply sender, and the render
+/// thread only saw "receiving on a closed channel" and lost the cause (and, for an open, the tab).
+/// The message now says what failed, and the caller's `Err` path (a rebuild keeps its old
+/// renderer and is retried) takes over.
+fn guarded<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
+        let why = p
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| p.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown panic");
+        Err(format!("panicked on the main thread: {why}"))
+    })
+}
 #[cfg(test)]
 mod tests {
+    // #166: a panic in a main-thread closure surfaced as "receiving on a closed channel".
+    #[test]
+    fn a_panicking_main_thread_closure_becomes_an_error_with_the_cause() {
+        let e = super::guarded::<()>(|| panic!("Failed to wait for GPU to come idle")).unwrap_err();
+        assert!(e.contains("Failed to wait for GPU to come idle"), "{e}");
+        let e = super::guarded::<()>(|| panic!("{}", String::from("formatted"))).unwrap_err();
+        assert!(e.contains("formatted"), "{e}");
+        assert_eq!(super::guarded(|| Ok(7)), Ok(7));
+        assert_eq!(
+            super::guarded::<()>(|| Err("plain".into())),
+            Err("plain".into())
+        );
+    }
+
     /// Pty input goes out in the order it was queued, however fast it arrives.
     #[tokio::test]
     async fn drain_sends_in_queue_order() {

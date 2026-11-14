@@ -24,8 +24,17 @@ use crate::paths;
 use crate::protocol::{self, Hello, HostCmd, MAX_LINE_BYTES, Request};
 use crate::pty::{Out, Session};
 
+/// How often hostd records the descendants of its terminals and checks whether an owner died
+/// (one process-table read, a registry read and exact-pid probes); with the 3 s SIGTERM grace an
+/// orphan is gone within 10 s. It is also the macOS window: a process that forks and daemonizes
+/// between two records escapes (`atlas_core::hygiene`).
+const OWNER_CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+/// Every Nth check is a full sweep (process table and registered dir caps) even with no orphan
+/// root: about once a minute. The first check is full too (a restart after a crash).
+const FULL_SWEEP_EVERY: u32 = 30;
+
 pub(crate) struct Hub {
-    sessions: Mutex<HashMap<String, Arc<Session>>>,
+    pub(crate) sessions: Mutex<HashMap<String, Arc<Session>>>,
     scroll_dir: PathBuf,
     /// Read by the Unix live upgrade only.
     #[cfg_attr(windows, allow(dead_code))]
@@ -43,7 +52,10 @@ pub(crate) struct Hub {
     /// Language servers (lazy: nothing runs until a document is opened).
     pub(crate) lsp: atlas_lsp::Manager,
     /// Live connections' outgoing queues: LSP pushes are broadcast to all of them.
-    subscribers: Mutex<HashMap<u64, Out>>,
+    pub(crate) subscribers: Mutex<HashMap<u64, Out>>,
+    /// Who a connection is when it is not the desktop or the CLI: `phone:<node id>` for a paired phone's
+    /// session. The crew audit names the answerer of an approval with it (`origin_of`).
+    conn_origins: Mutex<HashMap<u64, String>>,
     /// Open LSP documents → the connection that opened them last. A connection that drops
     /// without `lsp_close` has its documents closed, so idle servers can shut down; a document
     /// re-opened by a reconnected client now belongs to the new connection.
@@ -52,16 +64,25 @@ pub(crate) struct Hub {
     pub(crate) agents: Arc<crate::agents::AgentHub>,
     /// Atlas Mobile: identity, paired phones, pairing codes (`crate::mobile`).
     pub(crate) mobile: Arc<crate::mobile::Mobile>,
+    /// Crewmate runner: manages crewmate definitions, task queues, push/telegram delivery.
+    pub(crate) crew: Arc<crate::crew::CrewHub>,
+    /// Whether this daemon was started as a crew server (`ATLAS_CREW_HOST=1`).
+    pub(crate) crew_host: bool,
     /// `Some` when this is the lab lane's shadow daemon (`atlas hostd --lab`): it mirrors and
     /// forwards to the main hostd instead of owning terminals (`crate::lab`).
     pub(crate) lab: Option<Arc<crate::lab::Lab>>,
+    /// The desktop's registry dir (`<registry>/desktop/projects.json`).
+    registry: PathBuf,
+    /// Crewmate computers relayed to Atlas Mobile.
+    pub(crate) crew_relay: Arc<crate::crew::relay::CrewRelay>,
+    /// The desktop's control socket: an agent a phone starts opens a tab there when the app is running.
+    desktop: atlas_core::desktop_ctl::Endpoint,
 }
 
 impl Hub {
-    /// Where the desktop's project registry lives: this daemon's dir, or, in a lab, the main
-    /// daemon's (read only).
+    /// Where the desktop's project registry lives (see [`ServeOpts::registry`]).
     pub(crate) fn data_dir(&self) -> &Path {
-        self.lab.as_ref().map_or(&self.dir, |l| l.main_dir())
+        &self.registry
     }
 
     pub(crate) fn get(&self, id: &str) -> Result<Arc<Session>, String> {
@@ -98,7 +119,7 @@ impl Hub {
         json!({
             "version": env!("CARGO_PKG_VERSION"),
             "proto": protocol::PROTO,
-            "caps": protocol::CAPS,
+            "caps": protocol::caps(self.crew_host),
             "pid": std::process::id(),
             "uptime_s": self.started.elapsed().as_secs(),
             "ptys": all.len(),
@@ -158,6 +179,22 @@ impl Hub {
 
     pub(crate) fn remove_subscriber(&self, id: u64) {
         self.subscribers.lock().remove(&id);
+        self.conn_origins.lock().remove(&id);
+    }
+
+    /// Name connection `id` (`phone:<node id>`), until it is removed.
+    pub(crate) fn set_origin(&self, id: u64, origin: String) {
+        self.conn_origins.lock().insert(id, origin);
+    }
+
+    /// Who is on connection `id`: what [`set_origin`](Self::set_origin) named, else `desktop` (the desktop
+    /// app and the CLI both reach hostd over its socket).
+    pub(crate) fn origin_of(&self, id: u64) -> String {
+        self.conn_origins
+            .lock()
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| "desktop".to_string())
     }
 
     /// Push `line` to every connection. One over its byte cap (it stopped reading) misses this
@@ -264,13 +301,40 @@ pub struct ServeOpts {
     /// Atlas Mobile without n0's public relays: direct addresses only (tests, a
     /// phone on the same network). `ATLAS_MOBILE_RELAY=0` for `atlas hostd`.
     pub no_mobile_relay: bool,
+    /// Whether this daemon is a crew server (adds "crew" to caps, gates crewmate commands).
+    pub crew_host: bool,
     /// Run as the lab lane's shadow daemon following the main hostd in this directory
     /// (`atlas hostd --lab`, see [`crate::lab`]). `serve_with`'s `dir` is then the lab's own.
     pub lab: Option<PathBuf>,
+    /// Where the desktop keeps its project registry (`<registry>/desktop/projects.json`).
+    /// `atlas hostd` passes `~/.atlas`, where the desktop writes it whatever `ATLAS_HOSTD_DIR`
+    /// says (Atlas Dev runs its daemon in `~/.atlas/dev`). `None`: the lab's main dir, else the
+    /// daemon's own (tests).
+    pub registry: Option<PathBuf>,
+    /// How to reach the crew servers relayed to phones (`crate::crew`); `None`: ssh.
+    pub crew_relay: Option<crate::crew::relay::Connector>,
+    /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
+    pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
+    /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
+    pub agent_push: Option<crate::agents::push::Sender>,
+}
+
+/// The registry dir every real daemon uses: the desktop's, `~/.atlas`.
+pub fn desktop_registry() -> PathBuf {
+    atlas_core::paths::atlas_home()
 }
 
 pub async fn serve(dir: &Path) -> Result<()> {
-    serve_with(dir, ServeOpts::default()).await
+    let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
+    serve_with(
+        dir,
+        ServeOpts {
+            crew_host,
+            registry: Some(desktop_registry()),
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
@@ -370,6 +434,13 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             Err(e) => eprintln!("hostd: could not adopt pty {id}: {e:#}"),
         }
     }
+    // The terminals now die with THIS daemon: the registry must say so before the old one exits,
+    // or the first sweep would take every adopted terminal for an orphan of the retired owner.
+    if lab.is_none() && !sessions.is_empty() {
+        let reg = atlas_core::hygiene::Registry::in_existing(&paths::hygiene_base(&scroll_dir));
+        let ids: Vec<String> = sessions.keys().cloned().collect();
+        let _ = reg.set_owner(&ids, atlas_core::hygiene::Owner::current());
+    }
     // A lab owns no terminal, so there is no scrollback of its own to bring back.
     for e in std::fs::read_dir(&scroll_dir)?
         .flatten()
@@ -385,6 +456,14 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         }
     }
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
+    let agents = Arc::new(crate::agents::AgentHub::default());
+    let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
+    let crew = crate::crew::CrewHub::new(dir);
+    let registry = opts
+        .registry
+        .clone()
+        .or_else(|| opts.lab.clone())
+        .unwrap_or_else(|| dir.to_path_buf());
     let hub = Arc::new(Hub {
         sessions: Mutex::new(sessions),
         scroll_dir,
@@ -397,12 +476,38 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         lock,
         lsp: atlas_lsp::Manager::new(dir, atlas_lsp::Config::default(), lsp_tx),
         subscribers: Mutex::new(HashMap::new()),
+        conn_origins: Mutex::new(HashMap::new()),
         lsp_docs: Mutex::new(HashMap::new()),
-        agents: Arc::new(crate::agents::AgentHub::default()),
-        mobile: Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?),
+        agents,
+        mobile,
+        crew,
+        crew_host: opts.crew_host,
+        registry: registry.clone(),
+        desktop: opts.desktop.clone().unwrap_or_default(),
+        crew_relay: Arc::new(crate::crew::relay::CrewRelay::new(
+            &registry,
+            dir,
+            opts.crew_relay.clone(),
+        )),
         lab: lab.as_ref().map(|(l, _)| l.clone()),
     });
     crate::mobile::start(&hub);
+    hub.crew_relay.start(&hub);
+    hub.crew.start(Arc::downgrade(&hub));
+    // Plain agents push to the phones' tokens (not on a lab: it mirrors the real hostd's agents,
+    // which notifies for them). Subscribed here, before any hook can arrive.
+    if hub.lab.is_none() {
+        let send = opts
+            .agent_push
+            .clone()
+            .unwrap_or_else(|| crate::agents::push::relay_sender(Arc::downgrade(&hub)));
+        crate::agents::push::observe(&hub, send);
+    }
+    {
+        let crew = hub.crew.clone();
+        hub.agents
+            .set_crewmate_pane_can_answer(Box::new(move |_pane| crew.can_answer_crewmate_pane()));
+    }
     // Adopted terminals (live handoff) keep idling their agent when they exit.
     for s in hub.sessions_snapshot() {
         idle_agent_on_exit(&hub, &s);
@@ -415,8 +520,13 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     // The lab never starts the hook server: it would replace the endpoint file the user's agents
     // read (`ATLAS_HOOK_ENDPOINT`) and steal their events from the real hostd.
     if lab.is_none()
-        && let Err(e) =
-            crate::agents::hook_server::start(dir, hub.agents.clone(), hub.mobile.clone()).await
+        && let Err(e) = crate::agents::hook_server::start(
+            dir,
+            hub.agents.clone(),
+            hub.mobile.clone(),
+            Some(Arc::downgrade(&hub)),
+        )
+        .await
     {
         eprintln!("hostd: agent hook server: {e}");
     }
@@ -460,8 +570,26 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     }
     let mut term = Terminate::new()?;
     let limit = crate::idle::limit_from_env();
-    let mut ticker = tokio::time::interval(crate::idle::tick(limit));
+    let tick_interval = limit.unwrap_or(crate::idle::IDLE_EXIT);
+    let mut ticker = tokio::time::interval(crate::idle::tick(tick_interval));
     let mut idle_since: Option<Instant> = None;
+    // Orphans of a daemon that died without closing its terminals, and registered dirs over
+    // their caps: found when an owner dies (checked every few seconds), at the first tick (a restart after a
+    // crash) and in a full sweep every minute. A lab owns none.
+    let reg = atlas_core::hygiene::Registry::in_existing(&paths::hygiene_base(
+        &paths::scrollback_dir(dir),
+    ));
+    let mut sweeper = tokio::time::interval(OWNER_CHECK_EVERY);
+    let mut sweeps = 0u32;
+    let sweeping = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    /// Clears the "a sweep runs" flag however the sweep ends (a panic included).
+    struct Sweeping(Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for Sweeping {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::Release);
+        }
+    }
     loop {
         tokio::select! {
             acc = listener.accept() => {
@@ -472,6 +600,31 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             }
             _ = hub.stop.notified() => break,
             _ = term.recv() => break,
+            _ = sweeper.tick(), if hub.lab.is_none() => {
+                sweeps = sweeps.wrapping_add(1);
+                let full = sweeps % FULL_SWEEP_EVERY == 1;
+                let reg = reg.clone();
+                let busy = sweeping.clone();
+                // Detached: a reap waits out its SIGTERM grace and must not stall the accept loop;
+                // one at a time, so a slow reap is never doubled up by the next tick.
+                tokio::task::spawn_blocking(move || {
+                    // Record who runs under each live terminal first: a process seen under its
+                    // shell is still known after it daemonizes (the tag is unreadable on macOS).
+                    let _ = reg.track();
+                    if (!full && !reg.has_orphaned_root()) || busy.swap(true, Ordering::AcqRel) {
+                        return;
+                    }
+                    let _release = Sweeping(busy);
+                    let s = atlas_core::hygiene::sweep(&reg, false);
+                    if !s.orphans.is_empty() || s.freed.bytes > 0 {
+                        eprintln!(
+                            "atlas hostd: hygiene reaped {} orphaned process(es), freed {} bytes",
+                            s.orphans.len(),
+                            s.freed.bytes
+                        );
+                    }
+                });
+            }
             _ = ticker.tick() => {
                 let (live, clients) = hub.activity();
                 if live > 0 || clients > 0 {
@@ -479,10 +632,12 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
                 } else if hub.lab.is_none() {
                     // A lab has no terminal by design, so "idle" is its resting state between
                     // phone sessions: it stops with `--stop`, never on a timer.
-                    let since = *idle_since.get_or_insert_with(Instant::now);
-                    if crate::idle::idle_expired(live, clients, since.elapsed(), limit) {
-                        eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", limit.as_secs());
-                        break;
+                    if let Some(lim) = limit {
+                        let since = *idle_since.get_or_insert_with(Instant::now);
+                        if crate::idle::idle_expired(live, clients, since.elapsed(), lim) {
+                            eprintln!("atlas hostd: idle for {}s, no terminals and no clients: exiting", lim.as_secs());
+                            break;
+                        }
                     }
                 }
                 if crate::idle::dir_gone(dir) {
@@ -785,6 +940,20 @@ fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     });
 }
 
+/// Any agent started in a terminal of a pane reports to the hook server (the omp extension and
+/// `atlas hook` need both); a launcher's own values win. Shared by `PtyCreate` and the crewmate runner.
+pub(crate) fn hook_env(hub: &Hub, req: &mut crate::protocol::PtyCreate) {
+    if let Some(pane) = req.scope.pane_key.clone() {
+        let endpoint = paths::hook_endpoint(&hub.dir)
+            .to_string_lossy()
+            .into_owned();
+        req.env.entry("ATLAS_PANE_KEY".into()).or_insert(pane);
+        req.env
+            .entry("ATLAS_HOOK_ENDPOINT".into())
+            .or_insert(endpoint);
+    }
+}
+
 pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Value, String> {
     let e = |e: anyhow::Error| format!("{e:#}");
     match cmd {
@@ -911,7 +1080,26 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             project,
             agent,
             prompt,
-        } => agent_launch(hub, &project, &agent, prompt).await,
+            worktree,
+        } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::WorktreeList { project } => {
+            crate::worktrees::local::list(hub.data_dir(), &project).await
+        }
+        HostCmd::WorktreeCreate {
+            project,
+            name,
+            base,
+        } => {
+            crate::worktrees::local::create(
+                hub.data_dir(),
+                &project,
+                crate::worktrees::local::CreateReq { name, base },
+            )
+            .await
+        }
+        HostCmd::WorktreeRemove { id } => {
+            crate::worktrees::local::remove(hub.data_dir(), &id).await
+        }
         HostCmd::ProjectList {} => {
             let (panes, status) = agent_panes(hub).await;
             crate::projects::list(hub.data_dir(), &panes, &status).await
@@ -932,18 +1120,59 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::ProjectAction { id, key, confirmed } => {
             crate::projects::action(hub.data_dir(), &id, &key, confirmed).await
         }
+        HostCmd::GitStatus { root } => crate::git::status(hub.data_dir(), &root).await,
+        HostCmd::GitDiff { root, path, staged } => {
+            crate::git::diff(hub.data_dir(), &root, path, staged).await
+        }
+        HostCmd::GitStage { root, paths } => crate::git::stage(hub.data_dir(), &root, &paths).await,
+        HostCmd::GitUnstage { root, paths } => {
+            crate::git::unstage(hub.data_dir(), &root, &paths).await
+        }
+        HostCmd::GitCommit { root, message } => {
+            crate::git::commit(hub.data_dir(), &root, &message).await
+        }
+        HostCmd::GitCommitMessage { root } => {
+            crate::git::commit_message(hub.data_dir(), &root).await
+        }
+        HostCmd::GitPush { root } => crate::git::push(hub.data_dir(), &root).await,
+        HostCmd::GitPrCreate {
+            root,
+            title,
+            body,
+            base,
+        } => crate::git::pr_create(hub.data_dir(), &root, &title, &body, base.as_deref()).await,
         HostCmd::MobilePairStart {} => {
             hub.mobile.ensure_endpoint().await?;
             hub.mobile.pair_start()
         }
         HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
-        HostCmd::MobileRevoke { node_id } => hub.mobile.revoke(&node_id).map(|()| json!({})),
+        HostCmd::MobileRevoke { node_id } => {
+            hub.crew.revoke_device_tokens(&node_id);
+            hub.mobile.revoke(&node_id).map(|()| json!({}))
+        }
         HostCmd::MobileSetScopes { node_id, scopes } => {
             hub.mobile.set_scopes(&node_id, scopes).map(|()| json!({}))
         }
-        HostCmd::AgentApprove { pane, req, allow } => {
-            hub.agents.approve(&pane, &req, allow).map(|()| json!({}))
+        // Any hostd takes a phone's push registration, not only a crew server: a phone paired to a
+        // Mac alone hears about its agents. The phone's node id comes from its connection.
+        HostCmd::PushRegister {
+            token,
+            platform,
+            grant,
+        } => {
+            let origin = hub.origin_of(conn_id);
+            let node = origin.strip_prefix("phone:").unwrap_or("");
+            hub.crew.register_token(node, &token, &platform, grant);
+            Ok(json!({}))
         }
+        HostCmd::PushUnregister { token } => {
+            hub.crew.unregister_token(&token);
+            Ok(json!({}))
+        }
+        HostCmd::AgentApprove { pane, req, allow } => hub
+            .agents
+            .approve_as(&pane, &req, allow, &hub.origin_of(conn_id))
+            .map(|()| json!({})),
         HostCmd::AgentStatusAll {} => Ok(json!({
             "panes": hub.agents.all(),
             "hook_port": *hub.agents.port.lock(),
@@ -951,6 +1180,52 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         })),
         HostCmd::AgentIntegrations {} => Ok(crate::agents::integrations::all().await),
         HostCmd::Upgrade { exe } => crate::upgrade::run(hub, &exe).await,
+        crewmate @ (HostCmd::CrewmateList {}
+        | HostCmd::CrewmateCreate { .. }
+        | HostCmd::CrewmateUpdate { .. }
+        | HostCmd::CrewmateDelete { .. }
+        | HostCmd::CrewmateTask { .. }
+        | HostCmd::CrewmateAttachmentPut { .. }
+        | HostCmd::CrewmateAttachment { .. }
+        | HostCmd::CrewmateTasks { .. }
+        | HostCmd::CrewmateCancel { .. }
+        | HostCmd::CrewmateMemory { .. }
+        | HostCmd::CrewmateMemorySet { .. }
+        | HostCmd::CrewmateRoutineSet { .. }
+        | HostCmd::CrewmateTriggersSet { .. }
+        | HostCmd::CrewmateSecretSet { .. }
+        | HostCmd::CrewmateAnswer { .. }
+        | HostCmd::CrewmateUsage { .. }
+        | HostCmd::CrewmateAudit { .. }
+        | HostCmd::CrewAudit { .. }
+        | HostCmd::EngineLimits {}
+        | HostCmd::CrewTelegramSet { .. }
+        | HostCmd::CrewTelegramLink {}
+        | HostCmd::CrewTelegramStatus {}
+        | HostCmd::CrewGithubStatus {}
+        | HostCmd::CrewGithubLoginStart {}
+        | HostCmd::CrewGithubLoginPoll {}
+        | HostCmd::CrewGithubLogout {}
+        | HostCmd::CrewmateActionAnswer { .. }
+        | HostCmd::CrewGithubConnectResume {}
+        | HostCmd::CrewPause {}
+        | HostCmd::CrewResume {}
+        | HostCmd::CrewSettingsGet {}
+        | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
+        HostCmd::CrewCall { server, cmd, args } => hub.crew_relay.call(&server, &cmd, args).await,
+        HostCmd::MobileInvite { url, name } => {
+            hub.mobile.mobile_invite(url, name, hub);
+            Ok(json!({}))
+        }
+        HostCmd::MobileInvites {} => {
+            let invites = hub.mobile.mobile_invites();
+            Ok(json!({ "invites": invites }))
+        }
+        HostCmd::MobileInviteDismiss { url } => {
+            hub.mobile.mobile_invite_dismiss(&url);
+            Ok(json!({}))
+        }
         lsp @ (HostCmd::LspOpen { .. }
         | HostCmd::LspChange { .. }
         | HostCmd::LspClose { .. }
@@ -1066,28 +1341,77 @@ fn agent_interrupt(hub: &Hub, pane: &str) -> Result<Value, String> {
     Ok(json!({}))
 }
 
-/// A new agent tab in a project, made by the desktop (it owns tabs, worktrees and the
-/// agent's launch env): `terminal_create` on its control socket.
+/// A new agent terminal in a project, or in one of its worktrees. With Atlas Desktop running it opens a real
+/// tab there (`terminal_create` on its control socket: the app owns tabs, so the user sees it); with the app
+/// closed hostd starts the terminal itself (see [`crate::agents::launch_plan`]) and the agent's hooks report
+/// under its pane. A desktop that answers with an error is not "closed": the error is returned, never retried here.
 async fn agent_launch(
     hub: &Hub,
     project: &str,
     agent: &str,
     prompt: Option<String>,
+    worktree: Option<String>,
 ) -> Result<Value, String> {
-    let root = crate::projects::root_of(&hub.dir, project)?;
+    let dir = hub.data_dir();
+    let (worktree_id, cwd) = match worktree.filter(|w| !w.is_empty()) {
+        Some(w) => {
+            // A worktree of THIS project's repo, by id: another repo's, or a path, is refused.
+            let listed = crate::worktrees::local::list(dir, project).await?;
+            let ok = listed["worktrees"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|r| r["id"] == w.as_str()));
+            if !ok {
+                return Err(format!("unknown worktree {w} in this project"));
+            }
+            let cwd = crate::worktrees::local::dir_of(dir, &w)?;
+            (w, cwd)
+        }
+        None => (project.to_string(), crate::projects::root_of(dir, project)?),
+    };
+    if !cwd.is_dir() {
+        return Err(format!("{} no longer exists", cwd.display()));
+    }
+    let prompt = prompt.filter(|p| !p.trim().is_empty());
+
+    // The desktop first. Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
+    let ctl = hub.desktop.clone();
     let args = json!({
-        "worktree": root.to_string_lossy(),
+        "worktree": cwd.to_string_lossy(),
         "agent": agent,
-        "prompt": prompt.filter(|p| !p.trim().is_empty()),
+        "prompt": prompt,
     });
-    // Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
-    let tab = tokio::task::spawn_blocking(move || {
-        atlas_core::desktop_ctl::call("terminal_create", &args, std::time::Duration::from_secs(60))
+    let asked = tokio::task::spawn_blocking(move || {
+        ctl.call_checked("terminal_create", &args, std::time::Duration::from_secs(60))
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| format!("{e:#}"))?;
-    Ok(json!({"pane": tab["tab"], "pty": tab["pty"]}))
+    .map_err(|e| e.to_string())?;
+    match asked {
+        Ok(tab) => return Ok(json!({"pane": tab["tab"], "pty": tab["pty"]})),
+        Err(atlas_core::desktop_ctl::CallError::Failed(e)) => return Err(format!("{e:#}")),
+        Err(atlas_core::desktop_ctl::CallError::NotRunning) => {}
+    }
+
+    let bin = crate::agents::launch::resolve_bin(agent)?;
+    let pane = paths::new_id();
+    let mut req = crate::agents::launch_plan(
+        dir,
+        agent,
+        &bin,
+        &cwd,
+        &worktree_id,
+        &pane,
+        prompt.as_deref(),
+    )?;
+    hook_env(hub, &mut req);
+    let scroll = hub.scroll_dir.clone();
+    let session = tokio::task::spawn_blocking(move || Session::spawn(req, &scroll))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?;
+    let pty = session.id.clone();
+    idle_agent_on_exit(hub, &session);
+    hub.sessions.lock().insert(pty.clone(), session);
+    Ok(json!({"pane": pane, "pty": pty}))
 }
 
 #[cfg(all(test, unix))]

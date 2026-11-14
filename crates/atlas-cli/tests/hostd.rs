@@ -138,12 +138,18 @@ async fn pty_exec_fs_auth_and_cold_restore() {
     let dir = tmp.path();
     let (mut d, c) = start(dir).await;
 
-    // PTY: output, replay, exit code.
+    // PTY: output, replay, exit code. The program exits only after `go`, created once the client
+    // is attached: a fixed `sleep` let a loaded runner end it before the attach (#198).
     let mut ev = c.events();
+    let go = dir.join("go-exit");
+    let script = format!(
+        "echo hi; while [ ! -e '{}' ]; do sleep 0.01; done",
+        go.display()
+    );
     let pty = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "echo hi; sleep 0.5"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -154,6 +160,7 @@ async fn pty_exec_fs_auth_and_cold_restore() {
     c.call("pty_attach", json!({"pty": pty, "replay": true}))
         .await
         .unwrap();
+    std::fs::write(&go, "").unwrap();
     let (mut replay, mut code) = (String::new(), None);
     while code.is_none() {
         let e = tokio::time::timeout(Duration::from_secs(5), ev.recv())
@@ -286,10 +293,18 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
+    // `after` waits for `go`, created once the raw attach is in place: with `sleep 0.4` a loaded
+    // runner (load 66) finished the program before the attach and `exited` was already set.
+    // `before` may land before or after the attach; either way it reaches the reader (replay or live).
+    let go = dir.join("go-raw");
+    let script = format!(
+        "printf before; while [ ! -e '{}' ]; do sleep 0.01; done; printf after",
+        go.display()
+    );
     let pty = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "printf before; sleep 0.4; printf after"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -301,6 +316,7 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
         .await
         .unwrap();
     assert!(raw.info["exited"].is_null());
+    std::fs::write(&go, b"").unwrap();
     let mut out = Vec::new();
     // EOF arrives when the pty exits; bytes are unframed (no JSON, no base64).
     tokio::time::timeout(Duration::from_secs(5), raw.reader.read_to_end(&mut out))
@@ -309,12 +325,19 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&out), "beforeafter");
 
-    // Events-only attach (`output: false`): exit arrives, output does not.
+    // Events-only attach (`output: false`): exit arrives, output does not. The program waits for
+    // `go`, created after the attach: with `sleep 0.2` alone a loaded runner could finish it before
+    // the attach, and its `pty_exit` went to nobody (seen at load 46). Same gate as the title tests.
     let mut ev = c.events();
+    let go = dir.join("go-events-only");
+    let script = format!(
+        "while [ ! -e '{}' ]; do sleep 0.01; done; printf x",
+        go.display()
+    );
     let pty2 = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "sleep 0.2; printf x"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -324,6 +347,7 @@ async fn raw_attach_streams_replay_then_live_bytes_and_ends_with_the_pty() {
     c.call("pty_attach", json!({"pty": pty2, "output": false}))
         .await
         .unwrap();
+    std::fs::write(&go, b"").unwrap();
     loop {
         let e = tokio::time::timeout(Duration::from_secs(5), ev.recv())
             .await
@@ -471,7 +495,9 @@ async fn every_terminal_of_a_pane_can_report_its_agent() {
     let (_d, c) = start(dir).await;
     let mut ev = c.events();
     let out = |pane: Option<&str>, env: Value| {
-        let mut args = json!({"cwd": dir, "argv": ["sh", "-c", "echo \"[$ATLAS_PANE_KEY|$ATLAS_HOOK_ENDPOINT]\"; sleep 1"], "env": env});
+        // `read` keeps the terminal alive until hostd closes it: with `sleep 1` it could end
+        // before the attach on a loaded runner (#198).
+        let mut args = json!({"cwd": dir, "argv": ["sh", "-c", "echo \"[$ATLAS_PANE_KEY|$ATLAS_HOOK_ENDPOINT]\"; read x"], "env": env});
         if let Some(p) = pane {
             args["scope"] = json!({"pane_key": p});
         }
@@ -516,9 +542,13 @@ async fn an_agent_pane_whose_process_exits_goes_idle_without_the_app() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
+    // The process exits only after `go`, created once "working" is checked: with `sleep 1` a
+    // loaded runner saw it already idle (#198).
+    let go = dir.join("go-exit");
+    let script = format!("while [ ! -e '{}' ]; do sleep 0.01; done", go.display());
     c.call(
         "pty_create",
-        json!({"cwd": dir, "argv": ["sh", "-c", "sleep 1"], "scope": {"pane_key": "p1"}}),
+        json!({"cwd": dir, "argv": ["sh", "-c", script], "scope": {"pane_key": "p1"}}),
     )
     .await
     .unwrap();
@@ -533,6 +563,7 @@ async fn an_agent_pane_whose_process_exits_goes_idle_without_the_app() {
         c.call("agent_status_all", json!({})).await.unwrap()["panes"]["p1"]["state"].clone()
     };
     assert_eq!(state().await, "working");
+    std::fs::write(&go, "").unwrap();
     let mut s = Value::Null;
     for _ in 0..50 {
         s = state().await;
@@ -939,7 +970,18 @@ async fn hostd_exits_when_its_dir_disappears() {
     )
     .await
     .unwrap();
-    std::fs::remove_dir_all(&dir).unwrap();
+    // The daemon is alive and may write a file (its session registry, a scrollback) while the
+    // tree is removed, so one `remove_dir_all` can meet a new entry ("Directory not empty"),
+    // exactly like `rm -rf` on a live dir. Remove until it is gone: what is tested is that hostd
+    // then exits, not that it never writes.
+    let t0 = std::time::Instant::now();
+    while dir.exists() {
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            t0.elapsed() < Duration::from_secs(10),
+            "could not remove {dir:?}"
+        );
+    }
     wait_for("exit after the dir was removed", || {
         matches!(d.0.try_wait(), Ok(Some(_)))
     })
@@ -1460,12 +1502,15 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
-    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty.
+    // ~100 MiB of output, then a marker, then stay alive so a reattach has a live pty. The output
+    // waits for a line on stdin, sent once both clients are attached: with `replay: false` a chunk
+    // written before the healthy client attached never reached it (CI: 99 934 469 of 100 000 000
+    // bytes, one 64 KiB read short, PR #106).
     let pty = c
         .call(
             "pty_create",
             json!({"cwd": dir, "argv": ["sh", "-c",
-                "head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
+                "read go; head -c 100000000 /dev/zero | tr '\\0' a; echo END; sleep 60"]}),
         )
         .await
         .unwrap()["pty"]
@@ -1489,16 +1534,34 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
         )
         .await
         .unwrap();
+    // Its attach is answered before it goes silent, so it really holds a subscription when the
+    // output starts (otherwise the cap below would be checked against nothing).
+    let mut reply = Vec::new();
+    while !String::from_utf8_lossy(&reply).contains("\"id\":1") {
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(10), stuck.read(&mut buf))
+            .await
+            .expect("the stuck client's attach was never answered")
+            .unwrap();
+        assert!(n > 0, "hostd closed the stuck client before its attach");
+        reply.extend_from_slice(&buf[..n]);
+    }
 
     // A healthy client keeps receiving the whole time.
     let mut ev = c.events();
     c.call("pty_attach", json!({"pty": pty, "replay": false}))
         .await
         .unwrap();
+    c.call("pty_write", json!({"pty": pty, "data": B64.encode("go\n")}))
+        .await
+        .unwrap();
     let mut healthy_bytes = 0usize;
     let mut max_queued = 0u64;
     let t0 = std::time::Instant::now();
     let mut saw_end = false;
+    // Sampled, not per event: an `info` round trip after every chunk made this reader slower than
+    // hostd, so the client's own event buffer lagged and dropped output (CI: 99.87 MB of 100).
+    let mut sampled = std::time::Instant::now() - Duration::from_secs(1);
     while !saw_end {
         assert!(
             t0.elapsed() < Duration::from_secs(90),
@@ -1510,11 +1573,16 @@ async fn a_client_that_never_reads_is_dropped_with_a_reason_and_can_reattach() {
                 healthy_bytes += b.len();
                 saw_end |= String::from_utf8_lossy(&b).contains("END");
             }
-            Ok(_) => {}
-            Err(_) => {}
+            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(n))) => {
+                panic!("the test's own reader fell behind and lost {n} events")
+            }
+            Ok(_) | Err(_) => {}
         }
-        let info = c.call("info", json!({})).await.unwrap();
-        max_queued = max_queued.max(info["queued"]["total_bytes"].as_u64().unwrap_or(u64::MAX));
+        if sampled.elapsed() >= Duration::from_millis(100) {
+            sampled = std::time::Instant::now();
+            let info = c.call("info", json!({})).await.unwrap();
+            max_queued = max_queued.max(info["queued"]["total_bytes"].as_u64().unwrap_or(u64::MAX));
+        }
     }
     assert!(
         healthy_bytes >= 100_000_000,

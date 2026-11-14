@@ -81,6 +81,7 @@ def main():
         ("x86_64-apple-darwin", "atlas-x86_64-apple-darwin"),
         ("universal-apple-darwin", "atlas-universal-apple-darwin"),
         ("x86_64-unknown-linux-gnu", "atlas-x86_64-unknown-linux-gnu"),
+        ("aarch64-unknown-linux-gnu", "atlas-aarch64-unknown-linux-gnu"),
         ("x86_64-pc-windows-msvc", "atlas-x86_64-pc-windows-msvc"),
     ]
 

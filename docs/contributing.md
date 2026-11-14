@@ -113,11 +113,21 @@ The repo has its own `atlas.yaml` (ports 13450-13459). `atlas dev` gives you the
 
 CI does the same per job: `scripts/ci-paths.sh` maps the changed paths to areas, so a commit that only touches markdown runs no Rust, mobile or frontend job (`docs/` still rebuilds the site), while any path it does not know runs everything.
 
-While editing, `bun run check:changed` (action `u`) runs only what your changes can affect: the changed crates and every crate that depends on them, plus the desktop, mobile, scripts, skills or workflow checks their paths touch (`--base <ref>`, default `origin/main`; `--dry-run` lists the commands). `bun run check` is still the gate before a push.
+While editing, `bun run check:changed` (action `u`) runs only what your changes can affect: the changed crates and every crate that depends on them, plus the desktop, mobile, scripts, skills or workflow checks their paths touch (`--base <ref>`, default `origin/main`; `--dry-run` lists the commands). `bun scripts/check-changed.ts --json` prints the same plan as JSON (changed files on stdin, nothing runs): it is the `affected:` plugin of this repo's `atlas.yaml`, so agents get it through the MCP tool `atlas_affected`. `bun run check` is still the gate before a push.
 
-Heavy actions run through `scripts/heavy.sh <cmd>`: one heavy job per machine at a time (worktrees and agents included), started only when the 5-minute load is below the CPU count (`ATLAS_HEAVY_MAXLOAD`), under `nice`. Use it for anything that builds or benchmarks outside `atlas dev` too.
+Heavy actions call `scripts/heavy.sh <cmd>`, which goes through the machine-wide queue (`atlas run --heavy -- <cmd>`, [CLI reference](cli.md#atlas-run---heavy)): at most `min(cores / 2, GB of memory / 8)` heavy jobs at once (3 on a 12-core, 24 GB Mac) across every worktree and agent on the machine, in order, started only when the 5-minute load is below `0.75 * cores` (`ATLAS_HEAVY_MAXLOAD`) and at least 20% of memory is free (`ATLAS_HEAVY_MINMEM`), under `nice`, with `CARGO_BUILD_JOBS` capped to `max(2, cores / slots)`; `atlas heavy status` shows who runs and who waits. With an installed atlas that predates the queue the script falls back to its previous per-user lock, load and (macOS, Linux) memory wait, so this repo's `atlas.yaml` keeps working on any version. Other projects can use `heavy: true` on an action instead, which needs an atlas with the queue (an older one rejects the unknown key). Use `scripts/heavy.sh` (or `atlas run --heavy`) for anything that builds or benchmarks outside `atlas dev` too.
 
 The app-id migration (`crates/atlas-desktop/src/id_migrate.rs`) has an end-to-end check with real WebKit: `scripts/migration-e2e.sh` builds the app under two throwaway bundle ids, writes `localStorage` in the "old" one, starts the "new" one and reads it back, then deletes both stores and rebuilds the normal dev app (macOS, about two minutes).
+
+### Three ways to look at the app you are changing
+
+| Mode | Start | You see | Use it for |
+|---|---|---|---|
+| Lab | `atlas dev lab` / `bun run desktop:lab` | the frontend in your browser, HMR | most UI work; agents work here |
+| Mirror | `bun run desktop:mirror` | the whole real window of an invisible instance, live, click + type | following an agent, native parts without a window |
+| Desktop | `atlas dev desktop` / `bun run desktop:dev` | the real **Atlas Dev** window on your screen (orange icon, own id), HMR + Rust rebuilds | native layout: title bar, toolbar buttons, traffic lights, terminal, gestures, menus |
+
+Atlas Dev runs beside your installed Atlas without touching it (own bundle id and WebKit store). An agent starts the Desktop mode only when you ask it to (`atlas_start_service desktop`, `atlas_stop_service desktop` to go back to headless); on its own it stays on Lab and the mirror.
 
 ### Atlas Lab: the frontend in your browser, no Atlas window
 
@@ -135,7 +145,7 @@ Most frontend work does not need the app on screen. Pick the lightest level that
 
 Agent instances keep a WebKit store each (WKWebView ignores `HOME`); `--stop` deletes it, and `atlas desktop --agent --gc` deletes the stores of instances that are gone (crashes, killed processes).
 
-**Linux and Windows gaps.** Agent instances, so the Lab backend and the mirror, are macOS only (private virtual display, ScreenCaptureKit). On Linux and Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` and the repo `atlas.yaml` work everywhere.
+**Linux and Windows gaps.** Agent instances, so the Lab backend and the mirror, are macOS only (private virtual display, ScreenCaptureKit). On Linux and Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` (the load gate is off on Windows) and the repo `atlas.yaml` work everywhere.
 
 Limits: `Channel` streams (terminals, gestures) and `convertFileSrc` assets are not forwarded, and the browser is not WKWebView; use level 2 for those and for the CSP/IPC check before shipping. The bridge answers only its own page (per-run token, same Origin, JSON content type) and only when `ATLAS_DEBUG_SOCK` is an agent instance; it never talks to your own app.
 

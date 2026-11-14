@@ -11,7 +11,9 @@ import { compile, compileModule } from "svelte/compiler";
 // Without `--conditions browser` Bun resolves Svelte's server build, where `mount` throws: every component test fails
 // with an unrelated-looking error. Stop with the reason instead.
 if (!Bun.resolveSync("svelte", import.meta.dir).includes("index-client")) {
-	throw new Error("Svelte resolved to its server build: run `bun run test` (it passes `--conditions browser`).");
+	throw new Error(
+		"Svelte resolved to its server build: run `bun run test` (it passes `--conditions browser`).",
+	);
 }
 
 GlobalRegistrator.register();

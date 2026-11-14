@@ -46,15 +46,30 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// A field that is present (`null` included) is `Some`; only a missing one is `None` (via `#[serde(default)]`).
+fn present<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
+}
+
 pub const PROTO: u32 = 2;
-/// Capabilities reported by `info`; the desktop gates features on these.
+/// Capabilities reported by `info`; the desktop gates features on these. `push`: the daemon takes a
+/// phone's `push_register` and pushes about its plain agents (the phone registers only where it is).
 /// Windows has no live `upgrade`: pty handles cannot move to a successor the way Unix passes
 /// master fds, so clients restart the daemon when it has no running terminal (see
 /// `upgrade::decide`).
-#[cfg(unix)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "upgrade", "lsp", "agents"];
-#[cfg(windows)]
-pub const CAPS: &[&str] = &["pty_attach_raw", "lsp", "agents"];
+pub fn caps(crew_host: bool) -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = vec!["pty_attach_raw", "lsp", "agents", "push"];
+    #[cfg(unix)]
+    v.push("upgrade");
+    if crew_host {
+        v.push("crew");
+    }
+    v
+}
 pub const MAX_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -371,6 +386,30 @@ pub enum HostCmd {
         agent: String,
         #[serde(default)]
         prompt: Option<String>,
+        /// A worktree id of `worktree_list` (of `project`'s repo): the agent starts in that folder
+        /// instead of the main checkout.
+        #[serde(default)]
+        worktree: Option<String>,
+    },
+    /// The repo of `project` and its worktrees: `{repoId, worktrees: [{id, path, name, branch, main,
+    /// dirty, exists, portOffset}]}`, git state read live. SSH checkouts are not listed.
+    WorktreeList {
+        project: String,
+    },
+    /// New worktree of `project` (`atlas.yaml`'s `worktree:` setup/shared/seed run like on the desktop):
+    /// `{worktree: {id, path, branch, base, portOffset, repoId, name}, setup: {ok, code, output}|null}`.
+    /// `name` is slugged (empty = a sea name); `base` must be an existing ref.
+    WorktreeCreate {
+        project: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        base: Option<String>,
+    },
+    /// Remove a worktree only when nothing would be lost (the desktop's auto clean-up rule): `{removed:
+    /// true, branch}` or `{kept: "dirty"|"secrets"|"unpushed"}`. Never forced, the branch is kept.
+    WorktreeRemove {
+        id: String,
     },
     /// Local projects of the desktop registry with their live service state.
     ProjectList {},
@@ -402,6 +441,50 @@ pub enum HostCmd {
         #[serde(default)]
         confirmed: bool,
     },
+    /// `{branch, upstream, ab, entries: [{path, x, y, ...}]}`: porcelain v2 status of a project
+    /// checkout (`root` is a registered project or worktree, never a free path).
+    GitStatus {
+        root: String,
+    },
+    /// `{files: [FileDiff], truncated}`: parsed diff, the index vs HEAD with `staged`, else the
+    /// working tree plus untracked files; `path` narrows it to one file. Size-capped.
+    GitDiff {
+        root: String,
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        staged: bool,
+    },
+    GitStage {
+        root: String,
+        paths: Vec<String>,
+    },
+    GitUnstage {
+        root: String,
+        paths: Vec<String>,
+    },
+    /// `git commit -F -` of what is staged: `{sha}`.
+    GitCommit {
+        root: String,
+        message: String,
+    },
+    /// AI commit message from the staged diff, by the agent CLI of Settings → Git: `{message, agent,
+    /// scope, withheld}`. Nothing is committed.
+    GitCommitMessage {
+        root: String,
+    },
+    /// Push the current branch (sets `origin` as upstream the first time): `{branch, output}`.
+    GitPush {
+        root: String,
+    },
+    /// `gh pr create`: `{url, number}`.
+    GitPrCreate {
+        root: String,
+        title: String,
+        body: String,
+        #[serde(default)]
+        base: Option<String>,
+    },
     /// New one-time pairing code + this host's iroh address (desktop only).
     MobilePairStart {},
     MobileDevices {},
@@ -412,6 +495,233 @@ pub enum HostCmd {
         node_id: String,
         scopes: Vec<crate::mobile::Scope>,
     },
+    CrewmateList {},
+    CrewmateCreate {
+        name: String,
+        role: String,
+        agent: String,
+        approval: String,
+        #[serde(default)]
+        workdir: Option<String>,
+        #[serde(default)]
+        look: Option<crate::crew::store::CrewmateLook>,
+        #[serde(default)]
+        engine: Option<crate::crew::store::EngineConfig>,
+        #[serde(default)]
+        project: Option<crate::crew::store::ProjectRef>,
+        /// Initial setup step; None = no setup needed.
+        #[serde(default)]
+        setup_step: Option<String>,
+    },
+    CrewmateUpdate {
+        id: String,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        role: Option<String>,
+        #[serde(default)]
+        agent: Option<String>,
+        #[serde(default)]
+        approval: Option<String>,
+        #[serde(default)]
+        look: Option<crate::crew::store::CrewmateLook>,
+        #[serde(default)]
+        engine: Option<crate::crew::store::EngineConfig>,
+        #[serde(default)]
+        project: Option<crate::crew::store::ProjectRef>,
+        /// `None` = don't touch; `Some(None)` = clear (setup done); `Some(Some(s))` = set step.
+        /// serde's default maps `null` to `None` like a missing key, so "Looks good" (which sends `null`) never
+        /// ended the setup: `present` keeps `null` as `Some(None)`.
+        #[serde(default, deserialize_with = "present")]
+        setup_step: Option<Option<String>>,
+        /// `None` = don't touch; `Some(None)` = clear (use crew default); `Some(Some(true/false))` = set.
+        #[serde(default, deserialize_with = "present")]
+        short_replies: Option<Option<bool>>,
+    },
+    CrewmateDelete {
+        id: String,
+    },
+    CrewmateTask {
+        id: String,
+        prompt: String,
+        source: String,
+        #[serde(default)]
+        tz: Option<String>,
+        /// Images (`crew::attachments`): inline, or by the id of an upload (`crewmate_attachment_put`).
+        #[serde(default)]
+        attachments: Vec<crate::crew::attachments::Sent>,
+    },
+    /// One piece of an image too big for a protocol line, staged for the next `crewmate_task`
+    /// that names `upload`. The last piece (`last: true`) completes it.
+    CrewmateAttachmentPut {
+        id: String,
+        upload: String,
+        /// Piece number from 0; they arrive in order.
+        seq: u32,
+        data_b64: String,
+        #[serde(default)]
+        last: bool,
+    },
+    /// One piece of a stored image (`name` of a task's `attachments`), at most 512 KiB raw.
+    CrewmateAttachment {
+        id: String,
+        task: String,
+        name: String,
+        #[serde(default)]
+        offset: u64,
+        #[serde(default)]
+        limit: Option<u64>,
+    },
+    CrewmateTasks {
+        id: String,
+        #[serde(default = "crate::crew::store::default_task_limit")]
+        limit: usize,
+    },
+    CrewmateCancel {
+        id: String,
+        task: String,
+    },
+    CrewmateMemory {
+        id: String,
+    },
+    CrewmateMemorySet {
+        id: String,
+        text: String,
+    },
+    CrewmateRoutineSet {
+        id: String,
+        routines: Vec<serde_json::Value>,
+    },
+    PushRegister {
+        token: String,
+        platform: String,
+        /// What the push relay issued for `token` (`POST /v1/register`); hostd presents it on every
+        /// notify. Absent from an app older than relay auth: it registers but is not notified.
+        #[serde(default)]
+        grant: String,
+    },
+    PushUnregister {
+        token: String,
+    },
+    CrewTelegramSet {
+        #[serde(default)]
+        token: Option<String>,
+    },
+    CrewTelegramLink {},
+    /// Whether Telegram is configured and how many chats are linked. Never returns the token.
+    CrewTelegramStatus {},
+    MobileInvite {
+        url: String,
+        name: String,
+    },
+    MobileInvites {},
+    MobileInviteDismiss {
+        url: String,
+    },
+    CrewmateTriggersSet {
+        id: String,
+        triggers: Vec<serde_json::Value>,
+    },
+    CrewmateSecretSet {
+        id: String,
+        key: String,
+        value: String,
+    },
+    CrewmateAnswer {
+        id: String,
+        ask_id: String,
+        #[serde(default)]
+        key: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+    },
+    CrewmateUsage {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        since: Option<u64>,
+    },
+    /// The crewmate's append-only audit, newest first: `{entries: [{seq, ts, kind, ...}]}`. `since` is unix
+    /// seconds, `kind` one of `tool_call`, `approval_asked`, `approval_decision`, `task_queued`, `task_started`,
+    /// `task_finished`, `config_changed`, `secret_set`. Secret values never appear in it.
+    CrewmateAudit {
+        id: String,
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default = "crate::crew::audit::default_limit")]
+        limit: usize,
+        #[serde(default)]
+        kind: Option<String>,
+    },
+    /// The crew-wide audit (crewmate created/deleted, crew paused/resumed), same shape as `crewmate_audit`.
+    CrewAudit {
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default = "crate::crew::audit::default_limit")]
+        limit: usize,
+        #[serde(default)]
+        kind: Option<String>,
+    },
+    EngineLimits {},
+    /// `gh auth status` without secrets. snake_case of `GitHub` would be wrong.
+    #[serde(rename = "crew_github_status")]
+    CrewGithubStatus {},
+    /// Ensure gh installed, start `gh auth login --web`, return device code+URL.
+    #[serde(rename = "crew_github_login_start")]
+    CrewGithubLoginStart {},
+    /// Poll running login: pending/done/error. On done configures git.
+    #[serde(rename = "crew_github_login_poll")]
+    CrewGithubLoginPoll {},
+    /// `gh auth logout` and remove setup-git/insteadOf config.
+    #[serde(rename = "crew_github_logout")]
+    CrewGithubLogout {},
+    /// Answer a waiting-action task (provide_secret, input, choose, sign_in_engine).
+    #[serde(rename = "crewmate_action_answer")]
+    CrewmateActionAnswer {
+        id: String,
+        task: String,
+        /// For provide_secret: the secret value (written to crewmate secrets, never stored in task).
+        /// For other kinds: the user's response text or chosen option.
+        value: String,
+    },
+    /// If gh is already logged in, wake any connect_github waiters immediately.
+    #[serde(rename = "crew_github_connect_resume")]
+    CrewGithubConnectResume {},
+    /// The kill switch: cancel every running crewmate task, hold every queue, stop automations.
+    #[serde(rename = "crew_pause")]
+    CrewPause {},
+    /// Undo `crew_pause`: queues start again.
+    #[serde(rename = "crew_resume")]
+    CrewResume {},
+    /// Read crew-level reply-summary settings.
+    #[serde(rename = "crew_settings_get")]
+    CrewSettingsGet {},
+    /// Write crew-level reply-summary settings.
+    #[serde(rename = "crew_settings_set")]
+    CrewSettingsSet {
+        short_replies: bool,
+        #[serde(default)]
+        short_replies_model: Option<String>,
+    },
+    /// The crew servers this Mac's desktop knows (`~/.atlas/desktop/crew-servers.json`), which
+    /// Atlas Mobile reaches through this hostd (`crate::crew`).
+    CrewServers {},
+    /// Run `cmd` on crew server `server` through this hostd. A phone may only send what it
+    /// could send this hostd directly, with the same scope (`mobile::required_scope`).
+    CrewCall {
+        server: String,
+        cmd: String,
+        #[serde(default)]
+        args: Value,
+    },
+}
+
+impl HostCmd {
+    /// The command a `crew_call` carries, parsed like any request.
+    pub fn crew_inner(cmd: &str, args: &Value) -> Result<HostCmd, String> {
+        serde_json::from_value(serde_json::json!({"cmd": cmd, "args": args}))
+            .map_err(|e| format!("bad crew request: {e}"))
+    }
 }
 
 /// Build a response line.
@@ -455,6 +765,39 @@ pub(crate) async fn write_lines<W: tokio::io::AsyncWrite + Unpin>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn github_commands_parse_under_their_wire_names() {
+        let status: Request =
+            serde_json::from_str(r#"{"id":1,"cmd":"crew_github_status","args":{}}"#).unwrap();
+        assert!(matches!(status.cmd, HostCmd::CrewGithubStatus {}));
+        let start: Request =
+            serde_json::from_str(r#"{"id":2,"cmd":"crew_github_login_start","args":{}}"#).unwrap();
+        assert!(matches!(start.cmd, HostCmd::CrewGithubLoginStart {}));
+        let poll: Request =
+            serde_json::from_str(r#"{"id":3,"cmd":"crew_github_login_poll","args":{}}"#).unwrap();
+        assert!(matches!(poll.cmd, HostCmd::CrewGithubLoginPoll {}));
+        let logout: Request =
+            serde_json::from_str(r#"{"id":4,"cmd":"crew_github_logout","args":{}}"#).unwrap();
+        assert!(matches!(logout.cmd, HostCmd::CrewGithubLogout {}));
+    }
+
+    #[test]
+    fn crewmate_action_answer_and_resume_parse_under_wire_names() {
+        let answer: Request = serde_json::from_str(
+            r#"{"id":10,"cmd":"crewmate_action_answer","args":{"id":"bot1","task":"t1","value":"secret"}}"#,
+        ).unwrap();
+        assert!(matches!(answer.cmd, HostCmd::CrewmateActionAnswer { .. }));
+        if let HostCmd::CrewmateActionAnswer { id, task, value } = answer.cmd {
+            assert_eq!(id, "bot1");
+            assert_eq!(task, "t1");
+            assert_eq!(value, "secret");
+        }
+        let resume: Request =
+            serde_json::from_str(r#"{"id":11,"cmd":"crew_github_connect_resume","args":{}}"#)
+                .unwrap();
+        assert!(matches!(resume.cmd, HostCmd::CrewGithubConnectResume {}));
+    }
 
     #[test]
     fn parses_tagged_requests_with_defaults() {

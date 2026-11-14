@@ -11,6 +11,34 @@ pub enum ServiceState {
     /// Intentionally paused by an atlas action (e.g. iOS/Android dev).
     /// Different from Stopped (error) — health checks skip it, no critical alert.
     Suspended,
+    /// The process is alive but stopped answering its liveness probe
+    /// (`failure_threshold` misses in a row after it was healthy). Distinct from
+    /// `Failed`: nothing exited, the service is hung.
+    Unhealthy,
+    /// Liveness passes but the service is not usable: its `ready` probe fails, or
+    /// the same error keeps repeating in its log.
+    Degraded,
+}
+
+impl ServiceState {
+    /// Lowercase name: the form of the status file, the runner wire and MCP.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Starting => "starting",
+            Self::Running => "running",
+            Self::Failed => "failed",
+            Self::Disabled => "disabled",
+            Self::Suspended => "suspended",
+            Self::Unhealthy => "unhealthy",
+            Self::Degraded => "degraded",
+        }
+    }
+
+    /// Up, so dependents may use it: `Running`, or `Degraded` (it answers, just not well).
+    pub fn is_up(&self) -> bool {
+        matches!(self, Self::Running | Self::Degraded)
+    }
 }
 
 impl std::str::FromStr for ServiceState {
@@ -25,6 +53,8 @@ impl std::str::FromStr for ServiceState {
             "failed" => Self::Failed,
             "disabled" => Self::Disabled,
             "suspended" => Self::Suspended,
+            "unhealthy" => Self::Unhealthy,
+            "degraded" => Self::Degraded,
             _ => return Err(()),
         })
     }

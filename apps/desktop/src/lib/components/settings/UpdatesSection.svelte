@@ -295,9 +295,15 @@
 		cursor: pointer;
 	}
 	.chip {
+		display: inline-flex;
+		align-items: center;
+		flex: none;
+		height: 19px;
 		font-size: 11px;
 		font-weight: 600;
-		padding: 1px 7px;
+		line-height: 1;
+		padding: 0 7px;
+		white-space: nowrap;
 		border-radius: 999px;
 		color: var(--ca-text-primary);
 		background: color-mix(in oklab, var(--tone) 12%, transparent);
@@ -333,21 +339,6 @@
 	.link:hover {
 		text-decoration: underline;
 		text-underline-offset: 2px;
-	}
-	.tag {
-		font-size: 10.5px;
-		font-weight: 600;
-		padding: 1px 7px;
-		border-radius: 999px;
-		white-space: nowrap;
-	}
-	.tag.info {
-		color: var(--ca-semantic-info);
-		background: color-mix(in oklab, var(--ca-semantic-info) 14%, transparent);
-	}
-	.tag.warn {
-		color: var(--ca-semantic-warning);
-		background: color-mix(in oklab, var(--ca-semantic-warning) 14%, transparent);
 	}
 	.tiles :global(.ver b) {
 		color: var(--ca-brand-main);

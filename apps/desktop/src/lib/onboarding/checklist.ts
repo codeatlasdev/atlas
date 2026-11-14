@@ -50,6 +50,19 @@ export function parseState(raw: unknown): OnboardingState {
 	};
 }
 
+/**
+ * The state to start from, given the outcome of reading settings. A read that failed is NOT a first run: showing the
+ * deck to a user whose settings could not be read is the path that wipes them (and with no state at all `loaded`
+ * never became true, so the app sat without overlay, hero or checklist). Welcome counts as done in memory only; the
+ * next successful save is a patch of that one key, never a rewrite from this fallback.
+ */
+export function stateFromSettings(
+	read: { settings: Record<string, unknown> } | { error: string },
+): OnboardingState {
+	if ("error" in read) return { ...structuredClone(EMPTY_STATE), done: true };
+	return parseState(read.settings.onboarding);
+}
+
 /** `state` with `id` completed; same object when it already was. */
 export function complete(state: OnboardingState, id: ChecklistId): OnboardingState {
 	if (state.checklist.done.includes(id)) return state;

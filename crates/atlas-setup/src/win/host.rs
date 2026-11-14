@@ -107,7 +107,7 @@ impl uninstall::Host for Real {
 
     fn remove_cli_and_data(&self, cli: &Path) -> Result<(), String> {
         let out = Command::new(cli)
-            .args(["uninstall", "--yes"])
+            .args(["uninstall", "--yes", "--purge"])
             .stdin(Stdio::null())
             .no_window()
             .output()

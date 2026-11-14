@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/agents/agent_info.dart';
 
 Color nodeColor(AtlasColors c, AgentNode n) => switch (n.status) {
@@ -224,7 +225,14 @@ class CrewRail extends StatelessWidget {
         border: Border(bottom: BorderSide(color: c.borderSubtle)),
       ),
       child: SizedBox(
-        height: 66,
+        // 66 dp holds the ring and two short lines; at large text the lines grow.
+        height: math.max(
+          66,
+          12 +
+              2 +
+              MediaQuery.textScalerOf(context).scale(13 * 1.4 + 11 * 1.4) +
+              8,
+        ),
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: Space.sm),
@@ -398,7 +406,7 @@ class Breadcrumb extends StatelessWidget {
         color: c.base,
         border: Border(bottom: BorderSide(color: c.borderSubtle)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: Space.md),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -446,30 +454,32 @@ class _Crumb extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (home) ...[
-                Icon(Icons.arrow_back_rounded, size: 13, color: c.accent),
-                const SizedBox(width: 4),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: current || home
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                  color: current
-                      ? c.text
-                      : home
-                      ? c.accent
-                      : c.muted,
+        child: MinTapTarget(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (home) ...[
+                  Icon(Icons.arrow_back_rounded, size: 13, color: c.accent),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: current || home
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: current
+                        ? c.text
+                        : home
+                        ? c.accent
+                        : c.muted,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

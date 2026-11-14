@@ -33,10 +33,26 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 
-pub const LOCAL: &str = "local";
+pub use atlas_host::worktrees::registry::LOCAL;
 
 /// How often an armed "restart when idle" looks at the terminals (pty exits also wake it).
 const IDLE_POLL: Duration = Duration::from_secs(5);
+
+/// A connection that lived this long was a healthy one; its end is an ordinary reconnect, not a crash loop.
+const STABLE_AFTER: Duration = Duration::from_secs(30);
+const RECONNECT_FAST: Duration = Duration::from_millis(300);
+const RECONNECT_MAX: Duration = Duration::from_secs(10);
+
+/// How long to wait before reconnecting after a session of `lived`, and the backoff to carry forward. A stable
+/// session reconnects fast and resets the backoff; a short one (the host dropped the app right after the handshake)
+/// waits `backoff` and doubles it up to [`RECONNECT_MAX`].
+fn reconnect_pause(lived: Duration, backoff: Duration) -> (Duration, Duration) {
+    if lived >= STABLE_AFTER {
+        (RECONNECT_FAST, Duration::from_secs(1))
+    } else {
+        (backoff, (backoff * 2).min(RECONNECT_MAX))
+    }
+}
 
 /// A running terminal, as listed in the restart prompt.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -113,6 +129,9 @@ pub struct HostHub {
     connected: tokio::sync::Notify,
     /// Woken when a pty exits, so an armed "restart when idle" reacts at once.
     ptys_changed: tokio::sync::Notify,
+    /// Why each remote host is not connected (last reconnect error), so a call to it says what is wrong instead of
+    /// pointing at Settings ("not connected" showed even when the ship was simply powered off).
+    remote_errors: Mutex<HashMap<String, String>>,
     /// Debug only: `ATLAS_DEBUG_FAKE_HOST` is on and restarts only clear the fake state.
     #[cfg(debug_assertions)]
     fake: Mutex<Option<Fake>>,
@@ -153,14 +172,18 @@ impl HostHub {
             if let Some(c) = self.clients.read().await.get(host).cloned() {
                 return Ok(c);
             }
-            return Err(format!(
-                "{host} is not connected (Settings → Integrations → SSH hosts)"
-            ));
+            return Err(match self.remote_errors.lock().get(host) {
+                Some(why) => format!("{host} is not reachable: {why}"),
+                None => format!("{host} is still connecting; try again in a few seconds"),
+            });
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         loop {
-            // Register interest before checking, so a `set` in between is not missed.
+            // Register interest before checking, so a `set` in between is not missed. A
+            // `Notified` only counts for `notify_waiters` once polled or enabled (#226).
             let woken = self.connected.notified();
+            tokio::pin!(woken);
+            woken.as_mut().enable();
             if let Some(c) = self.clients.read().await.get(LOCAL).cloned() {
                 return Ok(c);
             }
@@ -173,12 +196,22 @@ impl HostHub {
 
     pub async fn set(&self, host: &str, c: Option<HostClient>) {
         let mut m = self.clients.write().await;
+        if c.is_some() {
+            self.remote_errors.lock().remove(host);
+        }
         match c {
             Some(c) => m.insert(host.to_string(), c),
             None => m.remove(host),
         };
         drop(m);
         self.connected.notify_waiters();
+    }
+
+    /// The last reason `host` could not be (re)connected, shown by `client()` instead of a generic "not connected".
+    pub fn set_remote_error(&self, host: &str, why: &str) {
+        self.remote_errors
+            .lock()
+            .insert(host.to_string(), why.to_string());
     }
 
     fn route(&self, args: &Value) -> String {
@@ -742,11 +775,16 @@ pub fn start(app: &AppHandle) {
         let hub = app.state::<Arc<HostHub>>().inner().clone();
         let mut backoff = Duration::from_secs(1);
         loop {
-            let bin = match atlas_host::client::atlas_bin() {
+            // The first call may wait for the login-shell probe (rc files): never on the async executor.
+            let bin = match tauri::async_runtime::spawn_blocking(crate::cmds::atlas_bin)
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r)
+            {
                 Ok(b) => b,
                 Err(e) => {
-                    crate::diag::incident("start-failed", &e.to_string());
-                    let _ = app.emit("host://error", e.to_string());
+                    crate::diag::incident("start-failed", &e);
+                    let _ = app.emit("host://error", e);
                     tokio::time::sleep(Duration::from_secs(10)).await;
                     continue;
                 }
@@ -765,7 +803,6 @@ pub fn start(app: &AppHandle) {
             }
             match atlas_host::client::ensure_local(&bin, "desktop").await {
                 Ok(c) => {
-                    backoff = Duration::from_secs(1);
                     hub.ctl.lock().last_error = None;
                     // Every (re)connect is reconciled; the loop guard in `plan` keeps an
                     // installed CLI older than the app from looping.
@@ -777,7 +814,12 @@ pub fn start(app: &AppHandle) {
                         continue;
                     }
                     verify_upgrade(&app, &hub);
+                    let since = tokio::time::Instant::now();
                     serve_client(&app, LOCAL, c).await;
+                    // A host that drops the app right after the handshake must not be reconnected in a tight loop.
+                    let (wait, next) = reconnect_pause(since.elapsed(), backoff);
+                    backoff = next;
+                    tokio::time::sleep(wait).await;
                 }
                 Err(e) => {
                     let why = crate::diag::redact(&format!("{e:#}"));
@@ -980,7 +1022,7 @@ pub async fn host_diagnostics(
             .and_then(Result::ok),
         None => None,
     };
-    let cli = match atlas_host::client::atlas_bin() {
+    let cli = match crate::cmds::atlas_bin() {
         Ok(bin) => crate::updates::cli_version(&bin).await,
         Err(_) => None,
     };
@@ -1289,5 +1331,45 @@ mod tests {
         assert!(!m.contains("hostd.log") && !m.contains('~'), "{m}");
         let m = unreachable_message(Some("socket in use"));
         assert!(m.contains("socket in use"), "{m}");
+    }
+
+    /// Incident class: after `serve_client` returned, `start` went straight back to `ensure_local` with no pause and
+    /// with the backoff reset by the connect. A daemon that accepts the app and then dies (or refuses it right after
+    /// the handshake) made the app spawn, connect and drop in a tight loop: a core pinned, `host://reconnected` and
+    /// `reattach_all` firing at the UI as fast as the machine allowed.
+    #[test]
+    fn a_connection_that_drops_at_once_backs_off_instead_of_spinning() {
+        let one = Duration::from_secs(1);
+        let mut b = one;
+        let mut waits = vec![];
+        for _ in 0..6 {
+            let (wait, next) = reconnect_pause(Duration::from_millis(40), b);
+            waits.push(wait);
+            b = next;
+        }
+        assert_eq!(waits[0], one, "the very first drop already waits");
+        assert!(waits.windows(2).all(|w| w[1] >= w[0]), "{waits:?}");
+        assert_eq!(
+            *waits.last().unwrap(),
+            Duration::from_secs(10),
+            "capped, never beyond"
+        );
+    }
+
+    /// A session that lived for a while was a healthy one: its end is an ordinary reconnect (an update's handoff, a
+    /// daemon restart), not part of a crash loop, so it comes back fast and the backoff starts over.
+    #[test]
+    fn a_long_session_that_ends_reconnects_quickly_and_resets_the_backoff() {
+        let (wait, next) = reconnect_pause(Duration::from_secs(120), Duration::from_secs(10));
+        assert!(wait <= Duration::from_millis(300), "{wait:?}");
+        assert_eq!(next, Duration::from_secs(1));
+    }
+
+    /// The edge: exactly at the stability threshold counts as stable; one tick under does not.
+    #[test]
+    fn the_stability_threshold_is_a_clean_edge() {
+        let b = Duration::from_secs(4);
+        assert!(reconnect_pause(STABLE_AFTER, b).0 < b);
+        assert!(reconnect_pause(STABLE_AFTER - Duration::from_millis(1), b).0 >= b);
     }
 }

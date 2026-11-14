@@ -19,22 +19,13 @@ fn host_hub(app: &AppHandle) -> std::sync::Arc<HostHub> {
     app.state::<std::sync::Arc<HostHub>>().inner().clone()
 }
 
-/// `$ATLAS_BIN`, then `~/.atlas/bin/atlas`, then `atlas` on the shell's PATH.
+/// The CLI the app runs: `$ATLAS_BIN`, `~/.atlas/bin/atlas`, the bundled one, then `atlas` on the login shell's and
+/// the process `PATH`. The same lookup hostd's startup uses ([`atlas_host::client::atlas_bin_with`]), so stacks and
+/// terminals can never disagree about which CLI exists.
 pub(crate) fn atlas_bin() -> Result<PathBuf, String> {
-    let env = std::env::var_os("ATLAS_BIN").map(PathBuf::from);
-    let home = dirs::home_dir().map(|h| h.join(".atlas/bin").join(atlas_core::paths::exe("atlas")));
-    [env, home, atlas_core::paths::bundled_cli()]
-        .into_iter()
-        .flatten()
-        .find(|p| p.is_file())
-        .or_else(|| crate::shell_env::which("atlas"))
-        .ok_or_else(|| {
-            if cfg!(windows) {
-                "atlas CLI not found — install (PowerShell): irm https://atlas.codeatlas.com.br/install.ps1 | iex".into()
-            } else {
-                "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash".into()
-            }
-        })
+    let login = atlas_core::login_env::path_var();
+    atlas_host::client::atlas_bin_with(Some(login.as_os_str()).filter(|p| !p.is_empty()))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -54,6 +54,8 @@ const STATE_TONE: Record<string, Tone> = {
 	running: "ok",
 	starting: "warn",
 	failed: "fail",
+	unhealthy: "fail",
+	degraded: "warn",
 	stopped: "off",
 	disabled: "off",
 };

@@ -66,6 +66,55 @@ fn apply_keeps_session_fields_across_events() {
     assert!(hub.apply("omp", &json!({"payload":{}})).is_none());
 }
 
+// Incident: an omp crewmate showed only "Working" / "Planning", never "Reading app.ts": omp's extension reports a tool
+// as `tool_call`, and hostd only turned Claude's `pre_tool_use`/`post_tool_use` into steps, so no crewmate task ever had one.
+#[test]
+fn an_omp_tool_call_becomes_a_step_once() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let body = |p: Value| json!({"pane_key": "crew:b:t", "payload": p});
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_call","tool_name":"read","tool_input":{"path":"src/app.ts"}})),
+    );
+    // Its start/end events for the same call must not add two more.
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_execution_start","tool_name":"read"})),
+    );
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_execution_end","tool_name":"read"})),
+    );
+    let steps: Vec<Value> = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|v| v["ev"] == "agent_step")
+        .collect();
+    assert_eq!(steps.len(), 1, "{steps:?}");
+    assert_eq!(steps[0]["tool_name"], "read");
+    assert_eq!(steps[0]["tool_input"]["path"], "src/app.ts");
+}
+
+// omp reports what a tool printed when the call ends, apart from the call itself: that is the crew's evidence that a
+// test run passed, and it must not become a second step.
+#[test]
+fn an_omp_tool_execution_end_carries_its_output_and_is_not_a_step() {
+    let hub = AgentHub::default();
+    let mut rx = hub.subscribe();
+    let body = |p: Value| json!({"pane_key": "crew:b:t", "payload": p});
+    hub.apply(
+        "omp",
+        &body(json!({"event":"tool_execution_end","tool_name":"bash",
+                     "tool_output":"test result: ok. 3 passed; 0 failed","is_error":false})),
+    );
+    let evs: Vec<Value> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+    assert!(evs.iter().all(|v| v["ev"] != "agent_step"), "{evs:?}");
+    let out = evs.iter().find(|v| v["ev"] == "agent_tool_output").unwrap();
+    assert_eq!(out["pane_key"], "crew:b:t");
+    assert_eq!(out["tool_name"], "bash");
+    assert_eq!(out["tool_output"], "test result: ok. 3 passed; 0 failed");
+    assert_eq!(out["is_error"], false);
+}
+
 #[test]
 fn events_without_pane_key_resolve_by_agent_and_cwd() {
     let hub = AgentHub::default();
@@ -122,6 +171,61 @@ async fn approvals_resolve_only_their_own_pending_request() {
     assert_eq!(asked.await.unwrap(), Some(false));
     assert_eq!(ev.recv().await.unwrap()["ev"], "agent_approval_done");
     assert!(hub.approve("p1", &req, true).is_err(), "already answered");
+}
+
+/// #201: the audit needs to know how a prompt ended and who answered. The `agent_approval_done` push
+/// carries `decision` (allow|deny|timeout) and `by` (who: whatever `approve_as` was given, `none` when
+/// nobody did).
+#[tokio::test]
+async fn approval_done_says_how_it_ended_and_who_answered() {
+    let hub = std::sync::Arc::new(AgentHub::default());
+    let mut ev = hub.subscribe();
+    let ask = |h: std::sync::Arc<AgentHub>, wait: u64| {
+        tokio::spawn(async move {
+            h.ask(
+                "p1",
+                "claude",
+                &json!({"tool_name": "Bash", "tool_input": {}}),
+                Duration::from_millis(wait),
+                true,
+            )
+            .await
+        })
+    };
+
+    let t = ask(hub.clone(), 5000);
+    let req = ev.recv().await.unwrap()["req"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    hub.approve_as("p1", &req, true, "phone:node-abc").unwrap();
+    assert_eq!(t.await.unwrap(), Some(true));
+    let done = ev.recv().await.unwrap();
+    assert_eq!(done["ev"], "agent_approval_done");
+    assert_eq!(done["decision"], "allow");
+    assert_eq!(done["by"], "phone:node-abc");
+
+    let t = ask(hub.clone(), 5000);
+    let req = ev.recv().await.unwrap()["req"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    hub.approve("p1", &req, false).unwrap();
+    t.await.unwrap();
+    let done = ev.recv().await.unwrap();
+    assert_eq!(
+        (done["decision"].clone(), done["by"].clone()),
+        (json!("deny"), json!("desktop"))
+    );
+
+    let t = ask(hub.clone(), 50);
+    ev.recv().await.unwrap();
+    assert_eq!(t.await.unwrap(), None);
+    let done = ev.recv().await.unwrap();
+    assert_eq!(
+        (done["decision"].clone(), done["by"].clone()),
+        (json!("timeout"), json!("none"))
+    );
 }
 
 #[tokio::test]

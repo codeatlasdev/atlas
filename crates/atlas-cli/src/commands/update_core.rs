@@ -266,7 +266,16 @@ mod tests {
         let e = UpdateLock::acquire_at(&p).unwrap_err().to_string();
         assert!(e.contains("already running"), "{e}");
         drop(first);
-        UpdateLock::acquire_at(&p).expect("free again after the holder is gone");
+        // flock belongs to the open file description: a sibling test that forks between our open
+        // and our drop holds a dup until its child execs (CLOEXEC), so release is not instant.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while let Err(e) = UpdateLock::acquire_at(&p) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "free again after the holder is gone: {e}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     #[test]

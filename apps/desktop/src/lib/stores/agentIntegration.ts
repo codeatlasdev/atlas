@@ -11,7 +11,8 @@ export interface AgentIntegration {
 	label: string;
 	/** `atlas setup` name, e.g. `claude-code`. */
 	setup: string;
-	state: "ok" | "missing" | "unknown";
+	/** `other_version`: hooks on, written by another atlas (`atlas setup --apply` refreshes). */
+	state: "ok" | "missing" | "other_version" | "unknown";
 }
 
 /** localStorage key that hides the prompt for `id` on this computer ("Not now"). */

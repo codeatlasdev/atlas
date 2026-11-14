@@ -1,0 +1,157 @@
+/*
+ * Owns: the look shared by every part of the chat (thread, setup conversation, message variants, ask cards,
+ * markdown replies): bubbles, message rows, option rows, notes. Imported by the thread root and by the setup
+ * conversation; everything is scoped under `.chat-col` (the wrapper in CrewmateView) so nothing leaks.
+ */
+
+/* A chat never scrolls sideways: with only overflow-y set, overflow-x computed to auto and one wide bubble (a long
+   unbroken path in an error, a code line) dragged the whole conversation left. Rows may shrink, long words break,
+   code blocks scroll inside themselves. */
+.chat-col .thread {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 20px clamp(24px, 5%, 64px) 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.chat-col .thread > * {
+	min-width: 0;
+}
+.chat-col .thread .msg-in-body {
+	min-width: 0;
+	max-width: 100%;
+}
+.chat-col .thread .bubble,
+.chat-col .thread .md-result {
+	overflow-wrap: anywhere;
+}
+.chat-col .thread .md-result pre {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+/* ─── message bubbles ────────────────────────────────────── */
+/* Turns: a clear gap whenever the speaker changes (you or the crewmate), tight spacing between consecutive bubbles of
+   the same speaker. Before, both sides used 2px and the reply touched the question it answered. */
+.chat-col .msg-out {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	margin-top: 20px;
+	margin-bottom: 14px;
+	padding: 1px 16px;
+}
+.chat-col .msg-out + .msg-out {
+	margin-top: -10px;
+}
+.chat-col .msg-in {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 1px 16px;
+	margin-top: 4px;
+	position: relative;
+}
+.chat-col .msg-in.group-start {
+	margin-top: 8px;
+	padding-top: 1px;
+}
+/* The body takes the row and the bubble hugs its text: shrink-wrapped, the body's width depended on its own
+   content and a bubble's max-width (72%) of it could fall under one word ("Canc/elled"). */
+.chat-col .msg-in-body {
+	flex: 1;
+	min-width: 0;
+}
+.chat-col .msg-in-body > .bubble {
+	width: fit-content;
+}
+.chat-col .bubble {
+	max-width: 72%;
+	padding: 12px 16px;
+	border-radius: 18px;
+	font-size: 15px;
+	line-height: 1.45;
+	word-break: break-word;
+	white-space: pre-wrap;
+}
+.chat-col .bubble.out {
+	background: color-mix(in oklab, var(--crew, var(--ca-brand-main)) 24%, var(--ca-surface-base));
+	border-bottom-right-radius: 4px;
+}
+.chat-col .bubble.in {
+	background: var(--ca-surface-sunken);
+	border-bottom-left-radius: 4px;
+	color: var(--ca-text-primary);
+}
+.chat-col .bubble.in.error {
+	color: var(--ca-semantic-error);
+}
+/* A task's end that is not a reply (cancelled): a quiet line, not a bubble. */
+.chat-col .task-note {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--ca-text-secondary);
+	padding: 2px 4px;
+}
+
+/* ─── ask card: lettered options (agent asks, setup questions, choose actions) ─── */
+.chat-col .ask-card {
+	border: 0.5px solid var(--ca-outline-subtle);
+	border-radius: 16px;
+	overflow: hidden;
+	margin: 6px 0;
+	max-width: 480px;
+	background: color-mix(in oklab, var(--ca-surface-sunken) 60%, transparent);
+}
+.chat-col .ask-option {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 14px 18px;
+	min-height: 52px;
+	background: none;
+	border: none;
+	border-bottom: 0.5px solid var(--ca-outline-subtle);
+	text-align: left;
+	cursor: default;
+	transition: background 80ms;
+}
+.chat-col .ask-option:last-of-type {
+	border-bottom: none;
+}
+.chat-col .ask-option:hover {
+	background: var(--ca-vibrancy-fill);
+}
+.chat-col .ask-key {
+	width: 26px;
+	height: 26px;
+	border-radius: 4px;
+	background: color-mix(in oklab, var(--ca-outline-subtle) 80%, transparent);
+	color: var(--ca-text-secondary);
+	font-size: 12px;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	border: 0.5px solid var(--ca-outline-subtle);
+}
+.chat-col .ask-opt-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.chat-col .ask-opt-title {
+	font-size: 15px;
+	font-weight: 500;
+	color: var(--ca-text-primary);
+}
+.chat-col .ask-opt-sub {
+	font-size: 12px;
+	color: var(--ca-text-secondary);
+}

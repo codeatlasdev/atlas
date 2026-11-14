@@ -17,6 +17,7 @@
 	import LoadError from "#lib/settings/LoadError.svelte";
 	import TextInput from "#lib/settings/TextInput.svelte";
 	import WorktreePreview from "#lib/settings/WorktreePreview.svelte";
+	import HygieneGroup from "./settings/HygieneGroup.svelte";
 
 	let workspaceDir = $state("");
 	let branchPrefix = $state("git-username");
@@ -239,6 +240,8 @@
 		<p class="empty">No linked worktrees yet. Create one from the sidebar and it will show up here.</p>
 	{/each}
 </Group>
+
+<HygieneGroup />
 
 <style>
 	.wt {

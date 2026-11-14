@@ -36,6 +36,15 @@ impl App {
     }
 
     fn service_control(&mut self, cmd: ControlCmd) -> ControlResponse {
+        // The control server already audited this request (with the real caller); the reducer
+        // arms below audit keyboard actions only.
+        self.from_socket = true;
+        let resp = self.service_control_inner(cmd);
+        self.from_socket = false;
+        resp
+    }
+
+    fn service_control_inner(&mut self, cmd: ControlCmd) -> ControlResponse {
         match resolve(cmd, &self.config) {
             Err(e) => ControlResponse::err(e),
             Ok(Resolved::StartService(n) | Resolved::RestartService(n)) => {
@@ -60,5 +69,32 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Record a developer action (keyboard, palette, menu) in the audit trail. Silent for
+    /// control-socket requests (the server audited those with the real caller) and when
+    /// attached to a runner (the runner's server audits the request this App forwards).
+    pub(super) fn audit_human(&self, tool: &str, target: &str) {
+        if self.from_socket || self.remote.is_some() {
+            return;
+        }
+        let entry = crate::control::audit::AuditEntry::new(
+            &crate::control::Caller::Human,
+            tool,
+            target,
+            &json!({}),
+            crate::control::audit::Outcome::Allowed,
+            None,
+        );
+        crate::control::audit::record(self.manager.log_dir(), &entry);
+    }
+
+    /// [`App::audit_human`] for `run_action`, naming the action by its label.
+    pub(super) fn audit_human_action(&self, key: char) {
+        let label = self
+            .manager
+            .find_action(key)
+            .map_or_else(|| key.to_string(), |a| a.label);
+        self.audit_human("run_action", &label);
     }
 }

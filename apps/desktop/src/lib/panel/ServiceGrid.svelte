@@ -9,6 +9,7 @@
 	import ServiceCard from "./ServiceCard.svelte";
 	import type { ServiceRow } from "./overview.ts";
 	import { gridStep, shellIn } from "./panel.ts";
+	import { isGreen } from "./serviceState.ts";
 	import { flipPlan, orderChanged, type Box } from "./flip.ts";
 
 	type Cmd = "start_service" | "stop_service" | "restart_service";
@@ -125,7 +126,7 @@
 				onfocus={() => (store.focusedService = s.name)}
 				onlogs={() => onlogs(s.name)}
 				onterminal={() => terminal(s.def)}
-				onaction={(cmd) => act(cmd, s.name, cmd === "restart_service" && s.state === "running")}
+				onaction={(cmd) => act(cmd, s.name, cmd === "restart_service" && isGreen(s))}
 				onopen={() => s.def && openService(s.def)}
 				onkeynav={(e) => keynav(e, i)}
 			/>

@@ -220,10 +220,8 @@ pub fn projects_add(
     hub: State<'_, LiveHub>,
     root: String,
 ) -> Result<ProjectView, String> {
-    let mut entries = registry::load()?;
-    let (entry, fresh) = register(&mut entries, Path::new(&root))?;
+    let (entry, fresh) = registry::edit(|entries| register(entries, Path::new(&root)))?;
     if fresh {
-        registry::save(&entries)?;
         hub.ensure(&app, &entry.id, Path::new(&entry.root));
         notify_changed(&app);
     }
@@ -349,7 +347,7 @@ pub async fn projects_remove(
     hub: State<'_, LiveHub>,
     id: String,
 ) -> Result<(), String> {
-    let mut entries = registry::load()?;
+    let entries = registry::load()?;
     // The main checkout's worktrees go with it, so stop every stack that is about to lose its row.
     let doomed: Vec<Entry> = entries
         .iter()
@@ -361,8 +359,7 @@ pub async fn projects_remove(
             super::stack_stop(app.clone(), e.id.clone()).await?;
         }
     }
-    let gone = unregister(&mut entries, &id);
-    registry::save(&entries)?;
+    let gone = registry::edit(|entries| Ok(unregister(entries, &id)))?;
     for g in &gone {
         hub.remove(g);
     }
@@ -535,16 +532,16 @@ pub fn projects_relink(
     id: String,
     root: String,
 ) -> Result<ProjectView, String> {
-    let mut entries = registry::load()?;
-    let new = relink(&mut entries, &id, Path::new(&root))?;
-    registry::save(&entries)?;
+    let (new, view_entry) = registry::edit(|entries| {
+        let new = relink(entries, &id, Path::new(&root))?;
+        let e = entries.iter().find(|e| e.id == id).cloned();
+        Ok((new, e))
+    })?;
     hub.remove(&id);
     hub.ensure(&app, &id, Path::new(&new));
     notify_changed(&app);
-    entries
-        .iter()
-        .find(|e| e.id == id)
-        .map(|e| view(e, None))
+    view_entry
+        .map(|e| view(&e, None))
         .ok_or_else(|| format!("unknown project {id}"))
 }
 
@@ -576,12 +573,10 @@ fn relink(entries: &mut [Entry], id: &str, picked: &Path) -> Result<String, Stri
 /// Drop every local project whose folder or atlas.yaml is gone. Returns how many were removed.
 #[tauri::command]
 pub fn projects_remove_missing(app: AppHandle, hub: State<'_, LiveHub>) -> Result<usize, String> {
-    let mut entries = registry::load()?;
-    let gone = take_missing(&mut entries);
+    let gone = registry::edit(|entries| Ok(take_missing(entries)))?;
     if gone.is_empty() {
         return Ok(0);
     }
-    registry::save(&entries)?;
     for id in &gone {
         hub.remove(id);
     }

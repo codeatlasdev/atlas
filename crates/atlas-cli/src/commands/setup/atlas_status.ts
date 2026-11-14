@@ -59,6 +59,20 @@ function text(message: unknown): string | undefined {
 	return parts.length ? parts.join("\n") : undefined;
 }
 
+/** What a tool printed: a string, or the text blocks of `{content: [{type: "text", text}]}`; clipped to its tail. */
+const OUTPUT_CAP = 16 * 1024;
+function toolOutput(result: unknown): string | undefined {
+	let out: string | undefined;
+	if (typeof result === "string") out = result;
+	else if (isObj(result) && Array.isArray(result.content)) {
+		const parts = result.content
+			.map((c) => (isObj(c) && c.type === "text" && typeof c.text === "string" ? c.text : ""))
+			.filter(Boolean);
+		out = parts.length ? parts.join("\n") : undefined;
+	}
+	return out && out.length > OUTPUT_CAP ? out.slice(out.length - OUTPUT_CAP) : out;
+}
+
 function payload(name: string, event: Record<string, unknown>, ctx: Ctx): Record<string, unknown> {
 	const p: Record<string, unknown> = { event: name };
 	try {
@@ -67,6 +81,13 @@ function payload(name: string, event: Record<string, unknown>, ctx: Ctx): Record
 	} catch {}
 	p.model = ctx.model?.id;
 	if (name === "tool_call" || name.startsWith("tool_")) p.tool_name = event.toolName ?? event.name;
+	// What the tool acts on (a path, a command), so the crew's working line can say "Reading app.ts".
+	if (name === "tool_call") p.tool_input = event.input ?? event.args ?? event.arguments ?? event.params;
+	// What it printed and whether it failed, so the crew can tell a test run that passed from one that did not.
+	if (name === "tool_execution_end") {
+		p.tool_output = toolOutput(event.result);
+		p.is_error = event.isError === true;
+	}
 	if (name === "before_agent_start" && typeof event.prompt === "string") p.prompt = event.prompt;
 	if (name === "message_end") p.text = text(event.message);
 	if (name === "agent_end") p.will_continue = event.willContinue === true;

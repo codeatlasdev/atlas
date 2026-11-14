@@ -9,27 +9,16 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, State};
 
 use super::exec::{default_base, exec, exec_on, git, git_on, ref_exists};
-use super::naming::{free_offset, random_sea_name, slug};
 use crate::host::HostHub;
 use crate::registry::{self, Entry};
+use atlas_host::worktrees::naming::{free_offset, random_sea_name, slug};
 
 fn setting(key: &str) -> Option<String> {
-    crate::shell_env::load_settings()
-        .extra
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .filter(|s| !s.is_empty())
+    atlas_host::worktrees::local::setting(&crate::shell_env::load_settings().extra, key)
 }
 
 fn workspace_dir() -> PathBuf {
-    setting("workspaceDir")
-        .map(|s| PathBuf::from(atlas_core::util::expand_tilde(&s)))
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_default()
-                .join(".atlas/worktrees")
-        })
+    atlas_host::worktrees::local::workspace_dir(&crate::shell_env::load_settings().extra)
 }
 
 async fn branch_prefix(hub: &HostHub, repo: &Path) -> Option<String> {
@@ -168,6 +157,7 @@ pub(super) async fn create(
     } else {
         workspace_dir()
     };
+    let ws_root = ws_dir.clone();
     let parent_dir = if setting("nestWorkspaces").as_deref() == Some("false") {
         ws_dir
     } else {
@@ -180,6 +170,12 @@ pub(super) async fn create(
         k += 1;
     }
     hub.mkdir(&host, &parent_dir.to_string_lossy()).await?;
+    if !repo.is_remote() {
+        // Every checkout below is rebuilt constantly (`target/`, `node_modules`): keep Spotlight
+        // out of the worktree root and of this repo's folder (a freeze indexed several at once).
+        atlas_core::hygiene::mark_never_index(&parent_dir);
+        atlas_core::hygiene::mark_never_index(&ws_root);
+    }
     let dir_s = dir.to_string_lossy().into_owned();
 
     progress("fetch", "git fetch origin");
@@ -253,40 +249,70 @@ pub(super) async fn create(
         }
     }
 
+    // Warm the new checkout with the main checkout's heavy dirs (copy-on-write) before `setup`
+    // runs, so the install/build only does the difference. Local checkouts only: a clone is a
+    // local file-system call, and an SSH host's volume is not ours to probe.
+    let seed = if host == crate::host::LOCAL {
+        let (r, d, configured) = (root.clone(), dir.clone(), wcfg.seed.clone());
+        let report = tauri::async_runtime::spawn_blocking(move || {
+            let plan = atlas_core::seed::plan(&r, &d, configured.as_deref());
+            if plan.items.is_empty() && plan.skipped.is_empty() {
+                return None;
+            }
+            Some(atlas_core::seed::run(&r, &d, plan))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        if let Some(rep) = &report {
+            let msg = seed_message(rep);
+            if !rep.seeded.is_empty() || msg != NOTHING {
+                progress("seed", &msg);
+            }
+        }
+        report
+    } else {
+        None
+    };
+
     let real = exec_on(hub, &host, &dir, &["realpath", &dir_s], 10_000)
         .await
         .ok()
         .filter(|o| o.code == Some(0))
         .map(|o| PathBuf::from(o.stdout.trim()))
         .unwrap_or(dir.clone());
-    let mut entries = registry::load()?;
-    let offset = free_offset(&entries, &repo.id);
-    let entry = Entry {
-        id: registry::id_for_host(repo.host.as_deref(), &real),
-        root: real.to_string_lossy().into_owned(),
-        pinned: false,
-        added: chrono::Utc::now().to_rfc3339(),
-        parent: Some(repo.id.clone()),
-        port_offset: offset,
-        branch: Some(branch.clone()),
-        host: repo.host.clone(),
-        identity: None,
-    };
-    entries.retain(|e| e.id != entry.id);
-    entries.push(entry.clone());
-    registry::save(&entries)?;
+    // Offset and insert under one lock: two worktrees created at once used to read the same free offset and
+    // start stacks on the same ports.
+    let entry = registry::edit(|entries| {
+        let entry = Entry {
+            id: registry::id_for_host(repo.host.as_deref(), &real),
+            root: real.to_string_lossy().into_owned(),
+            pinned: false,
+            added: chrono::Utc::now().to_rfc3339(),
+            parent: Some(repo.id.clone()),
+            port_offset: free_offset(entries, &repo.id),
+            branch: Some(branch.clone()),
+            host: repo.host.clone(),
+            identity: None,
+        };
+        entries.retain(|e| e.id != entry.id);
+        entries.push(entry.clone());
+        Ok(entry)
+    })?;
+    let offset = entry.port_offset;
     let _ = app.emit("projects://changed", ());
 
-    let setup = wcfg.setup.filter(|_| args.run_setup).map(|cmd| {
-        json!({
-            "argv": super::exec::shell_argv(&host, &cmd),
-            "env": hook_env(&root, &real, &s, offset),
-        })
-    });
+    let setup = match cfg.as_ref().filter(|_| args.run_setup) {
+        Some(c) => {
+            let store = super::setup_payload::store_vars(&host, c, &root);
+            super::setup_payload::build(&host, c, &root, &real, &s, offset, &store)?
+        }
+        None => None,
+    };
     Ok(json!({
         "worktree": {"id": entry.id, "path": entry.root, "branch": branch, "base": base,
                      "portOffset": offset, "repoId": repo.id, "name": s, "linkedPr": args.pr},
         "setup": setup,
+        "seed": seed,
     }))
 }
 
@@ -323,12 +349,46 @@ fn share_local(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 pub(super) fn hook_env(root: &Path, wt: &Path, name: &str, offset: u16) -> Value {
-    json!({
-        "ATLAS_ROOT_PATH": root,
-        "ATLAS_WORKTREE_PATH": wt,
-        "ATLAS_WORKSPACE_NAME": name,
-        "ATLAS_PORT_OFFSET": offset.to_string(),
-    })
+    json!(atlas_host::worktrees::local::hook_env(
+        root, wt, name, offset
+    ))
+}
+
+const NOTHING: &str = "nothing to seed";
+
+/// One line for the progress step: what was cloned and how long it took, and what was left out.
+fn seed_message(rep: &atlas_core::seed::Report) -> String {
+    use atlas_core::seed::Skip;
+    let mut parts = Vec::new();
+    if !rep.seeded.is_empty() {
+        parts.push(format!("cloned {} in {} ms", rep.seeded.join(", "), rep.ms));
+    }
+    let unsupported: Vec<&str> = rep
+        .skipped
+        .iter()
+        .filter(|(_, s)| *s == Skip::Unsupported)
+        .map(|(r, _)| r.as_str())
+        .collect();
+    if !unsupported.is_empty() {
+        parts.push(format!(
+            "skipped {} (this file system cannot clone)",
+            unsupported.join(", ")
+        ));
+    }
+    for (rel, s) in &rep.skipped {
+        match s {
+            Skip::Failed(e) => parts.push(format!("{rel}: {e}")),
+            Skip::NotRelocatable => parts.push(format!(
+                "{rel} not seeded (a Python virtualenv is not relocatable: recreate it)"
+            )),
+            _ => {}
+        }
+    }
+    if parts.is_empty() {
+        NOTHING.into()
+    } else {
+        parts.join("; ")
+    }
 }
 
 /// Link a gitignored dir (symlink) or copy a file from the main checkout, on its host.
@@ -358,5 +418,35 @@ async fn share(hub: &HostHub, host: &str, root: &Path, wt: &Path, rel: &str) -> 
         Ok(())
     } else {
         Err(format!("{rel}: {}", o.stderr.trim()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use atlas_core::seed::{Report, Skip};
+
+    #[test]
+    fn the_seed_message_names_clones_timing_unsupported_dirs_and_failures() {
+        let rep = Report {
+            seeded: vec!["node_modules".into()],
+            skipped: vec![
+                ("target".into(), Skip::Unsupported),
+                (".venv".into(), Skip::Failed("denied".into())),
+                ("venv".into(), Skip::NotRelocatable),
+                ("dist".into(), Skip::Missing),
+            ],
+            ms: 42,
+        };
+        assert_eq!(
+            seed_message(&rep),
+            "cloned node_modules in 42 ms; skipped target (this file system cannot clone); .venv: denied; venv not seeded (a Python virtualenv is not relocatable: recreate it)"
+        );
+        // Missing or existing dirs are normal, not news.
+        let quiet = Report {
+            skipped: vec![("target".into(), Skip::Missing), ("x".into(), Skip::Exists)],
+            ..Report::default()
+        };
+        assert_eq!(seed_message(&quiet), NOTHING);
     }
 }

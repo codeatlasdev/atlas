@@ -47,6 +47,28 @@ pub struct HostdArgs {
     /// Restart the daemon now, ending its terminals, and verify the new one
     #[arg(long, conflicts_with_all = ["stop", "status", "upgrade"])]
     pub restart: bool,
+    /// Pause every crewmate: running tasks are cancelled, queues are held (`atlas crew pause` runs this on a server)
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_resume"])]
+    pub crew_pause: bool,
+    /// Resume the crewmates after `--crew-pause`
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause"])]
+    pub crew_resume: bool,
+    /// Write the crew archive (a .tar.gz of crewmates, memory, tasks, automations, usage) to stdout, reading the
+    /// files directly (no daemon needed). `atlas crew export` runs this on the server
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause", "crew_resume", "crew_import"])]
+    pub crew_export: bool,
+    /// Read a crew archive from stdin into this dir (`atlas crew import` runs this on the server)
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause", "crew_resume", "crew_export"])]
+    pub crew_import: bool,
+    /// With `--crew-export`: only these crewmate ids (repeat); default every crewmate
+    #[arg(long = "crewmate", value_name = "ID", requires = "crew_export")]
+    pub crewmates: Vec<String>,
+    /// With `--crew-export`: include secrets and webhook tokens
+    #[arg(long, requires = "crew_export")]
+    pub with_secrets: bool,
+    /// With `--crew-import`: give crewmates whose id exists new ids instead of refusing
+    #[arg(long, requires = "crew_import")]
+    pub rename: bool,
     /// Lab lane: run a SHADOW hostd that follows your real one (read-only) so a branch can be
     /// validated, with its own pairing and a Lab phone app, without touching your installation. Its
     /// files live in `<main dir>/lab` (override with --dir); combine with --stop/--status to manage it
@@ -71,6 +93,7 @@ impl AtlasCommand for HostdArgs {
         };
         // `ATLAS_MOBILE_RELAY=0`: Atlas Mobile on direct addresses only (LAN, tests).
         let no_mobile_relay = std::env::var("ATLAS_MOBILE_RELAY").is_ok_and(|v| v == "0");
+        let crew_host = std::env::var("ATLAS_CREW_HOST").as_deref() == Ok("1");
         if let Some(sock) = self.takeover {
             return atlas_host::server::serve_with(
                 &dir,
@@ -78,6 +101,9 @@ impl AtlasCommand for HostdArgs {
                     takeover: Some(sock),
                     lab: None,
                     no_mobile_relay,
+                    crew_host,
+                    registry: Some(atlas_host::server::desktop_registry()),
+                    ..Default::default()
                 },
             )
             .await;
@@ -114,6 +140,53 @@ impl AtlasCommand for HostdArgs {
             restart_host(&dir, bundled).await?;
             return Ok(());
         }
+        if self.crew_export {
+            let mut out = std::io::stdout().lock();
+            let m = atlas_host::crew::export_archive(
+                &dir,
+                &self.crewmates,
+                self.with_secrets,
+                &mut out,
+            )?;
+            // Stdout is the archive: the summary goes to stderr.
+            eprintln!("exported {} crewmate(s)", m.crewmates.len());
+            return Ok(());
+        }
+        if self.crew_import {
+            let r = atlas_host::crew::import_archive(&dir, std::io::stdin().lock(), self.rename)?;
+            for i in &r.imported {
+                println!(
+                    "imported {} ({}){}",
+                    i.name,
+                    i.new_id,
+                    if i.old_id != i.new_id {
+                        format!(" was {}", i.old_id)
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+            return Ok(());
+        }
+        if self.crew_pause || self.crew_resume {
+            let c = HostClient::connect_dir(&dir, "cli")
+                .await
+                .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+            c.call(
+                if self.crew_pause {
+                    "crew_pause"
+                } else {
+                    "crew_resume"
+                },
+                json!({}),
+            )
+            .await?;
+            println!(
+                "crew {}",
+                if self.crew_pause { "paused" } else { "resumed" }
+            );
+            return Ok(());
+        }
         if self.stop || self.status || self.upgrade {
             let c = HostClient::connect_dir(&dir, "cli")
                 .await
@@ -140,7 +213,10 @@ impl AtlasCommand for HostdArgs {
             atlas_host::server::ServeOpts {
                 takeover: None,
                 no_mobile_relay,
+                crew_host,
                 lab: self.lab.then_some(main_dir),
+                registry: Some(atlas_host::server::desktop_registry()),
+                ..Default::default()
             },
         )
         .await

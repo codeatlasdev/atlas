@@ -505,3 +505,143 @@ fn call_control(root: &Path, cmd: &str, args: Value) -> Value {
     BufReader::new(s).read_line(&mut resp).unwrap();
     serde_json::from_str(&resp).unwrap()
 }
+
+// ───────────────────── remote services (#135) ─────────────────────
+
+/// A fake ssh that really forwards: `-L local:host:port` -> TCP to host:port, one thread per
+/// connection. Writes its pid to `$FAKE_SSH_PIDS` (one per line) so the test can drop the link.
+const FORWARDING_SSH: &str = r#"#!/usr/bin/env python3
+import os, socket, sys, threading
+args = sys.argv[1:]
+with open(os.environ["FAKE_SSH_LOG"], "a") as f:
+    f.write(" ".join(args) + "\n")
+with open(os.environ["FAKE_SSH_PIDS"], "a") as f:
+    f.write("%d\n" % os.getpid())
+local, host, port = args[args.index("-L") + 1].split(":")
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(local)))
+s.listen(8)
+sys.stderr.write("fake ssh: forwarding %s:%s\n" % (host, port))
+sys.stderr.flush()
+def pipe(a, b):
+    try:
+        while True:
+            d = a.recv(65536)
+            if not d:
+                break
+            b.sendall(d)
+    except OSError:
+        pass
+    for x in (a, b):
+        try:
+            x.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+while True:
+    c, _ = s.accept()
+    r = socket.create_connection((host, int(port)))
+    threading.Thread(target=pipe, args=(c, r), daemon=True).start()
+    threading.Thread(target=pipe, args=(r, c), daemon=True).start()
+"#;
+
+/// The "real" service on the other side of the forward: a TCP echo server.
+fn echo_server() -> (u16, std::thread::JoinHandle<()>) {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    let t = std::thread::spawn(move || {
+        for c in l.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut c = c;
+                let mut r = c.try_clone().unwrap();
+                let _ = std::io::copy(&mut r, &mut c);
+            });
+        }
+    });
+    (port, t)
+}
+
+fn echo_through(port: u16) -> Option<String> {
+    use std::io::{Read, Write};
+    let mut s = TcpStream::connect_timeout(
+        &format!("127.0.0.1:{port}").parse().unwrap(),
+        Duration::from_millis(500),
+    )
+    .ok()?;
+    s.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+    s.write_all(b"ping").ok()?;
+    let mut buf = [0u8; 4];
+    s.read_exact(&mut buf).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+#[test]
+fn a_remote_service_is_forwarded_like_a_local_one_and_comes_back_after_a_drop() {
+    require_python!();
+    let dir = tempfile::TempDir::new().unwrap();
+    let (remote_port, _echo) = echo_server();
+    let local_port = free_port();
+    let fake = dir.path().join("fake-ssh");
+    std::fs::write(&fake, FORWARDING_SSH).unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(
+        dir.path().join("atlas.yaml"),
+        format!(
+            "name: remote-fixture\nservices:\n  db:\n    port: {local_port}\n    max_restarts: 0\n    remote: {{ ssh: dev-box, port: {remote_port}, host: 127.0.0.1 }}\n"
+        ),
+    )
+    .unwrap();
+    let (log, pids) = (dir.path().join("ssh.log"), dir.path().join("ssh.pids"));
+    let out = dir.path().join("out.txt");
+    let child = Command::new(BIN)
+        .args(["dev", "--headless", "--dir", dir.path().to_str().unwrap()])
+        .env("ATLAS_SSH_BIN", &fake)
+        .env("FAKE_SSH_LOG", &log)
+        .env("FAKE_SSH_PIDS", &pids)
+        .stdin(Stdio::null())
+        .stdout(std::fs::File::create(&out).unwrap())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut h = Headless {
+        child: Some(child),
+        out_path: out.clone(),
+        err_path: out,
+    };
+    let status = || -> Value {
+        std::fs::read_to_string(dir.path().join(".logs/.tui-status.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(Value::Null)
+    };
+    wait_for("remote db running", Duration::from_secs(30), || {
+        (status()["services"]["db"]["state"] == "running").then_some(())
+    });
+    // No local copy: atlas ran the forward, with the tunnel's options, on the service's port.
+    let inv = std::fs::read_to_string(&log).unwrap();
+    assert!(
+        inv.contains(&format!("-L {local_port}:127.0.0.1:{remote_port} dev-box"))
+            && inv.contains("BatchMode=yes"),
+        "{inv}"
+    );
+    // The local port reaches the remote service.
+    wait_for("echo through the forward", Duration::from_secs(10), || {
+        (echo_through(local_port).as_deref() == Some("ping")).then_some(())
+    });
+    // The SSH link drops: the forward is restarted and the service is reachable again.
+    let first: i32 = std::fs::read_to_string(&pids)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    // SAFETY: the exact pid our fake ssh wrote for itself.
+    unsafe { libc_kill(first, 9) };
+    wait_for("forward restarted", Duration::from_secs(40), || {
+        let n = std::fs::read_to_string(&pids)
+            .unwrap_or_default()
+            .lines()
+            .count();
+        (n >= 2 && echo_through(local_port).as_deref() == Some("ping")).then_some(())
+    });
+    h.stop();
+}

@@ -93,6 +93,60 @@ pub struct ActionConfig {
     /// this text (title = action label). Enter/`y` runs it, Esc/`n` cancels.
     /// Example: `confirm: "This wipes the local database. Continue?"`
     pub confirm: Option<String>,
+    /// Route the command through the machine-wide heavy-job queue (`atlas run --heavy`): at most N
+    /// heavy jobs run at once on this machine (default `min(cores / 2, GB of memory / 8)`), first come first served.
+    /// Use it for actions that build, run test suites or benches.
+    #[serde(default)]
+    pub heavy: bool,
+    /// Cache the action's result machine-wide (`atlas run --cache`): an identical run (same command,
+    /// same bytes in `inputs`, same `env` values and `tools` versions) restores `outputs`, replays
+    /// the log and runs nothing. Only a successful run is stored.
+    pub cache: Option<ActionCache>,
+}
+
+/// The `cache:` block of an action: what its result depends on and what it produces.
+#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
+#[schemars(deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct ActionCache {
+    /// Globs of the files the command reads, relative to the project root (`.gitignore` respected;
+    /// uncommitted edits count). Omit: every file git would not ignore.
+    #[serde(default)]
+    pub inputs: Vec<String>,
+    /// Files or folders inside the project the command produces: stored on a miss, restored on a hit.
+    #[serde(default)]
+    pub outputs: Vec<String>,
+    /// Names of environment variables the command reads; their values are part of the key.
+    #[serde(default)]
+    pub env: Vec<String>,
+    /// Programs whose `--version` is part of the key (a toolchain upgrade misses).
+    #[serde(default)]
+    pub tools: Vec<String>,
+}
+
+impl ActionConfig {
+    /// The command to spawn: `command`, through the task cache when there is a `cache:` block, and
+    /// through the heavy-job queue when `heavy: true`.
+    pub fn spawn_command(&self) -> std::borrow::Cow<'_, str> {
+        if let Some(c) = &self.cache {
+            atlas_core::taskcache::wrap::cached(
+                &self.label,
+                &self.command,
+                self.heavy,
+                atlas_core::taskcache::wrap::Declared {
+                    inputs: &c.inputs,
+                    outputs: &c.outputs,
+                    env: &c.env,
+                    tools: &c.tools,
+                },
+            )
+            .into()
+        } else if self.heavy {
+            atlas_core::heavy::queued(&self.label, &self.command).into()
+        } else {
+            (&self.command).into()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
@@ -154,6 +208,15 @@ pub struct ProjectConfig {
     /// Atlas Desktop worktrees: setup/teardown hooks and files shared with the main checkout.
     #[serde(default)]
     pub worktree: Option<WorktreeConfig>,
+    /// What AI agents may do through MCP control tools (restart/stop/start service, run
+    /// action). Absent = everything allowed. `agents: { control: deny }` makes them read-only.
+    /// Project-level only: `atlas.local.yaml` cannot loosen it.
+    #[serde(default)]
+    pub agents: super::agents::AgentsPolicy,
+    /// What a change affects, for the MCP tool `atlas_affected`: a plugin `command` or declared
+    /// `rules`. Absent: the actions whose `cache.inputs` match the changed files.
+    #[serde(default)]
+    pub affected: Option<super::affected::AffectedConfig>,
     /// Added to every port by `ATLAS_PORT_OFFSET` (parallel worktrees); 0 = none.
     #[serde(skip)]
     #[schemars(skip)]
@@ -161,11 +224,14 @@ pub struct ProjectConfig {
 }
 
 /// `worktree:` — used by Atlas Desktop when it creates/deletes a git worktree.
-#[derive(Debug, Clone, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct WorktreeConfig {
     /// Run (`sh -c`, cwd = new worktree) after creation. Env: ATLAS_ROOT_PATH,
-    /// ATLAS_WORKTREE_PATH, ATLAS_WORKSPACE_NAME, ATLAS_PORT_OFFSET.
+    /// ATLAS_WORKTREE_PATH, ATLAS_WORKSPACE_NAME, ATLAS_PORT_OFFSET. A `{{action: <label or
+    /// key>}}` step is replaced by that action's command, through the task cache when the action
+    /// has a `cache:` block: a worktree with the same input bytes restores the outputs instead
+    /// of rebuilding. Quote the value in YAML (`: ` starts a mapping in a plain scalar).
     pub setup: Option<String>,
     /// Run before the worktree is deleted.
     pub archive: Option<String>,
@@ -173,9 +239,43 @@ pub struct WorktreeConfig {
     /// symlinked, files copied (e.g. `.env`, `node_modules`).
     #[serde(default)]
     pub shared: Vec<String>,
+    /// Heavy gitignored directories (relative) cloned copy-on-write from the main checkout
+    /// before `setup` runs, so `bun install` / `cargo build` only do the difference. Omitted:
+    /// detected (`node_modules` with a `package.json`, `target` with a `Cargo.toml`); `[]`
+    /// turns it off. A Python virtualenv is refused (not relocatable: it keeps running the main
+    /// checkout's interpreter), so recreate it in `setup`. A file system that cannot clone is
+    /// skipped, never copied in full.
+    #[serde(default)]
+    pub seed: Option<Vec<String>>,
+    /// Point bun (`BUN_INSTALL_CACHE_DIR`) or pnpm (`store-dir`) at one machine-wide store under
+    /// `~/.atlas/pkgstore` while `setup` runs, so every worktree installs by clone/hardlink from
+    /// it instead of downloading again. Detected from `bun.lock`/`bun.lockb`/`pnpm-lock.yaml`;
+    /// npm and yarn are left alone, and a store variable you already set wins. Default `true`;
+    /// `false` turns it off.
+    #[serde(default = "default_true")]
+    pub package_store: bool,
     /// Seconds before `setup` is considered hung (default 600).
     #[serde(default = "default_setup_timeout")]
     pub setup_timeout: u64,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// The values an absent field gets from serde, so a project with no `worktree:` block behaves
+/// like one with an empty block.
+impl Default for WorktreeConfig {
+    fn default() -> Self {
+        Self {
+            setup: None,
+            archive: None,
+            shared: Vec::new(),
+            seed: None,
+            package_store: true,
+            setup_timeout: default_setup_timeout(),
+        }
+    }
 }
 
 fn default_setup_timeout() -> u64 {
@@ -190,6 +290,9 @@ pub struct DeployConfig {
     pub app: Option<String>,
     /// Local build command (`sh -c`, cwd = project root).
     pub build: Option<String>,
+    /// Run `build` through the machine-wide heavy-job queue (`atlas run --heavy`).
+    #[serde(default)]
+    pub build_heavy: bool,
     /// Root-relative paths to ship. Omitted: `git archive HEAD`.
     pub artifact: Option<Vec<String>>,
     pub targets: HashMap<String, DeployTarget>,
@@ -325,11 +428,18 @@ pub struct ServiceDef {
     /// URL opened by `open_key` instead of `http://localhost:<port>`.
     /// Example: `open_url: http://localhost:3001/api-reference`
     pub open_url: Option<String>,
-    /// Memory ceiling for the whole process tree (`512M`, `3G`). Over it for
-    /// two samples in a row (~10s), the service is restarted with an alert (3 times
-    /// per run, then stopped and marked failed): a
-    /// guard against dev servers that leak. Example: `max_memory: 4G`
+    /// Hard memory ceiling for the whole process tree (`512M`, `3G`). Over it for two samples in
+    /// a row (~10s), Atlas acts per `on_memory_max`: `restart` (default: restart with an alert, 3
+    /// times per run, then stop and mark failed) or `notify` (state `degraded` and an alert, the
+    /// process is left running). A guard against dev servers that leak. Example: `max_memory: 4G`
     pub max_memory: Option<String>,
+    /// Soft memory budget (`1.5GB`, `512M`). Over it for two samples in a row the service is
+    /// `degraded` with the reason (`using 2.1 GB, over memory_warn 1.5 GB`); nothing is killed.
+    /// Must be below `max_memory`. Example: `memory_warn: 1.5GB`
+    pub memory_warn: Option<String>,
+    /// What Atlas does when the tree stays over `max_memory`: `restart` (default) or `notify`.
+    #[serde(default)]
+    pub on_memory_max: OnMemoryMax,
     /// Hint shown under this service's critical-failure alert in the sidebar.
     /// Only relevant with `critical: true`.
     /// Example: `critical_help: "Run `bun run db:up` and retry"`
@@ -357,10 +467,130 @@ pub struct ServiceDef {
     /// `false` = not started at boot; start it from the service menu, command
     /// palette or MCP (`atlas_start_service`). Default `true`.
     pub autostart: Option<bool>,
+    /// Seconds one liveness probe (`health` URL or `port`) may take before it
+    /// counts as a miss. Default 2.
+    pub health_timeout: Option<u64>,
+    /// Liveness misses in a row (child still alive) before a service that was
+    /// healthy turns `unhealthy`. Default 3.
+    pub failure_threshold: Option<u32>,
+    /// Readiness probe, separate from liveness: while `health`/`port` answer but
+    /// this fails, the service is `degraded` with the probe's error. Services
+    /// without it behave as before.
+    pub ready: Option<ReadyProbe>,
+    /// What atlas does when the service turns `unhealthy`: `notify` (default:
+    /// state, alert and captured log context) or `restart`.
+    #[serde(default)]
+    pub on_unhealthy: OnUnhealthy,
+    /// The service runs on another machine: atlas runs no local copy and forwards the
+    /// service's local `port` there over SSH, so it shows up (state, port probe, logs, restarts)
+    /// like a local one. Needs `port`, excludes `command`. Example:
+    /// `remote: { ssh: dev-box, port: 5432 }`.
+    pub remote: Option<RemoteService>,
+}
+
+/// `remote:` of a service: where the real service listens.
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+#[schemars(deny_unknown_fields)]
+pub struct RemoteService {
+    /// SSH destination (a `~/.ssh/config` host or `user@host`). Key auth only: atlas never
+    /// prompts (`BatchMode`).
+    pub ssh: String,
+    /// Port the service listens on, as seen from the SSH host.
+    pub port: u16,
+    /// Host the service listens on, as seen from the SSH host. Default `localhost`.
+    pub host: Option<String>,
+}
+
+impl RemoteService {
+    /// `ssh -N -L <local>:<host>:<port> <dest>` with the tunnel's options: never prompts,
+    /// exits when the local port is taken, notices a dead link within ~45 s. `ssh` is the
+    /// binary (`$ATLAS_SSH_BIN` in tests).
+    pub fn forward_command(&self, ssh: &str, local_port: u16) -> String {
+        let ssh = if ssh.contains(char::is_whitespace) {
+            format!("\"{ssh}\"")
+        } else {
+            ssh.to_string()
+        };
+        let host = self.host.as_deref().unwrap_or("localhost");
+        format!(
+            "{ssh} -N -o ExitOnForwardFailure=yes -o BatchMode=yes -o ServerAliveInterval=15 \
+             -o ServerAliveCountMax=3 -L {local_port}:{host}:{} {}",
+            self.port, self.ssh
+        )
+    }
+}
+
+impl ServiceDef {
+    /// What atlas runs for this service: its `command`, or for a `remote:` service the SSH
+    /// forward of its `port` (resolved when the run starts, so a port offset applied after
+    /// loading, as Atlas Desktop does per worktree, is the port forwarded).
+    pub fn run_command(&self) -> Option<String> {
+        if self.command.is_some() {
+            return self.command.clone();
+        }
+        let (r, port) = (self.remote.as_ref()?, self.port?);
+        Some(r.forward_command(&crate::runtime::tunnel::ssh_bin(), port))
+    }
+
+    /// The restart policy in effect: a `remote:` forward without an explicit one restarts
+    /// always (a dropped SSH connection is the normal way a forward ends).
+    pub fn restart_policy(&self) -> RestartPolicy {
+        if self.remote.is_some() && self.restart == RestartPolicy::No {
+            RestartPolicy::Always
+        } else {
+            self.restart
+        }
+    }
+}
+
+/// `ready:` — HTTP (`http` path or URL, expected `status`) or a `command`
+/// (exit 0 = ready). Exactly one of `http` / `command`.
+#[derive(Debug, Clone, Deserialize, JsonSchema, PartialEq, Eq)]
+#[schemars(deny_unknown_fields)]
+pub struct ReadyProbe {
+    /// Path (`/ready`, resolved against the service `port` on 127.0.0.1) or a full
+    /// `http(s)://` URL. Ready on `status` (default: any 2xx).
+    pub http: Option<String>,
+    /// Exact status code expected from `http`. Default: any 2xx.
+    pub status: Option<u16>,
+    /// Shell command run in the service `dir`; exit 0 = ready.
+    pub command: Option<String>,
+    /// Seconds one readiness probe may take. Default 5.
+    pub timeout: Option<u64>,
+}
+
+/// What happens when a running service stops answering its liveness probe.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnUnhealthy {
+    /// Show `unhealthy` with the captured context and raise an alert (default).
+    #[default]
+    Notify,
+    /// Also restart the service (same budget and delays as `max_restarts`).
+    Restart,
+}
+
+/// What happens when a service's process tree stays over `max_memory`.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnMemoryMax {
+    /// Restart the service with an alert; after 3 restarts in a run, stop it and mark it failed
+    /// (the behavior `max_memory` always had).
+    #[default]
+    Restart,
+    /// Mark the service `degraded` and raise an alert; the process keeps running.
+    Notify,
 }
 
 /// Default `start_timeout` in seconds.
 pub const DEFAULT_START_TIMEOUT_SECS: u64 = 60;
+
+/// Default liveness probe timeout in seconds.
+pub const DEFAULT_HEALTH_TIMEOUT_SECS: u64 = 2;
+/// Default liveness misses before `unhealthy`.
+pub const DEFAULT_FAILURE_THRESHOLD: u32 = 3;
+/// Default readiness probe timeout in seconds.
+pub const DEFAULT_READY_TIMEOUT_SECS: u64 = 5;
 
 impl ServiceDef {
     pub fn is_enabled(&self) -> bool {
@@ -384,12 +614,31 @@ impl ServiceDef {
             && self.ready_log.is_none()
     }
 
+    /// Liveness probe timeout.
+    pub fn health_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.health_timeout.unwrap_or(DEFAULT_HEALTH_TIMEOUT_SECS))
+    }
+
+    /// Consecutive liveness misses before `unhealthy` (at least 1).
+    pub fn failure_threshold(&self) -> u32 {
+        self.failure_threshold
+            .unwrap_or(DEFAULT_FAILURE_THRESHOLD)
+            .max(1)
+    }
+
     /// `(dependency, condition)` pairs in declaration order (map form sorted by name).
     pub fn deps(&self) -> Vec<(String, Condition)> {
         self.depends_on
             .as_ref()
             .map(DependsOn::pairs)
             .unwrap_or_default()
+    }
+}
+
+impl ReadyProbe {
+    /// One probe may take this long.
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.timeout.unwrap_or(DEFAULT_READY_TIMEOUT_SECS))
     }
 }
 

@@ -16,8 +16,8 @@ use std::ptr::NonNull;
 use std::time::Instant;
 
 use gpu::{
-    DecoInst, Gpu, ImgInst, Uniforms, VBuf, bind_group, bind_layout, glyph_vertex_layout, gpu,
-    pipeline, surface_extent, texture,
+    DecoInst, Gpu, ImgInst, Reconfig, Uniforms, VBuf, bind_group, bind_layout, configure_checked,
+    glyph_vertex_layout, gpu, pipeline, surface_extent, texture,
 };
 use images::{Tex, TexCache};
 use stats::Timing;
@@ -31,6 +31,8 @@ pub use stats::Stats;
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
+    /// A configure is owed (lost/outdated surface, new size) or backing off after a failure.
+    reconfig: Reconfig,
     bg_pipe: wgpu::RenderPipeline,
     glyph_pipe: wgpu::RenderPipeline,
     deco_pipe: wgpu::RenderPipeline,
@@ -105,7 +107,9 @@ impl Renderer {
         config.present_mode = wgpu::PresentMode::Fifo;
         config.desired_maximum_frame_latency = 2;
         config.alpha_mode = wgpu::CompositeAlphaMode::Opaque;
-        surface.configure(&g.device, &config);
+        // A surface that cannot be configured at all is a failed `new`: the caller keeps its old
+        // renderer (a rebuild) or reports the error (an open), instead of panicking the main thread.
+        configure_checked(g, &surface, &config)?;
 
         let d = &g.device;
         let shader = d.create_shader_module(wgpu::include_wgsl!("../term.wgsl"));
@@ -190,6 +194,7 @@ impl Renderer {
         let renderer = Self {
             surface,
             config,
+            reconfig: Reconfig::default(),
             bg_pipe,
             glyph_pipe,
             deco_pipe,
@@ -226,14 +231,34 @@ impl Renderer {
             if (w, h) != (self.config.width, self.config.height) {
                 self.config.width = w;
                 self.config.height = h;
-                self.surface.configure(&g.device, &self.config);
+                self.reconfig.request();
             }
+            self.reconfigure(g);
         }
         let c = self.text.font.cell;
         (
             (w as f32 / c[0]).floor().clamp(1.0, u16::MAX as f32) as u16,
             (h as f32 / c[1]).floor().clamp(1.0, u16::MAX as f32) as u16,
         )
+    }
+
+    /// Configure the surface if one is owed and its back-off has passed. A failure is logged and
+    /// leaves the renderer alive: frames are skipped until a later attempt succeeds (#166).
+    fn reconfigure(&mut self, g: &Gpu) {
+        let now = Instant::now();
+        if !self.reconfig.should_try(now) {
+            return;
+        }
+        match configure_checked(g, &self.surface, &self.config) {
+            Ok(()) => self.reconfig.done(),
+            Err(e) => {
+                self.reconfig.failed(Instant::now());
+                eprintln!(
+                    "atlas-term: surface configure failed (attempt {}), retrying: {e}",
+                    self.reconfig.failures()
+                );
+            }
+        }
     }
 
     /// Physical pixels of the configured surface (what a replacement surface must be created at).
@@ -417,11 +442,17 @@ impl Renderer {
     /// the surface had no texture to draw into (lost or outdated, reconfigured for the next call).
     pub fn render(&mut self, f: &Frame) -> Result<bool, String> {
         let g = gpu()?;
+        self.reconfigure(g);
+        if self.reconfig.pending() {
+            // Not configured (yet): nothing to draw into. Still owed; the watchdog draws again.
+            return Ok(false);
+        }
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&g.device, &self.config);
+                self.reconfig.request();
+                self.reconfigure(g);
                 return Ok(false);
             }
             _ => return Ok(false),

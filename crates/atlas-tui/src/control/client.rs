@@ -7,7 +7,7 @@ use atlas_core::ipc::{self, ReadHalf as OwnedReadHalf, WriteHalf as OwnedWriteHa
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use super::protocol::ControlResponse;
+use super::protocol::{Caller, ControlResponse};
 use super::{NOT_RUNNING, REPLY_TIMEOUT, socket_path};
 
 /// Connect, send one request line and read the first reply line. The read and
@@ -16,6 +16,7 @@ async fn send_request(
     root_dir: &Path,
     cmd: &str,
     args: Value,
+    caller: &Caller,
     wait: Duration,
 ) -> Result<
     (
@@ -29,7 +30,12 @@ async fn send_request(
         .await
         .map_err(|_| NOT_RUNNING.to_string())?;
     let (rd, mut wr) = ipc::split(stream);
-    let mut line = json!({ "cmd": cmd, "args": args }).to_string();
+    let mut req = json!({ "cmd": cmd, "args": args });
+    // The developer is the default on the wire: only agents say who they are.
+    if caller.is_agent() {
+        req["caller"] = json!(caller);
+    }
+    let mut line = req.to_string();
     line.push('\n');
     wr.write_all(line.as_bytes())
         .await
@@ -45,11 +51,22 @@ async fn send_request(
     Ok((resp, lines, wr))
 }
 
-/// Send one request to the running atlas. `Err` = could not reach it
-/// (use [`NOT_RUNNING`] wording for connect failures).
+/// Send one request to the running atlas as the developer (CLI, desktop, TUI). `Err` = could
+/// not reach it (use [`NOT_RUNNING`] wording for connect failures).
 pub async fn call(root_dir: &Path, cmd: &str, args: Value) -> Result<ControlResponse, String> {
+    call_as(root_dir, cmd, args, &Caller::Human).await
+}
+
+/// [`call`] on behalf of `caller`: an agent's requests are checked against the project's
+/// `agents:` policy by the atlas that serves the socket, and every one is audited.
+pub async fn call_as(
+    root_dir: &Path,
+    cmd: &str,
+    args: Value,
+    caller: &Caller,
+) -> Result<ControlResponse, String> {
     let wait = REPLY_TIMEOUT + Duration::from_secs(5);
-    send_request(root_dir, cmd, args, wait)
+    send_request(root_dir, cmd, args, caller, wait)
         .await
         .map(|(resp, _, _)| resp)
 }
@@ -77,8 +94,14 @@ impl Subscription {
 /// Open a subscription on the running atlas. The snapshot and every later event
 /// are consistent: nothing is lost or repeated between them.
 pub async fn subscribe(root_dir: &Path) -> Result<Subscription, String> {
-    let (resp, lines, wr) =
-        send_request(root_dir, "subscribe", json!({}), Duration::from_secs(10)).await?;
+    let (resp, lines, wr) = send_request(
+        root_dir,
+        "subscribe",
+        json!({}),
+        &Caller::Human,
+        Duration::from_secs(10),
+    )
+    .await?;
     if !resp.ok {
         return Err(resp.error.unwrap_or_else(|| "subscribe refused".into()));
     }

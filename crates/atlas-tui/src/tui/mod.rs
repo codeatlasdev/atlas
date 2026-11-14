@@ -273,7 +273,9 @@ pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<(
 
     let _lock = SingletonLock::acquire(&lock_path)?;
     // Only after the lock: any existing atlas.sock is stale and gets replaced.
-    let control = crate::control::ControlServer::bind(root_dir).ok();
+    let control =
+        crate::control::ControlServer::bind(root_dir, crate::control::Guard::new(&cfg, root_dir))
+            .ok();
 
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     let deps_tx = event_tx.clone();

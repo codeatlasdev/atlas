@@ -96,12 +96,13 @@ const links = [
 	:global(.on-paper) .sm:hover, :global(.on-paper-sec) .sm:hover { background: transparent; color: var(--ink); }
 	/* The bar has no ground of its own: ink follows the section under it (lib/page.ts), with a hairline once we leave the hero */
 	:global(.nav-solid) .bar { background: var(--bg-under, var(--blue)); }
-	/* Pages without the landing scroll script (docs, changelog, 404) have a paper ground and sticky content under the bar:
-	   the bar carries its own ground there so nothing scrolls through the logo and links. */
-	:global(body.on-paper) .bar { background: var(--paper); }
-	:global(body.on-paper) .nav { box-shadow: 0 1px 0 var(--paper-line); }
-	:global(html.over-foot body.on-paper) .bar { background: var(--blue-deep); }
-	:global(html.over-foot body.on-paper) .nav { color: var(--white); box-shadow: 0 1px 0 var(--blue-line); }
+	/* Pages without the landing scroll script (docs, changelog, 404, download, code signing) have sticky or scrolling content under the
+	   bar: the bar carries its own ground there so nothing scrolls through the logo and links. The ground sits on .nav (not .bar) so the
+	   notch inset strip above the bar is covered too. The landing page (it has .hero) recolors per section from lib/page.ts instead. */
+	:global(body:not(:has(.hero))) .nav { background: var(--blue); }
+	:global(body.on-paper) .nav { background: var(--paper); box-shadow: 0 1px 0 var(--paper-line); }
+	:global(body:not(.on-paper):not(:has(.hero))) .nav { box-shadow: 0 1px 0 var(--blue-line); }
+	:global(html.over-foot body.on-paper) .nav { background: var(--blue-deep); color: var(--white); box-shadow: 0 1px 0 var(--blue-line); }
 	:global(html.over-foot body.on-paper) .mark { background: #fff; }
 	:global(html.over-foot body.on-paper) .sm { background: var(--white); color: var(--ink); border-color: var(--white); }
 	:global(.nav-solid) .nav { box-shadow: 0 1px 0 color-mix(in srgb, currentColor 18%, transparent); }
@@ -119,8 +120,8 @@ const links = [
 		.burger[aria-expanded="true"] .l1 { transform: translateY(4px) rotate(45deg); }
 		.burger[aria-expanded="true"] .l2 { transform: translateY(-4px) rotate(-45deg); }
 		/* The sheet is solid and sits under the bar; while it is open the bar takes the sheet's ground */
-		:global(.menu-open) .bar { background: var(--blue-deep); color: var(--white); }
-		:global(.menu-open) .nav { color: var(--white); }
+		:global(html.menu-open body) .nav { background: var(--blue-deep); color: var(--white); }
+		:global(html.menu-open body) .bar { background: transparent; }
 		:global(.menu-open) .mark { background: #fff; }
 		:global(.menu-open) .sm { background: var(--white); color: var(--ink); border-color: var(--white); }
 		.sheet:not([hidden]) {

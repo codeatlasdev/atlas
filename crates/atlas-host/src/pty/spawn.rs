@@ -47,6 +47,17 @@ struct Child {
     wait: Waiter,
 }
 
+/// Who a terminal is, set per terminal by hostd (or by the launcher in the request). Never
+/// inherited: a hostd started from inside an Atlas terminal carried that terminal's pane key and
+/// hook endpoint, and every terminal it opened reported its agent as that other pane.
+const TERMINAL_IDENTITY: [&str; 5] = [
+    "ATLAS_PANE_KEY",
+    "ATLAS_HOOK_ENDPOINT",
+    "ATLAS_PTY_ID",
+    "ATLAS_TAB_ID",
+    "ATLAS_WORKTREE_ID",
+];
+
 /// Line protocols (omp --mode rpc-ui): stdin/stdout pipes, stderr dropped so it
 /// can't corrupt the JSONL stream.
 fn spawn_pipe(argv: &[String], cwd: &str, env: Vec<(String, String)>) -> Result<Child> {
@@ -58,8 +69,15 @@ fn spawn_pipe(argv: &[String], cwd: &str, env: Vec<(String, String)>) -> Result<
             c
         }
     };
+    for k in TERMINAL_IDENTITY {
+        cmd.env_remove(k);
+    }
     cmd.current_dir(cwd)
-        .envs(atlas_core::login_env::vars())
+        .envs(
+            atlas_core::login_env::vars()
+                .into_iter()
+                .filter(|(k, _)| !TERMINAL_IDENTITY.contains(&k.as_str())),
+        )
         .envs(env)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -144,7 +162,14 @@ fn spawn_pty(
     let mut cmd = CommandBuilder::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.cwd(cwd);
-    for (k, v) in atlas_core::login_env::vars().into_iter().chain(env) {
+    for k in TERMINAL_IDENTITY {
+        cmd.env_remove(k);
+    }
+    let inherited = atlas_core::login_env::vars()
+        .into_iter()
+        .filter(|(k, _)| !TERMINAL_IDENTITY.contains(&k.as_str()));
+    // The request's own values come last: hostd's per-terminal identity always wins.
+    for (k, v) in inherited.chain(env) {
         cmd.env(k, v);
     }
     let mut child = pair
@@ -162,6 +187,30 @@ fn spawn_pty(
         pid,
         wait: Box::new(move || child.wait().ok().map(|st| st.exit_code() as i32)),
     })
+}
+
+/// Record the terminal's root process under hostd's ownership: if hostd dies, the registry still
+/// names the tree and the next sweep reaps it (best effort: a full disk must not stop a terminal).
+fn register(scroll_dir: &Path, id: &str, pid: u32, req: &PtyCreate) {
+    let root = atlas_core::hygiene::Root {
+        session: id.to_string(),
+        owner: atlas_core::hygiene::Owner::current(),
+        pid,
+        start: atlas_core::procs::start_time(pid).unwrap_or(0),
+        kind: atlas_core::hygiene::Kind::Terminal,
+        label: req.argv.first().cloned().unwrap_or_else(|| "shell".into()),
+        project: Some(req.cwd.clone()),
+        started_at: now_s(),
+    };
+    let reg = atlas_core::hygiene::Registry::in_existing(&crate::paths::hygiene_base(scroll_dir));
+    let _ = reg.add_root(root);
+    // The shell's first children are recorded right away, off the spawn path (a process-table
+    // read must not delay the terminal: a client attaching after the spawn would miss output);
+    // the daemon's periodic `track` catches what it starts later, before it can daemonize out of
+    // the parent chain (macOS cannot read tags).
+    std::thread::spawn(move || {
+        let _ = reg.track();
+    });
 }
 
 impl Session {
@@ -190,6 +239,10 @@ impl Session {
             ));
         }
         env.extend(req.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+        // Every descendant inherits the owner tag, even one that daemonizes: when the terminal
+        // closes or hostd dies, `atlas_core::hygiene` reaps whatever still carries it. Last, so a
+        // client's own environment can never retag a process into another session.
+        env.push((atlas_core::hygiene::SESSION_ENV.into(), id.clone()));
         let child = if req.mode == Mode::Pipe {
             spawn_pipe(&argv, &req.cwd, env)?
         } else {
@@ -201,6 +254,9 @@ impl Session {
         };
 
         std::fs::create_dir_all(scroll_dir)?;
+        if let Some(pid) = child.pid {
+            register(scroll_dir, &id, pid, &req);
+        }
         let meta = Meta {
             cwd: req.cwd.clone(),
             argv,

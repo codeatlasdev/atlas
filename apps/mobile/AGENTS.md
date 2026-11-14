@@ -14,7 +14,7 @@ The app tracks the newest **stable** Flutter and Dart, and the newest dependenci
   3. `flutter pub upgrade --major-versions`, then `flutter pub outdated` (anything left is held back by another package; say which in the PR)
   4. `bun run mobile:check`; fix every new analyzer info (`--fatal-infos`) at its source
   5. one PR: `chore(mobile): Flutter X.Y.Z and dependencies`
-- **Deprecations from an upgrade** are fixed by migrating, unless the replacement changes a contract you cannot verify here. Then a scoped `// ignore:` with the reason and what it waits for.
+- **Deprecations from an upgrade** are fixed by migrating, unless the replacement changes a contract you cannot verify here. Then a scoped `// ignore:` with the reason and what it waits for (example: `lib/core/push/push_service.dart`, FCM token vs Installation ID).
 
 ## Gate
 

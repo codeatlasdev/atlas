@@ -1,5 +1,7 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { agentSound, discoverySound, stackSound } from "./triggers.ts";
 
 const svc = (name, state, extra = {}) => ({
@@ -70,6 +72,27 @@ describe("stackSound: services of one project", () => {
 
 	test("starting -> starting is silent (nothing healthy yet)", () => {
 		expect(stackSound([svc("a", "starting")], [svc("a", "starting")])).toBeNull();
+	});
+
+	// The rows below are the REAL runner payload (`__fixtures__/service-states.json`, written by the Rust wire test).
+	const [real_api, real_web, real_db] = JSON.parse(
+		readFileSync(join(import.meta.dir, "..", "__fixtures__", "service-states.json"), "utf8"),
+	);
+	const as = (row, state) => ({ ...row, state });
+
+	test("a service that hangs (running -> unhealthy) sounds like a failure", () => {
+		const prev = [real_db, as(real_web, "running")];
+		expect(stackSound(prev, [real_db, real_web])).toBe("service-failed");
+	});
+
+	test("an already-unhealthy service does not sound again on every refresh", () => {
+		expect(stackSound([real_web], [{ ...real_web, note: "unhealthy for 9s: 3 missed probes" }])).toBeNull();
+	});
+
+	test("a degraded service is not 'up': the stack-up jingle waits until it recovers", () => {
+		const prev = [real_db, as(real_api, "starting")];
+		expect(stackSound(prev, [real_db, real_api])).toBeNull();
+		expect(stackSound(prev, [real_db, as(real_api, "running")])).toBe("stack-up");
 	});
 });
 

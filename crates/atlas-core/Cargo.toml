@@ -22,6 +22,10 @@ dirs = { workspace = true }
 parking_lot = { workspace = true }
 semver = { workspace = true }
 tokio = { workspace = true }
+sha2 = "0.11"
+hex = "0.4"
+# .gitignore-aware walking and glob matching: the task cache expands `inputs:` globs with it.
+ignore = "0.4"
 tempfile = { workspace = true, optional = true }
 
 [features]
@@ -35,12 +39,14 @@ libc = { workspace = true }
 windows-sys = { version = "0.61", features = [
     "Wdk_System_Threading",
     "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
     "Win32_Security_Cryptography",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_IO",
     "Win32_System_Pipes",
     "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
 ] }
 

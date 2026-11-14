@@ -66,7 +66,9 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
         | C::AgentApprove { .. }
-        | C::AgentLaunch { .. } => Route::Main,
+        | C::AgentLaunch { .. }
+        | C::WorktreeCreate { .. }
+        | C::WorktreeRemove { .. } => Route::Main,
         C::PtyAttach { .. } | C::PtyDetach { .. } => Route::Attach,
         C::PtyCreate(_) | C::PtyKill { .. } | C::PtyClear { .. } | C::PtyResize { .. } => {
             Route::Refuse("lab hostd mirrors terminals, it never creates, kills or resizes one")
@@ -93,11 +95,20 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentHistory { .. }
         | C::AgentStatusAll {}
         | C::AgentIntegrations {}
+        | C::WorktreeList { .. }
         | C::ProjectList {}
         | C::ProjectDetail { .. }
         | C::ProjectLogs { .. }
         | C::ProjectService { .. }
         | C::ProjectAction { .. }
+        | C::GitStatus { .. }
+        | C::GitDiff { .. }
+        | C::GitStage { .. }
+        | C::GitUnstage { .. }
+        | C::GitCommit { .. }
+        | C::GitCommitMessage { .. }
+        | C::GitPush { .. }
+        | C::GitPrCreate { .. }
         | C::MobilePairStart {}
         | C::MobileDevices {}
         | C::MobileRevoke { .. }
@@ -115,7 +126,47 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::LspUninstall { .. }
         | C::LspRestart { .. }
         | C::LspLog { .. }
-        | C::LspApplyEditResult { .. } => Route::Local,
+        | C::LspApplyEditResult { .. }
+        // The lab reaches the crew servers itself (they are remote: nothing on this Mac to spare).
+        | C::CrewServers {}
+        | C::CrewCall { .. } => Route::Local,
+        C::CrewmateList {}
+        | C::CrewmateCreate { .. }
+        | C::CrewmateUpdate { .. }
+        | C::CrewmateDelete { .. }
+        | C::CrewmateTask { .. }
+        | C::CrewmateAttachmentPut { .. }
+        | C::CrewmateAttachment { .. }
+        | C::CrewmateTasks { .. }
+        | C::CrewmateCancel { .. }
+        | C::CrewmateMemory { .. }
+        | C::CrewmateMemorySet { .. }
+        | C::CrewmateRoutineSet { .. }
+        | C::CrewmateTriggersSet { .. }
+        | C::CrewmateSecretSet { .. }
+        | C::CrewmateAnswer { .. }
+        | C::CrewmateUsage { .. }
+        | C::CrewmateAudit { .. }
+        | C::CrewAudit { .. }
+        | C::CrewTelegramSet { .. }
+        | C::CrewTelegramLink {}
+        | C::CrewTelegramStatus {}
+        | C::PushRegister { .. }
+        | C::PushUnregister { .. }
+        | C::MobileInvite { .. }
+        | C::MobileInvites {}
+        | C::MobileInviteDismiss { .. }
+        | C::EngineLimits {}
+        | C::CrewGithubStatus {}
+        | C::CrewGithubLoginStart {}
+        | C::CrewGithubLoginPoll {}
+        | C::CrewGithubLogout {}
+        | C::CrewmateActionAnswer { .. }
+        | C::CrewGithubConnectResume {}
+        | C::CrewPause {}
+        | C::CrewResume {}
+        | C::CrewSettingsGet {}
+        | C::CrewSettingsSet { .. } => Route::Refuse("lab hostd does not run crewmates"),
     }
 }
 

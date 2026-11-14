@@ -105,6 +105,24 @@ fn print_box(current: &str, new: &str) {
     eprintln!("\x1b[1;32m╰─{}─╯\x1b[0m", "─".repeat(w));
 }
 
+/// The path to exec for the binary that was just replaced. Linux reads the running program's path
+/// from `/proc/self/exe`, which says `<path> (deleted)` once an update replaced the file: that
+/// string is not a file, but `<path>` now holds the new binary. A file that really has that name,
+/// or a stripped path that does not exist, is left as it is.
+fn exe_to_reexec(exe: std::path::PathBuf) -> std::path::PathBuf {
+    if exe.exists() {
+        return exe;
+    }
+    let stripped = exe
+        .to_str()
+        .and_then(|s| s.strip_suffix(" (deleted)"))
+        .map(std::path::PathBuf::from);
+    match stripped {
+        Some(p) if p.exists() => p,
+        _ => exe,
+    }
+}
+
 /// Re-exec the (just replaced) binary with the exact argv. Only returns on failure.
 fn reexec() -> std::io::Error {
     let exe = std::env::current_exe().unwrap_or_else(|_| {
@@ -113,6 +131,7 @@ fn reexec() -> std::io::Error {
             .map(Into::into)
             .unwrap_or_else(|| "atlas".into())
     });
+    let exe = exe_to_reexec(exe);
     let mut cmd = std::process::Command::new(exe);
     cmd.args(std::env::args_os().skip(1));
     // The re-exec'd process must not prompt again if the update somehow did not stick.
@@ -467,5 +486,42 @@ mod managed_tests {
         .await;
         assert!(!execd);
         assert_eq!(flow, Flow::Continue);
+    }
+
+    /// Incident class (Linux): the update replaces the running binary, so `/proc/self/exe` now reads
+    /// `.../atlas (deleted)`. Exec'ing that path fails, and `atlas dev` kept running the old version
+    /// with "could not restart atlas".
+    #[test]
+    fn a_replaced_binary_is_exec_d_by_its_real_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("atlas");
+        std::fs::write(&real, "new").unwrap();
+        let deleted = dir.path().join("atlas (deleted)");
+        assert_eq!(exe_to_reexec(deleted), real, "the new file at the old path");
+        assert_eq!(
+            exe_to_reexec(real.clone()),
+            real,
+            "a normal path is untouched"
+        );
+    }
+
+    /// A file that really is named `... (deleted)` is not rewritten, and neither is a path whose
+    /// stripped form does not exist (nothing better to run).
+    #[test]
+    fn only_a_missing_deleted_path_with_an_existing_original_is_rewritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let literal = dir.path().join("atlas (deleted)");
+        std::fs::write(&literal, "x").unwrap();
+        assert_eq!(
+            exe_to_reexec(literal.clone()),
+            literal,
+            "that file exists as named"
+        );
+        let nothing = dir.path().join("gone (deleted)");
+        assert_eq!(
+            exe_to_reexec(nothing.clone()),
+            nothing,
+            "no original to run"
+        );
     }
 }

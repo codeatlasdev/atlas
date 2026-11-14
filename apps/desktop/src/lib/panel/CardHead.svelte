@@ -147,10 +147,12 @@
 	.state-running {
 		color: var(--ca-semantic-success);
 	}
-	.state-failed {
+	.state-failed,
+	.state-unhealthy {
 		color: var(--ca-semantic-error);
 	}
-	.state-starting {
+	.state-starting,
+	.state-degraded {
 		color: var(--ca-semantic-warning);
 	}
 	.dim {

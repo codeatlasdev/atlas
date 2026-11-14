@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/agents/agents_provider.dart';
+import 'package:atlas_mobile/features/projects/worktree.dart';
 
 /// A freshly launched agent: its pane key (and the agent id it runs).
 typedef LaunchedAgent = ({String pane, String agent});
@@ -37,6 +40,9 @@ class _Launcher extends ConsumerStatefulWidget {
 class _LauncherState extends ConsumerState<_Launcher> {
   final _prompt = TextEditingController();
   String? _agent;
+
+  /// The worktree to start in (`null` = the project's main checkout).
+  String? _worktree;
   bool _busy = false;
   String? _error;
 
@@ -62,6 +68,7 @@ class _LauncherState extends ConsumerState<_Launcher> {
       'project': widget.projectId,
       'agent': agent,
       if (text.isNotEmpty) 'prompt': text,
+      'worktree': ?_worktree,
     });
     if (!mounted) return;
     final data = resp['data'];
@@ -83,6 +90,15 @@ class _LauncherState extends ConsumerState<_Launcher> {
     final c = AtlasColors.of(context);
     final installed = ref.watch(installedAgentsProvider(widget.device));
     final list = installed.value;
+    final worktrees = ref
+        .watch(
+          worktreesProvider((
+            device: widget.device,
+            projectId: widget.projectId,
+          )),
+        )
+        .value
+        ?.worktrees;
     // The agent to start: the user's pick, else the first that reports to Atlas.
     final selected =
         _agent ?? (list?.isNotEmpty == true ? list!.first.id : null);
@@ -112,20 +128,44 @@ class _LauncherState extends ConsumerState<_Launcher> {
                   ),
                 )
               else ...[
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.sm,
-                  children: [
-                    for (final a in list)
-                      _AgentChoice(
-                        agent: a,
-                        selected: a.id == selected,
-                        onTap: _busy
-                            ? null
-                            : () => setState(() => _agent = a.id),
-                      ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, box) => Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      for (final a in list)
+                        _AgentChoice(
+                          agent: a,
+                          selected: a.id == selected,
+                          maxWidth: box.maxWidth,
+                          onTap: _busy
+                              ? null
+                              : () => setState(() => _agent = a.id),
+                        ),
+                    ],
+                  ),
                 ),
+                if (worktrees != null && worktrees.length > 1) ...[
+                  const SizedBox(height: Space.md),
+                  Text('Where', style: TextStyle(color: c.muted, fontSize: 12)),
+                  const SizedBox(height: Space.xs),
+                  Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      for (final w in worktrees)
+                        ChoiceChip(
+                          label: Text(w.main ? 'main' : w.name),
+                          selected: (_worktree ?? worktrees.first.id) == w.id,
+                          onSelected: _busy
+                              ? null
+                              : (_) => setState(
+                                  () => _worktree = w.main ? null : w.id,
+                                ),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: Space.md),
                 TextField(
                   controller: _prompt,
@@ -177,11 +217,15 @@ class _AgentChoice extends StatelessWidget {
   const _AgentChoice({
     required this.agent,
     required this.selected,
+    required this.maxWidth,
     required this.onTap,
   });
 
   final AgentIntegration agent;
   final bool selected;
+
+  /// The row the choice sits in: a long label ellipsizes instead of overflowing it.
+  final double maxWidth;
   final VoidCallback? onTap;
 
   @override
@@ -206,26 +250,37 @@ class _AgentChoice extends StatelessWidget {
             border: Border.all(color: selected ? c.accent : c.borderSubtle),
             borderRadius: BorderRadius.circular(Space.radius),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AgentLogo(agent.id, size: 28),
-              const SizedBox(width: Space.sm + 2),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    agent.label,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+          // Never wider than the sheet: a long agent label ellipsizes.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              // The decoration's padding and border come off the row's width.
+              maxWidth: math.max(0, maxWidth - 2 * Space.md - 2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AgentLogo(agent.id, size: 28),
+                const SizedBox(width: Space.sm + 2),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        agent.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      if (!ok)
+                        Text(
+                          'hooks off',
+                          style: TextStyle(fontSize: 11, color: c.warning),
+                        ),
+                    ],
                   ),
-                  if (!ok)
-                    Text(
-                      'hooks off',
-                      style: TextStyle(fontSize: 11, color: c.warning),
-                    ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

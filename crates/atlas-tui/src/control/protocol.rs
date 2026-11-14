@@ -12,6 +12,89 @@ pub(super) struct WireRequest {
     pub(super) cmd: String,
     #[serde(default)]
     pub(super) args: Value,
+    /// Who is asking. Absent = the developer (CLI, desktop, TUI never send it).
+    #[serde(default)]
+    pub(super) caller: Caller,
+}
+
+/// Environment variables an agent host sets for its sessions; the ones present are recorded
+/// in the audit log so a restart can be traced to a conversation.
+const SESSION_ENV: [&str; 5] = [
+    "OMP_SESSION_ID",
+    "CLAUDE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ID",
+    "CODEX_SESSION_ID",
+    "ATLAS_AGENT_SESSION",
+];
+
+/// Who a control request is from. `Human` is the default: only `atlas mcp` (and anything
+/// else that says so) identifies as an agent, and only agents are subject to `agents:`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Caller {
+    #[default]
+    Human,
+    Agent {
+        /// MCP `clientInfo.name` / `.version` from the `initialize` handshake.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        version: Option<String>,
+        /// `{ENV_NAME: value}` of the session variables present.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session: Option<Value>,
+    },
+}
+
+impl Caller {
+    /// An agent speaking through MCP, with what its `initialize` said about itself and the
+    /// session variables of this process.
+    pub fn agent(name: Option<String>, version: Option<String>) -> Self {
+        let session: serde_json::Map<String, Value> = SESSION_ENV
+            .iter()
+            .filter_map(|k| {
+                let v = std::env::var(k).ok().filter(|v| !v.trim().is_empty())?;
+                Some((k.to_string(), Value::String(v)))
+            })
+            .collect();
+        Self::Agent {
+            name,
+            version,
+            session: (!session.is_empty()).then_some(Value::Object(session)),
+        }
+    }
+
+    pub fn is_agent(&self) -> bool {
+        matches!(self, Self::Agent { .. })
+    }
+
+    /// `human` or `agent`, as written to the audit log.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Agent { .. } => "agent",
+        }
+    }
+
+    /// `name/version` of the MCP client, or whichever half it sent.
+    pub fn client_label(&self) -> Option<String> {
+        let Self::Agent { name, version, .. } = self else {
+            return None;
+        };
+        match (name, version) {
+            (Some(n), Some(v)) => Some(format!("{n}/{v}")),
+            (Some(n), None) => Some(n.clone()),
+            (None, Some(v)) => Some(format!("?/{v}")),
+            (None, None) => None,
+        }
+    }
+
+    pub fn session(&self) -> Option<&Value> {
+        match self {
+            Self::Agent { session, .. } => session.as_ref(),
+            Self::Human => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -166,13 +249,21 @@ pub fn find_action<'a>(
     cfg: &'a ProjectConfig,
     target: &str,
 ) -> Option<&'a crate::config::ActionConfig> {
+    find_in(&cfg.actions, target)
+}
+
+/// [`find_action`] over a bare action list.
+pub fn find_in<'a>(
+    actions: &'a [crate::config::ActionConfig],
+    target: &str,
+) -> Option<&'a crate::config::ActionConfig> {
     let mut chars = target.chars();
     if let (Some(c), None) = (chars.next(), chars.next())
-        && let Some(a) = cfg.actions.iter().find(|a| a.key == c)
+        && let Some(a) = actions.iter().find(|a| a.key == c)
     {
         return Some(a);
     }
-    cfg.actions
+    actions
         .iter()
         .find(|a| a.label.eq_ignore_ascii_case(target))
 }

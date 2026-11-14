@@ -8,13 +8,14 @@
 		Spinner,
 		Tooltip,
 	} from "@codeatlasdev/ui";
-	import { Activity, ChevronDown, Terminal, TriangleAlert, Zap } from "@lucide/svelte";
+	import { Activity, ChevronDown, Gauge, Terminal, TriangleAlert, Zap } from "@lucide/svelte";
 	import type { ProjectView } from "#lib/api.ts";
 	import { store } from "#lib/stores/projects.svelte.ts";
 	import { runAction } from "#lib/actions.svelte.ts";
 	import Tip from "#lib/components/Tip.svelte";
 	import { guarded } from "#lib/components/tooltipGuard.ts";
 	import { activity } from "./activity.svelte.ts";
+	import { machine } from "./machine.svelte.ts";
 	import { actionOutput } from "./actionOutput.svelte.ts";
 	import ActionOutputDrawer from "./ActionOutputDrawer.svelte";
 	import ActionResultToast from "./ActionResultToast.svelte";
@@ -55,6 +56,20 @@
 			{#if badge}
 				<span class="badge" class:err={fresh.errors > 0}>{badge > 9 ? "9+" : badge}</span>
 			{/if}
+		</button>
+	{/snippet}
+</Tip>
+
+<Tip label="Machine" command="atlas::ShowMachine">
+	{#snippet child(props)}
+		<button
+			{...props}
+			class="ibtn"
+			class:on={machine.open}
+			aria-label="Machine"
+			onclick={() => (machine.open = !machine.open)}
+		>
+			<Gauge size={15} />
 		</button>
 	{/snippet}
 </Tip>

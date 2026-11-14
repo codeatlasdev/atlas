@@ -444,6 +444,22 @@ pub async fn term_bounds(
     Ok(())
 }
 
+/// The pane slid right by `dx` points over `ms` (the workspace rail, `WorkspaceRail.svelte`): the
+/// view's frame is already at the new rect (`term_bounds`); play the same slide on its layer so it
+/// travels with the page instead of being parked (which blinked).
+#[tauri::command]
+pub async fn term_slide(app: AppHandle, tab: String, dx: f64, ms: f64) -> Result<(), String> {
+    let view = TERMS
+        .lock()
+        .get(&tab)
+        .map(|t| t.shared.view())
+        .ok_or_else(|| format!("no terminal for tab {tab}"))?;
+    on_main(&app, move || {
+        mac::slide_from(view, dx, ms.clamp(0.0, 1000.0));
+        Ok(())
+    })
+}
+
 /// "Reload terminal": replace `tab`'s surface and renderer by hand, as the watchdog does when a tab
 /// stalls. The pty, its screen and its scrollback are untouched (nothing is reattached or
 /// replayed). Rebuilds on the tab's render thread, so a stuck renderer does not block this call.

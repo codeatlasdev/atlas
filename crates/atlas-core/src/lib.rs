@@ -1,15 +1,28 @@
+pub mod affected;
 pub mod agent_store;
+pub mod agents;
 pub mod channel;
 pub mod crash;
+pub mod crew;
 pub mod desktop_ctl;
 pub mod domain;
 pub mod error;
+pub mod git_review;
 pub mod github;
+pub mod heavy;
+pub mod hygiene;
 pub mod ipc;
 pub mod login_env;
 pub mod paths;
+pub mod pkgstore;
+pub mod port_owner;
+pub mod procs;
 pub mod project_root;
+pub mod seed;
+pub mod ssh;
 pub mod sys;
+mod sys_clone;
+pub mod taskcache;
 pub mod util;
 
 pub use error::AtlasError;

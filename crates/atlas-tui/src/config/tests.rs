@@ -291,6 +291,120 @@ fn load_or_detect_runs_a_rust_go_or_django_folder_through_the_real_parser() {
     assert_eq!(cfg.services["web"].port, Some(8000));
 }
 
+// Incident class: `initial_config` wrote the folder name and each script's name and command into the YAML with a
+// bare `format!`. A folder called `my: app`, `#todo` or `123`, or a script with `: ` or ` #` in its command, made the
+// zero-config project fail with "detected config ... is invalid" (or parse as another type), and "Save as
+// atlas.yaml" would have written that broken file to disk.
+#[test]
+fn load_or_detect_survives_folder_names_that_are_special_in_yaml() {
+    let names = [
+        "my: app",
+        "#todo",
+        "app #1",
+        "[draft]",
+        "{x}",
+        "@scope",
+        "*star",
+        "& co",
+        "!bang",
+        "'q'",
+        "\"dq\"",
+        "- item",
+        "true",
+        "null",
+        "123",
+        "1.5",
+        "~",
+        "%dir",
+        "> fold",
+        "| lit",
+        "trailing:",
+        "a: b: c",
+        "with space",
+        "ünïcödé-项目",
+        "emoji-🚀",
+        "key=value",
+        "back`tick",
+    ];
+    // Windows cannot name a folder with `<>:"/\|?*`; those cases exist only elsewhere.
+    let legal = |n: &str| !cfg!(windows) || !n.contains(['<', '>', ':', '"', '|', '?', '*']);
+    for name in names.into_iter().filter(|n| legal(n)) {
+        let root = TempDir::new().unwrap();
+        let dir = root.path().join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts":{"dev":"vite --port 5173"}}"#,
+        )
+        .unwrap();
+        let (cfg, src) = load_or_detect(&dir).unwrap_or_else(|e| panic!("{name:?}: {e:#}"));
+        assert_eq!(src, ConfigSource::Detected, "{name:?}");
+        assert_eq!(cfg.name, name, "the project keeps the folder's exact name");
+        assert_eq!(cfg.services["dev"].port, Some(5173), "{name:?}");
+    }
+}
+
+#[test]
+fn load_or_detect_survives_scripts_whose_name_or_command_is_special_in_yaml() {
+    let scripts = [
+        ("dev", "vite --host: 0.0.0.0 # local"),
+        ("dev:watch", "*glob* run"),
+        ("start", "& background"),
+        ("start:prod", "!important"),
+        ("serve", "{json} here"),
+        ("dev:2", "[a, b]"),
+        ("dev:3", "'single' and \"double\""),
+        ("dev:4", "@scope/pkg run"),
+        ("dev:5", "%env% node x.js"),
+        ("dev:6", "node x.js\\ntwo"),
+        ("dev:7", "node x.js | tee out.log"),
+        ("serve: x", "node a.js"),
+        ("serve #1", "node b.js"),
+        ("dev:#2", "node c.js"),
+    ];
+    let root = TempDir::new().unwrap();
+    let body: serde_json::Value = serde_json::json!({ "scripts": scripts.iter().cloned().collect::<std::collections::BTreeMap<_, _>>() });
+    fs::write(root.path().join("package.json"), body.to_string()).unwrap();
+    let (cfg, src) = load_or_detect(root.path()).unwrap_or_else(|e| panic!("{e:#}"));
+    assert_eq!(src, ConfigSource::Detected);
+    for (name, cmd) in scripts {
+        let svc = cfg
+            .services
+            .get(name)
+            .unwrap_or_else(|| panic!("service {name:?} lost: {:?}", cfg.services.keys()));
+        assert_eq!(svc.command.as_deref(), Some(cmd), "{name:?}");
+    }
+}
+
+// Detected services used to come out in HashMap order: the same folder got different port numbers (`4010 + index`)
+// and a different service order from one launch to the next.
+#[test]
+fn detected_services_come_out_in_a_stable_order_with_stable_ports() {
+    let root = TempDir::new().unwrap();
+    fs::write(
+        root.path().join("package.json"),
+        r#"{"scripts":{"start":"a","dev":"b","dev:api":"c","dev:web":"d","serve":"e","start:prod":"f"}}"#,
+    )
+    .unwrap();
+    let (first, d) = atlas_core::domain::project::initial_config(root.path());
+    let names: Vec<_> = d.services.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["dev", "dev:api", "dev:web", "serve", "start", "start:prod"]
+    );
+    for _ in 0..20 {
+        let (again, _) = atlas_core::domain::project::initial_config(root.path());
+        assert_eq!(again, first, "same folder, same file, every time");
+    }
+    let (cfg, _) = load_or_detect(root.path()).unwrap();
+    assert_eq!(
+        cfg.services["dev"].port,
+        Some(4010),
+        "ports follow the sorted order"
+    );
+    assert_eq!(cfg.services["dev:api"].port, Some(4011));
+}
+
 #[test]
 fn load_or_detect_still_layers_atlas_local_yaml_on_a_detected_config() {
     let dir = TempDir::new().unwrap();
@@ -538,6 +652,74 @@ fn test_completed_successfully_target_needs_a_command() {
 fn test_invalid_ready_log_regex_is_reported() {
     let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    ready_log: '('\n");
     assert_has(&errs, "services.a.ready_log: invalid regex");
+}
+
+#[test]
+fn memory_budget_sizes_parse_like_max_memory_and_bad_ones_name_the_key() {
+    // A size is a string like `max_memory`'s; a bare number is bytes only when quoted.
+    for ok in ["1.5GB", "512M", "3G", "800mb", "'2048'"] {
+        let errs = errors_for(&format!(
+            "name: t\nservices:\n  a:\n    command: x\n    memory_warn: {ok}\n"
+        ));
+        assert!(errs.is_empty(), "{ok}: {errs:#?}");
+    }
+    let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    memory_warn: lots\n");
+    assert_has(&errs, "services.a.memory_warn: 'lots' is not a size");
+    let errs = errors_for("name: t\nservices:\n  a:\n    command: x\n    max_memory: 0M\n");
+    assert_has(&errs, "services.a.max_memory: '0M' is not a size");
+    // Unquoted `2048` is a YAML integer: rejected at load, for both keys alike.
+    for key in ["memory_warn", "max_memory"] {
+        let dir = TempDir::new().unwrap();
+        write_config(
+            &dir,
+            "atlas.yaml",
+            &format!("name: t\nservices:\n  a:\n    command: x\n    {key}: 2048\n"),
+        );
+        let e = load_checked(dir.path()).expect_err("integer must not load");
+        assert!(e.to_string().contains("expected a string"), "{key}: {e}");
+    }
+}
+
+/// `warn` at or above `max` would make the soft budget unreachable: the config is wrong.
+#[test]
+fn memory_warn_must_be_below_max_memory() {
+    let errs = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 4G\n    max_memory: 2G\n",
+    );
+    assert_has(
+        &errs,
+        "services.a.memory_warn: must be below max_memory (2G)",
+    );
+    let equal = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 2G\n    max_memory: 2048M\n",
+    );
+    assert_has(&equal, "services.a.memory_warn: must be below max_memory");
+    let ok = errors_for(
+        "name: t\nservices:\n  a:\n    command: x\n    memory_warn: 1.5GB\n    max_memory: 2G\n",
+    );
+    assert!(ok.is_empty(), "{ok:#?}");
+}
+
+#[test]
+fn on_memory_max_takes_restart_or_notify_and_defaults_to_restart() {
+    let cfg = |extra: &str| {
+        let dir = TempDir::new().unwrap();
+        write_config(
+            &dir,
+            "atlas.yaml",
+            &format!("name: t\nservices:\n  a:\n    command: x\n    max_memory: 2G\n{extra}"),
+        );
+        load(dir.path())
+    };
+    assert_eq!(
+        cfg("").unwrap().services["a"].on_memory_max,
+        OnMemoryMax::Restart
+    );
+    assert_eq!(
+        cfg("    on_memory_max: notify\n").unwrap().services["a"].on_memory_max,
+        OnMemoryMax::Notify
+    );
+    assert!(cfg("    on_memory_max: explode\n").is_err());
 }
 
 #[test]
@@ -930,4 +1112,332 @@ services:
         Some("http://localhost:5273/x")
     );
     assert_eq!(cfg.port_offset, 100);
+}
+
+// #135: a `remote:` service runs no local copy; atlas forwards its local port over SSH.
+#[test]
+fn a_remote_service_runs_an_ssh_forward_of_its_final_port_and_restarts_on_drop() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        "name: t\nservices:\n  db:\n    port: 5432\n    remote: { ssh: dev-box, port: 6543, host: 10.0.0.5 }\n  api:\n    command: \"true\"\n    port: 3000\n",
+    );
+    let mut cfg = load(dir.path()).unwrap();
+    // Atlas Desktop shifts a worktree's ports AFTER loading: the forward must follow.
+    crate::config::apply_port_offset(&mut cfg, 100);
+    let db = &cfg.services["db"];
+    assert!(db.command.is_none(), "the config itself is not rewritten");
+    let cmd = db.run_command().unwrap();
+    assert!(cmd.contains("-L 5532:10.0.0.5:6543 dev-box"), "{cmd}");
+    assert!(
+        cmd.contains("BatchMode=yes") && cmd.contains("ExitOnForwardFailure=yes"),
+        "{cmd}"
+    );
+    assert_eq!(
+        db.restart_policy(),
+        crate::config::project::RestartPolicy::Always
+    );
+    // A local service is untouched.
+    let api = &cfg.services["api"];
+    assert_eq!(api.run_command().as_deref(), Some("true"));
+    assert_eq!(api.restart_policy(), api.restart);
+}
+
+#[test]
+fn a_remote_service_needs_a_port_no_command_and_plain_ssh_words() {
+    let errs = errors_for(
+        "name: t\nservices:\n  a:\n    remote: { ssh: box, port: 1 }\n  b:\n    port: 2\n    command: x\n    remote: { ssh: box, port: 1 }\n  c:\n    port: 3\n    remote: { ssh: \"-oProxyCommand=evil\", port: 1 }\n  d:\n    port: 4\n    remote: { ssh: box, port: 1, host: \"a b\" }\n",
+    );
+    assert_has(&errs, "services.a.remote");
+    assert_has(&errs, "needs the service's local `port`");
+    assert_has(&errs, "remove `command`");
+    assert_has(&errs, "services.c.remote.ssh");
+    assert_has(&errs, "services.d.remote.host");
+    assert!(
+        errors_for(
+            "name: t\nservices:\n  db:\n    port: 5\n    remote: { ssh: me@box.lan, port: 5432 }\n"
+        )
+        .is_empty()
+    );
+}
+
+const AGENTS_BASE: &str = "name: p\nservices:\n  api: { command: run }\n";
+
+#[test]
+fn agents_policy_loads_through_the_real_loader_and_defaults_to_open() {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "atlas.yaml", AGENTS_BASE);
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(
+        cfg.agents.is_open(),
+        "no `agents:` = today's behaviour (all allowed)"
+    );
+
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!("{AGENTS_BASE}agents:\n  control: deny\n  restart_service: {{ allow: [api] }}\n"),
+    );
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(matches!(
+        cfg.agents.decide("stop_service", "api", &[]),
+        Verdict::Denied(_)
+    ));
+    assert_eq!(
+        cfg.agents.decide("restart_service", "api", &[]),
+        Verdict::Allowed
+    );
+}
+
+#[test]
+fn agents_typo_is_a_config_error_not_a_silently_open_project() {
+    // Incident class: a mistyped key must never leave the project open while it reads as locked.
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!("{AGENTS_BASE}agents:\n  contrl: deny\n"),
+    );
+    let err = format!("{:#}", load_checked(dir.path()).unwrap_err());
+    assert!(
+        err.contains("contrl") || err.contains("unknown field"),
+        "{err}"
+    );
+}
+
+#[test]
+fn atlas_local_yaml_cannot_carry_or_loosen_the_agents_policy() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!("{AGENTS_BASE}agents:\n  control: deny\n"),
+    );
+    write_config(&dir, "atlas.local.yaml", "agents:\n  control: allow\n");
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(
+        errs.iter()
+            .any(|e| e.file == "atlas.local.yaml" && e.path.contains("agents")),
+        "{errs:?}"
+    );
+    assert_eq!(
+        cfg.agents.control,
+        Some(AgentMode::Deny),
+        "the project file stays the authority"
+    );
+}
+
+#[test]
+fn json_schema_documents_the_agents_block() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    assert!(schema["properties"]["agents"].is_object(), "{schema}");
+    let def = &schema["definitions"]["AgentsPolicy"]["properties"];
+    for k in [
+        "control",
+        "restart_service",
+        "stop_service",
+        "start_service",
+        "run_action",
+    ] {
+        assert!(def[k].is_object(), "agents.{k} missing from the schema");
+    }
+}
+
+fn worktree_of(yaml: &str) -> crate::config::project::WorktreeConfig {
+    let dir = TempDir::new().unwrap();
+    write_config(&dir, "atlas.yaml", yaml);
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    cfg.worktree.unwrap()
+}
+
+// `worktree.seed` has three states: absent = auto-detect, a list = exactly those, `[]` = off.
+// Collapsing absent and `[]` would either disable detection for everyone or make "off" impossible.
+#[test]
+fn test_worktree_seed_distinguishes_absent_list_and_empty() {
+    let base = "name: t\nservices:\n  a:\n    command: x\nworktree:\n  setup: bun install\n";
+    assert_eq!(worktree_of(base).seed, None);
+    assert_eq!(
+        worktree_of(&format!("{base}  seed: [node_modules, target]\n")).seed,
+        Some(vec!["node_modules".to_string(), "target".to_string()])
+    );
+    assert_eq!(
+        worktree_of(&format!("{base}  seed: []\n")).seed,
+        Some(vec![])
+    );
+}
+
+#[test]
+fn test_schema_lists_worktree_seed() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    let props = &schema["definitions"]["WorktreeConfig"]["properties"];
+    assert!(props.get("seed").is_some(), "schema missing worktree.seed");
+}
+
+// Issue #126: an action with a `cache:` block runs through `atlas run --cache` with its globs,
+// outputs, env names and tools as flags, and unknown keys inside the block are config errors.
+#[test]
+fn test_action_cache_block_wraps_the_command_in_atlas_run_cache() {
+    let cfg: ActionConfig = serde_norway::from_str(
+        "key: t\nlabel: Unit tests\ncommand: cargo test -p core\ncache:\n  inputs: ['crates/**', Cargo.lock]\n  outputs: [target/report]\n  env: [RUSTFLAGS]\n  tools: [rustc]\n",
+    )
+    .unwrap();
+    let line = cfg.spawn_command().into_owned();
+    // Quoting is the platform shell's (single quotes for sh, double for cmd on Windows): build the
+    // expectations with the same `sh_quote` the wrapper uses (Windows CI, PR #221).
+    let q = atlas_core::heavy::sh_quote;
+    assert!(
+        line.contains(&format!(" run --cache --label {}", q("Unit tests"))),
+        "{line}"
+    );
+    for flag in [
+        format!("--input {}", q("crates/**")),
+        "--input Cargo.lock".to_string(),
+        "--output target/report".to_string(),
+        "--env RUSTFLAGS".to_string(),
+        "--tool rustc".to_string(),
+    ] {
+        assert!(line.contains(&flag), "{flag} missing in {line}");
+    }
+    assert!(
+        line.ends_with(&format!("-- {}", q("cargo test -p core"))),
+        "{line}"
+    );
+    assert!(!line.contains("--heavy"));
+}
+
+#[test]
+fn test_action_cache_with_heavy_queues_and_caches_and_no_cache_is_unchanged() {
+    let both: ActionConfig = serde_norway::from_str(
+        "key: t\nlabel: T\ncommand: x\nheavy: true\ncache: { inputs: [src/**] }\n",
+    )
+    .unwrap();
+    let line = both.spawn_command().into_owned();
+    assert!(line.contains(" run --cache --heavy --label T"), "{line}");
+    let plain: ActionConfig =
+        serde_norway::from_str("key: t\nlabel: T\ncommand: echo hi\n").unwrap();
+    assert_eq!(plain.spawn_command(), "echo hi");
+}
+
+#[test]
+fn test_action_cache_block_rejects_unknown_keys() {
+    let err = serde_norway::from_str::<ActionConfig>(
+        "key: t\nlabel: T\ncommand: x\ncache: { input: [a] }\n",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("input"), "{err}");
+}
+
+// Issue #128: `affected:` is the project's declared graph. It loads through the real loader, maps
+// to the core types, and mistakes are config errors, never a silently empty answer.
+const AFFECTED_BASE: &str = "name: p\nservices:\n  api: { command: run }\nactions:\n  - { key: c, label: Run checks, command: x, cache: { inputs: ['crates/**'] } }\n";
+
+#[test]
+fn affected_rules_and_command_load_through_the_real_loader() {
+    let dir = TempDir::new().unwrap();
+    write_config(
+        &dir,
+        "atlas.yaml",
+        &format!(
+            "{AFFECTED_BASE}affected:\n  command: bun scripts/affected.ts --json\n  rules:\n    - match: ['crates/**']\n      tasks: [Run checks]\n      tests: [cargo test]\n      routes: [/docs]\n      builds: [site]\n"
+        ),
+    );
+    let (cfg, errs) = load_checked(dir.path()).unwrap();
+    assert!(errs.is_empty(), "{errs:?}");
+    let a = cfg.affected.as_ref().expect("affected loaded");
+    let declared = a.declared();
+    assert_eq!(
+        declared.command.as_deref(),
+        Some("bun scripts/affected.ts --json")
+    );
+    assert_eq!(declared.rules.len(), 1);
+    assert_eq!(declared.rules[0].matches, ["crates/**"]);
+    assert_eq!(declared.rules[0].tasks, ["Run checks"]);
+    assert_eq!(declared.rules[0].routes, ["/docs"]);
+    // Without the block there is nothing declared: the fallback applies.
+    write_config(&dir, "atlas.yaml", AFFECTED_BASE);
+    let (cfg, _) = load_checked(dir.path()).unwrap();
+    assert!(cfg.affected.is_none());
+}
+
+#[test]
+fn affected_typos_are_config_errors() {
+    let dir = TempDir::new().unwrap();
+    for (yaml, needle) in [
+        ("affected:\n  comand: x\n", "comand"),
+        (
+            "affected:\n  rules:\n    - { mach: ['a'], tasks: [t] }\n",
+            "mach",
+        ),
+        (
+            "affected:\n  rules:\n    - { match: ['a'], test: [t] }\n",
+            "test",
+        ),
+    ] {
+        write_config(&dir, "atlas.yaml", &format!("{AFFECTED_BASE}{yaml}"));
+        // An unknown key fails the load itself (like the action `cache:` block): never ignored.
+        let err = format!("{:#}", load_checked(dir.path()).unwrap_err());
+        assert!(err.contains(needle), "{needle}: {err}");
+    }
+}
+
+#[test]
+fn affected_semantic_errors_name_the_rule_and_the_problem() {
+    let errs = errors_for(&format!(
+        "{AFFECTED_BASE}affected:\n  rules:\n    - {{ match: [], tasks: [Run checks] }}\n    - {{ match: ['a/[**'], tasks: [Run checks] }}\n    - {{ match: ['ok/**'], tasks: [No such action] }}\n"
+    ));
+    assert_has(&errs, "affected.rules[0].match");
+    assert_has(&errs, "at least one glob");
+    assert_has(&errs, "affected.rules[1].match");
+    assert_has(&errs, "a/[**");
+    assert_has(&errs, "affected.rules[2].tasks");
+    assert_has(&errs, "No such action");
+    // A blank command is an error too; a good declaration has none.
+    assert_has(
+        &errors_for(&format!("{AFFECTED_BASE}affected:\n  command: '  '\n")),
+        "affected.command",
+    );
+    assert!(
+        errors_for(&format!(
+            "{AFFECTED_BASE}affected:\n  rules:\n    - {{ match: ['crates/**'], tasks: [run checks], tests: [t] }}\n"
+        ))
+        .is_empty(),
+        "task names match action labels case-insensitively, like MCP"
+    );
+}
+
+#[test]
+fn schema_lists_affected() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    assert!(schema["properties"].get("affected").is_some());
+    let rule = &schema["definitions"]["AffectedRule"]["properties"];
+    for k in ["match", "tasks", "tests", "routes", "builds"] {
+        assert!(rule.get(k).is_some(), "schema missing affected rule {k}");
+    }
+}
+
+// Issue #130: `worktree.package_store` is on unless the project turns it off, whether or not a
+// `worktree:` block exists (the desktop falls back to `WorktreeConfig::default()`).
+#[test]
+fn test_worktree_package_store_defaults_on_and_false_opts_out() {
+    let base = "name: t\nservices:\n  a:\n    command: x\nworktree:\n  setup: bun install\n";
+    assert!(worktree_of(base).package_store);
+    assert!(!worktree_of(&format!("{base}  package_store: false\n")).package_store);
+    let none = crate::config::project::WorktreeConfig::default();
+    assert!(none.package_store);
+    assert_eq!(none.setup_timeout, 600);
+}
+
+#[test]
+fn test_schema_lists_worktree_package_store() {
+    let schema: serde_json::Value = serde_json::from_str(&json_schema()).unwrap();
+    let props = &schema["definitions"]["WorktreeConfig"]["properties"];
+    assert!(
+        props.get("package_store").is_some(),
+        "schema missing worktree.package_store"
+    );
 }

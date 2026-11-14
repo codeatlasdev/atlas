@@ -286,7 +286,6 @@ class _BlockCardState extends State<_BlockCard> {
       icon: const Icon(Icons.copy_rounded, size: 16),
       tooltip: 'Copy block',
       color: c.faint,
-      visualDensity: VisualDensity.compact,
       onPressed: copy,
     );
     return Padding(

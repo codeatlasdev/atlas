@@ -113,7 +113,7 @@ impl Install {
                 .success()
                 .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
         });
-        let cli = atlas_host::client::atlas_bin().ok();
+        let cli = crate::cmds::atlas_bin().ok();
         let linked = cli
             .as_ref()
             .and_then(|c| std::fs::read_link(c).ok())

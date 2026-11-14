@@ -106,6 +106,8 @@ pub(super) fn services<'a>(
             ServiceState::Stopped => ("○", t.status_stopped),
             ServiceState::Disabled => ("⊘", t.text_muted),
             ServiceState::Suspended => ("⏸", t.text_dim),
+            ServiceState::Unhealthy => ("‼", t.status_failed),
+            ServiceState::Degraded => ("◐", t.warning),
         };
         let port_str = svc
             .port
@@ -152,7 +154,8 @@ pub(super) fn services<'a>(
         out.push(Line::from(spans), Row::Service(svc.name.clone()));
 
         if let Some(note) = &extra.note {
-            let note_color = if svc.state == ServiceState::Failed {
+            let note_color = if matches!(svc.state, ServiceState::Failed | ServiceState::Unhealthy)
+            {
                 t.status_failed
             } else {
                 t.warning
@@ -161,6 +164,16 @@ pub(super) fn services<'a>(
                 format!("   ↳ {}", clip(note, width.saturating_sub(5) as usize)),
                 Style::default().fg(note_color),
             )));
+        }
+        // Size and trend, budget standing and a suspected leak as in `atlas dev --status`, only
+        // when notable, one fact per line so a narrow sidebar never cuts one in half.
+        if let Some(m) = &extra.memory {
+            for part in crate::status::memory_parts(m) {
+                out.plain(Line::from(Span::styled(
+                    format!("   ↳ {}", clip(&part, width.saturating_sub(5) as usize)),
+                    Style::default().fg(t.warning),
+                )));
+            }
         }
     }
     out.spacer();

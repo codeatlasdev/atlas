@@ -73,7 +73,6 @@ class _AtlasCodeBlockState extends State<AtlasCodeBlock> {
                 IconButton(
                   key: const ValueKey('atlas-md-copy'),
                   tooltip: _copied ? 'Copied' : 'Copy',
-                  visualDensity: VisualDensity.compact,
                   iconSize: 16,
                   color: _copied ? c.success : c.muted,
                   onPressed: _copy,

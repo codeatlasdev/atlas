@@ -26,6 +26,25 @@ enum Commands {
     /// Stop the running atlas (runner or TUI) and every service it started
     Down(commands::down::DownArgs),
 
+    /// Check this machine: `--hygiene` finds orphaned Atlas processes and the disk Atlas owns
+    Doctor(commands::doctor::DoctorArgs),
+
+    /// Run a command through the machine-wide queue of heavy jobs (`atlas run --heavy -- cargo test`)
+    /// and/or the task cache (`atlas run --cache -- cargo test`)
+    Run(commands::heavy::RunArgs),
+
+    /// The task cache shared by every worktree: status, gc, clear
+    Cache {
+        #[command(subcommand)]
+        command: commands::cache::CacheCommands,
+    },
+
+    /// The machine-wide queue of heavy jobs (builds, test suites): who runs, who waits
+    Heavy {
+        #[command(subcommand)]
+        command: commands::heavy::HeavyCommands,
+    },
+
     /// Initialize atlas.yaml for the current project
     Init(commands::init::InitArgs),
 
@@ -34,6 +53,12 @@ enum Commands {
         #[command(subcommand)]
         command: commands::config::ConfigCommands,
     },
+
+    #[command(next_help_heading = "Crew")]
+    /// Manage Atlas Crew servers (where crewmates run): install, login, status, logs
+    // `bot` is the pre-rename name: kept (hidden) for scripts and docs written before Atlas Crew.
+    #[command(alias = "bot")]
+    Crew(commands::crew::CrewArgs),
 
     #[command(next_help_heading = "Deploy")]
     /// Ship a release to a server: atomic swap, health-gated restarts, auto-rollback
@@ -210,6 +235,9 @@ async fn run() -> Result<()> {
             | Commands::Wt { .. }
             | Commands::Browser(_)
             | Commands::File(_)
+            | Commands::Run(_)
+            | Commands::Cache { .. }
+            | Commands::Heavy { .. }
     );
 
     if !is_update && !is_mcp {
@@ -219,7 +247,11 @@ async fn run() -> Result<()> {
     match command {
         Commands::Dev(args) => args.run().await?,
         Commands::Down(args) => args.run().await?,
+        Commands::Doctor(args) => args.run().await?,
         Commands::Init(args) => args.run().await?,
+        Commands::Run(args) => args.run().await?,
+        Commands::Cache { command } => command.run().await?,
+        Commands::Heavy { command } => command.run().await?,
         Commands::Config { command } => command.run()?,
         Commands::Deploy(args) => args.run().await?,
         Commands::Update(args) => args.run().await?,
@@ -239,6 +271,7 @@ async fn run() -> Result<()> {
         Commands::Skills { command } => command.run().await?,
         Commands::Link(args) => args.run().await?,
         Commands::Unlink(args) => args.run().await?,
+        Commands::Crew(args) => args.run().await?,
     }
 
     // The TUI is gone and its services are stopped: install an update the user accepted
@@ -317,5 +350,178 @@ mod tests {
             Action::Adhoc(v) => assert_eq!(v, ["node", "-e", "x"]),
             other => panic!("{other:?}"),
         }
+    }
+
+    // Issue #202: export/import take the server first; secrets and rename are opt-in flags that default off,
+    // and the selection repeats. Also under the hidden `atlas bot` alias.
+    #[test]
+    fn crew_export_and_import_parse_their_flags() {
+        use commands::crew::CrewCommands as C;
+        match parse(&argv(&["crew", "export", "me@box"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Export(e) => {
+                    assert_eq!(e.ssh_target, "me@box");
+                    assert!(!e.with_secrets && e.output.is_none() && e.crewmates.is_empty());
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        match parse(&argv(&[
+            "bot",
+            "export",
+            "me@box",
+            "-o",
+            "b.tar.gz",
+            "--crewmate",
+            "a",
+            "--crewmate",
+            "b",
+            "--with-secrets",
+        ])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Export(e) => {
+                    assert_eq!(e.output.as_deref(), Some(std::path::Path::new("b.tar.gz")));
+                    assert_eq!(e.crewmates, ["a", "b"]);
+                    assert!(e.with_secrets);
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        match parse(&argv(&["crew", "import", "me@box", "b.tar.gz", "--rename"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Import(i) => {
+                    assert_eq!(i.ssh_target, "me@box");
+                    assert_eq!(i.file, std::path::Path::new("b.tar.gz"));
+                    assert!(i.rename);
+                }
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            parse(&argv(&["crew", "import", "me@box"])).is_err(),
+            "the file is required"
+        );
+        assert!(parse(&argv(&["crew", "export"])).is_err());
+    }
+
+    // Crew review P0, PR #106 (no kill switch): `atlas crew pause|resume <ssh-target>` exist, take the same
+    // target as `status`, and keep working under the hidden `atlas bot` alias.
+    #[test]
+    fn crew_pause_and_resume_take_an_ssh_target() {
+        use commands::crew::CrewCommands as C;
+        for w in ["crew", "bot"] {
+            match parse(&argv(&[w, "pause", "me@server"])) {
+                Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                    C::Pause(t) => assert_eq!(t.ssh_target, "me@server"),
+                    other => panic!("{w} pause: {other:?}"),
+                },
+                other => panic!("{w} pause: {other:?}"),
+            }
+        }
+        match parse(&argv(&["crew", "resume", "me@server"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Resume(t) => assert_eq!(t.ssh_target, "me@server"),
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        // The target is required, like for `status`.
+        assert!(parse(&argv(&["crew", "pause"])).is_err());
+        assert!(parse(&argv(&["crew", "resume"])).is_err());
+    }
+
+    // The server side of those commands: `atlas hostd --crew-pause|--crew-resume`, one at a time,
+    // never together with the flags that stop or restart the daemon.
+    #[test]
+    fn hostd_crew_pause_and_resume_flags_are_exclusive() {
+        let hostd = |flags: &[&str]| {
+            let mut v = vec!["hostd"];
+            v.extend_from_slice(flags);
+            parse(&argv(&v))
+        };
+        match hostd(&["--crew-pause", "--dir", "/d"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => {
+                assert!(h.crew_pause && !h.crew_resume)
+            }
+            other => panic!("{other:?}"),
+        }
+        match hostd(&["--crew-resume"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => {
+                assert!(h.crew_resume && !h.crew_pause)
+            }
+            other => panic!("{other:?}"),
+        }
+        for bad in [
+            &["--crew-pause", "--crew-resume"][..],
+            &["--crew-pause", "--stop"],
+            &["--crew-resume", "--status"],
+            &["--crew-pause", "--restart"],
+        ] {
+            assert!(hostd(bad).is_err(), "{bad:?} should conflict");
+        }
+    }
+
+    // Issue #203: `atlas crew update <ssh-target> [--version X] [--rollback]`; the flags that cannot be combined
+    // are refused by the parser, before any ssh.
+    #[test]
+    fn crew_update_takes_a_target_with_version_or_rollback() {
+        use commands::crew::CrewCommands as C;
+        let update = |a: &[&str]| {
+            let mut v = vec!["crew", "update"];
+            v.extend_from_slice(a);
+            match parse(&argv(&v)) {
+                Ok(Action::Command(Commands::Crew(c))) => match c.command {
+                    C::Update(u) => Ok(u),
+                    other => panic!("{other:?}"),
+                },
+                Ok(other) => panic!("{other:?}"),
+                Err(e) => Err(e),
+            }
+        };
+        let u = update(&["me@server"]).unwrap();
+        assert_eq!(
+            (u.ssh_target.as_str(), u.version, u.rollback),
+            ("me@server", None, false)
+        );
+        let u = update(&["me@server", "--version", "1.5.2"]).unwrap();
+        assert_eq!(u.version.as_deref(), Some("1.5.2"));
+        assert!(update(&["me@server", "--rollback"]).unwrap().rollback);
+        assert!(update(&[]).is_err());
+        assert!(update(&["me@server", "--rollback", "--version", "1.5.2"]).is_err());
+        assert!(update(&["me@server", "--rollback", "--binary", "/tmp/a"]).is_err());
+    }
+
+    // Decision (Atlas Bot -> Atlas Crew rename): scripts and crewmates set up before it keep working.
+    // `atlas bot …` is `atlas crew …`, `atlas mcp --bot <id>` is `--crewmate <id>`, and neither shows
+    // in help (docs/crew.md documents them as hidden aliases).
+    #[test]
+    fn pre_rename_bot_spellings_still_parse_and_stay_out_of_help() {
+        let status = |w: &str| match parse(&argv(&[w, "status", "me@server"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                commands::crew::CrewCommands::Status(s) => s.ssh_target,
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{w}: {other:?}"),
+        };
+        assert_eq!(status("crew"), "me@server");
+        assert_eq!(status("bot"), "me@server");
+        for flag in ["--crewmate", "--bot"] {
+            match parse(&argv(&["mcp", flag, "c1"])) {
+                Ok(Action::Command(Commands::Mcp(m))) => {
+                    assert_eq!(m.crewmate.as_deref(), Some("c1"))
+                }
+                other => panic!("{flag}: {other:?}"),
+            }
+        }
+        use clap::CommandFactory as _;
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("crew"), "{help}");
+        assert!(
+            !help.contains("bot"),
+            "the old name leaked into help: {help}"
+        );
     }
 }

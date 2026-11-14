@@ -174,6 +174,8 @@ pub fn render(frame: &mut Frame, area: Rect, view: &TabsView, clicks: &ClickMap)
                 ServiceState::Stopped => ("○", t.status_stopped),
                 ServiceState::Disabled => ("⊘", t.status_stopped),
                 ServiceState::Suspended => ("⏸", t.text_dim),
+                ServiceState::Unhealthy => ("‼", t.status_failed),
+                ServiceState::Degraded => ("◐", t.warning),
             };
             tab_spans.push(Span::styled(glyph, Style::default().fg(color)));
         }

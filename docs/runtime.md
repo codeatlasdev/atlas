@@ -37,7 +37,9 @@ With no infra to wait for, steps 5–6 collapse and app services start right awa
 |---|---|
 | `starting` | spawned (or infra port not up yet), not ready |
 | `running` | ready (see below) |
-| `failed` | exited abnormally, probe failed, dependency failed, or restart budget spent |
+| `degraded` | answering its liveness probe but not usable: its [`ready` probe](configuration.md#health-and-readiness) fails, or the same error keeps repeating in its log. See [Unhealthy and degraded](#unhealthy-and-degraded) |
+| `unhealthy` | process alive but no longer answering its liveness probe (hung), after `failure_threshold` misses in a row. Not `failed`: nothing exited |
+| `failed` | exited abnormally, a probe failed before the service was ever healthy, dependency failed, or restart budget spent |
 | `stopped` | not running; also a finished one-shot (`done`) |
 | `disabled` | stopped by you (`s`, MCP stop), or left out of this run by `SERVICE…` / `--profile` (shown `off`); skipped by health checks, never auto-restarted |
 | `suspended` | paused by an action's `pause_services` |
@@ -45,10 +47,37 @@ With no infra to wait for, steps 5–6 collapse and app services start right awa
 Readiness and health, per service:
 
 - With `ready_log`: the service stays `starting` (a live child is **not** enough) until the first matching output line makes it `running`; afterwards a live child counts as healthy and no port probe is made.
-- Otherwise, a **real HTTP `GET`** of the `health` URL (2 s timeout, redirects not followed; 2xx/3xx = healthy, 4xx/5xx/timeout/refused = not; `https://` supported), or a TCP connect to `port`, or (with neither) the child process being alive. A service with a command but no port, no health and no `ready_log` is `running` after it has been alive for 2 seconds (minimum uptime), so a crash loop never flashes green. The same probe is used by the per-service startup watcher and the one-second health tick.
-- A watcher polls every 500 ms while `starting` and every 3 s once `running`; it only flips a service to `failed` after it was healthy at least once, so slow starts are not reported as failures. A one-second health tick also reaps exited children and refreshes the status file.
+- Otherwise, a **real HTTP `GET`** of the `health` URL (`health_timeout`, default 2 s; redirects not followed; 2xx/3xx = healthy, 4xx/5xx/timeout/refused = not; `https://` supported), or a TCP connect to `port`, or (with neither) the child process being alive. A service with a command but no port, no health and no `ready_log` is `running` after it has been alive for 2 seconds (minimum uptime), so a crash loop never flashes green. The same probe is used by the per-service startup watcher and the one-second health tick.
+- A watcher polls every 500 ms while `starting` and every 3 s once `running`; it only promotes `starting` → `running` (and recovery). It never marks a live service down: that is the one-second health tick's call, which owns the miss counter, the `ready` probe and the log context, reaps exited children and refreshes the status file.
 - A service whose spawned child died is `failed` even if something else answers on its port (an orphan or another tool holding it). The exception is a launcher that exits `0` (`docker compose up -d`) on a service with a port/health: there the probe decides.
+- Before it spawns a service that has a `port`, Atlas asks the OS who listens on it (read-only: `lsof` on macOS, `/proc` on Linux, `GetExtendedTcpTable` on Windows). A holder that is not this project's own run (`.logs/.pids` and their children) is a **port conflict**: the service log gets `port N held by PID P (cmd, cwd …)`, the sidebar note, `atlas dev --status`, Atlas Desktop and the status file's / MCP's `port_conflict: {pid, cmd, cwd}` say the same, and the spawn still goes ahead (the framework's own message stays in the log; some tools pick another port). The health tick looks again while a conflict stands and drops it once the holder is gone or the port is ours. Atlas never ends a process because of its port: the message says what you can do (`stop it yourself (kill P) or change the service port`).
 - Command-less services are only port-watched.
+
+### Unhealthy and degraded
+
+Once per second, for every service with a live child that is `running`, `degraded` or `unhealthy`:
+
+1. **Liveness** runs (`health` URL, else `port`, else the process being alive), bounded by `health_timeout` (default 2 s).
+2. If it answered **and** the service has a [`ready:` probe](configuration.md#health-and-readiness), that probe runs (bounded by its own `timeout`, default 5 s). It is skipped while liveness fails.
+3. The verdict is decided in one place:
+
+| Result | State |
+|---|---|
+| answered, `ready` passes or absent, no repeating error | `running` |
+| answered, `ready` fails | `degraded`, reason `ready probe failed: <error>` (`GET /ready → 503`, `connection refused`, `timed out after 5s`, `` `cmd` exited 1: <last stderr line> ``) |
+| answered, same error line ≥ 3 times in 60 s | `degraded`, reason `repeating error: <line>` |
+| missed, fewer than `failure_threshold` (default 3) in a row | unchanged (grace: a dev server's hot restart closes its port for a moment) |
+| missed `failure_threshold` in a row, after it had answered once | `unhealthy` |
+| missed, never answered yet | unchanged: startup, see [Start timeout](#start-timeout) |
+
+- `unhealthy` beats `degraded`; a failing `ready` probe beats a repeating log line, which beats a memory overrun (`memory_warn`, or `max_memory` with `on_memory_max: notify`): the memory reason is shown only when nothing more specific is wrong, and it clears on its own two samples after memory drops. A memory-`degraded` service does not satisfy a `healthy` dependency, like any `degraded` one.
+- **Repeating errors** only count error-level lines (the same detection as the log level filter). A line is compared after ANSI, timestamps, UUIDs, hex ids and numbers are replaced by placeholders and whitespace is collapsed, so `db timeout after 31ms` and `db timeout after 87ms` are the same error. At most 64 distinct shapes are tracked per service. It clears when the hits age out of the 60 s window.
+- **On entering `unhealthy`** Atlas captures the service's last 20 output lines and the time, raises a critical alert (`unhealthy: no answer from the liveness probe (3 misses × 2s timeout)`, with `, restarting` appended under `on_unhealthy: restart`) and narrates the same text as a scheduler note (like `still starting after Ns: …`). Later ticks keep the original since-time and lines. The state clears when the service answers again.
+- **`on_unhealthy: restart`** also restarts the service the first time it turns `unhealthy`, with the same delays and budget as `max_restarts` (default 5, `0` = unlimited); the budget resets after the service stays up for 60 s. When it is spent the service is left running `unhealthy` with the note `unhealthy again after its restarts: left running`. The default `notify` never restarts.
+- **Only a live process** can be `unhealthy`. A process that exits is `failed` (or restarts per its [restart policy](configuration.md#restart-policy)); a service that is not yet `running` (still `starting`, or a detached launcher with no child) keeps the old rule that a failed probe means `failed`.
+- **Dependents.** A `healthy` [`depends_on`](configuration.md#depends_on) condition is met only by `running`; a `degraded` or `unhealthy` dependency does not satisfy it. Already-started dependents are not stopped.
+- **Health context is per spawn.** Misses, the repeated-error history and the captured lines start empty on every (re)spawn.
+- The service **note** (sidebar, MCP `note`, `atlas dev --ci` `"reason"`) is `unhealthy for 42s: 3 missed probes` for `unhealthy`, and the reason above for `degraded`.
 
 ### Start timeout
 
@@ -56,7 +85,7 @@ A spawned service that waits on a port, `health` URL or `ready_log` shows the si
 
 ### Per-service facts
 
-Per service Atlas tracks the last **exit code** (none while running or when killed by a signal), the **restart count** of the current streak, the **uptime** (while `running`) and the spawn time. They are in `.logs/.tui-status.json` (`exit_code`, `restarts`, `uptime_s`, `started_at`, `note`, `autostart`, `deselected`), in the MCP `atlas_status` rows and (`exit_code`, `restarts`) in `atlas dev --ci` JSON.
+Per service Atlas tracks the last **exit code** (none while running or when killed by a signal), the **restart count** of the current streak, the **uptime** (while `running`) and the spawn time. They are in `.logs/.tui-status.json` (`exit_code`, `restarts`, `uptime_s`, `started_at`, `note`, `autostart`, `deselected`, plus the [health facts](#status-file-health-facts) below), in the MCP `atlas_status` rows and (`exit_code`, `restarts`) in `atlas dev --ci` JSON.
 
 ### Selected runs (`SERVICE…`, `--profile`)
 
@@ -118,6 +147,23 @@ If Atlas is killed hard (SIGKILL, crash, power loss) its children can survive. O
 2. **`lock_file`**, see below.
 
 Atlas deliberately never kills "whatever is listening on the configured port": on macOS with OrbStack that would hit the container runtime's port forwarder.
+
+### Sessions and hygiene
+
+`.pids` and the parent chain miss a process that **daemonized** (a browser a test run opened, a dev server that forked away: it is re-parented to init/launchd and no longer descends from the service). So everything Atlas starts belongs to a **session**: a service (`<run>:<service>`), an action (`<run>:action/<label>`), an interactive session (`<run>:session/<label>`), a hostd terminal (its id), an `atlas desktop --agent` instance. Each started root is recorded in `~/.atlas/hygiene/registry.json` with its owner `(pid, start time)` (a bare pid is reused; the start time names a process for good). How the rest of a session's tree is found depends on the OS:
+
+- **Linux** reads `ATLAS_SESSION=<session>` from every process's environment (set last on every spawn, so a service's `env:` cannot retag its tree). It is inherited by every descendant, `setsid` and double forks included, so a daemonized grandchild is found even if nobody ever saw it.
+- **macOS and Windows cannot read another process's environment** (macOS with SIP returns argv but no environment, even for the same user; Windows has no API). There the owner **records membership while it lives**: at spawn and every 2 s (`atlas dev` on its health tick, hostd on its own tick, an action every second) it snapshots the process table and records every descendant of each live root as `(pid, start)`. A grandchild that later daemonizes and is re-parented to launchd is still known, because it was seen under its root first. **The window:** a process that forks and detaches between two snapshots (under about 2 s) is never seen and escapes on macOS and Windows. This is a limit of the OS, not something to tune away; `atlas doctor --hygiene` says it.
+
+Then:
+
+- **Stop, action end, terminal close:** after the tree kill, every live process of the session (tag, recorded member, current tree of the root) is ended: SIGTERM, a 2 to 3 s grace, SIGKILL, on **exact pids**, re-checking each pid's start time right before every signal. Never a process group, never a negative pid, never by port; a recorded pid whose start time differs is a stranger and is never signalled.
+- **Owner died** (`atlas dev` SIGKILLed, hostd crashed): hostd records and checks every 2 s (one process-table read and a registry read) and reaps the orphaned sessions, so nothing recorded is left **within 10 s** (2 s + the 3 s grace). A standalone `atlas dev` with no hostd sweeps at the next start.
+- **A tag nobody registered** (Linux) is reaped only once the process is older than 60 s (a daemon spawns first and registers a few milliseconds later), by the periodic full sweep.
+- **Registered directories** (agent temp dirs, browser profiles, caches, and the directory of each `atlas desktop --agent` instance) have a size cap (default 512 MiB): the directory of a dead session is deleted whole, one over its cap loses its oldest entries first (an agent instance's directory is its HOME and is never trimmed while it runs, only removed whole once it is gone). Only paths in the registry are ever touched, and the registry is shared by every `atlas dev`, hostd and the desktop, so a sweep never removes a directory younger than 60 s (it is registered before its session's first process is) or one whose owner still runs; it refuses to register a relative path, `/`, a top-level system folder or your home.
+- **Spotlight (macOS):** every worktree root Atlas creates (`~/.atlas/worktrees`, the per-repo folder) and every directory it registers gets an empty `.metadata_never_index` file, so `mdworker` does not index `target/` and `node_modules` trees (a Mac froze while Spotlight indexed several fresh worktrees at once). Nothing is deleted or changed to do it.
+
+`atlas doctor --hygiene` shows all of this and `--fix` applies it ([cli](cli.md#atlas-doctor)); the desktop has the same in Settings > Workspaces > Hygiene; agents read it with the MCP tool `atlas_hygiene` (look only).
 
 ### Lock files (`lock_file`)
 
@@ -202,11 +248,13 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 | `<service>.log` | every spawned service | `HH:MM:SS [stdout\|stderr] text`, ANSI stripped, one line per entry |
 | `<service>.prev.log` | rotation | the previous run's log (or the previous 50 MB segment) |
 | `.tui-status.json` | manager, every second | status snapshot (below). Written atomically (temp file + rename). |
+| `.tui-metrics.json` | manager, every 5 s | per-service memory series (last hour) and facts, for MCP `atlas_metrics` ([memory facts](#status-file-memory-facts)). Written atomically. |
 | `.tui.lock` | the running atlas | singleton `flock`, holds the PID |
 | `.pids` | manager | PIDs of live children, one per line; removed on clean quit |
 | `tunnel.log` | tunnel task | ssh stderr and reconnect notes (same line format; rotated to `tunnel.prev.log` per run) |
 | `.tunnel.pid` | tunnel task | only when a tunnel is left running on exit: pid, `ssh_host`, `local_port` (one per line) |
 | `atlas.sock` | TUI / runner / `--headless` | control socket |
+| `atlas-audit.log` | control socket server, TUI | audit trail of control calls (restart/stop/start service, run action): one JSON object per line with `ts`, `caller` (`human` or `agent`), `client`, `session`, `tool`, `target`, `args`, `result` (`allowed`, `denied`, `error`). The previous run's file is `atlas-audit.prev.log`; it also rotates past 5 MB. Read it with `atlas_logs` `service: "audit"`. See [MCP › Agent permissions and audit](mcp.md#agent-permissions-and-audit) |
 | `runner.log` | `atlas dev --detach` | the daemonized runner's stdout/stderr (lifecycle messages, not service output); truncated on every start |
 | `.atlas-ui.json` | TUI | per-project UI memory: active tab (by name), zoom, wrap/timestamps/JSON toggles, level filter, recent palette commands. Best-effort; a missing or corrupt file is a fresh start |
 
@@ -233,7 +281,33 @@ A client that disconnects (clean or not) is dropped on the next write or one-sec
 
 `mode` is `runner` (`--detach` / `--headless`, attachable) or `tui`; `clients` is the number of attached TUIs. `tunnel` is `null` when no tunnel is running (none configured, or `enabled: false` and not yet opened on demand).
 
-`state` is lowercase (`starting`, `running`, `failed`, `stopped`, `disabled`, `suspended`). `updated_at` is a Unix timestamp, the heartbeat: [`atlas dev --status`](cli.md#--status) and MCP treat the run as alive only if `pid` exists and the heartbeat is less than 120 s old, so a file left by a crash is correctly reported as "not running".
+`state` is lowercase (`starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled`, `suspended`). `updated_at` is a Unix timestamp, the heartbeat: [`atlas dev --status`](cli.md#--status) and MCP treat the run as alive only if `pid` exists and the heartbeat is less than 120 s old, so a file left by a crash is correctly reported as "not running".
+
+<a id="status-file-health-facts"></a>**Health facts.** Every service row of the status file also carries these keys (the runner's `state` and `rows` events carry the same ones, so a TUI or the desktop app attached to a runner shows exactly what the file says):
+
+| Key | Meaning |
+|---|---|
+| `ready` | result of the service's `ready:` probe: `true` while `running`, `false` while `degraded` by a failing probe; `null` without a `ready:` probe, while the service is not up, or when `degraded` only by a repeating error or `unhealthy` |
+| `probe_error` | why a `degraded` service is degraded (the probe's message, or the repeating line); `null` otherwise |
+| `unhealthy_since` | unix seconds the service turned `unhealthy`; `null` otherwise |
+| `unhealthy_misses` | liveness misses in a row at that moment; `null` otherwise |
+| `unhealthy_lines` | the last output lines (up to 20) at that moment; `[]` otherwise |
+
+`atlas dev --status` adds a `READY` column (`ok` / `fail` / `-`) only when some service has a `ready:` probe, so its output is unchanged otherwise. Under a `degraded` row it prints `↳ <probe_error>`, and under an `unhealthy` one `↳ unhealthy for 42s (3 missed probes); last output:` followed by the captured lines.
+
+<a id="status-file-memory-facts"></a>**Memory facts** ([#131](https://github.com/codeatlasdev/atlas/issues/131); see [Memory](configuration.md#memory)). Every service row also carries these keys, from the same producer for the file and the runner wire:
+
+| Key | Meaning |
+|---|---|
+| `memory_rss` | bytes of the whole process tree (on macOS the physical footprint), rounded to whole MB; `null` while the service is not running |
+| `memory_trend` | `rising`, `flat` or `falling` over the last 5 minutes (under ±2 MB/min is `flat`); `null` until ~30 s of samples exist |
+| `memory_trend_mb_min` | signed MB per minute behind the trend, rounded; `null` with it |
+| `budget_state` | `ok`, `warn` (over `memory_warn`) or `over` (over `max_memory`), after two samples in a row; `ok` without a budget |
+| `memory_leak` | `leak suspected: +600 MB over 12 reloads` while RSS only grows from one reload or restart to the next; `null` otherwise |
+
+A row from an older atlas has none of these keys and reads as nothing known. `atlas dev --status` prints one `↳ memory 2.1 GB · rising +42 MB/min · budget warn · leak suspected: …` line under a service only when it has something to say (over a budget, a suspected leak or a rising trend), so a healthy project's table is unchanged.
+
+`.tui-metrics.json` holds the series for MCP [`atlas_metrics`](mcp.md#atlas_metrics): per service, `samples` as `[unix_s, bytes]` pairs (oldest first, one every `interval_s` = 5, the last 720 = one hour), the facts above, and `cycles` (reloads and restarts the leak watch has counted). It is rewritten with the status file's temp-and-rename and belongs to the running `atlas dev`; an attached client never writes it.
 
 ## Exit behavior summary
 

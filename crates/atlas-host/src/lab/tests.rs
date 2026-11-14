@@ -485,6 +485,35 @@ async fn the_lab_lists_main_projects_with_main_agents() {
     assert_eq!(list["projects"][0]["id"], "a", "{list}");
 }
 
+/// Guards 2026-11-10: Atlas Dev runs its hostd in `~/.atlas/dev`, but the desktop always keeps
+/// its projects in `~/.atlas/desktop/projects.json`. The hostd looked in its own dir and the
+/// phone showed "Projects 0" for a computer with seven. The registry is wherever the desktop
+/// keeps it, not wherever the daemon happens to live.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_daemon_outside_the_registry_dir_still_lists_the_desktop_projects() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let proj = tmp.path().join("shop");
+    std::fs::create_dir_all(&proj).unwrap();
+    std::fs::create_dir_all(home.join("desktop")).unwrap();
+    std::fs::write(
+        home.join("desktop/projects.json"),
+        json!([{"id": "a", "root": proj, "pinned": false, "added": "x"}]).to_string(),
+    )
+    .unwrap();
+    let dir = tmp.path().join("dev");
+    let d = dir.clone();
+    let opts = ServeOpts {
+        no_mobile_relay: true,
+        registry: Some(home),
+        ..Default::default()
+    };
+    tokio::spawn(async move { crate::server::serve_with(&d, opts).await });
+    let c = connect(&dir).await;
+    let list = c.call("project_list", json!({})).await.unwrap();
+    assert_eq!(list["projects"][0]["id"], "a", "{list}");
+}
+
 /// A lab with no main daemon is a clear startup error, never a silent empty mirror.
 #[tokio::test]
 async fn the_lab_refuses_to_start_without_a_main_daemon() {
@@ -561,6 +590,8 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
             json!({"pane": "p", "req": "r", "allow": true}),
         ),
         ("agent_launch", json!({"project": "p", "agent": "omp"})),
+        ("worktree_create", json!({"project": "p"})),
+        ("worktree_remove", json!({"id": "w"})),
     ];
     for (c, a) in main_cmds {
         assert!(matches!(route(&parse(c, a)), Route::Main), "{c} → main");
@@ -570,14 +601,31 @@ fn every_command_a_phone_may_send_has_an_explicit_route() {
         ("agent_integrations", json!({})),
         ("agent_tree", json!({"pane": "p"})),
         ("agent_history", json!({"pane": "p"})),
+        ("worktree_list", json!({"project": "p"})),
         ("project_list", json!({})),
         ("project_detail", json!({"id": "a"})),
         ("project_logs", json!({"id": "a"})),
         ("project_service", json!({"id": "a", "op": "restart"})),
         ("project_action", json!({"id": "a", "key": "k"})),
+        ("git_status", json!({"root": "/r"})),
+        ("git_diff", json!({"root": "/r"})),
+        ("git_stage", json!({"root": "/r", "paths": ["a"]})),
+        ("git_unstage", json!({"root": "/r", "paths": ["a"]})),
+        ("git_commit", json!({"root": "/r", "message": "m"})),
+        ("git_commit_message", json!({"root": "/r"})),
+        ("git_push", json!({"root": "/r"})),
+        (
+            "git_pr_create",
+            json!({"root": "/r", "title": "t", "body": "b"}),
+        ),
         ("info", json!({})),
         ("mobile_pair_start", json!({})),
         ("mobile_devices", json!({})),
+        ("crew_servers", json!({})),
+        (
+            "crew_call",
+            json!({"server": "s", "cmd": "crewmate_list", "args": {}}),
+        ),
     ];
     for (c, a) in local_cmds {
         assert!(matches!(route(&parse(c, a)), Route::Local), "{c} → local");

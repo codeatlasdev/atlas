@@ -45,6 +45,8 @@ fi
 
 # Atlas Mobile (apps/mobile) needs Flutter; everything else works without it.
 command -v flutter >/dev/null || say "ℹ Flutter not found: apps/mobile is skipped by the gate (https://docs.flutter.dev/get-started/install)"
+# services/push-relay needs Go; everything else works without it.
+command -v go >/dev/null || say "ℹ Go not found: services/push-relay is skipped by the gate (https://go.dev/doc/install)"
 
 if ! command -v cargo-tauri >/dev/null; then
   say "▶ cargo install tauri-cli"

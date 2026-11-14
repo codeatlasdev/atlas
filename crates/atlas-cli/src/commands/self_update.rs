@@ -1021,12 +1021,18 @@ fn run_self_with(exe: &std::path::Path, args: &[&str]) {
 
 // ── Tarball extraction ────────────────────────────────────────────────────────
 
+/// The `atlas` executable inside the release tarball: a regular file with that name, never a
+/// directory entry (it has no body, and installing it would replace the CLI with nothing) and
+/// never an empty file.
 fn extract_tarball(data: &[u8]) -> Result<Vec<u8>> {
     use std::io::Read;
     let gz = flate2::read::GzDecoder::new(data);
     let mut archive = tar::Archive::new(gz);
     for entry in archive.entries()? {
         let mut entry = entry?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
         let path = entry.path()?.to_path_buf();
         if path
             .file_name()
@@ -1034,10 +1040,93 @@ fn extract_tarball(data: &[u8]) -> Result<Vec<u8>> {
         {
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
+            if buf.is_empty() {
+                bail!("the atlas binary in the tarball is empty; refusing to install it");
+            }
             return Ok(buf);
         }
     }
     bail!("Could not find atlas binary in tarball")
+}
+
+#[cfg(test)]
+mod extract_tests {
+    use super::*;
+
+    /// A `.tar.gz` of `(path, kind, body)` entries, the way the release workflow packs the CLI.
+    fn tarball(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
+        let mut tar_bytes = Vec::new();
+        {
+            let mut b = tar::Builder::new(&mut tar_bytes);
+            for (path, kind, body) in entries {
+                let mut h = tar::Header::new_gnu();
+                h.set_entry_type(*kind);
+                h.set_size(body.len() as u64);
+                h.set_mode(0o755);
+                b.append_data(&mut h, path, *body).unwrap();
+            }
+            b.finish().unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut gz, &tar_bytes).unwrap();
+        gz.finish().unwrap()
+    }
+
+    fn exe() -> String {
+        atlas_core::paths::exe("atlas")
+    }
+
+    #[test]
+    fn the_binary_is_found_at_the_root_or_in_a_folder() {
+        let f = tar::EntryType::Regular;
+        let at_root = tarball(&[(exe().as_str(), f, b"binary".as_slice())]);
+        assert_eq!(extract_tarball(&at_root).unwrap(), b"binary");
+        let nested = format!("atlas-1.6.0/{}", exe());
+        let in_dir = tarball(&[
+            ("README", f, b"x".as_slice()),
+            (nested.as_str(), f, b"binary"),
+        ]);
+        assert_eq!(extract_tarball(&in_dir).unwrap(), b"binary");
+    }
+
+    /// Incident class: any entry *named* `atlas` was taken, a directory included. Its body is empty,
+    /// so the "update" would have installed a zero-byte executable over the working CLI.
+    #[test]
+    fn a_directory_named_atlas_is_not_the_binary() {
+        let dir = tarball(&[
+            (exe().as_str(), tar::EntryType::Directory, b"".as_slice()),
+            ("other", tar::EntryType::Regular, b"x"),
+        ]);
+        let e = extract_tarball(&dir).unwrap_err().to_string();
+        assert!(e.contains("Could not find atlas binary"), "{e}");
+        // And a real file after the directory entry is still found.
+        let both = tarball(&[
+            (exe().as_str(), tar::EntryType::Directory, b"".as_slice()),
+            (
+                format!("{}/{}", "bin", exe()).as_str(),
+                tar::EntryType::Regular,
+                b"binary",
+            ),
+        ]);
+        assert_eq!(extract_tarball(&both).unwrap(), b"binary");
+    }
+
+    /// A zero-byte `atlas` (a broken release that still has a valid checksum) must not replace a
+    /// working CLI with nothing.
+    #[test]
+    fn an_empty_binary_is_refused() {
+        let t = tarball(&[(exe().as_str(), tar::EntryType::Regular, b"".as_slice())]);
+        let e = extract_tarball(&t).unwrap_err().to_string();
+        assert!(e.contains("empty"), "{e}");
+    }
+
+    #[test]
+    fn a_tarball_without_the_binary_or_that_is_not_gzip_is_an_error() {
+        let none = tarball(&[("README", tar::EntryType::Regular, b"x".as_slice())]);
+        assert!(extract_tarball(&none).is_err());
+        assert!(extract_tarball(b"<html>404</html>").is_err());
+        assert!(extract_tarball(b"").is_err());
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -139,52 +139,61 @@ class _AgentHubScreenState extends State<AgentHubScreen> {
             for (final (n, d) in all)
               if (_matches(_filter, n)) (n, indent ? d : 0),
           ];
-          return Column(
-            children: [
-              _HubHeader(
-                running: running,
-                parked: parked,
-                totals: totals,
-                layout: _layout,
-                onLayout: (l) => setState(() => _layout = l),
-                filter: _filter,
-                onFilter: (f) => setState(() => _filter = f),
-                tree: t,
-              ),
-              Expanded(
-                child: rows.isEmpty
-                    ? Center(
-                        child: Text(
-                          t.nodes.isEmpty
-                              ? 'No agents yet'
-                              : 'No agents match this filter',
-                          style: TextStyle(color: c.faint),
+          return LayoutBuilder(
+            builder: (context, body) => Column(
+              children: [
+                // The header is never more than half the body: large text on a short phone
+                // scrolls it and leaves the roster its room.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: body.maxHeight * .5),
+                  child: SingleChildScrollView(
+                    child: _HubHeader(
+                      running: running,
+                      parked: parked,
+                      totals: totals,
+                      layout: _layout,
+                      onLayout: (l) => setState(() => _layout = l),
+                      filter: _filter,
+                      onFilter: (f) => setState(() => _filter = f),
+                      tree: t,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: rows.isEmpty
+                      ? Center(
+                          child: Text(
+                            t.nodes.isEmpty
+                                ? 'No agents yet'
+                                : 'No agents match this filter',
+                            style: TextStyle(color: c.faint),
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(
+                            Space.md,
+                            Space.sm,
+                            Space.md,
+                            Space.xl,
+                          ),
+                          itemCount: rows.length,
+                          itemBuilder: (_, i) {
+                            final (n, depth) = rows[i];
+                            return HubRow(
+                              key: ValueKey('hub-${n.id}'),
+                              node: n,
+                              tree: t,
+                              depth: depth,
+                              focused: n.id == widget.focus,
+                              showParent: _layout == HubLayout.flat,
+                              fallbackAgent: widget.fallbackAgent,
+                              onTap: () => _open(n.id),
+                            );
+                          },
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(
-                          Space.md,
-                          Space.sm,
-                          Space.md,
-                          Space.xl,
-                        ),
-                        itemCount: rows.length,
-                        itemBuilder: (_, i) {
-                          final (n, depth) = rows[i];
-                          return HubRow(
-                            key: ValueKey('hub-${n.id}'),
-                            node: n,
-                            tree: t,
-                            depth: depth,
-                            focused: n.id == widget.focus,
-                            showParent: _layout == HubLayout.flat,
-                            fallbackAgent: widget.fallbackAgent,
-                            onTap: () => _open(n.id),
-                          );
-                        },
-                      ),
-              ),
-            ],
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -237,23 +246,24 @@ class _HubHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Space.md,
+            runSpacing: Space.sm,
             children: [
-              Expanded(
-                child: Text(
-                  '$running running · $parked parked',
-                  key: const ValueKey('hub-counts'),
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+              Text(
+                '$running running · $parked parked',
+                key: const ValueKey('hub-counts'),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               SegmentedButton<HubLayout>(
                 showSelectedIcon: false,
                 style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 segments: const [
                   ButtonSegment(value: HubLayout.flat, label: Text('Flat')),
@@ -297,7 +307,6 @@ class _HubHeader extends StatelessWidget {
                         ),
                       ),
                       selected: filter == f,
-                      visualDensity: VisualDensity.compact,
                       showCheckmark: false,
                       labelPadding: EdgeInsets.zero,
                       padding: EdgeInsets.zero,
@@ -717,44 +726,54 @@ class AgentDetail extends StatelessWidget {
                 ),
               ),
             ),
-            Container(
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: c.borderSubtle)),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * .3,
               ),
-              padding: const EdgeInsets.fromLTRB(
-                Space.lg,
-                Space.md,
-                Space.lg,
-                Space.md,
-              ),
-              child: Wrap(
-                spacing: Space.sm,
-                runSpacing: Space.sm,
-                children: [
-                  FilledButton.tonal(
-                    key: const ValueKey('detail-open'),
-                    onPressed: () => onOpen(n.id),
-                    child: const Text('Open conversation'),
+              child: SingleChildScrollView(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: c.borderSubtle)),
                   ),
-                  if (onMessage != null)
-                    OutlinedButton(
-                      key: const ValueKey('detail-message'),
-                      onPressed: () => onMessage!(n),
-                      child: Text(
-                        n.isRoot ? 'Message' : 'Message Main about ${n.label}',
+                  padding: const EdgeInsets.fromLTRB(
+                    Space.lg,
+                    Space.md,
+                    Space.lg,
+                    Space.md,
+                  ),
+                  child: Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      FilledButton.tonal(
+                        key: const ValueKey('detail-open'),
+                        onPressed: () => onOpen(n.id),
+                        child: const Text('Open conversation'),
                       ),
-                    ),
-                  if (parent != null)
-                    OutlinedButton(
-                      key: const ValueKey('detail-parent'),
-                      onPressed: () => onOpen(parent.id),
-                      child: Text(
-                        parent.isRoot
-                            ? 'Back to Main'
-                            : 'Back to ${parent.label}',
-                      ),
-                    ),
-                ],
+                      if (onMessage != null)
+                        OutlinedButton(
+                          key: const ValueKey('detail-message'),
+                          onPressed: () => onMessage!(n),
+                          child: Text(
+                            n.isRoot
+                                ? 'Message'
+                                : 'Message Main about ${n.label}',
+                          ),
+                        ),
+                      if (parent != null)
+                        OutlinedButton(
+                          key: const ValueKey('detail-parent'),
+                          onPressed: () => onOpen(parent.id),
+                          child: Text(
+                            parent.isRoot
+                                ? 'Back to Main'
+                                : 'Back to ${parent.label}',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -784,9 +803,9 @@ class _LineageLink extends StatelessWidget {
     final c = AtlasColors.of(context);
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+      child: MinTapTarget(
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(prefix, style: TextStyle(fontSize: 12.5, color: c.muted)),
             const SizedBox(width: 6),

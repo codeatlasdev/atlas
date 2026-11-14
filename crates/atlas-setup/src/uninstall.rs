@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! (ask: keep %USERPROFILE%\.atlas? deleting asks a second time) ─ close Atlas ─ NSIS
-//! `uninstall.exe /S _?=<dir>` (synchronous) ─ [remove data: `atlas.exe uninstall --yes`] ─ clean
+//! `uninstall.exe /S _?=<dir>` (synchronous) ─ [remove data: `atlas.exe uninstall --yes --purge`] ─ clean
 //! what NSIS leaves ─ verify the app is gone ─ schedule our own copy for deletion
 //! ```
 //!
@@ -26,7 +26,7 @@ pub const DELETING: &str = "Deleting your Atlas data.";
 
 pub trait Host {
     fn close_app(&self, install_dir: &Path, grace: Duration);
-    /// `atlas.exe uninstall --yes`: removes `%USERPROFILE%\.atlas`, the CLI and its PATH entry. `Err` carries
+    /// `atlas.exe uninstall --yes --purge`: removes `%USERPROFILE%\.atlas`, the CLI and its PATH entry. `Err` carries
     /// what it printed.
     fn remove_cli_and_data(&self, cli: &Path) -> Result<(), String>;
     /// Run the NSIS uninstaller silently and wait; its exit code.

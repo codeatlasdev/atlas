@@ -19,7 +19,9 @@ use crate::paths;
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
-type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
+/// Calls waiting for their reply. `None` once the connection dropped: the reader closes it as it
+/// exits, so a call can never register after the last moment anyone would answer it (#226).
+type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>>;
 
 #[derive(Clone)]
 pub struct HostClient {
@@ -53,7 +55,7 @@ impl HostClient {
 
         let (tx, rx) = crate::pty::out_channel();
         tokio::spawn(crate::protocol::write_lines(rx, w));
-        let pending: Pending = Arc::default();
+        let pending: Pending = Arc::new(Mutex::new(Some(HashMap::new())));
         let (events, _) = broadcast::channel(4096);
         let closed = Arc::new(tokio::sync::Notify::new());
         let (p, ev, cl) = (pending.clone(), events.clone(), closed.clone());
@@ -63,7 +65,8 @@ impl HostClient {
                     continue;
                 };
                 if let Some(id) = v.get("id").and_then(Value::as_u64) {
-                    if let Some(tx) = p.lock().remove(&id) {
+                    let tx = p.lock().as_mut().and_then(|m| m.remove(&id));
+                    if let Some(tx) = tx {
                         let res = if v["ok"] == true {
                             Ok(v.get("data").cloned().unwrap_or(Value::Null))
                         } else {
@@ -75,7 +78,8 @@ impl HostClient {
                     let _ = ev.send(Arc::new(v));
                 }
             }
-            p.lock().clear();
+            // Dropping every waiting sender fails those calls; `None` fails every later one.
+            *p.lock() = None;
             cl.notify_waiters();
             let _ = ev.send(Arc::new(json!({"ev": "disconnected"})));
         });
@@ -92,10 +96,15 @@ impl HostClient {
     pub async fn call(&self, cmd: &str, args: Value) -> Result<Value> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (otx, orx) = oneshot::channel();
-        self.pending.lock().insert(id, otx);
+        match self.pending.lock().as_mut() {
+            Some(m) => m.insert(id, otx),
+            None => return Err(anyhow!("hostd disconnected")),
+        };
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string();
         if self.tx.force(line).is_err() {
-            self.pending.lock().remove(&id);
+            if let Some(m) = self.pending.lock().as_mut() {
+                m.remove(&id);
+            }
             return Err(anyhow!("hostd disconnected"));
         }
         match orx.await {
@@ -109,12 +118,16 @@ impl HostClient {
         self.events.subscribe()
     }
 
-    /// Resolves when the connection drops.
+    /// Resolves when the connection drops, also when it dropped before this was called.
     pub async fn closed(&self) {
-        if self.tx.is_closed() {
+        // Register before checking: the reader's single `notify_waiters` cannot fall in between.
+        let notified = self.closed.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if self.tx.is_closed() || self.pending.lock().is_none() {
             return;
         }
-        self.closed.notified().await
+        notified.await
     }
 
     /// Connect to the hostd at `dir` (default `~/.atlas`).
@@ -124,30 +137,32 @@ impl HostClient {
     }
 }
 
-/// The `atlas` binary used to start hostd.
+/// The `atlas` binary used to start hostd, resolved from the process `PATH` (see
+/// [`atlas_core::paths::resolve_atlas_cli`]).
 pub fn atlas_bin() -> Result<PathBuf> {
-    if let Ok(p) = std::env::var("ATLAS_BIN") {
-        return Ok(p.into());
-    }
-    let home = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".atlas/bin")
-        .join(atlas_core::paths::exe("atlas"));
-    if home.exists() {
-        return Ok(home);
-    }
-    if let Some(cli) = atlas_core::paths::bundled_cli() {
-        return Ok(cli);
-    }
-    let names = atlas_core::paths::exe_names("atlas");
-    std::env::var_os("PATH")
-        .and_then(|path| {
-            std::env::split_paths(&path)
-                .flat_map(|d| names.iter().map(move |n| d.join(n)))
-                .find(|p| p.is_file())
-        })
-        .ok_or_else(|| anyhow!("atlas CLI not found; run atlas desktop --install"))
+    atlas_bin_with(None)
 }
+
+/// [`atlas_bin`] that also looks on `login_path` (the login shell's `PATH`) before the process one: an app started
+/// from Finder or the Dock has a minimal `PATH`.
+pub fn atlas_bin_with(login_path: Option<&std::ffi::OsStr>) -> Result<PathBuf> {
+    atlas_core::paths::resolve_atlas_cli(
+        std::env::var_os("ATLAS_BIN").as_deref(),
+        dirs::home_dir().as_deref(),
+        atlas_core::paths::bundled_cli(),
+        login_path,
+        std::env::var_os("PATH").as_deref(),
+    )
+    .ok_or_else(|| anyhow!(NOT_FOUND))
+}
+
+/// What the user can do when no runnable `atlas` was found (the CLI that `atlas desktop --install` lives in is the
+/// one that is missing, so the message gives the installer itself).
+pub const NOT_FOUND: &str = if cfg!(windows) {
+    "atlas CLI not found — install (PowerShell): irm https://atlas.codeatlas.com.br/install.ps1 | iex"
+} else {
+    "atlas CLI not found — install: curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash"
+};
 
 /// Connect to the local hostd, starting it (detached, own session) if needed.
 pub async fn ensure_local(atlas: &Path, client: &str) -> Result<HostClient> {
@@ -284,7 +299,84 @@ async fn reply_line(r: &mut BufReader<ipc::ReadHalf>) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_hostd_command;
+    use super::{HostClient, is_hostd_command};
+    use atlas_core::ipc;
+    use serde_json::json;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    /// A fake hostd that accepts one client and answers its hello. It hangs up once it has read
+    /// `lines` commands (never answering them) and the returned sender fired or was dropped.
+    async fn fake_hostd(
+        lines: usize,
+    ) -> (
+        tempfile::TempDir,
+        HostClient,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = ipc::Listener::bind(&sock).unwrap();
+        let (hang_up, go) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let (r, mut w) = ipc::split(listener.accept().await.unwrap());
+            let mut r = BufReader::new(r).lines();
+            r.next_line().await.unwrap();
+            w.write_all(b"{\"ok\":true}\n").await.unwrap();
+            for _ in 0..lines {
+                r.next_line().await.unwrap();
+            }
+            let _ = go.await;
+        });
+        let c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        (tmp, c, hang_up)
+    }
+
+    /// Make the fake hang up and wait until the client's reader has seen it.
+    async fn hang_up(c: &HostClient, hang_up: tokio::sync::oneshot::Sender<()>) {
+        let mut ev = c.events();
+        drop(hang_up);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while ev.recv().await.unwrap()["ev"] != "disconnected" {}
+        })
+        .await
+        .expect("the client never saw the hang-up");
+    }
+
+    // Regression: #226. A call made after the reader saw the connection drop was put in the
+    // pending map that nobody would ever drain again, and the writer accepted its line, so the
+    // call waited forever (the lab forwarding to a main that had just died hung a CI test to its
+    // 180 s timeout).
+    #[tokio::test]
+    async fn a_call_on_a_connection_that_already_dropped_fails_at_once() {
+        let (_tmp, c, h) = fake_hostd(0).await;
+        hang_up(&c, h).await;
+        let r = tokio::time::timeout(Duration::from_secs(5), c.call("info", json!({})))
+            .await
+            .expect("a call on a dead connection must not wait forever");
+        assert!(r.unwrap_err().to_string().contains("disconnected"));
+    }
+
+    // Same class: `closed()` after the drop missed the one-shot wake-up and waited forever.
+    #[tokio::test]
+    async fn closed_resolves_when_asked_after_the_drop() {
+        let (_tmp, c, h) = fake_hostd(0).await;
+        hang_up(&c, h).await;
+        tokio::time::timeout(Duration::from_secs(5), c.closed())
+            .await
+            .expect("closed() must resolve for a connection that is already gone");
+    }
+
+    // A call in flight when the daemon hangs up without answering it fails, it does not hang.
+    #[tokio::test]
+    async fn a_call_in_flight_when_the_daemon_hangs_up_fails() {
+        let (_tmp, c, h) = fake_hostd(1).await;
+        drop(h);
+        let r = tokio::time::timeout(Duration::from_secs(5), c.call("info", json!({})))
+            .await
+            .expect("an unanswered call must fail when the connection drops");
+        assert!(r.unwrap_err().to_string().contains("disconnected"));
+    }
 
     #[test]
     fn only_an_atlas_hostd_command_line_is_recognised() {

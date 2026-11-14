@@ -2,7 +2,7 @@
 name: atlas
 description: Work inside a project that has an atlas.yaml. Check service status, read and search logs, restart services, run actions, choose service ports, and edit atlas.yaml through the atlas MCP tools or the .logs/ files. Use when debugging a dev environment, when a service is failing, not ready or hits EADDRINUSE, when adding a service or port, when the user mentions atlas, atlas dev, atlas.yaml, .logs, or service ports, or before touching anything that starts dev servers.
 metadata:
-  version: "3.2.0"
+  version: "3.3.0"
 ---
 
 # Atlas: working in an Atlas project
@@ -16,6 +16,9 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 - A service shown `off` (`disabled`, `"off": true`) was deliberately left out of a partial run (`atlas dev web`, `--profile backend`): not a failure. Start it with `atlas_start_service` if the task needs it.
 - Read a failing service's log before restarting it; a restart rotates `<service>.log` to `.prev.log`.
 - Never run an action that has a `confirm:` message without the user's explicit yes.
+- A control tool can answer `this project's atlas.yaml denies agents <tool> on <target>: ask the developer…`: the project's `agents:` policy forbids it. Do not retry, do not look for another way (no `kill`, no `atlas down`, no shell restart): tell the user which call you need and why, and let them run it or allow it under `agents:` in `atlas.yaml`. Every control call you make is recorded in `.logs/atlas-audit.log` (read it with `atlas_logs {"service": "audit"}`).
+- **Run heavy commands (cargo build/test, `bun run check`, e2e suites, benches) as `atlas run --heavy [--label X] -- <cmd…>`, never directly.** Several agents and worktrees share one machine: Atlas keeps at most N heavy jobs running at once (default `min(cores / 2, GB of memory / 8)`, at least 1) and the rest wait their turn, first come first served, and a job waits while load or memory pressure is high (`ATLAS_HEAVY_MAXLOAD`, `ATLAS_HEAVY_MINMEM`). The command's output and exit code pass through. `atlas_heavy_status` (or `atlas heavy status`) shows who holds the slots and the ETA. Heavy actions in `atlas.yaml` (`heavy: true`) are already queued.
+- **Cache deterministic work: `atlas run --cache [--input GLOB] [--output PATH] [--env NAME] [--tool PROG] -- <cmd…>`.** The key is the argv plus the bytes of the input files as they are on disk now (your uncommitted edits too), so another worktree or agent with the same bytes gets the result in milliseconds and different edits never share one; only exit 0 is stored. **Before running anything, ask what the change affects and what it costs:** `atlas_affected` (tasks, tests, routes, builds the change touches, from the project's `affected:` graph or the actions' `cache.inputs`; defaults to this worktree's diff) then `atlas_estimate` per task (`would_hit` = the cache already has it, median/p90 duration, heavy-queue wait), then run only what is needed with the `run_with` line it returns. Ask `atlas_last_result` what a task last did before rerunning it. `atlas cache status|gc|clear` manages the store. Actions with a `cache:` block in `atlas.yaml` are already cached.
 - New service or port? Follow **Ports** in [yaml.md](yaml.md#ports): never default ports (3000, 5173, 5432, 6379, 8080…), always a random per-project block.
 
 ## Tools
@@ -25,20 +28,26 @@ Atlas boots a project's dev stack from `atlas.yaml` (services in dependency orde
 | Tool | Args | Needs `atlas dev` running |
 |---|---|---|
 | `atlas_status` | none | no (reports `running: false`); `setup` = last `pre_command` run `{state, command, started_at, finished_at?, reason?}` or null |
+| `atlas_metrics` | `service`, `last?` | no: the memory series of one service (`samples` = `[unix_s, rss_bytes]`, `rss_bytes`/`min_bytes`/`max_bytes`, `trend`, `budget_state`, `leak`), to measure before/after a change instead of sampling with `ps`; `running: false` = the series of the last run |
 | `atlas_config` | none | no |
-| `atlas_logs` | `service?`, `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
+| `atlas_logs` | `service?` (a service, `action:<label>`, or `audit` for the audit trail of control calls), `lines?` (1-2000, default 100), `since_minutes?`, `level?` (`error` or `warn`) | no |
 | `atlas_logs_search` | `query` (substring or `/regex/`), `service?`, `limit?` (1-500, default 50), `include_previous?` | no |
 | `atlas_restart_service` / `atlas_stop_service` / `atlas_start_service` | `service` | yes |
 | `atlas_run_action` | `action` (key or label), `confirmed?` | yes |
+| `atlas_hygiene` | none | no (look-only: orphaned processes, disk per project, registered dirs; to free them the user runs `atlas doctor --hygiene --fix`) |
 | `atlas_wait_ready` | `service?`, `timeout_s?` (1-600, default 60) | yes (live heartbeat) |
+| `atlas_heavy_status` | none | no (machine-wide): `{slots, load, mem_available_pct, running[], queued[]}` with each job's `label`, `command`, `cwd`, `project`, `pid`, `age_s`, `avg_s`, `eta_s` |
+| `atlas_affected` | `files?`, `base?` | no: `{source, base, files_from, files, tasks, tests, routes, builds}`, what a change affects (`source` = `command` plugin, declared `rules`, or `cache_inputs` fallback); starts nothing |
+| `atlas_estimate` | `action` or `command`, `label?`, `inputs?`, `outputs?`, `env?`, `tools?` | no: `{runs, median_ms, p90_ms, would_hit, saved_ms, key, run_with, note, queue}`, expected duration from recorded runs, whether an identical run is cached right now, and the heavy-queue load; runs nothing |
+| `atlas_last_result` | `name`, `project?` | no (machine-wide): `{name, command, project, key, hit, exit, duration_ms, at, log_tail, saved_ms?}`, the last outcome of a cached task, action or command |
 
-Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines.
+Control tools reply `atlas dev is not running; start it in a terminal` when nothing is up. Use `atlas_config` first to learn valid service names and action keys/labels. `atlas_wait_ready` failures include the service's last error lines; on timeout it also names why each blocking service is not ready (the failing `ready:` probe's message for `degraded`, since-when plus last output for `unhealthy`).
 
 Slash prompts (omp): `/atlas:status`, `/atlas:diagnose <service>`, `/atlas:add-service <name> <command> [port]`. Resources: `atlas://status`, `atlas://config`, `atlas://logs/{service}`.
 
 ## Debugging recipe
 
-1. `atlas_status`: what is `failed` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`).
+1. `atlas_status`: what is `failed`, `unhealthy`, `degraded` or stuck `starting`? Read `exit_code`, `restarts`, `note` (e.g. `waiting for :24310 (12s)`, `dependency db failed`), for `degraded`/`unhealthy` the `probe_error` / `unhealthy_lines`, and `port_conflict` (`{pid, cmd, cwd}`: a process Atlas did not start holds the service's port; tell the user, who can stop it themselves or change the service port. Never kill that PID yourself, and there is no tool for it). `degraded` with `budget_state: "warn"` means it is over its `memory_warn`; `memory_trend: "rising"` or a `memory_leak` text means memory keeps growing.
 2. `atlas_logs {"level": "error"}`, then `atlas_logs {"service": "<svc>", "lines": 200}` for the failing service.
 3. `atlas_logs_search {"query": "/ECONNREFUSED|EADDRINUSE/", "include_previous": true}` if the log was just rotated by a restart.
 4. Fix the code or config. If upstream failed first (`dependency X failed`), fix that service first.
@@ -95,7 +104,7 @@ Field reference, action keys, reserved keys and common mistakes: [yaml.md](yaml.
 
 ## Service states
 
-`starting`, `running`, `failed`, `stopped`, `disabled` (stopped by a user or agent, never auto-restarted; undo with `atlas_start_service`), `suspended` (paused by an action's `pause_services`). A service with no `command` is externally managed (docker) and only port-watched.
+`starting`, `running`, `degraded`, `unhealthy`, `failed`, `stopped`, `disabled` (stopped by a user or agent, never auto-restarted; undo with `atlas_start_service`), `suspended` (paused by an action's `pause_services`). `unhealthy` = process alive but no longer answering its health probe (hung; not `failed`); `degraded` = it answers but its `ready:` probe fails or the same error keeps repeating (`probe_error` says which). A service with no `command` is externally managed (docker) and only port-watched.
 
 ## More
 

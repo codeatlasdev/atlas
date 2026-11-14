@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 const KIT_COMPONENTS = [
 	"Button",
 	"Dialog",
+	"Drawer",
 	"Tooltip",
 	"IconButton",
 	"Spinner",

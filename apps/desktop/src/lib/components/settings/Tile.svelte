@@ -94,12 +94,41 @@
 		font-size: 12.5px;
 		white-space: nowrap;
 	}
+	/* `1.5.0-alpha.23 → 1.5.0-alpha.25`: a version is never cut in the middle; when the tile is narrow the new one
+	   drops under the old one, arrow first. */
 	.ver {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 5px;
+		gap: 1px 5px;
 		font-size: 12px;
 		color: var(--ca-text-primary);
+		white-space: nowrap;
+	}
+	.ver :global(b) {
+		white-space: nowrap;
+	}
+	/* The pills a tile's `badges` snippet renders (`<span class="tag info|warn">`): one self-contained box, so a pill
+	   is the same height and baseline wherever the tile is used and never depends on its row's alignment. */
+	.top :global(.tag) {
+		display: inline-flex;
+		align-items: center;
+		flex: none;
+		height: 18px;
+		padding: 0 7px;
+		border-radius: 999px;
+		font-size: 10.5px;
+		font-weight: 600;
+		line-height: 1;
+		white-space: nowrap;
+	}
+	.top :global(.tag.info) {
+		color: var(--ca-semantic-info);
+		background: color-mix(in oklab, var(--ca-semantic-info) 14%, transparent);
+	}
+	.top :global(.tag.warn) {
+		color: var(--ca-semantic-warning);
+		background: color-mix(in oklab, var(--ca-semantic-warning) 14%, transparent);
 	}
 	.sub {
 		font-size: 11px;

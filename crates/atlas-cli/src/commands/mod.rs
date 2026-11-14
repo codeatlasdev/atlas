@@ -1,6 +1,8 @@
 use anyhow::Result;
 
+pub mod cache;
 pub mod config;
+pub mod crew;
 pub mod deploy;
 pub mod desktop;
 #[cfg(unix)]
@@ -12,7 +14,9 @@ pub(crate) mod desktop_linux;
 #[cfg(windows)]
 pub(crate) mod desktop_windows;
 pub mod dev;
+pub mod doctor;
 pub mod down;
+pub mod heavy;
 pub mod hook;
 pub mod hostd;
 pub(crate) mod hostd_reconcile;
@@ -22,8 +26,10 @@ pub mod link;
 pub mod mcp;
 pub mod open;
 pub mod release;
+pub(crate) mod run_cache;
 pub mod self_update;
 pub mod setup;
+pub(crate) mod shellrc;
 pub mod skills;
 pub mod uninstall;
 pub(crate) mod update_channel;

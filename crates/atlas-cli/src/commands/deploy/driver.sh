@@ -322,7 +322,11 @@ state uploaded
 [ -f "$PARTIAL/artifact.tar.gz" ] || abort "artifact missing: $PARTIAL/artifact.tar.gz"
 [ "$(sha256sum "$PARTIAL/artifact.tar.gz" | awk '{print $1}')" = "$SHA256" ] || abort "checksum mismatch"
 [ -e "$RELEASE_DIR" ] && { RELEASE=""; abort "release exists: $RELEASE_DIR"; }
-tar xzf "$PARTIAL/artifact.tar.gz" -C "$PARTIAL"
+# Artifacts from older atlas versions carry macOS `LIBARCHIVE.xattr.*` pax headers: GNU tar
+# warns once per file. The option exists only in GNU tar (bsdtar/busybox reject it).
+untar=(tar xzf "$PARTIAL/artifact.tar.gz" -C "$PARTIAL")
+if tar --version 2>/dev/null | grep -q 'GNU tar'; then untar+=(--warning=no-unknown-keyword); fi
+"${untar[@]}"
 rm -f "$PARTIAL/artifact.tar.gz"
 [ "$OS" = Darwin ] || sync -f "$PARTIAL"
 mv "$PARTIAL" "$RELEASE_DIR"

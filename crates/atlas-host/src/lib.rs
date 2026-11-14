@@ -6,8 +6,10 @@
 
 pub mod agents;
 pub mod client;
+pub mod crew;
 mod exec;
 mod fs;
+mod git;
 #[cfg(unix)]
 pub mod handoff;
 mod idle;
@@ -20,6 +22,7 @@ pub mod protocol;
 mod pty;
 pub mod server;
 pub mod upgrade;
+pub mod worktrees;
 
 pub use client::HostClient;
 

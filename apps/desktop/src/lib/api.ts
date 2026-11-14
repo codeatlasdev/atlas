@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Found } from "#lib/components/sidebar/discovery.ts";
 import type { Identity } from "#lib/shell/identity.ts";
 import type { ProviderState } from "#lib/commitMessage.ts";
+import type { HygieneFixed, HygieneReport } from "#lib/settings/hygiene.ts";
 import { parseBranches, parseSwitched, type Branches, type Switched } from "#lib/branches.ts";
 
 export interface DiscoverArgs {
@@ -49,9 +50,22 @@ export interface ProjectView {
 	last_remote: string | null;
 }
 
+/** Why a directory was not seeded: serialized `atlas_core::seed::Skip` (`detail` only for `failed`). */
+export interface SeedSkip {
+	reason: "missing" | "exists" | "invalid" | "not_relocatable" | "unsupported" | "failed";
+	detail?: string;
+}
+
+export interface SeedReport {
+	seeded: string[];
+	skipped: [string, SeedSkip][];
+	/** Wall time of the clone step, ms. */
+	ms: number;
+}
+
 export interface WorktreeProgress {
 	creation_id: string;
-	step: "fetch" | "add" | "shared" | "done" | "error";
+	step: "fetch" | "add" | "shared" | "seed" | "done" | "error";
 	message?: string;
 	worktree?: {
 		id: string;
@@ -64,6 +78,8 @@ export interface WorktreeProgress {
 		linkedPr: number | null;
 	};
 	setup?: { argv: string[]; env: Record<string, string> } | null;
+	/** Copy-on-write clone of the main checkout's heavy dirs (`atlas_core::seed::Report`); null when there was nothing to seed or the checkout is on an SSH host. */
+	seed?: SeedReport | null;
 }
 
 export interface WorktreeStats {
@@ -231,6 +247,10 @@ export const api = {
 	gitRefs: (id: string) => invoke<string[]>("git_refs", { id }),
 	worktreesImport: (repoId: string) => invoke<number>("worktrees_import", { repoId }),
 	worktreeStats: (id: string) => invoke<WorktreeStats>("worktree_stats", { id }),
+	/** Orphaned tagged processes and disk per project; changes nothing. */
+	hygieneReport: () => invoke<HygieneReport>("hygiene_report"),
+	/** End the orphans and free what Atlas owns (never `target/`, `node_modules` or worktrees). */
+	hygieneFix: () => invoke<{ fixed: HygieneFixed; report: HygieneReport }>("hygiene_fix"),
 	/** `merged`: Rust checks with `gh` that the branch's PR is merged before removing anything. */
 	worktreeAutoRemove: (id: string, merged: boolean) =>
 		invoke<

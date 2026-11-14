@@ -48,21 +48,3 @@
 		{/if}
 	{/snippet}
 </Tile>
-
-<style>
-	.tag {
-		font-size: 10.5px;
-		font-weight: 600;
-		padding: 1px 7px;
-		border-radius: 999px;
-		white-space: nowrap;
-	}
-	.tag.info {
-		color: var(--ca-semantic-info);
-		background: color-mix(in oklab, var(--ca-semantic-info) 14%, transparent);
-	}
-	.tag.warn {
-		color: var(--ca-semantic-warning);
-		background: color-mix(in oklab, var(--ca-semantic-warning) 14%, transparent);
-	}
-</style>

@@ -90,6 +90,18 @@ impl App {
                     .unwrap_or_else(|| "failed".to_string());
                 Some((EventKind::Crash, why))
             }
+            ServiceState::Unhealthy => Some((
+                EventKind::Crash,
+                self.manager
+                    .service_note(name)
+                    .unwrap_or_else(|| "unhealthy".to_string()),
+            )),
+            ServiceState::Degraded => Some((
+                EventKind::Alert,
+                self.manager
+                    .service_note(name)
+                    .unwrap_or_else(|| "degraded".to_string()),
+            )),
             ServiceState::Running => Some((EventKind::Started, "running".into())),
             ServiceState::Stopped if done => Some((EventKind::Done, "done".into())),
             ServiceState::Stopped | ServiceState::Suspended => match paused_by {

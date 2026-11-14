@@ -82,17 +82,31 @@ impl Session {
         }
     }
 
-    /// TERM, wait up to 3 s, then KILL.
+    /// TERM, wait up to 3 s, then KILL; then everything still carrying the session's tag. The
+    /// shell alone is signalled above (a group or negative pid could hit a recycled one), so a
+    /// dev server or a browser it started, even one that daemonized, outlives it until this.
     pub async fn kill(&self) {
-        if self.signal("TERM").is_err() {
-            return;
+        if self.signal("TERM").is_ok() {
+            self.wait_exit(30).await;
+            if self.exited().is_none() {
+                let _ = self.signal("KILL");
+                self.wait_exit(10).await;
+            }
         }
-        self.wait_exit(30).await;
-        if self.exited().is_some() {
-            return;
-        }
-        let _ = self.signal("KILL");
-        self.wait_exit(10).await;
+        self.reap_tagged().await;
+    }
+
+    /// [`reap_tagged`](Self::reap_tagged) from a synchronous, non-async context (the session
+    /// ended by itself): a detached blocking thread, never the caller's.
+    pub(super) fn reap_leftovers(&self) {
+        let (id, dir) = (self.id.clone(), self.dir.clone());
+        std::thread::spawn(move || reap_session_tree(&dir, &id));
+    }
+
+    /// End every process tagged with this session, off the runtime.
+    async fn reap_tagged(&self) {
+        let (id, dir) = (self.id.clone(), self.dir.clone());
+        let _ = tokio::task::spawn_blocking(move || reap_session_tree(&dir, &id)).await;
     }
 
     pub fn remove_files(&self) {
@@ -206,4 +220,12 @@ impl Session {
             .lines()
             .find_map(|l| l.strip_prefix('n').map(str::to_string))
     }
+}
+
+/// End the tree of terminal `id`: its tag (Linux), the members recorded under it while the
+/// shell ran, and the shell's own tree (macOS and Windows cannot read another process's
+/// environment, see `atlas_core::hygiene`). Reaps by exact `(pid, start)` only.
+fn reap_session_tree(scroll_dir: &std::path::Path, id: &str) {
+    let reg = atlas_core::hygiene::Registry::in_existing(&crate::paths::hygiene_base(scroll_dir));
+    let _ = reg.reap_session(id, atlas_core::hygiene::GRACE);
 }

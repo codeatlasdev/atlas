@@ -1,0 +1,39 @@
+{
+	"orphans": [
+		{
+			"pid": 4242,
+			"start": 1700000000,
+			"name": "chrome",
+			"session": "s1",
+			"kind": "agent",
+			"label": "agent",
+			"project": "/work/app"
+		}
+	],
+	"live": 2,
+	"projects": [
+		{
+			"root": "/work/app",
+			"name": "app",
+			"target": 3221225472,
+			"node_modules": 536870912,
+			"logs": 1024,
+			"worktrees": [["feat", 1073741824]],
+			"indexed": ["/work/app/target"]
+		}
+	],
+	"dirs": [
+		{
+			"path": "/tmp/agent-1",
+			"kind": "temp",
+			"bytes": 2048,
+			"cap_bytes": 4096,
+			"orphaned": true
+		}
+	],
+	"freeable": {
+		"dirs_removed": 1,
+		"entries_removed": 0,
+		"bytes": 2048
+	}
+}

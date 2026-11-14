@@ -592,7 +592,7 @@ const DEFS = [
 		cluster: "work",
 		pages: [
 			{
-				files: ["components/WorkspaceSettings.svelte"],
+				files: ["components/WorkspaceSettings.svelte", "components/settings/HygieneGroup.svelte"],
 				groups: [
 					{
 						title: "New worktrees",
@@ -636,6 +636,17 @@ const DEFS = [
 								"Clean up worktrees",
 								"See size, last commit and git state of linked worktrees, and delete the ones you no longer need.",
 								"delete remove disk scan",
+							),
+						],
+					},
+					{
+						title: "Hygiene",
+						items: [
+							item(
+								"ws-hygiene",
+								"Orphans and disk",
+								"Processes Atlas or an agent left running after their owner died, the disk each project holds, and what Fix can free.",
+								"orphan zombie leftover browser chromium vite process kill disk space cache temp spotlight index mdworker cleanup",
 							),
 						],
 					},
@@ -1209,6 +1220,63 @@ const DEFS = [
 								"Paired phones",
 								"What each phone may do, and revoke it.",
 								"revoke permissions scopes terminal approve",
+							),
+						],
+					},
+				],
+			},
+		],
+	},
+	{
+		id: "crew",
+		label: "Atlas Crew",
+		description: "Crewmates running on your crew servers — agents working around the clock.",
+		cluster: "connect",
+		pages: [
+			{
+				files: ["components/CrewSettings.svelte"],
+				groups: [
+					{
+						title: "Crew servers",
+						items: [
+							item(
+								"crew-add",
+								"Add crew server",
+								"Connect a crew server running `atlas crew install`.",
+								"ssh server crew agent",
+							),
+						],
+					},
+					{
+						title: "GitHub",
+						items: [
+							item(
+								"crew-github",
+								"GitHub",
+								"Connect GitHub so your crew can clone private repositories.",
+								"git private repo token oauth pat",
+							),
+						],
+					},
+					{
+						title: "Short replies",
+						items: [
+							item(
+								"short-replies",
+								"Short replies",
+								"Summarize long crewmate replies with a cheap model before showing them.",
+								"summary compact ai model cheap",
+							),
+						],
+					},
+					{
+						title: "Onboarding",
+						items: [
+							item(
+								"crew-onboarding",
+								"Replay onboarding",
+								"Shows the Atlas Crew introduction again from the first step.",
+								"onboarding intro tour crew atlas crew",
 							),
 						],
 					},

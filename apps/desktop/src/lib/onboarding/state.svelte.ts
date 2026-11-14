@@ -3,16 +3,17 @@
  * in settings.json. Checklist items complete from real observed state (projects,
  * running stack, terminal/agent tabs) and from commands run through the keymap.
  */
-import { api } from "#lib/api.ts";
+import { toast } from "@codeatlasdev/ui";
+import { api, errText } from "#lib/api.ts";
 import { recent } from "#lib/keymap.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
-import { showWelcome, welcomeFinished } from "./flow.ts";
+import { firstRunReady, showWelcome, welcomeFinished } from "./flow.ts";
 import { welcome } from "./welcome.svelte.ts";
 import {
 	complete,
 	itemsFromRecent,
-	parseState,
+	stateFromSettings,
 	EMPTY_STATE,
 	type ChecklistId,
 	type OnboardingState,
@@ -23,11 +24,13 @@ class Onboarding {
 	loaded = $state(false);
 	tourOpen = $state(false);
 	helpOpen = $state(false);
+	/** Settings and the project list are in and the list is real: the first-run screens may decide. */
+	ready = $derived(firstRunReady(this.loaded, store.loaded, store.listError));
 	/** The welcome overlay is up: first run, and it stays through the guided flow after the first project is added. */
 	firstRun = $derived(
 		showWelcome(
 			this.state,
-			this.loaded && store.loaded,
+			this.ready,
 			store.projects.length,
 			welcome.phase,
 			welcome.adding,
@@ -36,7 +39,13 @@ class Onboarding {
 	);
 
 	async init() {
-		this.state = parseState((await api.settings()).onboarding);
+		try {
+			this.state = stateFromSettings({ settings: await api.settings() });
+		} catch (e) {
+			// Stay usable: `loaded` never turning true left the app with no overlay, hero or checklist for the session.
+			this.state = stateFromSettings({ error: errText(e) });
+			toast.error(`Could not read your settings: ${errText(e)}`);
+		}
 		this.loaded = true;
 	}
 

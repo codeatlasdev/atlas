@@ -270,14 +270,27 @@ pub fn read_from(path: &Path) -> Channel {
         .unwrap_or_default()
 }
 
+/// The temp file a save by process `pid` writes before the rename: beside `path`, named after the
+/// whole file name (so an extension is never replaced) and the process (the CLI and the app save
+/// the same file and must not share a temp).
+fn tmp_path(path: &Path, pid: u32) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{pid}.tmp"));
+    path.with_file_name(name)
+}
+
 pub fn write_to(path: &Path, channel: Channel) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     // Written beside the target then renamed: a reader never sees half a word.
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, format!("{channel}\n"))?;
-    std::fs::rename(tmp, path)
+    let tmp = tmp_path(path, std::process::id());
+    let saved =
+        std::fs::write(&tmp, format!("{channel}\n")).and_then(|()| std::fs::rename(&tmp, path));
+    if saved.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    saved
 }
 
 /// `override_` (the [`ENV`] value) when valid, else `stored`.
@@ -611,5 +624,63 @@ mod tests {
             Channel::ALL.map(|c| c.info().id.as_str()),
             ["stable", "beta", "alpha"]
         );
+    }
+
+    /// Incident class: the CLI and the app both save the channel through one shared
+    /// `update-channel.tmp`, so two saves at once could rename a half-written file into place.
+    #[test]
+    fn two_writers_never_share_a_temp_file() {
+        let p = Path::new("/h/.atlas/update-channel");
+        let (a, b) = (tmp_path(p, 1), tmp_path(p, 2));
+        assert_ne!(a, b);
+        assert_eq!(
+            a.parent(),
+            p.parent(),
+            "beside the target, so the rename is atomic"
+        );
+        assert_ne!(a, p);
+        // An extension is never replaced: `x.json` and `x.txt` get different temps.
+        assert_ne!(
+            tmp_path(Path::new("/h/x.json"), 1),
+            tmp_path(Path::new("/h/x.txt"), 1)
+        );
+    }
+
+    #[test]
+    fn a_failed_save_leaves_no_temp_file_and_the_old_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("update-channel");
+        write_to(&file, Channel::Beta).unwrap();
+        // The target cannot be replaced (a non-empty directory sits where a file would go).
+        let blocked = dir.path().join("blocked");
+        std::fs::create_dir_all(blocked.join("inside")).unwrap();
+        assert!(write_to(&blocked, Channel::Stable).is_err());
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["blocked", "update-channel"],
+            "no temp left: {names:?}"
+        );
+        assert_eq!(
+            read_from(&file),
+            Channel::Beta,
+            "an unrelated choice is untouched"
+        );
+    }
+
+    /// What was saved is read back exactly, and a save over an existing choice replaces it whole.
+    #[test]
+    fn saving_replaces_the_previous_choice_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("deep/er/update-channel");
+        for c in Channel::ALL {
+            write_to(&file, c).unwrap();
+            assert_eq!(read_from(&file), c);
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), format!("{c}\n"));
+        }
     }
 }

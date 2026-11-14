@@ -151,12 +151,10 @@ const reqs: [string, string][] = [
 						const r = others[c.id as Channel] ?? null;
 						return (
 							<li class="card chan" data-channel={c.id} data-risk={c.risk}>
-								<div class="ct chan-t">
-									<div>
-										<h3 id={`ch-${c.id}`}>{c.label}</h3>
-										<p class="pn">{c.audience}</p>
-									</div>
+								<div class="chan-t">
+									<h3 id={`ch-${c.id}`}>{c.label}</h3>
 									<span class={`badge risk risk-${c.risk}`}>{c.risk_label}</span>
+									<p class="pn">{c.audience}</p>
 								</div>
 								<p class="promise">{c.promise}</p>
 								<div class="chan-r" data-offer aria-live="polite">
@@ -387,8 +385,12 @@ const reqs: [string, string][] = [
 	.stage { margin: 0; max-width: 56ch; color: var(--fg-2); font-size: 0.95rem; }
 	.channels { margin-top: var(--s-7); display: grid; gap: var(--s-3); }
 	.chan { align-content: start; }
-	.chan-t { grid-template-columns: minmax(0, 1fr) auto; }
-	.chan-t .badge { grid-column: auto; align-self: start; }
+	/* Title and risk badge share a row while both fit; otherwise the badge wraps to its own row (and may wrap its own text). The
+	   audience line is always full width underneath, never squeezed into a column beside the badge. */
+	.chan-t { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.5rem var(--s-3); min-width: 0; }
+	.chan-t h3 { margin: 0; font: 800 1.35rem/1.1 var(--font); font-stretch: 80%; min-width: 0; }
+	.chan-t .badge { white-space: normal; max-width: 100%; line-height: 1.2; }
+	.chan-t .pn { flex: 1 1 100%; margin: 0; min-width: 0; }
 	.risk-medium { color: var(--wait); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--wait) 55%, transparent); }
 	.risk-high { color: #ff9d8a; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, #ff9d8a 55%, transparent); }
 	.promise { margin: 0; }

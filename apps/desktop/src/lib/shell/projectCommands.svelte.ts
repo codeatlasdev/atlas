@@ -2,6 +2,7 @@
 import type { Command } from "#lib/keymap.svelte.ts";
 import { api } from "#lib/api.ts";
 import { activity } from "#lib/panel/activity.svelte.ts";
+import { machine } from "#lib/panel/machine.svelte.ts";
 import { store } from "#lib/stores/projects.svelte.ts";
 import { updates } from "#lib/stores/updates.svelte.ts";
 import { ws } from "#lib/stores/workspace.svelte.ts";
@@ -33,6 +34,12 @@ export function projectCommands(): Command[] {
 		{ id: "atlas::Logs", label: "Logs", run: () => openKind("logs"), when: hasProject },
 		{ id: "atlas::Config", label: "Config", run: () => openKind("config"), when: hasProject },
 		{ id: "atlas::ShowActivity", label: "Show activity", run: () => activity.show(), when: hasProject },
+		{
+			id: "atlas::ShowMachine",
+			label: "Show machine load and agents",
+			run: () => machine.show(),
+			when: hasProject,
+		},
 		{
 			id: "atlas::StartStack",
 			label: "Start stack",

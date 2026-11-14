@@ -38,6 +38,7 @@ mod dock;
 mod dock_mac;
 mod git;
 mod git_branch;
+mod github_auth;
 mod host;
 mod hotkeys;
 mod lifecycle;
@@ -46,6 +47,8 @@ mod linux_gfx;
 mod live;
 mod live_server;
 mod menu;
+// Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
+mod crew;
 mod natives;
 mod open_path;
 mod pty_batch;
@@ -129,7 +132,12 @@ fn show_main(app: &AppHandle) {
 macro_rules! handlers {
     ($($extra:tt)*) => {
         tauri::generate_handler![
+            cmds::heavy_status,
+            cmds::machine_report,
+            cmds::cache_clear,
             cmds::projects_list,
+            cmds::hygiene_report,
+            cmds::hygiene_fix,
             cmds::projects_add,
             cmds::system_ui_sounds,
             cmds::live_resync,
@@ -217,6 +225,17 @@ macro_rules! handlers {
             remote::ssh_forward,
             remote::ssh_forwards,
             remote::projects_add_remote,
+            crew::crew_servers_list,
+            crew::crew_servers_add,
+            crew::crew_servers_remove,
+            crew::crew_server_install,
+            crew::ssh_key_find,
+            crew::ssh_keygen,
+            crew::ssh_authorize_key,
+            crew::crew_agent_check,
+            crew::crew_agent_install,
+            crew::provider_probe,
+            github_auth::project_git_info,
             menu::menu_sync,
             zoom::zoom_set,
             lifecycle::app_quit,
@@ -242,6 +261,7 @@ macro_rules! handlers {
             capture::capture_cmd,
             term::term_open,
             term::term_bounds,
+            term::term_slide,
             term::term_close,
             term::term_list,
             term::term_reload,

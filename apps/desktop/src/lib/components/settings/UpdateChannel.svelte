@@ -251,12 +251,15 @@
 	.tag {
 		display: inline-flex;
 		align-items: center;
+		height: 18px;
 		font-size: 10.5px;
 		font-weight: 600;
-		padding: 1px 7px;
+		line-height: 1;
+		padding: 0 7px;
 		margin-right: 4px;
 		border-radius: 999px;
-		vertical-align: 1px;
+		white-space: nowrap;
+		vertical-align: middle;
 	}
 	.tag.tone-success,
 	.tag.tone-warn,
@@ -277,14 +280,20 @@
 		color: var(--ca-semantic-info);
 		background: color-mix(in oklab, var(--ca-semantic-info) 14%, transparent);
 	}
+	/* One sentence: the offer and its cadence are inline text, so they wrap as a sentence (a flex row made them two
+	   columns that each broke on its own and orphaned the "·"). The spinner is the only inline-flex item. */
 	.offer {
 		margin: 0;
-		display: flex;
-		align-items: center;
-		gap: 6px;
 		font-size: 11.5px;
 		font-weight: 600;
+		line-height: 1.5;
 		color: var(--ca-text-secondary);
+		text-wrap: pretty;
+	}
+	.offer :global(.ca-spinner) {
+		display: inline-block;
+		vertical-align: -1px;
+		margin-right: 6px;
 	}
 	.offer .cad {
 		font-weight: 400;

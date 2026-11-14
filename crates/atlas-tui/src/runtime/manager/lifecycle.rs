@@ -13,6 +13,10 @@ impl ServiceManager {
         // Phase 1 (sync, fast): kill orphans from a crashed previous run.
         // Must run before docker/app startup so stale pids never shadow new ones.
         self.kill_orphans().await;
+        // And the tagged trees of dead owners that `.pids` and the parent chain cannot see (a
+        // browser or dev server that daemonized). Off the startup path: a process-table scan.
+        let registry = self.hygiene.clone();
+        tokio::task::spawn_blocking(move || atlas_core::hygiene::sweep(&registry, false));
 
         // Collect infra services (command-less, port-based) — mark Starting
         let infra_checks: Vec<(String, u16)> = self
@@ -228,6 +232,10 @@ impl ServiceManager {
             })
             .await;
         }
+
+        // The tree kill follows parent links; a grandchild that daemonized (a browser, a dev
+        // server that forked away) left them and only its owner tag still names it.
+        self.reap_tags(names).await;
 
         // Clear handles, mark Stopped. Pumps end on pipe EOF, but a grandchild
         // holding the pipes would keep them (and their disk-log handles) alive

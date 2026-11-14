@@ -12,6 +12,53 @@ use crate::runtime::service::{ServiceState, ServiceStatus};
 use crate::config::{Condition, RestartPolicy};
 
 use super::policy::RestartTracker;
+use crate::runtime::memory::{Budget, BudgetMachine, LeakDetector, Limits, Series};
+
+/// A service's memory bookkeeping: its budget, the RSS series of its process tree and the leak
+/// watch. The rules live in `runtime::memory`; `mem_watch.rs` applies them to a sample.
+pub(crate) struct MemWatch {
+    pub(crate) limits: Limits,
+    pub(crate) on_max: crate::config::OnMemoryMax,
+    pub(crate) series: Series,
+    pub(crate) budget: BudgetMachine,
+    pub(crate) leak: LeakDetector,
+    /// `max_memory` restarts this run; past [`super::health_check::MEM_RESTARTS`] the service stops.
+    pub(crate) restarts: u32,
+    /// The last RSS reading of the previous process, kept for the cycle a respawn closes.
+    pub(crate) last_rss: Option<u64>,
+    /// Cycles the last leak alert counted: the next one waits for `LEAK_REALERT_CYCLES` more.
+    pub(crate) alerted_cycles: Option<usize>,
+    /// The service is `degraded` only because of the memory budget (so it clears on its own).
+    pub(crate) degrading: bool,
+}
+
+/// Gap between two resource samples (memory/CPU of every service tree).
+pub(crate) const USAGE_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+impl MemWatch {
+    pub(crate) fn from_def(def: &crate::config::ServiceDef) -> Self {
+        let size = |v: &Option<String>| v.as_deref().and_then(crate::runtime::usage::parse_size);
+        Self {
+            limits: Limits {
+                warn: size(&def.memory_warn),
+                max: size(&def.max_memory),
+            },
+            on_max: def.on_memory_max,
+            series: Series::default(),
+            budget: BudgetMachine::default(),
+            leak: LeakDetector::default(),
+            restarts: 0,
+            last_rss: None,
+            alerted_cycles: None,
+            degrading: false,
+        }
+    }
+
+    /// The budget standing, `ok` while nothing is known.
+    pub(crate) fn budget(&self) -> Budget {
+        self.budget.state()
+    }
+}
 
 /// Current phase of a mobile build/deploy pipeline.
 /// Emitted by the log-parsing task inside run_session_action.
@@ -170,18 +217,12 @@ pub(crate) struct ManagedService {
     /// Exit code of the last reaped child (`None` while running / never exited;
     /// a signal death has no code).
     pub(crate) exit_code: Option<i32>,
-    /// Consecutive failed health probes while the child is alive. A running
-    /// service only turns Failed after [`PROBE_FAILS_TO_FAIL`] in a row, so a
-    /// dev server's own hot restart (port closed for a second or two) is not a
-    /// failure.
-    pub(crate) probe_fails: u32,
+    /// Liveness/readiness bookkeeping: misses, since-when, probe errors, log context.
+    pub(crate) probes: Probes,
     /// Memory/CPU of the process tree, refreshed every few seconds while alive.
     pub(crate) usage: Option<crate::runtime::usage::Usage>,
-    /// `max_memory:` in bytes: above it (two samples in a row) the service restarts.
-    pub(crate) max_memory: Option<u64>,
-    pub(crate) mem_over: u32,
-    /// Restarts caused by `max_memory` this run; past the cap the service stops.
-    pub(crate) mem_restarts: u32,
+    /// Memory budget, time series and leak watch (see `runtime::memory`).
+    pub(crate) mem: MemWatch,
     /// `autostart: false`: not queued at boot, started on demand.
     pub(crate) autostart: bool,
     /// Not part of this run's selection (`atlas dev SERVICE…` / `--profile`):
@@ -215,6 +256,9 @@ pub(crate) struct Sched {
     pub(crate) gave_up: bool,
     /// Why the service is Failed when atlas decided it (shown in sidebar/CI JSON).
     pub(crate) fail_reason: Option<String>,
+    /// The foreign process that held this service's port when it was last started (or
+    /// re-checked while the conflict stood): `atlas_status` `port_conflict`, the sidebar note.
+    pub(crate) port_conflict: Option<crate::runtime::port_conflict::PortConflict>,
     /// `start_timeout` in seconds: how long Starting may last before a warning.
     pub(crate) start_timeout: u64,
     /// The start-timeout warning (and critical alert) already fired this spawn.
@@ -235,16 +279,71 @@ pub(crate) struct Sched {
 /// as Running, so a crash-looping process never flashes green.
 pub(crate) const MIN_UPTIME: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// Failed probes in a row (with a live child) before Running turns Failed.
-pub(crate) const PROBE_FAILS_TO_FAIL: u32 = 3;
+/// Per-service liveness/readiness settings and live bookkeeping (see `runtime::probe`).
+pub(crate) struct Probes {
+    /// One liveness probe's timeout (`health_timeout`).
+    pub(crate) timeout: std::time::Duration,
+    /// Misses in a row before `unhealthy` (`failure_threshold`).
+    pub(crate) threshold: u32,
+    pub(crate) ready: Option<crate::config::ReadyProbe>,
+    pub(crate) on_unhealthy: crate::config::OnUnhealthy,
+    pub(crate) live: crate::runtime::probe::Liveness,
+    /// Shared with this spawn's log pumps: the last lines and the repeated-error detector.
+    pub(crate) ctx: crate::runtime::probe::SharedContext,
+    /// When the service turned `unhealthy` (monotonic + epoch seconds) and the log tail then.
+    pub(crate) unhealthy: Option<Unhealthy>,
+    /// Why the service is `degraded` (the `ready` probe's error, or the repeated line).
+    pub(crate) degraded: Option<String>,
+    /// Last `ready` probe failure; `None` when it passes or there is no probe.
+    pub(crate) ready_error: Option<String>,
+    /// Restarts `on_unhealthy: restart` made since the service last stayed up for
+    /// [`super::policy::RESET_AFTER`]; survives respawns (`restart_service` wipes the tracker),
+    /// so a service that hangs again after each restart is not restarted forever.
+    pub(crate) hang_restarts: u32,
+}
+
+/// The capture taken at the moment a service turned `unhealthy`.
+#[derive(Debug, Clone)]
+pub(crate) struct Unhealthy {
+    pub(crate) since: std::time::Instant,
+    /// Unix seconds, for the status file.
+    pub(crate) since_epoch: u64,
+    pub(crate) misses: u32,
+    /// The last [`crate::runtime::probe::CONTEXT_LINES`] output lines.
+    pub(crate) lines: Vec<String>,
+}
+
+impl Probes {
+    pub(crate) fn from_def(def: &crate::config::ServiceDef) -> Self {
+        Self {
+            timeout: def.health_timeout(),
+            threshold: def.failure_threshold(),
+            ready: def.ready.clone(),
+            on_unhealthy: def.on_unhealthy,
+            live: Default::default(),
+            ctx: Default::default(),
+            unhealthy: None,
+            degraded: None,
+            ready_error: None,
+            hang_restarts: 0,
+        }
+    }
+
+    /// New spawn: nothing carries over from the previous process.
+    pub(crate) fn reset_for_spawn(&mut self) {
+        self.live.reset();
+        self.ctx = Default::default();
+        self.unhealthy = None;
+        self.degraded = None;
+        self.ready_error = None;
+    }
+}
 
 /// Health-watcher poll interval while a service is still coming up.
 pub(crate) const WATCH_STARTUP_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
 /// Poll interval once a service has been seen healthy.
 pub(crate) const WATCH_HEALTHY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
-/// Retry spacing after a miss on a previously healthy service (3 misses ≈ 6s).
-pub(crate) const WATCH_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 /// Per-probe timeout used by the watcher.
 pub(crate) const WATCH_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// Shared SIGTERM→SIGKILL grace when stopping service trees.
@@ -284,7 +383,7 @@ impl Sched {
 
     pub(crate) fn from_def(def: &crate::config::ServiceDef) -> Self {
         Self {
-            restart: def.restart,
+            restart: def.restart_policy(),
             max_restarts: def.max_restarts,
             oneshot: def.oneshot,
             deps: def.deps(),
@@ -301,12 +400,13 @@ impl Sched {
             completed_ok: false,
             gave_up: false,
             fail_reason: None,
+            port_conflict: None,
             start_timeout: def.start_timeout_secs(),
             start_warned: false,
             starting_since: None,
             spawned_at: None,
             running_since: None,
-            no_probe: def.command.is_some() && def.has_no_probe(),
+            no_probe: def.run_command().is_some() && def.has_no_probe(),
             paused_by: None,
         }
     }

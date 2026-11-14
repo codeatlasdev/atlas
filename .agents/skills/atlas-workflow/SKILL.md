@@ -44,6 +44,8 @@ Only maintainers cut releases, and only from a green CI on the exact commit. `bu
 
 Default choice: `alpha` from `main` for new work; `beta` once a feature set should become the next stable; `stable` only after the soak (avoid `--force-soak`). Always `--dry-run` first.
 
+**Atlas Mobile** has its own path: `bun run mobile:release X.Y.Z` on an up-to-date `main` tags `mobile-vX.Y.Z`; testers get it, and the stores only after a maintainer approves the `mobile-store` environment in the run. Never push a `mobile-v*` tag or approve that environment unless the maintainer asks for that release (`docs/mobile.md`, "Releases").
+
 **GitHub "Latest" = the default channel.** While the default channel is Alpha (`crates/atlas-core/data/channels.json`), every alpha is published as a normal release and becomes GitHub's "Latest" (and `/releases/latest`); betas stay pre-releases. Clients built from 1.5.0-alpha.4 on resolve Stable as the newest release without a prerelease label, never from `/releases/latest`; 1.4.0 binaries follow `/releases/latest`, which moves them to Alpha on purpose. At GA, set the default back to `stable` in that one file (tests flag every copy that drifts) and the badge returns to Stable releases.
 
 ## Never

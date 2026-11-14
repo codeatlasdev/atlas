@@ -134,6 +134,7 @@ macro_rules! handlers {
         tauri::generate_handler![
             cmds::heavy_status,
             cmds::machine_report,
+            cmds::cache_clear,
             cmds::projects_list,
             cmds::hygiene_report,
             cmds::hygiene_fix,

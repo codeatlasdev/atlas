@@ -4,6 +4,7 @@ import fixture from "../__fixtures__/machine-report.json";
 import {
 	agentRows,
 	bytes,
+	cacheView,
 	gauge,
 	hygieneView,
 	runTrend,
@@ -42,6 +43,27 @@ describe("the real machine_report payload", () => {
 		// The queue is the heavy_status payload, untouched: the drawer's reader works on it.
 		expect(report.heavy.slots).toBe(2);
 		expect(report.heavy.running[0].state).toBe("running");
+	});
+
+	test("has the task cache block the Cache section reads (#129)", () => {
+		expect(Object.keys(report.cache).sort()).toEqual([
+			"bytes",
+			"entries",
+			"hit_rate",
+			"hits",
+			"max_bytes",
+			"misses",
+			"projects",
+			"saved_7d_ms",
+			"saved_ms",
+		]);
+		expect(Object.keys(report.cache.projects[0]).sort()).toEqual([
+			"hit_rate",
+			"hits",
+			"misses",
+			"name",
+			"saved_ms",
+		]);
 	});
 });
 
@@ -206,5 +228,54 @@ describe("hygieneView", () => {
 			disk: [{ name: "a", bytes: (3 << 30) + (1 << 30) + (1 << 20) + (2 << 30) }],
 			freeable: 5 << 20,
 		});
+	});
+});
+
+describe("cacheView", () => {
+	const cache = report.cache;
+
+	test("reads the real payload: hit rate, time saved, size against the cap", () => {
+		const v = cacheView(cache);
+		expect(v.rate).toBe("75%");
+		expect(v.hits).toBe("3 hits · 1 miss");
+		expect(v.saved).toBe("30s");
+		expect(v.savedWeek).toBe("12s");
+		expect(v.size).toBe("512 MB of 2.0 GB");
+		expect(v.fill).toBeCloseTo(0.25);
+		expect(v.full).toBe(false);
+		expect(v.projects.map((p) => [p.name, p.detail, p.saved])).toEqual([
+			["ui", "100% · 2 hits", "25s"],
+			["atlas", "50% · 1 hit · 1 miss", "5s"],
+		]);
+	});
+
+	test("an unused cache has no rate and says so instead of 0%", () => {
+		const v = cacheView({
+			...cache,
+			hits: 0,
+			misses: 0,
+			hit_rate: null,
+			saved_ms: 0,
+			saved_7d_ms: 0,
+			projects: [],
+		});
+		expect(v.rate).toBe("–");
+		expect(v.hits).toBe("No runs yet");
+		expect(v.saved).toBe("0s");
+		expect(v.projects).toEqual([]);
+	});
+
+	test("the bar is full-ish past 90% of the cap and never overflows when the store is over it", () => {
+		expect(cacheView({ ...cache, bytes: 1.9 * 2048 * 1048576 }).full).toBe(true);
+		const over = cacheView({ ...cache, bytes: 3 * cache.max_bytes });
+		expect(over.fill).toBe(1);
+		expect(over.full).toBe(true);
+		// A cap of 0 (cannot happen from the store, but the view must not divide by it).
+		expect(cacheView({ ...cache, max_bytes: 0 }).fill).toBe(0);
+	});
+
+	test("time saved reads like the queue durations", () => {
+		expect(cacheView({ ...cache, saved_ms: 125_000 }).saved).toBe("2m05s");
+		expect(cacheView({ ...cache, saved_ms: 3_725_000 }).saved).toBe("1h02m");
 	});
 });

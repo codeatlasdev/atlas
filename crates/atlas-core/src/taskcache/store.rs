@@ -612,6 +612,9 @@ impl Cache {
             proj.misses += 1;
             st.total.misses += 1;
         }
+        if hit {
+            st.add_hit_at(now, duration_ms);
+        }
         let _ = self.write_stats(&st);
         let mut recent = self.read_recent();
         recent.push(Recent {

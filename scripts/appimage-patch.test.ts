@@ -33,7 +33,8 @@ function hookEnv(env: Record<string, string>): Record<string, string> {
 	);
 }
 
-describe("apprun hook", () => {
+// The AppImage, its AppRun hook and the patch script exist only on Linux; Windows runners have no bash.
+describe.skipIf(process.platform === "win32")("apprun hook", () => {
 	test("the user's GDK_BACKEND wins (Omarchy sets wayland,x11,*)", () => {
 		expect(hookEnv({ GDK_BACKEND: "wayland,x11,*", WAYLAND_DISPLAY: "wayland-1" }).GDK_BACKEND).toBe("wayland,x11,*");
 	});
@@ -71,7 +72,7 @@ function fakeAppDir(): string {
 	return a;
 }
 
-describe("appimage-patch.sh", () => {
+describe.skipIf(process.platform === "win32")("appimage-patch.sh", () => {
 	test("strips host-ABI libraries, keeps the app's own, installs our hook", () => {
 		const a = fakeAppDir();
 		const p = Bun.spawnSync(["bash", PATCH, a]);

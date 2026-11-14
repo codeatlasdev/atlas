@@ -335,7 +335,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_local_process_that_outlives_the_limit_is_a_timeout_error() {
-        let c = cmd("/bin/sleep", &["30"]);
+        // Something that runs for 30 s on each OS (Windows has no /bin/sleep; ping waits 1 s per echo).
+        let c = if cfg!(windows) {
+            cmd("ping", &["-n", "31", "127.0.0.1"])
+        } else {
+            cmd("/bin/sleep", &["30"])
+        };
         let e = Runner::local()
             .output(c, Duration::from_millis(200))
             .await

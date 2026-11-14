@@ -32,7 +32,6 @@ pub(crate) mod push;
 pub mod relay;
 pub(crate) mod runner;
 pub(crate) mod schedule;
-#[cfg(unix)]
 pub mod spawn;
 pub(crate) mod store;
 pub(crate) mod telegram;

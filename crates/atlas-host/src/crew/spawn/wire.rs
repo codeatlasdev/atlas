@@ -103,6 +103,9 @@ mod tests {
             },
             Request::Wait { session: 7 },
             Request::Cwd { session: 7 },
+            Request::Reap {
+                user: "atlas-cm-3f2a9c1e5b7d".into(),
+            },
         ];
         for r in &reqs {
             send(&a, r, &[]).unwrap();

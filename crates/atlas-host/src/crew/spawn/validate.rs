@@ -94,15 +94,22 @@ fn clip(s: &str) -> String {
 
 /// Check a whole request. `body_len` is the size of the JSON it arrived in.
 pub fn check(req: &Request, body_len: usize) -> Result<(), Refused> {
+    check_in(CM_ROOT, req, body_len)
+}
+
+/// [`check`] with the crewmates' parent directory given (the helper validates against the root it
+/// was configured with, the same one `exec` re-checks).
+pub fn check_in(root: &str, req: &Request, body_len: usize) -> Result<(), Refused> {
     if body_len > MAX_MESSAGE {
         return Err(Refused::TooLarge);
     }
     match req {
-        Request::Spawn(s) => check_spawn(s),
+        Request::Spawn(s) => check_spawn_in(root, s),
         Request::Signal { sig, .. } => SIGNALS
             .contains(sig)
             .then_some(())
             .ok_or(Refused::BadSignal(*sig)),
+        Request::Reap { user } => slug_of(user).map(|_| ()),
         Request::Wait { .. } | Request::Cwd { .. } => Ok(()),
     }
 }
@@ -421,6 +428,35 @@ mod tests {
                 Err(Refused::BadSignal(sig))
             );
         }
+    }
+
+    // Reap kills every process of a user as root: the one request where a wrong name is not a
+    // failed spawn but a killed system service. Only the exact crewmate shape reaches it.
+    #[test]
+    fn reap_accepts_only_a_crewmate_user() {
+        assert_eq!(check(&Request::Reap { user: USER.into() }, 1), Ok(()));
+        for bad in [
+            "root",
+            "atlas-crew",
+            "atlas-cm-",
+            "atlas-cm-3f2a9c1e5b7d ",
+            "atlas-cm-*",
+            "-1",
+            "",
+            "atlas-cm-3F2A9C1E5B7D",
+        ] {
+            assert!(
+                matches!(
+                    check(&Request::Reap { user: bad.into() }, 1),
+                    Err(Refused::BadUser(_))
+                ),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(
+            check(&Request::Reap { user: USER.into() }, MAX_MESSAGE + 1),
+            Err(Refused::TooLarge)
+        );
     }
 
     #[test]

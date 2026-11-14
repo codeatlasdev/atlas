@@ -11,15 +11,29 @@
 //! |------------|-------------------------------------------------------------------------|
 //! | `protocol` | request/reply types, the message size cap                                |
 //! | `validate` | the pure rules every request must pass (user, binary, cwd, env, signal)  |
+//! | `layout`   | where a crewmate's files live under isolation, and when isolation is on  |
 //! | `wire`     | length-prefixed JSON framing with fds                                    |
-//! | `exec`     | Linux only: fork, drop to the crewmate's user, exec, return the pty master |
+//! | `exec`     | fork, drop to the crewmate's user, exec, return the pty master           |
 //! | `peer`     | who is on the other end of the socket (`SO_PEERCRED`)                    |
+//! | `server`   | the helper's loop: sessions, signals, exit codes, `atlas crew-spawn`     |
+//! | `client`   | hostd's side: ask the helper, get the master back                        |
+//! | `provision`| the second root service: create/remove a crewmate's user, egress rules   |
 //!
-//! Not wired into hostd yet: stage 2 routes `pty/spawn.rs`, signals and the engines through it.
+//! Everything that touches fds, sockets or users is Unix only; `protocol`, `validate` and `layout`
+//! are plain data and compile everywhere (the CLI builds the install scripts from them on any OS).
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
+pub mod client;
+#[cfg(unix)]
 pub mod exec;
+pub mod layout;
+#[cfg(unix)]
 pub mod peer;
+#[cfg(unix)]
+pub mod provision;
 pub mod protocol;
+#[cfg(unix)]
+pub mod server;
 pub mod validate;
+#[cfg(unix)]
 pub mod wire;

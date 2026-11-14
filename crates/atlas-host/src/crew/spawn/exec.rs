@@ -1,6 +1,7 @@
 //! The helper's one privileged act: start an allowed binary as a crewmate's user and give the
-//! caller the pty master (or one end of a socketpair). Linux only: it needs `setuid` and the
-//! controlling-terminal ioctls, and runs only inside the root helper.
+//! caller the pty master (or one end of a socketpair). It needs `setuid` and the controlling-
+//! terminal ioctls, so it only does anything useful as root inside the helper; as any other user
+//! it can start a process as that same user (what the tests do, on Linux and on a developer's Mac).
 //!
 //! Order matters and is the point of this file: the slave pty is `fchown`ed to the crewmate (a
 //! terminal the caller does not own cannot become its controlling terminal without
@@ -72,6 +73,41 @@ pub struct Where<'a> {
     pub cm_root: &'a str,
 }
 
+/// What the child must do about its identity before `exec`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Identity {
+    /// Already the right user (a helper under test, or `ids` is the caller).
+    Nothing,
+    /// Root: drop groups, gid, uid, in that order.
+    To(Ids),
+}
+
+/// The identity change a spawn as `want` needs when the process runs as `have`. Root becomes
+/// anyone but root; anyone else can only be itself, and being asked for another user is refused
+/// here, with a message, instead of failing with a bare `EPERM` in the child after the fork.
+fn drop_for(have: Ids, want: Ids) -> io::Result<Identity> {
+    if want.uid == 0 && have.uid == 0 {
+        // A crewmate user whose account resolves to uid 0 (a hand-edited passwd) must never run.
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "a crewmate cannot run as uid 0",
+        ));
+    }
+    if have.uid == 0 {
+        return Ok(Identity::To(want));
+    }
+    if have == want {
+        return Ok(Identity::Nothing);
+    }
+    Err(io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!(
+            "cannot start a process as uid {} from uid {}: the spawn helper must run as root",
+            want.uid, have.uid
+        ),
+    ))
+}
+
 /// [`spawn_as`] with explicit directories.
 pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Result<Started> {
     let dirs = w.engines;
@@ -97,7 +133,9 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
     let [i, o, e] = stdio;
     cmd.stdin(i).stdout(o).stderr(e);
     let tty = matches!(req.mode, Mode::Pty);
-    let ids_c = ids;
+    // SAFETY: plain getters.
+    let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
+    let identity = drop_for(Ids { uid: euid, gid: egid }, ids)?;
     // SAFETY: the hook runs between fork and exec and calls only async-signal-safe libc functions
     // (setsid, ioctl, setgroups, setgid, setuid); it allocates nothing.
     unsafe {
@@ -108,9 +146,10 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
             if tty && libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                 return Err(io::Error::last_os_error());
             }
-            if libc::setgroups(0, std::ptr::null()) != 0
-                || libc::setgid(ids_c.gid) != 0
-                || libc::setuid(ids_c.uid) != 0
+            if let Identity::To(ids) = identity
+                && (libc::setgroups(0, std::ptr::null()) != 0
+                    || libc::setgid(ids.gid) != 0
+                    || libc::setuid(ids.uid) != 0)
             {
                 return Err(io::Error::last_os_error());
             }
@@ -124,14 +163,24 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
 /// pty with the slave owned by the crewmate; the child's stdio is the slave. Returns the master.
 fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, [Stdio; 3])> {
     let (mut m, mut s): (RawFd, RawFd) = (-1, -1);
-    let ws = libc::winsize {
+    let mut ws = libc::winsize {
         ws_row: req.rows,
         ws_col: req.cols,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
-    // SAFETY: out-pointers are live; null name/termios are allowed.
-    if unsafe { libc::openpty(&mut m, &mut s, std::ptr::null_mut(), std::ptr::null(), &ws) } != 0 {
+    // SAFETY: out-pointers are live; null name/termios are allowed. `*mut` for termios and winsize:
+    // macOS declares them mutable, and a `*mut` coerces to Linux's `*const`.
+    if unsafe {
+        libc::openpty(
+            &mut m,
+            &mut s,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut ws,
+        )
+    } != 0
+    {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: openpty returned two fresh fds we now own.
@@ -150,20 +199,14 @@ fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, [Stdio; 3])> {
 /// A socketpair: the child gets one end as stdin and stdout (stderr merged), hostd the other.
 fn open_pipe() -> io::Result<(OwnedFd, [Stdio; 3])> {
     let mut sv = [0 as RawFd; 2];
-    // SAFETY: `sv` has room for the two fds.
-    if unsafe {
-        libc::socketpair(
-            libc::AF_UNIX,
-            libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
-            0,
-            sv.as_mut_ptr(),
-        )
-    } != 0
-    {
+    // SAFETY: `sv` has room for the two fds. `SOCK_CLOEXEC` is Linux only, so the flag is set after
+    // creation (the helper is single-threaded around a spawn's fork, so there is no window that matters).
+    if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr()) } != 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: socketpair returned two fresh fds we now own.
     let (ours, theirs) = unsafe { (OwnedFd::from_raw_fd(sv[0]), OwnedFd::from_raw_fd(sv[1])) };
+    set_cloexec(ours.as_raw_fd());
     let dup = |fd: &OwnedFd| fd.try_clone().map(Stdio::from);
     Ok((ours, [dup(&theirs)?, dup(&theirs)?, Stdio::from(theirs)]))
 }
@@ -231,7 +274,7 @@ mod tests {
         let bin = engines.join("claude");
         std::fs::write(
             &bin,
-            "#!/bin/sh\necho \"uid=$(id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
+            "#!/bin/sh\necho \"uid=$(/usr/bin/id -u) cwd=$(pwd) home=$HOME user=$USER path=$PATH secret=$SECRET ld=${LD_PRELOAD:-none} args=$*\"\n[ -t 0 ] && echo tty=yes || echo tty=no\nread line; echo got=$line\n",
         )
         .unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -312,7 +355,12 @@ mod tests {
         let out = run(&f, Mode::Pipe);
         assert!(out.contains("args=-p a b; echo pwned"), "{out}");
         assert!(out.contains("secret=s3"), "{out}");
-        assert!(out.contains(&format!("cwd={}", f.work)), "{out}");
+        // `pwd` reports the resolved path (macOS temp dirs sit behind the /var -> /private/var link).
+        let real = std::fs::canonicalize(&f.work).unwrap();
+        assert!(
+            out.contains(&format!("cwd={}", real.display())),
+            "{out}"
+        );
         assert!(
             out.contains("home=/home/x") && out.contains(&format!("user={USER}")),
             "{out}"
@@ -355,6 +403,35 @@ mod tests {
             .err()
             .unwrap();
         assert_eq!(e.kind(), io::ErrorKind::NotFound);
+    }
+
+    fn ids(uid: u32, gid: u32) -> Ids {
+        Ids { uid, gid }
+    }
+
+    // Incident: stage 1 always called setgroups(0), so every spawn by a non-root caller failed
+    // with EPERM (CI on Linux, 4 exec tests). Root drops to the crewmate; anyone else is itself.
+    #[test]
+    fn root_drops_to_the_crewmate_and_others_may_only_be_themselves() {
+        assert_eq!(
+            drop_for(ids(0, 0), ids(990, 990)).unwrap(),
+            Identity::To(ids(990, 990))
+        );
+        assert_eq!(drop_for(ids(1000, 1000), ids(1000, 1000)).unwrap(), Identity::Nothing);
+        for want in [ids(990, 990), ids(1000, 990), ids(990, 1000), ids(0, 0)] {
+            let e = drop_for(ids(1000, 1000), want).unwrap_err();
+            assert_eq!(e.kind(), io::ErrorKind::PermissionDenied, "{want:?}");
+        }
+    }
+
+    // A passwd entry that resolves a crewmate to uid 0 must never run, even for root.
+    #[test]
+    fn a_crewmate_that_resolves_to_uid_zero_is_refused_even_for_root() {
+        let e = drop_for(ids(0, 0), ids(0, 0)).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+        assert!(e.to_string().contains("uid 0"), "{e}");
+        // Root-owned group with a non-root uid is fine: only the uid matters here.
+        assert!(drop_for(ids(0, 0), ids(990, 0)).is_ok());
     }
 
     #[test]

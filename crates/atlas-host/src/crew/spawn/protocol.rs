@@ -68,6 +68,12 @@ pub enum Request {
     Cwd {
         session: u64,
     },
+    /// End every process of a crewmate's user (SIGKILL): what a session leaves behind when it
+    /// daemonizes, and the one way hostd can reach another uid's processes. Used when a task ends
+    /// or the crewmate is deleted.
+    Reap {
+        user: String,
+    },
 }
 
 /// The helper's answer. A successful `Spawn` carries one fd next to this message.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:atlas_mobile/core/demo/demo_crew.dart';
+import 'package:atlas_mobile/core/demo/demo_git.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
@@ -387,6 +388,7 @@ class _DemoComputer implements Transport {
   late final _ops = DemoCrewOps(_crewmates);
   var _paused = false;
   final _pendingInvites = <Map<String, String>>[];
+  final _git = DemoGit();
 
   @override
   Stream<String> get incomingLines => _lines.stream;
@@ -471,6 +473,26 @@ class _DemoComputer implements Transport {
         data = {'text': 'Seeded 3 batches of demo orders.'};
       case 'project_logs':
         data = {'text': _logs(args['service'] as String?)};
+      case 'git_status':
+        data = _git.status();
+      case 'git_diff':
+        data = _git.diff(args['path'] as String?, args['staged'] == true);
+      case 'git_stage' || 'git_unstage':
+        error = _git.stage(
+          (args['paths'] as List?)?.cast<String>() ?? const [],
+          on: req['cmd'] == 'git_stage',
+        );
+        data = error == null ? <String, Object?>{} : null;
+      case 'git_commit_message':
+        data = _git.message();
+      case 'git_commit':
+        final r = _git.commit(args['message'] as String? ?? '');
+        data = r.data;
+        error = r.error;
+      case 'git_push':
+        data = _git.push();
+      case 'git_pr_create':
+        data = _git.pr(args['title'] as String? ?? '');
       case 'pty_list':
         data = {
           'ptys': [

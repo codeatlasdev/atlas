@@ -1,5 +1,6 @@
 // Tests for the CI gate scripts: they decide whether a push to main skips its tests and whether a pull
 // request title is accepted, so a wrong answer either ships untested code or blocks every PR.
+import { shArgv } from "./sh";
 import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +9,7 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "..");
 
 function run(cmd: string[], env: Record<string, string> = {}) {
-	const p = Bun.spawnSync(cmd, { cwd: root, env: { ...process.env, ...env } });
+	const p = Bun.spawnSync(cmd[0].endsWith(".sh") ? shArgv(cmd[0], ...cmd.slice(1)) : cmd, { cwd: root, env: { ...process.env, ...env } });
 	return { code: p.exitCode, out: p.stdout.toString().trim(), err: p.stderr.toString() };
 }
 

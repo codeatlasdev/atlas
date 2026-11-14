@@ -145,6 +145,39 @@ jobs:
       - name: svelte-check, prettier, bun test
         run: bun run desktop:check
 
+  # The repo's own scripts (setup, heavy queue, CI gates, release helpers) and their tests, on Linux and on Windows
+  # through Git Bash (`scripts/sh.ts`), so a contributor's `bun run check` keeps working on both (#260).
+  scripts:
+    name: Repo scripts (${{ matrix.os }})
+    needs: plan
+    if: ${{ needs.plan.outputs.tested != 'true' && needs.plan.outputs.front == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          no-cache: true
+
+      - name: ffmpeg (the flicker-sweep judge tests record with it)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: PyYAML (scripts/test-labels.sh)
+        shell: bash
+        run: bash scripts/py.sh -c "import yaml" 2>/dev/null || bash scripts/py.sh -m pip install --quiet pyyaml
+
+      - name: bun run release:test
+        run: bun run release:test
+
   mobile:
     name: Mobile app
     needs: plan
@@ -298,7 +331,7 @@ jobs:
   # plus this explicit check is what keeps a broken run from going green.
   ci:
     name: CI
-    needs: [plan, rust-macos, rust-linux, rust-windows, frontend, mobile, push-relay, site, duplication, deny, workflows]
+    needs: [plan, rust-macos, rust-linux, rust-windows, frontend, scripts, mobile, push-relay, site, duplication, deny, workflows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

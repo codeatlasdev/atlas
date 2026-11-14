@@ -312,7 +312,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_local_process_returns_code_stdout_and_stderr_separately() {
-        let mut c = cmd("/bin/sh", &["-c", "echo out; echo err >&2; exit 3"]);
+        // The platform shell: `cmd` on Windows, where there is no /bin/sh.
+        let mut c = if cfg!(windows) {
+            cmd("cmd", &["/d", "/c", "echo out& echo err 1>&2& exit /b 3"])
+        } else {
+            cmd("/bin/sh", &["-c", "echo out; echo err >&2; exit 3"])
+        };
         c.env("X", "1");
         // `program` is 'static by design (engine names); a literal is.
         let o = Runner::local()
@@ -345,6 +350,10 @@ mod tests {
         assert!(e.contains("spawn failed"), "{e}");
     }
 
+    // A POSIX shell reading a line and then blocking: `cmd` has no equivalent that behaves the same
+    // with a pipe for stdin and no console. Crew servers are Linux; the output test above covers
+    // the local runner on Windows.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_local_rpc_is_a_line_protocol_and_kill_ends_it() {
         let rpc = Runner::local()

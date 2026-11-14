@@ -33,7 +33,7 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 
-pub const LOCAL: &str = "local";
+pub use atlas_host::worktrees::registry::LOCAL;
 
 /// How often an armed "restart when idle" looks at the terminals (pty exits also wake it).
 const IDLE_POLL: Duration = Duration::from_secs(5);

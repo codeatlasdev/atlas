@@ -9,6 +9,7 @@ use super::action::{
 };
 use super::outcome::{broadcast_task, finish_task, persist, wait_for_outcome};
 use super::prompt::{Prepared, load_agent_env, prepare_task};
+use super::recover::recovered_wait;
 use super::summary::maybe_summarize;
 #[cfg(test)]
 use super::testing::{TEST_AGENT_BIN, TEST_PAUSE_AFTER_SPAWN};
@@ -32,11 +33,17 @@ pub(super) async fn run_one_pty(hub: &Hub, crewmate: &Crewmate, mut task: Task) 
     // The summarizer runs with the same agent env as the terminal agent.
     let agent_env = load_agent_env(&hub.dir, &crewmate.agent);
 
-    let (outcome, steps) =
-        run_pty_inner(hub, crewmate, &mut task, &full_prompt, &pane_key, &work_dir).await;
-    // Check for ATLAS_ACTION in a successful result.
+    // A task parked on an action when hostd stopped keeps waiting: the agent's last reply is the
+    // `result` stored with the card, and the answer starts the next run as it would have before.
+    let (outcome, steps) = if recovered_wait(&task) {
+        (Ok(task.result.clone().unwrap_or_default()), vec![])
+    } else {
+        run_pty_inner(hub, crewmate, &mut task, &full_prompt, &pane_key, &work_dir).await
+    };
+    let rewaiting = recovered_wait(&task).then(|| task.action.clone()).flatten();
+    // Check for ATLAS_ACTION in a successful result (or the card the task was waiting on).
     if let Ok(result_text) = &outcome
-        && let Some(action) = parse_atlas_action(result_text)
+        && let Some(action) = rewaiting.or_else(|| parse_atlas_action(result_text))
         && let Some(hub_arc) = hub.crew.hub_arc()
     {
         // Show what the agent said above the card while it waits (the card replaces the machine line).

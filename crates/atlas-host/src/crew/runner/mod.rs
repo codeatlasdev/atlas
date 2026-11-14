@@ -7,6 +7,7 @@
 //! | file           | what it owns                                                      |
 //! |----------------|-------------------------------------------------------------------|
 //! | `mod.rs`       | the queue, `enqueue`/`cancel`, the worker loop                    |
+//! | `recover`      | what a hostd restart does to tasks in flight                      |
 //! | `conversation` | a task of a crewmate with an engine                               |
 //! | `pty`          | a task whose agent runs in a terminal                             |
 //! | `prompt`       | working directory, instructions, agent env files, hook endpoint   |
@@ -22,6 +23,7 @@ mod github;
 mod outcome;
 mod prompt;
 mod pty;
+mod recover;
 mod summary;
 #[cfg(test)]
 mod testing;
@@ -35,6 +37,9 @@ use parking_lot::Mutex;
 use conversation::run_one_conversational;
 use outcome::update_task;
 use pty::run_one_pty;
+#[cfg(test)]
+pub(crate) use recover::interrupted_for_fixture;
+pub(crate) use recover::recover;
 
 use crate::crew::store::{CrewStore, Crewmate, Task, TaskState};
 use crate::crew::{now_s, pane};
@@ -110,6 +115,17 @@ impl Default for RunnerMap {
 /// Append `task` to the crewmate's queue and start the worker if needed. While the crew is paused
 /// the task waits in the queue (a new task still queues) and no worker starts.
 pub(crate) fn enqueue(hub: &Hub, store: &CrewStore, crewmate: &Crewmate, task: Task) {
+    let _ = store; // store already written by caller before enqueue
+    push(hub, crewmate, task, false);
+}
+
+/// Like `enqueue`, but the task goes to the HEAD of the queue: a task a restart interrupted runs
+/// before the ones the user sent after it (`recover`).
+pub(crate) fn enqueue_front(hub: &Hub, crewmate: &Crewmate, task: Task) {
+    push(hub, crewmate, task, true);
+}
+
+fn push(hub: &Hub, crewmate: &Crewmate, task: Task, front: bool) {
     let crewmate_id = crewmate.id.clone();
     let notify;
     let should_spawn;
@@ -118,7 +134,11 @@ pub(crate) fn enqueue(hub: &Hub, store: &CrewStore, crewmate: &Crewmate, task: T
         let runner = map
             .entry(crewmate_id.clone())
             .or_insert_with(CrewmateRunner::new);
-        runner.queue.push_back(task);
+        if front {
+            runner.queue.push_front(task);
+        } else {
+            runner.queue.push_back(task);
+        }
         notify = runner.notify.clone();
         should_spawn = !hub.crew.is_paused() && !runner.worker_active;
         if should_spawn {
@@ -133,7 +153,6 @@ pub(crate) fn enqueue(hub: &Hub, store: &CrewStore, crewmate: &Crewmate, task: T
             run_worker(hub_arc, crewmate).await;
         });
     }
-    let _ = store; // store already written by caller before enqueue
 }
 
 /// `crew_pause`: cancel every running task with `reason` as its error. Queued tasks stay queued,

@@ -16,6 +16,7 @@
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
+//! | `restart`     | tasks in flight when hostd restarts: resumed, capped, answered, held while paused |
 //! | `untrusted`   | text from GitHub/webhooks: author filter, quoting, no bypass flags       |
 
 mod payloads;
@@ -38,6 +39,8 @@ mod limits;
 mod pause;
 #[cfg(unix)]
 mod projects;
+#[cfg(unix)]
+mod restart;
 #[cfg(unix)]
 mod tasks;
 #[cfg(unix)]

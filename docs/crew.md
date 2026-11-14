@@ -110,6 +110,20 @@ A crew server has one kill switch. **Pause** (`crew_pause`) cancels every runnin
 
 Trigger it from the CLI (`atlas crew pause|resume <ssh-target>`), Atlas Desktop (footer menu **Pause all** / **Resume all**, and Settings → Atlas Crew per server) or Atlas Mobile (Crew tab, needs the `act` scope). The state is saved in `<hostd dir>/crew.json` (`"paused": true`), so a restart of the service keeps the crew paused. Clients read it from `crewmate_list.paused` and the `crew_paused` push event; a server older than this feature sends neither and reads as running.
 
+### What survives a restart
+
+Restarting the service (an upgrade, a reboot, a crash) loses nothing a user started:
+
+| Task was | After the restart |
+|---|---|
+| `queued` | still queued, in order |
+| `running`, crewmate with an engine | back at the head of its queue, same id, marked `resumed`; the agent continues its saved session with a prompt saying the previous run was interrupted |
+| `running`, agent in a terminal | back at the head of its queue, same id, marked `resumed`; the agent runs the task again |
+| `waiting_action` | still waiting with its card; the answer (`crewmate_action_answer`) still continues it |
+| holding an `ask_user` question | the question is dropped (its agent is gone) and a step says so |
+
+A resumed task carries `resumed: true`, a `restarts` count and a step "The server restarted; running this task again". After 2 restarts a task is not resumed again: the third one fails it with an error that names the restarts, so a task that takes the server down cannot loop. A paused crew resumes nothing until **Resume**. Pending tool approvals do not survive: the prompt belonged to the dead agent process.
+
 ## Automations
 
 Automations (`triggers` on the wire) start a task by themselves. Build one in a crewmate's settings (Automations), or ask in chat ("every weekday at 9, review the open PRs") and the crewmate proposes it as a card you add with one click.
@@ -250,7 +264,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 | Layer | Where | Owns |
 |---|---|---|
-| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/hook/<token>` |
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|uninstall\|status\|logs\|login`; the unit text and migration plan are pure functions with tests |
 | Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
@@ -277,7 +291,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 ~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers
 ```
 
-Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_event.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
+Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
 
 ## Reference
 
@@ -414,4 +428,4 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 
 - `source`: `mobile`, `desktop`, `telegram`, `routine` or `trigger`.
 - `state`: `queued`, `running`, `waiting_action`, `done`, `failed` or `cancelled`.
-- `steps` may be empty; `started_at` and `finished_at` are absent until reached. Other optional fields: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`.
+- `steps` may be empty; `started_at` and `finished_at` are absent until reached. Other optional fields: `reply`, `reply_full`, `summarized`, `title`, `preparing`, `ask`, `action`, `answer`, `usage`, `trigger_id`, `tz`, `resumed` (a restart interrupted it and it started again) and `restarts` (how many).

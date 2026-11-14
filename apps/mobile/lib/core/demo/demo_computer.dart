@@ -385,6 +385,7 @@ class _DemoComputer implements Transport {
 
   // Crew server demo data
   final _crewmates = <String, DemoCrewmate>{};
+  late final _ops = DemoCrewOps(_crewmates);
   var _paused = false;
   final _pendingInvites = <Map<String, String>>[];
   final _git = DemoGit();
@@ -527,6 +528,7 @@ class _DemoComputer implements Transport {
         };
       case 'crew_pause' || 'crew_resume':
         _paused = req['cmd'] == 'crew_pause';
+        _ops.record(null, _paused ? 'paused' : 'resumed', {});
         _emit({'ev': 'crew_paused', 'paused': _paused});
         data = <String, Object?>{};
       case 'crewmate_tasks':
@@ -552,6 +554,60 @@ class _DemoComputer implements Transport {
         crewmate?.memory = args['text'] as String? ?? '';
         data = <String, Object?>{};
       case 'crewmate_routine_set':
+        final crewmate = _crewmates[args['id'] as String?];
+        final routines = [
+          for (final r in (args['routines'] as List?) ?? const [])
+            (r as Map).cast<String, dynamic>(),
+        ];
+        // hostd validates the cron before saving; so does the demo, with the same message.
+        final bad = routines.where(
+          (r) => !demoCronOk(r['cron'] as String? ?? ''),
+        );
+        if (crewmate == null) {
+          error = 'crewmate ${args['id']} not found';
+        } else if (bad.isNotEmpty) {
+          error = "invalid cron '${bad.first['cron']}'";
+        } else {
+          _ops.record(crewmate.id, 'config_changed', {
+            'field': 'routines',
+            'from': crewmate.routines,
+            'to': routines,
+          });
+          crewmate.routines = routines;
+        }
+        data = error == null ? <String, Object?>{} : null;
+      case 'crewmate_audit':
+        data = _ops.audit(
+          args['id'] as String?,
+          since: (args['since'] as num?)?.toInt(),
+          limit: (args['limit'] as num?)?.toInt() ?? 100,
+          kind: args['kind'] as String?,
+        );
+      case 'crew_audit':
+        data = _ops.audit(
+          null,
+          since: (args['since'] as num?)?.toInt(),
+          limit: (args['limit'] as num?)?.toInt() ?? 100,
+          kind: args['kind'] as String?,
+        );
+      case 'crewmate_usage':
+        data = _ops.usage(
+          args['id'] as String?,
+          since: (args['since'] as num?)?.toInt() ?? 0,
+        );
+      case 'engine_limits':
+        data = {
+          'message': 'no machine-readable quota or rate-limit information is exposed by any supported engine CLI',
+          'limits': <String, Object?>{},
+        };
+      case 'crew_settings_get':
+        data = {
+          'short_replies': _ops.shortReplies,
+          'short_replies_model': _ops.shortRepliesModel,
+        };
+      case 'crew_settings_set':
+        _ops.shortReplies = args['short_replies'] as bool? ?? true;
+        _ops.shortRepliesModel = args['short_replies_model'] as String?;
         data = <String, Object?>{};
       case 'crewmate_create':
         final newId = 'crewmate-${_crewmates.length + 1}';

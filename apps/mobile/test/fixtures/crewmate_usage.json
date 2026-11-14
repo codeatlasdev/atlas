@@ -1,0 +1,28 @@
+{
+  "records": [
+    {
+      "cache_read": 9000,
+      "cache_write": 150,
+      "cost_usd": 0.0123,
+      "crewmate_id": "crewmate-fixture",
+      "duration_ms": 4200,
+      "engine": "claude",
+      "input_tokens": 1200,
+      "model": "claude-sonnet-4",
+      "output_tokens": 340,
+      "ts": 1700000000
+    },
+    {
+      "cache_read": 9000,
+      "cache_write": 150,
+      "cost_usd": 0.0123,
+      "crewmate_id": "crewmate-fixture",
+      "duration_ms": 4200,
+      "engine": "claude",
+      "input_tokens": 800,
+      "model": "claude-sonnet-4",
+      "output_tokens": 90,
+      "ts": 1700000100
+    }
+  ]
+}

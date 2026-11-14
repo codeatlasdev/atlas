@@ -1064,7 +1064,26 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             project,
             agent,
             prompt,
-        } => agent_launch(hub, &project, &agent, prompt).await,
+            worktree,
+        } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::WorktreeList { project } => {
+            crate::worktrees::local::list(hub.data_dir(), &project).await
+        }
+        HostCmd::WorktreeCreate {
+            project,
+            name,
+            base,
+        } => {
+            crate::worktrees::local::create(
+                hub.data_dir(),
+                &project,
+                crate::worktrees::local::CreateReq { name, base },
+            )
+            .await
+        }
+        HostCmd::WorktreeRemove { id } => {
+            crate::worktrees::local::remove(hub.data_dir(), &id).await
+        }
         HostCmd::ProjectList {} => {
             let (panes, status) = agent_panes(hub).await;
             crate::projects::list(hub.data_dir(), &panes, &status).await
@@ -1269,28 +1288,56 @@ fn agent_interrupt(hub: &Hub, pane: &str) -> Result<Value, String> {
     Ok(json!({}))
 }
 
-/// A new agent tab in a project, made by the desktop (it owns tabs, worktrees and the
-/// agent's launch env): `terminal_create` on its control socket.
+/// A new agent terminal in a project, or in one of its worktrees, started by hostd itself so it works with the
+/// desktop closed (see [`crate::agents::launch_plan`]). The agent's hooks report under the new pane, which is
+/// what the phone opens; a desktop that runs later lists the terminal with the others.
 async fn agent_launch(
     hub: &Hub,
     project: &str,
     agent: &str,
     prompt: Option<String>,
+    worktree: Option<String>,
 ) -> Result<Value, String> {
-    let root = crate::projects::root_of(&hub.dir, project)?;
-    let args = json!({
-        "worktree": root.to_string_lossy(),
-        "agent": agent,
-        "prompt": prompt.filter(|p| !p.trim().is_empty()),
-    });
-    // Same budget as the CLI's `atlas term new`: the agent binary may take a while to start.
-    let tab = tokio::task::spawn_blocking(move || {
-        atlas_core::desktop_ctl::call("terminal_create", &args, std::time::Duration::from_secs(60))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| format!("{e:#}"))?;
-    Ok(json!({"pane": tab["tab"], "pty": tab["pty"]}))
+    let dir = hub.data_dir();
+    let (worktree_id, cwd) = match worktree.filter(|w| !w.is_empty()) {
+        Some(w) => {
+            // A worktree of THIS project's repo, by id: another repo's, or a path, is refused.
+            let listed = crate::worktrees::local::list(dir, project).await?;
+            let ok = listed["worktrees"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|r| r["id"] == w.as_str()));
+            if !ok {
+                return Err(format!("unknown worktree {w} in this project"));
+            }
+            let cwd = crate::worktrees::local::dir_of(dir, &w)?;
+            (w, cwd)
+        }
+        None => (project.to_string(), crate::projects::root_of(dir, project)?),
+    };
+    if !cwd.is_dir() {
+        return Err(format!("{} no longer exists", cwd.display()));
+    }
+    let bin = crate::agents::launch::resolve_bin(agent)?;
+    let pane = paths::new_id();
+    let mut req = crate::agents::launch_plan(
+        dir,
+        agent,
+        &bin,
+        &cwd,
+        &worktree_id,
+        &pane,
+        prompt.as_deref().filter(|p| !p.trim().is_empty()),
+    )?;
+    hook_env(hub, &mut req);
+    let scroll = hub.scroll_dir.clone();
+    let session = tokio::task::spawn_blocking(move || Session::spawn(req, &scroll))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?;
+    let pty = session.id.clone();
+    idle_agent_on_exit(hub, &session);
+    hub.sessions.lock().insert(pty.clone(), session);
+    Ok(json!({"pane": pane, "pty": pty}))
 }
 
 #[cfg(all(test, unix))]

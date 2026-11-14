@@ -1167,3 +1167,214 @@ fn starting_and_stopping_agents_need_act() {
         assert_eq!(super::required_scope(&c), Ok(super::Scope::Act));
     }
 }
+
+/// Worktrees: any phone may LIST them (`read`), only `act` creates or removes one, and none of the three
+/// takes a path: `worktree_remove` and `agent_launch {worktree}` name registry ids.
+#[test]
+fn worktrees_are_listed_with_read_and_changed_with_act() {
+    use crate::protocol::HostCmd;
+    let scope = |cmd: Value| {
+        let c: HostCmd = serde_json::from_value(cmd).unwrap();
+        super::required_scope(&c)
+    };
+    assert_eq!(
+        scope(json!({"cmd": "worktree_list", "args": {"project": "a"}})),
+        Ok(super::Scope::Read)
+    );
+    for cmd in [
+        json!({"cmd": "worktree_create", "args": {"project": "a", "name": "x"}}),
+        json!({"cmd": "worktree_remove", "args": {"id": "w"}}),
+        json!({"cmd": "agent_launch", "args": {"project": "a", "agent": "omp", "worktree": "w"}}),
+    ] {
+        assert_eq!(scope(cmd.clone()), Ok(super::Scope::Act), "{cmd}");
+    }
+}
+
+/// End to end over a real phone connection and a real git repo, with no desktop anywhere: a `read` phone lists
+/// but is refused creating and removing; an `act` phone creates, launches an agent in the new worktree (the
+/// agent's terminal starts in that folder) and removes it, and a dirty worktree is kept.
+#[tokio::test]
+async fn a_phone_manages_worktrees_and_launches_an_agent_in_one_with_the_desktop_closed() {
+    use std::process::Command;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let hostd = root.join("hostd");
+    let repo = root.join("shop");
+    let git = |dir: &Path, args: &[&str]| {
+        let o = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.email=a@b",
+                "-c",
+                "user.name=n",
+                "-c",
+                "init.defaultBranch=main",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            o.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+    };
+    std::fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-q", "."]);
+    std::fs::write(repo.join("f.txt"), "x\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "base"]);
+    git(&root, &["init", "-q", "--bare", "remote.git"]);
+    git(
+        &repo,
+        &[
+            "remote",
+            "add",
+            "origin",
+            &root.join("remote.git").to_string_lossy(),
+        ],
+    );
+    git(&repo, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    git(&repo, &["fetch", "-q", "origin"]);
+    git(&repo, &["remote", "set-head", "origin", "main"]);
+    let id = crate::worktrees::registry::id_for(&repo);
+    std::fs::create_dir_all(hostd.join("desktop")).unwrap();
+    std::fs::write(
+        hostd.join("desktop/projects.json"),
+        json!([{"id": id, "root": repo, "pinned": false, "added": "x"}]).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        hostd.join("desktop/settings.json"),
+        json!({"workspaceDir": root.join("wts"), "branchPrefix": "none"}).to_string(),
+    )
+    .unwrap();
+    // A fake `claude` on the login PATH: it records where it was started and stays.
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let fake = bin.join("claude");
+    let record = root.join("cwd.txt");
+    std::fs::write(
+        &fake,
+        format!("#!/bin/sh\npwd > '{}'\nsleep 30\n", record.display()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    crate::agents::launch_test_bin(Some(fake.clone()));
+
+    let (c, mut phone, node) = paired(&hostd).await;
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read"]}),
+    )
+    .await
+    .unwrap();
+
+    let l = phone
+        .call("worktree_list", json!({"project": id}))
+        .await
+        .unwrap();
+    assert_eq!(l["ok"], true, "{l}");
+    assert_eq!(l["data"]["worktrees"].as_array().unwrap().len(), 1);
+    for (cmd, args) in [
+        ("worktree_create", json!({"project": id, "name": "x"})),
+        ("worktree_remove", json!({"id": id})),
+        ("agent_launch", json!({"project": id, "agent": "claude"})),
+    ] {
+        let r = phone.call(cmd, args).await.unwrap();
+        assert_eq!(r["ok"], false, "{cmd}: a read phone is refused");
+    }
+    assert!(
+        !root.join("wts").exists(),
+        "nothing was created for a read phone"
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read", "act"]}),
+    )
+    .await
+    .unwrap();
+    let made = phone
+        .call(
+            "worktree_create",
+            json!({"project": id, "name": "Phone Task"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(made["ok"], true, "{made}");
+    let wt_id = made["data"]["worktree"]["id"].as_str().unwrap().to_string();
+    let wt_path = std::path::PathBuf::from(made["data"]["worktree"]["path"].as_str().unwrap());
+    assert!(wt_path.join("f.txt").is_file());
+
+    // The agent starts in THAT worktree, through hostd alone.
+    let launched = phone
+        .call(
+            "agent_launch",
+            json!({"project": id, "agent": "claude", "worktree": wt_id}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(launched["ok"], true, "{launched}");
+    let pane = launched["data"]["pane"].as_str().unwrap().to_string();
+    assert!(launched["data"]["pty"].as_str().is_some());
+    for _ in 0..100 {
+        if record.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        std::fs::read_to_string(&record).unwrap().trim(),
+        wt_path.canonicalize().unwrap().to_string_lossy()
+    );
+    let ptys = c.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        ptys["ptys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["scope"]["pane_key"] == pane.as_str())
+    );
+
+    // A worktree of another project is refused, and a path is never a worktree.
+    let stranger = phone
+        .call(
+            "agent_launch",
+            json!({"project": id, "agent": "claude", "worktree": "/tmp"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stranger["ok"], false);
+
+    // Dirty: kept. Then clean: removed.
+    std::fs::write(wt_path.join("new.txt"), "x").unwrap();
+    for p in c.call("pty_list", json!({})).await.unwrap()["ptys"]
+        .as_array()
+        .unwrap()
+    {
+        c.call("pty_kill", json!({"pty": p["pty"]})).await.ok();
+    }
+    let kept = phone
+        .call("worktree_remove", json!({"id": wt_id}))
+        .await
+        .unwrap();
+    assert_eq!(
+        (kept["ok"].clone(), kept["data"]["kept"].clone()),
+        (json!(true), json!("dirty")),
+        "{kept}"
+    );
+    std::fs::remove_file(wt_path.join("new.txt")).unwrap();
+    let gone = phone
+        .call("worktree_remove", json!({"id": wt_id}))
+        .await
+        .unwrap();
+    assert_eq!(gone["data"]["removed"], true, "{gone}");
+    assert!(!wt_path.exists());
+    c.call("shutdown", json!({})).await.ok();
+}

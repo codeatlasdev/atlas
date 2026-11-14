@@ -407,11 +407,14 @@ pub fn required_scope(cmd: &HostCmd) -> Result<Scope, &'static str> {
         C::ProjectList {} | C::ProjectDetail { .. } | C::ProjectLogs { .. } | C::Info {} => {
             Scope::Read
         }
+        C::WorktreeList { .. } => Scope::Read,
         C::ProjectService { .. }
         | C::ProjectAction { .. }
         | C::AgentSend { .. }
         | C::AgentInterrupt { .. }
-        | C::AgentLaunch { .. } => Scope::Act,
+        | C::AgentLaunch { .. }
+        | C::WorktreeCreate { .. }
+        | C::WorktreeRemove { .. } => Scope::Act,
         C::AgentApprove { .. } => Scope::Approve,
         // pty_read returns the scrollback text: reading a terminal, not listing it.
         C::PtyAttach { .. } | C::PtyDetach { .. } | C::PtyRead { .. } => Scope::TermRead,

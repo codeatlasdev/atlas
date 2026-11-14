@@ -1,0 +1,25 @@
+{
+  "repoId": "repo0000000a",
+  "worktrees": [
+    {
+      "branch": "main",
+      "dirty": false,
+      "exists": true,
+      "id": "repo0000000a",
+      "main": true,
+      "name": "shop",
+      "path": "/Users/me/shop",
+      "portOffset": 0
+    },
+    {
+      "branch": "phone-task",
+      "dirty": true,
+      "exists": true,
+      "id": "wt00000000b1",
+      "main": false,
+      "name": "phone-task",
+      "path": "/Users/me/worktrees/shop/phone-task",
+      "portOffset": 100
+    }
+  ]
+}

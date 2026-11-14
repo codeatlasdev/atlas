@@ -9,27 +9,16 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, State};
 
 use super::exec::{default_base, exec, exec_on, git, git_on, ref_exists};
-use super::naming::{free_offset, random_sea_name, slug};
 use crate::host::HostHub;
 use crate::registry::{self, Entry};
+use atlas_host::worktrees::naming::{free_offset, random_sea_name, slug};
 
 fn setting(key: &str) -> Option<String> {
-    crate::shell_env::load_settings()
-        .extra
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .filter(|s| !s.is_empty())
+    atlas_host::worktrees::local::setting(&crate::shell_env::load_settings().extra, key)
 }
 
 fn workspace_dir() -> PathBuf {
-    setting("workspaceDir")
-        .map(|s| PathBuf::from(atlas_core::util::expand_tilde(&s)))
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_default()
-                .join(".atlas/worktrees")
-        })
+    atlas_host::worktrees::local::workspace_dir(&crate::shell_env::load_settings().extra)
 }
 
 async fn branch_prefix(hub: &HostHub, repo: &Path) -> Option<String> {
@@ -359,12 +348,9 @@ fn share_local(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 pub(super) fn hook_env(root: &Path, wt: &Path, name: &str, offset: u16) -> Value {
-    json!({
-        "ATLAS_ROOT_PATH": root,
-        "ATLAS_WORKTREE_PATH": wt,
-        "ATLAS_WORKSPACE_NAME": name,
-        "ATLAS_PORT_OFFSET": offset.to_string(),
-    })
+    json!(atlas_host::worktrees::local::hook_env(
+        root, wt, name, offset
+    ))
 }
 
 const NOTHING: &str = "nothing to seed";

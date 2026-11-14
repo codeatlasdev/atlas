@@ -245,9 +245,7 @@ fn describe(step: &Step) -> String {
 /// Where the rules live so a reboot restores them (`atlas-crew-egress.service` loads this file).
 pub const EGRESS_FILE: &str = "/etc/atlas-crew/egress.nft";
 
-/// The loopback port hostd's hook server listens on when isolation is on: crewmates reach hostd
-/// there and nowhere else on the machine. Fixed (not random) because the firewall names it.
-pub const HOOK_PORT: u16 = 47631;
+pub use super::layout::HOOK_PORT;
 
 /// What one crewmate's processes may reach.
 #[derive(Debug, Clone, PartialEq, Eq)]

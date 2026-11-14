@@ -140,12 +140,9 @@ jobs:
       - name: Install Rust
         run: rustup show active-toolchain || rustup toolchain install
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
-
-      # Build as the runner user, run as root: root must not write the cache or target dir.
+      # No cargo cache here on purpose: a job that later runs as root should not restore build
+      # outputs another run produced (zizmor cache-poisoning), and atlas-host alone builds in minutes.
+      # Build as the runner user, run as root: root never writes the target dir it did not build.
       - name: Build the root tests
         run: cargo test -p atlas-host --lib --locked --no-run
 

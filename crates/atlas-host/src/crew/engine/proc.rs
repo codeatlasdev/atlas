@@ -9,10 +9,13 @@
 //! into stdout: there is no separate stderr to read, so on failure the error text is the output.
 
 use std::collections::BTreeMap;
+#[cfg(unix)]
 use std::io;
 use std::time::Duration;
 
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+#[cfg(unix)]
+use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 #[cfg(unix)]
 use crate::crew::spawn::client::Client;

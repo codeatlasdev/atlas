@@ -125,6 +125,11 @@ pub fn active_at(_sock: &std::path::Path) -> bool {
     false
 }
 
+/// The loopback port hostd's hook server listens on when isolation is on: crewmates reach hostd
+/// there and nowhere else on the machine. Fixed (not random) because the firewall names it. Lives
+/// here, not in the Unix-only `provision`, so every platform's build can name it.
+pub const HOOK_PORT: u16 = 47631;
+
 /// Where isolation lives on this machine, decided once when hostd starts: `Some` exactly when the
 /// helper's socket exists. hostd keeps it (in the crew store) instead of looking at the filesystem on
 /// every call, so a server never has some paths isolated and others not within one run, and a test
@@ -138,7 +143,7 @@ pub struct Setup {
     /// Parent of the crewmates' directories.
     pub root: String,
     /// The loopback port hostd's hook server listens on, which the firewall lets crewmates reach
-    /// (`provision::HOOK_PORT`). 0 asks for any free port (tests, where many daemons share a machine).
+    /// (`HOOK_PORT`). 0 asks for any free port (tests, where many daemons share a machine).
     pub hook_port: u16,
 }
 
@@ -149,7 +154,7 @@ impl Setup {
             socket: socket_path(),
             provision_socket: provision_socket_path(),
             root: cm_root(),
-            hook_port: super::provision::HOOK_PORT,
+            hook_port: HOOK_PORT,
         })
     }
 

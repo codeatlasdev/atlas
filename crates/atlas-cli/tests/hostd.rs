@@ -138,12 +138,18 @@ async fn pty_exec_fs_auth_and_cold_restore() {
     let dir = tmp.path();
     let (mut d, c) = start(dir).await;
 
-    // PTY: output, replay, exit code.
+    // PTY: output, replay, exit code. The program exits only after `go`, created once the client
+    // is attached: a fixed `sleep` let a loaded runner end it before the attach (#198).
     let mut ev = c.events();
+    let go = dir.join("go-exit");
+    let script = format!(
+        "echo hi; while [ ! -e '{}' ]; do sleep 0.01; done",
+        go.display()
+    );
     let pty = c
         .call(
             "pty_create",
-            json!({"cwd": dir, "argv": ["sh", "-c", "echo hi; sleep 0.5"]}),
+            json!({"cwd": dir, "argv": ["sh", "-c", script]}),
         )
         .await
         .unwrap()["pty"]
@@ -154,6 +160,7 @@ async fn pty_exec_fs_auth_and_cold_restore() {
     c.call("pty_attach", json!({"pty": pty, "replay": true}))
         .await
         .unwrap();
+    std::fs::write(&go, "").unwrap();
     let (mut replay, mut code) = (String::new(), None);
     while code.is_none() {
         let e = tokio::time::timeout(Duration::from_secs(5), ev.recv())
@@ -488,7 +495,9 @@ async fn every_terminal_of_a_pane_can_report_its_agent() {
     let (_d, c) = start(dir).await;
     let mut ev = c.events();
     let out = |pane: Option<&str>, env: Value| {
-        let mut args = json!({"cwd": dir, "argv": ["sh", "-c", "echo \"[$ATLAS_PANE_KEY|$ATLAS_HOOK_ENDPOINT]\"; sleep 1"], "env": env});
+        // `read` keeps the terminal alive until hostd closes it: with `sleep 1` it could end
+        // before the attach on a loaded runner (#198).
+        let mut args = json!({"cwd": dir, "argv": ["sh", "-c", "echo \"[$ATLAS_PANE_KEY|$ATLAS_HOOK_ENDPOINT]\"; read x"], "env": env});
         if let Some(p) = pane {
             args["scope"] = json!({"pane_key": p});
         }
@@ -533,9 +542,13 @@ async fn an_agent_pane_whose_process_exits_goes_idle_without_the_app() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path();
     let (_d, c) = start(dir).await;
+    // The process exits only after `go`, created once "working" is checked: with `sleep 1` a
+    // loaded runner saw it already idle (#198).
+    let go = dir.join("go-exit");
+    let script = format!("while [ ! -e '{}' ]; do sleep 0.01; done", go.display());
     c.call(
         "pty_create",
-        json!({"cwd": dir, "argv": ["sh", "-c", "sleep 1"], "scope": {"pane_key": "p1"}}),
+        json!({"cwd": dir, "argv": ["sh", "-c", script], "scope": {"pane_key": "p1"}}),
     )
     .await
     .unwrap();
@@ -550,6 +563,7 @@ async fn an_agent_pane_whose_process_exits_goes_idle_without_the_app() {
         c.call("agent_status_all", json!({})).await.unwrap()["panes"]["p1"]["state"].clone()
     };
     assert_eq!(state().await, "working");
+    std::fs::write(&go, "").unwrap();
     let mut s = Value::Null;
     for _ in 0..50 {
         s = state().await;

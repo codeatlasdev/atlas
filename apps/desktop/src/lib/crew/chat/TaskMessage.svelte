@@ -16,6 +16,7 @@
 	import ApprovalPrompt from "./ApprovalPrompt.svelte";
 	import type { ChatState } from "./chat.svelte.ts";
 	import TaskActionCard from "./TaskActionCard.svelte";
+	import TaskImages from "./TaskImages.svelte";
 	import TaskReply from "./TaskReply.svelte";
 	import { fmtElapsed } from "./taskView.ts";
 
@@ -55,6 +56,9 @@
 	{/if}
 	<div class="msg-out" in:msgOut>
 		<div class="bubble out ca-selectable">{t.prompt}</div>
+		{#if t.attachments?.length}
+			<TaskImages attachments={t.attachments} taskId={t.id} crewmateId={crewmate.id} {hostKey} />
+		{/if}
 		{#if t.source !== "desktop"}
 			<div class="msg-meta">· {t.source}</div>
 		{/if}

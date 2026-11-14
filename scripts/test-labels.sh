@@ -10,6 +10,8 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 file="${1:-$root/.github/labels.yml}"
 fail=0
+# Python 3 under any of its names (on Windows `python3` is often the Store stub): scripts/py.sh.
+python3() { "$root/scripts/py.sh" "$@"; }
 
 python3 - "$file" <<'PY' || fail=1
 import re, sys, yaml

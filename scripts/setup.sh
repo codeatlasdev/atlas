@@ -45,6 +45,8 @@ fi
 
 # Atlas Mobile (apps/mobile) needs Flutter; everything else works without it.
 command -v flutter >/dev/null || say "ℹ Flutter not found: apps/mobile is skipped by the gate (https://docs.flutter.dev/get-started/install)"
+# release:test (`bun run check`) runs the release manifest and label checks in Python 3.
+scripts/py.sh -c "" 2>/dev/null || say "ℹ Python 3 not found: release:test needs it (https://www.python.org/downloads/; on Windows not the Microsoft Store alias)"
 # services/push-relay needs Go; everything else works without it.
 command -v go >/dev/null || say "ℹ Go not found: services/push-relay is skipped by the gate (https://go.dev/doc/install)"
 

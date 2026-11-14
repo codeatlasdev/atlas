@@ -61,13 +61,14 @@ done
 trap release EXIT INT TERM
 start=$(date +%s)
 while :; do
-	load=$(uptime | sed 's/.*load averages*: *//; s/,/ /g' | awk '{print int($2)}')
+	load=$(uptime 2>/dev/null | sed 's/.*load averages*: *//; s/,/ /g' | awk '{print int($2)}')
 	free=$(memfree)
 	why=
-	# Memory first: it freezes a machine, a busy CPU only slows it. An unreadable figure leaves its gate open.
+	# Memory first: it freezes a machine, a busy CPU only slows it. An unreadable figure (no `uptime` in Git Bash)
+	# leaves its gate open.
 	if [ "$minmem" -gt 0 ] 2>/dev/null && [ -n "$free" ] && [ "$free" -lt "$minmem" ]; then
 		why="only $free% of memory free (< $minmem%)"
-	elif [ "$load" -ge "$max" ]; then
+	elif [ -n "$load" ] && [ "$load" -ge "$max" ]; then
 		why="load $load >= $max"
 	fi
 	[ -z "$why" ] && break

@@ -1,0 +1,5 @@
+# Text is LF in every checkout, Windows included: the scripts run under bash, and the brand-asset lock
+# (scripts/icons.ts) hashes text outputs byte for byte.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

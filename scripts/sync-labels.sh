@@ -29,7 +29,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -f "$file" ]] || { echo "labels file not found: $file" >&2; exit 2; }
-command -v python3 >/dev/null || { echo "python3 is required to read $file" >&2; exit 2; }
+# Python 3 under any of its names (on Windows `python3` is often the Store stub): scripts/py.sh.
+python3() { "$(dirname "${BASH_SOURCE[0]}")/py.sh" "$@"; }
 if [[ $dry == 0 ]]; then
   command -v gh >/dev/null || { echo "gh is required (https://cli.github.com)" >&2; exit 2; }
 fi
@@ -44,7 +45,7 @@ for l in labels:
             sys.exit(f"label {l['name']!r}: {k} contains a tab or newline")
     print(f"{l['name']}\t{l['color']}\t{l['description']}")
 PY
-)"
+)" || { echo "could not read $file with Python 3 + PyYAML (scripts/py.sh)" >&2; exit 2; }
 
 names=()
 while IFS=$'\t' read -r name color desc; do

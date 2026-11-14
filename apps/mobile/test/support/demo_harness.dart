@@ -3,12 +3,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
+import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 class DemoStorage extends MacStorage {
@@ -20,11 +22,21 @@ class DemoStorage extends MacStorage {
   Future<String?> loadSecretKey() async => 'ab';
 }
 
-/// [child] in the app theme; every device connects to [demoTransport].
-Widget demoWrap(Widget child, List<MacDevice> devices) => ProviderScope(
+/// [child] in the app theme; every device connects to [demoTransport], or to [transport] when given (a wrapper
+/// of it that misbehaves on purpose). [overrides] join the one `ProviderScope`: a second, outer scope would not
+/// reach the providers this one overrides.
+Widget demoWrap(
+  Widget child,
+  List<MacDevice> devices, {
+  List<Override> overrides = const [],
+  Transport Function()? transport,
+}) => ProviderScope(
   overrides: [
     macStorageProvider.overrideWithValue(DemoStorage(devices)),
-    transportFactoryProvider.overrideWithValue((_, _) async => demoTransport()),
+    transportFactoryProvider.overrideWithValue(
+      (_, _) async => (transport ?? demoTransport)(),
+    ),
+    ...overrides,
   ],
   child: MaterialApp(theme: atlasTheme(), home: child),
 );

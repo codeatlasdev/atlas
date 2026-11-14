@@ -1,9 +1,12 @@
 <script lang="ts">
 	/**
-	 * Composer — the rounded message box under the thread: auto-growing textarea, send button, optional "+" and
-	 * queue hint. The chat uses it with the "+"; the setup conversation reuses it without.
+	 * Composer — the rounded message box under the thread: auto-growing textarea, send button, optional "+" (image
+	 * picker; a pasted image is taken too), the pending images and the queue hint. The chat uses the images; the
+	 * setup conversation reuses the box without them.
 	 */
-	import { ArrowUp, Plus } from "@lucide/svelte";
+	import { ArrowUp, Plus, X } from "@lucide/svelte";
+	import { MAX_ATTACHMENTS, imagesFromClipboard, type PendingImage } from "#lib/crew/attachments.ts";
+	import ImageThumb from "./ImageThumb.svelte";
 
 	interface Props {
 		value: string;
@@ -12,8 +15,11 @@
 		label: string;
 		/** Disables the send button on top of the empty check (a send/save in flight). */
 		busy?: boolean;
-		/** Shows the "+" before the input when given. */
-		onattach?: () => void;
+		/** Images from the "+" picker or a paste. Shows the "+" and takes pastes when given. */
+		onfiles?: (files: File[]) => void;
+		/** Images waiting to be sent, shown above the box. */
+		images?: PendingImage[];
+		onremoveimage?: (index: number) => void;
 		/** Tasks waiting behind the running one; a hint under the pill when above zero. */
 		queued?: number;
 		onsend: () => void;
@@ -24,12 +30,15 @@
 		placeholder,
 		label,
 		busy = false,
-		onattach,
+		onfiles,
+		images = [],
+		onremoveimage,
 		queued = 0,
 		onsend,
 	}: Props = $props();
 
 	let focused = $state(false);
+	let picker: HTMLInputElement | undefined = $state();
 
 	/** Fit the box to its text on every change of `value`, typed or set by code. Growing only on `input`
 	 *  left the box two lines tall after a send cleared it, and after a pick or "edit" filled it. */
@@ -42,9 +51,41 @@
 </script>
 
 <div class="composer">
+	{#if images.length}
+		<ul class="pending" aria-label="Attached images">
+			{#each images as im, i (im.name + i)}
+				<li class="pending-item">
+					<ImageThumb bytes={im.bytes} mime={im.mime} alt={im.name} size={56} />
+					<button class="pending-x" aria-label={`Remove ${im.name}`} onclick={() => onremoveimage?.(i)}
+						><X size={11} /></button
+					>
+				</li>
+			{/each}
+		</ul>
+	{/if}
 	<div class="pill" class:focused role="group">
-		{#if onattach}
-			<button class="pill-add" aria-label="Attach" onclick={onattach}><Plus size={16} /></button>
+		{#if onfiles}
+			<button
+				class="pill-add"
+				aria-label="Attach"
+				disabled={images.length >= MAX_ATTACHMENTS}
+				onclick={() => picker?.click()}><Plus size={16} /></button
+			>
+			<input
+				bind:this={picker}
+				class="picker"
+				type="file"
+				accept="image/png,image/jpeg,image/webp,image/gif"
+				multiple
+				hidden
+				aria-label="Attach images"
+				onchange={(e) => {
+					const input = e.currentTarget;
+					onfiles(Array.from(input.files ?? []));
+					// The same file picked twice in a row must fire again.
+					input.value = "";
+				}}
+			/>
 		{/if}
 		<textarea
 			class="pill-input"
@@ -56,6 +97,14 @@
 				if (e.key === "Enter" && !e.shiftKey) {
 					e.preventDefault();
 					onsend();
+				}
+			}}
+			onpaste={(e) => {
+				const files = onfiles ? imagesFromClipboard(e) : [];
+				// Text pastes go on as usual; only a paste that holds an image is taken over.
+				if (files.length) {
+					e.preventDefault();
+					onfiles?.(files);
 				}
 			}}
 			{@attach autoGrow}
@@ -79,6 +128,39 @@
 		flex: none;
 		/* Same side inset as the thread, so the pill lines up with the bubbles above it. */
 		padding: 8px clamp(24px, 5%, 64px) 20px;
+	}
+	.pending {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		list-style: none;
+		margin: 0 0 8px;
+		padding: 0 6px;
+	}
+	.pending-item {
+		position: relative;
+	}
+	.pending-x {
+		position: absolute;
+		top: -6px;
+		right: -6px;
+		width: 20px;
+		height: 20px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		border: 1px solid var(--ca-outline-subtle);
+		background: var(--ca-surface-overlay, var(--ca-surface-raised));
+		color: var(--ca-text-secondary);
+		cursor: default;
+		padding: 0;
+	}
+	.pending-x:hover {
+		color: var(--ca-text-primary);
+	}
+	.pill-add:disabled {
+		opacity: 0.4;
 	}
 	.pill {
 		display: flex;

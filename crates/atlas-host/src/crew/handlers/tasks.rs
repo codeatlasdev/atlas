@@ -2,6 +2,7 @@
 
 use serde_json::{Value, json};
 
+use super::super::attachments::{self, Sent};
 use super::super::store::{AskAnswer, Task, TaskAction, TaskState, Trigger};
 use super::super::{events, now_s, runner, triggers};
 use crate::paths;
@@ -17,31 +18,84 @@ pub(crate) fn send_task(
     prompt: String,
     source: String,
     tz: Option<String>,
+    images: Vec<Sent>,
 ) -> Result<Value, String> {
-    let crewmate = hub
-        .crew
-        .store
-        .load_crewmate(&id)
-        .map_err(|_| format!("crewmate {id} not found"))?;
+    let store = &hub.crew.store;
+    // Whatever refuses the task also drops the pieces its images were uploaded in.
+    let refuse = |e: String| {
+        attachments::discard_uploads(store, &id, &images);
+        Err(e)
+    };
+    let crewmate = match store.load_crewmate(&id) {
+        Ok(c) => c,
+        Err(_) => return refuse(format!("crewmate {id} not found")),
+    };
     let prompt = prompt.trim();
     if prompt.is_empty() {
-        return Err("prompt must not be empty".into());
+        return refuse("prompt must not be empty".into());
     }
     if prompt.chars().count() > MAX_PROMPT_CHARS {
-        return Err(format!(
+        return refuse(format!(
             "prompt must be at most {MAX_PROMPT_CHARS} characters"
         ));
     }
     let mut task = Task::new(source, prompt);
     task.tz = tz;
-    hub.crew
-        .store
-        .append_task(&id, &task)
-        .map_err(|e| format!("append_task: {e}"))?;
+    let incoming = match attachments::resolve(store, &id, &images) {
+        Ok(v) => v,
+        Err(e) => return refuse(e),
+    };
+    attachments::discard_uploads(store, &id, &images);
+    attachments::attach(store, &id, &mut task, &incoming)?;
+    if let Err(e) = store.append_task(&id, &task) {
+        let _ = std::fs::remove_dir_all(attachments::task_dir(store, &id, &task.id));
+        return Err(format!("append_task: {e}"));
+    }
     let task_val = serde_json::to_value(&task).map_err(|e| e.to_string())?;
-    runner::enqueue(hub, &hub.crew.store, &crewmate, task);
+    runner::enqueue(hub, store, &crewmate, task);
     hub.broadcast(events::task(&id, None));
     Ok(json!({ "task": task_val }))
+}
+
+/// `CrewmateAttachmentPut`: one piece of an image on its way to a task.
+pub(crate) fn attachment_put(
+    hub: &Hub,
+    id: String,
+    upload: String,
+    seq: u32,
+    data_b64: String,
+    last: bool,
+) -> Result<Value, String> {
+    hub.crew
+        .store
+        .load_crewmate(&id)
+        .map_err(|_| format!("crewmate {id} not found"))?;
+    let staged = attachments::put_piece(&hub.crew.store, &id, &upload, seq, &data_b64)?;
+    Ok(json!({ "staged": staged, "last": last }))
+}
+
+/// `CrewmateAttachment`: a piece of a stored image, base64, at most 512 KiB raw.
+pub(crate) fn attachment(
+    hub: &Hub,
+    id: String,
+    task: String,
+    name: String,
+    offset: u64,
+    limit: Option<u64>,
+) -> Result<Value, String> {
+    hub.crew
+        .store
+        .load_crewmate(&id)
+        .map_err(|_| format!("crewmate {id} not found"))?;
+    let task = hub
+        .crew
+        .store
+        .read_tasks(&id, usize::MAX)
+        .into_iter()
+        .find(|t| t.id == task)
+        .ok_or_else(|| format!("task {task} not found"))?;
+    let (a, bytes) = attachments::read(&hub.crew.store, &id, &task, &name)?;
+    Ok(attachments::reply(&a, &bytes, offset, limit))
 }
 
 /// `CrewmateTasks`

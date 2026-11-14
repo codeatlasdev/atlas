@@ -34,6 +34,7 @@ describe("actionLabel", () => {
 		expect(actionLabel(card({ kind: "provide_secret", label: "API key" }))).toBe("API key");
 		expect(actionLabel(card({ kind: "sign_in_engine", engine: "claude" }))).toBe("Sign in to claude");
 		expect(actionLabel(card({ kind: "add_trigger" }))).toBe("Add trigger");
+		expect(actionLabel(card({ kind: "refused", reasons: ["x"] }))).toBe("Work refused");
 		expect(actionLabel(card({ kind: "something_new" }))).toBe("Needs input");
 	});
 });

@@ -17,6 +17,13 @@ class MachineState {
 		this.open = true;
 	}
 
+	/** `atlas cache clear`: empties the task cache, refreshes the report, returns what was freed. */
+	async clearCache(): Promise<{ entries: number; blobs: number; bytes: number }> {
+		const freed = await invoke<{ entries: number; blobs: number; bytes: number }>("cache_clear");
+		await this.refresh();
+		return freed;
+	}
+
 	async refresh() {
 		try {
 			this.report = await invoke<MachineReport>("machine_report");

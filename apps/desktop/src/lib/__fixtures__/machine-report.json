@@ -1,5 +1,31 @@
 {
 	"at": 1763040065000,
+	"cache": {
+		"bytes": 536870912,
+		"entries": 7,
+		"hit_rate": 75,
+		"hits": 3,
+		"max_bytes": 2147483648,
+		"misses": 1,
+		"projects": [
+			{
+				"hit_rate": 100,
+				"hits": 2,
+				"misses": 0,
+				"name": "ui",
+				"saved_ms": 25000
+			},
+			{
+				"hit_rate": 50,
+				"hits": 1,
+				"misses": 1,
+				"name": "atlas",
+				"saved_ms": 5000
+			}
+		],
+		"saved_7d_ms": 12000,
+		"saved_ms": 30000
+	},
 	"cores": 12,
 	"gates": {
 		"holding": null,

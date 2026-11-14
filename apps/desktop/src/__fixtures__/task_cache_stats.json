@@ -1,4 +1,11 @@
 {
+	"days": {
+		"20405": {
+			"hits": 2,
+			"misses": 0,
+			"saved_ms": 18000
+		}
+	},
 	"keys": {
 		"abababababababababababababababababababababababababababababababab": {
 			"hits": 2,

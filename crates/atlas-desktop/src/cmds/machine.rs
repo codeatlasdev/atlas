@@ -1,6 +1,7 @@
 //! The Machine view (#129): why the machine is slow and what each agent runs, in one report.
 //! Load and memory with the heavy gates' thresholds, the heavy-job queue and its run history, the
-//! services using the most memory, and the processes of every terminal (agents included).
+//! services using the most memory, the processes of every terminal (agents included) and the task
+//! cache (#126: hit rate, time saved, size against its cap, per project).
 //!
 //! `aggregate` is pure (every input is a parameter), so the tests pin each rule without a
 //! process table or a queue directory; `machine_report` only gathers the inputs.
@@ -10,6 +11,7 @@ use std::sync::Arc;
 
 use atlas_core::heavy::{self, Dir, Gates, LabelRuns, Status};
 use atlas_core::sys;
+use atlas_core::taskcache::{self, Cache, Freed};
 use atlas_tui::runtime::usage;
 use atlas_tui::status::{self, ServiceRow};
 use serde::Serialize;
@@ -21,6 +23,10 @@ use crate::registry::Entry;
 /// Services listed (the heaviest first): the view is a "who is eating the machine" list, not an
 /// inventory.
 const TOP_SERVICES: usize = 8;
+/// Projects listed in the cache section (the ones that saved the most time).
+const TOP_CACHE_PROJECTS: usize = 5;
+/// Days "recently" covers in the cache section.
+const CACHE_RECENT_DAYS: u64 = 7;
 
 /// The 1, 5 and 15 minute load averages.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -85,6 +91,37 @@ pub struct RunHistory {
     pub max_s: u64,
 }
 
+/// One project's share of the task cache.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CacheProject {
+    pub name: String,
+    pub hits: u64,
+    pub misses: u64,
+    pub saved_ms: u64,
+    /// Whole percent of runs served from the cache, `null` before the first run.
+    pub hit_rate: Option<u8>,
+}
+
+/// The task cache (`atlas_core::taskcache`): what `atlas cache status` prints.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CacheView {
+    pub entries: usize,
+    /// Bytes on disk.
+    pub bytes: u64,
+    /// The cap (`cache.max_bytes`) the store is trimmed to.
+    pub max_bytes: u64,
+    pub hits: u64,
+    pub misses: u64,
+    /// Whole percent of runs served from the cache, `null` before the first run.
+    pub hit_rate: Option<u8>,
+    /// Milliseconds hits did not have to run, since the cache was created (or cleared).
+    pub saved_ms: u64,
+    /// The same over the last [`CACHE_RECENT_DAYS`] days.
+    pub saved_7d_ms: u64,
+    /// The projects that saved the most time first, at most [`TOP_CACHE_PROJECTS`].
+    pub projects: Vec<CacheProject>,
+}
+
 /// Everything the Machine view shows; one poll, one payload.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Report {
@@ -104,6 +141,7 @@ pub struct Report {
     pub services: Vec<ServiceUse>,
     /// Heaviest first.
     pub terminals: Vec<TermUse>,
+    pub cache: CacheView,
 }
 
 /// What the report is built from.
@@ -119,6 +157,7 @@ pub struct Inputs {
     /// `(project name, rows)` of every project with a live runner.
     pub projects: Vec<(String, Vec<ServiceRow>)>,
     pub terminals: Vec<TermUse>,
+    pub cache: taskcache::Status,
 }
 
 pub fn aggregate(i: Inputs) -> Report {
@@ -161,7 +200,59 @@ pub fn aggregate(i: Inputs) -> Report {
         history: i.runs.into_iter().filter_map(run_history).collect(),
         services,
         terminals,
+        cache: cache_view(&i.cache, i.at),
     }
+}
+
+/// Whole percent of `hits` over `hits + misses`, `None` when there was no run.
+fn rate(hits: u64, misses: u64) -> Option<u8> {
+    let n = hits + misses;
+    (n > 0).then(|| ((hits * 100 + n / 2) / n) as u8)
+}
+
+/// The cache as the drawer shows it; `now` (Unix ms) decides what "the last 7 days" is.
+fn cache_view(st: &taskcache::Status, now: u64) -> CacheView {
+    let t = &st.stats.total;
+    let mut projects: Vec<CacheProject> = st
+        .stats
+        .projects
+        .iter()
+        .map(|(name, p)| CacheProject {
+            name: name.clone(),
+            hits: p.hits,
+            misses: p.misses,
+            saved_ms: p.saved_ms,
+            hit_rate: rate(p.hits, p.misses),
+        })
+        .collect();
+    // Most time saved first; a tie keeps the (alphabetical) order of the map.
+    projects.sort_by_key(|p| std::cmp::Reverse(p.saved_ms));
+    projects.truncate(TOP_CACHE_PROJECTS);
+    CacheView {
+        entries: st.entries,
+        bytes: st.bytes,
+        max_bytes: st.max_bytes,
+        hits: t.hits,
+        misses: t.misses,
+        hit_rate: rate(t.hits, t.misses),
+        saved_ms: t.saved_ms,
+        saved_7d_ms: st.stats.saved_since(now, CACHE_RECENT_DAYS),
+        projects,
+    }
+}
+
+/// `atlas cache clear`: the same call, so the CLI and the drawer cannot disagree on what it deletes.
+fn clear(cache: &Cache) -> Freed {
+    cache.clear()
+}
+
+/// Empty the task cache (entries, blobs and counters), as `atlas cache clear` does. The drawer asks
+/// first; returns what was freed.
+#[tauri::command]
+pub async fn cache_clear() -> Result<Freed, String> {
+    tauri::async_runtime::spawn_blocking(|| clear(&Cache::default_cache()))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// A row worth listing: one that is running (a stopped service uses nothing).
@@ -283,6 +374,7 @@ fn gather(terminals: &[TermUse]) -> Report {
         runs: dir.runs(),
         projects,
         terminals: terminals.to_vec(),
+        cache: Cache::default_cache().status(),
     })
 }
 
@@ -422,6 +514,38 @@ mod tests {
                 ),
             ],
             terminals: terminals_of(&list, &usage),
+            cache: cache_status(),
+        }
+    }
+
+    const DAY: u64 = 86_400_000;
+
+    /// A status as `Cache::status` returns it: 3 hits (2 recent, 1 old), 1 miss, two projects.
+    fn cache_status() -> taskcache::Status {
+        let totals = |hits, misses, saved_ms| taskcache::stats::Totals {
+            hits,
+            misses,
+            saved_ms,
+        };
+        let mut stats = taskcache::Stats {
+            total: totals(3, 1, 30_000),
+            ..Default::default()
+        };
+        stats.projects.insert("atlas".into(), totals(1, 1, 5_000));
+        stats.projects.insert("ui".into(), totals(2, 0, 25_000));
+        stats
+            .days
+            .insert((1_763_040_065_000 / DAY).to_string(), totals(2, 0, 12_000));
+        stats.days.insert(
+            (1_763_040_065_000 / DAY - 20).to_string(),
+            totals(1, 0, 18_000),
+        );
+        taskcache::Status {
+            dir: "/home/me/.atlas/cache".into(),
+            entries: 7,
+            bytes: 512 * MB,
+            max_bytes: 2048 * MB,
+            stats,
         }
     }
 
@@ -526,6 +650,135 @@ mod tests {
             ("gate", 270, 270, 300)
         );
         assert_eq!(h.secs, [240, 300, 270]);
+    }
+
+    #[test]
+    fn cache_view_has_hit_rate_time_saved_and_projects_by_time_saved() {
+        let c = aggregate(inputs()).cache;
+        assert_eq!((c.entries, c.bytes, c.max_bytes), (7, 512 * MB, 2048 * MB));
+        assert_eq!((c.hits, c.misses), (3, 1));
+        assert_eq!(c.hit_rate, Some(75));
+        assert_eq!(c.saved_ms, 30_000);
+        // Only the 12 s of the last week: the 18 s hit was 20 days ago.
+        assert_eq!(c.saved_7d_ms, 12_000);
+        // The project that saved the most first, not alphabetical.
+        let names: Vec<_> = c.projects.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["ui", "atlas"]);
+        assert_eq!(c.projects[0].hit_rate, Some(100));
+        assert_eq!(c.projects[1].hit_rate, Some(50));
+    }
+
+    #[test]
+    fn cache_view_of_an_unused_cache_has_no_hit_rate_and_no_projects() {
+        let mut st = cache_status();
+        st.stats = taskcache::Stats::default();
+        st.entries = 0;
+        let mut i = inputs();
+        i.cache = st;
+        let c = aggregate(i).cache;
+        assert_eq!((c.hits, c.misses, c.hit_rate), (0, 0, None));
+        assert_eq!((c.saved_ms, c.saved_7d_ms), (0, 0));
+        assert!(c.projects.is_empty());
+    }
+
+    #[test]
+    fn only_the_best_projects_are_listed() {
+        let mut st = cache_status();
+        for n in 0..20u64 {
+            st.stats.projects.insert(
+                format!("p{n:02}"),
+                taskcache::stats::Totals {
+                    hits: 1,
+                    misses: 0,
+                    saved_ms: 100 + n,
+                },
+            );
+        }
+        let mut i = inputs();
+        i.cache = st;
+        let c = aggregate(i).cache;
+        assert_eq!(c.projects.len(), TOP_CACHE_PROJECTS);
+        assert_eq!(c.projects[0].name, "ui", "most time saved first");
+    }
+
+    // Guards #129: the report reads the REAL store (`ATLAS_CACHE_DIR` moves it), written through
+    // the cache's own API, so a change of the on-disk stats shape breaks this and not the drawer.
+    #[test]
+    fn the_report_reads_hits_and_misses_from_a_real_store() {
+        use atlas_core::taskcache::{Cache, Chunk, Run, Spec, Stream};
+        let t = tempfile::tempdir().unwrap();
+        let cache = Cache::at(t.path().join("store"), 64 << 20);
+        let work = t.path().join("work");
+        std::fs::create_dir_all(work.join("src")).unwrap();
+        std::fs::write(work.join("src/a.rs"), "x").unwrap();
+        let spec = Spec {
+            cwd: work,
+            argv: vec!["cargo".into(), "test".into()],
+            inputs: vec!["src/**".into()],
+            outputs: vec![],
+            env: vec![],
+            tools: vec![],
+        };
+        let key = spec.key().unwrap();
+        let run = Run {
+            project: "demo".into(),
+            label: "test".into(),
+            command: "cargo test".into(),
+            exit: 0,
+            duration_ms: 9_000,
+            log: vec![Chunk {
+                stream: Stream::Stdout,
+                bytes: b"ok\n".to_vec(),
+            }],
+        };
+        cache.record(&key, &spec, &run).unwrap();
+        let entry = cache.lookup(&key).unwrap();
+        cache.note_hit(&entry, &key);
+        cache.note_hit(&entry, &key);
+
+        let mut i = inputs();
+        i.at = heavy::now_ms();
+        i.cache = cache.status();
+        let c = aggregate(i).cache;
+        assert_eq!((c.entries, c.hits, c.misses), (1, 2, 1));
+        assert_eq!(c.hit_rate, Some(67));
+        assert_eq!((c.saved_ms, c.saved_7d_ms), (18_000, 18_000));
+        assert_eq!(c.max_bytes, 64 << 20);
+        assert_eq!(c.projects[0].name, "demo");
+    }
+
+    // `cache_clear` is `atlas cache clear`: the same `Cache::clear`, and it returns what was freed.
+    #[test]
+    fn clearing_the_cache_empties_it_and_says_what_was_freed() {
+        use atlas_core::taskcache::{Cache, Chunk, Run, Spec, Stream};
+        let t = tempfile::tempdir().unwrap();
+        let cache = Cache::at(t.path().join("store"), 64 << 20);
+        let spec = Spec {
+            cwd: t.path().to_path_buf(),
+            argv: vec!["echo".into()],
+            inputs: vec![],
+            outputs: vec![],
+            env: vec![],
+            tools: vec![],
+        };
+        let key = spec.key().unwrap();
+        let run = Run {
+            project: "demo".into(),
+            label: "echo".into(),
+            command: "echo".into(),
+            exit: 0,
+            duration_ms: 1,
+            log: vec![Chunk {
+                stream: Stream::Stdout,
+                bytes: b"hi\n".to_vec(),
+            }],
+        };
+        cache.record(&key, &spec, &run).unwrap();
+        let freed = clear(&cache);
+        assert_eq!(freed.entries, 1);
+        assert!(freed.bytes > 0);
+        let after = cache_view(&cache.status(), heavy::now_ms());
+        assert_eq!((after.entries, after.hits, after.saved_ms), (0, 0, 0));
     }
 
     // Contract: `apps/desktop/src/lib/__fixtures__/machine-report.json` is the REAL serialization of

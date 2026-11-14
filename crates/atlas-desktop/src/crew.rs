@@ -748,19 +748,16 @@ mod tests {
     async fn the_helper_is_never_readable_by_others() {
         let dir = tempfile::tempdir().unwrap();
         let fake = dir.path().join("fake-ssh");
+        // ssh's stdout is discarded by the real code, so the mode goes to stderr. GNU `stat -c %a`
+        // first: on Linux `stat -f` is the *filesystem* status and succeeds with the wrong output
+        // (Linux CI); BSD/macOS `stat` rejects `-c` and falls back to `-f %Lp`.
         std::fs::write(
             &fake,
-            "#!/bin/sh\nstat -f %Lp \"$SSH_ASKPASS\" 2>/dev/null || stat -c %a \"$SSH_ASKPASS\"\n",
+            "#!/bin/sh\n(stat -c %a \"$SSH_ASKPASS\" 2>/dev/null || stat -f %Lp \"$SSH_ASKPASS\") >&2\n",
         )
         .unwrap();
         use std::os::unix::fs::PermissionsExt as _;
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-        // ssh's stdout is discarded by the real code, so read the mode from stderr.
-        std::fs::write(
-            &fake,
-            "#!/bin/sh\n(stat -f %Lp \"$SSH_ASKPASS\" 2>/dev/null || stat -c %a \"$SSH_ASKPASS\") >&2\n",
-        )
-        .unwrap();
         let out = run_ssh_with_password(fake.to_str().unwrap(), &[], dir.path(), "x", "k\n")
             .await
             .unwrap();

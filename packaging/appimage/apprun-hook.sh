@@ -2,10 +2,10 @@
 # Atlas's AppImage environment, sourced by AppRun before the app starts. Replaces the hook
 # linuxdeploy's GTK plugin generates (scripts/appimage-patch.sh copies it over), so every
 # decision is here and reviewed (#266):
-# - GDK_BACKEND: the user's value wins. Otherwise native Wayland on a Wayland session (GTK
-#   falls back to X11), except on NVIDIA's proprietary driver, where WebKitGTK on Wayland is
-#   where tauri-apps/tauri#8541 crashes cluster: X11 (XWayland) there. ATLAS_GDK_BACKEND
-#   overrides both.
+# - GDK_BACKEND: ATLAS_GDK_BACKEND wins, then the GDK_BACKEND the session or user set (Omarchy
+#   sets wayland,x11,*), except that a Wayland request on NVIDIA's proprietary driver falls back
+#   to X11 (tauri-apps/tauri#8541). Nothing set: X11 (XWayland on Wayland), until native Wayland
+#   passes #266's hardware matrix. Only ATLAS_GDK_BACKEND forces Wayland on NVIDIA.
 # - GTK_THEME is not forced to Adwaita: GTK follows the desktop. APPIMAGE_GTK_THEME still sets one.
 # - The bundle's own GTK/GIO/pixbuf/schema paths, as linuxdeploy set them.
 
@@ -15,13 +15,10 @@ atlas_backend() {
     if [ -n "${ATLAS_GDK_BACKEND:-}" ]; then
         printf '%s' "$ATLAS_GDK_BACKEND"
     elif [ -n "${GDK_BACKEND:-}" ]; then
+        case "$GDK_BACKEND" in
+            wayland*) [ -e "${ATLAS_NVIDIA_PROC:-/proc/driver/nvidia/version}" ] && { printf 'x11'; return; } ;;
+        esac
         printf '%s' "$GDK_BACKEND"
-    elif [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = wayland ]; then
-        if [ -e "${ATLAS_NVIDIA_PROC:-/proc/driver/nvidia/version}" ]; then
-            printf 'x11'
-        else
-            printf 'wayland,x11'
-        fi
     else
         printf 'x11'
     fi

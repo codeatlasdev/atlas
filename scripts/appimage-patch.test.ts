@@ -40,14 +40,16 @@ describe("apprun hook", () => {
 	test("ATLAS_GDK_BACKEND overrides everything", () => {
 		expect(hookEnv({ ATLAS_GDK_BACKEND: "x11", GDK_BACKEND: "wayland" }).GDK_BACKEND).toBe("x11");
 	});
-	test("a Wayland session gets native Wayland with an X11 fallback", () => {
-		expect(hookEnv({ WAYLAND_DISPLAY: "wayland-0" }).GDK_BACKEND).toBe("wayland,x11");
-		expect(hookEnv({ XDG_SESSION_TYPE: "wayland" }).GDK_BACKEND).toBe("wayland,x11");
+	test("nothing set: X11 even on a Wayland session, until #266's hardware matrix passes", () => {
+		expect(hookEnv({ WAYLAND_DISPLAY: "wayland-0" }).GDK_BACKEND).toBe("x11");
+		expect(hookEnv({ XDG_SESSION_TYPE: "wayland" }).GDK_BACKEND).toBe("x11");
 	});
-	test("NVIDIA's proprietary driver stays on X11 (tauri#8541)", () => {
+	test("NVIDIA's proprietary driver turns a session Wayland request into X11; ATLAS_GDK_BACKEND still forces it", () => {
 		const d = tmp();
 		writeFileSync(join(d, "version"), "NVRM version: 570");
-		expect(hookEnv({ WAYLAND_DISPLAY: "wayland-0", ATLAS_NVIDIA_PROC: join(d, "version") }).GDK_BACKEND).toBe("x11");
+		const nv = join(d, "version");
+		expect(hookEnv({ GDK_BACKEND: "wayland,x11,*", ATLAS_NVIDIA_PROC: nv }).GDK_BACKEND).toBe("x11");
+		expect(hookEnv({ ATLAS_GDK_BACKEND: "wayland", ATLAS_NVIDIA_PROC: nv }).GDK_BACKEND).toBe("wayland");
 	});
 	test("an X11 session stays on X11", () => {
 		expect(hookEnv({ DISPLAY: ":0" }).GDK_BACKEND).toBe("x11");

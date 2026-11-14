@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use serde_json::json;
 
 use super::audit::{self, Audit};
-use super::github::GithubLoginHandle;
+use super::github::{GhCli, GithubApi, GithubLoginHandle};
 use super::store::{self, CrewStore};
 use super::telegram::TelegramBridge;
 use super::{PushToken, pane, push, runner, schedule, triggers};
@@ -38,6 +38,9 @@ pub(crate) struct CrewHub {
     /// Senders for user-input actions keyed by task_id.
     pub(crate) action_waiters:
         parking_lot::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<String>>>,
+    /// The GitHub reply of each running task that came from GitHub, by task id (`runner::reporting`).
+    pub(crate) reporters:
+        parking_lot::Mutex<std::collections::HashMap<String, runner::ReportingLive>>,
     /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
     paused: std::sync::atomic::AtomicBool,
 }
@@ -60,6 +63,7 @@ impl CrewHub {
             github_login: tokio::sync::Mutex::new(None),
             github_connect_waiters: parking_lot::Mutex::new(vec![]),
             action_waiters: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            reporters: parking_lot::Mutex::new(std::collections::HashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(paused),
         })
     }
@@ -105,6 +109,15 @@ impl CrewHub {
         if let Some(hub_arc) = hub.upgrade() {
             runner::recover(&hub_arc);
         }
+    }
+
+    /// The GitHub API the crew uses (the `gh` CLI as the crew user; a fake under test).
+    pub(crate) fn github(&self) -> Arc<dyn GithubApi> {
+        #[cfg(test)]
+        if let Some(api) = super::github::TEST_GITHUB_API.lock().clone() {
+            return api;
+        }
+        Arc::new(GhCli)
     }
 
     /// Whether anyone can answer a crewmate's tool prompt right now: a linked Telegram chat, a

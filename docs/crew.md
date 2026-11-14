@@ -190,7 +190,7 @@ Automations (`triggers` on the wire) start a task by themselves. Build one in a 
 | Schedule | `schedule` | `cron`: 5 fields, evaluated in the automation's `tz` (UTC when unset) |
 | Interval | `interval` | `every_secs` ≥ 60 |
 | Webhook | `webhook` | `token`, called as `POST /crew/<crewmate id>/hook/<token>` on the hook server (webhooks set up before the rename keep working at `/bots/<crewmate id>/hook/<token>`) |
-| GitHub | `github` | `repo` (`owner/repo`), `events`: `pr_opened`, `pr_review_requested`, `issue_opened`, `ci_failed`, `release`, and `authors`: who may start a task, see below. Polled every 2 minutes with `gh` |
+| GitHub | `github` | `repo` (`owner/repo`), `events`: `mention`, `issue_assigned`, `pr_review_comment`, `ci_failed`, `pr_opened`, `pr_review_requested`, `issue_opened`, `release`, `authors`: who may start a task, `handle` (for `mention`) and `assignee` (for `issue_assigned`), see [GitHub in and out](#github-in-and-out). Polled every 2 minutes with `gh` |
 | File | `file` | `path`, optional `glob` |
 | After crewmate | `crewmate` | `from_crewmate` (id), `on`: `done` or `failed` |
 | Service | `service` | `project_dir`, `service`, `on`: `failed` or `recovered` |
@@ -212,6 +212,44 @@ The Crew board (below) shows every queued, working, waiting and finished task ac
 ## GitHub
 
 Crewmates that clone private repositories or open PRs need `gh` signed in on the crew server. In Atlas Desktop, Atlas Crew → Settings → GitHub starts a device-code login (`crew_github_login_start`, then `crew_github_login_poll`); hostd installs `gh` under the crew user's home if it is missing and configures git to use it. `crew_github_status` reports `{installed, login}`, `crew_github_logout` removes it. A task that needs GitHub waits in a **Connect GitHub** action and resumes when the login completes (`crew_github_connect_resume`).
+
+### GitHub in and out
+
+A crewmate can take work from GitHub and answer there, the way the Claude GitHub app does, from your own server. Everything goes through `gh` as the crew user, with the login above; nothing is sent to CodeAtlas.
+
+**Set it up.** Sign `gh` in (above), then add a GitHub automation to the crewmate (Settings → Automations → GitHub, or `crewmate_triggers_set`) with the repo and the events you want:
+
+```json
+{"id": "gh", "enabled": true, "prompt": "Handle this: {{event}}",
+ "kind": {"type": "github", "repo": "owner/repo",
+          "events": ["mention", "issue_assigned", "pr_review_comment", "ci_failed"],
+          "handle": "nami", "assignee": "nami-bot", "authors": ["owner", "member", "collaborator"]}}
+```
+
+The crew polls the repo's events every 2 minutes, so a comment starts a task within about 2 minutes.
+
+| Event | Starts a task when | The prompt carries |
+|---|---|---|
+| `mention` | `@<handle>` appears in an issue or PR comment, or in the body of an issue that is opened or edited. `handle` defaults to the crewmate's name as a slug (`Code Reviewer` → `code-reviewer`); matching is whole-word and ignores case (`@namibia` and `a@nami.com` do not match) | the number, title and body of the issue or PR, and the comment |
+| `issue_assigned` | an issue is assigned to `assignee` (a GitHub login, required for this event) | the issue number, title and body |
+| `pr_review_comment` | someone comments on a PR's diff | the PR, the file, the line and the comment; the task works on that PR's branch |
+| `ci_failed` | a check run fails | the check, its branch and PR, and the end of the failed job's log (`gh run view --log-failed`, at most 200 lines and 32 KiB; without the log the failure is still reported) |
+
+`pr_opened`, `pr_review_requested`, `issue_opened` and `release` still work as before.
+
+**What it posts.** When the task starts, the crewmate comments "Working on it." on the issue or PR where it was asked, then **edits that same comment**: a checklist of the steps the agent reports (at most one edit every 30 seconds, the latest 15 steps, with no links, images or `@` mentions in it), and at the end the result, the link of the PR it opened (found with `gh pr list --head <branch>`, for the branch the agent moved to or the PR's own branch), or the error if the task failed or was cancelled. A task whose comment cannot be posted (GitHub down, no permission) still runs; reporting is best effort. Every comment starts with a hidden marker (`<!-- atlas-crew -->`) so it never starts a task by itself. A CI failure on a branch without a PR has nowhere to reply, so it posts nothing.
+
+**Where a task came from.** The task records it as structured fields, `origin: {repo, kind, number, comment_id, branch, reply_comment_id}` (`kind`: `mention`, `issue_assigned`, `ci_failed`, `pr_review_comment`), in `crewmate_tasks`; nothing is parsed back out of the prompt.
+
+**Security.**
+
+- The text of an issue, a comment, a review comment or a log is written by other people. It reaches the agent only inside the untrusted-content block ([Automations](#automations)), after the instructions.
+- **`authors` applies to everyone whose text reaches the prompt:** the author of the issue or PR *and* the commenter. A collaborator's mention on a stranger's issue does nothing. The default is `["owner", "member", "collaborator"]`.
+- GitHub's events feed carries no `author_association`, so hostd asks GitHub for the issue, PR or comment itself. If that lookup fails, the event is not decided and not marked seen: it is asked again on the next poll, never allowed.
+- The branch of a CI-fix or review-comment task is put in the instructions ("check out this branch, push there") only when it is a plain git ref name (letters, digits, `.`, `_`, `/`, `-`); any other name is left to the untrusted block.
+- A task from GitHub runs with `approval: ask` even on an `auto` crewmate unless the automation sets `allow_auto: true`. Set it only on repos where strangers cannot comment.
+- The crew's own comments never start a task, by its `gh` login and by the marker. The same event, or the same comment seen again, never starts a second task (`<crewmate dir>/<automation id>_seen.jsonl`).
+- A paused crew ([Pause and resume](#pause-and-resume)) does not poll GitHub at all.
 
 ## Telegram
 

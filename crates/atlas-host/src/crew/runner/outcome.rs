@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use super::TASK_TIMEOUT;
 use super::action::visible_reply;
+use super::reporting;
 use crate::crew::store::{CrewStore, Crewmate, Step, Task, TaskState};
 use crate::crew::{events, now_s};
 use crate::pty::Session;
@@ -85,6 +86,7 @@ pub(super) async fn wait_for_outcome(
                             task.steps = steps.clone();
                             let _ = persist(hub, crewmate_id, task);
                             broadcast_task(hub, crewmate_id, task);
+                            reporting::progress(hub, &task.id, &steps).await;
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
@@ -160,6 +162,8 @@ pub(super) fn finish_task(
     // and `persist` logged why the log lacks it.
     let _ = persist(hub, &crewmate.id, task);
     broadcast_task(hub, &crewmate.id, task);
+    // A task that came from GitHub tells its issue how it ended (done, failed or cancelled).
+    reporting::finish(hub, task);
 
     // Telegram outbound — done and failed both get a message.
     let telegram_msg: Option<String> = match task.state {

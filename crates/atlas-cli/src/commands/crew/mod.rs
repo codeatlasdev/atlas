@@ -13,6 +13,7 @@
 //!
 //! `layout` has the names on the server and the migration of one installed as "Atlas Bot".
 
+mod apt;
 mod binary;
 mod browsers;
 pub mod install;

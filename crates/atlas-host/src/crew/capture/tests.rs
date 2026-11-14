@@ -213,6 +213,50 @@ fn the_package_pins_playwright_exactly() {
     );
 }
 
+// `npm ci` refuses a lock that disagrees with package.json, and trusts a lock without hashes: the
+// crew server would then fail to install, or install whatever the registry serves. Both ends of that
+// are checked here, so moving the pin without regenerating the lock fails in CI, not on a server.
+#[test]
+fn the_lock_matches_the_package_and_hashes_every_tarball() {
+    let pkg: Value = serde_json::from_str(&package_json()).unwrap();
+    let lock: Value = serde_json::from_str(PACKAGE_LOCK).unwrap();
+    assert_eq!(lock["lockfileVersion"], 3);
+    assert_eq!(lock["name"], pkg["name"]);
+    let root = &lock["packages"][""];
+    assert_eq!(
+        root["dependencies"], pkg["dependencies"],
+        "root deps = package.json"
+    );
+    let packages = lock["packages"].as_object().unwrap();
+    for name in ["playwright", "playwright-core"] {
+        let p = &packages[&format!("node_modules/{name}")];
+        assert_eq!(p["version"], PLAYWRIGHT_VERSION, "{name} is at the pin");
+        let url = p["resolved"].as_str().unwrap();
+        assert!(
+            url.starts_with("https://registry.npmjs.org/"),
+            "{name} comes from the npm registry: {url}"
+        );
+        assert!(
+            p["integrity"].as_str().unwrap().starts_with("sha512-"),
+            "{name} has an integrity hash"
+        );
+    }
+    for (path, p) in packages.iter().filter(|(k, _)| !k.is_empty()) {
+        assert!(p["integrity"].is_string(), "{path} has no integrity hash");
+        assert!(
+            p["resolved"]
+                .as_str()
+                .is_some_and(|u| u.starts_with("https://")),
+            "{path} is not fetched over https"
+        );
+    }
+    assert_eq!(
+        packages.len(),
+        3,
+        "the root and the two playwright packages, nothing else"
+    );
+}
+
 // ── The real thing: node + Playwright + browsers ────────────────────────────────────────────────
 
 /// Where Playwright's browsers are, if any: `PLAYWRIGHT_BROWSERS_PATH`, else the per-user cache.
@@ -256,14 +300,16 @@ fn real_run_blocker() -> Option<String> {
     None
 }
 
-/// Install the pinned package where `runner.mjs` can `require("playwright")`, without downloading
-/// browsers (they come from the cache found above). `None` with the reason when that cannot be done.
+/// Install the pinned package where `runner.mjs` can `require("playwright")`, from the lock like the
+/// real install (`npm ci`), without downloading browsers (they come from the cache found above).
+/// `Err` with the reason when that cannot be done.
 fn install_runner_package(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("package.json"), package_json()).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("package-lock.json"), PACKAGE_LOCK).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("runner.mjs"), RUNNER_MJS).map_err(|e| e.to_string())?;
     let out = std::process::Command::new("npm")
-        .args(["install", "--no-audit", "--no-fund", "--silent"])
+        .args(["ci", "--no-audit", "--no-fund", "--silent"])
         .env("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
         .current_dir(dir)
         .output()
@@ -272,7 +318,7 @@ fn install_runner_package(dir: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "npm install failed: {}",
+            "npm ci failed: {}",
             String::from_utf8_lossy(&out.stderr)
         ))
     }

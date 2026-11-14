@@ -6,11 +6,13 @@
 //! |--------------|-----------------------------------------------------------------------------|
 //! | `spec.rs`    | the request, its validation, the runner's report, "every combination is in it" |
 //! | `runner.mjs` | the Playwright script (embedded; `atlas crew browsers install` writes it next to the package) |
+//! | `package-lock.json` | the lock `npm ci` installs the pinned Playwright from (embedded) |
 //! | this file    | running the runner (timeout, killed on cancel), the files, [`attach_captures`] |
 //!
-//! Where it runs: on the crew server, under `<hostd dir>/capture/` (`package.json`, `runner.mjs`,
-//! `node_modules/playwright`, `browsers/`). Nothing here installs anything: that is
-//! `atlas crew browsers install` (root, once, because Playwright's `--with-deps` uses apt).
+//! Where it runs: on the crew server, under `<hostd dir>/capture/` (`package.json`,
+//! `package-lock.json`, `runner.mjs`, `node_modules/playwright`, `browsers/`). Nothing here
+//! installs anything: that is `atlas crew browsers install`, which runs every npm command as the
+//! crew user and uses root only for an `apt-get install` of validated package names.
 
 pub mod spec;
 
@@ -24,12 +26,20 @@ use tokio::io::AsyncWriteExt;
 use super::store::CrewStore;
 pub use spec::{Combo, Spec};
 
-/// The one place the Playwright version is written. The browsers it downloads match this exact
-/// release, so it moves only together with a re-run of `atlas crew browsers install`.
+/// The one place the Playwright version is written in Rust. The browsers it downloads match this
+/// exact release, so it moves only together with `package-lock.json` (below) and a re-run of
+/// `atlas crew browsers install`.
 pub const PLAYWRIGHT_VERSION: &str = "1.65.1";
 
 /// The runner script, written next to the package at install.
 pub const RUNNER_MJS: &str = include_str!("runner.mjs");
+
+/// The lockfile of [`package_json`], written next to it at install and installed with `npm ci`:
+/// npm checks every downloaded tarball against the integrity hashes in it, so the crew server runs
+/// the `playwright` and `playwright-core` atlas pinned and nothing else, whatever the registry
+/// serves later. Regenerate with `npm install --package-lock-only` in a directory holding only
+/// [`package_json`] (a test fails while the two disagree).
+pub const PACKAGE_LOCK: &str = include_str!("package-lock.json");
 
 /// `package.json` of the capture dir: an ES module project that depends on the pinned Playwright.
 pub fn package_json() -> String {

@@ -62,8 +62,8 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew resume <ssh-target>` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent>` | opens `ssh -t <crew-user>@<host> <agent-binary>` so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
-| `atlas crew browsers install <ssh-target>` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent, sudo once for the apt libraries |
-| `atlas crew browsers status <ssh-target>` | one line per missing piece (node, npm, runner, Playwright package or version, each browser, each browser's system libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
+| `atlas crew browsers install <ssh-target>` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
+| `atlas crew browsers status <ssh-target>` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
 
 ### Offline install
 
@@ -338,8 +338,14 @@ A call may ask for at most **16 combinations** (engines × widths × themes; rep
 
 **Requirements** on the crew server, for this feature only:
 
-- Node.js 18 or newer with npm (`node`, `npm`, `npx` on `PATH`). Nothing else in Atlas Crew needs Node.
-- `atlas crew browsers install <ssh-target>` (or `atlas crew install <ssh-target> --browsers`), once. It runs as the crew user except for one step: `npx -y playwright@<pin> install --with-deps chromium webkit`, which needs sudo because `--with-deps` installs system libraries with apt (Debian and Ubuntu). It installs the **pinned** `playwright` package (one version, `PLAYWRIGHT_VERSION` in `crates/atlas-host/src/crew/capture/mod.rs`) and its matching browsers under `<hostd dir>/capture/` (`/var/lib/<crew user>/.atlas/capture/` on a crew server: `package.json`, `runner.mjs`, `node_modules/`, `browsers/`). The browsers are readable by every user on the server. Re-run it to repair, or after an `atlas crew update` that moves the pin.
+- **Node.js 20 or newer** with npm (`node`, `npm`, `npx` on `PATH`), the floor of the pinned Playwright. `apt install nodejs` on Ubuntu 24.04 is Node 18 and is refused: use Node from [nodesource](https://github.com/nodesource/distributions) or another source. `atlas crew browsers status` says it plainly (`Node 18.19.1 found, need >= 20`). Nothing else in Atlas Crew needs Node.
+- `atlas crew browsers install <ssh-target>` (or `atlas crew install <ssh-target> --browsers`), once, on Debian or Ubuntu. **No npm code runs as root.** In order:
+  1. as the crew user, `package.json`, a `package-lock.json` embedded in atlas (`crates/atlas-host/src/crew/capture/package-lock.json`) and `runner.mjs` are written to `<hostd dir>/capture/` (`/var/lib/<crew user>/.atlas/capture/`);
+  2. as the crew user, `npm ci`: it installs exactly the locked `playwright` and `playwright-core` (one version, `PLAYWRIGHT_VERSION` in `crates/atlas-host/src/crew/capture/mod.rs`) and checks every tarball against the integrity hash in the lock, so a registry that serves something else fails the install instead of running;
+  3. as the crew user, `npx --no-install playwright install chromium webkit` downloads the browsers into `<capture dir>/browsers/`, readable by every user on the server;
+  4. as the crew user, `npx --no-install playwright install-deps --dry-run chromium webkit` only *reports* which system libraries are missing (`Missing system dependencies (N):` and one package name per line);
+  5. atlas reads that report and accepts only package names matching `^[a-z0-9][a-z0-9.+-]*$` (so no space, quote, `;`, `&`, `|`, `$`, backtick or leading `-`), a count that equals the list, and nothing else: any other line is an error shown to you and nothing runs as root. **Atlas builds the one root command itself**, `sudo apt-get update && sudo apt-get install -y --no-install-recommends <those names>`: nothing npm prints is ever executed as a command.
+  Re-run it to repair, or after an `atlas crew update` that moves the pin.
 - About 1 GB of disk for the two browsers and a few hundred MB of RAM per capture.
 
 `atlas crew browsers status <ssh-target>` prints one line per missing piece, and a crewmate that calls `capture` on a server without the browsers gets the same instruction as the tool's error.
@@ -350,6 +356,7 @@ A call may ask for at most **16 combinations** (engines × widths × themes; rep
 - **Systemd hardening.** `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=read-only` with `ReadWritePaths=<crew home>`, `PrivateTmp=true`, `ProtectKernelTunables=true`, `ProtectControlGroups=true`, `RestrictSUIDSGID=true`, `MemoryMax=80%`, `TasksMax=4096` ([the unit](#the-systemd-unit)). The crewmates still share one user: they are not isolated from each other.
 - **Scoped SSH key.** `atlas crew install` appends your key to the crew user's `authorized_keys` only, never to the admin user's.
 - **sudo once.** Install and uninstall need sudo; the running service never does. The sudo password, when Desktop passes it, comes over stdin and is dropped after the credential cache is primed.
+- **No npm code as root.** `atlas crew browsers install` runs `npm ci` (from a lock embedded in atlas, integrity-checked), the browser download and Playwright's dependency report as the crew user. Only one command runs as root: `apt-get install -y --no-install-recommends <names>` that atlas builds itself from package names that matched `^[a-z0-9][a-z0-9.+-]*$` in the report; anything else in the report is an error and nothing runs as root. See [Captures](#captures).
 - **Secrets.** Per-crewmate secrets live in `<crewmate dir>/secrets.json` (mode 0600), are injected as environment into that crewmate's agent only and are never returned in any reply. Terminals and secrets are never relayed to a phone.
 - **Audit.** Every crewmate has an append-only log, written by hostd and never by the agent: each tool call the agent reports (full tool name and input, not the 80-character step), each approval asked and how it ended (`allow`, `deny` or `timeout`, and who answered: `desktop`, `phone:<node id>`, `telegram:<chat id>` or `none`), the task lifecycle, and changes to its approval mode, triggers, project, engine and secrets (a secret's name, never its value). See [Audit](#audit).
 - **No CodeAtlas servers.** The only optional outbound call is the push relay (kind only). Details: [PRIVACY.md](https://github.com/codeatlasdev/atlas/blob/main/PRIVACY.md).
@@ -423,9 +430,9 @@ For contributors. One concept per file; the module doc comment at the top of eac
 
 | Layer | Where | Owns |
 |---|---|---|
-| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
+| hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/hook/<token>` |
-| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), and the capture browsers install/status scripts (`browsers.rs`) are pure functions with tests |
+| CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
 | Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
 | Desktop UI | `apps/desktop/src/lib/crew/` and `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, board, editor, settings, onboarding, automations, the look catalogue |
 | Mobile | `apps/mobile/lib/features/crew/` | crew tab, chat, profile, automations, relay transport |
@@ -438,7 +445,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
 ```text
 <hostd dir>/crew.json                  crew-level settings
 <hostd dir>/crew-audit.jsonl            crew-wide audit (crewmates created/deleted, pause/resume)
-<hostd dir>/capture/                      package.json, runner.mjs, node_modules/playwright, browsers/ (atlas crew browsers install)
+<hostd dir>/capture/                      package.json, package-lock.json, runner.mjs, node_modules/playwright, browsers/ (atlas crew browsers install)
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
     tasks.jsonl                        task log, last state per id wins

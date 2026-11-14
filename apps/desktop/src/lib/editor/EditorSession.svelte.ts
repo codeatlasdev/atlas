@@ -13,7 +13,8 @@ import { toast } from "@codeatlasdev/ui";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { atlasTheme } from "#lib/cm.ts";
 import { errText } from "#lib/api.ts";
-import { b64bytes, host } from "#lib/host.ts";
+import { b64bytes } from "#lib/b64.ts";
+import { host } from "#lib/host.ts";
 import { editorConfigDirs } from "#lib/editor/editorconfig.ts";
 import { detectEol } from "#lib/editor/detect.ts";
 import {

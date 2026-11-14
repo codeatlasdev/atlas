@@ -1139,6 +1139,150 @@ fn starting_and_stopping_agents_need_act() {
     }
 }
 
+/// Reading the review (status, diff) needs `read`; everything that changes a repo or reaches the
+/// network (stage, unstage, commit, the AI message, push, PR) needs `act`.
+#[test]
+fn git_review_reads_need_read_and_every_write_needs_act() {
+    use crate::protocol::HostCmd;
+    for cmd in [
+        json!({"cmd": "git_status", "args": {"root": "/r"}}),
+        json!({"cmd": "git_diff", "args": {"root": "/r", "staged": true}}),
+    ] {
+        let c: HostCmd = serde_json::from_value(cmd).unwrap();
+        assert_eq!(super::required_scope(&c), Ok(super::Scope::Read));
+    }
+    for cmd in [
+        json!({"cmd": "git_stage", "args": {"root": "/r", "paths": ["a"]}}),
+        json!({"cmd": "git_unstage", "args": {"root": "/r", "paths": ["a"]}}),
+        json!({"cmd": "git_commit", "args": {"root": "/r", "message": "m"}}),
+        json!({"cmd": "git_commit_message", "args": {"root": "/r"}}),
+        json!({"cmd": "git_push", "args": {"root": "/r"}}),
+        json!({"cmd": "git_pr_create", "args": {"root": "/r", "title": "t", "body": "b"}}),
+    ] {
+        let c: HostCmd = serde_json::from_value(cmd.clone()).unwrap();
+        assert_eq!(super::required_scope(&c), Ok(super::Scope::Act), "{cmd}");
+    }
+}
+
+/// End to end through the phone gateway: a Read-only phone sees status and diff but cannot stage or
+/// commit (the repo is untouched); granting Act lets the same phone stage and commit for real. A
+/// root outside the registry is refused by hostd even for a phone that has every scope.
+#[tokio::test]
+async fn a_read_phone_reviews_but_cannot_commit_and_act_can() {
+    let tmp = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let git = |a: &[&str]| {
+        let o = std::process::Command::new("git")
+            .arg("-C")
+            .arg(work.path())
+            .args([
+                "-c",
+                "user.email=a@b",
+                "-c",
+                "user.name=n",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(a)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "git {a:?}");
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    git(&["init", "-q", "."]);
+    // hostd commits with the repo's own config: CI runners have no global identity.
+    for (k, v) in [
+        ("user.email", "a@b"),
+        ("user.name", "n"),
+        ("commit.gpgsign", "false"),
+    ] {
+        git(&["config", k, v]);
+    }
+    std::fs::write(work.path().join("a.txt"), "one\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-qm", "init"]);
+    std::fs::create_dir_all(tmp.path().join("desktop")).unwrap();
+    std::fs::write(
+        tmp.path().join("desktop/projects.json"),
+        json!([{"id": "p", "root": work.path()}]).to_string(),
+    )
+    .unwrap();
+    std::fs::write(work.path().join("a.txt"), "two\n").unwrap();
+    let root = work.path().to_str().unwrap();
+
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read"]}),
+    )
+    .await
+    .unwrap();
+    let st = phone
+        .call("git_status", json!({"root": root}))
+        .await
+        .unwrap();
+    assert_eq!(st["data"]["entries"][0]["path"], "a.txt", "{st}");
+    let d = phone.call("git_diff", json!({"root": root})).await.unwrap();
+    assert_eq!(d["data"]["files"][0]["path"], "a.txt", "{d}");
+    for (cmd, args) in [
+        ("git_stage", json!({"root": root, "paths": ["a.txt"]})),
+        ("git_commit", json!({"root": root, "message": "nope"})),
+        ("git_push", json!({"root": root})),
+        ("git_commit_message", json!({"root": root})),
+        (
+            "git_pr_create",
+            json!({"root": root, "title": "t", "body": ""}),
+        ),
+    ] {
+        let r = phone.call(cmd, args).await.unwrap();
+        assert_eq!(r["error"], "forbidden: act", "{cmd}: {r}");
+    }
+    assert_eq!(
+        git(&["log", "--oneline"]).lines().count(),
+        1,
+        "Read must not commit"
+    );
+    assert!(
+        git(&["diff", "--cached", "--name-only"]).is_empty(),
+        "Read must not stage"
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read", "act"]}),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call("git_stage", json!({"root": root, "paths": ["a.txt"]}))
+        .await
+        .unwrap();
+    assert!(r.get("error").is_none(), "{r}");
+    let r = phone
+        .call(
+            "git_commit",
+            json!({"root": root, "message": "from the phone"}),
+        )
+        .await
+        .unwrap();
+    assert!(r["data"]["sha"].is_string(), "{r}");
+    assert_eq!(git(&["log", "-1", "--format=%s"]).trim(), "from the phone");
+    // The audit log names the commit but never what was typed in it.
+    let audit = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
+    assert!(audit.contains("git_commit"), "{audit}");
+    assert!(
+        !audit.contains("from the phone"),
+        "message leaked into the audit log: {audit}"
+    );
+    assert!(audit.contains("<14 chars>"), "{audit}");
+    let outside = tempfile::tempdir().unwrap();
+    let r = phone
+        .call("git_status", json!({"root": outside.path()}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "unknown project", "{r}");
+}
+
 /// Gap #5: the crew-level settings (short replies and its model) are readable with `read` and writable with
 /// `act`, also through the relay's `crew_call`. They used to fall through to the default-deny.
 #[test]

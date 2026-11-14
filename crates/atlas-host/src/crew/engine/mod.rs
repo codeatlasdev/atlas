@@ -48,6 +48,7 @@ pub struct TurnResult {
 /// * `extra_env`  — crewmate-scoped secrets, forwarded as subprocess env vars
 /// * `work_dir`   — working directory for the subprocess
 /// * `yolo`       — when true, skip interactive permission prompts (auto-approve)
+/// * `tools`      — told of every finished tool call, for engines whose stream carries them (omp RPC)
 #[allow(clippy::too_many_arguments)]
 pub async fn run_turn(
     engine: &EngineConfig,
@@ -61,6 +62,7 @@ pub async fn run_turn(
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
     yolo: bool,
+    tools: Option<&ToolSink<'_>>,
 ) -> Result<TurnResult, String> {
     // Stamp created_at on first turn.
     let session = if session.created_at == 0 {
@@ -116,6 +118,7 @@ pub async fn run_turn(
                 hook_token,
                 pane_key,
                 yolo,
+                tools,
             )
             .await
         }
@@ -124,6 +127,9 @@ pub async fn run_turn(
 }
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
+
+/// A finished tool call of a turn: `(tool name, its arguments, what it printed, whether it failed)`.
+pub(crate) type ToolSink<'a> = dyn Fn(&str, &serde_json::Value, &str, bool) + Send + Sync + 'a;
 
 /// Test-only: override all engine dispatching with a fake binary.
 /// Acquire `runner::TEST_BIN_LOCK` before setting to serialise tests.

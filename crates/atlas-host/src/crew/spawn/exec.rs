@@ -126,12 +126,16 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
         .env("TERM", "xterm-256color");
     cmd.envs(&req.env);
 
-    let (fd, stdio) = match req.mode {
+    let (fd, child_end) = match req.mode {
         Mode::Pty => open_pty(req, ids)?,
         Mode::Pipe => open_pipe()?,
     };
-    let [i, o, e] = stdio;
-    cmd.stdin(i).stdout(o).stderr(e);
+    // The child's copies become its 0/1/2 (dup2 clears close-on-exec there only); `child_end`
+    // closes in this process once the child is started.
+    let dup = |fd: &OwnedFd| fd.try_clone().map(Stdio::from);
+    cmd.stdin(dup(&child_end)?)
+        .stdout(dup(&child_end)?)
+        .stderr(Stdio::from(child_end));
     let tty = matches!(req.mode, Mode::Pty);
     // SAFETY: plain getters.
     let (euid, egid) = unsafe { (libc::geteuid(), libc::getegid()) };
@@ -166,8 +170,9 @@ pub fn spawn_in(w: &Where<'_>, req: &SpawnReq, ids: Ids, home: &str) -> io::Resu
     Ok(Started { child, fd })
 }
 
-/// pty with the slave owned by the crewmate; the child's stdio is the slave. Returns the master.
-fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, [Stdio; 3])> {
+/// pty with the slave owned by the crewmate. Returns the master and the slave (the child's stdio),
+/// both close-on-exec: see [`open_pipe`].
+fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, OwnedFd)> {
     let (mut m, mut s): (RawFd, RawFd) = (-1, -1);
     let ws = libc::winsize {
         ws_row: req.rows,
@@ -199,23 +204,31 @@ fn open_pty(req: &SpawnReq, ids: Ids) -> io::Result<(OwnedFd, [Stdio; 3])> {
         return Err(io::Error::last_os_error());
     }
     set_cloexec(master.as_raw_fd());
-    let dup = |fd: &OwnedFd| fd.try_clone().map(Stdio::from);
-    Ok((master, [dup(&slave)?, dup(&slave)?, Stdio::from(slave)]))
+    set_cloexec(slave.as_raw_fd());
+    Ok((master, slave))
 }
 
 /// A socketpair: the child gets one end as stdin and stdout (stderr merged), hostd the other.
-fn open_pipe() -> io::Result<(OwnedFd, [Stdio; 3])> {
+/// Both ends are close-on-exec: a process another thread forks meanwhile (the helper serves
+/// connections in parallel; a test binary runs tests in parallel) must not inherit the child's
+/// end, or hostd never sees EOF until that unrelated process exits (an engine call hung to its
+/// timeout in the full suite).
+fn open_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     let mut sv = [0 as RawFd; 2];
-    // SAFETY: `sv` has room for the two fds. `SOCK_CLOEXEC` is Linux only, so the flag is set after
-    // creation (the helper is single-threaded around a spawn's fork, so there is no window that matters).
-    if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, sv.as_mut_ptr()) } != 0 {
+    // Atomic where the platform has it; elsewhere (macOS, dev only) set right after creation.
+    #[cfg(target_os = "linux")]
+    let kind = libc::SOCK_STREAM | libc::SOCK_CLOEXEC;
+    #[cfg(not(target_os = "linux"))]
+    let kind = libc::SOCK_STREAM;
+    // SAFETY: `sv` has room for the two fds.
+    if unsafe { libc::socketpair(libc::AF_UNIX, kind, 0, sv.as_mut_ptr()) } != 0 {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: socketpair returned two fresh fds we now own.
     let (ours, theirs) = unsafe { (OwnedFd::from_raw_fd(sv[0]), OwnedFd::from_raw_fd(sv[1])) };
     set_cloexec(ours.as_raw_fd());
-    let dup = |fd: &OwnedFd| fd.try_clone().map(Stdio::from);
-    Ok((ours, [dup(&theirs)?, dup(&theirs)?, Stdio::from(theirs)]))
+    set_cloexec(theirs.as_raw_fd());
+    Ok((ours, theirs))
 }
 
 fn set_cloexec(fd: RawFd) {
@@ -335,6 +348,24 @@ mod tests {
         }
         assert!(s.child.wait().unwrap().success(), "{out}");
         out
+    }
+
+    // Regression: an engine call through the helper hung to its 20 s timeout in the full suite.
+    // The child's end of the socketpair (and the pty slave) was not close-on-exec, so a process
+    // another thread forked meanwhile inherited it and hostd never saw EOF.
+    #[test]
+    fn no_fd_a_spawn_creates_leaks_into_other_forks() {
+        let cloexec = |fd: &OwnedFd| {
+            // SAFETY: F_GETFD on an fd we own.
+            let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
+            flags >= 0 && flags & libc::FD_CLOEXEC != 0
+        };
+        let (ours, theirs) = open_pipe().unwrap();
+        assert!(cloexec(&ours), "hostd's end of the socketpair");
+        assert!(cloexec(&theirs), "the child's end of the socketpair");
+        let (master, slave) = open_pty(&req(&fixture(), Mode::Pty), me()).unwrap();
+        assert!(cloexec(&master), "the pty master");
+        assert!(cloexec(&slave), "the pty slave");
     }
 
     #[test]

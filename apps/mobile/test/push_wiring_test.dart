@@ -25,9 +25,11 @@ class _Storage extends MacStorage {
 }
 
 /// A computer that answers `info` as a crew host and ok to everything else; records push_register.
+/// As a Mac it also lists one crew server (`crew_servers`) and relays `crew_call` to [server].
 class _Computer implements Transport {
   final registered = <Map<String, dynamic>>[];
   var caps = ['mobile', 'crew'];
+  _Computer? server;
   final _lines = StreamController<String>.broadcast();
 
   @override
@@ -38,13 +40,30 @@ class _Computer implements Transport {
     final req = jsonDecode(line) as Map<String, dynamic>;
     final cmd = req['cmd'];
     if (cmd == 'push_register') registered.add((req['args'] as Map).cast());
-    _lines.add(
-      jsonEncode({
-        'id': req['id'],
-        'ok': true,
-        'data': cmd == 'info' ? {'caps': caps} : {},
-      }),
-    );
+    Object data = cmd == 'info' ? {'caps': caps} : {};
+    if (cmd == 'crew_servers') {
+      data = {
+        'servers': [
+          if (server != null) {'id': 'box', 'name': 'Box'},
+        ],
+      };
+    }
+    if (cmd == 'crew_call') {
+      // Relay to the crew server behind this Mac, as hostd does.
+      final inner = jsonEncode({'id': 1, ...(req['args'] as Map).cast()});
+      final box = server!;
+      final reply = await box.answer(inner);
+      _lines.add(jsonEncode({...reply, 'id': req['id']}));
+      return;
+    }
+    _lines.add(jsonEncode({'id': req['id'], 'ok': true, 'data': data}));
+  }
+
+  /// The reply of this computer to a request line, without going through the stream.
+  Future<Map<String, dynamic>> answer(String line) async {
+    final next = _lines.stream.first;
+    await sendLine(line);
+    return jsonDecode(await next) as Map<String, dynamic>;
   }
 
   @override
@@ -106,6 +125,21 @@ void main() {
       expect(computer.registered.last['grant'], 'grant:fcm-2');
     },
   );
+
+  // Crewmates, and so pushes, live on crew servers; the phone reaches them only through their Mac
+  // (crew_call). The Mac itself is not a crew host here, the server behind it is.
+  test('registers with a crew server behind a Mac, not with the Mac', () async {
+    computer.caps = ['mobile'];
+    computer.server = _Computer();
+    final c = container([mac]);
+    c.listen(pushRegistrationProvider, (_, _) {});
+    c.read(fcmTokenProvider.notifier).state = 'fcm-1';
+    await _settle();
+    expect(computer.registered, isEmpty);
+    expect(computer.server!.registered, [
+      {'token': 'fcm-1', 'platform': 'fcm', 'grant': 'grant:fcm-1'},
+    ]);
+  });
 
   test(
     'does nothing while there is no FCM token (no Firebase config)',

@@ -165,9 +165,11 @@ Telegram sees your bot token and the messages above. Nothing goes to CodeAtlas.
 
 When a task ends or a crewmate needs your approval, the crew server pushes to your phone.
 
-- After pairing, push is automatic: the app registers its FCM token with each crew server (`push_register`, `push_unregister`).
-- The relay at `push.codeatlas.com.br` gets the token and the event kind (`task_done` or `needs_you`), never content. Phones that are connected at that moment are skipped.
-- Disable: set `Environment=ATLAS_PUSH_RELAY=off` in the unit, then `sudo systemctl daemon-reload && sudo systemctl restart atlas-crew`. Or point it at a self-hosted relay (`services/push-relay/`).
+- After pairing, push is automatic: the app gets a **grant** for its FCM token from the relay (`POST /v1/register`) and registers `{token, grant}` with each crew server (`push_register`, `push_unregister`). It does so on every launch and connect and whenever FCM refreshes the token.
+- The relay at `push.codeatlas.com.br` gets the token, the grant and the event kind (`task_done` or `needs_you`), never content. Phones that are connected at that moment are skipped.
+- The relay only notifies a caller that holds the token's grant, so knowing a token is not enough to ping a phone. A crew server drops a token the relay refuses (`403`) or that FCM no longer has (`410`).
+- **Updating from an earlier alpha:** a token registered before grants existed has no grant. The crew server keeps it but sends nothing for it; open the updated app once and it registers again with a grant. Until then that phone gets no push.
+- Disable: set `Environment=ATLAS_PUSH_RELAY=off` in the unit, then `sudo systemctl daemon-reload && sudo systemctl restart atlas-crew`. Or point it at a self-hosted relay (`services/push-relay/`, see its README for `RELAY_GRANT_KEY`); build the app with `--dart-define=ATLAS_PUSH_RELAY=<url>` to match.
 
 ## Atlas Desktop
 
@@ -287,7 +289,7 @@ Tests that pin the contract: Rust tests write the JSON fixtures from the real se
 |---|---|---|
 | `ATLAS_CREW_HOST=1` | the unit | turns on the crew subsystem; without it every `crewmate_*` and `crew_*` command errors |
 | `ATLAS_HOSTD_IDLE_SECS=never` | the unit | disables hostd's idle exit so the service stays up |
-| `ATLAS_PUSH_RELAY` | the unit | `off` disables push; a URL selects a self-hosted relay |
+| `ATLAS_PUSH_RELAY` | the unit | `off` disables push; a URL selects a self-hosted relay (the app's build must use the same one) |
 | `ATLAS_CREW_BINARY` | your machine | same as `atlas crew install --binary` |
 | `ATLAS_CREWMATE_ID` | inside a task | the crewmate running it (read by `atlas-crew-mcp`) |
 
@@ -360,7 +362,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crew_telegram_status`, `crew_telegram_set`, `crew_telegram_link` | `{}`, `{token?}`, `{}` | `{configured, chats}`, `{}`, `{code}` (desktop only; the token is never returned) |
 | `crew_settings_get`, `crew_settings_set` | `{short_replies, short_replies_model?}` | crew settings |
 | `crew_github_status`, `_login_start`, `_login_poll`, `_logout`, `_connect_resume` | `{}` | see [GitHub](#github) |
-| `push_register`, `push_unregister` | `{token, platform:"fcm"}`, `{token}` | `{}` |
+| `push_register`, `push_unregister` | `{token, platform:"fcm", grant}`, `{token}` | `{}`; `grant` is what the relay issued for the token (optional on the wire for apps older than relay auth, which are then not notified) |
 | `mobile_invite`, `mobile_invites`, `mobile_invite_dismiss` | `{url, name}`, `{}`, `{url}` | desktop-only invites to phones (TTL 120 s) |
 | `crew_servers`, `crew_call`, `crew_event` | `{}`, `{server, cmd, args}`, push | phone to crew server relay |
 

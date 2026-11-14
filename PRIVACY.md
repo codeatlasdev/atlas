@@ -10,7 +10,7 @@ This page lists every network request Atlas itself makes, so you can check it ag
 |---|---|---|
 | Update checks: `atlas update`, the update prompt before `atlas dev`, the Atlas Desktop update check (on start, on window focus and on a timer, unless you turn automatic checks off in Settings) | `api.github.com` (the public releases of `codeatlasdev/atlas`) | A plain HTTPS request for the latest release. GitHub sees your IP address and a `curl` user agent, as for any request to its API. If `GITHUB_TOKEN`, `GH_TOKEN` or `gh auth token` provides a token, it is sent to GitHub only, to avoid rate limits. |
 | Installing or updating (`install.sh`, `atlas update`, `atlas desktop`) | `github.com` release downloads | The release archive and its `.sha256`, which Atlas verifies before installing. |
-| Atlas Crew push notifications (when a crewmate task finishes or needs approval, while `ATLAS_PUSH_RELAY` is not `off`) | `push.codeatlas.com.br` (operated by CodeAtlas) | The FCM device token and the event kind (`task_done` or `needs_you`). No content, no prompt text, no file names. The relay logs only the kind and the HTTP status code. Set `ATLAS_PUSH_RELAY=off` in the crew server's systemd unit to disable entirely. |
+| Atlas Crew push notifications (when a crewmate task finishes or needs approval, while `ATLAS_PUSH_RELAY` is not `off`) | `push.codeatlas.com.br` (operated by CodeAtlas) | The FCM device token, a grant (a keyed hash of that token the relay computes, so only your phone and the crew servers it shares it with can have the token notified) and the event kind (`task_done` or `needs_you`). The phone sends the token to the relay once per launch to get its grant; the relay stores nothing per user. No content, no prompt text, no file names. The relay logs only the kind and the HTTP status code. Set `ATLAS_PUSH_RELAY=off` in the crew server's systemd unit to disable entirely. |
 | Atlas Crew Telegram bridge (when `crew_telegram_set` is called with a Telegram bot token) | `api.telegram.org` (Telegram) | Standard Telegram Bot API polling and message sending. Messages include crewmate task results (truncated to 4 000 chars) and tool approval prompts (compact JSON, ≤ 1 000 chars). Telegram sees your bot token. |
 
 Set `ATLAS_NO_UPDATE_PROMPT=1` to disable the prompt shown before `atlas dev`. The update prompt uses a cache (`~/.atlas/.update_check`) and a 2 second timeout.
@@ -21,7 +21,7 @@ Atlas does run the commands **you** put in `atlas.yaml`, your terminal sessions,
 
 ## Atlas Mobile
 
-The phone app ([docs/mobile.md](docs/mobile.md)) has no account, telemetry, analytics or crash reporting either. It talks only to the computers you pair it with.
+The phone app ([docs/mobile.md](docs/mobile.md)) has no account, telemetry, analytics or crash reporting either. It talks to the computers you pair it with and, in builds with push notifications (Firebase configured), to Google's Firebase Cloud Messaging for its device token and, once per launch, to the push relay (`push.codeatlas.com.br`, or your own) to get the grant for that token: it sends the token, nothing else.
 
 | Where | What |
 |---|---|

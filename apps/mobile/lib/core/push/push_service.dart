@@ -57,18 +57,6 @@ class PushService {
     }
   }
 
-  /// Register the current FCM token with a crew server.
-  static Future<void> registerWithComputer(
-    Multiplexer mux,
-    String token,
-  ) async {
-    try {
-      await mux.call('push_register', {'token': token, 'platform': 'fcm'});
-    } catch (e) {
-      debugPrint('atlas-mobile: push_register failed: $e');
-    }
-  }
-
   /// Unregister a FCM token from a crew server.
   static Future<void> unregisterFromComputer(
     Multiplexer mux,

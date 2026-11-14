@@ -42,6 +42,29 @@ use serde_json::{Value, json};
 use crate::protocol::HostCmd;
 use crate::server::Hub;
 
+pub use store::archive::{self, ImportError, ImportReport, Manifest};
+
+/// `atlas hostd --crew-export`: the archive of this hostd dir's crewmates to `out`. Reads the files
+/// directly, so it works with the daemon stopped (an uninstall exports before it removes anything).
+pub fn export_archive(
+    dir: &std::path::Path,
+    ids: &[String],
+    with_secrets: bool,
+    out: &mut impl std::io::Write,
+) -> anyhow::Result<Manifest> {
+    archive::export(&store::CrewStore::new(dir), ids, with_secrets, out)
+}
+
+/// `atlas hostd --crew-import`: the other direction. A running daemon picks the new crewmates up on its
+/// next list; nothing here needs it.
+pub fn import_archive(
+    dir: &std::path::Path,
+    input: impl std::io::Read,
+    rename: bool,
+) -> Result<ImportReport, ImportError> {
+    archive::import(&store::CrewStore::new(dir), input, rename)
+}
+
 pub(crate) use hub::CrewHub;
 pub(crate) use push::PushToken;
 pub(crate) use store::{Crewmate, Task, now_s};
@@ -125,7 +148,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewTelegramSet { token } => s::telegram_set(hub, token),
         HostCmd::CrewTelegramLink {} => s::telegram_link(hub),
         HostCmd::CrewTelegramStatus {} => s::telegram_status(hub),
-        HostCmd::PushRegister { token, platform } => s::push_register(hub, token, platform),
+        HostCmd::PushRegister {
+            token,
+            platform,
+            grant,
+        } => s::push_register(hub, token, platform, grant),
         HostCmd::PushUnregister { token } => s::push_unregister(hub, token),
         HostCmd::CrewSettingsGet {} => s::get(hub),
         HostCmd::CrewSettingsSet {

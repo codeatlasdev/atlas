@@ -502,6 +502,10 @@ pub enum HostCmd {
     PushRegister {
         token: String,
         platform: String,
+        /// What the push relay issued for `token` (`POST /v1/register`); hostd presents it on every
+        /// notify. Absent from an app older than relay auth: it registers but is not notified.
+        #[serde(default)]
+        grant: String,
     },
     PushUnregister {
         token: String,

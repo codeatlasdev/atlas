@@ -549,6 +549,18 @@ impl CrewStore {
         .collect()
     }
 
+    /// The directory of every crewmate on disk, whether or not its definition can be read: housekeeping (the
+    /// stale-upload sweep) has to reach the dir of a crewmate `list_crewmates` skips.
+    pub(crate) fn list_crewmate_dirs(&self) -> Vec<PathBuf> {
+        let Ok(rd) = std::fs::read_dir(self.base.join(DIR)) else {
+            return vec![];
+        };
+        rd.filter_map(Result::ok)
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+            .map(|e| e.path())
+            .collect()
+    }
+
     pub fn delete_crewmate_dir(&self, id: &str) -> io::Result<()> {
         std::fs::remove_dir_all(self.crewmate_dir(id))
     }

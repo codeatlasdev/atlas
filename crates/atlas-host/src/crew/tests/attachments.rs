@@ -480,6 +480,47 @@ async fn a_phone_without_read_cannot_fetch_an_attachment_through_the_gateway() {
     client.call("shutdown", json!({})).await.ok();
 }
 
+// An upload abandoned before a restart is thrown away when the crew server starts: nothing else would ever
+// notice it if its crewmate never uploaded again. A fresh one (a phone still sending) survives the restart.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_crew_server_start_removes_uploads_abandoned_before_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let first = daemon(&dir).await;
+    let id = create_crewmate(&first, "Sweep").await;
+    for upload in ["stale-upload-01", "fresh-upload-01"] {
+        first
+            .call(
+                "crewmate_attachment_put",
+                json!({"id": id, "upload": upload, "seq": 0, "data_b64": B64.encode(PNG)}),
+            )
+            .await
+            .unwrap();
+    }
+    first.call("shutdown", json!({})).await.ok();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let uploads = dir.join(format!("crew/{id}/uploads"));
+    let hour_and_a_bit = crate::crew::attachments::UPLOAD_TTL + Duration::from_secs(60);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(uploads.join("stale-upload-01/seq"))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - hour_and_a_bit)
+        .unwrap();
+
+    let second = daemon(&dir).await;
+    assert!(
+        !uploads.join("stale-upload-01").exists(),
+        "stale upload survived the start"
+    );
+    assert!(
+        uploads.join("fresh-upload-01").exists(),
+        "a fresh upload was swept"
+    );
+    second.call("shutdown", json!({})).await.ok();
+}
+
 // ── Telegram ─────────────────────────────────────────────────────────────────
 
 /// A fake Telegram Bot API on loopback: `getUpdates` hands over `updates` once, `getFile` names a path,

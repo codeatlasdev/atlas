@@ -371,6 +371,67 @@ fn upload_dir(store: &CrewStore, crewmate_id: &str, upload: &str) -> PathBuf {
     store.crewmate_dir(crewmate_id).join("uploads").join(upload)
 }
 
+/// How long an upload may sit without a new piece before it is thrown away (an app killed mid-send, a network
+/// that dropped). Each piece renews it.
+pub(crate) const UPLOAD_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Unfinished uploads one crewmate may hold at once: two tasks' worth of images. A new upload past this is
+/// refused; continuing one that exists never is. Together with the 5 MiB cap per upload and the TTL it bounds
+/// what a client (or bad luck over months) can leave on the crew server's disk.
+const MAX_LIVE_UPLOADS: usize = MAX_ATTACHMENTS * 2;
+
+/// The upload dirs of `uploads` (a crewmate's `uploads/`): real directories with a valid upload id for a name.
+/// A stray file or an odd name is not ours and is never listed, so never removed.
+fn upload_dirs(uploads: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(uploads) else {
+        return vec![];
+    };
+    rd.filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| e.file_name().to_str().is_some_and(valid_upload))
+        .map(|e| e.path())
+        .collect()
+}
+
+fn live_uploads(uploads: &Path) -> usize {
+    upload_dirs(uploads).len()
+}
+
+/// When an upload last got a piece: its `seq` file is rewritten by every one. A dir without it (a crash between
+/// creating the dir and the first write) falls back to the dir's own time, so it too ages out.
+fn upload_touched(dir: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(dir.join("seq"))
+        .or_else(|_| std::fs::metadata(dir))
+        .and_then(|m| m.modified())
+        .ok()
+}
+
+/// Remove the uploads of one `uploads/` dir that are older than [`UPLOAD_TTL`]. Best effort, logged: a sweep
+/// that cannot remove something must never fail the upload that triggered it.
+fn sweep_dir(uploads: &Path) {
+    let now = std::time::SystemTime::now();
+    for dir in upload_dirs(uploads) {
+        let stale = upload_touched(&dir)
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|age| age > UPLOAD_TTL);
+        if stale && let Err(e) = std::fs::remove_dir_all(&dir) {
+            eprintln!(
+                "atlas crew: stale upload {} not removed: {e}",
+                dir.display()
+            );
+        }
+    }
+}
+
+/// Remove every crewmate's stale uploads. Run when the crew server starts: an upload abandoned before a restart
+/// would otherwise wait for its crewmate's next upload to be noticed, and a crewmate that never uploads again
+/// would keep it forever.
+pub(crate) fn sweep_stale_uploads(store: &CrewStore) {
+    for c in store.list_crewmate_dirs() {
+        sweep_dir(&c.join("uploads"));
+    }
+}
+
 /// Stage piece `seq` of upload `upload`. Pieces arrive in order from 0 (a gap, a repeat or a piece over
 /// [`CHUNK`] is refused), and the whole may never pass [`MAX_BYTES`]: a client cannot fill the disk with
 /// an upload it never finishes. Returns the bytes staged so far.
@@ -391,7 +452,16 @@ pub(crate) fn put_piece(
     let bytes = B64
         .decode(data_b64.trim())
         .map_err(|_| "piece is not valid base64".to_string())?;
+    // Before this one is looked at: whatever was abandoned is thrown away, so a stale upload never counts
+    // against the limit below. A crewmate can only ever hold so many unfinished uploads.
+    let uploads = store.crewmate_dir(crewmate_id).join("uploads");
+    sweep_dir(&uploads);
     let dir = upload_dir(store, crewmate_id, upload);
+    if !dir.exists() && live_uploads(&uploads) >= MAX_LIVE_UPLOADS {
+        return Err(format!(
+            "too many unfinished uploads ({MAX_LIVE_UPLOADS}); send the task or wait"
+        ));
+    }
     let file = dir.join("data");
     let have = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
     let expected = std::fs::read_to_string(dir.join("seq"))
@@ -648,5 +718,207 @@ mod tests {
                 .contains("base64")
         );
         assert_eq!(decode("a.png", &B64.encode(PNG)).unwrap(), PNG);
+    }
+
+    // ── abandoned uploads: an app killed mid-send must not keep a piece on the crew server forever ──
+
+    fn upload_exists(store: &CrewStore, crewmate: &str, upload: &str) -> bool {
+        upload_dir(store, crewmate, upload).exists()
+    }
+
+    /// Make `upload` look as if its last piece arrived `age` ago (the clock the sweep reads is its `seq` file).
+    fn age_upload(store: &CrewStore, crewmate: &str, upload: &str, age: std::time::Duration) {
+        let seq = upload_dir(store, crewmate, upload).join("seq");
+        let f = std::fs::OpenOptions::new().write(true).open(seq).unwrap();
+        f.set_modified(std::time::SystemTime::now() - age).unwrap();
+    }
+
+    fn piece_b64() -> String {
+        B64.encode(PNG)
+    }
+
+    // The bug: nothing ever removed an upload whose task was never sent.
+    #[test]
+    fn an_upload_older_than_the_ttl_is_gone_after_the_next_put_of_another_upload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        put_piece(&store, "c1", "stale-upload-01", 0, &piece_b64()).unwrap();
+        put_piece(&store, "c1", "fresh-upload-01", 0, &piece_b64()).unwrap();
+        age_upload(
+            &store,
+            "c1",
+            "stale-upload-01",
+            UPLOAD_TTL + std::time::Duration::from_secs(60),
+        );
+
+        put_piece(&store, "c1", "other-upload-01", 0, &piece_b64()).unwrap();
+
+        assert!(
+            !upload_exists(&store, "c1", "stale-upload-01"),
+            "stale upload kept"
+        );
+        assert!(upload_exists(&store, "c1", "fresh-upload-01"));
+        assert!(upload_exists(&store, "c1", "other-upload-01"));
+    }
+
+    // The edge: just inside the TTL is kept; and a slow but alive upload (a piece every few minutes) is never
+    // swept, because each piece renews its clock.
+    #[test]
+    fn an_upload_inside_the_ttl_is_kept_and_each_piece_renews_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        put_piece(&store, "c1", "slow-upload-001", 0, &piece_b64()).unwrap();
+        age_upload(
+            &store,
+            "c1",
+            "slow-upload-001",
+            UPLOAD_TTL - std::time::Duration::from_secs(60),
+        );
+        put_piece(&store, "c1", "other-upload-01", 0, &piece_b64()).unwrap();
+        assert!(upload_exists(&store, "c1", "slow-upload-001"));
+
+        // Its next piece renews the clock: aged to the brink again, still not stale after another put.
+        put_piece(&store, "c1", "slow-upload-001", 1, &piece_b64()).unwrap();
+        put_piece(&store, "c1", "other-upload-02", 0, &piece_b64()).unwrap();
+        assert!(upload_exists(&store, "c1", "slow-upload-001"));
+    }
+
+    // One crewmate's stale uploads are not another's business, and never another crewmate's files.
+    #[test]
+    fn a_put_sweeps_only_its_own_crewmates_uploads() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        put_piece(&store, "c1", "stale-upload-01", 0, &piece_b64()).unwrap();
+        age_upload(
+            &store,
+            "c1",
+            "stale-upload-01",
+            UPLOAD_TTL + std::time::Duration::from_secs(60),
+        );
+        put_piece(&store, "c2", "other-upload-01", 0, &piece_b64()).unwrap();
+        assert!(upload_exists(&store, "c1", "stale-upload-01"));
+    }
+
+    #[test]
+    fn the_new_upload_past_the_live_limit_is_refused_but_an_existing_one_continues() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        let limit = MAX_ATTACHMENTS * 2;
+        for i in 0..limit {
+            put_piece(
+                &store,
+                "c1",
+                &format!("live-upload-{i:02}"),
+                0,
+                &piece_b64(),
+            )
+            .unwrap();
+        }
+        let e = put_piece(&store, "c1", "one-too-many-01", 0, &piece_b64()).unwrap_err();
+        assert!(e.contains("too many unfinished uploads"), "{e}");
+        assert!(
+            !upload_exists(&store, "c1", "one-too-many-01"),
+            "refused upload left a dir"
+        );
+
+        // Continuing any of the live ones is always allowed.
+        put_piece(&store, "c1", "live-upload-00", 1, &piece_b64()).unwrap();
+        put_piece(
+            &store,
+            "c1",
+            &format!("live-upload-{:02}", limit - 1),
+            1,
+            &piece_b64(),
+        )
+        .unwrap();
+        // Another crewmate has its own budget.
+        put_piece(&store, "c2", "one-too-many-01", 0, &piece_b64()).unwrap();
+    }
+
+    // Taking an upload for a task frees its place; so does the sweep of a stale one.
+    #[test]
+    fn a_taken_or_swept_upload_gives_its_place_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        let limit = MAX_ATTACHMENTS * 2;
+        for i in 0..limit {
+            put_piece(
+                &store,
+                "c1",
+                &format!("live-upload-{i:02}"),
+                0,
+                &piece_b64(),
+            )
+            .unwrap();
+        }
+        assert_eq!(take_upload(&store, "c1", "live-upload-00").unwrap(), PNG);
+        put_piece(&store, "c1", "new-upload-0001", 0, &piece_b64()).unwrap();
+
+        // Everything else goes stale: the next new upload sweeps them all first, so it is not refused.
+        for i in 1..limit {
+            age_upload(
+                &store,
+                "c1",
+                &format!("live-upload-{i:02}"),
+                UPLOAD_TTL + std::time::Duration::from_secs(60),
+            );
+        }
+        put_piece(&store, "c1", "newer-upload-01", 0, &piece_b64()).unwrap();
+        assert!(!upload_exists(&store, "c1", "live-upload-01"));
+    }
+
+    #[test]
+    fn the_startup_sweep_removes_stale_uploads_of_every_crewmate_and_keeps_fresh_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        put_piece(&store, "c1", "stale-upload-01", 0, &piece_b64()).unwrap();
+        put_piece(&store, "c1", "fresh-upload-01", 0, &piece_b64()).unwrap();
+        put_piece(&store, "c2", "stale-upload-02", 0, &piece_b64()).unwrap();
+        for (c, u) in [("c1", "stale-upload-01"), ("c2", "stale-upload-02")] {
+            age_upload(
+                &store,
+                c,
+                u,
+                UPLOAD_TTL + std::time::Duration::from_secs(60),
+            );
+        }
+        // A crewmate dir with no uploads, and a stray file in uploads/, must not trip the sweep.
+        std::fs::create_dir_all(store.crewmate_dir("c3")).unwrap();
+        std::fs::write(
+            store.crewmate_dir("c1").join("uploads").join("stray.txt"),
+            b"x",
+        )
+        .unwrap();
+
+        sweep_stale_uploads(&store);
+
+        assert!(!upload_exists(&store, "c1", "stale-upload-01"));
+        assert!(!upload_exists(&store, "c2", "stale-upload-02"));
+        assert!(upload_exists(&store, "c1", "fresh-upload-01"));
+        assert!(
+            store
+                .crewmate_dir("c1")
+                .join("uploads")
+                .join("stray.txt")
+                .exists()
+        );
+    }
+
+    // A directory with no `seq` (a crash between create_dir and the first write) has no clock: it is judged by
+    // the directory's own mtime, so it is swept once old instead of living forever.
+    #[test]
+    fn an_upload_dir_without_a_seq_file_is_swept_by_its_directory_age() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = CrewStore::new(tmp.path());
+        let dir = upload_dir(&store, "c1", "no-seq-upload-01");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::File::open(&dir)
+            .unwrap()
+            .set_modified(
+                std::time::SystemTime::now() - UPLOAD_TTL - std::time::Duration::from_secs(60),
+            )
+            .unwrap();
+        sweep_stale_uploads(&store);
+        assert!(!dir.exists());
     }
 }

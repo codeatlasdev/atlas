@@ -21,6 +21,8 @@ import 'package:atlas_mobile/features/crew/list/crewmate_row.dart';
 import 'package:atlas_mobile/features/crew/list/needs_you_card.dart';
 import 'package:atlas_mobile/features/crew/list/pause_card.dart';
 import 'package:atlas_mobile/features/crew/new_crewmate_sheet.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_audit_screen.dart';
+import 'package:atlas_mobile/features/crew/ops/crew_settings_screen.dart';
 
 class CrewScreen extends ConsumerStatefulWidget {
   const CrewScreen({super.key});
@@ -189,11 +191,20 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                     slivers: [
                       for (final p in pausable)
                         SliverToBoxAdapter(
-                          child: PauseCard(
-                            serverName: p.name,
-                            paused: p.paused,
-                            showServer: pausable.length > 1,
-                            onSet: (v) => setCrewPaused(ref, p.device, v),
+                          child: Column(
+                            children: [
+                              PauseCard(
+                                serverName: p.name,
+                                paused: p.paused,
+                                showServer: pausable.length > 1,
+                                onSet: (v) => setCrewPaused(ref, p.device, v),
+                              ),
+                              _CrewOpsMenu(
+                                device: p.device,
+                                serverName: p.name,
+                                showServer: pausable.length > 1,
+                              ),
+                            ],
                           ),
                         ),
                       SliverToBoxAdapter(
@@ -279,6 +290,45 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
     context.push(
       '/crew/${e.device.nodeId}/${e.crewmate.id}',
       extra: {'device': e.device},
+    );
+  }
+}
+
+/// Crew settings and the crew-wide audit of one crew server, under its pause switch.
+class _CrewOpsMenu extends StatelessWidget {
+  const _CrewOpsMenu({
+    required this.device,
+    required this.serverName,
+    required this.showServer,
+  });
+  final MacDevice device;
+  final String serverName;
+  final bool showServer;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 0),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: PopupMenuButton<String>(
+          key: const Key('crew-ops-menu'),
+          tooltip: showServer ? 'Crew options · $serverName' : 'Crew options',
+          icon: Icon(Icons.tune_rounded, size: 20, color: c.muted),
+          onSelected: (v) => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => v == 'settings'
+                  ? CrewSettingsScreen(device: device)
+                  : CrewAuditScreen(device: device, title: serverName),
+            ),
+          ),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'settings', child: Text('Crew settings')),
+            PopupMenuItem(value: 'audit', child: Text('Crew audit')),
+          ],
+        ),
+      ),
     );
   }
 }

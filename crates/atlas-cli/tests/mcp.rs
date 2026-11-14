@@ -834,6 +834,8 @@ fn tools_list_schemas_are_valid_and_described() {
         "atlas_wait_ready",
         "atlas_heavy_status",
         "atlas_last_result",
+        "atlas_affected",
+        "atlas_estimate",
     ] {
         assert!(names.contains(&want), "missing tool {want}");
     }
@@ -851,6 +853,8 @@ fn tools_list_schemas_are_valid_and_described() {
         ("atlas_run_action", &["action"]),
         ("atlas_last_result", &["name"]),
     ];
+    // atlas_affected and atlas_estimate have no required key (files/base default to git; action
+    // or command is checked by the tool, which names the missing one).
     for t in tools {
         let n = t["name"].as_str().unwrap();
         assert!(name_ok(n), "bad tool name {n}");
@@ -1761,4 +1765,86 @@ fn audit_records_the_agent_session_from_the_environment() {
         json!({"OMP_SESSION_ID": "sess-42"}),
         "{log:?}"
     );
+}
+
+// Issue #128: an agent decides what to run without starting a process. End to end over the real
+// stdio server: the project's `affected:` rules answer `atlas_affected`, and `atlas_estimate`
+// answers from a cache entry and a heavy history recorded by the real `atlas run --cache`, with
+// the cache and the queue isolated in temp dirs.
+#[cfg(unix)]
+#[test]
+fn affected_and_estimate_answer_from_data_without_running_anything() {
+    let d = tempfile::TempDir::new().unwrap();
+    let root = d.path().join("proj");
+    let (cache, heavy) = (d.path().join("cache"), d.path().join("heavy"));
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir_all(&heavy).unwrap();
+    let marker = root.join("ran-by-estimate");
+    std::fs::write(root.join("src/lib.rs"), "1").unwrap();
+    std::fs::write(
+        root.join("atlas.yaml"),
+        format!(
+            "name: proj\nservices:\n  api: {{ command: run }}\nactions:\n  - key: u\n    label: Unit tests\n    command: \"echo unit && touch {m}\"\n    cache: {{ inputs: ['src/**'] }}\naffected:\n  rules:\n    - {{ match: ['src/**'], tasks: [Unit tests], tests: ['cargo test'], routes: [/api], builds: [core] }}\n",
+            m = marker.display()
+        ),
+    )
+    .unwrap();
+    let envs = [
+        ("ATLAS_CACHE_DIR", cache.to_str().unwrap()),
+        ("ATLAS_HEAVY_DIR", heavy.to_str().unwrap()),
+        // `run_with` names the CLI this machine uses: the one under test, never an installed one.
+        ("ATLAS_BIN", BIN),
+    ];
+    let mut c = McpClient::spawn_with_env(&["mcp", "--dir", root.to_str().unwrap()], None, &envs);
+    c.handshake();
+
+    // 1. what does editing src/lib.rs affect? Declared rules answer; nothing is started.
+    let (err, text) = c.call("atlas_affected", json!({"files": ["src/lib.rs"]}));
+    assert!(!err, "{text}");
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["source"], "rules");
+    assert_eq!(v["tasks"], json!(["Unit tests"]));
+    assert_eq!(v["tests"], json!(["cargo test"]));
+    assert_eq!(v["routes"], json!(["/api"]));
+    assert_eq!(v["builds"], json!(["core"]));
+
+    // 2. cost of the task: never ran, so no number is invented, and it is not a hit.
+    let (err, text) = c.call("atlas_estimate", json!({"action": "Unit tests"}));
+    assert!(!err, "{text}");
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["runs"], 0);
+    assert!(v["median_ms"].is_null());
+    assert_eq!(v["would_hit"], false);
+    assert!(!marker.exists(), "estimate must not run the action");
+
+    // 3. run it for real through the cache (what the estimate's `run_with` says), then ask again.
+    let line = v["run_with"].as_str().unwrap().to_string();
+    let mut run = std::process::Command::new("sh");
+    run.args(["-c", &line])
+        .current_dir(&root)
+        .envs(envs.iter().copied());
+    assert!(run.status().unwrap().success(), "{line}");
+    assert!(marker.exists(), "the run really ran");
+    std::fs::remove_file(&marker).unwrap();
+
+    let (err, text) = c.call("atlas_estimate", json!({"action": "Unit tests"}));
+    assert!(!err, "{text}");
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["would_hit"], true, "{v}");
+    assert_eq!(v["runs"], 1);
+    assert!(v["median_ms"].as_u64().is_some());
+    assert!(v["saved_ms"].as_u64().is_some());
+    assert!(!marker.exists(), "asking is not running");
+
+    // 4. an edit to an input flips it to a miss.
+    std::fs::write(root.join("src/lib.rs"), "2").unwrap();
+    let (_, text) = c.call("atlas_estimate", json!({"action": "Unit tests"}));
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["would_hit"], false);
+
+    // 5. errors are tool errors the agent can act on.
+    let (err, text) = c.call("atlas_estimate", json!({}));
+    assert!(err && text.contains("action"), "{text}");
+    let (err, text) = c.call("atlas_affected", json!({"files": ["../x"]}));
+    assert!(err && text.contains("outside"), "{text}");
 }

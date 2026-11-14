@@ -231,8 +231,21 @@ impl Cache {
     /// The entry for `key`, when it is stored and every blob it names is still there (a hit
     /// must never be a half-restorable lie). A hit marks the entry as used.
     pub fn lookup(&self, key: &Key) -> Option<Entry> {
-        let path = self.entry_path(key.as_str());
-        let entry: Entry = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+        let entry = self.peek(key)?;
+        if let Ok(f) = File::options()
+            .write(true)
+            .open(self.entry_path(key.as_str()))
+        {
+            let _ = f.set_modified(SystemTime::now());
+        }
+        Some(entry)
+    }
+
+    /// [`lookup`](Self::lookup) as a question: the same entry, but it is not marked as used (so
+    /// asking whether a run would hit never keeps an entry alive against eviction).
+    pub fn peek(&self, key: &Key) -> Option<Entry> {
+        let entry: Entry =
+            serde_json::from_slice(&fs::read(self.entry_path(key.as_str())).ok()?).ok()?;
         if entry.key != key.as_str() {
             return None;
         }
@@ -242,13 +255,7 @@ impl Cache {
             .map(|o| o.blob.as_str())
             .chain([entry.log_blob.as_str()])
             .all(|b| b.len() == 64 && self.blob_path(b).is_file());
-        if !blobs_ok {
-            return None;
-        }
-        if let Ok(f) = File::options().write(true).open(&path) {
-            let _ = f.set_modified(SystemTime::now());
-        }
-        Some(entry)
+        blobs_ok.then_some(entry)
     }
 
     /// Put the entry's outputs into `spec.cwd`: a declared directory is emptied first (the tree
@@ -643,6 +650,17 @@ impl Cache {
             .rev()
             .find(|r| r.matches(name, project))
             .map(|r| r.into_last(name))
+    }
+
+    /// Milliseconds of the runs of `name` (a label or a command line, optionally of one project)
+    /// that really ran, oldest first: the misses. A hit only replays the original duration, so
+    /// counting it would weigh one run once per hit.
+    pub fn durations_ms(&self, name: &str, project: Option<&str>) -> Vec<u64> {
+        self.read_recent()
+            .into_iter()
+            .filter(|r| !r.hit && r.matches(name, project))
+            .map(|r| r.duration_ms)
+            .collect()
     }
 }
 

@@ -2,6 +2,9 @@
 //! initialize, ping, tools/*, resources/*, prompts/*, notifications/initialized.
 //! stdout carries protocol messages only; diagnostics go to stderr.
 
+mod affected;
+#[cfg(test)]
+mod affected_tests;
 pub mod logs;
 pub mod prompts;
 pub mod resources;

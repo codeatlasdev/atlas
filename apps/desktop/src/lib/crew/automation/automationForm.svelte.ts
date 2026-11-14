@@ -29,6 +29,8 @@ export class AutomationForm {
 
 	githubRepo = $state("");
 	githubEvents = $state<Set<string>>(new Set());
+	/** The loaded GitHub automation's other fields, handed back untouched by `toKind`. */
+	githubExtra: Record<string, unknown> = {};
 
 	filePath = $state("");
 	fileGlob = $state("");
@@ -116,6 +118,10 @@ export class AutomationForm {
 		} else if (k.type === "github") {
 			this.githubRepo = k.repo;
 			this.githubEvents = new Set(k.events);
+			// Fields the form has no control for (authors, allow_auto, handle, assignee, ...): saving the edit
+			// replaces the whole automation, so dropping them here would reset them on the server.
+			const { type: _t, repo: _r, events: _e, ...extra } = k;
+			this.githubExtra = extra;
 		} else if (k.type === "file") {
 			this.filePath = k.path;
 			this.fileGlob = k.glob ?? "";
@@ -143,6 +149,7 @@ export class AutomationForm {
 		this.intervalUnit = "minutes";
 		this.githubRepo = "";
 		this.githubEvents = new Set();
+		this.githubExtra = {};
 		this.filePath = "";
 		this.fileGlob = "";
 		this.crewmateChainFrom = "";
@@ -161,7 +168,7 @@ export class AutomationForm {
 			case "interval":
 				return { type: "interval", every_secs: intervalToSecs(this.intervalValue, this.intervalUnit) };
 			case "github":
-				return { type: "github", repo: this.githubRepo.trim(), events: [...this.githubEvents] };
+				return { ...this.githubExtra, type: "github", repo: this.githubRepo.trim(), events: [...this.githubEvents] };
 			case "file":
 				return { type: "file", path: this.filePath.trim(), glob: this.fileGlob.trim() || undefined };
 			case "crewmate":

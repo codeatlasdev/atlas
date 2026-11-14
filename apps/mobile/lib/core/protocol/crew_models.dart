@@ -19,6 +19,11 @@ sealed class TriggerKind {
       'github' => GithubTrigger(
         repo: j['repo'] as String? ?? '',
         events: (j['events'] as List?)?.cast<String>() ?? const [],
+        extra: {
+          for (final e in j.entries)
+            if (e.key != 'type' && e.key != 'repo' && e.key != 'events')
+              e.key: e.value,
+        },
       ),
       'file' => FileTrigger(
         path: j['path'] as String? ?? '',
@@ -65,11 +70,21 @@ class WebhookTrigger extends TriggerKind {
 }
 
 class GithubTrigger extends TriggerKind {
-  const GithubTrigger({required this.repo, required this.events});
+  const GithubTrigger({
+    required this.repo,
+    required this.events,
+    this.extra = const {},
+  });
   final String repo;
   final List<String> events;
+
+  /// The fields the editor has no control for (authors, allow_auto, handle, assignee, ...),
+  /// written back untouched: saving an edit replaces the whole automation on the server, so
+  /// dropping them reset `authors` and `allow_auto` to their defaults.
+  final Map<String, dynamic> extra;
   @override
   Map<String, dynamic> toJson() => {
+    ...extra,
     'type': 'github',
     'repo': repo,
     'events': events,
@@ -231,6 +246,9 @@ class CrewmateTask {
   /// IANA timezone stamped when the task was created.
   final String? tz;
 
+  /// The GitHub issue, PR or comment this task answers (a task from a GitHub automation).
+  final GithubOrigin? origin;
+
   const CrewmateTask({
     required this.id,
     required this.ts,
@@ -249,6 +267,7 @@ class CrewmateTask {
     this.title,
     this.preparing,
     this.tz,
+    this.origin,
   });
 
   factory CrewmateTask.fromJson(Map<String, dynamic> j) => CrewmateTask(
@@ -274,6 +293,39 @@ class CrewmateTask {
     title: j['title'] as String?,
     preparing: j['preparing'] as String?,
     tz: j['tz'] as String?,
+    origin: j['origin'] == null
+        ? null
+        : GithubOrigin.fromJson((j['origin'] as Map).cast<String, dynamic>()),
+  );
+}
+
+/// Where a task from GitHub came from and where its reply goes (hostd `GithubOrigin`).
+class GithubOrigin {
+  final String repo;
+
+  /// mention | issue_assigned | ci_failed | pr_review_comment
+  final String kind;
+  final int? number;
+  final int? commentId;
+  final String? branch;
+  final int? replyCommentId;
+
+  const GithubOrigin({
+    required this.repo,
+    required this.kind,
+    this.number,
+    this.commentId,
+    this.branch,
+    this.replyCommentId,
+  });
+
+  factory GithubOrigin.fromJson(Map<String, dynamic> j) => GithubOrigin(
+    repo: j['repo'] as String? ?? '',
+    kind: j['kind'] as String? ?? '',
+    number: (j['number'] as num?)?.toInt(),
+    commentId: (j['comment_id'] as num?)?.toInt(),
+    branch: j['branch'] as String?,
+    replyCommentId: (j['reply_comment_id'] as num?)?.toInt(),
   );
 }
 

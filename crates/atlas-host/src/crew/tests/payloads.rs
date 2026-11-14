@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 
 use crate::crew::events;
-use crate::crew::store::{Task, TaskState};
+use crate::crew::store::{GithubOrigin, GithubOriginKind, Task, TaskState, Trigger};
 
 #[test]
 fn crewmate_task_summarized_fixture_is_real_payload() {
@@ -89,5 +89,64 @@ fn crewmate_task_event_fixture_is_real_payload() {
     assert_eq!(
         bare,
         json!({"ev": "crewmate_task", "crewmate_id": "crewmate-working"})
+    );
+}
+
+// Issue #204: a task from GitHub carries its origin as structured fields, and a GitHub automation
+// carries `handle`/`assignee` next to `authors`/`allow_auto`. Both clients read this file; the
+// editors must hand every one of those fields back unchanged when an automation is edited, else
+// saving it silently resets `authors` and `allow_auto` to their defaults.
+// Regenerate: UPDATE_FIXTURES=1 cargo test -p atlas-host github_origin_fixture_is_real_payload
+#[test]
+fn github_origin_fixture_is_real_payload() {
+    let mut task = Task::new("trigger", "Handle this: [UNTRUSTED CONTENT ...]");
+    task.id = "task-gh-1".to_string();
+    task.ts = 1700000000;
+    task.state = TaskState::Running;
+    task.no_auto = true;
+    task.trigger_id = Some("gh".to_string());
+    task.origin = Some(GithubOrigin {
+        repo: "o/r".into(),
+        kind: GithubOriginKind::PrReviewComment,
+        number: Some(12),
+        comment_id: Some(200),
+        branch: Some("feat/parser".into()),
+        reply_comment_id: Some(9001),
+    });
+    let trigger: Trigger = serde_json::from_value(json!({
+        "id": "gh", "enabled": true, "prompt": "Handle this: {{event}}",
+        "kind": {"type": "github", "repo": "o/r",
+                 "events": ["mention", "issue_assigned", "pr_review_comment", "ci_failed"],
+                 "authors": ["owner", "member"], "allow_auto": true,
+                 "handle": "nami", "assignee": "nami-bot"}
+    }))
+    .unwrap();
+    let live = json!({"task": task, "trigger": trigger});
+
+    // The keys the clients read.
+    assert_eq!(live["task"]["origin"]["kind"], "pr_review_comment");
+    assert_eq!(live["task"]["origin"]["reply_comment_id"], 9001);
+    assert_eq!(live["trigger"]["kind"]["handle"], "nami");
+    assert_eq!(
+        live["trigger"]["kind"]["authors"],
+        json!(["owner", "member"])
+    );
+
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/mobile/test/fixtures/github_origin.json");
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::write(
+            &fixture_path,
+            serde_json::to_string_pretty(&live).unwrap() + "\n",
+        )
+        .unwrap();
+    }
+    let stored: Value = serde_json::from_str(&std::fs::read_to_string(&fixture_path).expect(
+        "fixture missing — run: UPDATE_FIXTURES=1 cargo test -p atlas-host github_origin_fixture_is_real_payload",
+    ))
+    .unwrap();
+    assert_eq!(
+        stored, live,
+        "github_origin.json changed: rerun with UPDATE_FIXTURES=1"
     );
 }

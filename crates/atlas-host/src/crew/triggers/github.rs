@@ -1,22 +1,38 @@
 //! GitHub event polling for `Github` triggers.
 //!
-//! Polls `gh api repos/<repo>/events` every 2 minutes.
-//! Deduplicates seen event IDs via `<crewmate_dir>/<trigger_id>_seen.jsonl`.
-//! If `gh` is not installed or returns an error, logs to stderr and skips.
+//! Polls the repo's events every 2 minutes through the crew's [`GithubApi`] (`gh api`). Deduplicates
+//! seen event ids via `<crewmate_dir>/<trigger_id>_seen.jsonl`. What an event means (and whether
+//! its author may start a task) is decided in `github_events`; this file only walks the feed.
+//! If `gh` is missing or errors, it logs to stderr and tries again next time.
 
 use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use crate::crew::store::{Trigger, TriggerKind};
+use super::github_events::{Cfg, decide, handle_for};
+use crate::crew::github::GithubApi;
+use crate::crew::store::{Crewmate, Trigger, TriggerKind};
 use crate::server::Hub;
 
+const POLL_EVERY: Duration = Duration::from_secs(120);
+
+/// Test-only: how often the poller runs instead of every 2 minutes.
+#[cfg(test)]
+pub(crate) static TEST_GITHUB_POLL: parking_lot::Mutex<Option<Duration>> =
+    parking_lot::Mutex::new(None);
+
+fn poll_every() -> Duration {
+    #[cfg(test)]
+    if let Some(d) = *TEST_GITHUB_POLL.lock() {
+        return d;
+    }
+    POLL_EVERY
+}
+
 pub(super) async fn run(hub_weak: Weak<Hub>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(120));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        interval.tick().await;
+        tokio::time::sleep(poll_every()).await;
         let Some(hub) = hub_weak.upgrade() else { break };
         poll_all(&hub).await;
     }
@@ -27,133 +43,92 @@ async fn poll_all(hub: &Arc<Hub>) {
     if hub.crew.is_paused() {
         return;
     }
-    let crewmates = hub.crew.store.list_crewmates();
-    for crewmate in crewmates {
-        let crewmate_dir = hub.crew.store.crewmate_dir(&crewmate.id);
-        for trigger in &crewmate.triggers {
-            if !trigger.enabled {
-                continue;
-            }
-            if let TriggerKind::Github {
-                repo,
-                events,
-                authors,
-                ..
-            } = &trigger.kind
-            {
-                poll_trigger(
-                    hub,
-                    &crewmate.id,
-                    &crewmate_dir,
-                    trigger,
-                    repo,
-                    events,
-                    authors,
-                )
-                .await;
+    let api = hub.crew.github();
+    for crewmate in hub.crew.store.list_crewmates() {
+        for trigger in crewmate.triggers.iter().filter(|t| t.enabled) {
+            if matches!(trigger.kind, TriggerKind::Github { .. }) {
+                poll_trigger(hub, api.as_ref(), &crewmate, trigger).await;
             }
         }
     }
 }
 
-async fn poll_trigger(
-    hub: &Arc<Hub>,
-    crewmate_id: &str,
-    crewmate_dir: &std::path::Path,
-    trigger: &Trigger,
-    repo: &str,
-    wanted: &[String],
-    authors: &[String],
-) {
-    let seen_path = crewmate_dir.join(format!("{}_seen.jsonl", trigger.id));
+async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, trigger: &Trigger) {
+    let TriggerKind::Github {
+        repo,
+        events,
+        handle,
+        assignee,
+        authors,
+        ..
+    } = &trigger.kind
+    else {
+        return;
+    };
+    let seen_path = hub
+        .crew
+        .store
+        .crewmate_dir(&crewmate.id)
+        .join(format!("{}_seen.jsonl", trigger.id));
     let mut seen = load_seen(&seen_path);
 
-    // `--jq '.[]'` emits one JSON object per line.
-    let output = tokio::process::Command::new("gh")
-        .args(["api", &format!("repos/{repo}/events"), "--jq", ".[]"])
-        .output()
-        .await;
-
-    let output = match output {
-        Ok(o) if o.status.success() => o.stdout,
-        Ok(o) => {
-            eprintln!(
-                "triggers/github: gh api failed for {repo}: {}",
-                String::from_utf8_lossy(&o.stderr).trim()
-            );
-            return;
-        }
+    let feed = match api.events(repo).await {
+        Ok(f) => f,
         Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                eprintln!("triggers/github: gh CLI not found; skipping github triggers");
-            } else {
-                eprintln!("triggers/github: gh error: {e}");
-            }
+            eprintln!("triggers/github: {repo}: {e}");
             return;
         }
     };
-
-    let text = String::from_utf8_lossy(&output);
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    // Who the crew writes as: its own comments never start a task. Unknown = nothing is polled
+    // (an event could be our own comment), and it is asked again next time.
+    let own_login = match api.login().await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("triggers/github: cannot tell the crew's own GitHub login: {e}");
+            return;
         }
-        let Ok(ev) = serde_json::from_str::<serde_json::Value>(line) else {
+    };
+    let cfg = Cfg {
+        events: events.clone(),
+        authors: authors.clone(),
+        handle: handle_for(handle.as_deref(), &crewmate.name),
+        assignee: assignee.clone(),
+        own_login,
+    };
+
+    // Oldest first, so tasks start in the order things happened.
+    for ev in feed.iter().rev() {
+        let Some(id) = ev["id"].as_str().filter(|s| !s.is_empty()) else {
             continue;
         };
-        let id = match ev["id"].as_str() {
-            Some(s) if !s.is_empty() => s.to_string(),
-            _ => continue,
-        };
-        if seen.contains(&id) {
+        if seen.contains(id) {
             continue;
         }
-
-        let ev_type = ev["type"].as_str().unwrap_or("");
-        let action = ev["payload"]["action"].as_str().unwrap_or("");
-
-        let wanted_event = wanted
-            .iter()
-            .any(|w| event_matches(w, ev_type, action, &ev));
-        if wanted_event {
-            // Only events from accepted authors fire; the text reaches the agent wrapped as untrusted.
-            match super::github_event_prompt(&ev, repo, wanted, authors) {
-                Some(event) => super::fire(
-                    hub,
-                    crewmate_id,
-                    &trigger.id,
-                    &trigger.prompt,
-                    super::Event::Wrapped(&event),
-                ),
-                None => eprintln!(
-                    "triggers/github: {ev_type} {id} in {repo} skipped for crewmate {crewmate_id}: its author is not in the trigger's authors"
-                ),
+        match decide(api, repo, ev, &cfg).await {
+            Ok(Some(fired)) => super::fire(
+                hub,
+                &crewmate.id,
+                &trigger.id,
+                &trigger.prompt,
+                super::Event::Github {
+                    text: &fired.event,
+                    origin: fired.origin,
+                },
+            ),
+            Ok(None) => {}
+            // Could not tell who wrote it (or what it says): not decided, so not seen. Asked again.
+            Err(e) => {
+                eprintln!(
+                    "triggers/github: {} {id} in {repo} for crewmate {}: {e}; will retry",
+                    ev["type"].as_str().unwrap_or("?"),
+                    crewmate.id
+                );
+                continue;
             }
         }
-
         // Mark seen regardless of match, to avoid re-processing on next poll.
-        seen.insert(id.clone());
-        append_seen(&seen_path, &id);
-    }
-}
-
-pub(super) fn event_matches(
-    wanted: &str,
-    ev_type: &str,
-    action: &str,
-    ev: &serde_json::Value,
-) -> bool {
-    match wanted {
-        "pr_opened" => ev_type == "PullRequestEvent" && action == "opened",
-        "pr_review_requested" => ev_type == "PullRequestReviewRequestedEvent",
-        "issue_opened" => ev_type == "IssuesEvent" && action == "opened",
-        "ci_failed" => {
-            ev_type == "CheckRunEvent"
-                && ev["payload"]["check_run"]["conclusion"].as_str() == Some("failure")
-        }
-        "release" => ev_type == "ReleaseEvent",
-        _ => false,
+        seen.insert(id.to_string());
+        append_seen(&seen_path, id);
     }
 }
 

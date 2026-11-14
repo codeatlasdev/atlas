@@ -17,7 +17,14 @@
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `pause`       | `crew_pause` / `crew_resume`: the kill switch, its persistence, its event |
 //! | `untrusted`   | text from GitHub/webhooks: author filter, quoting, no bypass flags       |
+//! | `github_in`   | GitHub events to tasks: mentions, assignment, review comments, CI logs   |
+//! | `github_out`  | the progress comment: created, edited (throttled), finished, failed      |
+//! | `github_fake` | the `GithubApi` fake both of those run against                           |
+//! | `github_e2e`  | a real hostd polling the fake: mention -> task -> reply -> PR link       |
 
+mod github_fake;
+mod github_in;
+mod github_out;
 mod payloads;
 
 #[cfg(unix)]
@@ -32,6 +39,8 @@ mod crewmates;
 mod engines;
 #[cfg(unix)]
 mod fixture;
+#[cfg(unix)]
+mod github_e2e;
 #[cfg(unix)]
 mod limits;
 #[cfg(unix)]

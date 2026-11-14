@@ -140,6 +140,14 @@ describe("describeTrigger", () => {
 		);
 	});
 
+	// Issue #204: the new events must not fall back to the raw key ("When mention in ...").
+	test("the GitHub in/out events read as sentences", () => {
+		const d = (events) => describeTrigger({ type: "github", repo: "owner/repo", events });
+		expect(d(["mention"])).toBe("When you are mentioned in owner/repo");
+		expect(d(["issue_assigned"])).toBe("When an issue is assigned to you in owner/repo");
+		expect(d(["pr_review_comment"])).toBe("When a PR gets a review comment in owner/repo");
+	});
+
 	test("file with glob", () => {
 		expect(describeTrigger({ type: "file", path: "/src", glob: "**/*.ts" })).toBe("When **/*.ts changes");
 	});

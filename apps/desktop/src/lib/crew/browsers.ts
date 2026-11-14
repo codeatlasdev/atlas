@@ -5,6 +5,9 @@
  * the `✗` marker, this reads what is left.
  */
 
+import type { AdminAddress } from "#lib/crew.ts";
+import type { ParsedTarget } from "#lib/crew/sshTarget.ts";
+
 /** What `crew_browsers_status` answers: ready, or one line per missing piece. */
 export interface BrowsersStatus {
 	ready: boolean;
@@ -68,4 +71,19 @@ export const errorView = (error: string): BrowsersView => ({ phase: "error", err
 /** The Install button is only useful when the install can succeed: not while Node is missing or too old. */
 export function canInstall(v: BrowsersView): boolean {
 	return v.phase === "missing" && !v.needsNode;
+}
+
+/** The text field of an admin address: `user@host`, or `user@host:2222` for another port (what `parseSSHTarget` reads back). */
+export function addressText(a: AdminAddress | undefined): string {
+	return a ? (a.port && a.port !== 22 ? `${a.target}:${a.port}` : a.target) : "";
+}
+
+/** The registry's form of what the user typed: the port is left out when it is the default 22. */
+export function adminOf(p: ParsedTarget): AdminAddress {
+	return p.port !== 22 ? { target: p.target, port: p.port } : { target: p.target };
+}
+
+/** Whether two addresses are the same one (an absent port is 22), so a save is only made for a real change. */
+export function sameAdmin(a: AdminAddress | undefined, b: AdminAddress | undefined): boolean {
+	return !!a && !!b && a.target === b.target && (a.port ?? 22) === (b.port ?? 22);
 }

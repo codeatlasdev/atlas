@@ -215,7 +215,11 @@ export class Onboarding {
 			await invoke("crew_server_install", args);
 			// hostd runs as the service user the installer reported (a server that kept `atlas-bot` keeps it).
 			const server = crewServerTarget(target, this.install.user || undefined);
-			await crew.addServer(server, server);
+			// Keep the address the install ran against: the browsers' status and install need an account that can sudo.
+			await crew.addServer(server, server, {
+				target,
+				...(this.sshPort !== 22 ? { port: this.sshPort } : {}),
+			});
 			this.launchedNow = `ssh:${server}`;
 			this.install = completeInstall(this.install);
 			this.installDone = true;
@@ -267,7 +271,7 @@ export class Onboarding {
 		this.promoting = true;
 		const server = crewServerTarget(old.key.slice(4));
 		void crew
-			.addServer(server, server)
+			.addServer(server, server, { target: old.key.slice(4) })
 			.then(() => (this.launchedNow = `ssh:${server}`))
 			.catch((e) => toast.error(errText(e)))
 			.finally(() => (this.promoting = false));

@@ -12,6 +12,30 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt as _, BufReader};
 
+/// The SSH address the user installed a crew server with (`ubuntu@host`, plus the port when it is not 22).
+///
+/// This is an address, like a `Host` entry in `~/.ssh/config`: never a password, key or any other credential
+/// (the SSH key is the Mac's own, the sudo password goes to the CLI's stdin once and is not kept). The crew
+/// service user in [`CrewServer::host`] cannot `sudo`, and `atlas crew browsers install|status` need an account
+/// that can, so Settings reads it from here instead of asking every time.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminAddress {
+    pub target: String,
+    /// Absent for the default port 22.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+}
+
+impl AdminAddress {
+    /// The port 22 and "no port" are the same address: keep one spelling in the file.
+    fn normalized(self) -> Self {
+        Self {
+            port: self.port.filter(|&p| p != 22),
+            ..self
+        }
+    }
+}
+
 /// An entry in the crew-servers registry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrewServer {
@@ -19,6 +43,10 @@ pub struct CrewServer {
     pub host: String,
     /// Human-readable label shown in the sidebar.
     pub name: String,
+    /// The admin address the server was installed with. Absent for servers added before this field existed
+    /// (and for servers added by hand, until the user types one in Settings).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admin: Option<AdminAddress>,
 }
 
 fn path() -> PathBuf {
@@ -28,20 +56,52 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> Vec<CrewServer> {
-    let Ok(data) = std::fs::read_to_string(path()) else {
+    load_from(&path())
+}
+
+fn load_from(p: &std::path::Path) -> Vec<CrewServer> {
+    let Ok(data) = std::fs::read_to_string(p) else {
         return vec![];
     };
     serde_json::from_str(&data).unwrap_or_default()
 }
 
 fn save(hosts: &[CrewServer]) -> Result<(), String> {
-    let p = path();
+    save_to(&path(), hosts)
+}
+
+fn save_to(p: &std::path::Path, hosts: &[CrewServer]) -> Result<(), String> {
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let data = serde_json::to_string_pretty(hosts).map_err(|e| e.to_string())?;
-    std::fs::write(&p, data).map_err(|e| e.to_string())
+    std::fs::write(p, data).map_err(|e| e.to_string())
 }
+
+/// The registry after registering `host`. An entry that exists keeps its name; a given `admin` replaces its admin
+/// address (a re-install with another account) and `None` leaves what is there. `true` when the host is new.
+fn with_server(
+    hosts: &mut Vec<CrewServer>,
+    host: &str,
+    name: String,
+    admin: Option<AdminAddress>,
+) -> (CrewServer, bool) {
+    let admin = admin.map(AdminAddress::normalized);
+    if let Some(e) = hosts.iter_mut().find(|h| h.host == host) {
+        if admin.is_some() {
+            e.admin = admin;
+        }
+        return (e.clone(), false);
+    }
+    let entry = CrewServer {
+        host: host.to_string(),
+        name,
+        admin,
+    };
+    hosts.push(entry.clone());
+    (entry, true)
+}
+
 /// List all registered crew servers.
 #[tauri::command]
 pub fn crew_servers_list() -> Vec<CrewServer> {
@@ -52,22 +112,45 @@ pub fn crew_servers_list() -> Vec<CrewServer> {
 ///
 /// The `host` is an SSH target (`user@hostname` or a `~/.ssh/config` alias). It is added
 /// to `settings.sshHosts` so `remote::keep` reconnects it on every startup. When the
-/// host is already registered, the existing entry is returned unchanged.
+/// host is already registered, its name is kept; `admin` (the address the install ran
+/// against) is stored when given.
 #[tauri::command]
-pub fn crew_servers_add(app: AppHandle, host: String, name: String) -> Result<CrewServer, String> {
+pub fn crew_servers_add(
+    app: AppHandle,
+    host: String,
+    name: String,
+    admin: Option<AdminAddress>,
+) -> Result<CrewServer, String> {
     let mut hosts = load();
-    if let Some(existing) = hosts.iter().find(|h| h.host == host).cloned() {
-        return Ok(existing);
+    let (entry, is_new) = with_server(&mut hosts, &host, name, admin);
+    if is_new {
+        // Persist in sshHosts so remote::keep reconnects on startup.
+        crate::remote::ssh_add(app, host)?;
     }
-    // Persist in sshHosts so remote::keep reconnects on startup.
-    crate::remote::ssh_add(app, host.clone())?;
-    let entry = CrewServer {
-        host: host.clone(),
-        name,
-    };
-    hosts.push(entry.clone());
     save(&hosts)?;
     Ok(entry)
+}
+
+/// Store (or with `None` forget) the admin address of a registered crew server. Same file and write path as the
+/// registry itself.
+#[tauri::command]
+pub fn crew_servers_set_admin(host: String, admin: Option<AdminAddress>) -> Result<(), String> {
+    let mut hosts = load();
+    set_admin(&mut hosts, &host, admin)?;
+    save(&hosts)
+}
+
+fn set_admin(
+    hosts: &mut [CrewServer],
+    host: &str,
+    admin: Option<AdminAddress>,
+) -> Result<(), String> {
+    let e = hosts
+        .iter_mut()
+        .find(|h| h.host == host)
+        .ok_or_else(|| format!("{host} is not a registered crew server"))?;
+    e.admin = admin.map(AdminAddress::normalized);
+    Ok(())
 }
 
 /// Remove a crew server from the registry and disconnect it.
@@ -736,6 +819,168 @@ pub async fn provider_probe(base_url: String, api_key: String) -> Result<Vec<Str
 mod tests {
     use super::*;
 
+    fn admin(target: &str, port: Option<u16>) -> Option<AdminAddress> {
+        Some(AdminAddress {
+            target: target.into(),
+            port,
+        })
+    }
+
+    /// `crew-servers.json` exactly as the desktop wrote it before `admin` existed: the old two-field struct,
+    /// serialized the way `save` always did. `UPDATE_FIXTURES=1` rewrites it.
+    fn pre_admin_registry() -> std::path::PathBuf {
+        #[derive(Serialize)]
+        struct Before {
+            host: String,
+            name: String,
+        }
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/fixtures/crew-servers-before-admin.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            let old = [
+                Before {
+                    host: "atlas-crew@10.0.0.5".into(),
+                    name: "Ship".into(),
+                },
+                Before {
+                    host: "atlas-bot@legacy.example.com".into(),
+                    name: "Old Atlas Bot server".into(),
+                },
+            ];
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, serde_json::to_string_pretty(&old).unwrap()).unwrap();
+        }
+        path
+    }
+
+    // Servers added before `admin` existed keep loading, keep their names, and have no admin address (Settings
+    // asks once). Nothing is rewritten by loading.
+    #[test]
+    fn a_registry_from_before_admin_loads_and_has_no_admin() {
+        let hosts = load_from(&pre_admin_registry());
+        assert_eq!(
+            hosts.len(),
+            2,
+            "the old file must load, not fall back to empty"
+        );
+        assert_eq!(hosts[0].host, "atlas-crew@10.0.0.5");
+        assert_eq!(hosts[1].name, "Old Atlas Bot server");
+        assert!(hosts.iter().all(|h| h.admin.is_none()));
+    }
+
+    // The install records the address the user typed, on the real registry serializer: `admin` is
+    // `{target, port?}`, port 22 is spelled as none, and the file holds nothing else about the install.
+    #[test]
+    fn adding_a_server_records_the_admin_address_in_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let mut hosts = load_from(&file);
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", Some(2222)),
+        );
+        with_server(
+            &mut hosts,
+            "atlas-crew@b",
+            "b".into(),
+            admin("ubuntu@b", Some(22)),
+        );
+        with_server(&mut hosts, "atlas-crew@c", "c".into(), None);
+        save_to(&file, &hosts).unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(
+            written,
+            serde_json::json!([
+                {"host": "atlas-crew@srv", "name": "srv", "admin": {"target": "ubuntu@srv", "port": 2222}},
+                {"host": "atlas-crew@b", "name": "b", "admin": {"target": "ubuntu@b"}},
+                {"host": "atlas-crew@c", "name": "c"},
+            ])
+        );
+        assert_eq!(load_from(&file), hosts, "what was written loads back");
+    }
+
+    // A re-install against another account replaces the address; adding again without one leaves it.
+    #[test]
+    fn registering_a_known_server_updates_admin_only_when_given() {
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", None),
+        );
+        let (e, is_new) = with_server(&mut hosts, "atlas-crew@srv", "other".into(), None);
+        assert!(!is_new);
+        assert_eq!(e.admin, admin("ubuntu@srv", None));
+        assert_eq!(e.name, "srv", "an existing entry keeps its name");
+        let (e, _) = with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "x".into(),
+            admin("root@srv", Some(2200)),
+        );
+        assert_eq!(e.admin, admin("root@srv", Some(2200)));
+        assert_eq!(hosts.len(), 1);
+    }
+
+    // Editing the address in Settings persists through the same file; clearing it removes the key; an unknown
+    // server is an error, never a silent no-op.
+    #[test]
+    fn set_admin_edits_one_entry_and_refuses_an_unknown_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let mut hosts = load_from(&pre_admin_registry());
+        set_admin(
+            &mut hosts,
+            "atlas-crew@10.0.0.5",
+            admin("ubuntu@10.0.0.5", Some(2222)),
+        )
+        .unwrap();
+        save_to(&file, &hosts).unwrap();
+        let back = load_from(&file);
+        assert_eq!(back[0].admin, admin("ubuntu@10.0.0.5", Some(2222)));
+        assert_eq!(back[1].admin, None, "the other server is untouched");
+
+        let mut hosts = back;
+        set_admin(&mut hosts, "atlas-crew@10.0.0.5", None).unwrap();
+        save_to(&file, &hosts).unwrap();
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("admin"));
+        assert!(set_admin(&mut hosts, "atlas-crew@nope", None).is_err());
+    }
+
+    // The file holds an address, never a credential: whatever the install was given besides the address (the sudo
+    // password goes to the CLI's stdin) cannot reach it, and `AdminAddress` has no field that could carry one.
+    #[test]
+    fn the_registry_file_never_holds_a_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("crew-servers.json");
+        let secret = "s3cret-sudo-password";
+        let mut hosts = vec![];
+        with_server(
+            &mut hosts,
+            "atlas-crew@srv",
+            "srv".into(),
+            admin("ubuntu@srv", Some(2222)),
+        );
+        // The install command takes the password as an argument of its own; the registry call never sees it.
+        let argv = install_argv("ubuntu@srv", Some(2222), true, true);
+        assert!(argv.iter().all(|a| !a.contains(secret)));
+        save_to(&file, &hosts).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains(secret));
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let keys: Vec<&String> = v[0]["admin"].as_object().unwrap().keys().collect();
+        assert_eq!(
+            keys,
+            ["port", "target"],
+            "an address has a target and a port, nothing else"
+        );
+    }
+
     fn argv(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()
     }
@@ -890,10 +1135,15 @@ mod tests {
             CrewServer {
                 host: "atlas-bot@server".into(),
                 name: "My Server".into(),
+                admin: None,
             },
             CrewServer {
                 host: "atlas-bot@192.168.1.5".into(),
                 name: "Local VM".into(),
+                admin: Some(AdminAddress {
+                    target: "ubuntu@192.168.1.5".into(),
+                    port: Some(2222),
+                }),
             },
         ]);
     }

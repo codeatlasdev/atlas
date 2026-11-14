@@ -150,3 +150,24 @@ describe("the install checklist", () => {
 		);
 	});
 });
+
+// The install keeps the address the user typed (`user@host`, and the port when it is not 22) in the registry for
+// Settings; the password the install may have taken is not part of it.
+describe("the install records the admin address", () => {
+	const addCall = () => calls.find((c) => c.cmd === "crew_servers_add");
+
+	test("target and port, under the service user's host", async () => {
+		const { ob } = await connectStep();
+		ob.sshPort = 2222;
+		await ob.launchServer("s3cret");
+		expect(addCall().args.host).toBe("atlas-crew@srv");
+		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv", port: 2222 });
+		expect(JSON.stringify(addCall().args)).not.toContain("s3cret");
+	});
+
+	test("no port when it is the default 22", async () => {
+		const { ob } = await connectStep();
+		await ob.launchServer();
+		expect(addCall().args.admin).toEqual({ target: "ubuntu@srv" });
+	});
+});

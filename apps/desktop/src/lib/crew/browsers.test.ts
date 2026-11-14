@@ -1,7 +1,18 @@
 // @ts-nocheck bun test runtime types are not part of the app tsconfig
 import { describe, expect, test } from "bun:test";
 import fixture from "../../__fixtures__/crew_browsers_status.json" with { type: "json" };
-import { canInstall, errorView, needsNode, nodeProblem, parseProblem, viewOf } from "./browsers.ts";
+import { parseSSHTarget } from "./sshTarget.ts";
+import {
+	addressText,
+	adminOf,
+	canInstall,
+	errorView,
+	needsNode,
+	nodeProblem,
+	parseProblem,
+	sameAdmin,
+	viewOf,
+} from "./browsers.ts";
 
 // `crew_browsers_status.json` is what the Rust command serializes for the REAL output of `atlas crew browsers status`
 // (a host with Node 18.19.1 and nothing installed; one that is ready), so a rename on either side fails here.
@@ -71,5 +82,29 @@ describe("parseProblem", () => {
 	test("a missing npm also needs Node.js first", () => {
 		expect(needsNode([parseProblem("npm: missing (it ships with Node.js from nodesource)")])).toBe(true);
 		expect(needsNode([parseProblem("runner: missing")])).toBe(false);
+	});
+});
+
+describe("the admin address", () => {
+	test("is the text field's content: user@host, with :port only when it is not 22", () => {
+		expect(addressText(undefined)).toBe("");
+		expect(addressText({ target: "ubuntu@srv" })).toBe("ubuntu@srv");
+		expect(addressText({ target: "ubuntu@srv", port: 22 })).toBe("ubuntu@srv");
+		expect(addressText({ target: "ubuntu@srv", port: 2222 })).toBe("ubuntu@srv:2222");
+	});
+
+	test("what is typed round-trips through the registry's shape, IPv6 included", () => {
+		for (const typed of ["ubuntu@srv", "ubuntu@srv:2222", "root@[::1]:2200", "root@[fe80::1]"]) {
+			const p = parseSSHTarget(typed);
+			expect(p.ok).toBe(true);
+			expect(addressText(adminOf(p))).toBe(typed);
+		}
+		expect(adminOf(parseSSHTarget("ubuntu@srv:22"))).toEqual({ target: "ubuntu@srv" });
+	});
+
+	test("an absent port is 22 when comparing, so an unchanged field is not saved again", () => {
+		expect(sameAdmin({ target: "u@h" }, { target: "u@h", port: 22 })).toBe(true);
+		expect(sameAdmin({ target: "u@h", port: 2222 }, { target: "u@h" })).toBe(false);
+		expect(sameAdmin(undefined, { target: "u@h" })).toBe(false);
 	});
 });

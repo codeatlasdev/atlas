@@ -9,6 +9,7 @@ import fixture from "../../../__fixtures__/crew_browsers_status.json" with { typ
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 let status: unknown = fixture.missing;
 let installError: string | null = null;
+let saveFails: string | null = null;
 let lineHandler: ((e: { payload: { line: string; is_err: boolean } }) => void) | undefined;
 mock.module("@tauri-apps/api/core", () => ({
 	invoke: async (cmd: string, args: Record<string, unknown>) => {
@@ -17,6 +18,7 @@ mock.module("@tauri-apps/api/core", () => ({
 			if (status instanceof Error) throw status.message;
 			return status;
 		}
+		if (cmd === "crew_servers_set_admin" && saveFails) throw saveFails;
 		if (cmd === "crew_browsers_install") {
 			for (const line of ["step: browsers", "downloading chromium", "downloading webkit"]) {
 				lineHandler?.({ payload: { line, is_err: false } });
@@ -42,12 +44,17 @@ await uiKit.useRealKit("Button", "Spinner");
 // before these modules load.
 const { flushSync, mount, unmount, tick } = await import("svelte");
 const { default: BrowsersRow } = await import("./BrowsersRow.svelte");
+const { crew } = await import("#lib/stores/crew.svelte.ts");
+
+const HOST = "ssh:atlas-crew@srv";
 
 let done: (() => void) | undefined;
 beforeEach(() => {
+	crew.servers = [{ key: HOST, name: "srv", crewmates: [], ok: true }];
 	calls.length = 0;
 	status = fixture.missing;
 	installError = null;
+	saveFails = null;
 	lineHandler = undefined;
 });
 afterEach(() => {
@@ -63,10 +70,12 @@ const settle = async () => {
 	}
 };
 
-function render() {
+/** `admin` is what `crew_servers_list` returned for this server: absent for one added before it was kept. */
+function render(admin = undefined) {
+	crew.servers = [{ key: HOST, name: "srv", admin, crewmates: [], ok: true }];
 	const target = document.createElement("div");
 	document.body.append(target);
-	const app = flushSync(() => mount(BrowsersRow, { target, props: { hostKey: "ssh:atlas-crew@srv" } }));
+	const app = flushSync(() => mount(BrowsersRow, { target, props: { hostKey: HOST } }));
 	done = () => (unmount(app), target.remove());
 	return target;
 }
@@ -136,12 +145,14 @@ describe("the capture browsers row on a crew server's settings", () => {
 		expect(install.disabled).toBe(false);
 		install.click();
 		await settle();
+		// The first Check also keeps the address that worked (a server with none); the recheck changes nothing.
 		expect(calls.map((c) => c.cmd)).toEqual([
 			"crew_browsers_status",
+			"crew_servers_set_admin",
 			"crew_browsers_install",
 			"crew_browsers_status",
 		]);
-		expect(calls[1].args).toEqual({ target: "ubuntu@srv", port: null });
+		expect(calls[2].args).toEqual({ target: "ubuntu@srv", port: null });
 		// The `step:` marker is progress plumbing, not log text.
 		expect(t.querySelector(".log").textContent).toBe("downloading chromium\ndownloading webkit");
 		expect(t.querySelector('[role="status"]').textContent).toContain("ready");
@@ -183,5 +194,108 @@ describe("the capture browsers row on a crew server's settings", () => {
 		await check(t);
 		expect(t.querySelector(".error").textContent).toBe("cannot reach ubuntu@srv");
 		expect(t.querySelector(".problems")).toBeNull();
+	});
+});
+
+// The admin address the install ran against is kept in the registry (`crew-servers.json`, `admin`): the row starts
+// from it, edits are saved back, and an old server with none asks once and keeps what was typed after a check worked.
+// The file itself is written by Rust (tested there, with a pre-change file); here, what the row sends to it.
+const setAdmin = () => calls.filter((c) => c.cmd === "crew_servers_set_admin");
+const field = (t) => t.querySelector('input[aria-label="Admin SSH address"]');
+async function commit(t) {
+	field(t).dispatchEvent(new Event("blur"));
+	await settle();
+}
+
+describe("the admin address the row starts from and keeps", () => {
+	test("starts from the address the install ran against, port included, and Check can run at once", async () => {
+		const t = render({ target: "ubuntu@srv", port: 2222 });
+		await settle();
+		expect(field(t).value).toBe("ubuntu@srv:2222");
+		expect(button(t, "Check").disabled).toBe(false);
+		button(t, "Check").click();
+		await settle();
+		expect(calls[0]).toEqual({ cmd: "crew_browsers_status", args: { target: "ubuntu@srv", port: 2222 } });
+		// Unchanged: nothing to write back.
+		expect(setAdmin()).toEqual([]);
+	});
+
+	test("a server added before the address was kept starts empty and asks", async () => {
+		const t = render(undefined);
+		await settle();
+		expect(field(t).value).toBe("");
+		expect(button(t, "Check").disabled).toBe(true);
+	});
+
+	test("what the user types is saved after a Check that worked, in the registry's shape", async () => {
+		const t = render(undefined);
+		await check(t, "ubuntu@srv:2222");
+		expect(setAdmin()).toEqual([
+			{
+				cmd: "crew_servers_set_admin",
+				args: { host: "atlas-crew@srv", admin: { target: "ubuntu@srv", port: 2222 } },
+			},
+		]);
+		expect(crew.servers[0].admin).toEqual({ target: "ubuntu@srv", port: 2222 });
+	});
+
+	test("the default port is not written", async () => {
+		const t = render(undefined);
+		await check(t, "ubuntu@srv:22");
+		expect(setAdmin()[0].args.admin).toEqual({ target: "ubuntu@srv" });
+	});
+
+	test("an address that never reached the server (check failed) is not saved", async () => {
+		status = new Error("cannot reach ubuntu@typo");
+		const t = render(undefined);
+		await check(t, "ubuntu@typo");
+		expect(setAdmin()).toEqual([]);
+	});
+
+	test("editing the address and leaving the field saves it; the next visit starts from it", async () => {
+		const t = render({ target: "ubuntu@srv" });
+		await type(t, "Admin SSH address", "root@srv:2200");
+		await commit(t);
+		expect(setAdmin()).toHaveLength(1);
+		expect(setAdmin()[0].args).toEqual({ host: "atlas-crew@srv", admin: { target: "root@srv", port: 2200 } });
+		done();
+		const again = render(crew.servers[0].admin);
+		await settle();
+		expect(field(again).value).toBe("root@srv:2200");
+	});
+
+	test("a half-typed address never overwrites the saved one", async () => {
+		const t = render({ target: "ubuntu@srv" });
+		await type(t, "Admin SSH address", "root@");
+		await commit(t);
+		await type(t, "Admin SSH address", "root@srv:99999");
+		await commit(t);
+		expect(setAdmin()).toEqual([]);
+		expect(crew.servers[0].admin).toEqual({ target: "ubuntu@srv" });
+	});
+
+	test("the sudo password goes to the install and nowhere else: it is never in what is saved", async () => {
+		status = { ready: false, problems: ["runner: missing, run atlas crew browsers install"] };
+		installError = "sudo on ubuntu@srv asks for a password — grant passwordless sudo to this user";
+		const t = render(undefined);
+		await check(t, "ubuntu@srv");
+		button(t, "Install").click();
+		await settle();
+		installError = null;
+		await type(t, "Sudo password", "s3cret");
+		button(t, "Install").click();
+		await settle();
+		expect(calls.filter((c) => c.cmd === "crew_browsers_install")[1].args.sudoPassword).toBe("s3cret");
+		expect(JSON.stringify(setAdmin())).not.toContain("s3cret");
+		expect(JSON.stringify(crew.servers)).not.toContain("s3cret");
+	});
+
+	test("a registry that cannot be written says so and the check still works", async () => {
+		const t = render(undefined);
+		saveFails = "disk full";
+		await check(t, "ubuntu@srv");
+		expect(t.querySelector('[role="status"]')).toBeNull(); // status is the missing one: the check ran
+		expect(t.textContent).toContain("Could not save the address: disk full");
+		expect(t.querySelector(".node")).not.toBeNull();
 	});
 });

@@ -4,8 +4,20 @@
 	import Row from "#lib/settings/Row.svelte";
 	import { BROWSERS_COST, BROWSERS_WHY, nodeProblem } from "#lib/crew/browsers.ts";
 	import { CrewBrowsers } from "#lib/crew/browsers.svelte.ts";
+	import { crew } from "#lib/stores/crew.svelte.ts";
 
-	let { hostKey, cb = new CrewBrowsers() }: { hostKey: string; cb?: CrewBrowsers } = $props();
+	let { hostKey, cb: given }: { hostKey: string; cb?: CrewBrowsers } = $props();
+
+	// Made once per row, never from a prop default: that default is a derivation, and the constructor reads
+	// `crew.servers` (the registry's address), so saving the address would build a fresh state and drop the result.
+	// The address starts from the registry's and edits are saved back to it.
+	// svelte-ignore state_referenced_locally
+	const cb =
+		given ??
+		new CrewBrowsers({
+			current: () => crew.servers.find((h) => h.key === hostKey)?.admin,
+			save: (admin) => crew.setAdmin(hostKey, admin),
+		});
 
 	const view = $derived(cb.view);
 	const nodeLine = $derived(view?.phase === "missing" && view.needsNode ? nodeProblem(view.problems) : null);
@@ -26,6 +38,7 @@
 				aria-label="Admin SSH address"
 				bind:value={cb.address}
 				disabled={cb.busy}
+				onblur={() => void cb.saveAddress()}
 				onkeydown={(e) => e.key === "Enter" && void cb.check()}
 			/>
 			<Button size="sm" variant="ghost" disabled={!cb.canCheck} onclick={() => void cb.check()}>
@@ -34,8 +47,11 @@
 		</div>
 		<p class="hint">
 			The address you installed with, not the crew user: installing the browsers needs <code>sudo</code> on the
-			server.
+			server. Atlas keeps this address, nothing else.
 		</p>
+		{#if cb.saveError}
+			<p class="error" role="alert">Could not save the address: {cb.saveError}</p>
+		{/if}
 
 		{#if view?.phase === "checking"}
 			<span class="state"><Spinner size={12} /> Asking the server…</span>

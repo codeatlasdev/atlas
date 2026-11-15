@@ -481,8 +481,19 @@ async fn full_queue(
             )
         })
         .collect();
-    // Let every parked request reach the queue before the next one arrives.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Until every parked request is in the queue the next one would be queued too, not refused. A
+    // fixed pause is a race on Windows, where a burst of clients is let in one pipe instance at a
+    // time (`ERROR_PIPE_BUSY`, retried every 10 ms): wait for the queue itself to be full.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while rx.len() < server::REQUEST_QUEUE {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "only {} of {} requests reached the queue",
+            rx.len(),
+            server::REQUEST_QUEUE
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     (dir, server, rx, parked)
 }
 

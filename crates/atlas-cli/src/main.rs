@@ -415,7 +415,9 @@ mod tests {
         for w in ["crew", "bot"] {
             match parse(&argv(&[w, "pair", "me@server"])) {
                 Ok(Action::Command(Commands::Crew(a))) => match a.command {
-                    C::Pair(p) => assert_eq!((p.ssh_target.as_str(), p.port), ("me@server", None)),
+                    C::Pair(p) => {
+                        assert_eq!((p.ssh_target.as_str(), p.ssh.port), ("me@server", 22))
+                    }
                     other => panic!("{w} pair: {other:?}"),
                 },
                 other => panic!("{w} pair: {other:?}"),
@@ -423,7 +425,7 @@ mod tests {
         }
         match parse(&argv(&["crew", "pair", "me@server", "--port", "2222"])) {
             Ok(Action::Command(Commands::Crew(a))) => match a.command {
-                C::Pair(p) => assert_eq!(p.port, Some(2222)),
+                C::Pair(p) => assert_eq!(p.ssh.port, 2222),
                 other => panic!("{other:?}"),
             },
             other => panic!("{other:?}"),

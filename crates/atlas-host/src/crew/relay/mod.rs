@@ -45,6 +45,21 @@ struct Entry {
     host: String,
     #[serde(default)]
     name: String,
+    /// The ssh port; absent for 22 (the desktop writes it, `crew-servers.json`). Only the ssh link reads it.
+    #[cfg(unix)]
+    #[serde(default)]
+    port: Option<u16>,
+}
+
+/// The ssh port the registry holds for `host`, `None` for the default (and when the file or entry is gone).
+#[cfg(unix)]
+fn port_of(registry_file: &Path, host: &str) -> Option<u16> {
+    let text = std::fs::read_to_string(registry_file).ok()?;
+    serde_json::from_str::<Vec<Entry>>(&text)
+        .ok()?
+        .into_iter()
+        .find(|e| e.host == host)
+        .and_then(|e| e.port)
 }
 
 struct Server {
@@ -92,7 +107,9 @@ impl CrewRelay {
         adopt_legacy_registry(&desktop);
         CrewRelay {
             registry: registry.to_path_buf(),
-            connector: connector.unwrap_or_else(|| ssh_connector(sockets.join("crew-links"))),
+            connector: connector.unwrap_or_else(|| {
+                ssh_connector(desktop.join(REGISTRY_FILE), sockets.join("crew-links"))
+            }),
             servers: Mutex::new(HashMap::new()),
             hub: OnceLock::new(),
         }
@@ -251,42 +268,34 @@ async fn keep(crew: Weak<CrewRelay>, host: String, server: Arc<Server>) {
 }
 
 #[cfg(unix)]
-fn ssh_connector(dir: PathBuf) -> Connector {
-    Connector(Arc::new(move |host| Box::pin(ssh_link(dir.clone(), host))))
+fn ssh_connector(registry_file: PathBuf, dir: PathBuf) -> Connector {
+    Connector(Arc::new(move |host| {
+        Box::pin(ssh_link(registry_file.clone(), dir.clone(), host))
+    }))
 }
 
 #[cfg(not(unix))]
-fn ssh_connector(_dir: PathBuf) -> Connector {
+fn ssh_connector(_registry_file: PathBuf, _dir: PathBuf) -> Connector {
     Connector(Arc::new(|_| {
         Box::pin(async { Err("crew servers are reached from macOS and Linux only".to_string()) })
     }))
 }
 
+/// `$HOME` and the hostd token of `host`, then a tunnel to its hostd socket. `host`'s port is the
+/// one its registry entry carries (`registry_file`), read at every (re)connect.
 #[cfg(unix)]
-const SSH_OPTS: [&str; 6] = [
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "ConnectTimeout=10",
-    "-o",
-    "ServerAliveInterval=15",
-];
-
-/// `$HOME` and the hostd token of `host`, then a tunnel to its hostd socket.
-#[cfg(unix)]
-async fn ssh_link(dir: PathBuf, host: String) -> Result<Link, String> {
+async fn ssh_link(registry_file: PathBuf, dir: PathBuf, host: String) -> Result<Link, String> {
     use atlas_core::sys::CommandExt as _;
     use std::process::Stdio;
     use tokio::process::Command;
 
     atlas_core::ssh::valid_target(&host)?;
+    let target = atlas_core::ssh::SshTarget::new(host.clone(), port_of(&registry_file, &host));
     let out = tokio::time::timeout(
         Duration::from_secs(20),
         Command::new("ssh")
             .no_window()
-            .args(SSH_OPTS)
-            .arg(&host)
-            .arg(r#"printf '%s\n' "$HOME"; cat "$HOME/.atlas/hostd.token""#)
+            .args(target.raw_argv(r#"printf '%s\n' "$HOME"; cat "$HOME/.atlas/hostd.token""#))
             .stdin(Stdio::null())
             .output(),
     )
@@ -313,17 +322,7 @@ async fn ssh_link(dir: PathBuf, host: String) -> Result<Link, String> {
     let _ = std::fs::remove_file(&sock);
     let tunnel = Command::new("ssh")
         .no_window()
-        .args(SSH_OPTS)
-        .args([
-            "-N",
-            "-o",
-            "ExitOnForwardFailure=yes",
-            "-o",
-            "StreamLocalBindUnlink=yes",
-        ])
-        .arg("-L")
-        .arg(format!("{}:{home}/.atlas/hostd.sock", sock.display()))
-        .arg(&host)
+        .args(target.tunnel_argv(&format!("{}:{home}/.atlas/hostd.sock", sock.display())))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

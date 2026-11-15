@@ -11,15 +11,13 @@ use serde_json::Value;
 
 use super::layout::{INSTALL_DIR, WHICH_USER};
 use crate::commands::AtlasCommand;
-use crate::commands::deploy::remote::Remote;
 
 #[derive(Debug, Args)]
 pub struct PairArgs {
     /// SSH target for the crew server (e.g. user@hostname or hostname)
     pub ssh_target: String,
-    /// SSH port of the server, when it is not 22
-    #[arg(long)]
-    pub port: Option<u16>,
+    #[command(flatten)]
+    pub ssh: super::SshPort,
 }
 
 /// Shell that asks the crew server's hostd for a pairing invite as the crew user, in its data dir (the
@@ -85,11 +83,11 @@ pub fn terminal_qr(text: &str) -> Result<String> {
 
 impl AtlasCommand for PairArgs {
     async fn run(self) -> Result<()> {
-        let remote = match self.port {
-            Some(p) => Remote::with_port(&self.ssh_target, p),
-            None => Remote::new(&self.ssh_target),
-        };
-        let o = remote.exec(&pair_script()).await?;
+        let o = self
+            .ssh
+            .remote(&self.ssh_target)
+            .exec(&pair_script())
+            .await?;
         if o.code != 0 {
             let why = if o.stderr.trim().is_empty() {
                 o.stdout.trim()

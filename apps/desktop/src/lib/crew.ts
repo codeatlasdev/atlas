@@ -23,6 +23,8 @@ export interface CrewServer {
 	host: string;
 	/** Human-readable label. */
 	name: string;
+	/** The ssh port; absent for 22 and for servers added before the field existed. */
+	port?: number;
 	/** The admin address it was installed with; absent for servers added before it was kept. */
 	admin?: AdminAddress;
 }

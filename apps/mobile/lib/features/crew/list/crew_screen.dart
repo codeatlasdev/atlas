@@ -78,6 +78,15 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
         });
       });
     }
+    // Invites already waiting when the phone connected: no push announces them any more.
+    ref.listen(pendingInvitesProvider, (_, next) {
+      next.whenData((pending) {
+        for (final p in pending) {
+          _inviteDeviceMap[p.invite.url] = p.device;
+          ref.read(computerInvitesProvider.notifier).add(p.invite);
+        }
+      });
+    });
     ref.listen<List<ComputerInvite>>(computerInvitesProvider, (_, invites) {
       _onNewInvites(invites);
     });

@@ -262,3 +262,80 @@ async fn a_registry_still_under_its_old_name_is_adopted() {
     assert!(home.join("desktop/crew-servers.json").exists());
     assert!(!home.join("desktop/bot-hosts.json").exists());
 }
+
+/// The crew server's `push/tokens.json` entries as `(token, node_id)`.
+fn crew_tokens(dir: &Path) -> Vec<(String, String)> {
+    let v: Vec<Value> = std::fs::read(dir.join("push/tokens.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    v.iter()
+        .map(|t| {
+            (
+                t["token"].as_str().unwrap().to_string(),
+                t["node_id"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect()
+}
+
+// Guards PhoneCrewAudit gap 6: a phone's push token relayed through the Mac (`crew_call`) reached
+// the crew server with node id "" (the relay's connection is no phone), so revoking the phone on the
+// Mac never took it out and the revoked phone kept getting crew pushes. The real path: a paired phone
+// over iroh registers through `crew_call`, then the Mac revokes it.
+#[tokio::test(flavor = "multi_thread")]
+async fn revoking_a_phone_on_the_mac_clears_its_tokens_on_the_crew_server() {
+    let r = Rig::new().await;
+    let info = crate::mobile::tests::pair_start(&r.mac).await;
+    let mut phone = crate::mobile::tests::Phone::dial(&info).await;
+    let paired = phone
+        .call("pair", json!({"code": info["code"], "name": "iPhone"}))
+        .await
+        .unwrap();
+    assert_eq!(paired["ok"], true, "{paired}");
+    let node = paired["data"]["device"]["node_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // Another phone's token, registered by a client that is no phone, must stay.
+    r.crewmate
+        .call(
+            "push_register",
+            json!({"token": "fcm-other", "platform": "fcm", "grant": "g"}),
+        )
+        .await
+        .unwrap();
+    let reg = phone
+        .call(
+            "crew_call",
+            json!({"server": "atlas-crew@box", "cmd": "push_register",
+                   "args": {"token": "fcm-1", "platform": "fcm", "grant": "g1"}}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reg["ok"], true, "{reg}");
+    let crew_dir = r._tmp.path().join("crewmate");
+    assert!(
+        crew_tokens(&crew_dir).contains(&("fcm-1".into(), node.clone())),
+        "the relayed token must carry the phone's node id: {:?}",
+        crew_tokens(&crew_dir)
+    );
+
+    r.mac
+        .call("mobile_revoke", json!({"node_id": node}))
+        .await
+        .unwrap();
+    let mut left = Vec::new();
+    for _ in 0..100 {
+        left = crew_tokens(&crew_dir);
+        if !left.iter().any(|(t, _)| t == "fcm-1") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        left.iter().all(|(t, _)| t != "fcm-1"),
+        "the revoked phone still has a token on the crew server: {left:?}"
+    );
+    assert!(left.iter().any(|(t, _)| t == "fcm-other"), "{left:?}");
+}

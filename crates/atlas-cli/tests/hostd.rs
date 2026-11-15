@@ -1662,3 +1662,74 @@ async fn shutdown_is_always_answered_before_the_daemon_exits() {
     }
     assert_eq!(lost, 0, "{lost}/30 shutdown replies lost");
 }
+
+// #356: `atlas crew pair` runs `atlas hostd --mobile-pair` on the crew server. It prints ONE JSON object, the
+// daemon's own `mobile_pair_start` reply (the one pairing protocol: a code, the addresses a phone can dial), and
+// the code it prints is the one the daemon accepts: asking again replaces it, so only the last is live. Relays
+// off here (`ATLAS_MOBILE_RELAY=0`): the wait for a relay address ends and the direct addresses go out.
+#[tokio::test]
+async fn hostd_mobile_pair_prints_the_daemons_live_invite() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let child = Command::new(BIN)
+        .args(["hostd", "--dir"])
+        .arg(dir)
+        .env("ATLAS_MOBILE_RELAY", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let _d = Daemon(child);
+    for _ in 0..100 {
+        if HostClient::connect_dir(dir, "test").await.is_ok() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let out = tokio::process::Command::new(BIN)
+        .args(["hostd", "--mobile-pair", "--dir"])
+        .arg(dir)
+        .env("ATLAS_MOBILE_RELAY", "0")
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let invite: Value = serde_json::from_slice(&out.stdout).expect("stdout is one JSON object");
+    let code = invite["code"].as_str().unwrap();
+    assert_eq!(code.len(), 6, "{invite}");
+    assert!(
+        !invite["addrs"].as_array().unwrap().is_empty(),
+        "an invite a phone cannot dial is no invite: {invite}"
+    );
+    assert!(invite["node_id"].as_str().is_some_and(|n| !n.is_empty()));
+    // The link the CLI builds from it carries exactly that code and node.
+    let url = atlas_host::mobile::pair_url(&invite).unwrap();
+    assert!(url.contains(&format!("code={code}")), "{url}");
+    assert!(url.contains(&format!("node={}", invite["node_id"].as_str().unwrap())));
+    // The daemon is the one that issued it: a stopped daemon cannot, and says so.
+    let c = HostClient::connect_dir(dir, "test").await.unwrap();
+    c.call("shutdown", json!({})).await.ok();
+    for _ in 0..100 {
+        if HostClient::connect_dir(dir, "test").await.is_err() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let down = tokio::process::Command::new(BIN)
+        .args(["hostd", "--mobile-pair", "--dir"])
+        .arg(dir)
+        .output()
+        .await
+        .unwrap();
+    assert!(!down.status.success());
+    assert!(
+        String::from_utf8_lossy(&down.stderr).contains("not running"),
+        "{}",
+        String::from_utf8_lossy(&down.stderr)
+    );
+}

@@ -1,0 +1,186 @@
+/// The card for a question the agent is blocked on (`ask_user`): the question, one button per option and,
+/// when the agent allows it, a free-text field. The answer goes out as `crewmate_answer` (Act scope); the
+/// card closes by itself when the task's push brings the answered ask.
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
+
+class TaskAskCard extends ConsumerStatefulWidget {
+  const TaskAskCard({
+    super.key,
+    required this.task,
+    required this.device,
+    required this.crewmateId,
+  });
+
+  final CrewmateTask task;
+  final MacDevice device;
+  final String crewmateId;
+
+  @override
+  ConsumerState<TaskAskCard> createState() => _TaskAskCardState();
+}
+
+class _TaskAskCardState extends ConsumerState<TaskAskCard> {
+  final _controller = TextEditingController();
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _answer({String? key, String? text}) async {
+    final ask = widget.task.ask;
+    if (ask == null || _sending) return;
+    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    if (mux == null) {
+      setState(() => _error = '${widget.device.name} is offline');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      final resp = await mux.call(
+        'crewmate_answer',
+        ask.answerArgs(widget.crewmateId, key: key, text: text),
+      );
+      if (resp['ok'] != true) {
+        throw resp['error'] as String? ?? 'the server refused';
+      }
+      _controller.clear();
+      ref.invalidate(crewmateTasksProvider((widget.device, widget.crewmateId)));
+    } on Object catch (e) {
+      // The card stays, with what the server said: the agent is still waiting.
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _sendText() {
+    final v = _controller.text.trim();
+    if (v.isNotEmpty) _answer(text: v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ask = widget.task.ask;
+    if (ask == null || !ask.isOpen) return const SizedBox.shrink();
+    final c = AtlasColors.of(context);
+    const r = Radius.circular(18);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const SizedBox(width: 36), // avatar placeholder alignment
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.80,
+              ),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.warning.withValues(alpha: .08),
+                border: Border.all(color: c.warning.withValues(alpha: .35)),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: r,
+                  bottomLeft: r,
+                  bottomRight: r,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ask.question,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.text,
+                    ),
+                  ),
+                  for (final o in ask.options) ...[
+                    const SizedBox(height: 8),
+                    _option(c, o),
+                  ],
+                  if (ask.allowText) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _controller,
+                      style: TextStyle(fontSize: 14, color: c.text),
+                      decoration: InputDecoration(
+                        hintText: 'Or type an answer',
+                        hintStyle: TextStyle(color: c.faint, fontSize: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: c.borderSubtle),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: c.borderSubtle),
+                        ),
+                      ),
+                      onSubmitted: (_) => _sendText(),
+                    ),
+                    const SizedBox(height: 8),
+                    WarnPillButton(
+                      label: 'Send',
+                      onPressed: _sending ? null : _sendText,
+                    ),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _error!,
+                      style: TextStyle(fontSize: 12, color: c.error),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _option(AtlasColors c, AskOption o) => InkWell(
+    borderRadius: BorderRadius.circular(10),
+    onTap: _sending ? null : () => _answer(key: o.key),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: c.borderSubtle),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(o.title, style: TextStyle(fontSize: 14, color: c.text)),
+          if (o.subtitle != null)
+            Text(o.subtitle!, style: TextStyle(fontSize: 12, color: c.muted)),
+        ],
+      ),
+    ),
+  );
+}

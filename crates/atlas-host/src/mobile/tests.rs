@@ -1854,3 +1854,105 @@ async fn a_phone_reads_and_writes_crew_settings_by_scope() {
     assert!(audit.contains("\"cmd\":\"crew_settings_set\""), "{audit}");
     c.call("shutdown", json!({})).await.ok();
 }
+
+// Guards PhoneCrewAudit gap 7: a secret typed on the phone (the `provide_secret` card answers with
+// `crewmate_action_answer {value}`, relayed as `crew_call {args: {value}}`) was written to `audit.log` in
+// clear: only top-level `text|message|title|body|data` were redacted. The log names the command and the
+// secret's length, never its value, at any depth.
+#[test]
+fn a_secret_from_the_phone_never_reaches_the_audit_log() {
+    let tmp = tempfile::tempdir().unwrap();
+    let m = super::Mobile::load(tmp.path(), false).unwrap();
+    let secret = "ghp_SuperSecretValue123";
+    m.audit(
+        "node",
+        "crewmate_action_answer",
+        &json!({"id": "c", "task": "t", "value": secret}),
+    );
+    m.audit(
+        "node",
+        "crew_call",
+        &json!({"server": "s", "cmd": "crewmate_action_answer",
+                "args": {"id": "c", "task": "t", "value": secret, "text": secret}}),
+    );
+    let log = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
+    assert!(!log.contains(secret), "secret in the audit log: {log}");
+    assert!(!log.contains("SuperSecret"), "{log}");
+    // What is audited stays useful: the command, the target, the size.
+    assert!(log.contains("crewmate_action_answer"), "{log}");
+    assert!(log.contains("<23 chars>"), "{log}");
+    assert!(log.contains("\"id\":\"c\""), "{log}");
+}
+
+// Contract with the phone and the desktop: `pair_url` (used by `atlas crew pair`) must produce exactly the
+// link the desktop's `pairUrl` produces from the same `mobile_pair_start` reply. The reply is the committed
+// real one (`apps/desktop/src/lib/__fixtures__/mobile-pair-start.json`), the link the committed one the phone's
+// `pair_url_test.dart` parses (a hostname with a space and a quote, repeated `addr`, no relay).
+#[test]
+fn pair_url_matches_the_link_the_desktop_and_the_phone_agree_on() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let start: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            root.join("apps/desktop/src/lib/__fixtures__/mobile-pair-start.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let want =
+        std::fs::read_to_string(root.join("apps/mobile/test/fixtures/pair_url.txt")).unwrap();
+    assert_eq!(super::pair_url(&start).unwrap(), want.trim());
+}
+
+// A reply with a relay carries it as `relay=`; one without a node or code is no link at all.
+#[test]
+fn pair_url_carries_the_relay_and_refuses_an_incomplete_reply() {
+    let url = super::pair_url(&json!({"node_id": "N", "code": "000111", "hostname": "box",
+        "addrs": [], "relay_url": "https://relay.example/"}))
+    .unwrap();
+    assert_eq!(
+        url,
+        "atlas-mobile://pair?node=N&code=000111&name=box&relay=https%3A%2F%2Frelay.example%2F"
+    );
+    assert!(super::pair_url(&json!({"code": "1", "hostname": "h"})).is_err());
+    assert!(super::pair_url(&json!({"node_id": "N", "hostname": "h"})).is_err());
+}
+
+// Guards PhoneCrewAudit gap 1: an invite is only worth showing while its code can still pair. A newer
+// pairing code (the desktop's "Pair a phone", or `atlas crew pair`) replaces the single live code, so an
+// older invite would fail with "bad code" after the phone tapped Add. `mobile_invites` lists only invites
+// whose code is the live one.
+#[tokio::test]
+async fn an_invite_whose_code_was_replaced_is_not_offered() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+    let first = pair_start(&c).await;
+    let url_of = |i: &Value| super::pair_url(i).unwrap();
+    c.call("mobile_invite", json!({"url": url_of(&first), "name": "A"}))
+        .await
+        .unwrap();
+    let r = phone.call("mobile_invites", json!({})).await.unwrap();
+    assert_eq!(r["data"]["invites"].as_array().unwrap().len(), 1, "{r}");
+
+    // A new code replaces the first one.
+    let second = pair_start(&c).await;
+    assert_ne!(first["code"], second["code"]);
+    c.call(
+        "mobile_invite",
+        json!({"url": url_of(&second), "name": "B"}),
+    )
+    .await
+    .unwrap();
+    let r = phone.call("mobile_invites", json!({})).await.unwrap();
+    let names: Vec<&str> = r["data"]["invites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        ["B"],
+        "the invite with the dead code is offered: {r}"
+    );
+    c.call("shutdown", json!({})).await.ok();
+}

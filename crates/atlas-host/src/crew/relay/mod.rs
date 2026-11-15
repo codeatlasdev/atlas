@@ -127,6 +127,26 @@ impl CrewRelay {
         json!({ "servers": list })
     }
 
+    /// A revoked phone's push tokens leave every crew server of the registry (`push_forget`). One
+    /// task per server, since a server that is down must not hold the others up; an unreachable one
+    /// is logged, and the phone is already cut off from this Mac either way.
+    pub fn forget_phone(self: &Arc<Self>, node: &str) {
+        for e in self.entries() {
+            let (relay, node) = (self.clone(), node.to_string());
+            tokio::spawn(async move {
+                if let Err(err) = relay
+                    .call(&e.host, "push_forget", json!({"node": node}))
+                    .await
+                {
+                    eprintln!(
+                        "atlas hostd: could not clear a revoked phone's push tokens on {}: {err}",
+                        e.host
+                    );
+                }
+            });
+        }
+    }
+
     /// Run `cmd` on `server`, waiting for its connection when it is still coming up.
     pub async fn call(
         self: &Arc<Self>,

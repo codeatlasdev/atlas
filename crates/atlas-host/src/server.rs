@@ -1152,6 +1152,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         HostCmd::MobileDevices {} => Ok(json!({"devices": hub.mobile.devices()})),
         HostCmd::MobileRevoke { node_id } => {
             hub.crew.revoke_device_tokens(&node_id);
+            // The crew servers behind this Mac hold the phone's tokens too (it registered through
+            // `crew_call`): taking trust away must reach them, not only this Mac's own store.
+            hub.crew_relay.forget_phone(&node_id);
             hub.mobile.revoke(&node_id).map(|()| json!({}))
         }
         HostCmd::MobileSetScopes { node_id, scopes } => {
@@ -1163,10 +1166,17 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             token,
             platform,
             grant,
+            node,
         } => {
             let origin = hub.origin_of(conn_id);
-            let node = origin.strip_prefix("phone:").unwrap_or("");
+            // A phone's own connection names it. Otherwise the registration came through the Mac's relay,
+            // which names the phone it relayed for; a client that names none stays a token with no phone.
+            let node = origin.strip_prefix("phone:").unwrap_or(&node);
             hub.crew.register_token(node, &token, &platform, grant);
+            Ok(json!({}))
+        }
+        HostCmd::PushForget { node } => {
+            hub.crew.revoke_device_tokens(&node);
             Ok(json!({}))
         }
         HostCmd::PushUnregister { token } => {
@@ -1217,7 +1227,10 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewSettingsGet {}
         | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
         HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
-        HostCmd::CrewCall { server, cmd, args } => hub.crew_relay.call(&server, &cmd, args).await,
+        HostCmd::CrewCall { server, cmd, args } => {
+            let args = stamp_phone(&hub.origin_of(conn_id), &cmd, args);
+            hub.crew_relay.call(&server, &cmd, args).await
+        }
         HostCmd::MobileInvite { url, name } => {
             hub.mobile.mobile_invite(url, name, hub);
             Ok(json!({}))
@@ -1251,6 +1264,18 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::FsUnwatch { .. }
         | HostCmd::Shutdown {} => Err("handled by connection".into()),
     }
+}
+
+/// What a phone's `crew_call` carries to the crew server: its own node id on a `push_register`, so the crew
+/// server files the token under that phone (the relay's connection is no phone, and the token used to land
+/// with no owner that revoking could find). Whatever the phone put in `node` is overwritten, never trusted.
+fn stamp_phone(origin: &str, cmd: &str, mut args: Value) -> Value {
+    if cmd == "push_register"
+        && let (Some(node), Some(o)) = (origin.strip_prefix("phone:"), args.as_object_mut())
+    {
+        o.insert("node".into(), json!(node));
+    }
+    args
 }
 
 /// Serve a `pty_attach_raw` connection: reply line, then raw bytes until the pty

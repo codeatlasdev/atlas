@@ -22,7 +22,6 @@ import 'package:atlas_mobile/features/projects/detail/agents_tab.dart';
 import 'package:atlas_mobile/features/projects/detail/banner.dart';
 import 'package:atlas_mobile/features/projects/detail/glow.dart';
 import 'package:atlas_mobile/features/projects/detail/header.dart';
-import 'package:atlas_mobile/features/projects/detail/kpis.dart';
 import 'package:atlas_mobile/features/projects/detail/service_card.dart';
 import 'package:atlas_mobile/features/projects/detail/setup_row.dart';
 import 'package:atlas_mobile/features/projects/detail/skeleton.dart';
@@ -300,8 +299,6 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                           if (s.setupState != null && s.setupState != 'ok')
                             ProjectSetupRow(snap: s),
                           ..._attention(s),
-                          const SizedBox(height: Space.sm),
-                          ProjectKpis(snap: s),
                           const SizedBox(height: Space.md),
                           ProjectTabs(
                             index: _tab,

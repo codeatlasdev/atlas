@@ -45,7 +45,7 @@ void main() {
 
   // A reconnect rebuilds every provider behind requireMux: the value is kept and `isLoading` is set (a
   // reload, not a refresh). Riverpod's `when` shows the loader for that unless told not to. Built the way
-  // the app builds it: a provider that watches another one and is waiting on its new build.
+  // the app builds it: a screen watching a provider that watches another one, whose new build is pending.
   testWidgets('a reload keeps showing the data it has, not the spinner', (
     t,
   ) async {
@@ -57,22 +57,42 @@ void main() {
       gate.add(c);
       return c.future;
     });
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final sub = container.listen(watching, (_, _) {});
-    addTearDown(sub.close);
+    late ProviderContainer container;
+    await t.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: atlasTheme(),
+          home: Consumer(
+            builder: (context, ref, _) {
+              container = ProviderScope.containerOf(context);
+              return AsyncView<List<String>>(
+                value: ref.watch(watching),
+                errorTitle: "Couldn't read the list",
+                data: (l) => ListView(children: [for (final s in l) Text(s)]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
     gate.single.complete(['a']);
-    await container.read(watching.future);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 10));
+    expect(find.text('a'), findsOneWidget);
 
     container.read(source.notifier).state = 1; // what a reconnect does
-    final reloading = container.read(watching);
-    expect(reloading.isReloading, isTrue);
-    expect(reloading.value, ['a']);
-
-    await t.pumpWidget(_view(reloading));
+    await t.pump(
+      const Duration(milliseconds: 10),
+    ); // Riverpod rebuilds on its own scheduler tick
+    expect(container.read(watching).isReloading, isTrue);
     expect(find.text('a'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    gate.last.complete(['a']);
+
+    gate.last.complete(['b']);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 10));
+    expect(find.text('b'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
   });
 
   testWidgets('data: the builder, not the empty state', (t) async {

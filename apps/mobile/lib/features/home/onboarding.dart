@@ -140,7 +140,7 @@ class _OnboardingState extends State<Onboarding> {
                   onPressed: openPrivacy,
                   child: Text(
                     'Privacy',
-                    style: TextStyle(color: c.faint, fontSize: 12),
+                    style: TextStyle(color: c.muted, fontSize: 12),
                   ),
                 ),
               ],

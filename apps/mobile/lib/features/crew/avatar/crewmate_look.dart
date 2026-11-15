@@ -104,7 +104,7 @@ enum CrewState {
   Color color(AtlasColors c) => switch (this) {
     CrewState.working => c.accent,
     CrewState.needsYou => c.warning,
-    CrewState.offline => c.faint,
+    CrewState.offline => c.muted,
     CrewState.idle => c.success,
   };
 

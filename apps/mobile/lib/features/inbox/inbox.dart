@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -99,6 +100,38 @@ final inboxProvider = Provider.autoDispose<List<Attention>>((ref) {
       ),
   ];
 });
+
+/// Whether the Inbox knows enough to say "All clear": `null` once every source has answered (or failed
+/// with something already shown), else what it still waits for or why it cannot say.
+///
+/// [inboxProvider] and [recentActivityProvider] are plain lists (the tab's badge counts them) and an unread
+/// source adds nothing to them, so an empty list alone means "nothing" AND "not heard yet". This is the
+/// difference: the computers are being listed, or listing them failed, or a crew list is still loading.
+enum InboxUnknown { loading, error }
+
+/// The state of what [inboxProvider] and [recentActivityProvider] are built from: `(null, null)` when settled.
+({InboxUnknown? unknown, Object? error}) inboxKnowledge(WidgetRef ref) {
+  final devices = ref.watch(crewDevicesProvider);
+  if (!devices.hasValue) {
+    return devices.hasError
+        ? (unknown: InboxUnknown.error, error: devices.error)
+        : (unknown: InboxUnknown.loading, error: null);
+  }
+  var loading = false;
+  Object? error;
+  for (final device in devices.requireValue) {
+    final crew = ref.watch(crewProvider(device));
+    if (crew.hasValue) continue;
+    if (crew.hasError) {
+      error ??= crew.error;
+    } else {
+      loading = true;
+    }
+  }
+  if (loading) return (unknown: InboxUnknown.loading, error: null);
+  if (error != null) return (unknown: InboxUnknown.error, error: error);
+  return (unknown: null, error: null);
+}
 
 /// Something that happened on a computer: a crewmate finished or failed a task, an agent
 /// finished its turn. The Inbox lists these under "Recent", newest first; unlike
@@ -435,7 +468,34 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
     final c = AtlasColors.of(context);
     final items = ref.watch(inboxProvider);
     final recent = ref.watch(recentActivityProvider);
+    final knowledge = inboxKnowledge(ref);
     void open(Attention a) => openAttention(context, a);
+    // Nothing to list AND not everything answered: a spinner or the reason, never "All clear".
+    if (items.isEmpty && recent.isEmpty && knowledge.unknown != null) {
+      return Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: kFloatingBarScrollPad),
+            child: AsyncView<void>(
+              value: knowledge.unknown == InboxUnknown.loading
+                  ? const AsyncLoading<void>()
+                  : AsyncError<void>(knowledge.error!, StackTrace.empty),
+              data: (_) => const SizedBox.shrink(),
+              errorTitle: "Couldn't read your inbox",
+              onRetry: () {
+                ref.invalidate(crewDevicesProvider);
+                for (final d
+                    in ref.read(crewDevicesProvider).value ??
+                        const <MacDevice>[]) {
+                  ref.invalidate(crewProvider(d));
+                }
+              },
+            ),
+          ),
+        ),
+      );
+    }
     if (items.isEmpty && recent.isEmpty) {
       return Scaffold(
         body: SafeArea(
@@ -612,7 +672,7 @@ class _ActivityRow extends StatelessWidget {
                           ),
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: unread ? c.accent : c.faint,
+                            color: unread ? c.accent : c.muted,
                           ),
                         ),
                       ],

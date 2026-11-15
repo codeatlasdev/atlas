@@ -88,13 +88,16 @@
       ]
     },
     "crew_engine_login": {
-      "optional": [],
+      "optional": [
+        "crewmate"
+      ],
       "required": [
         "engine"
       ]
     },
     "crew_engine_status": {
       "optional": [
+        "crewmate",
         "refresh"
       ],
       "required": []
@@ -689,6 +692,14 @@
     },
     "pty_list": {
       "optional": [],
+      "required": []
+    },
+    "pty_open": {
+      "optional": [
+        "crewmate",
+        "project",
+        "worktree"
+      ],
       "required": []
     },
     "pty_read": {

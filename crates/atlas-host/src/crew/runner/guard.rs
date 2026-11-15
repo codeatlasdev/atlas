@@ -38,6 +38,9 @@ pub(crate) const RETRY: &str = "retry";
 /// What the guard looks at.
 pub(crate) struct Input<'a> {
     pub work_dir: &'a Path,
+    /// git's environment in `work_dir` (an isolated crewmate's tree belongs to another user and
+    /// opens only with that crewmate's config; empty otherwise).
+    pub git_env: &'a [(String, String)],
     /// `owner/repo` for the `#N` check; `None` skips it (no GitHub project).
     pub repo: Option<&'a str>,
     /// The agent's final message.
@@ -76,19 +79,23 @@ impl Verdict {
 /// agent through (a diff that cannot be read is not "no weakened test").
 pub(crate) async fn review(input: &Input<'_>, api: &dyn GithubApi) -> Verdict {
     let mut v = Verdict::default();
-    let base = base_of(input.work_dir).await;
+    let tree = Tree {
+        dir: input.work_dir,
+        env: input.git_env,
+    };
+    let base = base_of(tree).await;
     // A folder that is not a git work tree (a crewmate without a project) has no diff and no new
     // files to read: those two checks do not apply. Inside a work tree, git failing is a refusal.
-    if in_work_tree(input.work_dir).await {
-        match diff_of(input.work_dir, &base).await {
+    if in_work_tree(tree).await {
+        match diff_of(tree, &base).await {
             Ok(diff) => v.reasons.extend(weakened_tests(&diff)),
             Err(e) => v
                 .reasons
                 .push(format!("could not read the diff to check it: {e}")),
         }
-        match untracked_of(input.work_dir).await {
+        match untracked_of(tree).await {
             Ok(files) => {
-                let tracked = tracked_of(input.work_dir).await.unwrap_or_default();
+                let tracked = tracked_of(tree).await.unwrap_or_default();
                 v.reasons.extend(stray_files(&files, &tracked));
             }
             Err(e) => v
@@ -98,7 +105,7 @@ pub(crate) async fn review(input: &Input<'_>, api: &dyn GithubApi) -> Verdict {
     }
     v.reasons.extend(outside_writes(input.commands));
     if let Some(repo) = input.repo {
-        let mut text = commit_messages(input.work_dir, &base).await;
+        let mut text = commit_messages(tree, &base).await;
         text.push('\n');
         text.push_str(input.result);
         for c in input.commands.iter().filter(|c| publishes(&c.command)) {
@@ -115,10 +122,19 @@ pub(crate) async fn review(input: &Input<'_>, api: &dyn GithubApi) -> Verdict {
 
 // ─── the task's base and its diff ────────────────────────────────────────────
 
-async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+/// The work tree git runs in, with git's environment for it (an isolated crewmate's tree belongs to
+/// another user and opens only with that crewmate's config; empty otherwise).
+#[derive(Clone, Copy)]
+struct Tree<'a> {
+    dir: &'a Path,
+    env: &'a [(String, String)],
+}
+
+async fn git(t: Tree<'_>, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .args(args)
-        .current_dir(dir)
+        .current_dir(t.dir)
+        .envs(t.env.iter().map(|(k, v)| (k, v)))
         .output()
         .await
         .map_err(|e| format!("git {}: {e}", args.first().copied().unwrap_or("")))?;
@@ -133,8 +149,8 @@ async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 /// Whether `dir` is inside a git work tree.
-async fn in_work_tree(dir: &Path) -> bool {
-    git(dir, &["rev-parse", "--is-inside-work-tree"])
+async fn in_work_tree(t: Tree<'_>) -> bool {
+    git(t, &["rev-parse", "--is-inside-work-tree"])
         .await
         .is_ok_and(|o| o.trim() == "true")
 }
@@ -142,9 +158,9 @@ async fn in_work_tree(dir: &Path) -> bool {
 /// What the task's work is measured against: where the branch left its upstream (the crewmate's
 /// branch tracks `origin/<branch>`, so commits not pushed yet count), else the remote's default
 /// branch, else the empty tree (a repo with no remote: everything is the agent's).
-async fn base_of(dir: &Path) -> String {
+async fn base_of(t: Tree<'_>) -> String {
     for upstream in ["@{upstream}", "origin/HEAD"] {
-        if let Ok(b) = git(dir, &["merge-base", "HEAD", upstream]).await {
+        if let Ok(b) = git(t, &["merge-base", "HEAD", upstream]).await {
             let b = b.trim();
             if !b.is_empty() {
                 return b.to_string();
@@ -157,9 +173,9 @@ async fn base_of(dir: &Path) -> String {
 
 /// Committed and uncommitted changes since `base`, with no context lines (only the changed lines
 /// matter) and no renames (a moved test is a deleted one and a new one: the new one still counts).
-async fn diff_of(dir: &Path, base: &str) -> Result<String, String> {
+async fn diff_of(t: Tree<'_>, base: &str) -> Result<String, String> {
     git(
-        dir,
+        t,
         &[
             "diff",
             "--no-color",
@@ -176,18 +192,18 @@ async fn diff_of(dir: &Path, base: &str) -> Result<String, String> {
     .await
 }
 
-async fn untracked_of(dir: &Path) -> Result<Vec<String>, String> {
-    let out = git(dir, &["ls-files", "--others", "--exclude-standard"]).await?;
+async fn untracked_of(t: Tree<'_>) -> Result<Vec<String>, String> {
+    let out = git(t, &["ls-files", "--others", "--exclude-standard"]).await?;
     Ok(out.lines().map(str::to_string).collect())
 }
 
-async fn tracked_of(dir: &Path) -> Result<Vec<String>, String> {
-    let out = git(dir, &["ls-files"]).await?;
+async fn tracked_of(t: Tree<'_>) -> Result<Vec<String>, String> {
+    let out = git(t, &["ls-files"]).await?;
     Ok(out.lines().map(str::to_string).collect())
 }
 
-async fn commit_messages(dir: &Path, base: &str) -> String {
-    git(dir, &["log", "--format=%B", &format!("{base}..HEAD")])
+async fn commit_messages(t: Tree<'_>, base: &str) -> String {
+    git(t, &["log", "--format=%B", &format!("{base}..HEAD")])
         .await
         .unwrap_or_default()
 }

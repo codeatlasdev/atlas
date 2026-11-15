@@ -318,6 +318,10 @@ pub struct ServeOpts {
     pub registry: Option<PathBuf>,
     /// How to reach the crew servers relayed to phones (`crate::crew`); `None`: ssh.
     pub crew_relay: Option<crate::crew::relay::Connector>,
+    /// Where crewmates' own Linux users are driven from (`crate::crew::spawn`). `atlas hostd` passes
+    /// what the machine has (`Setup::detect`, the helper's socket); `None` runs every crewmate as the
+    /// crew user, which is also what tests get unless they run a helper of their own.
+    pub isolation: Option<crate::crew::spawn::layout::Setup>,
     /// Another desktop control socket than `~/.atlas/desktop.sock` (tests); `None`: the user's.
     pub desktop: Option<atlas_core::desktop_ctl::Endpoint>,
     /// Where plain-agent pushes go ([`crate::agents::push`]); `None`: the push relay. Tests capture them.
@@ -336,6 +340,9 @@ pub async fn serve(dir: &Path) -> Result<()> {
         ServeOpts {
             crew_host,
             registry: Some(desktop_registry()),
+            isolation: crew_host
+                .then(crate::crew::spawn::layout::Setup::detect)
+                .flatten(),
             ..Default::default()
         },
     )
@@ -431,7 +438,11 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
         .flatten()
     {
         let id = st.id.clone();
-        match Session::adopt(st, fd, &scroll_dir) {
+        let helper = opts
+            .isolation
+            .as_ref()
+            .map(|i| crate::crew::spawn::client::Client::at(&i.socket));
+        match Session::adopt(st, fd, &scroll_dir, helper.as_ref()) {
             Ok(s) => {
                 adopted += 1;
                 sessions.insert(id, s);
@@ -463,7 +474,7 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
     let (lsp_tx, lsp_rx) = mpsc::channel(512);
     let agents = Arc::new(crate::agents::AgentHub::default());
     let mobile = Arc::new(crate::mobile::Mobile::load(dir, !opts.no_mobile_relay)?);
-    let crew = crate::crew::CrewHub::new(dir);
+    let crew = crate::crew::CrewHub::new(dir, opts.isolation.clone());
     let registry = opts
         .registry
         .clone()
@@ -529,6 +540,8 @@ pub async fn serve_with(dir: &Path, opts: ServeOpts) -> Result<()> {
             hub.agents.clone(),
             hub.mobile.clone(),
             Some(Arc::downgrade(&hub)),
+            // Crewmates behind their own users reach hostd on one loopback port the firewall names.
+            hub.crew.store.isolation().map(|i| i.hook_port),
         )
         .await
     {
@@ -1089,6 +1102,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             prompt,
             worktree,
         } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::PtyOpen {
+            project,
+            worktree,
+            crewmate,
+        } => crate::mobile::shell::open(hub, conn_id, project, worktree, crewmate).await,
         HostCmd::WorktreeList { project } => {
             crate::worktrees::local::list(hub.data_dir(), &project).await
         }
@@ -1230,11 +1248,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewSettingsGet {}
         | HostCmd::CrewEngineStatus { .. }
         | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
-        HostCmd::CrewEngineLogin { engine } => {
+        HostCmd::CrewEngineLogin { engine, crewmate } => {
             if !hub.crew_host {
                 return Err("this computer is not a crew server (atlas crew install)".into());
             }
-            crate::crew::engine_login::login(hub, conn_id, &engine).await
+            crate::crew::engine_login::login(hub, conn_id, &engine, crewmate.as_deref()).await
         }
         HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
         HostCmd::CrewCall { server, cmd, args } => {

@@ -18,7 +18,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::{TurnCtx, TurnProc, TurnResult, program, turn_timeout};
+use super::{TurnCtx, TurnResult, launch, program, turn_timeout};
 
 /// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
 /// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
@@ -53,23 +53,21 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         cmd.arg("--resume").arg(session_file);
     }
 
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::null());
-    let mut proc = TurnProc::spawn(&mut cmd).map_err(|e| format!("omp: spawn failed: {e}"))?;
-
-    let mut stdin = proc.child().stdin.take().ok_or("omp: no stdin pipe")?;
-    let stdout = proc.child().stdout.take().ok_or("omp: no stdout pipe")?;
+    let launch::Rpc {
+        mut writer,
+        reader,
+        guard,
+    } = launch::rpc(ctx.exec, cmd, "omp").await?;
 
     let result = tokio::select! {
-        r = drive_rpc(&mut stdin, stdout, ctx.prompt, ctx.tools) => r.map_err(|e| format!("omp: {e}")),
+        r = drive_rpc(&mut writer, reader, ctx.prompt, ctx.tools) => r.map_err(|e| format!("omp: {e}")),
         () = ctx.cancel.fired() => Err("omp: cancelled".to_string()),
         () = tokio::time::sleep(turn_timeout()) => Err("omp: timed out after 2 h".to_string()),
     };
 
-    // Always kill the whole tree: the process is not expected to exit on its own, and the tools it
+    // Always end the whole tree: the process is not expected to exit on its own, and the tools it
     // started must not outlive the turn.
-    proc.kill().await;
+    drop(guard);
 
     let (reply, new_session_file, usage) = result?;
 
@@ -469,6 +467,7 @@ mod kill_tests {
                     yolo: true,
                     tools: None,
                     cancel: &cancel,
+                    exec: &crate::crew::engine::Exec::local(),
                 })
                 .await
             })

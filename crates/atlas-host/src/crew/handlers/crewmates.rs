@@ -2,6 +2,8 @@
 
 use serde_json::{Value, json};
 
+#[cfg(unix)]
+use super::super::spawn::provision::ProvClient;
 use super::super::store::{Approval, CrewmateLook, EngineConfig, ProjectRef, TaskState};
 use super::super::{Crewmate, events, now_s, pane, project, runner, triggers};
 use crate::paths;
@@ -199,6 +201,9 @@ pub(crate) fn create(
         l.validate()?;
     }
     let id = paths::new_id();
+    // Its own Linux user and directories come first: a crewmate that cannot be isolated is not made
+    // (a definition whose every task fails is worse than a clear refusal now).
+    provision(hub, &id)?;
     if let Some(ref wd) = workdir {
         std::fs::create_dir_all(wd).map_err(|e| format!("cannot create workdir: {e}"))?;
     }
@@ -218,10 +223,11 @@ pub(crate) fn create(
         short_replies: None,
         created_at: now_s(),
     };
-    hub.crew
-        .store
-        .save_crewmate(&crewmate)
-        .map_err(|e| format!("save_crewmate: {e}"))?;
+    if let Err(e) = hub.crew.store.save_crewmate(&crewmate) {
+        // Do not leave an account behind for a crewmate that was never saved.
+        let _ = deprovision(hub, &id, true);
+        return Err(format!("save_crewmate: {e}"));
+    }
     let _ = hub.crew.store.write_memory(&id, "");
     hub.crew.audit.record(
         None,
@@ -336,9 +342,16 @@ pub(crate) async fn delete(hub: &Hub, id: String) -> Result<Value, String> {
         eprintln!("atlas crew: delete {id}: a turn is still running after {DELETE_WAITS:?}");
     }
     let name = hub.crew.store.load_crewmate(&id).ok().map(|c| c.name);
-    if let Err(e) = project::remove_checkout(&hub.crew.dir, &id).await {
+    // An isolated crewmate's checkout is a full clone in its own directory: it goes with the Linux user
+    // (`deprovision`, purge), not out of a shared clone's worktree list.
+    if hub.crew.store.isolated(&id).is_none()
+        && let Err(e) = project::remove_checkout(&hub.crew.dir, &id).await
+    {
         eprintln!("atlas crew: delete {id}: checkout not fully removed: {e}");
     }
+    // The Linux user first, while the definition still exists: a failure leaves a crewmate that can be
+    // deleted again, not an orphan account nobody lists.
+    deprovision(hub, &id, true)?;
     hub.crew
         .store
         .delete_crewmate_dir(&id)
@@ -349,6 +362,51 @@ pub(crate) async fn delete(hub: &Hub, id: String) -> Result<Value, String> {
         .audit
         .record(None, "crewmate_deleted", json!({"id": id, "name": name}));
     Ok(json!({}))
+}
+
+/// Create the crewmate's Linux user and directories when crewmates run as their own users; a no-op
+/// without a helper (and everywhere off Unix). Blocks on the provisioning service (`useradd` and the
+/// firewall reload take a moment), so it runs on a blocking thread of the runtime.
+#[cfg(unix)]
+fn provision(hub: &Hub, id: &str) -> Result<(), String> {
+    let Some((setup, iso)) = hub.crew.store.isolation().zip(hub.crew.store.isolated(id)) else {
+        return Ok(());
+    };
+    let client = ProvClient::at(&setup.provision_socket);
+    block(|| client.provision(&iso.user))
+        .map_err(|e| format!("cannot create the crewmate's Linux user {}: {e}", iso.user))
+}
+
+/// Remove the crewmate's user and, with `purge`, its directory. A no-op without a helper.
+#[cfg(unix)]
+fn deprovision(hub: &Hub, id: &str, purge: bool) -> Result<(), String> {
+    let Some((setup, iso)) = hub.crew.store.isolation().zip(hub.crew.store.isolated(id)) else {
+        return Ok(());
+    };
+    let client = ProvClient::at(&setup.provision_socket);
+    block(|| client.deprovision(&iso.user, purge))
+        .map_err(|e| format!("cannot remove the crewmate's Linux user {}: {e}", iso.user))
+}
+
+#[cfg(not(unix))]
+fn provision(_hub: &Hub, _id: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn deprovision(_hub: &Hub, _id: &str, _purge: bool) -> Result<(), String> {
+    Ok(())
+}
+
+/// Run blocking `f` from a sync handler: on a multi-thread runtime that parks only this worker.
+#[cfg(unix)]
+fn block<T>(f: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(h) if h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(f)
+        }
+        _ => f(),
+    }
 }
 
 /// Record what an update changed on the crewmate: approval, engine, project, agent, role and name
@@ -388,8 +446,9 @@ fn warm_checkout(hub: &Hub, crewmate: &Crewmate) {
         return;
     };
     let (id, dir) = (crewmate.id.clone(), hub.crew.dir.clone());
+    let iso = hub.crew.store.isolated(&id);
     tokio::spawn(async move {
-        if let Err(e) = project::prepare(&project, &id, &dir).await {
+        if let Err(e) = project::prepare(&project, &id, &dir, iso).await {
             eprintln!("atlas crew: checkout for {id} not ready yet: {e}");
         }
     });

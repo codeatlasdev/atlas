@@ -18,6 +18,7 @@
 //! | `events`    | the push events broadcast to clients                                        |
 //! | `pane`      | the `crew:<crewmate>:<task>` pane key                                       |
 //! | `project`   | Git/path project checkout                                                   |
+//! | `spawn`     | the root helper protocol that starts each crewmate as its own Linux user    |
 //! | `telegram`, `push` | delivery channels                                                    |
 //! | `mcp`       | the MCP server an engine's agent talks to (`atlas mcp --crewmate <id>`)     |
 //! | `relay`     | the Mac's relay to crew servers, for Atlas Mobile (runs on the Mac)         |
@@ -40,6 +41,7 @@ pub(crate) mod push;
 pub mod relay;
 pub(crate) mod runner;
 pub(crate) mod schedule;
+pub mod spawn;
 pub(crate) mod store;
 pub(crate) mod telegram;
 #[cfg(test)]
@@ -188,7 +190,9 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),
-        HostCmd::CrewEngineStatus { refresh } => engine_login::status(hub, refresh).await,
+        HostCmd::CrewEngineStatus { refresh, crewmate } => {
+            engine_login::status(hub, refresh, crewmate.as_deref()).await
+        }
 
         HostCmd::CrewGithubStatus {} => github::status().await,
         HostCmd::CrewGithubLoginStart {} => github::login_start(hub).await,

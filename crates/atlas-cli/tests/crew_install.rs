@@ -12,6 +12,27 @@ struct World {
     tmp: tempfile::TempDir,
 }
 
+/// A server's `curl` for the vendor installers of the engines (`curl -fsSL <url> | sh`, issue #200): prints an
+/// installer that behaves like the vendor's real one (read from claude.ai/install.sh, opencode.ai/install and
+/// omp.sh/install on 2026-11-15), so a green test means the install works against what the vendors ship:
+/// - claude installs to `~/.local/bin` and refuses to run under sudo (`SUDO_USER` set to a non-root user)
+///   unless `CLAUDE_INSTALL_ALLOW_SUDO` is set;
+/// - opencode installs to `~/.opencode/bin`;
+/// - omp installs to `${PI_INSTALL_DIR:-~/.local/bin}`.
+///
+/// Any other URL succeeds silently.
+const VENDOR_INSTALLER_CURL: &str = concat!(
+    "for a; do url=$a; done\n",
+    "case \"$url\" in\n",
+    "  *claude.ai*) b=claude; d='$HOME/.local/bin'\n",
+    "    echo 'if [ \"$(id -u)\" -eq 0 ] && [ -n \"${SUDO_USER:-}\" ] && [ \"$SUDO_USER\" != root ] && [ -z \"${CLAUDE_INSTALL_ALLOW_SUDO:-}\" ]; then echo \"Error: do not run this installer with sudo.\" >&2; exit 1; fi';;\n",
+    "  *opencode.ai*) b=opencode; d='$HOME/.opencode/bin';;\n",
+    "  *omp.sh*) b=omp; d='${PI_INSTALL_DIR:-$HOME/.local/bin}';;\n",
+    "  *) exit 0;;\n",
+    "esac\n",
+    "echo \"mkdir -p \\\"$d\\\"; printf '#!/bin/sh\\\\n' > \\\"$d/$b\\\"; chmod +x \\\"$d/$b\\\"\"\n",
+);
+
 const FAKE_SUDO: &str = r#"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -29,6 +50,8 @@ if [ -f "$ROOT/sudo-password" ]; then
 fi
 echo "sudo $*" >> "$ROOT/log/sudo"
 [ -n "$validate" ] && exit 0
+# Like the real sudo: the command runs as root and sees who invoked it (the admin).
+export SUDO_USER=admin SIM_UID=0
 exec "$@"
 "#;
 
@@ -84,6 +107,9 @@ impl World {
             "printenv",
             "ln",
             "uname",
+            "basename",
+            "cut",
+            "dirname",
         ] {
             w.link_real(t);
         }
@@ -96,7 +122,7 @@ impl World {
         );
         w.fake(
             "id",
-            "[ -d \"$ROOT/var/lib/$1\" ] || [ -f \"$ROOT/users/$1\" ]",
+            "[ \"$1\" = -u ] && { echo \"${SIM_UID:-1000}\"; exit 0; }\n[ -d \"$ROOT/var/lib/$1\" ] || [ -f \"$ROOT/users/$1\" ]",
         );
         w.fake(
             "useradd",
@@ -109,13 +135,47 @@ impl World {
             "chown",
             "[ \"$1\" = -R ] && shift; u=${1%%:*}; shift; [ -d \"$ROOT/var/lib/$u\" ] || [ -f \"$ROOT/users/$u\" ] || { echo \"chown: invalid user: '$u'\" >&2; exit 1; }; echo \"chown $u $*\" >> \"$ROOT/log/chown\"",
         );
-        for t in ["curl", "git", "npm", "pgrep"] {
+        // The isolation steps (#200) run through the same simulated server. Deterministic like chown and
+        // useradd: each refuses what the simulation did not create, and records what it was asked.
+        // `install -d -m MODE -o OWNER -g GROUP PATH...` / `install -m MODE -o O -g G SRC DST`: the real one
+        // would need root to chown, and refuses an owner that does not exist.
+        w.fake(
+            "install",
+            r#"dir=; files=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -d) dir=1; shift;; -m|-g) shift 2;;
+    -o) u=$2; shift 2
+        [ -d "$ROOT/var/lib/$u" ] || [ -f "$ROOT/users/$u" ] || [ "$u" = root ] || { echo "install: invalid user '$u'" >&2; exit 1; };;
+    *) files="$files $1"; shift;;
+  esac
+done
+echo "install${dir:+ -d}$files" >> "$ROOT/log/install"
+if [ -n "$dir" ]; then for d in $files; do mkdir -p "$d"; done
+else set -- $files; cp "$1" "$2"; fi"#,
+        );
+        // `usermod -aG GROUP USER` for the crew user: both must exist (the group is the crewmate user's).
+        w.fake(
+            "usermod",
+            r#"u=; for a; do u=$a; done; [ -d "$ROOT/var/lib/$u" ] || [ -f "$ROOT/users/$u" ] || { echo "usermod: user '$u' does not exist" >&2; exit 6; }; echo "usermod $*" >> "$ROOT/log/usermod""#,
+        );
+        for t in ["git", "pgrep"] {
             w.fake(t, "exit 0");
         }
+        // The vendor installers (`curl -fsSL <url> | sh`) are an installer script on stdout that leaves the
+        // agent's binary in `~/.local/bin`, named after the URL's vendor. Release downloads (`releases/download`)
+        // are what the install tests of the binary use: those keep failing the way they did, here as a no-op.
+        w.fake("curl", VENDOR_INSTALLER_CURL);
+        // The engine installers: the vendor line runs under the simulated engine home and leaves the binary
+        // where that vendor puts it (`~/.npm-global/bin` for npm), which is what the step then looks for.
+        w.fake(
+            "npm",
+            r#"mkdir -p "$npm_config_prefix/bin"; printf '#!/bin/sh\n' > "$npm_config_prefix/bin/codex"; chmod +x "$npm_config_prefix/bin/codex""#,
+        );
         // The fake ssh: run the last argument (`bash -c '<script>'`) on the simulated server.
         w.write_exec(
             "bin-ssh/ssh",
-                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
+                "#!/bin/sh\n[ \"$1\" = -G ] && { if [ -f \"$ROOT/identity\" ]; then echo \"identityfile $(cat \"$ROOT/identity\")\"; else echo 'identityfile ~/.ssh/id_ed25519'; fi; exit 0; }\nfor a; do last=$a; done\n[ -f \"$ROOT/ssh-down\" ] && { echo 'ssh: connect refused' >&2; exit 255; }\nR=\"$ROOT\"\nexport PATH=\"$R/bin\"\nscript=$(printf '%s' \"$last\" | sed -e \"s#/usr/local/lib/atlas-crew#$R/lib/atlas-crew#g\" -e \"s#/usr/local/lib/atlas-bot#$R/lib/atlas-bot#g\" -e \"s#/etc/systemd/system#$R/etc/systemd/system#g\" -e \"s#/etc/atlas-crew#$R/etc/atlas-crew#g\" -e \"s#/run/systemd/system#$R/run/systemd/system#g\" -e \"s#/var/lib#$R/var/lib#g\")\nif [ -f \"$R/ssh-drop-after\" ] && printf '%s' \"$script\" | grep -q \"$(cat \"$R/ssh-drop-after\")\"; then\n  /bin/sh -c \"$script\"; echo run >> \"$R/log/dropped-runs\"; echo 'ssh: connection reset' >&2; exit 255\nfi\nexec /bin/sh -c \"$script\"\n"
         );
         w
     }
@@ -245,6 +305,33 @@ fn install_of_a_healthy_binary_reports_ready_and_leaves_it_in_place() {
         w.read("var/lib/atlas-crew/.ssh/authorized_keys")
             .contains("ssh-ed25519 AAAA")
     );
+}
+
+// #223 review: the engine installers are the vendors' real behaviour (claude refuses sudo unless told it is
+// fine, opencode writes to ~/.opencode/bin), so every engine must end up linked for the crewmate users,
+// pointing into the vendor's own directory under the shared engine home.
+#[test]
+fn install_links_every_engine_from_where_its_vendor_put_it() {
+    let w = World::new();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    let home = w.root().join("lib/atlas-crew/engine-home");
+    for (engine, dir) in [
+        ("claude", ".local/bin"),
+        ("omp", ".local/bin"),
+        ("opencode", ".opencode/bin"),
+        ("codex", ".npm-global/bin"),
+    ] {
+        let link = w.root().join("lib/atlas-crew/engines").join(engine);
+        let target =
+            std::fs::read_link(&link).unwrap_or_else(|e| panic!("{engine} not linked: {e}\n{t}"));
+        assert_eq!(target, home.join(dir).join(engine), "{engine}");
+    }
 }
 
 // Gap 3: a reinstall over a working server with a dead binary restores the old one.
@@ -408,7 +495,11 @@ impl World {
     fn offline_server_online_client(&self, hostd_version: &str, corrupt_sum: bool) {
         self.fake(
             "curl",
-            "echo \"server curl $*\" >> \"$ROOT/log/server-curl\"; echo 'curl: (6) Could not resolve host' >&2; exit 6",
+            // Only the release download is unreachable (GitHub, behind a proxy the server lacks); the vendor
+            // installers of the engines (#200) are other hosts, and are not what this test is about.
+            &format!(
+                "case \"$*\" in *releases/download*) echo \"server curl $*\" >> \"$ROOT/log/server-curl\"; echo 'curl: (6) Could not resolve host' >&2; exit 6;; esac\n{VENDOR_INSTALLER_CURL}"
+            ),
         );
         let ver = env!("CARGO_PKG_VERSION");
         let asset = format!("atlas-{ver}-x86_64-unknown-linux-gnu.tar.gz");

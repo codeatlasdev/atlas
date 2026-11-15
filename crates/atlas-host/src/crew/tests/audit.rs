@@ -101,6 +101,42 @@ async fn a_task_leaves_its_lifecycle_and_every_tool_call_with_full_input() {
     client.call("shutdown", json!({})).await.ok();
 }
 
+// Incident (CI on #339, #341, #347, #330, #328, 2026-11-14): the audit read `task_queued, tool_call,
+// task_started, …`, i.e. the agent acted before its task started. The runner recorded `task_started` only
+// after spawning the agent, and a fast agent's first tool call reached the audit in between. The pause
+// below holds the runner right after the spawn, so the agent always gets there first: the order must
+// still be the task's.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_task_is_audited_as_started_before_anything_its_agent_does() {
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let script = Hooks::new()
+        .tool("Bash", json!({"command": "ls"}))
+        .done("ok")
+        .script();
+    use_agent_bin(&fake_agent(tmp.path(), "claude", &script));
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "Prompt").await;
+    *crate::crew::runner::TEST_PAUSE_AFTER_SPAWN.lock() = Some(Duration::from_millis(1500));
+    run_task(&client, &id, "go").await;
+    *crate::crew::runner::TEST_PAUSE_AFTER_SPAWN.lock() = None;
+
+    let kinds: Vec<String> = audit(&client, &id, None)
+        .await
+        .iter()
+        .rev()
+        .map(|e| e["kind"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["task_queued", "task_started", "tool_call", "task_finished"],
+        "{kinds:?}"
+    );
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
 // A value the crewmate holds as a secret never reaches the audit, even when the agent puts it in a
 // command line; the entry says which secret it was. Setting one records its name, not the value.
 #[tokio::test(flavor = "multi_thread")]

@@ -177,6 +177,24 @@ async fn run_pty_inner(
     // would then fail a finished task as "agent exited (code 0)".
     let agent_rx = hub.agents.subscribe();
 
+    // Running, and audited as started, before the agent exists: its first tool call can reach the audit
+    // within milliseconds of the spawn, and must come after `task_started`. If that cannot be stored
+    // there is no honest "running" to show, and no agent is started.
+    task.state = TaskState::Running;
+    task.started_at = Some(now_s());
+    task.pane = Some(pane_key.to_string());
+    if let Err(msg) = persist(hub, &crewmate.id, task) {
+        return (Err(msg), vec![]);
+    }
+    audit_task(hub, &crewmate.id, "task_started", task);
+    broadcast_task(hub, &crewmate.id, task);
+    // The store's word right before the agent exists: `persist` keeps a stored cancel (the runner's `running` is not
+    // written over it), so a task cancelled while it prepared or waited for a slot is still cancelled here and no
+    // agent is spawned for it (#292).
+    if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
+        return (Err("cancelled before the agent started".into()), vec![]);
+    }
+
     // Spawn the pty.
     let session = match Session::spawn(req, &paths::scrollback_dir(&hub.dir)) {
         Ok(s) => s,
@@ -191,25 +209,13 @@ async fn run_pty_inner(
     if let Some(pause) = pause {
         tokio::time::sleep(pause).await;
     }
-    // A cancel that landed after the slot was taken and before the session was registered found nothing to kill:
-    // the store has it, so the agent is stopped here rather than recorded as running over a cancelled task.
+    // A cancel that landed between the check above and the session's registration found nothing to kill: the
+    // store has it, so the agent is stopped here rather than left running over a cancelled task.
     if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
         session.kill().await;
         hub.sessions.lock().remove(&pty_id);
         return (Err("cancelled before the agent started".into()), vec![]);
     }
-    // Mark task as running and record start time. If that cannot be stored there is no honest
-    // "running" to show: stop the agent and fail the task with the store error.
-    task.state = TaskState::Running;
-    task.started_at = Some(now_s());
-    task.pane = Some(pane_key.to_string());
-    if let Err(msg) = persist(hub, &crewmate.id, task) {
-        session.kill().await;
-        hub.sessions.lock().remove(&pty_id);
-        return (Err(msg), vec![]);
-    }
-    audit_task(hub, &crewmate.id, "task_started", task);
-    broadcast_task(hub, &crewmate.id, task);
 
     // Wait for completion.
     let (outcome, steps) =

@@ -246,6 +246,7 @@ class ShortRepliesRow extends StatelessWidget {
 
 /// A pill-shaped choice: the selected option sits on a sliding rounded thumb. Labels never
 /// wrap (Material's SegmentedButton broke "Crew default" in two next to its checkmark).
+/// The pill is drawn 40 dp high; each option is hit over the 48 dp around it.
 class SegmentedChoice extends StatelessWidget {
   const SegmentedChoice({
     super.key,
@@ -265,25 +266,31 @@ class SegmentedChoice extends StatelessWidget {
         .clamp(0, options.length - 1);
     return Opacity(
       opacity: onChanged == null ? .5 : 1,
-      child: Container(
-        height: 40,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: c.ground,
-          borderRadius: BorderRadius.circular(20),
-        ),
+      child: SizedBox(
+        height: 48,
         child: LayoutBuilder(
           builder: (_, box) {
-            final w = box.maxWidth / options.length;
+            final w = (box.maxWidth - 6) / options.length;
             return Stack(
               children: [
+                // The pill and its thumb: what the eye sees.
+                Positioned.fill(
+                  top: 4,
+                  bottom: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: c.ground,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
                 AnimatedPositioned(
                   duration: Motion.normal,
                   curve: Curves.easeOutCubic,
-                  left: w * index,
+                  left: 3 + w * index,
                   width: w,
-                  top: 0,
-                  bottom: 0,
+                  top: 7,
+                  bottom: 7,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: c.overlay,
@@ -291,42 +298,45 @@ class SegmentedChoice extends StatelessWidget {
                     ),
                   ),
                 ),
-                Row(
-                  children: [
-                    for (final (v, label) in options)
-                      Expanded(
-                        child: Semantics(
-                          button: true,
-                          selected: v == value,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: onChanged == null || v == value
-                                ? null
-                                : () {
-                                    HapticFeedback.selectionClick();
-                                    onChanged!(v);
-                                  },
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: Motion.fast,
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: v == value
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  color: v == value ? c.text : c.muted,
-                                ),
-                                child: Text(
-                                  label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Row(
+                    children: [
+                      for (final (v, label) in options)
+                        Expanded(
+                          child: Semantics(
+                            button: true,
+                            selected: v == value,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: onChanged == null || v == value
+                                  ? null
+                                  : () {
+                                      HapticFeedback.selectionClick();
+                                      onChanged!(v);
+                                    },
+                              child: Center(
+                                child: AnimatedDefaultTextStyle(
+                                  duration: Motion.fast,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: v == value
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    color: v == value ? c.text : c.muted,
+                                  ),
+                                  child: Text(
+                                    label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             );

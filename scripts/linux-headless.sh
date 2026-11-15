@@ -5,7 +5,7 @@
 #
 #   headless_prepare WxH     outside: makes $work (run/, home/, sway.conf, session.conf), removes it when the script exits
 #   headless_session CMD...  runs CMD in a private D-Bus session with NOTHING activatable (see below)
-#   headless_up              inside `dbus-run-session`: starts sway, exports HOME (the throwaway, or $ATLAS_HEADLESS_HOME),
+#   headless_up              inside the private session: starts sway, exports HOME (the throwaway, or $ATLAS_HEADLESS_HOME),
 #                            XDG_*, SWAYSOCK, WAYLAND_DISPLAY
 #   headless_mapped PID      true once sway's tree has a window of that pid
 #   headless_down            stops sway
@@ -61,6 +61,12 @@ headless_up() {
     return 3
   fi
   export SWAYSOCK WAYLAND_DISPLAY
+  # The X display of sway's own XWayland, as a real session exports it: the AppImage's AppRun forces GDK_BACKEND=x11.
+  # sway sets DISPLAY in its own environment when it starts XWayland (lazily), so a process sway starts shows it.
+  rm -f "$work/display"
+  swaymsg exec "sh -c 'printf %s \"\$DISPLAY\" > $work/display'" >/dev/null 2>&1 || true
+  for _ in $(seq 100); do [ -s "$work/display" ] && break; sleep 0.05; done
+  if [ -s "$work/display" ]; then DISPLAY="$(cat "$work/display")"; export DISPLAY; fi
 }
 
 headless_mapped() { swaymsg -t get_tree 2>/dev/null | grep -q "\"pid\": $1"; }

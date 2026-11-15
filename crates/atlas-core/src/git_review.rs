@@ -228,6 +228,71 @@ pub fn parse_status(out: &str) -> (Option<String>, Option<String>, Option<String
     (branch, upstream, ab, entries)
 }
 
+/// The base a branch is compared against: `branch.<b>.base`, else `HEAD`.
+pub async fn base_for<Fut: Future<Output = Result<String, String>>>(
+    branch: Option<&str>,
+    git: &impl Fn(&[&str]) -> Fut,
+) -> String {
+    if let Some(b) = branch.filter(|b| !b.is_empty())
+        && let Ok(base) = git(&["config", &format!("branch.{b}.base")]).await
+        && !base.trim().is_empty()
+    {
+        return base.trim().to_string();
+    }
+    "HEAD".into()
+}
+
+/// `merge` or `rebase` while one is in progress in the checkout at `dir`. The git dir is `.git`, or what a linked
+/// worktree's `.git` file (`gitdir: <path>`) points to: a file read, not a `rev-parse` process.
+pub fn operation(dir: &std::path::Path) -> Option<&'static str> {
+    let dot = dir.join(".git");
+    let gd = if dot.is_dir() {
+        dot
+    } else {
+        let pointer = std::fs::read_to_string(&dot).ok()?;
+        dir.join(pointer.trim().strip_prefix("gitdir:")?.trim())
+    };
+    if gd.join("MERGE_HEAD").exists() {
+        Some("merge")
+    } else if gd.join("rebase-merge").exists() || gd.join("rebase-apply").exists() {
+        Some("rebase")
+    } else {
+        None
+    }
+}
+
+/// What the `git_status` command returns to the app: branch, upstream, `ab` (`+1 -0`), the base and the ahead/behind
+/// against it, the entries and the merge/rebase in progress. `git` runs `git -C dir <args>` where the checkout is.
+pub async fn status_json<Fut: Future<Output = Result<String, String>>>(
+    dir: &std::path::Path,
+    git: &impl Fn(&[&str]) -> Fut,
+) -> Result<Value, String> {
+    let out = git(&STATUS_ARGS[..]).await?;
+    let (branch, upstream, ab, entries) = parse_status(&out);
+    // `--branch` already names the branch (`(detached)` has none), so no `branch --show-current`.
+    let base = base_for(branch.as_deref().filter(|b| *b != "(detached)"), git).await;
+    let vs_base = if base != "HEAD" {
+        git(&[
+            "rev-list",
+            "--left-right",
+            "--count",
+            &format!("HEAD...{base}"),
+        ])
+        .await
+        .ok()
+        .and_then(|s| {
+            let mut n = s.split_whitespace().filter_map(|x| x.parse::<u64>().ok());
+            Some(json!({"ahead": n.next()?, "behind": n.next()?}))
+        })
+    } else {
+        None
+    };
+    Ok(json!({
+        "branch": branch, "upstream": upstream, "ab": ab, "base": base,
+        "vs_base": vs_base, "entries": entries, "operation": operation(dir),
+    }))
+}
+
 // ---------- AI commit message ----------
 
 /// Total characters of diff text sent to the provider (about 12k tokens).
@@ -1887,5 +1952,212 @@ mod commit_msg_tests {
         let dg = digest(&diff, "staged");
         assert_eq!(dg.withheld, ["notes.txt"], "{diff}");
         assert!(!dg.text.contains("renamed-secret"), "{}", dg.text);
+    }
+}
+
+#[cfg(test)]
+mod status_json_tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::path::Path;
+
+    /// `git -C dir args`, no ambient config; a non-zero exit is `Err(stderr)` like hostd's `git`.
+    fn git_in(dir: &Path, args: &[&str]) -> Result<String, String> {
+        let o = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["-c", "user.email=a@b", "-c", "user.name=n"])
+            .args([
+                "-c",
+                "init.defaultBranch=main",
+                "-c",
+                "protocol.file.allow=always",
+            ])
+            .args(args)
+            .output()
+            .unwrap();
+        if o.status.success() {
+            Ok(String::from_utf8_lossy(&o.stdout).into_owned())
+        } else {
+            Err(String::from_utf8_lossy(&o.stderr).into_owned())
+        }
+    }
+
+    fn ok(dir: &Path, args: &[&str]) {
+        git_in(dir, args).unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+    }
+
+    fn commit(dir: &Path, file: &str, body: &str) {
+        std::fs::write(dir.join(file), body).unwrap();
+        ok(dir, &["add", "--", file]);
+        ok(dir, &["commit", "-qm", file]);
+    }
+
+    /// `status_json` over the real git; returns the value and how many git processes it spawned.
+    fn run(dir: &Path) -> (Value, u32) {
+        let spawns = Cell::new(0);
+        let git = |a: &[&str]| {
+            spawns.set(spawns.get() + 1);
+            let r = git_in(dir, a);
+            async move { r }
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let v = rt.block_on(status_json(dir, &git)).unwrap();
+        (v, spawns.get())
+    }
+
+    /// main: c1 (pushed to origin) + c2 (local); `dev` = c1 + two commits, `branch.main.base = dev`.
+    fn tracked_repo() -> (tempfile::TempDir, std::path::PathBuf) {
+        let t = tempfile::tempdir().unwrap();
+        let (origin, work) = (t.path().join("origin.git"), t.path().join("work"));
+        std::fs::create_dir_all(&work).unwrap();
+        ok(
+            t.path(),
+            &["init", "-q", "--bare", origin.to_str().unwrap()],
+        );
+        ok(&work, &["init", "-q", "."]);
+        commit(&work, "a.txt", "1\n");
+        ok(
+            &work,
+            &["remote", "add", "origin", origin.to_str().unwrap()],
+        );
+        ok(&work, &["push", "-qu", "origin", "main"]);
+        ok(&work, &["branch", "dev"]);
+        ok(&work, &["checkout", "-q", "dev"]);
+        commit(&work, "d1.txt", "x");
+        commit(&work, "d2.txt", "x");
+        ok(&work, &["checkout", "-q", "main"]);
+        commit(&work, "c2.txt", "x");
+        ok(&work, &["config", "branch.main.base", "dev"]);
+        std::fs::write(work.join("a.txt"), "changed\n").unwrap();
+        std::fs::write(work.join("new.txt"), "").unwrap();
+        (t, work)
+    }
+
+    // Incident #307: every fs event ran status + `branch --show-current` + config + rev-list + rev-parse. The branch is
+    // already in the status header and the git dir is a file read, so a refresh is status + config (+ rev-list when the
+    // branch has a base): the same payload for fewer processes.
+    #[test]
+    fn a_tracked_branch_with_a_base_is_three_spawns_and_the_same_payload() {
+        let (_t, work) = tracked_repo();
+        let (v, spawns) = run(&work);
+        assert_eq!(v["branch"], "main");
+        assert_eq!(v["upstream"], "origin/main");
+        assert_eq!(v["ab"], "+1 -0");
+        assert_eq!(v["base"], "dev");
+        assert_eq!(v["vs_base"], json!({"ahead": 1, "behind": 2}));
+        assert_eq!(v["operation"], Value::Null);
+        let by = |p: &str| {
+            v["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["path"] == p)
+                .cloned()
+        };
+        assert_eq!(by("a.txt").unwrap()["y"], "M");
+        assert_eq!(by("new.txt").unwrap()["x"], "?");
+        assert_eq!(spawns, 3, "status, config, rev-list");
+    }
+
+    #[test]
+    fn a_branch_without_a_base_is_two_spawns() {
+        let (_t, work) = tracked_repo();
+        ok(&work, &["config", "--unset", "branch.main.base"]);
+        let (v, spawns) = run(&work);
+        assert_eq!(
+            (v["base"].as_str(), v["vs_base"].is_null()),
+            (Some("HEAD"), true)
+        );
+        assert_eq!(spawns, 2, "status, config");
+    }
+
+    #[test]
+    fn a_detached_head_has_no_branch_base_or_upstream_and_is_one_spawn() {
+        let (_t, work) = tracked_repo();
+        ok(&work, &["checkout", "-q", "--detach"]);
+        let (v, spawns) = run(&work);
+        assert_eq!(v["branch"], "(detached)");
+        assert_eq!((v["upstream"].is_null(), v["ab"].is_null()), (true, true));
+        assert_eq!(v["base"], "HEAD");
+        assert_eq!(spawns, 1, "nothing to ask but status");
+    }
+
+    #[test]
+    fn an_initial_commit_still_names_its_branch() {
+        let t = tempfile::tempdir().unwrap();
+        ok(t.path(), &["init", "-q", "."]);
+        std::fs::write(t.path().join("f"), "").unwrap();
+        let (v, _) = run(t.path());
+        assert_eq!(v["branch"], "main");
+        assert_eq!((v["upstream"].is_null(), v["ab"].is_null()), (true, true));
+        assert_eq!(v["base"], "HEAD");
+        assert_eq!(v["entries"], json!([{"path": "f", "x": "?", "y": "?"}]));
+    }
+
+    /// A conflicting merge, in the checkout and in a linked worktree (where `.git` is a file).
+    #[test]
+    fn a_merge_in_progress_is_reported_in_a_checkout_and_in_a_linked_worktree() {
+        let t = tempfile::tempdir().unwrap();
+        let main = t.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        ok(&main, &["init", "-q", "."]);
+        commit(&main, "f.txt", "base\n");
+        ok(&main, &["branch", "other"]);
+        let wt = t.path().join("wt");
+        ok(
+            &main,
+            &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "feat"],
+        );
+        commit(&main, "f.txt", "main\n");
+        ok(&main, &["checkout", "-q", "other"]);
+        commit(&main, "f.txt", "other\n");
+        ok(&main, &["checkout", "-q", "main"]);
+        assert!(git_in(&main, &["merge", "other"]).is_err(), "must conflict");
+        assert_eq!(run(&main).0["operation"], "merge");
+        commit(&wt, "f.txt", "feat\n");
+        assert!(git_in(&wt, &["merge", "other"]).is_err(), "must conflict");
+        assert!(wt.join(".git").is_file());
+        let (v, _) = run(&wt);
+        assert_eq!(
+            (v["operation"].as_str(), v["branch"].as_str()),
+            (Some("merge"), Some("feat"))
+        );
+        assert_eq!(v["entries"][0]["conflict"], true);
+    }
+
+    // The parser behind it, on the verbatim headers of `git status --porcelain=v2 -z --branch`.
+    #[test]
+    fn porcelain_v2_branch_headers() {
+        let p = |s: &str| {
+            let (b, u, ab, _) = parse_status(s);
+            (b, u, ab)
+        };
+        let s = |x: &str| Some(x.to_string());
+        assert_eq!(
+            p(
+                "# branch.oid e494ad1\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +3 -2\0"
+            ),
+            (s("main"), s("origin/main"), s("+3 -2"))
+        );
+        assert_eq!(
+            p("# branch.oid e494ad1\0# branch.head feat/x\0"),
+            (s("feat/x"), None, None)
+        );
+        assert_eq!(
+            p("# branch.oid e494ad1\0# branch.head (detached)\0"),
+            (s("(detached)"), None, None)
+        );
+        assert_eq!(
+            p("# branch.oid (initial)\0# branch.head main\0"),
+            (s("main"), None, None)
+        );
+        // Upstream set but gone: git prints the name and no `branch.ab`.
+        assert_eq!(
+            p("# branch.oid e494ad1\0# branch.head main\0# branch.upstream origin/gone\0"),
+            (s("main"), s("origin/gone"), None)
+        );
     }
 }

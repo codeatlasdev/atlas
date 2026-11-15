@@ -263,6 +263,13 @@ async fn handle<R: Runtime>(app: &AppHandle<R>, raw: &Value) -> Result<Value, St
                 "socket": socket_path(),
             }))
         }
+        Req::KillWebProcess => {
+            let real: &dyn std::any::Any = app;
+            let real = real
+                .downcast_ref::<AppHandle>()
+                .ok_or("kill-web-process needs the Wry runtime")?;
+            crate::webview_guard::kill_web_process(real).map(|()| Value::Null)
+        }
         Req::Logs { since } => Ok(state
             .logs
             .lock()

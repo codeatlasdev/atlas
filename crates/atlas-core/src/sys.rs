@@ -177,6 +177,50 @@ impl CommandExt for tokio::process::Command {
     }
 }
 
+/// Linux: start the child with `PR_SET_NO_NEW_PRIVS`, so it never gains the file capabilities of its binary. Why it
+/// matters: `/usr/bin/sway` carries `cap_sys_nice=ep`, and a process that gained capabilities at exec has an unreadable
+/// `/proc/<pid>/environ` even for its owner, so the `ATLAS_SESSION` tag the hygiene sweep finds orphans by is
+/// invisible and a sway left behind by a crash is never reaped. The child only loses what the capability gave
+/// (sway: realtime priority). No-op elsewhere.
+pub fn no_new_privs(cmd: &mut std::process::Command) {
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: the closure runs between fork and exec and only calls prctl(2), which is async-signal-safe.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(cmd, || {
+                if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = cmd;
+}
+
+#[cfg(unix)]
+static INTERRUPTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Unix: from now on SIGINT and SIGTERM only set a flag ([`interrupted`]) instead of ending the process, so a
+/// long start can stop what it already launched and exit by itself. The caller must poll [`interrupted`].
+#[cfg(unix)]
+pub fn watch_interrupts() {
+    extern "C" fn on_signal(_: libc::c_int) {
+        INTERRUPTED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    for sig in [libc::SIGINT, libc::SIGTERM] {
+        // SAFETY: the handler only stores to an atomic, which is async-signal-safe.
+        unsafe { libc::signal(sig, on_signal as *const () as libc::sighandler_t) };
+    }
+}
+
+/// Whether SIGINT or SIGTERM arrived since [`watch_interrupts`].
+#[cfg(unix)]
+pub fn interrupted() -> bool {
+    INTERRUPTED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// A command that runs `script` through the platform shell: `sh -c` on Unix, `cmd.exe /d /s /c`
 /// on Windows (what npm uses for scripts).
 pub fn shell(script: &str) -> std::process::Command {
@@ -800,6 +844,35 @@ pub use imp::{
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_child_started_with_no_new_privs_reports_the_flag_and_a_plain_one_does_not() {
+        // Regression: a sway with file capabilities hid its environment from its owner, so a crash left it unreapable.
+        let status = |harden: bool| {
+            let mut c = std::process::Command::new("grep");
+            c.args(["NoNewPrivs", "/proc/self/status"]);
+            if harden {
+                no_new_privs(&mut c);
+            }
+            String::from_utf8(c.output().unwrap().stdout).unwrap()
+        };
+        assert!(status(true).contains("1"), "{}", status(true));
+        // The test runner itself may already run under no_new_privs (containers); only compare when it does not.
+        if status(false).contains('0') {
+            assert!(!status(false).contains('1'));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sigint_and_sigterm_set_a_flag_once_watched_instead_of_ending_the_process() {
+        watch_interrupts();
+        assert!(!interrupted());
+        // SAFETY: raise(3) to ourselves with the handler installed above.
+        unsafe { libc::raise(libc::SIGTERM) };
+        assert!(interrupted());
+    }
 
     #[test]
     fn our_own_pid_is_alive_and_a_freed_one_is_not() {

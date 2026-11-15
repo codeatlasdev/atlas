@@ -159,7 +159,19 @@ export type ProgressEvent =
 	| { kind: "bytes"; done: number; total: number }
 	| { kind: "rollback"; state: string }
 	| { kind: "host"; state: string; live: number }
-	| { kind: "managed"; how: string };
+	| ({ kind: "managed" } & Managed);
+
+/**
+ * Another tool owns this Atlas. For a package, `manager`/`command` say how to update it and
+ * `installable` that the app may run it (`atlas update --yes`, `pkexec` asks for the password)
+ * after the user confirms. Rust: `Progress::Managed`.
+ */
+export interface Managed {
+	how: string;
+	manager?: string;
+	installable?: boolean;
+	command?: string;
+}
 
 /** What the install has reported so far. */
 export interface Progress {
@@ -173,7 +185,7 @@ export interface Progress {
 	/** How `atlas update` left the terminal host (`needs-restart` = running terminals, user decides). */
 	host: { state: string; live: number } | null;
 	/** Another tool owns this Atlas (`homebrew`, `package`): the CLI exited 0 without installing. */
-	managed: string | null;
+	managed: Managed | null;
 }
 
 export const EMPTY_PROGRESS: Progress = {
@@ -200,7 +212,10 @@ export function reduceProgress(p: Progress, e: ProgressEvent): Progress {
 		case "host":
 			return { ...p, host: { state: e.state, live: e.live } };
 		case "managed":
-			return { ...p, managed: e.how };
+			return {
+				...p,
+				managed: { how: e.how, manager: e.manager, installable: e.installable, command: e.command },
+			};
 	}
 }
 
@@ -247,19 +262,35 @@ export function finishOutcome(p: Progress): "done" | "managed" {
 	return p.managed ? "managed" : "done";
 }
 
+/** What the sheet shows for a managed install: who manages it, the command to run, whether the app can run it. */
+export function managedView(m: Managed | null): {
+	title: string;
+	command: string | null;
+	installable: boolean;
+} {
+	if (m?.how === "homebrew") {
+		return { title: "Atlas is managed by Homebrew", command: "brew upgrade atlas", installable: false };
+	}
+	return {
+		title: m?.manager ? `Atlas is managed by ${m.manager}` : "Atlas is managed by your package manager",
+		command: m?.command ?? null,
+		installable: !!m?.command && !!m.installable,
+	};
+}
+
 /** The toast a finished run shows outside the sheet; a managed install is never "up to date". */
 export function finishToast(
 	kind: "update" | "reinstall" | "unlink",
 	outcome: "done" | "managed",
-	managed: string | null,
+	managed: Managed | null,
 ): { level: "success" | "info"; text: string } {
 	if (outcome === "managed") {
+		const { command } = managedView(managed);
 		return {
 			level: "info",
-			text:
-				managed === "homebrew"
-					? "Atlas is managed by Homebrew: run `brew upgrade atlas` to update it"
-					: "Atlas is managed by your package manager: update it there (or run `atlas update` in a terminal)",
+			text: command
+				? `${managedView(managed).title}: run \`${command}\` to update it`
+				: "Atlas is managed by your package manager: update it there (or run `atlas update` in a terminal)",
 		};
 	}
 	return { level: "success", text: kind === "unlink" ? "Back on the release build" : "Atlas is up to date" };

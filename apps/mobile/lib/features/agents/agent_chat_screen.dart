@@ -20,41 +20,18 @@ import 'package:atlas_mobile/features/agents/agent_hub_screen.dart';
 import 'package:atlas_mobile/features/agents/crew_widgets.dart';
 import 'package:atlas_mobile/features/agents/timeline_widgets.dart';
 import 'package:atlas_mobile/features/agents/approval_banner.dart';
-import 'package:atlas_mobile/core/ui/typing_dots.dart';
+import 'package:atlas_mobile/features/agents/chat/ask_dialog.dart';
+import 'package:atlas_mobile/features/agents/chat/capped_strips.dart';
+import 'package:atlas_mobile/features/agents/chat/chat_composer.dart';
+import 'package:atlas_mobile/features/agents/chat/command_sheet.dart';
+import 'package:atlas_mobile/features/agents/chat/same_json.dart';
+import 'package:atlas_mobile/features/agents/chat/typing_bubble.dart';
 
 export 'package:atlas_mobile/features/agents/agent_info.dart'
     show agentStateLabel;
 
 /// How often the timeline is re-read while the agent can still add to it.
 const historyPoll = Duration(seconds: 2);
-
-/// Whether two decoded JSON values (maps, lists, scalars) are equal by value.
-bool sameJson(Object? a, Object? b) {
-  if (identical(a, b)) return true;
-  if (a is Map && b is Map) {
-    if (a.length != b.length) return false;
-    for (final k in a.keys) {
-      if (!b.containsKey(k) || !sameJson(a[k], b[k])) return false;
-    }
-    return true;
-  }
-  if (a is List && b is List) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (!sameJson(a[i], b[i])) return false;
-    }
-    return true;
-  }
-  return a == b;
-}
-
-/// omp's slash commands the phone can send; `/goal` needs text.
-const _ompCommands = <(String, String, bool)>[
-  ('/compact', 'Compact the context', false),
-  ('/new', 'Start a new session', false),
-  ('/goal', 'Set a goal for the agent', true),
-  ('/export', 'Export the session', false),
-];
 
 /// One agent: its conversation as a timeline (read from its session file, polled while it
 /// works), its state (pushed live by hostd), the pending permission prompt, a box to send
@@ -368,9 +345,6 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   /// The newest status for this pane, kept by [build] for the handlers.
   AgentStatus? _status;
 
-  /// omp queues a typed message as steering while it works; nothing else takes one.
-  bool _canSteer(AgentStatus s) => s.agent == 'omp' && s.state == 'working';
-
   /// What goes to the main agent for [text] typed on the focused agent: its own text on
   /// the main agent, else a line that names the subagent (hostd only reaches the main
   /// agent's terminal, and omp relays it).
@@ -379,7 +353,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   Future<bool> _sendText(String text) async {
     final mux = liveMux(ref, widget.device);
     if (text.isEmpty || mux == null) return false;
-    final steer = _status != null && _canSteer(_status!);
+    final steer = _status != null && canSteer(_status!);
     setState(() {
       _sending = true;
       _error = null;
@@ -425,59 +399,17 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   }
 
   Future<void> _command() async {
-    final pick = await showModalBottomSheet<(String, bool)>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: AtlasColors.of(context).overlay,
-      builder: (ctx) {
-        final c = AtlasColors.of(ctx);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Commands', style: Theme.of(ctx).textTheme.titleMedium),
-                const SizedBox(height: Space.md),
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.sm,
-                  children: [
-                    for (final (cmd, hint, arg) in _ompCommands)
-                      ActionChip(
-                        label: Text(arg ? '$cmd …' : cmd),
-                        tooltip: hint,
-                        backgroundColor: c.base,
-                        side: BorderSide(color: c.borderSubtle),
-                        labelStyle: const TextStyle(
-                          fontFamily: monoFamily,
-                          fontFamilyFallback: monoFallback,
-                          fontSize: 13,
-                        ),
-                        onPressed: () => Navigator.pop(ctx, (cmd, arg)),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+    final pick = await showOmpCommands(context);
     if (pick == null || !mounted) return;
     final (cmd, needsText) = pick;
     if (!needsText) {
       await _sendText(cmd);
       return;
     }
-    final text = await _ask('Goal');
+    final text = await askText(context, 'Goal');
     if (text == null || text.isEmpty) return;
     await _sendText('$cmd $text');
   }
-
-  Future<String?> _ask(String label) =>
-      showDialog<String>(context: context, builder: (_) => _AskDialog(label));
 
   Future<void> _approve(AgentApproval a, bool allow) async {
     final mux = liveMux(ref, widget.device);
@@ -760,7 +692,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             // Crew, breadcrumb, jobs, todos and the live line sit above the timeline. On a
             // short phone, with large text or the keyboard up, they must not take the whole
             // screen: they scroll inside a capped area and the timeline keeps the rest.
-            _CappedStrips(
+            CappedStrips(
               bodyHeight: body.maxHeight,
               children: [
                 if (tree.subs.isNotEmpty) ...[
@@ -834,7 +766,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                               padding: EdgeInsets.only(top: 10),
                               child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: _Typing(),
+                                child: TypingBubble(),
                               ),
                             );
                           }
@@ -912,7 +844,17 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
               constraints: BoxConstraints(maxHeight: body.maxHeight * .5),
               child: SingleChildScrollView(
                 reverse: true,
-                child: _composer(status),
+                child: ChatComposer(
+                  status: status,
+                  sub: _sub,
+                  controller: _msg,
+                  focusNode: _composerFocus,
+                  sending: _sending,
+                  stopping: _stopping,
+                  onSend: _send,
+                  onStop: _stop,
+                  onCommand: _command,
+                ),
               ),
             ),
           ],
@@ -920,211 +862,4 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       ),
     );
   }
-
-  Widget _composer(AgentStatus status) {
-    final c = AtlasColors.of(context);
-    final steer = _canSteer(status);
-    final canType = canSendChat(status) || steer;
-    final sub = _sub;
-    // Only omp relays a line addressed to one of its subagents.
-    if (sub != null && status.agent != 'omp') return const SizedBox.shrink();
-    final subLabel = sub?.split('.').last;
-    final canSend = canType && !_sending;
-    final working = status.state == 'working';
-    OutlineInputBorder border([Color? color]) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(22),
-      borderSide: color == null ? BorderSide.none : BorderSide(color: color),
-    );
-    return Container(
-      decoration: BoxDecoration(
-        color: c.base,
-        border: Border(top: BorderSide(color: c.borderSubtle)),
-      ),
-      child: SafeArea(
-        top: false,
-        // The home indicator is under the keyboard when it is up: no inset then.
-        bottom: MediaQuery.viewInsetsOf(context).bottom == 0,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (status.agent == 'omp' && sub == null)
-                IconButton(
-                  tooltip: 'Commands',
-                  onPressed: canSendChat(status) && !_sending ? _command : null,
-                  icon: const Text(
-                    '/',
-                    style: TextStyle(
-                      fontFamily: monoFamily,
-                      fontFamilyFallback: monoFallback,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _msg,
-                  focusNode: _composerFocus,
-                  minLines: 1,
-                  maxLines: 5,
-                  enabled: canType,
-                  decoration: InputDecoration(
-                    hintText: sub != null && canType
-                        ? (steer
-                              ? 'Steer Main about $subLabel…'
-                              : 'Message Main about $subLabel')
-                        : steer
-                        ? 'Steer the agent…'
-                        : canType
-                        ? 'Message'
-                        : switch (status.state) {
-                            'working' => 'Working… tap stop to interrupt',
-                            'blocked' => 'Answer the request above first',
-                            'waiting' =>
-                              'The agent asked you something in its terminal',
-                            _ => 'The agent cannot take a message now',
-                          },
-                    fillColor: c.ground,
-                    border: border(),
-                    enabledBorder: border(),
-                    disabledBorder: border(),
-                    focusedBorder: border(c.accent),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (steer) ...[
-                IconButton.filled(
-                  tooltip: 'Steer',
-                  onPressed: canSend ? _send : null,
-                  icon: _sending
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send_rounded, size: 18),
-                ),
-                const SizedBox(width: 6),
-              ],
-              if (working)
-                IconButton.filled(
-                  tooltip: 'Stop',
-                  style: IconButton.styleFrom(
-                    backgroundColor: c.error.withValues(alpha: .2),
-                    foregroundColor: c.error,
-                  ),
-                  onPressed: _stopping ? null : _stop,
-                  icon: _stopping
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.stop_rounded),
-                )
-              else
-                IconButton.filled(
-                  tooltip: 'Send message',
-                  onPressed: canSend ? _send : null,
-                  icon: _sending
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.arrow_upward_rounded),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Three dots that rise in turn while the agent works.
-/// A column of fixed-height strips that scrolls when the room runs out: it never takes
-/// more than [share] of [bodyHeight], the room the chat body really has (the screen
-/// less the app bar, the keyboard and the insets), so the timeline and the composer
-/// keep the rest.
-class _CappedStrips extends StatelessWidget {
-  const _CappedStrips({required this.bodyHeight, required this.children});
-  final double bodyHeight;
-  final List<Widget> children;
-
-  /// Share of the body the strips may take.
-  static const share = .25;
-
-  @override
-  Widget build(BuildContext context) {
-    if (children.isEmpty) return const SizedBox.shrink();
-    // Loose flex: it takes its natural height up to the cap, and gives way (scrolling)
-    // when the approval and the composer below it need the room.
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: bodyHeight * share),
-      child: SingleChildScrollView(child: Column(children: children)),
-    );
-  }
-}
-
-class _Typing extends StatelessWidget {
-  const _Typing();
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: c.base,
-        border: Border.all(color: c.borderSubtle),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: TypingDots(color: c.muted, size: 6, gap: 2, stagger: .18),
-    );
-  }
-}
-
-/// A one-field prompt; it owns its controller so the dialog's exit animation never
-/// paints a disposed one.
-class _AskDialog extends StatefulWidget {
-  const _AskDialog(this.label);
-  final String label;
-
-  @override
-  State<_AskDialog> createState() => _AskDialogState();
-}
-
-class _AskDialogState extends State<_AskDialog> {
-  final _ctl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.label),
-    content: TextField(
-      controller: _ctl,
-      autofocus: true,
-      minLines: 1,
-      maxLines: 4,
-      textCapitalization: TextCapitalization.sentences,
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, _ctl.text.trim()),
-        child: const Text('Send'),
-      ),
-    ],
-  );
 }

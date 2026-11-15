@@ -2,7 +2,7 @@
 name: atlas-install
 description: Install, update, and wire up the atlas CLI on a developer machine, including connecting it to the OMP, Claude Code or Codex coding agents (MCP server, skills, hooks). Use when a new developer sets up atlas, when `atlas` is not found or outdated, when the atlas MCP tools or skills are missing in the agent, or when working on atlas itself and testing a local build with atlas link.
 metadata:
-  version: "4.1.0"
+  version: "4.2.0"
 ---
 
 # atlas install and agent setup
@@ -14,7 +14,7 @@ metadata:
    curl -fsSL https://atlas.codeatlas.com.br/install.sh | bash
    bash scripts/bootstrap.sh        # from a clone: same, plus offers `atlas setup` for detected agents
    ```
-   It downloads the latest release and runs `atlas install`: binary to `~/.atlas/bin/atlas`, `PATH` entry for fish/zsh/bash, and the bundled skills into `~/.agents/skills/`. Open a new shell afterwards.
+   It downloads the latest release and runs `atlas install`: binary to `~/.atlas/bin/atlas`, `PATH` entry for bash (Linux `~/.bashrc`, macOS the login file), zsh (`.zshenv`), fish (`conf.d/atlas.fish`) and nushell (`autoload/atlas.nu`), a `~/.local/bin/atlas` link when that dir is on `PATH` (then `atlas` works at once, also in `bash -c`), and the bundled skills into `~/.agents/skills/`. Otherwise open a new shell afterwards.
 2. Preview, then wire atlas into your agent (`omp`, `claude-code` or `codex`; plain `atlas setup` shows which are installed):
    ```bash
    atlas setup claude-code            # dry run: prints what would change, writes nothing
@@ -68,7 +68,7 @@ atlas unlink           # restore the release binary
 
 | Symptom | Fix |
 |---|---|
-| `atlas: command not found` | Open a new shell, or `export PATH="$HOME/.atlas/bin:$PATH"` |
+| `atlas: command not found` | Open a new shell, or run the line the installer printed for your shell; re-run the install script to repair (older installs put bash's line in `~/.bash_profile`, which Linux terminals never read) |
 | MCP tools missing in the agent | `atlas setup <agent> --apply`, then restart it (OMP: `omp plugin list` must show `atlas-omp` enabled, then `/reload-plugins`); GUI-launched apps may need an absolute `command` path (`~/.atlas/bin/atlas`) |
 | `atlas setup <agent>` refuses: foreign `atlas` entry | Inspect it; `--force` only if it is safe to replace |
 | Download fails in bootstrap | Check the network and `https://github.com/codeatlasdev/atlas/releases`; the script needs `curl`, `tar` and `shasum`/`sha256sum` |

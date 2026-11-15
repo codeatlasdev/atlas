@@ -576,11 +576,15 @@ mod tests {
         );
         assert!(!home.join(".config/fish/conf.d/atlas.fish").exists());
         assert!(!m.env.shell.nu_file().exists());
-        assert!(
-            home.join(".local/bin/atlas").symlink_metadata().is_err(),
-            "the link install made is gone"
-        );
-        assert!(home.join(".local/bin").is_dir(), "the user's dir stays");
+        // `machine()` makes the `~/.local/bin/atlas` link on Unix only.
+        #[cfg(unix)]
+        {
+            assert!(
+                home.join(".local/bin/atlas").symlink_metadata().is_err(),
+                "the link install made is gone"
+            );
+            assert!(home.join(".local/bin").is_dir(), "the user's dir stays");
+        }
     }
 
     /// Incident class: install writes `$ZDOTDIR/.zshenv`; uninstall only looked at `~/.zshenv`.

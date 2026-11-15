@@ -15,6 +15,7 @@ use super::binary;
 use super::browsers;
 use super::install::{self, host_from_target};
 use super::layout::SERVICE;
+use super::privileged::Priv;
 
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
@@ -91,12 +92,13 @@ impl AtlasCommand for UpdateArgs {
         };
         let host = host_from_target(&self.ssh_target);
         let target = install::preflight(&r, &self.ssh_target).await?;
-        if r.exec("sudo -n true").await?.code != 0 {
-            bail!(
-                "sudo on {} asks for a password: grant passwordless sudo to this user",
-                self.ssh_target
-            );
-        }
+        let p = Priv::prepare(
+            &r,
+            &self.ssh_target,
+            false,
+            &format!("atlas crew update {}", self.ssh_target),
+        )
+        .await?;
         let unit = format!("test -f /etc/systemd/system/{SERVICE}.service");
         if r.exec(&unit).await?.code != 0 {
             bail!(
@@ -114,11 +116,11 @@ impl AtlasCommand for UpdateArgs {
                 match (version, &self.binary) {
                     (Some(v), _) => {
                         eprintln!("\x1b[36m▸\x1b[0m staging atlas {v} ({target}) on {host}");
-                        install::stage_release(&r, v, target).await?;
+                        install::stage_release(&p, v, target).await?;
                     }
                     (None, Some(path)) => {
                         eprintln!("\x1b[36m▸\x1b[0m uploading {} to {host}", path.display());
-                        install::stage_upload(&r, path).await?;
+                        install::stage_upload(&p, path).await?;
                     }
                     (None, None) => unreachable!("plan() gives no version only for --binary"),
                 }
@@ -126,7 +128,12 @@ impl AtlasCommand for UpdateArgs {
             }
         };
         eprintln!("\x1b[36m▸\x1b[0m restarting {SERVICE} and waiting for hostd");
-        let o = r.exec(&script).await?;
+        // `--rollback` flips atlas and atlas.prev: running it twice undoes it, so a dropped ssh link must not
+        // retry it (`exec_once`). The swap is guarded against a second run and may be retried.
+        let o = match plan {
+            Plan::Rollback => r.exec_once(&script).await?,
+            Plan::Install { .. } => p.exec(&script).await?,
+        };
         outcome(o.code, &o.stderr, &self.ssh_target)?;
         print!("{}", o.stdout);
         let expected = match &plan {
@@ -138,7 +145,7 @@ impl AtlasCommand for UpdateArgs {
         }
         // A new hostd asks the runner for the UI detectors; an old runner writes no findings and
         // would fail every scenario of the UI gate. A rollback keeps the runner it has.
-        if matches!(plan, Plan::Install { .. }) && browsers::refresh(&r, &self.ssh_target).await? {
+        if matches!(plan, Plan::Install { .. }) && browsers::refresh(&p, &self.ssh_target).await? {
             eprintln!("\x1b[36m▸\x1b[0m refreshed the capture runner on {host}");
         }
         println!(

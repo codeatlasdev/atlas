@@ -21,8 +21,8 @@ use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Output, Remote};
 
 use super::apt::{self, Deps};
-use super::install::prime_sudo;
 use super::layout::WHICH_USER;
+use super::privileged::Priv;
 
 /// The oldest Node the pinned Playwright runs on (its `engines`: `>=20`). Ubuntu 24.04's
 /// `apt install nodejs` is 18 and is refused by Playwright itself.
@@ -64,9 +64,10 @@ impl TargetArgs {
         }
     }
 
-    /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either.
-    async fn prime_sudo(&self, r: &Remote, verb: &str) -> Result<()> {
-        prime_sudo(
+    /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either, with the
+    /// password on every call when Atlas Desktop sent one.
+    async fn privileged<'a>(&self, r: &'a Remote, verb: &str) -> Result<Priv<'a>> {
+        Priv::prepare(
             r,
             &self.ssh_target,
             self.sudo_password_stdin,
@@ -81,13 +82,13 @@ impl AtlasCommand for BrowsersArgs {
         match self.command {
             BrowsersCommands::Install(a) => {
                 let r = a.remote();
-                a.prime_sudo(&r, "install").await?;
-                install(&r, &a.ssh_target).await
+                let p = a.privileged(&r, "install").await?;
+                install(&p, &a.ssh_target).await
             }
             BrowsersCommands::Status(a) => {
                 let r = a.remote();
-                a.prime_sudo(&r, "status").await?;
-                status(&r, &a.ssh_target).await
+                let p = a.privileged(&r, "status").await?;
+                status(&p, &a.ssh_target).await
             }
         }
     }
@@ -161,7 +162,7 @@ pub fn capture_present_script() -> String {
 /// Bring the runner of a server that has the capture dir up to this atlas: its `runner.mjs` and
 /// `detectors.mjs`, written as the crew user with the script `install` uses. No root, no npm, no
 /// browser download. A server without the capture dir is left alone. `true` when it wrote them.
-pub async fn refresh(r: &Remote, target: &str) -> Result<bool> {
+pub async fn refresh(r: &Priv<'_>, target: &str) -> Result<bool> {
     let o = r.exec(&capture_present_script()).await?;
     if o.code == 255 {
         bail!("cannot reach {target}: {}", o.stderr.trim());
@@ -248,7 +249,7 @@ fn fail(what: &str, target: &str, o: &Output) -> anyhow::Error {
 
 /// Install the capture runtime on the host. Idempotent: run it again to repair or to move to a new
 /// pinned version. Shared with `atlas crew install --browsers`.
-pub async fn install(r: &Remote, target: &str) -> Result<()> {
+pub async fn install(r: &Priv<'_>, target: &str) -> Result<()> {
     let step = |m: &str| eprintln!("\x1b[36m▸\x1b[0m {m}");
 
     step("checking node and npm");
@@ -332,7 +333,7 @@ fn status_report(target: &str, code: Option<i32>, stdout: &str) -> Result<String
         .collect())
 }
 
-async fn status(r: &Remote, target: &str) -> Result<()> {
+async fn status(r: &Priv<'_>, target: &str) -> Result<()> {
     let o = r.exec(&status_script()).await?;
     if o.code == 255 {
         bail!("cannot reach {target}: {}", o.stderr.trim());

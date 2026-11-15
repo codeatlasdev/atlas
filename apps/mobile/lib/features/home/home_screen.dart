@@ -437,7 +437,7 @@ class _Header extends ConsumerWidget {
             ? ('Connecting…', c.warning)
             : mismatch != null
             ? ('Needs an update', c.warning)
-            : ('Unreachable', c.faint));
+            : ('Unreachable', c.muted));
     final name = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -577,7 +577,7 @@ class _ProjectTile extends StatelessWidget {
     final failed = project.services.where((s) => s.state == 'failed').length;
     final lead = _lead;
     final (stateText, stateColor) = !project.running
-        ? ('stopped', c.faint)
+        ? ('stopped', c.muted)
         : failed > 0
         ? ('$failed down', c.error)
         : project.services.isEmpty
@@ -648,7 +648,7 @@ class _ProjectTile extends StatelessWidget {
                     if (lead == null)
                       Text(
                         project.running ? 'No agent here' : 'Tap to open',
-                        style: TextStyle(fontSize: 14.5, color: c.faint),
+                        style: TextStyle(fontSize: 14.5, color: c.muted),
                       )
                     else
                       _AgentLine(status: lead.$2, more: agents.length - 1),

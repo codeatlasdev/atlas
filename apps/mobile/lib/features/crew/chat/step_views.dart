@@ -179,7 +179,7 @@ class _StepGroupRow extends StatelessWidget {
             '+$earlier earlier',
             style: TextStyle(
               fontSize: 11,
-              color: c.faint,
+              color: c.muted,
               fontStyle: FontStyle.italic,
             ),
           ),

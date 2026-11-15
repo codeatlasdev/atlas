@@ -38,7 +38,11 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
   /// `elevated_surface.background`: sheets, menus, dialogs.
   final Color overlay;
   final Color text;
+
+  /// `text.muted`: secondary text that carries information (timestamps, captions, labels). AA on every surface.
   final Color muted;
+
+  /// `text.disabled`: icons, dots, placeholders, disabled controls, decoration. Below AA (4.1:1), never readable text.
   final Color faint;
   final Color accent;
   final Color onAccent;
@@ -59,7 +63,7 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
     raised: Color(0xFF1D2637),
     overlay: Color(0xFF273143),
     text: Color(0xFFC0CAF5),
-    muted: Color(0xFF9AA7CC),
+    muted: Color(0xFFB9C4EB),
     faint: Color(0xFF6F7C9F),
     accent: Color(0xFF87ADFB),
     onAccent: Color(0xFF0B1320),
@@ -186,7 +190,7 @@ ThemeData atlasTheme() {
         letterSpacing: .2,
       ),
       bodySmall: text.bodySmall?.copyWith(color: c.muted),
-      labelSmall: text.labelSmall?.copyWith(color: c.faint, letterSpacing: .3),
+      labelSmall: text.labelSmall?.copyWith(color: c.muted, letterSpacing: .3),
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: c.ground,

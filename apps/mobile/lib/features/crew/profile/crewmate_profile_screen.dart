@@ -299,7 +299,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                   ? const CircularProgressIndicator()
                   : Text(
                       'Crewmate not found',
-                      style: TextStyle(color: c.faint),
+                      style: TextStyle(color: c.muted),
                     ),
             )
           : Stack(
@@ -363,7 +363,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                               style: TextStyle(
                                 color: crewmate.role.isNotEmpty
                                     ? c.text
-                                    : c.faint,
+                                    : c.muted,
                                 height: 1.45,
                                 fontSize: 15,
                               ),

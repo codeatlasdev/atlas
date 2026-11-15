@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Atlas Mobile: small text is readable again, and the phone's colours can no longer drift from the desktop's.** Timestamps, captions and labels used the "disabled" grey, which is 4.1:1 on the card colour (the minimum for small text is 4.5:1); they now use the secondary text colour, 9.9:1. That colour had also drifted from the desktop theme (`#9AA7CC` against the desktop's `#B9C4EB`); it now matches, and a test reads `apps/desktop/src/lib/themes/atlas.json` and fails when any phone colour differs, and when text falls under 4.5:1 on any surface. The disabled grey stays for icons, dots, placeholders and disabled controls.
+
 ## [1.5.0-alpha.26] — 2026-11-15
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

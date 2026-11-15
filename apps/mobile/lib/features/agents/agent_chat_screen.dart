@@ -771,7 +771,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                     Center(
                       child: Text(
                         'Nothing here yet',
-                        style: TextStyle(color: c.faint),
+                        style: TextStyle(color: c.muted),
                       ),
                     ),
                   if (fresh)

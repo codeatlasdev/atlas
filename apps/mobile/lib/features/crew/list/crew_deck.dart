@@ -125,7 +125,7 @@ class DeckMate extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: entry.online ? c.text : c.faint,
+                  color: entry.online ? c.text : c.muted,
                 ),
               ),
               const SizedBox(height: 2),

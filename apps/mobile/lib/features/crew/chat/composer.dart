@@ -122,7 +122,7 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
                 padding: const EdgeInsets.only(left: Space.lg, bottom: 6),
                 child: Text(
                   queued == 1 ? '1 task queued' : '$queued tasks queued',
-                  style: TextStyle(fontSize: 12, color: c.faint),
+                  style: TextStyle(fontSize: 12, color: c.muted),
                 ),
               ),
             if (_error != null)

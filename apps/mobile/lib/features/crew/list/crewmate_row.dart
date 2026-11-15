@@ -79,14 +79,14 @@ class CrewmateRow extends StatelessWidget {
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 16,
-                                color: entry.online ? c.text : c.faint,
+                                color: entry.online ? c.text : c.muted,
                               ),
                             ),
                           ),
                           if (when.isNotEmpty)
                             Text(
                               when,
-                              style: TextStyle(fontSize: 13, color: c.faint),
+                              style: TextStyle(fontSize: 13, color: c.muted),
                             ),
                         ],
                       ),
@@ -134,7 +134,7 @@ class CrewmateRow extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             entry.hostName,
-                            style: TextStyle(fontSize: 12, color: c.faint),
+                            style: TextStyle(fontSize: 12, color: c.muted),
                           ),
                         ),
                     ],

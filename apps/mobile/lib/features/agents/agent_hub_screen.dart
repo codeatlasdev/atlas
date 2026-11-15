@@ -166,7 +166,7 @@ class _AgentHubScreenState extends State<AgentHubScreen> {
                             t.nodes.isEmpty
                                 ? 'No agents yet'
                                 : 'No agents match this filter',
-                            style: TextStyle(color: c.faint),
+                            style: TextStyle(color: c.muted),
                           ),
                         )
                       : ListView.builder(
@@ -392,7 +392,7 @@ class HubRow extends StatelessWidget {
                           '↳ ${parent.isRoot ? 'Main' : parent.id}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: c.faint),
+                          style: TextStyle(fontSize: 12, color: c.muted),
                         ),
                       if (meta.isNotEmpty)
                         Text(
@@ -421,7 +421,7 @@ class HubRow extends StatelessWidget {
                             ].where((s) => s.isNotEmpty).join(' · '),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: c.faint),
+                            style: TextStyle(fontSize: 12, color: c.muted),
                           ),
                         ),
                     ],
@@ -851,7 +851,7 @@ class _RecentRow extends StatelessWidget {
               at,
               style: TextStyle(
                 fontSize: 11.5,
-                color: c.faint,
+                color: c.muted,
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
               ),

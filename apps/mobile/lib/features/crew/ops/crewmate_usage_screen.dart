@@ -90,7 +90,7 @@ class CrewmateUsageScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(top: Space.lg),
                   child: Text(
                     'No usage recorded yet. Only engines that report tokens show here.',
-                    style: TextStyle(color: c.faint, fontSize: 13),
+                    style: TextStyle(color: c.muted, fontSize: 13),
                   ),
                 ),
               const SectionHeader('Engine limits'),
@@ -98,7 +98,7 @@ class CrewmateUsageScreen extends ConsumerWidget {
                 loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text(
                   '${e is StateError ? e.message : e}',
-                  style: TextStyle(color: c.faint, fontSize: 13),
+                  style: TextStyle(color: c.muted, fontSize: 13),
                 ),
                 data: (l) => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,7 +167,7 @@ class _Stat extends StatelessWidget {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(color: c.faint, fontSize: 12)),
+            Text(label, style: TextStyle(color: c.muted, fontSize: 12)),
           ],
         ),
       ),

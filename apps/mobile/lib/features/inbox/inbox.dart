@@ -112,14 +112,9 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: Space.lg),
                 child: Column(
                   children: [
-                    EnterFade(
-                      child: AttentionHero(item: items.first, onOpen: open),
-                    ),
+                    AttentionHero(item: items.first, onOpen: open),
                     for (var i = 1; i < items.length; i++)
-                      EnterFade(
-                        index: i,
-                        child: AttentionMore(item: items[i], onOpen: open),
-                      ),
+                      AttentionMore(item: items[i], onOpen: open),
                   ],
                 ),
               ),
@@ -130,15 +125,11 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
                 child: SectionHeader('Recent'),
               ),
               for (var i = 0; i < recent.length; i++)
-                EnterFade(
-                  index: i,
-                  child: ActivityRow(
-                    item: recent[i],
-                    unread:
-                        _seenBefore == null ||
-                        recent[i].at.isAfter(_seenBefore!),
-                    last: i == recent.length - 1,
-                  ),
+                ActivityRow(
+                  item: recent[i],
+                  unread:
+                      _seenBefore == null || recent[i].at.isAfter(_seenBefore!),
+                  last: i == recent.length - 1,
                 ),
             ],
           ],

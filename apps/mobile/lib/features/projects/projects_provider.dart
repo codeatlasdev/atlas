@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/features/projects/project_metrics.dart';
 
 /// Fetches the list of projects from the connected Mac.
 ///
@@ -25,3 +26,9 @@ final projectListProvider = FutureProvider.autoDispose
           .map((e) => ProjectInfo.fromJson(e as Map<String, dynamic>))
           .toList();
     });
+
+/// The last `project_detail` answer of each project, by (computer, project id): a project opened again draws
+/// what it last knew on its first frame and updates in place when the fresh answer lands, instead of a
+/// skeleton for a round trip.
+final projectSnapshotCacheProvider =
+    Provider<Map<(String, String), ProjectSnapshot>>((_) => {});

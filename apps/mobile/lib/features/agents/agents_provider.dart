@@ -55,6 +55,11 @@ class AgentStatusMapNotifier extends AsyncNotifier<Map<String, AgentStatus>> {
   AgentStatusMapNotifier(this.device);
   final MacDevice device;
 
+  /// Prompts waiting for an answer, by pane: those `agent_status_all` listed and the approval pushes since.
+  /// A chat opened from a screen that already read them shows its banner on its first frame
+  /// ([PendingApprovalNotifier] starts from here).
+  final approvals = <String, AgentApproval>{};
+
   @override
   Future<Map<String, AgentStatus>> build() async {
     final mux = await ref.watch(connectionNotifierProvider(device).future);
@@ -66,12 +71,24 @@ class AgentStatusMapNotifier extends AsyncNotifier<Map<String, AgentStatus>> {
     final map = raw.map(
       (k, v) => MapEntry(k, AgentStatus.fromJson(v as Map<String, dynamic>)),
     );
+    approvals.clear();
+    for (final e in (resp['data']['pending_approvals'] as List?) ?? const []) {
+      final m = (e as Map).cast<String, dynamic>();
+      final pane = m['pane_key'] as String?;
+      if (pane != null) approvals[pane] = AgentApproval.fromJson(m);
+    }
 
     // Keep state live via push events.
     ref.listen<AsyncValue<Map<String, dynamic>>>(
       devicePushEventsProvider(device),
       (_, next) {
         next.whenData((event) {
+          final pane = event['pane_key'] as String?;
+          if (pane != null && event['ev'] == 'agent_approval') {
+            approvals[pane] = AgentApproval.fromJson(event);
+          } else if (pane != null && event['ev'] == 'agent_approval_done') {
+            approvals.remove(pane);
+          }
           if (event['ev'] != 'agent_status') return;
           final paneKey = event['pane_key'] as String;
           final status = AgentStatus.fromJson(
@@ -121,7 +138,11 @@ class PendingApprovalNotifier extends Notifier<AgentApproval?> {
       },
     );
     _seed();
-    return null;
+    // Already read by a screen of this computer (the project list, the inbox): there from the first frame.
+    final statuses = agentStatusMapNotifierProvider(device);
+    return ref.exists(statuses)
+        ? ref.read(statuses.notifier).approvals[paneKey]
+        : null;
   }
 
   Future<void> _seed() async {

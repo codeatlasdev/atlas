@@ -72,6 +72,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Crew: the audit log could show an agent acting before its task started.** The runner recorded `task_started` only after spawning the agent, so a fast agent's first tool call was audited first. The task is now recorded as running and audited as started before the agent exists; if that cannot be stored, the agent is not started at all (it used to start and then be killed).
 - **Atlas Crew: a task resumed after a restart could end `failed` although its agent finished.** A new hostd started the crew (tasks resumed after the restart, schedules and triggers due at once) before its hook server had bound and rewritten the endpoint file, so an agent that finished quickly posted its `done` to the previous daemon's dead port, and its exit then recorded `failed: agent exited (code 0)`. The crew now starts only after the endpoint is this daemon's.
 - **`scripts/heavy.sh` lets one heavy job run at a time again on Ubuntu 26.04.** Its fallback lock (an installed atlas without `run --heavy`, or none) was a `mkdir`, and uutils `mkdir` 0.10.0, Ubuntu 26.04's coreutils and GitHub's `ubuntu-latest` since image 20261111, tells both of two racing callers that it created the directory: two jobs ran at once in 22 of 40 tries. The lock is now a pid file the shell creates with noclobber (`O_CREAT|O_EXCL`), the same on macOS, Linux and Git Bash, with no `shlock` or `mkdir`; a stale lock is removed only if it still names the dead pid.
 

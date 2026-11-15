@@ -46,6 +46,18 @@ describe("release.yml", () => {
 	});
 });
 
+describe("the Arch package", () => {
+	// Incident: verify-linux (build-only run 43766908511): `pacman -U` of the package, then atlas-desktop panicked at start
+	// ("Failed to load ayatana-appindicator3") because libayatana-appindicator was only an optdepend. The tray library is
+	// dlopen'd by the app, so a hard dependency of every Arch install.
+	test("depends on the tray library atlas-desktop loads at startup, not just optdepends it", () => {
+		const pkgbuild = read("packaging/arch/PKGBUILD.in");
+		const depends = pkgbuild.match(/^depends=\((.*)\)$/m)?.[1] ?? "";
+		expect(depends).toContain("'libayatana-appindicator'");
+		expect(pkgbuild).not.toMatch(/optdepends=\([^)]*libayatana-appindicator/);
+	});
+});
+
 describe("ci.yml", () => {
 	test("the Linux launch job is part of the final CI gate", () => {
 		expect(ci.jobs["desktop-linux"]).toBeDefined();

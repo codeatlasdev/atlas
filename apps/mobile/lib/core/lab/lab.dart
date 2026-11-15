@@ -57,9 +57,8 @@ class LabFrame extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             lab.banner,
-            style: TextStyle(
+            style: Theme.of(context).textTheme.labelSmall!.copyWith(
               color: c.onAccent,
-              fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.2,
               fontFamily: monoFamily,

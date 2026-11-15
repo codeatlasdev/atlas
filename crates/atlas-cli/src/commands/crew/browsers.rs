@@ -12,15 +12,17 @@
 //! functions, pinned by tests; `atlas crew install --browsers` runs the same [`install`].
 
 use anyhow::{Result, bail};
-use atlas_host::crew::capture::{PACKAGE_LOCK, PLAYWRIGHT_VERSION, RUNNER_MJS, package_json};
+use atlas_host::crew::capture::{
+    DETECTORS_MJS, PACKAGE_LOCK, PLAYWRIGHT_VERSION, RUNNER_MJS, package_json,
+};
 use clap::{Args, Subcommand};
 
 use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::{Output, Remote};
 
 use super::apt::{self, Deps};
-use super::install::prime_sudo;
 use super::layout::WHICH_USER;
+use super::privileged::Priv;
 
 /// The oldest Node the pinned Playwright runs on (its `engines`: `>=20`). Ubuntu 24.04's
 /// `apt install nodejs` is 18 and is refused by Playwright itself.
@@ -55,16 +57,13 @@ pub struct TargetArgs {
 
 impl TargetArgs {
     fn remote(&self) -> Remote {
-        if self.port == 22 {
-            Remote::new(&self.ssh_target)
-        } else {
-            Remote::with_port(&self.ssh_target, self.port)
-        }
+        Remote::crew(&self.ssh_target, self.port)
     }
 
-    /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either.
-    async fn prime_sudo(&self, r: &Remote, verb: &str) -> Result<()> {
-        prime_sudo(
+    /// `sudo -u <crew user>` runs in `install` and `status`: make sudo work before either, with the
+    /// password on every call when Atlas Desktop sent one.
+    async fn privileged<'a>(&self, r: &'a Remote, verb: &str) -> Result<Priv<'a>> {
+        Priv::prepare(
             r,
             &self.ssh_target,
             self.sudo_password_stdin,
@@ -79,13 +78,13 @@ impl AtlasCommand for BrowsersArgs {
         match self.command {
             BrowsersCommands::Install(a) => {
                 let r = a.remote();
-                a.prime_sudo(&r, "install").await?;
-                install(&r, &a.ssh_target).await
+                let p = a.privileged(&r, "install").await?;
+                install(&p, &a.ssh_target).await
             }
             BrowsersCommands::Status(a) => {
                 let r = a.remote();
-                a.prime_sudo(&r, "status").await?;
-                status(&r, &a.ssh_target).await
+                let p = a.privileged(&r, "status").await?;
+                status(&p, &a.ssh_target).await
             }
         }
     }
@@ -124,9 +123,58 @@ pub fn mkdir_script() -> String {
 }
 
 /// As the crew user: write `file` of the capture dir from stdin (the caller pipes the text; a
-/// rewrite of the same text is harmless). `file` is one of our three constants, never user input.
+/// rewrite of the same text is harmless). `file` is one of our four constants, never user input.
 pub fn write_file_script(file: &str) -> String {
     format!("{}as sh -c 'cat > \"$1\"' _ \"$d/{file}\"", prelude())
+}
+
+/// Every file of the capture dir that atlas writes, as `(name, text)`: what `install` puts there.
+pub fn capture_files() -> [(&'static str, String); 4] {
+    [
+        ("package.json", package_json()),
+        ("package-lock.json", PACKAGE_LOCK.to_string()),
+        ("runner.mjs", RUNNER_MJS.to_string()),
+        ("detectors.mjs", DETECTORS_MJS.to_string()),
+    ]
+}
+
+/// The files `atlas crew update` rewrites on a server that already has the capture dir: the runner
+/// and what it imports. Not the package or its lock: they only move together with `npm ci` (which
+/// `install` runs; `status` says when the pinned Playwright differs), and the runner and the
+/// detectors need no npm. Taken from [`capture_files`], so the two never disagree about the text.
+pub fn refresh_files() -> Vec<(&'static str, String)> {
+    capture_files()
+        .into_iter()
+        .filter(|(n, _)| matches!(*n, "runner.mjs" | "detectors.mjs"))
+        .collect()
+}
+
+/// As the crew user: exit 0 when the capture dir has a runner (browsers were installed here), 1
+/// otherwise. `update` refreshes the runner only where there is one.
+pub fn capture_present_script() -> String {
+    format!("{}as test -f \"$d/runner.mjs\"", prelude())
+}
+
+/// Bring the runner of a server that has the capture dir up to this atlas: its `runner.mjs` and
+/// `detectors.mjs`, written as the crew user with the script `install` uses. No root, no npm, no
+/// browser download. A server without the capture dir is left alone. `true` when it wrote them.
+pub async fn refresh(r: &Priv<'_>, target: &str) -> Result<bool> {
+    let o = r.exec(&capture_present_script()).await?;
+    if o.code == 255 {
+        bail!("cannot reach {target}: {}", o.stderr.trim());
+    }
+    if o.code != 0 {
+        return Ok(false);
+    }
+    for (file, text) in refresh_files() {
+        let o = r
+            .exec_stdin(&write_file_script(file), Some(text.as_bytes()))
+            .await?;
+        if o.code != 0 {
+            return Err(fail(&format!("writing {file}"), target, &o));
+        }
+    }
+    Ok(true)
 }
 
 /// As the crew user: install exactly what `package-lock.json` says. `npm ci`, never `npm install`:
@@ -166,6 +214,7 @@ pub fn status_script() -> String {
         "{prelude}miss=0; m() {{ echo \"$1\"; miss=1; }}; \
          nc=$({node_check}); [ -z \"$nc\" ] || {{ echo \"$nc\"; miss=1; }}; \
          [ -f \"$d/runner.mjs\" ] || m 'runner: missing, run atlas crew browsers install'; \
+         [ -f \"$d/detectors.mjs\" ] || m 'detectors: missing (the runner imports it), run atlas crew browsers install'; \
          if [ ! -d \"$d/node_modules/playwright\" ]; then m 'playwright: package missing, run atlas crew browsers install'; \
          else v=$(sed -n 's/.*\"version\": *\"\\([^\"]*\\)\".*/\\1/p' \"$d/node_modules/playwright/package.json\" | head -n1); \
          [ \"$v\" = {pin} ] || m \"playwright: $v installed, atlas wants {pin}: run atlas crew browsers install\"; fi; \
@@ -196,7 +245,7 @@ fn fail(what: &str, target: &str, o: &Output) -> anyhow::Error {
 
 /// Install the capture runtime on the host. Idempotent: run it again to repair or to move to a new
 /// pinned version. Shared with `atlas crew install --browsers`.
-pub async fn install(r: &Remote, target: &str) -> Result<()> {
+pub async fn install(r: &Priv<'_>, target: &str) -> Result<()> {
     let step = |m: &str| eprintln!("\x1b[36m▸\x1b[0m {m}");
 
     step("checking node and npm");
@@ -210,11 +259,7 @@ pub async fn install(r: &Remote, target: &str) -> Result<()> {
     if o.code != 0 {
         return Err(fail("creating the capture directory", target, &o));
     }
-    for (file, text) in [
-        ("package.json", package_json()),
-        ("package-lock.json", PACKAGE_LOCK.to_string()),
-        ("runner.mjs", RUNNER_MJS.to_string()),
-    ] {
+    for (file, text) in capture_files() {
         let o = r
             .exec_stdin(&write_file_script(file), Some(text.as_bytes()))
             .await?;
@@ -284,7 +329,7 @@ fn status_report(target: &str, code: Option<i32>, stdout: &str) -> Result<String
         .collect())
 }
 
-async fn status(r: &Remote, target: &str) -> Result<()> {
+async fn status(r: &Priv<'_>, target: &str) -> Result<()> {
     let o = r.exec(&status_script()).await?;
     if o.code == 255 {
         bail!("cannot reach {target}: {}", o.stderr.trim());
@@ -475,6 +520,7 @@ mod tests {
         let s = status_script();
         for piece in [
             "runner: missing",
+            "detectors: missing",
             "playwright: package missing",
             "browsers: $e missing",
             "deps: $e does not start",
@@ -486,6 +532,137 @@ mod tests {
         assert!(s.ends_with("exit $miss"));
         // The launch probe only runs when everything else is there: it would only repeat the news.
         assert!(s.contains("if [ $miss = 0 ]"));
+    }
+
+    // `atlas crew update` refreshes the capture runner of a server that already has the browsers
+    // (hostd now asks the runner for the detectors, and an old runner writes no findings). It writes
+    // exactly the two files the runner is made of, with the same script install uses, and touches
+    // neither the package, its lock, npm nor the browsers.
+    #[test]
+    fn the_refresh_rewrites_the_runner_and_the_detectors_and_nothing_else() {
+        let files = refresh_files();
+        let names: Vec<_> = files.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, ["runner.mjs", "detectors.mjs"]);
+        assert_eq!(files[0].1, RUNNER_MJS);
+        assert_eq!(files[1].1, DETECTORS_MJS);
+        // Install writes these same two, from the same list, plus the package and its lock.
+        let installed: Vec<_> = capture_files().iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            installed,
+            [
+                "package.json",
+                "package-lock.json",
+                "runner.mjs",
+                "detectors.mjs"
+            ]
+        );
+        for (n, text) in &files {
+            assert!(capture_files().iter().any(|(m, t)| m == n && t == text));
+        }
+    }
+
+    // No root, no npm, no download, no delete: the refresh is `capture_present_script` (a `test -f`)
+    // and `write_file_script` per file, which is `sudo -u "$u" … cat >`.
+    #[test]
+    fn the_refresh_scripts_run_nothing_as_root_and_install_nothing() {
+        let mut scripts = vec![("present", capture_present_script())];
+        for (n, _) in refresh_files() {
+            scripts.push(("write", write_file_script(n)));
+        }
+        for (name, s) in scripts {
+            assert!(s.starts_with(&format!("u=$({WHICH_USER});")), "{name}: {s}");
+            assert_eq!(
+                count(&s, "sudo "),
+                count(&s, "sudo -u \"$u\" "),
+                "{name}: {s}"
+            );
+            for bad in [
+                "npm",
+                "npx",
+                "playwright install",
+                "apt-get",
+                "rm ",
+                "mkdir",
+                ">>",
+            ] {
+                assert!(!s.contains(bad), "{name} contains {bad}: {s}");
+            }
+        }
+    }
+
+    // On a real shell against a temp "server": with the capture dir present an old runner is
+    // replaced by this atlas's two files; without it nothing is written, not even the directory.
+    #[cfg(unix)]
+    #[test]
+    fn the_refresh_replaces_an_old_runner_and_leaves_a_server_without_capture_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let bin = tmp.path().join("bin");
+        let cap = tmp.path().join("cap");
+        std::fs::create_dir_all(&bin).unwrap();
+        for (name, body) in [
+            ("sudo", "[ \"$1\" = -u ] && shift && shift; exec \"$@\""),
+            ("id", "exit 0"),
+        ] {
+            let p = bin.join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let sh = |script: &str, stdin: Option<&str>| {
+            use std::io::Write;
+            let script = script.replace("/var/lib/$u/.atlas/capture", &cap.to_string_lossy());
+            let mut c = std::process::Command::new("/bin/sh")
+                .args(["-c", &script])
+                .env("PATH", &path)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            c.stdin
+                .take()
+                .unwrap()
+                .write_all(stdin.unwrap_or("").as_bytes())
+                .unwrap();
+            c.wait_with_output().unwrap()
+        };
+
+        // No capture dir: the probe says so and the caller writes nothing.
+        assert!(!sh(&capture_present_script(), None).status.success());
+        assert!(!cap.exists());
+
+        // An old install: a runner from before the detectors, a package, a lock, a browsers dir.
+        std::fs::create_dir_all(cap.join("browsers")).unwrap();
+        std::fs::write(cap.join("runner.mjs"), "// old runner").unwrap();
+        std::fs::write(cap.join("package.json"), "{\"old\":true}").unwrap();
+        assert!(sh(&capture_present_script(), None).status.success());
+        for (n, text) in refresh_files() {
+            let o = sh(&write_file_script(n), Some(&text));
+            assert!(
+                o.status.success(),
+                "{n}: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(cap.join("runner.mjs")).unwrap(),
+            RUNNER_MJS
+        );
+        assert_eq!(
+            std::fs::read_to_string(cap.join("detectors.mjs")).unwrap(),
+            DETECTORS_MJS
+        );
+        assert_eq!(
+            std::fs::read_to_string(cap.join("package.json")).unwrap(),
+            "{\"old\":true}",
+            "the package is not the refresh's: it is moved with npm ci by install"
+        );
+        assert!(cap.join("browsers").is_dir());
     }
 
     // The scripts are real shell: `sh -n` parses them.
@@ -738,6 +915,7 @@ mod tests {
                 ("package.json", package_json()),
                 ("package-lock.json", PACKAGE_LOCK.to_string()),
                 ("runner.mjs", RUNNER_MJS.to_string()),
+                ("detectors.mjs", DETECTORS_MJS.to_string()),
             ] {
                 ok(&sh(&write_file_script(file), Some(&text)), file);
             }
@@ -752,6 +930,11 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(cap.join("runner.mjs")).unwrap(),
             RUNNER_MJS
+        );
+        assert_eq!(
+            std::fs::read_to_string(cap.join("detectors.mjs")).unwrap(),
+            DETECTORS_MJS,
+            "the runner imports it: without the file the whole capture dies at load"
         );
         // The lock was honoured: the installed package is exactly the pin.
         let pkg =

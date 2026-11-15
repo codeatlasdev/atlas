@@ -49,19 +49,21 @@ pub fn offline_cache_path(target: &str) -> &'static str {
 }
 
 /// Shell (run on the host) that downloads `version` for `target`, checks its `.sha256` and leaves the
-/// verified binary at `<INSTALL_DIR>/atlas.new`. Nothing replaces `atlas` here.
+/// verified binary at `<INSTALL_DIR>/atlas.new`. Nothing replaces `atlas` here. The temp file template ends in
+/// the X's (BSD and busybox `mktemp` refuse a suffix after them, and macOS leaves a literal file behind that
+/// makes the next call fail) and is removed however the script ends.
 pub fn download_script(version: &str, target: &str) -> String {
     let url = asset_url(version, target);
     format!(
         r#"sudo mkdir -p {d} &&
-tmpf=$(mktemp /tmp/atlas-crew-XXXXXX.tar.gz) &&
+tmpf=$(mktemp /tmp/atlas-crew-XXXXXX) &&
+trap 'rm -f "$tmpf"' EXIT &&
 curl -fsSL {url_q} -o "$tmpf" &&
 WANT=$(curl -fsSL {sha_q} | awk '{{print $1}}') &&
 GOT=$(sha256sum "$tmpf" | awk '{{print $1}}') &&
-{{ [ "$WANT" = "$GOT" ] || {{ echo 'checksum mismatch' >&2; rm -f "$tmpf"; exit 1; }}; }} &&
+{{ [ "$WANT" = "$GOT" ] || {{ echo 'checksum mismatch' >&2; exit 1; }}; }} &&
 sudo tar -xzf "$tmpf" -O atlas | sudo tee {d}/atlas.new > /dev/null &&
-sudo chmod +x {d}/atlas.new &&
-rm -f "$tmpf""#,
+sudo chmod +x {d}/atlas.new"#,
         d = INSTALL_DIR,
         url_q = shq(&url),
         sha_q = shq(&format!("{url}.sha256")),
@@ -76,12 +78,146 @@ pub fn stage_upload_script() -> String {
     )
 }
 
-/// Shell for a fresh install: move the staged `atlas.new` over `atlas` (the unit is written and started after).
-pub fn install_staged_script() -> String {
+/// Shell for an install or a reinstall: the same swap as an update ([`swap_script`]), so the binary that is
+/// there keeps as `atlas.prev`, the unit is restarted, hostd must answer within `timeout_s`, and a binary
+/// that does not bring it up is rolled back. A fresh host has no `atlas` yet, so no `.prev` and, if the new
+/// binary is dead, exit 4 (nothing to fall back to). The unit file must already exist.
+pub fn install_script(timeout_s: u32) -> String {
+    swap_script(timeout_s)
+}
+
+/// What the host's one preflight probe saw.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Preflight {
+    /// `uname -sm`.
+    pub uname: String,
+    /// `/run/systemd/system` exists: systemd is PID 1 (a container with `systemctl` installed has none).
+    pub systemd: bool,
+    /// Tools the install or the runtime needs that the host lacks.
+    pub tools: Vec<String>,
+}
+
+impl Preflight {
+    pub fn is_ready(&self) -> bool {
+        self.systemd && self.tools.is_empty()
+    }
+}
+
+/// Every tool the scripts and the crew runtime need on the host, with the Debian/Ubuntu package that
+/// brings it (`coreutils` ones share a package). Checked in one go so the person sees the whole list.
+const NEEDED: &[(&str, &str)] = &[
+    ("sudo", "sudo"),
+    ("systemctl", "systemd"),
+    ("bash", "bash"),
+    ("curl", "curl"),
+    ("tar", "tar"),
+    ("sha256sum", "coreutils"),
+    ("mktemp", "coreutils"),
+    ("tee", "coreutils"),
+    ("awk", "gawk"),
+    ("useradd", "passwd"),
+    ("git", "git"),
+];
+
+/// Shell (run on the host) that changes nothing: prints `uname -sm`, `systemd: yes|no` and one
+/// `missing: <tool>` line per missing tool, and exits 1 when anything is missing.
+pub fn preflight_script() -> String {
+    let tools = NEEDED.iter().map(|(t, _)| *t).collect::<Vec<_>>().join(" ");
     format!(
-        "test -x {d}/atlas.new && sudo mv -f {d}/atlas.new {d}/atlas",
-        d = INSTALL_DIR
+        r#"uname -sm; bad=0
+if [ -d /run/systemd/system ]; then echo 'systemd: yes'; else echo 'systemd: no'; bad=1; fi
+for t in {tools}; do command -v "$t" >/dev/null 2>&1 || {{ echo "missing: $t"; bad=1; }}; done
+exit $bad"#
     )
+}
+
+/// Read [`preflight_script`]'s output.
+pub fn parse_preflight(stdout: &str) -> Preflight {
+    let mut p = Preflight::default();
+    for (i, l) in stdout.lines().enumerate() {
+        if let Some(t) = l.strip_prefix("missing: ") {
+            p.tools.push(t.trim().to_owned());
+        } else if let Some(s) = l.strip_prefix("systemd: ") {
+            p.systemd = s.trim() == "yes";
+        } else if i == 0 {
+            p.uname = l.trim().to_owned();
+        }
+    }
+    p
+}
+
+/// The one error for everything the host lacks: each missing tool, the package that has it, one install line.
+pub fn preflight_error(target: &str, p: &Preflight) -> anyhow::Error {
+    let mut lines = Vec::new();
+    if !p.systemd {
+        lines.push(
+            "systemd is not running as PID 1 (no /run/systemd/system): a crew server needs a systemd host, not a container or an OpenRC/runit system"
+                .to_owned(),
+        );
+    }
+    let pkgs: Vec<&str> = p
+        .tools
+        .iter()
+        .filter_map(|t| NEEDED.iter().find(|(n, _)| n == t).map(|(_, pkg)| *pkg))
+        .collect();
+    if !p.tools.is_empty() {
+        let mut uniq = pkgs.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
+        lines.push(format!(
+            "missing on the host: {}\n  Debian/Ubuntu: sudo apt-get install -y {}",
+            p.tools.join(", "),
+            uniq.join(" ")
+        ));
+    }
+    anyhow::anyhow!(
+        "{target} is not ready for a crew server; nothing was changed:\n  {}",
+        lines.join("\n  ")
+    )
+}
+
+/// `script` for a host whose sudo asks for a password. With `tty_tickets` (the Debian and Ubuntu default) the
+/// credential `sudo -v` caches belongs to one tty, and every ssh exec has its own, so a password given once
+/// is lost by the next call. Each call instead reads the password from the FIRST line of its stdin (never
+/// argv, never in the script text) and answers every `sudo` in it with `sudo -A`: a temp dir at the front of
+/// `PATH` holds an askpass helper (it prints the password from this shell's environment) and a `sudo` shim that
+/// adds `-A`. The password never goes through the stdin of `sudo`, so the rest of the call's stdin stays
+/// untouched for the command that reads it (`sudo tee file` of an upload), whichever `sudo` comes first. The
+/// temp dir is removed on exit.
+///
+/// The returned text never contains a `"`, whatever `script` holds: `script` itself is written to a file in
+/// that temp dir from octal escapes ([`octal`]) and run from there, with the caller's stdin. A Windows client
+/// sends a script that has a `"` as `printf … | bash` (`atlas_core::ssh::windows_safe`), which would make bash
+/// read its script from the very stdin that carries the password and the upload.
+pub fn with_sudo_password(script: &str) -> String {
+    format!(
+        r"IFS= read -r ATLAS_SUDO_PW; export ATLAS_SUDO_PW; \
+ATLAS_SHIM=$(mktemp -d) || exit 1; trap 'rm -rf '$ATLAS_SHIM EXIT; \
+real=$(command -v sudo) || exit 1; \
+printf '%b\n' '#!/bin/sh' 'exec printenv ATLAS_SUDO_PW' > $ATLAS_SHIM/askpass; \
+printf '%b\n' '#!/bin/sh' 'exec '$real' -A \042$@\042' > $ATLAS_SHIM/sudo; \
+printf %b '{body}' > $ATLAS_SHIM/run; \
+chmod 700 $ATLAS_SHIM/askpass $ATLAS_SHIM/sudo; \
+export SUDO_ASKPASS=$ATLAS_SHIM/askpass PATH=$ATLAS_SHIM:$PATH; \
+bash $ATLAS_SHIM/run; exit $?",
+        body = octal(script)
+    )
+}
+
+/// `s` as text for `printf %b` that has no quote, no `$` and no raw backslash: every byte outside a small safe
+/// set becomes `\0NNN`, so the remote `printf` gives back exactly `s`. The leading `0` matters: `printf %b` reads
+/// `\0` followed by up to three octal digits, so a literal digit after the escape (`$0`) is never swallowed.
+fn octal(s: &str) -> String {
+    use std::fmt::Write as _;
+    s.bytes()
+        .fold(String::with_capacity(s.len() * 2), |mut o, b| {
+            if b.is_ascii_alphanumeric() || b" ./_:=-".contains(&b) {
+                o.push(b as char);
+            } else {
+                let _ = write!(o, "\\0{b:03o}");
+            }
+            o
+        })
 }
 
 /// What the hostd health wait saw.
@@ -150,20 +286,26 @@ fn restart_and_wait() -> String {
 }
 
 /// Shell: put the staged `atlas.new` in place (keeping the current one as `atlas.prev`), restart the unit,
-/// wait up to `timeout_s` for hostd and, if it does not answer, restore `atlas.prev` and restart.
+/// wait up to `timeout_s` for hostd and, if it does not answer, restore the binary that was there and restart.
 /// Prints `update: ok <version>` or `update: rolled-back` and exits 0 / 3 (rolled back) / 4 (rollback failed).
 /// Only the binary dir is touched: the crew home (data, secrets, `crew.json` with the paused flag) never is,
 /// so a paused crew stays paused.
+///
+/// Safe to run twice (ssh can drop after the remote side ran and the client retries): the backup is made
+/// only from a binary that differs from the staged one, so a re-run never overwrites `atlas.prev` with the
+/// new binary, and a stale `atlas.prev` from an older run is never what a failed run rolls back to.
 pub fn swap_script(timeout_s: u32) -> String {
     let d = INSTALL_DIR;
     format!(
         r#"u=$({WHICH_USER}); {health}
 test -x {d}/atlas.new || {{ echo 'no staged binary at {d}/atlas.new' >&2; exit 2; }}
-if [ -x {d}/atlas ]; then sudo cp -p {d}/atlas {d}/atlas.prev || exit 2; fi
+kept=
+if [ -x {d}/atlas ] && ! cmp -s {d}/atlas {d}/atlas.new; then sudo cp -p {d}/atlas {d}/atlas.prev || exit 2; kept=1; fi
 sudo mv -f {d}/atlas.new {d}/atlas || exit 2
 if {restart}; then echo "update: ok $v"; exit 0; fi
-echo 'hostd did not come back: restoring the previous binary' >&2
-if [ -x {d}/atlas.prev ]; then
+echo 'hostd did not come back' >&2
+if [ -n "$kept" ]; then
+  echo 'restoring the previous binary' >&2
   sudo mv -f {d}/atlas.prev {d}/atlas
   if {restart}; then echo 'update: rolled-back'; exit 3; fi
 fi
@@ -333,22 +475,6 @@ mod tests {
         assert!(sh.contains("tee /usr/local/lib/atlas-crew/atlas.new"));
         assert!(sh.contains("chmod +x /usr/local/lib/atlas-crew/atlas.new"));
         assert!(!sh.contains("mv "), "{sh}");
-    }
-
-    // Install stages like update does, then moves the verified binary into place: one download path for both.
-    #[test]
-    fn a_fresh_install_moves_the_staged_binary_into_place() {
-        let sh = install_staged_script();
-        assert!(
-            sh.contains("test -x /usr/local/lib/atlas-crew/atlas.new"),
-            "{sh}"
-        );
-        assert!(
-            sh.contains(
-                "mv -f /usr/local/lib/atlas-crew/atlas.new /usr/local/lib/atlas-crew/atlas"
-            ),
-            "{sh}"
-        );
     }
 
     // The script prints what the health wait saw; the CLI turns that into `Health` and then `verdict`.

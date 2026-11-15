@@ -48,11 +48,15 @@ pub struct HostdArgs {
     #[arg(long, conflicts_with_all = ["stop", "status", "upgrade"])]
     pub restart: bool,
     /// Pause every crewmate: running tasks are cancelled, queues are held (`atlas crew pause` runs this on a server)
-    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_resume"])]
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_resume", "mobile_pair"])]
     pub crew_pause: bool,
     /// Resume the crewmates after `--crew-pause`
-    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause"])]
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause", "mobile_pair"])]
     pub crew_resume: bool,
+    /// Issue a pairing invite for a phone (code, addresses, relay) and print it as one JSON object; waits for the
+    /// relay address so the link works off the LAN (`atlas crew pair` runs this on a crew server)
+    #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause", "crew_resume", "crew_export", "crew_import"])]
+    pub mobile_pair: bool,
     /// Write the crew archive (a .tar.gz of crewmates, memory, tasks, automations, usage) to stdout, reading the
     /// files directly (no daemon needed). `atlas crew export` runs this on the server
     #[arg(long, conflicts_with_all = ["stop", "status", "upgrade", "check", "reconcile", "restart", "takeover", "lab", "crew_pause", "crew_resume", "crew_import"])]
@@ -74,6 +78,30 @@ pub struct HostdArgs {
     /// files live in `<main dir>/lab` (override with --dir); combine with --stop/--status to manage it
     #[arg(long, conflicts_with_all = ["takeover", "upgrade", "check", "reconcile", "restart"])]
     pub lab: bool,
+}
+
+/// A pairing invite from the running daemon. The endpoint binds in the background on the first request and its
+/// home relay is chosen a moment later, so ask again (each ask is a fresh code, only the last is returned)
+/// until the invite carries the relay a phone off this network needs, for at most [`RELAY_WAIT`]; a daemon
+/// without relays (`ATLAS_MOBILE_RELAY=0`) answers with its direct addresses once that time is up. An
+/// invite with neither is an error: nothing could dial it.
+async fn pair_invite(c: &HostClient) -> Result<Value> {
+    const RELAY_WAIT: Duration = Duration::from_secs(8);
+    let t0 = std::time::Instant::now();
+    loop {
+        let v = c.call("mobile_pair_start", json!({})).await?;
+        let relay = v["relay_url"].as_str().is_some();
+        let direct = v["addrs"].as_array().is_some_and(|a| !a.is_empty());
+        if relay || (direct && t0.elapsed() >= RELAY_WAIT) {
+            return Ok(v);
+        }
+        if t0.elapsed() >= RELAY_WAIT * 2 {
+            return Err(anyhow!(
+                "the pairing endpoint has no address a phone could dial (no relay, no LAN address): is this machine online?"
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
 }
 
 /// The lab's own directory under the main hostd dir, unless `--dir` names one.
@@ -166,6 +194,13 @@ impl AtlasCommand for HostdArgs {
                     }
                 );
             }
+            return Ok(());
+        }
+        if self.mobile_pair {
+            let c = HostClient::connect_dir(&dir, "cli")
+                .await
+                .map_err(|_| anyhow!("atlas hostd is not running ({})", dir.display()))?;
+            println!("{}", pair_invite(&c).await?);
             return Ok(());
         }
         if self.crew_pause || self.crew_resume {

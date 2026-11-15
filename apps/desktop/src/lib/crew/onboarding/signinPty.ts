@@ -1,7 +1,8 @@
 /**
  * The interactive engine sign-in terminal: an `ssh -t <crew server> <engine>` pty opened through hostd, its output
  * with terminal escapes stripped, and the input line written back. Plain functions over Tauri; the onboarding state
- * decides what to do with the output and when the pty exits.
+ * decides what to do with the output and when the pty exits. The ssh argv (the server's port, the agents' PATH) comes
+ * from Rust (`crew_signin_argv`), the same helper every other ssh call to a crew server uses.
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -14,18 +15,25 @@ export function stripAnsi(s: string): string {
 		.replace(/[^\n]*\r([^\n])/g, "$1");
 }
 
+/** The `pty_create` request for a terminal running `argv` (the argv is Rust's: `crew_signin_argv`). */
+export function signinPtyRequest(argv: string[]): { argv: string[]; cwd: string } {
+	return { argv, cwd: "/" };
+}
+
 /**
- * Open `ssh -t <sshTarget> <command>` in a hostd pty and attach to it. `onCreated` gets the pty id as soon as it
- * exists, before the attach, so a failed attach still leaves the terminal panel (and its error) showing.
+ * Open the sign-in terminal of crew server `hostKey` (`ssh:user@host`) running `command` in a hostd pty and attach to
+ * it. `onCreated` gets the pty id as soon as it exists, before the attach, so a failed attach still leaves the
+ * terminal panel (and its error) showing.
  */
 export async function openSigninPty(
-	sshTarget: string,
+	hostKey: string,
 	command: string,
 	onCreated: (pty: string) => void,
 ): Promise<void> {
+	const argv = await invoke<string[]>("crew_signin_argv", { hostKey, command });
 	const r = await invoke<{ pty: string }>("host_call", {
 		cmd: "pty_create",
-		args: { argv: ["ssh", "-t", sshTarget, command], cwd: "/" },
+		args: signinPtyRequest(argv),
 	});
 	onCreated(r.pty);
 	await invoke("host_call", { cmd: "pty_attach", args: { pty: r.pty } });

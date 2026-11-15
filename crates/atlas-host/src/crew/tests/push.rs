@@ -86,9 +86,12 @@ fn the_phones_push_register_args_parse_into_the_command() {
             token,
             platform,
             grant,
+            node,
         } => {
             assert!(!token.is_empty() && platform == "fcm");
             assert!(!grant.is_empty(), "the phone must send the grant");
+            // The phone never names itself: its connection (or the Mac's relay) does.
+            assert!(node.is_empty(), "the phone's args carry no node");
         }
         other => panic!("parsed as {other:?}"),
     }

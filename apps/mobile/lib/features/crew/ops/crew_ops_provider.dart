@@ -5,7 +5,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -17,8 +17,7 @@ Future<Map<String, dynamic>> callCrew(
   String cmd, [
   Map<String, dynamic> args = const {},
 ]) async {
-  final mux = await ref.watch(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMux(ref, device);
   final resp = await mux.call(cmd, args);
   if (resp['ok'] != true) {
     throw StateError(resp['error'] as String? ?? 'the server refused');
@@ -80,13 +79,37 @@ Future<void> saveCrewSettings(
   MacDevice device,
   CrewSettings settings,
 ) async {
-  final mux = await ref.read(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call('crew_settings_set', settings.toArgs());
   if (resp['ok'] != true) {
     throw StateError(resp['error'] as String? ?? 'the server refused');
   }
   ref.invalidate(crewSettingsProvider(device));
+}
+
+/// Whether each engine of [device] is signed in (`crew_engine_status` with `refresh`: hostd runs each engine's
+/// own status command, bounded, so the row is the truth when the screen opens and after a sign-in).
+final engineStatusProvider = FutureProvider.autoDispose
+    .family<List<EngineStatus>, MacDevice>((ref, device) async {
+      return parseEngineStatus(
+        await callCrew(ref, device, 'crew_engine_status', {'refresh': true}),
+      );
+    });
+
+/// Starts the sign-in terminal of [engine] on [device] (`crew_engine_login`, `Act` scope): the terminal runs only
+/// that engine's login command, and the caller opens it (`TerminalScreen`, which keeps typing behind Face ID).
+Future<EngineLogin> startEngineLogin(
+  WidgetRef ref,
+  MacDevice device,
+  String engine,
+) async {
+  final mux = await requireMuxOf(ref, device);
+  final resp = await mux.call('crew_engine_login', {'engine': engine});
+  if (resp['ok'] != true) {
+    throw StateError(resp['error'] as String? ?? 'the server refused');
+  }
+  ref.invalidate(engineStatusProvider(device));
+  return EngineLogin.fromJson((resp['data'] as Map).cast<String, dynamic>());
 }
 
 /// Replaces a crewmate's routines with [routines] (`crewmate_routine_set`, `Act` scope: hostd keeps the
@@ -97,8 +120,7 @@ Future<void> saveRoutines(
   String crewmateId,
   List<Routine> routines,
 ) async {
-  final mux = await ref.read(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call('crewmate_routine_set', {
     'id': crewmateId,
     'routines': [for (final r in routines) r.toJson()],

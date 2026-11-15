@@ -1,0 +1,16 @@
+{
+  "keys": {
+    "caps": "array",
+    "clients": "number",
+    "hostname": "string",
+    "lab": "null",
+    "live_ptys": "number",
+    "pid": "number",
+    "proto": "number",
+    "ptys": "number",
+    "queued": "object",
+    "uptime_s": "number",
+    "version": "string"
+  },
+  "proto": 2
+}

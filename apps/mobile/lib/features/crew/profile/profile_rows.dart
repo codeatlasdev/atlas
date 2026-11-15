@@ -24,14 +24,11 @@ class ProfileGroup extends StatelessWidget {
         children: [
           if (title != null)
             Padding(
-              padding: const EdgeInsets.only(left: Space.md, bottom: 8),
+              padding: const EdgeInsets.only(left: Space.md, bottom: Space.sm),
               child: Text(
                 title!,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: c.muted,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(fontWeight: FontWeight.w600, color: c.muted),
               ),
             ),
           ClipRRect(
@@ -89,13 +86,10 @@ class ProfileRow extends StatelessWidget {
         children: [
           Text(
             label!,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: fg,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(fontWeight: FontWeight.w600, color: fg),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Space.md),
           child!,
         ],
       );
@@ -104,25 +98,23 @@ class ProfileRow extends StatelessWidget {
         children: [
           if (icon != null) ...[
             Icon(icon, size: 20, color: danger ? c.error : c.muted),
-            const SizedBox(width: 12),
+            const SizedBox(width: Space.md),
           ],
           Expanded(
             child: Text(
               label!,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: fg,
-              ),
+              style: Theme.of(context).textTheme.bodyLarge!
+                  .copyWith(fontWeight: FontWeight.w500, color: fg),
             ),
           ),
           if (trailingText != null)
             Text(
               trailingText!,
-              style: TextStyle(fontSize: 14, color: c.accent),
+              style: Theme.of(context).textTheme.bodyLarge!
+                  .copyWith(color: c.accent),
             ),
           if (onTap != null && !danger) ...[
-            const SizedBox(width: 4),
+            const SizedBox(width: Space.xs),
             Icon(Icons.chevron_right_rounded, color: c.faint, size: 20),
           ],
         ],
@@ -139,7 +131,10 @@ class ProfileRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.md,
+        ),
         child: body,
       ),
     );
@@ -183,10 +178,11 @@ class ApprovalPicker extends StatelessWidget {
           onChanged: enabled ? onChanged : null,
         ),
         if (!enabled) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Text(
             'OpenCode crewmates run without approval prompts.',
-            style: TextStyle(color: c.muted, fontSize: 12),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ],
       ],
@@ -214,12 +210,13 @@ class ShortRepliesRow extends StatelessWidget {
             Expanded(
               child: Text(
                 'Summarize long replies with a cheap model.',
-                style: TextStyle(color: c.muted, fontSize: 13),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.muted),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         SegmentedChoice(
           options: const [
             ('crew', 'Crew default'),
@@ -246,6 +243,7 @@ class ShortRepliesRow extends StatelessWidget {
 
 /// A pill-shaped choice: the selected option sits on a sliding rounded thumb. Labels never
 /// wrap (Material's SegmentedButton broke "Crew default" in two next to its checkmark).
+/// The pill is drawn 40 dp high; each option is hit over the 48 dp around it.
 class SegmentedChoice extends StatelessWidget {
   const SegmentedChoice({
     super.key,
@@ -265,25 +263,31 @@ class SegmentedChoice extends StatelessWidget {
         .clamp(0, options.length - 1);
     return Opacity(
       opacity: onChanged == null ? .5 : 1,
-      child: Container(
-        height: 40,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: c.ground,
-          borderRadius: BorderRadius.circular(20),
-        ),
+      child: SizedBox(
+        height: 48,
         child: LayoutBuilder(
           builder: (_, box) {
-            final w = box.maxWidth / options.length;
+            final w = (box.maxWidth - 6) / options.length;
             return Stack(
               children: [
+                // The pill and its thumb: what the eye sees.
+                Positioned.fill(
+                  top: 4,
+                  bottom: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: c.ground,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
                 AnimatedPositioned(
                   duration: Motion.normal,
                   curve: Curves.easeOutCubic,
-                  left: w * index,
+                  left: 3 + w * index,
                   width: w,
-                  top: 0,
-                  bottom: 0,
+                  top: 7,
+                  bottom: 7,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: c.overlay,
@@ -291,42 +295,45 @@ class SegmentedChoice extends StatelessWidget {
                     ),
                   ),
                 ),
-                Row(
-                  children: [
-                    for (final (v, label) in options)
-                      Expanded(
-                        child: Semantics(
-                          button: true,
-                          selected: v == value,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: onChanged == null || v == value
-                                ? null
-                                : () {
-                                    HapticFeedback.selectionClick();
-                                    onChanged!(v);
-                                  },
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: Motion.fast,
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: v == value
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  color: v == value ? c.text : c.muted,
-                                ),
-                                child: Text(
-                                  label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Row(
+                    children: [
+                      for (final (v, label) in options)
+                        Expanded(
+                          child: Semantics(
+                            button: true,
+                            selected: v == value,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: onChanged == null || v == value
+                                  ? null
+                                  : () {
+                                      HapticFeedback.selectionClick();
+                                      onChanged!(v);
+                                    },
+                              child: Center(
+                                child: AnimatedDefaultTextStyle(
+                                  duration: Motion.fast,
+                                  style: Theme.of(context).textTheme.bodyMedium!
+                                      .copyWith(
+                                        fontWeight: v == value
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                        color: v == value ? c.text : c.muted,
+                                      ),
+                                  child: Text(
+                                    label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             );

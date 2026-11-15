@@ -36,7 +36,17 @@ fn seeded() -> Arc<FakeGithub> {
     f
 }
 
-async fn watch_repo(client: &HostClient, id: &str, extra: Value) {
+/// Add the GitHub automation, the way a user does: a new trigger starts at the head of the feed (what
+/// GitHub already lists is history), so the feed the test staged is held back until the baseline
+/// is written, then it is "what happened after".
+async fn watch_repo(
+    client: &HostClient,
+    dir: &std::path::Path,
+    api: &FakeGithub,
+    id: &str,
+    extra: Value,
+) {
+    let staged = std::mem::take(&mut *api.events.lock());
     let mut kind =
         json!({"type": "github", "repo": "o/r", "events": ["mention"], "handle": "nami"});
     for (k, v) in extra.as_object().unwrap() {
@@ -50,6 +60,12 @@ async fn watch_repo(client: &HostClient, id: &str, extra: Value) {
         )
         .await
         .unwrap();
+    let seen = dir.join("crew").join(id).join("gh_seen.jsonl");
+    until("the new trigger's baseline", async || {
+        seen.exists().then_some(())
+    })
+    .await;
+    *api.events.lock() = staged;
 }
 
 async fn tasks_of(client: &HostClient, id: &str) -> Vec<Value> {
@@ -104,7 +120,7 @@ async fn a_mention_starts_a_task_with_its_origin_replies_and_finishes_with_the_p
 
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Nami").await;
-    watch_repo(&client, &id, json!({})).await;
+    watch_repo(&client, &dir, &api, &id, json!({})).await;
 
     let task = until("the mention to become a finished task", async || {
         tasks_of(&client, &id)
@@ -199,7 +215,7 @@ async fn the_same_comment_never_starts_two_tasks_and_a_strangers_never_starts_on
 
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Nami").await;
-    watch_repo(&client, &id, json!({})).await;
+    watch_repo(&client, &dir, &api, &id, json!({})).await;
 
     until("the one task", async || {
         tasks_of(&client, &id)
@@ -252,7 +268,7 @@ async fn the_reply_the_crew_posted_does_not_trigger_it_again() {
 
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Nami").await;
-    watch_repo(&client, &id, json!({})).await;
+    watch_repo(&client, &dir, &api, &id, json!({})).await;
     until("the task", async || {
         tasks_of(&client, &id)
             .await
@@ -325,7 +341,14 @@ async fn a_review_comment_task_finishes_with_the_pr_link_of_its_branch() {
 
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Nami").await;
-    watch_repo(&client, &id, json!({"events": ["pr_review_comment"]})).await;
+    watch_repo(
+        &client,
+        &dir,
+        &api,
+        &id,
+        json!({"events": ["pr_review_comment"]}),
+    )
+    .await;
 
     let task = until("the review task", async || {
         tasks_of(&client, &id)
@@ -374,7 +397,7 @@ async fn a_failed_task_edits_the_comment_with_the_error() {
 
     let client = daemon(&dir).await;
     let id = create_crewmate(&client, "Nami").await;
-    watch_repo(&client, &id, json!({})).await;
+    watch_repo(&client, &dir, &api, &id, json!({})).await;
 
     let task = until("the failed task", async || {
         tasks_of(&client, &id)

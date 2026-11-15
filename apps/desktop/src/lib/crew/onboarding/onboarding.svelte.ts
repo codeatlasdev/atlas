@@ -89,7 +89,6 @@ export class Onboarding {
 	readonly launchedKey = $derived(
 		this.launchedNow || crew.servers.find((h) => isCrewServerKey(h.key))?.key || "",
 	);
-	readonly serverSshTarget = $derived(this.launchedKey ? this.launchedKey.replace(/^ssh:/, "") : "");
 	readonly targetValid = $derived(
 		this.sshTarget.trim() === "" ? false : parseSSHTarget(`${this.sshTarget.trim()}:${this.sshPort}`).ok,
 	);
@@ -375,7 +374,7 @@ export class Onboarding {
 	}
 
 	async openSignInTerminal(agentId: string) {
-		if (!this.serverSshTarget || this.signinPtyId) return;
+		if (!this.launchedKey || this.signinPtyId) return;
 		this.signinActive = agentId;
 		this.apiKeyMode = false;
 		this.signinOutput = "";
@@ -383,7 +382,7 @@ export class Onboarding {
 		this.signinPtyId = null;
 		try {
 			await openSigninPty(
-				this.serverSshTarget,
+				this.launchedKey,
 				AGENT_SIGNIN_CMD[agentId] ?? agentId,
 				(pty) => (this.signinPtyId = pty),
 			);

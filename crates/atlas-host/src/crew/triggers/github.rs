@@ -4,11 +4,16 @@
 //! seen event ids via `<crewmate_dir>/<trigger_id>_seen.jsonl`. What an event means (and whether
 //! its author may start a task) is decided in `github_events`; this file only walks the feed.
 //! If `gh` is missing or errors, it logs to stderr and tries again next time.
+//!
+//! Dedupe is durable before it fires: an event is written to the seen file first, and only then
+//! becomes a task, so a crash or an unwritable file can lose a fire but never repeat one. A trigger
+//! whose seen file cannot be written is left alone for [`BACKOFF`] instead of polled every 2 minutes.
+//! A trigger with no seen file yet is new: the feed as it stands is marked seen and fires nothing, so
+//! enabling one never answers the ~30 old events the feed still lists.
 
-use std::collections::HashSet;
-use std::io::{BufRead, Write};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::github_events::{Cfg, decide, handle_for};
 use crate::crew::github::GithubApi;
@@ -16,6 +21,27 @@ use crate::crew::store::{Crewmate, Trigger, TriggerKind};
 use crate::server::Hub;
 
 const POLL_EVERY: Duration = Duration::from_secs(120);
+/// The seen file is cut back to its newest ids once it passes this (the events API lists recent events only).
+pub(super) const SEEN_MAX_BYTES: u64 = 256 * 1024;
+
+/// How long a trigger whose seen file cannot be written is left alone.
+const BACKOFF: Duration = Duration::from_secs(15 * 60);
+
+/// Triggers (`<crewmate>:<trigger>`) not polled until the instant, because their seen file is unwritable.
+static HELD: parking_lot::Mutex<Option<HashMap<String, Instant>>> = parking_lot::Mutex::new(None);
+
+fn held(key: &str) -> bool {
+    HELD.lock()
+        .as_ref()
+        .and_then(|m| m.get(key))
+        .is_some_and(|until| Instant::now() < *until)
+}
+
+fn hold(key: String) {
+    HELD.lock()
+        .get_or_insert_with(HashMap::new)
+        .insert(key, Instant::now() + BACKOFF);
+}
 
 /// Test-only: how often the poller runs instead of every 2 minutes.
 #[cfg(test)]
@@ -65,11 +91,16 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
     else {
         return;
     };
+    let key = format!("{}:{}", crewmate.id, trigger.id);
+    if held(&key) {
+        return;
+    }
     let seen_path = hub
         .crew
         .store
         .crewmate_dir(&crewmate.id)
         .join(format!("{}_seen.jsonl", trigger.id));
+    let is_new = !seen_path.exists();
     let mut seen = load_seen(&seen_path);
 
     let feed = match api.events(repo).await {
@@ -96,6 +127,24 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         own_login,
     };
 
+    // A new trigger starts at the head of the feed: what is already there is history.
+    if is_new {
+        let ids: Vec<&str> = feed
+            .iter()
+            .filter_map(|ev| ev["id"].as_str().filter(|s| !s.is_empty()))
+            .collect();
+        if let Err(e) = append_seen(&seen_path, &ids) {
+            eprintln!(
+                "triggers/github: {repo}: cannot baseline trigger {} of crewmate {}: {e}; not polled for {} min",
+                trigger.id,
+                crewmate.id,
+                BACKOFF.as_secs() / 60
+            );
+            hold(key);
+        }
+        return;
+    }
+
     // Oldest first, so tasks start in the order things happened.
     for ev in feed.iter().rev() {
         let Some(id) = ev["id"].as_str().filter(|s| !s.is_empty()) else {
@@ -104,18 +153,8 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         if seen.contains(id) {
             continue;
         }
-        match decide(api, repo, ev, &cfg).await {
-            Ok(Some(fired)) => super::fire(
-                hub,
-                &crewmate.id,
-                &trigger.id,
-                &trigger.prompt,
-                super::Event::Github {
-                    text: &fired.event,
-                    origin: fired.origin,
-                },
-            ),
-            Ok(None) => {}
+        let fired = match decide(api, repo, ev, &cfg).await {
+            Ok(f) => f,
             // Could not tell who wrote it (or what it says): not decided, so not seen. Asked again.
             Err(e) => {
                 eprintln!(
@@ -125,31 +164,122 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
                 );
                 continue;
             }
+        };
+        // Seen first, whether it matched or not: a task is only made for an event that cannot come
+        // back. If the record cannot be written nothing fires, and the trigger rests for a while.
+        if let Err(e) = append_seen(&seen_path, &[id]) {
+            eprintln!(
+                "triggers/github: {repo}: cannot record event {id} for crewmate {}: {e}; not fired, not polled for {} min",
+                crewmate.id,
+                BACKOFF.as_secs() / 60
+            );
+            hold(key);
+            return;
         }
-        // Mark seen regardless of match, to avoid re-processing on next poll.
         seen.insert(id.to_string());
-        append_seen(&seen_path, id);
+        if let Some(fired) = fired {
+            super::fire(
+                hub,
+                &crewmate.id,
+                &trigger.id,
+                &trigger.prompt,
+                super::Event::Github {
+                    text: &fired.event,
+                    origin: fired.origin,
+                },
+            );
+        }
     }
 }
 
 fn load_seen(path: &std::path::Path) -> HashSet<String> {
-    let Ok(f) = std::fs::File::open(path) else {
-        return HashSet::new();
-    };
-    std::io::BufReader::new(f)
-        .lines()
-        .map_while(Result::ok)
+    crate::crew::store::jsonl::read_lines(path)
+        .into_iter()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect()
 }
 
-fn append_seen(path: &std::path::Path, id: &str) {
-    if let Ok(mut f) = std::fs::OpenOptions::new()
+/// Append `ids` to the seen file and flush them to disk. The error is the caller's to act on:
+/// a record that is not durable means the event is not yet safe to fire. A torn final line is ended
+/// first (#293), and the file is cut back to its newest ids once it passes [`SEEN_MAX_BYTES`]: the
+/// events API only lists recent events, so an older id can never come back.
+fn append_seen(path: &std::path::Path, ids: &[&str]) -> std::io::Result<()> {
+    use crate::crew::store::jsonl;
+    // Created even for no ids: an empty feed's baseline is the file existing (see `is_new`).
+    let f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
-    {
-        let _ = writeln!(f, "{id}");
+        .open(path)?;
+    for id in ids {
+        jsonl::append_line(path, id, false)?;
+    }
+    f.sync_all()?;
+    let _ = jsonl::trim_to_tail(path, SEEN_MAX_BYTES, SEEN_MAX_BYTES / 2);
+    Ok(())
+}
+
+#[cfg(test)]
+mod seen_tests {
+    use super::*;
+    use std::io::Write;
+
+    // #293: a bad byte stopped `load_seen` there, so every later id was "new" again and its event fired
+    // a second time; a torn last id (no newline) glued the next id onto it.
+    #[test]
+    fn the_seen_file_survives_invalid_utf8_and_a_torn_tail() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        append_seen(&p, &["100"]).unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&p)
+            .unwrap()
+            .write_all(b"\xff\xfe\n20")
+            .unwrap(); // a bad line, then a torn id
+        append_seen(&p, &["300"]).unwrap();
+        append_seen(&p, &["400"]).unwrap();
+
+        let seen = load_seen(&p);
+        for id in ["100", "300", "400"] {
+            assert!(seen.contains(id), "{id} lost: {seen:?}");
+        }
+    }
+
+    // The baseline of a trigger whose feed is empty is the file existing: an empty batch must create it.
+    #[test]
+    fn an_empty_batch_still_creates_the_seen_file() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        append_seen(&p, &[]).unwrap();
+        assert!(p.exists());
+        assert!(load_seen(&p).is_empty());
+    }
+
+    // #295: the file is capped, newest ids kept (the events API only lists recent ones).
+    #[test]
+    fn the_seen_file_is_capped_and_keeps_the_newest_ids() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("trig_seen.jsonl");
+        let total = 60_000u64;
+        // In batches, as the poll records them: each call fsyncs (record before firing, #294), and 60 000
+        // single-id calls took past nextest's 180 s on Windows, where an fsync costs milliseconds. 60
+        // batches still cross the cap many times over.
+        let ids: Vec<String> = (0..total)
+            .map(|n| format!("{:012}", 10_000_000_000 + n))
+            .collect();
+        for batch in ids.chunks(1000) {
+            let batch: Vec<&str> = batch.iter().map(String::as_str).collect();
+            append_seen(&p, &batch).unwrap();
+        }
+        let len = std::fs::metadata(&p).unwrap().len();
+        assert!(
+            len <= super::SEEN_MAX_BYTES + 32,
+            "seen file grew to {len} bytes"
+        );
+        let seen = load_seen(&p);
+        assert!(seen.contains(&format!("{:012}", 10_000_000_000 + total - 1)));
+        assert!(seen.contains(&format!("{:012}", 10_000_000_000 + total - 1000)));
+        assert!(!seen.contains(&format!("{:012}", 10_000_000_000u64)));
     }
 }

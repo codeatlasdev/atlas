@@ -220,6 +220,25 @@ async fn a_program_that_exits_ends_its_session_with_its_code_and_output() {
     assert!(s.signal("TERM").is_ok());
 }
 
+/// Incident (main CI, 2026-11-15, `a_finished_sign_in_terminal_is_removed_after_the_grace_...`): an exit
+/// listener (`attach` with `output: false`) attached after the program already ended was put in a map that
+/// never fires again, so the watcher waited forever. A sign-in whose command exits at once (engine not
+/// installed) then stayed in `pty_list` until hostd restarted. A late listener gets `pty_exit` right away.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_exit_listener_attached_after_the_exit_still_gets_pty_exit() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = Session::spawn(shell_req("exit 4"), dir.path()).unwrap();
+    assert_eq!(until_exited(&s).await, Some(4));
+    let (tx, mut rx) = crate::pty::out_channel();
+    s.attach(1, tx, false, false);
+    let line = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("a late listener never heard the exit")
+        .expect("the listener closed without the exit");
+    assert!(line.contains(r#""ev":"pty_exit""#), "{line}");
+    assert!(line.contains(r#""code":4"#), "{line}");
+}
+
 /// `KILL` ends a running program (and on Windows everything it started).
 #[tokio::test(flavor = "multi_thread")]
 async fn kill_ends_a_running_program() {
@@ -797,4 +816,146 @@ async fn closing_a_terminal_leaves_another_terminals_processes_alone() {
     );
     b.kill().await;
     assert!(gone_within(db, Duration::from_secs(10)).await);
+}
+
+// ---- sessions that run as a crewmate's own user (issue #200), through a real spawn helper ----------
+
+#[cfg(unix)]
+mod isolated {
+    use super::*;
+    use crate::crew::spawn::testing::{USER, rig};
+
+    fn req(r: &crate::crew::spawn::testing::Rig, fake: &str) -> PtyCreate {
+        PtyCreate {
+            cwd: r.work().to_string_lossy().into_owned(),
+            argv: vec!["claude".into()],
+            env: [("FAKE".to_string(), fake.to_string())].into(),
+            cols: 100,
+            rows: 30,
+            scope: Default::default(),
+            title: None,
+            mode: Default::default(),
+        }
+    }
+
+    async fn until_text(s: &Session, needle: &str) {
+        for _ in 0..200 {
+            if s.read_text(50).contains(needle) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("never saw {needle:?}; saw {:?}", s.read_text(50));
+    }
+
+    // The branch under test: the child is started by the helper, hostd drives it through the master it
+    // got back, and the session ends with the code the helper recorded.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_isolated_session_streams_output_takes_input_and_ends_with_the_childs_code() {
+        let r = rig();
+        r.engine("claude", "echo ready; read l; echo got=$l; exit 5");
+        let scroll = tempfile::tempdir().unwrap();
+        let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
+        until_text(&s, "ready").await;
+        s.write(b"hello\n").unwrap();
+        until_text(&s, "got=hello").await;
+        assert_eq!(until_exited(&s).await, Some(5));
+        // The pid is the child's, as the helper reported it.
+        assert!(s.pid.is_some_and(|p| p > 1));
+    }
+
+    // Incident class: hostd used to kill(pid) directly; for another uid that is EPERM, so a task could
+    // not be cancelled. Signals go through the helper.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn kill_ends_an_isolated_program_through_the_helper() {
+        let r = rig();
+        r.engine(
+            "claude",
+            "echo up; trap '' TERM; while :; do /bin/sleep 0.05; done",
+        );
+        let scroll = tempfile::tempdir().unwrap();
+        let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
+        until_text(&s, "up").await;
+        // TERM is ignored by the program: kill() must escalate to KILL, as for a plain session.
+        tokio::time::timeout(Duration::from_secs(15), s.kill())
+            .await
+            .expect("kill never returned");
+        assert_eq!(until_exited(&s).await, Some(137));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn signal_reaches_an_isolated_program_and_unknown_names_are_refused() {
+        let r = rig();
+        r.engine(
+            "claude",
+            "trap 'exit 42' INT; echo up; while :; do /bin/sleep 0.05; done",
+        );
+        let scroll = tempfile::tempdir().unwrap();
+        let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
+        until_text(&s, "up").await;
+        assert!(s.signal("USR1").is_err());
+        s.signal("INT").unwrap();
+        assert_eq!(until_exited(&s).await, Some(42));
+        // Signalling an ended session is not an error (same as a plain one).
+        s.signal("TERM").unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cwd_of_an_isolated_session_comes_from_the_helper() {
+        let r = rig();
+        r.engine("claude", "cd /tmp; echo up; /bin/sleep 30");
+        let scroll = tempfile::tempdir().unwrap();
+        let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
+        until_text(&s, "up").await;
+        let cwd = s.cwd_now().await.unwrap();
+        assert_eq!(
+            std::fs::canonicalize(cwd).unwrap(),
+            std::fs::canonicalize("/tmp").unwrap()
+        );
+        s.kill().await;
+    }
+
+    // The helper refuses a spawn (an engine it does not have): Session::spawn_as reports it, no session.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_refused_isolated_spawn_is_an_error_naming_the_user() {
+        let r = rig(); // no engines installed
+        let scroll = tempfile::tempdir().unwrap();
+        let e = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER)))
+            .err()
+            .expect("spawn must fail")
+            .to_string();
+        assert!(e.contains(USER), "{e}");
+    }
+
+    // An isolated session is not hostd's child: the live upgrade must hand over which helper session
+    // it is, or the successor could never signal it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_live_upgrade_keeps_an_isolated_session_signalable() {
+        let r = rig();
+        r.engine(
+            "claude",
+            "trap 'exit 9' TERM; echo up; while :; do /bin/sleep 0.05; done",
+        );
+        let scroll = tempfile::tempdir().unwrap();
+        let s = Session::spawn_as(req(&r, ""), scroll.path(), Some((&r.client, USER))).unwrap();
+        until_text(&s, "up").await;
+        let (state, fd) = s.freeze().await.unwrap();
+        let iso = state
+            .iso
+            .clone()
+            .expect("the helper session travels with the state");
+        assert_eq!(iso.user, USER);
+        // The wire form is what the successor reads.
+        let state: crate::handoff::SessionState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        let fd = fd.expect("a live session hands over its master");
+        // SAFETY: freeze leaves the fd owned by `s`; the successor gets its own duplicate.
+        let dup = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) }
+            .try_clone_to_owned()
+            .unwrap();
+        let s2 = Session::adopt(state, Some(dup), scroll.path(), Some(&r.client)).unwrap();
+        s2.signal("TERM").unwrap();
+        assert_eq!(until_exited(&s2).await, Some(9));
+    }
 }

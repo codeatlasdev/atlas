@@ -2,12 +2,13 @@
 	/**
 	 * TaskMessage — one task in the thread: the trigger line, your prompt, a mid-task answer pair, then what the
 	 * crewmate says for the task's state (running / done / failed / cancelled / waiting for an action), and the
-	 * hover toolbar. Queued tasks show only the prompt and a "Queued" line.
+	 * hover toolbar. Queued tasks show only the prompt and a "Queued" line (with why, when hostd says: "Queued · server busy").
 	 */
 	import { RotateCcw, Terminal, X } from "@lucide/svelte";
 	import { CopyButton } from "@codeatlasdev/ui";
 	import type { Component } from "svelte";
 	import type { Crewmate, CrewmateTask } from "#lib/crew.ts";
+	import { queuedLabel } from "#lib/crew/board/boardText.ts";
 	import CrewTyping from "#lib/crew/CrewTyping.svelte";
 	import type { CrewmateLook } from "#lib/crew/look.ts";
 	import { msgIn, msgOut } from "#lib/crew/motion.ts";
@@ -71,7 +72,7 @@
 				<span class="prep-dot" aria-hidden="true"></span>Downloading {t.preparing}…
 			</div>
 		{:else if t.state === "queued"}
-			<div class="msg-meta muted">Queued</div>
+			<div class="msg-meta muted">{queuedLabel(t)}</div>
 		{/if}
 	</div>
 

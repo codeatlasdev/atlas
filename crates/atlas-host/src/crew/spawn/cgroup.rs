@@ -634,8 +634,10 @@ mod tests {
         let engines_s = engines.to_string_lossy().into_owned();
         let root = t.path().join("cm").to_string_lossy().into_owned();
         let start = |user: &str, slug: &str, fake: &str| {
+            // The child's PATH is exactly these directories (`exec::pinned_path`): the engine's, then the
+            // system's, which is where `head`, `tr` and `sleep` of the hog live.
             let w = Where {
-                engines: &[engines_s.as_str()],
+                engines: &[engines_s.as_str(), "/usr/bin", "/bin"],
                 cm_root: &root,
             };
             let req = SpawnReq {

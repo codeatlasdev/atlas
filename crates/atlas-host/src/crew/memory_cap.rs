@@ -28,11 +28,13 @@ pub fn parse_setting(bytes: u64) -> Result<Option<u64>, String> {
 }
 
 /// The cap agents get under `settings` on a machine with `mem_total` bytes.
+#[cfg(unix)]
 pub fn cap_for(settings: &CrewSettings, mem_total: u64) -> u64 {
     cgroup::compute_cap(settings.agent_memory_max, mem_total, settings.max_agents)
 }
 
 /// This machine's memory, in bytes (`/proc/meminfo`); 0 where there is none (the cap is then the floor).
+#[cfg(unix)]
 pub fn mem_total() -> u64 {
     std::fs::read_to_string("/proc/meminfo")
         .ok()
@@ -97,6 +99,7 @@ mod tests {
         assert!(e.contains("at least 64 MiB"), "{e}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_cap_follows_both_settings() {
         let mut s = CrewSettings {

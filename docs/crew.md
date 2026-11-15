@@ -155,7 +155,7 @@ A new crewmate starts with a short setup conversation (project, role, engine sig
 
 ## Tasks and approvals
 
-A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
+A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time (in a pty, or as headless engine turns); the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours (the agent and the processes it started are killed when it passes). Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
 A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, decide on work the [guards](#guards-against-the-agent-itself) refused, or show a [UI task](#ui-tasks-and-proof) that came back without proof. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
 
@@ -203,7 +203,7 @@ With `approval: ask`, a tool call pauses the task and waits up to 30 minutes for
 
 ### Pause and resume
 
-A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`), keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
+A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`) and ends its process: a task in a terminal has its terminal killed, and a task with a headless `engine` (`claude`, `codex`, `opencode`, `omp`) has its turn killed together with everything the agent started (its process group, so the tool processes of omp's `bash` calls or a build are gone too). The same holds for cancelling one task and for the 2-hour cap, which fails the task and kills the turn. Pause keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
 
 Trigger it from the CLI (`atlas crew pause|resume <ssh-target>`), Atlas Desktop (footer menu **Pause all** / **Resume all**, and Settings → Atlas Crew per server) or Atlas Mobile (Crew tab, needs the `act` scope). The state is saved in `<hostd dir>/crew.json` (`"paused": true`), so a restart of the service keeps the crew paused. Clients read it from `crewmate_list.paused` and the `crew_paused` push event; a server older than this feature sends neither and reads as running.
 

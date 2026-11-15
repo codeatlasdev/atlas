@@ -62,8 +62,8 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew resume <ssh-target>` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent>` | opens `ssh -t <crew-user>@<host> <agent-binary>` so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
-| `atlas crew browsers install <ssh-target>` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
-| `atlas crew browsers status <ssh-target>` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
+| `atlas crew browsers install <ssh-target> [--port N]` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
+| `atlas crew browsers status <ssh-target> [--port N]` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
 
 ### Offline install
 
@@ -155,7 +155,7 @@ A new crewmate starts with a short setup conversation (project, role, engine sig
 
 ## Tasks and approvals
 
-A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time in a pty; the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours. Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
+A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time (in a pty, or as headless engine turns); the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours (the agent and the processes it started are killed when it passes). Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
 A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, decide on work the [guards](#guards-against-the-agent-itself) refused, or show a [UI task](#ui-tasks-and-proof) that came back without proof. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
 
@@ -203,7 +203,7 @@ With `approval: ask`, a tool call pauses the task and waits up to 30 minutes for
 
 ### Pause and resume
 
-A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`), keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
+A crew server has one kill switch. **Pause** (`crew_pause`) cancels every running task (state `cancelled`, error `paused`) and ends its process: a task in a terminal has its terminal killed, and a task with a headless `engine` (`claude`, `codex`, `opencode`, `omp`) has its turn killed together with everything the agent started (its process group, so the tool processes of omp's `bash` calls or a build are gone too). The same holds for cancelling one task and for the 2-hour cap, which fails the task and kills the turn. Pause keeps queued tasks queued, starts nothing new, and skips every automation that would fire (a skipped automation is not queued for later). New tasks still queue while paused. **Resume** (`crew_resume`) starts the queues again.
 
 Trigger it from the CLI (`atlas crew pause|resume <ssh-target>`), Atlas Desktop (footer menu **Pause all** / **Resume all**, and Settings → Atlas Crew per server) or Atlas Mobile (Crew tab, needs the `act` scope). The state is saved in `<hostd dir>/crew.json` (`"paused": true`), so a restart of the service keeps the crew paused. Clients read it from `crewmate_list.paused` and the `crew_paused` push event; a server older than this feature sends neither and reads as running.
 
@@ -330,6 +330,8 @@ Open the Atlas Crew workspace with **⌘⇧B** (command *Atlas Crew*, remappable
 - **Board**: Queued, Working, Needs you and Done columns across every crewmate, with filters by crewmate, origin and text, a Done range, and a click that opens the chat at that task.
 
 Settings → Atlas Crew holds the crew servers (SSH target + name, listed in `~/.atlas/desktop/crew-servers.json`). The desktop reaches each server over SSH and an `ssh -L` tunnel to its `hostd.sock`. The server must already have `atlas crew install` done; Atlas Desktop can run the install for you and asks for the sudo password on stdin (never on argv).
+
+**Screenshots for UI work.** The install screen has an opt-in, off by default: *Screenshots for UI work (Chromium + WebKit)*, with why (the `capture`, UI gate and `locate` tools need it) and the cost (Node.js 20+ on the server, about 500 MB of downloads). Ticking it runs `atlas crew install … --browsers` and adds a step to the install checklist. On an existing server, Settings → Atlas Crew has the same row: the **admin** SSH address you installed with (`ubuntu@host` or `ubuntu@host:2222`) is already there: the install saved it as `admin` in `~/.atlas/desktop/crew-servers.json` (`{"target": "ubuntu@host", "port": 2222}`, no `port` for 22). The browsers install runs `sudo -u <crew user>`, which the crew service user the desktop connects as cannot do, so it needs that account. The field is editable and an edit you commit (leave the field, Enter, or a Check that worked) is saved back; a half-typed address never replaces a good one. A server added before this was kept, or added by hand, starts empty and keeps what you type after a Check that worked. The file holds an address like an `~/.ssh/config` `Host`, never a password or key. Press **Check** (`atlas crew browsers status`: installed, or one line per missing piece) and **Install** (`atlas crew browsers install`, its output streams into a log). A server without Node.js 20 or newer says so plainly and Install stays off until you have installed Node there. When sudo asks for a password the row asks for it and sends it over stdin, like the install.
 
 ## Atlas Mobile
 
@@ -577,12 +579,12 @@ For contributors. One concept per file; the module doc comment at the top of eac
 | hostd (crew server and Mac) | `crates/atlas-host/src/crew/` | command routing (`mod.rs`) to `handlers/` (crewmates, tasks, settings); `hub.rs` (the crew hub); `store/` (on-disk types, the old-layout migration, `archive.rs`: the export/import archive); `runner/` (one task: queue, `pty`, `conversation`, `prompt`, `action`, `outcome`, `summary`, `recover` for tasks a restart interrupted); `events.rs` (every push event, one builder each); `pane.rs` (the `crew:` pane key); `engine/` (omp, claude, codex, opencode); `triggers/` and `schedule.rs` (automations); `github/`; `telegram.rs`; `push.rs`; `project.rs` (checkout); `mcp.rs` (`atlas-crew-mcp`); `capture/` (the `capture` tool: `spec.rs` request and report rules, `runner.mjs` the embedded Playwright script, `package-lock.json` the lock `npm ci` installs from); `relay/` (phone to crew server); `tests/` (integration tests by area, shared helpers in `tests/fixture.rs`) |
 | hook routes | `crates/atlas-host/src/agents/hook_server.rs` | `/crew/<id>/ask`, `/crew/<id>/set_profile`, `/crew/<id>/capture`, `/crew/<id>/ui_gate`, `/crew/<id>/hook/<token>` |
 | CLI | `crates/atlas-cli/src/commands/crew/` | `atlas crew install\|update\|uninstall\|export\|import\|status\|logs\|login\|browsers`; the unit text, migration plan, release asset per architecture, update/rollback scripts and the health decision (`binary.rs`), the export/import/uninstall scripts and decisions (`transfer.rs`), the capture browsers install/status scripts (`browsers.rs`) and the reader of Playwright's dependency report that builds the one root `apt-get` (`apt.rs`) are pure functions with tests |
-| Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*`, `crew_server_install`, `crew_agent_*` Tauri commands |
+| Desktop backend | `crates/atlas-desktop/src/crew.rs` | the server registry (`crew-servers.json`), `crew_servers_*` (`crew_servers_set_admin` keeps the admin address), `crew_server_install`, `crew_browsers_status`, `crew_browsers_install`, `crew_agent_*` Tauri commands |
 | Desktop UI | `apps/desktop/src/lib/crew/` and `apps/desktop/src/lib/stores/crew.svelte.ts` | workspace, board, editor, settings, onboarding, automations, the look catalogue |
 | Mobile | `apps/mobile/lib/features/crew/` | crew tab, chat, profile, automations, relay transport |
 | Push relay | `services/push-relay/` | the optional relay |
 
-**Wire naming rule.** An operation on one crewmate is `crewmate_<verb>` (`crewmate_create`, `crewmate_task`, `crewmate_triggers_set`); a crew-level operation is `crew_<verb>` (`crew_settings_get`, `crew_github_login_start`, and the phone relay's `crew_servers`, `crew_call`, `crew_event`). Push events follow the same rule (`crewmate_updated`). JSON fields use `crewmate_id`, and lists use `"crewmates"`. Desktop Tauri commands are `crew_servers_*`, `crew_server_install`, `crew_agent_*`. PTY pane keys are `crew:<crewmate id>:<task id>`.
+**Wire naming rule.** An operation on one crewmate is `crewmate_<verb>` (`crewmate_create`, `crewmate_task`, `crewmate_triggers_set`); a crew-level operation is `crew_<verb>` (`crew_settings_get`, `crew_github_login_start`, and the phone relay's `crew_servers`, `crew_call`, `crew_event`). Push events follow the same rule (`crewmate_updated`). JSON fields use `crewmate_id`, and lists use `"crewmates"`. Desktop Tauri commands are `crew_servers_*`, `crew_server_install`, `crew_browsers_*`, `crew_agent_*`. PTY pane keys are `crew:<crewmate id>:<task id>`.
 
 **On disk** (`<hostd dir>` is `~/.atlas` on a Mac, `<crew home>/.atlas` on a crew server):
 
@@ -606,7 +608,7 @@ For contributors. One concept per file; the module doc comment at the top of eac
     work/                              git worktree of the project
     <trigger id>_seen.jsonl            GitHub events already handled
 <hostd dir>/projects/<slug>/           shared clone per Git project
-~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers
+~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers ([{host, name, admin?: {target, port?}}])
 ```
 
 Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `task_actions.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.

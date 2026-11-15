@@ -67,7 +67,9 @@ impl Rig {
         std::fs::write(
             home.join("desktop/crew-servers.json"),
             json!([
-                {"host": "atlas-crew@box", "name": "Ship"},
+                // `admin` is the desktop's own field (the address the install ran against): the relay must keep
+                // reading an entry that has it.
+                {"host": "atlas-crew@box", "name": "Ship", "admin": {"target": "ubuntu@box", "port": 2222}},
                 {"host": "-oProxyCommand=evil", "name": "never dialled"},
             ])
             .to_string(),

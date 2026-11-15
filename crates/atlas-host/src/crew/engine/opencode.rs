@@ -3,11 +3,10 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
 
-use super::{TASK_TIMEOUT, TurnResult};
+use super::{TurnCancel, TurnProc, TurnResult, program};
 
 pub(super) async fn run(
     engine: &EngineConfig,
@@ -15,8 +14,9 @@ pub(super) async fn run(
     prompt: &str,
     extra_env: &BTreeMap<String, String>,
     work_dir: &str,
+    cancel: &TurnCancel,
 ) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new("opencode");
+    let mut cmd = tokio::process::Command::new(program("opencode"));
     cmd.arg("run")
         .arg("--format")
         .arg("json")
@@ -35,10 +35,10 @@ pub(super) async fn run(
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
-    let out = timeout(TASK_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| "opencode: timed out after 2 h".to_string())?
-        .map_err(|e| format!("opencode: spawn failed: {e}"))?;
+    let out = TurnProc::spawn(&mut cmd)
+        .map_err(|e| format!("opencode: spawn failed: {e}"))?
+        .output(cancel, "opencode")
+        .await?;
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);

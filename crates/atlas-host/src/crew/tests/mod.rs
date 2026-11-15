@@ -13,6 +13,7 @@
 //! | `automations` | triggers in `crewmate_list`, the `add_trigger` action                    |
 //! | `projects`    | Git/path projects, checkout before the first task                        |
 //! | `engines`     | conversational engines: sessions, secrets, approvals, omp extension      |
+//! | `engine_stop` | pause, cancel and the task timeout end an engine turn and its child process |
 //! | `actions`     | `ATLAS_ACTION` parsing, `waiting_action`, GitHub login                   |
 //! | `approvals`   | approval prompts of a crewmate's pane                                    |
 //! | `audit`       | the append-only audit: tool calls, approvals, lifecycle, config, restart  |
@@ -51,6 +52,8 @@ mod automations;
 mod capture;
 #[cfg(unix)]
 mod crewmates;
+#[cfg(unix)]
+mod engine_stop;
 #[cfg(unix)]
 mod engines;
 #[cfg(unix)]

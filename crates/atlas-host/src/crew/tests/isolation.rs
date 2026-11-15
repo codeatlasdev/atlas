@@ -581,6 +581,9 @@ async fn engine_status_for_a_crewmate_asks_the_engine_as_that_crewmate() {
         "claude",
         r#"if [ "$1 $2" = "auth status" ]; then [ -f "$HOME/token" ] && exit 0; exit 1; fi; exit 0"#,
     );
+    // The crew user's status runs the same fake, not whatever claude is on this machine's PATH: on a developer
+    // Mac signed in to claude the last assertion failed (CI has no claude, so it passed there).
+    let _path = crate::crew::engine_login::TestPath::set(r.engines.clone());
     let tmp = tempfile::tempdir().unwrap();
     let client = daemon_with(&tmp.path().join("hostd"), Some(r.setup())).await;
     let id = create(&client, "Ana").await;

@@ -1,4 +1,5 @@
 pub mod affected;
+pub mod agent_display;
 pub mod agent_store;
 pub mod agents;
 pub mod channel;

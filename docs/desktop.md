@@ -5,7 +5,7 @@ description: "Atlas Desktop: spaces, worktrees, agents, review, the embedded bro
 
 # Desktop app
 
-Atlas Desktop is a native app (Tauri 2 + Svelte 5) for macOS (Apple silicon), Windows 10/11 (x64, one click with `Atlas-Setup.exe`) and Linux (x86_64). The GPU terminal, capture and agent test instances are macOS only; on Windows and Linux terminals use xterm.js. It lists every atlas project in a sidebar and lets you start and stop each stack. It shows services live, streams and searches logs, runs actions, and edits `atlas.yaml` with validation.
+Atlas Desktop is a native app (Tauri 2 + Svelte 5) for macOS (Apple silicon), Windows 10/11 (x64, one click with `Atlas-Setup.exe`) and Linux (x86_64). The GPU terminal and capture are macOS only, agent test instances run on macOS and Linux; on Windows and Linux terminals use xterm.js. It lists every atlas project in a sidebar and lets you start and stop each stack. It shows services live, streams and searches logs, runs actions, and edits `atlas.yaml` with validation.
 
 It is a client of the same runners as the CLI: **Start** runs `atlas dev --detach`, and **Stop** is `atlas down`. The app, an attached TUI and an AI agent (through [MCP](mcp.md)) all see and control the same live state. Quitting or closing the app never stops a stack.
 
@@ -59,7 +59,7 @@ The first run downloads the `Atlas.app` that matches your CLI version from the p
 
 Requirements:
 
-- macOS 13+ on Apple silicon, Linux x86_64 (glibc 2.35+, WebKitGTK 4.1), or Windows 10 (1809+) / 11 on x64 (WebView2). On Linux and Windows terminals use xterm.js rather than the native GPU terminal, the window uses the system's own title bar, and capture/recording and agent test instances are macOS only. Windows specifics (cmd.exe for `atlas.yaml` commands, ConPTY, no live host upgrade): [Installation › Windows](installation.md#windows).
+- macOS 13+ on Apple silicon, Linux x86_64 (glibc 2.35+, WebKitGTK 4.1), or Windows 10 (1809+) / 11 on x64 (WebView2). On Linux and Windows terminals use xterm.js rather than the native GPU terminal, the window uses the system's own title bar, and capture/recording is macOS only. Agent test instances run on macOS and on Linux (own headless sway and D-Bus, stills through `grim`; no recording yet); see [Linux and Windows gaps](contributing.md). Windows specifics (cmd.exe for `atlas.yaml` commands, ConPTY, no live host upgrade): [Installation › Windows](installation.md#windows).
 - The atlas CLI. The app looks for it at `$ATLAS_BIN`, then `~/.atlas/bin/atlas`, then (Windows) the `atlas.exe` its installer put next to the app, then `atlas` on `PATH`.
 - `curl` (preinstalled on macOS). No GitHub login is needed: releases are public.
 - Optional: `gh`, logged in (`gh auth login`), for the pull-request tab and checks.

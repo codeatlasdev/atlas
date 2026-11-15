@@ -42,7 +42,7 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
 sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel   # Fedora
 ```
 
-Terminals use xterm.js; agent instances, Atlas Lab and the mirror are macOS only for now (#280, #282). The Linux roadmap is #289.
+Terminals use xterm.js. Agent instances (`bun run desktop:agent`) run on their own headless sway and D-Bus session bus, so they need `sway`, `grim` and `dbus-daemon` (Arch: `pacman -S sway grim`; Debian/Ubuntu: `apt install sway grim dbus`); Atlas Lab, the mirror and recording are not there yet (#282). The Linux roadmap is #289.
 
 ### Windows
 
@@ -50,7 +50,7 @@ Install [Git for Windows](https://git-scm.com/download/win) (it brings Git Bash)
 
 `bun run` scripts call repo shell scripts through `bun scripts/sh.ts`, which runs them with Git Bash: on Windows the `bash` first on `PATH` is often WSL's (`WindowsApps\bash.exe`), which would run them inside Linux where your Windows Rust and Bun do not exist. Call a script by hand the same way: `bun scripts/sh.ts scripts/heavy.sh cargo build`. `ATLAS_BASH` points it at another bash. Checked on Windows 11: `bun run setup`, `bun run check:changed`, `bun run lint:workflows` and `bun run check` (rc 0 at 40e8b67, Git `usr\bin` on `PATH`). Run the gate from Git Bash, or put `C:\Program Files\Git\usr\bin` on `PATH` in PowerShell: some Rust tests spawn `sh` and `sleep`, and from a plain PowerShell `PATH` they fail with `program not found`. Not yet checked on Windows: `bun run desktop:dev` and `desktop:build`.
 
-Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are macOS only (see below). Tests of macOS-only or POSIX-only scripts (`dev-signing-identity`, `install.sh`, the load gate of `heavy.sh`) are skipped on Windows; CI runs the repo scripts and their tests on Linux and Windows (job "Repo scripts").
+Terminals use xterm.js on Windows; agent instances, Atlas Lab and the mirror are not there (see below). Tests of macOS-only or POSIX-only scripts (`dev-signing-identity`, `install.sh`, the load gate of `heavy.sh`) are skipped on Windows; CI runs the repo scripts and their tests on Linux and Windows (job "Repo scripts").
 
 ## The gate
 
@@ -186,7 +186,17 @@ Most frontend work does not need the app on screen. Pick the lightest level that
 
 Agent instances keep a WebKit store each (WKWebView ignores `HOME`); `--stop` deletes it, and `atlas desktop --agent --gc` deletes the stores of instances that are gone (crashes, killed processes).
 
-**Linux and Windows gaps.** Agent instances, so the Lab backend and the mirror, are macOS only (private virtual display, ScreenCaptureKit). On Linux and Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` (the load gate is off on Windows) and the repo `atlas.yaml` work everywhere.
+**Linux and Windows gaps.** What works in an agent instance (`bun run desktop:agent`, `atlas desktop --agent`):
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Isolated instance (own HOME, hostd, bridge; `--stop`, `--gc`) | yes (private virtual display) | yes: own headless sway + own D-Bus session under `/tmp/atlas-agent-<name>/run`; never your Wayland/X11/D-Bus session | no |
+| `debug info\|state\|eval\|logs\|wait\|click\|type\|a11y\|perf\|resize` | yes | yes | no |
+| `debug shot` page, `--selector`, `--rect`, `--window` | yes (WKWebView snapshot, ScreenCaptureKit) | yes: `grim` reads the instance's own compositor (needs `sway`, `grim`); `--full` too. Rects are the page's CSS px, so they can be a few px short where WebKitGTK reports a smaller viewport than the window | no |
+| `debug record`, `desktop:mirror`, flicker sweep, selection bench, `debug hide`, gesture record/replay | yes | no (#282) | no |
+| Atlas Lab (`desktop:lab`) | yes | no | no |
+
+An instance refuses to start (exit 3) when its environment points at anything but its own display: it never uses `/run/user/<uid>`, has no `DISPLAY`, and turns off the accessibility bridge. On Linux the app is the debug binary with the bundled frontend: `bun run desktop:build:debug` builds it (`desktop:agent` does it the first time). It skips the single-instance guard, so it runs beside your installed Atlas and `desktop:dev` (dev builds use id `br.com.codeatlas.atlas.dev`; a bare `cargo build` binary started WITHOUT `ATLAS_AGENT=1` still uses the installed app's id and would hand off to it: use `desktop:dev`). On Windows use `bun run desktop:dev` (a normal window) and level 0 tests; `check:changed`, `heavy.sh` (the load gate is off on Windows) and the repo `atlas.yaml` work everywhere.
 
 Limits: `Channel` streams (terminals, gestures) and `convertFileSrc` assets are not forwarded, and the browser is not WKWebView; use level 2 for those and for the CSP/IPC check before shipping. The bridge answers only its own page (per-run token, same Origin, JSON content type) and only when `ATLAS_DEBUG_SOCK` is an agent instance; it never talks to your own app.
 

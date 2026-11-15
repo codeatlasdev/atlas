@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "linux")]
+use super::desktop_agent_linux as linux;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +45,15 @@ impl Session {
     }
 }
 
+/// A process of an instance's private display (Linux: its compositor and session bus), stopped with the instance.
+/// Identified by pid and start time, not by executable: sway runs with file capabilities, so `/proc/<pid>/exe` of
+/// it is unreadable even to its owner.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Aux {
+    pub pid: u32,
+    pub start: u64,
+}
+
 /// What `agent.json` remembers, so `--stop` finds exactly what was started.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Record {
@@ -51,6 +62,8 @@ pub struct Record {
     pub socket: PathBuf,
     pub hostd: PathBuf,
     pub exe: PathBuf,
+    #[serde(default)]
+    pub aux: Vec<Aux>,
 }
 
 /// A name is a short directory component: letters, digits, `-`, `_`.
@@ -199,7 +212,9 @@ fn temp_root() -> Result<PathBuf> {
     Ok(std::fs::canonicalize("/tmp")?)
 }
 
-fn running_exe(pid: u32) -> Option<PathBuf> {
+/// The executable a pid runs (macOS: `ps`; Linux: `/proc/<pid>/exe`, so a zombie is already gone).
+#[cfg(not(target_os = "linux"))]
+pub(super) fn running_exe(pid: u32) -> Option<PathBuf> {
     let out = Command::new("ps")
         .args(["-o", "comm=", "-p", &pid.to_string()])
         .output()
@@ -207,6 +222,13 @@ fn running_exe(pid: u32) -> Option<PathBuf> {
     let s = String::from_utf8(out.stdout).ok()?;
     let s = s.trim();
     (!s.is_empty()).then(|| PathBuf::from(s))
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn running_exe(pid: u32) -> Option<PathBuf> {
+    let p = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    // A rebuilt binary reads "<path> (deleted)": still the process we started.
+    Some(PathBuf::from(p.to_str()?.trim_end_matches(" (deleted)")))
 }
 
 /// Longest a start waits for another instance that is starting (it holds the lock for its display setup).
@@ -299,6 +321,9 @@ pub fn start(o: StartOpts) -> Result<()> {
         );
     }
     let app = find_app(&o.repo)?;
+    // `/proc/<pid>/exe` is the resolved path: record that one, or `--stop` would not recognise its own process.
+    #[cfg(target_os = "linux")]
+    let app = std::fs::canonicalize(app)?;
     std::fs::create_dir_all(s.home().join(".atlas/desktop"))?;
     std::fs::create_dir_all(s.hostd())?;
     if o.scratch {
@@ -307,6 +332,34 @@ pub fn start(o: StartOpts) -> Result<()> {
     }
     let log = std::fs::File::create(s.log())?;
     let session = atlas_core::hygiene::new_session_id();
+    // Linux: the instance's own headless compositor and session bus (#280, #281), tagged like the app so a crash
+    // that skips `--stop` leaves them to `atlas doctor --hygiene` too. Its record is written before the app starts,
+    // so whatever fails from here on, and `--stop`, ends them too.
+    #[cfg(not(target_os = "linux"))]
+    let aux: Vec<Aux> = Vec::new();
+    #[cfg(target_os = "linux")]
+    let aux: Vec<Aux>;
+    #[cfg(target_os = "linux")]
+    let display_env;
+    #[cfg(target_os = "linux")]
+    {
+        let scale = linux::scale_from(std::env::var("ATLAS_AGENT_SCALE").ok().as_deref());
+        let path = std::env::var("PATH").unwrap_or_default();
+        let d = linux::start(&s, scale, &path, &session).inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(&s.dir);
+        })?;
+        aux = d.aux;
+        display_env = d.env;
+        let rec = Record {
+            name: name.clone(),
+            pid: 0,
+            socket: s.socket(),
+            hostd: s.hostd(),
+            exe: app.clone(),
+            aux: aux.clone(),
+        };
+        std::fs::write(s.record(), serde_json::to_string_pretty(&rec)?)?;
+    }
     let mut cmd = Command::new(&app);
     cmd.env_clear()
         .envs(app_env(&s, &o.atlas_bin))
@@ -320,9 +373,31 @@ pub fn start(o: StartOpts) -> Result<()> {
     for (k, v) in forwarded_env(std::env::vars_os()) {
         cmd.env(k, v);
     }
-    let child = cmd
-        .spawn()
-        .with_context(|| format!("starting {}", app.display()))?;
+    // Linux: the display variables of the private compositor and bus. The final environment is checked before the
+    // app starts, so a wrong variable fails closed instead of putting a window on the user's session.
+    #[cfg(target_os = "linux")]
+    {
+        cmd.envs(display_env.iter().map(|(k, v)| (*k, v)));
+        let env_of = |k: &str| {
+            cmd.get_envs()
+                .find(|(n, _)| *n == k)
+                .and_then(|(_, v)| v)
+                .map(|v| v.to_string_lossy().into_owned())
+        };
+        if let Err(e) = atlas_core::agent_display::verify_linux(env_of) {
+            let _ = stop_one(&s);
+            bail!(
+                "refusing to start: the instance's environment does not point at its private display ({e})"
+            );
+        }
+    }
+    let child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = stop_one(&s);
+            return Err(e).with_context(|| format!("starting {}", app.display()));
+        }
+    };
     let pid = child.id();
     register_instance(&s, &session, pid, &name);
     let rec = Record {
@@ -331,6 +406,7 @@ pub fn start(o: StartOpts) -> Result<()> {
         socket: s.socket(),
         hostd: s.hostd(),
         exe: app,
+        aux,
     };
     std::fs::write(s.record(), serde_json::to_string_pretty(&rec)?)?;
     let dry = o
@@ -358,7 +434,7 @@ pub fn start(o: StartOpts) -> Result<()> {
         if let Some(status) = child.try_wait()? {
             let log = std::fs::read_to_string(s.log()).unwrap_or_default();
             let line = |tag: &str| log.lines().find(|l| l.contains(tag)).map(str::to_owned);
-            let _ = std::fs::remove_dir_all(&s.dir);
+            let _ = stop_one(&s);
             if let Some(l) = line("REFUSED to show the window") {
                 bail!("the app refused to show its window and exited ({status}): {l}");
             }
@@ -462,22 +538,47 @@ fn bridge_info(sock: &Path) -> Result<serde_json::Value> {
     Ok(v["result"].clone())
 }
 
+/// SIGTERM, then SIGKILL after 5 s, to `pid`, but only while `alive` says it is still the process we recorded (a
+/// recycled pid is never hit).
+fn terminate(pid: u32, alive: impl Fn() -> bool) {
+    if !alive() {
+        return;
+    }
+    // SAFETY: plain signal to the pid we recorded and just verified.
+    unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+    let t0 = Instant::now();
+    while alive() && t0.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if alive() {
+        // SAFETY: same verified pid.
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+    }
+}
+
+/// Whether `a` still runs: same pid AND same start time (a recycled pid has another), and not a zombie.
+fn aux_alive(a: &Aux) -> bool {
+    atlas_core::procs::start_time(a.pid) == Some(a.start) && !zombie(a.pid)
+}
+
+/// A process that has exited and waits for its parent to collect it (Linux; elsewhere there are no aux processes).
+fn zombie(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|s| {
+            s.rsplit_once(')')
+                .map(|(_, rest)| rest.trim_start().starts_with('Z'))
+        })
+        .unwrap_or(false)
+}
+
 /// Stop one instance: its recorded pid (only if that pid still runs the recorded executable), its hostd, its files.
 fn stop_one(s: &Session) -> Result<()> {
     if let Ok(raw) = std::fs::read_to_string(s.record()) {
         let rec: Record = serde_json::from_str(&raw).context("agent.json is corrupt")?;
-        if running_exe(rec.pid).is_some_and(|e| exe_matches(&e, &rec.exe)) {
-            // SAFETY: plain signal to the pid we recorded and just verified.
-            unsafe { libc::kill(rec.pid as libc::pid_t, libc::SIGTERM) };
-            let t0 = Instant::now();
-            while running_exe(rec.pid).is_some() && t0.elapsed() < Duration::from_secs(5) {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            if running_exe(rec.pid).is_some_and(|e| exe_matches(&e, &rec.exe)) {
-                // SAFETY: same verified pid.
-                unsafe { libc::kill(rec.pid as libc::pid_t, libc::SIGKILL) };
-            }
-        }
+        terminate(rec.pid, || {
+            running_exe(rec.pid).is_some_and(|e| exe_matches(&e, &rec.exe))
+        });
         // Its own hostd (the dir is private to this instance), through the CLI so the daemon stops cleanly.
         let atlas = std::env::current_exe()?;
         let _ = Command::new(atlas)
@@ -487,6 +588,10 @@ fn stop_one(s: &Session) -> Result<()> {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
+        // The private compositor and session bus of a Linux instance, after the app that used them.
+        for a in rec.aux.iter().rev() {
+            terminate(a.pid, || aux_alive(a));
+        }
     }
     // Its WebKit store: WKWebView keeps it in the real ~/Library, not in the instance's HOME.
     if let Some(home) = dirs::home_dir() {
@@ -589,6 +694,36 @@ mod tests {
         ]);
         let keys: Vec<_> = got.iter().map(|(k, _)| k.to_str().unwrap()).collect();
         assert_eq!(keys, ["ATLAS_AGENT_SCALE", "PATH"]);
+    }
+
+    // #280: the instance's environment is cleared and rebuilt, so nothing of the user's Wayland/X11/D-Bus session
+    // (the way a window reaches his screen, or Atlas his running app) can leak in through the forwarded variables.
+    #[test]
+    fn none_of_the_users_display_or_bus_variables_is_forwarded_to_an_instance() {
+        let os = |s: &str| std::ffi::OsString::from(s);
+        let user = [
+            "WAYLAND_DISPLAY",
+            "DISPLAY",
+            "XDG_RUNTIME_DIR",
+            "DBUS_SESSION_BUS_ADDRESS",
+            "DBUS_SYSTEM_BUS_ADDRESS",
+            "SWAYSOCK",
+            "HYPRLAND_INSTANCE_SIGNATURE",
+            "XDG_SESSION_TYPE",
+            "XDG_CURRENT_DESKTOP",
+            "GDK_BACKEND",
+            "XAUTHORITY",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_SESSION_ID",
+        ];
+        let vars = user
+            .iter()
+            .map(|k| (os(k), os("the-users")))
+            .chain([(os("PATH"), os("/usr/bin")), (os("TERM"), os("xterm"))]);
+        let got = forwarded_env(vars);
+        let keys: Vec<_> = got.iter().map(|(k, _)| k.to_str().unwrap()).collect();
+        assert_eq!(keys, ["PATH", "TERM"]);
     }
 
     /// The dry-run switch must reach the app too, or "prove it before a real start" proves nothing.

@@ -262,8 +262,15 @@ mod seen_tests {
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("trig_seen.jsonl");
         let total = 60_000u64;
-        for n in 0..total {
-            append_seen(&p, &[&format!("{:012}", 10_000_000_000 + n)]).unwrap();
+        // In batches, as the poll records them: each call fsyncs (record before firing, #294), and 60 000
+        // single-id calls took past nextest's 180 s on Windows, where an fsync costs milliseconds. 60
+        // batches still cross the cap many times over.
+        let ids: Vec<String> = (0..total)
+            .map(|n| format!("{:012}", 10_000_000_000 + n))
+            .collect();
+        for batch in ids.chunks(1000) {
+            let batch: Vec<&str> = batch.iter().map(String::as_str).collect();
+            append_seen(&p, &batch).unwrap();
         }
         let len = std::fs::metadata(&p).unwrap().len();
         assert!(

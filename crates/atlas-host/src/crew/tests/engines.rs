@@ -404,10 +404,19 @@ exit 0
 // These test the argv builder (codex::exec_args) that constructs the
 // actual command passed to the codex binary — no source-text inspection.
 
+// A fixed MCP server, so the argv under test does not depend on this test binary's own path.
+fn mcp() -> crate::crew::engine::McpServer {
+    crate::crew::engine::McpServer {
+        command: "/usr/bin/atlas".into(),
+        args: vec!["mcp".into(), "--crewmate".into(), "c1".into()],
+        env: Default::default(),
+    }
+}
+
 #[test]
 fn codex_argv_first_turn_has_required_flags() {
     use crate::crew::engine::codex::exec_args;
-    let args = exec_args(None, std::path::Path::new("/tmp/out.txt"), "hello");
+    let args = exec_args(None, std::path::Path::new("/tmp/out.txt"), "hello", &mcp());
     // First turn: exec (no resume)
     assert_eq!(
         &args[0..2],
@@ -428,7 +437,7 @@ fn codex_argv_first_turn_has_required_flags() {
         !args.iter().any(|a| a == "resume"),
         "first turn must not contain 'resume', got: {args:?}"
     );
-    // Prompt is last.
+    // Prompt is last, after the MCP overrides.
     assert_eq!(args.last().map(|s| s.as_str()), Some("hello"));
 }
 
@@ -439,6 +448,7 @@ fn codex_argv_resume_has_required_flags() {
         Some("thread-abc"),
         std::path::Path::new("/tmp/out.txt"),
         "hi",
+        &mcp(),
     );
     // Resume turn: exec resume <id>
     assert_eq!(
@@ -453,5 +463,11 @@ fn codex_argv_resume_has_required_flags() {
     assert!(
         args.iter().any(|a| a == "--dangerously-bypass-hook-trust"),
         "--dangerously-bypass-hook-trust must appear in resume, got: {args:?}"
+    );
+    // A resumed thread needs the crew tools too: the config is per run, not stored in the thread.
+    assert!(
+        args.iter()
+            .any(|a| a.starts_with("mcp_servers.atlas.command=")),
+        "the atlas MCP server must be given on resume, got: {args:?}"
     );
 }

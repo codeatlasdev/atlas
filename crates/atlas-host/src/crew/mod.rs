@@ -26,6 +26,7 @@ pub(crate) mod attachments;
 pub(crate) mod audit;
 pub mod capture;
 pub(crate) mod engine;
+pub(crate) mod engine_login;
 pub(crate) mod events;
 pub(crate) mod github;
 mod handlers;
@@ -187,6 +188,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),
+        HostCmd::CrewEngineStatus { refresh } => engine_login::status(hub, refresh).await,
 
         HostCmd::CrewGithubStatus {} => github::status().await,
         HostCmd::CrewGithubLoginStart {} => github::login_start(hub).await,

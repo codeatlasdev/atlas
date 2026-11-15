@@ -404,6 +404,14 @@ class _DemoComputer implements Transport {
   final _crewmates = <String, DemoCrewmate>{};
   late final _ops = DemoCrewOps(_crewmates);
   var _paused = false;
+
+  /// Engine sign-ins of the demo crew server: codex needs one, until the demo terminal "signs it in".
+  final _engineState = <String, String>{
+    'claude': 'signed_in',
+    'codex': 'needs_signin',
+    'omp': 'signed_in',
+    'opencode': 'not_installed',
+  };
   final _pendingInvites = <Map<String, String>>[];
   final _git = DemoGit();
 
@@ -656,6 +664,22 @@ class _DemoComputer implements Transport {
           'short_replies': _ops.shortReplies,
           'short_replies_model': _ops.shortRepliesModel,
         };
+      case 'crew_engine_status':
+        data = {
+          'engines': [
+            for (final e in _engineState.entries)
+              {'engine': e.key, 'state': e.value},
+          ],
+        };
+      case 'crew_engine_login':
+        final engine = args['engine'] as String? ?? '';
+        if (!_engineState.containsKey(engine)) {
+          error = 'unknown engine "$engine"';
+        } else {
+          // The demo terminal finishes the sign-in at once (the terminal itself is the fake one).
+          _engineState[engine] = 'signed_in';
+          data = {'engine': engine, 'pty': 'pty-signin-$engine'};
+        }
       case 'crew_settings_set':
         _ops.shortReplies = args['short_replies'] as bool? ?? true;
         _ops.shortRepliesModel = args['short_replies_model'] as String?;

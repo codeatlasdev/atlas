@@ -6,14 +6,21 @@
 
 pub mod claude;
 pub mod codex;
+mod launch;
 pub mod omp;
 pub mod opencode;
 
-use std::collections::BTreeMap;
-use std::path::Path;
+pub use launch::TurnCtx;
+// The codex argv tests (crew/tests/engines.rs, unix-only) build their own server.
+#[cfg(all(test, unix))]
+pub(crate) use launch::McpServer;
+
+#[cfg(all(test, unix))]
+mod tests;
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
 /// 2-hour hard timeout per crewmate task (mirrors runner::TASK_TIMEOUT).
 const TASK_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
@@ -195,49 +202,22 @@ pub struct TurnResult {
     pub usage: Option<UsageRecord>,
 }
 
-/// Run one turn of conversation for the given engine.
-///
-/// * `engine`     — engine kind + optional model/provider/base_url
-/// * `session`    — prior session state (empty for first turn)
-/// * `prompt`     — the full prompt text to send
-/// * `crewmate_dir`    — `<store>/crew/<id>/` — scratch space (mcp config, codex output file, …)
-/// * `crewmate_id`     — crewmate identifier, forwarded to the MCP server
-/// * `hook_port`  — running hook server port
-/// * `hook_token` — running hook server token
-/// * `pane_key`   — PTY pane key for permission prompts (`crew:<id>:<task_id>`)
-/// * `extra_env`  — crewmate-scoped secrets, forwarded as subprocess env vars
-/// * `work_dir`   — working directory for the subprocess
-/// * `yolo`       — when true, skip interactive permission prompts (auto-approve)
-/// * `tools`      — told of every finished tool call, for engines whose stream carries them (omp RPC)
-/// * `cancel`     — fires when the task is cancelled or the crew paused: the turn's process tree ends
-#[allow(clippy::too_many_arguments)]
-pub async fn run_turn(
-    engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    crewmate_dir: &Path,
-    crewmate_id: &str,
-    hook_port: u16,
-    hook_token: &str,
-    pane_key: &str,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-    yolo: bool,
-    tools: Option<&ToolSink<'_>>,
-    cancel: &TurnCancel,
-) -> Result<TurnResult, String> {
+/// Run one turn of conversation for `ctx.engine`: the engine's module launches its CLI through
+/// [`launch`] (one env set, one spawn/exit path) and parses what it printed.
+pub async fn run_turn(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
     // Stamp created_at on first turn.
-    let session = if session.created_at == 0 {
+    let ctx = if ctx.session.created_at == 0 {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        CrewmateSession {
+        let session = CrewmateSession {
             created_at: now,
-            ..session
-        }
+            ..ctx.session
+        };
+        TurnCtx { session, ..ctx }
     } else {
-        session
+        ctx
     };
 
     // In tests, a fake binary overrides all engine dispatch.
@@ -246,57 +226,14 @@ pub async fn run_turn(
     let test_bin = TEST_ENGINE_BIN.lock().clone();
     #[cfg(test)]
     if let Some(bin) = test_bin {
-        return run_fake(&bin, session, prompt, extra_env, work_dir, cancel).await;
+        return run_fake(&bin, ctx).await;
     }
 
-    match engine.kind.as_str() {
-        "claude" => {
-            claude::run(
-                engine,
-                session,
-                prompt,
-                crewmate_dir,
-                crewmate_id,
-                hook_port,
-                hook_token,
-                pane_key,
-                extra_env,
-                work_dir,
-                yolo,
-                cancel,
-            )
-            .await
-        }
-        "codex" => {
-            codex::run(
-                engine,
-                session,
-                prompt,
-                crewmate_dir,
-                extra_env,
-                work_dir,
-                cancel,
-            )
-            .await
-        }
-        "opencode" => opencode::run(engine, session, prompt, extra_env, work_dir, cancel).await,
-        "omp" => {
-            omp::run(
-                engine,
-                session,
-                prompt,
-                extra_env,
-                work_dir,
-                crewmate_dir,
-                hook_port,
-                hook_token,
-                pane_key,
-                yolo,
-                tools,
-                cancel,
-            )
-            .await
-        }
+    match ctx.engine.kind.as_str() {
+        "claude" => claude::run(ctx).await,
+        "codex" => codex::run(ctx).await,
+        "opencode" => opencode::run(ctx).await,
+        "omp" => omp::run(ctx).await,
         other => Err(format!("unknown engine kind '{other}'")),
     }
 }
@@ -323,30 +260,14 @@ pub(crate) fn set_test_engine_bin(bin: Option<&str>) {
 /// `{"type":"result","session_id":"...","result":"...","is_error":false}`.
 /// Unknown shapes fall back to treating stdout as the plain reply text.
 #[cfg(test)]
-pub(crate) async fn run_fake(
-    bin: &str,
-    session: CrewmateSession,
-    prompt: &str,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-    cancel: &TurnCancel,
-) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new(bin);
+pub(crate) async fn run_fake(bin: &str, ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mut cmd = ctx.command(bin);
     // Forward session_id via arg so the fake script can detect --resume.
-    if let Some(ref sid) = session.session_id {
+    if let Some(sid) = &ctx.session.session_id {
         cmd.arg("--resume").arg(sid);
     }
-    cmd.arg(prompt);
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-    let out = TurnProc::spawn(&mut cmd)
-        .map_err(|e| format!("fake engine: {e}"))?
-        .output(cancel, "fake engine")
-        .await?;
+    cmd.arg(ctx.prompt);
+    let out = launch::output(cmd, ctx.cancel, "fake engine").await?;
     if !out.status.success() {
         return Err(format!("fake engine exited {}", out.status));
     }
@@ -358,7 +279,7 @@ pub(crate) async fn run_fake(
     let session_id = v["session_id"].as_str().map(str::to_string);
     let new_session = CrewmateSession {
         session_id,
-        ..session
+        ..ctx.session
     };
     Ok(TurnResult {
         reply,

@@ -85,6 +85,7 @@ collect() {
   srv journalctl --no-pager -o short-precise -u 'atlas-*' >"$OUT/journal-atlas.txt" 2>&1 || true
   srv_sh "cat $HOME_DIR/.atlas/hostd.log" >"$OUT/hostd.log" 2>&1 || true
   srv_sh "ps -eo pid,ppid,user:20,pgid,args --forest" >"$OUT/ps.txt" 2>&1 || true
+  srv_sh "id atlas-crew; ls -ldn /run/atlas-crew /run/atlas-crew/* /var/lib/atlas-cm /usr/local/lib/atlas-crew/engines/*; sudo -u atlas-crew stat /run/atlas-crew/spawn.sock" >"$OUT/isolation.txt" 2>&1 || true
   srv_sh "nft list ruleset; cat /etc/atlas-crew/egress.nft" >"$OUT/nft.txt" 2>&1 || true
   srv_sh "tar -C $HOME_DIR/.atlas -cf - crew" 2>/dev/null | tar -C "$OUT" -xf - 2>/dev/null || true
 }

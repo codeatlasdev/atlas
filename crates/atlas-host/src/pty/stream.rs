@@ -16,7 +16,7 @@ use super::title::{TitleParser, shown};
 use super::{Buf, RING_MAX, RawOut, Session, bin_path, open_append};
 
 const RING_DROP: usize = 64 * 1024;
-const FILE_MAX: u64 = 4 * 1024 * 1024;
+pub(super) const FILE_MAX: u64 = 4 * 1024 * 1024;
 const COALESCE: Duration = Duration::from_millis(8);
 const COALESCE_BYTES: usize = 64 * 1024;
 /// A raw reader that accepts nothing for this long is dropped (hung client): the
@@ -156,7 +156,7 @@ impl Session {
 
     /// Ring, scrollback file and JSON attachers; returns the raw readers, which the
     /// caller feeds outside the lock (awaiting them is the backpressure).
-    fn output(&self, bytes: &[u8]) -> Vec<(u64, RawOut)> {
+    pub(super) fn output(self: &Arc<Self>, bytes: &[u8]) -> Vec<(u64, RawOut)> {
         let mut b = self.buf.lock();
         b.ring.extend(bytes);
         if b.ring.len() > RING_MAX {
@@ -165,13 +165,22 @@ impl Session {
             b.ring.drain(..n);
         }
         b.file_len += bytes.len() as u64;
-        if b.file_len > FILE_MAX {
-            let ring: Vec<u8> = b.ring.iter().copied().collect();
-            let p = bin_path(&self.dir, &self.id);
-            if std::fs::write(&p, &ring).is_ok() {
-                b.file = open_append(&p);
-                b.file_len = ring.len() as u64;
+        if let Some(since) = b.trim.as_mut() {
+            since.extend_from_slice(bytes);
+            // Restore reads the file's tail (the last `RING_MAX` bytes): a rewrite that is slow
+            // (fsync under writeback pressure) must not hold more than that. Dropped in
+            // `RING_DROP` steps like the ring, not a 2 MiB memmove per chunk under the lock.
+            if since.len() > RING_MAX {
+                let n = (since.len() - RING_MAX).div_ceil(RING_DROP) * RING_DROP;
+                since.drain(..n.min(since.len()));
             }
+        } else if b.file_len > FILE_MAX && !b.gone {
+            // The rewrite is a 2 MiB write and an fsync: never under the lock that every
+            // attach and every chunk of output waits on (#301).
+            let (snapshot, epoch) = (b.ring_bytes(), b.epoch);
+            b.trim = Some(Vec::new());
+            let s = self.clone();
+            std::thread::spawn(move || s.rewrite_scrollback(&snapshot, epoch));
         } else if let Some(f) = b.file.as_mut() {
             let _ = f.write_all(bytes);
         }
@@ -183,6 +192,52 @@ impl Session {
             Buf::broadcast(&self.id, &mut b.attachers, &line);
         }
         raw
+    }
+
+    /// Replace the scrollback file with `snapshot` (the ring when the file passed `FILE_MAX`), then
+    /// append what arrived meanwhile. Runs on its own thread; the lock is taken only to finish. The
+    /// write is atomic: a crash or a failure (full disk) leaves the previous `.bin`, which keeps
+    /// growing until a later chunk tries again.
+    pub(super) fn rewrite_scrollback(&self, snapshot: &[u8], epoch: u64) {
+        let p = bin_path(&self.dir, &self.id);
+        let written = atlas_core::fs::write_atomic(&p, snapshot, atlas_core::fs::Mode::Default);
+        self.finish_rewrite(snapshot.len(), epoch, written);
+    }
+
+    /// The locked half of [`rewrite_scrollback`](Self::rewrite_scrollback): install the new file's
+    /// handle and the output that arrived while it was written.
+    pub(super) fn finish_rewrite(
+        &self,
+        snapshot_len: usize,
+        epoch: u64,
+        written: std::io::Result<()>,
+    ) {
+        let p = bin_path(&self.dir, &self.id);
+        let mut b = self.buf.lock();
+        if b.gone {
+            // Closed while the file was written: the rename recreated it.
+            let _ = std::fs::remove_file(&p);
+            return;
+        }
+        let since = b.trim.take().unwrap_or_default();
+        let cleared = b.epoch != epoch;
+        if written.is_ok() {
+            if cleared {
+                // `clear` emptied the old file; the rename just brought its content back.
+                let _ = std::fs::write(&p, b"");
+            }
+            b.file = open_append(&p);
+        }
+        if let Some(f) = b.file.as_mut() {
+            let _ = f.write_all(&since);
+        }
+        let kept = if cleared { 0 } else { snapshot_len as u64 };
+        b.file_len = match written {
+            Ok(()) => kept + since.len() as u64,
+            // The old file is still the file: try again after another `FILE_MAX / 2` of output.
+            Err(_) if cleared => since.len() as u64,
+            Err(_) => FILE_MAX / 2 + since.len() as u64,
+        };
     }
 
     /// Store the program's title and tell every attached client, unless it is the title already

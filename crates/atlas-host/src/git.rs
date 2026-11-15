@@ -190,7 +190,7 @@ pub async fn diff(
     if let Some(p) = &path {
         check_paths(&root, std::slice::from_ref(p))?;
     }
-    let mut args = vec!["diff", "--no-color", "-U3", "--no-ext-diff", "-M"];
+    let mut args = review::REVIEW_DIFF.to_vec();
     if staged {
         args.push("--cached");
     }
@@ -335,33 +335,19 @@ pub async fn pr_create(
     Ok(json!({"url": url, "number": number}))
 }
 
-/// Git args for the "nothing is staged" fallback: tracked changes and, through `--no-index`, new files.
-const ALL_CHANGES: [&str; 5] = ["diff", "HEAD", "--no-color", "-M", "--no-ext-diff"];
-
 /// The staged diff, or every uncommitted change when nothing is staged: `(diff, scope)`.
 async fn collect_diff(root: &Path) -> Result<(String, &'static str), String> {
-    let staged = git(
-        root,
-        &["diff", "--cached", "--no-color", "-M", "--no-ext-diff"],
-    )
-    .await?;
+    let staged = git(root, &review::STAGED_CHANGES).await?;
     if !staged.trim().is_empty() {
         return Ok((staged, "staged"));
     }
-    let mut all = git(root, &ALL_CHANGES).await.unwrap_or_default();
+    let mut all = git(root, &review::ALL_CHANGES).await.unwrap_or_default();
     let untracked = git(root, &["ls-files", "--others", "--exclude-standard", "-z"])
         .await
         .unwrap_or_default();
     for path in untracked.split('\0').filter(|p| !p.is_empty()) {
         // `--no-index` exits 1 when the files differ: the normal case, so not through `git()`.
-        let o = run(
-            "git",
-            root,
-            &["diff", "--no-index", "--no-color", "--", "/dev/null", path],
-            None,
-            GIT_TIMEOUT,
-        )
-        .await?;
+        let o = run("git", root, &review::new_file_args(path), None, GIT_TIMEOUT).await?;
         if matches!(o.code, Some(0) | Some(1)) {
             all.push_str(&o.stdout);
         }
@@ -576,6 +562,45 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(one["files"].as_array().unwrap().len(), 1);
+    }
+
+    // Regression (#414): with `diff.mnemonicPrefix` (`c/ w/ i/`) or `diff.noprefix` in the user's git config, the
+    // Changes view named files wrong and the commit-message digest did not withhold a `.env`. Real hostd functions,
+    // the setting in the repo's own config.
+    #[tokio::test]
+    async fn diff_and_commit_digest_hold_whatever_prefix_the_users_git_config_asks_for() {
+        for (key, value) in [("diff.mnemonicPrefix", "true"), ("diff.noprefix", "true")] {
+            let r = Rig::new();
+            sh(r.work.path(), &["config", key, value]);
+            std::fs::write(r.work.path().join("a.txt"), "one\nTWO\n").unwrap();
+            std::fs::write(r.work.path().join(".env"), "TOKEN=untracked-secret\n").unwrap();
+
+            // The Changes view.
+            let d = diff(r.d(), r.root(), None, false).await.unwrap();
+            let a = d["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|f| f["path"] == "a.txt")
+                .unwrap_or_else(|| panic!("{key}: {d}"));
+            assert_eq!(a["status"], "modified", "{key}");
+
+            // Nothing staged: tracked changes plus the untracked `.env` through `--no-index`.
+            let (text, scope) = collect_diff(r.work.path()).await.unwrap();
+            assert_eq!(scope, "all");
+            let dg = review::digest(&text, scope);
+            assert_eq!(dg.withheld, [".env"], "{key}: {text}");
+            assert!(dg.text.contains("+TWO"), "{key}: {}", dg.text);
+            assert!(!dg.text.contains("untracked-secret"), "{key}: {}", dg.text);
+
+            // Staged.
+            sh(r.work.path(), &["add", ".env"]);
+            let (text, scope) = collect_diff(r.work.path()).await.unwrap();
+            assert_eq!(scope, "staged");
+            let dg = review::digest(&text, scope);
+            assert_eq!(dg.withheld, [".env"], "{key}: {text}");
+            assert!(!dg.text.contains("untracked-secret"), "{key}: {}", dg.text);
+        }
     }
 
     #[tokio::test]

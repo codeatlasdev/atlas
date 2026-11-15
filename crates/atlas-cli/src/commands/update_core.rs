@@ -39,7 +39,7 @@ impl Phase {
     }
 }
 
-fn enabled() -> bool {
+pub fn enabled() -> bool {
     std::env::var_os(PROGRESS_ENV).is_some_and(|v| v == "1")
 }
 
@@ -85,20 +85,19 @@ fn managed_line(how: &str) -> String {
     format!("@@atlas managed {how}")
 }
 
-/// Write `bytes` to `path` through a sibling `.tmp` and a rename: a concurrent reader (or a
-/// crash mid-write) sees the old file or the whole new one, never a truncated one.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+/// `@@atlas managed package <manager> <install|manual> <command…>`: a package manager owns this
+/// Atlas and `command` updates it. `installable` (`install`): the app may offer to run the
+/// update itself after its own confirmation (`atlas update --yes`); `manual` means only the
+/// user can, in a terminal.
+pub fn managed_package_event(manager: &str, installable: bool, command: &str) {
+    if enabled() {
+        println!("{}", managed_package_line(manager, installable, command));
     }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(format!(".{}.tmp", std::process::id()));
-    let tmp = PathBuf::from(tmp);
-    let write = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
-    if write.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    write
+}
+
+fn managed_package_line(manager: &str, installable: bool, command: &str) -> String {
+    let mode = if installable { "install" } else { "manual" };
+    format!("{} {manager} {mode} {command}", managed_line("package"))
 }
 
 /// The path the install method and the dev-build rule are judged on: `current_exe()`, except
@@ -375,39 +374,6 @@ mod helper_tests {
     use super::*;
 
     #[test]
-    fn write_atomic_replaces_whole_file_and_leaves_no_temp() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("cache");
-        write_atomic(&p, b"old").unwrap();
-        write_atomic(&p, b"newer content").unwrap();
-        assert_eq!(std::fs::read(&p).unwrap(), b"newer content");
-        let names: Vec<_> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(names, ["cache"], "no .tmp left behind: {names:?}");
-    }
-
-    #[test]
-    fn write_atomic_creates_missing_parents() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("a/b/cache");
-        write_atomic(&p, b"x").unwrap();
-        assert_eq!(std::fs::read(&p).unwrap(), b"x");
-    }
-
-    /// A failed atomic write must not clobber the previous file (the reader sees old or new,
-    /// never a truncated one).
-    #[test]
-    fn write_atomic_keeps_the_old_file_when_the_target_is_a_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("cache");
-        std::fs::create_dir(&p).unwrap();
-        assert!(write_atomic(&p, b"x").is_err());
-        assert!(p.is_dir());
-    }
-
-    #[test]
     fn dev_binary_is_a_debug_build_or_a_symlinked_exe() {
         let dir = tempfile::tempdir().unwrap();
         let real = dir.path().join("atlas-real");
@@ -436,6 +402,20 @@ mod helper_tests {
     fn managed_event_is_gated_on_progress_env_and_names_the_method() {
         assert_eq!(managed_line("homebrew"), "@@atlas managed homebrew");
         assert_eq!(managed_line("package"), "@@atlas managed package");
+    }
+
+    /// Contract with `atlas-desktop`'s `parse_progress` (its test parses this exact line):
+    /// `managed package <manager> <install|manual> <command…>`.
+    #[test]
+    fn managed_package_line_carries_the_manager_the_mode_and_the_command() {
+        assert_eq!(
+            managed_package_line("apt", true, "sudo apt install ./atlas_1.6.0_amd64.deb"),
+            "@@atlas managed package apt install sudo apt install ./atlas_1.6.0_amd64.deb"
+        );
+        assert_eq!(
+            managed_package_line("pacman", false, "sudo pacman -U x.pkg.tar.zst"),
+            "@@atlas managed package pacman manual sudo pacman -U x.pkg.tar.zst"
+        );
     }
 
     #[cfg(unix)]

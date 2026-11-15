@@ -116,6 +116,11 @@ pub fn init_script(cache: Option<&ThemeCache>) -> String {
     if enabled() {
         js.push_str("window.__ATLAS_BOOT__=true;");
     }
+    // Linux tiling WM (Hyprland, Sway, i3): the page draws its title row without caption buttons (#269).
+    #[cfg(target_os = "linux")]
+    if crate::linux_gfx::is_tiling(|k| std::env::var(k).ok()) {
+        js.push_str("window.__ATLAS_TILING__=true;");
+    }
     if let Some(c) = cache {
         let vars = serde_json::to_string(&c.vars).unwrap_or_else(|_| "{}".into());
         let name = serde_json::to_string(&c.name).unwrap_or_else(|_| "\"\"".into());

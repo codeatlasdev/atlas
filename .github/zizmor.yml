@@ -8,3 +8,14 @@ rules:
   superfluous-actions:
     ignore:
       - release.yml
+  # The point of `verify-linux` is to install the release on what users run today: archlinux:latest and fedora:latest are
+  # rolling distros with no stable tag to pin, and a pinned old image would test a world nobody has. The job builds nothing
+  # and publishes nothing (its output is screenshots and logs).
+  unpinned-images:
+    ignore:
+      - release.yml
+  # `desktop-linux` restores the main-branch cargo cache (never saved from a pull request, same rule as rust-gate) and uploads
+  # a screenshot and logs. The artifact is read by people, never executed or published.
+  cache-poisoning:
+    ignore:
+      - ci.yml:142

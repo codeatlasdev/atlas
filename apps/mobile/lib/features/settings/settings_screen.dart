@@ -6,6 +6,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_transport.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
@@ -115,6 +116,15 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.push('/pair'),
             ),
             const Divider(height: Space.xl),
+            // One line on why notifications work or not; no row when there is nothing to say
+            // (a build without Firebase config, or no computer connected yet).
+            if (ref.watch(pushRegistrationProvider).value case final status?)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.notifications_none_rounded, color: c.muted),
+                title: const Text('Notifications'),
+                subtitle: Text(status),
+              ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.privacy_tip_outlined, color: c.muted),

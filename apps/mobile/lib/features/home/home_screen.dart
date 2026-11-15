@@ -130,29 +130,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final splash = loading != null || _splashSince != null;
     if (!splash && target?.device != null) _ready.add(target!.device!.nodeId);
 
+    // One page at a time: the splash is cut for the dashboard (a cross-fade drew both at once).
     return Scaffold(
-      body: AnimatedSwitcher(
-        duration: Motion.slow,
-        child: splash
-            ? HomeSplash(key: const ValueKey('splash'), caption: _caption)
-            : devices.hasError
-            ? EmptyState(
-                title: 'Could not read paired computers',
-                message: '${devices.error}',
-                action: OutlinedButton(
-                  onPressed: () => ref.invalidate(pairedDevicesProvider),
-                  child: const Text('Try again'),
-                ),
-              )
-            : target!.onboard
-            ? Onboarding(paired: devices.value!.isNotEmpty)
-            : HomeDashboard(
-                key: ValueKey(target.device!.nodeId),
-                device: target.device!,
-                others: target.others,
-                onSwitch: (d) => setState(() => _nodeId = d.nodeId),
+      body: splash
+          ? HomeSplash(key: const ValueKey('splash'), caption: _caption)
+          : devices.hasError
+          ? EmptyState(
+              title: 'Could not read paired computers',
+              message: '${devices.error}',
+              action: OutlinedButton(
+                onPressed: () => ref.invalidate(pairedDevicesProvider),
+                child: const Text('Try again'),
               ),
-      ),
+            )
+          : target!.onboard
+          ? Onboarding(paired: devices.value!.isNotEmpty)
+          : HomeDashboard(
+              key: ValueKey(target.device!.nodeId),
+              device: target.device!,
+              others: target.others,
+              onSwitch: (d) => setState(() => _nodeId = d.nodeId),
+            ),
     );
   }
 }

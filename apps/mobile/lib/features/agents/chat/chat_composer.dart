@@ -93,6 +93,8 @@ class ChatComposer extends StatelessWidget {
                   maxLines: 5,
                   enabled: canType,
                   decoration: InputDecoration(
+                    // One line in every state: a longer hint must not grow the box and push the thread.
+                    hintMaxLines: 1,
                     hintText: sub != null && canType
                         ? (steer
                               ? 'Steer Main about $subLabel…'

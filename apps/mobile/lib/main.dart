@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/src/rust/frb_generated.dart';
@@ -12,6 +13,7 @@ import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
@@ -23,8 +25,12 @@ import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final _router = GoRouter(
-  navigatorKey: _rootNavigatorKey,
+final _router = buildRouter(_rootNavigatorKey);
+
+/// The app's routes on [rootNavigator]. Tests build their own to drive the real shell.
+@visibleForTesting
+GoRouter buildRouter(GlobalKey<NavigatorState> rootNavigator) => GoRouter(
+  navigatorKey: rootNavigator,
   routes: [
     // ── Shell: one branch per tab; the bar is visible here ─────────────────
     StatefulShellRoute(
@@ -62,43 +68,56 @@ final _router = GoRouter(
 
     // ── Detail routes on the root navigator: bar hides while these are open
     GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigator,
       path: '/pair',
-      builder: (_, _) => const PairScreen(),
+      pageBuilder: (context, state) =>
+          routePage(context, state, const PairScreen()),
     ),
     GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigator,
       path: '/project',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
-        return ProjectDetailScreen(
-          device: args['device'] as MacDevice,
-          project: args['project'] as ProjectInfo,
+        return routePage(
+          context,
+          state,
+          ProjectDetailScreen(
+            device: args['device'] as MacDevice,
+            project: args['project'] as ProjectInfo,
+          ),
         );
       },
     ),
     GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigator,
       path: '/terminal',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
-        return TerminalScreen(
-          device: args['device'] as MacDevice,
-          pty: args['pty'] as String,
-          title: args['title'] as String?,
-          pane: args['pane'] as String?,
+        return routePage(
+          context,
+          state,
+          TerminalScreen(
+            device: args['device'] as MacDevice,
+            pty: args['pty'] as String,
+            title: args['title'] as String?,
+            pane: args['pane'] as String?,
+          ),
         );
       },
     ),
     GoRoute(
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigator,
       path: '/crew/:nodeId/:crewmateId',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = (state.extra ?? {}) as Map<String, dynamic>;
-        return CrewmateChatScreen(
-          device: args['device'] as MacDevice,
-          crewmateId: state.pathParameters['crewmateId']!,
-          scrollToTaskId: args['scrollToTaskId'] as String?,
+        return routePage(
+          context,
+          state,
+          CrewmateChatScreen(
+            device: args['device'] as MacDevice,
+            crewmateId: state.pathParameters['crewmateId']!,
+            scrollToTaskId: args['scrollToTaskId'] as String?,
+          ),
         );
       },
     ),

@@ -30,6 +30,7 @@ import 'package:atlas_mobile/features/projects/detail/top_bar.dart';
 import 'package:atlas_mobile/features/projects/logs_page.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
+import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/terminal/new_terminal.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
@@ -65,9 +66,12 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
 
   Multiplexer? get _mux => liveMux(ref, widget.device);
 
+  (String, String) get _cacheKey => (widget.device.nodeId, widget.project.id);
+
   @override
   void initState() {
     super.initState();
+    _snap = ref.read(projectSnapshotCacheProvider)[_cacheKey];
     _refresh();
     _timer = Timer.periodic(_poll, (_) => _refresh(poll: true));
   }
@@ -98,6 +102,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
           _snap = ProjectSnapshot.fromDetail(
             (resp['data'] as Map).cast<String, dynamic>(),
           );
+          ref.read(projectSnapshotCacheProvider)[_cacheKey] = _snap!;
           _history.add(_snap!);
           _error = null;
         } else {

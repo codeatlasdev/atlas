@@ -272,15 +272,12 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
                     sliver: SliverList.list(
                       children: [
                         for (var i = 0; i < sorted.length; i++)
-                          EnterFade(
-                            index: i,
-                            child: ProjectTile(
-                              project: sorted[i],
-                              agents: agentsOf[sorted[i].id] ?? const [],
-                              flagged: flagged.contains(sorted[i].id),
-                              onOpen: () => _openProject(sorted[i]),
-                              last: i == sorted.length - 1,
-                            ),
+                          ProjectTile(
+                            project: sorted[i],
+                            agents: agentsOf[sorted[i].id] ?? const [],
+                            flagged: flagged.contains(sorted[i].id),
+                            onOpen: () => _openProject(sorted[i]),
+                            last: i == sorted.length - 1,
                           ),
                       ],
                     ),

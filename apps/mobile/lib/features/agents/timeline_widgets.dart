@@ -246,7 +246,7 @@ class _ToolGroupCardState extends State<ToolGroupCard> {
                     ),
                   ),
                   if (g.errors > 0) ...[
-                    Pill('${g.errors} failed', color: c.error),
+                    AtlasChip('${g.errors} failed', tone: c.error),
                     const SizedBox(width: 4),
                   ],
                   Icon(
@@ -486,7 +486,7 @@ class _SubagentRow extends StatelessWidget {
                       ),
                       if (spawned.agent != null) ...[
                         const SizedBox(width: Space.sm),
-                        Pill(spawned.agent!, color: c.muted),
+                        AtlasChip(spawned.agent!, tone: c.muted),
                       ],
                       const SizedBox(width: Space.sm),
                       Text(

@@ -499,34 +499,12 @@ class _Header extends ConsumerWidget {
                     alignment: Alignment.centerLeft,
                     children: [...previous, ?current],
                   ),
-                  child: Container(
+                  child: AtlasChip(
+                    label,
                     key: ValueKey(label),
-                    padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: .12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        StatusDot(
-                          color: color,
-                          pulse: label != 'All clear' && label != 'Connected',
-                          size: 6,
-                        ),
-                        Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: color,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                    tone: color,
+                    leading: ChipDot(
+                      pulse: label != 'All clear' && label != 'Connected',
                     ),
                   ),
                 ),

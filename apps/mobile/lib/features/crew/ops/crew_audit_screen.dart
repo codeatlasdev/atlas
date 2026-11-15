@@ -122,54 +122,29 @@ class _Filters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _Chip('All', selected: value == null, onTap: () => onChanged(null)),
+          AtlasChip(
+            'All',
+            tone: c.accent,
+            outlined: true,
+            selected: value == null,
+            onTap: () => onChanged(null),
+          ),
           for (final g in AuditGroup.values) ...[
             const SizedBox(width: Space.sm),
-            _Chip(g.label, selected: value == g, onTap: () => onChanged(g)),
+            AtlasChip(
+              g.label,
+              tone: c.accent,
+              outlined: true,
+              selected: value == g,
+              onTap: () => onChanged(g),
+            ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip(this.label, {required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 36),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: selected ? c.accent.withValues(alpha: .16) : c.base,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? c.accent : c.borderSubtle),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: selected ? c.accent : c.muted,
-            ),
-          ),
-        ),
       ),
     );
   }

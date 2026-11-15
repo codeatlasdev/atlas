@@ -39,7 +39,8 @@ pub(crate) fn fixture(name: &str) -> PathBuf {
 /// protocol it describes.
 pub(crate) fn check_golden(name: &str, live: &Value) {
     let path = fixture(name);
-    let rendered = serde_json::to_string_pretty(live).unwrap() + "\n";
+    let live = canonical(live);
+    let rendered = serde_json::to_string_pretty(&live).unwrap() + "\n";
     if std::env::var_os("UPDATE_FIXTURES").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, &rendered).unwrap();
@@ -49,18 +50,39 @@ pub(crate) fn check_golden(name: &str, live: &Value) {
             panic!("{name} is missing: UPDATE_FIXTURES=1 cargo test -p atlas-host protocol_golden")
         }))
         .unwrap();
-    if &stored == live {
+    let stored = canonical(&stored);
+    if stored == live {
         return;
     }
     let was = stored["proto"].as_u64().unwrap_or(0);
     let now = live["proto"].as_u64().unwrap_or(0);
-    let diff = diff_lines(&stored, live);
+    let diff = diff_lines(&stored, &live);
     if was == now {
         panic!("{name} is stale at PROTO {now}: {FAIL_HELP}\n{diff}");
     }
     panic!(
         "{name} describes PROTO {was} but PROTO is {now}: regenerate it (UPDATE_FIXTURES=1).\n{diff}"
     );
+}
+
+/// `v` with every object's keys in sorted order. serde_json keeps insertion order only when its
+/// `preserve_order` feature is on, and feature unification turns that on in some builds and not in
+/// others (the Windows full-workspace build has it, a plain `-p atlas-host` build does not): without
+/// this the same protocol compared unequal on Windows and the fixture's bytes depended on who wrote it.
+fn canonical(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => {
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort();
+            Value::Object(
+                keys.into_iter()
+                    .map(|k| (k.clone(), canonical(&m[k])))
+                    .collect(),
+            )
+        }
+        Value::Array(a) => Value::Array(a.iter().map(canonical).collect()),
+        other => other.clone(),
+    }
 }
 
 fn diff_lines(old: &Value, new: &Value) -> String {

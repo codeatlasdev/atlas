@@ -25,6 +25,7 @@ mod conversation;
 mod gate;
 mod github;
 mod guard;
+pub(crate) mod isolation;
 mod outcome;
 mod prompt;
 mod pty;

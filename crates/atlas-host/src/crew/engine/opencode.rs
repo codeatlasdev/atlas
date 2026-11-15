@@ -26,14 +26,14 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
         ctx.mcp_server().opencode_config().to_string(),
     );
 
-    let out = launch::output(cmd, ctx.cancel, "opencode").await?;
+    let out = launch::output(ctx.exec, cmd, ctx.cancel, "opencode").await?;
     let (engine, session) = (ctx.engine, ctx.session);
 
-    if !out.status.success() {
+    if !out.success() {
         return Err(launch::exit_error("opencode", &out));
     }
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = out.stdout.as_str();
 
     // opencode may emit a single JSON object or JSONL; find the result line.
     // Prefer lines that carry a reply field; fall back to parsing the whole stdout.

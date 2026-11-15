@@ -87,6 +87,10 @@ enum Commands {
     #[command(hide = true)]
     Hostd(commands::hostd::HostdArgs),
 
+    /// The root services behind one Linux user per crewmate (spawn helper, provisioning); run by systemd
+    #[command(hide = true, name = "crew-spawn")]
+    CrewSpawn(commands::crew_spawn::CrewSpawnArgs),
+
     /// Inspect and drive Atlas Desktop terminals: ls, read, send, kill, wait
     Term(commands::hostd::TermArgs),
 
@@ -218,7 +222,10 @@ async fn run() -> Result<()> {
     // commands get the Unix default and end quietly; the socket servers (`dev`, `hostd`) keep
     // ignoring it so a client that hangs up is an EPIPE error, never a dead daemon.
     #[cfg(unix)]
-    if !matches!(command, Commands::Dev(_) | Commands::Hostd(_)) {
+    if !matches!(
+        command,
+        Commands::Dev(_) | Commands::Hostd(_) | Commands::CrewSpawn(_)
+    ) {
         // SAFETY: before any thread is spawned or anything is written.
         unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     }
@@ -231,6 +238,7 @@ async fn run() -> Result<()> {
         Commands::Mcp(_)
             | Commands::Hook(_)
             | Commands::Hostd(_)
+            | Commands::CrewSpawn(_)
             | Commands::Term(_)
             | Commands::Wt { .. }
             | Commands::Browser(_)
@@ -262,6 +270,7 @@ async fn run() -> Result<()> {
         Commands::Mcp(args) => args.run().await?,
         Commands::Hook(args) => args.run().await?,
         Commands::Hostd(args) => args.run().await?,
+        Commands::CrewSpawn(args) => args.run().await?,
         Commands::Term(args) => args.run().await?,
         Commands::Wt { command, json } => (commands::wt::WtArgs { command, json }).run().await?,
         Commands::Browser(args) => args.run().await?,

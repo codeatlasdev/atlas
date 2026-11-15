@@ -174,7 +174,7 @@ pub(super) fn finish_task(
                         .engine
                         .as_ref()
                         .map_or(crewmate.agent.as_str(), |e| e.kind.as_str());
-                    super::super::engine_login::note_task_failure(hub, engine, &e);
+                    super::super::engine_login::note_task_failure(hub, &crewmate.id, engine, &e);
                     task.error = Some(e);
                 }
             }

@@ -123,6 +123,15 @@ fn signed_in_output(engine: &str, stdout: &str) -> bool {
     }
 }
 
+/// Whose sign-in: the crew user's (`None`), or one crewmate's when crewmates run as their own Linux users
+/// (each has its own `$HOME`, so its own sign-in). Every map below is keyed by it and the engine.
+type Subject<'a> = Option<&'a str>;
+
+fn key(subject: Subject<'_>, engine: &str) -> String {
+    // Crewmate ids and engine ids never contain a unit separator, so the pair is unambiguous.
+    format!("{}\u{1f}{engine}", subject.unwrap_or(""))
+}
+
 /// What the crew knows of each engine's sign-in. `reason` is the failure that flipped it, for the settings row.
 #[derive(Default)]
 pub(crate) struct EngineAuth {
@@ -130,19 +139,57 @@ pub(crate) struct EngineAuth {
 }
 
 impl EngineAuth {
-    fn flip(&self, engine: &str, reason: &str) -> bool {
+    fn flip(&self, subject: Subject<'_>, engine: &str, reason: &str) -> bool {
         self.flipped
             .lock()
-            .insert(engine.to_string(), reason.chars().take(300).collect())
+            .insert(key(subject, engine), reason.chars().take(300).collect())
             .is_none()
     }
 
-    fn clear(&self, engine: &str) {
-        self.flipped.lock().remove(engine);
+    fn clear(&self, subject: Subject<'_>, engine: &str) {
+        self.flipped.lock().remove(&key(subject, engine));
     }
 
-    fn reason(&self, engine: &str) -> Option<String> {
-        self.flipped.lock().get(engine).cloned()
+    fn reason(&self, subject: Subject<'_>, engine: &str) -> Option<String> {
+        self.flipped.lock().get(&key(subject, engine)).cloned()
+    }
+}
+
+/// How a sign-in of `subject` is reached: where its terminal and its status command run. The crew user's
+/// run as hostd's own user; a crewmate's on an isolated server run as that crewmate through the helper.
+struct Reach {
+    /// `None` for the crew user.
+    ctx: Option<crate::crew::runner::isolation::Ctx>,
+}
+
+impl Reach {
+    /// `crewmate` names a crewmate whose sign-in is meant. It must run as its own Linux user: on any other
+    /// server there is one sign-in (the crew user's) and answering for a "crewmate" with it would sign the
+    /// wrong account in.
+    fn of(hub: &Hub, crewmate: Option<&str>) -> Result<Self, String> {
+        let Some(id) = crewmate else {
+            return Ok(Self { ctx: None });
+        };
+        if hub.crew.store.isolation().is_none() {
+            return Err(
+                "engines are signed in per crewmate only on a server where crewmates run as their own Linux user \
+                 (atlas crew install sets that up); here there is one sign-in, the crew user's"
+                    .into(),
+            );
+        }
+        if hub.crew.store.isolated(id).is_none() {
+            return Err(format!("{id:?} is not a crewmate id"));
+        }
+        if hub.crew.store.load_crewmate(id).is_err() {
+            return Err(format!("no crewmate {id:?}"));
+        }
+        Ok(Self {
+            ctx: Some(crate::crew::runner::isolation::Ctx::of(hub, id)),
+        })
+    }
+
+    fn isolated(&self) -> Option<&crate::crew::spawn::layout::Isolated> {
+        self.ctx.as_ref().and_then(|c| c.isolated())
     }
 }
 
@@ -205,16 +252,30 @@ impl Drop for TestPath {
 /// `CrewEngineLogin`: a terminal that runs only `engine`'s login command, as the crew user (hostd's own user).
 /// The reply is `{engine, pty}`; the phone attaches with the terminal screen and types the code or the answers
 /// itself. Audited as `engine_login_started`: who asked and for which engine, never what is typed.
-pub(crate) async fn login(hub: &Hub, conn_id: u64, engine: &str) -> Result<Value, String> {
+pub(crate) async fn login(
+    hub: &Hub,
+    conn_id: u64,
+    engine: &str,
+    crewmate: Option<&str>,
+) -> Result<Value, String> {
     let e = find(engine).ok_or_else(|| format!("unknown engine {engine:?}"))?;
+    let reach = Reach::of(hub, crewmate)?;
     let mut env = BTreeMap::new();
-    env.insert(
-        "PATH".to_string(),
-        engine_path().to_string_lossy().into_owned(),
-    );
+    // As a crewmate the helper pins PATH, HOME and USER (a request cannot name them): the engine is found in
+    // its pinned directories and signs in under the crewmate's own home.
+    let cwd = match reach.isolated() {
+        Some(iso) => iso.home(),
+        None => {
+            env.insert(
+                "PATH".to_string(),
+                engine_path().to_string_lossy().into_owned(),
+            );
+            atlas_core::paths::home_dir()
+        }
+    };
     // No pane key: this is a person's terminal, not an agent pane, so no hook reports it as a crewmate.
     let req = PtyCreate {
-        cwd: atlas_core::paths::home_dir().to_string_lossy().into_owned(),
+        cwd: cwd.to_string_lossy().into_owned(),
         argv: e.login.iter().map(|s| s.to_string()).collect(),
         env,
         cols: 80,
@@ -224,17 +285,27 @@ pub(crate) async fn login(hub: &Hub, conn_id: u64, engine: &str) -> Result<Value
         mode: Mode::Pty,
     };
     let scroll = crate::paths::scrollback_dir(&hub.dir);
-    let session = tokio::task::spawn_blocking(move || Session::spawn(req, &scroll))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("{e:#}"))?;
+    let session = tokio::task::spawn_blocking(move || {
+        #[cfg(unix)]
+        {
+            Session::spawn_as(req, &scroll, reach.ctx.as_ref().and_then(|c| c.as_user()))
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = &reach;
+            Session::spawn(req, &scroll)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))?;
     let pty = session.id.clone();
     hub.sessions.lock().insert(pty.clone(), session.clone());
     reap_when_done(hub, &session);
     // Whether the sign-in worked is not read from the terminal: the next status read (the settings screen runs
     // one when it opens) asks the engine itself.
     hub.crew.audit.record(
-        None,
+        crewmate,
         "engine_login_started",
         json!({"engine": e.id, "by": hub.origin_of(conn_id)}),
     );
@@ -288,47 +359,120 @@ pub(crate) fn set_test_reap(d: Option<Duration>) {
 }
 
 /// One engine's row of `crew_engine_status`.
-async fn probe(hub: &Hub, e: &'static Engine, refresh: bool) -> Value {
-    let flipped = hub.crew.engine_auth.reason(e.id);
+async fn probe(
+    hub: &Hub,
+    reach: &Reach,
+    subject: Subject<'_>,
+    e: &'static Engine,
+    refresh: bool,
+) -> Value {
+    let flipped = hub.crew.engine_auth.reason(subject, e.id);
     if !refresh {
         if let Some(reason) = flipped {
             return json!({"engine": e.id, "state": "needs_signin", "reason": reason});
         }
-        if let Some(state) = hub.crew.engine_auth_seen.lock().get(e.id) {
+        if let Some(state) = hub.crew.engine_auth_seen.lock().get(&key(subject, e.id)) {
             return json!({"engine": e.id, "state": state});
         }
     }
-    let path = engine_path();
-    // Not on the engine PATH: nothing to sign in. Resolved here, not read from an OS error text (which differs
-    // by platform and language), the way the terminal layer resolves a program.
-    let Some(program) = atlas_core::paths::which_in(e.status[0], &path) else {
-        return remember(hub, e, "not_installed", flipped);
+    let outcome = match reach.ctx.as_ref().and_then(|c| c.isolated().map(|_| c)) {
+        Some(ctx) => probe_as_crewmate(ctx, e).await,
+        None => probe_as_crew_user(e).await,
     };
-    let mut cmd = tokio::process::Command::new(program);
-    cmd.args(&e.status[1..]).env("PATH", &path);
-    cmd.no_window();
-    let state = match run_bounded(&mut cmd, e.id, Duration::from_secs(20)).await {
+    let state = match outcome {
+        Probe::NotInstalled => "not_installed",
         // Did not start or did not answer in time: the sign-in is not known either way.
-        Err(_) => "unknown",
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            if out.status.success() && signed_in_output(e.id, &stdout) {
-                hub.crew.engine_auth.clear(e.id);
+        Probe::Unknown => "unknown",
+        Probe::Ran(out) => {
+            if out.success() && signed_in_output(e.id, &out.stdout) {
+                hub.crew.engine_auth.clear(subject, e.id);
                 "signed_in"
             } else {
                 "needs_signin"
             }
         }
     };
-    remember(hub, e, state, flipped)
+    remember(hub, subject, e, state, flipped)
+}
+
+/// What running an engine's status command came to.
+enum Probe {
+    NotInstalled,
+    Unknown,
+    Ran(Ran),
+}
+
+/// A finished status command: its exit code and stdout.
+struct Ran {
+    code: Option<i32>,
+    stdout: String,
+}
+
+impl Ran {
+    fn success(&self) -> bool {
+        self.code == Some(0)
+    }
+}
+
+/// The crew user's own check: the engine on its PATH, run as hostd's user.
+async fn probe_as_crew_user(e: &'static Engine) -> Probe {
+    let path = engine_path();
+    // Not on the engine PATH: nothing to sign in. Resolved here, not read from an OS error text (which differs
+    // by platform and language), the way the terminal layer resolves a program.
+    let Some(program) = atlas_core::paths::which_in(e.status[0], &path) else {
+        return Probe::NotInstalled;
+    };
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(&e.status[1..]).env("PATH", &path);
+    cmd.no_window();
+    match run_bounded(&mut cmd, e.id, Duration::from_secs(20)).await {
+        Err(_) => Probe::Unknown,
+        Ok(out) => Probe::Ran(Ran {
+            code: out.status.code(),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        }),
+    }
+}
+
+/// A crewmate's own check, through the helper as that user: the same `launch::output` an engine turn
+/// takes, so the process is bounded and ended like one. The helper resolves the binary in its pinned
+/// directories (a missing one is its "not found" refusal).
+async fn probe_as_crewmate(ctx: &crate::crew::runner::isolation::Ctx, e: &'static Engine) -> Probe {
+    use crate::crew::engine::launch;
+    let Some(iso) = ctx.isolated() else {
+        return Probe::Unknown;
+    };
+    let mut cmd = launch::Cmd::new(e.status[0], &iso.home().to_string_lossy());
+    cmd.args(e.status[1..].iter().map(|s| s.to_string()));
+    let cancel = crate::crew::engine::TurnCancel::new();
+    let run = tokio::time::timeout(
+        Duration::from_secs(20),
+        launch::output(&ctx.exec(), cmd, &cancel, e.id),
+    )
+    .await;
+    match run {
+        Ok(Ok(out)) => Probe::Ran(Ran {
+            code: out.code,
+            stdout: out.stdout,
+        }),
+        // The helper's refusal for a binary it does not find reads "not found" in its reason.
+        Ok(Err(err)) if err.contains("not found") => Probe::NotInstalled,
+        Ok(Err(_)) | Err(_) => Probe::Unknown,
+    }
 }
 
 /// Keep `state` as the last answer for `e` and build its row (`reason` only while a task's failure holds it).
-fn remember(hub: &Hub, e: &Engine, state: &str, flipped: Option<String>) -> Value {
+fn remember(
+    hub: &Hub,
+    subject: Subject<'_>,
+    e: &Engine,
+    state: &str,
+    flipped: Option<String>,
+) -> Value {
     hub.crew
         .engine_auth_seen
         .lock()
-        .insert(e.id.to_string(), state.to_string());
+        .insert(key(subject, e.id), state.to_string());
     match (state, flipped) {
         ("needs_signin", Some(reason)) => json!({"engine": e.id, "state": state, "reason": reason}),
         _ => json!({"engine": e.id, "state": state}),
@@ -337,10 +481,18 @@ fn remember(hub: &Hub, e: &Engine, state: &str, flipped: Option<String>) -> Valu
 
 /// `CrewEngineStatus`: `{engines: [{engine, state, reason?}]}` with `state` one of `signed_in`, `needs_signin`,
 /// `not_installed`, `unknown` (the check did not answer). `refresh` runs each engine's status command (bounded);
-/// without it the last answer and what failed tasks reported are returned at once.
-pub(crate) async fn status(hub: &Hub, refresh: bool) -> Result<Value, String> {
+/// without it the last answer and what failed tasks reported are returned at once. With `crewmate` it is that
+/// crewmate's own sign-in (see [`login`]).
+pub(crate) async fn status(
+    hub: &Hub,
+    refresh: bool,
+    crewmate: Option<&str>,
+) -> Result<Value, String> {
+    let reach = Reach::of(hub, crewmate)?;
     // Run together: a slow `codex login status` does not hold the other probes.
-    let mut probes = ENGINES.iter().map(|e| probe(hub, e, refresh));
+    let mut probes = ENGINES
+        .iter()
+        .map(|e| probe(hub, &reach, crewmate, e, refresh));
     let rows = match (probes.next(), probes.next(), probes.next(), probes.next()) {
         (Some(a), Some(b), Some(c), Some(d)) => {
             let (a, b, c, d) = tokio::join!(a, b, c, d);
@@ -351,19 +503,22 @@ pub(crate) async fn status(hub: &Hub, refresh: bool) -> Result<Value, String> {
     Ok(json!({"engines": rows}))
 }
 
-/// A task of a crewmate on `engine` failed with `error`: when that is the engine's auth error its sign-in is
-/// gone. Flips it once (the first time pushes `crew_engine_auth`, so a phone's settings row updates).
-pub(crate) fn note_task_failure(hub: &Hub, engine: &str, error: &str) {
+/// A task of `crewmate` on `engine` failed with `error`: when that is the engine's auth error its sign-in is
+/// gone. Flips it once (the first time pushes `crew_engine_auth`, so a phone's settings row updates). On a
+/// server where crewmates run as their own users it is that crewmate's sign-in that is gone, not the crew
+/// user's, and the push names whose.
+pub(crate) fn note_task_failure(hub: &Hub, crewmate: &str, engine: &str, error: &str) {
     if !is_auth_error(engine, error) {
         return;
     }
-    if hub.crew.engine_auth.flip(engine, error) {
+    let subject = hub.crew.store.isolated(crewmate).map(|_| crewmate);
+    if hub.crew.engine_auth.flip(subject, engine, error) {
         hub.crew
             .engine_auth_seen
             .lock()
-            .insert(engine.to_string(), "needs_signin".to_string());
+            .insert(key(subject, engine), "needs_signin".to_string());
         hub.broadcast(
-            json!({"ev": "crew_engine_auth", "engine": engine, "state": "needs_signin"})
+            json!({"ev": "crew_engine_auth", "engine": engine, "state": "needs_signin", "crewmate": subject})
                 .to_string(),
         );
     }

@@ -255,8 +255,12 @@ pub fn candidates(
 
 /// The work tree of crewmate `crewmate_id`: its project's checkout, its own `workdir`, or the
 /// default `work/` folder, the same one the agent runs in.
-pub fn work_tree(hostd_dir: &Path, crewmate: &super::store::Crewmate) -> Result<PathBuf, String> {
-    super::project::current_work_dir(hostd_dir, crewmate)
+pub fn work_tree(
+    hostd_dir: &Path,
+    crewmate: &super::store::Crewmate,
+    iso: Option<&super::spawn::layout::Isolated>,
+) -> Result<PathBuf, String> {
+    super::project::current_work_dir(hostd_dir, crewmate, iso)
 }
 
 /// A capture error as the agent of `locate` should read it: the message starts with `capture:` (or
@@ -279,7 +283,8 @@ pub async fn handle(
     let crewmate = store
         .load_crewmate(crewmate_id)
         .map_err(|e| format!("locate: crewmate {crewmate_id} is not readable: {e}"))?;
-    let work = work_tree(hostd_dir, &crewmate)?;
+    let iso = store.isolated(crewmate_id);
+    let work = work_tree(hostd_dir, &crewmate, iso.as_ref())?;
     let image = resolve_image(&work, &req.image)?;
     let bytes = std::fs::read(&image).map_err(|e| format!("locate: cannot read the image: {e}"))?;
     let image_w = image_width(&bytes);

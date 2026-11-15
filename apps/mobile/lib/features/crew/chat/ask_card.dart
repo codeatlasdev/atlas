@@ -10,6 +10,7 @@ import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -76,7 +77,6 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     final ask = widget.task.ask;
     if (ask == null || !ask.isOpen) return const SizedBox.shrink();
     final c = AtlasColors.of(context);
-    const r = Radius.circular(18);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -84,21 +84,8 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
         children: [
           const SizedBox(width: 36), // avatar placeholder alignment
           Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.80,
-              ),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: c.warning.withValues(alpha: .08),
-                border: Border.all(color: c.warning.withValues(alpha: .35)),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(4),
-                  topRight: r,
-                  bottomLeft: r,
-                  bottomRight: r,
-                ),
-              ),
+            child: AttentionCard(
+              bubble: true,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

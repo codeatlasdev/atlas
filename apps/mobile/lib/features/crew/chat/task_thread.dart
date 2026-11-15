@@ -67,7 +67,7 @@ class CrewmateTaskPair extends StatelessWidget {
                 day!,
                 style: TextStyle(
                   fontSize: 13,
-                  color: AtlasColors.of(context).faint,
+                  color: AtlasColors.of(context).muted,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -192,7 +192,7 @@ class _CrewmateBubble extends StatelessWidget {
       case 'queued':
         content = Text(
           task.preparing != null ? 'Downloading ${task.preparing}…' : 'Queued…',
-          style: TextStyle(color: c.faint, fontSize: 15),
+          style: TextStyle(color: c.muted, fontSize: 15),
         );
 
       case 'running':
@@ -219,13 +219,13 @@ class _CrewmateBubble extends StatelessWidget {
       case 'cancelled':
         content = Text(
           'Cancelled',
-          style: TextStyle(color: c.faint, fontSize: 15),
+          style: TextStyle(color: c.muted, fontSize: 15),
         );
 
       case 'waiting_action':
         content = Text(
           'Waiting for input…',
-          style: TextStyle(color: c.faint, fontSize: 15),
+          style: TextStyle(color: c.muted, fontSize: 15),
         );
 
       default: // done
@@ -394,7 +394,7 @@ class _AddTriggerNote extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             added ? 'Automation added' : 'Not added',
-            style: TextStyle(fontSize: 12, color: added ? c.success : c.faint),
+            style: TextStyle(fontSize: 12, color: added ? c.success : c.muted),
           ),
         ],
       ),

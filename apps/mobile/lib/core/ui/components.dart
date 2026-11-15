@@ -198,7 +198,7 @@ class SectionHeader extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '$count',
-                      style: TextStyle(color: c.faint, fontSize: 13),
+                      style: TextStyle(color: c.muted, fontSize: 13),
                     ),
                   ],
                 ],
@@ -344,52 +344,110 @@ class MinTapTarget extends StatelessWidget {
   );
 }
 
-/// A rounded tinted pill: state labels, ports, counts.
-class Pill extends StatelessWidget {
-  const Pill(
+/// What sits before an [AtlasChip]'s label.
+sealed class ChipLeading {
+  const ChipLeading();
+}
+
+/// The state dot ([StatusDot], 6 px) in the chip's tone; [pulse] for running work or a wait on the user.
+final class ChipDot extends ChipLeading {
+  const ChipDot({this.pulse = false});
+  final bool pulse;
+}
+
+/// An icon in the chip's tone.
+final class ChipIcon extends ChipLeading {
+  const ChipIcon(this.icon);
+  final IconData icon;
+}
+
+/// The one chip: a state label, port or count (tinted capsule), a filter (`outlined` + `selected`) or a
+/// status with a dot or icon. With [onTap] it is a button whose hit area is at least 48 dp however small the
+/// capsule is; without it it is plain text in a capsule and takes no more room than that.
+class AtlasChip extends StatelessWidget {
+  const AtlasChip(
     this.label, {
     super.key,
-    required this.color,
+    required this.tone,
+    this.leading,
+    this.selected = false,
+    this.outlined = false,
     this.mono = false,
     this.onTap,
   });
 
   final String label;
-  final Color color;
+
+  /// The colour of the text, dot and tint (an [AtlasColors] member).
+  final Color tone;
+  final ChipLeading? leading;
+
+  /// A filter that is on: accent-tinted with an accent border. Meaningful with [outlined].
+  final bool selected;
+
+  /// The filter look: a neutral fill and hairline border that turn accent when [selected].
+  final bool outlined;
   final bool mono;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final pill = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .14),
-        borderRadius: BorderRadius.circular(999),
+    final c = AtlasColors.of(context);
+    final fg = outlined ? (selected ? c.accent : c.muted) : tone;
+    final lead = switch (leading) {
+      ChipDot(:final pulse) => StatusDot(color: tone, pulse: pulse, size: 6),
+      ChipIcon(:final icon) => Icon(icon, color: tone, size: 14),
+      null => null,
+    };
+    final text = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: fg,
+        fontSize: outlined ? 13 : 12,
+        fontWeight: FontWeight.w600,
+        fontFamily: mono ? monoFamily : null,
+        fontFamilyFallback: mono ? monoFallback : null,
       ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          fontFamily: mono ? monoFamily : null,
-          fontFamilyFallback: mono ? monoFallback : null,
+    );
+    final capsule = DecoratedBox(
+      decoration: BoxDecoration(
+        color: outlined
+            ? (selected ? c.accent.withValues(alpha: .16) : c.base)
+            : tone.withValues(alpha: leading is ChipDot ? .12 : .14),
+        borderRadius: BorderRadius.circular(999),
+        border: outlined
+            ? Border.all(color: selected ? c.accent : c.borderSubtle)
+            : null,
+      ),
+      child: Padding(
+        padding: outlined
+            ? const EdgeInsets.symmetric(horizontal: 14, vertical: 8)
+            : leading is ChipDot
+            ? const EdgeInsets.fromLTRB(2, 2, 10, 2)
+            : const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ?lead,
+            if (leading is ChipIcon) const SizedBox(width: 4),
+            Flexible(child: text),
+          ],
         ),
       ),
     );
-    if (onTap == null) return pill;
-    // The pill is small; the touch area around it is not.
+    if (onTap == null) return capsule;
+    // The capsule is small; the touch area around it is not.
     return Semantics(
       button: true,
+      selected: selected,
       child: InkResponse(
         onTap: onTap,
         radius: 24,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-          child: Center(child: pill),
+          child: Center(widthFactor: 1, heightFactor: 1, child: capsule),
         ),
       ),
     );

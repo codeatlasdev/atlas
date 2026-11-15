@@ -42,7 +42,7 @@ class RoutinesSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Space.md),
               child: Text(
                 'A routine gives $crewmateName a prompt to run on a cron schedule.',
-                style: TextStyle(color: c.faint, fontSize: 13, height: 1.4),
+                style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
               ),
             )
           else

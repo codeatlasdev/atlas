@@ -170,6 +170,11 @@ impl Hub {
         self.lsp.shutdown().await;
     }
 
+    /// A connection id that is on no connection: what an in-process listener (a pty watcher) attaches as.
+    pub(crate) fn fresh_conn_id(&self) -> u64 {
+        self.next_conn.fetch_add(1, Ordering::Relaxed)
+    }
+
     /// Register a push receiver (mobile sessions); returns its connection id.
     pub(crate) fn add_subscriber(&self, tx: Out) -> u64 {
         let id = self.next_conn.fetch_add(1, Ordering::Relaxed);
@@ -1215,7 +1220,14 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
         | HostCmd::CrewPause {}
         | HostCmd::CrewResume {}
         | HostCmd::CrewSettingsGet {}
+        | HostCmd::CrewEngineStatus { .. }
         | HostCmd::CrewSettingsSet { .. }) => crate::crew::handle(hub, crewmate).await,
+        HostCmd::CrewEngineLogin { engine } => {
+            if !hub.crew_host {
+                return Err("this computer is not a crew server (atlas crew install)".into());
+            }
+            crate::crew::engine_login::login(hub, conn_id, &engine).await
+        }
         HostCmd::CrewServers {} => Ok(hub.crew_relay.servers()),
         HostCmd::CrewCall { server, cmd, args } => hub.crew_relay.call(&server, &cmd, args).await,
         HostCmd::MobileInvite { url, name } => {

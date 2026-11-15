@@ -186,36 +186,21 @@ async fn tool_ask_user(args: Value, client: &reqwest::Client, env: &Env) -> Resu
         "ask_id": ask_id,
     });
 
-    let url = env.hook_url(&format!("/crew/{}/ask", env.crewmate_id));
-    let resp = client
-        .post(&url)
-        .header("X-Atlas-Hook-Token", &env.hook_token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("ask_user: HTTP error: {e}"))?;
+    let text = post_hook(
+        client,
+        env,
+        "ask_user",
+        &format!("/crew/{}/ask", env.crewmate_id),
+        &body,
+    )
+    .await?;
 
-    let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
-
-    if !status.is_success() {
-        return Err(format!("ask_user: server returned {status}: {text}"));
-    }
-
-    // Parse the answer value from the response body.
+    // {kind:"key",value:"..."} or {kind:"text",value:"..."}
     let answer_text = serde_json::from_str::<Value>(&text)
         .ok()
-        .and_then(|v| {
-            // {kind:"key",value:"..."} or {kind:"text",value:"..."}
-            v.get("value")
-                .and_then(Value::as_str)
-                .map(|s| s.to_string())
-        })
+        .and_then(|v| v.get("value").and_then(Value::as_str).map(str::to_string))
         .unwrap_or(text);
-
-    Ok(json!({
-        "content": [{ "type": "text", "text": answer_text }]
-    }))
+    Ok(text_result(answer_text))
 }
 
 // ─── set_profile ──────────────────────────────────────────────────────────────────
@@ -225,24 +210,15 @@ async fn tool_set_profile(
     client: &reqwest::Client,
     env: &Env,
 ) -> Result<Value, String> {
-    let url = env.hook_url(&format!("/crew/{}/set_profile", env.crewmate_id));
-    let resp = client
-        .post(&url)
-        .header("X-Atlas-Hook-Token", &env.hook_token)
-        .json(&args)
-        .send()
-        .await
-        .map_err(|e| format!("set_profile: HTTP error: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("set_profile: server returned {status}: {body}"));
-    }
-
-    Ok(json!({
-        "content": [{ "type": "text", "text": "{\"ok\":true}" }]
-    }))
+    post_hook(
+        client,
+        env,
+        "set_profile",
+        &format!("/crew/{}/set_profile", env.crewmate_id),
+        &args,
+    )
+    .await?;
+    Ok(text_result("{\"ok\":true}"))
 }
 
 // ─── capture ──────────────────────────────────────────────────────────────────
@@ -267,86 +243,77 @@ async fn tool_ui_gate(args: Value, client: &reqwest::Client, env: &Env) -> Resul
     post_task_tool("ui_gate", args, client, env).await
 }
 
-/// `POST /crew/<id>/<tool>` with the pane key and the arguments; the answer text is the tool result,
-/// `{"error": …}` is the tool's error.
+/// `POST /crew/<id>/<tool>` with the pane key and the arguments; the answer text is the tool result.
 async fn post_task_tool(
     tool: &str,
     args: Value,
     client: &reqwest::Client,
     env: &Env,
 ) -> Result<Value, String> {
-    let url = env.hook_url(&format!("/crew/{}/{tool}", env.crewmate_id));
+    let path = format!("/crew/{}/{tool}", env.crewmate_id);
+    let body = json!({ "pane_key": env.pane_key, "args": args });
+    Ok(text_result(
+        post_hook(client, env, tool, &path, &body).await?,
+    ))
+}
+
+/// `POST <path>` (a hook-server path, query included) with the hook token: the reply body, or the
+/// error the agent reads. Every tool that calls a hook route goes through here, so a failure reads the
+/// same from all of them: the server's own `{"error": …}` message as is, else
+/// `<tool>: server returned <status>: <body>`, or `<tool>: HTTP error: …` when hostd is unreachable.
+async fn post_hook(
+    client: &reqwest::Client,
+    env: &Env,
+    tool: &str,
+    path: &str,
+    body: &Value,
+) -> Result<String, String> {
     let resp = client
-        .post(&url)
+        .post(env.hook_url(path))
         .header("X-Atlas-Hook-Token", &env.hook_token)
-        .json(&json!({ "pane_key": env.pane_key, "args": args }))
+        .json(body)
         .send()
         .await
         .map_err(|e| format!("{tool}: HTTP error: {e}"))?;
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
-        let why = serde_json::from_str::<Value>(&text)
-            .ok()
-            .and_then(|v| v["error"].as_str().map(str::to_string))
-            .unwrap_or_else(|| format!("server returned {status}: {text}"));
-        return Err(why);
+    if status.is_success() {
+        return Ok(text);
     }
-    Ok(json!({ "content": [{ "type": "text", "text": text }] }))
+    Err(serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|v| v["error"].as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{tool}: server returned {status}: {text}")))
+}
+
+/// An MCP tool result holding one text block.
+fn text_result(text: impl Into<String>) -> Value {
+    json!({ "content": [{ "type": "text", "text": text.into() }] })
 }
 
 // ─── set_ui ───────────────────────────────────────────────────────────────────
 
 /// Post the mark to hostd, which records it on the task the pane names.
 async fn tool_set_ui(client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    let url = env.hook_url(&format!("/crew/{}/set_ui", env.crewmate_id));
-    let resp = client
-        .post(&url)
-        .header("X-Atlas-Hook-Token", &env.hook_token)
-        .json(&json!({ "pane_key": env.pane_key }))
-        .send()
-        .await
-        .map_err(|e| format!("set_ui: HTTP error: {e}"))?;
-    let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
-        let why = serde_json::from_str::<Value>(&text)
-            .ok()
-            .and_then(|v| v["error"].as_str().map(str::to_string))
-            .unwrap_or_else(|| format!("server returned {status}: {text}"));
-        return Err(why);
-    }
-    Ok(json!({ "content": [{ "type": "text", "text": text }] }))
+    let path = format!("/crew/{}/set_ui", env.crewmate_id);
+    let body = json!({ "pane_key": env.pane_key });
+    Ok(text_result(
+        post_hook(client, env, "set_ui", &path, &body).await?,
+    ))
 }
 
 // ─── approve ──────────────────────────────────────────────────────────────────
 
 async fn tool_approve(args: Value, client: &reqwest::Client, env: &Env) -> Result<Value, String> {
-    let url = format!(
-        "{}?pane_key={}",
-        env.hook_url("/hook/claude/decision"),
+    let path = format!(
+        "/hook/claude/decision?pane_key={}",
         urlencoded(&env.pane_key)
     );
-
     let body = json!({
         "pane_key": env.pane_key,
         "payload": args,
     });
-
-    let resp = client
-        .post(&url)
-        .header("X-Atlas-Hook-Token", &env.hook_token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("approve: HTTP error: {e}"))?;
-
-    let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
-
-    if !status.is_success() {
-        return Err(format!("approve: server returned {status}: {text}"));
-    }
+    let text = post_hook(client, env, "approve", &path, &body).await?;
 
     // Parse {"decision": "allow"|"deny"|null}
     let decision: Option<String> = serde_json::from_str::<Value>(&text)
@@ -560,6 +527,71 @@ async fn write_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A one-shot hook server on 127.0.0.1 that answers the first request with `status` and `body`.
+    async fn answering(status: &'static str, body: &'static str) -> Env {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf).await;
+            let resp = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = s.write_all(resp.as_bytes()).await;
+        });
+        Env {
+            hook_port: port.to_string(),
+            hook_token: "tok".into(),
+            crewmate_id: "c1".into(),
+            pane_key: "crew:c1:t1".into(),
+        }
+    }
+
+    // Every tool that calls a hook route reports a failure the same way. Before, capture/locate/ui_gate/
+    // set_ui returned the server's `{"error"}` message while ask_user/set_profile/approve returned the raw
+    // `server returned 422: {"error":…}`, and capture's fallback had no tool name: the agent read two
+    // formats for the same kind of failure.
+    #[tokio::test]
+    async fn a_hook_route_failure_reads_the_same_from_every_tool() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = reqwest::Client::new();
+        let env = answering("422 Unprocessable Entity", r#"{"error":"not your task"}"#).await;
+        let err = post_hook(
+            &client,
+            &env,
+            "set_profile",
+            "/crew/c1/set_profile",
+            &json!({}),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err, "not your task", "the server's own message, as is");
+
+        let env = answering("400 Bad Request", "").await;
+        let err = post_hook(&client, &env, "ask_user", "/crew/c1/ask", &json!({}))
+            .await
+            .unwrap_err();
+        assert_eq!(err, "ask_user: server returned 400 Bad Request: ");
+
+        let env = answering("200 OK", r#"{"value":"yes"}"#).await;
+        let ok = post_hook(&client, &env, "capture", "/crew/c1/capture", &json!({}))
+            .await
+            .unwrap();
+        assert_eq!(ok, r#"{"value":"yes"}"#);
+
+        let dead = Env {
+            hook_port: "1".into(),
+            ..env
+        };
+        let err = post_hook(&client, &dead, "locate", "/crew/c1/locate", &json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.starts_with("locate: HTTP error: "), "{err}");
+    }
 
     #[test]
     fn urlencoded_safe_chars() {

@@ -9,11 +9,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/engine_signin.dart';
 import 'package:atlas_mobile/features/crew/widgets/github_device_login.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -465,16 +467,30 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Widget _signInEngine(AtlasColors c, TaskAction action, bool busy) {
     final engine = action.engine ?? 'engine';
+    // Only the engines hostd can sign in get the button; any other name keeps the Settings text.
+    final canSignInHere = engineLabels.containsKey(engine);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _title(c, 'Sign in to $engine'),
+        _title(c, 'Sign in to ${engineLabels[engine] ?? engine}'),
         const SizedBox(height: 4),
         Text(
-          'Sign in to $engine in Settings, then tap Done.',
+          canSignInHere
+              ? 'Tap Sign in here to open its sign-in on the crew server, finish it, then tap Done.'
+              : 'Sign in to $engine on the crew server, then tap Done.',
           style: TextStyle(fontSize: 12, color: c.muted),
         ),
         const SizedBox(height: 10),
+        if (canSignInHere) ...[
+          WarnPillButton(
+            key: const Key('sign-in-here'),
+            label: 'Sign in here',
+            onPressed: busy
+                ? null
+                : () => openEngineSignin(context, ref, widget.device, engine),
+          ),
+          const SizedBox(height: 8),
+        ],
         _actions('Done', busy ? null : () => _submit('done')),
       ],
     );

@@ -204,21 +204,22 @@ impl Turn<'_> {
                 }
             }
         };
-        let turn = engine::run_turn(
-            self.engine_cfg,
+        let crewmate_dir = hub.crew.store.crewmate_dir(&crewmate.id);
+        let turn = engine::run_turn(engine::TurnCtx {
+            engine: self.engine_cfg,
             session,
             prompt,
-            &hub.crew.store.crewmate_dir(&crewmate.id),
-            &crewmate.id,
-            self.hook.0,
-            self.hook.1,
-            self.pane_key,
-            &env,
-            self.work_dir,
-            self.yolo,
-            Some(&tools),
-            &cancel,
-        )
+            crewmate_dir: &crewmate_dir,
+            crewmate_id: &crewmate.id,
+            hook_port: self.hook.0,
+            hook_token: self.hook.1,
+            pane_key: self.pane_key,
+            extra_env: &env,
+            work_dir: self.work_dir,
+            yolo: self.yolo,
+            tools: Some(&tools),
+            cancel: &cancel,
+        })
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
             // The next turn would start a new conversation instead of continuing this one.

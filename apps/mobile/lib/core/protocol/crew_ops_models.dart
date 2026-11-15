@@ -29,6 +29,7 @@ const _auditKinds = <String, (String, AuditGroup)>{
   'task_finished': ('Task finished', AuditGroup.tasks),
   'config_changed': ('Setting changed', AuditGroup.config),
   'secret_set': ('Secret set', AuditGroup.config),
+  'engine_login_started': ('Sign-in started', AuditGroup.config),
 };
 
 String auditKindLabel(String kind) => _auditKinds[kind]?.$1 ?? kind;
@@ -58,6 +59,19 @@ String _answerer(String? by) {
     return 'answered by Telegram chat ${by.substring(9)}';
   }
   return 'answered by $by';
+}
+
+/// Who asked for a sign-in, readable: `desktop`, `phone:<node>`, `telegram:<chat>`.
+String _requester(String? by) {
+  if (by == null || by.isEmpty) return 'by someone';
+  if (by.startsWith('phone:')) {
+    final node = by.substring(6);
+    return 'from phone ${node.length > 8 ? node.substring(0, 8) : node}…';
+  }
+  if (by.startsWith('telegram:')) {
+    return 'from Telegram chat ${by.substring(9)}';
+  }
+  return 'from $by';
 }
 
 /// One line of the audit log: the common keys plus whatever the kind adds.
@@ -120,6 +134,8 @@ class AuditEntry {
         return 'Crewmate ${raw['name'] ?? '?'} created';
       case 'crewmate_deleted':
         return 'Crewmate ${raw['name'] ?? '?'} deleted';
+      case 'engine_login_started':
+        return 'Sign-in of ${raw['engine'] ?? '?'} started (${_requester(raw['by'] as String?)})';
       default:
         return kind;
     }
@@ -297,6 +313,71 @@ class CrewSettings {
         ? null
         : shortRepliesModel,
   };
+}
+
+// ─── engine sign-in ───────────────────────────────────────────────────────────
+
+/// The engines a crew server can sign in, in the order the settings list shows them.
+const engineLabels = <String, String>{
+  'claude': 'Claude Code',
+  'codex': 'Codex',
+  'omp': 'omp',
+  'opencode': 'OpenCode',
+};
+
+/// One row of `crew_engine_status`: `state` is `signed_in`, `needs_signin`, `not_installed` or `unknown`
+/// (the check did not answer); `reason` is the auth error a failed task reported, when that flipped it.
+class EngineStatus {
+  const EngineStatus({required this.engine, required this.state, this.reason});
+  final String engine;
+  final String state;
+  final String? reason;
+
+  factory EngineStatus.fromJson(Map<String, dynamic> j) => EngineStatus(
+    engine: j['engine'] as String,
+    state: j['state'] as String,
+    reason: j['reason'] as String?,
+  );
+
+  String get label => engineLabels[engine] ?? engine;
+  bool get needsSignin => state == 'needs_signin';
+
+  /// What the row says under the name.
+  String get text => switch (state) {
+    'signed_in' => 'Signed in',
+    'needs_signin' => 'Needs sign-in',
+    'not_installed' => 'Not installed on this server',
+    _ => 'Could not check',
+  };
+}
+
+/// The `engines` of a `crew_engine_status` reply: the ones the phone knows in [engineLabels] order, then any
+/// engine a newer hostd adds, in the order it sent them (the sort is by a key that includes the position).
+List<EngineStatus> parseEngineStatus(Map<String, dynamic> data) {
+  final rows = [
+    for (final r in (data['engines'] as List? ?? const []))
+      if (r is Map) EngineStatus.fromJson(r.cast<String, dynamic>()),
+  ];
+  final order = engineLabels.keys.toList();
+  int rank(EngineStatus s) {
+    final i = order.indexOf(s.engine);
+    return i < 0 ? order.length : i;
+  }
+
+  final keyed = [
+    for (var i = 0; i < rows.length; i++) (rank(rows[i]), i, rows[i]),
+  ]..sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+  return [for (final k in keyed) k.$3];
+}
+
+/// The `crew_engine_login` reply: the terminal to open.
+class EngineLogin {
+  const EngineLogin({required this.engine, required this.pty});
+  final String engine;
+  final String pty;
+
+  factory EngineLogin.fromJson(Map<String, dynamic> j) =>
+      EngineLogin(engine: j['engine'] as String, pty: j['pty'] as String);
 }
 
 // ─── routines ─────────────────────────────────────────────────────────────────

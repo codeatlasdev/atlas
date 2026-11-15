@@ -39,7 +39,7 @@ class AutomationsSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: Space.md),
               child: Text(
                 'Or just ask ${crewmate.name}: "every weekday at 9, review the open PRs".',
-                style: TextStyle(color: c.faint, fontSize: 13, height: 1.4),
+                style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
               ),
             )
           else
@@ -118,7 +118,7 @@ class TriggerRow extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           'Next: $nextStr',
-                          style: TextStyle(color: c.faint, fontSize: 12),
+                          style: TextStyle(color: c.muted, fontSize: 12),
                         ),
                       ],
                     ],

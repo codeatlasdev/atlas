@@ -7,12 +7,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/auth/device_auth.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -54,7 +55,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Future<void> _submit(String value) async {
     if (value.isEmpty || _submitting) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     setState(() {
       _submitting = true;
@@ -156,7 +157,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _cancel() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     await mux.call('crewmate_cancel', {
       'id': widget.crewmateId,
@@ -168,13 +169,13 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _startGithubLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     await _login.start(mux, _pollGithubLogin);
   }
 
   Future<void> _pollGithubLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     final (result, _) = await _login.pollOnce(mux);
     // Wake the runner once the user has authorized.
@@ -188,18 +189,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     final c = AtlasColors.of(context);
     final action = widget.task.action;
     if (action == null) return const SizedBox.shrink();
-
-    const r = Radius.circular(18);
-    final cardDecoration = BoxDecoration(
-      color: c.warning.withValues(alpha: .08),
-      border: Border.all(color: c.warning.withValues(alpha: .35)),
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(4),
-        topRight: r,
-        bottomLeft: r,
-        bottomRight: r,
-      ),
-    );
 
     final busy = _submitting;
     final cardContent = switch (action.kind) {
@@ -246,16 +235,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           const SizedBox(width: 36), // avatar placeholder alignment
-          Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.80,
-              ),
-              padding: const EdgeInsets.all(12),
-              decoration: cardDecoration,
-              child: cardContent,
-            ),
-          ),
+          Flexible(child: AttentionCard(bubble: true, child: cardContent)),
         ],
       ),
     );

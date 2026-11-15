@@ -15,11 +15,12 @@ use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
 use crate::HostClient;
+use crate::paths;
 use crate::server::Hub;
 
 /// A live connection to one crew server and what keeps it open (the ssh tunnel), dropped with it.
@@ -32,7 +33,26 @@ type Connecting = Pin<Box<dyn Future<Output = Result<Link, String>> + Send>>;
 
 /// How to reach a crew server: ssh by default, a local daemon in tests.
 #[derive(Clone)]
-pub struct Connector(pub Arc<dyn Fn(String) -> Connecting + Send + Sync>);
+pub struct Connector {
+    dial: Arc<dyn Fn(String) -> Connecting + Send + Sync>,
+    /// How long a `crew_call` waits for the link ([`CONNECT_WAIT`]; tests shorten it).
+    wait: Duration,
+}
+
+impl Connector {
+    pub fn new(dial: Arc<dyn Fn(String) -> Connecting + Send + Sync>) -> Self {
+        Connector {
+            dial,
+            wait: CONNECT_WAIT,
+        }
+    }
+
+    /// The same connector with another connect wait (a test cannot wait 20 s for a server to be down for good).
+    pub fn with_wait(mut self, wait: Duration) -> Self {
+        self.wait = wait;
+        self
+    }
+}
 
 impl std::fmt::Debug for Connector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -73,6 +93,17 @@ pub struct CrewRelay {
     connector: Connector,
     servers: Mutex<HashMap<String, Arc<Server>>>,
     hub: OnceLock<Weak<Hub>>,
+    /// Revoked phones whose `push_forget` has not reached every crew server yet (#363).
+    pending: Mutex<Vec<Pending>>,
+    /// `<hostd dir>/mobile/pending-forget.json`: what `pending` is saved to, so a restart keeps it.
+    pending_file: PathBuf,
+}
+
+/// A revoked phone and the crew servers (registry hosts) that still hold its push tokens.
+#[derive(Clone, Serialize, Deserialize)]
+struct Pending {
+    node: String,
+    servers: Vec<String>,
 }
 
 /// The desktop's registry of crew servers, under `<registry>/desktop/`.
@@ -98,25 +129,46 @@ fn adopt_legacy_registry(desktop: &Path) {
 /// How long a `crew_call` waits for its crew server to connect.
 const CONNECT_WAIT: Duration = Duration::from_secs(20);
 
+/// Pending forgets, beside the phones they belong to (`mobile/devices.json`).
+const PENDING_FORGET_FILE: &str = "mobile/pending-forget.json";
+
 impl CrewRelay {
-    /// `registry`: where the desktop keeps `desktop/crew-servers.json`; `sockets`: where the ssh
-    /// tunnels' local ends go (ssh connector only). A registry still under its pre-Crew name
+    /// `registry`: where the desktop keeps `desktop/crew-servers.json`; `sockets`: this hostd's dir,
+    /// where the ssh tunnels' local ends and the pending forgets go. A registry still under its pre-Crew name
     /// (`bot-hosts.json`) is adopted here too: the desktop may not have run since the update.
     pub fn new(registry: &Path, sockets: &Path, connector: Option<Connector>) -> Self {
         let desktop = registry.join("desktop");
         adopt_legacy_registry(&desktop);
         CrewRelay {
             registry: registry.to_path_buf(),
-            connector: connector.unwrap_or_else(|| {
+            connector: connector.clone().unwrap_or_else(|| {
                 ssh_connector(desktop.join(REGISTRY_FILE), sockets.join("crew-links"))
             }),
             servers: Mutex::new(HashMap::new()),
             hub: OnceLock::new(),
+            pending: Mutex::new(load_pending(&sockets.join(PENDING_FORGET_FILE))),
+            pending_file: sockets.join(PENDING_FORGET_FILE),
         }
     }
 
-    pub(crate) fn start(&self, hub: &Arc<Hub>) {
+    /// Connect to every server a revoked phone is still pending on: a link that comes up settles its
+    /// forgets (`keep`), so a restarted Mac delivers what the last one could not.
+    pub(crate) fn start(self: &Arc<Self>, hub: &Arc<Hub>) {
         let _ = self.hub.set(Arc::downgrade(hub));
+        self.prune_pending();
+        let hosts: Vec<String> = self
+            .pending
+            .lock()
+            .iter()
+            .flat_map(|p| p.servers.clone())
+            .collect();
+        for e in self
+            .entries()
+            .into_iter()
+            .filter(|e| hosts.contains(&e.host))
+        {
+            self.ensure(&e);
+        }
     }
 
     /// The crew servers in the registry; ssh-unsafe names are left out.
@@ -144,23 +196,82 @@ impl CrewRelay {
         json!({ "servers": list })
     }
 
-    /// A revoked phone's push tokens leave every crew server of the registry (`push_forget`). One
-    /// task per server, since a server that is down must not hold the others up; an unreachable one
-    /// is logged, and the phone is already cut off from this Mac either way.
+    /// A revoked phone's push tokens leave every crew server of the registry (`push_forget`). The
+    /// forget is saved first, then tried on each server in a task of its own (a server that is down
+    /// must not hold the others up). A server that cannot be reached keeps the phone pending: the
+    /// relay sends it when that server connects (`keep`) and when this hostd starts (#363). The
+    /// phone is already cut off from this Mac either way.
     pub fn forget_phone(self: &Arc<Self>, node: &str) {
-        for e in self.entries() {
-            let (relay, node) = (self.clone(), node.to_string());
-            tokio::spawn(async move {
-                if let Err(err) = relay
-                    .call(&e.host, "push_forget", json!({"node": node}))
-                    .await
-                {
-                    eprintln!(
-                        "atlas hostd: could not clear a revoked phone's push tokens on {}: {err}",
-                        e.host
-                    );
+        let hosts: Vec<String> = self.entries().into_iter().map(|e| e.host).collect();
+        if hosts.is_empty() {
+            return;
+        }
+        {
+            let mut pending = self.pending.lock();
+            match pending.iter_mut().find(|p| p.node == node) {
+                Some(p) => p.servers = hosts.clone(),
+                None => pending.push(Pending {
+                    node: node.to_string(),
+                    servers: hosts.clone(),
+                }),
+            }
+            self.save_pending(&pending);
+        }
+        for host in hosts {
+            let relay = self.clone();
+            tokio::spawn(async move { relay.settle(&host).await });
+        }
+    }
+
+    /// Send `push_forget` for every phone still pending on `host`; a server it reached is taken off
+    /// that phone's entry. Failures stay pending and are logged.
+    async fn settle(self: &Arc<Self>, host: &str) {
+        let nodes: Vec<String> = self
+            .pending
+            .lock()
+            .iter()
+            .filter(|p| p.servers.iter().any(|s| s == host))
+            .map(|p| p.node.clone())
+            .collect();
+        for node in nodes {
+            match self.call(host, "push_forget", json!({"node": node})).await {
+                Ok(_) => {
+                    let mut pending = self.pending.lock();
+                    for p in pending.iter_mut().filter(|p| p.node == node) {
+                        p.servers.retain(|s| s != host);
+                    }
+                    pending.retain(|p| !p.servers.is_empty());
+                    self.save_pending(&pending);
                 }
-            });
+                Err(err) => eprintln!(
+                    "atlas hostd: could not clear a revoked phone's push tokens on {host} (retried when it connects): {err}"
+                ),
+            }
+        }
+    }
+
+    /// A server the desktop removed from its registry is never dialled again: forget it.
+    fn prune_pending(&self) {
+        let hosts: Vec<String> = self.entries().into_iter().map(|e| e.host).collect();
+        let mut pending = self.pending.lock();
+        let mut changed = false;
+        for p in pending.iter_mut() {
+            let n = p.servers.len();
+            p.servers.retain(|s| hosts.contains(s));
+            changed |= p.servers.len() != n;
+        }
+        pending.retain(|p| !p.servers.is_empty());
+        if changed {
+            self.save_pending(&pending);
+        }
+    }
+
+    fn save_pending(&self, pending: &[Pending]) {
+        let saved = serde_json::to_vec(pending)
+            .map_err(|e| e.to_string())
+            .and_then(|b| paths::write_private(&self.pending_file, &b).map_err(|e| e.to_string()));
+        if let Err(e) = saved {
+            eprintln!("atlas hostd: cannot save the pending push forgets: {e}");
         }
     }
 
@@ -177,7 +288,7 @@ impl CrewRelay {
             .find(|e| e.host == server)
             .ok_or_else(|| format!("unknown crew server {server:?}"))?;
         let mut rx = self.ensure(&entry).client.subscribe();
-        let client = tokio::time::timeout(CONNECT_WAIT, async {
+        let client = tokio::time::timeout(self.connector.wait, async {
             loop {
                 if let Some(c) = rx.borrow_and_update().clone() {
                     return Some(c);
@@ -230,7 +341,7 @@ async fn keep(crew: Weak<CrewRelay>, host: String, server: Arc<Server>) {
             return;
         }
         *server.state.lock() = "connecting".into();
-        let attempt = (c.connector.0)(host.clone());
+        let attempt = (c.connector.dial)(host.clone());
         let hub = c.hub.get().cloned();
         drop(c);
         match attempt.await {
@@ -240,6 +351,11 @@ async fn keep(crew: Weak<CrewRelay>, host: String, server: Arc<Server>) {
                 let mut events = link.client.events();
                 // `send_replace`: `send` drops the value when nobody is waiting yet.
                 server.client.send_replace(Some(link.client.clone()));
+                if let Some(c) = crew.upgrade() {
+                    c.prune_pending();
+                    let host = host.clone();
+                    tokio::spawn(async move { c.settle(&host).await });
+                }
                 let relay = {
                     let host = host.clone();
                     tokio::spawn(async move {
@@ -267,16 +383,31 @@ async fn keep(crew: Weak<CrewRelay>, host: String, server: Arc<Server>) {
     }
 }
 
+/// The pending forgets saved by the last hostd; unreadable ones are logged, never silently dropped.
+fn load_pending(file: &Path) -> Vec<Pending> {
+    match std::fs::read(file) {
+        Ok(b) => serde_json::from_slice(&b).unwrap_or_else(|e| {
+            eprintln!("atlas hostd: ignoring {}: {e}", file.display());
+            Vec::new()
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            eprintln!("atlas hostd: cannot read {}: {e}", file.display());
+            Vec::new()
+        }
+    }
+}
+
 #[cfg(unix)]
 fn ssh_connector(registry_file: PathBuf, dir: PathBuf) -> Connector {
-    Connector(Arc::new(move |host| {
+    Connector::new(Arc::new(move |host| {
         Box::pin(ssh_link(registry_file.clone(), dir.clone(), host))
     }))
 }
 
 #[cfg(not(unix))]
 fn ssh_connector(_registry_file: PathBuf, _dir: PathBuf) -> Connector {
-    Connector(Arc::new(|_| {
+    Connector::new(Arc::new(|_| {
         Box::pin(async { Err("crew servers are reached from macOS and Linux only".to_string()) })
     }))
 }

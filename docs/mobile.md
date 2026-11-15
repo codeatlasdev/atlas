@@ -19,12 +19,12 @@ The code works once. Five wrong attempts cancel it. After pairing, the phone is 
 | Permission                                  | Allows                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | See projects, logs, agents                  | project and service state, logs and search, agent tabs and replies, terminal list, a project's changed files and their diffs (`git_status`, `git_diff`); read the images of a crewmate's task, its audit and usage |
-| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done, stage and unstage files, commit (with the AI message), push and open a pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`); send a task, with images, to a crewmate (uploading an image is the same permission); answer a crewmate's question (`crewmate_answer`) or a card, including a secret it asks for (Face ID first) |
+| Restart services, run actions, send prompts | restart/start/stop a service, start a stack, run an action (its confirm step is shown on the phone), send a prompt to an agent that is idle or done, open a new terminal (`pty_open`), stage and unstage files, commit (with the AI message), push and open a pull request (`git_stage`, `git_unstage`, `git_commit`, `git_commit_message`, `git_push`, `git_pr_create`); send a task, with images, to a crewmate (uploading an image is the same permission); answer a crewmate's question (`crewmate_answer`) or a card, including a secret it asks for (Face ID first) |
 | Answer agent permission prompts             | allow or deny a Claude Code / Codex tool call                                                                                                       |
 | Watch terminals                             | live terminal output                                                                                                                                |
 | Type in terminals                           | keystrokes; the app also asks for Face ID / biometrics before each session                                                                          |
 
-**Revoke** cuts the phone off immediately and forgets it, and takes its push tokens with it: on this computer, and on every crew server behind it (the Mac sends each one `push_forget` with the phone's node id; a crew server that is unreachable at that moment logs it, and the phone is cut off from the Mac either way). A token the phone registered on a crew server through the Mac is stored there under the phone's own node id (the Mac stamps it from the phone's connection; whatever the phone puts in `node` is overwritten), so revoking the phone on the crew server itself clears it too. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
+**Revoke** cuts the phone off immediately and forgets it, and takes its push tokens with it: on this computer, and on every crew server behind it (the Mac sends each one `push_forget` with the phone's node id; a crew server that is unreachable at that moment keeps the phone on a list saved on the Mac, `mobile/pending-forget.json`, and gets the `push_forget` the next time it connects, also after a Mac restart; a server removed from the desktop's registry drops off the list; the phone is cut off from the Mac either way). A token the phone registered on a crew server through the Mac is stored there under the phone's own node id (the Mac stamps it from the phone's connection; whatever the phone puts in `node` is overwritten), so revoking the phone on the crew server itself clears it too. A phone can never run shell commands through `exec`, read or write files, change its own permissions or manage devices.
 
 **No computer at hand?** Under the scanner, **Explore a demo** opens a computer that lives in the app (`apps/mobile/lib/core/demo/demo_computer.dart`): sample projects, services, logs, agents with a permission prompt to answer, a crew. It answers the same protocol as hostd, connects to nothing and is not saved; **Settings → Leave demo**, pairing a real computer or relaunching ends it. It is how App Review and Play review use the app (their review notes point to it), and the tests run every screen against it.
 
@@ -46,6 +46,14 @@ On every connect the phone asks hostd's `info` once and compares its `proto` wit
 - **hostd newer than the app**: only when its `info` carries `min_client_proto` above `kAppProto` (hostd does not send it today): **Update Atlas Mobile**. Without that field a newer hostd is assumed additive.
 
 A mismatch is not an outage, so the phone does not retry it in a loop: it checks again when the app comes to the foreground, on pull to refresh and on **Try again**, and the state clears as soon as the versions agree.
+
+### How a screen says what is going on
+
+One path for the connection and one for the states, so a new screen does not invent either:
+
+- **Getting a connection:** `requireMux(ref, device)` in a provider, `requireMuxOf(ref, device)` in a widget handler (`lib/core/connection/require_mux.dart`). Both wait while the link opens and return the live connection, or throw `DeviceOffline` (the computer is off) or `DeviceProtocolMismatch` (the section above). `errorText(e)` turns a caught error into the one sentence to show. A background refresh that must not wait uses `liveMux(ref, device)` and skips when it is null.
+- **Rendering an `AsyncValue`:** `AsyncView` (`lib/core/ui/async_view.dart`) draws loading (the one spinner), the error with **Try again**, the empty state, the offline state and the protocol-mismatch state; the screen only supplies the data builder and the copy. A list that reads `value ?? []` shows "empty" while it is still loading: never do that.
+- **A computer that is not connected:** `ReachingView` (full screen: reaching, can't reach, or the update message) and `OfflineStrip` (one line over a screen that keeps showing history). `test/goldens/<os>/async_view_states.png` pins the set.
 
 ## Review and ship from the phone
 
@@ -73,6 +81,20 @@ The phone lists, creates and removes git worktrees of a project and starts an ag
 | `agent_launch {project, agent, prompt?, worktree?}` | `act` | with Atlas Desktop running it opens a real tab there (`terminal_create` on the desktop's control socket, with the worktree's folder); with the app closed (nothing listens on the socket) hostd spawns the agent itself in that folder, never with the agent's yolo flags. A desktop that answers with an error is not "closed": the error is returned, nothing is started behind its back. The project's main checkout without `worktree` |
 
 All of them take registry ids, never paths, and ignore SSH checkouts (the desktop owns those). The lab hostd forwards `worktree_create`, `worktree_remove` and `agent_launch` to your real hostd and answers `worktree_list` itself.
+
+### A new terminal from the phone
+
+With no computer at hand you can still run a command: a project's page (Agents tab, **New terminal**) and the computer's page (Projects header, **New terminal**) start a shell on that computer and open it in the terminal screen, with the desktop closed (`crates/atlas-host/src/mobile/shell.rs`). hostd starts the user's login shell, the same default every desktop tab gets from `Session::spawn` (an empty `argv`: `$SHELL -l` on Unix, PowerShell or `cmd` on Windows), and the terminal is an ordinary hostd pty with no pane key, so a desktop that opens later lists it with the others.
+
+| Command | Scope | Does |
+|---|---|---|
+| `pty_open {project?, worktree?, crewmate?}` | `act` | `{pty}` of a new shell. Attaching (`pty_attach`) needs `term_read`; typing still needs `term_write` and the app's Face ID / passcode gate, exactly as for any terminal |
+
+The phone sends ids, never a path or a program (`pty_create`, which takes any folder and argv, stays refused). On a **computer**, `project` is a registry id of `project_list` and `worktree`, when given, must be one of **that project's** worktrees (`worktree_list`); a path, a `..`, an unknown id, another project's worktree and a request with no project are all refused and start nothing. On a **crew server** (`ATLAS_CREW_HOST`), which has no projects: no argument opens the crew home (the crew user's `$HOME`, as the sign-in terminal does), and `crewmate` opens that crewmate's work tree (`crew/<id>/work`, or its project checkout), found by listing the crew store, so an id that escapes it is simply unknown; a crewmate that has not run a task yet has no work tree and is refused with that reason. Both run as hostd's own user (on a crew server the crew user, never root).
+
+The audit log (`audit.log`) records `pty_created {project, worktree, crewmate, cwd}` under the phone's node id once the shell exists (the folder hostd resolved, so what was asked and where it went can be compared), next to the request line itself; what is typed afterwards is logged as a length only, as before.
+
+A crew server reached **through a Mac** is not offered the button: a terminal's output streams to the connection that attached it, which would be the Mac's relay, not the phone (the same limit as the engine sign-in), so `pty_open` is refused inside `crew_call`. Pair the phone with the crew server itself to open a terminal there. The reply is read from hostd's real payload (`apps/mobile/test/fixtures/pty_open.json`, written by `UPDATE_FIXTURES=1 cargo test -p atlas-host --lib -- mobile::tests::a_phone_opens_a_shell`). `pty_open` is a new command with optional arguments: additive, no `PROTO` bump.
 
 ## Crew on the phone
 
@@ -161,7 +183,7 @@ bun run mobile:lab --stop              # stops the LAB hostd only
 |---|---|
 | show your real agents | seeds from `agent_status_all` and follows `agent_status` / `agent_approval*` pushes into its own agent hub |
 | run the branch's code | `agent_tree`, `agent_history` and `project_*` run in the lab over the same session files and project registry (read only) |
-| act on your terminals | `pty_list`, `pty_read`, `pty_write`, `pty_signal`, `agent_send`, `agent_interrupt`, `agent_approve`, `agent_launch` are forwarded to your hostd; a phone's terminal gets its own connection to it, relayed back, and released when the phone leaves |
+| act on your terminals | `pty_list`, `pty_read`, `pty_write`, `pty_signal`, `pty_open`, `agent_send`, `agent_interrupt`, `agent_approve`, `agent_launch` are forwarded to your hostd; a phone's terminal gets its own connection to it, relayed back, and released when the phone leaves |
 
 It never starts the hook server (that would steal the endpoint your agents read), never adopts or hands off terminals, and refuses to create, kill or resize one. Your hostd holds a permission prompt only for *its own* phones, so an experimental phone never makes a real agent wait. If your hostd restarts (`atlas update`), forwarded calls fail with a clear message and the lab reconnects and re-seeds on its own; with no hostd at all it exits at start with an error. It has no idle timeout: it stops with `--stop`.
 

@@ -14,6 +14,7 @@ use crate::paths::{self, Loaded};
 pub(crate) mod jsonl;
 mod origin;
 mod tasklog;
+mod usage;
 pub use origin::{GithubOrigin, GithubOriginKind};
 
 /// `<hostd dir>/crew/<id>/`: where a crewmate keeps everything (definition, tasks, memory, work tree).
@@ -518,9 +519,13 @@ impl Default for CrewSettings {
     }
 }
 
-/// `usage.jsonl` is cut back to its newest half once it passes this: totals cover the recent past, and the
-/// file is read whole by `crewmate_usage`.
+/// `usage.jsonl` is rotated into `usage-<YYYY-MM-DD>.jsonl.gz` once it passes this, so the live file (read
+/// whole by `crewmate_usage`) stays small and no total is lost.
 const USAGE_MAX_BYTES: u64 = 1024 * 1024;
+
+/// Rotated usage files kept per crewmate; the oldest are deleted past it. A day's rotation is a few hundred
+/// KiB of gzip, so this bounds the history at about a year of heavy use in a few MiB.
+const USAGE_KEEP_ROTATED: usize = 400;
 
 /// Crewmates deleted by this process. Shared like the task logs (`tasklog::LOGS`), because handlers build their own
 /// stores over the same files. Ids are never reused, so it only grows by one per delete.
@@ -532,6 +537,10 @@ pub struct CrewStore {
     isolation: Option<super::spawn::layout::Setup>,
     /// The task log size below which it is never compacted (see `tasklog`); tests lower it.
     compact_min: u64,
+    /// The size of `usage.jsonl` that rotates it ([`USAGE_MAX_BYTES`]); tests lower it.
+    usage_max: u64,
+    /// Rotated usage files kept ([`USAGE_KEEP_ROTATED`]); tests lower it.
+    usage_keep: usize,
 }
 
 impl CrewStore {
@@ -551,6 +560,8 @@ impl CrewStore {
             base: base.to_path_buf(),
             isolation: None,
             compact_min: tasklog::COMPACT_MIN,
+            usage_max: USAGE_MAX_BYTES,
+            usage_keep: USAGE_KEEP_ROTATED,
         }
     }
 
@@ -884,8 +895,8 @@ impl CrewStore {
         })
     }
 
-    /// Append a usage record to `<crewmate_dir>/usage.jsonl` with engine_kind + timestamp. The file is
-    /// cut back to its newest records once it passes [`USAGE_MAX_BYTES`].
+    /// Append a usage record to `<crewmate_dir>/usage.jsonl` with engine_kind + timestamp. Past
+    /// [`USAGE_MAX_BYTES`] the file is rotated (see [`usage::rotate`]); [`Self::read_usage`] sums both.
     pub fn append_usage(
         &self,
         crewmate_id: &str,
@@ -897,10 +908,12 @@ impl CrewStore {
         let mut rec = serde_json::to_value(usage).unwrap_or_default();
         rec["engine"] = serde_json::json!(engine_kind);
         rec["ts"] = serde_json::json!(ts);
-        let path = dir.join("usage.jsonl");
-        jsonl::append_line(&path, &rec.to_string(), false)?;
-        if let Err(e) = jsonl::trim_to_tail(&path, USAGE_MAX_BYTES, USAGE_MAX_BYTES / 2) {
-            eprintln!("atlas crew: cannot trim {}: {e}", path.display());
+        let path = dir.join(usage::LIVE);
+        let len = jsonl::append_line(&path, &rec.to_string(), false)?;
+        if len > self.usage_max
+            && let Err(e) = usage::rotate(&dir, ts, self.usage_keep)
+        {
+            eprintln!("atlas crew: cannot rotate {}: {e}", path.display());
         }
         Ok(())
     }
@@ -918,7 +931,7 @@ impl CrewStore {
         };
         for d in dirs {
             let id_from_dir = d.file_name().map(|n| n.to_string_lossy().to_string());
-            for line in jsonl::read_lines(&d.join("usage.jsonl")) {
+            for line in usage::read_lines(&d) {
                 if let Ok(mut rec) = serde_json::from_str::<serde_json::Value>(&line)
                     && rec["ts"].as_u64().unwrap_or(0) >= since
                 {

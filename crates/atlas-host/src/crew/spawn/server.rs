@@ -527,12 +527,21 @@ pub fn pids_of_uid(_uid: u32) -> io::Result<Vec<u32>> {
     ))
 }
 
-/// SIGKILL every process of `uid`; returns how many were signalled. Never uid 0, never our own pid.
+/// SIGKILL every process of `uid`; returns how many were signalled. Never uid 0, never the caller's own
+/// user (a crewmate is never the helper's user; killing it would take down everything that user runs,
+/// which on a CI runner is the runner itself), never our own pid.
 pub fn kill_uid(uid: u32) -> io::Result<usize> {
     if uid == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "refusing to kill uid 0",
+        ));
+    }
+    // SAFETY: plain getter.
+    if uid == unsafe { libc::geteuid() } {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "refusing to kill every process of the caller's own user",
         ));
     }
     let me = std::process::id();
@@ -648,6 +657,34 @@ mod tests {
     #[test]
     fn kill_uid_never_touches_root_or_the_caller() {
         assert_eq!(kill_uid(0).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+    }
+
+    // Incident (#223 CI, every plain Linux run): the test rig resolves a crewmate to the test's own uid,
+    // so ending an isolated terminal (`Reap`) ran `kill_uid(runner)` and SIGKILLed every process of the
+    // CI user: the Actions agent, cargo, nextest ("the hosted runner lost communication"). The caller's
+    // own user is never a crewmate (the helper is root), so it is refused like uid 0, and nothing of
+    // ours is signalled.
+    #[test]
+    fn kill_uid_refuses_the_callers_own_user_and_leaves_its_processes_alone() {
+        let mut sibling = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        // SAFETY: plain getter.
+        let me = unsafe { libc::geteuid() };
+        let r = kill_uid(me);
+        let alive = sibling.try_wait().unwrap().is_none();
+        let _ = sibling.kill();
+        let _ = sibling.wait();
+        assert_eq!(
+            r.map_err(|e| e.kind()),
+            Err(io::ErrorKind::InvalidInput),
+            "kill_uid of our own user must be refused"
+        );
+        assert!(
+            alive,
+            "kill_uid of our own user killed one of our processes"
+        );
     }
 
     // ---- the whole path: a real server on a socket, a real client, real fds and processes ----

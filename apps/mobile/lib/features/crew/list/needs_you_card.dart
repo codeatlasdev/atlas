@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
@@ -45,14 +46,8 @@ class NeedsYouCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Container(
+      child: AttentionCard(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: c.warning.withValues(alpha: .08),
-          border: Border.all(color: c.warning.withValues(alpha: .35)),
-          borderRadius: BorderRadius.circular(14),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

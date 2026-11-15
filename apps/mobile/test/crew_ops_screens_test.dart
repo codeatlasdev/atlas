@@ -92,6 +92,36 @@ void main() {
       },
     );
 
+    // Regression: the filter chips were 36 dp tall, under the 48 dp touch target.
+    testWidgets('every audit filter chip has a 48 dp tap target', (t) async {
+      await t.binding.setSurfaceSize(size);
+      await t.pumpWidget(
+        demoWrap(
+          const CrewAuditScreen(
+            device: mac,
+            crewmateId: 'crewmate-1',
+            title: 'Reviewer',
+          ),
+          [mac],
+        ),
+      );
+      await settle(t);
+      for (final label in ['All', 'Approvals', 'Settings']) {
+        final button = find.ancestor(
+          of: find.text(label),
+          matching: find.byWidgetPredicate(
+            (w) => w is Semantics && w.properties.button == true,
+          ),
+        );
+        expect(
+          t.getSize(button.first).height,
+          greaterThanOrEqualTo(48),
+          reason: '$label chip',
+        );
+      }
+      await end(t);
+    });
+
     testWidgets('a group with nothing says so', (t) async {
       await t.binding.setSurfaceSize(size);
       await t.pumpWidget(

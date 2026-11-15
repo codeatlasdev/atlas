@@ -32,6 +32,7 @@ impl Overrides {
 impl Drop for Overrides {
     fn drop(&mut self) {
         *TEST_GIT_PROGRAM.lock() = None;
+        *crate::crew::proc::TEST_GH_PROGRAM.lock() = None;
         *TEST_CALL_DEADLINE.lock() = None;
         crate::crew::runner::set_test_agent_bin(None);
         crate::crew::engine::set_test_engine_bin(None);
@@ -551,4 +552,43 @@ async fn a_task_waiting_for_the_user_does_not_hold_an_agent_slot() {
     let b_task = send(&client, &b, "go").await;
     wait_task_state(&client, &b, &b_task, "done", Duration::from_secs(20)).await;
     client.call("shutdown", json!({})).await.ok();
+}
+
+// #296's last item: `git` got a deadline in #352 but the crew's `gh` calls did not, so a GitHub API call
+// that never returned (a stalled network, a credential prompt) held the task that made it, and the
+// settings' GitHub status, forever. Every bounded `gh` call goes through `proc::gh_output` now.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_hung_gh_is_killed_at_the_deadline_with_its_children() {
+    let _o = Overrides::new().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let gh = hanging_git(tmp.path()); // same hanging script: records its pid and a child's
+    *crate::crew::proc::TEST_GH_PROGRAM.lock() = Some(gh.display().to_string());
+    *TEST_CALL_DEADLINE.lock() = Some(Duration::from_secs(1));
+
+    let start = Instant::now();
+    let err = crate::crew::proc::gh_output(&["api", "repos/o/r"], "gh")
+        .await
+        .unwrap_err();
+    assert!(err.contains("timed out"), "{err}");
+    assert!(
+        start.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        start.elapsed()
+    );
+
+    // The settings row asks `gh --version` first: a hung gh reads as not installed, at once.
+    let status = crate::crew::github::status().await.unwrap();
+    assert_eq!(status["installed"], false, "{status}");
+
+    let (gh, child) = (
+        pids(&tmp.path().join("git.pid")),
+        pids(&tmp.path().join("git.pid.child")),
+    );
+    assert!(!gh.is_empty() && !child.is_empty(), "the fake gh ran");
+    until(
+        "the killed gh tree to be gone",
+        Duration::from_secs(5),
+        || gh.iter().chain(&child).all(|p| !alive(*p)),
+    )
+    .await;
 }

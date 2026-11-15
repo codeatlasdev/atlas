@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -88,7 +90,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   Future<bool> _send(List<PendingImage> images) async {
     final text = _msg.text.trim();
     if (text.isEmpty) return false;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return false;
     setState(() => _sending = true);
     String? failure;
@@ -129,7 +131,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   }
 
   Future<void> _cancel(String taskId) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     HapticFeedback.mediumImpact();
     await mux.call('crewmate_cancel', {
@@ -168,11 +170,12 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     final crewmate = crewData?.crewmates
         .where((b) => b.id == widget.crewmateId)
         .firstOrNull;
-    final tasks =
-        ref
-            .watch(crewmateTasksProvider((widget.device, widget.crewmateId)))
-            .value ??
-        [];
+    final tasksAsync = ref.watch(
+      crewmateTasksProvider((widget.device, widget.crewmateId)),
+    );
+    final tasks = tasksAsync.value ?? [];
+    // Nothing to show yet: not "Say hi", which is for a thread that really is empty.
+    final loadingTasks = tasksAsync.isLoading && !tasksAsync.hasValue;
     final online =
         ref.watch(connectionNotifierProvider(widget.device)).value != null;
     final pa = crewmate?.pendingApproval;
@@ -278,34 +281,16 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
       body: Column(
         children: [
           ProtocolBanner(devices: [widget.device]),
-          // ── offline banner ─────────────────────────────────────────────
-          if (!online &&
-              ref.watch(protocolMismatchProvider(widget.device)) == null)
-            Container(
-              width: double.infinity,
-              color: c.warning.withValues(alpha: .12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.wifi_off_rounded, size: 14, color: c.warning),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      '${widget.device.name} is offline · history shown',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.warning),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          OfflineStrip(device: widget.device, suffix: ' · history shown'),
 
           Expanded(
             child: Stack(
               children: [
                 // ── message list ───────────────────────────────────────────────
                 Positioned.fill(
-                  child: tasks.isEmpty
+                  child: tasks.isEmpty && loadingTasks
+                      ? const Center(child: CircularProgressIndicator())
+                      : tasks.isEmpty
                       ? EmptyState(
                           icon: Crewmate(
                             seed: widget.crewmateId,

@@ -118,7 +118,7 @@ atlas crew import ubuntu@newserver.example.com aria.tar.gz [--rename]
 | `manifest.json` (always first) | `format` (currently `1`), `atlas_version`, `created_at`, whether it has secrets, and the crewmates' ids and names |
 | `crew.json` | the crew-wide settings; `paused` is never carried |
 | `crew/<id>/crewmate.json` | definition and automations, written in the current shape (a server installed as Atlas Bot exports in the new names) |
-| `crew/<id>/memory.md`, `tasks.jsonl`, `usage.jsonl` | memory, task history, usage |
+| `crew/<id>/memory.md`, `tasks.jsonl`, `usage.jsonl`, `usage-<date>.jsonl.gz` | memory, task history, usage (the live file and its rotated history) |
 | `crew/<id>/secrets.json` | **only with `--with-secrets`** |
 
 - **Secrets are opt-in.** Without `--with-secrets` the archive has no `secrets.json`, and a webhook automation (whose token is a credential) arrives with its token cleared and **disabled**; create a new webhook after the import. With `--with-secrets` the file holds credentials in clear text: it is written with mode 0600 and the command says so. Guard it and delete it when done.
@@ -693,12 +693,13 @@ For contributors. One concept per file; the module doc comment at the top of eac
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
     tasks.jsonl                        task log: a full record per state change (last one per id wins) plus one `{"step_of", "step"}` line per live step; compacted to one record per task once it has doubled past 4 MiB
+    tasks.idx                          the task log's index (order and latest state per task, plus a fingerprint of the log), so a restart parses only what was appended since; a missing or mismatching one is rebuilt from the log
     attachments/<task id>/<name>       a task's images (0600): sent with it, or screenshots the agent took (`capture`)
     uploads/<upload id>/               pieces of an image on its way to a task (removed when the task takes it, or after 1 hour without a piece)
     memory.md                          memory, 64 KiB max
     session.json                       agent session to resume
     secrets.json                       secrets (0600)
-    usage.jsonl                        per-task usage records, cut back to the newest half past 1 MiB
+    usage.jsonl                        per-task usage records; past 1 MiB it is rotated into usage-<YYYY-MM-DD>.jsonl.gz (the day of its newest record), 400 rotated files kept; usage totals sum all of them
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
     ui-gate/<task id>/                 the UI gate's shots and ui-gate.json
     dom/<task id>/                     element boxes of `capture {dom: true}` (JSON, one per combination)

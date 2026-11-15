@@ -41,13 +41,11 @@ pub(crate) enum GithubLoginState {
 /// The text of `gh auth status` for github.com (it prints to stderr and stdout), `None` when gh
 /// says it is not logged in.
 async fn auth_status_text() -> Result<Option<String>, String> {
-    let out = tokio::process::Command::new("gh")
-        .args(["auth", "status", "--hostname", "github.com"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("gh auth status: {e}"))?;
+    let out = crate::crew::proc::gh_output(
+        &["auth", "status", "--hostname", "github.com"],
+        "gh auth status",
+    )
+    .await?;
     let text =
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
     Ok(out.status.success().then_some(text))
@@ -55,14 +53,9 @@ async fn auth_status_text() -> Result<Option<String>, String> {
 
 /// `CrewGithubStatus`
 pub(super) async fn status() -> Result<Value, String> {
-    let gh_ok = tokio::process::Command::new("gh")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
+    let gh_ok = crate::crew::proc::gh_output(&["--version"], "gh --version")
         .await
-        .map(|s| s.success())
-        .unwrap_or(false);
+        .is_ok_and(|o| o.status.success());
     if !gh_ok {
         return Ok(json!({"installed": false, "login": null}));
     }
@@ -81,7 +74,9 @@ pub(super) async fn login_start(hub: &Hub) -> Result<Value, String> {
         let mut g = hub.crew.github_login.lock().await;
         *g = None;
     }
-    let mut child = tokio::process::Command::new("gh")
+    // Interactive and long by design (the user completes it in a browser): not bounded, but started
+    // through the one `gh` constructor.
+    let mut child = crate::crew::proc::gh_command()
         .args([
             "auth",
             "login",
@@ -166,13 +161,11 @@ pub(super) async fn logout(hub: &Hub) -> Result<Value, String> {
         let mut g = hub.crew.github_login.lock().await;
         *g = None;
     }
-    let _ = tokio::process::Command::new("gh")
-        .args(["auth", "logout", "--hostname", "github.com"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await;
+    let _ = crate::crew::proc::gh_output(
+        &["auth", "logout", "--hostname", "github.com"],
+        "gh auth logout",
+    )
+    .await;
     let _ = tokio::process::Command::new("git")
         .args([
             "config",

@@ -936,14 +936,12 @@ fn watch(
 
 /// When the program in an agent's pane exits, the agent goes idle: hostd sees the exit
 /// itself, so this holds with the app closed (phones would otherwise show a dead agent
-/// as working). Listens like a client that wants no output.
+/// as working). Listens like a client that wants no output; a program that already ended
+/// is announced to the listener at once (`Session::attach`), so it goes idle too.
 fn idle_agent_on_exit(hub: &Hub, s: &Arc<Session>) {
     let Some(pane) = s.meta.scope.pane_key.clone() else {
         return;
     };
-    if s.exited().is_some() {
-        return;
-    }
     let (tx, mut rx) = crate::pty::out_channel();
     s.attach(
         hub.next_conn.fetch_add(1, Ordering::Relaxed),
@@ -1104,6 +1102,11 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd, conn_id: u64) -> Result<Valu
             prompt,
             worktree,
         } => agent_launch(hub, &project, &agent, prompt, worktree).await,
+        HostCmd::PtyOpen {
+            project,
+            worktree,
+            crewmate,
+        } => crate::mobile::shell::open(hub, conn_id, project, worktree, crewmate).await,
         HostCmd::WorktreeList { project } => {
             crate::worktrees::local::list(hub.data_dir(), &project).await
         }

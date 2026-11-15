@@ -67,6 +67,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentInterrupt { .. }
         | C::AgentApprove { .. }
         | C::AgentLaunch { .. }
+        | C::PtyOpen { .. }
         | C::WorktreeCreate { .. }
         | C::WorktreeRemove { .. } => Route::Main,
         C::PtyAttach { .. } | C::PtyDetach { .. } => Route::Attach,

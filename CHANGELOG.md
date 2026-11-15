@@ -9,6 +9,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 ### Fixed
 
 - **Atlas Crew: a hung `gh` call no longer holds a task forever ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** `git` got a 120 s deadline in 1.5.0-alpha.26 but the crew's `gh` calls did not: a GitHub API call (a comment, a pull request) or `gh auth status` that never returned (a stalled network, a credential prompt) held the task that made it, and the Settings GitHub row, forever. Every bounded `gh` call now goes through the same deadline and kills its whole process tree; `gh auth login` stays interactive. A missing `git` or `gh` now says it is not on `PATH`.
+- **Atlas Mobile: a project's panel and its logs no longer jump back to old data on a slow connection.** On a weak link a late answer to an earlier request could replace a newer one: the project's numbers rolled back and the memory chart got a bogus point, and typing `a` then `ab` in the logs search could show the lines for `a`. Now only the newest answer is shown, the 3-second refresh waits for the previous request instead of piling new ones behind it, and neither screen asks the computer anything while the app is in the background.
 
 ## [1.5.0-alpha.26] — 2026-11-15
 

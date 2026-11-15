@@ -142,9 +142,10 @@ class AttentionMore extends StatelessWidget {
       padding: const EdgeInsets.only(top: Space.sm),
       child: AtlasCard(
         margin: EdgeInsets.zero,
+        // 12 + the 24 dp chevron + 12 = 48 dp, the minimum tap target (it was 46).
         padding: const EdgeInsets.symmetric(
           horizontal: Space.md,
-          vertical: Space.sm + 2,
+          vertical: Space.md,
         ),
         accent: color,
         onTap: () => onOpen(item),

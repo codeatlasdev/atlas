@@ -19,6 +19,7 @@
 	},
 	"lastCrash": "atlas 1.5.0-alpha.4: index out of bounds (crates/atlas-host/src/server.rs:9:1)",
 	"os": "macOS 15.1 (aarch64)",
+	"stderrLog": "Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...",
 	"versions": {
 		"app": "1.5.0-alpha.5",
 		"cli": "1.5.0-alpha.5",

@@ -52,6 +52,20 @@ impl Mode {
     pub fn tray_allowed(self) -> bool {
         self == Mode::User
     }
+
+    /// Whether this process registers the single-instance guard of its app id (D-Bus name on Linux, a mutex on
+    /// Windows): a second launch of the user's app hands off to the first and exits. An agent instance is meant to run
+    /// beside the user's app and beside other agents; with the guard it would be absorbed by his window (#281).
+    pub fn single_instance(self) -> bool {
+        self == Mode::User
+    }
+}
+
+/// Linux: an agent instance shows and captures only on its own private display (`atlas_core::agent_display`); `Err`
+/// says why its environment points anywhere else, and the instance refuses (exit 3) instead of reaching the user.
+#[cfg(target_os = "linux")]
+pub fn verify_display() -> Result<(), String> {
+    atlas_core::agent_display::verify_linux(|k| std::env::var(k).ok())
 }
 
 /// The macOS activation policies this app uses.
@@ -380,6 +394,16 @@ pub fn current_store() -> Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_users_app_joins_the_single_instance_guard() {
+        // Regression (#281): `atlas desktop --agent` on Linux exited 0 at once while the user's Atlas ran, and the
+        // user's window was raised: the guard handed the agent's launch to his app.
+        assert!(!Mode::resolve(Some("1"), true).single_instance());
+        assert!(Mode::resolve(None, true).single_instance());
+        // A release app ignores ATLAS_AGENT, so it stays the single instance it always was.
+        assert!(Mode::resolve(Some("1"), false).single_instance());
+    }
 
     #[test]
     fn an_agent_instance_never_gets_the_users_default_webkit_store() {

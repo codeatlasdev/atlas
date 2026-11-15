@@ -375,7 +375,8 @@ async fn serve_conn(
             let msg = tokio::select! {
                 m = rx.recv() => match m {
                     Ok(m) => m,
-                    // Lagged: we missed events, reload to be safe.
+                    // Lagged: we missed events, so resync from the source of truth (here the page: a full reload),
+                    // as `host::serve_client` does for hostd's events (#299).
                     Err(broadcast::error::RecvError::Lagged(_)) => Reload::Full.wire(),
                     Err(_) => return Ok(()),
                 },

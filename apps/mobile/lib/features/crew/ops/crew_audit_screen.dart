@@ -92,7 +92,7 @@ class _CrewAuditScreenState extends ConsumerState<CrewAuditScreen> {
                         ? 'Nothing recorded yet.'
                         : 'Nothing recorded under ${_group!.label}.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: c.faint),
+                    style: TextStyle(color: c.muted),
                   ),
                 )
               else
@@ -122,54 +122,29 @@ class _Filters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _Chip('All', selected: value == null, onTap: () => onChanged(null)),
+          AtlasChip(
+            'All',
+            tone: c.accent,
+            outlined: true,
+            selected: value == null,
+            onTap: () => onChanged(null),
+          ),
           for (final g in AuditGroup.values) ...[
             const SizedBox(width: Space.sm),
-            _Chip(g.label, selected: value == g, onTap: () => onChanged(g)),
+            AtlasChip(
+              g.label,
+              tone: c.accent,
+              outlined: true,
+              selected: value == g,
+              onTap: () => onChanged(g),
+            ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip(this.label, {required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 36),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: selected ? c.accent.withValues(alpha: .16) : c.base,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? c.accent : c.borderSubtle),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: selected ? c.accent : c.muted,
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -202,7 +177,7 @@ class _EntryRow extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${_time(entry.ts)} · ${auditKindLabel(entry.kind)}',
-            style: TextStyle(color: c.faint, fontSize: 12),
+            style: TextStyle(color: c.muted, fontSize: 12),
           ),
         ],
       ),
@@ -228,7 +203,7 @@ class _EntrySheet extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 2),
-          Text(_time(entry.ts), style: TextStyle(color: c.faint, fontSize: 12)),
+          Text(_time(entry.ts), style: TextStyle(color: c.muted, fontSize: 12)),
           const SizedBox(height: Space.md),
           Flexible(
             child: SingleChildScrollView(

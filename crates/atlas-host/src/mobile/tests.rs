@@ -17,10 +17,19 @@ async fn daemon(dir: &Path) -> HostClient {
 
 /// A daemon whose Atlas Desktop control socket is `socket` (token file beside it).
 async fn daemon_with(dir: &Path, socket: std::path::PathBuf) -> HostClient {
+    daemon_as(dir, socket, true).await
+}
+
+/// A plain computer (a Mac with the desktop), not a crew server: no crewmates, a project registry.
+async fn computer_daemon(dir: &Path) -> HostClient {
+    daemon_as(dir, dir.join("no-desktop.sock"), false).await
+}
+
+async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> HostClient {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
-        crew_host: true,
+        crew_host,
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: socket.with_extension("token"),
             socket,
@@ -1427,11 +1436,14 @@ async fn project_with_worktree(hostd: &Path, repo: &Path) -> (String, String, st
     git(repo, &["commit", "-qm", "base"]);
     let id = crate::worktrees::registry::id_for(repo);
     std::fs::create_dir_all(hostd.join("desktop")).unwrap();
-    std::fs::write(
-        hostd.join("desktop/projects.json"),
-        json!([{"id": id, "root": repo, "pinned": false, "added": "x"}]).to_string(),
-    )
-    .unwrap();
+    // Appended: a test may register a second project in the same hostd dir.
+    let registry = hostd.join("desktop/projects.json");
+    let mut all: Vec<Value> = std::fs::read_to_string(&registry)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    all.push(json!({"id": id, "root": repo, "pinned": false, "added": "x"}));
+    std::fs::write(&registry, Value::Array(all).to_string()).unwrap();
     std::fs::write(
         hostd.join("desktop/settings.json"),
         json!({"workspaceDir": hostd.join("wts"), "branchPrefix": "none"}).to_string(),
@@ -2055,5 +2067,286 @@ async fn a_phone_signs_an_engine_in_by_scope_and_what_it_types_is_never_logged()
     );
     assert!(!crew_audit.contains("DEVICE-CODE"), "{crew_audit}");
     c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// Compare `live` with `apps/mobile/test/fixtures/<name>`; `UPDATE_FIXTURES=1` rewrites the file first.
+fn fixture(name: &str, live: &Value) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/mobile/test/fixtures")
+        .join(name);
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::write(&path, serde_json::to_string_pretty(live).unwrap() + "\n").unwrap();
+    }
+    let stored: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|_| {
+        panic!("{name} missing: run UPDATE_FIXTURES=1 cargo test -p atlas-host --lib -- mobile::tests::a_phone_opens_a_shell")
+    }))
+    .unwrap();
+    assert_eq!(
+        &stored, live,
+        "{name} changed: rerun with UPDATE_FIXTURES=1"
+    );
+}
+
+// ── New terminal from the phone (`pty_open`, issue #53) ─────────────────────────────────────────────────────
+//
+// `pty_create` stays refused: it takes any cwd and argv. `pty_open` takes registry ids only, so a path (or a
+// `..`) cannot even be named, and the shell is the user's login shell, started by hostd exactly like a desktop tab.
+
+/// `act` opens it, a plain phone cannot, and through a Mac's `crew_call` it is never available (a terminal's output
+/// streams to the connection that attached it, which would be the relay's, not the phone's).
+#[test]
+fn opening_a_terminal_needs_act_and_pty_create_stays_refused() {
+    use crate::protocol::HostCmd;
+    let scope = |cmd: Value| {
+        let c: HostCmd = serde_json::from_value(cmd).unwrap();
+        super::required_scope(&c)
+    };
+    assert_eq!(
+        scope(json!({"cmd": "pty_open", "args": {"project": "a"}})),
+        Ok(super::Scope::Act)
+    );
+    assert_eq!(
+        scope(json!({"cmd": "pty_open", "args": {}})),
+        Ok(super::Scope::Act)
+    );
+    assert!(
+        scope(json!({"cmd": "pty_create", "args": {"cwd": "/", "argv": ["sh"]}})).is_err(),
+        "an arbitrary cwd/argv stays desktop-only"
+    );
+    assert!(
+        scope(json!({
+            "cmd": "crew_call",
+            "args": {"server": "s", "cmd": "pty_open", "args": {"project": "a"}}
+        }))
+        .is_err(),
+        "relayed, the phone could never attach to the terminal"
+    );
+}
+
+/// The mobile audit gets `pty_created {node, project, cwd}` from hostd (it knows the resolved folder), and never
+/// what is typed afterwards.
+fn audit_lines(hostd: &Path) -> Vec<Value> {
+    std::fs::read_to_string(hostd.join("mobile/audit.log"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+/// End to end over a real phone connection: refused without `act` (nothing starts), refused for a path, a `..`
+/// escape and a project that is not registered; with `act` the shell starts in the project folder (and in a
+/// worktree's), is a normal hostd pty the desktop lists, and is audited as `pty_created`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let hostd = root.join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
+    // A second registered project with a worktree of its own: it is registered, yet not THIS project's.
+    let (_other, other_wt, _) = project_with_worktree(&hostd, &root.join("other")).await;
+    let (c, mut phone, node) = paired_on(computer_daemon(&hostd).await).await;
+    let scopes = |s: Value| json!({"node_id": node, "scopes": s});
+
+    c.call("mobile_set_scopes", scopes(json!(["read", "term_read"])))
+        .await
+        .unwrap();
+    let r = phone
+        .call("pty_open", json!({"project": id}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    let r = phone.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        r["data"]["ptys"].as_array().unwrap().is_empty(),
+        "a refused request starts nothing: {r}"
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        scopes(json!(["read", "act", "term_read"])),
+    )
+    .await
+    .unwrap();
+    // A path is not an id, `..` is not an id, and an unknown id is not a project: none starts a shell.
+    let outside = root.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    for (what, args) in [
+        ("a path", json!({"project": outside})),
+        ("a ..", json!({"project": format!("{id}/../..")})),
+        ("an unknown id", json!({"project": "nope"})),
+        (
+            "a path as worktree",
+            json!({"project": id, "worktree": outside}),
+        ),
+        (
+            "a .. as worktree",
+            json!({"project": id, "worktree": format!("{wt_id}/../../outside")}),
+        ),
+        (
+            "an unknown worktree",
+            json!({"project": id, "worktree": "nope"}),
+        ),
+        (
+            "another project's worktree",
+            json!({"project": id, "worktree": other_wt}),
+        ),
+        ("no project on a computer", json!({})),
+        ("a crewmate on a computer", json!({"crewmate": "c1"})),
+    ] {
+        let r = phone.call("pty_open", args).await.unwrap();
+        assert_eq!(r["ok"], false, "{what} must be refused: {r}");
+    }
+    let r = phone.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        r["data"]["ptys"].as_array().unwrap().is_empty(),
+        "every refusal left no terminal behind: {r}"
+    );
+    assert!(
+        audit_lines(&hostd)
+            .iter()
+            .all(|l| l["cmd"] != "pty_created"),
+        "a refusal is not a creation"
+    );
+
+    // The project's own folder, then one of its worktrees: the shell's cwd is that folder.
+    for (args, want) in [
+        (json!({"project": id}), root.join("shop")),
+        (json!({"project": id, "worktree": wt_id}), wt_path.clone()),
+    ] {
+        let r = phone.call("pty_open", args).await.unwrap();
+        assert_eq!(r["ok"], true, "{r}");
+        let pty = r["data"]["pty"].as_str().unwrap().to_string();
+        // The phone parses this reply (`apps/mobile/lib/core/protocol/pty_open.dart`): the real payload is the
+        // fixture, with the random pty id replaced (the phone only passes it on to `pty_attach`).
+        let mut reply = r["data"].clone();
+        reply["pty"] = json!("pty-fixture");
+        fixture("pty_open.json", &reply);
+        let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+        assert_eq!(
+            std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
+            want,
+            "{info}"
+        );
+        assert_eq!(
+            info["scope"]["pane_key"],
+            Value::Null,
+            "a person's shell, not an agent pane: {info}"
+        );
+        // The desktop sees it as an ordinary terminal.
+        let all = c.call("pty_list", json!({})).await.unwrap();
+        assert!(
+            all["ptys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["pty"] == pty.as_str()),
+            "{all}"
+        );
+        c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+    }
+
+    let created: Vec<Value> = audit_lines(&hostd)
+        .into_iter()
+        .filter(|l| l["cmd"] == "pty_created")
+        .collect();
+    assert_eq!(created.len(), 2, "{created:?}");
+    assert_eq!(created[0]["node_id"], node.as_str());
+    assert_eq!(created[0]["args"]["project"], id.as_str());
+    assert_eq!(
+        created[0]["args"]["cwd"],
+        root.join("shop").to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        created[1]["args"]["cwd"],
+        wt_path.to_string_lossy().as_ref()
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A crew server's phone opens a shell in the crew home (no project) or in a crewmate's work tree, as hostd's own
+/// user; any other folder, a missing work tree and an unknown crewmate are refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_work_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let hostd = tmp.path().canonicalize().unwrap().join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    // The crew user's own home, the folder hostd's sign-in terminal already starts in.
+    let home = atlas_core::paths::home_dir();
+    let (c, mut phone, node) = paired(&hostd).await;
+    let made = c
+        .call(
+            "crewmate_create",
+            json!({"name": "Rex", "role": "dev", "agent": "claude", "approval": "auto"}),
+        )
+        .await
+        .unwrap();
+    let cid = made["id"].as_str().unwrap().to_string();
+
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read", "act", "term_read"]}),
+    )
+    .await
+    .unwrap();
+
+    // No project: the crew home.
+    let r = phone.call("pty_open", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let pty = r["data"]["pty"].as_str().unwrap().to_string();
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(
+        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
+        home,
+        "{info}"
+    );
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+
+    // A crewmate that has not run a task has no work tree yet: refused, with the reason.
+    let r = phone
+        .call("pty_open", json!({"crewmate": cid}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], false, "{r}");
+    assert!(r["error"].as_str().unwrap().contains("no work tree"), "{r}");
+    let work = hostd.join("crew").join(&cid).join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let r = phone
+        .call("pty_open", json!({"crewmate": cid}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let pty = r["data"]["pty"].as_str().unwrap().to_string();
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(
+        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
+        work,
+        "{info}"
+    );
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+
+    // Never another folder, never an id that escapes the crew store, never a project id here.
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    for args in [
+        json!({"crewmate": "nope"}),
+        json!({"crewmate": format!("{cid}/../..")}),
+        json!({"crewmate": "../.."}),
+        json!({"crewmate": outside}),
+        json!({"project": outside}),
+        json!({"project": "x", "crewmate": cid}),
+    ] {
+        let r = phone.call("pty_open", args.clone()).await.unwrap();
+        assert_eq!(r["ok"], false, "{args}: {r}");
+    }
+    let created = audit_lines(&hostd)
+        .into_iter()
+        .filter(|l| l["cmd"] == "pty_created")
+        .count();
+    assert_eq!(
+        created, 2,
+        "the crew home and the work tree are audited; every refusal is not"
+    );
     c.call("shutdown", json!({})).await.ok();
 }

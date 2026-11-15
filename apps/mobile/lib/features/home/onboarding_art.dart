@@ -98,7 +98,7 @@ class _SecureLinkArtState extends State<SecureLinkArt>
                       Icon(Icons.cloud_outlined, color: c.muted, size: 26),
                       Text(
                         'relay',
-                        style: TextStyle(color: c.faint, fontSize: 10),
+                        style: TextStyle(color: c.muted, fontSize: 10),
                       ),
                     ],
                   ),
@@ -297,7 +297,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                         '  · orbit-shop',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.faint, fontSize: 12),
+                        style: TextStyle(color: c.muted, fontSize: 12),
                       ),
                     ),
                     const SizedBox(width: 4),

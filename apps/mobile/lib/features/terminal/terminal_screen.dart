@@ -60,7 +60,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   /// screen, shell → feed).
   _View? _picked;
 
-  /// Follows the Mac's terminal size while the screen is open.
+  /// Follows the Mac's terminal size while the screen is open and a link is up.
   Timer? _sizeTimer;
   String _title = '';
   bool _exited = false;
@@ -75,25 +75,56 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   /// The connection the pty is attached through.
   Multiplexer? _mux;
 
+  /// Why the terminal is not attached right now (the computer is offline, speaks another
+  /// protocol, or the attach was refused); null while attached or while still trying.
+  String? _status;
+
+  /// Counts attach attempts: an attempt that finds a newer one started while it waited stops,
+  /// so two overlapping attaches never both subscribe and both send `pty_attach`.
+  int _attempt = 0;
+
+  /// Leaves the connection the pty was attached through: stops listening to it and polling it.
+  /// Nothing is sent to it (it is gone, or about to be replaced).
+  void _letGo() {
+    _pushSub?.cancel();
+    _pushSub = null;
+    _sizeTimer?.cancel();
+    _sizeTimer = null;
+    _mux = null;
+  }
+
+  /// Attaches through the connection that is (or becomes) live. Runs on open and again on every
+  /// new connection (see [build]); when the computer cannot be reached it says so and waits for
+  /// the next live connection to try again.
   Future<void> _attach() async {
+    final attempt = ++_attempt;
     final Multiplexer mux;
     try {
       mux = await requireMuxOf(ref, widget.device);
-    } on DeviceUnavailable {
+    } on DeviceUnavailable catch (e) {
+      if (mounted && attempt == _attempt) setState(() => _status = e.message);
       return;
     }
-    if (!mounted) return;
+    if (!mounted || attempt != _attempt) return;
+    _letGo();
     _mux = mux;
+    if (_status != null) setState(() => _status = null);
     // Size the grid like the Mac's before the replay is drawn into it: hostd
     // sends the replay ahead of the attach reply, and a full-screen app drawn into
     // the default 80x24 came out cut apart.
     await _syncSize();
-    // The widget may have been disposed while waiting for pty_info.
-    if (!mounted) return;
+    // The widget may have been disposed (or the link replaced) while waiting for pty_info.
+    if (!mounted || attempt != _attempt) return;
     _sizeTimer = Timer.periodic(const Duration(seconds: 2), (_) => _syncSize());
     // Listen first: hostd sends the replay before it answers pty_attach, so a
     // listener added after the reply misses the whole screen (it showed blank).
-    _pushSub = mux.pushEvents.listen(_onPush);
+    _pushSub = mux.pushEvents.listen(
+      _onPush,
+      // The link ended: stop polling it. The next live link re-attaches (see [build]).
+      onDone: () {
+        if (identical(mux, _mux)) _letGo();
+      },
+    );
     final resp = await mux.call('pty_attach', {
       'pty': widget.pty,
       'replay': true,
@@ -104,6 +135,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       mux.call('pty_detach', {'pty': widget.pty}).ignore();
       return;
     }
+    // The link was replaced meanwhile: the new attempt owns the screen now.
+    if (attempt != _attempt) return;
     if (resp['ok'] != true) {
       _terminal.write(
         '\x1b[31m${resp['error'] ?? 'could not attach'}\x1b[0m\r\n',
@@ -135,10 +168,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     super.dispose();
   }
 
+  /// Reads the Mac's terminal size through the attached link; does nothing without one, so the
+  /// 2 s poll costs nothing while the computer is off.
   Future<void> _syncSize() async {
-    final resp = await _mux?.call('pty_info', {'pty': widget.pty});
-    final d = resp?['data'];
-    if (!mounted || d is! Map) return;
+    final mux = _mux;
+    if (mux == null) return;
+    final resp = await mux.call('pty_info', {'pty': widget.pty});
+    final d = resp['data'];
+    // Stale: the screen let go of this link (or was closed) while the call was out.
+    if (!mounted || !identical(mux, _mux) || d is! Map) return;
     final cols = d['cols'], rows = d['rows'];
     if (cols is int &&
         rows is int &&
@@ -194,20 +232,33 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     }
   }
 
+  /// The line above the terminal when it is not following the Mac: why (offline, protocol) or
+  /// that the link is being reopened. Null while attached.
+  String? _notice(AsyncValue<Multiplexer?> conn) {
+    if (_status != null) return _status;
+    // Reopening: the old (closed) link is still the notifier's value until the new one answers.
+    if (conn.isLoading) return 'Reconnecting…';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The connection, watched so the notice above the terminal follows it.
+    final conn = ref.watch(connectionNotifierProvider(widget.device));
     // Hold the connection open while this screen is up, and re-attach whenever
     // a new mux arrives (reconnect after a drop or 30 s background close).
     ref.listen(connectionNotifierProvider(widget.device), (prev, next) {
-      final prevMux = prev?.value;
-      final nextMux = next.value;
-      if (nextMux != null && prevMux != null && !identical(prevMux, nextMux)) {
-        // Cancel the old subscription and timer before re-attaching.
-        _pushSub?.cancel();
-        _pushSub = null;
-        _sizeTimer?.cancel();
-        _sizeTimer = null;
-        _mux = null;
+      // While the link reopens, the state still carries the OLD (closed) mux as its value:
+      // only a settled state names the link that is live now.
+      if (next.isLoading) return;
+      final mux = next.value;
+      if (mux != null) {
+        // A live link that is not the one we attached through: re-attach on it.
+        if (!identical(mux, _mux)) _attach();
+      } else {
+        // Settled with no link (the computer is off, or speaks another protocol): stop polling a
+        // dead link and say why the screen has stopped moving.
+        _letGo();
         _attach();
       }
     });
@@ -244,6 +295,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         children: [
           if (widget.pane != null)
             _AgentStrip(device: widget.device, pane: widget.pane!),
+          if (_notice(conn) case final text?) _LinkNotice(text),
           Expanded(
             // Rebuilt on output so the automatic view follows the program into
             // and out of full screen.
@@ -301,6 +353,23 @@ class _TerminalListenable implements Listenable {
   void addListener(VoidCallback l) => t.addListener(l);
   @override
   void removeListener(VoidCallback l) => t.removeListener(l);
+}
+
+/// One line above the terminal: why it is not following the Mac right now.
+class _LinkNotice extends StatelessWidget {
+  const _LinkNotice(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AtlasColors.of(context);
+    return Container(
+      color: c.raised,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+      child: Text(text, style: TextStyle(color: c.muted)),
+    );
+  }
 }
 
 /// What the agent on this terminal is doing, from its hooks: state and the task

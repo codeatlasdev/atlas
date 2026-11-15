@@ -264,6 +264,7 @@ async fn a_registry_still_under_its_old_name_is_adopted() {
 }
 
 /// The crew server's `push/tokens.json` entries as `(token, node_id)`.
+#[cfg(unix)]
 fn crew_tokens(dir: &Path) -> Vec<(String, String)> {
     let v: Vec<Value> = std::fs::read(dir.join("push/tokens.json"))
         .ok()
@@ -283,6 +284,8 @@ fn crew_tokens(dir: &Path) -> Vec<(String, String)> {
 // the crew server with node id "" (the relay's connection is no phone), so revoking the phone on the
 // Mac never took it out and the revoked phone kept getting crew pushes. The real path: a paired phone
 // over iroh registers through `crew_call`, then the Mac revokes it.
+// Unix like `mobile::tests`, whose real phone it uses.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn revoking_a_phone_on_the_mac_clears_its_tokens_on_the_crew_server() {
     let r = Rig::new().await;

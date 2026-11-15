@@ -62,6 +62,7 @@ Run `atlas crew status <ssh-target>` afterwards to check.
 | `atlas crew resume <ssh-target> [--port N]` | starts the queues again (`atlas hostd --crew-resume`) |
 | `atlas crew logs <ssh-target> [-f] [--port N]` | last 200 lines of `journalctl -u atlas-crew`; `-f` follows |
 | `atlas crew login <ssh-target> <agent> [--port N]` | opens `ssh -t <crew-user>@<host> <agent-binary>` (with the same `PATH` the Desktop's engine check uses: `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, so an agent installed there is found) so you finish the agent's own sign-in. `<agent>` is `omp`, `claude`, `codex` or `opencode`; the command prints the install line for that agent first |
+| `atlas crew pair <ssh-target> [--port N]` | pairs a phone with this crew server directly, from any machine that can SSH to it: prints a QR code, a 6-digit code and the link (`atlas hostd --mobile-pair` as the crew user; one code, 120 s). The phone keeps the server in its computers, so the crew works with your own computer off ([Atlas Mobile](mobile.md#pair-a-crew-server-with-no-computer-in-the-loop)) |
 | `atlas crew browsers install <ssh-target> [--port N]` | installs Playwright's chromium and webkit for the `capture` tool ([Captures](#captures)); idempotent. Nothing from npm runs as root: sudo is used only for one `apt-get install` that atlas builds itself |
 | `atlas crew browsers status <ssh-target> [--port N]` | one line per missing piece (node older than 20 or missing, npm, runner, Playwright package or version, each browser, a browser that cannot start for lack of libraries); says it is ready and exits 0 when nothing is missing, exits 1 otherwise |
 
@@ -339,7 +340,8 @@ Telegram sees your bot token and the messages above. Nothing goes to CodeAtlas.
 
 When a task ends or a crewmate needs your approval, the crew server pushes to your phone.
 
-- After pairing, push is automatic: the app gets a **grant** for its FCM token from the relay (`POST /v1/register`) and registers `{token, grant}` with each crew server (`push_register`, `push_unregister`). It does so on every launch and connect and whenever FCM refreshes the token.
+- **Not live yet:** the push relay is not deployed and the app is built without Firebase, so no phone gets a push today; the code below is what runs once they are (status and the steps to switch it on: [Atlas Mobile → Push notifications](mobile.md#push-notifications)).
+- After pairing, with a build that has push config, registration is automatic: the app gets a **grant** for its FCM token from the relay (`POST /v1/register`) and registers `{token, grant}` with each crew server (`push_register`, `push_unregister`). It does so on every launch and connect and whenever FCM refreshes the token.
 - The relay at `push.codeatlas.com.br` gets the token, the grant and the event kind (`task_done` or `needs_you`), never content. Phones that are connected at that moment are skipped.
 - The relay only notifies a caller that holds the token's grant, so knowing a token is not enough to ping a phone. A crew server drops a token the relay refuses (`403`) or that FCM no longer has (`410`).
 - **Updating from an earlier alpha:** a token registered before grants existed has no grant. The crew server keeps it but sends nothing for it; open the updated app once and it registers again with a grant. Until then that phone gets no push.

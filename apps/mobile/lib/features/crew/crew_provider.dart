@@ -232,3 +232,42 @@ class ComputerInvitesNotifier extends StateNotifier<List<ComputerInvite>> {
     ];
   }
 }
+
+/// An invite to add a crew server, with the computer that holds it (the one to tell when it is dismissed).
+typedef PendingInvite = ({MacDevice device, ComputerInvite invite});
+
+/// The invites waiting on every computer this phone reaches (`mobile_invites`, `Read` scope), fetched when the
+/// connection comes up. The `computer_invite` push only reaches a phone that is connected at that moment;
+/// an invite made while the phone was off or out of range was lost until this existed. A computer that is
+/// offline or answers an error adds nothing and never hides the others.
+final pendingInvitesProvider = FutureProvider.autoDispose<List<PendingInvite>>((
+  ref,
+) async {
+  final devices = await ref.watch(crewDevicesProvider.future);
+  final found = await Future.wait([
+    for (final device in devices.where((d) => !isDemo(d)))
+      _invitesOf(ref, device),
+  ]);
+  return [for (final list in found) ...list];
+});
+
+Future<List<PendingInvite>> _invitesOf(Ref ref, MacDevice device) async {
+  try {
+    final mux = await ref.watch(connectionNotifierProvider(device).future);
+    if (mux == null) return const [];
+    final resp = await mux.call('mobile_invites');
+    if (resp['ok'] != true) return const [];
+    return [
+      for (final i in ((resp['data'] as Map)['invites'] as List?) ?? const [])
+        (
+          device: device,
+          invite: ComputerInvite(
+            url: (i as Map)['url'] as String? ?? '',
+            name: i['name'] as String? ?? '',
+          ),
+        ),
+    ].where((p) => p.invite.url.isNotEmpty).toList();
+  } on Object {
+    return const [];
+  }
+}

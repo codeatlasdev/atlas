@@ -610,9 +610,19 @@ pub enum HostCmd {
         /// notify. Absent from an app older than relay auth: it registers but is not notified.
         #[serde(default)]
         grant: String,
+        /// The phone this token belongs to, named by the Mac that relays the registration (`crew_call`
+        /// stamps the real node id of the phone's connection). Honoured only from a connection that is
+        /// not itself a phone: a phone's own node id always comes from its connection.
+        #[serde(default)]
+        node: String,
     },
     PushUnregister {
         token: String,
+    },
+    /// Drop every push token of phone `node`. Sent by the Mac to its crew servers when it revokes that phone
+    /// (never available to a phone: `mobile::required_scope` refuses it).
+    PushForget {
+        node: String,
     },
     CrewTelegramSet {
         #[serde(default)]

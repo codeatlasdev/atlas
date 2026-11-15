@@ -74,6 +74,31 @@ describe("redaction on the way out", () => {
 		expect(md).toContain("EGL_BAD_PARAMETER");
 	});
 
+	// The default limit (4000) cuts the tail of the report: stderr must come before the hostd/app tails.
+	test("the stderr tail survives the default limit behind full hostd and app tails", () => {
+		const lines = (tag) => Array.from({ length: 40 }, (_, i) => `${tag} line ${i} some ordinary log text`).join("\n");
+		const d = parseDiagnostics({
+			...fixture,
+			hostdLog: lines("hostd"),
+			appLog: lines("app"),
+			stderrLog: `${lines("stderr")}\nCould not create default EGL display: EGL_BAD_PARAMETER`,
+		});
+		const md = markdownReport(hostErrorReport("x", d));
+		expect(md).toContain("## stderr.log (tail)");
+		expect(md).toContain("EGL_BAD_PARAMETER");
+	});
+
+	test("Copy details carries the redacted stderr tail", () => {
+		const d = parseDiagnostics({
+			...fixture,
+			stderrLog: "WebKitWebProcess: OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz012345 EGL_BAD_PARAMETER",
+		});
+		const t = detailsText(hostErrorReport("x", d));
+		expect(t).toContain("stderr.log (tail):");
+		expect(t).toContain("EGL_BAD_PARAMETER");
+		expect(t).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz012345");
+	});
+
 	test("redactText keeps ordinary text and drops named secrets", () => {
 		expect(redactText("terminal 3 exited with code 0")).toBe("terminal 3 exited with code 0");
 		expect(redactText("password=hunter2 user=ana")).toBe("password=[redacted] user=ana");

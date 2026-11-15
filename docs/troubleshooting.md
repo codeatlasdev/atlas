@@ -75,7 +75,8 @@ Atlas Desktop on Linux paints through WebKitGTK and draws terminals with xterm.j
 # 0. What Atlas saw: session, display servers, NVIDIA driver and every WEBKIT_/GDK_/GSK_ variable set.
 grep "linux graphics" ~/.atlas/desktop/app.log | tail -1
 # What GTK, WebKit and its web processes printed (blank window, EGL, GStreamer), also in "Copy details".
-# Kept when Atlas starts from the launcher or `atlas desktop`; from a terminal it prints there instead.
+# Kept when Atlas starts from the launcher or `atlas desktop` (2 MiB, then the previous one is stderr.log.1);
+# from a terminal it prints there instead.
 tail -50 ~/.atlas/desktop/stderr.log
 
 # 1. Wayland + NVIDIA ("Error 71 (Protocol error)", blank window): costs nothing in speed.

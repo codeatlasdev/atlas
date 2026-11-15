@@ -121,7 +121,29 @@ class _LauncherState extends ConsumerState<_Launcher> {
                   padding: EdgeInsets.all(Space.lg),
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (list == null || list.isEmpty)
+              else if (list == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Space.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        errorText(
+                          installed.error ?? 'Could not read the agents',
+                        ),
+                        style: TextStyle(color: c.error, height: 1.4),
+                      ),
+                      const SizedBox(height: Space.md),
+                      OutlinedButton(
+                        onPressed: () => ref.invalidate(
+                          installedAgentsProvider(widget.device),
+                        ),
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                )
+              else if (list.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: Space.lg),
                   child: Text(

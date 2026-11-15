@@ -29,6 +29,9 @@ pub(crate) const BUSY: &str = "atlas dev is busy; try again";
 pub struct ControlServer {
     path: PathBuf,
     task: tokio::task::JoinHandle<()>,
+    /// Connections being served, kept current by the accept task (tests wait on it).
+    #[cfg(test)]
+    served: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Drop for ControlServer {
@@ -69,6 +72,10 @@ impl ControlServer {
         // file (the previous run's becomes `atlas-audit.prev.log`).
         guard.start_run();
         let (tx, rx) = mpsc::channel(REQUEST_QUEUE);
+        #[cfg(test)]
+        let served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        #[cfg(test)]
+        let served_by_task = served.clone();
         let task = tokio::spawn(async move {
             // Connections live in a JoinSet owned by the accept task: aborting the
             // accept task drops the set, which aborts every in-flight connection.
@@ -85,9 +92,25 @@ impl ControlServer {
                     }
                     Some(_) = conns.join_next(), if !conns.is_empty() => {}
                 }
+                #[cfg(test)]
+                served_by_task.store(conns.len(), std::sync::atomic::Ordering::SeqCst);
             }
         });
-        Ok((Self { path, task }, rx))
+        Ok((
+            Self {
+                path,
+                task,
+                #[cfg(test)]
+                served,
+            },
+            rx,
+        ))
+    }
+
+    /// Connections being served right now.
+    #[cfg(test)]
+    pub(crate) fn served(&self) -> usize {
+        self.served.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 

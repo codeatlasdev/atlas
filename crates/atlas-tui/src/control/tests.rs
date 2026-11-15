@@ -664,14 +664,23 @@ async fn wait_gone_never_treats_pid_zero_as_gone() {
 #[tokio::test]
 async fn a_connection_over_the_limit_is_told_busy_and_closed() {
     let dir = tempfile::TempDir::new().unwrap();
-    let (_server, mut rx) =
-        ControlServer::bind(dir.path(), Guard::new(&cfg(), dir.path())).unwrap();
+    let (server, mut rx) = ControlServer::bind(dir.path(), Guard::new(&cfg(), dir.path())).unwrap();
     let mut held = Vec::new();
     for _ in 0..server::MAX_CONNECTIONS {
         held.push(ipc::connect(&socket_path(dir.path())).await.unwrap());
     }
-    // Served in order: let the accept loop register all of them before the next one arrives.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Until the accept loop has registered all of them the next one would be served, not refused. A
+    // fixed pause is a race on Windows (one pipe instance is accepted at a time): wait for the count.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while server.served() < server::MAX_CONNECTIONS {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "only {} of {} connections were accepted",
+            server.served(),
+            server::MAX_CONNECTIONS
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     let over = ipc::connect(&socket_path(dir.path())).await.unwrap();
     let mut line = String::new();
     tokio::time::timeout(

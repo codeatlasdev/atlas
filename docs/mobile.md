@@ -47,6 +47,14 @@ On every connect the phone asks hostd's `info` once and compares its `proto` wit
 
 A mismatch is not an outage, so the phone does not retry it in a loop: it checks again when the app comes to the foreground, on pull to refresh and on **Try again**, and the state clears as soon as the versions agree.
 
+### How a screen says what is going on
+
+One path for the connection and one for the states, so a new screen does not invent either:
+
+- **Getting a connection:** `requireMux(ref, device)` in a provider, `requireMuxOf(ref, device)` in a widget handler (`lib/core/connection/require_mux.dart`). Both wait while the link opens and return the live connection, or throw `DeviceOffline` (the computer is off) or `DeviceProtocolMismatch` (the section above). `errorText(e)` turns a caught error into the one sentence to show. A background refresh that must not wait uses `liveMux(ref, device)` and skips when it is null.
+- **Rendering an `AsyncValue`:** `AsyncView` (`lib/core/ui/async_view.dart`) draws loading (the one spinner), the error with **Try again**, the empty state, the offline state and the protocol-mismatch state; the screen only supplies the data builder and the copy. A list that reads `value ?? []` shows "empty" while it is still loading: never do that.
+- **A computer that is not connected:** `ReachingView` (full screen: reaching, can't reach, or the update message) and `OfflineStrip` (one line over a screen that keeps showing history). `test/goldens/<os>/async_view_states.png` pins the set.
+
 ## Review and ship from the phone
 
 A project's page has **Review changes**: the changed files (staged and not), the diff of each (the same code block the chat uses, `diff` mode), a stage toggle per file, **Commit** (type a message or **Write with AI**, which runs the agent CLI of Settings → Git on the staged diff exactly as the desktop does: secrets withheld, lockfiles named), **Push** and **Open a pull request** (`gh pr create`). It is a fixed set of hostd commands, never a git command line: `root` must be a registered project or one of its worktrees (compared after canonicalization), paths must be relative and stay inside it (a symlink out is refused), the commit message goes on stdin, a push is never forced and only sends the current branch (`--set-upstream origin` the first time). Reading needs the first permission; everything that changes a repo or reaches GitHub needs the second. The audit log records the call but only the length of the message, title and body. hostd does the work itself (`crates/atlas-host/src/git.rs`, parsers and the commit-message logic shared with the desktop in `atlas_core::git_review`), so it works with the Atlas window closed; `gh` must be signed in on the computer.

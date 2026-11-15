@@ -6,7 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -43,16 +43,12 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
   Future<void> _answer({String? key, String? text}) async {
     final ask = widget.task.ask;
     if (ask == null || _sending) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) {
-      setState(() => _error = '${widget.device.name} is offline');
-      return;
-    }
     setState(() {
       _sending = true;
       _error = null;
     });
     try {
+      final mux = await requireMuxOf(ref, widget.device);
       final resp = await mux.call(
         'crewmate_answer',
         ask.answerArgs(widget.crewmateId, key: key, text: text),
@@ -64,7 +60,7 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
       ref.invalidate(crewmateTasksProvider((widget.device, widget.crewmateId)));
     } on Object catch (e) {
       // The card stays, with what the server said: the agent is still waiting.
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _sending = false);
     }

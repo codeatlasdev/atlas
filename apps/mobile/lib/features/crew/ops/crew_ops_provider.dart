@@ -5,7 +5,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -17,8 +17,7 @@ Future<Map<String, dynamic>> callCrew(
   String cmd, [
   Map<String, dynamic> args = const {},
 ]) async {
-  final mux = await ref.watch(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMux(ref, device);
   final resp = await mux.call(cmd, args);
   if (resp['ok'] != true) {
     throw StateError(resp['error'] as String? ?? 'the server refused');
@@ -80,8 +79,7 @@ Future<void> saveCrewSettings(
   MacDevice device,
   CrewSettings settings,
 ) async {
-  final mux = await ref.read(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call('crew_settings_set', settings.toArgs());
   if (resp['ok'] != true) {
     throw StateError(resp['error'] as String? ?? 'the server refused');
@@ -105,8 +103,7 @@ Future<EngineLogin> startEngineLogin(
   MacDevice device,
   String engine,
 ) async {
-  final mux = await ref.read(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call('crew_engine_login', {'engine': engine});
   if (resp['ok'] != true) {
     throw StateError(resp['error'] as String? ?? 'the server refused');
@@ -123,8 +120,7 @@ Future<void> saveRoutines(
   String crewmateId,
   List<Routine> routines,
 ) async {
-  final mux = await ref.read(connectionNotifierProvider(device).future);
-  if (mux == null) throw StateError('${device.name} is offline');
+  final mux = await requireMuxOf(ref, device);
   final resp = await mux.call('crewmate_routine_set', {
     'id': crewmateId,
     'routines': [for (final r in routines) r.toJson()],

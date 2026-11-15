@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/ops/crew_ops_provider.dart';
@@ -53,16 +54,10 @@ class _CrewAuditScreenState extends ConsumerState<CrewAuditScreen> {
           ),
         ],
       ),
-      body: audit.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => EmptyState(
-          title: "Couldn't read the audit",
-          message: '${e is StateError ? e.message : e}',
-          action: OutlinedButton(
-            onPressed: () => ref.invalidate(auditProvider(scope)),
-            child: const Text('Try again'),
-          ),
-        ),
+      body: AsyncView(
+        value: audit,
+        errorTitle: "Couldn't read the audit",
+        onRetry: () => ref.invalidate(auditProvider(scope)),
         data: (entries) {
           final shown = filterAudit(entries, _group);
           // The crew-wide log has none of the crewmate kinds to filter by.

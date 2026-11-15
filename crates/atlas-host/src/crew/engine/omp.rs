@@ -16,9 +16,9 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::{TurnCancel, TurnProc, TurnResult, program, turn_timeout};
+use super::{TurnCtx, TurnProc, TurnResult, program, turn_timeout};
 
 /// Settings every crewmate's omp runs with, as a `--config` overlay. A crew server is a headless server: omp's sleep
 /// prevention asks systemd-logind over D-Bus, which a server or container often lacks, and every start then waited
@@ -34,47 +34,25 @@ pub(crate) fn overlay_args(crewmate_dir: &std::path::Path) -> Vec<String> {
     vec!["--config".to_string(), path.to_string_lossy().into_owned()]
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn run(
-    _engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-    crewmate_dir: &std::path::Path,
-    hook_port: u16,
-    hook_token: &str,
-    pane_key: &str,
-    yolo: bool,
-    tools: Option<&super::ToolSink<'_>>,
-    cancel: &TurnCancel,
-) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new(program("omp"));
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mut cmd = ctx.command(&program("omp"));
     cmd.arg("--mode")
         .arg("rpc")
-        .args(overlay_args(crewmate_dir));
+        .args(overlay_args(ctx.crewmate_dir));
 
-    if yolo {
+    if ctx.yolo {
         cmd.arg("--auto-approve");
     } else {
-        // Write the approval extension and load it.
-        let ext_path = crewmate_dir.join("omp-approval.ts");
-        write_approval_extension(&ext_path, hook_port, hook_token, pane_key)?;
+        // Write the approval extension and load it; it reaches hostd through the ATLAS_* env.
+        let ext_path = ctx.crewmate_dir.join("omp-approval.ts");
+        write_approval_extension(&ext_path, ctx.hook_port, ctx.hook_token, ctx.pane_key)?;
         cmd.arg("--extension").arg(&ext_path);
-        // Inject env so the extension can reach hostd.
-        cmd.env("ATLAS_HOOK_PORT", hook_port.to_string());
-        cmd.env("ATLAS_HOOK_TOKEN", hook_token);
-        cmd.env("ATLAS_PANE_KEY", pane_key);
     }
 
-    if let Some(session_file) = &session.session_file {
+    if let Some(session_file) = &ctx.session.session_file {
         cmd.arg("--resume").arg(session_file);
     }
 
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::null());
@@ -84,8 +62,8 @@ pub(super) async fn run(
     let stdout = proc.child().stdout.take().ok_or("omp: no stdout pipe")?;
 
     let result = tokio::select! {
-        r = drive_rpc(&mut stdin, stdout, prompt, tools) => r.map_err(|e| format!("omp: {e}")),
-        () = cancel.fired() => Err("omp: cancelled".to_string()),
+        r = drive_rpc(&mut stdin, stdout, ctx.prompt, ctx.tools) => r.map_err(|e| format!("omp: {e}")),
+        () = ctx.cancel.fired() => Err("omp: cancelled".to_string()),
         () = tokio::time::sleep(turn_timeout()) => Err("omp: timed out after 2 h".to_string()),
     };
 
@@ -99,8 +77,8 @@ pub(super) async fn run(
         reply,
         session: CrewmateSession {
             session_id: None,
-            session_file: new_session_file.or(session.session_file),
-            created_at: session.created_at,
+            session_file: new_session_file.or(ctx.session.session_file),
+            created_at: ctx.session.created_at,
         },
         usage,
     })
@@ -427,6 +405,7 @@ mod kill_tests {
 
     use super::*;
     use crate::crew::engine::TurnCancel;
+    use crate::crew::store::EngineConfig;
 
     fn gone(pid: u32) -> bool {
         match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
@@ -469,25 +448,28 @@ mod kill_tests {
         let turn = {
             let (dir, cancel) = (tmp.path().to_path_buf(), cancel.clone());
             tokio::spawn(async move {
-                run(
-                    &EngineConfig {
-                        kind: "omp".into(),
-                        provider: None,
-                        base_url: None,
-                        model: None,
-                    },
-                    CrewmateSession::default(),
-                    "go",
-                    &BTreeMap::new(),
-                    dir.to_str().unwrap(),
-                    &dir,
-                    0,
-                    "",
-                    "",
-                    true,
-                    None,
-                    &cancel,
-                )
+                let engine = EngineConfig {
+                    kind: "omp".into(),
+                    provider: None,
+                    base_url: None,
+                    model: None,
+                };
+                let env = BTreeMap::new();
+                run(TurnCtx {
+                    engine: &engine,
+                    session: CrewmateSession::default(),
+                    prompt: "go",
+                    crewmate_dir: &dir,
+                    crewmate_id: "c1",
+                    hook_port: 0,
+                    hook_token: "",
+                    pane_key: "",
+                    extra_env: &env,
+                    work_dir: dir.to_str().unwrap(),
+                    yolo: true,
+                    tools: None,
+                    cancel: &cancel,
+                })
                 .await
             })
         };

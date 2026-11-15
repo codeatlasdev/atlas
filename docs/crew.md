@@ -368,6 +368,8 @@ When you add a Mac in Atlas Desktop, phones get a `mobile_invite` push (`compute
 
 Each crewmate's agent gets a stdio MCP server, `atlas-crew-mcp` (`atlas mcp --crewmate <id>`; `--bot` is a hidden alias), registered for the task. Environment: `ATLAS_HOOK_PORT`, `ATLAS_HOOK_TOKEN`, `ATLAS_CREWMATE_ID`, `ATLAS_PANE_KEY`.
 
+A headless engine gets the same server, described once (`crew/engine/launch.rs`) and rendered per engine, for that run only and never into your repo: `claude` reads `<crewmate dir>/mcp-config.json` (`--mcp-config`); `codex exec` gets `-c mcp_servers.atlas.{command,args,env}` overrides plus `default_tools_approval_mode="approve"`, because `codex exec` has nobody to ask and would otherwise cancel every call of the server ("user cancelled MCP tool call", openai/codex#29857); `opencode run` gets the config inline in `OPENCODE_CONFIG_CONTENT`, in the `mcp.<name>` shape that opencode 1 and 2 both load (2 reads it natively, 1 cannot read 2's `mcp.servers`); `omp` has its own tools and reaches hostd through the approval extension. Every engine's process gets the `ATLAS_*` environment from one function, set after the crewmate's secrets, so a secret with one of those names (or `OPENCODE_CONFIG_CONTENT`) never replaces hostd's value.
+
 | Tool | Use |
 |---|---|
 | `ask_user` | post a question to Desktop, Mobile or Telegram and block until answered (up to 30 min). Backed by `POST /crew/<id>/ask` |

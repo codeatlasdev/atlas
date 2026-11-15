@@ -1,51 +1,36 @@
 //! OpenCode engine — `opencode run --format json --standalone`.
 
-use std::collections::BTreeMap;
-
 use serde_json::Value;
 
-use crate::crew::store::{CrewmateSession, EngineConfig, UsageRecord};
+use crate::crew::store::{CrewmateSession, UsageRecord};
 
-use super::{TurnCancel, TurnProc, TurnResult, program};
+use super::{TurnCtx, TurnResult, launch, program};
 
-pub(super) async fn run(
-    engine: &EngineConfig,
-    session: CrewmateSession,
-    prompt: &str,
-    extra_env: &BTreeMap<String, String>,
-    work_dir: &str,
-    cancel: &TurnCancel,
-) -> Result<TurnResult, String> {
-    let mut cmd = tokio::process::Command::new(program("opencode"));
+pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
+    let mut cmd = ctx.command(&program("opencode"));
     cmd.arg("run")
         .arg("--format")
         .arg("json")
         .arg("--standalone");
 
-    if let Some(ses_id) = &session.session_id {
+    if let Some(ses_id) = &ctx.session.session_id {
         cmd.arg("--session").arg(ses_id);
     }
 
-    cmd.arg("--auto").arg(prompt);
+    cmd.arg("--auto").arg(ctx.prompt);
 
-    cmd.current_dir(work_dir);
-    for (k, v) in extra_env {
-        cmd.env(k, v);
-    }
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    // The crew tools, for this run only and never written into the user's repo. Set after the
+    // crewmate's secrets (`ctx.command`), so a secret of this name cannot replace it.
+    cmd.env(
+        "OPENCODE_CONFIG_CONTENT",
+        ctx.mcp_server().opencode_config().to_string(),
+    );
 
-    let out = TurnProc::spawn(&mut cmd)
-        .map_err(|e| format!("opencode: spawn failed: {e}"))?
-        .output(cancel, "opencode")
-        .await?;
+    let out = launch::output(cmd, ctx.cancel, "opencode").await?;
+    let (engine, session) = (ctx.engine, ctx.session);
 
     if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(format!(
-            "opencode: exited {}: {stderr}",
-            out.status.code().unwrap_or(-1)
-        ));
+        return Err(launch::exit_error("opencode", &out));
     }
 
     let stdout = String::from_utf8_lossy(&out.stdout);

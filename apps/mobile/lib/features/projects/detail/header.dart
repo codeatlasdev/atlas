@@ -89,7 +89,7 @@ class ProjectHeader extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        padding: const EdgeInsets.fromLTRB(2, 2, 10, 2),
+                        padding: const EdgeInsets.fromLTRB(2, 2, Space.md, 2),
                         decoration: BoxDecoration(
                           color: color.withValues(alpha: .12),
                           borderRadius: BorderRadius.circular(999),

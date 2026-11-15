@@ -90,7 +90,7 @@ class HomeHeader extends ConsumerWidget {
                     ],
                     child: MinTapTarget(child: name),
                   ),
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 AnimatedSwitcher(
                   duration: Motion.normal,
                   layoutBuilder: (current, previous) => Stack(

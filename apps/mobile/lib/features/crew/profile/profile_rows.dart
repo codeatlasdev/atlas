@@ -24,7 +24,7 @@ class ProfileGroup extends StatelessWidget {
         children: [
           if (title != null)
             Padding(
-              padding: const EdgeInsets.only(left: Space.md, bottom: 8),
+              padding: const EdgeInsets.only(left: Space.md, bottom: Space.sm),
               child: Text(
                 title!,
                 style: Theme.of(context).textTheme.bodyMedium!
@@ -89,7 +89,7 @@ class ProfileRow extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge!
                 .copyWith(fontWeight: FontWeight.w600, color: fg),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: Space.md),
           child!,
         ],
       );
@@ -98,7 +98,7 @@ class ProfileRow extends StatelessWidget {
         children: [
           if (icon != null) ...[
             Icon(icon, size: 20, color: danger ? c.error : c.muted),
-            const SizedBox(width: 12),
+            const SizedBox(width: Space.md),
           ],
           Expanded(
             child: Text(
@@ -114,7 +114,7 @@ class ProfileRow extends StatelessWidget {
                   .copyWith(color: c.accent),
             ),
           if (onTap != null && !danger) ...[
-            const SizedBox(width: 4),
+            const SizedBox(width: Space.xs),
             Icon(Icons.chevron_right_rounded, color: c.faint, size: 20),
           ],
         ],
@@ -131,7 +131,10 @@ class ProfileRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.md,
+        ),
         child: body,
       ),
     );
@@ -175,7 +178,7 @@ class ApprovalPicker extends StatelessWidget {
           onChanged: enabled ? onChanged : null,
         ),
         if (!enabled) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Text(
             'OpenCode crewmates run without approval prompts.',
             style: Theme.of(context).textTheme.bodySmall!
@@ -213,7 +216,7 @@ class ShortRepliesRow extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         SegmentedChoice(
           options: const [
             ('crew', 'Crew default'),

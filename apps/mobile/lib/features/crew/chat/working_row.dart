@@ -41,7 +41,7 @@ class CrewmateWorkingRow extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall!
                 .copyWith(color: c.accent, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           TypingDots(color: c.accent),
         ],
       ),

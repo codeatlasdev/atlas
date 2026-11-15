@@ -44,7 +44,7 @@ class ProjectTopBar extends StatelessWidget {
                     dimension: 12,
                     child: CircularProgressIndicator(strokeWidth: 1.6),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   Flexible(
                     child: Text(
                       'Reconnecting…',

@@ -176,7 +176,7 @@ class _EntryRow extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge!
                 .copyWith(color: c.text, height: 1.35),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           Text(
             '${_time(entry.ts)} · ${auditKindLabel(entry.kind)}',
             style: Theme.of(context).textTheme.bodySmall!

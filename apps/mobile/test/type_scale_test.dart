@@ -52,6 +52,9 @@ Iterable<File> _sources() =>
           return !_skipped.any(p.startsWith);
         });
 
+/// A line that sets a size (`fontSize: x`, `fontSize = x`); reading one (`style.fontSize!`) does not.
+bool _setsSize(String l) => RegExp(r'fontSize\s*[:=]').hasMatch(l);
+
 String _rel(File f) => f.path.replaceAll('\\', '/');
 
 void main() {
@@ -83,7 +86,7 @@ void main() {
       if (!_computed.containsKey(path)) continue;
       found[path] = _stripComments(f.readAsStringSync())
           .split('\n')
-          .where((l) => l.contains('fontSize'))
+          .where(_setsSize)
           .length;
     }
     for (final e in _computed.entries) {

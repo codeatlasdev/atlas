@@ -8,6 +8,7 @@ import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_avatar.dart';
 import 'package:atlas_mobile/features/crew/avatar/crewmate_look.dart';
 import 'package:atlas_mobile/features/crew/widgets/approval_parts.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 class CrewmateApprovalBubble extends StatelessWidget {
   const CrewmateApprovalBubble({
@@ -25,7 +26,7 @@ class CrewmateApprovalBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final cmd = approvalCommand(approval);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -35,7 +36,7 @@ class CrewmateApprovalBubble extends StatelessWidget {
             state: CrewState.needsYou,
             size: 30,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           Flexible(
             child: AttentionCard(
               bubble: true,
@@ -49,10 +50,10 @@ class CrewmateApprovalBubble extends StatelessWidget {
                     flexible: true,
                   ),
                   if (cmd != null) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Space.sm),
                     ApprovalCommandPreview(cmd),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: Space.sm),
                   ApprovalButtons(onAnswer: onApprove),
                 ],
               ),

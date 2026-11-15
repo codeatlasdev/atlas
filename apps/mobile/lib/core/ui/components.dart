@@ -195,7 +195,7 @@ class SectionHeader extends StatelessWidget {
                     ),
                   ),
                   if (count != null) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: Space.sm),
                     Text(
                       '$count',
                       style: Theme.of(context).textTheme.bodyMedium!
@@ -424,15 +424,18 @@ class AtlasChip extends StatelessWidget {
       ),
       child: Padding(
         padding: outlined
-            ? const EdgeInsets.symmetric(horizontal: 14, vertical: 8)
+            ? const EdgeInsets.symmetric(
+                horizontal: Space.md,
+                vertical: Space.sm,
+              )
             : leading is ChipDot
-            ? const EdgeInsets.fromLTRB(2, 2, 10, 2)
-            : const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            ? const EdgeInsets.fromLTRB(2, 2, Space.md, 2)
+            : const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             ?lead,
-            if (leading is ChipIcon) const SizedBox(width: 4),
+            if (leading is ChipIcon) const SizedBox(width: Space.xs),
             Flexible(child: text),
           ],
         ),

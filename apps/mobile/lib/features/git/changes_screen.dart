@@ -492,8 +492,8 @@ class _CommitSheetState extends State<_CommitSheet> {
               onPressed: _writing ? null : _ai,
               icon: _writing
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
+                      width: Space.lg,
+                      height: Space.lg,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.auto_awesome),

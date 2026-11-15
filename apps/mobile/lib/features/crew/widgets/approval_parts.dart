@@ -42,7 +42,7 @@ class ApprovalToolLine extends StatelessWidget {
     return Row(
       children: [
         Icon(Icons.shield_outlined, size: 14, color: c.warning),
-        const SizedBox(width: 4),
+        const SizedBox(width: Space.xs),
         if (flexible) Flexible(child: text) else text,
       ],
     );
@@ -59,7 +59,10 @@ class ApprovalCommandPreview extends StatelessWidget {
     final c = AtlasColors.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
       decoration: BoxDecoration(
         color: c.ground,
         borderRadius: BorderRadius.circular(8),

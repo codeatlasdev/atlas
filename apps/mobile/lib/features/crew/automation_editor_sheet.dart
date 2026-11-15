@@ -254,7 +254,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _label('Cron expression', c),
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Row(
             children: [
               Expanded(
@@ -279,7 +279,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Days', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         // Preset chips
         Wrap(
           spacing: 6,
@@ -297,7 +297,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
               ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         // Weekday chips
         Wrap(
           spacing: 4,
@@ -319,9 +319,9 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Space.md),
         _label('Time', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 6,
@@ -336,7 +336,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
                   onChanged: (v) => setState(() => _hour = v),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: Space.sm),
                   child: Text(
                     ':',
                     style: Theme.of(context).textTheme.titleMedium!
@@ -417,7 +417,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Space.sm),
             Text('minutes', style: TextStyle(color: c.muted)),
           ],
         ),
@@ -458,7 +458,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Repository (owner/repo)', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _githubRepoCtrl,
           decoration: const InputDecoration(
@@ -467,9 +467,9 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           ),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: Space.md),
         _label('Events', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         Wrap(
           spacing: 4,
           runSpacing: 4,
@@ -501,15 +501,15 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Path', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _filePathCtrl,
           decoration: const InputDecoration(hintText: '/src', isDense: true),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         _label('Glob (optional)', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _fileGlobCtrl,
           decoration: const InputDecoration(hintText: '**/*.ts', isDense: true),
@@ -526,7 +526,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Crewmate name', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _fromCrewmateCtrl,
           decoration: const InputDecoration(
@@ -535,7 +535,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
           ),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'done', label: Text('When it finishes')),
@@ -557,13 +557,13 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('Service name', c),
-        const SizedBox(height: 6),
+        const SizedBox(height: Space.sm),
         TextField(
           controller: _serviceCtrl,
           decoration: const InputDecoration(hintText: 'api', isDense: true),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'failed', label: Text('When it fails')),
@@ -617,7 +617,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
             // Kind picker
             _label('Trigger', c),
-            const SizedBox(height: 8),
+            const SizedBox(height: Space.sm),
             Wrap(
               spacing: 6,
               runSpacing: 6,
@@ -651,7 +651,7 @@ class _AutomationEditorSheetState extends State<_AutomationEditorSheet> {
 
             // Prompt
             _label('Prompt', c),
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             TextField(
               controller: _promptCtrl,
               minLines: 2,

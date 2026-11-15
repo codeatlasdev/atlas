@@ -84,7 +84,7 @@ class ServiceCard extends StatelessWidget {
                     child: Container(height: 1, color: c.borderSubtle),
                   ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           Text(
             svc.up ? '${svc.memMb.round()} MB · ${svc.cpu.round()}%' : '—',
             style: Theme.of(context).textTheme.labelSmall!.copyWith(
@@ -172,7 +172,7 @@ class ServiceSheet extends StatelessWidget {
                 height: 40,
                 child: Sparkline(values: card.mem, color: card.color),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               Text(
                 '${svc.memMb.round()} MB · ${svc.cpu.round()}% CPU'
                 '${svc.restarts > 0 ? ' · ${svc.restarts} restarts' : ''}',

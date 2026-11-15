@@ -360,7 +360,7 @@ class _TabItemState extends State<_TabItem> {
                     child: Container(
                       constraints: const BoxConstraints(minWidth: 18),
                       height: 18,
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      padding: const EdgeInsets.symmetric(horizontal: Space.xs),
                       decoration: BoxDecoration(
                         color: c.accent,
                         borderRadius: BorderRadius.circular(9),

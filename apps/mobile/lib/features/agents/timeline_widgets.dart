@@ -39,7 +39,10 @@ class UserBubble extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.sizeOf(context).width * 0.82,
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.md,
+            vertical: Space.md,
+          ),
           decoration: BoxDecoration(
             color: c.accent.withValues(alpha: .2),
             borderRadius: const BorderRadius.only(
@@ -97,7 +100,7 @@ class _ThinkingRowState extends State<ThinkingRow> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.psychology_outlined, size: 16, color: c.faint),
-                const SizedBox(width: 6),
+                const SizedBox(width: Space.sm),
                 Text(
                   'Thought',
                   style: Theme.of(context).textTheme.bodySmall!
@@ -114,8 +117,12 @@ class _ThinkingRowState extends State<ThinkingRow> {
         ),
         if (_open)
           Container(
-            margin: const EdgeInsets.only(left: 7, top: 2, bottom: 4),
-            padding: const EdgeInsets.only(left: 12),
+            margin: const EdgeInsets.only(
+              left: Space.sm,
+              top: 2,
+              bottom: Space.xs,
+            ),
+            padding: const EdgeInsets.only(left: Space.md),
             decoration: BoxDecoration(
               border: Border(left: BorderSide(color: c.border, width: 2)),
             ),
@@ -245,7 +252,7 @@ class _ToolGroupCardState extends State<ToolGroupCard> {
                   ),
                   if (g.errors > 0) ...[
                     AtlasChip('${g.errors} failed', tone: c.error),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: Space.xs),
                   ],
                   Icon(
                     open ? Icons.expand_less : Icons.expand_more,
@@ -498,7 +505,7 @@ class _SubagentRow extends StatelessWidget {
                         .copyWith(color: c.muted),
                   ),
                   if (report != null && report.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: Space.xs),
                     Text(
                       report,
                       maxLines: 2,
@@ -572,7 +579,7 @@ class RecapCard extends StatelessWidget {
           Row(
             children: [
               Icon(Icons.auto_awesome, size: 14, color: c.accent),
-              const SizedBox(width: 6),
+              const SizedBox(width: Space.sm),
               Text(
                 'Recap',
                 style: Theme.of(context).textTheme.bodySmall!
@@ -590,7 +597,7 @@ class RecapCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(icon, size: 15, color: color),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: Space.xs),
                     Text(
                       label,
                       style: Theme.of(context).textTheme.bodyMedium!
@@ -732,7 +739,7 @@ class _CompactionDividerState extends State<CompactionDivider> {
         ),
         if (_open)
           Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: Space.xs),
             child: Text(
               widget.text,
               style: Theme.of(context).textTheme.bodySmall!
@@ -775,7 +782,7 @@ class IrcCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.forum_outlined, size: 15, color: c.info),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   Expanded(
                     child: Text(
                       fromParent
@@ -791,7 +798,7 @@ class IrcCard extends StatelessWidget {
                     Icon(Icons.chevron_right, size: 16, color: c.faint),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               Text(
                 item.text,
                 style: Theme.of(context).textTheme.bodyMedium!
@@ -830,7 +837,7 @@ class _NoticeRowState extends State<NoticeRow> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(Icons.info_outline_rounded, size: 14, color: c.faint),
-            const SizedBox(width: 6),
+            const SizedBox(width: Space.sm),
             Expanded(
               child: Text(
                 _open ? widget.text : first,
@@ -876,7 +883,7 @@ class AdvisorCard extends StatelessWidget {
           Row(
             children: [
               Icon(icon, size: 15, color: color),
-              const SizedBox(width: 6),
+              const SizedBox(width: Space.sm),
               Text(
                 'Advisor · ${item.severity}',
                 style: Theme.of(context).textTheme.bodySmall!
@@ -884,7 +891,7 @@ class AdvisorCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           Text(
             item.text,
             style: Theme.of(context).textTheme.bodyMedium!

@@ -129,7 +129,7 @@ class DeckMate extends StatelessWidget {
                 state: state,
                 size: 92,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               Text(
                 crewmate.name,
                 maxLines: 1,
@@ -180,7 +180,7 @@ class RecruitSlot extends StatelessWidget {
                 ),
                 child: Icon(Icons.add_rounded, color: c.accent, size: 30),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: Space.lg),
               Text(
                 'Recruit',
                 maxLines: 1,

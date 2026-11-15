@@ -313,7 +313,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             Container(
               color: c.raised,
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              padding: const EdgeInsets.symmetric(
+                vertical: Space.sm,
+                horizontal: Space.lg,
+              ),
               child: Text(
                 'The process exited',
                 style: TextStyle(color: c.muted),
@@ -326,7 +329,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                padding: const EdgeInsets.fromLTRB(
+                  Space.md,
+                  Space.sm,
+                  Space.md,
+                  Space.sm,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.tonalIcon(
@@ -366,7 +374,10 @@ class _LinkNotice extends StatelessWidget {
     return Container(
       color: c.raised,
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+      padding: const EdgeInsets.symmetric(
+        vertical: Space.sm,
+        horizontal: Space.lg,
+      ),
       child: Text(text, style: TextStyle(color: c.muted)),
     );
   }
@@ -388,7 +399,12 @@ class _AgentStrip extends ConsumerWidget {
     final task = a.state == 'working' ? a.prompt : (a.lastMessage ?? a.prompt);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+      padding: const EdgeInsets.fromLTRB(
+        Space.md,
+        Space.sm,
+        Space.md,
+        Space.md,
+      ),
       decoration: BoxDecoration(
         color: c.raised,
         border: Border(bottom: BorderSide(color: c.borderSubtle)),
@@ -462,7 +478,7 @@ class _KeyBarState extends State<KeyBar> {
       child: TextButton(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Space.md),
           backgroundColor: c.raised,
           foregroundColor: c.text,
           disabledForegroundColor: c.faint,
@@ -486,7 +502,7 @@ class _KeyBarState extends State<KeyBar> {
       TextButton(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: Space.md),
           backgroundColor: _ctrlActive ? c.accent : c.raised,
           foregroundColor: _ctrlActive ? c.onAccent : c.text,
           disabledForegroundColor: c.faint,
@@ -518,7 +534,7 @@ class _KeyBarState extends State<KeyBar> {
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: 2),
         child: Row(children: _ctrlActive ? ctrlKeys : baseKeys),
       ),
     );

@@ -110,7 +110,7 @@ class TriggerRow extends StatelessWidget {
                 onTap: onEdit,
                 borderRadius: BorderRadius.circular(Space.radiusSm),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: Space.xs),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

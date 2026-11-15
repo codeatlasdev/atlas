@@ -78,7 +78,7 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     if (ask == null || !ask.isOpen) return const SizedBox.shrink();
     final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -95,11 +95,11 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                         .copyWith(fontWeight: FontWeight.w600, color: c.text),
                   ),
                   for (final o in ask.options) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: Space.sm),
                     _option(c, o),
                   ],
                   if (ask.allowText) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: Space.md),
                     TextField(
                       controller: _controller,
                       style: Theme.of(context).textTheme.bodyLarge!
@@ -109,8 +109,8 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                         hintStyle: Theme.of(context).textTheme.bodyLarge!
                             .copyWith(color: c.faint),
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                          horizontal: Space.md,
+                          vertical: Space.sm,
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -123,14 +123,14 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
                       ),
                       onSubmitted: (_) => _sendText(),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: Space.sm),
                     WarnPillButton(
                       label: 'Send',
                       onPressed: _sending ? null : _sendText,
                     ),
                   ],
                   if (_error != null) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: Space.sm),
                     Text(
                       _error!,
                       style: Theme.of(context).textTheme.bodySmall!
@@ -151,7 +151,10 @@ class _TaskAskCardState extends ConsumerState<TaskAskCard> {
     onTap: _sending ? null : () => _answer(key: o.key),
     child: Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.md,
+      ),
       decoration: BoxDecoration(
         border: Border.all(color: c.borderSubtle),
         borderRadius: BorderRadius.circular(10),

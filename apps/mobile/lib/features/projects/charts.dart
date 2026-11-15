@@ -39,12 +39,12 @@ class LinesChart extends StatelessWidget {
           'max ${max.toStringAsFixed(max < 10 ? 1 : 0)} $unit',
           style: Theme.of(context).textTheme.labelSmall!.copyWith(color: muted),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: Space.xs),
         CustomPaint(
           size: const Size(double.infinity, 140),
           painter: _LinesPainter([for (final n in names) series[n]!], colors),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         LayoutBuilder(
           builder: (context, box) => Wrap(
             spacing: 12,
@@ -65,7 +65,7 @@ class LinesChart extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: Space.xs),
                       Flexible(
                         child: Text(
                           names[i],

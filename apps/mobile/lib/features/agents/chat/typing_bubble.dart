@@ -11,7 +11,10 @@ class TypingBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.md,
+      ),
       decoration: BoxDecoration(
         color: c.base,
         border: Border.all(color: c.borderSubtle),

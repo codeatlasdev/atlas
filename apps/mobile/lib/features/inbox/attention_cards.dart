@@ -65,7 +65,7 @@ class AttentionHero extends StatelessWidget {
               Row(
                 children: [
                   Icon(icon, color: color, size: 18),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   Expanded(
                     child: Text(
                       kicker,
@@ -79,7 +79,7 @@ class AttentionHero extends StatelessWidget {
               const SizedBox(height: Space.sm),
               Text(title, style: Theme.of(context).textTheme.titleLarge),
               if (detail != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Text(
                   detail.replaceAll('\n', ' '),
                   maxLines: 2,

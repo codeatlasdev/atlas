@@ -26,9 +26,9 @@ class ProjectSetupRow extends StatelessWidget {
                 ? AtlasColors.of(context).success
                 : AtlasColors.of(context).error,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           const Text('Setup', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           Expanded(
             flex: 3,
             child: Text(
@@ -42,7 +42,7 @@ class ProjectSetupRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           Flexible(
             child: Text(
               snap.setupState!,

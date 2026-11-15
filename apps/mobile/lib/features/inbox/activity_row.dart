@@ -67,10 +67,15 @@ class ActivityRow extends StatelessWidget {
           child: Row(
             children: [
               avatar,
-              const SizedBox(width: 12),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(0, 11, Space.lg, 11),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    Space.md,
+                    Space.lg,
+                    Space.md,
+                  ),
                   decoration: BoxDecoration(
                     border: last
                         ? null
@@ -88,7 +93,7 @@ class ActivityRow extends StatelessWidget {
                             size: 14,
                             color: color,
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: Space.xs),
                           Expanded(
                             child: Text(
                               title,
@@ -125,7 +130,7 @@ class ActivityRow extends StatelessWidget {
                             ),
                           ),
                           if (unread) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: Space.sm),
                             Container(
                               width: 9,
                               height: 9,

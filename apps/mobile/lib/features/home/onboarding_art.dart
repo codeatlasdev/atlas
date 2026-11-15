@@ -288,7 +288,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                 Row(
                   children: [
                     _Pulse(color: color, on: stage != 3, t: t),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: Space.sm),
                     const Text(
                       'claude',
                       style: TextStyle(fontWeight: FontWeight.w600),
@@ -302,7 +302,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                             .copyWith(color: c.muted),
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: Space.xs),
                     AnimatedSwitcher(
                       duration: Motion.normal,
                       child: Text(
@@ -342,7 +342,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                             style: Theme.of(context).textTheme.bodySmall!
                                 .copyWith(color: c.muted),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: Space.xs),
                           Text(
                             'bun run db:migrate',
                             style: Theme.of(context).textTheme.bodyMedium!
@@ -357,7 +357,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               _FakeButton('Deny', filled: false, c: c),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: Space.sm),
                               Transform.scale(
                                 scale: 1 - .08 * press,
                                 child: _FakeButton('Allow', filled: true, c: c),
@@ -374,7 +374,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                             color: c.success,
                             size: 18,
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: Space.sm),
                           Expanded(
                             child: Text(
                               'Migration applied. 840 ms → 9 ms.',
@@ -447,7 +447,11 @@ class _Typing extends StatelessWidget {
             -3 * math.sin(((t * 6 - i * .18) % 1) * math.pi).clamp(0, 1),
           ),
           child: Container(
-            margin: const EdgeInsets.only(right: 4, top: 6, bottom: 6),
+            margin: const EdgeInsets.only(
+              right: Space.xs,
+              top: Space.sm,
+              bottom: Space.sm,
+            ),
             width: 6,
             height: 6,
             decoration: BoxDecoration(color: c.muted, shape: BoxShape.circle),
@@ -465,7 +469,10 @@ class _FakeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+    padding: const EdgeInsets.symmetric(
+      horizontal: Space.md,
+      vertical: Space.sm,
+    ),
     decoration: BoxDecoration(
       color: filled ? c.accent : null,
       border: filled ? null : Border.all(color: c.border),

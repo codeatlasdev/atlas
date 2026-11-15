@@ -98,7 +98,7 @@ class CrewmateTaskPair extends StatelessWidget {
 
         // ── approval bubble (inline with task) ─────────────────────────
         if (pendingApproval != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           CrewmateApprovalBubble(
             look: look,
             approval: pendingApproval!,
@@ -108,13 +108,13 @@ class CrewmateTaskPair extends StatelessWidget {
 
         // ── action card (waiting_action state) ─────────────────────────
         if (task.state == 'waiting_action' && task.action != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           TaskActionCard(task: task, device: device, crewmateId: crewmateId),
         ],
 
         // ── ask_user: the agent is blocked on a question ───────────────
         if (task.ask?.isOpen ?? false) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           TaskAskCard(task: task, device: device, crewmateId: crewmateId),
         ],
 
@@ -123,11 +123,11 @@ class CrewmateTaskPair extends StatelessWidget {
         // an add_trigger action, show the one-line resolution note.
         if (task.state != 'waiting_action' &&
             task.action?.kind == 'add_trigger') ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           _AddTriggerNote(added: task.state != 'cancelled'),
         ],
 
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
       ],
     );
   }
@@ -147,7 +147,7 @@ class _UserBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 8, left: 64),
+      padding: const EdgeInsets.only(top: Space.sm, left: 64),
       child: Align(
         alignment: Alignment.centerRight,
         child: ChatAppear(
@@ -255,7 +255,7 @@ class _CrewmateBubble extends StatelessWidget {
                 expanded: expanded,
                 onToggle: onToggle,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: Space.sm),
             ],
             _CrewmateBubbleResult(task: task),
           ],
@@ -265,7 +265,7 @@ class _CrewmateBubble extends StatelessWidget {
     // The crewmate's bubble: left, soft surface, its face beside the last line. The
     // content changes size smoothly as the task runs, steps come in and the reply lands.
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: Space.sm),
       child: ChatAppear(
         fromRight: false,
         play: enter,
@@ -316,7 +316,10 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.md,
+      ),
       decoration: BoxDecoration(
         color: mine ? c.accent : c.raised,
         borderRadius: BorderRadius.circular(24),
@@ -328,7 +331,7 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 child,
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Icon(
                   tag == 'routine'
                       ? Icons.schedule_rounded
@@ -372,7 +375,7 @@ class _CrewmateBubbleResultState extends State<_CrewmateBubbleResult> {
           ),
         ),
         if (isSummarized) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           GestureDetector(
             onTap: () => setState(() => _showFull = !_showFull),
             child: Text(
@@ -405,7 +408,7 @@ class _AddTriggerNote extends StatelessWidget {
             size: 13,
             color: added ? c.success : c.faint,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: Space.xs),
           Text(
             added ? 'Automation added' : 'Not added',
             style: Theme.of(context).textTheme.bodySmall!

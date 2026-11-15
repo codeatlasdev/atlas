@@ -326,7 +326,7 @@ class _HowToPair extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 4),
+                const SizedBox(height: Space.xs),
                 Text(
                   text,
                   style: Theme.of(context).textTheme.titleMedium!

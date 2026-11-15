@@ -96,7 +96,10 @@ class ProfileChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
       decoration: BoxDecoration(
         color: (color ?? c.text).withValues(alpha: .08),
         borderRadius: BorderRadius.circular(999),
@@ -107,9 +110,9 @@ class ProfileChip extends StatelessWidget {
           if (dot != null) StatusDot(color: dot!, size: 6, pulse: pulse),
           if (icon != null) ...[
             Icon(icon, size: 14, color: c.muted),
-            const SizedBox(width: 6),
+            const SizedBox(width: Space.sm),
           ],
-          if (child != null) ...[child!, const SizedBox(width: 6)],
+          if (child != null) ...[child!, const SizedBox(width: Space.sm)],
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 180),
             child: Text(

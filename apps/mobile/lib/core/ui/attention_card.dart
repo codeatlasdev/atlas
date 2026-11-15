@@ -113,12 +113,12 @@ class AttentionCard extends StatelessWidget {
                     children: [
                       if (icon != null) ...[
                         Icon(icon, color: color, size: 22),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: Space.md),
                       ],
                       Expanded(child: text),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: Space.sm),
                   Wrap(spacing: 10, runSpacing: 4, children: actions),
                 ],
               )
@@ -126,11 +126,11 @@ class AttentionCard extends StatelessWidget {
                 children: [
                   if (icon != null) ...[
                     Icon(icon, color: color, size: 22),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Space.md),
                   ],
                   Expanded(child: text),
                   if (actions.isNotEmpty) ...[
-                    const SizedBox(width: 10),
+                    const SizedBox(width: Space.md),
                     ...actions,
                   ],
                 ],

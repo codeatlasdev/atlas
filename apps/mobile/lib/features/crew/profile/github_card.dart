@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 class GithubCard extends StatelessWidget {
   const GithubCard({
@@ -30,14 +31,17 @@ class GithubCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.sm,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(Space.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('GitHub', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
+            const SizedBox(height: Space.md),
             if (status == null)
               const Center(child: CircularProgressIndicator.adaptive())
             else if (flow != null)
@@ -56,7 +60,7 @@ class GithubCard extends StatelessWidget {
     return Row(
       children: [
         const Icon(Icons.check_circle_outline, size: 16),
-        const SizedBox(width: 8),
+        const SizedBox(width: Space.sm),
         Expanded(
           child: Text(
             'Connected as @$login',
@@ -83,8 +87,8 @@ class GithubCard extends StatelessWidget {
           onPressed: loading ? null : onConnect,
           child: loading
               ? const SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: Space.lg,
+                  height: Space.lg,
                   child: CircularProgressIndicator.adaptive(strokeWidth: 2),
                 )
               : const Text('Connect'),
@@ -102,7 +106,7 @@ class GithubCard extends StatelessWidget {
           'Go to ${flow.verificationUri} and enter this code:',
           style: theme.textTheme.bodySmall,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         Row(
           children: [
             Text(
@@ -112,7 +116,7 @@ class GithubCard extends StatelessWidget {
                 letterSpacing: 2,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Space.sm),
             IconButton(
               icon: const Icon(Icons.copy),
               tooltip: 'Copy code',
@@ -124,7 +128,7 @@ class GithubCard extends StatelessWidget {
         ),
         if (polling)
           Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: Space.xs),
             child: Text(
               'Waiting for authorization…',
               style: theme.textTheme.bodySmall?.copyWith(

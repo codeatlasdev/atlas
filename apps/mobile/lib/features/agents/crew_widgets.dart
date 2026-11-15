@@ -219,6 +219,13 @@ class CrewRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
     final flat = tree.flat;
+    // The chip stacks a name (bodyMedium) over a status (labelSmall): the strip is as tall as
+    // those two lines in the theme's own line heights, so it follows the scale and text size.
+    final text = Theme.of(context).textTheme;
+    final lines = MediaQuery.textScalerOf(context).scale(
+      text.bodyMedium!.fontSize! * text.bodyMedium!.height! +
+          text.labelSmall!.fontSize! * text.labelSmall!.height!,
+    );
     return Container(
       decoration: BoxDecoration(
         color: c.base,
@@ -226,13 +233,7 @@ class CrewRail extends StatelessWidget {
       ),
       child: SizedBox(
         // 66 dp holds the ring and two short lines; at large text the lines grow.
-        height: math.max(
-          66,
-          12 +
-              2 +
-              MediaQuery.textScalerOf(context).scale(13 * 1.4 + 11 * 1.4) +
-              8,
-        ),
+        height: math.max(66, Space.md + 2 + lines + Space.sm),
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: Space.sm),
@@ -339,8 +340,8 @@ class _CrewChipState extends State<_CrewChip> {
             child: AnimatedContainer(
               duration: Motion.normal,
               curve: Motion.ease,
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              padding: const EdgeInsets.fromLTRB(4, 2, 10, 2),
+              margin: const EdgeInsets.symmetric(vertical: Space.sm),
+              padding: const EdgeInsets.fromLTRB(Space.xs, 2, Space.md, 2),
               decoration: BoxDecoration(
                 color: focused ? c.accent.withValues(alpha: .14) : null,
                 border: Border.all(
@@ -352,7 +353,7 @@ class _CrewChipState extends State<_CrewChip> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   NodeRing(node: node, fallbackAgent: fallbackAgent, size: 30),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 110),
                     child: Column(
@@ -454,13 +455,13 @@ class _Crumb extends StatelessWidget {
         onTap: onTap,
         child: MinTapTarget(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: Space.md),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (home) ...[
                   Icon(Icons.arrow_back_rounded, size: 13, color: c.accent),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: Space.xs),
                 ],
                 Text(
                   label,
@@ -746,7 +747,7 @@ class _TodoCardState extends State<TodoCard> {
               child: Row(
                 children: [
                   Icon(Icons.checklist_rounded, size: 16, color: c.muted),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   Text(
                     '${t.done}/${t.total}',
                     style: Theme.of(context).textTheme.bodySmall!
@@ -788,7 +789,7 @@ class _TodoCardState extends State<TodoCard> {
                   children: [
                     for (final p in t.phases) ...[
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: Space.xs),
                         child: Text(
                           p.name,
                           style: Theme.of(context).textTheme.bodySmall!
@@ -830,7 +831,7 @@ class _TodoRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           Expanded(
             child: Text(
               task.content,

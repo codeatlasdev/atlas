@@ -38,7 +38,7 @@ class StepGroupsView extends StatelessWidget {
               dimension: 12,
               child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Space.sm),
           ],
           Text(
             running
@@ -69,7 +69,7 @@ class StepGroupsView extends StatelessWidget {
                   color: c.accent,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Space.sm),
               Text(
                 startedAt != null
                     ? 'Working · ${crewElapsed(startedAt!, DateTime.now())}'
@@ -79,7 +79,7 @@ class StepGroupsView extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
         ],
         for (var gi = 0; gi < groups.length; gi++) ...[
           _StepGroupRow(
@@ -89,7 +89,7 @@ class StepGroupsView extends StatelessWidget {
             expanded: expanded,
             onToggle: onToggle,
           ),
-          if (gi < groups.length - 1) const SizedBox(height: 4),
+          if (gi < groups.length - 1) const SizedBox(height: Space.xs),
         ],
       ],
     );
@@ -128,7 +128,7 @@ class _StepGroupRow extends StatelessWidget {
             Row(
               children: [
                 Icon(Icons.check_circle_outline, size: 13, color: c.success),
-                const SizedBox(width: 4),
+                const SizedBox(width: Space.xs),
                 Flexible(
                   child: Text(
                     title != null
@@ -150,7 +150,7 @@ class _StepGroupRow extends StatelessWidget {
               ],
             ),
             if (expanded) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               _StepList(steps: group.steps),
             ],
           ],
@@ -174,7 +174,7 @@ class _StepGroupRow extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall!
                 .copyWith(fontWeight: FontWeight.w600, color: c.muted),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
         ],
         if (earlier > 0) ...[
           Text(

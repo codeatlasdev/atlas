@@ -120,7 +120,7 @@ class CrewmateUsageScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: Space.xs),
                             SelectableText(
                               e.value,
                               style: Theme.of(context).textTheme.bodySmall!

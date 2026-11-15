@@ -204,7 +204,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(Space.md, 6, Space.md, 0),
+            padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
             child: Row(
               children: [
                 GlassRoundButton(
@@ -228,7 +228,12 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                         ? () => _openProfile(crewmate, hostName)
                         : null,
                     child: GlassPill(
-                      padding: const EdgeInsets.fromLTRB(6, 5, 18, 5),
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.sm,
+                        Space.xs,
+                        Space.lg,
+                        Space.xs,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -238,7 +243,7 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                             state: state,
                             size: 34,
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: Space.md),
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 170),
                             child: Text(

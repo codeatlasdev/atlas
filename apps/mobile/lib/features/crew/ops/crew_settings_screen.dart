@@ -235,7 +235,7 @@ class _EngineSignin extends ConsumerWidget {
     };
     return Padding(
       key: Key('engine-${s.engine}'),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: Row(
         children: [
           Expanded(

@@ -275,7 +275,7 @@ class _HubHeader extends StatelessWidget {
             ],
           ),
           if (totals.line.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: Space.xs),
             Text(
               totals.line,
               key: const ValueKey('hub-totals'),
@@ -353,7 +353,7 @@ class HubRow extends StatelessWidget {
     final stats = hubStats(n);
     final last = hubLastActivity(n);
     return Padding(
-      padding: EdgeInsets.only(left: depth * 16.0, top: 6),
+      padding: EdgeInsets.only(left: depth * Space.lg, top: Space.sm),
       child: Material(
         color: focused ? c.accent.withValues(alpha: .10) : c.base,
         shape: RoundedRectangleBorder(
@@ -412,7 +412,7 @@ class HubRow extends StatelessWidget {
                         ),
                       if (stats.isNotEmpty || last.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: Space.xs),
                           child: Text(
                             [
                               stats,
@@ -561,7 +561,7 @@ class AgentDetail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: theme.titleSmall),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           child,
         ],
       ),
@@ -808,7 +808,7 @@ class _LineageLink extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall!
                   .copyWith(color: c.muted),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: Space.sm),
             Flexible(
               child: Text(
                 label,
@@ -854,7 +854,7 @@ class _RecentRow extends StatelessWidget {
             ),
           ),
           Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           Expanded(
             child: Text.rich(
               TextSpan(
@@ -908,7 +908,7 @@ class ContextBar extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall!
               .copyWith(color: c.muted),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: Space.xs),
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
           child: LinearProgressIndicator(

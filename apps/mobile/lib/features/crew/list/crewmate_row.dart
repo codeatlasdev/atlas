@@ -58,10 +58,15 @@ class CrewmateRow extends StatelessWidget {
                 animate:
                     state == CrewState.working || state == CrewState.needsYou,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(0, 12, Space.lg, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    Space.md,
+                    Space.lg,
+                    Space.md,
+                  ),
                   decoration: BoxDecoration(
                     border: last
                         ? null
@@ -105,7 +110,7 @@ class CrewmateRow extends StatelessWidget {
                             ),
                           ),
                           if (state == CrewState.needsYou) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: Space.sm),
                             Container(
                               margin: const EdgeInsets.only(top: 2),
                               width: 20,

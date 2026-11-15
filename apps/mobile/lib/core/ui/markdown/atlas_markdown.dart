@@ -138,13 +138,13 @@ class _Renderer {
         );
         final heading = richText(inline(e.children ?? const [], hs), hs);
         return Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(top: Space.xs),
           child: e.tag == 'h1' || e.tag == 'h2'
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     heading,
-                    const SizedBox(height: 4),
+                    const SizedBox(height: Space.xs),
                     Divider(height: 1, color: colors.borderSubtle),
                   ],
                 )
@@ -212,7 +212,7 @@ class _Renderer {
             );
       items.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.only(bottom: Space.xs),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -256,7 +256,7 @@ class _Renderer {
     }
 
     void add(Widget w) {
-      if (parts.isNotEmpty) parts.add(const SizedBox(height: 4));
+      if (parts.isNotEmpty) parts.add(const SizedBox(height: Space.xs));
       parts.add(w);
     }
 
@@ -266,7 +266,7 @@ class _Renderer {
         final pending = run.isNotEmpty;
         flush();
         final nested = list(child, style, depth + 1);
-        if (pending) parts.add(const SizedBox(height: 4));
+        if (pending) parts.add(const SizedBox(height: Space.xs));
         add(nested);
       } else if (child is md.Element && child.tag == 'p') {
         flush();
@@ -337,7 +337,10 @@ class _Renderer {
           alignment: PlaceholderAlignment.baseline,
           baseline: TextBaseline.alphabetic,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.xs,
+              vertical: 1,
+            ),
             decoration: BoxDecoration(
               color: colors.raised,
               borderRadius: BorderRadius.circular(5),
@@ -506,7 +509,10 @@ class _MarkdownTableState extends State<_MarkdownTable> {
           ? style.copyWith(fontWeight: FontWeight.w600, color: c.text)
           : style;
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.sm,
+        ),
         child: Text.rich(
           TextSpan(
             style: s,
@@ -561,7 +567,7 @@ class _MarkdownTableState extends State<_MarkdownTable> {
           ),
         ),
         if (numeric != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Align(
             alignment: Alignment.centerLeft,
             child: _ChartToggle(
@@ -570,7 +576,7 @@ class _MarkdownTableState extends State<_MarkdownTable> {
             ),
           ),
           if (_chart) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             AtlasBarChart(
               title: _head[numeric.index].textContent.trim(),
               labels: [for (final row in _bodyText) row.first],
@@ -603,12 +609,15 @@ class _ChartToggle extends StatelessWidget {
         borderRadius: BorderRadius.circular(Space.radiusSm),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.sm,
+            vertical: Space.sm,
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.bar_chart_rounded, size: 16, color: color),
-              const SizedBox(width: 6),
+              const SizedBox(width: Space.sm),
               Text(
                 on ? 'Hide chart' : 'Chart',
                 style: Theme.of(context).textTheme.bodySmall!

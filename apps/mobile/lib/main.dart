@@ -12,6 +12,7 @@ import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
@@ -69,41 +70,54 @@ GoRouter buildRouter() => GoRouter(
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/pair',
-      builder: (_, _) => const PairScreen(),
+      pageBuilder: (context, state) =>
+          routePage(context, state, const PairScreen()),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/project',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
-        return ProjectDetailScreen(
-          device: args['device'] as MacDevice,
-          project: args['project'] as ProjectInfo,
+        return routePage(
+          context,
+          state,
+          ProjectDetailScreen(
+            device: args['device'] as MacDevice,
+            project: args['project'] as ProjectInfo,
+          ),
         );
       },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/terminal',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
-        return TerminalScreen(
-          device: args['device'] as MacDevice,
-          pty: args['pty'] as String,
-          title: args['title'] as String?,
-          pane: args['pane'] as String?,
+        return routePage(
+          context,
+          state,
+          TerminalScreen(
+            device: args['device'] as MacDevice,
+            pty: args['pty'] as String,
+            title: args['title'] as String?,
+            pane: args['pane'] as String?,
+          ),
         );
       },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/crew/:nodeId/:crewmateId',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = (state.extra ?? {}) as Map<String, dynamic>;
-        return CrewmateChatScreen(
-          device: args['device'] as MacDevice,
-          crewmateId: state.pathParameters['crewmateId']!,
-          scrollToTaskId: args['scrollToTaskId'] as String?,
+        return routePage(
+          context,
+          state,
+          CrewmateChatScreen(
+            device: args['device'] as MacDevice,
+            crewmateId: state.pathParameters['crewmateId']!,
+            scrollToTaskId: args['scrollToTaskId'] as String?,
+          ),
         );
       },
     ),

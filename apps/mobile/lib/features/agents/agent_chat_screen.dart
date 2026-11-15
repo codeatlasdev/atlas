@@ -64,6 +64,15 @@ class AgentChatScreen extends ConsumerStatefulWidget {
   ConsumerState<AgentChatScreen> createState() => _AgentChatScreenState();
 }
 
+/// The thread as the list draws it: its blocks, whether the typing bubble is under them and whether older
+/// messages were cut.
+class _Thread {
+  const _Thread(this.blocks, this.typing, this.truncated);
+  final List<TimelineBlock> blocks;
+  final bool typing;
+  final bool truncated;
+}
+
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   final _msg = TextEditingController();
   final _composerFocus = FocusNode();
@@ -107,6 +116,13 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   /// Blocks in the timeline when the user last sat at the bottom; more now = new activity.
   int _seenBlocks = 0;
   bool _atBottom = true;
+
+  /// What the thread showed when the reader scrolled away from the end, and what the last build would show now.
+  /// A reversed list keeps its pixel offset, so anything added or changed near the end would push the part the
+  /// reader is on by its height: while they read above the end the thread stays as it was, and the "New
+  /// activity" button says there is more. Back at the end they get the live thread.
+  _Thread? _frozen;
+  _Thread _live = const _Thread([], false, false);
 
   String? get _sub => _focus.isEmpty ? null : _focus;
 
@@ -169,7 +185,12 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   void _onScroll() {
     final at = !_scroll.hasClients || _scroll.offset < 80;
-    if (at != _atBottom) setState(() => _atBottom = at);
+    if (at != _atBottom) {
+      setState(() {
+        _atBottom = at;
+        _frozen = at ? null : _live;
+      });
+    }
   }
 
   Future<void> _loadHistory() async {
@@ -256,6 +277,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       _loaded = false;
       _seenBlocks = 0;
       _atBottom = true;
+      _frozen = null;
       _error = null;
     });
     _loadHistory();
@@ -710,9 +732,16 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     final shown = blocks.isEmpty ? fallback : blocks;
     if (_atBottom) _seenBlocks = shown.length;
     final fresh = !_atBottom && shown.length > _seenBlocks;
-    final typing = status.state == 'working' && !_readOnly;
+    _live = _Thread(
+      shown,
+      status.state == 'working' && !_readOnly,
+      _history.truncated,
+    );
+    // What the list draws: the thread as the reader left it while they are away from the end.
+    final view = _frozen ?? _live;
+    final typing = view.typing;
     final slots =
-        (typing ? 1 : 0) + shown.length + (_history.truncated ? 1 : 0);
+        (typing ? 1 : 0) + view.blocks.length + (view.truncated ? 1 : 0);
 
     return Scaffold(
       appBar: _appBar(status, all),
@@ -801,10 +830,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                             );
                           }
                           final at = i - (typing ? 1 : 0);
-                          if (at < shown.length) {
+                          if (at < view.blocks.length) {
                             return _blockAt(
-                              shown,
-                              shown.length - 1 - at,
+                              view.blocks,
+                              view.blocks.length - 1 - at,
                               focusNode?.parent,
                             );
                           }
@@ -846,32 +875,42 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             // What waits for an answer sits above the composer. With the keyboard up on a
             // short phone it scrolls inside the room that is left, so the composer, which
             // is where the user types, never leaves the screen.
-            if (approval != null || _error != null)
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: body.maxHeight * .25),
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      if (approval != null)
-                        ApprovalBanner(
-                          approval: approval,
-                          onAnswer: (allow) => _approve(approval, allow),
+            // Arriving later, it grows from the composer's edge instead of shoving the thread in one frame.
+            AnimatedSize(
+              duration: Motion.reduced(context) ? Duration.zero : Motion.slow,
+              // Eases in too (the app's ease starts almost at once): a size change must not jump in its first frame.
+              curve: Curves.easeInOut,
+              alignment: Alignment.bottomCenter,
+              child: approval == null && _error == null
+                  ? const SizedBox(width: double.infinity)
+                  : ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: body.maxHeight * .25,
+                      ),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            if (approval != null)
+                              ApprovalBanner(
+                                approval: approval,
+                                onAnswer: (allow) => _approve(approval, allow),
+                              ),
+                            if (_error != null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: Space.md,
+                                ),
+                                child: Text(
+                                  _error!,
+                                  style: Theme.of(context).textTheme.bodySmall!
+                                      .copyWith(color: c.error),
+                                ),
+                              ),
+                          ],
                         ),
-                      if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: Space.md,
-                          ),
-                          child: Text(
-                            _error!,
-                            style: Theme.of(context).textTheme.bodySmall!
-                                .copyWith(color: c.error),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
+                      ),
+                    ),
+            ),
             // Rigid when there is room, scrolls when there is not (large text with the
             // keyboard up on a short phone): the field is always reachable.
             ConstrainedBox(

@@ -30,6 +30,7 @@ import 'package:atlas_mobile/features/projects/detail/top_bar.dart';
 import 'package:atlas_mobile/features/projects/logs_page.dart';
 import 'package:atlas_mobile/features/projects/project_avatar.dart';
 import 'package:atlas_mobile/features/projects/project_metrics.dart';
+import 'package:atlas_mobile/features/projects/projects_provider.dart';
 import 'package:atlas_mobile/features/terminal/new_terminal.dart';
 
 /// A project's panel, like the desktop's: header, KPIs, service cards, resources and
@@ -65,9 +66,12 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
 
   Multiplexer? get _mux => liveMux(ref, widget.device);
 
+  (String, String) get _cacheKey => (widget.device.nodeId, widget.project.id);
+
   @override
   void initState() {
     super.initState();
+    _snap = ref.read(projectSnapshotCacheProvider)[_cacheKey];
     _refresh();
     _timer = Timer.periodic(_poll, (_) => _refresh(poll: true));
   }
@@ -98,6 +102,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
           _snap = ProjectSnapshot.fromDetail(
             (resp['data'] as Map).cast<String, dynamic>(),
           );
+          ref.read(projectSnapshotCacheProvider)[_cacheKey] = _snap!;
           _history.add(_snap!);
           _error = null;
         } else {
@@ -263,79 +268,80 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
               ),
             )
           else
-            RefreshIndicator(
-              color: c.accent,
-              onRefresh: _refresh,
-              child: CustomScrollView(
-                slivers: [
-                  SliverSafeArea(
-                    bottom: false,
-                    sliver: SliverToBoxAdapter(
+            // The list starts below the status bar: what scrolls away is cut there, never drawn under the clock.
+            SafeArea(
+              bottom: false,
+              child: RefreshIndicator(
+                color: c.accent,
+                onRefresh: _refresh,
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
                       child: ProjectTopBar(
                         onLogs: () => _openLogs(),
                         title: null,
                         reconnecting: reconnecting,
                       ),
                     ),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      Space.lg,
-                      0,
-                      Space.lg,
-                      Space.xxl,
-                    ),
-                    sliver: SliverList.list(
-                      children: [
-                        ProjectHeader(
-                          snap: s,
-                          onUp: _busy.contains('up')
-                              ? null
-                              : () => _serviceOp('up'),
-                        ),
-                        if (s.setupState != null && s.setupState != 'ok')
-                          ProjectSetupRow(snap: s),
-                        ..._attention(s),
-                        const SizedBox(height: Space.sm),
-                        ProjectKpis(snap: s),
-                        const SizedBox(height: Space.md),
-                        ProjectTabs(
-                          index: _tab,
-                          labels: [
-                            'Overview',
-                            s.agents.isEmpty
-                                ? 'Agents'
-                                : 'Agents ${s.agents.length}',
-                            'Metrics',
-                          ],
-                          onChanged: (i) => setState(() => _tab = i),
-                        ),
-                        AnimatedSwitcher(
-                          duration: Motion.normal,
-                          switchInCurve: Motion.ease,
-                          transitionBuilder: (w, a) => FadeTransition(
-                            opacity: a,
-                            child: SlideTransition(
-                              position: Tween(
-                                begin: const Offset(0, .02),
-                                end: Offset.zero,
-                              ).animate(a),
-                              child: w,
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.lg,
+                        0,
+                        Space.lg,
+                        Space.xxl,
+                      ),
+                      sliver: SliverList.list(
+                        children: [
+                          ProjectHeader(
+                            snap: s,
+                            onUp: _busy.contains('up')
+                                ? null
+                                : () => _serviceOp('up'),
+                          ),
+                          if (s.setupState != null && s.setupState != 'ok')
+                            ProjectSetupRow(snap: s),
+                          ..._attention(s),
+                          const SizedBox(height: Space.sm),
+                          ProjectKpis(snap: s),
+                          const SizedBox(height: Space.md),
+                          ProjectTabs(
+                            index: _tab,
+                            labels: [
+                              'Overview',
+                              s.agents.isEmpty
+                                  ? 'Agents'
+                                  : 'Agents ${s.agents.length}',
+                              'Metrics',
+                            ],
+                            onChanged: (i) => setState(() => _tab = i),
+                          ),
+                          AnimatedSwitcher(
+                            duration: Motion.normal,
+                            switchInCurve: Motion.ease,
+                            transitionBuilder: (w, a) => FadeTransition(
+                              opacity: a,
+                              child: SlideTransition(
+                                position: Tween(
+                                  begin: const Offset(0, .02),
+                                  end: Offset.zero,
+                                ).animate(a),
+                                child: w,
+                              ),
+                            ),
+                            child: KeyedSubtree(
+                              key: ValueKey(_tab),
+                              child: switch (_tab) {
+                                0 => _overview(s),
+                                1 => _agents(s),
+                                _ => _metrics(),
+                              },
                             ),
                           ),
-                          child: KeyedSubtree(
-                            key: ValueKey(_tab),
-                            child: switch (_tab) {
-                              0 => _overview(s),
-                              1 => _agents(s),
-                              _ => _metrics(),
-                            },
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
         ],

@@ -11,8 +11,8 @@ pub mod omp;
 pub mod opencode;
 
 pub use launch::TurnCtx;
-// The codex argv tests (crew/tests/engines.rs) build their own server.
-#[cfg(test)]
+// The codex argv tests (crew/tests/engines.rs, unix-only) build their own server.
+#[cfg(all(test, unix))]
 pub(crate) use launch::McpServer;
 
 #[cfg(all(test, unix))]

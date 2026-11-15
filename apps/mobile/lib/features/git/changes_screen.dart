@@ -50,8 +50,14 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
     String cmd, [
     Map<String, dynamic> args = const {},
   ]) async {
-    final mux = _mux;
-    if (mux == null) return null;
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      // Every caller is something the user pressed: say why nothing happened.
+      _toast(e.message);
+      return null;
+    }
     final r = await mux.call(cmd, {'root': _root, ...args});
     if (!mounted) return null;
     if (r['ok'] != true) {

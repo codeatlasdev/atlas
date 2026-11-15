@@ -351,8 +351,16 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   String _outgoing(String text) => _sub == null ? text : 'Tell $_sub: $text';
 
   Future<bool> _sendText(String text) async {
-    final mux = liveMux(ref, widget.device);
-    if (text.isEmpty || mux == null) return false;
+    if (text.isEmpty) return false;
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      // Not sent: the composer keeps the draft, and the screen says why.
+      if (mounted) setState(() => _error = e.message);
+      return false;
+    }
+    if (!mounted) return false;
     final steer = _status != null && canSteer(_status!);
     setState(() {
       _sending = true;
@@ -381,13 +389,24 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   }
 
   Future<void> _stop() async {
-    final mux = liveMux(ref, widget.device);
-    if (mux == null || _stopping) return;
+    if (_stopping) return;
     HapticFeedback.mediumImpact();
     setState(() {
       _stopping = true;
       _error = null;
     });
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) {
+        setState(() {
+          _stopping = false;
+          _error = e.message;
+        });
+      }
+      return;
+    }
     final resp = await mux.call('agent_interrupt', {'pane': widget.paneKey});
     if (!mounted) return;
     setState(() {
@@ -412,8 +431,17 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   }
 
   Future<void> _approve(AgentApproval a, bool allow) async {
-    final mux = liveMux(ref, widget.device);
-    if (mux == null) return;
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      // The banner stays up: the agent is still waiting for this answer.
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     final resp = await mux.call('agent_approve', {
       'pane': widget.paneKey,
       'req': a.req,

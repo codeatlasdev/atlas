@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
@@ -389,11 +388,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                               value: crewmate.approval,
                               enabled: crewmate.approvalSupported,
                               onChanged: (val) async {
-                                final mux = ref
-                                    .read(
-                                      connectionNotifierProvider(widget.device),
-                                    )
-                                    .value;
+                                final mux = await _mux();
                                 if (mux == null) return;
                                 await mux.call('crewmate_update', {
                                   'id': widget.crewmateId,
@@ -408,11 +403,7 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                             child: ShortRepliesRow(
                               value: crewmate.shortReplies,
                               onChanged: (val) async {
-                                final mux = ref
-                                    .read(
-                                      connectionNotifierProvider(widget.device),
-                                    )
-                                    .value;
+                                final mux = await _mux();
                                 if (mux == null) return;
                                 await mux.call('crewmate_update', {
                                   'id': widget.crewmateId,

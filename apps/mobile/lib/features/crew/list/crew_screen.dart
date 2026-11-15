@@ -319,12 +319,22 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                             for (final e in needsYou)
                               NeedsYouCard(
                                 entry: e,
-                                onAnswer: (allow) => answerApproval(
-                                  ref,
-                                  e.device,
-                                  e.crewmate.pendingApproval!,
-                                  allow,
-                                ),
+                                onAnswer: (allow) =>
+                                    answerApproval(
+                                      ref,
+                                      e.device,
+                                      e.crewmate.pendingApproval!,
+                                      allow,
+                                    ).catchError((Object err) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                              SnackBar(
+                                                content: Text(errorText(err)),
+                                              ),
+                                            );
+                                      }
+                                    }),
                                 onAnswerTask: (value) =>
                                     answerWaitingAction(
                                       ref,

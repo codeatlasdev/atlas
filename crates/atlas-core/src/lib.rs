@@ -19,6 +19,7 @@ pub mod pkgstore;
 pub mod port_owner;
 pub mod procs;
 pub mod project_root;
+pub mod redact;
 pub mod seed;
 pub mod ssh;
 pub mod sys;

@@ -50,6 +50,8 @@ export interface Diagnostics {
 	};
 	hostdLog: string;
 	appLog: string;
+	/** What GTK, WebKit and the web processes printed (`desktop/stderr.log`, #273). */
+	stderrLog: string;
 	lastCrash: string | null;
 	incidents: { at: number; kind: string; detail: string }[];
 }
@@ -186,6 +188,7 @@ export function detailsText(r: ErrorReport): string {
 				`Installed app: ${d.install.installedApp ?? "none found"}`,
 				...findings(d).map((f) => `Finding: ${f}`),
 				...(d.lastCrash ? [`Last crash: ${redactText(d.lastCrash)}`] : []),
+				...(d.stderrLog ? ["", "stderr.log (tail):", redactText(d.stderrLog)] : []),
 				...(d.hostdLog ? ["", "hostd.log (tail):", redactText(d.hostdLog)] : []),
 			]
 		: [];
@@ -326,6 +329,8 @@ const diagLines = (r: ErrorReport): string[] => {
 						.map((i) => `- ${new Date(i.at * 1000).toISOString().slice(11, 19)} ${i.kind}: ${i.detail}`),
 				]
 			: []),
+		// stderr first: it is what explains a blank window, and the limit cuts from the end.
+		...(d.stderrLog ? ["", "## stderr.log (tail)", ...fence(redactText(d.stderrLog))] : []),
 		...(d.hostdLog ? ["", "## hostd.log (tail)", ...fence(redactText(d.hostdLog))] : []),
 		...(d.appLog ? ["", "## app.log (tail)", ...fence(redactText(d.appLog))] : []),
 	];

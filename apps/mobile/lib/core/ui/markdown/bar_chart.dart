@@ -31,7 +31,8 @@ class AtlasBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AtlasColors.of(context);
-    final small = TextStyle(color: c.muted, fontSize: 11.5, height: 1.2);
+    final small = Theme.of(context).textTheme.bodySmall!
+        .copyWith(color: c.muted, height: 1.2);
     final maxAbs = values.fold<double>(0, (m, v) => v.abs() > m ? v.abs() : m);
     return Container(
       key: const ValueKey('atlas-md-chart'),

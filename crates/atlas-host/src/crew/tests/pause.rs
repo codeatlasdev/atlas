@@ -414,3 +414,67 @@ async fn a_garbage_crew_json_keeps_the_crew_paused_after_a_restart() {
     assert!(!paused(&client).await, "the resume is stored");
     client.call("shutdown", json!({})).await.ok();
 }
+
+// #349 persists `running` before the agent is spawned, so a cancel (or pause) can land after the task is stored
+// running and before its session exists: it finds no session to kill. The runner must see the store's cancel once
+// the session is registered, kill the agent and leave the task cancelled (never failed), with nothing left
+// running. Deterministic: the runner waits 1.5 s between the store check and the spawn, and the test cancels
+// inside that window. (The agent may be spawned and killed at once: what must hold is that it does not survive.)
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancel_between_running_and_the_spawn_never_leaves_an_agent_running() {
+    let _bin_lock = lock_agent_bin().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let pidfile = tmp.path().join("agent.pid");
+    use_agent_bin(&fake_agent(
+        tmp.path(),
+        "claude",
+        &format!("echo $$ > \"{}\"\nsleep 60\nexit 0", pidfile.display()),
+    ));
+    *crate::crew::runner::TEST_PAUSE_BEFORE_SPAWN.lock() = Some(Duration::from_millis(1500));
+    let client = daemon(&dir).await;
+    let id = create_crewmate(&client, "Racer").await;
+    let task = send(&client, &id, "go").await;
+    // Stored running: the runner is inside the pause window, before any session exists.
+    wait_task_state(&client, &id, &task, "running", Duration::from_secs(15)).await;
+
+    client
+        .call("crewmate_cancel", json!({"id": id, "task": task}))
+        .await
+        .unwrap();
+    until_idle(&client, &id).await;
+    let t = task_state(&client, &id, &task).await;
+    assert_eq!(t["state"], "cancelled", "{t}");
+    // Whatever was spawned is gone: the agent's pid (if it ran at all) is dead, and the task stayed cancelled.
+    if let Some(pid) = std::fs::read_to_string(&pidfile)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+    {
+        let start = std::time::Instant::now();
+        while atlas_core::sys::pid_alive(pid) && !zombie(pid) {
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "the agent {pid} of a cancelled task is still running"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+    assert_eq!(
+        task_state(&client, &id, &task).await["state"],
+        "cancelled",
+        "still cancelled"
+    );
+
+    *crate::crew::runner::TEST_PAUSE_BEFORE_SPAWN.lock() = None;
+    crate::crew::runner::set_test_agent_bin(None);
+    client.call("shutdown", json!({})).await.ok();
+}
+
+/// A killed child nobody reaped yet (Linux): dead for our purpose.
+fn zombie(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        stat.rsplit(')')
+            .next()
+            .is_some_and(|rest| rest.trim_start().starts_with('Z'))
+    })
+}

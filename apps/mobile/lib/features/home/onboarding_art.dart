@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 
 /// A looping clock for an illustration; still (at [still]) under reduced motion.
 mixin _Loop<T extends StatefulWidget>
@@ -98,7 +99,8 @@ class _SecureLinkArtState extends State<SecureLinkArt>
                       Icon(Icons.cloud_outlined, color: c.muted, size: 26),
                       Text(
                         'relay',
-                        style: TextStyle(color: c.faint, fontSize: 10),
+                        style: Theme.of(context).textTheme.labelSmall!
+                            .copyWith(color: c.muted),
                       ),
                     ],
                   ),
@@ -287,7 +289,7 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                 Row(
                   children: [
                     _Pulse(color: color, on: stage != 3, t: t),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: Space.sm),
                     const Text(
                       'claude',
                       style: TextStyle(fontWeight: FontWeight.w600),
@@ -297,25 +299,25 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                         '  · orbit-shop',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.faint, fontSize: 12),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: c.muted),
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: Space.xs),
                     AnimatedSwitcher(
                       duration: Motion.normal,
                       child: Text(
                         label,
                         key: ValueKey(label),
-                        style: TextStyle(color: color, fontSize: 12),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: color),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: Space.sm),
-                AnimatedSize(
+                MotionSize(
                   duration: Motion.slow,
-                  curve: Motion.ease,
-                  alignment: Alignment.topCenter,
                   child: AnimatedSwitcher(
                     duration: Motion.slow,
                     switchInCurve: Motion.ease,
@@ -336,24 +338,25 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                         children: [
                           Text(
                             'Wants to run',
-                            style: TextStyle(color: c.muted, fontSize: 12),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: Space.xs),
                           Text(
                             'bun run db:migrate',
-                            style: TextStyle(
-                              fontFamily: monoFamily,
-                              fontFamilyFallback: monoFallback,
-                              color: c.text,
-                              fontSize: 13,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium!
+                                .copyWith(
+                                  fontFamily: monoFamily,
+                                  fontFamilyFallback: monoFallback,
+                                  color: c.text,
+                                ),
                           ),
                           const SizedBox(height: Space.sm),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               _FakeButton('Deny', filled: false, c: c),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: Space.sm),
                               Transform.scale(
                                 scale: 1 - .08 * press,
                                 child: _FakeButton('Allow', filled: true, c: c),
@@ -370,11 +373,12 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                             color: c.success,
                             size: 18,
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: Space.sm),
                           Expanded(
                             child: Text(
                               'Migration applied. 840 ms → 9 ms.',
-                              style: TextStyle(color: c.muted, fontSize: 13),
+                              style: Theme.of(context).textTheme.bodyMedium!
+                                  .copyWith(color: c.muted),
                             ),
                           ),
                         ],
@@ -442,7 +446,11 @@ class _Typing extends StatelessWidget {
             -3 * math.sin(((t * 6 - i * .18) % 1) * math.pi).clamp(0, 1),
           ),
           child: Container(
-            margin: const EdgeInsets.only(right: 4, top: 6, bottom: 6),
+            margin: const EdgeInsets.only(
+              right: Space.xs,
+              top: Space.sm,
+              bottom: Space.sm,
+            ),
             width: 6,
             height: 6,
             decoration: BoxDecoration(color: c.muted, shape: BoxShape.circle),
@@ -460,7 +468,10 @@ class _FakeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+    padding: const EdgeInsets.symmetric(
+      horizontal: Space.md,
+      vertical: Space.sm,
+    ),
     decoration: BoxDecoration(
       color: filled ? c.accent : null,
       border: filled ? null : Border.all(color: c.border),
@@ -468,9 +479,8 @@ class _FakeButton extends StatelessWidget {
     ),
     child: Text(
       label,
-      style: TextStyle(
+      style: Theme.of(context).textTheme.bodyMedium!.copyWith(
         color: filled ? c.onAccent : c.text,
-        fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
     ),

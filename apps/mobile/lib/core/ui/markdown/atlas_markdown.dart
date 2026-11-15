@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -61,12 +62,17 @@ class _AtlasMarkdownState extends State<AtlasMarkdown> {
     // released here (the old spans are discarded with the old widget tree).
     _disposeTaps();
     final c = AtlasColors.of(context);
-    final base = (widget.style ?? const TextStyle()).copyWith(
-      color: widget.style?.color ?? c.text,
-      fontSize: widget.style?.fontSize ?? 14.5,
-      height: widget.style?.height ?? 1.5,
-    );
-    final body = _Renderer(colors: c, base: base, taps: _taps).blocks(_nodes);
+    final base = (widget.style ?? Theme.of(context).textTheme.bodyLarge!)
+        .copyWith(
+          color: widget.style?.color ?? c.text,
+          height: widget.style?.height ?? 1.5,
+        );
+    final body = _Renderer(
+      context: context,
+      colors: c,
+      base: base,
+      taps: _taps,
+    ).blocks(_nodes);
     // One selection host for the whole message (per-block SelectableText is an
     // EditableText each: ~17x slower on long answers).
     return widget.selectable ? SelectionArea(child: body) : body;
@@ -75,11 +81,14 @@ class _AtlasMarkdownState extends State<AtlasMarkdown> {
 
 class _Renderer {
   const _Renderer({
+    required this.context,
     required this.colors,
     required this.base,
     required this.taps,
   });
 
+  /// Where a link that cannot be opened says so (the nearest [ScaffoldMessenger]).
+  final BuildContext context;
   final AtlasColors colors;
   final TextStyle base;
   final List<TapGestureRecognizer> taps;
@@ -87,7 +96,7 @@ class _Renderer {
   static const _gap = 10.0;
 
   _Renderer withTaps(List<TapGestureRecognizer> t) =>
-      _Renderer(colors: colors, base: base, taps: t);
+      _Renderer(context: context, colors: colors, base: base, taps: t);
 
   // ---- blocks -------------------------------------------------------------
 
@@ -116,10 +125,10 @@ class _Renderer {
       case 'p':
         return richText(inline(e.children ?? const [], style), style);
       case 'h1' || 'h2' || 'h3' || 'h4' || 'h5' || 'h6':
+        // Headings step up the scale from the body: h1 headline, h2 title, the rest body weight.
         final (size, weight) = switch (e.tag) {
-          'h1' => (style.fontSize! + 6, FontWeight.w700),
-          'h2' => (style.fontSize! + 3.5, FontWeight.w700),
-          'h3' => (style.fontSize! + 1.5, FontWeight.w600),
+          'h1' => (TextSize.headline, FontWeight.w700),
+          'h2' => (TextSize.title, FontWeight.w700),
           _ => (style.fontSize!, FontWeight.w600),
         };
         final hs = style.copyWith(
@@ -129,13 +138,13 @@ class _Renderer {
         );
         final heading = richText(inline(e.children ?? const [], hs), hs);
         return Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(top: Space.xs),
           child: e.tag == 'h1' || e.tag == 'h2'
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     heading,
-                    const SizedBox(height: 4),
+                    const SizedBox(height: Space.xs),
                     Divider(height: 1, color: colors.borderSubtle),
                   ],
                 )
@@ -175,11 +184,7 @@ class _Renderer {
     final lang = cls.startsWith('language-') ? cls.substring(9) : '';
     var text = code.textContent;
     if (text.endsWith('\n')) text = text.substring(0, text.length - 1);
-    return AtlasCodeBlock(
-      code: text,
-      language: lang,
-      fontSize: (base.fontSize ?? 14.5) - 2,
-    );
+    return AtlasCodeBlock(code: text, language: lang);
   }
 
   Widget list(md.Element list, TextStyle style, int depth) {
@@ -194,7 +199,7 @@ class _Renderer {
               padding: const EdgeInsets.only(top: 2),
               child: Icon(
                 task ? Icons.check_box : Icons.check_box_outline_blank,
-                size: (style.fontSize ?? 14.5) + 2,
+                size: TextSize.title,
                 color: task ? colors.success : colors.faint,
               ),
             )
@@ -207,7 +212,7 @@ class _Renderer {
             );
       items.add(
         Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.only(bottom: Space.xs),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -251,7 +256,7 @@ class _Renderer {
     }
 
     void add(Widget w) {
-      if (parts.isNotEmpty) parts.add(const SizedBox(height: 4));
+      if (parts.isNotEmpty) parts.add(const SizedBox(height: Space.xs));
       parts.add(w);
     }
 
@@ -261,7 +266,7 @@ class _Renderer {
         final pending = run.isNotEmpty;
         flush();
         final nested = list(child, style, depth + 1);
-        if (pending) parts.add(const SizedBox(height: 4));
+        if (pending) parts.add(const SizedBox(height: Space.xs));
         add(nested);
       } else if (child is md.Element && child.tag == 'p') {
         flush();
@@ -332,7 +337,10 @@ class _Renderer {
           alignment: PlaceholderAlignment.baseline,
           baseline: TextBaseline.alphabetic,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.xs,
+              vertical: 1,
+            ),
             decoration: BoxDecoration(
               color: colors.raised,
               borderRadius: BorderRadius.circular(5),
@@ -343,7 +351,7 @@ class _Renderer {
               style: style.copyWith(
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: (style.fontSize ?? 14.5) - 1.5,
+                fontSize: TextSize.small,
                 height: 1.2,
                 color: colors.text,
               ),
@@ -376,14 +384,24 @@ class _Renderer {
     }
   }
 
-  static Future<void> _open(String href) async {
+  /// Opens [href] outside the app. A link with no scheme is not a link (nothing to open); one the
+  /// system cannot or will not open is reported, never swallowed.
+  Future<void> _open(String href) async {
     final uri = Uri.tryParse(href);
     if (uri == null || !uri.hasScheme) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    String? why;
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // No handler for the scheme: the tap is simply a no-op.
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        why = 'no app can open it';
+      }
+    } catch (e) {
+      why = e is PlatformException && e.message != null ? e.message! : '$e';
     }
+    if (why == null || !context.mounted) return;
+    messenger?.showSnackBar(
+      SnackBar(content: Text("Couldn't open $href: $why")),
+    );
   }
 }
 
@@ -484,17 +502,17 @@ class _MarkdownTableState extends State<_MarkdownTable> {
     _taps.clear();
     final c = widget.renderer.colors;
     final r = widget.renderer.withTaps(_taps);
-    final style = widget.style.copyWith(
-      fontSize: (widget.style.fontSize ?? 14.5) - 1,
-      height: 1.35,
-    );
+    final style = widget.style.copyWith(fontSize: TextSize.body, height: 1.35);
 
     Widget cell(md.Element cell, int col, {required bool header}) {
       final s = header
           ? style.copyWith(fontWeight: FontWeight.w600, color: c.text)
           : style;
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Space.md,
+          vertical: Space.sm,
+        ),
         child: Text.rich(
           TextSpan(
             style: s,
@@ -549,7 +567,7 @@ class _MarkdownTableState extends State<_MarkdownTable> {
           ),
         ),
         if (numeric != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Align(
             alignment: Alignment.centerLeft,
             child: _ChartToggle(
@@ -558,7 +576,7 @@ class _MarkdownTableState extends State<_MarkdownTable> {
             ),
           ),
           if (_chart) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             AtlasBarChart(
               title: _head[numeric.index].textContent.trim(),
               labels: [for (final row in _bodyText) row.first],
@@ -591,15 +609,19 @@ class _ChartToggle extends StatelessWidget {
         borderRadius: BorderRadius.circular(Space.radiusSm),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.sm,
+            vertical: Space.sm,
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.bar_chart_rounded, size: 16, color: color),
-              const SizedBox(width: 6),
+              const SizedBox(width: Space.sm),
               Text(
                 on ? 'Hide chart' : 'Chart',
-                style: TextStyle(color: color, fontSize: 12.5),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: color),
               ),
             ],
           ),

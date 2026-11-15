@@ -36,15 +36,16 @@ class CrewmateWorkingRow extends StatelessWidget {
             size: 30,
           ),
           const SizedBox(width: Space.sm),
-          Text(
-            '${crewmate.name} is working$elapsed',
-            style: TextStyle(
-              fontSize: 12,
-              color: c.accent,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              '${crewmate.name} is working$elapsed',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.accent, fontWeight: FontWeight.w600),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: Space.sm),
           TypingDots(color: c.accent),
         ],
       ),

@@ -50,24 +50,35 @@ class CrewDeck extends StatelessWidget {
                 children: [
                   ShipFlagIcon(color: c.muted, accentColor: c.accent, size: 22),
                   const SizedBox(width: Space.sm),
-                  Text(
-                    '${entries.length} aboard',
-                    style: TextStyle(
-                      color: c.muted,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      '${entries.length} aboard',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: c.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  StatePill(
-                    label: label,
-                    color: color,
-                    pulse: working + waiting > 0,
+                  const SizedBox(width: Space.sm),
+                  Flexible(
+                    child: AnimatedSwitcher(
+                      duration: Motion.normal,
+                      child: AtlasChip(
+                        label,
+                        key: ValueKey(label),
+                        tone: color,
+                        leading: ChipDot(pulse: working + waiting > 0),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
+            // The strip holds an avatar, a name and a state line: it grows with the text size.
             SizedBox(
-              height: 168,
+              height: 168 + MediaQuery.textScalerOf(context).scale(34) - 34,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: Space.md),
@@ -118,14 +129,14 @@ class DeckMate extends StatelessWidget {
                 state: state,
                 size: 92,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               Text(
                 crewmate.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: entry.online ? c.text : c.faint,
+                  color: entry.online ? c.text : c.muted,
                 ),
               ),
               const SizedBox(height: 2),
@@ -169,9 +180,11 @@ class RecruitSlot extends StatelessWidget {
                 ),
                 child: Icon(Icons.add_rounded, color: c.accent, size: 30),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: Space.lg),
               Text(
                 'Recruit',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: c.accent, fontWeight: FontWeight.w700),
               ),
             ],
@@ -198,53 +211,11 @@ class StateDot extends StatelessWidget {
             state.word,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(context).textTheme.labelSmall!
+                .copyWith(color: color, fontWeight: FontWeight.w600),
           ),
         ),
       ],
     );
   }
-}
-
-class StatePill extends StatelessWidget {
-  const StatePill({
-    super.key,
-    required this.label,
-    required this.color,
-    required this.pulse,
-  });
-  final String label;
-  final Color color;
-  final bool pulse;
-
-  @override
-  Widget build(BuildContext context) => AnimatedSwitcher(
-    duration: Motion.normal,
-    child: Container(
-      key: ValueKey(label),
-      padding: const EdgeInsets.fromLTRB(2, 3, 10, 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          StatusDot(color: color, pulse: pulse, size: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }

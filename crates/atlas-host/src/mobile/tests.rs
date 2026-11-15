@@ -17,10 +17,19 @@ async fn daemon(dir: &Path) -> HostClient {
 
 /// A daemon whose Atlas Desktop control socket is `socket` (token file beside it).
 async fn daemon_with(dir: &Path, socket: std::path::PathBuf) -> HostClient {
+    daemon_as(dir, socket, true).await
+}
+
+/// A plain computer (a Mac with the desktop), not a crew server: no crewmates, a project registry.
+async fn computer_daemon(dir: &Path) -> HostClient {
+    daemon_as(dir, dir.join("no-desktop.sock"), false).await
+}
+
+async fn daemon_as(dir: &Path, socket: std::path::PathBuf, crew_host: bool) -> HostClient {
     let d = dir.to_path_buf();
     let opts = crate::server::ServeOpts {
         no_mobile_relay: true,
-        crew_host: true,
+        crew_host,
         desktop: Some(atlas_core::desktop_ctl::Endpoint {
             token: socket.with_extension("token"),
             socket,
@@ -1427,11 +1436,14 @@ async fn project_with_worktree(hostd: &Path, repo: &Path) -> (String, String, st
     git(repo, &["commit", "-qm", "base"]);
     let id = crate::worktrees::registry::id_for(repo);
     std::fs::create_dir_all(hostd.join("desktop")).unwrap();
-    std::fs::write(
-        hostd.join("desktop/projects.json"),
-        json!([{"id": id, "root": repo, "pinned": false, "added": "x"}]).to_string(),
-    )
-    .unwrap();
+    // Appended: a test may register a second project in the same hostd dir.
+    let registry = hostd.join("desktop/projects.json");
+    let mut all: Vec<Value> = std::fs::read_to_string(&registry)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    all.push(json!({"id": id, "root": repo, "pinned": false, "added": "x"}));
+    std::fs::write(&registry, Value::Array(all).to_string()).unwrap();
     std::fs::write(
         hostd.join("desktop/settings.json"),
         json!({"workspaceDir": hostd.join("wts"), "branchPrefix": "none"}).to_string(),
@@ -1852,5 +1864,489 @@ async fn a_phone_reads_and_writes_crew_settings_by_scope() {
     // The write is in the mobile audit log (not a read).
     let audit = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
     assert!(audit.contains("\"cmd\":\"crew_settings_set\""), "{audit}");
+    c.call("shutdown", json!({})).await.ok();
+}
+
+// Guards PhoneCrewAudit gap 7: a secret typed on the phone (the `provide_secret` card answers with
+// `crewmate_action_answer {value}`, relayed as `crew_call {args: {value}}`) was written to `audit.log` in
+// clear: only top-level `text|message|title|body|data` were redacted. The log names the command and the
+// secret's length, never its value, at any depth.
+#[test]
+fn a_secret_from_the_phone_never_reaches_the_audit_log() {
+    let tmp = tempfile::tempdir().unwrap();
+    let m = super::Mobile::load(tmp.path(), false).unwrap();
+    let secret = "ghp_SuperSecretValue123";
+    m.audit(
+        "node",
+        "crewmate_action_answer",
+        &json!({"id": "c", "task": "t", "value": secret}),
+    );
+    m.audit(
+        "node",
+        "crew_call",
+        &json!({"server": "s", "cmd": "crewmate_action_answer",
+                "args": {"id": "c", "task": "t", "value": secret, "text": secret}}),
+    );
+    let log = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
+    assert!(!log.contains(secret), "secret in the audit log: {log}");
+    assert!(!log.contains("SuperSecret"), "{log}");
+    // What is audited stays useful: the command, the target, the size.
+    assert!(log.contains("crewmate_action_answer"), "{log}");
+    assert!(log.contains("<23 chars>"), "{log}");
+    assert!(log.contains("\"id\":\"c\""), "{log}");
+}
+
+// Contract with the phone and the desktop: `pair_url` (used by `atlas crew pair`) must produce exactly the
+// link the desktop's `pairUrl` produces from the same `mobile_pair_start` reply. The reply is the committed
+// real one (`apps/desktop/src/lib/__fixtures__/mobile-pair-start.json`), the link the committed one the phone's
+// `pair_url_test.dart` parses (a hostname with a space and a quote, repeated `addr`, no relay).
+#[test]
+fn pair_url_matches_the_link_the_desktop_and_the_phone_agree_on() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let start: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            root.join("apps/desktop/src/lib/__fixtures__/mobile-pair-start.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let want =
+        std::fs::read_to_string(root.join("apps/mobile/test/fixtures/pair_url.txt")).unwrap();
+    assert_eq!(super::pair_url(&start).unwrap(), want.trim());
+}
+
+// A reply with a relay carries it as `relay=`; one without a node or code is no link at all.
+#[test]
+fn pair_url_carries_the_relay_and_refuses_an_incomplete_reply() {
+    let url = super::pair_url(&json!({"node_id": "N", "code": "000111", "hostname": "box",
+        "addrs": [], "relay_url": "https://relay.example/"}))
+    .unwrap();
+    assert_eq!(
+        url,
+        "atlas-mobile://pair?node=N&code=000111&name=box&relay=https%3A%2F%2Frelay.example%2F"
+    );
+    assert!(super::pair_url(&json!({"code": "1", "hostname": "h"})).is_err());
+    assert!(super::pair_url(&json!({"node_id": "N", "hostname": "h"})).is_err());
+}
+
+// Guards PhoneCrewAudit gap 1: an invite is only worth showing while its code can still pair. A newer
+// pairing code (the desktop's "Pair a phone", or `atlas crew pair`) replaces the single live code, so an
+// older invite would fail with "bad code" after the phone tapped Add. `mobile_invites` lists only invites
+// whose code is the live one.
+#[tokio::test]
+async fn an_invite_whose_code_was_replaced_is_not_offered() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (c, mut phone, _node) = paired(tmp.path()).await;
+    let first = pair_start(&c).await;
+    let url_of = |i: &Value| super::pair_url(i).unwrap();
+    c.call("mobile_invite", json!({"url": url_of(&first), "name": "A"}))
+        .await
+        .unwrap();
+    let r = phone.call("mobile_invites", json!({})).await.unwrap();
+    assert_eq!(r["data"]["invites"].as_array().unwrap().len(), 1, "{r}");
+
+    // A new code replaces the first one.
+    let second = pair_start(&c).await;
+    assert_ne!(first["code"], second["code"]);
+    c.call(
+        "mobile_invite",
+        json!({"url": url_of(&second), "name": "B"}),
+    )
+    .await
+    .unwrap();
+    let r = phone.call("mobile_invites", json!({})).await.unwrap();
+    let names: Vec<&str> = r["data"]["invites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        ["B"],
+        "the invite with the dead code is offered: {r}"
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
+// The sign-in of an engine from a phone (`crew_engine_login`): reading the status is `read`; starting the login is
+// `act`; typing the code into its terminal is `term_write`, a scope of its own; and what is typed is never logged,
+// not by the mobile audit and not by the crew audit.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_signs_an_engine_in_by_scope_and_what_it_types_is_never_logged() {
+    use base64::Engine as _;
+    let tmp = tempfile::tempdir().unwrap();
+    // Only a fake codex on the engine PATH: a login that waits for a code, like `codex login --device-auth`.
+    let bin = tmp.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let codex = bin.join("codex");
+    std::fs::write(
+        &codex,
+        "#!/bin/sh\nif [ \"$1 $2\" = \"login status\" ]; then exit 1; fi\ncat\n",
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let _path = crate::crew::engine_login::TestPath::set(bin);
+    let (c, mut phone, node) = paired(tmp.path()).await;
+    let scopes = |s: Value| json!({"node_id": node, "scopes": s});
+
+    c.call("mobile_set_scopes", scopes(json!(["read"])))
+        .await
+        .unwrap();
+    let r = phone.call("crew_engine_status", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "reading the status needs only read: {r}");
+    let r = phone
+        .call("crew_engine_login", json!({"engine": "codex"}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    let r = phone.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        r["data"]["ptys"].as_array().unwrap().is_empty(),
+        "a refused sign-in starts nothing: {r}"
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        scopes(json!(["read", "act", "term_read"])),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call("crew_engine_login", json!({"engine": "bash"}))
+        .await
+        .unwrap();
+    assert!(
+        r["error"].as_str().unwrap().contains("unknown engine"),
+        "act is not a shell: {r}"
+    );
+    let r = phone
+        .call("crew_engine_login", json!({"engine": "codex"}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let pty = r["data"]["pty"].as_str().unwrap().to_string();
+    // Act and term_read start and watch the login; the code still cannot be typed without term_write.
+    let code = base64::engine::general_purpose::STANDARD.encode("WXYZ-9876-DEVICE-CODE\n");
+    let r = phone
+        .call("pty_write", json!({"pty": pty, "data": code}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: term_write", "{r}");
+
+    c.call(
+        "mobile_set_scopes",
+        scopes(json!(["read", "act", "term_read", "term_write"])),
+    )
+    .await
+    .unwrap();
+    let r = phone
+        .call("pty_write", json!({"pty": pty, "data": code}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+
+    let mobile_audit = std::fs::read_to_string(tmp.path().join("mobile/audit.log")).unwrap();
+    assert!(
+        mobile_audit.contains("\"cmd\":\"crew_engine_login\""),
+        "the sign-in is in the mobile audit: {mobile_audit}"
+    );
+    assert!(
+        !mobile_audit.contains("DEVICE-CODE"),
+        "typed text must not be logged: {mobile_audit}"
+    );
+    let crew_audit = c.call("crew_audit", json!({})).await.unwrap().to_string();
+    assert!(crew_audit.contains("engine_login_started"), "{crew_audit}");
+    assert!(
+        crew_audit.contains(&format!("phone:{node}")),
+        "the crew audit names the phone: {crew_audit}"
+    );
+    assert!(!crew_audit.contains("DEVICE-CODE"), "{crew_audit}");
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// Compare `live` with `apps/mobile/test/fixtures/<name>`; `UPDATE_FIXTURES=1` rewrites the file first.
+fn fixture(name: &str, live: &Value) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/mobile/test/fixtures")
+        .join(name);
+    if std::env::var_os("UPDATE_FIXTURES").is_some() {
+        std::fs::write(&path, serde_json::to_string_pretty(live).unwrap() + "\n").unwrap();
+    }
+    let stored: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_else(|_| {
+        panic!("{name} missing: run UPDATE_FIXTURES=1 cargo test -p atlas-host --lib -- mobile::tests::a_phone_opens_a_shell")
+    }))
+    .unwrap();
+    assert_eq!(
+        &stored, live,
+        "{name} changed: rerun with UPDATE_FIXTURES=1"
+    );
+}
+
+// ── New terminal from the phone (`pty_open`, issue #53) ─────────────────────────────────────────────────────
+//
+// `pty_create` stays refused: it takes any cwd and argv. `pty_open` takes registry ids only, so a path (or a
+// `..`) cannot even be named, and the shell is the user's login shell, started by hostd exactly like a desktop tab.
+
+/// `act` opens it, a plain phone cannot, and through a Mac's `crew_call` it is never available (a terminal's output
+/// streams to the connection that attached it, which would be the relay's, not the phone's).
+#[test]
+fn opening_a_terminal_needs_act_and_pty_create_stays_refused() {
+    use crate::protocol::HostCmd;
+    let scope = |cmd: Value| {
+        let c: HostCmd = serde_json::from_value(cmd).unwrap();
+        super::required_scope(&c)
+    };
+    assert_eq!(
+        scope(json!({"cmd": "pty_open", "args": {"project": "a"}})),
+        Ok(super::Scope::Act)
+    );
+    assert_eq!(
+        scope(json!({"cmd": "pty_open", "args": {}})),
+        Ok(super::Scope::Act)
+    );
+    assert!(
+        scope(json!({"cmd": "pty_create", "args": {"cwd": "/", "argv": ["sh"]}})).is_err(),
+        "an arbitrary cwd/argv stays desktop-only"
+    );
+    assert!(
+        scope(json!({
+            "cmd": "crew_call",
+            "args": {"server": "s", "cmd": "pty_open", "args": {"project": "a"}}
+        }))
+        .is_err(),
+        "relayed, the phone could never attach to the terminal"
+    );
+}
+
+/// The mobile audit gets `pty_created {node, project, cwd}` from hostd (it knows the resolved folder), and never
+/// what is typed afterwards.
+fn audit_lines(hostd: &Path) -> Vec<Value> {
+    std::fs::read_to_string(hostd.join("mobile/audit.log"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+/// End to end over a real phone connection: refused without `act` (nothing starts), refused for a path, a `..`
+/// escape and a project that is not registered; with `act` the shell starts in the project folder (and in a
+/// worktree's), is a normal hostd pty the desktop lists, and is audited as `pty_created`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_opens_a_shell_only_in_a_registered_project_or_worktree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let hostd = root.join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    let (id, wt_id, wt_path) = project_with_worktree(&hostd, &root.join("shop")).await;
+    // A second registered project with a worktree of its own: it is registered, yet not THIS project's.
+    let (_other, other_wt, _) = project_with_worktree(&hostd, &root.join("other")).await;
+    let (c, mut phone, node) = paired_on(computer_daemon(&hostd).await).await;
+    let scopes = |s: Value| json!({"node_id": node, "scopes": s});
+
+    c.call("mobile_set_scopes", scopes(json!(["read", "term_read"])))
+        .await
+        .unwrap();
+    let r = phone
+        .call("pty_open", json!({"project": id}))
+        .await
+        .unwrap();
+    assert_eq!(r["error"], "forbidden: act", "{r}");
+    let r = phone.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        r["data"]["ptys"].as_array().unwrap().is_empty(),
+        "a refused request starts nothing: {r}"
+    );
+
+    c.call(
+        "mobile_set_scopes",
+        scopes(json!(["read", "act", "term_read"])),
+    )
+    .await
+    .unwrap();
+    // A path is not an id, `..` is not an id, and an unknown id is not a project: none starts a shell.
+    let outside = root.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    for (what, args) in [
+        ("a path", json!({"project": outside})),
+        ("a ..", json!({"project": format!("{id}/../..")})),
+        ("an unknown id", json!({"project": "nope"})),
+        (
+            "a path as worktree",
+            json!({"project": id, "worktree": outside}),
+        ),
+        (
+            "a .. as worktree",
+            json!({"project": id, "worktree": format!("{wt_id}/../../outside")}),
+        ),
+        (
+            "an unknown worktree",
+            json!({"project": id, "worktree": "nope"}),
+        ),
+        (
+            "another project's worktree",
+            json!({"project": id, "worktree": other_wt}),
+        ),
+        ("no project on a computer", json!({})),
+        ("a crewmate on a computer", json!({"crewmate": "c1"})),
+    ] {
+        let r = phone.call("pty_open", args).await.unwrap();
+        assert_eq!(r["ok"], false, "{what} must be refused: {r}");
+    }
+    let r = phone.call("pty_list", json!({})).await.unwrap();
+    assert!(
+        r["data"]["ptys"].as_array().unwrap().is_empty(),
+        "every refusal left no terminal behind: {r}"
+    );
+    assert!(
+        audit_lines(&hostd)
+            .iter()
+            .all(|l| l["cmd"] != "pty_created"),
+        "a refusal is not a creation"
+    );
+
+    // The project's own folder, then one of its worktrees: the shell's cwd is that folder.
+    for (args, want) in [
+        (json!({"project": id}), root.join("shop")),
+        (json!({"project": id, "worktree": wt_id}), wt_path.clone()),
+    ] {
+        let r = phone.call("pty_open", args).await.unwrap();
+        assert_eq!(r["ok"], true, "{r}");
+        let pty = r["data"]["pty"].as_str().unwrap().to_string();
+        // The phone parses this reply (`apps/mobile/lib/core/protocol/pty_open.dart`): the real payload is the
+        // fixture, with the random pty id replaced (the phone only passes it on to `pty_attach`).
+        let mut reply = r["data"].clone();
+        reply["pty"] = json!("pty-fixture");
+        fixture("pty_open.json", &reply);
+        let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+        assert_eq!(
+            std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
+            want,
+            "{info}"
+        );
+        assert_eq!(
+            info["scope"]["pane_key"],
+            Value::Null,
+            "a person's shell, not an agent pane: {info}"
+        );
+        // The desktop sees it as an ordinary terminal.
+        let all = c.call("pty_list", json!({})).await.unwrap();
+        assert!(
+            all["ptys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["pty"] == pty.as_str()),
+            "{all}"
+        );
+        c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+    }
+
+    let created: Vec<Value> = audit_lines(&hostd)
+        .into_iter()
+        .filter(|l| l["cmd"] == "pty_created")
+        .collect();
+    assert_eq!(created.len(), 2, "{created:?}");
+    assert_eq!(created[0]["node_id"], node.as_str());
+    assert_eq!(created[0]["args"]["project"], id.as_str());
+    assert_eq!(
+        created[0]["args"]["cwd"],
+        root.join("shop").to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        created[1]["args"]["cwd"],
+        wt_path.to_string_lossy().as_ref()
+    );
+    c.call("shutdown", json!({})).await.ok();
+}
+
+/// A crew server's phone opens a shell in the crew home (no project) or in a crewmate's work tree, as hostd's own
+/// user; any other folder, a missing work tree and an unknown crewmate are refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_crew_server_a_phone_opens_a_shell_in_the_crew_home_or_a_crewmate_work_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let hostd = tmp.path().canonicalize().unwrap().join("hostd");
+    std::fs::create_dir_all(&hostd).unwrap();
+    // The crew user's own home, the folder hostd's sign-in terminal already starts in.
+    let home = atlas_core::paths::home_dir();
+    let (c, mut phone, node) = paired(&hostd).await;
+    let made = c
+        .call(
+            "crewmate_create",
+            json!({"name": "Rex", "role": "dev", "agent": "claude", "approval": "auto"}),
+        )
+        .await
+        .unwrap();
+    let cid = made["id"].as_str().unwrap().to_string();
+
+    c.call(
+        "mobile_set_scopes",
+        json!({"node_id": node, "scopes": ["read", "act", "term_read"]}),
+    )
+    .await
+    .unwrap();
+
+    // No project: the crew home.
+    let r = phone.call("pty_open", json!({})).await.unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let pty = r["data"]["pty"].as_str().unwrap().to_string();
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(
+        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
+        home,
+        "{info}"
+    );
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+
+    // A crewmate that has not run a task has no work tree yet: refused, with the reason.
+    let r = phone
+        .call("pty_open", json!({"crewmate": cid}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], false, "{r}");
+    assert!(r["error"].as_str().unwrap().contains("no work tree"), "{r}");
+    let work = hostd.join("crew").join(&cid).join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let r = phone
+        .call("pty_open", json!({"crewmate": cid}))
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], true, "{r}");
+    let pty = r["data"]["pty"].as_str().unwrap().to_string();
+    let info = c.call("pty_info", json!({"pty": pty})).await.unwrap();
+    assert_eq!(
+        std::path::PathBuf::from(info["cwd"].as_str().unwrap()),
+        work,
+        "{info}"
+    );
+    c.call("pty_kill", json!({"pty": pty})).await.unwrap();
+
+    // Never another folder, never an id that escapes the crew store, never a project id here.
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    for args in [
+        json!({"crewmate": "nope"}),
+        json!({"crewmate": format!("{cid}/../..")}),
+        json!({"crewmate": "../.."}),
+        json!({"crewmate": outside}),
+        json!({"project": outside}),
+        json!({"project": "x", "crewmate": cid}),
+    ] {
+        let r = phone.call("pty_open", args.clone()).await.unwrap();
+        assert_eq!(r["ok"], false, "{args}: {r}");
+    }
+    let created = audit_lines(&hostd)
+        .into_iter()
+        .filter(|l| l["cmd"] == "pty_created")
+        .count();
+    assert_eq!(
+        created, 2,
+        "the crew home and the work tree are audited; every refusal is not"
+    );
     c.call("shutdown", json!({})).await.ok();
 }

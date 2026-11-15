@@ -45,6 +45,17 @@ def flutter(*args)
   sh("flutter", *args, log: true) # sh runs from fastlane/; Flutter needs the app dir
 end
 
+# Firebase config (push): CI hands it over as secrets; the files are written only for the build and
+# deleted right after, never committed (apps/mobile/.gitignore lists both). Without the secret the
+# app builds with no push. Returns the path when written, else nil.
+def write_firebase_config(relative_path, env_name)
+  value = ENV[env_name].to_s
+  return nil if value.strip.empty?
+  path = File.join(APP, relative_path)
+  File.write(path, value)
+  path
+end
+
 lane :beta do
   n = build_number
   ios_beta(build_number: n)
@@ -62,6 +73,7 @@ lane :ios_beta do |options|
   # xcodebuild signs with the same key (automatic signing, no certificates in the repo).
   p8 = File.join(Dir.tmpdir, "AuthKey_#{ENV['ASC_KEY_ID']}.p8")
   File.write(p8, ENV["ASC_KEY_P8"])
+  plist = write_firebase_config("ios/GoogleService-Info.plist", "GOOGLE_SERVICE_INFO_PLIST")
   Dir.chdir(APP) do
     flutter("build", "ios", "--release", "--no-codesign", "--build-number=#{n}",
             "--build-name=#{version_name}")
@@ -98,7 +110,7 @@ lane :ios_beta do |options|
     changelog: ENV.fetch("BETA_CHANGELOG", "New test build."),
   )
 ensure
-  File.delete(p8) if p8 && File.exist?(p8)
+  [p8, plist].each { |f| File.delete(f) if f && File.exist?(f) }
 end
 
 lane :android_beta do |options|
@@ -114,6 +126,7 @@ lane :android_beta do |options|
     keyAlias=#{ENV['ANDROID_KEY_ALIAS']}
     keyPassword=#{ENV['ANDROID_KEY_PASSWORD'] || ENV['ANDROID_KEYSTORE_PASSWORD']}
   PROPS
+  gservices = write_firebase_config("android/app/google-services.json", "GOOGLE_SERVICES_JSON")
   Dir.chdir(APP) do
     flutter("build", "appbundle", "--release", "--build-number=#{n}",
             "--build-name=#{version_name}")
@@ -128,7 +141,7 @@ lane :android_beta do |options|
     skip_upload_screenshots: true,
   )
 ensure
-  [props, jks].each { |f| File.delete(f) if f && File.exist?(f) }
+  [props, jks, gservices].each { |f| File.delete(f) if f && File.exist?(f) }
 end
 
 # The store half: never builds. It promotes the exact build testers had (BUILD_NUMBER), so what

@@ -11,6 +11,8 @@ use super::fixture::{daemon, fake_agent, lock_agent_bin, wait_task_state};
 // checkout now starts when the crewmate gets its project, so it is ready before anyone sends a message.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_git_project_is_checked_out_before_the_first_task() {
+    // The real git: a test that swaps in a fake one (`prepare`) must not overlap.
+    let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
     std::fs::create_dir_all(&src).unwrap();
@@ -68,6 +70,8 @@ async fn a_git_project_is_checked_out_before_the_first_task() {
 // with a clone that fails so the wait is never skipped by a finished background clone.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_task_says_it_is_downloading_the_project_while_it_waits() {
+    // The real git: a test that swaps in a fake one (`prepare`) must not overlap.
+    let _bin_lock = lock_agent_bin().await;
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("hostd");
     let client = daemon(&dir).await;

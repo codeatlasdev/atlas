@@ -7,6 +7,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
+#[cfg(unix)]
+use super::isolation::{IsoRef, Isolation};
 use super::master::{Master, Waiter};
 use super::{Buf, Init, Io, Meta, Session, bin_path, meta_path, now_s, open_append};
 use crate::protocol::{Mode, PtyCreate};
@@ -189,6 +191,63 @@ fn spawn_pty(
     })
 }
 
+/// Start `req` as a crewmate's own user through the spawn helper: the helper forks, drops to the
+/// user and execs; hostd gets the pty master back as a bare fd (`Master::Fd`, the same type an
+/// adopted session has). Every variable of the request goes through the helper's validator, so the
+/// environment here is only what the agent needs: no hostd login environment is inherited (it holds
+/// the crew user's secrets, and the helper refuses `PATH`/`HOME` anyway).
+#[cfg(unix)]
+fn spawn_isolated(
+    client: &crate::crew::spawn::client::Client,
+    user: &str,
+    argv: &[String],
+    req: &PtyCreate,
+    env: Vec<(String, String)>,
+) -> Result<(Child, Isolation)> {
+    use crate::crew::spawn::protocol::{Mode as WireMode, SpawnReq};
+    let mut env: std::collections::BTreeMap<String, String> = env.into_iter().collect();
+    // The helper sets TERM itself.
+    env.remove("TERM");
+    let wire = SpawnReq {
+        user: user.to_string(),
+        argv: argv.to_vec(),
+        env,
+        cwd: req.cwd.clone(),
+        mode: WireMode::Pty,
+        cols: req.cols.max(1),
+        rows: req.rows.max(1),
+    };
+    let (sp, fd) = client
+        .spawn(&wire)
+        .with_context(|| format!("spawn {} as {user}", argv[0]))?;
+    let reader = fd
+        .try_clone()
+        .context("pty reader")
+        .map(std::fs::File::from)?;
+    let writer = fd
+        .try_clone()
+        .context("pty writer")
+        .map(std::fs::File::from)?;
+    let iso = Isolation {
+        client: client.clone(),
+        iso: IsoRef {
+            user: user.to_string(),
+            session: sp.session,
+        },
+        pid: sp.pid,
+    };
+    Ok((
+        Child {
+            reader: Box::new(reader),
+            writer: Box::new(writer),
+            master: Some(Master::Fd(fd)),
+            pid: Some(sp.pid),
+            wait: iso.waiter(),
+        },
+        iso,
+    ))
+}
+
 /// Record the terminal's root process under hostd's ownership: if hostd dies, the registry still
 /// names the tree and the next sweep reaps it (best effort: a full disk must not stop a terminal).
 fn register(scroll_dir: &Path, id: &str, pid: u32, req: &PtyCreate) {
@@ -216,6 +275,36 @@ fn register(scroll_dir: &Path, id: &str, pid: u32, req: &PtyCreate) {
 impl Session {
     /// Spawn `req` in a new PTY. `scroll_dir` holds `<id>.bin` + `<id>.json`.
     pub fn spawn(req: PtyCreate, scroll_dir: &Path) -> Result<Arc<Session>> {
+        Self::spawn_as(req, scroll_dir, None)
+    }
+
+    /// [`spawn`](Self::spawn), as a crewmate's own Linux user when `as_user` names the helper and the
+    /// user (`atlas-cm-<slug>`). The crew runner asks for it when isolation is on; terminals a person
+    /// opens never do.
+    #[cfg(unix)]
+    pub fn spawn_as(
+        req: PtyCreate,
+        scroll_dir: &Path,
+        as_user: Option<(&crate::crew::spawn::client::Client, &str)>,
+    ) -> Result<Arc<Session>> {
+        Self::spawn_inner(req, scroll_dir, as_user)
+    }
+
+    #[cfg(not(unix))]
+    pub fn spawn_as(
+        req: PtyCreate,
+        scroll_dir: &Path,
+        _as_user: Option<()>,
+    ) -> Result<Arc<Session>> {
+        Self::spawn_inner(req, scroll_dir, None)
+    }
+
+    fn spawn_inner(
+        req: PtyCreate,
+        scroll_dir: &Path,
+        #[cfg(unix)] as_user: Option<(&crate::crew::spawn::client::Client, &str)>,
+        #[cfg(not(unix))] _as_user: Option<()>,
+    ) -> Result<Arc<Session>> {
         let id = crate::paths::new_id();
         let argv = if req.argv.is_empty() {
             default_argv()
@@ -243,7 +332,25 @@ impl Session {
         // closes or hostd dies, `atlas_core::hygiene` reaps whatever still carries it. Last, so a
         // client's own environment can never retag a process into another session.
         env.push((atlas_core::hygiene::SESSION_ENV.into(), id.clone()));
-        let child = if req.mode == Mode::Pipe {
+        #[cfg(unix)]
+        let mut iso = None;
+        #[cfg(unix)]
+        let isolated = as_user.filter(|_| req.mode != Mode::Pipe);
+        #[cfg(not(unix))]
+        let isolated: Option<()> = None;
+        let child = if let Some(target) = isolated {
+            #[cfg(unix)]
+            {
+                let (c, i) = spawn_isolated(target.0, target.1, &argv, &req, env)?;
+                iso = Some(i);
+                c
+            }
+            #[cfg(not(unix))]
+            {
+                let () = target;
+                unreachable!("no helper off Unix")
+            }
+        } else if req.mode == Mode::Pipe {
             spawn_pipe(&argv, &req.cwd, env)?
         } else {
             #[cfg(windows)]
@@ -254,7 +361,13 @@ impl Session {
         };
 
         std::fs::create_dir_all(scroll_dir)?;
-        if let Some(pid) = child.pid {
+        // An isolated process is another user's: hostd could not reap it through the hygiene
+        // registry, so the helper's `Reap` does that job.
+        #[cfg(unix)]
+        let register_it = iso.is_none();
+        #[cfg(not(unix))]
+        let register_it = true;
+        if let (Some(pid), true) = (child.pid, register_it) {
             register(scroll_dir, &id, pid, &req);
         }
         let meta = Meta {
@@ -282,6 +395,8 @@ impl Session {
                     writer: child.writer,
                 }),
                 buf: Buf::new(Default::default(), open_append(&file_path), 0),
+                #[cfg(unix)]
+                iso,
             },
             scroll_dir,
         );

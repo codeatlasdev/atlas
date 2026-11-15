@@ -36,12 +36,13 @@ class ApprovalToolLine extends StatelessWidget {
     final c = AtlasColors.of(context);
     final text = Text(
       'Wants to run ${approval?.toolName ?? 'a tool'}',
-      style: TextStyle(color: c.warning, fontSize: 13, fontWeight: weight),
+      style: Theme.of(context).textTheme.bodyMedium!
+          .copyWith(color: c.warning, fontWeight: weight),
     );
     return Row(
       children: [
         Icon(Icons.shield_outlined, size: 14, color: c.warning),
-        const SizedBox(width: 4),
+        const SizedBox(width: Space.xs),
         if (flexible) Flexible(child: text) else text,
       ],
     );
@@ -58,17 +59,19 @@ class ApprovalCommandPreview extends StatelessWidget {
     final c = AtlasColors.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
       decoration: BoxDecoration(
         color: c.ground,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         command,
-        style: TextStyle(
+        style: Theme.of(context).textTheme.bodySmall!.copyWith(
           fontFamily: monoFamily,
           fontFamilyFallback: monoFallback,
-          fontSize: 12,
           color: c.text,
         ),
       ),
@@ -92,8 +95,11 @@ class ApprovalButtons extends StatelessWidget {
   final double gap;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.end,
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.end,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: gap,
+    runSpacing: 4,
     children: [
       OutlinePillButton(
         label: 'Deny',
@@ -102,7 +108,6 @@ class ApprovalButtons extends StatelessWidget {
         vPad: vPad,
         onPressed: () => onAnswer(false),
       ),
-      SizedBox(width: gap),
       WarnPillButton(
         label: 'Allow',
         hPad: hPad,

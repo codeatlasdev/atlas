@@ -58,10 +58,15 @@ class CrewmateRow extends StatelessWidget {
                 animate:
                     state == CrewState.working || state == CrewState.needsYou,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: Space.md),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(0, 12, Space.lg, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    Space.md,
+                    Space.lg,
+                    Space.md,
+                  ),
                   decoration: BoxDecoration(
                     border: last
                         ? null
@@ -76,17 +81,18 @@ class CrewmateRow extends StatelessWidget {
                             child: Text(
                               crewmate.name,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                                color: entry.online ? c.text : c.faint,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium!
+                                  .copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: entry.online ? c.text : c.muted,
+                                  ),
                             ),
                           ),
                           if (when.isNotEmpty)
                             Text(
                               when,
-                              style: TextStyle(fontSize: 13, color: c.faint),
+                              style: Theme.of(context).textTheme.bodyMedium!
+                                  .copyWith(color: c.muted),
                             ),
                         ],
                       ),
@@ -99,15 +105,12 @@ class CrewmateRow extends StatelessWidget {
                               preview,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                height: 1.3,
-                                color: previewColor,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(height: 1.3, color: previewColor),
                             ),
                           ),
                           if (state == CrewState.needsYou) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(width: Space.sm),
                             Container(
                               margin: const EdgeInsets.only(top: 2),
                               width: 20,
@@ -119,11 +122,11 @@ class CrewmateRow extends StatelessWidget {
                               alignment: Alignment.center,
                               child: Text(
                                 '!',
-                                style: TextStyle(
-                                  color: c.ground,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                                style: Theme.of(context).textTheme.bodySmall!
+                                    .copyWith(
+                                      color: c.ground,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                               ),
                             ),
                           ],
@@ -134,7 +137,8 @@ class CrewmateRow extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             entry.hostName,
-                            style: TextStyle(fontSize: 12, color: c.faint),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                         ),
                     ],

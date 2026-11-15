@@ -8,8 +8,9 @@ use super::action::{
     finish_unanswered, park_task, parse_atlas_action, resolve_action, user_answer,
 };
 use super::gate::{Gate, gate_success};
+use super::isolation::Ctx;
 use super::outcome::{finish_task, persist_running, was_cancelled};
-use super::prompt::{Prepared, load_agent_env, load_hook_endpoint, prepare_task};
+use super::prompt::{Prepared, load_agent_env, prepare_task};
 use super::recover::{recovered_wait, resume_prompt};
 use super::summary::maybe_summarize;
 use crate::crew::store::{Crewmate, EngineConfig, Task, TaskState};
@@ -31,7 +32,15 @@ pub(super) async fn run_one_conversational(
         return;
     };
 
-    let (hook_port, hook_token) = load_hook_endpoint(&hub.dir);
+    // How this crewmate runs: its own Linux user or the crew user. One answer for the whole task.
+    let ctx = Ctx::of(hub, &crewmate.id);
+    if let Err(e) = ctx.prepare(hub, &crewmate.id) {
+        let msg = format!("cannot prepare the crewmate's runtime files: {e}");
+        finish_task(hub, crewmate, &mut task, Err(msg), vec![]);
+        triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+        return;
+    }
+    let (hook_port, hook_token) = ctx.hook_endpoint(hub, &crewmate.id);
 
     // A stranger's text (GitHub, webhook) never runs with the bypass flags unless its trigger said
     // `allow_auto`. An engine that cannot ask has no other mode, so such a task is refused.
@@ -57,8 +66,23 @@ pub(super) async fn run_one_conversational(
 
     // A task parked on an action when hostd stopped keeps waiting (it is not running again).
     let waiting = recovered_wait(&task);
-    // Mark running. If that cannot be stored the task is failed (clients told) and nothing starts.
+    // A slot for the agent, then mark running. A task cancelled while it prepared or waited for a slot never gets
+    // its agent: the store has the cancel (#292). If running cannot be stored the task is failed (clients told) and
+    // nothing starts.
+    let mut slot: Option<super::slots::Slot> = None;
     if !waiting {
+        let Some(s) = super::slots::take(hub, crewmate, &mut task).await else {
+            finish_task(
+                hub,
+                crewmate,
+                &mut task,
+                Err("cancelled before the agent started".into()),
+                vec![],
+            );
+            triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+            return;
+        };
+        slot = Some(s);
         task.state = TaskState::Running;
         task.started_at = Some(now_s());
         task.pane = Some(pane_key.clone());
@@ -71,11 +95,7 @@ pub(super) async fn run_one_conversational(
     // For omp with approval==ask: write the extension file before engine::run_turn
     // (even if TEST_ENGINE_BIN bypasses the real omp, the file must exist for the test).
     if engine_cfg.kind == "omp" && !yolo {
-        let ext_path = hub
-            .crew
-            .store
-            .crewmate_dir(&crewmate.id)
-            .join("omp-approval.ts");
+        let ext_path = ctx.runtime_dir(hub, &crewmate.id).join("omp-approval.ts");
         let _ =
             engine::omp::write_approval_extension_pub(&ext_path, hook_port, &hook_token, &pane_key);
     }
@@ -88,6 +108,7 @@ pub(super) async fn run_one_conversational(
         pane_key: &pane_key,
         hook: (hook_port, &hook_token),
         yolo,
+        ctx: &ctx,
     };
     // A task parked on an action when hostd stopped goes straight back to waiting for the answer;
     // one a restart interrupted mid-turn continues the stored session instead of starting over.
@@ -115,6 +136,8 @@ pub(super) async fn run_one_conversational(
             let action = parse_atlas_action(&reply);
             match (action, hub.crew.hub_arc()) {
                 (Some(action), Some(_)) => {
+                    // Parked on a person: the slot goes back so another crewmate's agent can run meanwhile.
+                    drop(slot.take());
                     park_task(hub, crewmate, &mut task, action.clone());
                     answer_action_turn(&turn, &mut task, &action).await;
                 }
@@ -123,6 +146,7 @@ pub(super) async fn run_one_conversational(
         }
         Err(e) => finish_task(hub, crewmate, &mut task, Err(e), vec![]),
     }
+    drop(slot);
     triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
 }
 
@@ -136,6 +160,7 @@ struct Turn<'a> {
     pane_key: &'a str,
     hook: (u16, &'a str),
     yolo: bool,
+    ctx: &'a Ctx,
 }
 
 impl Turn<'_> {
@@ -186,21 +211,25 @@ impl Turn<'_> {
                 }
             }
         };
-        let turn = engine::run_turn(
-            self.engine_cfg,
+        // Where the agent reads what the engine writes for it, and who runs the process: one answer per task.
+        let crewmate_dir = self.ctx.runtime_dir(hub, &crewmate.id);
+        let exec = self.ctx.exec();
+        let turn = engine::run_turn(engine::TurnCtx {
+            engine: self.engine_cfg,
             session,
             prompt,
-            &hub.crew.store.crewmate_dir(&crewmate.id),
-            &crewmate.id,
-            self.hook.0,
-            self.hook.1,
-            self.pane_key,
-            &env,
-            self.work_dir,
-            self.yolo,
-            Some(&tools),
-            &cancel,
-        )
+            crewmate_dir: &crewmate_dir,
+            crewmate_id: &crewmate.id,
+            hook_port: self.hook.0,
+            hook_token: self.hook.1,
+            pane_key: self.pane_key,
+            extra_env: &env,
+            work_dir: self.work_dir,
+            yolo: self.yolo,
+            tools: Some(&tools),
+            cancel: &cancel,
+            exec: &exec,
+        })
         .await?;
         if let Err(e) = hub.crew.store.save_session(&crewmate.id, &turn.session) {
             // The next turn would start a new conversation instead of continuing this one.
@@ -239,7 +268,12 @@ async fn answer_action_turn(
             // The action stays on the task (cards only show while waiting): with `answer` it lets the
             // chat show what was asked and what the user picked.
             task.answer = user_answer(action, &follow_up);
-            // The env is read again: it may include secrets written while waiting.
+            // The env is read again: it may include secrets written while waiting. The answer starts an agent
+            // again, so it needs a slot again (the wait for the person held none).
+            let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
+                finish_unanswered(hub, crewmate, task);
+                return;
+            };
             match turn.run(&follow_up).await {
                 Ok((reply2, usage2, env2)) => settle_reply(turn, task, reply2, usage2, &env2).await,
                 Err(e) => finish_task(hub, crewmate, task, Err(e), vec![]),

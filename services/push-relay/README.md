@@ -33,3 +33,13 @@ scripts/push-relay-check.sh    # gofmt, go vet, go test
 ```
 
 Point crew servers at a self-hosted relay with `ATLAS_PUSH_RELAY=<url>` in their unit, and build the phone app with `--dart-define=ATLAS_PUSH_RELAY=<url>`.
+
+## Deploy
+
+`bun run push:deploy` (`scripts/deploy-push-relay.sh`; `--dry-run` prints every command and needs no login) is idempotent: it enables the APIs, creates the `push-relay` service account with `roles/firebasecloudmessaging.admin` (the narrowest predefined role that carries `cloudmessaging.messages.create`) and read access to the `RELAY_GRANT_KEY` secret, creates that secret from `openssl rand -base64 32` only when absent (never printed), builds the image with Cloud Build, deploys Cloud Run (`southamerica-east1`, 0 to 3 instances, concurrency 80, `FCM_PROJECT_ID`, `RELAY_TRUST_PROXY=1`, `RELAY_GRANT_KEY` from the secret), sets the Cloudflare record and ends with a smoke check (`/v1/register` answers `200` with a grant, `/v1/notify` with a bad grant `403`).
+
+It needs `gcloud auth login` as an owner of the project and `CLOUDFLARE_API_TOKEN` (Zone DNS Edit and Zone Origin Rules Edit on `codeatlas.com.br`). `GCP_PROJECT` picks the project (default: gcloud's), `FCM_PROJECT_ID` the Firebase project when it is a different one, and `REGION`, `SERVICE`, `PUSH_DOMAIN` and `CF_ZONE` override the rest.
+
+**Domain.** `push.codeatlas.com.br` is a proxied Cloudflare CNAME to the service's `run.app` host plus an Origin Rule that rewrites `Host` to that host (Cloud Run routes by `Host`). Cloud Run domain mappings are not used: they are Preview, "not recommended for production", and unavailable in `southamerica-east1`; a global load balancer would add a fixed monthly cost for one small service. The rule is merged into the zone's existing origin rules, never replacing them. With the proxy on, `RELAY_TRUST_PROXY=1` keys the per-IP limits on the left-most `X-Forwarded-For`, which is the client as Cloudflare saw it.
+
+Phones need the Firebase config and an APNs key on top of the relay: docs/mobile.md, "Bringing push up".

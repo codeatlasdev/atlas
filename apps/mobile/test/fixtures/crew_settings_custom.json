@@ -1,4 +1,10 @@
 {
+  "agent_memory_max": null,
+  "max_agents": 4,
+  "memory_cap": {
+    "available": false,
+    "reason": "crewmates do not run as their own users here (no spawn helper)"
+  },
   "short_replies": false,
   "short_replies_model": "haiku"
 }

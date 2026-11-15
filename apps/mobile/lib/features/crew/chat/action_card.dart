@@ -7,13 +7,17 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
+import 'package:atlas_mobile/core/auth/device_auth.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
+import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/task_images.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
+import 'package:atlas_mobile/features/crew/ops/engine_signin.dart';
 import 'package:atlas_mobile/features/crew/widgets/github_device_login.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
@@ -51,13 +55,18 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Future<void> _submit(String value) async {
     if (value.isEmpty || _submitting) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return;
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
+      final mux = await requireMuxOf(ref, widget.device);
+      // A secret is typed on the phone and stored on the crew server for good: prove it is the owner first,
+      // and send nothing when they do not (or the device cannot ask).
+      final action = widget.task.action;
+      if (action?.kind == 'provide_secret' && !await _confirmSecret(action!)) {
+        throw 'Face ID is needed to send a secret';
+      }
       // Images only ride on a retry (hostd refuses them on an override); big ones go up in pieces first.
       var n = 0;
       final stamp = DateTime.now().microsecondsSinceEpoch;
@@ -82,9 +91,21 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       _images.clear();
     } on Object catch (e) {
       // The card stays: what the server said, not a silent nothing.
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// Face ID (or the device passcode) before a secret is sent. A device that cannot ask says why, and
+  /// nothing is sent.
+  Future<bool> _confirmSecret(TaskAction action) async {
+    try {
+      return await ref.read(deviceAuthProvider)(
+        'Send ${action.name ?? 'this secret'} to your crew server',
+      );
+    } on Object catch (e) {
+      throw 'Face ID is unavailable ($e): the secret was not sent';
     }
   }
 
@@ -135,25 +156,34 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }
 
   Future<void> _cancel() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return;
-    await mux.call('crewmate_cancel', {
-      'id': widget.crewmateId,
-      'task': widget.task.id,
-    });
+    setState(() => _error = null);
+    try {
+      final mux = await requireMuxOf(ref, widget.device);
+      await mux.call('crewmate_cancel', {
+        'id': widget.crewmateId,
+        'task': widget.task.id,
+      });
+    } on DeviceUnavailable catch (e) {
+      if (mounted) setState(() => _error = e.message);
+      return;
+    }
     if (mounted) {
       ref.invalidate(crewmateTasksProvider((widget.device, widget.crewmateId)));
     }
   }
 
   Future<void> _startGithubLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return;
-    await _login.start(mux, _pollGithubLogin);
+    setState(() => _error = null);
+    try {
+      final mux = await requireMuxOf(ref, widget.device);
+      await _login.start(mux, _pollGithubLogin);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
   }
 
   Future<void> _pollGithubLogin() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     final (result, _) = await _login.pollOnce(mux);
     // Wake the runner once the user has authorized.
@@ -167,18 +197,6 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     final c = AtlasColors.of(context);
     final action = widget.task.action;
     if (action == null) return const SizedBox.shrink();
-
-    const r = Radius.circular(18);
-    final cardDecoration = BoxDecoration(
-      color: c.warning.withValues(alpha: .08),
-      border: Border.all(color: c.warning.withValues(alpha: .35)),
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(4),
-        topRight: r,
-        bottomLeft: r,
-        bottomRight: r,
-      ),
-    );
 
     final busy = _submitting;
     final cardContent = switch (action.kind) {
@@ -220,19 +238,29 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     };
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           const SizedBox(width: 36), // avatar placeholder alignment
           Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.80,
+            child: AttentionCard(
+              bubble: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  cardContent,
+                  // What went wrong with the last tap (offline, refused): one line for every kind of card.
+                  if (_error != null) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(
+                      _error!,
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: c.error),
+                    ),
+                  ],
+                ],
               ),
-              padding: const EdgeInsets.all(12),
-              decoration: cardDecoration,
-              child: cardContent,
             ),
           ),
         ],
@@ -244,14 +272,18 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
 
   Widget _title(AtlasColors c, String text) => Text(
     text,
-    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.text),
+    style: Theme.of(context).textTheme.bodyMedium!
+        .copyWith(fontWeight: FontWeight.w600, color: c.text),
   );
 
   /// The agent's reason under a title, when it gave one.
   List<Widget> _reason(AtlasColors c, TaskAction action) => [
     if (action.reason != null) ...[
-      const SizedBox(height: 4),
-      Text(action.reason!, style: TextStyle(fontSize: 12, color: c.muted)),
+      const SizedBox(height: Space.xs),
+      Text(
+        action.reason!,
+        style: Theme.of(context).textTheme.bodySmall!.copyWith(color: c.muted),
+      ),
     ],
   ];
 
@@ -264,10 +296,9 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }) => Row(
     children: [
       WarnPillButton(label: primary, onPressed: onPrimary),
-      const SizedBox(width: 8),
+      const SizedBox(width: Space.sm),
       OutlinePillButton(
         label: cancel,
-        fontSize: 13,
         onPressed: _submitting ? null : (onCancel ?? _cancel),
       ),
     ],
@@ -281,11 +312,15 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
   }) => TextField(
     controller: _controller,
     obscureText: obscure,
-    style: TextStyle(fontSize: 14, color: c.text),
+    style: Theme.of(context).textTheme.bodyLarge!.copyWith(color: c.text),
     decoration: InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: c.faint, fontSize: 14),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      hintStyle: Theme.of(context).textTheme.bodyLarge!
+          .copyWith(color: c.faint),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: Space.md,
+        vertical: Space.sm,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide(color: c.borderSubtle),
@@ -315,7 +350,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     children: [
       _title(c, title),
       if (reason) ..._reason(c, action),
-      const SizedBox(height: 8),
+      const SizedBox(height: Space.sm),
       _field(
         c,
         hint: hint,
@@ -326,7 +361,7 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
               }
             : null,
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: Space.sm),
       _actions('Submit', busy ? null : _submitText),
     ],
   );
@@ -338,19 +373,19 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
       children: [
         _title(c, 'Connect GitHub to continue'),
         ..._reason(c, action),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
         if (flow != null) ...[
           Text(
             'Enter this code at ${flow.verificationUri}',
-            style: TextStyle(fontSize: 12, color: c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
           Row(
             children: [
               Text(
                 flow.userCode,
-                style: TextStyle(
-                  fontSize: 20,
+                style: Theme.of(context).textTheme.titleLarge!.copyWith(
                   fontWeight: FontWeight.w700,
                   letterSpacing: 2,
                   fontFamily: monoFamily,
@@ -358,37 +393,41 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
                   color: c.text,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: Space.sm),
               OutlinedButton(
                 onPressed: () {
                   // clipboard
                 },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
+                    horizontal: Space.md,
+                    vertical: Space.xs,
                   ),
                   minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  tapTargetSize: MaterialTapTargetSize.padded,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('Copy', style: TextStyle(fontSize: 12)),
+                child: Text(
+                  'Copy',
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
+                ),
               ),
             ],
           ),
           if (_login.polling) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: Space.sm),
             Text(
               'Waiting for authorization…',
-              style: TextStyle(fontSize: 12, color: c.muted),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: Space.sm),
           OutlinePillButton(
             label: 'Cancel',
-            fontSize: 13,
             hPad: 12,
             vPad: 4,
             onPressed: _login.cancel,
@@ -407,16 +446,19 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       _title(c, action.question ?? 'Choose an option'),
-      const SizedBox(height: 8),
+      const SizedBox(height: Space.sm),
       for (int i = 0; i < action.options.length; i++) ...[
         OutlinedButton(
           onPressed: busy ? null : () => _submit(action.options[i]),
           style: OutlinedButton.styleFrom(
             foregroundColor: c.text,
             side: BorderSide(color: c.borderSubtle),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            minimumSize: const Size(double.infinity, 0),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(
+              horizontal: Space.md,
+              vertical: Space.sm,
+            ),
+            minimumSize: const Size(double.infinity, 48),
+            tapTargetSize: MaterialTapTargetSize.padded,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -435,46 +477,55 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
                 ),
                 child: Text(
                   String.fromCharCode(65 + i),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: c.muted,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall!
+                      .copyWith(fontWeight: FontWeight.w600, color: c.muted),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: Space.md),
               Flexible(
                 child: Text(
                   action.options[i],
-                  style: TextStyle(fontSize: 14, color: c.text),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(color: c.text),
                 ),
               ),
             ],
           ),
         ),
-        if (i < action.options.length - 1) const SizedBox(height: 4),
+        if (i < action.options.length - 1) const SizedBox(height: Space.xs),
       ],
-      const SizedBox(height: 8),
-      OutlinePillButton(
-        label: 'Cancel task',
-        fontSize: 13,
-        onPressed: busy ? null : _cancel,
-      ),
+      const SizedBox(height: Space.sm),
+      OutlinePillButton(label: 'Cancel task', onPressed: busy ? null : _cancel),
     ],
   );
 
   Widget _signInEngine(AtlasColors c, TaskAction action, bool busy) {
     final engine = action.engine ?? 'engine';
+    // Only the engines hostd can sign in get the button; any other name keeps the Settings text.
+    final canSignInHere = engineLabels.containsKey(engine);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _title(c, 'Sign in to $engine'),
-        const SizedBox(height: 4),
+        _title(c, 'Sign in to ${engineLabels[engine] ?? engine}'),
+        const SizedBox(height: Space.xs),
         Text(
-          'Sign in to $engine in Settings, then tap Done.',
-          style: TextStyle(fontSize: 12, color: c.muted),
+          canSignInHere
+              ? 'Tap Sign in here to open its sign-in on the crew server, finish it, then tap Done.'
+              : 'Sign in to $engine on the crew server, then tap Done.',
+          style: Theme.of(context).textTheme.bodySmall!
+              .copyWith(color: c.muted),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: Space.md),
+        if (canSignInHere) ...[
+          WarnPillButton(
+            key: const Key('sign-in-here'),
+            label: 'Sign in here',
+            onPressed: busy
+                ? null
+                : () => openEngineSignin(context, ref, widget.device, engine),
+          ),
+          const SizedBox(height: Space.sm),
+        ],
         _actions('Done', busy ? null : () => _submit('done')),
       ],
     );
@@ -500,16 +551,17 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         crewmateId: widget.crewmateId,
         alignEnd: false,
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: Space.sm),
       for (final reason in reasons)
         Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: Text(
             '• $reason',
-            style: TextStyle(fontSize: 12, color: c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ),
-      const SizedBox(height: 8),
+      const SizedBox(height: Space.sm),
       if (_images.isNotEmpty)
         Wrap(
           spacing: 6,
@@ -519,7 +571,8 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
               InputChip(
                 label: Text(
                   _images[i].name,
-                  style: const TextStyle(fontSize: 12),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: AtlasColors.of(context).text),
                 ),
                 onDeleted: busy
                     ? null
@@ -530,24 +583,18 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         ),
       OutlinePillButton(
         label: 'Add a screenshot',
-        fontSize: 13,
         onPressed: busy ? null : _addImages,
       ),
-      if (_error != null) ...[
-        const SizedBox(height: 6),
-        Text(_error!, style: TextStyle(fontSize: 12, color: c.error)),
-      ],
-      const SizedBox(height: 8),
+      const SizedBox(height: Space.sm),
       Row(
         children: [
           WarnPillButton(
             label: 'Retry',
             onPressed: busy ? null : () => _submit('retry'),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: Space.sm),
           OutlinePillButton(
             label: 'Override',
-            fontSize: 13,
             onPressed: busy ? null : () => _submit('override'),
           ),
         ],
@@ -566,52 +613,54 @@ class _TaskActionCardState extends ConsumerState<TaskActionCard> {
         Row(
           children: [
             Icon(Icons.schedule_outlined, size: 14, color: c.warning),
-            const SizedBox(width: 6),
+            const SizedBox(width: Space.sm),
             Flexible(
               child: Text(
                 '${action.name ?? widget.crewmateId} wants to add an automation',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: c.warning,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(fontWeight: FontWeight.w600, color: c.warning),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: Space.sm),
         if (triggerKind != null) ...[
           Text(
             _describeTriggerKind(triggerKind),
-            style: TextStyle(fontSize: 13, color: c.text),
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.text),
           ),
           const SizedBox(height: 2),
         ],
         if (triggerPrompt != null && triggerPrompt.isNotEmpty) ...[
           Text(
             triggerPrompt,
-            style: TextStyle(fontSize: 12, color: c.muted),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
         ],
         if (resolved != null) ...[
-          Text(resolved, style: TextStyle(fontSize: 12, color: c.muted)),
-          const SizedBox(height: 6),
+          Text(
+            resolved,
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
+          const SizedBox(height: Space.sm),
         ] else
-          const SizedBox(height: 6),
+          const SizedBox(height: Space.sm),
         Row(
           children: [
             WarnPillButton(
               label: 'Add',
               onPressed: busy ? null : () => _submit('add'),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: Space.sm),
             OutlinePillButton(
               label: 'Not now',
-              fontSize: 13,
               onPressed: busy ? null : () => _submit('skip'),
             ),
           ],

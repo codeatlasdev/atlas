@@ -101,6 +101,18 @@ Every command is a root `package.json` script, so `bun run <name>` from the repo
 | `cargo test -p atlas-tui --release -- --ignored --nocapture bench_one_million` | the log pipeline benchmark |
 | `cargo test -p atlas-term --release -- --ignored --nocapture screen_bench` | the terminal renderer benchmark |
 
+### Tests that need root (Linux only)
+
+The memory-cap tests (`crew/spawn/cgroup.rs`: a leaf gets its limits under the helper unit's own cgroup settings, and an agent over its cap is OOM-killed alone) re-run the test binary in a transient `systemd-run` unit with `Delegate=memory pids`, `ProtectControlGroups=yes` and the one writable cgroup path. They need root and systemd as PID 1 (a GitHub runner has both); elsewhere they print why and pass. Two other tests create a system user: `crates/atlas-host/src/crew/spawn/exec.rs` (`a_real_spawn_runs_as_the_crewmates_user_and_hostd_cannot_touch_it`: the child runs as that uid and another user cannot read its directory) and `crew/spawn/provision.rs` (`a_real_provision_creates_the_user_and_modes_and_a_real_deprovision_removes_them`: real `useradd`, `chown`, modes, `userdel`). Both are `#[ignore]`d with their reason, so `bun run check` and the normal CI jobs skip them. The CI job **Rust (Linux, root tests)** runs them on a throwaway runner (part of the `CI` aggregate):
+
+```sh
+sudo -E env "PATH=$PATH" cargo test -p atlas-host --lib crew::spawn -- --ignored
+```
+
+To run them yourself use a disposable Linux machine or VM, never your Mac (they are compiled out of the run there) and not a container that shares the host's user database. They add `atlas-cm-ffffffffffff` and `atlas-cm-eeeeeeeeeeee` and remove them when they finish.
+
+The egress rules (`nft`) and the engine installers are not covered by it: the ruleset is a pure string tested for order and content, and applying it needs `nft` and a real server.
+
 ### Updating JS dependencies
 
 `bun run deps:update` runs `npm-check-updates -u` in the root, `apps/desktop`, `site` and `studio` (config: `.ncurc.json`) and then reinstalls. `typescript` is rejected on purpose: it stays on 6.x because TypeScript 7's native compiler drops the JS API that `svelte-kit sync`, `svelte-check` and `astro check` rely on. Move it by hand once those tools support 7. `studio` pins `hyperframes` exactly; after an update run `bun studio check` and keep the old pin if it fails.

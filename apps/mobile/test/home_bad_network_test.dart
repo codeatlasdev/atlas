@@ -37,6 +37,12 @@ class _Host implements Transport {
   final calls = <String>[];
   final _parked = <(String cmd, Object id)>[];
 
+  /// False: the computer cannot be reached, so the next connect fails (as a Mac that went to sleep).
+  bool online = true;
+
+  /// The link dies under a live connection: the multiplexer ends and the notifier reconnects.
+  Future<void> drop() => _in.close();
+
   Map<String, Object?>? listReply = {
     'ok': true,
     'data': {
@@ -124,6 +130,7 @@ Future<ProviderContainer> _pump(
   _Host host,
   Widget home, {
   bool throughOnboarding = false,
+  bool unreachable = false,
 }) async {
   await t.binding.setSurfaceSize(const Size(393, 852));
   addTearDown(() => t.binding.setSurfaceSize(null));
@@ -132,7 +139,11 @@ Future<ProviderContainer> _pump(
     ProviderScope(
       overrides: [
         macStorageProvider.overrideWithValue(_Storage([_mac])),
-        transportFactoryProvider.overrideWithValue((_, _) async => host),
+        transportFactoryProvider.overrideWithValue(
+          (_, _) async => unreachable || !host.online
+              ? throw StateError('no route to My Mac')
+              : host,
+        ),
       ],
       child: Builder(
         builder: (context) {
@@ -162,30 +173,16 @@ Future<void> _unmount(WidgetTester t) async {
 void main() {
   group('home project list', () {
     testWidgets(
-      'backgrounding the connection and waiting a poll tick keeps the last project list',
+      'a computer that drops out keeps the last project list on screen, with the offline strip',
       (t) async {
         final host = _Host();
-        final container = await _pump(
-          t,
-          host,
-          const HomeScreen(),
-          throughOnboarding: true,
-        );
+        await _pump(t, host, const HomeScreen(), throughOnboarding: true);
         expect(find.text('shop'), findsOneWidget);
 
-        // The app goes to the background and the connection lets go (what ConnectionNotifier does
-        // after its 30 s grace), then the 5 s poll ticks.
-        _background(t);
-        container
-            .read(connectionNotifierProvider(_mac).notifier)
-            .onBackgrounded();
-        await _settle(t, 31000);
-        expect(
-          container.read(connectionNotifierProvider(_mac)).value,
-          isNull,
-          reason: 'the connection is down: that is the situation under test',
-        );
-        await _settle(t, 6000);
+        // The link dies and the computer stays out of reach; several 5 s polls pass.
+        host.online = false;
+        await host.drop();
+        await _settle(t, 16000);
 
         expect(
           find.text('shop'),
@@ -194,13 +191,10 @@ void main() {
               'a list that was loaded stays until the computer answers again',
         );
         expect(find.text('No projects yet'), findsNothing);
-        await t.pump(const Duration(seconds: 1));
-        debugPrint('PROBE2 conn=${container.read(connectionNotifierProvider(_mac))} texts=${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList()}');
         expect(
           find.textContaining('My Mac is offline'),
           findsOneWidget,
-          reason:
-              'the list is shown with the offline strip, not behind a full-screen state',
+          reason: 'the list is shown with the offline strip, not behind a full-screen state',
         );
         await _unmount(t);
       },
@@ -276,20 +270,13 @@ void main() {
       t,
     ) async {
       final host = _Host();
-      final container = await _pump(
-        t,
-        host,
-        const HomeScreen(),
-        throughOnboarding: true,
-      );
-      // The link goes away while the app stays in the foreground: the notifier lets go of it
-      // (what it does 30 s after the app was backgrounded) and nothing reconnects it. Polls
-      // kept running until then; the count that matters starts once it is down.
-      container
-          .read(connectionNotifierProvider(_mac).notifier)
-          .onBackgrounded();
-      await _settle(t, 31000);
-      expect(container.read(connectionNotifierProvider(_mac)).value, isNull);
+      await _pump(t, host, const HomeScreen(), throughOnboarding: true);
+
+      // The link dies and the computer stays out of reach (the notifier retries with backoff and
+      // fails every time).
+      host.online = false;
+      await host.drop();
+      await _settle(t, 3000);
       final whenDown = host.count('project_list');
 
       await _settle(t, 16000);
@@ -321,6 +308,28 @@ void main() {
             'projects': [_shop],
           },
         });
+        await _unmount(t);
+      },
+    );
+
+    // An unreachable computer says so at once. A provider that throws is retried by Riverpod (10
+    // times, 0.2 s to 6.4 s) and reads as "loading" meanwhile, which kept this screen on a spinner
+    // for about 45 s before it said why.
+    testWidgets(
+      'an unreachable computer shows "Can\'t reach" within seconds, with no spinner',
+      (t) async {
+        final host = _Host();
+        await _pump(
+          t,
+          host,
+          const HomeScreen(),
+          throughOnboarding: true,
+          unreachable: true,
+        );
+        expect(find.text("Can't reach My Mac"), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.text('No projects yet'), findsNothing);
+        expect(host.count('project_list'), 0);
         await _unmount(t);
       },
     );
@@ -365,5 +374,35 @@ void main() {
       expect(find.text('Try again'), findsNothing);
       await _unmount(t);
     });
+
+    // The sheet reads the provider itself (no home screen above it to say "Can't reach"). A provider
+    // that throws is retried by Riverpod and reads as loading for about 45 s; an offline computer
+    // must be said at once.
+    testWidgets(
+      'an unreachable computer shows its error within seconds, not a spinner',
+      (t) async {
+        await _pump(
+          t,
+          _Host(),
+          Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) => TextButton(
+                onPressed: () =>
+                    showAgentLauncher(context, device: _mac, projectId: 'a'),
+                child: const Text('open launcher'),
+              ),
+            ),
+          ),
+          unreachable: true,
+        );
+        await t.tap(find.text('open launcher'));
+        await _settle(t, 1500);
+        expect(find.text('My Mac is offline'), findsOneWidget);
+        expect(find.text('Try again'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.textContaining('No agent found'), findsNothing);
+        await _unmount(t);
+      },
+    );
   });
 }

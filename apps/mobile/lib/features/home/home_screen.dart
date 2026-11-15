@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
-import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/latest_only.dart';
@@ -225,10 +224,10 @@ class _DashboardState extends ConsumerState<_Dashboard> {
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => _tick());
   }
 
-  /// One poll: only in the foreground, only on a live connection (a dead one answers
-  /// `DeviceOffline` and the list would only flicker), and never behind an unanswered one.
+  /// One poll: only in the foreground, and never behind an unanswered one. A computer that is not
+  /// connected sends nothing (`requireMux` throws before any command) and the screen keeps its list.
   Future<void> _tick() async {
-    if (!appInForeground() || liveMux(ref, widget.device) == null) return;
+    if (!appInForeground()) return;
     final ticket = _poll.tryBegin();
     if (ticket == null) return;
     final provider = projectListProvider(widget.device);

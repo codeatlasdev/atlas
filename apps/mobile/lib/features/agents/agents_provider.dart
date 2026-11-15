@@ -4,6 +4,8 @@ import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/features/crew/crew_provider.dart'
+    show noRetryWhenUnavailable;
 
 /// Agents installed on [device] (`agent_integrations`), the ones whose hooks report to
 /// Atlas first.
@@ -12,7 +14,10 @@ import 'package:atlas_mobile/core/providers/push_events_provider.dart';
 /// message when it refuses, an older Atlas without the command included): an empty list means the
 /// computer answered "none installed" and nothing else.
 final installedAgentsProvider = FutureProvider.autoDispose
-    .family<List<AgentIntegration>, MacDevice>((ref, device) async {
+    .family<List<AgentIntegration>, MacDevice>(retry: noRetryWhenUnavailable, (
+      ref,
+      device,
+    ) async {
       final mux = await requireMux(ref, device);
       final resp = await mux.call('agent_integrations');
       if (resp['ok'] != true) {

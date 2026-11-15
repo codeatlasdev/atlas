@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::paths;
+use crate::paths::{self, Loaded};
 
 mod origin;
 pub use origin::{GithubOrigin, GithubOriginKind};
@@ -488,6 +488,11 @@ impl Default for CrewSettings {
     }
 }
 
+/// Held by every write to a `tasks.jsonl`, so a read-modify-append ([`CrewStore::update_task`],
+/// [`CrewStore::append_runner_state`]) is never split by another write. Process-wide, not per
+/// [`CrewStore`]: handlers build their own instances over the same files.
+static TASK_WRITES: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
 pub struct CrewStore {
     base: PathBuf,
 }
@@ -580,8 +585,56 @@ impl CrewStore {
         std::fs::remove_dir_all(self.crewmate_dir(id))
     }
 
-    /// Append a JSON line to `tasks.jsonl`.
+    /// Append a JSON line to `tasks.jsonl`: `task` as it stands, the last line of an id wins.
+    /// For a task that is already stored and may be changing under you, use [`Self::update_task`]
+    /// (a change from a hook route or a handler) or [`Self::append_runner_state`] (the runner's copy).
     pub fn append_task(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
+        let _guard = TASK_WRITES.lock();
+        self.append_unlocked(crewmate_id, task)
+    }
+
+    /// Change the stored task `task_id` with `f` and append it, as one step: nothing else writes a task
+    /// between the read and the append, so a change made meanwhile is never overwritten by a stale copy.
+    /// `Ok(None)` when there is no such task (nothing is written); `f`'s error writes nothing either.
+    pub fn update_task<R>(
+        &self,
+        crewmate_id: &str,
+        task_id: &str,
+        f: impl FnOnce(&mut Task) -> Result<R, String>,
+    ) -> Result<Option<(Task, R)>, String> {
+        let _guard = TASK_WRITES.lock();
+        let Some(mut task) = self.stored_task(crewmate_id, task_id) else {
+            return Ok(None);
+        };
+        let out = f(&mut task)?;
+        self.append_unlocked(crewmate_id, &task)
+            .map_err(|e| format!("cannot record task {task_id}: {e}"))?;
+        Ok(Some((task, out)))
+    }
+
+    /// Append the runner's copy of a running task. The runner holds that copy for the whole run, while
+    /// hook routes record on the stored task what only they write: the `ui` mark (it only ever turns
+    /// on), the agent's captures (`attachments`) and the open question (`ask`). Those are taken from the
+    /// stored task, so the runner's next title or step never takes them back (a `ui` task once ended
+    /// `done` without its captures that way). Everything else is the runner's.
+    pub fn append_runner_state(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
+        let _guard = TASK_WRITES.lock();
+        let mut snapshot = task.clone();
+        if let Some(stored) = self.stored_task(crewmate_id, &task.id) {
+            snapshot.ui |= stored.ui;
+            snapshot.attachments = stored.attachments;
+            snapshot.ask = stored.ask;
+        }
+        self.append_unlocked(crewmate_id, &snapshot)
+    }
+
+    fn stored_task(&self, crewmate_id: &str, task_id: &str) -> Option<Task> {
+        self.read_tasks(crewmate_id, usize::MAX)
+            .into_iter()
+            .find(|t| t.id == task_id)
+    }
+
+    fn append_unlocked(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
         let dir = self.crewmate_dir(crewmate_id);
         std::fs::create_dir_all(&dir)?;
         let mut line = serde_json::to_string(task)
@@ -663,8 +716,21 @@ impl CrewStore {
         self.crewmate_dir(id).join("secrets.json")
     }
 
+    /// Add one secret. A `secrets.json` that cannot be parsed is an error (and was set aside by the read):
+    /// it holds every other secret of this crewmate and is never rewritten from `{}`.
     pub fn set_secret(&self, id: &str, key: &str, value: &str) -> io::Result<()> {
-        let mut secrets = self.load_secrets_raw(id);
+        let mut secrets = match self.read_secrets(id)? {
+            Secrets::Ok(m) => m,
+            Secrets::Corrupt(aside) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "secrets.json is unreadable and was kept as {}; set the secrets again",
+                        aside.display()
+                    ),
+                ));
+            }
+        };
         secrets.insert(key.to_string(), value.to_string());
         let data = serde_json::to_vec(&secrets)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -673,16 +739,25 @@ impl CrewStore {
         paths::write_private(&self.secrets_path(id), &data)
     }
 
-    /// Load secrets as env vars for the engine process (never expose to callers).
+    /// Load secrets as env vars for the engine process (never expose to callers). A corrupt file is set aside
+    /// (logged) and the run goes on without them, so the next `set_secret` starts a clean file.
     pub fn secret_env(&self, id: &str) -> std::collections::BTreeMap<String, String> {
-        self.load_secrets_raw(id)
+        match self.read_secrets(id) {
+            Ok(Secrets::Ok(m)) => m,
+            Ok(Secrets::Corrupt(_)) => Default::default(),
+            Err(e) => {
+                eprintln!("atlas crew: cannot read secrets of {id}: {e}");
+                Default::default()
+            }
+        }
     }
 
-    fn load_secrets_raw(&self, id: &str) -> std::collections::BTreeMap<String, String> {
-        let Ok(data) = std::fs::read(self.secrets_path(id)) else {
-            return Default::default();
-        };
-        serde_json::from_slice(&data).unwrap_or_default()
+    fn read_secrets(&self, id: &str) -> io::Result<Secrets> {
+        Ok(match paths::read_json_or_aside(&self.secrets_path(id))? {
+            Loaded::Missing => Secrets::Ok(Default::default()),
+            Loaded::Ok(m) => Secrets::Ok(m),
+            Loaded::Corrupt(aside) => Secrets::Corrupt(aside),
+        })
     }
 
     /// Append a usage record to `<crewmate_dir>/usage.jsonl` with engine_kind + timestamp.
@@ -743,18 +818,80 @@ impl CrewStore {
         self.base.join("crew.json")
     }
 
+    /// The crew settings. A `crew.json` that cannot be read or parsed (a torn write, zero bytes after a crash)
+    /// is NOT "defaults": the kill switch lives there, so the answer is `paused: true` and the file is left
+    /// as it is (a restart reads it the same way) until [`Self::recover_crew_settings`].
     pub fn load_crew_settings(&self) -> CrewSettings {
-        let Ok(data) = std::fs::read(self.crew_settings_path()) else {
-            return CrewSettings::default();
-        };
-        serde_json::from_slice(&data).unwrap_or_default()
+        match self.read_crew_settings() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!(
+                    "atlas crew: {} is unreadable ({e}); the crew stays paused until it is resumed",
+                    self.crew_settings_path().display()
+                );
+                CrewSettings {
+                    paused: true,
+                    ..Default::default()
+                }
+            }
+        }
     }
 
+    fn read_crew_settings(&self) -> io::Result<CrewSettings> {
+        match std::fs::read(self.crew_settings_path()) {
+            Ok(data) => serde_json::from_slice(&data)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(CrewSettings::default()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Whether `crew.json` cannot be read now (the crew is paused because of it).
+    pub fn crew_settings_unreadable(&self) -> bool {
+        self.read_crew_settings().is_err()
+    }
+
+    /// Replace an unreadable `crew.json` with a fresh paused one, the old bytes kept as
+    /// `crew.json.corrupt-<unix_ms>`. A no-op for a healthy or missing file. The one explicit way out of
+    /// the fail-closed state (`crew_resume` calls it before it writes).
+    pub fn recover_crew_settings(&self) -> io::Result<()> {
+        if self.read_crew_settings().is_ok() {
+            return Ok(());
+        }
+        let aside = paths::set_aside_corrupt(&self.crew_settings_path())?;
+        eprintln!(
+            "atlas crew: unreadable crew.json kept as {}",
+            aside.display()
+        );
+        self.save_crew_settings(&CrewSettings {
+            paused: true,
+            ..Default::default()
+        })
+    }
+
+    /// Write `crew.json`. Refuses (InvalidData) while the file on disk is unreadable: writing the caller's
+    /// view of it would persist `paused: false` from defaults. [`Self::recover_crew_settings`] first.
     pub fn save_crew_settings(&self, settings: &CrewSettings) -> io::Result<()> {
+        if let Err(e) = self.read_crew_settings()
+            && e.kind() == io::ErrorKind::InvalidData
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{} is unreadable and was not overwritten: {e}",
+                    self.crew_settings_path().display()
+                ),
+            ));
+        }
         let data = serde_json::to_vec_pretty(settings)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         paths::write_private(&self.crew_settings_path(), &data)
     }
+}
+
+enum Secrets {
+    Ok(std::collections::BTreeMap<String, String>),
+    Corrupt(PathBuf),
 }
 
 pub mod archive;

@@ -39,6 +39,7 @@ export function parseDiagnostics(raw: unknown): Diagnostics {
 		},
 		hostdLog: str(d.hostdLog),
 		appLog: str(d.appLog),
+		stderrLog: str(d.stderrLog),
 		lastCrash: strOrNull(d.lastCrash),
 		incidents: Array.isArray(d.incidents)
 			? d.incidents.map(rec).map((i) => ({

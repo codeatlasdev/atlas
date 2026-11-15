@@ -65,3 +65,39 @@ async fn telegram_is_set_up_linked_and_cleared_without_the_token_ever_coming_bac
 
     client.call("shutdown", json!({})).await.ok();
 }
+
+// Incident (#291): a `telegram.json` that failed to parse loaded as "not configured" and the next
+// `crew_telegram_set` overwrote it, dropping the linked chats with it. The bytes are set aside, and the
+// status tells the client why Telegram went quiet.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_corrupt_telegram_config_is_set_aside_and_reported_in_the_status() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    std::fs::create_dir_all(&dir).unwrap();
+    let torn = br#"{"token":"123:abc","chats":[42,"#;
+    std::fs::write(dir.join("telegram.json"), torn).unwrap();
+
+    let client = daemon(&dir).await;
+    let status = client
+        .call("crew_telegram_status", json!({}))
+        .await
+        .unwrap();
+
+    assert_eq!(status["configured"], false, "{status}");
+    let aside = status["corrupt_aside"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the status names the file that was set aside: {status}"));
+    assert!(aside.contains("telegram.json.corrupt-"), "{aside}");
+    assert_eq!(std::fs::read(aside).unwrap(), torn);
+    assert!(
+        !dir.join("telegram.json").exists(),
+        "nothing left to be overwritten by accident"
+    );
+    // Setting the token again starts a clean file and leaves the kept one alone.
+    client
+        .call("crew_telegram_set", json!({"token": "999:new"}))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(aside).unwrap(), torn);
+    client.call("shutdown", json!({})).await.ok();
+}

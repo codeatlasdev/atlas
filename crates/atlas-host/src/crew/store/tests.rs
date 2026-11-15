@@ -283,3 +283,134 @@ fn updating_a_task_that_does_not_exist_writes_nothing() {
     );
     assert!(store.read_tasks("c", 10).is_empty());
 }
+
+fn files_named(dir: &Path, prefix: &str) -> Vec<PathBuf> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with(prefix))
+        })
+        .collect()
+}
+
+// Incident (#291): a garbage `crew.json` was read as defaults, so the kill switch silently came back
+// OFF and the next settings write persisted `paused: false`. An unreadable file means "unknown": stay
+// paused, keep the user's bytes, and never rewrite the file from defaults.
+#[test]
+fn a_corrupt_crew_json_reads_as_paused_and_is_never_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(dir.path());
+    std::fs::write(store.crew_settings_path(), b"{\"paused\": tru").unwrap();
+
+    assert!(
+        store.load_crew_settings().paused,
+        "a crew.json that cannot be parsed must keep the crew paused"
+    );
+    // A zero-length file (a crash between create and write) is just as unreadable.
+    std::fs::write(store.crew_settings_path(), b"").unwrap();
+    assert!(store.load_crew_settings().paused);
+
+    // Saving settings over it would persist `paused: false` from defaults: refuse, keep the bytes.
+    std::fs::write(store.crew_settings_path(), b"{\"paused\": tru").unwrap();
+    let err = store
+        .save_crew_settings(&CrewSettings::default())
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
+    assert_eq!(
+        std::fs::read(store.crew_settings_path()).unwrap(),
+        b"{\"paused\": tru"
+    );
+}
+
+// The only way out of a corrupt crew.json is an explicit decision: `acknowledge` moves the bytes aside
+// and writes a fresh paused file, so a restart keeps the crew paused until the user resumes.
+#[test]
+fn a_corrupt_crew_json_is_set_aside_and_replaced_by_a_paused_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(dir.path());
+    std::fs::write(store.crew_settings_path(), b"garbage").unwrap();
+
+    store.recover_crew_settings().unwrap();
+
+    let aside = files_named(dir.path(), "crew.json.corrupt-");
+    assert_eq!(aside.len(), 1, "{aside:?}");
+    assert_eq!(std::fs::read(&aside[0]).unwrap(), b"garbage");
+    let fresh: CrewSettings =
+        serde_json::from_slice(&std::fs::read(store.crew_settings_path()).unwrap()).unwrap();
+    assert!(fresh.paused, "the replacement must start paused");
+    // Now it is a healthy file again: resuming works.
+    store
+        .save_crew_settings(&CrewSettings {
+            paused: false,
+            ..fresh
+        })
+        .unwrap();
+    assert!(!store.load_crew_settings().paused);
+}
+
+// Incident (#291): garbage `secrets.json` loaded as `{}`, `set_secret` inserted one key and rewrote the
+// file: every other secret of the crewmate was gone. It must refuse and leave the bytes alone.
+#[test]
+fn set_secret_on_a_corrupt_secrets_file_errors_and_keeps_the_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(dir.path());
+    store.set_secret("aaa", "KEEP_ME", "hunter22").unwrap();
+    let path = store.secrets_path("aaa");
+    // A torn write: the file cut in the middle of the second entry.
+    let torn = br#"{"KEEP_ME":"hunter22","OTHER":"sec"#;
+    std::fs::write(&path, torn).unwrap();
+
+    let err = store.set_secret("aaa", "NEW", "value1234").unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{err}");
+    assert!(
+        err.to_string().contains("secrets.json"),
+        "the error names the file: {err}"
+    );
+    // Moved aside, not rewritten: the torn bytes are the user's only copy of those secrets.
+    assert!(!path.exists(), "nothing was rewritten at the original path");
+    let aside = files_named(&store.crewmate_dir("aaa"), "secrets.json.corrupt-");
+    assert_eq!(aside.len(), 1, "{aside:?}");
+    assert_eq!(std::fs::read(&aside[0]).unwrap(), torn);
+    assert!(
+        err.to_string().contains(&aside[0].display().to_string()),
+        "the error says where the bytes are: {err}"
+    );
+}
+
+// The engine must not start with an empty environment as if the secrets never existed without a trace:
+// a corrupt file is set aside (recoverable by hand) and the run proceeds without them.
+#[test]
+fn secret_env_sets_a_corrupt_secrets_file_aside() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(dir.path());
+    let path = store.secrets_path("aaa");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"not json").unwrap();
+
+    assert!(store.secret_env("aaa").is_empty());
+
+    let aside = files_named(&store.crewmate_dir("aaa"), "secrets.json.corrupt-");
+    assert_eq!(aside.len(), 1, "{aside:?}");
+    assert_eq!(std::fs::read(&aside[0]).unwrap(), b"not json");
+    assert!(
+        !path.exists(),
+        "the corrupt file no longer shadows a fresh one"
+    );
+    // After the quarantine, setting a secret works and starts a clean file.
+    store.set_secret("aaa", "NEW", "value1234").unwrap();
+    assert_eq!(store.secret_env("aaa").get("NEW").unwrap(), "value1234");
+}
+
+// A secrets file that merely does not exist is not an incident: first secret of a crewmate.
+#[test]
+fn a_missing_secrets_file_is_empty_and_leaves_nothing_aside() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(dir.path());
+    assert!(store.secret_env("aaa").is_empty());
+    store.set_secret("aaa", "K", "value1234").unwrap();
+    assert!(files_named(&store.crewmate_dir("aaa"), "secrets.json.corrupt").is_empty());
+}

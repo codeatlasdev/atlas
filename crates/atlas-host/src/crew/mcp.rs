@@ -427,6 +427,7 @@ fn tools_list() -> Value {
                     "slow_network": { "type": "boolean", "description": "Delay every request (a poor connection)." },
                     "full_page": { "type": "boolean", "description": "Scroll to the end and shoot the whole page. Default true." },
                     "dom": { "type": "boolean", "description": "Also write each cell's element boxes (tag, role, name, text, data-testid, selector, x/y/w/h in CSS px) as <name>.dom.json next to the PNG; each shot then lists it as `dom`. Default false. The `locate` tool does this for you." },
+                    "checks": { "type": "boolean", "description": "Also run the UI detectors (empty band, gutter, sibling overlap, raw text, action hierarchy, layout shift, focus after activation) and write each cell's findings as <name>.findings.json. Default false. The `ui_gate` tool does this for you." },
                     "steps": {
                         "type": "array",
                         "description": "Before the screenshot, at most 20: {do:'click'|'fill'|'press'|'wait_for'|'wait_ms', selector?, text?, key?, ms?}.",

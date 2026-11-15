@@ -1,16 +1,19 @@
 // Atlas Crew capture runner. Embedded in atlas (`crew/capture/mod.rs`) and written next to the pinned
 // `playwright` package on the crew server by `atlas crew browsers install`.
 //
-// stdin : one JSON spec {url, widths[], themes[], engines[], slow_network, full_page, steps[], dom?, out_dir}
-// stdout: one JSON report {shots: [{engine, width, theme, path, dom?} | {engine, width, theme, error}]}
+// stdin : one JSON spec {url, widths[], themes[], engines[], slow_network, full_page, steps[], dom?, checks?, out_dir}
+// stdout: one JSON report {shots: [{engine, width, theme, path, dom?, findings?} | {engine, width, theme, error}]}
 // With `dom: true` every cell also writes `<engine>-<width>px-<theme>.dom.json` next to the PNG: the
 // element boxes of the page (see `collectDom`), which the `locate` tool ranks.
+// With `checks: true` every cell also writes `<engine>-<width>px-<theme>.findings.json`: the UI
+// detectors' findings (`detectors.mjs`, a temporary stand-in for ui#1290; an empty list is a pass).
 // Exit 0 whenever a report was printed (a failed cell is an `error` entry, not a crash); the
 // caller checks that every requested combination is present. Anything else goes to stderr.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { detect, observeShifts } from "./detectors.mjs";
 
 // The package lives next to this file, installed by `npm install playwright@<pin>`.
 const require = createRequire(import.meta.url);
@@ -184,6 +187,8 @@ async function shot(browser, spec, engine, width, theme) {
 	try {
 		const page = await context.newPage();
 		page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
+		// Before the first navigation, so the layout shifts of the load itself are recorded.
+		if (spec.checks) await page.addInitScript(observeShifts);
 		if (spec.slow_network) {
 			await page.route("**/*", async (route) => {
 				await new Promise((r) => setTimeout(r, SLOW_DELAY_MS));
@@ -195,13 +200,20 @@ async function shot(browser, spec, engine, width, theme) {
 		if (spec.full_page) await scrollThrough(page);
 		const path = join(spec.out_dir, `${engine}-${width}px-${theme}.png`);
 		await page.screenshot({ path, fullPage: !!spec.full_page });
-		if (!spec.dom) return { ...base, path };
-		// After the screenshot: the page is where the picture shows it (scrolled back to the top).
-		await page.evaluate(() => window.scrollTo(0, 0));
-		const found = await page.evaluate(collectDom, [DOM_MAX_ELEMENTS, DOM_TEXT_MAX]);
-		const dom = join(spec.out_dir, `${engine}-${width}px-${theme}.dom.json`);
-		writeFileSync(dom, JSON.stringify({ url: page.url(), width, ...found }));
-		return { ...base, path, dom };
+		const out = { ...base, path };
+		// After the screenshot: the page is where the picture shows it (scrolled back to the top), and
+		// the detectors' key presses cannot show in it.
+		if (spec.dom) {
+			await page.evaluate(() => window.scrollTo(0, 0));
+			const found = await page.evaluate(collectDom, [DOM_MAX_ELEMENTS, DOM_TEXT_MAX]);
+			out.dom = join(spec.out_dir, `${engine}-${width}px-${theme}.dom.json`);
+			writeFileSync(out.dom, JSON.stringify({ url: page.url(), width, ...found }));
+		}
+		if (spec.checks) {
+			out.findings = join(spec.out_dir, `${engine}-${width}px-${theme}.findings.json`);
+			writeFileSync(out.findings, JSON.stringify(await detect(page)));
+		}
+		return out;
 	} catch (e) {
 		return { ...base, error: String(e && e.message ? e.message : e).split("\n")[0] };
 	} finally {

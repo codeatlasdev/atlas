@@ -28,7 +28,7 @@ final _router = GoRouter(
   routes: [
     // ── Shell: one branch per tab; the bar is visible here ─────────────────
     StatefulShellRoute(
-      builder: (context, state, shell) => _ShellScaffold(shell: shell),
+      builder: (context, state, shell) => ShellScaffold(shell: shell),
       navigatorContainerBuilder: (context, shell, children) =>
           FadeBranches(index: shell.currentIndex, children: children),
       branches: [
@@ -107,12 +107,14 @@ final _router = GoRouter(
 
 // ── Shell scaffold ─────────────────────────────────────────────────────────
 
-class _ShellScaffold extends ConsumerWidget {
-  const _ShellScaffold({required this.shell});
+/// The tabs' frame: the branch stack and the floating bar. It reads no provider itself, so a
+/// crew push (which changes the Inbox badge) does not rebuild it; [_InboxBadgedTabBar] does.
+class ShellScaffold extends StatelessWidget {
+  const ShellScaffold({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
@@ -125,24 +127,33 @@ class _ShellScaffold extends ConsumerWidget {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: Space.md),
-                child: FloatingTabBar(
-                  currentIndex: shell.currentIndex,
-                  onTabSelected: (i) => shell.goBranch(
-                    i,
-                    initialLocation: i == shell.currentIndex,
-                  ),
-                  inboxCount:
-                      ref.watch(inboxProvider).length +
-                      unreadCount(
-                        ref.watch(recentActivityProvider),
-                        ref.watch(inboxSeenProvider),
-                      ),
-                ),
+                child: _InboxBadgedTabBar(shell: shell),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The tab bar with the Inbox count: the one widget that follows the inbox providers.
+class _InboxBadgedTabBar extends ConsumerWidget {
+  const _InboxBadgedTabBar({required this.shell});
+  final StatefulNavigationShell shell;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FloatingTabBar(
+      currentIndex: shell.currentIndex,
+      onTabSelected: (i) =>
+          shell.goBranch(i, initialLocation: i == shell.currentIndex),
+      inboxCount:
+          ref.watch(inboxProvider).length +
+          unreadCount(
+            ref.watch(recentActivityProvider),
+            ref.watch(inboxSeenProvider),
+          ),
     );
   }
 }

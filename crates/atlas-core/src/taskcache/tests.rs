@@ -398,7 +398,10 @@ fn a_hit_on_a_small_entry_takes_under_100_ms() {
         start.elapsed()
     };
     let best = (0..5).map(|_| hit()).min().unwrap();
-    assert!(best < Duration::from_millis(100), "the best of five hits took {best:?}");
+    assert!(
+        best < Duration::from_millis(100),
+        "the best of five hits took {best:?}"
+    );
 }
 
 #[test]

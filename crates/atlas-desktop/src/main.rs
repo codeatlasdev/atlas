@@ -58,6 +58,7 @@ mod shell_env;
 // Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod shots;
+mod stderr_log;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -542,6 +543,8 @@ fn wait_for_predecessor() {
 fn main() {
     #[cfg(windows)]
     wait_for_predecessor();
+    // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.
+    stderr_log::install();
     diag::install_panic_hook();
     #[cfg(target_os = "linux")]
     linux_gfx::log_startup();

@@ -163,7 +163,8 @@ class Themes {
 	/** Hot reload: any change under the user dir re-reads it (debounced; saves arrive as several events). */
 	private async watch() {
 		await host.fsMkdir(this.userDir).catch(() => {});
-		await host.fsWatch(this.userDir, WATCH_ID).catch(() => {});
+		// Only hot reload is lost (themes load at start); a toast at boot would blame the user for it.
+		await host.fsWatch(this.userDir, WATCH_ID).catch((e) => console.warn("theme folder is not watched", e));
 		let timer: number | undefined;
 		await listen<{ ev: string; id?: string }>("host://event", (e) => {
 			if (e.payload.ev !== "fs_event" || e.payload.id !== WATCH_ID) return;

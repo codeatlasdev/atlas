@@ -199,24 +199,10 @@ pub fn edit_at<T>(
     Ok(out)
 }
 
-/// tmp + rename, so a crash never leaves a half-written file. The temp name is unique per call: writers sharing
-/// one name interleaved their bytes or lost the rename to each other. A failed write removes its temp file.
+/// A crash never leaves a half-written file (`atlas_core::fs::write_atomic`); the error names the file.
 pub fn write_atomic(p: &Path, text: &str) -> Result<(), String> {
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut name = p.file_name().unwrap_or_default().to_os_string();
-    name.push(format!(".{}.{seq}.tmp~", std::process::id()));
-    let tmp = p.with_file_name(name);
-    let result = std::fs::write(&tmp, text)
-        .map_err(|e| format!("{}: {e}", tmp.display()))
-        .and_then(|()| std::fs::rename(&tmp, p).map_err(|e| format!("{}: {e}", p.display())));
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    atlas_core::fs::write_atomic(p, text.as_bytes(), atlas_core::fs::Mode::Default)
+        .map_err(|e| format!("{}: {e}", p.display()))
 }
 
 /// What Atlas last saw of a checkout while it still existed. A deleted or moved project has no

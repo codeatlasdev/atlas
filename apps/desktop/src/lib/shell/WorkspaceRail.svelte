@@ -251,7 +251,7 @@
 			transition: none;
 		}
 	}
-	/* Windows and Linux: a native title bar above, no traffic lights to clear. */
+	/* Windows and Linux: the page's own title row above, no traffic lights to clear. */
 	:global(html.opaque-window) .rail {
 		padding-top: 8px;
 	}

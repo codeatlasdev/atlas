@@ -118,7 +118,7 @@ pub fn init_script(cache: Option<&ThemeCache>) -> String {
     }
     // Linux tiling WM (Hyprland, Sway, i3): the page draws its title row without caption buttons (#269).
     #[cfg(target_os = "linux")]
-    if crate::linux_gfx::is_tiling(std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref()) {
+    if crate::linux_gfx::is_tiling(|k| std::env::var(k).ok()) {
         js.push_str("window.__ATLAS_TILING__=true;");
     }
     if let Some(c) = cache {

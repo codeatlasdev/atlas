@@ -58,6 +58,7 @@ mod shell_env;
 // Capture: the pure, tested parts are driven only by the macOS side; elsewhere the commands answer "not available".
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod shots;
+mod stderr_log;
 #[cfg(target_os = "macos")]
 mod swipe_clock;
 // Pure, tested decision code driven only by the AppKit side: unused outside macOS, still built so its tests run.
@@ -119,7 +120,18 @@ fn show_main(app: &AppHandle) {
         webview_win::sync(app);
         return;
     }
-    // Agent instances need the private virtual display (macOS); elsewhere they stay hidden.
+    // Linux: the private headless display of the instance (`atlas_core::agent_display`); shown without focus, and
+    // only after the environment is verified once more. macOS: the private virtual display.
+    #[cfg(target_os = "linux")]
+    match agent_mode::verify_display() {
+        Ok(()) => {
+            let _ = w.show();
+        }
+        Err(e) => {
+            eprintln!("atlas-agent: REFUSED to show the window: {e}");
+            app.exit(3);
+        }
+    }
     #[cfg(target_os = "macos")]
     {
         // Watching first: whatever the placement below does or fails to do, the window cannot stay on his screen.
@@ -173,6 +185,7 @@ macro_rules! handlers {
             cmds::open_in_editor,
             cmds::open_url,
             cmds::reveal,
+            cmds::reveal_path,
             cmds::theme_unpack,
             cmds::theme_unpack_cleanup,
             cmds::theme_read_packed,
@@ -542,7 +555,17 @@ fn wait_for_predecessor() {
 fn main() {
     #[cfg(windows)]
     wait_for_predecessor();
+    // First, so GTK/WebKit messages printed while starting (and by every web process) are kept.
+    stderr_log::install();
     diag::install_panic_hook();
+    // Linux agent instance: before anything touches a display, the environment must point at its own private one.
+    #[cfg(target_os = "linux")]
+    if agent_mode::Mode::current() == agent_mode::Mode::Agent
+        && let Err(e) = agent_mode::verify_display()
+    {
+        eprintln!("atlas-agent: REFUSED to show the window: {e}");
+        std::process::exit(3);
+    }
     #[cfg(target_os = "linux")]
     linux_gfx::log_startup();
     boot::start();
@@ -552,15 +575,24 @@ fn main() {
     let builder = tauri::Builder::default();
     // Windows/Linux: a second launch (Start menu, taskbar, `atlas desktop`) focuses the running app instead of
     // starting another one with its own WebView2 tree (~600 MB) racing for the control socket. Registered first,
-    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id.
+    // as the plugin requires. macOS: LaunchServices already keeps one instance per bundle id. Never in an agent
+    // instance: it runs beside the user's app, which would otherwise absorb its launch and raise his window (#281).
     #[cfg(not(target_os = "macos"))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-        open_path::open(
-            app,
-            open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
-        );
-        show_main(app)
-    }));
+    let builder = if agent_mode::Mode::current().single_instance() {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // The launch that handed off exits 0 without a word; this line is where it shows.
+            diag::log(&format!(
+                "single-instance: another launch handed off {argv:?}; showing this window"
+            ));
+            open_path::open(
+                app,
+                open_path::paths_from_argv(&argv, std::path::Path::new(&cwd)),
+            );
+            show_main(app)
+        }))
+    } else {
+        builder
+    };
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())

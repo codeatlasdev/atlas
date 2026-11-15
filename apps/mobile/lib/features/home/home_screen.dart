@@ -9,7 +9,9 @@ import 'package:go_router/go_router.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/latest_only.dart';
 import 'package:atlas_mobile/core/protocol/pty_open.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
@@ -106,7 +108,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (conn.value == null) {
       return conn.isLoading ? (caption: 'Reaching ${device.name}…') : null;
     }
-    if (ref.watch(projectListProvider(device)).value == null) {
+    final first = ref.watch(projectListProvider(device));
+    if (first.isLoading && !first.hasValue) {
       return (caption: 'Loading projects…');
     }
     return null;
@@ -212,19 +215,35 @@ class _Dashboard extends ConsumerStatefulWidget {
 
 class _DashboardState extends ConsumerState<_Dashboard> {
   Timer? _timer;
+  final _poll = LatestOnly();
 
   @override
   void initState() {
     super.initState();
     // Services have no push: poll the project list. Agent states are pushed live.
-    _timer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => ref.invalidate(projectListProvider(widget.device)),
-    );
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _tick());
+  }
+
+  /// One poll: only in the foreground, and never behind an unanswered one. A computer that is not
+  /// connected sends nothing (`requireMux` throws before any command) and the screen keeps its list.
+  Future<void> _tick() async {
+    if (!appInForeground()) return;
+    final ticket = _poll.tryBegin();
+    if (ticket == null) return;
+    final provider = projectListProvider(widget.device);
+    try {
+      ref.invalidate(provider);
+      await ref.read(provider.future);
+    } catch (_) {
+      // The screen shows the failure (or keeps the last list); a poll has nobody to tell.
+    } finally {
+      ticket.done();
+    }
   }
 
   @override
   void dispose() {
+    _poll.close();
     _timer?.cancel();
     super.dispose();
   }
@@ -343,7 +362,7 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                 ),
               ),
               // ── Content slivers ──────────────────────────────────────────
-              if (!connected)
+              if (!connected && !projects.hasValue)
                 // EmptyState scrolls itself (a LayoutBuilder: no intrinsic sizes), so the
                 // sliver hands it all the room that is left.
                 SliverFillRemaining(
@@ -356,6 +375,14 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                   ),
                 )
               else ...[
+                // The computer is out of reach but its last list is still here.
+                if (!connected)
+                  SliverToBoxAdapter(
+                    child: OfflineStrip(
+                      device: widget.device,
+                      suffix: ' · projects shown',
+                    ),
+                  ),
                 // Attention cards + integrations + section header
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(
@@ -390,8 +417,20 @@ class _DashboardState extends ConsumerState<_Dashboard> {
                     ],
                   ),
                 ),
-                // Empty state centred in remaining space, or the project list
-                if (list.isEmpty)
+                // The project list, kept through a reconnect or a failed refresh; "No projects
+                // yet" only when the computer answered "none". Nothing loaded yet: the spinner,
+                // or the error with "Try again" (AsyncView).
+                if (!projects.hasValue)
+                  SliverFillRemaining(
+                    child: AsyncView<List<ProjectInfo>>(
+                      value: projects,
+                      errorTitle: "Couldn't read the projects",
+                      onRetry: () =>
+                          ref.invalidate(projectListProvider(widget.device)),
+                      data: (_) => const SizedBox.shrink(),
+                    ),
+                  )
+                else if (list.isEmpty)
                   const SliverFillRemaining(
                     child: Padding(
                       padding: EdgeInsets.only(bottom: kFloatingBarScrollPad),

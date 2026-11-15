@@ -6,11 +6,11 @@
 
 pub mod claude;
 pub mod codex;
-mod launch;
+pub(crate) mod launch;
 pub mod omp;
 pub mod opencode;
 
-pub use launch::TurnCtx;
+pub use launch::{Exec, TurnCtx};
 // The codex argv tests (crew/tests/engines.rs, unix-only) build their own server.
 #[cfg(all(test, unix))]
 pub(crate) use launch::McpServer;
@@ -267,11 +267,11 @@ pub(crate) async fn run_fake(bin: &str, ctx: TurnCtx<'_>) -> Result<TurnResult, 
         cmd.arg("--resume").arg(sid);
     }
     cmd.arg(ctx.prompt);
-    let out = launch::output(cmd, ctx.cancel, "fake engine").await?;
-    if !out.status.success() {
-        return Err(format!("fake engine exited {}", out.status));
+    let out = launch::output(ctx.exec, cmd, ctx.cancel, "fake engine").await?;
+    if !out.success() {
+        return Err(format!("fake engine exited {:?}", out.code));
     }
-    let text = String::from_utf8_lossy(&out.stdout);
+    let text = out.stdout.as_str();
     let trimmed = text.trim();
     let v: serde_json::Value =
         serde_json::from_str(trimmed).unwrap_or(serde_json::json!({ "result": trimmed }));

@@ -41,7 +41,9 @@ async fn resolve_cwd(
                     .into_iter()
                     .find(|c| c.id == id)
                     .ok_or_else(|| format!("unknown crewmate {id}"))?;
-                crate::crew::project::current_work_dir(&hub.crew.dir, &c)
+                // Under isolation the crewmate works in its own folder (the crew user is in its group).
+                let iso = hub.crew.store.isolated(&c.id);
+                crate::crew::project::current_work_dir(&hub.crew.dir, &c, iso.as_ref())
             }
             None => Ok(atlas_core::paths::home_dir()),
         };

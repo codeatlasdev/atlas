@@ -218,7 +218,8 @@ fn only_the_allowed_files_are_exported() {
                     "secrets.json"
                 ]
                 .iter()
-                .any(|f| n.ends_with(&format!("/{f}"))),
+                .any(|f| n.ends_with(&format!("/{f}")))
+                || n.contains("/usage-") && n.ends_with(".jsonl.gz"),
             "unexpected entry {n}"
         );
     }
@@ -235,6 +236,21 @@ fn is_exported_decides_by_file_name_alone() {
     assert!(is_exported("memory.md", false));
     assert!(is_exported("tasks.jsonl", false));
     assert!(is_exported("usage.jsonl", false));
+    assert!(
+        is_exported("usage-2026-11-14.jsonl.gz", false),
+        "rotated usage keeps its history"
+    );
+    for no in [
+        "usage-.jsonl.gz",
+        "usage-2026-11-14.jsonl",
+        "usage-2026-11-14.jsonl.gz.bak",
+        "usage-../x.jsonl.gz",
+        "usage-2026-1-4.jsonl.gz",
+        "usage-2026-13-45.jsonl.gz",
+        "usage-2026-11-14.jsonl.gz/x",
+    ] {
+        assert!(!is_exported(no, true), "{no}");
+    }
     assert!(!is_exported("secrets.json", false));
     assert!(is_exported("secrets.json", true));
     for no in ["session.json", "work", "x_seen.jsonl", "auth.json", ".env"] {
@@ -604,4 +620,76 @@ fn with_extra_entry(bytes: &[u8], path: &str) -> Vec<u8> {
     let mut entries = read_all(bytes);
     entries.push((path.to_string(), b"x".to_vec()));
     build(&entries)
+}
+
+// #295: usage history older than the live file leaves in the archive as its rotated gzips and comes back:
+// a backup keeps the totals, not only the newest part.
+#[test]
+fn rotated_usage_survives_an_export_and_import() {
+    let t = tempfile::tempdir().unwrap();
+    let mut src = CrewStore::new(t.path());
+    src.usage_max = 2 * 1024;
+    src.save_crewmate(&crewmate("aaa", "Aria")).unwrap();
+    for d in 0..3u64 {
+        for n in 0..60u64 {
+            src.append_usage(
+                "aaa",
+                "claude",
+                1_700_000_000 + d * 86_400 + n,
+                &UsageRecord {
+                    input_tokens: Some(n + 1),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+    }
+    let rotated_names: Vec<String> = std::fs::read_dir(src.crewmate_dir("aaa"))
+        .unwrap()
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| n.starts_with("usage-"))
+        .collect();
+    assert!(!rotated_names.is_empty(), "fixture: usage rotated");
+    let want = src.read_usage(Some("aaa"), 0);
+    assert_eq!(want.len(), 180);
+
+    let bytes = export_bytes(&src, &[], false);
+    let names = entry_names(&bytes);
+    for r in &rotated_names {
+        assert!(
+            names.contains(&format!("crew/aaa/{r}")),
+            "{r} missing from {names:?}"
+        );
+    }
+
+    let t2 = tempfile::tempdir().unwrap();
+    let dst = CrewStore::new(t2.path());
+    archive::import(&dst, &bytes[..], false).unwrap();
+    assert_eq!(
+        dst.read_usage(Some("aaa"), 0),
+        want,
+        "history and totals arrive whole"
+    );
+}
+
+// #295: an import entry shaped like a rotated usage file but not named like one is refused, and a refused
+// archive writes nothing.
+#[test]
+fn an_import_entry_with_a_bad_rotated_usage_name_is_refused() {
+    let (_t, src) = populated();
+    let good = export_bytes(&src, &[], false);
+    for bad in [
+        "crew/aaa/usage-evil.jsonl.gz",
+        "crew/aaa/usage-2026-11-14.jsonl.gz.sh",
+        "crew/aaa/usage-..-x.jsonl.gz",
+        "crew/aaa/usage-2026-11-14/x.jsonl.gz",
+        "crew/aaa/usage-.jsonl.gz",
+    ] {
+        let evil = with_extra_entry(&good, bad);
+        let t2 = tempfile::tempdir().unwrap();
+        let dst = CrewStore::new(t2.path());
+        let e = archive::import(&dst, &evil[..], false).unwrap_err();
+        assert!(matches!(e, ImportError::BadEntry(_)), "{bad}: {e}");
+        assert!(dst.list_crewmates().is_empty(), "{bad}");
+    }
 }

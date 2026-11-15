@@ -83,6 +83,7 @@ async fn run(dir: &Path, result: &str, commands: &[Ran]) -> Verdict {
     review(
         &Input {
             work_dir: dir,
+            git_env: &[],
             repo: None,
             result,
             commands,
@@ -359,6 +360,7 @@ async fn references_in_commits_and_in_a_published_comment_are_checked() {
     let v = review(
         &Input {
             work_dir: d,
+            git_env: &[],
             repo: Some("o/r"),
             result: "Opened, refs #12.",
             commands: &cmds,

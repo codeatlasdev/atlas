@@ -28,13 +28,13 @@ pub(super) async fn run(ctx: TurnCtx<'_>) -> Result<TurnResult, String> {
 
     cmd.arg(ctx.prompt);
 
-    let out = launch::output(cmd, ctx.cancel, "claude").await?;
+    let out = launch::output(ctx.exec, cmd, ctx.cancel, "claude").await?;
     let (engine, session) = (ctx.engine, ctx.session);
 
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = out.stdout.as_str();
 
     // A non-zero exit that still printed a result is parsed below; one that printed nothing is the error.
-    if !out.status.success() && stdout.trim().is_empty() {
+    if !out.success() && stdout.trim().is_empty() {
         return Err(launch::exit_error("claude", &out));
     }
 

@@ -39,8 +39,11 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/linux-headless.sh"
 
-# stderr lines that mean a broken launch (extended regex, case-sensitive).
-MARKERS='Aborting|Process crashed|[Ww]eb ?[Pp]rocess (crashed|terminated|died)|terminated unexpectedly|Segmentation fault|SIGSEGV|SIGABRT|SIGBUS|panicked at|EGL_BAD|EGL_NOT_INITIALIZED|Could not create (an )?(EGL|GL)|Failed to create (an )?(EGL|GBM|GL)|Cannot get default EGL|libEGL warning: (failed|DRI2: failed)|MESA: error|Error 71 \(Protocol error\)|CRITICAL \*\*|-CRITICAL|Refused to (load|execute|connect|apply|evaluate|frame|create)|Content[- ]Security[- ]Policy|CONSOLE (JS )?ERROR|Uncaught|error while loading shared libraries|cannot open shared object'
+# stderr lines that mean a broken launch (extended regex, case-sensitive). Not `libEGL warning: failed to get driver name`
+# or `MESA: error: ZINK: vkCreateInstance failed`: Mesa probing a GPU/Vulkan a headless machine does not have before it
+# falls back to llvmpipe (seen on GitHub runners, with a page that rendered). A GL that really cannot start shows as
+# WebKit's `Could not create ... EGL`, a missing window or a blank page.
+MARKERS='Aborting|Process crashed|[Ww]eb ?[Pp]rocess (crashed|terminated|died)|terminated unexpectedly|Segmentation fault|SIGSEGV|SIGABRT|SIGBUS|panicked at|EGL_BAD|EGL_NOT_INITIALIZED|Could not create (an )?(EGL|GL)|Failed to create (an )?(EGL|GBM|GL)|Cannot get default EGL|Error 71 \(Protocol error\)|CRITICAL \*\*|-CRITICAL|Refused to (load|execute|connect|apply|evaluate|frame|create)|Content[- ]Security[- ]Policy|CONSOLE (JS )?ERROR|Uncaught|error while loading shared libraries|cannot open shared object'
 
 # Known, tracked, harmless today; each entry names why. Everything else that matches MARKERS fails.
 #  - Gtk-CRITICAL gtk_widget_get_scale_factor: printed once at startup by the tray/dock window creation (GTK3 called on a

@@ -545,6 +545,109 @@ async fn info_of_a_busy_atlas_is_running_not_absent() {
     assert!(info.is_busy(), "{info:?}");
 }
 
+/// A live process whose executable is named `atlas` (the singleton lock only trusts a pid that is an
+/// atlas) with its pid in `.logs/.tui.lock`: a runner as far as `existing_pid` can tell.
+#[cfg(unix)]
+fn fake_runner(root: &Path) -> FakeRunner {
+    let exe = root.join("atlas");
+    std::fs::copy("/bin/sleep", &exe).unwrap();
+    let child = std::process::Command::new(&exe).arg("60").spawn().unwrap();
+    std::fs::create_dir_all(root.join(".logs")).unwrap();
+    std::fs::write(root.join(".logs/.tui.lock"), child.id().to_string()).unwrap();
+    FakeRunner(child)
+}
+
+/// Killed when the test ends, a failed one included.
+#[cfg(unix)]
+struct FakeRunner(std::process::Child);
+
+#[cfg(unix)]
+impl Drop for FakeRunner {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+// Regression (review of #410): a busy run came back with pid 0. Its details are unknown, but its pid
+// is in the singleton lock, and that is the pid `down()` has to wait for.
+#[cfg(unix)]
+#[tokio::test]
+async fn info_of_a_busy_atlas_names_the_pid_in_its_lock() {
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    let runner = fake_runner(dir.path());
+    let info = info(dir.path())
+        .await
+        .expect("a busy atlas was reported absent");
+    assert!(info.is_busy(), "{info:?}");
+    assert_eq!(info.pid, i64::from(runner.0.id()));
+}
+
+// Regression (review of #410): `down()` waited for pid 0, which is "gone" at once: "stopped" while the
+// runner lived, and a worktree deleted under it. It waits for the runner's real pid, and says so when
+// it cannot know it.
+#[cfg(unix)]
+#[tokio::test]
+async fn down_of_a_busy_run_waits_for_its_real_pid_never_pid_zero() {
+    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    // No pid to be found for the busy run: down() cannot tell when it is gone, so it does not claim to.
+    let err = crate::runner::down(dir.path(), Duration::from_secs(1))
+        .await
+        .expect_err("down() claimed an outcome for a run whose pid it does not know");
+    assert!(err.contains("busy"), "{err}");
+
+    // Pid known; the run loop frees up while `down()` waits for a slot, so the shutdown is accepted.
+    let runner = fake_runner(dir.path());
+    let root = dir.path().to_path_buf();
+    let down =
+        tokio::spawn(async move { crate::runner::down(&root, Duration::from_secs(1)).await });
+    tokio::time::sleep(Duration::from_millis(450)).await;
+    tokio::spawn(async move {
+        while let Some(req) = rx.recv().await {
+            let _ = req.reply.send(ControlResponse::ok(json!({})));
+        }
+    });
+    // The fake runner ignores the shutdown and lives: the outcome is a timeout on ITS pid.
+    let out = down.await.unwrap().unwrap();
+    assert!(
+        matches!(out, crate::runner::DownOutcome::Timeout { pid } if pid == i64::from(runner.0.id())),
+        "{out:?}"
+    );
+}
+
+// Regression (review of #410): `atlas dev` retried while the run answered "busy" (16 tries of a 4 s
+// wait each, a minute of silence before the terminal is set up). "Busy" proves the socket is up: it
+// bails at once, and never offers to kill the run.
+#[cfg(unix)]
+#[tokio::test]
+async fn atlas_dev_against_a_busy_run_says_so_at_once_and_does_not_offer_to_kill_it() {
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    std::fs::write(
+        dir.path().join("atlas.yaml"),
+        "name: demo\nservices:\n  api: { command: \"sleep 1\" }\n",
+    )
+    .unwrap();
+    let _runner = fake_runner(dir.path());
+    let out = tokio::time::timeout(
+        Duration::from_secs(3),
+        crate::tui::run(dir.path(), &crate::config::SelectionRequest::default()),
+    )
+    .await
+    .expect("atlas dev kept retrying against a busy run");
+    let err = out.expect_err("atlas dev started over a busy run");
+    assert!(err.to_string().contains("busy"), "{err:#}");
+}
+
+#[tokio::test]
+async fn wait_gone_never_treats_pid_zero_as_gone() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let out = crate::runner::wait_gone(dir.path(), 0, Duration::from_millis(300)).await;
+    assert!(
+        matches!(out, crate::runner::DownOutcome::Timeout { pid: 0 }),
+        "{out:?}"
+    );
+}
+
 // Regression #304: connections were not capped. One over the limit is told "busy" and closed; the
 // ones already served are untouched.
 #[tokio::test]

@@ -142,6 +142,7 @@ pub async fn detach(
 }
 
 /// `atlas down`: ask the running atlas to stop everything and wait for it to go.
+#[derive(Debug)]
 pub enum DownOutcome {
     NotRunning,
     Stopped {
@@ -157,6 +158,12 @@ pub async fn down(root_dir: &Path, wait: Duration) -> Result<DownOutcome, String
     let Some(info) = control::info(root_dir).await else {
         return Ok(DownOutcome::NotRunning);
     };
+    if info.is_busy() && info.pid <= 0 {
+        // Alive, but with no pid to wait on: "stopped" would be a guess, and callers delete worktrees on it.
+        return Err(
+            "atlas dev is running but busy and its pid is unknown; try again in a moment".into(),
+        );
+    }
     let resp = control::call(root_dir, "shutdown", json!({})).await?;
     if !resp.ok {
         return Err(resp.error.unwrap_or_else(|| "shutdown refused".into()));
@@ -167,6 +174,10 @@ pub async fn down(root_dir: &Path, wait: Duration) -> Result<DownOutcome, String
 /// Wait until the atlas with `pid` has exited (process dead, or its lock free, so a
 /// recycled pid cannot fool us).
 pub async fn wait_gone(root_dir: &Path, pid: i64, wait: Duration) -> DownOutcome {
+    // Pid 0 (unknown) is no process: `pid_alive` says it is dead, and that is not "gone".
+    if pid <= 0 {
+        return DownOutcome::Timeout { pid };
+    }
     let deadline = std::time::Instant::now() + wait;
     while std::time::Instant::now() < deadline {
         let alive = atlas_core::sys::pid_alive(pid as u32);

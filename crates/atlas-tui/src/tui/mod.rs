@@ -246,7 +246,8 @@ pub async fn run(root_dir: &Path, select: &config::SelectionRequest) -> Result<(
         // The lock is held but the socket may still be coming up: give it a moment.
         let mut info = crate::control::info(root_dir).await;
         for _ in 0..15 {
-            if info.as_ref().is_some_and(|i| !i.is_busy()) {
+            // Any answer, "busy" included, proves the socket is up.
+            if info.is_some() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;

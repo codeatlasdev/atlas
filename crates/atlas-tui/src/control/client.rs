@@ -124,7 +124,8 @@ pub struct RunInfo {
 
 impl RunInfo {
     /// `mode` of an atlas that is running but too busy to answer (its request queue or connections
-    /// are full): it is there, only its details are unknown (`pid` 0).
+    /// are full): it is there, only its details are unknown. Its `pid` is the one in its singleton
+    /// lock, 0 when that cannot be read: a pid to wait on, never to treat as gone.
     pub const MODE_BUSY: &'static str = "busy";
 
     pub fn is_busy(&self) -> bool {
@@ -138,9 +139,10 @@ impl RunInfo {
 pub async fn info(root_dir: &Path) -> Option<RunInfo> {
     let resp = call(root_dir, "info", json!({})).await.ok()?;
     if resp.error.as_deref() == Some(super::server::BUSY) {
+        let lock = root_dir.join(".logs/.tui.lock");
         return Some(RunInfo {
             mode: RunInfo::MODE_BUSY.into(),
-            pid: 0,
+            pid: crate::runtime::SingletonLock::existing_pid(&lock).map_or(0, i64::from),
             project: String::new(),
             clients: 0,
         });

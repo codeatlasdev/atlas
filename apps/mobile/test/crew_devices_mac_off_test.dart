@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 
@@ -35,8 +36,11 @@ class _Computer implements Transport {
     if (asleep) {
       return;
     }
+    // `info` like a current hostd: the app checks `proto` on connect (#302).
     final data = m['cmd'] == 'crew_servers'
         ? {'servers': relayed}
+        : m['cmd'] == 'info'
+        ? <String, Object?>{'proto': kAppProto}
         : <String, Object?>{};
     scheduleMicrotask(
       () => _in.add(jsonEncode({'id': m['id'], 'ok': true, 'data': data})),

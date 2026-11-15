@@ -240,11 +240,12 @@ pub(crate) fn tick_schedule(hub: &Arc<Hub>, now_s: u64) {
 /// Called by the runner when a task completes. Fires any `Crewmate` triggers that
 /// watch `finished_crewmate_id` for `state`.
 ///
-/// The integration call in `runner.rs` is added by the main agent.
+/// A crewmate already in the chain that led to the finished task is not started again (a
+/// `chain_refused` audit says so): two crewmates triggering each other on `done` stop after one round.
 pub(crate) fn on_task_finished(
     hub: &Hub,
     finished_crewmate_id: &str,
-    _task_id: &str,
+    task_id: &str,
     state: TaskState,
 ) {
     if hub.crew.is_paused() {
@@ -263,6 +264,16 @@ pub(crate) fn on_task_finished(
         .map(|b| b.name)
         .unwrap_or_else(|| finished_crewmate_id.to_string());
     let event = format!("Crewmate {finished_name} {on_str}");
+    // Who ran before this task, and this crewmate itself.
+    let mut lineage = hub
+        .crew
+        .store
+        .read_tasks(finished_crewmate_id, usize::MAX)
+        .into_iter()
+        .find(|t| t.id == task_id)
+        .map(|t| t.chain)
+        .unwrap_or_default();
+    lineage.push(finished_crewmate_id.to_string());
 
     // Need an Arc to call enqueue.
     let Some(hub_arc) = hub.crew.hub_arc() else {
@@ -294,8 +305,29 @@ pub(crate) fn on_task_finished(
         let now = now_s();
         let mut changed = false;
         for i in indices {
+            if lineage.contains(&crewmate.id) {
+                eprintln!(
+                    "atlas crew: crewmate {}: chain trigger {} refused: it already ran in this chain ({})",
+                    crewmate.id,
+                    crewmate.triggers[i].id,
+                    lineage.join(" -> ")
+                );
+                hub.crew.audit.record(
+                    Some(&crewmate.id),
+                    "chain_refused",
+                    serde_json::json!({
+                        "trigger_id": crewmate.triggers[i].id,
+                        "from_crewmate": finished_crewmate_id,
+                        "from_task": task_id,
+                        "chain": lineage,
+                    }),
+                );
+                continue;
+            }
             let prompt = render_prompt(&crewmate.triggers[i].prompt, &event);
-            let task = Task::new("trigger", &prompt);
+            let mut task = Task::new("trigger", &prompt);
+            task.trigger_id = Some(crewmate.triggers[i].id.clone());
+            task.chain = lineage.clone();
             let stored = hub.crew.store.append_task(&crewmate.id, &task);
             if let Err(e) = &stored {
                 eprintln!(

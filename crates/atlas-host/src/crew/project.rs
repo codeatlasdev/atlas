@@ -114,6 +114,55 @@ pub async fn fetch(work_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Take a deleted crewmate's checkout out of the shared clone: `git worktree remove --force` (the
+/// agent's uncommitted work goes with the crewmate), a prune of what is left, and its local branches
+/// `atlas/<id>/*`. Without it the shared clone keeps the worktree's metadata and the branch forever,
+/// and a later `worktree add` for the same branch can refuse. A crewmate with no Git checkout has
+/// nothing to remove. Errors are returned so the caller can say what was left; every step still runs.
+pub async fn remove_checkout(base_dir: &Path, crewmate_id: &str) -> Result<(), String> {
+    let worktree = work_dir(base_dir, crewmate_id);
+    if !worktree.join(".git").exists() {
+        return Ok(());
+    }
+    // The shared clone is the first entry of the worktree list, read from inside the worktree.
+    let list = git_run(&["worktree", "list", "--porcelain"], Some(&worktree)).await?;
+    let shared = list
+        .lines()
+        .find_map(|l| l.strip_prefix("worktree "))
+        .map(|s| PathBuf::from(s.trim()))
+        .ok_or("git worktree list named no shared clone")?;
+
+    let mut left = vec![];
+    let wt = worktree.to_string_lossy().into_owned();
+    if let Err(e) = git_run(&["worktree", "remove", "--force", &wt], Some(&shared)).await {
+        left.push(e);
+    }
+    if let Err(e) = git_run(&["worktree", "prune"], Some(&shared)).await {
+        left.push(e);
+    }
+    let pattern = format!("refs/heads/atlas/{crewmate_id}/");
+    match git_run(
+        &["for-each-ref", "--format=%(refname:short)", &pattern],
+        Some(&shared),
+    )
+    .await
+    {
+        Ok(branches) => {
+            for b in branches.lines().filter(|b| !b.is_empty()) {
+                if let Err(e) = git_run(&["branch", "-D", b], Some(&shared)).await {
+                    left.push(e);
+                }
+            }
+        }
+        Err(e) => left.push(e),
+    }
+    if left.is_empty() {
+        Ok(())
+    } else {
+        Err(left.join("; "))
+    }
+}
+
 // ─── atlas.yaml ───────────────────────────────────────────────────────────────
 
 /// Read `atlas.yaml` from `work_dir` and extract the project name, service
@@ -203,13 +252,30 @@ pub fn ssh_to_https(url: &str) -> String {
     url.to_string()
 }
 
+/// Test-only: the program `git_run` starts in place of `git` (a fake that hangs, or records its calls).
+#[cfg(test)]
+pub(crate) static TEST_GIT_PROGRAM: parking_lot::Mutex<Option<String>> =
+    parking_lot::Mutex::new(None);
+
+fn git_program() -> String {
+    #[cfg(test)]
+    if let Some(p) = TEST_GIT_PROGRAM.lock().clone() {
+        return p;
+    }
+    "git".to_string()
+}
+
 async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
-    let mut cmd = Command::new("git");
+    let mut cmd = Command::new(git_program());
     cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let out = cmd.output().await.map_err(|e| format!("git error: {e}"))?;
+    // A deadline and a tree kill on every call: a clone that never returns used to hold the checkout (and the task)
+    // until the 2 h task timeout, and a cancel could not reach it (#296).
+    let out = crate::crew::proc::run_bounded(&mut cmd, "git", crate::crew::proc::call_deadline())
+        .await
+        .map_err(|e| format!("git error: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -218,6 +284,19 @@ async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
+}
+
+/// The lock of one repo's shared clone: two crewmates of the same repo take turns, crewmates of different repos check
+/// out at the same time.
+fn checkout_lock(shared_dir: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    type Locks = std::collections::HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>;
+    static LOCKS: parking_lot::Mutex<Option<Locks>> = parking_lot::Mutex::new(None);
+    LOCKS
+        .lock()
+        .get_or_insert_with(Default::default)
+        .entry(shared_dir.to_path_buf())
+        .or_default()
+        .clone()
 }
 
 /// The branch checked out in `dir`; `None` for a detached HEAD or a folder that is not a git repo.
@@ -234,16 +313,15 @@ async fn prepare_git(
     crewmate_id: &str,
     base_dir: &Path,
 ) -> Result<PathBuf, String> {
-    // One checkout at a time: the clone starts in the background when a crewmate gets its project, and a task may ask for
-    // the same checkout while it runs; the second caller waits and then finds it ready (it used to hit a half-made
-    // clone). Clones are rare, so one lock for all of them is enough.
-    static CHECKOUT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _one_at_a_time = CHECKOUT.lock().await;
-
     let url = ssh_to_https(url);
     let url = url.as_str();
     let slug = git_slug(url);
     let shared_dir = base_dir.join("projects").join(&slug);
+    // One checkout of a repo at a time: the clone starts in the background when a crewmate gets its project, and a task
+    // may ask for the same checkout while it runs; the second caller waits and then finds it ready (it used to hit a
+    // half-made clone). Per repo: a clone of one repo never holds up the checkout of another (#296).
+    let lock = checkout_lock(&shared_dir);
+    let _one_at_a_time = lock.lock().await;
     let worktree = work_dir(base_dir, crewmate_id);
 
     // Clone into shared dir if it doesn't exist yet.
@@ -534,5 +612,63 @@ services:
     fn ssh_to_https_leaves_non_github_unchanged() {
         let url = "git@gitlab.com:owner/repo.git";
         assert_eq!(ssh_to_https(url), url);
+    }
+
+    fn git_out(dir: &Path, args: &[&str]) -> String {
+        let o = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "git {args:?}");
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    }
+
+    // Regression (#297): deleting a crewmate removed `crew/<id>/` with `remove_dir_all` only, so the
+    // shared clone kept the worktree's metadata and the local branch `atlas/<id>/...` for good.
+    #[tokio::test]
+    async fn removing_a_checkout_leaves_no_worktree_or_branch_in_the_shared_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = remote_repo(tmp.path());
+        let base = tmp.path().join("hostd");
+        let p = ProjectRef::Git {
+            url,
+            branch: Some("feat/x".into()),
+        };
+        let a = prepare(&p, "crewmate-a", &base).await.unwrap();
+        let b = prepare(&p, "crewmate-b", &base).await.unwrap();
+        // Uncommitted work in the worktree goes with the crewmate.
+        std::fs::write(a.join("scratch.txt"), "wip").unwrap();
+        let shared = std::fs::read_dir(base.join("projects"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-a/*"])
+                .contains("atlas/crewmate-a/feat/x")
+        );
+
+        remove_checkout(&base, "crewmate-a").await.unwrap();
+
+        assert!(!a.exists(), "the worktree directory is gone");
+        let worktrees = git_out(&shared, &["worktree", "list", "--porcelain"]);
+        assert!(!worktrees.contains("crewmate-a"), "{worktrees}");
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-a/*"])
+                .trim()
+                .is_empty()
+        );
+        // The other crewmate is untouched, and a new worktree for the same id can be made again.
+        assert!(worktrees.contains("crewmate-b") && b.join(".git").exists());
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-b/*"]).contains("crewmate-b")
+        );
+        prepare(&p, "crewmate-a", &base)
+            .await
+            .expect("same id again");
+        // A crewmate with no checkout has nothing to remove.
+        remove_checkout(&base, "never-had-one").await.unwrap();
     }
 }

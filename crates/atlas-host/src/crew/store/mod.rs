@@ -392,6 +392,10 @@ pub struct Task {
     /// "Downloading …" instead of a bare "Queued" (a first task on a big repo waited over a minute with no word).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preparing: Option<String>,
+    /// Why a queued task is not starting yet ("server busy": every agent slot of the crew server is taken); the chat
+    /// says so instead of a bare "Queued". Cleared when the agent starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_for: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageRecord>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -424,6 +428,11 @@ pub struct Task {
     /// `/ui` prefix on Telegram) or by the agent (`set_ui`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ui: bool,
+    /// The crewmates whose finished tasks led to this one through `Crewmate` triggers, oldest first
+    /// (empty for a task nobody chained). A chain trigger refuses to start a crewmate already in it,
+    /// so two crewmates triggering each other on `done` run one round and stop.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chain: Vec<String>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -450,6 +459,7 @@ impl Task {
             answer: None,
             title: None,
             preparing: None,
+            waiting_for: None,
             ask: None,
             trigger_id: None,
             usage: None,
@@ -461,6 +471,7 @@ impl Task {
             resumed: false,
             attachments: vec![],
             ui: false,
+            chain: vec![],
         }
     }
 }
@@ -478,6 +489,17 @@ pub struct CrewSettings {
     /// The kill switch (`crew_pause` / `crew_resume`): no task runs and no automation fires.
     #[serde(default)]
     pub paused: bool,
+    /// How many agents the crew server runs at once; a task past that waits queued ("server busy").
+    #[serde(default = "default_max_agents")]
+    pub max_agents: usize,
+}
+
+/// Agents at once when `crew.json` says nothing: a handful, so one busy server is not swamped by every crewmate
+/// starting an agent (each a full CLI plus the tools it runs) while a normal crew never waits.
+pub const DEFAULT_MAX_AGENTS: usize = 4;
+
+fn default_max_agents() -> usize {
+    DEFAULT_MAX_AGENTS
 }
 
 impl Default for CrewSettings {
@@ -486,6 +508,7 @@ impl Default for CrewSettings {
             short_replies: true,
             short_replies_model: None,
             paused: false,
+            max_agents: DEFAULT_MAX_AGENTS,
         }
     }
 }
@@ -493,6 +516,10 @@ impl Default for CrewSettings {
 /// `usage.jsonl` is cut back to its newest half once it passes this: totals cover the recent past, and the
 /// file is read whole by `crewmate_usage`.
 const USAGE_MAX_BYTES: u64 = 1024 * 1024;
+
+/// Crewmates deleted by this process. Shared like the task logs (`tasklog::LOGS`), because handlers build their own
+/// stores over the same files. Ids are never reused, so it only grows by one per delete.
+static DELETED: parking_lot::Mutex<Vec<(PathBuf, String)>> = parking_lot::Mutex::new(Vec::new());
 
 pub struct CrewStore {
     base: PathBuf,
@@ -536,8 +563,7 @@ impl CrewStore {
 
     /// Write `crewmate.json` atomically, 0600.
     pub fn save_crewmate(&self, crewmate: &Crewmate) -> io::Result<()> {
-        let dir = self.crewmate_dir(&crewmate.id);
-        std::fs::create_dir_all(&dir)?;
+        let dir = self.writable_dir(&crewmate.id)?;
         let data = serde_json::to_vec_pretty(crewmate)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         paths::write_private(&dir.join(FILE), &data)?;
@@ -585,12 +611,44 @@ impl CrewStore {
             .collect()
     }
 
+    /// Remove `crew/<id>/` and refuse every later write to it (`is_deleted`): a turn that was still
+    /// running recorded its end with `append_task`, which recreated the directory without its
+    /// `crewmate.json`.
     pub fn delete_crewmate_dir(&self, id: &str) -> io::Result<()> {
-        // The index of its task log goes with it: a crewmate imported under this id later starts clean.
+        let mut deleted = DELETED.lock();
+        deleted.push((self.base.clone(), id.to_string()));
+        // The index of its task log goes with it (its lock is taken after `DELETED`, as by every write).
         if let Some(logs) = tasklog::LOGS.lock().as_mut() {
             logs.remove(&self.tasks_path(id));
         }
-        std::fs::remove_dir_all(self.crewmate_dir(id))
+        match std::fs::remove_dir_all(self.crewmate_dir(id)) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether this crewmate was deleted: nothing may be written for it any more.
+    pub fn is_deleted(&self, id: &str) -> bool {
+        DELETED
+            .lock()
+            .iter()
+            .any(|(base, d)| *base == self.base && d == id)
+    }
+
+    /// `crew/<id>/`, created; an error for a deleted crewmate. Every write goes through here.
+    fn writable_dir(&self, id: &str) -> io::Result<PathBuf> {
+        let dir = self.crewmate_dir(id);
+        // Under the lock `delete_crewmate_dir` holds while it removes, so a write is either before
+        // the delete (and removed by it) or after it (and refused), never in between.
+        let deleted = DELETED.lock();
+        if deleted.iter().any(|(b, d)| *b == self.base && d == id) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("crewmate {id} was deleted"),
+            ));
+        }
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
     }
 
     /// Run `f` on the task log of `crewmate_id`, brought up to date with the file, holding the one lock
@@ -617,7 +675,7 @@ impl CrewStore {
     /// For a task that is already stored and may be changing under you, use [`Self::update_task`]
     /// (a change from a hook route or a handler) or [`Self::append_runner_state`] (the runner's copy).
     pub fn append_task(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
-        std::fs::create_dir_all(self.crewmate_dir(crewmate_id))?;
+        self.writable_dir(crewmate_id)?;
         self.with_log(crewmate_id, true, |path, log| {
             log.push_task(path, task, self.compact_min)
         })
@@ -652,10 +710,16 @@ impl CrewStore {
     /// stored task, so the runner's next title or step never takes them back (a `ui` task once ended
     /// `done` without its captures that way). Everything else is the runner's.
     pub fn append_runner_state(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
-        std::fs::create_dir_all(self.crewmate_dir(crewmate_id))?;
+        self.writable_dir(crewmate_id)?;
         self.with_log(crewmate_id, true, |path, log| {
             let mut snapshot = task.clone();
             if let Some(stored) = log.get(&task.id) {
+                // The store is the arbiter of a cancel: the runner's copy still says queued, preparing or running
+                // (it was made before the cancel), and appending it would un-cancel the task and let its agent
+                // start (#292). Only the runner's own end (`finish_task`) restates a cancelled task, as cancelled.
+                if stored.state == TaskState::Cancelled && snapshot.state != TaskState::Cancelled {
+                    return Ok(());
+                }
                 snapshot.ui |= stored.ui;
                 snapshot.attachments = stored.attachments.clone();
                 snapshot.ask = stored.ask.clone();
@@ -698,8 +762,7 @@ impl CrewStore {
 
     /// Write `memory.md`, truncating at 64 KiB.
     pub fn write_memory(&self, crewmate_id: &str, text: &str) -> io::Result<()> {
-        let dir = self.crewmate_dir(crewmate_id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(crewmate_id)?;
         const MAX: usize = 64 * 1024;
         let bytes = text.as_bytes();
         let data = if bytes.len() > MAX {
@@ -723,8 +786,7 @@ impl CrewStore {
     }
 
     pub fn save_session(&self, id: &str, session: &CrewmateSession) -> io::Result<()> {
-        let dir = self.crewmate_dir(id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(id)?;
         let data = serde_json::to_vec(session)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         paths::write_private(&self.session_path(id), &data)
@@ -753,8 +815,7 @@ impl CrewStore {
         secrets.insert(key.to_string(), value.to_string());
         let data = serde_json::to_vec(&secrets)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        let dir = self.crewmate_dir(id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(id)?;
         paths::write_private(&self.secrets_path(id), &data)
     }
 
@@ -788,8 +849,7 @@ impl CrewStore {
         ts: u64,
         usage: &UsageRecord,
     ) -> io::Result<()> {
-        let dir = self.crewmate_dir(crewmate_id);
-        std::fs::create_dir_all(&dir)?;
+        let dir = self.writable_dir(crewmate_id)?;
         let mut rec = serde_json::to_value(usage).unwrap_or_default();
         rec["engine"] = serde_json::json!(engine_kind);
         rec["ts"] = serde_json::json!(ts);

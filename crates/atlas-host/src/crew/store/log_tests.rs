@@ -284,17 +284,24 @@ fn a_record_added_to_the_file_behind_the_store_is_read() {
     );
 }
 
-// #295: deleting a crewmate drops its index: a crewmate created again under that id starts empty.
+// #295 with #297: deleting a crewmate drops its index (no tasks are read back from memory), and a late
+// step from a runner that was still going writes nothing and does not recreate `crew/<id>/`.
 #[test]
-fn a_deleted_crewmates_tasks_do_not_come_back_with_the_same_id() {
+fn a_deleted_crewmates_tasks_and_late_steps_are_gone() {
     let (_t, s) = store();
-    s.append_task("c", &task("old")).unwrap();
+    let t = task("old");
+    s.append_task("c", &t).unwrap();
     assert_eq!(s.read_tasks("c", 10).len(), 1);
+
     s.delete_crewmate_dir("c").unwrap();
+
     assert!(s.read_tasks("c", 10).is_empty());
-    let fresh = task("fresh");
-    s.append_task("c", &fresh).unwrap();
-    assert_eq!(ids(&s.read_tasks("c", 10)), vec![fresh.id.as_str()]);
+    assert!(s.task("c", &t.id).is_none());
+    assert!(s.append_step("c", &t.id, &step(0)).is_err());
+    assert!(
+        !s.crewmate_dir("c").exists(),
+        "a late step recreated crew/c/"
+    );
 }
 
 // #295: a task log from before deltas and compaction (full records, even without a final newline)

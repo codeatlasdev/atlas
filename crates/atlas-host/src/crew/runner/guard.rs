@@ -160,7 +160,18 @@ async fn base_of(dir: &Path) -> String {
 async fn diff_of(dir: &Path, base: &str) -> Result<String, String> {
     git(
         dir,
-        &["diff", "--no-color", "--no-renames", "-U0", base, "--"],
+        &[
+            "diff",
+            "--no-color",
+            "--no-renames",
+            // The parser below wants `a/` and `b/`: the user's `diff.mnemonicPrefix` and
+            // `diff.noprefix` must not change them.
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "-U0",
+            base,
+            "--",
+        ],
     )
     .await
 }

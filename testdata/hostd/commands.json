@@ -721,9 +721,16 @@
         "pty"
       ]
     },
+    "push_forget": {
+      "optional": [],
+      "required": [
+        "node"
+      ]
+    },
     "push_register": {
       "optional": [
-        "grant"
+        "grant",
+        "node"
       ],
       "required": [
         "platform",

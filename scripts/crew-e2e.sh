@@ -145,9 +145,14 @@ say "1b. atlas crew status, and a second install over the first"
 atlas crew status "$TARGET" --port "$PORT" 2>&1 | tee "$OUT/status-1.log"
 grep -q 'Active: active (running)' "$OUT/status-1.log" || fail "status does not show the service running"
 grep -q '(up to date)' "$OUT/status-1.log" || fail "status does not say the server's atlas is up to date"
-atlas crew install "$TARGET" --port "$PORT" --yes --binary "$ATLAS" 2>&1 | tee "$OUT/install-2.log"
+# A different binary (the same one with a byte appended: it runs the same), so the first one must be kept.
+cp "$ATLAS" "$WORK/atlas-second"
+printf '\n' >>"$WORK/atlas-second"
+atlas crew install "$TARGET" --port "$PORT" --yes --binary "$WORK/atlas-second" 2>&1 | tee "$OUT/install-2.log"
 grep -q 'Crew server ready' "$OUT/install-2.log" || fail "a second install did not report the crew server ready"
-srv test -x /usr/local/lib/atlas-crew/atlas.prev || fail "the second install kept no atlas.prev"
+srv test -x /usr/local/lib/atlas-crew/atlas.prev || fail "the second install did not keep the first binary as atlas.prev"
+[[ $(srv stat -c %s /usr/local/lib/atlas-crew/atlas.prev) == "$(stat -c %s "$ATLAS")" ]] || fail "atlas.prev is not the first binary"
+[[ $(srv stat -c %s /usr/local/lib/atlas-crew/atlas) == "$(stat -c %s "$WORK/atlas-second")" ]] || fail "atlas is not the second binary"
 [[ $(srv systemctl is-active atlas-crew) == active ]] || fail "atlas-crew.service is not active after the second install"
 
 # ── the client: hostd's socket through an ssh tunnel, as the crew user the install made ──────────────

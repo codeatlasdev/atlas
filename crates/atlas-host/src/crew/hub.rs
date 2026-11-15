@@ -48,13 +48,16 @@ pub(crate) struct CrewHub {
     pub(crate) turn_cancels: Mutex<std::collections::HashMap<String, super::engine::TurnCancel>>,
     /// The kill switch, mirrored from `crew.json` (`paused`): no task runs, no automation fires.
     paused: std::sync::atomic::AtomicBool,
+    /// How many agents run at once (`max_agents` in `crew.json`); a task past that waits "server busy".
+    pub(crate) agent_slots: Arc<runner::AgentSlots>,
 }
 
 impl CrewHub {
     pub(crate) fn new(dir: &std::path::Path) -> Arc<Self> {
         let push_tokens = push::load_tokens(dir);
         let store = CrewStore::new(dir);
-        let paused = store.load_crew_settings().paused;
+        let settings = store.load_crew_settings();
+        let (paused, max_agents) = (settings.paused, settings.max_agents);
         let telegram = Arc::new(TelegramBridge::new(dir.to_path_buf()));
         Arc::new(Self {
             store,
@@ -72,6 +75,7 @@ impl CrewHub {
             tape: runner::Tape::default(),
             turn_cancels: Mutex::new(std::collections::HashMap::new()),
             paused: std::sync::atomic::AtomicBool::new(paused),
+            agent_slots: runner::AgentSlots::new(max_agents),
         })
     }
 

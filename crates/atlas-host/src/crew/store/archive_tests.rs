@@ -76,6 +76,7 @@ fn populated() -> (tempfile::TempDir, CrewStore) {
         short_replies: false,
         short_replies_model: Some("m".into()),
         paused: true,
+        ..Default::default()
     })
     .unwrap();
     (t, s)
@@ -527,6 +528,7 @@ fn an_import_never_replaces_the_settings_of_a_crew_that_has_some() {
         short_replies: true,
         short_replies_model: None,
         paused: true,
+        ..Default::default()
     })
     .unwrap();
 

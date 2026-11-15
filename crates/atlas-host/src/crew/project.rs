@@ -203,13 +203,30 @@ pub fn ssh_to_https(url: &str) -> String {
     url.to_string()
 }
 
+/// Test-only: the program `git_run` starts in place of `git` (a fake that hangs, or records its calls).
+#[cfg(test)]
+pub(crate) static TEST_GIT_PROGRAM: parking_lot::Mutex<Option<String>> =
+    parking_lot::Mutex::new(None);
+
+fn git_program() -> String {
+    #[cfg(test)]
+    if let Some(p) = TEST_GIT_PROGRAM.lock().clone() {
+        return p;
+    }
+    "git".to_string()
+}
+
 async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
-    let mut cmd = Command::new("git");
+    let mut cmd = Command::new(git_program());
     cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let out = cmd.output().await.map_err(|e| format!("git error: {e}"))?;
+    // A deadline and a tree kill on every call: a clone that never returns used to hold the checkout (and the task)
+    // until the 2 h task timeout, and a cancel could not reach it (#296).
+    let out = crate::crew::proc::run_bounded(&mut cmd, "git", crate::crew::proc::call_deadline())
+        .await
+        .map_err(|e| format!("git error: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -218,6 +235,19 @@ async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ))
     }
+}
+
+/// The lock of one repo's shared clone: two crewmates of the same repo take turns, crewmates of different repos check
+/// out at the same time.
+fn checkout_lock(shared_dir: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    type Locks = std::collections::HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>;
+    static LOCKS: parking_lot::Mutex<Option<Locks>> = parking_lot::Mutex::new(None);
+    LOCKS
+        .lock()
+        .get_or_insert_with(Default::default)
+        .entry(shared_dir.to_path_buf())
+        .or_default()
+        .clone()
 }
 
 /// The branch checked out in `dir`; `None` for a detached HEAD or a folder that is not a git repo.
@@ -234,16 +264,15 @@ async fn prepare_git(
     crewmate_id: &str,
     base_dir: &Path,
 ) -> Result<PathBuf, String> {
-    // One checkout at a time: the clone starts in the background when a crewmate gets its project, and a task may ask for
-    // the same checkout while it runs; the second caller waits and then finds it ready (it used to hit a half-made
-    // clone). Clones are rare, so one lock for all of them is enough.
-    static CHECKOUT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _one_at_a_time = CHECKOUT.lock().await;
-
     let url = ssh_to_https(url);
     let url = url.as_str();
     let slug = git_slug(url);
     let shared_dir = base_dir.join("projects").join(&slug);
+    // One checkout of a repo at a time: the clone starts in the background when a crewmate gets its project, and a task
+    // may ask for the same checkout while it runs; the second caller waits and then finds it ready (it used to hit a
+    // half-made clone). Per repo: a clone of one repo never holds up the checkout of another (#296).
+    let lock = checkout_lock(&shared_dir);
+    let _one_at_a_time = lock.lock().await;
     let worktree = work_dir(base_dir, crewmate_id);
 
     // Clone into shared dir if it doesn't exist yet.

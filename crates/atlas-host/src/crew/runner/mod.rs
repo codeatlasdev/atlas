@@ -14,6 +14,7 @@
 //! | `action`       | `ATLAS_ACTION` lines: parse, park, wait for the answer            |
 //! | `github`       | GitHub login a project needs                                      |
 //! | `reporting`    | a GitHub task's reply comment: posted, edited, finished           |
+//! | `slots`        | how many agents run at once on the server                          |
 //! | `outcome`      | waiting for the agent, recording and announcing the result        |
 //! | `guard`, `tape`| refusing work that weakens tests, strays, invents or overclaims   |
 //! | `summary`      | short replies                                                     |
@@ -29,9 +30,13 @@ mod prompt;
 mod pty;
 mod recover;
 mod reporting;
+mod slots;
 pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;
+pub(crate) use slots::AgentSlots;
+#[cfg(test)]
+pub(crate) use slots::TEST_MAX_AGENTS;
 mod summary;
 mod tape;
 #[cfg(test)]

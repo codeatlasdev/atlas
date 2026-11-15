@@ -33,6 +33,7 @@ mod hub;
 pub mod locate;
 pub mod mcp;
 pub(crate) mod pane;
+pub(crate) mod proc;
 pub(crate) mod project;
 pub(crate) mod push;
 pub mod relay;
@@ -181,7 +182,8 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
         HostCmd::CrewSettingsSet {
             short_replies,
             short_replies_model,
-        } => s::set(hub, short_replies, short_replies_model),
+            max_agents,
+        } => s::set(hub, short_replies, short_replies_model, max_agents),
         HostCmd::CrewPause {} => hub.crew.set_paused(hub, true).map(|()| json!({})),
         HostCmd::CrewResume {} => hub.crew.set_paused(hub, false).map(|()| json!({})),
         HostCmd::EngineLimits {} => s::engine_limits(),

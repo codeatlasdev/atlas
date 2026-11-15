@@ -122,6 +122,12 @@ async fn run_pty_inner(
         return (Err(format!("unknown agent '{}'", crewmate.agent)), vec![]);
     };
 
+    // A slot for the agent (a task waiting for a person holds none), and the store's word before anything starts: a
+    // task cancelled while it was preparing or waiting for a slot never gets its agent (#292). `finish_task` records
+    // it as cancelled, the store's state winning over this error. The slot is held until the agent has ended.
+    let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
+        return (Err("cancelled before the agent started".into()), vec![]);
+    };
     // In tests a fake binary can be injected; production always uses the agent def.
     #[cfg(test)]
     let argv = match TEST_AGENT_BIN.lock().clone() {
@@ -185,7 +191,13 @@ async fn run_pty_inner(
     if let Some(pause) = pause {
         tokio::time::sleep(pause).await;
     }
-
+    // A cancel that landed after the slot was taken and before the session was registered found nothing to kill:
+    // the store has it, so the agent is stopped here rather than recorded as running over a cancelled task.
+    if super::outcome::was_cancelled(hub, &crewmate.id, &task.id) {
+        session.kill().await;
+        hub.sessions.lock().remove(&pty_id);
+        return (Err("cancelled before the agent started".into()), vec![]);
+    }
     // Mark task as running and record start time. If that cannot be stored there is no honest
     // "running" to show: stop the agent and fail the task with the store error.
     task.state = TaskState::Running;

@@ -460,37 +460,40 @@ fn audit_args_are_summarized_without_the_target_and_long_values_are_cut() {
     );
 }
 
-// Regression #304: the request queue was unbounded, so a stuck run loop let requests pile up
-// without limit. A full queue now answers "busy" at once and recovers when the loop drains it.
-#[tokio::test]
-async fn a_full_request_queue_answers_busy_and_recovers_when_the_loop_drains() {
+/// A served project whose run loop is stuck: `REQUEST_QUEUE` requests are parked in the queue and
+/// nobody reads it, so the next one finds it full. `rx` is the run loop's end.
+async fn full_queue(
+    queue_wait: Duration,
+) -> (
+    tempfile::TempDir,
+    ControlServer,
+    tokio::sync::mpsc::Receiver<ControlRequest>,
+    Vec<tokio::task::JoinHandle<Result<ControlResponse, String>>>,
+) {
     let dir = tempfile::TempDir::new().unwrap();
-    let (_server, mut rx) =
-        ControlServer::bind(dir.path(), Guard::new(&cfg(), dir.path())).unwrap();
-    // The run loop is stuck: nobody reads `rx`, so every accepted request waits in the queue.
-    let root = dir.path().to_path_buf();
-    let parked: Vec<_> = (0..server::REQUEST_QUEUE)
+    let (server, rx) =
+        ControlServer::bind_with(dir.path(), Guard::new(&cfg(), dir.path()), queue_wait).unwrap();
+    let parked = (0..server::REQUEST_QUEUE)
         .map(|_| {
-            let root = root.clone();
+            let root = dir.path().to_path_buf();
             tokio::spawn(
                 async move { call(&root, "restart_service", json!({"service": "api"})).await },
             )
         })
         .collect();
-    let mut busy = None;
-    for _ in 0..20 {
-        // Until the queue is full a call is queued, not answered: it times out here.
-        if let Ok(Ok(r)) = tokio::time::timeout(
-            Duration::from_millis(500),
-            call(dir.path(), "restart_service", json!({"service": "api"})),
-        )
+    // Let every parked request reach the queue before the next one arrives.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    (dir, server, rx, parked)
+}
+
+// Regression #304: the request queue was unbounded, so a stuck run loop let requests pile up
+// without limit. A request that finds it full still waiting after the queue wait gets "busy".
+#[tokio::test]
+async fn a_request_that_finds_the_queue_full_for_too_long_is_answered_busy() {
+    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    let busy = call(dir.path(), "restart_service", json!({"service": "api"}))
         .await
-        {
-            busy = Some(r);
-            break;
-        }
-    }
-    let busy = busy.expect("a full queue was never answered busy");
+        .unwrap();
     assert!(!busy.ok);
     assert_eq!(busy.error.as_deref(), Some(server::BUSY));
 
@@ -504,7 +507,42 @@ async fn a_full_request_queue_answers_busy_and_recovers_when_the_loop_drains() {
         .await
         .unwrap();
     assert!(r.ok, "{r:?}");
-    drop(parked);
+}
+
+// A run loop that is only briefly busy (a restart grace, a health check) must delay a request, not
+// refuse it: `atlas down` and `atlas dev --detach` read a refusal as "nothing is running".
+#[tokio::test]
+async fn a_request_waits_for_a_briefly_busy_run_loop_instead_of_being_refused() {
+    let (dir, _server, mut rx, _parked) = full_queue(Duration::from_secs(5)).await;
+    let root = dir.path().to_path_buf();
+    let late =
+        tokio::spawn(
+            async move { call(&root, "restart_service", json!({"service": "api"})).await },
+        );
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    // The loop frees up: it answers everything, the queued requests and the one that waited.
+    tokio::spawn(async move {
+        while let Some(req) = rx.recv().await {
+            let _ = req.reply.send(ControlResponse::ok(json!({"served": true})));
+        }
+    });
+    let r = tokio::time::timeout(Duration::from_secs(5), late)
+        .await
+        .expect("the waiting request was never answered")
+        .unwrap()
+        .unwrap();
+    assert!(r.ok, "refused instead of waiting: {r:?}");
+}
+
+// A run that answers "busy" is running. `info()` returning `None` for it made `atlas down` say "not
+// running" and `atlas dev --detach` / `atlas -- cmd` start a second runner over it.
+#[tokio::test]
+async fn info_of_a_busy_atlas_is_running_not_absent() {
+    let (dir, _server, _rx, _parked) = full_queue(Duration::from_millis(300)).await;
+    let info = info(dir.path())
+        .await
+        .expect("a busy atlas was reported absent");
+    assert!(info.is_busy(), "{info:?}");
 }
 
 // Regression #304: connections were not capped. One over the limit is told "busy" and closed; the

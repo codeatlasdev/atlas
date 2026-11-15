@@ -122,6 +122,9 @@ pub async fn run_adhoc(argv: &[String]) -> Result<()> {
             );
             Ok(())
         }
+        Some(info) if info.is_busy() => {
+            bail!("atlas dev is running but busy; try again in a moment")
+        }
         Some(info) => bail!(
             "atlas dev is running in a terminal for {} (pid {}); quit it, or stop it with atlas down, then run this again",
             root.display(),

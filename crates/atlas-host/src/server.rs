@@ -39,6 +39,10 @@ const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
 /// Connections allowed to wait for their hello at once. A newer one closes the oldest waiting, so a
 /// real client is always admitted however many idle sockets are open (#304).
 const MAX_PENDING_HELLOS: usize = 64;
+/// The error a connection gets when it sent no hello in time, and when a newer connection pushed it
+/// out of the pending cap. Neither is a token mismatch (`unauthorized`): the daemon is alive.
+pub const ERR_HELLO_TIMEOUT: &str = "hello timeout";
+pub const ERR_BUSY: &str = "hostd busy";
 
 /// Connections that have not authenticated yet, oldest first.
 #[derive(Default)]
@@ -790,23 +794,28 @@ async fn conn(hub: Arc<Hub>, stream: ipc::Stream) {
     let evicted = hub.pending.enter(conn_id);
     let hello = tokio::time::timeout(hub.hello_timeout, async {
         tokio::select! {
-            l = read_line(&mut lines, LongLine::Skip) => l,
-            _ = evicted => None,
+            l = read_line(&mut lines, LongLine::Skip) => Ok(l),
+            _ = evicted => Err(ERR_BUSY),
         }
     })
     .await
-    .ok()
-    .flatten();
+    .unwrap_or(Err(ERR_HELLO_TIMEOUT));
     hub.pending.leave(conn_id);
-    let authed = match hello {
-        Some(l) => serde_json::from_str::<Value>(&l)
-            .ok()
-            .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok())
-            .is_some_and(|h| h.token == hub.token),
-        None => false,
+    // Why a connection is refused is told apart: a client retries after a timeout or "busy" (the
+    // daemon is alive and loaded) but must not after "unauthorized" (a token mismatch).
+    let refusal = match hello {
+        Ok(Some(l)) => {
+            let authed = serde_json::from_str::<Value>(&l)
+                .ok()
+                .and_then(|v| serde_json::from_value::<Hello>(v.get("hello")?.clone()).ok())
+                .is_some_and(|h| h.token == hub.token);
+            (!authed).then_some("unauthorized")
+        }
+        Ok(None) => Some("unauthorized"),
+        Err(why) => Some(why),
     };
-    if !authed {
-        let _ = tx.force(json!({"ok": false, "error": "unauthorized"}).to_string());
+    if let Some(why) = refusal {
+        let _ = tx.force(json!({"ok": false, "error": why}).to_string());
         drop(tx);
         let _ = writer.await;
         return;
@@ -1830,14 +1839,24 @@ mod tests {
         (tmp, dir)
     }
 
-    /// Whether `s` is closed by the peer within `within` (a reply line, then EOF, counts).
-    async fn closed_within(s: ipc::Stream, within: Duration) -> bool {
+    /// What the peer sent before it closed `s`, or `None` when it stayed open past `within`.
+    async fn lines_until_closed(s: ipc::Stream, within: Duration) -> Option<Vec<String>> {
         let mut lines = BufReader::new(s).lines();
         tokio::time::timeout(within, async {
-            while let Ok(Some(_)) = lines.next_line().await {}
+            let mut got = Vec::new();
+            while let Ok(Some(l)) = lines.next_line().await {
+                got.push(l);
+            }
+            got
         })
         .await
-        .is_ok()
+        .ok()
+    }
+
+    fn error_of(lines: &[String]) -> String {
+        let v: Value = serde_json::from_str(lines.first().expect("no reply")).unwrap();
+        assert_eq!(v["ok"], false, "{v}");
+        v["error"].as_str().unwrap().to_string()
     }
 
     /// Regression #304: a socket that never sent its hello was served forever. It is closed once the
@@ -1846,10 +1865,11 @@ mod tests {
     async fn an_idle_unauthenticated_connection_is_closed_after_the_hello_deadline() {
         let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_millis(300)).await;
         let idle = ipc::connect(&paths::socket(&dir)).await.unwrap();
-        assert!(
-            closed_within(idle, Duration::from_secs(3)).await,
-            "an idle socket stayed open past the hello deadline"
-        );
+        let got = lines_until_closed(idle, Duration::from_secs(3))
+            .await
+            .expect("an idle socket stayed open past the hello deadline");
+        // Not "unauthorized": a client must tell a slow handshake from a wrong token.
+        assert_eq!(error_of(&got), "hello timeout");
     }
 
     /// Regression #304: idle sockets must not starve a real client. 65 silent connections exceed the
@@ -1872,9 +1892,22 @@ mod tests {
         .unwrap();
         client.call("info", json!({})).await.unwrap();
         let oldest = idle.remove(0);
-        assert!(
-            closed_within(oldest, Duration::from_secs(3)).await,
-            "the oldest idle socket was not closed to make room"
-        );
+        let got = lines_until_closed(oldest, Duration::from_secs(3))
+            .await
+            .expect("the oldest idle socket was not closed to make room");
+        assert_eq!(error_of(&got), "hostd busy");
+    }
+
+    /// A wrong token is still "unauthorized", told apart from a timeout or "busy" (#304).
+    #[tokio::test]
+    async fn a_wrong_token_is_unauthorized_not_a_timeout() {
+        let (_tmp, dir) = hostd_with_hello_timeout(Duration::from_secs(60)).await;
+        let mut s = ipc::connect(&paths::socket(&dir)).await.unwrap();
+        let hello = protocol::hello_line("wrong-token", "raw");
+        s.write_all(format!("{hello}\n").as_bytes()).await.unwrap();
+        let got = lines_until_closed(s, Duration::from_secs(3))
+            .await
+            .expect("a wrong token was not refused");
+        assert_eq!(error_of(&got), "unauthorized");
     }
 }

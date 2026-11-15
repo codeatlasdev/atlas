@@ -64,6 +64,9 @@ pub async fn detach(
     }
 
     if let Some(info) = control::info(root_dir).await {
+        if info.is_busy() {
+            anyhow::bail!("atlas dev is running but busy; try again in a moment");
+        }
         if info.mode == "runner" {
             return Ok(Detached::AlreadyRunning { pid: info.pid });
         }

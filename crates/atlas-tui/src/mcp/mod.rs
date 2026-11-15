@@ -288,6 +288,31 @@ async fn write_msg<W: AsyncWrite + Unpin>(out: &mut W, v: &Value) -> std::io::Re
     out.flush().await
 }
 
+/// The "busy" answer for a request refused at the in-flight cap: an error with the request's id, an
+/// array of them (one per request id) for a batch, nothing for a notification.
+fn busy_reply(msg: &Value) -> Option<Value> {
+    let busy = |id: Value| {
+        error(
+            id,
+            SERVER_BUSY,
+            format!("busy: {MAX_IN_FLIGHT} requests already running"),
+        )
+    };
+    match msg {
+        Value::Array(items) => {
+            let errs: Vec<Value> = items
+                .iter()
+                .filter_map(|m| match m.get("id") {
+                    Some(id) => Some(busy(id.clone())),
+                    None => (!m.is_object()).then(|| busy(Value::Null)),
+                })
+                .collect();
+            (!errs.is_empty()).then_some(Value::Array(errs))
+        }
+        _ => msg.get("id").map(|id| busy(id.clone())),
+    }
+}
+
 /// Serve MCP on stdin/stdout until stdin closes. Requests run concurrently so a
 /// long `atlas_wait_ready` never blocks `ping` or other calls.
 pub async fn serve(root: &Path) -> anyhow::Result<()> {
@@ -352,15 +377,7 @@ where
         }
         while inflight.try_join_next().is_some() {}
         if inflight.len() >= MAX_IN_FLIGHT {
-            // A notification or a batch has no single id to answer: a batch gets one error, a
-            // notification none.
-            if msg.is_array() || msg.get("id").is_some() {
-                let id = msg.get("id").cloned().unwrap_or(Value::Null);
-                let busy = error(
-                    id,
-                    SERVER_BUSY,
-                    format!("busy: {MAX_IN_FLIGHT} requests already running"),
-                );
+            if let Some(busy) = busy_reply(&msg) {
                 let _ = tx.send(busy).await;
             }
             continue;
@@ -633,44 +650,97 @@ mod tests {
         assert!(r.is_err());
     }
 
-    // Regression #304: in-flight requests were uncapped, so a stuck control socket let a chatty
-    // client pile up tasks without limit. Past the cap a request is answered "busy" at once.
-    #[tokio::test]
-    async fn requests_past_the_in_flight_cap_are_answered_busy() {
+    /// `serve_io` over a control socket whose run loop never answers, with `MAX_IN_FLIGHT` calls
+    /// already stuck in flight: what the next request meets. Returns the held resources, the
+    /// client's stdin and a reader of its stdout.
+    async fn saturated() -> (
+        tempfile::TempDir,
+        (
+            crate::control::ControlServer,
+            tokio::sync::mpsc::Receiver<crate::control::ControlRequest>,
+        ),
+        tokio::task::JoinHandle<anyhow::Result<()>>,
+        tokio::io::DuplexStream,
+        tokio::io::Lines<BufReader<tokio::io::DuplexStream>>,
+    ) {
         let d = tempfile::TempDir::new().unwrap();
         let cfg: crate::config::ProjectConfig =
             serde_norway::from_str("name: p\nservices:\n  api: { command: x }\n").unwrap();
-        // A run loop that never answers: every control call stays in flight.
-        let (_server, _rx) = crate::control::ControlServer::bind(
+        let held = crate::control::ControlServer::bind(
             d.path(),
             crate::control::Guard::new(&cfg, d.path()),
         )
         .unwrap();
+        // The receiver is never read: every control call stays in flight.
         let (mut stdin, input) = tokio::io::duplex(1 << 20);
         let (output, stdout) = tokio::io::duplex(1 << 20);
         let root = d.path().to_path_buf();
         let serving = tokio::spawn(async move { serve_io(&root, input, output).await });
-        let total = MAX_IN_FLIGHT + 3;
-        for id in 1..=total {
-            let call = json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"atlas_restart_service","arguments":{"service":"api"}}});
+        for id in 1..=MAX_IN_FLIGHT {
             stdin
-                .write_all(format!("{call}\n").as_bytes())
+                .write_all(format!("{}\n", stuck_call(id)).as_bytes())
                 .await
                 .unwrap();
         }
-        let mut lines = BufReader::new(stdout).lines();
-        let mut busy = Vec::new();
-        while busy.len() < 3 {
-            let line = tokio::time::timeout(std::time::Duration::from_secs(10), lines.next_line())
+        (d, held, serving, stdin, BufReader::new(stdout).lines())
+    }
+
+    fn stuck_call(id: usize) -> Value {
+        json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"atlas_restart_service","arguments":{"service":"api"}}})
+    }
+
+    async fn next_reply(lines: &mut tokio::io::Lines<BufReader<tokio::io::DuplexStream>>) -> Value {
+        let line = tokio::time::timeout(std::time::Duration::from_secs(10), lines.next_line())
+            .await
+            .expect("no busy answer: requests past the cap were not refused")
+            .unwrap()
+            .unwrap();
+        serde_json::from_str(&line).unwrap()
+    }
+
+    // Regression #304: in-flight requests were uncapped, so a stuck control socket let a chatty
+    // client pile up tasks without limit. Past the cap a request is answered "busy" at once.
+    #[tokio::test]
+    async fn requests_past_the_in_flight_cap_are_answered_busy() {
+        let (_d, _server, serving, mut stdin, mut lines) = saturated().await;
+        for id in MAX_IN_FLIGHT + 1..=MAX_IN_FLIGHT + 3 {
+            stdin
+                .write_all(format!("{}\n", stuck_call(id)).as_bytes())
                 .await
-                .expect("no busy answer: requests past the cap were not refused")
-                .unwrap()
                 .unwrap();
-            let v: Value = serde_json::from_str(&line).unwrap();
+        }
+        for id in MAX_IN_FLIGHT + 1..=MAX_IN_FLIGHT + 3 {
+            let v = next_reply(&mut lines).await;
             assert_eq!(v["error"]["code"], SERVER_BUSY, "{v}");
-            busy.push(v["id"].as_u64().unwrap());
+            assert_eq!(v["id"], id);
         }
-        assert_eq!(busy, [33, 34, 35]);
+        serving.abort();
+    }
+
+    // A batch refused at the cap is answered like a batch: an array with one busy error per request
+    // id and none for its notification (JSON-RPC 2.0 §6), not one object a client cannot match.
+    #[tokio::test]
+    async fn a_batch_past_the_in_flight_cap_gets_one_busy_error_per_request() {
+        let (_d, _server, serving, mut stdin, mut lines) = saturated().await;
+        let batch = json!([
+            stuck_call(100),
+            {"jsonrpc":"2.0","method":"notifications/initialized"},
+            stuck_call(101),
+        ]);
+        stdin
+            .write_all(format!("{batch}\n").as_bytes())
+            .await
+            .unwrap();
+        let v = next_reply(&mut lines).await;
+        let replies = v
+            .as_array()
+            .unwrap_or_else(|| panic!("a batch got a single reply: {v}"));
+        let ids: Vec<_> = replies.iter().map(|r| r["id"].clone()).collect();
+        assert_eq!(ids, [json!(100), json!(101)]);
+        assert!(
+            replies.iter().all(|r| r["error"]["code"] == SERVER_BUSY),
+            "{v}"
+        );
         serving.abort();
     }
 }

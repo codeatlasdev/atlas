@@ -122,9 +122,29 @@ pub struct RunInfo {
     pub clients: u64,
 }
 
-/// Ask the running atlas who it is. `None` = nothing answers on the socket.
+impl RunInfo {
+    /// `mode` of an atlas that is running but too busy to answer (its request queue or connections
+    /// are full): it is there, only its details are unknown (`pid` 0).
+    pub const MODE_BUSY: &'static str = "busy";
+
+    pub fn is_busy(&self) -> bool {
+        self.mode == Self::MODE_BUSY
+    }
+}
+
+/// Ask the running atlas who it is. `None` = nothing answers on the socket. A busy atlas (it
+/// answered "busy") is running: it comes back as [`RunInfo::MODE_BUSY`], never as `None`, or a
+/// loaded run would be taken for a missing one and a second would be started over it.
 pub async fn info(root_dir: &Path) -> Option<RunInfo> {
     let resp = call(root_dir, "info", json!({})).await.ok()?;
+    if resp.error.as_deref() == Some(super::server::BUSY) {
+        return Some(RunInfo {
+            mode: RunInfo::MODE_BUSY.into(),
+            pid: 0,
+            project: String::new(),
+            clients: 0,
+        });
+    }
     let d = resp.data.filter(|_| resp.ok)?;
     Some(RunInfo {
         mode: d["mode"].as_str()?.to_string(),

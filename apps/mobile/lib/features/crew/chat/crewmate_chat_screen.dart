@@ -11,6 +11,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
@@ -173,9 +174,11 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     final tasksAsync = ref.watch(
       crewmateTasksProvider((widget.device, widget.crewmateId)),
     );
-    final tasks = tasksAsync.value ?? [];
-    // Nothing to show yet: not "Say hi", which is for a thread that really is empty.
+    // `value` keeps the last answer while the thread reloads or fails to refresh: the history stays, under the
+    // offline strip. Without one yet it is a spinner or an error, never "Say hi".
+    final tasks = tasksAsync.value ?? const <CrewmateTask>[];
     final loadingTasks = tasksAsync.isLoading && !tasksAsync.hasValue;
+    final tasksError = tasksAsync.hasValue ? null : tasksAsync.error;
     final online =
         ref.watch(connectionNotifierProvider(widget.device)).value != null;
     final pa = crewmate?.pendingApproval;
@@ -290,6 +293,18 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
                 Positioned.fill(
                   child: tasks.isEmpty && loadingTasks
                       ? const Center(child: CircularProgressIndicator())
+                      : tasks.isEmpty && tasksError != null
+                      ? AsyncView<void>(
+                          value: AsyncError<void>(tasksError, StackTrace.empty),
+                          data: (_) => const SizedBox.shrink(),
+                          errorTitle: "Couldn't read the thread",
+                          onRetry: () => ref.invalidate(
+                            crewmateTasksProvider((
+                              widget.device,
+                              widget.crewmateId,
+                            )),
+                          ),
+                        )
                       : tasks.isEmpty
                       ? EmptyState(
                           icon: Crewmate(

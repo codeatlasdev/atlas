@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Mobile: the Crew tab, a crewmate's thread and the Inbox no longer say "No crew yet", "Say hi" or "All clear" when they simply have not heard from your computer.** While the phone was still connecting or reconnecting, or when the computer refused (for example "forbidden"), the Crew tab answered as if you had no crew, a thread that failed to load said "Say hi to…", and the Inbox said "All clear". Now each shows a spinner while it waits, "Can't reach <computer>" or the real error with **Try again** when it cannot read, keeps the crew and the history it already has when the link drops, and says "No crew yet" only when the crew server really answered that it has none.
 - **Atlas Crew: a hung `gh` call no longer holds a task forever ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** `git` got a 120 s deadline in 1.5.0-alpha.26 but the crew's `gh` calls did not: a GitHub API call (a comment, a pull request) or `gh auth status` that never returned (a stalled network, a credential prompt) held the task that made it, and the Settings GitHub row, forever. Every bounded `gh` call now goes through the same deadline and kills its whole process tree; `gh auth login` stays interactive. A missing `git` or `gh` now says it is not on `PATH`.
 
 ## [1.5.0-alpha.26] — 2026-11-15

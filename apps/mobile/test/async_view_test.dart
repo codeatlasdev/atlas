@@ -1,7 +1,10 @@
 // AsyncView is the one rendering of a screen's async states: loading, error + "Try again", empty, offline,
 // protocol mismatch, data. A golden pins the whole set so a change to any of them is seen.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:atlas_mobile/core/connection/require_mux.dart';
@@ -38,6 +41,38 @@ void main() {
     await t.pumpWidget(_view(const AsyncLoading()));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Nothing yet'), findsNothing);
+  });
+
+  // A reconnect rebuilds every provider behind requireMux: the value is kept and `isLoading` is set (a
+  // reload, not a refresh). Riverpod's `when` shows the loader for that unless told not to. Built the way
+  // the app builds it: a provider that watches another one and is waiting on its new build.
+  testWidgets('a reload keeps showing the data it has, not the spinner', (
+    t,
+  ) async {
+    final source = StateProvider<int>((_) => 0);
+    final gate = <Completer<List<String>>>[];
+    final watching = FutureProvider<List<String>>((ref) {
+      ref.watch(source);
+      final c = Completer<List<String>>();
+      gate.add(c);
+      return c.future;
+    });
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final sub = container.listen(watching, (_, _) {});
+    addTearDown(sub.close);
+    gate.single.complete(['a']);
+    await container.read(watching.future);
+
+    container.read(source.notifier).state = 1; // what a reconnect does
+    final reloading = container.read(watching);
+    expect(reloading.isReloading, isTrue);
+    expect(reloading.value, ['a']);
+
+    await t.pumpWidget(_view(reloading));
+    expect(find.text('a'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    gate.last.complete(['a']);
   });
 
   testWidgets('data: the builder, not the empty state', (t) async {

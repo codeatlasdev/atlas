@@ -13,7 +13,8 @@ import { toast } from "@codeatlasdev/ui";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { atlasTheme } from "#lib/cm.ts";
 import { errText } from "#lib/api.ts";
-import { b64bytes, host } from "#lib/host.ts";
+import { b64bytes } from "#lib/b64.ts";
+import { host } from "#lib/host.ts";
 import { editorConfigDirs } from "#lib/editor/editorconfig.ts";
 import { detectEol } from "#lib/editor/detect.ts";
 import {
@@ -73,6 +74,8 @@ export class EditorSession {
 	conflict = $state<{ text: string } | null>(null);
 	/** The file was deleted on disk. */
 	deleted = $state(false);
+	/** Why external changes are not followed live (the watcher failed); empty when they are. */
+	watchError = $state("");
 	cursor = $state({ line: 1, col: 1, count: 1, chars: 0, lines: 1 });
 
 	/** What is on disk, as bytes written (see file header). */
@@ -85,6 +88,8 @@ export class EditorSession {
 		dirty: false,
 		autoReload: true,
 	};
+	/** Size and mtime of the file as this editor last read or wrote it: the save precondition. */
+	#disk: { mtime: number; size: number } | null = null;
 	#saveTimer: number | undefined;
 	#saving: Promise<void> = Promise.resolve();
 	#closing = false;
@@ -122,6 +127,7 @@ export class EditorSession {
 		this.text = plan.text;
 		this.lastSaved = raw;
 		this.#ext = { ...this.#ext, bufferText: raw, lastSaved: raw, mtime: st.mtime, dirty: false };
+		this.#disk = { mtime: st.mtime, size: st.size };
 		this.#ext.autoReload = editorPrefs().auto_reload;
 		return plan;
 	}
@@ -232,7 +238,9 @@ export class EditorSession {
 	/**
 	 * Write the buffer. `beforeWrite` may transform the document first (format on save): it runs
 	 * on the view, then the final text is read. A dirty buffer in conflict with the disk is never
-	 * written by the autosave timer: that would silently overwrite the other change.
+	 * written by the autosave timer: that would silently overwrite the other change. Neither is a
+	 * file that changed since this editor read or wrote it, even if the watcher has not said so yet
+	 * (it can be dead, or inside its debounce): `force` (the user's "keep my version") skips that.
 	 */
 	save(beforeWrite?: () => Promise<void>, force = false): Promise<void> {
 		this.#saving = this.#saving.then(() => this.#save(beforeWrite, force));
@@ -241,13 +249,15 @@ export class EditorSession {
 
 	async #save(beforeWrite?: () => Promise<void>, force = false) {
 		clearTimeout(this.#saveTimer);
-		if (this.conflict && !force) return;
+		if (this.conflict && !force) return this.#notSaved();
 		if (beforeWrite && !this.#closing) await beforeWrite();
 		const out = this.diskText();
 		if (out === undefined || (out === this.lastSaved && !this.deleted)) return;
 		try {
+			if (!force && (await this.#blockedByDisk())) return;
 			await host.fsWrite(this.abs, out);
 			const st = await host.fsStat(this.abs).catch(() => null);
+			this.#disk = st ? { mtime: st.mtime, size: st.size } : null;
 			this.lastSaved = out;
 			this.deleted = false;
 			this.#ext = reduceExternal(this.#ext, { kind: "saved", text: out, mtime: st?.mtime ?? 0 }).state;
@@ -257,6 +267,32 @@ export class EditorSession {
 		} catch (e) {
 			toast.error(`Save failed: ${errText(e)}`);
 		}
+	}
+
+	/**
+	 * The file differs from what this editor last read or wrote: look at it (`#diskChanged`) and tell
+	 * the caller whether writing would lose the other change. Only a real conflict blocks (the disk text
+	 * differs from the buffer's baseline: a dirty buffer asks, a clean one reloads) or a file that
+	 * cannot be read to compare; the same text with a newer mtime (`touch`, git, a formatter) is just
+	 * re-baselined, and the write goes ahead. A file that is gone is not a change: saving recreates it.
+	 */
+	async #blockedByDisk(): Promise<boolean> {
+		const known = this.#disk;
+		const st = await host.fsStat(this.abs).catch(() => null);
+		if (!known || !st || (st.mtime === known.mtime && st.size === known.size)) return false;
+		const effect = await this.#diskChanged();
+		if (effect === "unreadable") {
+			toast.error(`Not saved: ${this.relPath} changed on disk and cannot be read`);
+			return true;
+		}
+		if (effect !== "reload" && effect !== "prompt-conflict") return false;
+		this.#notSaved();
+		return true;
+	}
+
+	/** A save was refused because of someone else's change: on close that is the user's last chance to hear it. */
+	#notSaved() {
+		if (this.#closing && this.dirty) toast.error(`Not saved: ${this.relPath} changed on disk`);
 	}
 
 	/** Discard the buffer and show what is on disk (Revert file). */
@@ -334,34 +370,44 @@ export class EditorSession {
 	#watch() {
 		const dir = this.abs.slice(0, this.abs.lastIndexOf("/"));
 		this.#watchId = `ed:${this.abs}:${Math.random().toString(36).slice(2, 8)}`;
-		void host.fsWatch(dir, this.#watchId).catch(() => {});
+		host.fsWatch(dir, this.#watchId).catch((e) => {
+			// Saves still compare the file with what we last read (`#changedOnDisk`); only live updates are lost.
+			this.watchError = `External changes to this file are not watched: ${errText(e)}`;
+		});
 		let timer: number | undefined;
 		this.#off = listen<{ ev: string; id?: string; paths?: string[]; kind?: string }>("host://event", (e) => {
 			const p = e.payload;
 			if (p.ev !== "fs_event" || p.id !== this.#watchId || !p.paths?.includes(this.abs)) return;
 			clearTimeout(timer);
-			timer = window.setTimeout(() => void this.#diskChanged(), 120);
+			timer = window.setTimeout(() => {
+				if (!this.#closing) void this.#diskChanged();
+			}, 120);
 		});
 	}
 
-	async #diskChanged() {
-		if (this.#closing) return;
-		let st: { mtime: number } | null = null;
+	/**
+	 * Read the file and feed it to the external-change reducer; returns the effect (applied to the
+	 * editor unless it is closing). `#disk` is re-baselined to the stat this read saw, so a later save
+	 * compares against what is on disk now. `unreadable`: the text could not be read or decoded.
+	 */
+	async #diskChanged(): Promise<ExternalEffect | "unreadable"> {
+		let st: { mtime: number; size: number };
 		try {
 			st = await host.fsStat(this.abs);
 		} catch {
-			this.#feed({ kind: "disk-deleted" });
-			return;
+			return this.#feed({ kind: "disk-deleted" });
 		}
 		const text = await this.#readDisk();
-		if (text === null) return;
-		this.#feed({ kind: "disk-changed", text, mtime: st.mtime }, text);
+		if (text === null) return "unreadable";
+		this.#disk = { mtime: st.mtime, size: st.size };
+		return this.#feed({ kind: "disk-changed", text, mtime: st.mtime }, text);
 	}
 
-	#feed(ev: ExternalEvent, diskText?: string) {
+	#feed(ev: ExternalEvent, diskText?: string): ExternalEffect {
 		const r = reduceExternal(this.#ext, ev);
 		this.#ext = r.state;
-		this.#apply(r.effect, diskText);
+		if (!this.#closing) this.#apply(r.effect, diskText);
+		return r.effect;
 	}
 
 	// ---- status bar ---------------------------------------------------------------------------

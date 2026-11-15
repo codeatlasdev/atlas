@@ -27,7 +27,6 @@ class CrewmateTaskPair extends StatelessWidget {
     super.key,
     required this.task,
     this.enter = false,
-    this.delay = Duration.zero,
     this.day,
     required this.crewmateId,
     required this.device,
@@ -40,9 +39,9 @@ class CrewmateTaskPair extends StatelessWidget {
 
   final CrewmateTask task;
 
-  /// First time on screen: the exchange arrives (ChatAppear) instead of just being there.
+  /// It turned up while the thread was open: the exchange arrives (ChatAppear, and its space opens up) instead
+  /// of just being there. History is never `enter`.
   final bool enter;
-  final Duration delay;
 
   /// The day separator to show above this exchange, when it starts a day.
   final String? day;
@@ -56,7 +55,7 @@ class CrewmateTaskPair extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final exchange = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (day != null)
@@ -72,7 +71,7 @@ class CrewmateTaskPair extends StatelessWidget {
               ),
             ),
           ),
-        _UserBubble(task: task, enter: enter, delay: delay),
+        _UserBubble(task: task, enter: enter),
         TaskImageRow(
           images: task.ownerImages,
           taskId: task.id,
@@ -82,7 +81,7 @@ class CrewmateTaskPair extends StatelessWidget {
         _CrewmateBubble(
           task: task,
           enter: enter,
-          delay: delay + const Duration(milliseconds: 110),
+          delay: const Duration(milliseconds: 110),
           expanded: expanded,
           onToggle: onToggle,
         ),
@@ -130,18 +129,14 @@ class CrewmateTaskPair extends StatelessWidget {
         const SizedBox(height: Space.sm),
       ],
     );
+    return enter ? ChatGrow(child: exchange) : exchange;
   }
 }
 
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({
-    required this.task,
-    this.enter = false,
-    this.delay = Duration.zero,
-  });
+  const _UserBubble({required this.task, this.enter = false});
   final CrewmateTask task;
   final bool enter;
-  final Duration delay;
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +148,6 @@ class _UserBubble extends StatelessWidget {
         child: ChatAppear(
           fromRight: true,
           play: enter,
-          delay: delay,
           child: _Bubble(
             mine: true,
             tag: task.source == 'mobile' ? null : _sourceLabel(task.source),

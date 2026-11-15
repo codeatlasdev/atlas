@@ -12,7 +12,6 @@ import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/crew_ops_models.dart';
 import 'package:atlas_mobile/core/ui/async_view.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/features/crew/automations.dart';
 import 'package:atlas_mobile/features/crew/automation_editor_sheet.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
@@ -344,183 +343,160 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                     Space.xxl + MediaQuery.paddingOf(context).bottom,
                   ),
                   children: [
-                    EnterFade(
-                      child: ProfileHeader(
-                        crewmate: crewmate,
-                        hostName: hostName,
-                        state: state,
-                      ),
+                    ProfileHeader(
+                      crewmate: crewmate,
+                      hostName: hostName,
+                      state: state,
                     ),
                     const SizedBox(height: Space.xl),
 
-                    EnterFade(
-                      index: 1,
-                      child: ProfileGroup(
-                        title: 'What it does',
-                        children: [
-                          ProfileRow(
-                            onTap: () => _editRole(crewmate.role),
-                            child: Text(
-                              crewmate.role.isNotEmpty
-                                  ? crewmate.role
-                                  : 'Tap to describe its job.',
-                              style: Theme.of(context).textTheme.bodyLarge!
-                                  .copyWith(
-                                    color: crewmate.role.isNotEmpty
-                                        ? c.text
-                                        : c.muted,
-                                    height: 1.45,
-                                  ),
-                            ),
+                    ProfileGroup(
+                      title: 'What it does',
+                      children: [
+                        ProfileRow(
+                          onTap: () => _editRole(crewmate.role),
+                          child: Text(
+                            crewmate.role.isNotEmpty
+                                ? crewmate.role
+                                : 'Tap to describe its job.',
+                            style: Theme.of(context).textTheme.bodyLarge!
+                                .copyWith(
+                                  color: crewmate.role.isNotEmpty
+                                      ? c.text
+                                      : c.muted,
+                                  height: 1.45,
+                                ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
 
-                    EnterFade(
-                      index: 2,
-                      child: ProfileGroup(
-                        title: 'How it works',
-                        children: [
-                          ProfileRow(
-                            label: 'Approval',
-                            child: ApprovalPicker(
-                              value: crewmate.approval,
-                              enabled: crewmate.approvalSupported,
-                              onChanged: (val) async {
-                                final mux = await _mux();
-                                if (mux == null) return;
-                                await mux.call('crewmate_update', {
-                                  'id': widget.crewmateId,
-                                  'approval': val,
-                                });
-                                ref.invalidate(crewProvider(widget.device));
-                              },
-                            ),
+                    ProfileGroup(
+                      title: 'How it works',
+                      children: [
+                        ProfileRow(
+                          label: 'Approval',
+                          child: ApprovalPicker(
+                            value: crewmate.approval,
+                            enabled: crewmate.approvalSupported,
+                            onChanged: (val) async {
+                              final mux = await _mux();
+                              if (mux == null) return;
+                              await mux.call('crewmate_update', {
+                                'id': widget.crewmateId,
+                                'approval': val,
+                              });
+                              ref.invalidate(crewProvider(widget.device));
+                            },
                           ),
-                          ProfileRow(
-                            label: 'Short replies',
-                            child: ShortRepliesRow(
-                              value: crewmate.shortReplies,
-                              onChanged: (val) async {
-                                final mux = await _mux();
-                                if (mux == null) return;
-                                await mux.call('crewmate_update', {
-                                  'id': widget.crewmateId,
-                                  'short_replies': val,
-                                });
-                                ref.invalidate(crewProvider(widget.device));
-                              },
-                            ),
+                        ),
+                        ProfileRow(
+                          label: 'Short replies',
+                          child: ShortRepliesRow(
+                            value: crewmate.shortReplies,
+                            onChanged: (val) async {
+                              final mux = await _mux();
+                              if (mux == null) return;
+                              await mux.call('crewmate_update', {
+                                'id': widget.crewmateId,
+                                'short_replies': val,
+                              });
+                              ref.invalidate(crewProvider(widget.device));
+                            },
                           ),
-                          ProfileRow(
-                            icon: Icons.auto_stories_outlined,
-                            label: 'Memory',
-                            trailingText: 'View / Edit',
-                            onTap: _editMemory,
-                          ),
-                        ],
-                      ),
+                        ),
+                        ProfileRow(
+                          icon: Icons.auto_stories_outlined,
+                          label: 'Memory',
+                          trailingText: 'View / Edit',
+                          onTap: _editMemory,
+                        ),
+                      ],
                     ),
 
-                    EnterFade(
-                      index: 3,
-                      child: AutomationsSection(
-                        crewmate: crewmate,
-                        now: DateTime.now(),
-                        onAdd: () => _addAutomation(crewmate.name),
-                        onEdit: (t) => _editAutomation(crewmate, t),
-                        onDelete: (t) => _deleteAutomation(crewmate, t),
-                        onToggle: (t, enabled) async {
-                          await _saveTriggers([
-                            for (final tr in crewmate.triggers)
-                              if (tr.id == t.id)
-                                tr.copyWith(enabled: enabled)
-                              else
-                                tr,
-                          ]);
-                        },
-                      ),
+                    AutomationsSection(
+                      crewmate: crewmate,
+                      now: DateTime.now(),
+                      onAdd: () => _addAutomation(crewmate.name),
+                      onEdit: (t) => _editAutomation(crewmate, t),
+                      onDelete: (t) => _deleteAutomation(crewmate, t),
+                      onToggle: (t, enabled) async {
+                        await _saveTriggers([
+                          for (final tr in crewmate.triggers)
+                            if (tr.id == t.id)
+                              tr.copyWith(enabled: enabled)
+                            else
+                              tr,
+                        ]);
+                      },
                     ),
                     const SizedBox(height: Space.lg),
 
-                    EnterFade(
-                      index: 3,
-                      child: RoutinesSection(
-                        crewmateName: crewmate.name,
-                        routines: crewmate.routines,
-                        onAdd: () => _editRoutine(null),
-                        onEdit: _editRoutine,
-                        onToggle: _toggleRoutine,
-                        onDelete: _deleteRoutine,
-                      ),
+                    RoutinesSection(
+                      crewmateName: crewmate.name,
+                      routines: crewmate.routines,
+                      onAdd: () => _editRoutine(null),
+                      onEdit: _editRoutine,
+                      onToggle: _toggleRoutine,
+                      onDelete: _deleteRoutine,
                     ),
                     const SizedBox(height: Space.lg),
 
-                    EnterFade(
-                      index: 4,
-                      child: ProfileGroup(
-                        title: 'Activity',
-                        children: [
-                          ProfileRow(
-                            icon: Icons.fact_check_outlined,
-                            label: 'Audit',
-                            onTap: () => _open(
-                              CrewAuditScreen(
-                                device: widget.device,
-                                crewmateId: widget.crewmateId,
-                                title: crewmate.name,
-                              ),
+                    ProfileGroup(
+                      title: 'Activity',
+                      children: [
+                        ProfileRow(
+                          icon: Icons.fact_check_outlined,
+                          label: 'Audit',
+                          onTap: () => _open(
+                            CrewAuditScreen(
+                              device: widget.device,
+                              crewmateId: widget.crewmateId,
+                              title: crewmate.name,
                             ),
                           ),
-                          ProfileRow(
-                            icon: Icons.stacked_bar_chart_rounded,
-                            label: 'Usage',
-                            onTap: () => _open(
-                              CrewmateUsageScreen(
-                                device: widget.device,
-                                crewmateId: widget.crewmateId,
-                                name: crewmate.name,
-                              ),
+                        ),
+                        ProfileRow(
+                          icon: Icons.stacked_bar_chart_rounded,
+                          label: 'Usage',
+                          onTap: () => _open(
+                            CrewmateUsageScreen(
+                              device: widget.device,
+                              crewmateId: widget.crewmateId,
+                              name: crewmate.name,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
 
-                    EnterFade(
-                      index: 4,
-                      child: ProfileGroup(
-                        title: 'Accounts',
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(Space.md),
-                            child: GithubCard(
-                              status: _githubStatus,
-                              flow: _login.flow,
-                              loading: _githubLoading,
-                              polling: _login.polling,
-                              onConnect: _startLogin,
-                              onDisconnect: _logout,
-                              onCancelFlow: _login.cancel,
-                            ),
+                    ProfileGroup(
+                      title: 'Accounts',
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(Space.md),
+                          child: GithubCard(
+                            status: _githubStatus,
+                            flow: _login.flow,
+                            loading: _githubLoading,
+                            polling: _login.polling,
+                            onConnect: _startLogin,
+                            onDisconnect: _logout,
+                            onCancelFlow: _login.cancel,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
 
-                    EnterFade(
-                      index: 5,
-                      child: ProfileGroup(
-                        children: [
-                          ProfileRow(
-                            icon: Icons.delete_outline_rounded,
-                            label: 'Remove from the crew',
-                            danger: true,
-                            onTap: _deleteCrewmate,
-                          ),
-                        ],
-                      ),
+                    ProfileGroup(
+                      children: [
+                        ProfileRow(
+                          icon: Icons.delete_outline_rounded,
+                          label: 'Remove from the crew',
+                          danger: true,
+                          onTap: _deleteCrewmate,
+                        ),
+                      ],
                     ),
                   ],
                 ),

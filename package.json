@@ -33,6 +33,7 @@
     "site:build": "cd site && bun install --frozen-lockfile && bun run build",
     "site:check": "cd site && bun install --frozen-lockfile && bun run check",
     "site:deploy": "bun scripts/sh.ts scripts/deploy-site.sh",
+    "push:deploy": "bun scripts/sh.ts scripts/deploy-push-relay.sh",
     "studio": "bun studio/src/cli.ts",
     "studio:check": "bun studio check",
     "icons": "bun scripts/icons.ts",

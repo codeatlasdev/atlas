@@ -201,7 +201,7 @@
 										(e) => toast.error(errText(e)),
 									)}><Copy size={12} /> Copy command</button
 							>
-							<button onclick={() => api.openUrl(`file://${s.file.replace(/\/[^/]+$/, "")}`)}
+							<button onclick={() => api.revealPath(s.file).catch((e) => toast.error(errText(e)))}
 								><FolderSearch size={12} /> Reveal</button
 							>
 						</div>

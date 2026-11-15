@@ -170,21 +170,7 @@ fn adopt_memory(old: &Path, new: &Path) -> std::io::Result<()> {
 /// Atomic, so an agent never reads half a file.
 #[cfg(unix)]
 fn write_readable(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let tmp = path.with_extension("tmp~");
-    {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o640)
-            .open(&tmp)?;
-        f.write_all(data)?;
-    }
-    // The umask may have narrowed the mode at creation; the group bit is the point.
-    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o640))?;
-    std::fs::rename(tmp, path)
+    atlas_core::fs::write_atomic(path, data, atlas_core::fs::Mode::Exact(0o640))
 }
 
 /// Nothing is isolated off Unix, so nothing is written.
@@ -211,7 +197,6 @@ mod tests {
             std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
             0o640
         );
-        assert!(!p.with_extension("tmp~").exists());
     }
 
     // Memory written before isolation is not lost, not overwritten, and not moved twice.

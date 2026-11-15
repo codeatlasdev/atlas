@@ -552,15 +552,9 @@ impl Dir {
         runs.push(secs);
         let excess = runs.len().saturating_sub(HISTORY_KEEP);
         runs.drain(..excess);
-        let tmp = self
-            .root
-            .join(format!("history.{}.tmp", std::process::id()));
-        if let Ok(b) = serde_json::to_vec(&h)
-            && fs::write(&tmp, b).is_ok()
-        {
-            let _ = fs::rename(&tmp, self.history_path());
+        if let Ok(b) = serde_json::to_vec(&h) {
+            let _ = crate::fs::write_atomic(&self.history_path(), &b, crate::fs::Mode::Default);
         }
-        let _ = fs::remove_file(&tmp);
     }
 }
 
@@ -581,9 +575,11 @@ impl Ticket {
 
     fn write(&self) -> io::Result<()> {
         let path = self.dir.jobs().join(format!("{}.json", self.job.id));
-        let tmp = path.with_extension("tmp");
-        fs::write(&tmp, serde_json::to_vec(&self.job)?)?;
-        fs::rename(&tmp, &path)
+        crate::fs::write_atomic(
+            &path,
+            &serde_json::to_vec(&self.job)?,
+            crate::fs::Mode::Default,
+        )
     }
 
     /// One attempt to get a slot. `true` once this job runs (its record says so), `false` while it

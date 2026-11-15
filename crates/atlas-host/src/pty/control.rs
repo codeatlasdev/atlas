@@ -126,6 +126,12 @@ impl Session {
     }
 
     pub fn remove_files(&self) {
+        // Under the buffer lock, so a scrollback rewrite in flight sees `gone` and does not bring
+        // the file back (a terminal nobody closed, to the next hostd start).
+        let mut b = self.buf.lock();
+        b.gone = true;
+        b.trim = None;
+        b.file = None;
         let _ = std::fs::remove_file(bin_path(&self.dir, &self.id));
         let _ = std::fs::remove_file(meta_path(&self.dir, &self.id));
         let _ = std::fs::remove_file(super::batch_path(&self.dir, &self.id));
@@ -135,6 +141,13 @@ impl Session {
         let mut b = self.buf.lock();
         b.ring.clear();
         b.file_len = 0;
+        b.epoch += 1;
+        if let Some(t) = b.trim.as_mut() {
+            t.clear();
+        }
+        if b.gone {
+            return;
+        }
         let p = bin_path(&self.dir, &self.id);
         let _ = std::fs::write(&p, b"");
         if b.file.is_some() {

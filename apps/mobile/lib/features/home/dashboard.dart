@@ -148,22 +148,23 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
             ),
           ),
         ),
-        RefreshIndicator(
-          color: c.accent,
-          onRefresh: () async {
-            if (!connected) {
-              ref.invalidate(connectionNotifierProvider(widget.device));
-            } else {
-              ref.invalidate(projectListProvider(widget.device));
-              ref.invalidate(missingIntegrationsProvider(widget.device));
-            }
-          },
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverSafeArea(
-                bottom: false,
-                sliver: SliverToBoxAdapter(
+        // The list starts below the status bar: what scrolls away is cut there, never drawn under the clock.
+        SafeArea(
+          bottom: false,
+          child: RefreshIndicator(
+            color: c.accent,
+            onRefresh: () async {
+              if (!connected) {
+                ref.invalidate(connectionNotifierProvider(widget.device));
+              } else {
+                ref.invalidate(projectListProvider(widget.device));
+                ref.invalidate(missingIntegrationsProvider(widget.device));
+              }
+            },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
                   child: HomeHeader(
                     device: widget.device,
                     conn: conn,
@@ -184,106 +185,107 @@ class HomeDashboardState extends ConsumerState<HomeDashboard> {
                         : ('All clear', c.success),
                   ),
                 ),
-              ),
-              // ── Content slivers ──────────────────────────────────────────
-              if (!connected && !projects.hasValue)
-                // EmptyState scrolls itself (a LayoutBuilder: no intrinsic sizes), so the
-                // sliver hands it all the room that is left.
-                SliverFillRemaining(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: Space.xxl),
-                    child: ReachingView(
-                      device: widget.device,
-                      connecting: conn.isLoading,
-                    ),
-                  ),
-                )
-              else ...[
-                // The computer is out of reach but its last list is still here.
-                if (!connected)
-                  SliverToBoxAdapter(
-                    child: OfflineStrip(
-                      device: widget.device,
-                      suffix: ' · projects shown',
-                    ),
-                  ),
-                // Attention cards + integrations + section header
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.lg,
-                    Space.sm,
-                    Space.lg,
-                    0,
-                  ),
-                  sliver: SliverList.list(
-                    children: [
-                      for (final a in missing) HomeIntegrationOff(agent: a),
-                      if (missing.isNotEmpty) const SizedBox(height: Space.md),
-                      SectionHeader(
-                        'Projects',
-                        count: list.length,
-                        trailing: canOpenTerminal(widget.device)
-                            ? TextButton.icon(
-                                key: const Key('new-terminal-computer'),
-                                onPressed: () => newTerminalOnComputer(
-                                  context,
-                                  ref,
-                                  widget.device,
-                                ),
-                                icon: const Icon(
-                                  Icons.terminal_rounded,
-                                  size: 18,
-                                ),
-                                label: const Text('New terminal'),
-                              )
-                            : null,
-                      ),
-                    ],
-                  ),
-                ),
-                // The project list, kept through a reconnect or a failed refresh; "No projects
-                // yet" only when the computer answered "none". Nothing loaded yet: the spinner,
-                // or the error with "Try again" (AsyncView).
-                if (!projects.hasValue)
+                // ── Content slivers ──────────────────────────────────────────
+                if (!connected && !projects.hasValue)
+                  // EmptyState scrolls itself (a LayoutBuilder: no intrinsic sizes), so the
+                  // sliver hands it all the room that is left.
                   SliverFillRemaining(
-                    child: AsyncView<List<ProjectInfo>>(
-                      value: projects,
-                      errorTitle: "Couldn't read the projects",
-                      onRetry: () =>
-                          ref.invalidate(projectListProvider(widget.device)),
-                      data: (_) => const SizedBox.shrink(),
-                    ),
-                  )
-                else if (list.isEmpty)
-                  const SliverFillRemaining(
                     child: Padding(
-                      padding: EdgeInsets.only(bottom: kFloatingBarScrollPad),
-                      child: HomeNoProjects(),
+                      padding: const EdgeInsets.only(top: Space.xxl),
+                      child: ReachingView(
+                        device: widget.device,
+                        connecting: conn.isLoading,
+                      ),
                     ),
                   )
-                else
+                else ...[
+                  // The computer is out of reach but its last list is still here.
+                  if (!connected)
+                    SliverToBoxAdapter(
+                      child: OfflineStrip(
+                        device: widget.device,
+                        suffix: ' · projects shown',
+                      ),
+                    ),
+                  // Attention cards + integrations + section header
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(
+                      Space.lg,
+                      Space.sm,
+                      Space.lg,
                       0,
-                      Space.xs,
-                      0,
-                      Space.xxl + kFloatingBarScrollPad,
                     ),
                     sliver: SliverList.list(
                       children: [
-                        for (var i = 0; i < sorted.length; i++)
-                          ProjectTile(
-                            project: sorted[i],
-                            agents: agentsOf[sorted[i].id] ?? const [],
-                            flagged: flagged.contains(sorted[i].id),
-                            onOpen: () => _openProject(sorted[i]),
-                            last: i == sorted.length - 1,
-                          ),
+                        for (final a in missing) HomeIntegrationOff(agent: a),
+                        if (missing.isNotEmpty)
+                          const SizedBox(height: Space.md),
+                        SectionHeader(
+                          'Projects',
+                          count: list.length,
+                          trailing: canOpenTerminal(widget.device)
+                              ? TextButton.icon(
+                                  key: const Key('new-terminal-computer'),
+                                  onPressed: () => newTerminalOnComputer(
+                                    context,
+                                    ref,
+                                    widget.device,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.terminal_rounded,
+                                    size: 18,
+                                  ),
+                                  label: const Text('New terminal'),
+                                )
+                              : null,
+                        ),
                       ],
                     ),
                   ),
+                  // The project list, kept through a reconnect or a failed refresh; "No projects
+                  // yet" only when the computer answered "none". Nothing loaded yet: the spinner,
+                  // or the error with "Try again" (AsyncView).
+                  if (!projects.hasValue)
+                    SliverFillRemaining(
+                      child: AsyncView<List<ProjectInfo>>(
+                        value: projects,
+                        errorTitle: "Couldn't read the projects",
+                        onRetry: () =>
+                            ref.invalidate(projectListProvider(widget.device)),
+                        data: (_) => const SizedBox.shrink(),
+                      ),
+                    )
+                  else if (list.isEmpty)
+                    const SliverFillRemaining(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: kFloatingBarScrollPad),
+                        child: HomeNoProjects(),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        Space.xs,
+                        0,
+                        Space.xxl + kFloatingBarScrollPad,
+                      ),
+                      sliver: SliverList.list(
+                        children: [
+                          for (var i = 0; i < sorted.length; i++)
+                            ProjectTile(
+                              project: sorted[i],
+                              agents: agentsOf[sorted[i].id] ?? const [],
+                              flagged: flagged.contains(sorted[i].id),
+                              onOpen: () => _openProject(sorted[i]),
+                              last: i == sorted.length - 1,
+                            ),
+                        ],
+                      ),
+                    ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ],

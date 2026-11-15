@@ -92,7 +92,7 @@ Future<({GoRouter router, _Slow link})> _app(
 
 Future<void> _leave(WidgetTester t) async {
   await t.pumpWidget(const SizedBox());
-  await t.pump(const Duration(seconds: 1));
+  await t.pump(const Duration(seconds: 3));
 }
 
 final _detail = find.byType(ProjectDetailScreen);
@@ -241,6 +241,51 @@ void main() {
     );
 
     testWidgets(
+      'a prompt that goes away or arrives while the chat is open glides: it never shoves the thread in one frame',
+      (t) async {
+        await _app(t, latency: const Duration(milliseconds: 100));
+        await t.tap(find.byIcon(Icons.notifications_rounded));
+        await settle(t);
+        await t.tap(find.byType(AttentionHero));
+        await settle(t);
+        expect(find.byType(ApprovalBanner), findsOneWidget);
+
+        // The room the prompt takes above the composer.
+        final room = find.descendant(
+          of: _chat,
+          matching: find.byWidgetPredicate(
+            (w) => w is AnimatedSize && w.alignment == Alignment.bottomCenter,
+          ),
+        );
+        final probe = FrameProbe(t, {'room': room});
+        await t.tap(find.text('Allow'));
+        await probe.record(const Duration(milliseconds: 800));
+
+        final heights = [for (final f in probe.frames) f['room']!.rect!.height];
+        final moved = heights.first - heights.last;
+        expect(
+          moved,
+          greaterThan(40),
+          reason: 'the prompt left and gave its room back',
+        );
+        var step = 0.0;
+        for (var i = 1; i < heights.length; i++) {
+          step = [
+            step,
+            (heights[i] - heights[i - 1]).abs(),
+          ].reduce((a, b) => a > b ? a : b);
+        }
+        expect(
+          step,
+          lessThan(moved / 4),
+          reason:
+              'the room changed by ${moved.toStringAsFixed(0)} px, ${step.toStringAsFixed(0)} of them in one frame',
+        );
+        await _leave(t);
+      },
+    );
+
+    testWidgets(
       'a reader above the end is not moved by sending, by the agent starting to work or by its answer; the end is one tap away',
       (t) async {
         await _app(
@@ -363,6 +408,43 @@ void main() {
       await _leave(t);
     },
   );
+
+  group('Under the status bar', () {
+    // Regression: Home and a project scrolled their text under the clock (the scroll view spanned the whole
+    // screen and only padded its top): the lines read through the status bar. A scroll view has to start
+    // below it, so what scrolls away is cut there.
+    const notch = 47.0;
+    void withNotch(WidgetTester t) {
+      final top = notch * t.view.devicePixelRatio;
+      t.view.padding = FakeViewPadding(top: top);
+      t.view.viewPadding = FakeViewPadding(top: top);
+      addTearDown(t.view.reset);
+    }
+
+    testWidgets('Home scrolls below the status bar', (t) async {
+      withNotch(t);
+      await _app(t);
+      final list = find.descendant(
+        of: find.byType(HomeDashboard),
+        matching: find.byType(CustomScrollView),
+      );
+      expect(t.getRect(list).top, greaterThanOrEqualTo(notch));
+      await _leave(t);
+    });
+
+    testWidgets('a project scrolls below the status bar', (t) async {
+      withNotch(t);
+      await _app(t);
+      await _openProject(t);
+      await settle(t);
+      final list = find.descendant(
+        of: _detail,
+        matching: find.byType(CustomScrollView),
+      );
+      expect(t.getRect(list).top, greaterThanOrEqualTo(notch));
+      await _leave(t);
+    });
+  });
 
   testWidgets('Inbox: what it already lists is there on its first frame', (
     t,

@@ -877,8 +877,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             // is where the user types, never leaves the screen.
             // Arriving later, it grows from the composer's edge instead of shoving the thread in one frame.
             AnimatedSize(
-              duration: Motion.reduced(context) ? Duration.zero : Motion.normal,
-              curve: Motion.ease,
+              duration: Motion.reduced(context) ? Duration.zero : Motion.slow,
+              // Eases in too (the app's ease starts almost at once): a size change must not jump in its first frame.
+              curve: Curves.easeInOut,
               alignment: Alignment.bottomCenter,
               child: approval == null && _error == null
                   ? const SizedBox(width: double.infinity)

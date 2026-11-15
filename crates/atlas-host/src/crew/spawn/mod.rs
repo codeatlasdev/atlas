@@ -13,6 +13,7 @@
 //! | `validate` | the pure rules every request must pass (user, binary, cwd, env, signal)  |
 //! | `layout`   | where a crewmate's files live under isolation, and when isolation is on  |
 //! | `wire`     | length-prefixed JSON framing with fds                                    |
+//! | `cgroup`   | the per-crewmate memory cap: leaf cgroups, `memory.max`, OOM detection    |
 //! | `exec`     | fork, drop to the crewmate's user, exec, return the pty master           |
 //! | `peer`     | who is on the other end of the socket (`SO_PEERCRED`)                    |
 //! | `server`   | the helper's loop: sessions, signals, exit codes, `atlas crew-spawn`     |
@@ -22,6 +23,7 @@
 //! Everything that touches fds, sockets or users is Unix only; `protocol`, `validate` and `layout`
 //! are plain data and compile everywhere (the CLI builds the install scripts from them on any OS).
 
+pub mod cgroup;
 #[cfg(unix)]
 pub mod client;
 #[cfg(unix)]

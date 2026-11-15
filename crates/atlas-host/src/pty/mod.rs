@@ -186,6 +186,19 @@ impl Session {
     pub fn exited(&self) -> Option<Option<i32>> {
         *self.exited.lock()
     }
+
+    /// The memory cap this session's agent was killed under by the kernel, when it was (#296): only
+    /// an agent running as its crewmate's user under the spawn helper has one. Blocking (one socket call).
+    pub fn oom_cap(&self) -> Option<u64> {
+        #[cfg(unix)]
+        {
+            self.iso.as_ref()?.oom_cap()
+        }
+        #[cfg(not(unix))]
+        {
+            None
+        }
+    }
 }
 
 fn now_s() -> u64 {

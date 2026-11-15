@@ -742,6 +742,10 @@ pub enum HostCmd {
         /// Agents the server runs at once (at least 1); absent leaves it as it is.
         #[serde(default)]
         max_agents: Option<usize>,
+        /// Bytes one agent may use before it is killed alone (at least 64 MiB); absent leaves it as it
+        /// is, `0` goes back to the computed default.
+        #[serde(default)]
+        agent_memory_max: Option<u64>,
     },
     /// A terminal that runs only `engine`'s login command as the crew user (`crew::engine_login`); the reply is
     /// `{engine, pty}` and the phone attaches with its terminal screen. `engine` is one of `claude`, `codex`,

@@ -166,19 +166,34 @@ pub(crate) fn get(hub: &Hub) -> Result<Value, String> {
         "short_replies": settings.short_replies,
         "short_replies_model": settings.short_replies_model,
         "max_agents": settings.max_agents,
+        "agent_memory_max": settings.agent_memory_max,
+        // What agents run under now, or why there is no cap: asked of the helper, never assumed.
+        "memory_cap": super::super::memory_cap::report(hub),
     }))
 }
 
+/// What `crew_settings_set` carries.
+pub(crate) struct SettingsIn {
+    pub short_replies: bool,
+    pub short_replies_model: Option<String>,
+    pub max_agents: Option<usize>,
+    pub agent_memory_max: Option<u64>,
+}
+
 /// `CrewSettingsSet`
-pub(crate) fn set(
-    hub: &Hub,
-    short_replies: bool,
-    short_replies_model: Option<String>,
-    max_agents: Option<usize>,
-) -> Result<Value, String> {
+pub(crate) fn set(hub: &Hub, input: SettingsIn) -> Result<Value, String> {
+    let SettingsIn {
+        short_replies,
+        short_replies_model,
+        max_agents,
+        agent_memory_max,
+    } = input;
     if max_agents == Some(0) {
         return Err("max_agents must be at least 1: 0 would stop every task".into());
     }
+    let memory_max = agent_memory_max
+        .map(super::super::memory_cap::parse_setting)
+        .transpose()?;
     // Load, change, save: the file also holds `paused`, which this command must never reset.
     let mut settings = hub.crew.store.load_crew_settings();
     settings.short_replies = short_replies;
@@ -186,12 +201,17 @@ pub(crate) fn set(
     if let Some(n) = max_agents {
         settings.max_agents = n;
     }
+    if let Some(m) = memory_max {
+        settings.agent_memory_max = m;
+    }
     hub.crew
         .store
         .save_crew_settings(&settings)
         .map_err(|e| format!("save_crew_settings: {e}"))?;
     hub.crew.agent_slots.set_limit(settings.max_agents);
-    Ok(json!({}))
+    // The cap depends on both numbers: the helper rewrites memory.max of the agents that run.
+    let cap = super::super::memory_cap::apply(hub);
+    Ok(json!({ "memory_cap": cap }))
 }
 
 /// `EngineLimits`

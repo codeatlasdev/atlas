@@ -112,6 +112,16 @@ pub(super) async fn wait_for_outcome(
             }
             _ = tokio::time::sleep(Duration::from_millis(250)) => {
                 if let Some(code) = session.exited() {
+                    // Said in words: an OOM kill is a bare "exit 137" otherwise, and the owner
+                    // needs to know which setting to raise (#296).
+                    let s = session.clone();
+                    let oom = tokio::task::spawn_blocking(move || s.oom_cap())
+                        .await
+                        .ok()
+                        .flatten();
+                    if let Some(cap) = oom {
+                        return (Err(crate::crew::spawn::cgroup::oom_reason(cap)), steps);
+                    }
                     return (Err(format!(
                         "agent exited (code {})",
                         code.map_or_else(|| "?".to_string(), |c| c.to_string())

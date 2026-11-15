@@ -90,7 +90,7 @@ atlas crew update ubuntu@myserver.example.com --rollback      # back to the bina
 
 5. **Refreshes the capture runner**, after the new hostd is up, on a server that already has the [capture browsers](#captures) (`<hostd dir>/capture/runner.mjs` exists): `runner.mjs` and `detectors.mjs` are rewritten as the crew user, the same way `atlas crew browsers install` writes them. No root, no npm, no browser download; the package and its lock are not touched (they move with `atlas crew browsers install`, which `atlas crew browsers status` asks for when the pinned Playwright differs). A server without the capture dir is left alone, and `--rollback` keeps the runner it has. Without this step a new hostd would ask an old runner for the [UI detectors](#ui-detectors-temporary), get no findings and fail every UI gate scenario; if that ever happens the error says `this server's capture runner predates the UI detectors` and names the fix (`atlas crew update` or `atlas crew browsers install`).
 
-Only `/usr/local/lib/atlas-crew/` changes, plus the two capture runner files above when they exist. The crew home (crewmates, memory, secrets, `crew.json`) is never touched, and the update never calls pause or resume: the paused flag lives in `crew.json` and hostd reads it again on start, so **a paused crew stays paused**. The restart is a daemon restart: a task that was running is recorded as failed (`interrupted by daemon restart`) and queued tasks are picked up again when hostd is back. Pause the crew first (`atlas crew pause`) if you do not want a task cut in the middle.
+Only `/usr/local/lib/atlas-crew/` changes, plus the two capture runner files above when they exist. The crew home (crewmates, memory, secrets, `crew.json`) is never touched, and the update never calls pause or resume: the paused flag lives in `crew.json` and hostd reads it again on start, so **a paused crew stays paused**. The restart is a daemon restart: a task that was running is put back at the head of its queue and run again, marked `resumed` (after 2 restarts it fails instead), and queued tasks are picked up again when hostd is back ([What survives a restart](#what-survives-a-restart)). Pause the crew first (`atlas crew pause`) if you do not want a task cut in the middle and run again.
 
 ### arm64 servers
 
@@ -233,8 +233,8 @@ Automations (`triggers` on the wire) start a task by themselves. Build one in a 
 | Interval | `interval` | `every_secs` ≥ 60 |
 | Webhook | `webhook` | `token`, called as `POST /crew/<crewmate id>/hook/<token>` on the hook server (webhooks set up before the rename keep working at `/bots/<crewmate id>/hook/<token>`) |
 | GitHub | `github` | `repo` (`owner/repo`), `events`: `mention`, `issue_assigned`, `pr_review_comment`, `ci_failed`, `pr_opened`, `pr_review_requested`, `issue_opened`, `release`, `authors`: who may start a task, `handle` (for `mention`) and `assignee` (for `issue_assigned`), see [GitHub in and out](#github-in-and-out). Polled every 2 minutes with `gh` |
-| File | `file` | `path`, optional `glob` |
-| After crewmate | `crewmate` | `from_crewmate` (id), `on`: `done` or `failed` |
+| File | `file` | `path` (watched recursively), optional `glob` (`*.md` matches Markdown files at any depth, `docs/*.md` is relative to `path`; a glob that does not parse matches nothing). A change inside the crewmate's own work tree never fires it |
+| After crewmate | `crewmate` | `from_crewmate` (id), `on`: `done` or `failed`. A task started this way remembers the crewmates that led to it (`chain`); a crewmate already in that chain is not started again, so two crewmates triggering each other run one round and stop (audit `chain_refused`) |
 | Service | `service` | `project_dir`, `service`, `on`: `failed` or `recovered` |
 
 Rules the server enforces:
@@ -291,6 +291,8 @@ The crew polls the repo's events every 2 minutes, so a comment starts a task wit
 - The branch of a CI-fix or review-comment task is put in the instructions ("check out this branch, push there") only when it is a plain git ref name (letters, digits, `.`, `_`, `/`, `-`); any other name is left to the untrusted block.
 - A task from GitHub runs with `approval: ask` even on an `auto` crewmate unless the automation sets `allow_auto: true`. Set it only on repos where strangers cannot comment.
 - The crew's own comments never start a task, by its `gh` login and by the marker. The same event, or the same comment seen again, never starts a second task (`<crewmate dir>/<automation id>_seen.jsonl`).
+- A new GitHub automation starts at the head of the feed: the events GitHub still lists when it is created are marked seen and start nothing (the seen file is created then).
+- An event is recorded in the seen file before its task is made. If that file cannot be written, nothing fires and the automation is not polled again for 15 minutes, so an unwritable disk never repeats a task every 2 minutes.
 - A paused crew ([Pause and resume](#pause-and-resume)) does not poll GitHub at all.
 
 ## Telegram
@@ -532,6 +534,7 @@ What a crewmate did and who decided what, kept on the crew server in `<crewmate 
 | `task_queued`, `task_started`, `task_finished` | task lifecycle | `task_id`, `source`, `prompt`; `state` and `error` at the end |
 | `config_changed` | approval, engine, project, agent, name, role length, short replies, triggers, routines | `field`, `from`, `to` (webhook tokens are left out) |
 | `task_refused` | the guards refused a finished task | `task_id`, `reasons` |
+| `chain_refused` | an after-crewmate automation was not fired because its crewmate was already in the chain | `trigger_id`, `from_crewmate`, `from_task`, `chain` |
 | `refusal_overridden` | the owner accepted refused work | `task_id` |
 | `task_unproven_ui` | a `ui` task finished without two agent captures | `task_id`, `reason`, `captures` |
 | `secret_set` | `crewmate_secret_set` | `name` |
@@ -715,7 +718,7 @@ Same NDJSON socket as every hostd command (`~/.atlas/hostd.sock`, or the crew se
 | `crew_pause`, `crew_resume` | `{}` | `{}`; see [Pause and resume](#pause-and-resume). Pushes `{"ev":"crew_paused","paused":bool}` (Mobile scope `act`) |
 | `crewmate_create` | `{name, role, agent, approval, workdir?, look?, engine?, project?}` | the crewmate |
 | `crewmate_update` | `{id, name?, role?, agent?, approval?, look?, …}` | the crewmate |
-| `crewmate_delete` | `{id}` | `{}`; cancels running and queued tasks first |
+| `crewmate_delete` | `{id}` | `{}`; cancels running and queued tasks and waits for the running turn to end, removes the Git worktree and the `atlas/<id>/…` branches from the shared clone, then the crewmate's directory. A turn that still writes afterwards is refused, so the directory is not recreated |
 | `crewmate_task` | `{id, prompt, source, tz?, attachments?, ui?}` | `{task}`; `ui: true` makes it a [UI task](#ui-tasks-and-proof); `attachments` is up to 4 images, `[{name, data_b64}]` or `[{name, upload}]`, see [Images on tasks](#images-on-tasks) |
 | `crewmate_attachment_put` | `{id, upload, seq, data_b64, last?}` | `{staged, last}`; one piece (at most 512 KiB raw) of an image too big for a protocol line, pieces in order from `seq` 0. Mobile scope `act` |
 | `crewmate_attachment` | `{id, task, name, offset?, limit?}` | `{name, mime, bytes_len, offset, data_b64, last}`; one piece (at most 512 KiB raw) of a stored image, `name` being one of the task's `attachments`. Mobile scope `read` |

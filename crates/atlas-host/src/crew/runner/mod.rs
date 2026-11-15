@@ -112,6 +112,18 @@ impl RunnerMap {
         self.0.lock().get(crewmate_id)?.running.clone()
     }
 
+    /// Drop the runner of a deleted crewmate once its worker has ended (`run_worker` expects its
+    /// entry for as long as it lives); a worker still alive ends by itself with an empty queue.
+    pub fn forget(&self, crewmate_id: &str) {
+        let mut map = self.0.lock();
+        if let Some(r) = map.get_mut(crewmate_id) {
+            r.queue.clear();
+            if !r.worker_active {
+                map.remove(crewmate_id);
+            }
+        }
+    }
+
     /// Count of tasks waiting in the queue for `crewmate_id` (not including the running one).
     pub fn queue_len(&self, crewmate_id: &str) -> usize {
         self.0

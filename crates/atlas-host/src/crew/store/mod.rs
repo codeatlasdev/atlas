@@ -426,6 +426,11 @@ pub struct Task {
     /// `/ui` prefix on Telegram) or by the agent (`set_ui`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ui: bool,
+    /// The crewmates whose finished tasks led to this one through `Crewmate` triggers, oldest first
+    /// (empty for a task nobody chained). A chain trigger refuses to start a crewmate already in it,
+    /// so two crewmates triggering each other on `done` run one round and stop.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chain: Vec<String>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -464,6 +469,7 @@ impl Task {
             resumed: false,
             attachments: vec![],
             ui: false,
+            chain: vec![],
         }
     }
 }
@@ -510,6 +516,10 @@ impl Default for CrewSettings {
 /// [`CrewStore`]: handlers build their own instances over the same files.
 static TASK_WRITES: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
+/// Crewmates deleted by this process. Shared like `TASK_WRITES`, because handlers build their own
+/// stores over the same files. Ids are never reused, so it only grows by one per delete.
+static DELETED: parking_lot::Mutex<Vec<(PathBuf, String)>> = parking_lot::Mutex::new(Vec::new());
+
 pub struct CrewStore {
     base: PathBuf,
 }
@@ -549,8 +559,7 @@ impl CrewStore {
 
     /// Write `crewmate.json` atomically, 0600.
     pub fn save_crewmate(&self, crewmate: &Crewmate) -> io::Result<()> {
-        let dir = self.crewmate_dir(&crewmate.id);
-        std::fs::create_dir_all(&dir)?;
+        let dir = self.writable_dir(&crewmate.id)?;
         let data = serde_json::to_vec_pretty(crewmate)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         paths::write_private(&dir.join(FILE), &data)?;
@@ -598,8 +607,40 @@ impl CrewStore {
             .collect()
     }
 
+    /// Remove `crew/<id>/` and refuse every later write to it (`is_deleted`): a turn that was still
+    /// running recorded its end with `append_task`, which recreated the directory without its
+    /// `crewmate.json`.
     pub fn delete_crewmate_dir(&self, id: &str) -> io::Result<()> {
-        std::fs::remove_dir_all(self.crewmate_dir(id))
+        let mut deleted = DELETED.lock();
+        deleted.push((self.base.clone(), id.to_string()));
+        match std::fs::remove_dir_all(self.crewmate_dir(id)) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether this crewmate was deleted: nothing may be written for it any more.
+    pub fn is_deleted(&self, id: &str) -> bool {
+        DELETED
+            .lock()
+            .iter()
+            .any(|(base, d)| *base == self.base && d == id)
+    }
+
+    /// `crew/<id>/`, created; an error for a deleted crewmate. Every write goes through here.
+    fn writable_dir(&self, id: &str) -> io::Result<PathBuf> {
+        let dir = self.crewmate_dir(id);
+        // Under the lock `delete_crewmate_dir` holds while it removes, so a write is either before
+        // the delete (and removed by it) or after it (and refused), never in between.
+        let deleted = DELETED.lock();
+        if deleted.iter().any(|(b, d)| *b == self.base && d == id) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("crewmate {id} was deleted"),
+            ));
+        }
+        std::fs::create_dir_all(&dir)?;
+        Ok(dir)
     }
 
     /// Append a JSON line to `tasks.jsonl`: `task` as it stands, the last line of an id wins.
@@ -658,8 +699,7 @@ impl CrewStore {
     }
 
     fn append_unlocked(&self, crewmate_id: &str, task: &Task) -> io::Result<()> {
-        let dir = self.crewmate_dir(crewmate_id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(crewmate_id)?;
         let mut line = serde_json::to_string(task)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         line.push('\n');
@@ -702,8 +742,7 @@ impl CrewStore {
 
     /// Write `memory.md`, truncating at 64 KiB.
     pub fn write_memory(&self, crewmate_id: &str, text: &str) -> io::Result<()> {
-        let dir = self.crewmate_dir(crewmate_id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(crewmate_id)?;
         const MAX: usize = 64 * 1024;
         let bytes = text.as_bytes();
         let data = if bytes.len() > MAX {
@@ -727,8 +766,7 @@ impl CrewStore {
     }
 
     pub fn save_session(&self, id: &str, session: &CrewmateSession) -> io::Result<()> {
-        let dir = self.crewmate_dir(id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(id)?;
         let data = serde_json::to_vec(session)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         paths::write_private(&self.session_path(id), &data)
@@ -757,8 +795,7 @@ impl CrewStore {
         secrets.insert(key.to_string(), value.to_string());
         let data = serde_json::to_vec(&secrets)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        let dir = self.crewmate_dir(id);
-        std::fs::create_dir_all(&dir)?;
+        self.writable_dir(id)?;
         paths::write_private(&self.secrets_path(id), &data)
     }
 
@@ -791,8 +828,7 @@ impl CrewStore {
         ts: u64,
         usage: &UsageRecord,
     ) -> io::Result<()> {
-        let dir = self.crewmate_dir(crewmate_id);
-        std::fs::create_dir_all(&dir)?;
+        let dir = self.writable_dir(crewmate_id)?;
         let mut rec = serde_json::to_value(usage).unwrap_or_default();
         rec["engine"] = serde_json::json!(engine_kind);
         rec["ts"] = serde_json::json!(ts);

@@ -114,6 +114,55 @@ pub async fn fetch(work_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Take a deleted crewmate's checkout out of the shared clone: `git worktree remove --force` (the
+/// agent's uncommitted work goes with the crewmate), a prune of what is left, and its local branches
+/// `atlas/<id>/*`. Without it the shared clone keeps the worktree's metadata and the branch forever,
+/// and a later `worktree add` for the same branch can refuse. A crewmate with no Git checkout has
+/// nothing to remove. Errors are returned so the caller can say what was left; every step still runs.
+pub async fn remove_checkout(base_dir: &Path, crewmate_id: &str) -> Result<(), String> {
+    let worktree = work_dir(base_dir, crewmate_id);
+    if !worktree.join(".git").exists() {
+        return Ok(());
+    }
+    // The shared clone is the first entry of the worktree list, read from inside the worktree.
+    let list = git_run(&["worktree", "list", "--porcelain"], Some(&worktree)).await?;
+    let shared = list
+        .lines()
+        .find_map(|l| l.strip_prefix("worktree "))
+        .map(|s| PathBuf::from(s.trim()))
+        .ok_or("git worktree list named no shared clone")?;
+
+    let mut left = vec![];
+    let wt = worktree.to_string_lossy().into_owned();
+    if let Err(e) = git_run(&["worktree", "remove", "--force", &wt], Some(&shared)).await {
+        left.push(e);
+    }
+    if let Err(e) = git_run(&["worktree", "prune"], Some(&shared)).await {
+        left.push(e);
+    }
+    let pattern = format!("refs/heads/atlas/{crewmate_id}/");
+    match git_run(
+        &["for-each-ref", "--format=%(refname:short)", &pattern],
+        Some(&shared),
+    )
+    .await
+    {
+        Ok(branches) => {
+            for b in branches.lines().filter(|b| !b.is_empty()) {
+                if let Err(e) = git_run(&["branch", "-D", b], Some(&shared)).await {
+                    left.push(e);
+                }
+            }
+        }
+        Err(e) => left.push(e),
+    }
+    if left.is_empty() {
+        Ok(())
+    } else {
+        Err(left.join("; "))
+    }
+}
+
 // ─── atlas.yaml ───────────────────────────────────────────────────────────────
 
 /// Read `atlas.yaml` from `work_dir` and extract the project name, service
@@ -563,5 +612,63 @@ services:
     fn ssh_to_https_leaves_non_github_unchanged() {
         let url = "git@gitlab.com:owner/repo.git";
         assert_eq!(ssh_to_https(url), url);
+    }
+
+    fn git_out(dir: &Path, args: &[&str]) -> String {
+        let o = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "git {args:?}");
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    }
+
+    // Regression (#297): deleting a crewmate removed `crew/<id>/` with `remove_dir_all` only, so the
+    // shared clone kept the worktree's metadata and the local branch `atlas/<id>/...` for good.
+    #[tokio::test]
+    async fn removing_a_checkout_leaves_no_worktree_or_branch_in_the_shared_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = remote_repo(tmp.path());
+        let base = tmp.path().join("hostd");
+        let p = ProjectRef::Git {
+            url,
+            branch: Some("feat/x".into()),
+        };
+        let a = prepare(&p, "crewmate-a", &base).await.unwrap();
+        let b = prepare(&p, "crewmate-b", &base).await.unwrap();
+        // Uncommitted work in the worktree goes with the crewmate.
+        std::fs::write(a.join("scratch.txt"), "wip").unwrap();
+        let shared = std::fs::read_dir(base.join("projects"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-a/*"])
+                .contains("atlas/crewmate-a/feat/x")
+        );
+
+        remove_checkout(&base, "crewmate-a").await.unwrap();
+
+        assert!(!a.exists(), "the worktree directory is gone");
+        let worktrees = git_out(&shared, &["worktree", "list", "--porcelain"]);
+        assert!(!worktrees.contains("crewmate-a"), "{worktrees}");
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-a/*"])
+                .trim()
+                .is_empty()
+        );
+        // The other crewmate is untouched, and a new worktree for the same id can be made again.
+        assert!(worktrees.contains("crewmate-b") && b.join(".git").exists());
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-b/*"]).contains("crewmate-b")
+        );
+        prepare(&p, "crewmate-a", &base)
+            .await
+            .expect("same id again");
+        // A crewmate with no checkout has nothing to remove.
+        remove_checkout(&base, "never-had-one").await.unwrap();
     }
 }

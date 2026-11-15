@@ -415,3 +415,52 @@ fn a_missing_secrets_file_is_empty_and_leaves_nothing_aside() {
     store.set_secret("aaa", "K", "value1234").unwrap();
     assert!(files_named(&store.crewmate_dir("aaa"), "secrets.json.corrupt").is_empty());
 }
+
+// Regression (#297): deleting a crewmate while its turn still ran left `tasks.jsonl` behind: the
+// turn's last `append_task` recreated `crew/<id>/` without a `crewmate.json`, and every start logged
+// "skipped, unreadable". Every write path must refuse once the crewmate is deleted.
+#[test]
+fn nothing_recreates_the_directory_of_a_deleted_crewmate() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = CrewStore::new(dir.path());
+    let crewmate: Crewmate = serde_json::from_str(&legacy_crewmate_json("gone")).unwrap();
+    store.save_crewmate(&crewmate).unwrap();
+    let task = Task::new("test", "p");
+    store.append_task("gone", &task).unwrap();
+
+    store.delete_crewmate_dir("gone").unwrap();
+    assert!(!store.crewmate_dir("gone").exists());
+
+    // A second store over the same files (handlers build their own) is refused too.
+    let other = CrewStore::new(dir.path());
+    assert!(store.append_task("gone", &task).is_err());
+    assert!(other.append_task("gone", &task).is_err());
+    assert!(store.append_runner_state("gone", &task).is_err());
+    assert!(
+        store
+            .update_task("gone", &task.id, |_| Ok(()))
+            .unwrap()
+            .is_none()
+    );
+    assert!(store.save_crewmate(&crewmate).is_err());
+    assert!(store.write_memory("gone", "late").is_err());
+    assert!(
+        store
+            .save_session("gone", &CrewmateSession::default())
+            .is_err()
+    );
+    assert!(store.set_secret("gone", "K", "value1234").is_err());
+    assert!(
+        !store.crewmate_dir("gone").exists(),
+        "a late write recreated crew/gone/"
+    );
+
+    // Another crewmate, and another store dir, are not affected.
+    let alive: Crewmate = serde_json::from_str(&legacy_crewmate_json("alive")).unwrap();
+    store.save_crewmate(&alive).unwrap();
+    store.append_task("alive", &Task::new("test", "p")).unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    CrewStore::new(elsewhere.path())
+        .append_task("gone", &task)
+        .unwrap();
+}

@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/attention_card.dart';
 import 'package:atlas_mobile/features/crew/widgets/pill_buttons.dart';
 
 class PauseCard extends StatefulWidget {
@@ -55,7 +56,6 @@ class _PauseCardState extends State<PauseCard> {
 
   @override
   Widget build(BuildContext context) {
-    final c = AtlasColors.of(context);
     if (!widget.paused) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
@@ -73,47 +73,19 @@ class _PauseCardState extends State<PauseCard> {
         ),
       );
     }
-    return Container(
+    return AttentionCard(
       margin: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 0),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: c.warning.withValues(alpha: .08),
-        border: Border.all(color: c.warning.withValues(alpha: .35)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.pause_circle_outline, color: c.warning, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Crew paused',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: c.text,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  widget.showServer
-                      ? '${widget.serverName}: nothing runs until you resume.'
-                      : 'Nothing runs until you resume. Queued tasks wait.',
-                  style: TextStyle(fontSize: 12, color: c.muted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          WarnPillButton(
-            label: 'Resume',
-            onPressed: _busy ? null : () => _set(false),
-          ),
-        ],
-      ),
+      icon: Icons.pause_circle_outline,
+      title: 'Crew paused',
+      body: widget.showServer
+          ? '${widget.serverName}: nothing runs until you resume.'
+          : 'Nothing runs until you resume. Queued tasks wait.',
+      actions: [
+        WarnPillButton(
+          label: 'Resume',
+          onPressed: _busy ? null : () => _set(false),
+        ),
+      ],
     );
   }
 }

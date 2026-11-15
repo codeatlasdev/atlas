@@ -58,10 +58,14 @@ class CrewDeck extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  StatePill(
-                    label: label,
-                    color: color,
-                    pulse: working + waiting > 0,
+                  AnimatedSwitcher(
+                    duration: Motion.normal,
+                    child: AtlasChip(
+                      label,
+                      key: ValueKey(label),
+                      tone: color,
+                      leading: ChipDot(pulse: working + waiting > 0),
+                    ),
                   ),
                 ],
               ),
@@ -208,43 +212,4 @@ class StateDot extends StatelessWidget {
       ],
     );
   }
-}
-
-class StatePill extends StatelessWidget {
-  const StatePill({
-    super.key,
-    required this.label,
-    required this.color,
-    required this.pulse,
-  });
-  final String label;
-  final Color color;
-  final bool pulse;
-
-  @override
-  Widget build(BuildContext context) => AnimatedSwitcher(
-    duration: Motion.normal,
-    child: Container(
-      key: ValueKey(label),
-      padding: const EdgeInsets.fromLTRB(2, 3, 10, 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          StatusDot(color: color, pulse: pulse, size: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }

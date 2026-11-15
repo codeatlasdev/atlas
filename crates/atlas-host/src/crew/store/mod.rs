@@ -390,6 +390,10 @@ pub struct Task {
     /// "Downloading …" instead of a bare "Queued" (a first task on a big repo waited over a minute with no word).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preparing: Option<String>,
+    /// Why a queued task is not starting yet ("server busy": every agent slot of the crew server is taken); the chat
+    /// says so instead of a bare "Queued". Cleared when the agent starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_for: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageRecord>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -453,6 +457,7 @@ impl Task {
             answer: None,
             title: None,
             preparing: None,
+            waiting_for: None,
             ask: None,
             trigger_id: None,
             usage: None,
@@ -482,6 +487,17 @@ pub struct CrewSettings {
     /// The kill switch (`crew_pause` / `crew_resume`): no task runs and no automation fires.
     #[serde(default)]
     pub paused: bool,
+    /// How many agents the crew server runs at once; a task past that waits queued ("server busy").
+    #[serde(default = "default_max_agents")]
+    pub max_agents: usize,
+}
+
+/// Agents at once when `crew.json` says nothing: a handful, so one busy server is not swamped by every crewmate
+/// starting an agent (each a full CLI plus the tools it runs) while a normal crew never waits.
+pub const DEFAULT_MAX_AGENTS: usize = 4;
+
+fn default_max_agents() -> usize {
+    DEFAULT_MAX_AGENTS
 }
 
 impl Default for CrewSettings {
@@ -490,6 +506,7 @@ impl Default for CrewSettings {
             short_replies: true,
             short_replies_model: None,
             paused: false,
+            max_agents: DEFAULT_MAX_AGENTS,
         }
     }
 }
@@ -662,6 +679,12 @@ impl CrewStore {
         let _guard = TASK_WRITES.lock();
         let mut snapshot = task.clone();
         if let Some(stored) = self.stored_task(crewmate_id, &task.id) {
+            // The store is the arbiter of a cancel: the runner's copy still says queued, preparing or running
+            // (it was made before the cancel), and appending it would un-cancel the task and let its agent
+            // start (#292). Only the runner's own end (`finish_task`) restates a cancelled task, as cancelled.
+            if stored.state == TaskState::Cancelled && snapshot.state != TaskState::Cancelled {
+                return Ok(());
+            }
             snapshot.ui |= stored.ui;
             snapshot.attachments = stored.attachments;
             snapshot.ask = stored.ask;

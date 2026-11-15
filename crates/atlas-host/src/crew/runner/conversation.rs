@@ -57,8 +57,23 @@ pub(super) async fn run_one_conversational(
 
     // A task parked on an action when hostd stopped keeps waiting (it is not running again).
     let waiting = recovered_wait(&task);
-    // Mark running. If that cannot be stored the task is failed (clients told) and nothing starts.
+    // A slot for the agent, then mark running. A task cancelled while it prepared or waited for a slot never gets
+    // its agent: the store has the cancel (#292). If running cannot be stored the task is failed (clients told) and
+    // nothing starts.
+    let mut slot: Option<super::slots::Slot> = None;
     if !waiting {
+        let Some(s) = super::slots::take(hub, crewmate, &mut task).await else {
+            finish_task(
+                hub,
+                crewmate,
+                &mut task,
+                Err("cancelled before the agent started".into()),
+                vec![],
+            );
+            triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
+            return;
+        };
+        slot = Some(s);
         task.state = TaskState::Running;
         task.started_at = Some(now_s());
         task.pane = Some(pane_key.clone());
@@ -115,6 +130,8 @@ pub(super) async fn run_one_conversational(
             let action = parse_atlas_action(&reply);
             match (action, hub.crew.hub_arc()) {
                 (Some(action), Some(_)) => {
+                    // Parked on a person: the slot goes back so another crewmate's agent can run meanwhile.
+                    drop(slot.take());
                     park_task(hub, crewmate, &mut task, action.clone());
                     answer_action_turn(&turn, &mut task, &action).await;
                 }
@@ -123,6 +140,7 @@ pub(super) async fn run_one_conversational(
         }
         Err(e) => finish_task(hub, crewmate, &mut task, Err(e), vec![]),
     }
+    drop(slot);
     triggers::on_task_finished(hub, &crewmate.id, &task.id, task.state);
 }
 
@@ -239,7 +257,12 @@ async fn answer_action_turn(
             // The action stays on the task (cards only show while waiting): with `answer` it lets the
             // chat show what was asked and what the user picked.
             task.answer = user_answer(action, &follow_up);
-            // The env is read again: it may include secrets written while waiting.
+            // The env is read again: it may include secrets written while waiting. The answer starts an agent
+            // again, so it needs a slot again (the wait for the person held none).
+            let Some(_slot) = super::slots::take(hub, crewmate, task).await else {
+                finish_unanswered(hub, crewmate, task);
+                return;
+            };
             match turn.run(&follow_up).await {
                 Ok((reply2, usage2, env2)) => settle_reply(turn, task, reply2, usage2, &env2).await,
                 Err(e) => finish_task(hub, crewmate, task, Err(e), vec![]),

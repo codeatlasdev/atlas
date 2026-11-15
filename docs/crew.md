@@ -151,13 +151,13 @@ You manage crewmates from Atlas Desktop, Atlas Mobile, Telegram or the hostd pro
 - **look**: see [Crewmate look](#crewmate-look).
 - **automations**: see [Automations](#automations). Older scheduled routines (5-field cron) still run.
 
-Crew-level settings (`crew_settings_get` / `crew_settings_set`): `short_replies` (default on) summarizes long replies, optionally with `short_replies_model`. Stored in `<hostd dir>/crew.json`.
+Crew-level settings (`crew_settings_get` / `crew_settings_set`): `short_replies` (default on) summarizes long replies, optionally with `short_replies_model`; `max_agents` (default 4, at least 1) is how many agents the server runs at once. Stored in `<hostd dir>/crew.json`.
 
 A new crewmate starts with a short setup conversation (project, role, engine sign-in) in its chat.
 
 ## Tasks and approvals
 
-A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time (in a pty, or as headless engine turns); the rest queue. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours (the agent and the processes it started are killed when it passes). Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
+A task is one prompt (and, optionally, [images](#images-on-tasks)). Sources: `mobile`, `desktop`, `telegram`, `routine`, `trigger`. A crewmate runs one task at a time (in a pty, or as headless engine turns); the rest queue. A task waits queued while its crewmate runs another one, and also while the server already runs `max_agents` agents (the task says `waiting_for: "server busy"` and the chat shows it); a task that only waits for you (a GitHub login, an action card) holds no agent slot. Checking the project out is part of the task: every `git` call has a 120 s deadline and is killed with the processes it started, the checkout lock is per repo (two repos check out at once), and cancelling the task during the checkout stops it and never starts the agent. A task ends `done`, `failed` or `cancelled`, with a hard cap of 2 hours (the agent and the processes it started are killed when it passes). Prompts are 1 to 20000 characters (counted as characters, not bytes; longer ones are refused, also from Telegram), and names and roles are limited the same way. While it works, the steps the agent reports show live in the chat, grouped under the title it set for itself.
 
 A task can also stop and wait for **you** (`waiting_action`): connect GitHub, provide a secret, answer a question, choose an option, sign an engine in, decide on work the [guards](#guards-against-the-agent-itself) refused, or show a [UI task](#ui-tasks-and-proof) that came back without proof. Answers go through `crewmate_action_answer`; a secret is written to the crewmate's `secrets.json` and never stored in the task. An agent proposes an action by ending its turn with a line `ATLAS_ACTION: {...}`.
 

@@ -74,6 +74,8 @@ mod mobile_payloads;
 #[cfg(unix)]
 mod pause;
 #[cfg(unix)]
+mod prepare;
+#[cfg(unix)]
 mod projects;
 #[cfg(unix)]
 mod prove_ui;

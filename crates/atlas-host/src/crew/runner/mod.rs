@@ -14,6 +14,7 @@
 //! | `action`       | `ATLAS_ACTION` lines: parse, park, wait for the answer            |
 //! | `github`       | GitHub login a project needs                                      |
 //! | `reporting`    | a GitHub task's reply comment: posted, edited, finished           |
+//! | `slots`        | how many agents run at once on the server                          |
 //! | `outcome`      | waiting for the agent, recording and announcing the result        |
 //! | `guard`, `tape`| refusing work that weakens tests, strays, invents or overclaims   |
 //! | `summary`      | short replies                                                     |
@@ -29,9 +30,13 @@ mod prompt;
 mod pty;
 mod recover;
 mod reporting;
+mod slots;
 pub(crate) use reporting::Live as ReportingLive;
 #[cfg(test)]
 pub(crate) use reporting::branch_to_report;
+pub(crate) use slots::AgentSlots;
+#[cfg(test)]
+pub(crate) use slots::TEST_MAX_AGENTS;
 mod summary;
 mod tape;
 #[cfg(test)]
@@ -65,7 +70,7 @@ pub(crate) use action::parse_atlas_action;
 #[cfg(all(test, unix))]
 pub(crate) use testing::{
     TEST_BIN_LOCK, TEST_FORCE_GITHUB_AUTH, TEST_GITHUB_LOGGED_IN, TEST_PAUSE_AFTER_SPAWN,
-    set_test_agent_bin,
+    TEST_PAUSE_BEFORE_SPAWN, set_test_agent_bin,
 };
 
 /// 2-hour hard timeout per task.

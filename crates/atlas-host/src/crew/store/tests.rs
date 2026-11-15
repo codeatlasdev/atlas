@@ -166,6 +166,7 @@ fn crew_settings_store_round_trip() {
         short_replies: false,
         short_replies_model: None,
         paused: true,
+        ..Default::default()
     };
     store.save_crew_settings(&settings).unwrap();
     let reloaded = store.load_crew_settings();

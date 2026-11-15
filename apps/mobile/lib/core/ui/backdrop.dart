@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'atlas_theme.dart';
 
+/// The app's ground under every route: `MaterialApp.builder` for the app and every test harness. Scaffolds are
+/// transparent (screens draw [AtlasBackdrop]), so without this a screen or sheet that has no backdrop of its
+/// own would show the window behind it (white in tests, black on a device) instead of the app's colour.
+Widget atlasGround(BuildContext context, Widget? child) =>
+    ColoredBox(color: AtlasColors.of(context).ground, child: child);
+
 /// The one background every screen sits on: the app ground and a soft glow from the top, the app icon's blue
 /// by default or a screen's own colour ([tint], a project's). Every tab and pushed screen uses it, so moving
 /// between them never changes the light in the room.

@@ -1,6 +1,6 @@
-// Regression: the Crew tab showed "No crew yet" (and a Recruit-less empty screen) for as long as the
+// Regression: the Crew tab showed its empty state (and a Recruit-less empty screen) for as long as the
 // computers' crew lists were still loading, because it read `value ?? []`. A slow link looked like a
-// crew that did not exist. While anything is loading the tab shows a loader; "No crew yet" is for a
+// crew that did not exist. While anything is loading the tab shows a loader; the empty states are for a
 // settled, empty answer.
 import 'dart:async';
 import 'dart:convert';
@@ -20,6 +20,7 @@ import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/crew/crew_provider.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
+import 'package:atlas_mobile/features/crew/list/crew_skeleton.dart';
 import 'package:atlas_mobile/features/inbox/inbox.dart';
 
 import 'support/demo_harness.dart';
@@ -33,6 +34,16 @@ CrewListResult _empty() =>
 /// `crew::handle`, the `!hub.crew_host` branch). The one error that means "not a crew server".
 const _notCrewServer =
     'this computer is not a crew server (atlas crew install)';
+
+/// The settled empty states: no crew server anywhere ("Set up your crew"), a crew server with nobody on it
+/// ("Your crew is empty"). Either is wrong while anything still loads.
+final _noServer = find.text('Set up your crew');
+final _emptyCrew = find.text('Your crew is empty');
+final _anyEmpty = find.byWidgetPredicate(
+  (w) =>
+      w is Text &&
+      (w.data == 'Set up your crew' || w.data == 'Your crew is empty'),
+);
 
 /// A computer for the REAL providers: answers `info` like a current hostd, `crew_servers` with none, and every
 /// other command with [reply] (`null`: never, so a call stays pending). The test sees what was asked in [asked].
@@ -169,15 +180,15 @@ void main() {
       await t.pump();
       await t.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('No crew yet'), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(_anyEmpty, findsNothing);
+      expect(find.byType(CrewSkeleton), findsOneWidget);
 
       // The answer arrives and it really is empty: now the empty state is true.
       gate.complete(_empty());
       await t.pump();
       await t.pump(const Duration(milliseconds: 100));
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('No crew yet'), findsOneWidget);
+      expect(find.byType(CrewSkeleton), findsNothing);
+      expect(_emptyCrew, findsOneWidget);
 
       await t.pumpWidget(const SizedBox());
     },
@@ -197,13 +208,13 @@ void main() {
       );
       await t.pump();
 
-      expect(find.text('No crew yet'), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(_anyEmpty, findsNothing);
+      expect(find.byType(CrewSkeleton), findsOneWidget);
 
       devices.complete(const []);
       await t.pump();
       await t.pump(const Duration(milliseconds: 100));
-      expect(find.text('No crew yet'), findsOneWidget);
+      expect(_noServer, findsOneWidget);
 
       await t.pumpWidget(const SizedBox());
     },
@@ -290,15 +301,15 @@ void main() {
         ),
       );
       await _settleShort(t);
-      expect(find.text('No crew yet'), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(_anyEmpty, findsNothing);
+      expect(find.byType(CrewSkeleton), findsOneWidget);
 
       // It connects and the crew really is empty-of-a-server: only now the empty state is true.
       final computer = _Computer((_) => _err(_notCrewServer));
       dial.complete(computer);
       await _settleShort(t);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('No crew yet'), findsOneWidget);
+      expect(find.byType(CrewSkeleton), findsNothing);
+      expect(_noServer, findsOneWidget);
       await t.pumpWidget(const SizedBox());
       await computer.close();
     });
@@ -310,7 +321,7 @@ void main() {
       final computer = _Computer((_) => _err(_notCrewServer));
       await _pump(t, const CrewScreen(), () => computer);
       await _settleShort(t);
-      expect(find.text('No crew yet'), findsOneWidget);
+      expect(_noServer, findsOneWidget);
       expect(find.text("Couldn't read the crew"), findsNothing);
       await t.pumpWidget(const SizedBox());
       await computer.close();
@@ -326,13 +337,13 @@ void main() {
       });
       await _pump(t, const CrewScreen(), () => computer);
       await _settleShort(t);
-      expect(find.text('No crew yet'), findsNothing);
-      expect(find.text("Couldn't read the crew"), findsOneWidget);
-      expect(find.text('forbidden'), findsOneWidget);
+      expect(_anyEmpty, findsNothing);
+      // A refusal is said as the permission it is (the raw "forbidden" is under Details).
+      expect(find.text("This phone isn't allowed to do that"), findsOneWidget);
 
       await t.tap(find.text('Try again'));
       await _settleShort(t);
-      expect(find.text("Couldn't read the crew"), findsNothing);
+      expect(find.text("This phone isn't allowed to do that"), findsNothing);
       expect(find.text('Reviewer'), findsWidgets);
       await t.pumpWidget(const SizedBox());
       await computer.close();
@@ -358,7 +369,7 @@ void main() {
       for (var i = 0; i < 30; i++) {
         await t.pump(const Duration(milliseconds: 100));
       }
-      expect(find.text('No crew yet'), findsNothing);
+      expect(_anyEmpty, findsNothing);
       expect(find.text('Reviewer'), findsWidgets);
       await t.pumpWidget(const SizedBox());
       await second.close();
@@ -383,7 +394,7 @@ void main() {
       );
       // Well under the first retry delay of the old behaviour pile-up: the state must already be the final one.
       await _settleShort(t);
-      expect(find.text('No crew yet'), findsNothing);
+      expect(_anyEmpty, findsNothing);
       expect(find.text("Can't reach Mac"), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
       await t.pumpWidget(const SizedBox());
@@ -430,7 +441,7 @@ void main() {
       );
       await _settleShort(t);
       expect(find.textContaining('Say hi'), findsNothing);
-      expect(find.text('forbidden'), findsOneWidget);
+      expect(find.text("This phone isn't allowed to do that"), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
       await t.pumpWidget(const SizedBox());
       await computer.close();
@@ -497,7 +508,7 @@ void main() {
       );
       await _settleShort(t);
       expect(find.text('All clear'), findsNothing);
-      expect(find.text('storage unreadable'), findsOneWidget);
+      expect(find.text('Storage unreadable'), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
       await t.pumpWidget(const SizedBox());
     });
@@ -535,7 +546,7 @@ void main() {
         await _pumpMany(t, {_mac: a, _macB: b});
         await _settleShort(t);
 
-        expect(find.text('No crew yet'), findsNothing);
+        expect(_anyEmpty, findsNothing);
         expect(find.text('forbidden'), findsOneWidget);
         expect(find.text('queue is full'), findsOneWidget);
         expect(find.textContaining('Mac'), findsWidgets);
@@ -584,13 +595,13 @@ void main() {
       expect(find.text('Reviewer'), findsWidgets);
       expect(find.text('forbidden'), findsOneWidget);
       expect(find.textContaining('Studio'), findsWidgets);
-      expect(find.text('No crew yet'), findsNothing);
+      expect(_anyEmpty, findsNothing);
       await t.pumpWidget(const SizedBox());
       await a.close();
       await b.close();
     });
 
-    testWidgets('both answering with no crew is "No crew yet"', (t) async {
+    testWidgets('both answering with no crew is the set-up state', (t) async {
       final a = _Computer(
         (cmd) => cmd == 'crewmate_list' ? _err(_notCrewServer) : _ok({}),
       );
@@ -600,8 +611,15 @@ void main() {
       await _pumpMany(t, {_mac: a, _macB: b});
       await _settleShort(t);
 
-      expect(find.text('No crew yet'), findsOneWidget);
+      expect(_noServer, findsOneWidget);
       expect(find.text('Try again'), findsNothing);
+      // Product review 2026-11-15: "No crew yet" only reported. The state now leads somewhere: pairing a
+      // server here, and the docs page that installs one.
+      expect(
+        find.widgetWithText(FilledButton, 'Pair a crew server'),
+        findsOneWidget,
+      );
+      expect(find.text('How to install a crew server'), findsOneWidget);
       await t.pumpWidget(const SizedBox());
       await a.close();
       await b.close();
@@ -617,7 +635,7 @@ void main() {
         await _pumpMany(t, {_mac: a, _macB: b});
         await _settleShort(t);
 
-        expect(find.text('No crew yet'), findsNothing);
+        expect(_anyEmpty, findsNothing);
         expect(find.text('forbidden'), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsOneWidget);
         await t.pumpWidget(const SizedBox());

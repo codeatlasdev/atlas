@@ -24,8 +24,8 @@ void main() {
     await t.binding.setSurfaceSize(const Size(393, 852));
     await t.pumpWidget(demoWrap(const CrewScreen(), []));
     await settle(t);
-    // No devices paired → the screen says to pair a computer first.
-    expect(find.textContaining('No crew yet'), findsOneWidget);
+    // No devices paired → the screen explains the crew and how to set one up.
+    expect(find.text('Set up your crew'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await settle(t);
   });

@@ -316,13 +316,6 @@ void main() {
         ),
       );
       await _settle(t);
-      // Debug builds show the onboarding on every launch.
-      for (var i = 0; i < 3; i++) {
-        await t.tap(find.text('Continue'));
-        await _settle(t);
-      }
-      await t.tap(find.text('Open my computer'));
-      await _settle(t);
     }
 
     testWidgets('an old hostd shows one update line, not "Can\'t reach"', (

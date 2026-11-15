@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/links.dart';
 import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/connection/require_mux.dart';
@@ -216,25 +217,64 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                     padding: const EdgeInsets.only(
                       bottom: kFloatingBarScrollPad,
                     ),
-                    child: EmptyState(
-                      icon: ShipFlagIcon(
-                        color: c.faint,
-                        accentColor: c.accent,
-                        size: 64,
-                      ),
-                      // A computer too old to list its crew shows none: say why, not "No crew yet".
-                      title: mismatch?.title ?? 'No crew yet',
-                      message: mismatch?.message ?? 'Set up a crew server first, then recruit crewmates from Atlas Desktop.',
-                      action: crewServerDevices.isEmpty
-                          ? null
-                          : FilledButton(
+                    // Three different empties, each with its next step: a computer too old to list its crew
+                    // (say why), no crew server anywhere (what the crew is and how to get one), a crew server
+                    // with nobody on it yet (recruit).
+                    child: mismatch != null
+                        ? EmptyState(
+                            icon: ShipFlagIcon(
+                              color: c.faint,
+                              accentColor: c.accent,
+                              size: 64,
+                            ),
+                            title: mismatch.title,
+                            message: mismatch.message,
+                          )
+                        : crewServerDevices.isEmpty
+                        ? EmptyState(
+                            icon: ShipFlagIcon(
+                              color: c.faint,
+                              accentColor: c.accent,
+                              size: 64,
+                            ),
+                            title: 'Set up your crew',
+                            message:
+                                'Atlas Crew runs agents around the clock on a Linux server you own. '
+                                'Install it there once, pair the server, and recruit crewmates from here.',
+                            action: FilledButton.icon(
+                              onPressed: () => context.push('/pair'),
+                              icon: const Icon(
+                                Icons.qr_code_scanner_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Pair a crew server'),
+                            ),
+                            guide: (
+                              'How to install a crew server',
+                              AtlasLinks.crewSetup,
+                            ),
+                          )
+                        : EmptyState(
+                            icon: ShipFlagIcon(
+                              color: c.faint,
+                              accentColor: c.accent,
+                              size: 64,
+                            ),
+                            title: 'Your crew is empty',
+                            message: 'Recruit your first crewmate: a name, a role and the agent it runs.',
+                            action: FilledButton.icon(
                               onPressed: () => showNewCrewmateSheet(
                                 context,
                                 crewServerDevices,
                               ),
-                              child: const Text('Recruit'),
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Recruit'),
                             ),
-                    ),
+                            guide: (
+                              'About crewmates',
+                              AtlasLinks.docs('crew', 'crewmates'),
+                            ),
+                          ),
                   )
                 : CustomScrollView(
                     slivers: [

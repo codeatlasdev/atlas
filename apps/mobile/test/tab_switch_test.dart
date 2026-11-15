@@ -15,7 +15,6 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/home/dashboard.dart';
@@ -222,12 +221,13 @@ void main() {
         of: find.byType(SettingsScreen),
         matching: find.text('Computers'),
       ),
+      // The paired computer's row (its name).
       'card': find.descendant(
         of: find.byType(SettingsScreen),
-        matching: find.byType(AtlasCard),
+        matching: find.text('Mac'),
       ),
       'pair': find.text('Pair another computer'),
-      'privacy': find.text('Privacy'),
+      'privacy': find.text('Privacy policy'),
     };
 
     void noShift(FrameProbe p) {
@@ -250,7 +250,7 @@ void main() {
       expect(
         probe.frames[shown]['card']!.rect,
         isNotNull,
-        reason: 'the Computers card was not there when the page first showed',
+        reason: 'the paired computer was not there when the page first showed',
       );
     });
 
@@ -302,7 +302,7 @@ void main() {
       expect(
         steps.reduce((a, b) => a > b ? a : b),
         lessThan(40),
-        reason: 'Privacy jumped by a whole row in one frame: $steps',
+        reason: 'Privacy policy jumped by a whole row in one frame: $steps',
       );
       expect(
         tops.last - tops.first,

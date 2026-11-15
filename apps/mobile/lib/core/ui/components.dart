@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:atlas_mobile/core/ui/atlas_logo.dart';
+import 'package:atlas_mobile/core/links.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 
 /// The desktop's panel card: base fill, hairline border, 12 px radius. Pressable when
@@ -213,7 +214,9 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-/// Centered logo, title, line and action, used for every empty and error state.
+/// Centered logo, title, line and action, used for every empty and error state. A state the person can act
+/// on outside the app (set something up on a computer) carries a [guide]: the docs page that walks them
+/// through it, so the screen is a next step, not only a report.
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -221,6 +224,7 @@ class EmptyState extends StatelessWidget {
     required this.message,
     this.action,
     this.icon,
+    this.guide,
   });
 
   final String title;
@@ -229,6 +233,9 @@ class EmptyState extends StatelessWidget {
 
   /// Defaults to the Atlas logo.
   final Widget? icon;
+
+  /// (label, page): a link under the action, opened in the browser.
+  final (String, Uri)? guide;
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +273,15 @@ class EmptyState extends StatelessWidget {
                   if (action != null) ...[
                     const SizedBox(height: Space.xl),
                     action!,
+                  ],
+                  if (guide case (final label, final uri)) ...[
+                    SizedBox(height: action == null ? Space.lg : Space.sm),
+                    TextButton.icon(
+                      onPressed: () => openLink(uri),
+                      iconAlignment: IconAlignment.end,
+                      icon: const Icon(Icons.arrow_outward_rounded, size: 16),
+                      label: Text(label),
+                    ),
                   ],
                 ],
               ),

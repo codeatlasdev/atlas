@@ -15,6 +15,7 @@ import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/backdrop.dart';
 import 'package:atlas_mobile/features/crew/profile/crewmate_profile_screen.dart';
 import 'package:atlas_mobile/features/crew/automation_editor_sheet.dart';
 
@@ -132,7 +133,7 @@ Widget _wrap(Widget child, Transport transport) => ProviderScope(
     macStorageProvider.overrideWithValue(_Storage()),
     transportFactoryProvider.overrideWithValue((_, _) async => transport),
   ],
-  child: MaterialApp(theme: atlasTheme(), home: child),
+  child: MaterialApp(theme: atlasTheme(), builder: atlasGround, home: child),
 );
 
 Future<void> _settle(WidgetTester t) async {
@@ -224,6 +225,7 @@ void main() {
     await t.pumpWidget(
       MaterialApp(
         theme: atlasTheme(),
+        builder: atlasGround,
         home: Builder(
           builder: (ctx) => Scaffold(
             body: Center(

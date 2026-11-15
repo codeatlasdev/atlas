@@ -254,9 +254,12 @@ class _AtlasMobileAppState extends ConsumerState<AtlasMobileApp> {
       debugShowCheckedModeBanner: false,
       theme: atlasTheme(),
       routerConfig: _router,
-      // Tapping a push opens the agent it is about, over whatever tab is showing.
-      builder: (context, child) =>
-          PushTapHost(navigatorKey: _rootNavigatorKey, child: child!),
+      // The app's ground under every route; tapping a push opens the agent it is about, over whatever tab is
+      // showing.
+      builder: (context, child) => atlasGround(
+        context,
+        PushTapHost(navigatorKey: _rootNavigatorKey, child: child!),
+      ),
     );
   }
 }

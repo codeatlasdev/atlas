@@ -20,15 +20,21 @@ import 'support/demo_harness.dart';
 
 /// Storage whose paired list can change, like pairing does (it saves, then invalidates the provider).
 class _Storage extends DemoStorage {
-  _Storage() : super([]);
-  List<MacDevice> paired = [];
+  _Storage(this.paired) : super([]);
+  List<MacDevice> paired;
   @override
   Future<List<MacDevice>> loadDevices() async => paired;
 }
 
-Future<_Storage> _launch(WidgetTester t, {bool seen = false}) async {
+const _mac = MacDevice(nodeId: 'mac-1', name: 'My Mac');
+
+Future<_Storage> _launch(
+  WidgetTester t, {
+  bool seen = false,
+  List<MacDevice> paired = const [],
+}) async {
   await t.binding.setSurfaceSize(const Size(393, 852));
-  final storage = _Storage();
+  final storage = _Storage([...paired]);
   final router = buildRouter();
   addTearDown(router.dispose);
   await t.pumpWidget(
@@ -47,9 +53,12 @@ Future<_Storage> _launch(WidgetTester t, {bool seen = false}) async {
   return storage;
 }
 
-/// The bar is on screen and can be hit (offstage widgets are skipped by default finders).
+/// The tab bar is on screen (offstage widgets are skipped by default finders).
 bool _barShown(WidgetTester t) =>
     find.byType(FloatingTabBar).evaluate().isNotEmpty;
+
+ProviderContainer _container(WidgetTester t) =>
+    ProviderScope.containerOf(t.element(find.byType(MaterialApp)));
 
 void main() {
   testWidgets(
@@ -64,17 +73,11 @@ void main() {
         reason: 'the tab bar must not float over the onboarding',
       );
 
-      // Every page's primary button is visible and tappable (it was half under the bar).
+      // Every page's primary button is on screen and receives the tap (it was half under the bar).
       for (var i = 0; i < 3; i++) {
         final button = find.widgetWithText(FilledButton, 'Continue');
         expect(t.getRect(button).bottom, lessThanOrEqualTo(852));
-        expect(
-          t
-              .hitTestOnBinding(t.getCenter(button))
-              .path
-              .any((e) => e.target is RenderObject),
-          isTrue,
-        );
+        expect(button.hitTestable(), findsOneWidget);
         await t.tap(button);
         await settle(t);
         expect(_barShown(t), isFalse);
@@ -92,13 +95,50 @@ void main() {
     final storage = await _launch(t, seen: true);
     expect(find.byType(Onboarding), findsOneWidget);
 
-    storage.paired = [const MacDevice(nodeId: 'mac-1', name: 'Mac')];
-    ProviderScope.containerOf(t.element(find.byType(Onboarding)))
-        .invalidate(pairedDevicesProvider);
+    storage.paired = [_mac];
+    _container(t).invalidate(pairedDevicesProvider);
     await settle(t);
 
     expect(find.byType(Onboarding), findsNothing);
     expect(_barShown(t), isTrue);
     expect(find.byType(HomeDashboard), findsOneWidget);
   });
+
+  // Debug builds show the onboarding on every launch; with a computer paired, its last button opens that
+  // computer (no pairing, no demo).
+  testWidgets('paired (debug, every launch): the last page opens my computer', (
+    t,
+  ) async {
+    await _launch(t, paired: [_mac]);
+    expect(find.byType(Onboarding), findsOneWidget);
+    expect(_barShown(t), isFalse);
+    for (var i = 0; i < 3; i++) {
+      await t.tap(find.widgetWithText(FilledButton, 'Continue'));
+      await settle(t);
+    }
+    await t.tap(find.widgetWithText(FilledButton, 'Open my computer'));
+    await settle(t);
+    expect(find.byType(Onboarding), findsNothing);
+    expect(_barShown(t), isTrue);
+    expect(find.text('My Mac'), findsWidgets);
+  });
+
+  // App Review reaches the app through "Explore a demo": the demo shows the tabs; leaving it with nothing
+  // paired is the first run again, not an empty Home under a tab bar.
+  testWidgets(
+    'leaving the demo with nothing paired returns to the onboarding',
+    (t) async {
+      await _launch(t);
+      _container(t).read(demoModeProvider.notifier).state = true;
+      await settle(t);
+      expect(find.byType(Onboarding), findsNothing);
+      expect(_barShown(t), isTrue);
+      expect(find.text('orbit-shop'), findsWidgets);
+
+      _container(t).read(demoModeProvider.notifier).state = false;
+      await settle(t);
+      expect(find.byType(Onboarding), findsOneWidget);
+      expect(_barShown(t), isFalse);
+    },
+  );
 }

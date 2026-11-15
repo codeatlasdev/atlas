@@ -181,13 +181,6 @@ void main() {
         ),
       );
       await _settle(t);
-      // Debug builds show onboarding first; tap through it.
-      for (var i = 0; i < 3; i++) {
-        await t.tap(find.text('Continue'));
-        await _settle(t, 8);
-      }
-      await t.tap(find.text('Open my computer'));
-      await _settle(t);
 
       final row = _button(t, 'shop');
       final d = row.getSemanticsData();

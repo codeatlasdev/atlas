@@ -4,6 +4,19 @@ Thanks for wanting to help. This is the short version; the full guide, with the 
 
 By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Atlas is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option, and so are your contributions (see [License of contributions](#license-of-contributions)).
 
+## Start here
+
+Came from the banner on the Issues tab? Find what you want to do:
+
+| You want to | Where |
+|---|---|
+| Report a bug | The [bug report form](https://github.com/codeatlasdev/atlas/issues/new?template=bug_report.yml), with what [the next section](#report-a-bug-or-ask-for-a-feature) asks for. |
+| Report an install, update or release channel problem | The [release or update problem form](https://github.com/codeatlasdev/atlas/issues/new?template=release_problem.yml). |
+| Propose a feature | The [feature request form](https://github.com/codeatlasdev/atlas/issues/new?template=feature_request.yml). Open it before writing code for anything bigger than a small fix. |
+| Fix or flag the docs | The [documentation problem form](https://github.com/codeatlasdev/atlas/issues/new?template=docs_issue.yml), or a pull request straight away. |
+| Report a vulnerability | Privately, as [SECURITY.md](SECURITY.md) explains. Never in a public issue. |
+| Make your first contribution | Pick a [good first issue](https://github.com/codeatlasdev/atlas/contribute): small, with no hidden context, and it says where to look and what done means. Then follow [Send a change](#send-a-change). |
+
 ## Report a bug or ask for a feature
 
 Open an [issue](https://github.com/codeatlasdev/atlas/issues/new/choose). For a bug include `atlas version`, the [release channel](docs/versioning.md) you are on, your OS, what you ran, what you expected, and the relevant lines of `.logs/<service>.log` (redact secrets). A minimal `atlas.yaml` that reproduces it is the fastest way to get it fixed. Check that it still happens on the newest build of your channel first. There is a separate form for update, installer and channel problems. How issues are labeled and triaged, and what to expect, is in [docs/labels.md](docs/labels.md).

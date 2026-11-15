@@ -18,6 +18,26 @@ pub fn redact(text: &str) -> String {
     redact_tokens(&out)
 }
 
+/// A command line, redacted per argument and joined with spaces. `--token abc123` has no `=` for
+/// [`redact_named`] to see, so the argument after a secret-named flag is the secret.
+pub fn redact_args(args: &[String]) -> String {
+    let mut after_secret_flag = false;
+    let mut out = Vec::with_capacity(args.len());
+    for arg in args {
+        let is_flag = arg.starts_with('-');
+        out.push(if after_secret_flag && !is_flag {
+            REDACTED.to_string()
+        } else {
+            redact(arg)
+        });
+        // `--token=x` already carries its value; `--token` alone takes the next argument.
+        after_secret_flag = is_flag
+            && !arg.contains('=')
+            && redact_line(&format!("{arg}=v"), NAMES).ends_with(REDACTED);
+    }
+    out.join(" ")
+}
+
 /// `/Users/<name>/` and `/home/<name>/` of any user, not only the current one.
 fn redact_users(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -66,23 +86,25 @@ fn redact_url_credentials(s: &str) -> String {
     out
 }
 
+/// Names whose value is a secret.
+const NAMES: &[&str] = &[
+    "token",
+    "secret",
+    "password",
+    "passwd",
+    "api_key",
+    "apikey",
+    "api-key",
+    "access_key",
+    "private_key",
+    "authorization",
+    "auth",
+    "cookie",
+    "credential",
+];
+
 /// Names whose value is a secret: `token=…`, `"password": "…"`, `Authorization: Bearer …`, `API_KEY=…`.
 fn redact_named(s: &str) -> String {
-    const NAMES: &[&str] = &[
-        "token",
-        "secret",
-        "password",
-        "passwd",
-        "api_key",
-        "apikey",
-        "api-key",
-        "access_key",
-        "private_key",
-        "authorization",
-        "auth",
-        "cookie",
-        "credential",
-    ];
     s.lines()
         .map(|line| redact_line(line, NAMES))
         .collect::<Vec<_>>()
@@ -128,8 +150,9 @@ fn redact_line(line: &str, names: &[&str]) -> String {
         while line[k..].starts_with(' ') {
             k += 1;
         }
-        // Only `name=value` / `name: value` is an assignment; prose that mentions a name is not.
-        if !line[k..].starts_with(['=', ':']) {
+        // Only `name=value` / `name: value` is an assignment; prose that mentions a name is not, nor is a
+        // path through a module of that name (`theme::tokens::{{closure}}`).
+        if !line[k..].starts_with(['=', ':']) || line[k..].starts_with("::") {
             out.push_str(&line[i..j]);
             i = j;
             continue;
@@ -280,5 +303,48 @@ plain line, nothing to hide: terminal 3 exited with code 0";
         let home = dirs::home_dir().unwrap();
         let line = format!("log at {}/.atlas/hostd.log", home.display());
         assert_eq!(redact(&line), "log at ~/.atlas/hostd.log");
+    }
+
+    /// Issue #319 review: `--token abc123` (a space, not `=`) carries a short value with no token shape, which
+    /// only the flag's name gives away. The flag stays readable; its value goes. A flag next to a flag, and
+    /// words that are not secret names, are left alone.
+    #[test]
+    fn the_value_after_a_secret_named_flag_is_redacted() {
+        let args = |a: &[&str]| redact_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            args(&[
+                "atlas",
+                "login",
+                "--token",
+                "abc123",
+                "--password",
+                "hunter2"
+            ]),
+            format!("atlas login --token {REDACTED} --password {REDACTED}")
+        );
+        assert_eq!(
+            args(&[
+                "atlas",
+                "--api-key",
+                "k1",
+                "--token",
+                "--verbose",
+                "run",
+                "x"
+            ]),
+            format!("atlas --api-key {REDACTED} --token --verbose run x")
+        );
+        assert_eq!(
+            args(&["atlas", "--project", "app", "--token=abc123"]),
+            format!("atlas --project app --token={REDACTED}")
+        );
+    }
+
+    /// Issue #319 review: backtrace frames through a module named like a secret (`theme::tokens`) were cut at
+    /// the `::` as if it were `tokens: value`.
+    #[test]
+    fn a_path_through_a_secret_named_module_is_not_an_assignment() {
+        let frame = "  4: atlas_tui::theme::tokens::{{closure}}\n  5: atlas_core::auth::login::run";
+        assert_eq!(redact(frame), frame);
     }
 }

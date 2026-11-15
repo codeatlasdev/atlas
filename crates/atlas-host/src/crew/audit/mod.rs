@@ -22,7 +22,6 @@ mod redact;
 mod tests;
 
 use std::collections::HashMap;
-use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use parking_lot::Mutex;
@@ -30,7 +29,7 @@ use serde_json::{Map, Value};
 
 pub(crate) use observe::observe;
 
-use super::store::{CrewStore, now_s};
+use super::store::{CrewStore, jsonl, now_s};
 
 /// File name of a crewmate's log (and of the rotated `audit.jsonl.1` …).
 const FILE: &str = "audit.jsonl";
@@ -125,8 +124,7 @@ impl Audit {
         };
         seqs.insert(path.clone(), seq);
         entry["seq"] = seq.into();
-        let mut line = entry.to_string();
-        line.push('\n');
+        let line = entry.to_string();
 
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
@@ -134,9 +132,7 @@ impl Audit {
         if std::fs::metadata(&path).is_ok_and(|m| m.len() + line.len() as u64 > self.max_bytes) {
             self.rotate(&path)?;
         }
-        atlas_core::sys::owner_only(std::fs::OpenOptions::new().create(true).append(true))
-            .open(&path)?
-            .write_all(line.as_bytes())
+        jsonl::append_line(&path, &line, false).map(|_| ())
     }
 
     /// `audit.jsonl` → `.1` → `.2` …, the oldest dropped so at most `keep` files remain.
@@ -168,10 +164,8 @@ impl Audit {
             let Ok(f) = std::fs::File::open(&p) else {
                 continue;
             };
-            let mut file_entries: Vec<Value> = std::io::BufReader::new(f)
-                .lines()
-                .map_while(Result::ok)
-                .filter_map(|l| serde_json::from_str::<Value>(&l).ok())
+            let mut file_entries: Vec<Value> = jsonl::lines(std::io::BufReader::new(f))
+                .filter_map(|l| serde_json::from_str::<Value>(&l.text).ok())
                 .filter(|e| entry_matches(e, q))
                 .collect();
             file_entries.reverse();
@@ -207,10 +201,8 @@ fn last_seq(path: &Path, keep: usize) -> u64 {
         let Ok(f) = std::fs::File::open(&p) else {
             continue;
         };
-        let last = std::io::BufReader::new(f)
-            .lines()
-            .map_while(Result::ok)
-            .filter_map(|l| serde_json::from_str::<Value>(&l).ok()?["seq"].as_u64())
+        let last = jsonl::lines(std::io::BufReader::new(f))
+            .filter_map(|l| serde_json::from_str::<Value>(&l.text).ok()?["seq"].as_u64())
             .last();
         if let Some(n) = last {
             return n;

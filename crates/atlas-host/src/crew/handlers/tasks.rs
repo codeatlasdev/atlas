@@ -92,9 +92,7 @@ pub(crate) fn attachment(
     let task = hub
         .crew
         .store
-        .read_tasks(&id, usize::MAX)
-        .into_iter()
-        .find(|t| t.id == task)
+        .task(&id, &task)
         .ok_or_else(|| format!("task {task} not found"))?;
     let (a, bytes) = attachments::read(&hub.crew.store, &id, &task, &name)?;
     Ok(attachments::reply(&a, &bytes, offset, limit))

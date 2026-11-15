@@ -634,22 +634,24 @@ For contributors. One concept per file; the module doc comment at the top of eac
 <hostd dir>/capture/                      package.json, package-lock.json, runner.mjs, detectors.mjs, node_modules/playwright, browsers/ (atlas crew browsers install)
 <hostd dir>/crew/<crewmate id>/
     crewmate.json                      definition (0600)
-    tasks.jsonl                        task log, last state per id wins
+    tasks.jsonl                        task log: a full record per state change (last one per id wins) plus one `{"step_of", "step"}` line per live step; compacted to one record per task once it has doubled past 4 MiB
     attachments/<task id>/<name>       a task's images (0600): sent with it, or screenshots the agent took (`capture`)
     uploads/<upload id>/               pieces of an image on its way to a task (removed when the task takes it, or after 1 hour without a piece)
     memory.md                          memory, 64 KiB max
     session.json                       agent session to resume
     secrets.json                       secrets (0600)
-    usage.jsonl                        per-task usage records
+    usage.jsonl                        per-task usage records, cut back to the newest half past 1 MiB
     audit.jsonl (+ .1 … .4)            append-only audit, rotated at 1 MiB
     ui-gate/<task id>/                 the UI gate's shots and ui-gate.json
     dom/<task id>/                     element boxes of `capture {dom: true}` (JSON, one per combination)
 
     work/                              git worktree of the project
-    <trigger id>_seen.jsonl            GitHub events already handled
+    <trigger id>_seen.jsonl            GitHub events already handled (newest ids kept, 256 KiB max)
 <hostd dir>/projects/<slug>/           shared clone per Git project
 ~/.atlas/desktop/crew-servers.json     Atlas Desktop's list of crew servers ([{host, name, admin?: {target, port?}}])
 ```
+
+The `*.jsonl` logs are crash safe: readers go line by line and decode lossily, so a torn line or a byte that is not UTF-8 costs that one record and never the ones after it; a writer first ends a torn final line, so the next record is not glued onto it; `tasks.jsonl` is read through an in-memory index (the file is parsed once per process, then only what was appended), so listing crewmates and the 30 s cancel check read nothing from disk; files written atomically (`crewmate.json`, `crew.json`, `secrets.json`, a compacted log) are flushed to disk, and their directory, before the rename. A line a version cannot read is kept by compaction, not dropped.
 
 Tests that pin the contract: Rust tests write the JSON fixtures from the real serializers (`UPDATE_FIXTURES=1 cargo test -p atlas-host`) into `apps/mobile/test/fixtures/` (`crewmate_list.json`, `crewmate_tasks.json`, `crewmate_task_summarized.json`, `crewmate_task_resumed.json`, `crewmate_task_event.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `task_actions.json`, `crew_github_status.json`) and `apps/desktop/src/__fixtures__/` (`crewmate_tasks.json`, `crewmate_task_attachments.json`, `crewmate_task_prove_ui.json`, `crew_telegram_status.json`); the desktop and mobile tests read them, so a field renamed on one side fails on the other. Never edit a fixture by hand.
 

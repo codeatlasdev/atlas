@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 
 /// One checkout of a project from `worktree_list`: its main checkout or a linked worktree.
@@ -113,10 +113,7 @@ final worktreesProvider = FutureProvider.autoDispose
       ref,
       key,
     ) async {
-      final mux = await ref.watch(
-        connectionNotifierProvider(key.device).future,
-      );
-      if (mux == null) throw 'Not connected to your computer';
+      final mux = await requireMux(ref, key.device);
       final resp = await mux.call('worktree_list', {'project': key.projectId});
       if (resp['ok'] != true) {
         throw resp['error'] as String? ?? 'Could not list worktrees';

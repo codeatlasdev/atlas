@@ -12,6 +12,7 @@ import 'package:atlas_mobile/core/push/push_service.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/fade_branches.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
 import 'package:atlas_mobile/features/crew/list/crew_screen.dart';
 import 'package:atlas_mobile/features/crew/chat/crewmate_chat_screen.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
@@ -23,12 +24,17 @@ import 'package:atlas_mobile/features/terminal/terminal_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final _router = GoRouter(
+final _router = buildRouter();
+
+/// The app's routes. Tests build their own router to drive the real shell (one at a time: the root navigator's
+/// key is shared).
+@visibleForTesting
+GoRouter buildRouter() => GoRouter(
   navigatorKey: _rootNavigatorKey,
   routes: [
     // ── Shell: one branch per tab; the bar is visible here ─────────────────
     StatefulShellRoute(
-      builder: (context, state, shell) => _ShellScaffold(shell: shell),
+      builder: (context, state, shell) => ShellScaffold(shell: shell),
       navigatorContainerBuilder: (context, shell, children) =>
           FadeBranches(index: shell.currentIndex, children: children),
       branches: [
@@ -64,41 +70,54 @@ final _router = GoRouter(
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/pair',
-      builder: (_, _) => const PairScreen(),
+      pageBuilder: (context, state) =>
+          routePage(context, state, const PairScreen()),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/project',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
-        return ProjectDetailScreen(
-          device: args['device'] as MacDevice,
-          project: args['project'] as ProjectInfo,
+        return routePage(
+          context,
+          state,
+          ProjectDetailScreen(
+            device: args['device'] as MacDevice,
+            project: args['project'] as ProjectInfo,
+          ),
         );
       },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/terminal',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = state.extra! as Map<String, dynamic>;
-        return TerminalScreen(
-          device: args['device'] as MacDevice,
-          pty: args['pty'] as String,
-          title: args['title'] as String?,
-          pane: args['pane'] as String?,
+        return routePage(
+          context,
+          state,
+          TerminalScreen(
+            device: args['device'] as MacDevice,
+            pty: args['pty'] as String,
+            title: args['title'] as String?,
+            pane: args['pane'] as String?,
+          ),
         );
       },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/crew/:nodeId/:crewmateId',
-      builder: (_, state) {
+      pageBuilder: (context, state) {
         final args = (state.extra ?? {}) as Map<String, dynamic>;
-        return CrewmateChatScreen(
-          device: args['device'] as MacDevice,
-          crewmateId: state.pathParameters['crewmateId']!,
-          scrollToTaskId: args['scrollToTaskId'] as String?,
+        return routePage(
+          context,
+          state,
+          CrewmateChatScreen(
+            device: args['device'] as MacDevice,
+            crewmateId: state.pathParameters['crewmateId']!,
+            scrollToTaskId: args['scrollToTaskId'] as String?,
+          ),
         );
       },
     ),
@@ -107,12 +126,14 @@ final _router = GoRouter(
 
 // ── Shell scaffold ─────────────────────────────────────────────────────────
 
-class _ShellScaffold extends ConsumerWidget {
-  const _ShellScaffold({required this.shell});
+/// The tabs' frame: the branch stack and the floating bar. It reads no provider itself, so a
+/// crew push (which changes the Inbox badge) does not rebuild it; [_InboxBadgedTabBar] does.
+class ShellScaffold extends StatelessWidget {
+  const ShellScaffold({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
@@ -125,24 +146,33 @@ class _ShellScaffold extends ConsumerWidget {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: Space.md),
-                child: FloatingTabBar(
-                  currentIndex: shell.currentIndex,
-                  onTabSelected: (i) => shell.goBranch(
-                    i,
-                    initialLocation: i == shell.currentIndex,
-                  ),
-                  inboxCount:
-                      ref.watch(inboxProvider).length +
-                      unreadCount(
-                        ref.watch(recentActivityProvider),
-                        ref.watch(inboxSeenProvider),
-                      ),
-                ),
+                child: _InboxBadgedTabBar(shell: shell),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The tab bar with the Inbox count: the one widget that follows the inbox providers.
+class _InboxBadgedTabBar extends ConsumerWidget {
+  const _InboxBadgedTabBar({required this.shell});
+  final StatefulNavigationShell shell;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FloatingTabBar(
+      currentIndex: shell.currentIndex,
+      onTabSelected: (i) =>
+          shell.goBranch(i, initialLocation: i == shell.currentIndex),
+      inboxCount:
+          ref.watch(inboxProvider).length +
+          unreadCount(
+            ref.watch(recentActivityProvider),
+            ref.watch(inboxSeenProvider),
+          ),
     );
   }
 }

@@ -2,7 +2,7 @@
 	/** BoardCard — one task on the board; clicking it opens the chat at that task. */
 	import CrewmateFace from "#lib/crew/CrewmateFace.svelte";
 	import { workingLabel } from "#lib/crew/stepPhrase.ts";
-	import { actionLabel, elapsed, finishedLabel } from "#lib/crew/board/boardText.ts";
+	import { actionLabel, elapsed, finishedLabel, queuedLabel } from "#lib/crew/board/boardText.ts";
 	import type { BoardCard, ColumnId } from "#lib/crew/board.ts";
 
 	let { card, column, now, onopen }: { card: BoardCard; column: ColumnId; now: number; onopen: () => void } =
@@ -42,6 +42,10 @@
 		<p class="card-step">
 			{workingLabel(card.task.steps?.at(-1)?.text, card.task.steps?.at(-1)?.ts, now)}
 		</p>
+	{/if}
+
+	{#if column === "queued"}
+		<p class="card-step">{queuedLabel(card.task)}</p>
 	{/if}
 
 	{#if column === "needs_you"}

@@ -42,7 +42,7 @@ main ── alpha ── alpha ──────────────▶  ev
 
 Only maintainers cut releases, and only from a green CI on the exact commit. `bun run release alpha` (needs a green CI on HEAD; pushes the tag; watches the GitHub Release run, ~30–40 min; run with no timeout or a long one). Every other command, the flow per channel, recovery (`bun run release:publish vX.Y.Z`) and verification: `docs/release.md`; what the channels mean: `docs/versioning.md`.
 
-Default choice: `alpha` from `main` for new work; `beta` once a feature set should become the next stable; `stable` only after the soak (avoid `--force-soak`). Always `--dry-run` first.
+Default choice: `alpha` from `main` for new work; `beta` once a feature set should become the next stable; `stable` only after the soak (avoid `--force-soak`). Always `--dry-run` first, and before the real release run **`gh workflow run CI --ref main`** and read every job: a docs-only `HEAD` reports a green CI with everything skipped (`docs/release.md`, Prerequisites).
 
 **Atlas Mobile** has its own path: `bun run mobile:release X.Y.Z` on an up-to-date `main` tags `mobile-vX.Y.Z`; testers get it, and the stores only after a maintainer approves the `mobile-store` environment in the run. Never push a `mobile-v*` tag or approve that environment unless the maintainer asks for that release (`docs/mobile.md`, "Releases").
 

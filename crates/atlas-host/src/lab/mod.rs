@@ -67,6 +67,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::AgentInterrupt { .. }
         | C::AgentApprove { .. }
         | C::AgentLaunch { .. }
+        | C::PtyOpen { .. }
         | C::WorktreeCreate { .. }
         | C::WorktreeRemove { .. } => Route::Main,
         C::PtyAttach { .. } | C::PtyDetach { .. } => Route::Attach,
@@ -153,6 +154,7 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewTelegramStatus {}
         | C::PushRegister { .. }
         | C::PushUnregister { .. }
+        | C::PushForget { .. }
         | C::MobileInvite { .. }
         | C::MobileInvites {}
         | C::MobileInviteDismiss { .. }
@@ -166,6 +168,8 @@ pub fn route(cmd: &HostCmd) -> Route {
         | C::CrewPause {}
         | C::CrewResume {}
         | C::CrewSettingsGet {}
+        | C::CrewEngineLogin { .. }
+        | C::CrewEngineStatus { .. }
         | C::CrewSettingsSet { .. } => Route::Refuse("lab hostd does not run crewmates"),
     }
 }

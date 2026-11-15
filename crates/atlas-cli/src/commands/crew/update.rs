@@ -1,7 +1,9 @@
 //! `atlas crew update <ssh-target> [--version X] [--rollback]` — bring a crew server's `atlas` to a release
 //! (the CLI's own by default), keeping the previous binary as `atlas.prev` and rolling back by itself when
 //! hostd does not come back. Only the binary dir changes: the crew home (crewmates, memory, secrets, the paused
-//! flag) is never touched, so a paused crew stays paused.
+//! flag) is never touched, so a paused crew stays paused. The one other thing it writes is the capture runner
+//! (`runner.mjs` and `detectors.mjs`), and only on a server that already has the browsers: the new hostd asks
+//! that runner for things an old one does not do.
 
 use anyhow::{Result, bail};
 use clap::Args;
@@ -10,8 +12,10 @@ use crate::commands::AtlasCommand;
 use crate::commands::deploy::remote::Remote;
 
 use super::binary;
+use super::browsers;
 use super::install::{self, host_from_target};
 use super::layout::SERVICE;
+use super::privileged::Priv;
 
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
@@ -81,19 +85,16 @@ Look at: atlas crew logs {target}"
 impl AtlasCommand for UpdateArgs {
     async fn run(self) -> Result<()> {
         let plan = plan(&self, env!("CARGO_PKG_VERSION"))?;
-        let r = if self.port == 22 {
-            Remote::new(&self.ssh_target)
-        } else {
-            Remote::with_port(&self.ssh_target, self.port)
-        };
+        let r = Remote::crew(&self.ssh_target, self.port);
         let host = host_from_target(&self.ssh_target);
         let target = install::preflight(&r, &self.ssh_target).await?;
-        if r.exec("sudo -n true").await?.code != 0 {
-            bail!(
-                "sudo on {} asks for a password: grant passwordless sudo to this user",
-                self.ssh_target
-            );
-        }
+        let p = Priv::prepare(
+            &r,
+            &self.ssh_target,
+            false,
+            &format!("atlas crew update {}", self.ssh_target),
+        )
+        .await?;
         let unit = format!("test -f /etc/systemd/system/{SERVICE}.service");
         if r.exec(&unit).await?.code != 0 {
             bail!(
@@ -111,11 +112,11 @@ impl AtlasCommand for UpdateArgs {
                 match (version, &self.binary) {
                     (Some(v), _) => {
                         eprintln!("\x1b[36m▸\x1b[0m staging atlas {v} ({target}) on {host}");
-                        install::stage_release(&r, v, target).await?;
+                        install::stage_release(&p, v, target).await?;
                     }
                     (None, Some(path)) => {
                         eprintln!("\x1b[36m▸\x1b[0m uploading {} to {host}", path.display());
-                        install::stage_upload(&r, path).await?;
+                        install::stage_upload(&p, path).await?;
                     }
                     (None, None) => unreachable!("plan() gives no version only for --binary"),
                 }
@@ -123,7 +124,12 @@ impl AtlasCommand for UpdateArgs {
             }
         };
         eprintln!("\x1b[36m▸\x1b[0m restarting {SERVICE} and waiting for hostd");
-        let o = r.exec(&script).await?;
+        // `--rollback` flips atlas and atlas.prev: running it twice undoes it, so a dropped ssh link must not
+        // retry it (`exec_once`). The swap is guarded against a second run and may be retried.
+        let o = match plan {
+            Plan::Rollback => r.exec_once(&script).await?,
+            Plan::Install { .. } => p.exec(&script).await?,
+        };
         outcome(o.code, &o.stderr, &self.ssh_target)?;
         print!("{}", o.stdout);
         let expected = match &plan {
@@ -132,6 +138,11 @@ impl AtlasCommand for UpdateArgs {
         };
         if let Some(warning) = binary::report(&o.stdout, expected) {
             eprintln!("\x1b[33m◆\x1b[0m {warning}");
+        }
+        // A new hostd asks the runner for the UI detectors; an old runner writes no findings and
+        // would fail every scenario of the UI gate. A rollback keeps the runner it has.
+        if matches!(plan, Plan::Install { .. }) && browsers::refresh(&p, &self.ssh_target).await? {
+            eprintln!("\x1b[36m▸\x1b[0m refreshed the capture runner on {host}");
         }
         println!(
             "\x1b[32m✓\x1b[0m atlas on {host} updated; the previous binary is kept (atlas crew update {} --rollback).",

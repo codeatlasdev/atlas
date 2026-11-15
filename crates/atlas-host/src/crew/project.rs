@@ -12,6 +12,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use tokio::process::Command;
 
+use crate::crew::spawn::layout::{self, Isolated};
 use crate::crew::store::{ProjectRef, crewmate_dir_in};
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -32,21 +33,32 @@ pub fn work_dir(base_dir: &Path, crewmate_id: &str) -> PathBuf {
     crewmate_dir_in(base_dir, crewmate_id).join("work")
 }
 
+/// The crewmate's working directory: `/var/lib/atlas-cm/<slug>/work` when it runs as its own user
+/// (the agent cannot enter the crew home), else [`work_dir`].
+pub fn work_dir_for(base_dir: &Path, crewmate_id: &str, iso: Option<&Isolated>) -> PathBuf {
+    match iso {
+        Some(iso) => iso.work(),
+        None => work_dir(base_dir, crewmate_id),
+    }
+}
+
 /// Where this crewmate's agent works, without preparing anything: the `work/` checkout of a Git
 /// project, the folder of a Path project, else its own `workdir` or `work/`. The same answer
 /// `runner::prompt::prepare_work_dir` ends up with, for code that only needs to read the tree.
+/// A crewmate that runs as its own Linux user works in its own folder (`iso`), like the agent does.
 pub fn current_work_dir(
     base_dir: &Path,
     crewmate: &crate::crew::store::Crewmate,
+    iso: Option<&Isolated>,
 ) -> Result<PathBuf, String> {
     let dir = match &crewmate.project {
-        Some(ProjectRef::Git { .. }) => work_dir(base_dir, &crewmate.id),
+        Some(ProjectRef::Git { .. }) => work_dir_for(base_dir, &crewmate.id, iso),
         Some(ProjectRef::Path { path }) => prepare_path(path)?,
         None => crewmate
             .workdir
             .as_ref()
             .map(PathBuf::from)
-            .unwrap_or_else(|| work_dir(base_dir, &crewmate.id)),
+            .unwrap_or_else(|| work_dir_for(base_dir, &crewmate.id, iso)),
     };
     if dir.is_dir() {
         Ok(dir)
@@ -60,17 +72,21 @@ pub fn current_work_dir(
 
 /// Ensure the project is checked out and return the working directory for the crewmate.
 ///
-/// For `Git`: shared clone + per-crewmate worktree.
+/// For `Git`: shared clone + per-crewmate worktree, or, for a crewmate that runs as its own user, its
+/// own full clone in its directory (a worktree's `.git` points into the shared clone, which lives in
+/// the crew home the agent cannot read).
 /// For `Path`: validate the path is an existing directory and return it.
 pub async fn prepare(
     project: &ProjectRef,
     crewmate_id: &str,
     base_dir: &Path,
+    iso: Option<Isolated>,
 ) -> Result<PathBuf, String> {
     match project {
-        ProjectRef::Git { url, branch } => {
-            prepare_git(url, branch.as_deref(), crewmate_id, base_dir).await
-        }
+        ProjectRef::Git { url, branch } => match iso {
+            Some(iso) => prepare_isolated(url, branch.as_deref(), &iso).await,
+            None => prepare_git(url, branch.as_deref(), crewmate_id, base_dir).await,
+        },
         ProjectRef::Path { path } => prepare_path(path),
     }
 }
@@ -81,13 +97,20 @@ pub async fn prepare(
 ///
 /// Fetches in the shared repo, then fast-forward pulls in the worktree only
 /// when there are no local modifications.
-pub async fn fetch(work_dir: &Path) -> Result<(), String> {
+///
+/// `env` is git's environment (`layout::git_env` for an isolated checkout, empty otherwise).
+pub async fn fetch(work_dir: &Path, env: &[(String, String)]) -> Result<(), String> {
     let work_str = work_dir.to_string_lossy();
 
-    // Find the shared (main) worktree via `git worktree list --porcelain`.
-    let list = git_run(&["-C", &work_str, "worktree", "list", "--porcelain"], None)
-        .await
-        .unwrap_or_default();
+    // Find the shared (main) worktree via `git worktree list --porcelain`. An isolated checkout is
+    // a full clone: its list names itself, and the fetch below runs there.
+    let list = git_run_env(
+        &["-C", &work_str, "worktree", "list", "--porcelain"],
+        None,
+        env,
+    )
+    .await
+    .unwrap_or_default();
 
     let shared = list
         .lines()
@@ -96,22 +119,77 @@ pub async fn fetch(work_dir: &Path) -> Result<(), String> {
         .map(|s| PathBuf::from(s.trim()));
 
     if let Some(shared_dir) = shared {
-        let _ = git_run(
+        let _ = git_run_env(
             &["-C", &shared_dir.to_string_lossy(), "fetch", "--quiet"],
             None,
+            env,
         )
         .await;
     }
 
     // Pull in the worktree only when the working tree is clean.
-    let status = git_run(&["-C", &work_str, "status", "--porcelain"], None)
+    let status = git_run_env(&["-C", &work_str, "status", "--porcelain"], None, env)
         .await
         .unwrap_or_default();
     if status.is_empty() {
-        let _ = git_run(&["-C", &work_str, "pull", "--ff-only", "--quiet"], None).await;
+        let _ = git_run_env(
+            &["-C", &work_str, "pull", "--ff-only", "--quiet"],
+            None,
+            env,
+        )
+        .await;
     }
 
     Ok(())
+}
+
+/// Take a deleted crewmate's checkout out of the shared clone: `git worktree remove --force` (the
+/// agent's uncommitted work goes with the crewmate), a prune of what is left, and its local branches
+/// `atlas/<id>/*`. Without it the shared clone keeps the worktree's metadata and the branch forever,
+/// and a later `worktree add` for the same branch can refuse. A crewmate with no Git checkout has
+/// nothing to remove. Errors are returned so the caller can say what was left; every step still runs.
+pub async fn remove_checkout(base_dir: &Path, crewmate_id: &str) -> Result<(), String> {
+    let worktree = work_dir(base_dir, crewmate_id);
+    if !worktree.join(".git").exists() {
+        return Ok(());
+    }
+    // The shared clone is the first entry of the worktree list, read from inside the worktree.
+    let list = git_run(&["worktree", "list", "--porcelain"], Some(&worktree)).await?;
+    let shared = list
+        .lines()
+        .find_map(|l| l.strip_prefix("worktree "))
+        .map(|s| PathBuf::from(s.trim()))
+        .ok_or("git worktree list named no shared clone")?;
+
+    let mut left = vec![];
+    let wt = worktree.to_string_lossy().into_owned();
+    if let Err(e) = git_run(&["worktree", "remove", "--force", &wt], Some(&shared)).await {
+        left.push(e);
+    }
+    if let Err(e) = git_run(&["worktree", "prune"], Some(&shared)).await {
+        left.push(e);
+    }
+    let pattern = format!("refs/heads/atlas/{crewmate_id}/");
+    match git_run(
+        &["for-each-ref", "--format=%(refname:short)", &pattern],
+        Some(&shared),
+    )
+    .await
+    {
+        Ok(branches) => {
+            for b in branches.lines().filter(|b| !b.is_empty()) {
+                if let Err(e) = git_run(&["branch", "-D", b], Some(&shared)).await {
+                    left.push(e);
+                }
+            }
+        }
+        Err(e) => left.push(e),
+    }
+    if left.is_empty() {
+        Ok(())
+    } else {
+        Err(left.join("; "))
+    }
 }
 
 // ─── atlas.yaml ───────────────────────────────────────────────────────────────
@@ -151,7 +229,7 @@ pub fn read_atlas_yaml(work_dir: &Path) -> Option<AtlasYamlInfo> {
         }
     }
 
-    let git_remote = infer_github_repo(work_dir);
+    let git_remote = infer_github_repo(work_dir, &[]);
     Some(AtlasYamlInfo {
         name,
         services,
@@ -164,8 +242,9 @@ pub fn read_atlas_yaml(work_dir: &Path) -> Option<AtlasYamlInfo> {
 /// Handles both HTTPS (`https://github.com/owner/repo`) and SSH
 /// (`git@github.com:owner/repo`) remotes.
 #[allow(dead_code)]
-pub fn infer_github_repo(work_dir: &Path) -> Option<String> {
+pub fn infer_github_repo(work_dir: &Path, env: &[(String, String)]) -> Option<String> {
     let out = std::process::Command::new("git")
+        .envs(env.iter().map(|(k, v)| (k, v)))
         .args([
             "-C",
             &work_dir.to_string_lossy(),
@@ -203,13 +282,38 @@ pub fn ssh_to_https(url: &str) -> String {
     url.to_string()
 }
 
+/// Test-only: the program `git_run` starts in place of `git` (a fake that hangs, or records its calls).
+#[cfg(test)]
+pub(crate) static TEST_GIT_PROGRAM: parking_lot::Mutex<Option<String>> =
+    parking_lot::Mutex::new(None);
+
+fn git_program() -> String {
+    #[cfg(test)]
+    if let Some(p) = TEST_GIT_PROGRAM.lock().clone() {
+        return p;
+    }
+    "git".to_string()
+}
+
 async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.args(args);
+    git_run_env(args, cwd, &[]).await
+}
+
+async fn git_run_env(
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+) -> Result<String, String> {
+    let mut cmd = Command::new(git_program());
+    cmd.args(args).envs(env.iter().map(|(k, v)| (k, v)));
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let out = cmd.output().await.map_err(|e| format!("git error: {e}"))?;
+    // A deadline and a tree kill on every call: a clone that never returns used to hold the checkout (and the task)
+    // until the 2 h task timeout, and a cancel could not reach it (#296).
+    let out = crate::crew::proc::run_bounded(&mut cmd, "git", crate::crew::proc::call_deadline())
+        .await
+        .map_err(|e| format!("git error: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -220,9 +324,24 @@ async fn git_run(args: &[&str], cwd: Option<&Path>) -> Result<String, String> {
     }
 }
 
+/// The lock of one repo's shared clone: two crewmates of the same repo take turns, crewmates of different repos check
+/// out at the same time.
+fn checkout_lock(shared_dir: &Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    type Locks = std::collections::HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>;
+    static LOCKS: parking_lot::Mutex<Option<Locks>> = parking_lot::Mutex::new(None);
+    LOCKS
+        .lock()
+        .get_or_insert_with(Default::default)
+        .entry(shared_dir.to_path_buf())
+        .or_default()
+        .clone()
+}
+
 /// The branch checked out in `dir`; `None` for a detached HEAD or a folder that is not a git repo.
-pub async fn current_branch(dir: &Path) -> Option<String> {
-    let b = git_run(&["symbolic-ref", "--short", "-q", "HEAD"], Some(dir))
+/// `env` is git's environment for the tree (`CrewStore::git_env_in`: an isolated crewmate's checkout
+/// belongs to another user).
+pub async fn current_branch(dir: &Path, env: &[(String, String)]) -> Option<String> {
+    let b = git_run_env(&["symbolic-ref", "--short", "-q", "HEAD"], Some(dir), env)
         .await
         .ok()?;
     (!b.is_empty()).then_some(b)
@@ -234,16 +353,15 @@ async fn prepare_git(
     crewmate_id: &str,
     base_dir: &Path,
 ) -> Result<PathBuf, String> {
-    // One checkout at a time: the clone starts in the background when a crewmate gets its project, and a task may ask for
-    // the same checkout while it runs; the second caller waits and then finds it ready (it used to hit a half-made
-    // clone). Clones are rare, so one lock for all of them is enough.
-    static CHECKOUT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _one_at_a_time = CHECKOUT.lock().await;
-
     let url = ssh_to_https(url);
     let url = url.as_str();
     let slug = git_slug(url);
     let shared_dir = base_dir.join("projects").join(&slug);
+    // One checkout of a repo at a time: the clone starts in the background when a crewmate gets its project, and a task
+    // may ask for the same checkout while it runs; the second caller waits and then finds it ready (it used to hit a
+    // half-made clone). Per repo: a clone of one repo never holds up the checkout of another (#296).
+    let lock = checkout_lock(&shared_dir);
+    let _one_at_a_time = lock.lock().await;
     let worktree = work_dir(base_dir, crewmate_id);
 
     // Clone into shared dir if it doesn't exist yet.
@@ -298,6 +416,55 @@ async fn prepare_git(
     }
 
     Ok(worktree)
+}
+
+/// The checkout of a crewmate that runs as its own user: a full clone in `<slug>/work`, which is
+/// empty after provisioning. The clone is made by hostd (the crew user, in the crewmate's group) with
+/// `core.sharedRepository=group`, so everything git writes there is writable by the crewmate too.
+/// Idempotent: an existing checkout is returned as it is.
+async fn prepare_isolated(
+    url: &str,
+    branch: Option<&str>,
+    iso: &Isolated,
+) -> Result<PathBuf, String> {
+    // Same reason as `prepare_git`: a clone may be asked for twice at once (warm-up and first task).
+    static CHECKOUT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one_at_a_time = CHECKOUT.lock().await;
+
+    let work = iso.work();
+    if work.join(".git").exists() {
+        return Ok(work);
+    }
+    std::fs::create_dir_all(&work).map_err(|e| format!("mkdir error: {e}"))?;
+    // The config that trusts the shared checkout is written before the first git command that
+    // needs it (hostd and the crewmate are different users of the same tree).
+    write_gitconfig(iso)?;
+    let env = layout::git_env(Some(iso));
+    let url = ssh_to_https(url);
+    let work_str = work.to_string_lossy().into_owned();
+    let mut args: Vec<&str> = vec![
+        "clone",
+        "--filter=blob:none",
+        "-c",
+        "core.sharedRepository=group",
+    ];
+    if let Some(b) = branch {
+        args.push("--branch");
+        args.push(b);
+    }
+    args.push(&url);
+    args.push(&work_str);
+    git_run_env(&args, None, &env).await?;
+    Ok(work)
+}
+
+/// `crew-runtime/gitconfig`, where git's `safe.directory` and `sharedRepository` come from.
+fn write_gitconfig(iso: &Isolated) -> Result<(), String> {
+    let path = iso.gitconfig();
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(|e| format!("mkdir error: {e}"))?;
+    }
+    std::fs::write(&path, layout::GITCONFIG).map_err(|e| format!("gitconfig: {e}"))
 }
 
 pub(crate) fn prepare_path(path: &str) -> Result<PathBuf, String> {
@@ -389,10 +556,10 @@ mod tests {
             url: url.clone(),
             branch: Some("feat/x".into()),
         };
-        let a = prepare(&p, "crewmate-a", &base)
+        let a = prepare(&p, "crewmate-a", &base, None)
             .await
             .expect("first crewmate");
-        let b = prepare(&p, "crewmate-b", &base)
+        let b = prepare(&p, "crewmate-b", &base, None)
             .await
             .expect("second crewmate on the same branch");
         assert!(a.join(".git").exists() && b.join(".git").exists());
@@ -406,7 +573,7 @@ mod tests {
             assert_eq!(String::from_utf8_lossy(&up.stdout).trim(), "origin/feat/x");
         }
         // A second task reuses the worktree instead of failing.
-        assert_eq!(prepare(&p, "crewmate-a", &base).await.unwrap(), a);
+        assert_eq!(prepare(&p, "crewmate-a", &base, None).await.unwrap(), a);
     }
 
     // The clone now starts in the background as soon as a crewmate gets its project (the first task waited ~90 s on
@@ -420,8 +587,8 @@ mod tests {
             let base = tmp.path().join("hostd");
             let p = ProjectRef::Git { url, branch: None };
             let (warm, task) = tokio::join!(
-                prepare(&p, "crewmate-a", &base),
-                prepare(&p, "crewmate-a", &base)
+                prepare(&p, "crewmate-a", &base, None),
+                prepare(&p, "crewmate-a", &base, None)
             );
             let (warm, task) = (
                 warm.unwrap_or_else(|e| panic!("round {round}, background clone: {e}")),
@@ -430,6 +597,98 @@ mod tests {
             assert_eq!(warm, task);
             assert!(task.join(".git").exists());
         }
+    }
+
+    // Issue #200: a crewmate that runs as its own user gets a full clone in its own directory (a
+    // worktree would point into the crew home, which the agent cannot read), tracking the branch,
+    // with git configured for two users sharing the tree.
+    #[tokio::test]
+    async fn an_isolated_crewmate_gets_its_own_full_clone_not_a_worktree_of_a_shared_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = remote_repo(tmp.path());
+        let base = tmp.path().join("hostd");
+        let root = tmp.path().join("cm").to_string_lossy().into_owned();
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let iso = Isolated::under(&root, id).unwrap();
+        let p = ProjectRef::Git {
+            url,
+            branch: Some("feat/x".into()),
+        };
+        let w = prepare(&p, id, &base, Some(iso.clone())).await.unwrap();
+        assert_eq!(w, iso.work());
+        // A full clone: `.git` is a directory with its own objects, not a file pointing elsewhere.
+        assert!(w.join(".git").is_dir(), "a worktree has a .git file");
+        // Nothing was put in the crew home: no shared clone, no worktree.
+        assert!(!base.join("projects").exists());
+        assert!(!base.join("crew").exists());
+        // It follows the branch it was asked for.
+        let head = std::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&w)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feat/x");
+        // Git is told two users share it.
+        let cfg = std::process::Command::new("git")
+            .args(["config", "--get", "core.sharedRepository"])
+            .current_dir(&w)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&cfg.stdout).trim(), "group");
+        let gitconfig = std::fs::read_to_string(iso.gitconfig()).unwrap();
+        assert!(gitconfig.contains("directory = *"), "{gitconfig}");
+        // A second task reuses it.
+        assert_eq!(prepare(&p, id, &base, Some(iso)).await.unwrap(), w);
+    }
+
+    // The checkout is two users' tree: fetch runs with the config that trusts it, so git does not
+    // refuse it as "dubious ownership" (what happens to a checkout owned by another uid).
+    #[tokio::test]
+    async fn fetch_runs_with_the_gitconfig_of_the_isolated_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = remote_repo(tmp.path());
+        let root = tmp.path().join("cm").to_string_lossy().into_owned();
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let iso = Isolated::under(&root, id).unwrap();
+        let p = ProjectRef::Git { url, branch: None };
+        let w = prepare(&p, id, &tmp.path().join("hostd"), Some(iso.clone()))
+            .await
+            .unwrap();
+        // A commit lands on the remote; fetch brings the checkout up to date.
+        let src = tmp.path().join("src");
+        sh(
+            &src,
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "two",
+            ],
+        );
+        fetch(&w, &layout::git_env(Some(&iso))).await.unwrap();
+        let log = std::process::Command::new("git")
+            .args(["log", "--oneline"])
+            .current_dir(&w)
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 2);
+    }
+
+    #[test]
+    fn work_dir_for_is_the_store_dir_without_isolation_and_the_crewmates_own_with_it() {
+        let base = Path::new("/h");
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        assert_eq!(work_dir_for(base, id, None), work_dir(base, id));
+        let iso = Isolated::under("/r", id).unwrap();
+        assert_eq!(
+            work_dir_for(base, id, Some(&iso)),
+            PathBuf::from("/r/3f2a9c1e5b7d/work")
+        );
     }
 
     #[test]
@@ -457,6 +716,33 @@ mod tests {
         assert_eq!(
             parse_github_repo("https://github.com/owner/repo"),
             Some("owner/repo".to_string())
+        );
+    }
+
+    // Merge of #223 (isolation) with #262 (`locate` reads the work tree): `locate` asked for the
+    // store's `work/` checkout, but an isolated crewmate's agent works in its own folder, so the tool
+    // would have read a tree that does not exist (or a stale one).
+    #[test]
+    fn the_current_work_dir_of_an_isolated_crewmate_is_its_own_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().join("hostd");
+        let root = tmp.path().join("cm");
+        let id = "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b";
+        let mate: crate::crew::store::Crewmate = serde_json::from_value(serde_json::json!({
+            "id": id, "name": "Iso", "role": "r", "agent": "omp", "approval": "auto",
+            "created_at": 1, "project": {"kind": "git", "url": "https://example.com/o/r.git"},
+        }))
+        .unwrap();
+        let iso = Isolated::under(root.to_str().unwrap(), id).unwrap();
+        std::fs::create_dir_all(iso.work()).unwrap();
+        std::fs::create_dir_all(work_dir(&base, id)).unwrap();
+        assert_eq!(
+            current_work_dir(&base, &mate, Some(&iso)).unwrap(),
+            iso.work()
+        );
+        assert_eq!(
+            current_work_dir(&base, &mate, None).unwrap(),
+            work_dir(&base, id)
         );
     }
 
@@ -534,5 +820,63 @@ services:
     fn ssh_to_https_leaves_non_github_unchanged() {
         let url = "git@gitlab.com:owner/repo.git";
         assert_eq!(ssh_to_https(url), url);
+    }
+
+    fn git_out(dir: &Path, args: &[&str]) -> String {
+        let o = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "git {args:?}");
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    }
+
+    // Regression (#297): deleting a crewmate removed `crew/<id>/` with `remove_dir_all` only, so the
+    // shared clone kept the worktree's metadata and the local branch `atlas/<id>/...` for good.
+    #[tokio::test]
+    async fn removing_a_checkout_leaves_no_worktree_or_branch_in_the_shared_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = remote_repo(tmp.path());
+        let base = tmp.path().join("hostd");
+        let p = ProjectRef::Git {
+            url,
+            branch: Some("feat/x".into()),
+        };
+        let a = prepare(&p, "crewmate-a", &base, None).await.unwrap();
+        let b = prepare(&p, "crewmate-b", &base, None).await.unwrap();
+        // Uncommitted work in the worktree goes with the crewmate.
+        std::fs::write(a.join("scratch.txt"), "wip").unwrap();
+        let shared = std::fs::read_dir(base.join("projects"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-a/*"])
+                .contains("atlas/crewmate-a/feat/x")
+        );
+
+        remove_checkout(&base, "crewmate-a").await.unwrap();
+
+        assert!(!a.exists(), "the worktree directory is gone");
+        let worktrees = git_out(&shared, &["worktree", "list", "--porcelain"]);
+        assert!(!worktrees.contains("crewmate-a"), "{worktrees}");
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-a/*"])
+                .trim()
+                .is_empty()
+        );
+        // The other crewmate is untouched, and a new worktree for the same id can be made again.
+        assert!(worktrees.contains("crewmate-b") && b.join(".git").exists());
+        assert!(
+            git_out(&shared, &["branch", "--list", "atlas/crewmate-b/*"]).contains("crewmate-b")
+        );
+        prepare(&p, "crewmate-a", &base, None)
+            .await
+            .expect("same id again");
+        // A crewmate with no checkout has nothing to remove.
+        remove_checkout(&base, "never-had-one").await.unwrap();
     }
 }

@@ -10,15 +10,15 @@ use anyhow::{Context, Result};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-/// Single-quote for POSIX shells: `a'b` → `'a'\''b'`.
-pub fn shq(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
+pub use atlas_core::ssh::shq;
+use atlas_core::ssh::{SshTarget, Use};
 
 pub struct Remote {
     pub host: String,
     /// Non-default SSH port; `None` means standard port 22.
     pub port: Option<u16>,
+    /// A crew server: every script starts with the agents' `PATH` (`atlas_core::ssh::with_path`).
+    agent_path: bool,
 }
 
 pub struct Output {
@@ -32,14 +32,24 @@ impl Remote {
         Self {
             host: host.into(),
             port: None,
+            agent_path: false,
         }
     }
 
-    /// Create with an explicit port. `port` of 22 is stored as-is.
+    /// Create with an explicit port; 22 is the default and is left off the command line.
     pub fn with_port(host: &str, port: u16) -> Self {
         Self {
             host: host.into(),
-            port: Some(port),
+            port: SshTarget::new(host, Some(port)).port,
+            agent_path: false,
+        }
+    }
+
+    /// A crew server (`port` 22 = default): the one way every `atlas crew` command reaches it.
+    pub fn crew(host: &str, port: u16) -> Self {
+        Self {
+            agent_path: true,
+            ..Self::with_port(host, port)
         }
     }
 
@@ -53,30 +63,15 @@ impl Remote {
             c.arg("-c").arg(script);
             return c;
         }
+        let target = SshTarget::new(self.host.clone(), self.port);
         let mut c = Command::new("ssh");
-        c.args([
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=15",
-            "-o",
-            "ServerAliveInterval=15",
-            "-o",
-            "ServerAliveCountMax=4",
-            "-o",
-            "ControlMaster=auto",
-            "-o",
-            "ControlPath=~/.ssh/atlas-%C",
-            "-o",
-            "ControlPersist=120",
-        ]);
-        if let Some(p) = self.port {
-            let port_s = p.to_string();
-            c.args(["-p", &port_s]);
+        if self.agent_path {
+            c.args(target.exec_argv(script));
+        } else {
+            c.args(target.argv(Use::Exec))
+                .arg("--")
+                .arg(atlas_core::ssh::remote_command(script));
         }
-        c.arg(&self.host)
-            .arg("--")
-            .arg(format!("bash -c {}", shq(script)));
         c
     }
 
@@ -205,6 +200,37 @@ mod tests {
     fn shq_escapes_single_quote() {
         assert_eq!(shq("a'b"), "'a'\\''b'");
         assert_eq!(shq("$(rm -rf /)"), "'$(rm -rf /)'");
+    }
+
+    fn args_of(r: &Remote, script: &str) -> Vec<String> {
+        r.command(script)
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    // Issue #355: a crew server gets its port before the target and the agents' PATH in the remote command.
+    // A deploy host (`Remote::new`) keeps its script untouched: deploy scripts must not run under a PATH made for
+    // the crew's agents.
+    #[test]
+    fn only_a_crew_remote_gets_the_agents_path_and_both_get_the_port() {
+        let crew = args_of(&Remote::crew("atlas-crew@srv", 2222), "echo hi");
+        let p = crew.iter().position(|a| a == "-p").unwrap();
+        assert_eq!(crew[p + 1], "2222");
+        assert!(p < crew.iter().position(|a| a == "atlas-crew@srv").unwrap());
+        assert!(crew.last().unwrap().contains(".local/bin"), "{crew:?}");
+
+        let deploy = args_of(&Remote::with_port("prod", 2200), "echo hi");
+        assert!(deploy.windows(2).any(|w| w[0] == "-p" && w[1] == "2200"));
+        assert!(!deploy.last().unwrap().contains(".local/bin"), "{deploy:?}");
+        assert!(deploy.last().unwrap().contains("echo hi"));
+
+        let plain = args_of(&Remote::crew("atlas-crew@srv", 22), "echo hi");
+        assert!(
+            !plain.contains(&"-p".to_string()),
+            "22 is the default: {plain:?}"
+        );
     }
 
     // The `local` deploy host is this machine's bash.

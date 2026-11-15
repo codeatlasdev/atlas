@@ -1,8 +1,29 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_transport.dart';
 
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/transport/transport.dart';
+
+/// A transport whose reply to a request arrives before `sendLine` returns: a fast link, where the
+/// answer is read while the write is still being acknowledged.
+class _ReplyDuringSend implements Transport {
+  final _lines = StreamController<String>.broadcast();
+  @override
+  Stream<String> get incomingLines => _lines.stream;
+  @override
+  Future<void> sendLine(String line) async {
+    // The mux has registered the call by now; the reply lands while the write is still open.
+    scheduleMicrotask(() => _lines.add('{"id":1,"ok":true,"data":{}}'));
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  @override
+  Future<void> close() async => _lines.close();
+}
 
 void main() {
   group('Multiplexer', () {
@@ -100,6 +121,120 @@ void main() {
       expect(resp['ok'], isTrue);
     });
 
+    // ── A dropped reply fails ITS call at once, with the real cause ──────────
+    // hostd builds a reply with serde_json `json!`: `{"id":..` first, or (without
+    // `preserve_order`) keys sorted, `data`/`error` first and `id`,`ok` last. A reply we cannot
+    // read used to leave the call waiting 20 s for "Your Mac did not answer".
+
+    Future<Map<String, dynamic>> answeredWithin(
+      Future<Map<String, dynamic>> f,
+    ) => f.timeout(const Duration(seconds: 2), onTimeout: () => {'hung': true});
+
+    test('an oversized reply (id first) fails its call at once, saying it was '
+        'too large', () async {
+      final f = mux.call('project_detail'); // id=1
+      ft.injectLine('{"id":1,"ok":true,"data":"${'x' * (1024 * 1024)}"}');
+      final resp = await answeredWithin(f);
+      expect(resp['hung'], isNull, reason: 'call waited for the 20 s deadline');
+      expect(resp['ok'], isFalse);
+      expect(resp['error'], contains('too large'));
+      expect(resp['error'], contains('MB'));
+      expect(mux.droppedLines, 0, reason: 'attributed to a call, not lost');
+    });
+
+    test('an oversized reply with sorted keys (id near the end) fails its '
+        'call too', () async {
+      final f = mux.call('project_detail'); // id=1
+      ft.injectLine('{"data":"${'x' * (1024 * 1024)}","id":1,"ok":true}');
+      final resp = await answeredWithin(f);
+      expect(resp['hung'], isNull);
+      expect(resp['ok'], isFalse);
+      expect(resp['error'], contains('too large'));
+    });
+
+    test(
+      'an oversized error reply with sorted keys fails its call too',
+      () async {
+        final f = mux.call('x'); // id=1
+        ft.injectLine('{"error":"${'e' * (1024 * 1024)}","id":1,"ok":false}');
+        final resp = await answeredWithin(f);
+        expect(resp['hung'], isNull);
+        expect(resp['error'], contains('too large'));
+      },
+    );
+
+    test('only the call whose id is on the line fails; the other keeps '
+        'waiting for its reply', () async {
+      final f1 = mux.call('a'); // id=1
+      final f2 = mux.call('b'); // id=2
+      ft.injectLine('{"id":2,"ok":true,"data":"${'x' * (1024 * 1024)}"}');
+      final r2 = await answeredWithin(f2);
+      expect(r2['error'], contains('too large'));
+      ft.injectLine('{"id":1,"ok":true,"data":{"fine":1}}');
+      final r1 = await answeredWithin(f1);
+      expect(r1['ok'], isTrue);
+      expect(r1['data']['fine'], 1);
+    });
+
+    // A nested object carries "id" too: only the line's own envelope counts, so a reply is never
+    // attributed to a nested id (that would fail someone else's call).
+    test('an id inside the payload is never taken for the reply id', () async {
+      final f1 = mux.call('a'); // id=1
+      final f7 = mux.call(
+        'b',
+      ); // id=2 (the nested "id":7 must not match anything real)
+      final big = 'x' * (1024 * 1024);
+      // Envelope id is 1 (sorted shape); a nested {"id":2,"ok":true} sits in the middle.
+      ft.injectLine(
+        '{"data":{"rows":[{"id":2,"ok":true}],"p":"$big"},"id":1,"ok":true}',
+      );
+      final r1 = await answeredWithin(f1);
+      expect(r1['error'], contains('too large'));
+      ft.injectLine('{"id":2,"ok":true,"data":{}}');
+      expect((await answeredWithin(f7))['ok'], isTrue);
+    });
+
+    test('a malformed reply (id first) fails its call, saying the reply was '
+        'unreadable', () async {
+      final f = mux.call('ping'); // id=1
+      ft.injectLine('{"id":1,"ok":true,"data":{oops');
+      final resp = await answeredWithin(f);
+      expect(resp['hung'], isNull);
+      expect(resp['ok'], isFalse);
+      expect(resp['error'], contains('malformed reply'));
+    });
+
+    test('a malformed reply (sorted keys) fails its call', () async {
+      final f = mux.call('ping'); // id=1
+      ft.injectLine('{"data":[1,2,,"id":1,"ok":true}');
+      final resp = await answeredWithin(f);
+      expect(resp['hung'], isNull);
+      expect(resp['error'], contains('malformed reply'));
+    });
+
+    test('a dropped line with no recoverable id is counted, not lost silently, '
+        'and the push stream still works', () async {
+      expect(mux.droppedLines, 0);
+      ft.injectLine('not json at all');
+      ft.injectLine('x' * (Multiplexer.maxLineBytes + 1));
+      await Future<void>.delayed(Duration.zero);
+      expect(mux.droppedLines, 2);
+      final pushes = <Map<String, dynamic>>[];
+      final sub = mux.pushEvents.listen(pushes.add);
+      ft.injectLine('{"ev":"ok_event"}');
+      await Future<void>.delayed(Duration.zero);
+      expect(pushes, hasLength(1));
+      await sub.cancel();
+    });
+
+    test('a reply for an id nobody waits for (already timed out) is ignored, '
+        'not counted as dropped', () async {
+      ft.injectLine('{"id":99,"ok":true,"data":{}}');
+      ft.injectLine('{"id":98,"ok":true,"data":"${'x' * (1024 * 1024)}"}');
+      await Future<void>.delayed(Duration.zero);
+      expect(mux.droppedLines, 0);
+    });
+
     // Guards the endless pull-to-refresh spinner: a call whose reply never came
     // (connection dead without closing) waited forever.
     test(
@@ -119,6 +254,33 @@ void main() {
         ft.injectLine('{"id":1,"ok":true,"data":{}}');
         await Future<void>.delayed(Duration.zero);
       },
+    );
+
+    // Guards the stray deadline: the 20 s timer was started AFTER `await sendLine`, so a reply
+    // delivered while the line was still being sent found no timer to cancel, and the timer that
+    // was then started fired against a call that had already finished.
+    test(
+      'a reply delivered during sendLine leaves no pending deadline timer',
+      () => fakeAsync((async) {
+        final m = Multiplexer(
+          _ReplyDuringSend(),
+          timeout: const Duration(seconds: 20),
+        );
+        Map<String, dynamic>? resp;
+        m.call('ping').then((r) => resp = r);
+        async.elapse(
+          Duration.zero,
+        ); // the send's own zero delay, then the reply
+        async.flushMicrotasks();
+        expect(resp?['ok'], isTrue, reason: 'the reply was delivered');
+        expect(
+          async.pendingTimers,
+          isEmpty,
+          reason: 'a deadline outlived its call',
+        );
+        m.close();
+        async.flushMicrotasks();
+      }),
     );
 
     // Guards the disabled send button: when the transport was closed, call() was

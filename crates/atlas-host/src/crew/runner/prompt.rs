@@ -6,7 +6,7 @@ use std::path::Path;
 
 use super::action::park_task;
 use super::github::{WaitResult, needs_github_auth, wait_for_github_connect};
-use super::outcome::{broadcast_task, finish_task, persist};
+use super::outcome::{broadcast_task, finish_task, persist, was_cancelled};
 use crate::crew::store::{ProjectRef, Task, TaskAction};
 use crate::crew::{Crewmate, attachments, project, triggers};
 use crate::server::Hub;
@@ -107,7 +107,8 @@ async fn prepare_work_dir(
 ) -> Result<String, String> {
     let dir = if let Some(proj) = &crewmate.project {
         // Not checked out yet (a first task, or one sent while the background clone runs): say so on the task.
-        let work = project::work_dir(&hub.crew.dir, &crewmate.id);
+        let iso = hub.crew.store.isolated(&crewmate.id);
+        let work = project::work_dir_for(&hub.crew.dir, &crewmate.id, iso.as_ref());
         if let ProjectRef::Git { url, .. } = proj
             && !work.join(".git").exists()
         {
@@ -119,19 +120,46 @@ async fn prepare_work_dir(
             let _ = persist(hub, &crewmate.id, task);
             broadcast_task(hub, &crewmate.id, task);
         }
-        let p = project::prepare(proj, &crewmate.id, &hub.crew.dir).await;
+        // Inside the task's own life: a cancel (the store says `cancelled`) ends the checkout at once, and the dropped
+        // git calls take their process trees with them (`proc::run_bounded`); each call also has its own deadline.
+        let git_env = crate::crew::spawn::layout::git_env(iso.as_ref());
+        let checkout = async {
+            let p = project::prepare(proj, &crewmate.id, &hub.crew.dir, iso.clone()).await?;
+            // non-fatal; an isolated checkout is fetched with the config that trusts it
+            let _ = project::fetch(&p, &git_env).await;
+            Ok::<_, String>(p)
+        };
+        let cancelled = async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                if was_cancelled(hub, &crewmate.id, &task.id) {
+                    return;
+                }
+            }
+        };
+        let p = tokio::select! {
+            p = checkout => Some(p),
+            () = cancelled => None,
+        };
         if task.preparing.take().is_some() {
             let _ = persist(hub, &crewmate.id, task);
             broadcast_task(hub, &crewmate.id, task);
         }
+        let Some(p) = p else {
+            return Err("cancelled while the project was being checked out".into());
+        };
         let p = p.map_err(|e| format!("project prepare: {e}"))?;
-        let _ = project::fetch(&p).await; // non-fatal
+
         p.to_string_lossy().to_string()
     } else {
         crewmate.workdir.clone().unwrap_or_else(|| {
-            project::work_dir(&hub.crew.dir, &crewmate.id)
-                .to_string_lossy()
-                .to_string()
+            project::work_dir_for(
+                &hub.crew.dir,
+                &crewmate.id,
+                hub.crew.store.isolated(&crewmate.id).as_ref(),
+            )
+            .to_string_lossy()
+            .to_string()
         })
     };
     let _ = std::fs::create_dir_all(&dir);

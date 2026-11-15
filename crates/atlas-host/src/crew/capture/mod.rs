@@ -6,6 +6,7 @@
 //! |--------------|-----------------------------------------------------------------------------|
 //! | `spec.rs`    | the request, its validation, the runner's report, "every combination is in it" |
 //! | `runner.mjs` | the Playwright script (embedded; `atlas crew browsers install` writes it next to the package) |
+//! | `detectors.mjs` | TEMPORARY UI detectors the runner imports (ui#1290 stand-in), with `fixtures/`; `detectors.rs` reads their findings |
 //! | `package-lock.json` | the lock `npm ci` installs the pinned Playwright from (embedded) |
 //! | this file    | running the runner (timeout, killed on cancel), the files, [`attach_captures`] |
 //!
@@ -14,6 +15,7 @@
 //! installs anything: that is `atlas crew browsers install`, which runs every npm command as the
 //! crew user and uses root only for an `apt-get install` of validated package names.
 
+pub mod detectors;
 pub mod spec;
 
 use std::path::{Path, PathBuf};
@@ -33,6 +35,10 @@ pub const PLAYWRIGHT_VERSION: &str = "1.65.1";
 
 /// The runner script, written next to the package at install.
 pub const RUNNER_MJS: &str = include_str!("runner.mjs");
+
+/// The UI detectors the runner imports (`./detectors.mjs`), written next to it at install.
+/// TEMPORARY: it goes when `@codeatlasdev/ui/testing/detectors` (ui#1290) ships.
+pub const DETECTORS_MJS: &str = include_str!("detectors.mjs");
 
 /// The lockfile of [`package_json`], written next to it at install and installed with `npm ci`:
 /// npm checks every downloaded tarball against the integrity hashes in it, so the crew server runs
@@ -93,6 +99,9 @@ pub struct Captured {
     pub files: Vec<(Combo, PathBuf)>,
     /// The DOM report of each combination, when the spec asked for `dom`, in the same order.
     pub doms: Vec<(Combo, PathBuf)>,
+    /// The detectors' findings of each combination, when the spec asked for `checks`, in the same
+    /// order: a JSON list of [`detectors::Finding`].
+    pub findings: Vec<(Combo, PathBuf)>,
 }
 
 /// Run the runner for `spec`, writing PNGs under `out_dir`, and check the report covers every
@@ -149,9 +158,14 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
     let cells = spec::check_report(spec, &report)?;
     let mut files = vec![];
     let mut doms = vec![];
-    for (combo, path, dom) in cells {
-        for (what, path) in std::iter::once(("screenshot", Some(path))).chain([("DOM report", dom)])
-        {
+    let mut findings = vec![];
+    for cell in cells {
+        let combo = cell.combo;
+        for (what, path) in [
+            ("screenshot", Some(cell.png)),
+            ("DOM report", cell.dom),
+            ("findings", cell.findings),
+        ] {
             let Some(path) = path else { continue };
             let p = PathBuf::from(&path);
             if !p.is_file() {
@@ -159,14 +173,18 @@ pub async fn run(hostd_dir: &Path, spec: &Spec, out_dir: &Path) -> Result<Captur
                     "capture incomplete. {combo}: the runner reported {path} but the {what} file does not exist"
                 ));
             }
-            if what == "screenshot" {
-                files.push((combo, p));
-            } else {
-                doms.push((combo, p));
+            match what {
+                "screenshot" => files.push((combo, p)),
+                "DOM report" => doms.push((combo, p)),
+                _ => findings.push((combo, p)),
             }
         }
     }
-    Ok(Captured { files, doms })
+    Ok(Captured {
+        files,
+        doms,
+        findings,
+    })
 }
 
 /// The runner runs in the capture dir (Node finds `node_modules` from the script, not the cwd, but a
@@ -232,23 +250,23 @@ pub async fn handle(
     let paths: Vec<PathBuf> = captured.files.iter().map(|(_, p)| p.clone()).collect();
     let names = attach_captures(store, crewmate_id, task_id, &paths)
         .map_err(|e| format!("capture: cannot keep the screenshots: {e}"))?;
-    // The DOM reports are JSON, not images: they are kept in the task's own `dom/` folder (the
-    // scratch dir goes away with this call), never as attachments.
+    // The DOM reports and the findings are JSON, not images: they are kept in the task's own `dom/`
+    // folder (the scratch dir goes away with this call), never as attachments.
     let dom_dir = task_dom_dir(store, crewmate_id, task_id);
-    let mut dom_names = Vec::with_capacity(captured.doms.len());
-    if !captured.doms.is_empty() {
+    let mut kept: std::collections::BTreeMap<PathBuf, String> = Default::default();
+    if !captured.doms.is_empty() || !captured.findings.is_empty() {
         std::fs::create_dir_all(&dom_dir)
             .map_err(|e| format!("capture: cannot make {}: {e}", dom_dir.display()))?;
     }
-    for (_, p) in &captured.doms {
+    for (_, p) in captured.doms.iter().chain(&captured.findings) {
         let name = p
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| format!("capture: bad DOM report name {}", p.display()))?
+            .ok_or_else(|| format!("capture: bad report name {}", p.display()))?
             .to_string();
         std::fs::copy(p, dom_dir.join(&name))
-            .map_err(|e| format!("capture: cannot keep the DOM report {name}: {e}"))?;
-        dom_names.push(name);
+            .map_err(|e| format!("capture: cannot keep the report {name}: {e}"))?;
+        kept.insert(p.clone(), name);
     }
     let shots: Vec<_> = captured
         .files
@@ -261,9 +279,18 @@ pub async fn handle(
                 // Where the agent opens it: its copy in the work dir (staged when the task starts again).
                 "path": format!("{}/{task_id}/{name}", crate::crew::attachments::WORK_SUBDIR),
             });
-            if let Some(i) = captured.doms.iter().position(|(dc, _)| dc == c) {
-                shot["dom"] = json!(dom_names[i]);
-                shot["dom_path"] = json!(dom_dir.join(&dom_names[i]));
+            if let Some((_, p)) = captured.doms.iter().find(|(dc, _)| dc == c) {
+                shot["dom"] = json!(kept[p]);
+                shot["dom_path"] = json!(dom_dir.join(&kept[p]));
+            }
+            if let Some((_, p)) = captured.findings.iter().find(|(dc, _)| dc == c) {
+                shot["findings_file"] = json!(kept[p]);
+                shot["findings_path"] = json!(dom_dir.join(&kept[p]));
+                // What the agent acts on, without a second read: a report it cannot read is an error.
+                shot["findings"] = match detectors::read(p) {
+                    Ok(f) => json!(f),
+                    Err(e) => json!({ "error": e }),
+                };
             }
             shot
         })

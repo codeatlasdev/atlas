@@ -6,6 +6,7 @@
 //! pushes and the `agent_*` commands.
 
 pub mod history;
+pub(crate) mod hook_auth;
 pub mod hook_server;
 pub mod integrations;
 pub(crate) mod launch;

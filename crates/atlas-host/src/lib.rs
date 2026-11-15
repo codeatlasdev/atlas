@@ -19,6 +19,8 @@ pub mod mobile;
 pub mod paths;
 mod projects;
 pub mod protocol;
+#[cfg(test)]
+mod protocol_golden;
 mod pty;
 pub mod server;
 pub mod upgrade;

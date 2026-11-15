@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
@@ -34,8 +35,7 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
 
   String get _root => widget.project.root;
 
-  Multiplexer? get _mux =>
-      ref.read(connectionNotifierProvider(widget.device)).value;
+  Multiplexer? get _mux => liveMux(ref, widget.device);
 
   @override
   void initState() {
@@ -50,8 +50,14 @@ class _ChangesScreenState extends ConsumerState<ChangesScreen> {
     String cmd, [
     Map<String, dynamic> args = const {},
   ]) async {
-    final mux = _mux;
-    if (mux == null) return null;
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      // Every caller is something the user pressed: say why nothing happened.
+      _toast(e.message);
+      return null;
+    }
     final r = await mux.call(cmd, {'root': _root, ...args});
     if (!mounted) return null;
     if (r['ok'] != true) {
@@ -382,11 +388,16 @@ class _BranchBar extends StatelessWidget {
           const SizedBox(width: Space.sm),
           Text(
             '${status.ahead > 0 ? '↑${status.ahead} ' : ''}${status.upstream}',
-            style: TextStyle(color: c.faint, fontSize: 12),
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
           ),
         ] else ...[
           const SizedBox(width: Space.sm),
-          Text('not pushed', style: TextStyle(color: c.faint, fontSize: 12)),
+          Text(
+            'not pushed',
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ],
       ],
     );
@@ -413,7 +424,7 @@ class _DiffPanel extends StatelessWidget {
               padding: EdgeInsets.all(Space.md),
               child: Text('No text changes to show (binary or empty).'),
             )
-          : AtlasCodeBlock(code: d.asPatch(), language: 'diff', fontSize: 12),
+          : AtlasCodeBlock(code: d.asPatch(), language: 'diff'),
     );
   }
 }
@@ -487,8 +498,8 @@ class _CommitSheetState extends State<_CommitSheet> {
               onPressed: _writing ? null : _ai,
               icon: _writing
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
+                      width: Space.lg,
+                      height: Space.lg,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.auto_awesome),

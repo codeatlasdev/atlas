@@ -6,6 +6,7 @@ import 'package:atlas_mobile/core/demo/demo_crew.dart';
 import 'package:atlas_mobile/core/protocol/image_rules.dart';
 import 'package:atlas_mobile/core/demo/demo_git.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/protocol_version.dart';
 import 'package:atlas_mobile/core/transport/transport.dart';
 
 /// The demo computer's identity. Never dialled: [demoTransport] answers for it.
@@ -403,6 +404,14 @@ class _DemoComputer implements Transport {
   final _crewmates = <String, DemoCrewmate>{};
   late final _ops = DemoCrewOps(_crewmates);
   var _paused = false;
+
+  /// Engine sign-ins of the demo crew server: codex needs one, until the demo terminal "signs it in".
+  final _engineState = <String, String>{
+    'claude': 'signed_in',
+    'codex': 'needs_signin',
+    'omp': 'signed_in',
+    'opencode': 'not_installed',
+  };
   final _pendingInvites = <Map<String, String>>[];
   final _git = DemoGit();
 
@@ -471,8 +480,46 @@ class _DemoComputer implements Transport {
             args['prompt'] as String?,
           );
         }
+      case 'pty_open':
+        // Same rules as hostd's `pty_open`: ids of the registry only (a path is never a project), and a worktree
+        // must be one of THIS project's. The terminal is a plain shell: unlock to type, nothing runs.
+        final project = args['project'] as String?;
+        final wt = args['worktree'] as String?;
+        if (args['crewmate'] != null) {
+          error = 'crewmates live on a crew server';
+        } else if (project == null || project.isEmpty) {
+          error = 'name a project to open a terminal in';
+        } else if (project != 'demo-shop' &&
+            !_others.any((p) => p['id'] == project)) {
+          error = 'unknown project $project';
+        } else if (wt != null &&
+            (project != 'demo-shop' || !_worktrees.any((w) => w['id'] == wt))) {
+          error = 'unknown worktree $wt in this project';
+        } else {
+          _seq++;
+          data = {'pty': 'pty-shell-$_seq'};
+        }
       case 'worktree_list':
-        data = {'repoId': 'demo-shop', 'worktrees': _worktrees};
+        final p = args['project'] as String?;
+        final other = _others.where((o) => o['id'] == p).firstOrNull;
+        data = other == null
+            ? {'repoId': 'demo-shop', 'worktrees': _worktrees}
+            : {
+                // A project with no linked worktrees lists only its own folder, main first, like hostd.
+                'repoId': p,
+                'worktrees': [
+                  {
+                    'id': p,
+                    'path': other['root'],
+                    'name': other['name'],
+                    'branch': 'main',
+                    'main': true,
+                    'dirty': false,
+                    'exists': true,
+                    'portOffset': 0,
+                  },
+                ],
+              };
       case 'worktree_create':
         final made = _createWorktree(args['name'] as String?);
         data = {'worktree': made, 'setup': null, 'seed': null};
@@ -586,6 +633,9 @@ class _DemoComputer implements Transport {
                 'task': {'id': 'task-$_seq', 'state': 'queued'},
               }
             : null;
+      case 'crewmate_answer':
+        error = _answerAsk(args);
+        data = error == null ? <String, Object?>{} : null;
       case 'crewmate_action_answer':
         error = _answerAction(args);
         data = error == null ? <String, Object?>{} : null;
@@ -655,6 +705,22 @@ class _DemoComputer implements Transport {
           'short_replies': _ops.shortReplies,
           'short_replies_model': _ops.shortRepliesModel,
         };
+      case 'crew_engine_status':
+        data = {
+          'engines': [
+            for (final e in _engineState.entries)
+              {'engine': e.key, 'state': e.value},
+          ],
+        };
+      case 'crew_engine_login':
+        final engine = args['engine'] as String? ?? '';
+        if (!_engineState.containsKey(engine)) {
+          error = 'unknown engine "$engine"';
+        } else {
+          // The demo terminal finishes the sign-in at once (the terminal itself is the fake one).
+          _engineState[engine] = 'signed_in';
+          data = {'engine': engine, 'pty': 'pty-signin-$engine'};
+        }
       case 'crew_settings_set':
         _ops.shortReplies = args['short_replies'] as bool? ?? true;
         _ops.shortRepliesModel = args['short_replies_model'] as String?;
@@ -685,6 +751,7 @@ class _DemoComputer implements Transport {
         data = <String, Object?>{};
       case 'info':
         data = {
+          'proto': kAppProto,
           'caps': ['mobile', 'crew'],
           'version': '1.0.0',
           'hostname': 'Demo MacBook',
@@ -1165,6 +1232,27 @@ class _DemoComputer implements Transport {
     crewmate.state = 'idle';
     crewmate.waiting = task;
     _pushCrewmateTask(crewmate, task);
+  }
+
+  /// `crewmate_answer`: records the answer on the task whose open `ask` has that id, with hostd's own
+  /// messages for what it refuses (neither key nor text; an ask that is not there or already answered).
+  String? _answerAsk(Map<String, dynamic> args) {
+    final key = args['key'] as String?;
+    final text = args['text'] as String?;
+    if (key == null && text == null) return 'key or text required';
+    final id = args['id'] as String?;
+    final askId = args['ask_id'] as String?;
+    for (final task
+        in _crewmates[id]?.tasks ?? const <Map<String, Object?>>[]) {
+      final ask = task['ask'];
+      if (ask is Map && ask['id'] == askId && ask['answered'] == null) {
+        ask['answered'] = key != null
+            ? {'kind': 'key', 'value': key}
+            : {'kind': 'text', 'value': text};
+        return null;
+      }
+    }
+    return 'ask $askId not found for crewmate $id';
   }
 
   /// `crewmate_action_answer` for the cards the demo raises: `override` accepts the work, `retry` runs it

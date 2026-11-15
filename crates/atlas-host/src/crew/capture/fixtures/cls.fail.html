@@ -1,0 +1,6 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><style>body{margin:0;font:16px/1.4 system-ui,sans-serif;color:#111;background:#fff}main{padding:16px}h1{margin:0 0 12px;font-size:22px}</style>
+<main><h1>Feed</h1></main>
+<!-- The classic cause: an image with no width and height. Its bytes arrive late (the test server
+     holds /slow.svg back), the browser has reserved nothing, and the article below jumps down. -->
+<img src="/slow.svg" alt="" data-testid="banner">
+<article data-testid="article" style="background:#eef;padding:16px;height:520px"><h2 style="margin:0 0 8px">Today</h2><p>The article fills most of the first screen.</p></article>

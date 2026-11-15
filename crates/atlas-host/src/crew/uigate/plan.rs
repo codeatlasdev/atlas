@@ -77,7 +77,7 @@ pub fn plan(
         let url = url_of(base_url, route)?;
         // Validate here so a bad base_url fails the plan, not a capture later.
         let s = Scenario::for_url(&url);
-        s.spec()?;
+        s.spec(false)?;
         push(s, Why::Route)?;
     }
     Ok(out)

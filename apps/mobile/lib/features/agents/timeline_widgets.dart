@@ -39,7 +39,10 @@ class UserBubble extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.sizeOf(context).width * 0.82,
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Space.md,
+            vertical: Space.md,
+          ),
           decoration: BoxDecoration(
             color: c.accent.withValues(alpha: .2),
             borderRadius: const BorderRadius.only(
@@ -97,14 +100,11 @@ class _ThinkingRowState extends State<ThinkingRow> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.psychology_outlined, size: 16, color: c.faint),
-                const SizedBox(width: 6),
+                const SizedBox(width: Space.sm),
                 Text(
                   'Thought',
-                  style: TextStyle(
-                    color: c.faint,
-                    fontSize: 12.5,
-                    fontStyle: FontStyle.italic,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.muted, fontStyle: FontStyle.italic),
                 ),
                 Icon(
                   _open ? Icons.expand_less : Icons.expand_more,
@@ -117,14 +117,19 @@ class _ThinkingRowState extends State<ThinkingRow> {
         ),
         if (_open)
           Container(
-            margin: const EdgeInsets.only(left: 7, top: 2, bottom: 4),
-            padding: const EdgeInsets.only(left: 12),
+            margin: const EdgeInsets.only(
+              left: Space.sm,
+              top: 2,
+              bottom: Space.xs,
+            ),
+            padding: const EdgeInsets.only(left: Space.md),
             decoration: BoxDecoration(
               border: Border(left: BorderSide(color: c.border, width: 2)),
             ),
             child: Text(
               widget.text,
-              style: TextStyle(color: c.faint, fontSize: 13, height: 1.45),
+              style: Theme.of(context).textTheme.bodyMedium!
+                  .copyWith(color: c.muted, height: 1.45),
             ),
           ),
       ],
@@ -242,12 +247,12 @@ class _ToolGroupCardState extends State<ToolGroupCard> {
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13),
+                      style: Theme.of(context).textTheme.bodyMedium!,
                     ),
                   ),
                   if (g.errors > 0) ...[
-                    Pill('${g.errors} failed', color: c.error),
-                    const SizedBox(width: 4),
+                    AtlasChip('${g.errors} failed', tone: c.error),
+                    const SizedBox(width: Space.xs),
                   ],
                   Icon(
                     open ? Icons.expand_less : Icons.expand_more,
@@ -312,8 +317,7 @@ class _ToolRowState extends State<ToolRow> {
                       call.summary,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
+                      style: Theme.of(context).textTheme.bodyMedium!.copyWith(
                         color: c.text,
                         fontFamily: call.intent == null ? monoFamily : null,
                         fontFamilyFallback: call.intent == null
@@ -348,10 +352,9 @@ class _ToolRowState extends State<ToolRow> {
                     if (detail != null && detail.isNotEmpty) '\$ $detail',
                     if (out.isNotEmpty) out,
                   ].join('\n\n'),
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.bodySmall!.copyWith(
                     fontFamily: monoFamily,
                     fontFamilyFallback: monoFallback,
-                    fontSize: 12,
                     height: 1.4,
                     color: call.status == 'error' ? c.error : c.muted,
                   ),
@@ -404,11 +407,8 @@ class SubagentsCard extends StatelessWidget {
                 const SizedBox(width: Space.sm),
                 Text(
                   n == 1 ? '1 subagent' : '$n subagents',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: c.text,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium!
+                      .copyWith(fontWeight: FontWeight.w600, color: c.text),
                 ),
               ],
             ),
@@ -478,21 +478,18 @@ class _SubagentRow extends StatelessWidget {
                           spawned.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13.5,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium!
+                              .copyWith(fontWeight: FontWeight.w600),
                         ),
                       ),
                       if (spawned.agent != null) ...[
                         const SizedBox(width: Space.sm),
-                        Pill(spawned.agent!, color: c.muted),
+                        AtlasChip(spawned.agent!, tone: c.muted),
                       ],
                       const SizedBox(width: Space.sm),
                       Text(
                         running ? 'running' : 'done',
-                        style: TextStyle(
-                          fontSize: 12,
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
                           fontWeight: FontWeight.w600,
                           color: running ? c.accent : c.success,
                         ),
@@ -504,19 +501,17 @@ class _SubagentRow extends StatelessWidget {
                     spawned.task,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: c.muted),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.muted),
                   ),
                   if (report != null && report.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: Space.xs),
                     Text(
                       report,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: c.text,
-                        height: 1.35,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: c.text, height: 1.35),
                     ),
                   ],
                 ],
@@ -584,14 +579,11 @@ class RecapCard extends StatelessWidget {
           Row(
             children: [
               Icon(Icons.auto_awesome, size: 14, color: c.accent),
-              const SizedBox(width: 6),
+              const SizedBox(width: Space.sm),
               Text(
                 'Recap',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: c.accent,
-                ),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(fontWeight: FontWeight.w700, color: c.accent),
               ),
             ],
           ),
@@ -605,8 +597,12 @@ class RecapCard extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(icon, size: 15, color: color),
-                    const SizedBox(width: 4),
-                    Text(label, style: TextStyle(fontSize: 13, color: color)),
+                    const SizedBox(width: Space.xs),
+                    Text(
+                      label,
+                      style: Theme.of(context).textTheme.bodyMedium!
+                          .copyWith(color: color),
+                    ),
                   ],
                 ),
             ],
@@ -618,17 +614,17 @@ class RecapCard extends StatelessWidget {
                 f,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
                   fontFamily: monoFamily,
                   fontFamilyFallback: monoFallback,
-                  fontSize: 12,
                   color: c.muted,
                 ),
               ),
             if (files > 4)
               Text(
                 '+${files - 4} more',
-                style: TextStyle(fontSize: 12, color: c.faint),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: c.muted),
               ),
           ],
         ],
@@ -693,7 +689,7 @@ class ResultCard extends StatelessWidget {
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
+                  style: Theme.of(context).textTheme.bodyMedium!,
                 ),
               ),
               Icon(Icons.chevron_right, size: 18, color: c.faint),
@@ -733,11 +729,8 @@ class _CompactionDividerState extends State<CompactionDivider> {
                 padding: const EdgeInsets.symmetric(horizontal: Space.sm),
                 child: Text(
                   'context compacted',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: c.faint,
-                    fontStyle: FontStyle.italic,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: c.muted, fontStyle: FontStyle.italic),
                 ),
               ),
               Expanded(child: Divider(color: c.borderSubtle)),
@@ -746,10 +739,11 @@ class _CompactionDividerState extends State<CompactionDivider> {
         ),
         if (_open)
           Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: Space.xs),
             child: Text(
               widget.text,
-              style: TextStyle(fontSize: 12.5, color: c.faint, height: 1.4),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted, height: 1.4),
             ),
           ),
       ],
@@ -788,7 +782,7 @@ class IrcCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.forum_outlined, size: 15, color: c.info),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: Space.sm),
                   Expanded(
                     child: Text(
                       fromParent
@@ -796,21 +790,19 @@ class IrcCard extends StatelessWidget {
                           : 'Message from ${item.sender}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: c.info,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(fontWeight: FontWeight.w700, color: c.info),
                     ),
                   ),
                   if (onOpen != null)
                     Icon(Icons.chevron_right, size: 16, color: c.faint),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Space.xs),
               Text(
                 item.text,
-                style: TextStyle(color: c.text, height: 1.4, fontSize: 13.5),
+                style: Theme.of(context).textTheme.bodyMedium!
+                    .copyWith(color: c.text, height: 1.4),
               ),
             ],
           ),
@@ -845,15 +837,14 @@ class _NoticeRowState extends State<NoticeRow> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(Icons.info_outline_rounded, size: 14, color: c.faint),
-            const SizedBox(width: 6),
+            const SizedBox(width: Space.sm),
             Expanded(
               child: Text(
                 _open ? widget.text : first,
                 maxLines: _open ? null : 1,
                 overflow: _open ? null : TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: c.faint,
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                  color: c.muted,
                   fontStyle: FontStyle.italic,
                   height: 1.35,
                 ),
@@ -892,21 +883,19 @@ class AdvisorCard extends StatelessWidget {
           Row(
             children: [
               Icon(icon, size: 15, color: color),
-              const SizedBox(width: 6),
+              const SizedBox(width: Space.sm),
               Text(
                 'Advisor · ${item.severity}',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(fontWeight: FontWeight.w700, color: color),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: Space.xs),
           Text(
             item.text,
-            style: TextStyle(color: c.text, height: 1.4, fontSize: 13.5),
+            style: Theme.of(context).textTheme.bodyMedium!
+                .copyWith(color: c.text, height: 1.4),
           ),
         ],
       ),

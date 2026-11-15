@@ -83,6 +83,7 @@ async fn run(dir: &Path, result: &str, commands: &[Ran]) -> Verdict {
     review(
         &Input {
             work_dir: dir,
+            git_env: &[],
             repo: None,
             result,
             commands,
@@ -359,6 +360,7 @@ async fn references_in_commits_and_in_a_published_comment_are_checked() {
     let v = review(
         &Input {
             work_dir: d,
+            git_env: &[],
             repo: Some("o/r"),
             result: "Opened, refs #12.",
             commands: &cmds,
@@ -479,4 +481,32 @@ async fn atlas_own_files_under_dot_atlas_are_not_stray() {
     write(t.path(), ".atlas/attachments/t1/shot.png", "png");
     let v = run(t.path(), "Done.", &[]).await;
     assert!(!v.refused(), "{:?}", v.reasons);
+}
+
+// Regression (#333): with `diff.mnemonicPrefix` (c/ w/ i/) or `diff.noprefix` (no prefix at all) in
+// the user's git config the guard misread its own diff, so a removed assertion went unnoticed.
+#[tokio::test]
+async fn guards_read_the_diff_whatever_prefix_the_users_git_config_asks_for() {
+    for (key, value) in [("diff.mnemonicPrefix", "true"), ("diff.noprefix", "true")] {
+        let t = repo();
+        let d = t.path();
+        git(d, &["config", key, value]);
+        write(
+            d,
+            "src/tests.rs",
+            "#[test]\nfn adds() {\n    assert_eq!(add(1, 2), 3);\n}\n\n#[test]\nfn negative() {\n    assert_eq!(add(-1, -1), -2);\n}\n",
+        );
+        write(
+            d,
+            "ci.json",
+            "{\n  \"timeout\": 30,\n  \"coverage_threshold\": 10\n}\n",
+        );
+        let v = run(d, "Done.", &[]).await;
+        assert!(
+            has(&v, "removes 1 assertion(s) from src/tests.rs"),
+            "{key}: {:?}",
+            v.reasons
+        );
+        assert!(has(&v, "ci.json"), "{key}: {:?}", v.reasons);
+    }
 }

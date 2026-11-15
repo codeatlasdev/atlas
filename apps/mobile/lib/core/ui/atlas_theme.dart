@@ -38,7 +38,11 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
   /// `elevated_surface.background`: sheets, menus, dialogs.
   final Color overlay;
   final Color text;
+
+  /// `text.muted`: secondary text that carries information (timestamps, captions, labels). AA on every surface.
   final Color muted;
+
+  /// `text.disabled`: icons, dots, placeholders, disabled controls, decoration. Below AA (4.1:1), never readable text.
   final Color faint;
   final Color accent;
   final Color onAccent;
@@ -59,7 +63,7 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
     raised: Color(0xFF1D2637),
     overlay: Color(0xFF273143),
     text: Color(0xFFC0CAF5),
-    muted: Color(0xFF9AA7CC),
+    muted: Color(0xFFB9C4EB),
     faint: Color(0xFF6F7C9F),
     accent: Color(0xFF87ADFB),
     onAccent: Color(0xFF0B1320),
@@ -96,7 +100,7 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
     'working' => accent,
     'blocked' || 'waiting' => warning,
     'done' => success,
-    _ => faint,
+    _ => muted,
   };
 
   @override
@@ -132,6 +136,34 @@ abstract final class Space {
   static const xxl = 32.0;
   static const radius = 12.0;
   static const radiusSm = 8.0;
+}
+
+/// The type scale: seven steps, every `Text` in the app is one of them.
+///
+/// | step     | px | textTheme role                           | for                                   |
+/// |----------|----|------------------------------------------|---------------------------------------|
+/// | caption  | 11 | `labelSmall`                             | badges, counters, axis labels         |
+/// | small    | 12 | `bodySmall`, `labelMedium`, `titleSmall` | secondary lines, chips, timestamps    |
+/// | body     | 13 | `bodyMedium`, `labelLarge`               | the default reading size              |
+/// | bodyLg   | 15 | `bodyLarge`                              | row titles, chat bubbles, form values |
+/// | title    | 16 | `titleMedium`                            | sheet and card titles                 |
+/// | headline | 20 | `titleLarge`, `headlineSmall`            | screen titles, big numbers            |
+/// | display  | 28 | `headlineMedium`                         | the one hero title (crewmate name)    |
+///
+/// Read a step as `Theme.of(context).textTheme.bodyMedium`; a variant (muted, mono, bold) is
+/// `.copyWith(color: ..., fontWeight: ...)` on the role, never a new size. A half step
+/// (12.5, 13.5, 14.5) belongs to the step of its role: what the text is, not the nearest number.
+/// Code with no `BuildContext` (painters, `TextPainter`) reads [TextSize] directly.
+/// `test/type_scale_test.dart` fails on a `fontSize:` literal outside this file, bar the
+/// exceptions it lists.
+abstract final class TextSize {
+  static const caption = 11.0;
+  static const small = 12.0;
+  static const body = 13.0;
+  static const bodyLg = 15.0;
+  static const title = 16.0;
+  static const headline = 20.0;
+  static const display = 28.0;
 }
 
 /// Monospace for ports, commands, logs: the platform's (SF Mono on iOS).
@@ -175,18 +207,36 @@ ThemeData atlasTheme() {
     canvasColor: c.ground,
     splashFactory: InkSparkle.splashFactory,
     textTheme: text.copyWith(
-      titleLarge: text.titleLarge?.copyWith(
-        fontWeight: FontWeight.w600,
-        letterSpacing: -.3,
+      labelSmall: text.labelSmall?.copyWith(
+        fontSize: TextSize.caption,
+        color: c.muted,
+        letterSpacing: .3,
       ),
-      titleMedium: text.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+      bodySmall: text.bodySmall?.copyWith(
+        fontSize: TextSize.small,
+        color: c.muted,
+      ),
+      labelMedium: text.labelMedium?.copyWith(fontSize: TextSize.small),
+      bodyMedium: text.bodyMedium?.copyWith(fontSize: TextSize.body),
+      labelLarge: text.labelLarge?.copyWith(fontSize: TextSize.body),
+      bodyLarge: text.bodyLarge?.copyWith(fontSize: TextSize.bodyLg),
+      titleMedium: text.titleMedium?.copyWith(
+        fontSize: TextSize.title,
+        fontWeight: FontWeight.w600,
+      ),
       titleSmall: text.titleSmall?.copyWith(
+        fontSize: TextSize.small,
         fontWeight: FontWeight.w600,
         color: c.muted,
         letterSpacing: .2,
       ),
-      bodySmall: text.bodySmall?.copyWith(color: c.muted),
-      labelSmall: text.labelSmall?.copyWith(color: c.faint, letterSpacing: .3),
+      titleLarge: text.titleLarge?.copyWith(
+        fontSize: TextSize.headline,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -.3,
+      ),
+      headlineSmall: text.headlineSmall?.copyWith(fontSize: TextSize.headline),
+      headlineMedium: text.headlineMedium?.copyWith(fontSize: TextSize.display),
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: c.ground,
@@ -197,7 +247,7 @@ ThemeData atlasTheme() {
       centerTitle: false,
       titleTextStyle: text.titleLarge?.copyWith(
         fontWeight: FontWeight.w600,
-        fontSize: 20,
+        fontSize: TextSize.headline,
       ),
     ),
     dividerTheme: DividerThemeData(
@@ -209,7 +259,7 @@ ThemeData atlasTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: c.accent,
         foregroundColor: c.onAccent,
-        minimumSize: const Size(0, 44),
+        minimumSize: const Size(0, 48),
         padding: const EdgeInsets.symmetric(horizontal: Space.lg),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Space.radiusSm),
@@ -221,7 +271,7 @@ ThemeData atlasTheme() {
       style: OutlinedButton.styleFrom(
         foregroundColor: c.text,
         side: BorderSide(color: c.border),
-        minimumSize: const Size(0, 40),
+        minimumSize: const Size(0, 48),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Space.radiusSm),
         ),
@@ -288,7 +338,8 @@ ThemeData atlasTheme() {
         selectedForegroundColor: c.text,
         foregroundColor: c.muted,
         side: BorderSide(color: c.border),
-        visualDensity: VisualDensity.compact,
+        // Compact density would shave the padded tap target below 48.
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: c.accent),

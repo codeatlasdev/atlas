@@ -2,17 +2,26 @@
 /// tasks and replies, the approval banner, the working row and the composer.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:atlas_mobile/core/ui/chat_reader.dart';
+import 'package:atlas_mobile/core/ui/route_page.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
 import 'package:atlas_mobile/core/providers/push_events_provider.dart';
+import 'package:atlas_mobile/core/ui/async_view.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/features/crew/chat_motion.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
+import 'package:atlas_mobile/core/ui/protocol_banner.dart';
 import 'package:atlas_mobile/features/crew/chat/approval_bubble.dart';
 import 'package:atlas_mobile/features/crew/chat/attachments.dart';
 import 'package:atlas_mobile/features/crew/chat/composer.dart';
@@ -44,19 +53,55 @@ class CrewmateChatScreen extends ConsumerStatefulWidget {
 }
 
 class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
+  static const _workingRow = 40.0;
+
+  /// The header's row: back, who you talk to, stop (below the status bar).
+  static const _headerRow = 64.0;
+
   final _msg = TextEditingController();
   bool _sending = false;
   final Set<String> _expanded = {};
-  final _scrollController = ScrollController();
+
+  /// Where the reader is above the end of the thread, and the thread as they left it.
+  late final _reader = ChatReader<List<CrewmateTask>>(
+    onChanged: () => setState(() {}),
+  );
   // Task id → GlobalKey for scroll-to-task from the board.
   final Map<String, GlobalKey> _taskKeys = {};
 
-  /// Messages already shown: each arrives once, never again when scrolled back.
-  final Set<String> _arrived = {};
+  /// The tasks the thread has shown. What the first answer holds is history: it is simply there, complete, from
+  /// the first frame. A task that turns up after that (yours, or one from the desktop) arrives with a motion.
+  Set<String>? _known;
+
+  /// The tasks that arrived within the last moment: only these play the arrival, also when scrolled to later.
+  final Set<String> _arriving = {};
+  Timer? _arrivedTimer;
+
+  void _noteArrivals(List<CrewmateTask> tasks) {
+    final known = _known;
+    if (known == null) {
+      _known = {for (final t in tasks) t.id};
+      return;
+    }
+    var fresh = false;
+    for (final t in tasks) {
+      if (known.add(t.id)) {
+        _arriving.add(t.id);
+        fresh = true;
+      }
+    }
+    if (fresh) {
+      _arrivedTimer?.cancel();
+      _arrivedTimer = Timer(const Duration(seconds: 1), _arriving.clear);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    // A thread this phone already read is on screen at once, and is read again behind it.
+    final thread = crewmateTasksProvider((widget.device, widget.crewmateId));
+    if (ref.exists(thread)) ref.invalidate(thread);
     if (widget.scrollToTaskId != null) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _scrollToTask(widget.scrollToTaskId!),
@@ -66,8 +111,9 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
 
   @override
   void dispose() {
+    _arrivedTimer?.cancel();
     _msg.dispose();
-    _scrollController.dispose();
+    _reader.dispose();
     super.dispose();
   }
 
@@ -87,11 +133,10 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   Future<bool> _send(List<PendingImage> images) async {
     final text = _msg.text.trim();
     if (text.isEmpty) return false;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return false;
     setState(() => _sending = true);
     String? failure;
     try {
+      final mux = await requireMuxOf(ref, widget.device);
       final attachments = await toSent(
         images,
         mux.call,
@@ -108,6 +153,8 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
         failure = resp['error'] as String? ?? 'the server refused the task';
       }
     } on StateError catch (e) {
+      failure = e.message;
+    } on DeviceUnavailable catch (e) {
       failure = e.message;
     }
     if (!mounted) return failure == null;
@@ -127,10 +174,30 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     return failure == null;
   }
 
+  /// Allow / Deny on a pending tool approval. Offline, the approval stays pending and this says why.
+  Future<void> _approve(CrewmatePendingApproval pa, bool allow) async {
+    try {
+      await answerApproval(ref, widget.device, pa, allow);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
   Future<void> _cancel(String taskId) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) return;
     HapticFeedback.mediumImpact();
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     await mux.call('crewmate_cancel', {
       'id': widget.crewmateId,
       'task': taskId,
@@ -139,12 +206,11 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
   }
 
   void _openProfile(CrewmateEntry crewmate, String hostName) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CrewmateProfileScreen(
-          device: widget.device,
-          crewmateId: widget.crewmateId,
-        ),
+    pushScreen<void>(
+      context,
+      CrewmateProfileScreen(
+        device: widget.device,
+        crewmateId: widget.crewmateId,
       ),
     );
   }
@@ -167,11 +233,17 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
     final crewmate = crewData?.crewmates
         .where((b) => b.id == widget.crewmateId)
         .firstOrNull;
-    final tasks =
-        ref
-            .watch(crewmateTasksProvider((widget.device, widget.crewmateId)))
-            .value ??
-        [];
+    final tasksAsync = ref.watch(
+      crewmateTasksProvider((widget.device, widget.crewmateId)),
+    );
+    // `value` keeps the last answer while the thread reloads or fails to refresh: the history stays, under the
+    // offline strip. Without one yet it is a spinner or an error, never "Say hi".
+    final tasks = tasksAsync.value ?? const <CrewmateTask>[];
+    final loadingTasks = tasksAsync.isLoading && !tasksAsync.hasValue;
+    if (tasksAsync.hasValue) _noteArrivals(tasks);
+    final tasksError = tasksAsync.hasValue ? null : tasksAsync.error;
+    // What the list draws: the thread as the reader left it while they are above its end.
+    final shown = _reader.view(tasks, tasks.length);
     final online =
         ref.watch(connectionNotifierProvider(widget.device)).value != null;
     final pa = crewmate?.pendingApproval;
@@ -193,269 +265,278 @@ class _CrewmateChatScreenState extends ConsumerState<CrewmateChatScreen> {
       backgroundColor: c.ground,
       extendBodyBehindAppBar: true,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(64),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(Space.md, 6, Space.md, 0),
-            child: Row(
-              children: [
-                GlassRoundButton(
-                  icon: Icons.arrow_back_ios_new_rounded,
-                  label: 'Back',
-                  onTap: () => Navigator.of(context).maybePop(),
+        preferredSize: const Size.fromHeight(_headerRow),
+        // The thread scrolls under the header: its own ground, from the very top (the status bar included).
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const GlassHeaderGround(),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Space.md,
+                  Space.sm,
+                  Space.md,
+                  0,
                 ),
-                const Spacer(),
-                // Who you are talking to: face and name in one floating pill.
-                Semantics(
-                  button: true,
-                  label:
-                      '$crewmateName, ${switch (state) {
-                        CrewState.working => 'working',
-                        CrewState.needsYou => 'needs you',
-                        CrewState.offline => 'offline',
-                        CrewState.idle => 'on deck',
-                      }}',
-                  child: Pressable(
-                    onTap: crewmate != null
-                        ? () => _openProfile(crewmate, hostName)
-                        : null,
-                    child: GlassPill(
-                      padding: const EdgeInsets.fromLTRB(6, 5, 18, 5),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Crewmate(
-                            seed: widget.crewmateId,
-                            look: crewmate?.look,
-                            state: state,
-                            size: 34,
+                child: Row(
+                  children: [
+                    GlassRoundButton(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      label: 'Back',
+                      onTap: () => Navigator.of(context).maybePop(),
+                    ),
+                    const Spacer(),
+                    // Who you are talking to: face and name in one floating pill.
+                    Semantics(
+                      button: true,
+                      label:
+                          '$crewmateName, ${switch (state) {
+                            CrewState.working => 'working',
+                            CrewState.needsYou => 'needs you',
+                            CrewState.offline => 'offline',
+                            CrewState.idle => 'on deck',
+                          }}',
+                      child: Pressable(
+                        onTap: crewmate != null
+                            ? () => _openProfile(crewmate, hostName)
+                            : null,
+                        child: GlassPill(
+                          padding: const EdgeInsets.fromLTRB(
+                            Space.sm,
+                            Space.xs,
+                            Space.lg,
+                            Space.xs,
                           ),
-                          const SizedBox(width: 10),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 170),
-                            child: Text(
-                              crewmateName,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w600,
-                                color: c.text,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Crewmate(
+                                seed: widget.crewmateId,
+                                look: crewmate?.look,
+                                state: state,
+                                size: 34,
                               ),
-                            ),
+                              const SizedBox(width: Space.md),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 170,
+                                ),
+                                child: Text(
+                                  crewmateName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium!
+                                      .copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: c.text,
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
+                    const Spacer(),
+                    // While it works: stop it. Otherwise nothing; the pill opens the profile.
+                    AnimatedSwitcher(
+                      duration: Motion.normal,
+                      transitionBuilder: (child, a) => ScaleTransition(
+                        scale: a,
+                        child: FadeTransition(opacity: a, child: child),
+                      ),
+                      child: running != null
+                          ? GlassRoundButton(
+                              key: const ValueKey('stop'),
+                              icon: Icons.stop_rounded,
+                              label: 'Stop $crewmateName',
+                              onTap: () => _cancel(running.id),
+                            )
+                          : const SizedBox.square(
+                              key: ValueKey('none'),
+                              dimension: 48,
+                            ),
+                    ),
+                  ],
                 ),
-                const Spacer(),
-                // While it works: stop it. Otherwise nothing; the pill opens the profile.
-                AnimatedSwitcher(
-                  duration: Motion.normal,
-                  transitionBuilder: (child, a) => ScaleTransition(
-                    scale: a,
-                    child: FadeTransition(opacity: a, child: child),
-                  ),
-                  child: running != null
-                      ? GlassRoundButton(
-                          key: const ValueKey('stop'),
-                          icon: Icons.stop_rounded,
-                          label: 'Stop $crewmateName',
-                          onTap: () => _cancel(running.id),
-                        )
-                      : const SizedBox.square(
-                          key: ValueKey('none'),
-                          dimension: 44,
-                        ),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // ── offline banner ─────────────────────────────────────────────
-          if (!online)
-            Container(
-              width: double.infinity,
-              color: c.warning.withValues(alpha: .12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.wifi_off_rounded, size: 14, color: c.warning),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      '${widget.device.name} is offline · history shown',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: c.warning),
+          // ── message list ───────────────────────────────────────────────
+          Positioned.fill(
+            child: tasks.isEmpty && loadingTasks
+                ? const Center(child: CircularProgressIndicator())
+                : tasks.isEmpty && tasksError != null
+                ? AsyncView<void>(
+                    value: AsyncError<void>(tasksError, StackTrace.empty),
+                    data: (_) => const SizedBox.shrink(),
+                    errorTitle: "Couldn't read the thread",
+                    onRetry: () => ref.invalidate(
+                      crewmateTasksProvider((widget.device, widget.crewmateId)),
                     ),
+                  )
+                : tasks.isEmpty
+                ? EmptyState(
+                    icon: Crewmate(
+                      seed: widget.crewmateId,
+                      look: crewmate?.look,
+                      state: state,
+                      size: 96,
+                    ),
+                    title: crewmateName.isEmpty
+                        ? 'New crewmate'
+                        : 'Say hi to $crewmateName',
+                    message: 'Give it a job. It works on its computer and tells you when it is done.',
+                  )
+                : ListView.builder(
+                    reverse: true,
+                    controller: _reader.scroll,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    padding: EdgeInsets.fromLTRB(
+                      Space.md,
+                      MediaQuery.paddingOf(context).top + _headerRow + Space.sm,
+
+                      Space.md,
+                      // Room for the composer floating over the end of the thread.
+                      // The working row's 40 dp is always reserved: it shows up and goes away without the
+                      // thread moving under the reader.
+                      Space.sm +
+                          68 +
+                          MediaQuery.paddingOf(context).bottom +
+                          _workingRow,
+                    ),
+                    itemCount: shown.length,
+                    itemBuilder: (_, i) {
+                      final task = shown[i];
+                      final key = _taskKeys.putIfAbsent(task.id, GlobalKey.new);
+                      final isApprovalTask =
+                          approvalTaskId != null &&
+                          task.id == approvalTaskId &&
+                          pa != null;
+                      // Newest first: a day's label goes above its oldest message.
+                      final day =
+                          i == shown.length - 1 ||
+                          crewDayOf(task.ts) != crewDayOf(shown[i + 1].ts);
+                      return CrewmateTaskPair(
+                        key: key,
+                        task: task,
+                        enter: _arriving.contains(task.id),
+                        day: day ? crewDayLabel(task.ts, DateTime.now()) : null,
+                        crewmateId: widget.crewmateId,
+                        device: widget.device,
+                        look: crewmate?.look,
+                        pendingApproval: isApprovalTask ? pa : null,
+                        expanded: _expanded.contains(task.id),
+                        onToggle: () => setState(() {
+                          _expanded.contains(task.id)
+                              ? _expanded.remove(task.id)
+                              : _expanded.add(task.id);
+                        }),
+                        onApprove: isApprovalTask
+                            ? (allow) => _approve(pa, allow)
+                            : null,
+                      );
+                    },
+                  ),
+          ),
+
+          // The computer's state under the header, over the thread: it comes and goes without moving it.
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + _headerRow,
+            left: 0,
+            right: 0,
+            child: ColoredBox(
+              color: c.ground,
+              child: Column(
+                children: [
+                  ProtocolBanner(devices: [widget.device]),
+                  OfflineStrip(
+                    device: widget.device,
+                    suffix: ' · history shown',
                   ),
                 ],
               ),
             ),
+          ),
 
-          Expanded(
-            child: Stack(
-              children: [
-                // ── message list ───────────────────────────────────────────────
-                Positioned.fill(
-                  child: tasks.isEmpty
-                      ? EmptyState(
-                          icon: Crewmate(
-                            seed: widget.crewmateId,
-                            look: crewmate?.look,
-                            state: state,
-                            size: 96,
-                          ),
-                          title: crewmateName.isEmpty
-                              ? 'New crewmate'
-                              : 'Say hi to $crewmateName',
-                          message: 'Give it a job. It works on its computer and tells you when it is done.',
-                        )
-                      : ListView.builder(
-                          reverse: true,
-                          controller: _scrollController,
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
-                          ),
-                          padding: EdgeInsets.fromLTRB(
-                            Space.md,
-                            MediaQuery.paddingOf(context).top + 72,
-
-                            Space.md,
-                            // Room for the composer floating over the end of the thread.
-                            Space.sm +
-                                68 +
-                                MediaQuery.paddingOf(context).bottom +
-                                (running != null ? 40 : 0),
-                          ),
-                          itemCount: tasks.length,
-                          itemBuilder: (_, i) {
-                            final task = tasks[i];
-                            final key = _taskKeys.putIfAbsent(
-                              task.id,
-                              GlobalKey.new,
-                            );
-                            final isApprovalTask =
-                                approvalTaskId != null &&
-                                task.id == approvalTaskId &&
-                                pa != null;
-                            // Newest first: a day's label goes above its oldest message.
-                            final day =
-                                i == tasks.length - 1 ||
-                                crewDayOf(task.ts) !=
-                                    crewDayOf(tasks[i + 1].ts);
-                            final enter = _arrived.add(task.id);
-                            // Opening the chat: the newest few land in quick succession.
-                            final delay = Duration(
-                              milliseconds: i < 6 ? i * 55 : 0,
-                            );
-                            return CrewmateTaskPair(
-                              key: key,
-                              task: task,
-                              enter: enter,
-                              delay: delay,
-                              day: day
-                                  ? crewDayLabel(task.ts, DateTime.now())
-                                  : null,
-                              crewmateId: widget.crewmateId,
-                              device: widget.device,
-                              look: crewmate?.look,
-                              pendingApproval: isApprovalTask ? pa : null,
-                              expanded: _expanded.contains(task.id),
-                              onToggle: () => setState(() {
-                                _expanded.contains(task.id)
-                                    ? _expanded.remove(task.id)
-                                    : _expanded.add(task.id);
-                              }),
-                              onApprove: isApprovalTask
-                                  ? (allow) => answerApproval(
-                                      ref,
-                                      widget.device,
-                                      pa,
-                                      allow,
-                                    )
-                                  : null,
-                            );
-                          },
+          // The composer floats over the thread, no band of its own: the
+          // messages scroll on behind it.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: DecoratedBox(
+              // The thread fades out under the composer instead of being cut.
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [c.ground.withValues(alpha: 0), c.ground],
+                  stops: const [0, .45],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(top: Space.lg),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_reader.hasNew)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: Space.sm),
+                        child: NewActivityButton(onPressed: _reader.jumpToEnd),
+                      ),
+                    // ── global approval banner (if not matched to a task) ──────────
+                    if (pa != null && approvalTaskId == null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Space.md,
                         ),
-                ),
-
-                // The composer floats over the thread, no band of its own: the
-                // messages scroll on behind it.
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: DecoratedBox(
-                    // The thread fades out under the composer instead of being cut.
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [c.ground.withValues(alpha: 0), c.ground],
-                        stops: const [0, .45],
+                        child: CrewmateApprovalBubble(
+                          look: crewmate?.look,
+                          approval: pa,
+                          onApprove: (allow) => _approve(pa, allow),
+                        ),
                       ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: Space.lg),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // ── global approval banner (if not matched to a task) ──────────
-                          if (pa != null && approvalTaskId == null)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: Space.md,
-                              ),
-                              child: CrewmateApprovalBubble(
-                                look: crewmate?.look,
-                                approval: pa,
-                                onApprove: (allow) => answerApproval(
-                                  ref,
-                                  widget.device,
-                                  pa,
-                                  allow,
-                                ),
-                              ),
-                            ),
 
-                          AnimatedSwitcher(
-                            duration: Motion.normal,
-                            transitionBuilder: (child, a) => SizeTransition(
-                              sizeFactor: a,
-                              alignment: Alignment.bottomCenter,
-                              child: FadeTransition(opacity: a, child: child),
-                            ),
-                            child: crewmate != null && running != null
-                                ? CrewmateWorkingRow(
-                                    key: const ValueKey('typing'),
-                                    crewmate: crewmate,
-                                    since: running.startedAt,
-                                  )
-                                : const SizedBox(
-                                    key: ValueKey('idle'),
-                                    width: double.infinity,
-                                  ),
-                          ),
-
-                          // ── composer ──────────────────────────────────────────────────
-                          ChatComposer(
-                            controller: _msg,
-                            sending: _sending,
-                            online: online,
-                            queued: queued,
-                            onSend: _send,
-                          ),
-                        ],
+                    AnimatedSwitcher(
+                      duration: Motion.normal,
+                      transitionBuilder: (child, a) => SizeTransition(
+                        sizeFactor: a,
+                        alignment: Alignment.bottomCenter,
+                        child: FadeTransition(opacity: a, child: child),
                       ),
+                      child: crewmate != null && running != null
+                          ? CrewmateWorkingRow(
+                              key: const ValueKey('typing'),
+                              crewmate: crewmate,
+                              since: running.startedAt,
+                            )
+                          : const SizedBox(
+                              key: ValueKey('idle'),
+                              width: double.infinity,
+                            ),
                     ),
-                  ),
+
+                    // ── composer ──────────────────────────────────────────────────
+                    ChatComposer(
+                      controller: _msg,
+                      sending: _sending,
+                      online: online,
+                      queued: queued,
+                      onSend: _send,
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],

@@ -87,6 +87,10 @@ enum Commands {
     #[command(hide = true)]
     Hostd(commands::hostd::HostdArgs),
 
+    /// The root services behind one Linux user per crewmate (spawn helper, provisioning); run by systemd
+    #[command(hide = true, name = "crew-spawn")]
+    CrewSpawn(commands::crew_spawn::CrewSpawnArgs),
+
     /// Inspect and drive Atlas Desktop terminals: ls, read, send, kill, wait
     Term(commands::hostd::TermArgs),
 
@@ -218,7 +222,10 @@ async fn run() -> Result<()> {
     // commands get the Unix default and end quietly; the socket servers (`dev`, `hostd`) keep
     // ignoring it so a client that hangs up is an EPIPE error, never a dead daemon.
     #[cfg(unix)]
-    if !matches!(command, Commands::Dev(_) | Commands::Hostd(_)) {
+    if !matches!(
+        command,
+        Commands::Dev(_) | Commands::Hostd(_) | Commands::CrewSpawn(_)
+    ) {
         // SAFETY: before any thread is spawned or anything is written.
         unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
     }
@@ -231,6 +238,7 @@ async fn run() -> Result<()> {
         Commands::Mcp(_)
             | Commands::Hook(_)
             | Commands::Hostd(_)
+            | Commands::CrewSpawn(_)
             | Commands::Term(_)
             | Commands::Wt { .. }
             | Commands::Browser(_)
@@ -262,6 +270,7 @@ async fn run() -> Result<()> {
         Commands::Mcp(args) => args.run().await?,
         Commands::Hook(args) => args.run().await?,
         Commands::Hostd(args) => args.run().await?,
+        Commands::CrewSpawn(args) => args.run().await?,
         Commands::Term(args) => args.run().await?,
         Commands::Wt { command, json } => (commands::wt::WtArgs { command, json }).run().await?,
         Commands::Browser(args) => args.run().await?,
@@ -405,6 +414,60 @@ mod tests {
             "the file is required"
         );
         assert!(parse(&argv(&["crew", "export"])).is_err());
+    }
+
+    // #356: a phone pairs with a crew server without a Mac or desktop: `atlas crew pair <ssh-target> [--port N]`
+    // (and under the hidden `atlas bot` alias), which runs `atlas hostd --mobile-pair` on the server.
+    #[test]
+    fn crew_pair_takes_a_target_and_an_optional_ssh_port() {
+        use commands::crew::CrewCommands as C;
+        for w in ["crew", "bot"] {
+            match parse(&argv(&[w, "pair", "me@server"])) {
+                Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                    C::Pair(p) => {
+                        assert_eq!((p.ssh_target.as_str(), p.ssh.port), ("me@server", 22))
+                    }
+                    other => panic!("{w} pair: {other:?}"),
+                },
+                other => panic!("{w} pair: {other:?}"),
+            }
+        }
+        match parse(&argv(&["crew", "pair", "me@server", "--port", "2222"])) {
+            Ok(Action::Command(Commands::Crew(a))) => match a.command {
+                C::Pair(p) => assert_eq!(p.ssh.port, 2222),
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            parse(&argv(&["crew", "pair"])).is_err(),
+            "the target is required"
+        );
+        assert!(parse(&argv(&["crew", "pair", "me@server", "--port", "70000"])).is_err());
+    }
+
+    // The server side of it: `atlas hostd --mobile-pair` asks the running daemon for an invite, so it never
+    // combines with the flags that stop, restart or replace it.
+    #[test]
+    fn hostd_mobile_pair_flag_is_exclusive() {
+        let hostd = |flags: &[&str]| {
+            let mut v = vec!["hostd"];
+            v.extend_from_slice(flags);
+            parse(&argv(&v))
+        };
+        match hostd(&["--mobile-pair", "--dir", "/d"]) {
+            Ok(Action::Command(Commands::Hostd(h))) => assert!(h.mobile_pair),
+            other => panic!("{other:?}"),
+        }
+        for bad in [
+            &["--mobile-pair", "--stop"][..],
+            &["--mobile-pair", "--status"],
+            &["--mobile-pair", "--restart"],
+            &["--mobile-pair", "--crew-pause"],
+            &["--mobile-pair", "--lab"],
+        ] {
+            assert!(hostd(bad).is_err(), "{bad:?} should conflict");
+        }
     }
 
     // Crew review P0, PR #106 (no kill switch): `atlas crew pause|resume <ssh-target>` exist, take the same

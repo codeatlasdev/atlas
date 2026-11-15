@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
@@ -53,9 +54,11 @@ class _LauncherState extends ConsumerState<_Launcher> {
   }
 
   Future<void> _launch(String agent) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) {
-      setState(() => _error = 'Not connected to your computer');
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) setState(() => _error = e.message);
       return;
     }
     HapticFeedback.lightImpact();
@@ -118,7 +121,29 @@ class _LauncherState extends ConsumerState<_Launcher> {
                   padding: EdgeInsets.all(Space.lg),
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (list == null || list.isEmpty)
+              else if (list == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Space.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        errorText(
+                          installed.error ?? 'Could not read the agents',
+                        ),
+                        style: TextStyle(color: c.error, height: 1.4),
+                      ),
+                      const SizedBox(height: Space.md),
+                      OutlinedButton(
+                        onPressed: () => ref.invalidate(
+                          installedAgentsProvider(widget.device),
+                        ),
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                )
+              else if (list.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: Space.lg),
                   child: Text(
@@ -147,7 +172,11 @@ class _LauncherState extends ConsumerState<_Launcher> {
                 ),
                 if (worktrees != null && worktrees.length > 1) ...[
                   const SizedBox(height: Space.md),
-                  Text('Where', style: TextStyle(color: c.muted, fontSize: 12)),
+                  Text(
+                    'Where',
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.muted),
+                  ),
                   const SizedBox(height: Space.xs),
                   Wrap(
                     spacing: Space.sm,
@@ -189,7 +218,8 @@ class _LauncherState extends ConsumerState<_Launcher> {
                   padding: const EdgeInsets.only(top: Space.md),
                   child: Text(
                     _error!,
-                    style: TextStyle(color: c.error, fontSize: 13),
+                    style: Theme.of(context).textTheme.bodyMedium!
+                        .copyWith(color: c.error),
                   ),
                 ),
               const SizedBox(height: Space.lg),
@@ -274,7 +304,8 @@ class _AgentChoice extends StatelessWidget {
                       if (!ok)
                         Text(
                           'hooks off',
-                          style: TextStyle(fontSize: 11, color: c.warning),
+                          style: Theme.of(context).textTheme.labelSmall!
+                              .copyWith(color: c.warning),
                         ),
                     ],
                   ),

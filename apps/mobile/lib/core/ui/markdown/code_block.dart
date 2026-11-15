@@ -5,16 +5,10 @@ import '../atlas_theme.dart';
 
 /// Fenced code: language label, copy button, horizontal scroll, soft tinting.
 class AtlasCodeBlock extends StatefulWidget {
-  const AtlasCodeBlock({
-    super.key,
-    required this.code,
-    this.language = '',
-    this.fontSize = 12.5,
-  });
+  const AtlasCodeBlock({super.key, required this.code, this.language = ''});
 
   final String code;
   final String language;
-  final double fontSize;
 
   @override
   State<AtlasCodeBlock> createState() => _AtlasCodeBlockState();
@@ -37,7 +31,7 @@ class _AtlasCodeBlockState extends State<AtlasCodeBlock> {
     final base = TextStyle(
       fontFamily: monoFamily,
       fontFamilyFallback: monoFallback,
-      fontSize: widget.fontSize,
+      fontSize: TextSize.small,
       height: 1.45,
       color: c.text,
     );
@@ -63,11 +57,8 @@ class _AtlasCodeBlockState extends State<AtlasCodeBlock> {
                 Expanded(
                   child: Text(
                     widget.language.isEmpty ? 'text' : widget.language,
-                    style: TextStyle(
-                      color: c.faint,
-                      fontSize: 11,
-                      letterSpacing: .3,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall!
+                        .copyWith(color: c.muted, letterSpacing: .3),
                   ),
                 ),
                 IconButton(
@@ -228,7 +219,7 @@ TextSpan highlight(
         '',
       };
       if (hash && !hashLangs.contains(lang)) continue;
-      color = c.faint;
+      color = c.muted;
     } else if (m.namedGroup('string') != null) {
       color = c.success;
     } else if (m.namedGroup('number') != null) {

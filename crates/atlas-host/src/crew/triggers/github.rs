@@ -4,11 +4,17 @@
 //! seen event ids via `<crewmate_dir>/<trigger_id>_seen.jsonl`. What an event means (and whether
 //! its author may start a task) is decided in `github_events`; this file only walks the feed.
 //! If `gh` is missing or errors, it logs to stderr and tries again next time.
+//!
+//! Dedupe is durable before it fires: an event is written to the seen file first, and only then
+//! becomes a task, so a crash or an unwritable file can lose a fire but never repeat one. A trigger
+//! whose seen file cannot be written is left alone for [`BACKOFF`] instead of polled every 2 minutes.
+//! A trigger with no seen file yet is new: the feed as it stands is marked seen and fires nothing, so
+//! enabling one never answers the ~30 old events the feed still lists.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
 use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::github_events::{Cfg, decide, handle_for};
 use crate::crew::github::GithubApi;
@@ -16,6 +22,25 @@ use crate::crew::store::{Crewmate, Trigger, TriggerKind};
 use crate::server::Hub;
 
 const POLL_EVERY: Duration = Duration::from_secs(120);
+
+/// How long a trigger whose seen file cannot be written is left alone.
+const BACKOFF: Duration = Duration::from_secs(15 * 60);
+
+/// Triggers (`<crewmate>:<trigger>`) not polled until the instant, because their seen file is unwritable.
+static HELD: parking_lot::Mutex<Option<HashMap<String, Instant>>> = parking_lot::Mutex::new(None);
+
+fn held(key: &str) -> bool {
+    HELD.lock()
+        .as_ref()
+        .and_then(|m| m.get(key))
+        .is_some_and(|until| Instant::now() < *until)
+}
+
+fn hold(key: String) {
+    HELD.lock()
+        .get_or_insert_with(HashMap::new)
+        .insert(key, Instant::now() + BACKOFF);
+}
 
 /// Test-only: how often the poller runs instead of every 2 minutes.
 #[cfg(test)]
@@ -65,11 +90,16 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
     else {
         return;
     };
+    let key = format!("{}:{}", crewmate.id, trigger.id);
+    if held(&key) {
+        return;
+    }
     let seen_path = hub
         .crew
         .store
         .crewmate_dir(&crewmate.id)
         .join(format!("{}_seen.jsonl", trigger.id));
+    let is_new = !seen_path.exists();
     let mut seen = load_seen(&seen_path);
 
     let feed = match api.events(repo).await {
@@ -96,6 +126,24 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         own_login,
     };
 
+    // A new trigger starts at the head of the feed: what is already there is history.
+    if is_new {
+        let ids: Vec<&str> = feed
+            .iter()
+            .filter_map(|ev| ev["id"].as_str().filter(|s| !s.is_empty()))
+            .collect();
+        if let Err(e) = append_seen(&seen_path, &ids) {
+            eprintln!(
+                "triggers/github: {repo}: cannot baseline trigger {} of crewmate {}: {e}; not polled for {} min",
+                trigger.id,
+                crewmate.id,
+                BACKOFF.as_secs() / 60
+            );
+            hold(key);
+        }
+        return;
+    }
+
     // Oldest first, so tasks start in the order things happened.
     for ev in feed.iter().rev() {
         let Some(id) = ev["id"].as_str().filter(|s| !s.is_empty()) else {
@@ -104,18 +152,8 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
         if seen.contains(id) {
             continue;
         }
-        match decide(api, repo, ev, &cfg).await {
-            Ok(Some(fired)) => super::fire(
-                hub,
-                &crewmate.id,
-                &trigger.id,
-                &trigger.prompt,
-                super::Event::Github {
-                    text: &fired.event,
-                    origin: fired.origin,
-                },
-            ),
-            Ok(None) => {}
+        let fired = match decide(api, repo, ev, &cfg).await {
+            Ok(f) => f,
             // Could not tell who wrote it (or what it says): not decided, so not seen. Asked again.
             Err(e) => {
                 eprintln!(
@@ -125,10 +163,31 @@ async fn poll_trigger(hub: &Arc<Hub>, api: &dyn GithubApi, crewmate: &Crewmate, 
                 );
                 continue;
             }
+        };
+        // Seen first, whether it matched or not: a task is only made for an event that cannot come
+        // back. If the record cannot be written nothing fires, and the trigger rests for a while.
+        if let Err(e) = append_seen(&seen_path, &[id]) {
+            eprintln!(
+                "triggers/github: {repo}: cannot record event {id} for crewmate {}: {e}; not fired, not polled for {} min",
+                crewmate.id,
+                BACKOFF.as_secs() / 60
+            );
+            hold(key);
+            return;
         }
-        // Mark seen regardless of match, to avoid re-processing on next poll.
         seen.insert(id.to_string());
-        append_seen(&seen_path, id);
+        if let Some(fired) = fired {
+            super::fire(
+                hub,
+                &crewmate.id,
+                &trigger.id,
+                &trigger.prompt,
+                super::Event::Github {
+                    text: &fired.event,
+                    origin: fired.origin,
+                },
+            );
+        }
     }
 }
 
@@ -144,12 +203,15 @@ fn load_seen(path: &std::path::Path) -> HashSet<String> {
         .collect()
 }
 
-fn append_seen(path: &std::path::Path, id: &str) {
-    if let Ok(mut f) = std::fs::OpenOptions::new()
+/// Append `ids` to the seen file and flush them to disk. The error is the caller's to act on:
+/// a record that is not durable means the event is not yet safe to fire.
+fn append_seen(path: &std::path::Path, ids: &[&str]) -> std::io::Result<()> {
+    let mut f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
-    {
-        let _ = writeln!(f, "{id}");
+        .open(path)?;
+    for id in ids {
+        writeln!(f, "{id}")?;
     }
+    f.sync_all()
 }

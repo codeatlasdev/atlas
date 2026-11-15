@@ -20,6 +20,7 @@
 //! | `telegram`    | setting Telegram up from a client, the status payload                     |
 //! | `payloads`    | payloads that are pure values: summarized task, the push event (Windows too) |
 //! | `guards`      | the guards against the agent: refusal parks the task, override and retry |
+//! | `hygiene`     | chain loops, GitHub dedupe and baseline, a delete with a turn still running |
 //! | `limits`      | name/role/prompt limits (characters, not bytes)                          |
 //! | `mobile_payloads` | the audit, usage, engine-limits and settings replies the phone's crew screens read |
 //! | `push`        | `push_register`: the token and its relay grant, the phone's wire shape   |
@@ -62,6 +63,8 @@ mod fixture;
 mod github_e2e;
 #[cfg(unix)]
 mod guards;
+#[cfg(unix)]
+mod hygiene;
 #[cfg(unix)]
 mod limits;
 #[cfg(unix)]

@@ -122,7 +122,7 @@ pub(crate) async fn handle(hub: &Hub, cmd: HostCmd) -> Result<Value, String> {
             setup_step,
             short_replies,
         ),
-        HostCmd::CrewmateDelete { id } => c::delete(hub, id),
+        HostCmd::CrewmateDelete { id } => c::delete(hub, id).await,
 
         HostCmd::CrewmateTask {
             id,

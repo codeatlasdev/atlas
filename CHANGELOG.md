@@ -6,6 +6,10 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Atlas Mobile: a phone revoked on the Mac no longer keeps receiving crew pushes from a crew server that was unreachable at that moment ([#363](https://github.com/codeatlasdev/atlas/issues/363)).** Revoke sent `push_forget` to each crew server once and only logged a failure, so a server that was down, asleep or behind a broken ssh kept the phone's push tokens for good. The Mac now saves the forget (`mobile/pending-forget.json`, next to the paired devices) before it tries, takes each server off it once that server confirms, and sends it again whenever the server connects and when hostd starts, so it survives a Mac restart. A server the desktop removes from its registry drops out of it. Revoke itself still never waits for a server.
+
 ## [1.5.0-alpha.26] — 2026-11-15
 
 Atlas is in **alpha**: expect bugs and breaking changes. Please [report what breaks](https://github.com/codeatlasdev/atlas/issues/new).

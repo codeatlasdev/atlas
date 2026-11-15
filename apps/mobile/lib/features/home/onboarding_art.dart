@@ -98,7 +98,8 @@ class _SecureLinkArtState extends State<SecureLinkArt>
                       Icon(Icons.cloud_outlined, color: c.muted, size: 26),
                       Text(
                         'relay',
-                        style: TextStyle(color: c.muted, fontSize: 10),
+                        style: Theme.of(context).textTheme.labelSmall!
+                            .copyWith(color: c.muted),
                       ),
                     ],
                   ),
@@ -297,7 +298,8 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                         '  · orbit-shop',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.muted, fontSize: 12),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: c.muted),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -306,7 +308,8 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                       child: Text(
                         label,
                         key: ValueKey(label),
-                        style: TextStyle(color: color, fontSize: 12),
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: color),
                       ),
                     ),
                   ],
@@ -336,17 +339,18 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                         children: [
                           Text(
                             'Wants to run',
-                            style: TextStyle(color: c.muted, fontSize: 12),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: c.muted),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'bun run db:migrate',
-                            style: TextStyle(
-                              fontFamily: monoFamily,
-                              fontFamilyFallback: monoFallback,
-                              color: c.text,
-                              fontSize: 13,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium!
+                                .copyWith(
+                                  fontFamily: monoFamily,
+                                  fontFamilyFallback: monoFallback,
+                                  color: c.text,
+                                ),
                           ),
                           const SizedBox(height: Space.sm),
                           Row(
@@ -374,7 +378,8 @@ class _AgentStoryArtState extends State<AgentStoryArt>
                           Expanded(
                             child: Text(
                               'Migration applied. 840 ms → 9 ms.',
-                              style: TextStyle(color: c.muted, fontSize: 13),
+                              style: Theme.of(context).textTheme.bodyMedium!
+                                  .copyWith(color: c.muted),
                             ),
                           ),
                         ],
@@ -468,9 +473,8 @@ class _FakeButton extends StatelessWidget {
     ),
     child: Text(
       label,
-      style: TextStyle(
+      style: Theme.of(context).textTheme.bodyMedium!.copyWith(
         color: filled ? c.onAccent : c.text,
-        fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
     ),

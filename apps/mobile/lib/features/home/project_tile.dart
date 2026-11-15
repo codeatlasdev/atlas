@@ -110,16 +110,17 @@ class ProjectTile extends StatelessWidget {
                             child: Text(
                               project.name,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: c.text,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium!
+                                  .copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: c.text,
+                                  ),
                             ),
                           ),
                           Text(
                             stateText,
-                            style: TextStyle(fontSize: 13, color: stateColor),
+                            style: Theme.of(context).textTheme.bodyMedium!
+                                .copyWith(color: stateColor),
                           ),
                         ],
                       ),
@@ -127,7 +128,8 @@ class ProjectTile extends StatelessWidget {
                       if (lead == null)
                         Text(
                           project.running ? 'No agent here' : 'Tap to open',
-                          style: TextStyle(fontSize: 14.5, color: c.muted),
+                          style: Theme.of(context).textTheme.bodyLarge!
+                              .copyWith(color: c.muted),
                         )
                       else
                         AgentLine(status: lead.$2, more: agents.length - 1),
@@ -171,8 +173,7 @@ class AgentLine extends StatelessWidget {
                 : text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14.5,
+            style: Theme.of(context).textTheme.bodyLarge!.copyWith(
               color: busy
                   ? c.accent
                   : asks
@@ -191,7 +192,8 @@ class AgentLine extends StatelessWidget {
             ),
             child: Text(
               '+$more',
-              style: TextStyle(fontSize: 11.5, color: c.muted),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.muted),
             ),
           ),
         ],

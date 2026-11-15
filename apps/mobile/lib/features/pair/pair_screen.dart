@@ -235,14 +235,11 @@ class _Scanner extends StatelessWidget {
                   color: Colors.black.withValues(alpha: .6),
                   borderRadius: BorderRadius.circular(Space.radius),
                 ),
-                child: const Text(
+                child: Text(
                   'On your computer: Atlas Desktop → Settings → Mobile → Pair a phone',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    height: 1.4,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge!
+                      .copyWith(color: Colors.white, height: 1.4),
                 ),
               ),
               const SizedBox(height: Space.sm),

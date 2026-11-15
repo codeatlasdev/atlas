@@ -93,13 +93,13 @@ class ActivityRow extends StatelessWidget {
                             child: Text(
                               title,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: unread
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                                color: c.text,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(
+                                    fontWeight: unread
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: c.text,
+                                  ),
                             ),
                           ),
                           Text(
@@ -107,10 +107,8 @@ class ActivityRow extends StatelessWidget {
                               item.at.millisecondsSinceEpoch ~/ 1000,
                               DateTime.now(),
                             ),
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: unread ? c.accent : c.muted,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(color: unread ? c.accent : c.muted),
                           ),
                         ],
                       ),
@@ -122,11 +120,8 @@ class ActivityRow extends StatelessWidget {
                               line,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                height: 1.3,
-                                color: c.muted,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge!
+                                  .copyWith(height: 1.3, color: c.muted),
                             ),
                           ),
                           if (unread) ...[

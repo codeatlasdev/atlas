@@ -147,18 +147,20 @@ async fn failed_dependency_fails_dependents_transitively_with_reason() {
     m.stop_all().await;
 }
 
-#[tokio::test]
-async fn log_ready_gates_on_matching_line_and_marks_dependency_running() {
-    let dir = tempfile::tempdir().unwrap();
-    let (mut m, mut rx) = manager(
-        &dir,
+/// `api` and a `web` that waits for `api`'s ready line; `api` runs `api_cmd`.
+fn log_ready_pair(
+    dir: &tempfile::TempDir,
+    api_cmd: &str,
+) -> (ServiceManager, mpsc::UnboundedReceiver<ManagerEvent>) {
+    manager(
+        dir,
         vec![
             (
                 "api",
                 ServiceDef {
                     ready_log: Some("listening on \\d+".into()),
                     // No port/health: only the log can make it ready.
-                    ..svc("sleep 1; echo listening on 80; sleep 30")
+                    ..svc(api_cmd)
                 },
             ),
             (
@@ -169,13 +171,29 @@ async fn log_ready_gates_on_matching_line_and_marks_dependency_running() {
                 },
             ),
         ],
-    );
-    m.start_app_services(&names(&["api", "web"])).await;
-    // Child is alive but silent: web must not start on liveness alone.
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    m.check_health().await;
-    assert_eq!(m.get_state("web"), Some(ServiceState::Stopped));
+    )
+}
 
+// Flake (Windows CI, 2026-11-15, `Some(Starting)` vs `Some(Stopped)`): this used to print the ready line
+// after `sleep 1` and check "not started yet" 300 ms later, a race on a slow runner where starting the
+// services took the rest of that second. Each half is now deterministic: a dependency that never prints
+// the line keeps `web` stopped however long the loop runs, and one that prints it starts `web`.
+#[tokio::test]
+async fn log_ready_never_starts_a_dependent_on_liveness_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut m, mut rx) = log_ready_pair(&dir, "sleep 30");
+    m.start_app_services(&names(&["api", "web"])).await;
+    // The same loop headless runs (events + health ticks), for a full second: api is alive and silent.
+    drive(&mut m, &mut rx, 1, |_| false).await;
+    assert_eq!(m.get_state("web"), Some(ServiceState::Stopped));
+    m.stop_all().await;
+}
+
+#[tokio::test]
+async fn log_ready_gates_on_matching_line_and_marks_dependency_running() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut m, mut rx) = log_ready_pair(&dir, "echo listening on 80; sleep 30");
+    m.start_app_services(&names(&["api", "web"])).await;
     drive(&mut m, &mut rx, 8, |m| {
         m.get_state("web") == Some(ServiceState::Running)
     })

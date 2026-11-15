@@ -89,15 +89,16 @@ class AttentionCard extends StatelessWidget {
         if (title != null)
           Text(
             title!,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-              color: c.text,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge!
+                .copyWith(fontWeight: FontWeight.w700, color: c.text),
           ),
         if (body != null) ...[
           if (title != null) const SizedBox(height: 2),
-          Text(body!, style: TextStyle(fontSize: 12, color: c.muted)),
+          Text(
+            body!,
+            style: Theme.of(context).textTheme.bodySmall!
+                .copyWith(color: c.muted),
+          ),
         ],
       ],
     );

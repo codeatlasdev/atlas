@@ -34,7 +34,8 @@ class ProtocolBanner extends ConsumerWidget {
                 Flexible(
                   child: Text(
                     l,
-                    style: TextStyle(fontSize: 12, color: c.warning),
+                    style: Theme.of(context).textTheme.bodySmall!
+                        .copyWith(color: c.warning),
                   ),
                 ),
               ],

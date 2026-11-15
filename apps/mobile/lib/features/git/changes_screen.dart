@@ -418,7 +418,7 @@ class _DiffPanel extends StatelessWidget {
               padding: EdgeInsets.all(Space.md),
               child: Text('No text changes to show (binary or empty).'),
             )
-          : AtlasCodeBlock(code: d.asPatch(), language: 'diff', fontSize: 12),
+          : AtlasCodeBlock(code: d.asPatch(), language: 'diff'),
     );
   }
 }

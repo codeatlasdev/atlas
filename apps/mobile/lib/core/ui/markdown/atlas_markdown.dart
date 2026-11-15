@@ -62,11 +62,11 @@ class _AtlasMarkdownState extends State<AtlasMarkdown> {
     // released here (the old spans are discarded with the old widget tree).
     _disposeTaps();
     final c = AtlasColors.of(context);
-    final base = (widget.style ?? const TextStyle()).copyWith(
-      color: widget.style?.color ?? c.text,
-      fontSize: widget.style?.fontSize ?? 14.5,
-      height: widget.style?.height ?? 1.5,
-    );
+    final base = (widget.style ?? Theme.of(context).textTheme.bodyLarge!)
+        .copyWith(
+          color: widget.style?.color ?? c.text,
+          height: widget.style?.height ?? 1.5,
+        );
     final body = _Renderer(
       context: context,
       colors: c,
@@ -125,10 +125,10 @@ class _Renderer {
       case 'p':
         return richText(inline(e.children ?? const [], style), style);
       case 'h1' || 'h2' || 'h3' || 'h4' || 'h5' || 'h6':
+        // Headings step up the scale from the body: h1 headline, h2 title, the rest body weight.
         final (size, weight) = switch (e.tag) {
-          'h1' => (style.fontSize! + 6, FontWeight.w700),
-          'h2' => (style.fontSize! + 3.5, FontWeight.w700),
-          'h3' => (style.fontSize! + 1.5, FontWeight.w600),
+          'h1' => (TextSize.headline, FontWeight.w700),
+          'h2' => (TextSize.title, FontWeight.w700),
           _ => (style.fontSize!, FontWeight.w600),
         };
         final hs = style.copyWith(
@@ -184,11 +184,7 @@ class _Renderer {
     final lang = cls.startsWith('language-') ? cls.substring(9) : '';
     var text = code.textContent;
     if (text.endsWith('\n')) text = text.substring(0, text.length - 1);
-    return AtlasCodeBlock(
-      code: text,
-      language: lang,
-      fontSize: (base.fontSize ?? 14.5) - 2,
-    );
+    return AtlasCodeBlock(code: text, language: lang);
   }
 
   Widget list(md.Element list, TextStyle style, int depth) {
@@ -203,7 +199,7 @@ class _Renderer {
               padding: const EdgeInsets.only(top: 2),
               child: Icon(
                 task ? Icons.check_box : Icons.check_box_outline_blank,
-                size: (style.fontSize ?? 14.5) + 2,
+                size: TextSize.title,
                 color: task ? colors.success : colors.faint,
               ),
             )
@@ -352,7 +348,7 @@ class _Renderer {
               style: style.copyWith(
                 fontFamily: monoFamily,
                 fontFamilyFallback: monoFallback,
-                fontSize: (style.fontSize ?? 14.5) - 1.5,
+                fontSize: TextSize.small,
                 height: 1.2,
                 color: colors.text,
               ),
@@ -503,10 +499,7 @@ class _MarkdownTableState extends State<_MarkdownTable> {
     _taps.clear();
     final c = widget.renderer.colors;
     final r = widget.renderer.withTaps(_taps);
-    final style = widget.style.copyWith(
-      fontSize: (widget.style.fontSize ?? 14.5) - 1,
-      height: 1.35,
-    );
+    final style = widget.style.copyWith(fontSize: TextSize.body, height: 1.35);
 
     Widget cell(md.Element cell, int col, {required bool header}) {
       final s = header
@@ -618,7 +611,8 @@ class _ChartToggle extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 on ? 'Hide chart' : 'Chart',
-                style: TextStyle(color: color, fontSize: 12.5),
+                style: Theme.of(context).textTheme.bodySmall!
+                    .copyWith(color: color),
               ),
             ],
           ),

@@ -88,7 +88,8 @@ class OfflineStrip extends ConsumerWidget {
             child: Text(
               '${DeviceOffline(device).message}$suffix',
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: c.warning),
+              style: Theme.of(context).textTheme.bodySmall!
+                  .copyWith(color: c.warning),
             ),
           ),
         ],

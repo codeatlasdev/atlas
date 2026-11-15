@@ -1,33 +1,38 @@
 // One type scale (core/ui/atlas_theme.dart: TextSize + the textTheme roles). A screen takes a
 // size from the theme; it does not invent one. This reads every source file under lib/ and
-// fails when a line with `fontSize` appears outside the theme, bar the exceptions below. The numbers
-// are a ceiling AND a floor: a file that grows fails, and a file that shrinks must lower its
-// entry here, so the list only ever gets shorter.
+// fails when a `fontSize` is a number or arithmetic on one, bar the exceptions below. A role is
+// read as `Theme.of(context).textTheme.bodyMedium` and varied with `.copyWith(color:, fontWeight:)`.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Files allowed to name a `fontSize`, with how many times, and why. A count of 0 is not listed.
-const _allowed = <String, int>{
-  'lib/core/lab/lab.dart': 1,
-  'lib/core/ui/attention_card.dart': 2,
-  'lib/core/ui/components.dart': 2,
-  'lib/core/ui/computer_state.dart': 1,
-  'lib/core/ui/floating_tab_bar.dart': 1,
-  'lib/core/ui/markdown/atlas_markdown.dart': 11,
-  'lib/core/ui/markdown/bar_chart.dart': 1,
-  'lib/core/ui/markdown/code_block.dart': 4,
-  'lib/core/ui/protocol_banner.dart': 1,
-  'lib/features/agents/crew_widgets.dart': 1,
-  'lib/features/crew/avatar/crewmate_painter.dart': 1,
-  'lib/features/git/changes_screen.dart': 1,
-  'lib/features/projects/project_avatar.dart': 1,
-  'lib/features/terminal/live_screen.dart': 2,
-  'lib/features/terminal/terminal_feed.dart': 1,
+/// Files allowed to compute a `fontSize` from geometry, how many lines, and why. The number is a
+/// ceiling AND a floor: a file that grows fails, and one that shrinks must lower its entry.
+const _computed = <String, (int, String)>{
+  'lib/features/projects/project_avatar.dart': (
+    1,
+    'the initial scales with the avatar circle',
+  ),
+  'lib/features/agents/crew_widgets.dart': (
+    1,
+    'the initial scales with the avatar circle',
+  ),
+  'lib/features/crew/avatar/crewmate_painter.dart': (
+    1,
+    'the sleeping "z" is drawn on the canvas and grows with the animation',
+  ),
+  'lib/features/terminal/terminal_feed.dart': (
+    1,
+    'the feed is a monospace grid; its size is set by the Mac pty columns',
+  ),
+  'lib/features/terminal/live_screen.dart': (
+    2,
+    'the live terminal fits the Mac pty columns; the 10 pt probe measures the mono cell',
+  ),
 };
 
 /// Generated code is not ours to restyle.
-const _skipped = ['lib/src/rust/'];
+const _skipped = ['lib/src/rust/', 'lib/core/ui/atlas_theme.dart'];
 
 String _stripComments(String src) => src
     .split('\n')
@@ -37,73 +42,80 @@ String _stripComments(String src) => src
     })
     .join('\n');
 
-Map<String, int> _fontSizeCounts() {
-  final counts = <String, int>{};
-  final dir = Directory('lib');
-  for (final f in dir.listSync(recursive: true).whereType<File>()) {
-    final path = f.path.replaceAll('\\', '/');
-    if (!path.endsWith('.dart')) continue;
-    if (path == 'lib/core/ui/atlas_theme.dart') continue;
-    if (_skipped.any(path.startsWith)) continue;
-    final n = _stripComments(f.readAsStringSync())
-        .split('\n')
-        .where((l) => l.contains('fontSize'))
-        .length;
-    if (n > 0) counts[path] = n;
-  }
-  return counts;
-}
+Iterable<File> _sources() =>
+    Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .where((f) {
+          final p = f.path.replaceAll('\\', '/');
+          return !_skipped.any(p.startsWith);
+        });
+
+String _rel(File f) => f.path.replaceAll('\\', '/');
 
 void main() {
-  test('no new fontSize outside the theme, and the exceptions only shrink', () {
-    final found = _fontSizeCounts();
-    final problems = <String>[];
-    for (final e in found.entries) {
-      final allowed = _allowed[e.key] ?? 0;
-      if (e.value > allowed) {
-        problems.add(
-          '${e.key}: ${e.value} fontSize (allowed $allowed). Use a textTheme role from '
-          'atlas_theme.dart (.copyWith for colour/weight), not a new size.',
-        );
-      } else if (e.value < allowed) {
-        problems.add(
-          '${e.key}: only ${e.value} fontSize left, lower its entry from $allowed in this test.',
+  test('no fontSize is a number or arithmetic on one outside the theme', () {
+    final bad = <String>[];
+    // `fontSize: 12`, `fontSize: s * .38`, `fontSize: (x ?? 14.5) - 1`, `this.fontSize = 12.5`.
+    final numeric = RegExp(r'fontSize\s*[:=]\s*[^,;)]*?[0-9]');
+    for (final f in _sources()) {
+      final lines = _stripComments(f.readAsStringSync()).split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        final l = lines[i];
+        if (!l.contains('fontSize')) continue;
+        if (!numeric.hasMatch(l)) continue;
+        if (_computed.containsKey(_rel(f))) continue;
+        bad.add(
+          '${_rel(f)}:${i + 1}: `${l.trim()}`. Use a textTheme role from atlas_theme.dart '
+          '(.copyWith for colour or weight) or TextSize.*, not a new size.',
         );
       }
     }
-    for (final k in _allowed.keys) {
-      if (!found.containsKey(k)) {
-        problems.add('$k: no fontSize left, delete its entry from this test.');
+    expect(bad, isEmpty, reason: bad.join('\n'));
+  });
+
+  test('the computed-size exceptions only shrink', () {
+    final problems = <String>[];
+    final found = <String, int>{};
+    for (final f in _sources()) {
+      final path = _rel(f);
+      if (!_computed.containsKey(path)) continue;
+      found[path] = _stripComments(f.readAsStringSync())
+          .split('\n')
+          .where((l) => l.contains('fontSize'))
+          .length;
+    }
+    for (final e in _computed.entries) {
+      final n = found[e.key] ?? 0;
+      if (n > e.value.$1) {
+        problems.add(
+          '${e.key}: $n fontSize lines (allowed ${e.value.$1}: ${e.value.$2}).',
+        );
+      } else if (n < e.value.$1) {
+        problems.add(
+          '${e.key}: only $n fontSize lines left, lower or delete its entry (was ${e.value.$1}).',
+        );
       }
     }
     expect(problems, isEmpty, reason: problems.join('\n'));
   });
 
-  test('TextStyle with a literal size is not written in features/', () {
-    // Stricter than the test above, and what the sweep ends on: features/ has no
-    // TextStyle(fontSize: <number or expression>). Roles come from the theme.
+  test('features/ builds no TextStyle with a size of its own', () {
+    // The sweep ends here: a screen reads a role, so `TextStyle(` never carries a fontSize in
+    // features/, bar the geometry-computed files above.
     final offenders = <String>[];
-    for (final f in Directory(
-      'lib/features',
-    ).listSync(recursive: true).whereType<File>()) {
-      if (!f.path.endsWith('.dart')) continue;
+    final style = RegExp(r'TextStyle\(([^()]|\([^()]*\))*fontSize:');
+    for (final f in _sources().where(
+      (f) => _rel(f).startsWith('lib/features/'),
+    )) {
+      if (_computed.containsKey(_rel(f))) continue;
       final src = _stripComments(f.readAsStringSync());
-      for (final m in RegExp(
-        r'TextStyle\(([^()]|\([^()]*\))*fontSize:',
-      ).allMatches(src)) {
+      for (final m in style.allMatches(src)) {
         final line = '\n'.allMatches(src.substring(0, m.start)).length + 1;
-        offenders.add('${f.path.replaceAll('\\', '/')}:$line');
+        offenders.add('${_rel(f)}:$line');
       }
     }
-    final allowed = _allowedTextStyleSites;
-    final extra = offenders
-        .where((o) => !allowed.contains(o.split(':').first))
-        .toList();
-    expect(extra, isEmpty, reason: extra.join('\n'));
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 }
-
-/// Files in features/ that still build a TextStyle with a size (temporary: shrinks per commit).
-final _allowedTextStyleSites = _allowed.keys
-    .where((k) => k.startsWith('lib/features/'))
-    .toSet();

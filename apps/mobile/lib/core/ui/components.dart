@@ -198,7 +198,8 @@ class SectionHeader extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '$count',
-                      style: TextStyle(color: c.muted, fontSize: 13),
+                      style: Theme.of(context).textTheme.bodyMedium!
+                          .copyWith(color: c.muted),
                     ),
                   ],
                 ],
@@ -399,13 +400,13 @@ class AtlasChip extends StatelessWidget {
       ChipIcon(:final icon) => Icon(icon, color: tone, size: 14),
       null => null,
     };
+    final textTheme = Theme.of(context).textTheme;
     final text = Text(
       label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(
+      style: (outlined ? textTheme.bodyMedium! : textTheme.bodySmall!).copyWith(
         color: fg,
-        fontSize: outlined ? 13 : 12,
         fontWeight: FontWeight.w600,
         fontFamily: mono ? monoFamily : null,
         fontFamilyFallback: mono ? monoFallback : null,

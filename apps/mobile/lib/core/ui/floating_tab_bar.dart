@@ -373,9 +373,8 @@ class _TabItemState extends State<_TabItem> {
                             : widget.count > 99
                             ? '99+'
                             : '${widget.count}',
-                        style: TextStyle(
+                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
                           color: c.onAccent,
-                          fontSize: 10.5,
                           fontWeight: FontWeight.w800,
                           height: 1,
                         ),

@@ -108,7 +108,7 @@ Autosave runs 0.5 s after the last edit (⌘S saves at once). On save Atlas trim
 
 ### Changes made outside the editor
 
-Atlas watches the open file. If it changes on disk and you have no unsaved edits it reloads (`editor.auto_reload`), keeping the caret. With unsaved edits it asks: **Load from disk** or **Keep my version** (which writes yours over it); autosave pauses meanwhile so it never overwrites the other change silently. A deleted file is reported and saving writes it again.
+Atlas watches the open file. If it changes on disk and you have no unsaved edits it reloads (`editor.auto_reload`), keeping the caret. With unsaved edits it asks: **Load from disk** or **Keep my version** (which writes yours over it); autosave pauses meanwhile so it never overwrites the other change silently. A deleted file is reported and saving writes it again. Every save also checks the file against what the editor last read or wrote: if someone changed it first nothing is written (closing the tab then toasts "Not saved: <file> changed on disk"), while the same text with a newer modified time (`touch`, git, a formatter) is not a change.
 
 ## Large files
 

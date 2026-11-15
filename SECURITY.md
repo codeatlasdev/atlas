@@ -72,7 +72,7 @@ Out of scope: running `atlas dev` on an `atlas.yaml` you do not trust (it runs t
 
 - Atlas never ships, reads or prints your env files except to inject them into your own services. The environment it inherits reaches your services unscrubbed, by design.
 - `atlas deploy` never uploads env files; shared secrets live on the host and are referenced with `link`.
-- Crash reports stay on your machine and contain the panic message, location, arguments and a backtrace. Review one before you attach it to an issue.
+- Crash reports stay on your machine and contain the panic message, location, arguments and a backtrace, with tokens redacted and your home directory written as `~` (the newest 20 are kept). Review one before you attach it to an issue.
 - Agent hooks post to a loopback HTTP server inside Atlas Desktop with a token that changes on every run.
 - Nothing secret should be loaded into the embedded browser. URLs and attributes sent to an agent by Design Mode are redacted.
 

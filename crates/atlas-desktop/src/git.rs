@@ -10,7 +10,9 @@ use tauri::State;
 use crate::host::HostHub;
 use crate::worktree::git;
 
-use atlas_core::git_review::{FileDiff, Hunk, Line, UNTRACKED_MAX, base_for, parse, status_json};
+use atlas_core::git_review::{
+    FileDiff, Hunk, Line, REVIEW_DIFF, UNTRACKED_MAX, base_for, parse, status_json,
+};
 
 /// An untracked file as an all-added diff; read through hostd so SSH checkouts work.
 async fn untracked(hub: &HostHub, dir: &Path, rel: &str) -> FileDiff {
@@ -78,7 +80,7 @@ pub async fn git_diff(
     base: Option<String>,
 ) -> Result<Value, String> {
     let dir = root(&id)?;
-    let args = ["diff", "--no-color", "-U3", "--no-ext-diff", "-M"];
+    let args = REVIEW_DIFF;
     let mut files = Vec::new();
     let mut base_used = None;
     match mode.as_str() {

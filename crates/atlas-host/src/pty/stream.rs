@@ -229,12 +229,15 @@ impl Session {
     }
 
     fn finish(&self, code: Option<i32>) {
-        *self.exited.lock() = Some(code);
         self.io.lock().take();
+        // `exited` is set and announced under the buf lock, the lock `attach` registers under: a listener
+        // either is in the map when the exit is sent, or sees `exited` and is told on the spot. Never neither.
+        let mut b = self.buf.lock();
+        *self.exited.lock() = Some(code);
         // Raw streams end with the pty: dropping the senders closes those connections.
-        self.buf.lock().raw.clear();
-        let line = json!({"ev": "pty_exit", "pty": self.id, "code": code}).to_string();
-        self.buf.lock().notify_force(&line);
+        b.raw.clear();
+        b.notify_force(&self.exit_line(code));
+        drop(b);
         // The shell is gone: whatever it left behind under this terminal's tag (a backgrounded dev
         // server, a browser that daemonized) has no terminal to answer to.
         self.reap_leftovers();

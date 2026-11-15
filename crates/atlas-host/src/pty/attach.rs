@@ -49,10 +49,17 @@ impl Session {
     pub fn attach(&self, conn: u64, out: Out, replay: bool, output: bool) -> Value {
         let mut b = self.buf.lock();
         if !output {
-            b.listeners.insert(conn, out);
+            // An exit listener that comes after the exit is told now: the map it would join never fires
+            // again (`finish` announces under this same lock, so there is no gap between the two).
+            if let Some(code) = self.exited() {
+                let _ = out.force(self.exit_line(code));
+            } else {
+                b.listeners.insert(conn, out);
+            }
             drop(b);
             return self.info();
         }
+
         if replay {
             let all = b.ring_bytes();
             for (i, part) in replay_chunks(&all).enumerate() {
@@ -66,6 +73,11 @@ impl Session {
         b.attachers.insert(conn, out);
         drop(b);
         self.info()
+    }
+
+    /// The `pty_exit` event, the same for listeners told when it happens and those told late.
+    pub(super) fn exit_line(&self, code: Option<i32>) -> String {
+        json!({"ev": "pty_exit", "pty": self.id, "code": code}).to_string()
     }
 
     /// Raw byte subscription. An exited pty gets its replay and then a closed stream.

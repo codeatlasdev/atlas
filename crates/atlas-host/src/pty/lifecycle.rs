@@ -19,6 +19,10 @@ use super::{Io, Isolation, open_append};
 use crate::handoff::{ExitWatch, SessionState};
 use crate::protocol::Scope;
 
+/// How long `freeze` waits (10 ms ticks) for a scrollback rewrite in flight.
+#[cfg(unix)]
+const REWRITE_WAIT_TICKS: u32 = 300;
+
 impl Session {
     /// Restore an exited session from a scrollback file left by a previous daemon.
     pub fn cold(id: &str, scroll_dir: &Path) -> Option<Arc<Session>> {
@@ -158,6 +162,14 @@ impl Session {
         };
         let exited = self.exited();
         let (cols, rows) = *self.size.lock();
+        // The reader is stopped, so no new rewrite starts: wait (bounded) for the one in flight, else
+        // the successor would read a file without the output it is still to receive, and a `.tmp-`.
+        for _ in 0..REWRITE_WAIT_TICKS {
+            if self.buf.lock().trim.is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let file_len = self.buf.lock().file_len;
         Some((
             SessionState {

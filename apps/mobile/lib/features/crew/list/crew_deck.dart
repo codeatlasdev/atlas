@@ -50,28 +50,35 @@ class CrewDeck extends StatelessWidget {
                 children: [
                   ShipFlagIcon(color: c.muted, accentColor: c.accent, size: 22),
                   const SizedBox(width: Space.sm),
-                  Text(
-                    '${entries.length} aboard',
-                    style: TextStyle(
-                      color: c.muted,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      '${entries.length} aboard',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: c.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  AnimatedSwitcher(
-                    duration: Motion.normal,
-                    child: AtlasChip(
-                      label,
-                      key: ValueKey(label),
-                      tone: color,
-                      leading: ChipDot(pulse: working + waiting > 0),
+                  const SizedBox(width: Space.sm),
+                  Flexible(
+                    child: AnimatedSwitcher(
+                      duration: Motion.normal,
+                      child: AtlasChip(
+                        label,
+                        key: ValueKey(label),
+                        tone: color,
+                        leading: ChipDot(pulse: working + waiting > 0),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
+            // The strip holds an avatar, a name and a state line: it grows with the text size.
             SizedBox(
-              height: 168,
+              height: 168 + MediaQuery.textScalerOf(context).scale(34) - 34,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: Space.md),
@@ -176,6 +183,8 @@ class RecruitSlot extends StatelessWidget {
               const SizedBox(height: 18),
               Text(
                 'Recruit',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: c.accent, fontWeight: FontWeight.w700),
               ),
             ],

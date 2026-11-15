@@ -535,25 +535,31 @@ class _CrewmateProfileScreenState extends ConsumerState<CrewmateProfileScreen> {
                 ),
                 // Floating back button, like the chat's.
                 Positioned(
-                  top: MediaQuery.paddingOf(context).top + 6,
-                  left: Space.md,
+                  top: MediaQuery.paddingOf(context).top + 2,
+                  left: Space.md - 2,
                   child: Semantics(
                     button: true,
                     label: 'Back',
+                    // The circle is drawn at 44; the hit area around it is the 48 dp a thumb needs.
                     child: Pressable(
                       onTap: () => Navigator.of(context).maybePop(),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: c.overlay.withValues(alpha: .82),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.border),
-                        ),
-                        child: Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          size: 18,
-                          color: c.text,
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: Center(
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: c.overlay.withValues(alpha: .82),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: c.border),
+                            ),
+                            child: Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              size: 18,
+                              color: c.text,
+                            ),
+                          ),
                         ),
                       ),
                     ),

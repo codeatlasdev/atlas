@@ -92,8 +92,11 @@ class ApprovalButtons extends StatelessWidget {
   final double gap;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.end,
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.end,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: gap,
+    runSpacing: 4,
     children: [
       OutlinePillButton(
         label: 'Deny',
@@ -102,7 +105,6 @@ class ApprovalButtons extends StatelessWidget {
         vPad: vPad,
         onPressed: () => onAnswer(false),
       ),
-      SizedBox(width: gap),
       WarnPillButton(
         label: 'Allow',
         hPad: hPad,

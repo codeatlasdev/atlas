@@ -14,7 +14,7 @@ Color nodeColor(AtlasColors c, AgentNode n) => switch (n.status) {
   'running' => c.accent,
   'completed' => c.success,
   'failed' || 'aborted' => c.error,
-  _ => c.faint,
+  _ => c.muted,
 };
 
 String nodeStatusLabel(AgentNode n) => switch (n.status) {

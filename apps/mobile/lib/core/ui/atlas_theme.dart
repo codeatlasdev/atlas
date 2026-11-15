@@ -100,7 +100,7 @@ class AtlasColors extends ThemeExtension<AtlasColors> {
     'working' => accent,
     'blocked' || 'waiting' => warning,
     'done' => success,
-    _ => faint,
+    _ => muted,
   };
 
   @override

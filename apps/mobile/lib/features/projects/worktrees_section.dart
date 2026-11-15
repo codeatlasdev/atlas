@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:atlas_mobile/core/connection/connection_notifier.dart';
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
@@ -35,9 +36,11 @@ class _WorktreesSectionState extends ConsumerState<WorktreesSection> {
     String cmd,
     Map<String, Object?> args,
   ) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) {
-      setState(() => _notice = 'Not connected to your computer');
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      if (mounted) setState(() => _notice = e.message);
       return null;
     }
     setState(() {

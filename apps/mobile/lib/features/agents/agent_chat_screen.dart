@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:atlas_mobile/core/protocol/multiplexer.dart';
+import 'package:atlas_mobile/core/connection/require_mux.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/agent_logo.dart';
@@ -112,7 +114,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   Future<void> _loadHistory() async {
     if (_inFlight) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     _inFlight = true;
     final asked = _focus;
@@ -141,7 +143,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   Future<void> _loadTree() async {
     if (_treeInFlight) return;
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     _treeInFlight = true;
     try {
@@ -230,9 +232,11 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     void say(String text) =>
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(text)));
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
-    if (mux == null) {
-      return say('Not connected to your computer');
+    final Multiplexer mux;
+    try {
+      mux = await requireMuxOf(ref, widget.device);
+    } on DeviceUnavailable catch (e) {
+      return say(e.message);
     }
     final resp = await mux.call('pty_list');
     if (!mounted) return;
@@ -284,7 +288,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   String _outgoing(String text) => _sub == null ? text : 'Tell $_sub: $text';
 
   Future<bool> _sendText(String text) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (text.isEmpty || mux == null) return false;
     final steer = _status != null && _canSteer(_status!);
     setState(() {
@@ -314,7 +318,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   }
 
   Future<void> _stop() async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null || _stopping) return;
     HapticFeedback.mediumImpact();
     setState(() {
@@ -387,7 +391,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
       showDialog<String>(context: context, builder: (_) => _AskDialog(label));
 
   Future<void> _approve(AgentApproval a, bool allow) async {
-    final mux = ref.read(connectionNotifierProvider(widget.device)).value;
+    final mux = liveMux(ref, widget.device);
     if (mux == null) return;
     final resp = await mux.call('agent_approve', {
       'pane': widget.paneKey,
@@ -768,11 +772,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                     ),
                   ),
                   if (shown.isEmpty && _loaded)
-                    Center(
-                      child: Text(
-                        'Nothing here yet',
-                        style: TextStyle(color: c.muted),
-                      ),
+                    const EmptyState(
+                      title: 'Nothing here yet',
+                      message: 'What this agent does shows up here.',
                     ),
                   if (fresh)
                     Positioned(

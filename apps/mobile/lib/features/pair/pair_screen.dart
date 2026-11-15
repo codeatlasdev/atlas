@@ -7,9 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:atlas_mobile/core/protocol/models.dart';
+import 'package:atlas_mobile/core/ui/computer_state.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
-import 'package:atlas_mobile/core/ui/atlas_logo.dart';
 import 'package:atlas_mobile/core/storage/mac_storage.dart';
 import 'package:atlas_mobile/core/connection/connection_notifier.dart';
 import 'package:atlas_mobile/core/protocol/multiplexer.dart';
@@ -201,13 +201,7 @@ class _PairScreenState extends ConsumerState<PairScreen> {
               ],
             ),
           ),
-          _ => const EmptyState(
-            key: ValueKey('busy'),
-            icon: AtlasLogo(size: 96, animated: true),
-            title: 'Reaching your computer…',
-            message:
-                'Directly when possible, through an encrypted relay otherwise.',
-          ),
+          _ => const ReachingView(key: ValueKey('busy'), connecting: true),
         },
       ),
     );

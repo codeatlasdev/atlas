@@ -38,7 +38,7 @@ ListenStream={path}\n\
 SocketUser=root\n\
 SocketGroup={group}\n\
 SocketMode=0660\n\
-DirectoryMode=0750\n\
+DirectoryMode=0755\n\
 [Install]\n\
 WantedBy=sockets.target\n",
         group = a.user
@@ -219,6 +219,9 @@ pub fn start_steps() -> Vec<String> {
     for u in [SPAWN_UNIT, PROVISION_UNIT] {
         v.push(format!("sudo systemctl restart {u}.socket"));
     }
+    // systemd makes /run/atlas-crew root:root with the unit's DirectoryMode and leaves an existing one as it
+    // is: a server installed with the old 0750 would keep hostd from seeing the sockets until its next boot.
+    v.push("sudo chmod 0755 /run/atlas-crew".to_string());
     // Restarting a socket leaves a running service alone, so a re-install would keep the old helper (and
     // its old unit: no cgroup delegation, no memory cap, #296). `try-restart` is a no-op for a service that
     // is not running (a fresh install: the socket starts it on the first connection); agents survive it.
@@ -451,7 +454,7 @@ mod tests {
             "SocketUser=root\n",
             "SocketGroup=atlas-crew\n",
             "SocketMode=0660\n",
-            "DirectoryMode=0750\n",
+            "DirectoryMode=0755\n",
         ] {
             assert!(s.contains(want), "missing {want:?} in {s}");
         }
@@ -462,6 +465,39 @@ mod tests {
             ..Probe::default()
         }));
         assert!(old.contains("SocketGroup=atlas-bot\n"));
+    }
+
+    // Incident (found by the real-systemd end-to-end test): systemd creates /run/atlas-crew as root:root with
+    // DirectoryMode, never as the socket's group. With 0750 the crew user (not root, not in root's group)
+    // could not even stat the socket, so hostd saw "no helper" and every crewmate on every real server ran
+    // unisolated as the crew user, silently. The directory must be enterable by "other"; who may CONNECT is
+    // the socket's own mode (0660, group = crew user), which stays closed. A server installed before the fix
+    // has the directory at 0750 until it is rebooted, so the install also fixes it in place.
+    #[test]
+    fn the_sockets_directory_can_be_entered_by_the_crew_user_who_is_neither_root_nor_in_its_group()
+    {
+        for unit in [socket_unit(&acct()), provision_socket_unit(&acct())] {
+            let s = section(&unit, "Socket");
+            let mode = s
+                .lines()
+                .find_map(|l| l.strip_prefix("DirectoryMode="))
+                .map(|m| u32::from_str_radix(m, 8).unwrap())
+                .expect("DirectoryMode is set");
+            assert!(
+                mode & 0o001 != 0,
+                "DirectoryMode={mode:o}: the crew user cannot reach the socket inside"
+            );
+            assert!(
+                s.contains("SocketMode=0660\n"),
+                "the socket itself stays closed: {s}"
+            );
+        }
+        assert!(
+            start_steps()
+                .iter()
+                .any(|c| c.contains("chmod") && c.contains("/run/atlas-crew")),
+            "a directory a previous install made at 0750 is opened by the install"
+        );
     }
 
     #[test]

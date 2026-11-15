@@ -1,6 +1,9 @@
 /// Tests for board.dart — mirrors apps/desktop/src/lib/crew/board.test.ts cases.
 library;
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/features/crew/board.dart';
@@ -69,6 +72,31 @@ void main() {
       expect(cols[2].cards, isEmpty);
       expect(cols[3].cards, isEmpty);
     });
+
+    test(
+      'queued card carries why it waits: the real hostd task says server busy',
+      () {
+        // Incident #296: a full server looked like a normal queue. The task comes from the
+        // fixture hostd's own serializer wrote, not a hand-written map.
+        final fixture = jsonDecode(
+          File('test/fixtures/crewmate_tasks.json').readAsStringSync(),
+        ) as Map<String, dynamic>;
+        final busy = CrewmateTask.fromJson(
+          ((fixture['tasks'] as List).firstWhere(
+            (t) => t['state'] == 'queued',
+          ) as Map).cast<String, dynamic>(),
+        );
+        final plain = _makeTask(id: 'plain', state: 'queued', ts: _kNow - 5000);
+        final cols = boardColumns([_entry(busy), _entry(plain)], _kNow);
+        final labels = {
+          for (final c in cols[0].cards) c.task.id: c.task.queuedLabel,
+        };
+        expect(labels, {
+          'task-busy': 'Queued · server busy',
+          'plain': 'Queued',
+        });
+      },
+    );
 
     test('running task goes to Working', () {
       final cols = boardColumns([_entry(_makeTask(state: 'running'))], _kNow);

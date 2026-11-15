@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, test } from "bun:test";
-import { actionLabel, elapsed, finishedLabel } from "./boardText.ts";
+import { actionLabel, elapsed, finishedLabel, queuedLabel } from "./boardText.ts";
 
 describe("elapsed", () => {
 	test("seconds, minutes, minutes with seconds", () => {
@@ -36,5 +36,13 @@ describe("actionLabel", () => {
 		expect(actionLabel(card({ kind: "add_trigger" }))).toBe("Add trigger");
 		expect(actionLabel(card({ kind: "refused", reasons: ["x"] }))).toBe("Work refused");
 		expect(actionLabel(card({ kind: "something_new" }))).toBe("Needs input");
+	});
+});
+
+describe("queuedLabel", () => {
+	test("a plain queue is Queued, a task waiting for something says what", () => {
+		expect(queuedLabel({})).toBe("Queued");
+		expect(queuedLabel({ waiting_for: undefined })).toBe("Queued");
+		expect(queuedLabel({ waiting_for: "server busy" })).toBe("Queued · server busy");
 	});
 });

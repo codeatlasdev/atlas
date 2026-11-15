@@ -3,7 +3,7 @@
     {
       "finished_at": 1761213000,
       "id": "task-done",
-      "pane": "crew:843f98ce-69c7-ca2b-fa09-6db1e1aa6070:88c409d9-0c1e-daa1-d7f9-5e7ab96c45ff",
+      "pane": "crew:crewmate-1:task-done",
       "prompt": "review the PR",
       "result": "LGTM",
       "source": "desktop",
@@ -42,6 +42,15 @@
       "title": "Writing unit tests for store",
       "ts": 1761213100,
       "tz": "America/Sao_Paulo"
+    },
+    {
+      "id": "task-busy",
+      "prompt": "run the linter",
+      "source": "desktop",
+      "state": "queued",
+      "summarized": false,
+      "ts": 1761213200,
+      "waiting_for": "server busy"
     }
   ]
 }

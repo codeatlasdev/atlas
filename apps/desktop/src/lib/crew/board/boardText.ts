@@ -12,6 +12,11 @@ export function elapsed(startedAt: number | undefined, n: number): string {
 	return rem === 0 ? `${m}m` : `${m}m ${rem}s`;
 }
 
+/** The line of a queued task: a bare "Queued", or why it is not starting ("Queued · server busy"). */
+export function queuedLabel(task: { waiting_for?: string }): string {
+	return task.waiting_for ? `Queued · ${task.waiting_for}` : "Queued";
+}
+
 /** Format a finish timestamp as a short time string. */
 export function finishedLabel(ts: number | undefined): string {
 	if (!ts) return "";

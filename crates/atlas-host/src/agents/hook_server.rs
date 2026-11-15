@@ -310,21 +310,18 @@ fn handle_set_ui(
     else {
         return err("set_ui: only a crewmate's task can be marked (no task pane)");
     };
-    let Some(mut task) = hub
-        .crew
-        .store
-        .read_tasks(crewmate_id, usize::MAX)
-        .into_iter()
-        .find(|t| t.id == task_id)
-    else {
-        return err("set_ui: task not found");
-    };
-    if !task.ui {
-        task.ui = true;
-        if let Err(e) = hub.crew.store.append_task(crewmate_id, &task) {
-            return err(&format!("set_ui: cannot record it: {e}"));
+    match hub.crew.store.update_task(crewmate_id, task_id, |t| {
+        let was = t.ui;
+        t.ui = true;
+        Ok(was)
+    }) {
+        Ok(None) => return err("set_ui: task not found"),
+        Err(e) => return err(&format!("set_ui: cannot record it: {e}")),
+        Ok(Some((task, was))) => {
+            if !was {
+                hub.broadcast(crate::crew::events::task(crewmate_id, Some(&task)));
+            }
         }
-        hub.broadcast(crate::crew::events::task(crewmate_id, Some(&task)));
     }
     ("200 OK", serde_json::json!({ "ui": true }).to_string())
 }
@@ -388,10 +385,10 @@ async fn handle_ask(
         let parts: Vec<&str> = pane_key.splitn(3, ':').collect();
         if parts.len() == 3 {
             let task_id = parts[2];
-            let tasks = hub.crew.store.read_tasks(crewmate_id, 500);
-            if let Some(mut t) = tasks.into_iter().find(|t| t.id == task_id) {
+            if let Ok(Some((t, ()))) = hub.crew.store.update_task(crewmate_id, task_id, |t| {
                 t.ask = Some(ask.clone());
-                let _ = hub.crew.store.append_task(crewmate_id, &t);
+                Ok(())
+            }) {
                 hub.broadcast(crate::crew::events::task(crewmate_id, Some(&t)));
             }
         }

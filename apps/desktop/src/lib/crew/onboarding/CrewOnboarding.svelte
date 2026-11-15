@@ -179,7 +179,12 @@
 					{:else if ob.step === "how"}
 						<CrewArtHow bind:beat={ob.howBeat} />
 					{:else if ob.step === "connect"}
-						<InstallChecklist done={ob.install.done} active={ob.install.active} failed={ob.failedPhase} />
+						<InstallChecklist
+							done={ob.install.done}
+							active={ob.install.active}
+							failed={ob.failedPhase}
+							browsers={ob.browsers}
+						/>
 					{:else if ob.step === "engine"}
 						{#if ob.signinActive && (ob.signinPtyId || ob.apiKeyMode || ob.providerOpen)}
 							<EngineSignIn {ob} />

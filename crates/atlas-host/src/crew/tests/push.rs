@@ -93,3 +93,39 @@ fn the_phones_push_register_args_parse_into_the_command() {
         other => panic!("parsed as {other:?}"),
     }
 }
+
+// Incident (#291): a `tokens.json` that failed to parse loaded as "no phones"; the next register wrote a
+// file with one entry and every other phone stopped getting notified, with nothing in any log. The
+// unreadable file is set aside, and the phone that registers next starts a clean one.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_corrupt_push_tokens_file_is_set_aside_not_overwritten() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    std::fs::create_dir_all(dir.join("push")).unwrap();
+    let torn = br#"[{"node_id":"phone:a","token":"fcm-old","platfo"#;
+    std::fs::write(dir.join("push").join("tokens.json"), torn).unwrap();
+
+    let client = daemon(&dir).await;
+    client
+        .call(
+            "push_register",
+            json!({"token": "fcm-new", "platform": "fcm"}),
+        )
+        .await
+        .unwrap();
+
+    let aside: Vec<_> = std::fs::read_dir(dir.join("push"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("tokens.json.corrupt-")
+        })
+        .collect();
+    assert_eq!(aside.len(), 1, "the unreadable file is kept aside");
+    assert_eq!(std::fs::read(aside[0].path()).unwrap(), torn);
+    let t = stored(&dir);
+    assert_eq!(t.len(), 1);
+    assert_eq!(t[0]["token"], "fcm-new");
+}

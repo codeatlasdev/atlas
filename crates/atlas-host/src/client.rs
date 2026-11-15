@@ -22,21 +22,171 @@ pub const CALL_DEADLINE: Duration = Duration::from_secs(10);
 /// The hello (and the first reply of an attach) of a daemon that is listening but not answering (#298).
 pub const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(5);
 
-/// Commands that run a subprocess, a download or a handoff: they get minutes, not [`CALL_DEADLINE`].
-const SLOW_CALL_DEADLINE: Duration = Duration::from_secs(600);
+/// What "no deadline" means for a call that runs a user's own command: a day.
+const NO_DEADLINE: Duration = Duration::from_secs(24 * 3600);
 
-/// How long `cmd` may take before hostd counts as wedged. `exec` carries its own `timeout_ms`.
+/// Commands that answer from memory or one small local read/write: [`CALL_DEADLINE`] (what an unlisted name gets;
+/// the list exists so the test can tell "decided" from "forgotten").
+#[cfg(test)]
+const QUICK: &[&str] = &[
+    "agent_approve",
+    "agent_bind",
+    "agent_interrupt",
+    "agent_pane_exited",
+    "agent_send",
+    "agent_status_all",
+    "crew_audit",
+    "crew_github_connect_resume",
+    "crew_pause",
+    "crew_resume",
+    "crew_servers",
+    "crew_settings_get",
+    "crew_settings_set",
+    "crew_telegram_link",
+    "crew_telegram_set",
+    "crew_telegram_status",
+    "crewmate_action_answer",
+    "crewmate_answer",
+    "crewmate_attachment",
+    "crewmate_attachment_put",
+    "crewmate_audit",
+    "crewmate_cancel",
+    "crewmate_create",
+    "crewmate_list",
+    "crewmate_memory",
+    "crewmate_memory_set",
+    "crewmate_routine_set",
+    "crewmate_secret_set",
+    "crewmate_task",
+    "crewmate_tasks",
+    "crewmate_triggers_set",
+    "crewmate_update",
+    "crewmate_usage",
+    "engine_limits",
+    "fs_list",
+    "fs_mkdir",
+    "fs_rename",
+    "fs_stat",
+    "fs_unwatch",
+    "fs_watch",
+    "info",
+    "lsp_apply_edit_result",
+    "lsp_cancel",
+    "lsp_change",
+    "lsp_close",
+    "lsp_log",
+    "lsp_save",
+    "lsp_status",
+    "mobile_devices",
+    "mobile_invite",
+    "mobile_invite_dismiss",
+    "mobile_invites",
+    "mobile_revoke",
+    "mobile_set_scopes",
+    "pty_attach",
+    "pty_attach_raw",
+    "pty_clear",
+    "pty_create",
+    "pty_detach",
+    "pty_info",
+    "pty_list",
+    "pty_read",
+    "pty_resize",
+    "pty_signal",
+    "pty_write",
+    "push_forget",
+    "push_register",
+    "push_unregister",
+    "shutdown",
+];
+
+/// Commands that legitimately outlast [`CALL_DEADLINE`], each with the bound its handler has plus a margin of
+/// 10 s (so the handler's own error, not this deadline, is what the caller sees). Seconds, and why:
+const SLOW: &[(&str, u64)] = &[
+    // Session files read and parsed; integrations run the agents' own `status` (10 s each).
+    ("agent_history", 30),
+    ("agent_tree", 30),
+    ("agent_integrations", 30),
+    // Worktree list (70) + the desktop's `terminal_create` (60).
+    ("agent_launch", 140),
+    // `gh auth status` and `gh --version` are 120 s each (`crew::proc`); `login_start` also downloads gh
+    // (once) and waits 30 s for the device code; `login_poll` sets up git credentials and asks again.
+    ("crew_github_status", 250),
+    ("crew_github_login_start", 360),
+    ("crew_github_login_poll", 250),
+    ("crew_github_logout", 60),
+    // Probes of the four engines run together, 20 s each; the login only spawns its terminal.
+    ("crew_engine_status", 40),
+    ("crew_engine_login", 30),
+    // A running turn is waited for 30 s, then four git calls (120 s each).
+    ("crewmate_delete", 300),
+    // Large reads and writes; a recursive remove of a tree such as node_modules.
+    ("fs_read", 30),
+    ("fs_write", 30),
+    ("fs_remove", 120),
+    // `GIT_TIMEOUT` 60 s per git call. Network (push, `gh pr create`): `NET_TIMEOUT` 120 s.
+    ("git_status", 70),
+    ("git_diff", 70),
+    ("git_stage", 70),
+    ("git_unstage", 70),
+    ("git_commit", 70),
+    ("git_push", 130),
+    ("git_pr_create", 130),
+    // Runs the user's chosen agent CLI on the diff: no bound of its own, so a quarter of an hour.
+    ("git_commit_message", 900),
+    // Server start (`init_timeout` 120 s) then the request (`request_timeout` 60 s); install downloads.
+    ("lsp_open", 130),
+    ("lsp_restart", 130),
+    ("lsp_request", 190),
+    ("lsp_install", 600),
+    ("lsp_uninstall", 30),
+    ("lsp_catalog", 30),
+    // Binds the iroh endpoint.
+    ("mobile_pair_start", 30),
+    // `wait_exit` 30 s + 10 s; `pty_open` lists worktrees first (70 s).
+    ("pty_kill", 60),
+    ("pty_open", 80),
+    // atlas tool calls (status, logs) per project; `service` starts and stops a stack and waits for it.
+    ("project_list", 120),
+    ("project_detail", 120),
+    ("project_logs", 60),
+    ("project_service", 600),
+    // Git calls of 60 s; `create` runs the project's setup (`setup_timeout`, 600 s by default, per project).
+    ("worktree_list", 70),
+    ("worktree_create", 3600),
+    ("worktree_remove", 300),
+    // Accept 20 s + ack 20 s of the handoff, plus spawning the new daemon.
+    ("upgrade", 60),
+];
+
+/// Commands whose deadline depends on the call (see [`deadline_for`]) or that have none.
+#[cfg(test)]
+const SPECIAL: &[&str] = &[
+    // The user's own command, as long as it runs.
+    "project_action",
+    // The command's own `timeout_ms`.
+    "exec",
+    // The remote crew server's command: its own deadline, plus the 20 s the relay waits to connect.
+    "crew_call",
+];
+
+/// How long `cmd` may take before hostd counts as wedged. Every hostd command is classified above; the test
+/// `every_hostd_command_has_a_deadline_class` fails for a new one that is not, so a long command cannot
+/// silently get [`CALL_DEADLINE`]. An unknown name (a newer daemon's command) gets the plain deadline.
 pub fn deadline_for(cmd: &str, args: &Value) -> Duration {
     match cmd {
+        "project_action" => NO_DEADLINE,
         "exec" => {
             Duration::from_millis(args["timeout_ms"].as_u64().unwrap_or(60_000)) + CALL_DEADLINE
         }
-        "upgrade" => Duration::from_secs(60),
-        "lsp_install" | "lsp_uninstall" | "worktree_create" | "worktree_remove"
-        | "project_action" | "git_commit" | "git_commit_message" | "git_push" | "git_pr_create"
-        | "crew_engine_login" | "crew_call" | "crewmate_create" | "agent_launch"
-        | "engine_limits" => SLOW_CALL_DEADLINE,
-        _ => CALL_DEADLINE,
+        "crew_call" => {
+            deadline_for(args["cmd"].as_str().unwrap_or_default(), &args["args"])
+                + Duration::from_secs(30)
+        }
+        _ => match SLOW.iter().find(|(c, _)| *c == cmd) {
+            Some((_, secs)) => Duration::from_secs(*secs),
+            None => CALL_DEADLINE,
+        },
     }
 }
 
@@ -509,16 +659,58 @@ mod tests {
         assert!(super::HANDSHAKE_DEADLINE <= Duration::from_secs(5));
     }
 
+    // #298: a command added to hostd without a decision here would silently get the 10 s deadline and
+    // fail while it is working. The commands are read from the wire fixture, which its own golden test
+    // keeps equal to the real `HostCmd`.
     #[test]
-    fn long_commands_get_longer_deadlines_than_a_plain_call() {
-        let plain = deadline_for("info", &json!({}));
-        assert_eq!(plain, super::CALL_DEADLINE);
-        assert!(deadline_for("upgrade", &json!({})) > plain);
-        assert!(deadline_for("lsp_install", &json!({})) > plain);
+    fn every_hostd_command_has_a_deadline_class() {
+        let fixture: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(crate::protocol_golden::fixture("commands.json")).unwrap(),
+        )
+        .unwrap();
+        let wire: std::collections::BTreeSet<&str> = fixture["commands"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let classes: Vec<&str> = super::QUICK
+            .iter()
+            .copied()
+            .chain(super::SLOW.iter().map(|(c, _)| *c))
+            .chain(super::SPECIAL.iter().copied())
+            .collect();
+        let known: std::collections::BTreeSet<&str> = classes.iter().copied().collect();
+        assert_eq!(known.len(), classes.len(), "a command is classified twice");
+        let unclassified: Vec<_> = wire.difference(&known).collect();
+        assert!(
+            unclassified.is_empty(),
+            "classify these in client.rs (QUICK, SLOW or SPECIAL): {unclassified:?}"
+        );
+        let stale: Vec<_> = known.difference(&wire).collect();
+        assert!(stale.is_empty(), "no longer hostd commands: {stale:?}");
+    }
+
+    #[test]
+    fn deadlines_follow_the_class_and_the_call() {
+        let none = json!({});
+        assert_eq!(deadline_for("info", &none), super::CALL_DEADLINE);
+        assert_eq!(deadline_for("upgrade", &none), Duration::from_secs(60));
+        assert_eq!(deadline_for("lsp_install", &none), Duration::from_secs(600));
+        assert!(deadline_for("project_action", &none) >= Duration::from_secs(3600));
         // `exec` outlives its own timeout by the plain deadline, so hostd's answer is not raced.
         assert_eq!(
             deadline_for("exec", &json!({"timeout_ms": 120_000})),
             Duration::from_secs(130)
+        );
+        // A relayed command gets the remote command's deadline plus the relay's connect wait.
+        assert_eq!(
+            deadline_for("crew_call", &json!({"cmd": "git_push", "args": {}})),
+            Duration::from_secs(160)
+        );
+        assert_eq!(
+            deadline_for("crew_call", &json!({"cmd": "crewmate_list"})),
+            Duration::from_secs(40)
         );
     }
 

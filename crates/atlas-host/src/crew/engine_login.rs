@@ -182,6 +182,26 @@ pub(crate) fn set_test_path(dir: Option<std::path::PathBuf>) {
     *TEST_PATH.lock() = dir;
 }
 
+/// [`set_test_path`] for the length of a test: the override ends when this is dropped, so a test that panics
+/// (or just ends) never leaves its fake engines on the PATH of the next one.
+#[cfg(all(test, unix))]
+pub(crate) struct TestPath;
+
+#[cfg(all(test, unix))]
+impl TestPath {
+    pub(crate) fn set(dir: std::path::PathBuf) -> Self {
+        set_test_path(Some(dir));
+        Self
+    }
+}
+
+#[cfg(all(test, unix))]
+impl Drop for TestPath {
+    fn drop(&mut self) {
+        set_test_path(None);
+    }
+}
+
 /// `CrewEngineLogin`: a terminal that runs only `engine`'s login command, as the crew user (hostd's own user).
 /// The reply is `{engine, pty}`; the phone attaches with the terminal screen and types the code or the answers
 /// itself. Audited as `engine_login_started`: who asked and for which engine, never what is typed.

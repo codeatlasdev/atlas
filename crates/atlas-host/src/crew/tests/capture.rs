@@ -269,3 +269,81 @@ async fn a_dom_capture_keeps_each_dom_file_next_to_its_png_and_lists_it() {
     clear_runner();
     assert!(v["shots"][0].get("dom").is_none(), "{v}");
 }
+
+/// A fake runner that writes a findings file per cell, the way the real one does for `checks: true`:
+/// `findings` is the JSON text of every file.
+fn findings_runner(dir: &Path, findings: &str) -> std::path::PathBuf {
+    let mut body = String::new();
+    let mut entries = vec![];
+    for e in ["chromium", "webkit"] {
+        let key = format!("{e}-390px-dark");
+        body.push_str(&format!(
+            "printf '\\211PNG\\r\\n\\032\\n{key}' > \"$OUT/{key}.png\"\n"
+        ));
+        body.push_str(&format!(
+            "cat > \"$OUT/{key}.findings.json\" <<'EOF'\n{findings}\nEOF\n"
+        ));
+        entries.push(format!(
+            "{{\"engine\":\"{e}\",\"width\":390,\"theme\":\"dark\",\"path\":\"'\"$OUT\"'/{key}.png\",\"findings\":\"'\"$OUT\"'/{key}.findings.json\"}}"
+        ));
+    }
+    body.push_str(&format!("printf '{{\"shots\":[{}]}}'\n", entries.join(",")));
+    fake_runner(dir, &body)
+}
+
+// `checks: true` asks the runner for the detectors' findings. The agent gets them inline (so it does
+// not need a second read) and the file is kept next to the DOM reports, like they are.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_checks_capture_answers_with_the_findings_and_keeps_their_files() {
+    let _g = capture::TEST_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("hostd");
+    let planted = r##"[{"detector":"gutter","severity":"error","message":"4.0 px from the left edge","selector":"#hero p"}]"##;
+    use_runner(
+        &findings_runner(tmp.path(), planted),
+        Duration::from_secs(20),
+    );
+    let client = super::fixture::daemon(&dir).await;
+    let id = super::fixture::create_crewmate(&client, "CapChecks").await;
+    let pane = crate::crew::pane::key(&id, &log_task(&dir, &id, "task6"));
+
+    let (status, v) = post_capture(
+        &dir,
+        &id,
+        &pane,
+        json!({"url": "http://localhost:3000/", "widths": [390], "themes": ["dark"], "checks": true}),
+    )
+    .await;
+    assert!(status.contains("200"), "{status} {v}");
+    let kept = dir.join("crew").join(&id).join("dom").join("task6");
+    for s in v["shots"].as_array().unwrap() {
+        assert_eq!(s["findings"][0]["detector"], "gutter", "{s}");
+        assert_eq!(s["findings"][0]["selector"], "#hero p", "{s}");
+        let file = s["findings_file"].as_str().unwrap();
+        assert!(file.ends_with(".findings.json"), "{file}");
+        assert!(kept.join(file).is_file(), "{file} is kept under the task");
+        assert!(s["findings_path"].as_str().unwrap().ends_with(file), "{s}");
+    }
+
+    // A findings file that is not a list is shown as an error, never as "no findings".
+    use_runner(
+        &findings_runner(tmp.path(), r#"{"oops": true}"#),
+        Duration::from_secs(20),
+    );
+    let (_, v) = post_capture(
+        &dir,
+        &id,
+        &pane,
+        json!({"url": "http://localhost:3000/", "widths": [390], "themes": ["dark"], "checks": true}),
+    )
+    .await;
+    clear_runner();
+    let f = &v["shots"][0]["findings"];
+    assert!(
+        f["error"]
+            .as_str()
+            .unwrap()
+            .contains("not a list of findings"),
+        "{v}"
+    );
+}

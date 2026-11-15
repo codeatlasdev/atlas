@@ -22,6 +22,13 @@ pub const CALL_DEADLINE: Duration = Duration::from_secs(10);
 /// The hello (and the first reply of an attach) of a daemon that is listening but not answering (#298).
 pub const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(5);
 
+/// While a call whose deadline is above [`CALL_DEADLINE`] waits, the client asks hostd `info` this often...
+const PROBE_EVERY: Duration = Duration::from_secs(10);
+
+/// ...and fails the call when that probe is not answered within this long: hostd serves each request of a
+/// connection on its own task, so a long handler never delays `info`, and silence means a wedged daemon.
+const PROBE_DEADLINE: Duration = Duration::from_secs(5);
+
 /// What "no deadline" means for a call that runs a user's own command: a day.
 const NO_DEADLINE: Duration = Duration::from_secs(24 * 3600);
 
@@ -209,6 +216,8 @@ impl std::error::Error for Unanswered {}
 /// A pushed event: `{"ev": "...", ...}`.
 pub type HostEvent = Arc<Value>;
 
+type ReplyRx = oneshot::Receiver<Result<Value, String>>;
+
 /// Calls waiting for their reply. `None` once the connection dropped: the reader closes it as it
 /// exits, so a call can never register after the last moment anyone would answer it (#226).
 type Pending = Arc<Mutex<Option<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>>;
@@ -222,6 +231,8 @@ pub struct HostClient {
     closed: Arc<tokio::sync::Notify>,
     /// `hostd.log` next to the socket, named in the error of a call that got no answer.
     log: Arc<Path>,
+    /// `(interval, deadline)` of the liveness probe of long calls; a field so a test can shorten it.
+    probe: (Duration, Duration),
 }
 
 impl HostClient {
@@ -303,6 +314,7 @@ impl HostClient {
             events,
             closed,
             log,
+            probe: (PROBE_EVERY, PROBE_DEADLINE),
         })
     }
 
@@ -312,9 +324,8 @@ impl HostClient {
         self.call_within(cmd, args, deadline).await
     }
 
-    /// [`call`](Self::call) with an explicit deadline. A daemon that never answers (wedged, or
-    /// the reply lost) fails the call and frees its `pending` slot instead of hanging the caller (#298).
-    pub async fn call_within(&self, cmd: &str, args: Value, deadline: Duration) -> Result<Value> {
+    /// Register a call and send it: its id and the receiver of its reply. `Err` when the connection is gone.
+    fn send(&self, cmd: &str, args: Value) -> Result<(u64, ReplyRx)> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (otx, orx) = oneshot::channel();
         match self.pending.lock().as_mut() {
@@ -323,19 +334,67 @@ impl HostClient {
         };
         let line = json!({"id": id, "cmd": cmd, "args": args}).to_string();
         if self.tx.force(line).is_err() {
-            if let Some(m) = self.pending.lock().as_mut() {
-                m.remove(&id);
-            }
+            self.forget(id);
             return Err(anyhow!("hostd disconnected"));
         }
-        match tokio::time::timeout(deadline, orx).await {
-            Ok(Ok(Ok(v))) => Ok(v),
-            Ok(Ok(Err(e))) => Err(anyhow!(e)),
-            Ok(Err(_)) => Err(anyhow!("hostd disconnected")),
-            Err(_) => {
-                if let Some(m) = self.pending.lock().as_mut() {
-                    m.remove(&id);
+        Ok((id, orx))
+    }
+
+    /// Drop the pending slot of a call nobody waits for any more.
+    fn forget(&self, id: u64) {
+        if let Some(m) = self.pending.lock().as_mut() {
+            m.remove(&id);
+        }
+    }
+
+    /// Did hostd fail to answer an `info` within the probe deadline? A dropped connection is not "unanswered":
+    /// the call being waited for reports that itself.
+    async fn unanswered_probe(&self) -> bool {
+        let Ok((id, rx)) = self.send("info", json!({})) else {
+            return false;
+        };
+        let silent = tokio::time::timeout(self.probe.1, rx).await.is_err();
+        if silent {
+            self.forget(id);
+        }
+        silent
+    }
+
+    /// [`call`](Self::call) with an explicit deadline. A daemon that never answers (wedged, or
+    /// the reply lost) fails the call and frees its `pending` slot instead of hanging the caller (#298).
+    ///
+    /// A call allowed more than [`CALL_DEADLINE`] also probes hostd while it waits, so a daemon that wedges
+    /// mid-call is noticed within one probe interval and deadline, not after a quarter of an hour (or a day).
+    pub async fn call_within(&self, cmd: &str, args: Value, deadline: Duration) -> Result<Value> {
+        let (id, mut orx) = self.send(cmd, args)?;
+        let long = deadline > CALL_DEADLINE;
+        let wait = async {
+            loop {
+                tokio::select! {
+                    r = &mut orx => return Some(r),
+                    () = tokio::time::sleep(self.probe.0), if long => {
+                        if self.unanswered_probe().await {
+                            return None;
+                        }
+                    }
                 }
+            }
+        };
+        match tokio::time::timeout(deadline, wait).await {
+            Ok(Some(Ok(Ok(v)))) => Ok(v),
+            Ok(Some(Ok(Err(e)))) => Err(anyhow!(e)),
+            Ok(Some(Err(_))) => Err(anyhow!("hostd disconnected")),
+            Ok(None) => {
+                self.forget(id);
+                Err(Unanswered(format!(
+                    "hostd stopped answering while `{cmd}` was running: no reply to `info` within {}s (see {})",
+                    self.probe.1.as_secs(),
+                    self.log.display()
+                ))
+                .into())
+            }
+            Err(_) => {
+                self.forget(id);
                 Err(Unanswered(format!(
                     "hostd did not answer `{cmd}` within {}s (see {})",
                     deadline.as_secs(),
@@ -635,6 +694,71 @@ mod tests {
         assert!(e.to_string().contains("hostd.log") && e.to_string().contains("`info`"));
         assert!(e.downcast_ref::<super::Unanswered>().is_some());
         assert!(c.pending.lock().as_ref().unwrap().is_empty());
+    }
+
+    // #298 follow-up: a long call (a project action may run for hours) must not keep a wedged daemon hidden
+    // until its class deadline. The fake answers hello, accepts the call and then goes silent for everything.
+    #[tokio::test]
+    async fn a_long_call_fails_at_the_first_unanswered_probe_not_at_its_class_deadline() {
+        let (_tmp, mut c, _h) = fake_hostd(1).await;
+        c.probe = (Duration::from_millis(200), Duration::from_millis(200));
+        let t = std::time::Instant::now();
+        let r = tokio::time::timeout(
+            Duration::from_secs(5),
+            c.call_within("project_action", json!({}), Duration::from_secs(3600)),
+        )
+        .await
+        .expect("a probe must end the call long before its deadline");
+        let e = r.unwrap_err();
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        assert!(e.downcast_ref::<super::Unanswered>().is_some());
+        assert!(e.to_string().contains("hostd.log") && e.to_string().contains("project_action"));
+        assert!(c.pending.lock().as_ref().unwrap().is_empty());
+    }
+
+    // The probe must not cry wolf: a long call whose daemon keeps answering `info` runs to its reply.
+    #[tokio::test]
+    async fn a_long_call_on_a_daemon_that_answers_probes_waits_for_its_reply() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock = tmp.path().join("h.sock");
+        let listener = ipc::Listener::bind(&sock).unwrap();
+        tokio::spawn(async move {
+            let (r, mut w) = ipc::split(listener.accept().await.unwrap());
+            let mut r = BufReader::new(r).lines();
+            r.next_line().await.unwrap();
+            w.write_all(b"{\"ok\":true}\n").await.unwrap();
+            let mut slow_id = None;
+            let mut probes = 0;
+            while let Ok(Some(line)) = r.next_line().await {
+                let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+                if v["cmd"] == "info" {
+                    probes += 1;
+                    w.write_all(
+                        format!("{{\"id\":{},\"ok\":true,\"data\":{{}}}}\n", v["id"]).as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+                    if probes == 3 {
+                        let id = slow_id.clone().unwrap();
+                        w.write_all(
+                            format!("{{\"id\":{id},\"ok\":true,\"data\":{{\"done\":1}}}}\n")
+                                .as_bytes(),
+                        )
+                        .await
+                        .unwrap();
+                    }
+                } else {
+                    slow_id = Some(v["id"].clone());
+                }
+            }
+        });
+        let mut c = HostClient::connect(&sock, "t", "test").await.unwrap();
+        c.probe = (Duration::from_millis(100), Duration::from_millis(500));
+        let v = c
+            .call_within("project_action", json!({}), Duration::from_secs(3600))
+            .await
+            .unwrap();
+        assert_eq!(v["done"], 1);
     }
 
     // Regression: #298. A listener that accepts and never says hello hung `connect` (and the

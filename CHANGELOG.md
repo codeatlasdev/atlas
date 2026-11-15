@@ -8,6 +8,7 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ### Fixed
 
+- **Atlas Crew: a busy crewmate opens fast after a restart, and usage history is no longer thrown away ([#295](https://github.com/codeatlasdev/atlas/issues/295)).** The first read of a crewmate after hostd started parsed its whole task log; the log's index (order and latest state of every task) is now saved next to it as `tasks.idx`, so only what was appended since is read, and a missing, damaged or out-of-date index is rebuilt from the log. And `usage.jsonl` was cut to its newest half past 1 MiB, losing every older total: it is now rotated into `usage-<date>.jsonl.gz` files (the usage view sums them all, 400 per crewmate kept), and `atlas crew export` / `import` carry them, so a backup keeps the history.
 - **Atlas Crew: a hung `gh` call no longer holds a task forever ([#296](https://github.com/codeatlasdev/atlas/issues/296)).** `git` got a 120 s deadline in 1.5.0-alpha.26 but the crew's `gh` calls did not: a GitHub API call (a comment, a pull request) or `gh auth status` that never returned (a stalled network, a credential prompt) held the task that made it, and the Settings GitHub row, forever. Every bounded `gh` call now goes through the same deadline and kills its whole process tree; `gh auth login` stays interactive. A missing `git` or `gh` now says it is not on `PATH`.
 
 ## [1.5.0-alpha.26] — 2026-11-15

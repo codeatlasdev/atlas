@@ -153,6 +153,8 @@ pub struct Diagnostics {
     pub hostd_log: String,
     /// Last lines of the app log (panics, host incidents).
     pub app_log: String,
+    /// Last lines of `stderr.log`: what GTK, WebKit and the web processes printed (#273).
+    pub stderr_log: String,
     pub incidents: Vec<Incident>,
     /// The newest `atlas` crash report (CLI, hostd or app panic): version, message and location,
     /// never the backtrace or the arguments. `None` when there is none.
@@ -588,6 +590,7 @@ pub fn build_with(base: &Path, crashes: &Path, versions: Versions) -> Diagnostic
         install: Install::gather(),
         hostd_log: tail(&atlas_host::paths::log(base)),
         app_log: tail(&app_log_path(base)),
+        stderr_log: tail(&crate::stderr_log::path(base)),
         incidents: incidents(),
         last_crash: last_crash(crashes),
     }
@@ -926,6 +929,11 @@ plain line, nothing to hide: terminal 3 exited with code 0";
         std::fs::write(
             app_log_path(dir.path()),
             "1791943000 unreachable: socket in use\n",
+        )
+        .unwrap();
+        std::fs::write(
+            crate::stderr_log::path(dir.path()),
+            "Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...\n",
         )
         .unwrap();
         let mut d = build(

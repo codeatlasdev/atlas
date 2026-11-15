@@ -6,6 +6,9 @@ All notable changes to Atlas (CLI, TUI, MCP server and Atlas Desktop). Versions 
 
 ## [Unreleased]
 
+### Added
+
+- **Atlas Mobile: open a new terminal from the phone ([#53](https://github.com/codeatlasdev/atlas/issues/53)).** You could see and type into existing terminals but not start one, so with no computer at hand you could not run a command. A project's page (Agents tab) now has **New terminal** and so does the computer's page (the Projects header): it starts your login shell, the same one a desktop tab gets, in the project or in one of its worktrees; a crew server paired directly has no projects, so there it opens in the crew home. New hostd command `pty_open {project?, worktree?, crewmate?}` (scope `act`; additive, no `PROTO` bump): it takes registry ids and never a path, so an arbitrary folder or a `..` cannot even be named (`pty_create` stays refused), a worktree must belong to that project, and on a crew server `crewmate` opens that crewmate's work tree as the crew user. Typing stays behind `term_write` and Face ID, and the mobile audit log records `pty_created {node_id, project, cwd}`, never keystrokes. The new terminal is an ordinary hostd pty (no pane key), so the desktop lists it too. A crew server reached through a Mac is not offered it (terminals are never relayed, same as the engine sign-in).
 ### Fixed
 
 - **Atlas Mobile: small text is readable again, and the phone's colours can no longer drift from the desktop's.** Timestamps, captions and labels used the "disabled" grey, which is 4.1:1 on the card colour (the minimum for small text is 4.5:1); they now use the secondary text colour, 9.9:1. That colour had also drifted from the desktop theme (`#9AA7CC` against the desktop's `#B9C4EB`); it now matches, and a test reads `apps/desktop/src/lib/themes/atlas.json` and fails when any phone colour differs, and when text falls under 4.5:1 on any surface. The disabled grey stays for icons, dots, placeholders and disabled controls.

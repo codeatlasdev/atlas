@@ -194,6 +194,18 @@ pub enum HostCmd {
     PtyKill {
         pty: String,
     },
+    /// A shell (the user's login shell, like a desktop tab) in a registered folder of THIS computer, for a phone
+    /// that has no `pty_create`: `project` (an id of `project_list`) and optionally one of its `worktree` ids.
+    /// On a crew server: no argument = the crew home, `crewmate` = that crewmate's work tree. Ids only, never a
+    /// path: `{pty}`; the phone attaches with `pty_attach`.
+    PtyOpen {
+        #[serde(default)]
+        project: Option<String>,
+        #[serde(default)]
+        worktree: Option<String>,
+        #[serde(default)]
+        crewmate: Option<String>,
+    },
     PtyList {},
     PtyInfo {
         pty: String,

@@ -88,16 +88,16 @@ collect() {
   srv_sh "id atlas-crew; ls -ldn /run/atlas-crew /run/atlas-crew/* /var/lib/atlas-cm /usr/local/lib/atlas-crew/engines/*; sudo -u atlas-crew stat /run/atlas-crew/spawn.sock" >"$OUT/isolation.txt" 2>&1 || true
   # TEMPORARY-DEBUG
   {
-    base="-p User=root -p NoNewPrivileges=yes -p PrivateTmp=yes -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectControlGroups=yes -p RestrictSUIDSGID=yes"
-    caps="-p CapabilityBoundingSet='CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_SETUID CAP_SETGID CAP_KILL CAP_NET_ADMIN'"
-    fs="-p ProtectSystem=full -p ReadWritePaths='/etc /var/lib/atlas-cm /var/log /run' -p ProtectHome=yes"
-    misc="-p RestrictAddressFamilies='AF_UNIX AF_NETLINK' -p LockPersonality=yes -p MemoryDenyWriteExecute=yes"
+    srv_sh "apt-get install -y -qq strace >/dev/null 2>&1; which strace"
     n=0
-    for v in "none:" "base:$base" "caps:$base $caps" "fs:$base $fs" "misc:$base $misc" "all:$base $caps $fs $misc"; do
+    for v in "ps:-p ProtectSystem=full" "rw:-p ReadWritePaths=/etc" "home:-p ProtectHome=yes" "ps+rw:-p ProtectSystem=full -p ReadWritePaths=/etc" "ps+rwall:-p ProtectSystem=full -p ReadWritePaths='/etc /var/lib/atlas-cm /var/log /run'" "ps+rw+dash:-p ProtectSystem=full -p ReadWritePaths='/etc /var/log /run'" "ps+rwcm:-p ProtectSystem=full -p ReadWritePaths='/etc /var/lib/atlas-cm'"; do
       n=$((n+1)); name=${v%%:*}; props=${v#*:}
       echo "--- $name"
-      srv_sh "systemd-run --wait --collect -P $props useradd --system --no-create-home --shell /usr/sbin/nologin dbg$n 2>&1; echo rc=\$?; ls -la /etc/passwd* /etc/.pwd.lock 2>&1 | head; sysctl fs.protected_hardlinks"
+      srv_sh "systemd-run --wait --collect -P -p User=root $props useradd --system --no-create-home --shell /usr/sbin/nologin dbg$n 2>&1 | grep -v '^Running\|^Service\|^CPU\|^Memory\|^Main\|^Finished'; echo rc=\$?"
     done
+    echo "--- strace of the failing variant"
+    srv_sh "rm -f /tmp/s.txt; systemd-run --wait --collect -P -p User=root -p ProtectSystem=full -p ReadWritePaths='/etc /var/lib/atlas-cm /var/log /run' -p ProtectHome=yes strace -f -o /tmp/s.txt useradd --system --no-create-home dbgx 2>&1 | tail -3; grep -n 'passwd\|lock\|EPERM\|EROFS\|EACCES' /tmp/s.txt | head -30"
+    srv_sh "findmnt -o TARGET,SOURCE,FSTYPE,OPTIONS /etc /etc/hosts /etc/passwd 2>&1; mount | grep -c ' /etc'"
   } >"$OUT/useradd-debug.txt" 2>&1 || true
   srv_sh "nft list ruleset; cat /etc/atlas-crew/egress.nft" >"$OUT/nft.txt" 2>&1 || true
   srv_sh "tar -C $HOME_DIR/.atlas -cf - crew" 2>/dev/null | tar -C "$OUT" -xf - 2>/dev/null || true

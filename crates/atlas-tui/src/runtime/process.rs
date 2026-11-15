@@ -153,8 +153,9 @@ pub fn descendants(root: i32, table: &[ProcEntry]) -> Vec<ProcEntry> {
     out
 }
 
-/// A whole task tree to kill: the root's process group plus every descendant
-/// (pid and pgid), snapshotted once while the tree is still connected.
+/// A whole task tree to kill, snapshotted once while the tree is still connected. A live root
+/// (one we spawned this run) brings its process group plus every descendant's pid and pgid; a
+/// stale root brings exact pids only.
 #[derive(Default, Debug)]
 pub struct KillTree {
     pids: Vec<i32>,
@@ -162,9 +163,9 @@ pub struct KillTree {
 }
 
 impl KillTree {
-    /// Collect the tree under `root` (whose group is `root_pgid`, or `None` for a
-    /// stale root whose group we do not trust). Never includes pid <= 1, ourselves
-    /// or our ancestors, nor the pgid of any of those.
+    /// Collect the tree under `root` (whose group is `root_pgid`, or `None` for a stale root
+    /// from a previous run: then every member is an exact pid and no group is ever signalled).
+    /// Never includes pid <= 1, ourselves, our ancestors or our own process group.
     pub fn collect(root: i32, root_pgid: Option<i32>, table: &[ProcEntry]) -> Self {
         let me = std::process::id() as i32;
         Self::collect_as(
@@ -173,6 +174,7 @@ impl KillTree {
             table,
             me,
             atlas_core::sys::parent_pid() as i32,
+            own_pgid(),
         )
     }
 
@@ -185,15 +187,20 @@ impl KillTree {
         table: &[ProcEntry],
         me: i32,
         parent: i32,
+        my_pgid: i32,
     ) -> Self {
-        let protected = protected_pids(table, me, parent);
+        let protected = protected_pids(table, me, parent, my_pgid);
         let mut tree = KillTree::default();
         if let Some(g) = root_pgid {
             tree.add_pgid(g, &protected);
         }
         tree.add_pid(root, &protected);
         for e in descendants(root, table) {
-            tree.add_pgid(e.pgid, &protected);
+            // A stale root's descendants are signalled by exact pid only: their group ids are
+            // as untrusted as the root's (#303).
+            if root_pgid.is_some() {
+                tree.add_pgid(e.pgid, &protected);
+            }
             tree.add_pid(e.pid, &protected);
         }
         tree
@@ -220,17 +227,22 @@ impl KillTree {
         self.pids.is_empty() && self.pgids.is_empty()
     }
 
+    /// The raw `kill(2)` targets in signal order: a group as `-pgid`, then every exact pid.
+    /// Only the live path (`collect` with a root group) yields negatives.
+    #[cfg(any(unix, test))]
+    fn targets(&self) -> Vec<i32> {
+        let groups = self.pgids.iter().map(|&g| -g);
+        groups.chain(self.pids.iter().copied()).collect()
+    }
+
     #[cfg(unix)]
     pub fn signal(&self, stop: Stop) {
         let sig = match stop {
             Stop::Term => Signal::SIGTERM,
             Stop::Kill => Signal::SIGKILL,
         };
-        for &g in &self.pgids {
-            let _ = signal::kill(Pid::from_raw(-g), sig);
-        }
-        for &p in &self.pids {
-            let _ = signal::kill(Pid::from_raw(p), sig);
+        for t in self.targets() {
+            let _ = signal::kill(Pid::from_raw(t), sig);
         }
     }
 
@@ -263,9 +275,18 @@ impl KillTree {
     }
 }
 
-/// Pids that must never be signalled: init, ourselves (`me`), our ancestors in `table`, and our
-/// OS parent (`parent`, protected even when `ps` is unavailable or empty).
-fn protected_pids(table: &[ProcEntry], me: i32, parent: i32) -> Vec<i32> {
+/// Our own process group (0 where there are none, i.e. Windows).
+fn own_pgid() -> i32 {
+    #[cfg(unix)]
+    return nix::unistd::getpgrp().as_raw();
+    #[cfg(not(unix))]
+    0
+}
+
+/// Pids and group ids that must never be signalled: init, ourselves (`me`), our ancestors in
+/// `table`, our OS parent (`parent`, protected even when `ps` is unavailable or empty) and our own
+/// process group (`my_pgid`).
+fn protected_pids(table: &[ProcEntry], me: i32, parent: i32, my_pgid: i32) -> Vec<i32> {
     let parents: HashMap<i32, i32> = table.iter().map(|e| (e.pid, e.ppid)).collect();
     let mut out = vec![1, me];
     let mut p = me;
@@ -277,6 +298,7 @@ fn protected_pids(table: &[ProcEntry], me: i32, parent: i32) -> Vec<i32> {
         p = pp;
     }
     out.push(parent);
+    out.push(my_pgid);
     out
 }
 
@@ -328,8 +350,8 @@ pub async fn kill_gracefully(child: &mut tokio::process::Child, grace: Duration)
 }
 
 /// Kill a verified stale root (from a previous run's `.pids`) and all its
-/// descendants. Its process group is not trusted (pgid may have been recycled),
-/// so only exact pids plus descendants' own groups are signalled.
+/// descendants. No process group is trusted (a recycled pgid can be ours), so only exact
+/// positive pids are signalled.
 pub async fn kill_stale_tree(roots: &[i32], grace: Duration) {
     let table = process_table_async().await;
     let mut tree = KillTree::default();
@@ -531,12 +553,12 @@ mod tests {
             e(8000, 101, 8000),
             e(102, 100, 500), // child sharing our ancestor's group
         ];
-        let tree = KillTree::collect_as(100, Some(100), &table, me, parent);
+        let tree = KillTree::collect_as(100, Some(100), &table, me, parent, 500);
         assert!(tree.pgids.contains(&100) && tree.pgids.contains(&101));
         assert!(tree.pids.contains(&101) && tree.pids.contains(&8000));
         assert!(!tree.pgids.contains(&500), "never our ancestor's group");
         assert!(!tree.pids.contains(&1) && !tree.pgids.contains(&1));
-        let init_child = KillTree::collect_as(1, None, &table, me, parent);
+        let init_child = KillTree::collect_as(1, None, &table, me, parent, 500);
         assert!(!init_child.pids.contains(&1));
     }
 
@@ -545,13 +567,65 @@ mod tests {
     #[test]
     fn the_os_parent_is_protected_even_when_the_table_omits_it() {
         let table = [e(100, 1, 100), e(101, 100, 101), e(4242, 101, 4242)];
-        let tree = KillTree::collect_as(100, Some(100), &table, 7000, 4242);
+        let tree = KillTree::collect_as(100, Some(100), &table, 7000, 4242, 500);
         assert!(tree.pids.contains(&101));
         assert!(
             !tree.pids.contains(&4242),
             "our parent, though under the root here"
         );
         assert!(!tree.pgids.contains(&4242));
+    }
+
+    // #303: a descendant that shares our own process group (and whose group id is not any
+    // ancestor's pid in the table) must not put that group in the tree: `kill(-pgid)` would take
+    // atlas down with it.
+    #[test]
+    fn a_descendant_in_our_process_group_never_enters_the_tree() {
+        let (me, parent, my_pgid) = (7000, 500, 6000);
+        let table = [
+            e(500, 1, 500),
+            e(me, 500, my_pgid),
+            e(100, 1, 100),
+            e(101, 100, my_pgid), // shares our group
+            e(102, 101, 102),
+        ];
+        let live = KillTree::collect_as(100, Some(100), &table, me, parent, my_pgid);
+        assert!(!live.pgids.contains(&my_pgid), "live tree: {live:?}");
+        assert!(
+            live.pgids.contains(&102),
+            "other groups are still signalled"
+        );
+        assert!(!live.targets().contains(&-my_pgid));
+        let stale = KillTree::collect_as(100, None, &table, me, parent, my_pgid);
+        assert!(
+            !stale.targets().contains(&-my_pgid),
+            "stale tree: {stale:?}"
+        );
+    }
+
+    // #303: a verified root from a previous run's `.pids` is killed by exact pids only: the
+    // signal list holds no negative number, so no process group is ever addressed (a recycled
+    // group id can be ours; AGENTS.md "Orphan kill uses only the .pids file and exact PIDs").
+    #[test]
+    fn the_orphan_sweep_signals_exact_pids_only() {
+        let table = [
+            e(500, 1, 500),
+            e(7000, 500, 500),
+            e(100, 1, 100),
+            e(101, 100, 100),
+            e(102, 101, 102), // turbo-style task in a new group
+            e(103, 102, 103),
+            e(200, 1, 200), // another root
+            e(201, 200, 201),
+        ];
+        let mut tree = KillTree::default();
+        for root in [100, 200] {
+            tree.merge(KillTree::collect_as(root, None, &table, 7000, 500, 500));
+        }
+        let mut got = tree.targets();
+        assert!(got.iter().all(|&t| t > 1), "signals: {got:?}");
+        got.sort();
+        assert_eq!(got, vec![100, 101, 102, 103, 200, 201]);
     }
 
     #[cfg(unix)]

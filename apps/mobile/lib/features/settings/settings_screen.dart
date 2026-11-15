@@ -8,6 +8,7 @@ import 'package:atlas_mobile/core/demo/demo_computer.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/push/push_provider.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/core/ui/components.dart';
 import 'package:atlas_mobile/core/ui/floating_tab_bar.dart';
 import 'package:atlas_mobile/features/home/home_screen.dart';
@@ -123,10 +124,7 @@ class SettingsScreen extends ConsumerWidget {
             // One line on why notifications work or not; no row when there is nothing to say
             // (a build without Firebase config, or no computer connected yet). It opens its room
             // downward when the answer arrives, so nothing above it moves.
-            AnimatedSize(
-              duration: Motion.reduced(context) ? Duration.zero : Motion.normal,
-              curve: Motion.ease,
-              alignment: Alignment.topCenter,
+            MotionSize(
               child: switch (ref.watch(pushRegistrationProvider).value) {
                 final status? => ListTile(
                   contentPadding: EdgeInsets.zero,

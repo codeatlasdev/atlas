@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:atlas_mobile/core/protocol/crew_models.dart';
 import 'package:atlas_mobile/core/protocol/models.dart';
 import 'package:atlas_mobile/core/ui/atlas_theme.dart';
+import 'package:atlas_mobile/core/ui/motion_size.dart';
 import 'package:atlas_mobile/core/ui/markdown/atlas_markdown.dart';
 import 'package:atlas_mobile/features/crew/chat/action_card.dart';
 import 'package:atlas_mobile/features/crew/chat/ask_card.dart';
@@ -270,9 +271,8 @@ class _CrewmateBubble extends StatelessWidget {
             Flexible(
               child: _Bubble(
                 mine: false,
-                child: AnimatedSize(
+                child: MotionSize(
                   duration: Motion.slow,
-                  curve: Motion.ease,
                   alignment: Alignment.topLeft,
                   child: AnimatedSwitcher(
                     duration: Motion.normal,

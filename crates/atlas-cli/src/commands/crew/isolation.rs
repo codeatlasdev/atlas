@@ -380,6 +380,15 @@ pub enum Action {
     Run(String),
     /// Write `contents` to `file` (`sudo tee`).
     Write { file: String, contents: String },
+    /// Install engine `agent` system-wide with `script` ([`engine_install_script`]). Unlike every other
+    /// action a failure here does not fail the install: an engine needs the vendor's site and, for codex,
+    /// npm, which a plain server does not have, and the server works without it. The caller says which
+    /// engine is missing and `line`, the vendor's install line.
+    Engine {
+        agent: String,
+        line: String,
+        script: String,
+    },
 }
 
 /// Every action `atlas crew install` takes to put a server under isolation, in order, for the
@@ -400,8 +409,12 @@ pub fn install_actions(a: &Account, ids: &[String], engines: &[(&str, &str)]) ->
     )));
     v.extend(start_steps().into_iter().map(Action::Run));
     for (agent, cmd) in engines {
-        if let Some(sh) = engine_install_script(agent, cmd) {
-            v.push(Action::Run(sh));
+        if let Some(script) = engine_install_script(agent, cmd) {
+            v.push(Action::Engine {
+                agent: (*agent).to_string(),
+                line: (*cmd).to_string(),
+                script,
+            });
         }
     }
     for id in ids {
@@ -957,7 +970,12 @@ mod tests {
     fn install_actions_close_the_home_then_write_units_then_start_them_then_migrate() {
         let engines = [("claude", "true")];
         let acts = install_actions(&acct(), &[ID.to_string()], &engines);
-        let run = |needle: &'static str| move |a: &Action| matches!(a, Action::Run(s) if s.contains(needle));
+        let run = |needle: &'static str| {
+            move |a: &Action| match a {
+                Action::Run(s) | Action::Engine { script: s, .. } => s.contains(needle),
+                Action::Write { .. } => false,
+            }
+        };
         let write = |needle: &'static str| move |a: &Action| matches!(a, Action::Write { file, .. } if file.ends_with(needle));
         let pos = |f: &dyn Fn(&Action) -> bool| acts.iter().position(f).unwrap();
         let close = pos(&run("chmod 0700 '/var/lib/atlas-crew'"));

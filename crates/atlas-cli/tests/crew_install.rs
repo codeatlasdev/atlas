@@ -334,6 +334,70 @@ fn install_links_every_engine_from_where_its_vendor_put_it() {
     }
 }
 
+// Incident (found by the real-systemd end-to-end test, scripts/crew-e2e.sh, on a plain Ubuntu 24.04): the codex
+// engine is installed with npm, which a fresh VPS does not have. `atlas crew install` failed there with
+// `npm: not found`, after it had written the unit and the isolation helpers and before it started hostd:
+// a half-installed server, over an engine nobody asked for. An engine that cannot be installed is a warning
+// that says which one and how to install it; the server and the other engines are installed.
+#[test]
+fn install_on_a_server_without_npm_installs_the_server_and_every_other_engine() {
+    let w = World::new();
+    std::fs::remove_file(w.root().join("bin/npm")).unwrap();
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    assert!(
+        t.contains("codex") && t.contains("npm install -g @openai/codex"),
+        "the warning names the engine and how to install it: {t}"
+    );
+    assert!(
+        w.read("lib/atlas-crew/atlas").contains("9.9.9"),
+        "hostd was swapped in"
+    );
+    assert!(
+        w.exists("var/lib/atlas-crew/.ssh/authorized_keys"),
+        "the install ran to the end"
+    );
+    let engines = w.root().join("lib/atlas-crew/engines");
+    for engine in ["claude", "omp", "opencode"] {
+        assert!(engines.join(engine).is_symlink(), "{engine} is linked: {t}");
+    }
+    assert!(
+        !engines.join("codex").exists(),
+        "no link to an engine that was not installed"
+    );
+}
+
+// Same class: a vendor installer that leaves no binary (its site is down, a proxy eats the script) must not
+// fail the install of the server either, and a later `atlas crew install` retries it.
+#[test]
+fn install_when_one_vendor_installer_leaves_nothing_still_installs_the_server() {
+    let w = World::new();
+    w.fake(
+        "curl",
+        &format!("for a; do url=$a; done\ncase \"$url\" in *claude.ai*) exit 22;; esac\n{VENDOR_INSTALLER_CURL}"),
+    );
+    let bin = w.atlas_file("9.9.9", true);
+    let o = w.atlas(
+        &["install", "me@srv", "--binary", bin.to_str().unwrap()],
+        "",
+    );
+    let t = text(&o);
+    assert!(o.status.success(), "{t}");
+    assert!(t.contains("Crew server ready"), "{t}");
+    assert!(t.contains("claude"), "the warning names the engine: {t}");
+    let engines = w.root().join("lib/atlas-crew/engines");
+    assert!(!engines.join("claude").exists(), "{t}");
+    for engine in ["omp", "opencode", "codex"] {
+        assert!(engines.join(engine).is_symlink(), "{engine} is linked: {t}");
+    }
+}
+
 // Gap 3: a reinstall over a working server with a dead binary restores the old one.
 #[test]
 fn reinstall_with_a_dead_binary_restores_the_working_one() {

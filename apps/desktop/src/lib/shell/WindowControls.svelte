@@ -2,9 +2,10 @@
 	import { getCurrentWindow } from "@tauri-apps/api/window";
 	import { onMount } from "svelte";
 
-	// Windows draws no title bar (`decorations: false` in tauri.windows.conf.json): the page carries the caption
-	// buttons in the title row, like Windows 11's own apps. Drag and double-click-to-maximize come from the
-	// `data-tauri-drag-region` rows; the window keeps its native resize borders, shadow and rounded corners.
+	// Windows and Linux draw no title bar (`decorations: false` in tauri.{windows,linux}.conf.json): the page carries
+	// the caption buttons in the title row, like Windows 11's own apps. Drag and double-click-to-maximize come from the
+	// `data-tauri-drag-region` rows. Windows keeps its native resize borders, shadow and rounded corners; on Linux
+	// tauri-runtime-wry's 5 px resize band does the resizing. Not rendered on a Linux tiling WM (`.tiling-wm`).
 	const win = getCurrentWindow();
 	let maximized = $state(false);
 
